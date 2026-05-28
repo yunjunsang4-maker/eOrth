@@ -25,6 +25,38 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-font",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "여행 기간의 사진을 불러오기 위해 갤러리 접근이 필요해요.",
+          "savePhotosPermission": "사진 저장을 위해 권한이 필요해요.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "여행 사진과 영상을 선택하기 위해 갤러리 접근이 필요해요.",
+          "cameraPermission": "사진 및 영상 촬영을 위해 카메라 접근이 필요해요.",
+          "microphonePermission": "영상 녹화 시 오디오를 위해 마이크 접근이 필요해요."
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "영상 재생 및 녹화를 위해 마이크 접근이 필요해요."
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "아는 사람을 찾기 위해 연락처 접근이 필요해요."
+        }
+      ]
+    ]
   }
 }

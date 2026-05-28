@@ -1,0 +1,2093 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  SafeAreaView,
+  TextInput,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Dimensions,
+  Modal,
+  Alert,
+  DeviceEventEmitter,
+  PanResponder,
+  Linking,
+} from 'react-native';
+import { WebView } from 'react-native-webview';
+import * as ImagePicker from 'expo-image-picker';
+import type { MediaType } from 'expo-image-picker';
+import { useRecords } from '../store/recordStore';
+import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
+import { BlogData } from '../utils/naverBlogConverter';
+import { StickerPicker } from '../components/StickerPicker';
+import type { Sticker } from '../components/stickers';
+import {
+  CalendarIcon as SvgCalendarIcon,
+  CoinIcon as SvgCoinIcon,
+  PartlyCloudyIcon as SvgWeatherIcon,
+  PlaneIcon as SvgPlaneIcon,
+  TagIcon as SvgTagIcon,
+  TakeoffIcon as SvgTakeoffIcon,
+  TransferIcon as SvgTransferIcon,
+  SoloIcon as SvgSoloIcon,
+  FriendIcon as SvgFriendIcon,
+  CoupleIcon as SvgCoupleIcon,
+  FamilyIcon as SvgFamilyIcon,
+  ParentIcon as SvgParentIcon,
+  SiblingIcon as SvgSiblingIcon,
+  SunIcon as SvgSunIcon,
+  CloudyIcon as SvgCloudyIcon,
+  RainIcon as SvgRainIcon,
+  SnowIcon as SvgSnowIcon,
+  PartlyCloudyIcon as SvgPartlyCloudyIcon,
+  WindIcon as SvgWindIcon,
+  GalleryIcon,
+  CameraIcon,
+  StickerIcon,
+  LinkIcon,
+  PaperclipIcon,
+} from '../components/icons';
+import * as DocumentPicker from 'expo-document-picker';
+import { Video, ResizeMode } from 'expo-av';
+import {
+  BlogBlock, TextBlock, HeadingBlock, ImageBlock, ImagesBlock, VideoBlock,
+  SeparatorBlock, QuoteBlock, LinkBlock, StickerBlock, FileBlock,
+  TEXT_COLORS, BG_COLORS,
+  FONT_OPTIONS, FONT_SIZE_OPTIONS, TextAlign, SeparatorStyle,
+  ImageLayout, HeadingLevel,
+  genBlockId, createTextBlock, createHeadingBlock, createImageBlock,
+  createImagesBlock, createVideoBlock, createSeparatorBlock, createQuoteBlock,
+  createLinkBlock, createStickerBlock, createFileBlock,
+  blocksToPlainText, blocksToPhotos,
+} from '../types/blogBlocks';
+
+const { width: SCREEN_W } = Dimensions.get('window');
+
+const C = {
+  bg: '#0A0A0F', editorBg: '#111118', card: '#2E2E3B', cardLight: '#1E1B33',
+  toolbar: '#16161F', toolbarBorder: '#252535',
+  purpleNeon: '#BF85FC', purpleDeep: '#6B21A8',
+  purpleBg: 'rgba(107,33,168,0.25)', purpleBorder: 'rgba(191,133,252,0.3)',
+  white: '#FFFFFF', dim: '#A1A1B0', muted: '#4A4A59', divider: '#1A1A26',
+  quoteBg: 'rgba(191,133,252,0.06)', quoteBorder: '#BF85FC',
+  green: '#34C759', naverGreen: '#03C75A',
+};
+
+const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
+const WEATHER_OPTIONS = [
+  { label: '맑음',     value: '맑음' },
+  { label: '부분흐림', value: '부분흐림' },
+  { label: '흐림',     value: '흐림' },
+  { label: '비',       value: '비' },
+  { label: '눈',       value: '눈' },
+  { label: '바람',     value: '바람' },
+];
+const FLIGHT_OPTIONS = ['직항', '경유'];
+const CURRENCIES = ['KRW', 'JPY', 'USD'];
+const OTHER_CURRENCIES = [
+  { code: 'EUR', name: '유로 (EU)' },
+  { code: 'CNY', name: '위안 (중국)' },
+  { code: 'GBP', name: '파운드 (영국)' },
+  { code: 'AUD', name: '호주 달러' },
+  { code: 'CAD', name: '캐나다 달러' },
+  { code: 'CHF', name: '스위스 프랑' },
+  { code: 'HKD', name: '홍콩 달러' },
+  { code: 'SGD', name: '싱가포르 달러' },
+  { code: 'THB', name: '바트 (태국)' },
+  { code: 'VND', name: '동 (베트남)' },
+  { code: 'MYR', name: '링깃 (말레이시아)' },
+  { code: 'PHP', name: '페소 (필리핀)' },
+  { code: 'IDR', name: '루피아 (인도네시아)' },
+  { code: 'INR', name: '루피 (인도)' },
+  { code: 'TRY', name: '리라 (튀르키예)' },
+  { code: 'AED', name: '디르함 (UAE)' },
+  { code: 'NZD', name: '뉴질랜드 달러' },
+];
+
+const IC = C.purpleNeon;
+
+// ─── 동행자 아이콘 ───
+const COMPANION_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
+  '혼자': (c) => <SvgSoloIcon size={16} color={c} />,
+  '친구': (c) => <SvgFriendIcon size={16} color={c} />,
+  '연인': (c) => <SvgCoupleIcon size={16} color={c} />,
+  '가족': (c) => <SvgFamilyIcon size={16} color={c} />,
+  '부모님': (c) => <SvgParentIcon size={16} color={c} />,
+  '형제': (c) => <SvgSiblingIcon size={16} color={c} />,
+};
+
+// ─── 날씨 아이콘 ───
+const WEATHER_ICON_MAP: Record<string, React.ReactNode> = {
+  '맑음':     <SvgSunIcon size={16} />,
+  '부분흐림': <SvgPartlyCloudyIcon size={16} />,
+  '흐림':     <SvgCloudyIcon size={16} />,
+  '비':       <SvgRainIcon size={16} />,
+  '눈':       <SvgSnowIcon size={16} />,
+  '바람':     <SvgWindIcon size={16} />,
+};
+const SEP_STYLES: { label: string; value: SeparatorStyle }[] = [
+  { label: '실선', value: 'line' }, { label: '점', value: 'dots' },
+  { label: '파선', value: 'dashed' }, { label: '굵은선', value: 'thick' },
+  { label: '여백', value: 'space' },
+];
+
+// ─── 풀스크린 이미지 뷰어 ───
+const SCREEN_H = Dimensions.get('window').height;
+function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
+  images: string[];
+  initialIndex: number;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const [idx, setIdx] = useState(initialIndex);
+  const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    if (visible) {
+      setIdx(initialIndex);
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({ x: initialIndex * SCREEN_W, animated: false });
+      }, 50);
+    }
+  }, [visible, initialIndex]);
+
+  if (!visible) return null;
+  return (
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+        <ScrollView
+          ref={scrollRef}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onMomentumScrollEnd={(e) => setIdx(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
+        >
+          {images.map((uri, i) => (
+            <View key={i} style={{ width: SCREEN_W, height: SCREEN_H, justifyContent: 'center', alignItems: 'center' }}>
+              <Image source={{ uri }} style={{ width: SCREEN_W, height: SCREEN_H * 0.8 }} resizeMode="contain" />
+            </View>
+          ))}
+        </ScrollView>
+        {images.length > 1 && (
+          <View style={{ position: 'absolute', bottom: 60, alignSelf: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 14 }}>{idx + 1} / {images.length}</Text>
+          </View>
+        )}
+        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: 50, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── 슬라이드 이미지 뷰어 (편집용) ───
+function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress }: {
+  items: { uri: string; caption?: string }[];
+  width: number;
+  blockId: string;
+  onCaptionChange: (blockId: string, itemIdx: number, caption: string) => void;
+  onImagePress?: (uris: string[], index: number) => void;
+}) {
+  const [activeIdx, setActiveIdx] = useState(0);
+  const imgH = width * 0.75;
+  return (
+    <View>
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        onMomentumScrollEnd={(e) => {
+          const idx = Math.round(e.nativeEvent.contentOffset.x / width);
+          setActiveIdx(idx);
+        }}
+        style={{ width, height: imgH }}
+        nestedScrollEnabled
+      >
+        {items.map((item, i) => (
+          <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => onImagePress?.(items.map(it => it.uri), i)}>
+            <Image source={{ uri: item.uri }} style={{ width, height: imgH, borderRadius: 6 }} resizeMode="cover" />
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+      {items.length > 1 && (
+        <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 6, gap: 5 }}>
+          {items.map((_, i) => (
+            <View key={i} style={{
+              width: i === activeIdx ? 16 : 6, height: 6, borderRadius: 3,
+              backgroundColor: i === activeIdx ? '#BF85FC' : '#4A4A59',
+            }} />
+          ))}
+        </View>
+      )}
+      <TextInput
+        style={{ color: '#A1A1B0', fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' }}
+        placeholder={`사진 ${activeIdx + 1} 설명을 입력하세요`}
+        placeholderTextColor="#4A4A59"
+        value={items[activeIdx]?.caption || ''}
+        onChangeText={v => onCaptionChange(blockId, activeIdx, v)}
+      />
+    </View>
+  );
+}
+
+interface Props { navigation: any; route?: any; }
+
+export default function BlogRecordScreen({ navigation, route }: Props) {
+  const { addRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+
+  // 국가
+  const preselected = route?.params?.selectedCountry;
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(
+    preselected ? COUNTRIES.find(c => c.name === preselected.name) ?? null : null
+  );
+  const [countryModalVisible, setCountryModalVisible] = useState(false);
+  const [countrySearch, setCountrySearch] = useState('');
+
+  // 콘텐츠
+  const [title, setTitle] = useState('');
+  const [blocks, setBlocks] = useState<BlogBlock[]>([createTextBlock()]);
+  const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+
+  // 풀스크린 이미지 뷰어
+  const [fullImgVisible, setFullImgVisible] = useState(false);
+  const [fullImgList, setFullImgList] = useState<string[]>([]);
+  const [fullImgIndex, setFullImgIndex] = useState(0);
+  const openFullImage = (uris: string[], index: number) => {
+    setFullImgList(uris);
+    setFullImgIndex(index);
+    setFullImgVisible(true);
+  };
+
+  // 메타
+  const [memo, setMemo] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [rating, setRating] = useState(0);
+  const [companions, setCompanions] = useState<string[]>([]);
+  const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
+  const [weather, setWeather] = useState('');
+  const [budget, setBudget] = useState('');
+  const [currency, setCurrency] = useState('KRW');
+  const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
+  const [currencySearch, setCurrencySearch] = useState('');
+  const [flightType, setFlightType] = useState('');
+  const [keywords, setKeywords] = useState<string[]>([]);
+  const [keywordInput, setKeywordInput] = useState('');
+
+  // 날짜 캘린더
+  const [calendarVisible, setCalendarVisible] = useState(false);
+  const [startDateObj, setStartDateObj] = useState<Date>(new Date());
+  const [endDateObj, setEndDateObj] = useState<Date>(new Date());
+
+  // UI 모달
+  const [travelInfoVisible, setTravelInfoVisible] = useState(false);
+  const [colorPickerVisible, setColorPickerVisible] = useState(false);
+  const [bgColorPickerVisible, setBgColorPickerVisible] = useState(false);
+  const [fontPickerVisible, setFontPickerVisible] = useState(false);
+  const [fontSizePickerVisible, setFontSizePickerVisible] = useState(false);
+  const [sepStylePickerVisible, setSepStylePickerVisible] = useState(false);
+  const [stickerVisible, setStickerVisible] = useState(false);
+  const [linkModalVisible, setLinkModalVisible] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [toastMsg, setToastMsg] = useState('');
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [draftListVisible, setDraftListVisible] = useState(false);
+  // 하단 툴바 서브패널
+  const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [fontBarVisible, setFontBarVisible] = useState(false);
+  const [headingBarVisible, setHeadingBarVisible] = useState(false);
+  const [moreMenuVisible, setMoreMenuVisible] = useState(false);
+
+  const scrollRef = useRef<ScrollView>(null);
+  const blockRefs = useRef<Record<string, TextInput | null>>({});
+  const travelScrollRef = useRef<ScrollView>(null);
+
+  // ─── 네이버 가져오기 수신 (이벤트) ───
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('naverBlogImported', (imported: BlogData) => {
+      // 메타: 비어있는 항목만 채움 (기존 입력 유지)
+      if (imported.title) setTitle(prev => prev.trim() ? prev : imported.title);
+      if (imported.startDate) setStartDate(prev => prev || imported.startDate!);
+      if (imported.endDate) setEndDate(prev => prev || imported.endDate!);
+      if (imported.rating) setRating(prev => prev > 0 ? prev : imported.rating!);
+      if (imported.companions) setCompanions(prev => prev.length > 0 ? prev : imported.companions!);
+      if (imported.weather) setWeather(prev => prev || imported.weather!);
+      if (imported.keywords) setKeywords(prev => prev.length > 0 ? prev : imported.keywords!);
+      if (imported.countryName) {
+        setSelectedCountry(prev => {
+          if (prev) return prev;
+          return COUNTRIES.find(c => c.name === imported.countryName) ?? null;
+        });
+      }
+
+      // 본문/사진/영상: 원본 순서 보존
+      const importedBlocks: BlogBlock[] = [];
+      if (imported.orderedBlocks && imported.orderedBlocks.length > 0) {
+        // orderedBlocks가 있으면 원본 순서 그대로 블록 생성
+        imported.orderedBlocks.forEach(ob => {
+          if (ob.type === 'text' && typeof ob.value === 'string' && ob.value.trim()) {
+            importedBlocks.push(createTextBlock(ob.value));
+          } else if (ob.type === 'images' && Array.isArray(ob.value) && ob.value.length > 0) {
+            // 그룹사진(콜라주/슬라이드) → ImagesBlock으로 유지
+            const layout = ob.layout || (ob.value.length === 2 ? 'grid2' : 'grid3');
+            importedBlocks.push(createImagesBlock(ob.value, layout));
+          } else if (ob.type === 'image' && typeof ob.value === 'string' && ob.value) {
+            importedBlocks.push(createImageBlock(ob.value));
+          } else if (ob.type === 'video' && typeof ob.value === 'string' && ob.value) {
+            importedBlocks.push(createVideoBlock(ob.value));
+          }
+        });
+      } else {
+        // fallback: orderedBlocks 없으면 기존 방식
+        if (imported.body) {
+          imported.body.split(/\n\n+/).forEach((p, i) => {
+            importedBlocks.push(createTextBlock(p));
+            if (imported.photos?.[i]) importedBlocks.push(createImageBlock(imported.photos[i]));
+          });
+          const usedCount = importedBlocks.filter(b => b.type === 'image').length;
+          imported.photos?.slice(usedCount).forEach(uri => importedBlocks.push(createImageBlock(uri)));
+        } else if (imported.photos?.length) {
+          imported.photos.forEach(uri => importedBlocks.push(createImageBlock(uri)));
+        }
+        if (imported.videos?.length) {
+          imported.videos.forEach(uri => importedBlocks.push(createVideoBlock(uri)));
+        }
+      }
+
+      if (importedBlocks.length > 0) {
+        setBlocks(prev => {
+          const hasContent = prev.some(b =>
+            (b.type === 'text' && (b as TextBlock).value.trim()) || b.type !== 'text'
+          );
+          return hasContent ? [...prev, ...importedBlocks] : importedBlocks;
+        });
+      }
+
+      showToast('네이버 블로그에서 가져왔어요!');
+    });
+    return () => sub.remove();
+  }, []);
+
+  // ─── 자동 임시저장 (30초) ───
+  const draftSaveRef = useRef<((silent?: boolean) => void) | null>(null);
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!title.trim() && blocks.every(b => b.type === 'text' && !(b as TextBlock).value.trim())) return;
+      draftSaveRef.current?.(true);
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [title, blocks]);
+
+  const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2500); };
+
+  // ─── 블로그 임시저장 목록 (viewType='blog'인 것만, 5일 이내) ───
+  const DRAFT_MAX_AGE = 5 * 24 * 60 * 60 * 1000; // 5일 (ms)
+
+  // 마운트 시 5일 지난 블로그 임시저장 자동 삭제
+  useEffect(() => {
+    const now = Date.now();
+    drafts
+      .filter(d => d.viewType === 'blog' && now - d.timestamp > DRAFT_MAX_AGE)
+      .forEach(d => deleteDraft(d.id));
+  }, []);
+
+  const blogDrafts = drafts.filter(d => d.viewType === 'blog' && Date.now() - d.timestamp <= DRAFT_MAX_AGE);
+
+  // 남은 일수 계산
+  const draftDaysLeft = (timestamp: number) => {
+    const remaining = DRAFT_MAX_AGE - (Date.now() - timestamp);
+    if (remaining <= 0) return '만료됨';
+    const days = Math.ceil(remaining / (24 * 60 * 60 * 1000));
+    return `${days}일 남음`;
+  };
+
+  // ─── 임시저장 불러오기 ───
+  const loadDraft = (draft: typeof drafts[number]) => {
+    setDraftId(draft.id);
+    // 국가
+    if (draft.countryName) {
+      const found = COUNTRIES.find(c => c.name === draft.countryName);
+      if (found) setSelectedCountry(found);
+    } else {
+      setSelectedCountry(null);
+    }
+    // 콘텐츠
+    if (draft.blogBlocks && draft.blogBlocks.length > 0) {
+      setBlocks(draft.blogBlocks);
+    } else if (draft.content) {
+      setBlocks([createTextBlock(draft.content)]);
+    } else {
+      setBlocks([createTextBlock()]);
+    }
+    // 제목: content 필드에 저장되어 있음
+    setTitle(draft.content || '');
+    // 메타
+    setMemo(draft.memo || '');
+    setStartDate(draft.startDate || '');
+    setEndDate(draft.endDate || '');
+    setRating(draft.rating || 0);
+    setCompanions(draft.companions || []);
+    setWeather(draft.weather || '');
+    setBudget(draft.budget ? String(draft.budget.amount) : '');
+    setCurrency(draft.budget?.currency || 'KRW');
+    setFlightType(draft.flightType || '');
+    setKeywords(draft.keywords || []);
+    setDraftListVisible(false);
+    showToast('임시저장을 불러왔어요');
+  };
+
+  // ─── 임시저장 삭제 ───
+  const handleDeleteDraft = (id: string) => {
+    Alert.alert('임시저장 삭제', '이 임시저장을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => {
+        deleteDraft(id);
+        if (draftId === id) setDraftId(null);
+        showToast('임시저장이 삭제되었어요');
+      }},
+    ]);
+  };
+
+  // ─── 블록 조작 ───
+  const getActiveIndex = () => {
+    if (!activeBlockId) return blocks.length - 1;
+    const idx = blocks.findIndex(b => b.id === activeBlockId);
+    return idx >= 0 ? idx : blocks.length - 1;
+  };
+
+  const activeTextBlock = (): TextBlock | null => {
+    if (!activeBlockId) return null;
+    const b = blocks.find(b => b.id === activeBlockId);
+    return b && b.type === 'text' ? b as TextBlock : null;
+  };
+
+  const insertBlockAfter = (block: BlogBlock) => {
+    const idx = getActiveIndex();
+    const updated = [...blocks];
+    updated.splice(idx + 1, 0, block);
+    if (block.type !== 'text' && block.type !== 'heading' && block.type !== 'quote') {
+      const tb = createTextBlock();
+      updated.splice(idx + 2, 0, tb);
+      setBlocks(updated);
+      setTimeout(() => { setActiveBlockId(tb.id); blockRefs.current[tb.id]?.focus(); }, 100);
+    } else {
+      setBlocks(updated);
+      setTimeout(() => { setActiveBlockId(block.id); blockRefs.current[block.id]?.focus(); }, 100);
+    }
+  };
+
+  const updateBlock = (id: string, changes: Partial<BlogBlock>) => {
+    setBlocks(prev => prev.map(b => b.id === id ? { ...b, ...changes } as BlogBlock : b));
+  };
+
+  const updateImagesItemCaption = (blockId: string, itemIdx: number, caption: string) => {
+    setBlocks(prev => prev.map(b => {
+      if (b.id !== blockId || b.type !== 'images') return b;
+      const imb = b as ImagesBlock;
+      const newItems = imb.items.map((item, i) => i === itemIdx ? { ...item, caption } : item);
+      return { ...imb, items: newItems } as ImagesBlock;
+    }));
+  };
+
+  const deleteBlock = (id: string) => {
+    if (blocks.length <= 1) { updateBlock(id, { value: '' } as any); return; }
+    const idx = blocks.findIndex(b => b.id === id);
+    setBlocks(prev => prev.filter(b => b.id !== id));
+    if (idx > 0) {
+      const prev = blocks[idx - 1];
+      setActiveBlockId(prev.id);
+      setTimeout(() => blockRefs.current[prev.id]?.focus(), 50);
+    }
+  };
+
+  // ─── 서식 적용 (활성 텍스트 블록에) ───
+  const toggleFormat = (key: 'bold' | 'italic' | 'underline' | 'strikethrough') => {
+    const tb = activeTextBlock();
+    if (!tb) return;
+    updateBlock(tb.id, { [key]: !tb[key] } as any);
+  };
+
+  const setBlockColor = (color: string) => {
+    const tb = activeTextBlock();
+    if (tb) updateBlock(tb.id, { color } as any);
+    setColorPickerVisible(false);
+  };
+
+  const setBlockBgColor = (bgColor: string) => {
+    const tb = activeTextBlock();
+    if (tb) updateBlock(tb.id, { bgColor } as any);
+    setBgColorPickerVisible(false);
+  };
+
+  const setBlockFontSize = (fontSize: number) => {
+    const tb = activeTextBlock();
+    if (tb) updateBlock(tb.id, { fontSize } as any);
+    setFontSizePickerVisible(false);
+  };
+
+  const setBlockFontFamily = (fontFamily: string) => {
+    const tb = activeTextBlock();
+    if (tb) updateBlock(tb.id, { fontFamily } as any);
+    setFontPickerVisible(false);
+  };
+
+  const setBlockAlign = (align: TextAlign) => {
+    const tb = activeTextBlock();
+    if (tb) updateBlock(tb.id, { align } as any);
+  };
+
+  // ─── 삽입 액션 ───
+  const isVideoAsset = (asset: ImagePicker.ImagePickerAsset) =>
+    asset.type === 'video'
+    || (asset.duration != null && asset.duration > 0)
+    || (asset.uri && /\.(mp4|mov|avi|mkv|webm|3gp)$/i.test(asset.uri));
+
+  const handleAddPhoto = async () => {
+    setPhotoMenuVisible(false);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'] as MediaType[], allowsMultipleSelection: true, quality: 0.8,
+      });
+      if (result.canceled) return;
+      if (result.assets.length > 1) {
+        const uris = result.assets.map(a => a.uri);
+        const layout: ImageLayout = uris.length === 2 ? 'grid2' : 'grid3';
+        insertBlockAfter(createImagesBlock(uris, layout));
+      } else if (result.assets.length === 1) {
+        insertBlockAfter(createImageBlock(result.assets[0].uri));
+      }
+    } catch (err: any) {
+      console.error('[handleAddPhoto] error:', err);
+      Alert.alert('사진 선택 오류', err?.message || '사진을 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleAddVideo = async () => {
+    setPhotoMenuVisible(false);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('권한 필요', '영상을 불러오려면 사진 라이브러리 접근 권한이 필요해요.');
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'] as MediaType[],
+        allowsMultipleSelection: false,
+        videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
+        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
+      });
+      if (!result.canceled && result.assets[0]) {
+        const asset = result.assets[0];
+        insertBlockAfter(createVideoBlock(asset.uri));
+        showToast('영상이 추가되었어요!');
+      }
+    } catch (err: any) {
+      console.error('[handleAddVideo] error:', err);
+      Alert.alert('영상 불러오기 오류', err?.message || '영상을 불러오는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const handleCamera = async () => {
+    setPhotoMenuVisible(false);
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) { Alert.alert('권한 필요', '카메라 접근 권한이 필요해요.'); return; }
+    const cameraMediaTypes: MediaType[] = ['images', 'videos'];
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: cameraMediaTypes, quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0];
+      if (isVideoAsset(asset)) {
+        insertBlockAfter(createVideoBlock(asset.uri));
+      } else {
+        insertBlockAfter(createImageBlock(asset.uri));
+      }
+    }
+  };
+
+  const handleAddSeparator = (style: SeparatorStyle = 'dots') => {
+    insertBlockAfter(createSeparatorBlock(style));
+    setSepStylePickerVisible(false);
+  };
+
+  const handleAddHeading = (level: HeadingLevel = 2) => {
+    insertBlockAfter(createHeadingBlock('', level));
+  };
+
+  const handleAddQuote = () => { insertBlockAfter(createQuoteBlock()); };
+
+  const handleAddFile = async () => {
+    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+    if (!result.canceled && result.assets?.[0]) {
+      const file = result.assets[0];
+      insertBlockAfter(createFileBlock(file.uri, file.name, file.size, file.mimeType ?? undefined));
+    }
+  };
+
+  const handleAddLink = () => {
+    if (!linkUrl.trim()) return;
+    insertBlockAfter(createLinkBlock(linkUrl.trim()));
+    setLinkUrl('');
+    setLinkModalVisible(false);
+  };
+
+  const handleAddSticker = (sticker: Sticker) => {
+    insertBlockAfter(createStickerBlock(sticker.id, sticker.name));
+    setStickerVisible(false);
+  };
+
+  // ─── 날짜 포맷 ───
+  const fmtDate = (date: Date) =>
+    `${date.getFullYear()}.${String(date.getMonth() + 1).padStart(2, '0')}.${String(date.getDate()).padStart(2, '0')}`;
+
+  const handleCalendarConfirm = (start: Date, end: Date) => {
+    setStartDateObj(start);
+    setEndDateObj(end);
+    setStartDate(fmtDate(start));
+    setEndDate(fmtDate(end));
+  };
+
+  // ─── 키워드 ───
+  const addKeyword = () => {
+    const kw = keywordInput.trim();
+    if (kw && !keywords.includes(kw) && keywords.length < 10) { setKeywords(prev => [...prev, kw]); setKeywordInput(''); }
+  };
+
+  // ─── 동행자 ───
+  const toggleCompanion = (comp: string) => {
+    setCompanions(prev => prev.includes(comp) ? prev.filter(c => c !== comp) : [...prev, comp]);
+  };
+
+  const toggleCompanionFriend = (friend: string) => {
+    setCompanionFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
+  };
+  const removeCompanionFriend = (friend: string) => {
+    setCompanionFriends(prev => prev.filter(f => f !== friend));
+  };
+  const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
+
+  // ─── 별점 (0.5 단위) ───
+  const STAR_SIZE = 28;
+  const STAR_GAP = 6;
+  const ratingRowRef = useRef<View>(null);
+  const ratingRowPageX = useRef(0);
+
+  const getRatingFromX = (x: number) => {
+    let r = 0;
+    for (let i = 0; i < 5; i++) {
+      const starStart = i * (STAR_SIZE + STAR_GAP);
+      if (x < starStart) break;
+      r = x <= starStart + STAR_SIZE / 2 ? i + 0.5 : i + 1;
+    }
+    return Math.max(0, Math.min(5, r));
+  };
+
+  const ratingPanResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        ratingRowRef.current?.measure((_fx, _fy, _w, _h, px) => {
+          ratingRowPageX.current = px;
+          setRating(getRatingFromX(evt.nativeEvent.pageX - px));
+        });
+      },
+      onPanResponderMove: (evt) => {
+        setRating(getRatingFromX(evt.nativeEvent.pageX - ratingRowPageX.current));
+      },
+    })
+  ).current;
+
+  const renderStars = () => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      const isFull = rating >= i;
+      const isHalf = rating >= i - 0.5 && rating < i;
+      stars.push(
+        <View key={i} style={{ width: STAR_SIZE, height: STAR_SIZE }}>
+          <Text style={[st.starBase, st.starAbsolute]}>☆</Text>
+          {(isFull || isHalf) && (
+            <View style={[st.starFillClip, { width: isHalf ? STAR_SIZE / 2 : STAR_SIZE }]}>
+              <Text style={[st.starBase, st.starActive, st.starAbsolute]}>★</Text>
+            </View>
+          )}
+        </View>
+      );
+    }
+    return (
+      <View ref={ratingRowRef} style={st.ratingRow} {...ratingPanResponder.panHandlers}>
+        {stars}
+      </View>
+    );
+  };
+
+  // ─── 임시저장 ───
+  const handleDraftSave = (silent = false) => {
+    const data = buildRecordData();
+    if (draftId) {
+      updateDraft(draftId, data);
+    } else {
+      const id = saveDraft(data);
+      setDraftId(id);
+    }
+    if (!silent) showToast('임시저장 되었어요');
+  };
+  draftSaveRef.current = handleDraftSave;
+
+  // ─── 공통 데이터 빌드 ───
+  const buildRecordData = () => {
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+    const photos = blocksToPhotos(blocks);
+    const bodyText = blocksToPlainText(blocks);
+    return {
+      user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
+      countryName: selectedCountry?.name || '',
+      countryFlag: selectedCountry?.flag || '',
+      countries: selectedCountry ? [{ flag: selectedCountry.flag, name: selectedCountry.name }] : [],
+      date: startDate || dateStr,
+      content: title.trim() || bodyText,
+      visibility: 'friends' as const,
+      memo: memo.trim() || undefined,
+      rating: rating || undefined,
+      companions: companions.length > 0 ? companions : undefined,
+      medias: photos.length > 0 ? photos : undefined,
+      startDate: startDate || undefined,
+      endDate: endDate || undefined,
+      weather: weather || undefined,
+      budget: budget ? { amount: Number(budget), currency } : undefined,
+      flightType: flightType || undefined,
+      keywords: keywords.length > 0 ? keywords : undefined,
+      viewType: 'blog' as const,
+      blogBlocks: blocks,
+    };
+  };
+
+  // ─── 필수 항목 충족 여부 ───
+  const canSave = (() => {
+    if (!selectedCountry) return false;
+    const bodyText = blocksToPlainText(blocks);
+    if (!title.trim() && !bodyText) return false;
+    if (companions.length === 0) return false;
+    if (rating <= 0) return false;
+    return true;
+  })();
+
+  // ─── 발행 ───
+  const handleSave = () => {
+    if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
+    const bodyText = blocksToPlainText(blocks);
+    if (!title.trim() && !bodyText) { Alert.alert('내용 입력', '제목이나 본문을 작성해주세요.'); return; }
+    if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
+    if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
+    addRecord(buildRecordData());
+    navigation.goBack();
+  };
+
+  // ─── 국가 필터 ───
+  const filteredCountries = countrySearch.trim()
+    ? COUNTRIES.filter(c => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()))
+    : COUNTRIES;
+  const groupedCountries = CONTINENT_ORDER.map(cont => ({
+    continent: cont, countries: filteredCountries.filter(c => c.continent === cont),
+  })).filter(g => g.countries.length > 0);
+
+  const travelInfoCount = [startDate, endDate, rating > 0 ? 'y' : '', weather, companions.length > 0 ? 'y' : '', budget, flightType].filter(Boolean).length;
+  // 필수 항목 미입력 체크
+  const travelRequired = !startDate || companions.length === 0 || rating <= 0;
+  const countryRequired = !selectedCountry;
+  const atb = activeTextBlock();
+  const showFormatBar = !!atb;
+
+  // ─── 렌더 ───
+  return (
+    <SafeAreaView style={st.safe}>
+      {/* 헤더 */}
+      <View style={st.header}>
+        <TouchableOpacity onPress={() => {
+          const hasContent = title.trim() || blocks.some(b => b.type === 'text' && (b as TextBlock).value.trim());
+          if (!hasContent) { navigation.goBack(); return; }
+          Alert.alert('작성 중인 글이 있어요', '임시저장하고 나갈까요?', [
+            { text: '저장 안 함', style: 'destructive', onPress: () => navigation.goBack() },
+            { text: '임시저장', onPress: () => { handleDraftSave(false); navigation.goBack(); } },
+            { text: '계속 작성', style: 'cancel' },
+          ]);
+        }} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={st.headerBtnText}>취소</Text>
+        </TouchableOpacity>
+        <Text style={st.headerTitle}>블로그</Text>
+        <View style={st.headerRight}>
+          <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
+            <Text style={st.naverBtnText}>N</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={canSave ? handleSave : undefined} style={[st.saveBtn, !canSave && st.saveBtnDisabled]} disabled={!canSave}>
+            <Text style={[st.saveBtnText, !canSave && st.saveBtnTextDisabled]}>저장</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
+          showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+
+          {/* 국가 */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
+            <TouchableOpacity style={[st.countryChip, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
+              <Text style={selectedCountry ? st.countryChipText : st.countryChipPlaceholder}>
+                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '+ 여행지 선택'}
+              </Text>
+            </TouchableOpacity>
+            {countryRequired && <View style={st.requiredDot} />}
+          </View>
+
+          {/* 제목 */}
+          <TextInput style={st.titleInput} placeholder="제목" placeholderTextColor={C.muted}
+            value={title} onChangeText={setTitle} maxLength={100}
+            onSubmitEditing={() => { const f = blocks[0]; if (f) { setActiveBlockId(f.id); blockRefs.current[f.id]?.focus(); } }} />
+          <View style={st.titleDivider} />
+
+          {/* 블록 렌더 */}
+          {blocks.map((block, index) => renderBlock(block, index))}
+
+          {/* 태그 */}
+          <View style={st.tagSection}>
+            <View style={st.tagInputRow}>
+              <Text style={st.hashIcon}>#</Text>
+              <TextInput style={st.tagInput} placeholder="태그 입력" placeholderTextColor={C.muted}
+                value={keywordInput} onChangeText={setKeywordInput} onSubmitEditing={addKeyword} returnKeyType="done" />
+            </View>
+            {keywords.length > 0 && (
+              <View style={st.tagList}>
+                {keywords.map(kw => (
+                  <TouchableOpacity key={kw} style={st.tag} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}>
+                    <Text style={st.tagText}>#{kw}</Text>
+                    <Text style={st.tagRemove}>✕</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+          </View>
+
+          <View style={{ height: 140 }} />
+        </ScrollView>
+
+        {/* ── 서브 패널: 사진 메뉴 ── */}
+        {photoMenuVisible && (
+          <View style={st.subPanel}>
+            <SubMenuItem icon={<GalleryIcon size={20} color="#A1A1B0" />} label="사진 선택" onPress={handleAddPhoto} />
+            <SubMenuItem icon={<Text style={{ fontSize: 18 }}>🎬</Text>} label="영상 선택" onPress={handleAddVideo} />
+            <SubMenuItem icon={<CameraIcon size={20} color="#A1A1B0" />} label="카메라" onPress={handleCamera} />
+          </View>
+        )}
+
+        {/* ── 서브 패널: 글꼴 서식 ── */}
+        {fontBarVisible && (
+          <View style={st.subPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
+              {showFormatBar && (
+                <>
+                  <FormatBtn label="B" active={!!atb?.bold} onPress={() => toggleFormat('bold')} bold />
+                  <FormatBtn label="I" active={!!atb?.italic} onPress={() => toggleFormat('italic')} italic />
+                  <FormatBtn label="U" active={!!atb?.underline} onPress={() => toggleFormat('underline')} underline />
+                  <FormatBtn label="S" active={!!atb?.strikethrough} onPress={() => toggleFormat('strikethrough')} strike />
+                  <ToolSep />
+                  <FormatBtn label="A" onPress={() => setColorPickerVisible(true)} colorDot={atb?.color || C.white} />
+                  <FormatBtn label="▧" onPress={() => setBgColorPickerVisible(true)} colorDot={atb?.bgColor || 'transparent'} />
+                  <ToolSep />
+                </>
+              )}
+              <FormatBtn label="가" onPress={() => setFontSizePickerVisible(true)} />
+              <FormatBtn label="Aa" onPress={() => setFontPickerVisible(true)} />
+              {showFormatBar && (
+                <>
+                  <ToolSep />
+                  <FormatBtn label="≡" active={atb?.align === 'left' || !atb?.align} onPress={() => setBlockAlign('left')} />
+                  <FormatBtn label="≡" active={atb?.align === 'center'} onPress={() => setBlockAlign('center')} />
+                  <FormatBtn label="≡" active={atb?.align === 'right'} onPress={() => setBlockAlign('right')} />
+                </>
+              )}
+            </ScrollView>
+          </View>
+        )}
+
+        {/* ── 서브 패널: 줄정리 (정렬) ── */}
+        {headingBarVisible && (
+          <View style={st.subPanel}>
+            <SubMenuItem icon="⫷" label="왼쪽 정렬" onPress={() => { setBlockAlign('left'); setHeadingBarVisible(false); }} />
+            <SubMenuItem icon="☰" label="가운데 정렬" onPress={() => { setBlockAlign('center'); setHeadingBarVisible(false); }} />
+            <SubMenuItem icon="⫸" label="오른쪽 정렬" onPress={() => { setBlockAlign('right'); setHeadingBarVisible(false); }} />
+          </View>
+        )}
+
+        {/* ── 서브 패널: 더보기(≡) ── */}
+        {moreMenuVisible && (
+          <View style={st.subPanel}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
+              <ToolBtn icon="H" label="소제목" onPress={() => { setMoreMenuVisible(false); handleAddHeading(2); }} />
+              <ToolSep />
+              <ToolBtn icon={<StickerIcon size={22} color="#A1A1B0" />} label="스티커" onPress={() => { setMoreMenuVisible(false); setStickerVisible(true); }} />
+              <ToolSep />
+              <ToolBtn icon={<LinkIcon size={22} color="#A1A1B0" />} label="링크" onPress={() => { setMoreMenuVisible(false); setLinkModalVisible(true); }} />
+              <ToolSep />
+              <ToolBtn icon={'\u201C'} label="인용구" onPress={() => { setMoreMenuVisible(false); handleAddQuote(); }} />
+              <ToolSep />
+              <ToolBtn icon="—" label="구분선" onPress={() => { setMoreMenuVisible(false); setSepStylePickerVisible(true); }} />
+              <ToolSep />
+              <ToolBtn icon={<PaperclipIcon size={22} color="#A1A1B0" />} label="파일" onPress={() => { setMoreMenuVisible(false); handleAddFile(); }} />
+            </ScrollView>
+          </View>
+        )}
+
+        {/* 하단 메인 툴바 */}
+        <View style={st.toolbar}>
+          <View style={st.mainToolRow}>
+            <ToolBtn icon={<CameraIcon size={22} color="#A1A1B0" />} label="사진" onPress={() => { setPhotoMenuVisible(!photoMenuVisible); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon="Aa" label="글꼴" onPress={() => { setFontBarVisible(!fontBarVisible); setPhotoMenuVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon="☰" label="줄정리" onPress={() => { setHeadingBarVisible(!headingBarVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setMoreMenuVisible(false); }} />
+            <TouchableOpacity style={st.toolBtn} onPress={() => { setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); setTravelInfoVisible(true); }} activeOpacity={0.6}>
+              <View style={st.toolIcon}>
+                <SvgPlaneIcon size={22} color="#A1A1B0" />
+                {travelRequired && <View style={st.toolRequiredDot} />}
+              </View>
+              <Text style={st.toolLabel}>{`여행${travelInfoCount > 0 ? ` ${travelInfoCount}` : ''}`}</Text>
+            </TouchableOpacity>
+            <ToolBtn icon="≡" label="더보기" onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
+            <View style={st.toolbarSpacer} />
+            <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
+              <Text style={st.toolbarDraftText}>임시저장</Text>
+            </TouchableOpacity>
+            {blogDrafts.length > 0 && (
+              <TouchableOpacity style={st.toolbarDraftListBtn} onPress={() => setDraftListVisible(true)} activeOpacity={0.7}>
+                <Text style={st.toolbarDraftListText}>목록 {blogDrafts.length}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </KeyboardAvoidingView>
+
+      {/* ─── 모달들 ─── */}
+
+      {/* 글자색 */}
+      <PickerModal visible={colorPickerVisible} onClose={() => setColorPickerVisible(false)} title="글자 색상">
+        <View style={st.colorGrid}>
+          {TEXT_COLORS.map(c => (
+            <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, atb?.color === c && st.colorDotActive]}
+              onPress={() => setBlockColor(c)} />
+          ))}
+        </View>
+      </PickerModal>
+
+      {/* 배경색 */}
+      <PickerModal visible={bgColorPickerVisible} onClose={() => setBgColorPickerVisible(false)} title="배경 색상">
+        <View style={st.colorGrid}>
+          {BG_COLORS.map((c, i) => (
+            <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
+              atb?.bgColor === c && st.colorDotActive]}
+              onPress={() => setBlockBgColor(c)}>
+              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>없음</Text>}
+            </TouchableOpacity>
+          ))}
+        </View>
+      </PickerModal>
+
+      {/* 글꼴 크기 */}
+      <PickerModal visible={fontSizePickerVisible} onClose={() => setFontSizePickerVisible(false)} title="글자 크기">
+        {FONT_SIZE_OPTIONS.map(opt => (
+          <TouchableOpacity key={opt.size} style={[st.pickerOption, atb?.fontSize === opt.size && st.pickerOptionActive]}
+            onPress={() => setBlockFontSize(opt.size)}>
+            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && st.pickerOptionTextActive]}>{opt.label}</Text>
+            {atb?.fontSize === opt.size && <Text style={st.checkMark}>✓</Text>}
+          </TouchableOpacity>
+        ))}
+      </PickerModal>
+
+      {/* 글꼴 종류 */}
+      <PickerModal visible={fontPickerVisible} onClose={() => setFontPickerVisible(false)} title="글꼴">
+        {FONT_OPTIONS.map(opt => (
+          <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && st.pickerOptionActive]}
+            onPress={() => setBlockFontFamily(opt.value)}>
+            <Text style={[st.pickerOptionText, { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
+            {atb?.fontFamily === opt.value && <Text style={st.checkMark}>✓</Text>}
+          </TouchableOpacity>
+        ))}
+      </PickerModal>
+
+      {/* 구분선 스타일 */}
+      <PickerModal visible={sepStylePickerVisible} onClose={() => setSepStylePickerVisible(false)} title="구분선 스타일">
+        {SEP_STYLES.map(opt => (
+          <TouchableOpacity key={opt.value} style={st.pickerOption} onPress={() => handleAddSeparator(opt.value)}>
+            <Text style={st.pickerOptionText}>{opt.label}</Text>
+          </TouchableOpacity>
+        ))}
+      </PickerModal>
+
+      {/* 링크 입력 */}
+      <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title="링크 삽입">
+        <TextInput style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
+          value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
+        <TouchableOpacity style={st.schedConfirmBtn} onPress={handleAddLink}>
+          <Text style={st.schedConfirmText}>삽입</Text>
+        </TouchableOpacity>
+      </PickerModal>
+
+      {/* 스티커 */}
+      <Modal visible={stickerVisible} transparent animationType="slide" onRequestClose={() => setStickerVisible(false)}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setStickerVisible(false)}>
+          <View style={st.stickerPanel} onStartShouldSetResponder={() => true}>
+            <View style={st.panelHandle} />
+            <StickerPicker onSelect={handleAddSticker} />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 여행정보 패널 */}
+      <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setTravelInfoVisible(false)}>
+          <View style={st.travelPanel} onStartShouldSetResponder={() => true}>
+            <View style={st.panelHandle} />
+            <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <Text style={st.panelTitle}>여행 정보</Text>
+
+              {/* 날짜 */}
+              <PanelRow label="" icon={<SvgCalendarIcon size={18} color={IC} />} labelText="날짜" required>
+                <TouchableOpacity
+                  style={st.dateBtn}
+                  onPress={() => setCalendarVisible(true)}
+                  activeOpacity={0.85}
+                >
+                  <View style={st.dateBtnCol}>
+                    <Text style={st.dateBtnLabel}>출발일</Text>
+                    <Text style={st.dateBtnVal}>{startDate || '—'}</Text>
+                  </View>
+                  <Text style={st.dateBtnArrow}>→</Text>
+                  <View style={st.dateBtnCol}>
+                    <Text style={st.dateBtnLabel}>도착일</Text>
+                    <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
+                  </View>
+                  <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={C.purpleNeon} /></View>
+                </TouchableOpacity>
+              </PanelRow>
+
+              {/* 동행자 (필수) */}
+              <PanelRow label="" icon={<SvgFriendIcon size={18} color={IC} />} labelText="동행자 선택" required>
+                <View style={st.chipRow}>
+                  {COMPANIONS.map(comp => {
+                    const isActive = companions.includes(comp);
+                    const iconColor = isActive ? C.purpleNeon : C.dim;
+                    return (
+                      <TouchableOpacity key={comp} style={[st.chip, isActive && st.chipActive]} onPress={() => toggleCompanion(comp)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {COMPANION_ICON_MAP[comp]?.(iconColor)}
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{comp}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                {companionFriends.length > 0 && (
+                  <View style={[st.chipRow, { marginTop: 8 }]}>
+                    {companionFriends.map(friend => (
+                      <View key={friend} style={st.friendChip}>
+                        <View style={st.friendChipAvatar}>
+                          <Text style={st.friendChipAvatarTxt}>{friend[0]}</Text>
+                        </View>
+                        <Text style={st.friendChipName}>{friend}</Text>
+                        <TouchableOpacity onPress={() => removeCompanionFriend(friend)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
+                          <Text style={{ color: C.muted, fontSize: 10 }}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                <TouchableOpacity style={st.addFriendBtn} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
+                  <SvgFriendIcon size={16} color={C.purpleNeon} />
+                  <Text style={st.addFriendTxt}>앱 친구 추가</Text>
+                  {companionFriends.length > 0 && (
+                    <View style={st.addFriendBadge}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
+                  )}
+                </TouchableOpacity>
+              </PanelRow>
+
+              {/* 별점 (필수) */}
+              <PanelRow label="" icon={null} labelText="별점" required>
+                <View style={st.ratingWrap}>
+                  {renderStars()}
+                  {rating > 0
+                    ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
+                    : <Text style={st.ratingScoreEmpty}>탭하거나 드래그해 선택</Text>}
+                </View>
+              </PanelRow>
+
+              {/* 구분선 */}
+              <View style={st.optDivider} />
+              <Text style={st.optNotice}>선택 항목이에요 (건너뛰어도 돼요)</Text>
+
+              {/* 예산 */}
+              <PanelRow label="" icon={<SvgCoinIcon size={18} color={IC} />} labelText="예산">
+                <View style={st.budgetRow}>
+                  {CURRENCIES.map(c => (
+                    <TouchableOpacity key={c} style={[st.currencyChip, currency === c && st.currencyChipActive]} onPress={() => setCurrency(c)}>
+                      <Text style={[st.currencyTxt, currency === c && st.currencyTxtActive]}>{c}</Text>
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity
+                    style={[st.currencyChip, !CURRENCIES.includes(currency) && st.currencyChipActive]}
+                    onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
+                  >
+                    <Text style={[st.currencyTxt, !CURRENCIES.includes(currency) && st.currencyTxtActive]}>
+                      {CURRENCIES.includes(currency) ? '기타 ›' : currency}
+                    </Text>
+                  </TouchableOpacity>
+                  <TextInput style={st.budgetInput} placeholder="금액" placeholderTextColor={C.muted}
+                    value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
+                </View>
+              </PanelRow>
+
+              {/* 날씨 */}
+              <PanelRow label="" icon={<SvgWeatherIcon size={18} color={IC} />} labelText="날씨">
+                <View style={st.chipRow}>
+                  {WEATHER_OPTIONS.map(w => {
+                    const isActive = weather === w.value;
+                    return (
+                      <TouchableOpacity key={w.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setWeather(isActive ? '' : w.value)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {WEATHER_ICON_MAP[w.value]}
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{w.value}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </PanelRow>
+
+              {/* 직항/경유 */}
+              <PanelRow label="" icon={<SvgPlaneIcon size={18} color={IC} />} labelText="직항 / 경유">
+                <View style={st.chipRow}>
+                  {FLIGHT_OPTIONS.map(f => {
+                    const isActive = flightType === f;
+                    return (
+                      <TouchableOpacity key={f} style={[st.chip, isActive && st.chipActive]} onPress={() => setFlightType(isActive ? '' : f)}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {f === '직항'
+                            ? <SvgTakeoffIcon size={14} color={isActive ? C.purpleNeon : C.dim} />
+                            : <SvgTransferIcon size={14} color={isActive ? C.purpleNeon : C.dim} />}
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{f}</Text>
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </PanelRow>
+
+              {/* 키워드 */}
+              <PanelRow label="" icon={<SvgTagIcon size={18} color={IC} />} labelText="키워드">
+                <View style={st.kwWrap}>
+                  {keywords.length > 0 && (
+                    <View style={st.kwTagRow}>
+                      {keywords.map(kw => (
+                        <TouchableOpacity key={kw} style={st.kwTag} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}>
+                          <Text style={st.kwTagText}>#{kw}</Text>
+                          <Text style={st.kwTagDel}> ✕</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+                  <TextInput style={st.kwInput} placeholder="#키워드 추가" placeholderTextColor={C.muted}
+                    value={keywordInput} onChangeText={v => {
+                      if (v.endsWith(' ')) {
+                        const tag = v.trim();
+                        if (tag && !keywords.includes(tag) && keywords.length < 10) {
+                          setKeywords(prev => [...prev, tag.startsWith('#') ? tag.slice(1) : tag]);
+                        }
+                        setKeywordInput('');
+                      } else {
+                        setKeywordInput(v);
+                      }
+                    }}
+                    onFocus={() => setTimeout(() => travelScrollRef.current?.scrollToEnd({ animated: true }), 300)}
+                    returnKeyType="done" onSubmitEditing={addKeyword} />
+                </View>
+              </PanelRow>
+
+              {/* 메모 (비공개) */}
+              <PanelRow label="" icon={null} labelText="메모 (비공개)">
+                <TextInput style={st.memoInput} placeholder="나만 볼 수 있는 메모..." placeholderTextColor={C.muted}
+                  value={memo} onChangeText={setMemo} multiline textAlignVertical="top"
+                  onFocus={() => setTimeout(() => travelScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
+              </PanelRow>
+
+              <View style={{ height: 120 }} />
+            </ScrollView>
+            <TouchableOpacity style={st.panelDoneBtn} onPress={() => setTravelInfoVisible(false)}>
+              <Text style={st.panelDoneText}>완료</Text>
+            </TouchableOpacity>
+
+            {/* 캘린더 오버레이 (여행정보 패널 위에 표시) */}
+            {calendarVisible && (
+              <View style={st.calOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCalendarVisible(false)} />
+                <BlogCalendarSheet
+                  initialStart={startDateObj}
+                  initialEnd={endDateObj}
+                  onConfirm={handleCalendarConfirm}
+                  onClose={() => setCalendarVisible(false)}
+                />
+              </View>
+            )}
+
+            {/* 앱 친구 선택 오버레이 (여행정보 패널 위에 표시) */}
+            {friendPickerVisible && (
+              <View style={st.calOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
+                <View style={st.friendPickerSheet}>
+                  <View style={st.panelHandle} />
+                  <Text style={st.panelTitle}>앱 친구 선택</Text>
+                  <ScrollView style={{ maxHeight: 300 }}>
+                    {DUMMY_FRIENDS.map(friend => {
+                      const isSelected = companionFriends.includes(friend);
+                      return (
+                        <TouchableOpacity key={friend} style={st.friendPickerItem} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.75}>
+                          <View style={st.friendPickerAvatar}><Text style={st.friendPickerAvatarTxt}>{friend[0]}</Text></View>
+                          <Text style={st.friendPickerName}>{friend}</Text>
+                          <View style={[st.friendPickerCheck, isSelected && st.friendPickerCheckActive]}>
+                            {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                  <TouchableOpacity style={st.panelDoneBtn} onPress={() => setFriendPickerVisible(false)}>
+                    <Text style={st.panelDoneText}>완료</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* 기타 통화 선택 오버레이 (여행정보 패널 위에 표시) */}
+            {currencyModalVisible && (
+              <View style={st.calOverlay}>
+                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
+                <View style={st.currModalSheet}>
+                  <View style={st.panelHandle} />
+                  <Text style={st.panelTitle}>통화 선택</Text>
+                  <TextInput
+                    style={st.currModalSearch}
+                    value={currencySearch}
+                    onChangeText={setCurrencySearch}
+                    placeholder="통화 검색 (예: EUR, 유로)"
+                    placeholderTextColor={C.muted}
+                    autoFocus
+                  />
+                  <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+                    {OTHER_CURRENCIES
+                      .filter(c => {
+                        const q = currencySearch.trim().toLowerCase();
+                        return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+                      })
+                      .map((c, idx, arr) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={[st.currModalItem, idx < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.divider }]}
+                          onPress={() => { setCurrency(c.code); setCurrencyModalVisible(false); }}
+                        >
+                          <Text style={st.currModalCode}>{c.code}</Text>
+                          <Text style={st.currModalName}>{c.name}</Text>
+                          {currency === c.code && <Text style={{ color: C.purpleNeon, fontSize: 16, fontWeight: '700' }}>✓</Text>}
+                        </TouchableOpacity>
+                      ))}
+                  </ScrollView>
+                </View>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+        </KeyboardAvoidingView>
+      </Modal>
+
+
+      {/* 국가 모달 */}
+      <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
+        <SafeAreaView style={st.modalSafe}>
+          <View style={st.modalHeader}>
+            <TouchableOpacity onPress={() => setCountryModalVisible(false)}><Text style={st.modalClose}>닫기</Text></TouchableOpacity>
+            <Text style={st.modalTitle}>국가 선택</Text>
+            <View style={{ width: 40 }} />
+          </View>
+          <View style={st.searchWrap}>
+            <TextInput style={st.searchInput} placeholder="국가명 검색..." placeholderTextColor={C.muted}
+              value={countrySearch} onChangeText={setCountrySearch} autoFocus />
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {groupedCountries.map(g => (
+              <View key={g.continent}>
+                <Text style={st.continentLabel}>{g.continent}</Text>
+                {g.countries.map(country => (
+                  <TouchableOpacity key={country.name}
+                    style={[st.countryItem, selectedCountry?.name === country.name && st.countryItemActive]}
+                    onPress={() => { setSelectedCountry(country); setCountryModalVisible(false); setCountrySearch(''); }}>
+                    <Text style={st.countryItemText}>{country.flag} {country.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+
+      {/* 임시저장 목록 모달 */}
+      <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setDraftListVisible(false)}>
+          <View style={st.draftListPanel} onStartShouldSetResponder={() => true}>
+            <View style={st.panelHandle} />
+            <Text style={st.panelTitle}>임시저장 목록</Text>
+            {blogDrafts.length === 0 ? (
+              <Text style={st.draftEmptyText}>저장된 임시저장이 없어요</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+                {blogDrafts.map(draft => {
+                  const draftDate = new Date(draft.timestamp);
+                  const dateLabel = `${draftDate.getMonth() + 1}/${draftDate.getDate()} ${String(draftDate.getHours()).padStart(2, '0')}:${String(draftDate.getMinutes()).padStart(2, '0')}`;
+                  const preview = draft.content || '(내용 없음)';
+                  const isCurrent = draftId === draft.id;
+                  return (
+                    <View key={draft.id} style={[st.draftItem, isCurrent && st.draftItemCurrent]}>
+                      <TouchableOpacity style={st.draftItemContent} onPress={() => loadDraft(draft)} activeOpacity={0.7}>
+                        <View style={st.draftItemHeader}>
+                          <Text style={st.draftItemTitle} numberOfLines={1}>
+                            {preview.length > 30 ? preview.slice(0, 30) + '...' : preview}
+                          </Text>
+                          {isCurrent && <Text style={st.draftCurrentBadge}>편집중</Text>}
+                        </View>
+                        <View style={st.draftItemMeta}>
+                          {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {draft.countryName}</Text> : null}
+                          <Text style={st.draftItemDate}>{dateLabel}</Text>
+                          <Text style={st.draftExpiry}>{draftDaysLeft(draft.timestamp)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={st.draftDeleteBtn} onPress={() => handleDeleteDraft(draft.id)}>
+                        <Text style={st.draftDeleteText}>삭제</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <TouchableOpacity style={st.panelDoneBtn} onPress={() => setDraftListVisible(false)}>
+              <Text style={st.panelDoneText}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 토스트 */}
+      {toastMsg !== '' && (
+        <View style={st.toast} pointerEvents="none"><Text style={st.toastText}>{toastMsg}</Text></View>
+      )}
+
+      <FullScreenImageViewer images={fullImgList} initialIndex={fullImgIndex} visible={fullImgVisible} onClose={() => setFullImgVisible(false)} />
+    </SafeAreaView>
+  );
+
+  // ─── 블록 렌더 함수 ───
+  function renderBlock(block: BlogBlock, index: number) {
+    switch (block.type) {
+      case 'text': {
+        const tb = block as TextBlock;
+        return (
+          <TextInput key={block.id}
+            ref={ref => { blockRefs.current[block.id] = ref; }}
+            style={[st.textBlock, {
+              fontSize: tb.fontSize || 15, textAlign: tb.align || 'left',
+              fontWeight: tb.bold ? '700' : '400',
+              fontStyle: tb.italic ? 'italic' : 'normal',
+              textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
+              color: tb.color || C.white,
+              backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
+              fontFamily: tb.fontFamily || undefined,
+            }]}
+            placeholder={index === 0 && blocks.length === 1 ? '여행 이야기를 자유롭게 적어보세요...' : ''}
+            placeholderTextColor={C.muted}
+            value={tb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
+            onFocus={() => setActiveBlockId(block.id)} multiline textAlignVertical="top" scrollEnabled={false} />
+        );
+      }
+      case 'heading': {
+        const hb = block as HeadingBlock;
+        const sizes = { 1: 26, 2: 22, 3: 18 };
+        return (
+          <View key={block.id} style={st.headingWrap}>
+            <TextInput
+              ref={ref => { blockRefs.current[block.id] = ref; }}
+              style={[st.headingInput, { fontSize: sizes[hb.level], textAlign: hb.align || 'left' }]}
+              placeholder={`소제목 H${hb.level}`} placeholderTextColor={C.muted}
+              value={hb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
+              onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />
+            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.blockRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'image': {
+        const ib = block as ImageBlock;
+        return (
+          <View key={block.id} style={st.imageBlock}>
+            <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage([ib.uri], 0)}>
+              <Image source={{ uri: ib.uri }} style={st.imageBlockImg} resizeMode="cover" />
+            </TouchableOpacity>
+            <TextInput style={st.captionInput} placeholder="사진 설명을 입력하세요" placeholderTextColor={C.muted}
+              value={ib.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
+            <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.imageRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'images': {
+        const imb = block as ImagesBlock;
+        const isSlide = imb.layout === 'slide';
+        const cols = imb.layout === 'grid3' ? 3 : 2;
+        const imgW = (SCREEN_W - 48 - (cols - 1) * 4) / cols;
+        const slideW = SCREEN_W - 48;
+        return (
+          <View key={block.id} style={st.imagesBlock}>
+            {isSlide ? (
+              <SlideImageViewer items={imb.items} width={slideW} blockId={block.id} onCaptionChange={updateImagesItemCaption} onImagePress={openFullImage} />
+            ) : (
+              <View style={st.imagesGrid}>
+                {imb.items.map((item, i) => (
+                  <View key={i} style={{ width: imgW, marginRight: i % cols < cols - 1 ? 4 : 0, marginBottom: 4 }}>
+                    <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage(imb.items.map(it => it.uri), i)}>
+                      <Image source={{ uri: item.uri }} style={[st.gridImg, { width: imgW, height: imgW * 0.75 }]} resizeMode="cover" />
+                    </TouchableOpacity>
+                    <TextInput style={st.gridCaptionInput} placeholder="설명" placeholderTextColor={C.muted}
+                      value={item.caption || ''} onChangeText={v => updateImagesItemCaption(block.id, i, v)} />
+                  </View>
+                ))}
+              </View>
+            )}
+            <View style={st.layoutBtnRow}>
+              {(['grid2', 'grid3', 'slide'] as ImageLayout[]).map(l => (
+                <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && st.layoutBtnActive]}
+                  onPress={() => updateBlock(block.id, { layout: l } as any)}>
+                  <Text style={[st.layoutBtnText, imb.layout === l && st.layoutBtnTextActive]}>
+                    {l === 'grid2' ? '2열' : l === 'grid3' ? '3열' : '슬라이드'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.imageRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'video': {
+        const vb = block as VideoBlock;
+        const isLocalVideo = vb.uri && (vb.uri.startsWith('file://') || vb.uri.startsWith('content://') || vb.uri.startsWith('/'));
+        const isEmbedVideo = vb.uri && vb.uri.startsWith('http');
+        // 네이버TV embed → 모바일 시청 페이지로 변환
+        const getPlayableUrl = (uri: string) => {
+          // tv.naver.com/embed/XXXXX → m.tv.naver.com/v/XXXXX
+          const naverEmbedMatch = uri.match(/tv\.naver\.com\/embed\/([A-Za-z0-9]+)/);
+          if (naverEmbedMatch) return `https://m.tv.naver.com/v/${naverEmbedMatch[1]}`;
+          // player.naver.com → m.tv.naver.com/v/
+          const playerMatch = uri.match(/player\.naver\.com[^"]*vid=([A-Za-z0-9]+)/);
+          if (playerMatch) return `https://m.tv.naver.com/v/${playerMatch[1]}`;
+          return uri;
+        };
+        const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+        return (
+          <View key={block.id} style={st.imageBlock}>
+            {isLocalVideo ? (
+              <Video
+                source={{ uri: vb.uri }}
+                style={st.videoBlockPlayer}
+                resizeMode={ResizeMode.CONTAIN}
+                useNativeControls={true}
+                shouldPlay={false}
+                isLooping={false}
+                onError={(e) => console.warn('[Video] playback error:', e)}
+              />
+            ) : isEmbedVideo ? (
+              <View style={st.videoBlockPlayer}>
+                <WebView
+                  source={{ uri: getPlayableUrl(vb.uri) }}
+                  style={{ flex: 1, backgroundColor: '#000' }}
+                  userAgent={MOBILE_UA}
+                  allowsInlineMediaPlayback={true}
+                  mediaPlaybackRequiresUserAction={false}
+                  allowsFullscreenVideo={true}
+                  javaScriptEnabled={true}
+                  domStorageEnabled={true}
+                  scrollEnabled={false}
+                  nestedScrollEnabled={false}
+                  onError={() => console.warn('[WebView Video] load error')}
+                />
+              </View>
+            ) : (
+              <TouchableOpacity
+                style={[st.videoBlockPlayer, { justifyContent: 'center', alignItems: 'center' }]}
+                activeOpacity={0.7}
+                onPress={() => { if (vb.uri) Linking.openURL(vb.uri); }}
+              >
+                <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
+                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }}>외부 영상 (탭하여 열기)</Text>
+              </TouchableOpacity>
+            )}
+            <View style={st.videoLabel}>
+              <Text style={st.videoLabelText}>▶ 영상</Text>
+            </View>
+            <TextInput style={st.captionInput} placeholder="영상 설명을 입력하세요" placeholderTextColor={C.muted}
+              value={vb.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
+            <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.imageRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'separator': {
+        const sb = block as SeparatorBlock;
+        return (
+          <TouchableOpacity key={block.id} style={st.sepBlock} activeOpacity={0.6} onLongPress={() => deleteBlock(block.id)}>
+            {sb.style === 'line' && <View style={st.sepLine} />}
+            {sb.style === 'dots' && (
+              <View style={st.sepDotsRow}><View style={st.sepLine} /><View style={st.sepDots}><View style={st.sepDot} /><View style={st.sepDot} /><View style={st.sepDot} /></View><View style={st.sepLine} /></View>
+            )}
+            {sb.style === 'dashed' && <View style={[st.sepLine, { borderStyle: 'dashed', borderWidth: 1, borderColor: '#3A3A4A', height: 0 }]} />}
+            {sb.style === 'thick' && <View style={[st.sepLine, { height: 3, backgroundColor: C.purpleNeon, opacity: 0.3 }]} />}
+            {sb.style === 'space' && <View style={{ height: 40 }} />}
+          </TouchableOpacity>
+        );
+      }
+      case 'quote': {
+        const qb = block as QuoteBlock;
+        return (
+          <View key={block.id} style={st.quoteBlock}>
+            <Text style={st.quoteMark}>"</Text>
+            <TextInput ref={ref => { blockRefs.current[block.id] = ref; }}
+              style={st.quoteInput} placeholder="인용구를 입력하세요..." placeholderTextColor={C.muted}
+              value={qb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
+              onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />
+            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.blockRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'link': {
+        const lb = block as LinkBlock;
+        return (
+          <View key={block.id} style={st.linkBlock}>
+            <LinkIcon size={16} color="#A1A1B0" />
+            <Text style={st.linkUrl} numberOfLines={1}>{lb.url}</Text>
+            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.blockRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'sticker': {
+        const skb = block as StickerBlock;
+        return (
+          <View key={block.id} style={st.stickerBlock}>
+            <Text style={st.stickerLabel}>{skb.stickerName}</Text>
+            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.blockRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      case 'file': {
+        const fb = block as FileBlock;
+        const sizeStr = fb.fileSize ? (fb.fileSize < 1024 * 1024 ? `${(fb.fileSize / 1024).toFixed(0)}KB` : `${(fb.fileSize / (1024 * 1024)).toFixed(1)}MB`) : '';
+        return (
+          <View key={block.id} style={st.fileBlock}>
+            <PaperclipIcon size={20} color="#A1A1B0" />
+            <View style={{ flex: 1 }}>
+              <Text style={st.fileName} numberOfLines={1}>{fb.fileName}</Text>
+              {sizeStr ? <Text style={st.fileSize}>{sizeStr}</Text> : null}
+            </View>
+            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
+              <Text style={st.blockRemoveText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      }
+      default: return null;
+    }
+  }
+}
+
+// ─── 하위 컴포넌트 ───
+function ToolBtn({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={st.toolBtn} onPress={onPress} activeOpacity={0.6}>
+      <View style={st.toolIcon}>{typeof icon === 'string' ? <Text style={{ fontSize: 22, color: '#A1A1B0' }}>{icon}</Text> : icon}</View>
+      <Text style={st.toolLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ToolSep() { return <View style={st.toolSep} />; }
+
+function SubMenuItem({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+  return (
+    <TouchableOpacity style={st.subMenuItem} onPress={onPress} activeOpacity={0.6}>
+      <View style={st.subMenuIcon}>{typeof icon === 'string' ? <Text style={{ fontSize: 20, color: '#A1A1B0' }}>{icon}</Text> : icon}</View>
+      <Text style={st.subMenuLabel}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function FormatBtn({ label, active, onPress, bold, italic, underline, strike, colorDot }: {
+  label: string; active?: boolean; onPress: () => void;
+  bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; colorDot?: string;
+}) {
+  return (
+    <TouchableOpacity style={[st.fmtBtn, active && st.fmtBtnActive]} onPress={onPress} activeOpacity={0.6}>
+      <Text style={[st.fmtBtnText,
+        bold && { fontWeight: '900' }, italic && { fontStyle: 'italic' },
+        underline && { textDecorationLine: 'underline' }, strike && { textDecorationLine: 'line-through' },
+        active && { color: C.purpleNeon },
+      ]}>{label}</Text>
+      {colorDot && <View style={[st.fmtColorDot, { backgroundColor: colorDot === 'transparent' ? '#555' : colorDot }]} />}
+    </TouchableOpacity>
+  );
+}
+
+function PickerModal({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  return (
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+      <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose}>
+        <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
+          <Text style={st.pickerTitle}>{title}</Text>
+          {children}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+  );
+}
+
+function PanelRow({ label, icon, labelText, required, children }: {
+  label: string; icon?: React.ReactNode | null; labelText?: string; required?: boolean; children: React.ReactNode;
+}) {
+  const displayLabel = labelText || label;
+  return (
+    <View style={st.panelRow}>
+      <View style={st.panelLabelRow}>
+        {icon && <View style={{ marginRight: 6 }}>{icon}</View>}
+        <Text style={st.panelLabel}>{displayLabel}</Text>
+        {required && <Text style={st.reqTag}>✱</Text>}
+      </View>
+      {children}
+    </View>
+  );
+}
+
+// ─── 스타일 ───
+const st = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: C.bg },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
+  headerBtn: { paddingHorizontal: 14, paddingVertical: 10 },
+  headerBtnText: { color: C.dim, fontSize: 14 },
+  headerTitle: { color: C.white, fontSize: 15, fontWeight: '700', position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  naverBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: C.naverGreen, alignItems: 'center', justifyContent: 'center' },
+  naverBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  saveBtn: { backgroundColor: C.purpleDeep, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
+  saveBtnDisabled: { backgroundColor: C.muted, opacity: 0.4 },
+  saveBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
+  saveBtnTextDisabled: { color: C.dim },
+
+  editor: { flex: 1, backgroundColor: C.editorBg },
+  editorContent: { paddingHorizontal: 20, paddingTop: 12 },
+
+  // 국가
+  countryChip: { alignSelf: 'flex-start', backgroundColor: C.purpleBg, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: C.purpleBorder, marginBottom: 12 },
+  countryChipText: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
+  countryChipPlaceholder: { color: C.muted, fontSize: 13 },
+  countryChipRequired: { borderColor: '#FF3B30' },
+  requiredDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF3B30', marginLeft: 6 },
+
+  titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
+  titleDivider: { height: 2, backgroundColor: C.purpleDeep, marginTop: 6, marginBottom: 14, width: 36, borderRadius: 1 },
+
+  // 블록
+  textBlock: { color: C.white, lineHeight: 26, paddingVertical: 3, minHeight: 26 },
+  headingWrap: { flexDirection: 'row', alignItems: 'flex-start', marginVertical: 8 },
+  headingInput: { flex: 1, color: C.white, fontWeight: '700', paddingVertical: 4 },
+  imageBlock: { marginVertical: 10, borderRadius: 10, overflow: 'hidden', backgroundColor: '#1A1A2E' },
+  imageBlockImg: { width: '100%', aspectRatio: 16 / 10 },
+  videoBlockPlayer: { width: '100%', height: 200, backgroundColor: '#000', borderRadius: 8 },
+  videoLabel: { position: 'absolute' as const, top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
+  videoLabelText: { color: '#fff', fontSize: 11, fontWeight: '600' as const },
+  captionInput: { color: C.dim, fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' },
+  imageRemoveBtn: { position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
+  imageRemoveText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+  imagesBlock: { marginVertical: 10, borderRadius: 10, overflow: 'hidden', backgroundColor: '#1A1A2E', padding: 4 },
+  imagesGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  gridImg: { borderRadius: 6 },
+  gridCaptionInput: { color: '#A1A1B0', fontSize: 10, textAlign: 'center', paddingVertical: 2, paddingHorizontal: 4, fontStyle: 'italic' },
+  layoutBtnRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 8 },
+  layoutBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: C.cardLight },
+  layoutBtnActive: { backgroundColor: C.purpleBg },
+  layoutBtnText: { color: C.muted, fontSize: 11 },
+  layoutBtnTextActive: { color: C.purpleNeon },
+  sepBlock: { paddingVertical: 16 },
+  sepLine: { flex: 1, height: 1, backgroundColor: '#3A3A4A' },
+  sepDotsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sepDots: { flexDirection: 'row', gap: 5 },
+  sepDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.purpleNeon, opacity: 0.5 },
+  quoteBlock: { marginVertical: 10, backgroundColor: C.quoteBg, borderLeftWidth: 3, borderLeftColor: C.quoteBorder, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'flex-start' },
+  quoteMark: { color: C.purpleNeon, fontSize: 26, fontWeight: '700', opacity: 0.35, marginRight: 6, marginTop: -6 },
+  quoteInput: { flex: 1, color: C.dim, fontSize: 14, fontStyle: 'italic', lineHeight: 22, minHeight: 22, paddingVertical: 0 },
+  linkBlock: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider, gap: 8 },
+  linkIcon: { fontSize: 16 },
+  linkUrl: { flex: 1, color: '#64B5F6', fontSize: 13, textDecorationLine: 'underline' },
+  stickerBlock: { marginVertical: 8, alignItems: 'center', paddingVertical: 16, backgroundColor: C.cardLight, borderRadius: 10 },
+  stickerLabel: { color: C.dim, fontSize: 13, marginTop: 6 },
+  fileBlock: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider, gap: 10 },
+  fileIcon: { fontSize: 20 },
+  fileName: { color: C.white, fontSize: 13, fontWeight: '500' },
+  fileSize: { color: C.muted, fontSize: 11, marginTop: 2 },
+  blockRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
+  blockRemoveText: { color: '#fff', fontSize: 11 },
+
+  // 태그
+  tagSection: { marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.divider },
+  tagInputRow: { flexDirection: 'row', alignItems: 'center' },
+  hashIcon: { color: C.purpleNeon, fontSize: 16, fontWeight: '700', marginRight: 4 },
+  tagInput: { flex: 1, height: 34, color: C.white, fontSize: 14 },
+  tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 4 },
+  tagText: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' },
+  tagRemove: { color: C.muted, fontSize: 9 },
+
+  // 툴바
+  toolbar: { backgroundColor: C.toolbar, borderTopWidth: 1, borderTopColor: C.toolbarBorder, paddingBottom: Platform.OS === 'ios' ? 18 : 6 },
+  mainToolRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, paddingVertical: 6 },
+  toolRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 5 },
+  toolBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, minWidth: 52 },
+  toolIcon: { alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 2, height: 26 },
+  toolLabel: { fontSize: 11, color: C.muted },
+  toolRequiredDot: { position: 'absolute' as const, top: -1, right: -5, width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF3B30' },
+  toolSep: { width: 1, height: 22, backgroundColor: C.toolbarBorder },
+  toolbarSpacer: { flex: 1 },
+  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, borderWidth: 1, borderColor: C.purpleBorder },
+  toolbarDraftText: { color: C.dim, fontSize: 12, fontWeight: '600' },
+  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 4, backgroundColor: C.purpleBg },
+  toolbarDraftListText: { color: C.purpleNeon, fontSize: 11, fontWeight: '700' },
+  // 서브패널
+  subPanel: { backgroundColor: C.toolbar, borderTopWidth: 1, borderTopColor: C.toolbarBorder, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },
+  subMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
+  subMenuIcon: { alignItems: 'center' as const, justifyContent: 'center' as const, width: 24, height: 24 },
+  subMenuLabel: { fontSize: 15, color: C.white, fontWeight: '500' },
+  fmtBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, minWidth: 36, borderRadius: 4 },
+  fmtBtnActive: { backgroundColor: 'rgba(191,133,252,0.15)' },
+  fmtBtnText: { fontSize: 14, color: C.dim },
+  fmtColorDot: { width: 10, height: 3, borderRadius: 1.5, marginTop: 2 },
+
+  // 피커 공통
+  overlayBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28 },
+  pickerCard: { width: '100%', backgroundColor: C.card, borderRadius: 16, padding: 18 },
+  pickerTitle: { color: C.white, fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
+  pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
+  pickerOptionActive: { backgroundColor: C.purpleBg, borderRadius: 8, borderBottomColor: 'transparent' },
+  pickerOptionText: { color: C.white, fontSize: 15 },
+  pickerOptionTextActive: { color: C.purpleNeon, fontWeight: '600' },
+  checkMark: { color: C.purpleNeon, fontSize: 16, fontWeight: '700' },
+  colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  colorDot: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  colorDotActive: { borderColor: C.purpleNeon },
+
+  // 링크 입력
+  schedDesc: { color: C.dim, fontSize: 12, textAlign: 'center', marginBottom: 12 },
+  schedInput: { height: 44, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
+  schedConfirmBtn: { backgroundColor: C.purpleDeep, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  schedConfirmText: { color: C.white, fontSize: 14, fontWeight: '700' },
+
+  // 스티커 패널
+  stickerPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '55%', paddingTop: 10 },
+  panelHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 8 },
+
+  // 여행정보 패널
+  travelPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  panelTitle: { color: C.white, fontSize: 17, fontWeight: '700', marginBottom: 18 },
+  panelRow: { marginBottom: 18, gap: 8 },
+  panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
+  panelLabel: { color: C.dim, fontSize: 13, fontWeight: '600' },
+  reqTag: { color: C.purpleNeon, fontSize: 11, fontWeight: '700', marginLeft: 4 },
+  dateBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.cardLight, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: C.divider },
+  dateBtnCol: { flex: 1 },
+  dateBtnLabel: { fontSize: 11, color: C.muted, marginBottom: 4 },
+  dateBtnVal: { fontSize: 15, fontWeight: '600' as const, color: C.white },
+  dateBtnArrow: { fontSize: 18, color: C.muted, marginHorizontal: 12 },
+  ratingRow: { flexDirection: 'row' as const, gap: 6, alignItems: 'center' as const },
+  starBase: { fontSize: 24, color: '#3A3A55', textAlign: 'center' as const, lineHeight: 28, width: 28 },
+  starAbsolute: { position: 'absolute' as const, left: 0, top: 0, width: 28 },
+  starFillClip: { position: 'absolute' as const, left: 0, top: 0, height: 28, overflow: 'hidden' as const },
+  starActive: { color: '#FBBF24' },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
+  chipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
+  chipText: { color: C.dim, fontSize: 13 },
+  chipTextActive: { color: C.purpleNeon },
+  ratingWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
+  ratingScore: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
+  ratingScoreEmpty: { color: C.muted, fontSize: 12 },
+  optDivider: { height: 1, backgroundColor: C.divider, marginVertical: 8 },
+  optNotice: { color: C.muted, fontSize: 11, textAlign: 'center' as const, marginBottom: 14 },
+  budgetRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: 8 },
+  currencyChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
+  currencyChipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
+  currencyTxt: { color: C.dim, fontSize: 12, fontWeight: '600' },
+  currencyTxtActive: { color: C.purpleNeon },
+  budgetInput: { flex: 1, minWidth: 80, height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
+  kwWrap: { gap: 8 },
+  kwTagRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 },
+  kwTag: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  kwTagText: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' },
+  kwTagDel: { color: C.muted, fontSize: 9 },
+  kwInput: { height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
+  memoInput: { color: C.white, fontSize: 13, lineHeight: 20, minHeight: 56, backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider },
+  panelDoneBtn: { backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 6 },
+  panelDoneText: { color: C.white, fontSize: 15, fontWeight: '700' },
+
+  // 국가 모달
+  modalSafe: { flex: 1, backgroundColor: C.bg },
+  modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  modalClose: { color: C.purpleNeon, fontSize: 15, fontWeight: '600' },
+  modalTitle: { color: C.white, fontSize: 16, fontWeight: '700' },
+  searchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
+  searchInput: { height: 40, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider },
+  continentLabel: { color: C.dim, fontSize: 11, fontWeight: '600', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  countryItem: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  countryItemActive: { backgroundColor: C.purpleBg },
+  countryItemText: { color: C.white, fontSize: 15 },
+
+  // 임시저장 목록
+  draftListPanel: { position: 'absolute' as const, bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  draftEmptyText: { color: C.muted, fontSize: 14, textAlign: 'center' as const, paddingVertical: 40 },
+  draftItem: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.cardLight, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: C.divider, overflow: 'hidden' as const },
+  draftItemCurrent: { borderColor: C.purpleBorder },
+  draftItemContent: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  draftItemHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 4 },
+  draftItemTitle: { color: C.white, fontSize: 14, fontWeight: '600', flex: 1 },
+  draftCurrentBadge: { color: C.purpleNeon, fontSize: 10, fontWeight: '700', backgroundColor: C.purpleBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' as const },
+  draftItemMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  draftItemCountry: { color: C.dim, fontSize: 12 },
+  draftItemDate: { color: C.muted, fontSize: 11 },
+  draftExpiry: { color: '#FFD60A', fontSize: 10, fontWeight: '600' },
+  draftDeleteBtn: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'center' as const, borderLeftWidth: 1, borderLeftColor: C.divider },
+  draftDeleteText: { color: '#FF3B30', fontSize: 12, fontWeight: '600' },
+
+  // 캘린더 오버레이
+  calOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 10 },
+
+  // 통화 모달
+  currModalSheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  currModalSearch: { height: 40, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
+  currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 14, paddingHorizontal: 4, gap: 10 },
+  currModalCode: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' as const, width: 44 },
+  currModalName: { flex: 1, color: C.white, fontSize: 14 },
+
+  // 앱 친구 관련
+  friendChip: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
+  friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendChipAvatarTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
+  friendChipName: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' as const },
+  addFriendBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.cardLight, borderRadius: 10, borderWidth: 1, borderColor: C.purpleBorder, alignSelf: 'flex-start' as const },
+  addFriendTxt: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
+  addFriendBadge: { backgroundColor: C.purpleDeep, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
+  friendPickerPanel: { position: 'absolute' as const, bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  friendPickerSheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendPickerAvatarTxt: { color: C.white, fontSize: 15, fontWeight: '700' as const },
+  friendPickerName: { flex: 1, color: C.white, fontSize: 15 },
+  friendPickerCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: C.muted, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendPickerCheckActive: { backgroundColor: C.purpleNeon, borderColor: C.purpleNeon },
+
+  // 토스트
+  toast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,50,0.95)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
+});
+
+// ─── 날짜 유틸 ───
+const toDateKey = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
+const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
+
+// ─── 캘린더 바텀시트 ───
+const CAL_WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const CAL_CELL = Math.floor((SCREEN_W - 32 - 12) / 7);
+
+function BlogCalendarSheet({
+  initialStart, initialEnd, onConfirm, onClose,
+}: {
+  initialStart: Date;
+  initialEnd: Date;
+  onConfirm: (start: Date, end: Date) => void;
+  onClose: () => void;
+}) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const [viewYear, setViewYear]         = useState(initialStart.getFullYear());
+  const [viewMonth, setViewMonth]       = useState(initialStart.getMonth());
+  const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
+  const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
+  const [selectingEnd, setSelectingEnd] = useState(false);
+
+  const handlePrevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
+    else setViewMonth(m => m - 1);
+  };
+  const handleNextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
+    else setViewMonth(m => m + 1);
+  };
+
+  const handleDayPress = (date: Date) => {
+    if (!selectingEnd) {
+      setTempStart(date); setTempEnd(null); setSelectingEnd(true);
+    } else {
+      if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
+      else { setTempEnd(date); setSelectingEnd(false); }
+    }
+  };
+
+  const handleConfirm = () => {
+    const s = tempStart ?? today;
+    const e = tempEnd ?? s;
+    onConfirm(s, e);
+    onClose();
+  };
+
+  const buildGrid = useCallback(() => {
+    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
+    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+    const cells: (Date | null)[] = [];
+    for (let i = 0; i < firstDay; i++) cells.push(null);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(viewYear, viewMonth, d);
+      date.setHours(0, 0, 0, 0);
+      cells.push(date);
+    }
+    while (cells.length % 7 !== 0) cells.push(null);
+    return cells;
+  }, [viewYear, viewMonth]);
+
+  const grid = buildGrid();
+  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
+  const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
+  const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
+  const MONTH_NAMES  = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const fmtSel = (d: Date | null) =>
+    d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
+
+  return (
+    <View style={calSt.sheet} onStartShouldSetResponder={() => true}>
+      <View style={calSt.handle} />
+      <View style={calSt.selectedRow}>
+        <View style={calSt.selectedItem}>
+          <Text style={calSt.selectedLabel}>출발일</Text>
+          <Text style={[calSt.selectedDate, !selectingEnd && calSt.selectedDateActive]}>{fmtSel(tempStart)}</Text>
+        </View>
+        <Text style={calSt.selectedArrow}>→</Text>
+        <View style={calSt.selectedItem}>
+          <Text style={calSt.selectedLabel}>도착일</Text>
+          <Text style={[calSt.selectedDate, selectingEnd && calSt.selectedDateActive]}>{fmtSel(tempEnd)}</Text>
+        </View>
+      </View>
+      <View style={calSt.monthNav}>
+        <TouchableOpacity onPress={handlePrevMonth} style={calSt.navBtn}><Text style={calSt.navArrow}>‹</Text></TouchableOpacity>
+        <Text style={calSt.monthTitle}>{viewYear}년 {MONTH_NAMES[viewMonth]}</Text>
+        <TouchableOpacity onPress={handleNextMonth} style={calSt.navBtn}><Text style={calSt.navArrow}>›</Text></TouchableOpacity>
+      </View>
+      <View style={calSt.weekRow}>
+        {CAL_WEEK_DAYS.map((d, i) => (
+          <Text key={d} style={[calSt.weekDay, { width: CAL_CELL }, i===0 && calSt.sundayText, i===6 && calSt.saturdayText]}>{d}</Text>
+        ))}
+      </View>
+      <View style={calSt.grid}>
+        {grid.map((date, idx) => {
+          if (!date) return <View key={`e-${idx}`} style={{ width: CAL_CELL, height: CAL_CELL }} />;
+          const dow = date.getDay();
+          const isToday = isSameDay(date, today);
+          const isStart = isRangeStart(date);
+          const isEnd   = isRangeEnd(date);
+          const inRange = isInRange(date);
+          const isEdge  = isStart || isEnd;
+          return (
+            <TouchableOpacity
+              key={toDateKey(date)}
+              onPress={() => handleDayPress(date)}
+              activeOpacity={0.7}
+              style={[calSt.dayCell, { width: CAL_CELL, height: CAL_CELL },
+                inRange && !isEdge && calSt.inRange,
+                isStart && calSt.rangeStartCell,
+                isEnd   && calSt.rangeEndCell,
+              ]}
+            >
+              <View style={[calSt.dayInner, isEdge && calSt.edgeCircle]}>
+                <Text style={[calSt.dayText,
+                  isToday && !isEdge && calSt.todayText,
+                  dow===0 && !isEdge && calSt.sundayText,
+                  dow===6 && !isEdge && calSt.saturdayText,
+                  isEdge && calSt.edgeText,
+                ]}>{date.getDate()}</Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+      <TouchableOpacity style={calSt.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
+        <Text style={calSt.confirmText}>확인</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+const calSt = StyleSheet.create({
+  sheet: { backgroundColor: '#1E1E2E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingBottom: 36 },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', marginTop: 12, marginBottom: 16 },
+  selectedRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(191,133,252,0.08)', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 16 },
+  selectedItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  selectedLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
+  selectedDate: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+  selectedDateActive: { color: '#BF85FC' },
+  selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
+  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 4 },
+  navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+  navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
+  monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  weekRow: { flexDirection: 'row', marginBottom: 4 },
+  weekDay: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.45)', paddingVertical: 6 },
+  sundayText: { color: '#FF3B30' },
+  saturdayText: { color: '#5AC8FA' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { alignItems: 'center', justifyContent: 'center' },
+  dayInner: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17 },
+  dayText: { fontSize: 14, color: '#FFFFFF' },
+  todayText: { color: '#BF85FC', fontWeight: '700' },
+  inRange: { backgroundColor: 'rgba(191,133,252,0.18)' },
+  rangeStartCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopLeftRadius: 17, borderBottomLeftRadius: 17 },
+  rangeEndCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopRightRadius: 17, borderBottomRightRadius: 17 },
+  edgeCircle: { backgroundColor: '#BF85FC' },
+  edgeText: { color: '#FFFFFF', fontWeight: '700' },
+  confirmBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
+  confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+});

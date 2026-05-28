@@ -1,0 +1,1205 @@
+/**
+ * eOrth Icons — React Native components (react-native-svg)
+ *
+ * PALETTE (from eOrth spec)
+ *   보라 네온   #BF85FC  주요 아이콘
+ *   보라 딥     #6B21A8  보조
+ *   금색       #FFD700  Star, Sun
+ *   빨강       #FF3B30  Exit, 알림 닷
+ */
+
+import React from 'react';
+import Svg, { Path, Circle, Rect, G, Defs, LinearGradient, Stop } from 'react-native-svg';
+
+export type IconProps = {
+  size?: number;
+  color?: string;
+  dot?: boolean;
+  dotColor?: string;
+};
+
+// ─── ACTIVE COLORS ────────────────────────────────────────────────────
+export const COLORS = {
+  purpleTop: '#E0C9FF',
+  purpleMid: '#A78BFA',
+  purpleBot: '#7C3AED',
+  goldTop:   '#FFE98A',
+  goldBot:   '#E5B100',
+  redTop:    '#FF8080',
+  redBot:    '#FF3B30',
+  dot:       '#FF4D4D',
+};
+
+export const PALETTES = {
+  purple: {
+    purpleTop: '#E0C9FF', purpleMid: '#A78BFA', purpleBot: '#7C3AED',
+    goldTop:   '#FFE98A', goldBot:   '#E5B100',
+    redTop:    '#FF8080', redBot:    '#FF3B30',
+    dot:       '#FF4D4D',
+  },
+  neon: {
+    purpleTop: '#F5A6FF', purpleMid: '#C77DFF', purpleBot: '#9D4EDD',
+    goldTop:   '#FFE99A', goldBot:   '#E5B100',
+    redTop:    '#FF8FA8', redBot:    '#FF477E',
+    dot:       '#FF477E',
+  },
+  cyan: {
+    purpleTop: '#B5F5FF', purpleMid: '#5FB8FF', purpleBot: '#2563EB',
+    goldTop:   '#FFE57A', goldBot:   '#E0A600',
+    redTop:    '#FF8E91', redBot:    '#FF5A5F',
+    dot:       '#FF5A5F',
+  },
+  mint: {
+    purpleTop: '#C9FFE5', purpleMid: '#5FE3A1', purpleBot: '#10B981',
+    goldTop:   '#FFE57A', goldBot:   '#E5B100',
+    redTop:    '#FF9999', redBot:    '#FF6B6B',
+    dot:       '#FF6B6B',
+  },
+} as const;
+
+export type PaletteName = keyof typeof PALETTES;
+
+export function setPalette(name: PaletteName) {
+  Object.assign(COLORS, PALETTES[name]);
+}
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 2 — Custom SVG (core)
+// ══════════════════════════════════════════════════════════════════════
+
+export const PlaneIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path transform="rotate(-15 48 48)" d="M52 8c3 0 5.5 2 6.5 5l4 16 22 12c2 1 3 3 3 5v3c0 2-2 3-4 3l-22-4-3 16 7 5c1 1 2 2 2 4v3c0 1-1 2-2 2l-12-3-3 6c-1 2-3 2-4 0l-3-6-12 3c-1 0-2-1-2-2v-3c0-2 1-3 2-4l7-5-3-16-22 4c-2 0-4-1-4-3v-3c0-2 1-4 3-5l22-12 4-16C46.5 10 49 8 52 8h0z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const GlobeIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8C25.9 8 8 25.9 8 48s17.9 40 40 40 40-17.9 40-40S70.1 8 48 8zm0 8c2 0 5 3 7.5 9.5 1 2.5 1.8 5.5 2.4 8.8H38.1c.6-3.3 1.4-6.3 2.4-8.8C43 19 46 16 48 16zM30 26c-.9 2.6-1.6 5.4-2.1 8.3H17.5c2.7-3.4 6-6.2 9.8-8.3l2.7 0zm38.7 8.3c-.5-2.9-1.2-5.7-2.1-8.3 4 2 7.4 4.9 10.1 8.3H68.7zM12.7 42.3H26.4c-.2 1.9-.3 3.8-.3 5.7s.1 3.8.3 5.7H12.7c-.5-1.8-.7-3.7-.7-5.7s.2-3.9.7-5.7zm21.7 0h27.2c.2 1.9.3 3.8.3 5.7s-.1 3.8-.3 5.7H34.4c-.2-1.9-.3-3.8-.3-5.7s.1-3.8.3-5.7zm35.2 0h13.7c.5 1.8.7 3.7.7 5.7s-.2 3.9-.7 5.7H69.6c.2-1.9.3-3.8.3-5.7s-.1-3.8-.3-5.7zM17.5 61.7h10.4c.5 2.9 1.2 5.7 2.1 8.3-3.8-2.1-7.1-4.9-9.8-8.3h-2.7zm20.6 0h19.8c-.6 3.3-1.4 6.3-2.4 8.8C53 77 50 80 48 80s-5-3-7.5-9.5c-1-2.5-1.8-5.5-2.4-8.8zm28 0h10.4c-2.7 3.4-6.1 6.3-10.1 8.3.9-2.6 1.6-5.4 2.1-8.3z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const PinIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8C32 8 19 21 19 37c0 21 25 47 27 50 1 1 3 1 4 0 2-3 27-29 27-50C77 21 64 8 48 8zm0 38a9 9 0 110-18 9 9 0 010 18z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CameraIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M36 14c-2 0-4 1-5 3l-3 5h-8c-6 0-10 4-10 10v40c0 6 4 10 10 10h56c6 0 10-4 10-10V32c0-6-4-10-10-10h-8l-3-5c-1-2-3-3-5-3H36zm12 18a18 18 0 110 36 18 18 0 010-36zm0 8a10 10 0 100 20 10 10 0 000-20z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CompassIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zm14 22L40 38l-8 22 22-8 8-22zM48 52a4 4 0 110-8 4 4 0 010 8z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const BackpackIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M36 8c-3 0-6 2-7 5l-1 3c-9 1-16 9-16 18v40c0 8 6 14 14 14h44c8 0 14-6 14-14V34c0-9-7-17-16-18l-1-3c-1-3-4-5-7-5H36zm0 8h24l1 2H35l1-2zm-4 30h32c2 0 4 2 4 4v8c0 2-2 4-4 4H40v-4c0-2-2-4-4-4s-4 2-4 4v4c-2 0-4-2-4-4v-8c0-2 2-4 4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const HeartIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 84c-2 0-4-1-5-2C23 65 8 51 8 32c0-11 9-20 20-20 7 0 14 3 20 9 6-6 13-9 20-9 11 0 20 9 20 20 0 19-15 33-35 50-1 1-3 2-5 2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const StarIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.goldTop} />
+        <Stop offset="100%" stopColor={color ?? COLORS.goldBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-2 0-3 1-4 3L34 33l-23 3c-2 0-4 1-4 3s0 4 1 5l17 17-4 24c0 2 0 4 2 5s4 1 5 0l20-11 20 11c2 1 4 1 5 0s2-3 2-5l-4-24 17-17c1-1 2-3 1-5s-2-3-4-3l-23-3-10-22c-1-2-2-3-4-3z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const MapIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M32 12L12 18c-3 1-4 3-4 6v54c0 3 3 5 6 4l18-6V12zm8 0v64l16 8V20l-16-8zm24 8v64l20-6c3-1 4-3 4-6V18c0-3-3-5-6-4l-18 6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const SunsetIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 24c-15 0-27 11-29 25h58c-2-14-14-25-29-25zm-40 32a4 4 0 000 8h80a4 4 0 000-8H8zm14 16a4 4 0 000 8h52a4 4 0 000-8H22z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const FlagIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M20 8a4 4 0 014 4v76a4 4 0 11-8 0V12a4 4 0 014-4zm8 4l32 6c5 1 9 1 14 0l8-1c2 0 4 1 4 3v36c0 1-1 3-3 3l-9 2c-7 1-13 1-19-1l-27-5V12z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TicketIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M16 20c-4 0-8 4-8 8v10a8 8 0 010 16v10c0 4 4 8 8 8h64c4 0 8-4 8-8V62a8 8 0 010-16V36c0-4-4-8-8-8H16zm20 14a4 4 0 014 4v20a4 4 0 11-8 0V38a4 4 0 014-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 3 — Main screen FAB + Bell
+// ══════════════════════════════════════════════════════════════════════
+
+export const BellIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 10c-3 0-5 2-5 5v3c-13 2-22 13-22 27v12c0 3-1 6-3 8l-4 5c-3 4 0 10 5 10h58c5 0 8-6 5-10l-4-5c-2-2-3-5-3-8V45c0-14-9-25-22-27v-3c0-3-2-5-5-5zm-7 78c0 4 3 7 7 7s7-3 7-7H41z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const FeedIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Rect x={10} y={14} width={76} height={20} rx={6} />
+      <Rect x={10} y={40} width={76} height={20} rx={6} />
+      <Rect x={10} y={66} width={76} height={20} rx={6} />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const MomentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-2 0-3 1-3 3-1 9-3 14-7 18s-9 6-18 7c-2 0-3 1-3 3s1 3 3 3c9 1 14 3 18 7s6 9 7 18c0 2 1 3 3 3s3-1 3-3c1-9 3-14 7-18s9-6 18-7c2 0 3-1 3-3s-1-3-3-3c-9-1-14-3-18-7s-6-9-7-18c0-2-1-3-3-3z" />
+      <Path opacity={0.7} d="M78 60c-1 0-2 1-2 2-1 5-2 8-4 10s-5 3-10 4c-1 0-2 1-2 2s1 2 2 2c5 1 8 2 10 4s3 5 4 10c0 1 1 2 2 2s2-1 2-2c1-5 2-8 4-10s5-3 10-4c1 0 2-1 2-2s-1-2-2-2c-5-1-8-2-10-4s-3-5-4-10c0-1-1-2-2-2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const StoryboardIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M14 18c-3 0-6 3-6 6v48c0 3 3 6 6 6h2v-6a4 4 0 014-4h4a4 4 0 014 4v6h40v-6a4 4 0 014-4h4a4 4 0 014 4v6h2c3 0 6-3 6-6V24c0-3-3-6-6-6h-2v6a4 4 0 01-4 4h-4a4 4 0 01-4-4v-6H28v6a4 4 0 01-4 4h-4a4 4 0 01-4-4v-6h-2zm22 16h24a4 4 0 014 4v20a4 4 0 01-4 4H36a4 4 0 01-4-4V38a4 4 0 014-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const AlbumIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Rect x={8} y={8} width={38} height={38} rx={6} />
+      <Rect x={50} y={8} width={38} height={38} rx={6} />
+      <Rect x={8} y={50} width={38} height={38} rx={6} />
+      <Rect x={50} y={50} width={38} height={38} rx={6} />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 4 — NewRecord (input UI)
+// ══════════════════════════════════════════════════════════════════════
+
+export const SearchIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M40 8a32 32 0 1019.6 57.2l16.6 16.6a6 6 0 008.5-8.5L68.1 56.7A32 32 0 0040 8zm0 12a20 20 0 110 40 20 20 0 010-40z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CalendarIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M28 8a4 4 0 014 4v4h32v-4a4 4 0 118 0v4h4c5 0 9 4 9 9v55c0 5-4 9-9 9H20c-5 0-9-4-9-9V25c0-5 4-9 9-9h4v-4a4 4 0 014-4zm-9 32v40c0 1 1 2 2 2h54c1 0 2-1 2-2V40H19zm14 8h8a3 3 0 010 6h-8a3 3 0 010-6zm18 0h8a3 3 0 010 6h-8a3 3 0 010-6zm-18 14h8a3 3 0 010 6h-8a3 3 0 010-6zm18 0h8a3 3 0 010 6h-8a3 3 0 010-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const GalleryIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M16 12c-4 0-8 4-8 8v56c0 4 4 8 8 8h64c4 0 8-4 8-8V20c0-4-4-8-8-8H16zm54 14a6 6 0 110 12 6 6 0 010-12zM18 70l16-22 12 16 14-10 18 16v6c0 1-1 2-2 2H20c-1 0-2-1-2-2v-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LockClosedIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-12 0-22 10-22 22v8h-2c-5 0-9 4-9 9v33c0 5 4 9 9 9h48c5 0 9-4 9-9V47c0-5-4-9-9-9h-2v-8c0-12-10-22-22-22zm0 10c7 0 12 5 12 12v8H36v-8c0-7 5-12 12-12zm0 38a8 8 0 014 15v7a4 4 0 11-8 0v-7a8 8 0 014-15z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LockOpenIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-12 0-22 10-22 22v8h-2c-5 0-9 4-9 9v33c0 5 4 9 9 9h48c5 0 9-4 9-9V47c0-5-4-9-9-9H36v-8c0-7 5-12 12-12 6 0 11 4 12 9a4 4 0 008-2c-2-10-11-17-20-17zm0 48a8 8 0 014 15v7a4 4 0 11-8 0v-7a8 8 0 014-15z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CoinIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8a40 40 0 100 80 40 40 0 000-80zm0 14a26 26 0 110 52 26 26 0 010-52zm0 6a4 4 0 00-4 4v2h-2a8 8 0 000 16h12a2 2 0 010 4H40a4 4 0 100 8h4v2a4 4 0 008 0v-2h2a8 8 0 000-16H42a2 2 0 010-4h14a4 4 0 000-8h-4v-2a4 4 0 00-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TagIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M14 10c-3 0-6 3-6 6v32c0 2 1 3 2 4l36 36c2 2 6 2 8 0l32-32c2-2 2-6 0-8L50 12c-1-1-2-2-4-2H14zm14 14a8 8 0 110 16 8 8 0 010-16z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TakeoffIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M14 78a4 4 0 010-8h68a4 4 0 010 8H14zm70-46l-6-6c-2-2-4-2-6-1l-16 9-26-12c-1-1-3 0-4 1l-3 3c-1 1-1 3 1 4l20 16-13 7-9-4c-1-1-2 0-3 1l-2 2c-1 1-1 2 0 3l9 8c1 2 3 2 4 1l54-30c1-1 1-2 0-2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TransferIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M10 60a4 4 0 014-4h64l-7-7a4 4 0 116-6l14 14a4 4 0 010 6L77 77a4 4 0 11-6-6l7-7H14a4 4 0 01-4-4zm76-30a4 4 0 01-4 4H18l7 7a4 4 0 11-6 6L5 33a4 4 0 010-6l14-14a4 4 0 116 6l-7 7h64a4 4 0 014 4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 4 — NewRecord (companions)
+// ══════════════════════════════════════════════════════════════════════
+
+export const SoloIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={48} cy={30} r={14} />
+      <Path d="M20 82c0-15 13-28 28-28s28 13 28 28a4 4 0 01-4 4H24a4 4 0 01-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const FriendIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={32} cy={32} r={12} />
+      <Circle cx={64} cy={32} r={12} />
+      <Path d="M8 80c0-13 11-24 24-24s24 11 24 24a4 4 0 01-4 4H12a4 4 0 01-4-4z" />
+      <Path opacity={0.75} d="M48 80c0-7-3-13-7-17 5-5 14-7 23-7 13 0 24 11 24 24a4 4 0 01-4 4H52c-2 0-4-1-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CoupleIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={32} cy={28} r={12} />
+      <Circle cx={64} cy={28} r={12} />
+      <Path opacity={0.9} d="M48 86c-3 0-5-1-7-3-13-11-23-21-23-32 0-7 5-13 12-13 6 0 9 3 11 7l7 7 7-7c2-4 5-7 11-7 7 0 12 6 12 13 0 11-10 21-23 32-2 2-4 3-7 3z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const FamilyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={26} cy={26} r={10} />
+      <Circle cx={70} cy={26} r={10} />
+      <Circle cx={48} cy={48} r={8} />
+      <Path d="M8 72c0-10 8-18 18-18s18 8 18 18v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-8z" />
+      <Path d="M52 72c0-10 8-18 18-18s18 8 18 18v8a4 4 0 01-4 4H56a4 4 0 01-4-4v-8z" />
+      <Path d="M36 78c0-7 5-12 12-12s12 5 12 12v6a4 4 0 01-4 4H40a4 4 0 01-4-4v-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const ParentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={34} cy={26} r={12} />
+      <Circle cx={66} cy={26} r={12} />
+      <Path d="M10 76c0-12 11-22 24-22s24 10 24 22v8a4 4 0 01-4 4H14a4 4 0 01-4-4v-8z" />
+      <Path opacity={0.75} d="M50 84v-8c0-7-3-13-7-18 6-3 14-4 23-4 13 0 22 9 22 21v9a4 4 0 01-4 4H54c-3 0-4-1-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const SiblingIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={32} cy={34} r={11} />
+      <Circle cx={64} cy={26} r={9} />
+      <Path d="M10 80c0-12 10-22 22-22s22 10 22 22v4a4 4 0 01-4 4H14a4 4 0 01-4-4v-4z" />
+      <Path opacity={0.75} d="M50 72c0-10 6-18 14-18s14 8 14 18v12a4 4 0 01-4 4H54c-3 0-4-1-4-4v-12z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 4 — NewRecord (weather)
+// ══════════════════════════════════════════════════════════════════════
+
+export const SunIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.goldTop} />
+        <Stop offset="100%" stopColor={color ?? COLORS.goldBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={48} cy={48} r={18} />
+      <Path d="M48 8a4 4 0 014 4v8a4 4 0 01-8 0v-8a4 4 0 014-4zm0 64a4 4 0 014 4v8a4 4 0 01-8 0v-8a4 4 0 014-4zM8 48a4 4 0 014-4h8a4 4 0 010 8h-8a4 4 0 01-4-4zm64 0a4 4 0 014-4h8a4 4 0 010 8h-8a4 4 0 01-4-4zM19.8 19.8a4 4 0 015.6 0l5.7 5.7a4 4 0 11-5.6 5.6l-5.7-5.7a4 4 0 010-5.6zm45.2 45.2a4 4 0 015.6 0l5.7 5.7a4 4 0 11-5.6 5.6l-5.7-5.7a4 4 0 010-5.6zM76.2 19.8a4 4 0 010 5.6l-5.7 5.7a4 4 0 11-5.6-5.6l5.7-5.7a4 4 0 015.6 0zM31 65a4 4 0 010 5.6l-5.7 5.7a4 4 0 11-5.6-5.6l5.7-5.7a4 4 0 015.6 0z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const CloudyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M28 72c-11 0-20-9-20-20s9-20 20-20c2 0 4 0 6 1 4-9 13-15 23-15 14 0 25 11 25 25 0 1 0 3-1 4 5 3 9 9 9 16 0 10-8 18-18 18H28h0z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const RainIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M28 58c-11 0-20-9-20-20s9-20 20-20c2 0 4 0 6 1 4-9 13-15 23-15 14 0 25 11 25 25 0 1 0 3-1 4 5 3 9 9 9 16 0 10-8 18-18 18H28h0z" />
+      <Path d="M26 70a3 3 0 016 0v8a3 3 0 01-6 0v-8zm14 6a3 3 0 016 0v8a3 3 0 01-6 0v-8zm14-6a3 3 0 016 0v8a3 3 0 01-6 0v-8zm14 6a3 3 0 016 0v8a3 3 0 01-6 0v-8z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const SnowIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M28 58c-11 0-20-9-20-20s9-20 20-20c2 0 4 0 6 1 4-9 13-15 23-15 14 0 25 11 25 25 0 1 0 3-1 4 5 3 9 9 9 16 0 10-8 18-18 18H28h0z" />
+      <Circle cx={28} cy={78} r={3} />
+      <Circle cx={48} cy={84} r={3} />
+      <Circle cx={68} cy={78} r={3} />
+      <Circle cx={38} cy={86} r={2} />
+      <Circle cx={58} cy={86} r={2} />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const WindIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M10 28a4 4 0 014-4h44a10 10 0 100-20 10 10 0 00-9 6 4 4 0 11-7-3 18 18 0 1116 26H14a4 4 0 01-4-4zm0 22a4 4 0 014-4h62a14 14 0 110 28 14 14 0 01-13-9 4 4 0 117 -3 6 6 0 106-9H14a4 4 0 01-4-4zm0 22a4 4 0 014-4h32a10 10 0 110 20 10 10 0 01-9-6 4 4 0 117-3 2 2 0 102-3H14a4 4 0 01-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const PartlyCloudyIcon: React.FC<IconProps> = ({ size = 64, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-purple" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={COLORS.purpleTop} />
+        <Stop offset="55%" stopColor={COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={COLORS.purpleBot} />
+      </LinearGradient>
+      <LinearGradient id="eorth-gold" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={COLORS.goldTop} />
+        <Stop offset="100%" stopColor={COLORS.goldBot} />
+      </LinearGradient>
+    </Defs>
+      <Circle cx={30} cy={28} r={11} fill="url(#eorth-gold)" />
+      <Path strokeWidth={5} strokeLinecap="round" d="M30 8v6 M30 42v6 M10 28h6 M44 28h6 M16 14l4 4 M40 38l4 4 M44 14l-4 4 M20 38l-4 4" fill="none" stroke="url(#eorth-gold)" />
+      <Path d="M34 84c-11 0-20-9-20-20s9-20 20-20c2 0 4 0 6 1 4-9 13-15 23-15 14 0 25 11 25 25 0 1 0 3-1 4 5 3 9 9 9 16 0 10-8 18-18 18H34h0z" fill="url(#eorth-purple)" />
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 5 — Settings
+// ══════════════════════════════════════════════════════════════════════
+
+export const PersonIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={48} cy={32} r={16} />
+      <Path d="M16 82c0-15 14-28 32-28s32 13 32 28a4 4 0 01-4 4H20a4 4 0 01-4-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LockIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-12 0-22 10-22 22v10h-2c-5 0-9 4-9 9v31c0 5 4 9 9 9h48c5 0 9-4 9-9V49c0-5-4-9-9-9h-2V30c0-12-10-22-22-22zm0 10c7 0 12 5 12 12v10H36V30c0-7 5-12 12-12z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const BlockIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zm0 12c6 0 12 2 17 6L26 65a28 28 0 0122-45zm0 56c-6 0-12-2-17-6l39-39a28 28 0 01-22 45z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const ArchiveIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M10 16c0-4 4-8 8-8h60c4 0 8 4 8 8v6c0 4-3 7-7 8v44c0 6-4 10-10 10H29c-6 0-10-4-10-10V30c-5-1-9-4-9-8v-6zm32 28a4 4 0 000 8h12a4 4 0 000-8H42z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const EyeIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 22C26 22 9 39 4 48c5 9 22 26 44 26s39-17 44-26C87 39 70 22 48 22zm0 12a14 14 0 110 28 14 14 0 010-28z" />
+      <Circle cx={48} cy={48} r={6} fill="#0B0518" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const GlobeSkinIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={42} cy={48} r={32} />
+      <Path opacity={0.95} d="M76 14c-1 0-2 1-2 2-1 5-2 7-4 9s-4 3-9 4c-1 0-2 1-2 2s1 2 2 2c5 1 7 2 9 4s3 4 4 9c0 1 1 2 2 2s2-1 2-2c1-5 2-7 4-9s4-3 9-4c1 0 2-1 2-2s-1-2-2-2c-5-1-7-2-9-4s-3-4-4-9c0-1-1-2-2-2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LanguageIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M26 10C16 10 8 18 8 28v40c0 10 8 18 18 18h2v-12a3 3 0 016 0v12h30c10 0 18-8 18-18V28c0-10-8-18-18-18H26zm6 16h28a3 3 0 010 6H50v3c0 8-4 14-9 18 3 2 6 3 9 4a3 3 0 11-2 6c-5-1-9-3-13-6-4 3-8 5-13 6a3 3 0 01-2-6c3-1 6-2 9-4-5-4-9-10-9-18a3 3 0 116 0c0 6 4 11 9 14 5-3 9-8 9-14H32a3 3 0 010-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const MoonIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M50 10C32 10 18 24 18 42c0 20 16 36 36 36 13 0 25-7 32-19a3 3 0 00-3-5c-19 0-34-15-34-34 0-3 0-6 1-9a3 3 0 00-3-3z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const QuestionIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zm-1 16c-7 0-13 5-14 12a4 4 0 008 1c0-3 3-5 6-5s6 2 6 5c0 2-1 4-4 5-3 1-5 3-5 6v3a4 4 0 008 0v-1c5-2 9-7 9-13 0-7-7-13-14-13zm1 38a5 5 0 100 10 5 5 0 000-10z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const ChatIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M16 10c-4 0-8 4-8 8v44c0 4 4 8 8 8h10v12c0 2 3 4 5 2l18-14h31c4 0 8-4 8-8V18c0-4-4-8-8-8H16z" />
+      <Rect x={22} y={28} width={52} height={6} rx={3} fill="#0B0518" />
+      <Rect x={22} y={42} width={36} height={6} rx={3} fill="#0B0518" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const DocumentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M20 12c-4 0-8 4-8 8v56c0 4 4 8 8 8h56c4 0 8-4 8-8V36L60 12H20zm38 4l24 22H60c-1 0-2-1-2-2V16z" />
+      <Rect x={22} y={46} width={42} height={4} rx={2} fill="#0B0518" />
+      <Rect x={22} y={56} width={52} height={4} rx={2} fill="#0B0518" />
+      <Rect x={22} y={66} width={32} height={4} rx={2} fill="#0B0518" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const InfoIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zm0 14a5 5 0 110 10 5 5 0 010-10zm-4 18a4 4 0 008 0v-1h-8v1zm0 0h8v28a4 4 0 11-8 0V40z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const ExitIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.redTop} />
+        <Stop offset="100%" stopColor={color ?? COLORS.redBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M20 8c-6 0-12 6-12 12v56c0 6 6 12 12 12h28c6 0 12-6 12-12v-8a4 4 0 10-8 0v8c0 2-2 4-4 4H20c-2 0-4-2-4-4V20c0-2 2-4 4-4h28c2 0 4 2 4 4v8a4 4 0 008 0v-8c0-6-6-12-12-12H20zm54 30c-2-2-4-2-6 0s-2 4 0 6l5 5H42a4 4 0 100 8h31l-5 5c-2 2-2 4 0 6s4 2 6 0l12-12c2-2 2-4 0-6L74 38z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 6 — Profile
+// ══════════════════════════════════════════════════════════════════════
+
+export const GearIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M42 8c-2 0-4 1-4 3l-2 7c-3 1-6 3-9 5l-7-3c-2-1-4 0-5 1l-7 12c-1 2 0 4 1 5l5 5v9l-5 5c-1 1-2 3-1 5l7 12c1 1 3 2 5 1l7-3c3 2 6 4 9 5l2 7c0 2 2 3 4 3h12c2 0 4-1 4-3l2-7c3-1 6-3 9-5l7 3c2 1 4 0 5-1l7-12c1-2 0-4-1-5l-5-5v-9l5-5c1-1 2-3 1-5l-7-12c-1-1-3-2-5-1l-7 3c-3-2-6-4-9-5l-2-7c0-2-2-3-4-3H42zm6 28a12 12 0 100 24 12 12 0 000-24z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 7 — Social
+// ══════════════════════════════════════════════════════════════════════
+
+export const CommentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path transform="scale(-1 1) translate(-96 0)" d="M16 12c-4 0-8 4-8 8v44c0 4 4 8 8 8h10v12c0 2 3 4 5 2l18-14h31c4 0 8-4 8-8V20c0-4-4-8-8-8H16z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+// ══════════════════════════════════════════════════════════════════════
+//   Section 8 — Missing UI icons (emoji → SVG)
+// ══════════════════════════════════════════════════════════════════════
+
+export const PencilIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M72 8c-2 0-4 1-6 3L14 63c-1 1-2 3-2 4l-4 18c0 2 0 3 2 4 1 1 2 1 3 1h1l18-4c2 0 3-1 4-2l52-52c3-3 3-8 0-11L76 11c-2-2-4-3-6-3h2zm0 10l9 9-6 6-9-9 6-6zM60 33l9 9-36 36-12 3 3-12 36-36z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TrashIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.redTop} />
+        <Stop offset="100%" stopColor={color ?? COLORS.redBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M36 8c-3 0-6 3-6 6v4H14a4 4 0 100 8h4v50c0 7 5 12 12 12h36c7 0 12-5 12-12V26h4a4 4 0 100-8H66v-4c0-3-3-6-6-6H36zm2 10h20v2H38v-2zM26 26h44v50c0 2-2 4-4 4H30c-2 0-4-2-4-4V26zm12 10a4 4 0 014 4v28a4 4 0 11-8 0V40a4 4 0 014-4zm20 0a4 4 0 014 4v28a4 4 0 11-8 0V40a4 4 0 014-4z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const HomeIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 8c-1 0-3 1-4 2L6 42c-2 2-2 5 0 7s5 2 7 0l3-2v33c0 4 4 8 8 8h16V62c0-2 2-4 4-4h8c2 0 4 2 4 4v26h16c4 0 8-4 8-8V47l3 2c2 2 5 2 7 0s2-5 0-7L52 10c-1-1-3-2-4-2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LinkIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M56 12c-8 0-16 3-22 9L26 29c-6 6-9 14-9 22s3 16 9 22c6 6 14 9 22 9s16-3 22-9l4-4a4 4 0 00-6-6l-4 4c-9 9-23 9-32 0s-9-23 0-32l8-8c9-9 23-9 32 0a4 4 0 006-6c-6-6-14-9-22-9zM40 84c8 0 16-3 22-9l8-8c6-6 9-14 9-22s-3-16-9-22c-6-6-14-9-22-9a4 4 0 000 8c8 0 16 3 22 9 4 4 6 9 6 14s-2 10-6 14l-8 8c-9 9-23 9-32 0a4 4 0 00-6 6c6 6 14 9 22 9h-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const PaperclipIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill="none" stroke={color ?? "url(#eorth-grad)"} strokeWidth={7} strokeLinecap="round">
+      <Path d="M68 48L40 76c-7 7-18 7-25 0s-7-18 0-25l32-32c5-5 12-5 17 0s5 12 0 17L34 66c-2 2-6 2-8 0s-2-6 0-8l28-28" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const PaletteIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8C25.9 8 8 25.9 8 48s17.9 40 40 40c4 0 7-3 7-7 0-2-1-3-2-5-1-1-2-3-2-5 0-4 3-7 7-7h8c13 0 24-11 24-24C88 23 70 8 48 8zM24 44a6 6 0 110 12 6 6 0 010-12zm10-16a6 6 0 110 12 6 6 0 010-12zm28 0a6 6 0 110 12 6 6 0 010-12zm12 16a6 6 0 110 12 6 6 0 010-12z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const MegaphoneIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M76 10c-2 0-4 1-5 3L52 36H20c-6 0-10 4-10 10v4c0 6 4 10 10 10h4l6 24c1 3 3 4 6 4h8c3 0 6-3 5-6l-5-22h8l19 23c1 2 3 3 5 3 4 0 8-4 8-8V18c0-4-4-8-8-8z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const SparkleIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.goldTop} />
+        <Stop offset="100%" stopColor={color ?? COLORS.goldBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 4c-2 0-3 1-4 3-3 14-6 22-12 28s-14 9-28 12c-2 1-3 2-3 4s1 3 3 4c14 3 22 6 28 12s9 14 12 28c1 2 2 3 4 3s3-1 4-3c3-14 6-22 12-28s14-9 28-12c2-1 3-2 3-4s-1-3-3-4c-14-3-22-6-28-12s-9-14-12-28c-1-2-2-3-4-3z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const EmailIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M16 18c-4 0-8 4-8 8v44c0 4 4 8 8 8h64c4 0 8-4 8-8V26c0-4-4-8-8-8H16zm2 10l28 20c1 1 3 1 4 0l28-20c2 0 2 1 2 2L50 52c-1 1-3 1-4 0L16 30v-2z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const TargetIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zm0 12a28 28 0 110 56 28 28 0 010-56zm0 10a18 18 0 100 36 18 18 0 000-36zm0 10a8 8 0 110 16 8 8 0 010-16z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const LandscapeIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={28} cy={28} r={10} />
+      <Path d="M6 74l22-32c2-2 5-2 7 0l13 18 10-14c2-2 5-2 7 0l25 28c2 3 0 6-3 6H9c-3 0-5-3-3-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const StickerIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path fillRule="evenodd" clipRule="evenodd" d="M48 8a40 40 0 100 80 40 40 0 000-80zM32 38a6 6 0 110 12 6 6 0 010-12zm32 0a6 6 0 110 12 6 6 0 010-12zM30 60c0-2 2-4 4-4h28c2 0 4 2 4 4 0 8-8 16-18 16S30 68 30 60z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+export const ShareIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Circle cx={72} cy={20} r={12} />
+      <Circle cx={22} cy={48} r={12} />
+      <Circle cx={72} cy={76} r={12} />
+      <Path d="M62 26L32 42M62 70L32 54" strokeWidth={6} strokeLinecap="round" fill="none" stroke="url(#eorth-grad)" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
