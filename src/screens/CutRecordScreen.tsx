@@ -167,7 +167,7 @@ const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 18, paddingBottom: 14,
+    paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   cancel: { fontSize: 14, color: C.dim },
