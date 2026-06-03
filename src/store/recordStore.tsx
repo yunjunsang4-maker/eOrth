@@ -9,8 +9,9 @@ export type Visibility = 'private' | 'friends' | 'public';
 export type RecordViewType =
   | 'feed'        // 피드 (기본값)
   | 'blog'        // 블로그
-  | 'album'       // 앨범
-  | 'snap';       // 스냅 (BeReal 스타일)
+  | 'album'       // 앨범 (보관, 휴면)
+  | 'snap'        // 스냅 (BeReal 스타일)
+  | 'cut';        // 네컷/컷사진
 
 export interface TravelRecord {
   id: string;
@@ -63,6 +64,13 @@ export interface TravelRecord {
   snapLateSeconds?: number;           // 알림 후 촬영까지 소요 시간(초)
   snapExpiresAt?: number;             // 24시간 후 만료 시각
   snapViewed?: boolean;               // 스냅 열람 여부
+  // v5 네컷 필드 (viewType='cut'일 때)
+  cutPhoto?: {
+    layout: import('../constants/cutFrames').CutLayout;
+    frameId: string;
+    photos: string[];                 // 슬롯 순서대로 사진 URI
+    previewUri: string;               // 합성 미리보기 이미지
+  };
 }
 
 // ─────────────────────────────────────────────
@@ -104,30 +112,6 @@ const INITIAL_RECORDS: TravelRecord[] = [
     budget: { amount: 2500, currency: 'EUR' },
     flightType: '경유',
     keywords: ['유럽', '로마', '분수'],
-  },
-  // ─── album 형식 ───
-  {
-    id: 'seed-album',
-    user: { name: '앨범 수현', emoji: '📷', handle: 'suhyun_album' },
-    country: '🇨🇭 스위스',
-    countryName: '스위스',
-    countryFlag: '🇨🇭',
-    countries: [{ flag: '🇨🇭', name: '스위스' }],
-    date: '2025.05.10',
-    content: '인터라켄에서 융프라우까지. 구름 위를 걷는 기분이었다. 앨범으로 남겨야 할 풍경들.',
-    likes: 89,
-    comments: 22,
-    liked: false,
-    visibility: 'public',
-    timestamp: Date.now() - 1000 * 60 * 60 * 6,
-    viewType: 'album',
-    startDate: '2025.05.07',
-    endDate: '2025.05.12',
-    companions: ['연인'],
-    weather: '흐림',
-    rating: 5,
-    memo: '융프라우 정상은 바람이 세니 바람막이 필수. Top of Europe 기념 도장 잊지 말 것.',
-    keywords: ['알프스', '융프라우', '인터라켄', '설산'],
   },
   // ─── blog 형식 ───
   {
