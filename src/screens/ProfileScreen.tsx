@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
 import { GearIcon, PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
@@ -47,25 +48,181 @@ const COLORS = {
   red:          '#FF3B30',
 };
 
-// ─── 팔로워 카드 (리퀴드 프레스) ───
+// ─── 리퀴드 글래스 (실제 BlurView — 디벨롭 빌드 전용) ───
+// Expo Go 에선 안드로이드 backdrop blur 가 동작하지 않아 가짜 그라디언트를 썼지만,
+// 디벨롭 빌드에선 진짜 프로스티드 글래스를 깔 수 있다.
+const GLASS = {
+  border:      'rgba(255,255,255,0.30)',
+  innerTop:    'rgba(255,255,255,0.16)',
+  innerBottom: 'rgba(255,255,255,0.02)',
+  specular:    'rgba(255,255,255,0.55)',
+};
+
+// 부모(overflow:hidden + 라운드) 안에 깔아 유리 질감을 만드는 absolute-fill 레이어
+// 1) 실제 블러  2) 유리 안쪽 그라디언트  3) 상단 스페큘러(반사) 하이라이트
+const GlassFill = ({
+  intensity = 30,
+  tint = 'dark',
+  specular = true,
+}: {
+  intensity?: number;
+  tint?: 'dark' | 'light' | 'default';
+  specular?: boolean;
+}) => (
+  <>
+    <BlurView
+      intensity={intensity}
+      tint={tint}
+      experimentalBlurMethod="dimezisBlurView"
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+    <LinearGradient
+      colors={[GLASS.innerTop, GLASS.innerBottom]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+    {specular ? (
+      <LinearGradient
+        colors={[GLASS.specular, 'rgba(255,255,255,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%', opacity: 0.4 }}
+        pointerEvents="none"
+      />
+    ) : null}
+  </>
+);
+
+// ─── 네온 리퀴드 글래스 (다크모드 — Liquid Glass UI Kit 레퍼런스) ───
+const NEON = {
+  cyan:    '#22D3EE',
+  blue:    '#3B82F6',
+  purple:  '#A855F7',
+  magenta: '#D946EF',
+  pink:    '#F472B6',
+};
+
+// 통계 칩 — 앱 메인 보라색 (보라 네온 → 보라 딥) 통일
+const STAT_GRADS = [
+  ['#BF85FC', '#6B21A8'],
+  ['#BF85FC', '#6B21A8'],
+  ['#BF85FC', '#6B21A8'],
+] as const;
+
+// 네온 그라디언트 보더 + 글래스 (칩/버튼/카드)
+const NeonGlass = ({
+  children,
+  style,
+  contentStyle,
+  colors = [NEON.cyan, NEON.purple],
+  radius = 18,
+  borderWidth = 1.5,
+  intensity = 24,
+  glow = true,
+  glowColor,
+  specular = true,
+}: {
+  children?: React.ReactNode;
+  style?: any;
+  contentStyle?: any;
+  colors?: readonly [string, string, ...string[]];
+  radius?: number;
+  borderWidth?: number;
+  intensity?: number;
+  glow?: boolean;
+  glowColor?: string;
+  specular?: boolean;
+}) => (
+  <View
+    style={[
+      glow
+        ? {
+            shadowColor: glowColor || colors[0],
+            shadowOpacity: 0.9,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 0 },
+            elevation: 12,
+          }
+        : null,
+      style,
+    ]}
+  >
+    <LinearGradient
+      colors={colors}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 1 }}
+      style={{ borderRadius: radius, padding: borderWidth }}
+    >
+      <View
+        style={[
+          { borderRadius: radius - borderWidth, overflow: 'hidden', backgroundColor: 'rgba(10,10,15,0.5)' },
+          contentStyle,
+        ]}
+      >
+        <GlassFill intensity={intensity} specular={specular} />
+        {children}
+      </View>
+    </LinearGradient>
+  </View>
+);
+
+// 원형 네온 링 (배지/아바타)
+const NeonRing = ({
+  size,
+  colors,
+  borderWidth = 2,
+  intensity = 16,
+  children,
+}: {
+  size: number;
+  colors: readonly [string, string, ...string[]];
+  borderWidth?: number;
+  intensity?: number;
+  children?: React.ReactNode;
+}) => (
+  <LinearGradient
+    colors={colors}
+    start={{ x: 0, y: 0 }}
+    end={{ x: 1, y: 1 }}
+    style={{ width: size, height: size, borderRadius: size / 2, padding: borderWidth, alignItems: 'center', justifyContent: 'center' }}
+  >
+    <View
+      style={{
+        width: size - borderWidth * 2,
+        height: size - borderWidth * 2,
+        borderRadius: (size - borderWidth * 2) / 2,
+        overflow: 'hidden',
+        backgroundColor: 'rgba(10,10,15,0.45)',
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
+      <GlassFill intensity={intensity} />
+      {children}
+    </View>
+  </LinearGradient>
+);
+
+// ─── 팔로워 카드 (네온 글래스 칩) ───
 const StatCard = ({
   value,
   label,
   onPress,
+  grad = STAT_GRADS[0],
 }: {
   value: string;
   label: string;
   onPress?: () => void;
+  grad?: readonly [string, string, ...string[]];
 }) => (
-  <LiquidPressable style={styles.statCard} onPress={onPress} intensity={0.08}>
-    <LinearGradient
-      colors={['rgba(255,255,255,0.05)', 'rgba(255,255,255,0.01)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={[StyleSheet.absoluteFill, { borderRadius: 48 }]}
-    />
-    <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+  <LiquidPressable onPress={onPress} intensity={0.08}>
+    <NeonGlass colors={grad} glowColor={grad[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={styles.statCardContent}>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+    </NeonGlass>
   </LiquidPressable>
 );
 
@@ -117,15 +274,27 @@ const SnapBadgeIcon = () => (
   </View>
 );
 
+const CutBadgeIcon = () => (
+  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 11, height: 13, borderWidth: 1, borderColor: BADGE_C, borderRadius: 2, padding: 1.5, flexDirection: 'row', flexWrap: 'wrap', gap: 1, alignContent: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+    </View>
+  </View>
+);
+
 const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
   feed: <FeedBadgeIcon />,
   blog: <BlogBadgeIcon />,
   album: <AlbumBadgeIcon />,
   snap: <SnapBadgeIcon />,
+  cut: <CutBadgeIcon />,
 };
 
 const VIEW_TYPE_NAMES: Record<string, string> = {
-  feed: '피드', blog: '블로그', album: '앨범', snap: '스냅',
+  feed: '피드', blog: '블로그', album: '앨범', snap: '스냅', cut: '네컷',
 };
 
 // 하나의 여행 = 하나의 썸네일 (여러 형식 기록 포함)
@@ -152,7 +321,6 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
     records: [
       { id: '1', viewType: 'feed' },
       { id: '2', viewType: 'blog' },
-      { id: '4', viewType: 'album' },
     ],
   },
   {
@@ -204,18 +372,6 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
       { id: 'seed-blog-2', viewType: 'blog' },
     ],
   },
-  {
-    id: 'trip-swiss',
-    emoji: '🏔️',
-    title: '알프스 설산 트레킹',
-    country: '스위스',
-    countryFlag: '🇨🇭',
-    date: '2025.05',
-    color: '#0A2E1A',
-    records: [
-      { id: 'seed-album', viewType: 'album' },
-    ],
-  },
 ];
 
 // ─── 팔로잉 친구 샘플 ───
@@ -243,25 +399,24 @@ const TRIP_GRADIENT_COLORS: Record<string, [string, string]> = {
   'trip-hongkong': ['rgba(47,217,244,0.2)', 'rgba(47,217,244,0)'],
   'trip-thailand': ['rgba(255,200,100,0.2)', 'rgba(255,200,100,0)'],
   'trip-spain': ['rgba(255,100,100,0.2)', 'rgba(255,100,100,0)'],
-  'trip-swiss': ['rgba(100,255,150,0.2)', 'rgba(100,255,150,0)'],
 };
 
 // ─── 배지 하이라이트 아이템 (리퀴드 구이 서클) ───
 const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => (
   <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
-    <GooeyCircle size={48} color={glow || '#A855F7'} glowOpacity={earned ? 0.3 : 0.1}>
-      <LinearGradient
-        colors={['rgba(221,183,255,0.15)', 'rgba(221,183,255,0.05)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={badgeHL.glassCircleGradient}
+    <GooeyCircle size={64} color={glow || NEON.purple} glowOpacity={earned ? 0.5 : 0.12}>
+      <NeonRing
+        size={58}
+        borderWidth={1.6}
+        intensity={20}
+        colors={earned ? [NEON.cyan, NEON.purple, NEON.magenta] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}
       >
         {earned ? (
           <Text style={badgeHL.emoji}>{emoji}</Text>
         ) : (
           <Text style={badgeHL.lockIcon}>🔒</Text>
         )}
-      </LinearGradient>
+      </NeonRing>
     </GooeyCircle>
   </LiquidPressable>
 );
@@ -919,6 +1074,15 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       {/* 배경 떠다니는 블롭들 */}
       <FloatingBlobs />
 
+      {/* 상단 오로라 글로우 — 유리에 색이 비치도록(리퀴드 글래스 굴절감 강화) */}
+      <LinearGradient
+        colors={['rgba(168,85,247,0.24)', 'rgba(34,211,238,0.10)', 'transparent']}
+        start={{ x: 0.15, y: 0 }}
+        end={{ x: 0.85, y: 1 }}
+        style={styles.auroraTop}
+        pointerEvents="none"
+      />
+
       <ScrollView
         style={styles.container}
         contentContainerStyle={styles.content}
@@ -932,6 +1096,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
             onPress={() => navigation.navigate('Settings')}
             intensity={0.12}
           >
+            <GlassFill intensity={28} />
             <GearIcon size={22} color="#A0A0B0" />
           </LiquidPressable>
         </View>
@@ -941,14 +1106,21 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
           <GrainOverlay opacity={0.03} dotCount={60} />
           {/* 아바타 — 구이 이펙트 서클 */}
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
-            <GooeyCircle size={96} color="#A855F7" glowOpacity={0.35}>
-              {profilePhoto ? (
-                <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
-              ) : (
-                <View style={styles.avatar}>
-                  <PersonIcon size={44} color="#A0A0B0" />
-                </View>
-              )}
+            <GooeyCircle size={104} color={NEON.purple} glowOpacity={0.6}>
+              <LinearGradient
+                colors={[NEON.cyan, NEON.purple, NEON.magenta]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.avatarRing}
+              >
+                {profilePhoto ? (
+                  <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
+                ) : (
+                  <View style={styles.avatar}>
+                    <PersonIcon size={44} color="#A0A0B0" />
+                  </View>
+                )}
+              </LinearGradient>
             </GooeyCircle>
           </LiquidPressable>
 
@@ -957,9 +1129,9 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
             <Text style={styles.userName}>{profileName}</Text>
             <Text style={styles.userLocation}>🇰🇷 대한민국</Text>
             <View style={styles.statsRow}>
-              <StatCard value="8" label="기록 수" />
-              <StatCard value={String(FOLLOWING_FRIENDS.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} />
-              <StatCard value="3" label="방문국가" />
+              <StatCard value="8" label="기록 수" grad={STAT_GRADS[0]} />
+              <StatCard value={String(FOLLOWING_FRIENDS.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
+              <StatCard value="3" label="방문국가" grad={STAT_GRADS[2]} />
             </View>
           </View>
         </View>
@@ -1007,7 +1179,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
               width={SCREEN_WIDTH}
               height={320}
               color={TRIP_THUMBNAILS[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
-              opacity={0.2}
+              opacity={0.34}
             />
             <LinearGradient
               colors={TRIP_GRADIENT_COLORS[TRIP_THUMBNAILS[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
@@ -1018,7 +1190,12 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
             <View style={thumbSt.mainEmojiWrap}>
               <Text style={thumbSt.mainEmoji}>{TRIP_THUMBNAILS[0].emoji}</Text>
             </View>
-            <View style={thumbSt.mainInfoBar}>
+            <BlurView
+              intensity={48}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={thumbSt.mainInfoBar}
+            >
               <View style={{ flex: 1 }}>
                 <Text style={thumbSt.mainTitle}>{TRIP_THUMBNAILS[0].countryFlag} {TRIP_THUMBNAILS[0].title}</Text>
                 <Text style={thumbSt.mainDate}>{TRIP_THUMBNAILS[0].date}</Text>
@@ -1030,7 +1207,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
                   </LiquidPressable>
                 ))}
               </View>
-            </View>
+            </BlurView>
           </LiquidPressable>
         )}
 
@@ -1048,7 +1225,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
                 width={THUMB_WIDTH}
                 height={260}
                 color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
-                opacity={0.15}
+                opacity={0.3}
               />
               <LinearGradient
                 colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
@@ -1059,7 +1236,12 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
               <View style={thumbSt.gridEmojiWrap}>
                 <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
               </View>
-              <View style={thumbSt.gridInfoBar}>
+              <BlurView
+                intensity={44}
+                tint="dark"
+                experimentalBlurMethod="dimezisBlurView"
+                style={thumbSt.gridInfoBar}
+              >
                 <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
                 <Text style={thumbSt.gridDate}>{trip.date}</Text>
                 <View style={thumbSt.gridBadges}>
@@ -1069,7 +1251,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
                     </LiquidPressable>
                   ))}
                 </View>
-              </View>
+              </BlurView>
             </LiquidPressable>
           ))}
         </View>
@@ -1118,6 +1300,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
+  auroraTop: {
+    position: 'absolute',
+    top: -60,
+    left: -40,
+    right: -40,
+    height: 380,
+  },
 
   // 헤더
   headerRow: {
@@ -1136,11 +1325,12 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(46,46,59,0.45)',
+    backgroundColor: 'rgba(46,46,59,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
+    borderColor: 'rgba(255,255,255,0.28)',
+    overflow: 'hidden',
   },
 
   // 프로필 헤더 행 (아바타 + 정보)
@@ -1148,7 +1338,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    marginBottom: 12,
+    marginBottom: 14,
+    paddingVertical: 16,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -1220,8 +1411,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.32)',
     overflow: 'hidden',
+  },
+  statCardContent: {
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+  },
+  avatarRing: {
+    width: 102,
+    height: 102,
+    borderRadius: 51,
+    padding: 3,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statValue: {
     fontSize: 13,
@@ -1247,7 +1451,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: COLORS.divider,
     marginHorizontal: -16,
-    marginBottom: 10,
+    marginBottom: 7,
   },
   friendsSectionLabel: {
     fontSize: 13,
@@ -1820,41 +2024,42 @@ const gridSt = StyleSheet.create({
 // ─── 배지 하이라이트 스타일 ───
 const badgeHL = StyleSheet.create({
   scroll: {
-    marginBottom: 10,
-    height: 80,
+    marginBottom: 7,
+    height: 88,
   },
   scrollContent: {
     paddingLeft: 16,
     paddingRight: 8,
-    gap: 12,
+    gap: 14,
     flexDirection: 'row',
-    alignItems: 'flex-start',
+    alignItems: 'center',
   },
   item: {
     alignItems: 'center',
-    width: 48,
+    width: 60,
   },
   glassCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     marginBottom: 8,
     elevation: 10,
   },
   glassCircleGradient: {
     width: '100%',
     height: '100%',
-    borderRadius: 24,
+    borderRadius: 30,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
+    borderColor: 'rgba(255,255,255,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   emoji: {
-    fontSize: 20,
+    fontSize: 24,
   },
   lockIcon: {
-    fontSize: 18,
+    fontSize: 22,
   },
   name: {
     fontSize: 12,
@@ -1862,9 +2067,9 @@ const badgeHL = StyleSheet.create({
     textAlign: 'center',
   },
   moreCircle: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.3)',
     backgroundColor: 'rgba(255,255,255,0.05)',
@@ -1964,7 +2169,7 @@ const thumbSt = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.28)',
     backgroundColor: 'rgba(255,255,255,0.05)',
     marginBottom: 12,
   },
@@ -1979,11 +2184,12 @@ const thumbSt = StyleSheet.create({
   mainInfoBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(14,14,17,0.4)',
+    backgroundColor: 'rgba(14,14,17,0.16)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 20,
     paddingVertical: 16,
+    overflow: 'hidden',
   },
   mainTitle: {
     fontSize: 24,
@@ -2004,8 +2210,8 @@ const thumbSt = StyleSheet.create({
     height: 38,
     borderRadius: 19,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },
@@ -2024,7 +2230,7 @@ const thumbSt = StyleSheet.create({
     overflow: 'hidden',
     position: 'relative',
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    borderColor: 'rgba(255,255,255,0.28)',
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
   gridEmojiWrap: {
@@ -2036,12 +2242,13 @@ const thumbSt = StyleSheet.create({
     fontSize: 48,
   },
   gridInfoBar: {
-    backgroundColor: 'rgba(14,14,17,0.4)',
+    backgroundColor: 'rgba(14,14,17,0.16)',
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.1)',
+    borderTopColor: 'rgba(255,255,255,0.25)',
     paddingHorizontal: 12,
     paddingVertical: 10,
     gap: 3,
+    overflow: 'hidden',
   },
   gridTitle: {
     fontSize: 14,
@@ -2062,8 +2269,8 @@ const thumbSt = StyleSheet.create({
     height: 30,
     borderRadius: 15,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderColor: 'rgba(255,255,255,0.42)',
+    backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
   },

@@ -79,11 +79,23 @@ const SnapBadgeIcon = () => (
   </View>
 );
 
+const CutBadgeIcon = () => (
+  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 11, height: 13, borderWidth: 1, borderColor: BADGE_C, borderRadius: 2, padding: 1.5, flexDirection: 'row', flexWrap: 'wrap', gap: 1, alignContent: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
+    </View>
+  </View>
+);
+
 const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
   feed: <FeedBadgeIcon />,
   blog: <BlogBadgeIcon />,
   album: <AlbumBadgeIcon />,
   snap: <SnapBadgeIcon />,
+  cut: <CutBadgeIcon />,
 };
 
 // ─── 샘플 데이터 ───
@@ -117,7 +129,6 @@ const friendProfile = {
       records: [
         { id: '1', viewType: 'feed' },
         { id: '2', viewType: 'blog' },
-        { id: '3', viewType: 'album' },
       ],
     },
     {
@@ -155,7 +166,6 @@ const friendProfile = {
       color: '#1A1A0A',
       records: [
         { id: '7', viewType: 'blog' },
-        { id: '8', viewType: 'album' },
       ],
     },
   ],
