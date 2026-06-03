@@ -275,13 +275,13 @@ export function GooeyCircle({
       Animated.sequence([
         Animated.timing(wobble, {
           toValue: 1,
-          duration: 5000,
+          duration: 8000,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
         Animated.timing(wobble, {
           toValue: 0,
-          duration: 5000,
+          duration: 8000,
           easing: Easing.inOut(Easing.sin),
           useNativeDriver: true,
         }),
@@ -294,14 +294,14 @@ export function GooeyCircle({
       pulseAnim = Animated.loop(
         Animated.sequence([
           Animated.timing(pulse, {
-            toValue: 1.03,
-            duration: 2500,
+            toValue: 1.015,
+            duration: 4000,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
           Animated.timing(pulse, {
             toValue: 1,
-            duration: 2500,
+            duration: 4000,
             easing: Easing.inOut(Easing.sin),
             useNativeDriver: true,
           }),
@@ -317,16 +317,16 @@ export function GooeyCircle({
   }, []);
 
   const glowScaleX = wobble.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 1.03, 1],
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [1, 1.012, 1.018, 1.008, 1],
   });
   const glowScaleY = wobble.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [1, 0.97, 1],
+    inputRange: [0, 0.25, 0.5, 0.75, 1],
+    outputRange: [1, 0.99, 0.985, 0.993, 1],
   });
   const glowRotate = wobble.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '8deg'],
+    inputRange: [0, 0.5, 1],
+    outputRange: ['0deg', '3deg', '0deg'],
   });
 
   const glowSize = size + 20;

@@ -1379,7 +1379,7 @@ export default function PostDetailScreen() {
                   } else if (viewType === 'blog') {
                     navigation.navigate('BlogRecord', { record });
                   } else if (viewType === 'album') {
-                    navigation.navigate('AlbumRecord', { record });
+                    Alert.alert('수정 불가', '앨범 형식은 현재 보관 중이라 수정할 수 없어요.');
                   } else {
                     navigation.navigate('NewRecord', { record });
                   }

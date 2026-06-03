@@ -20,10 +20,10 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import { useRecords } from '../store/recordStore';
-import { COUNTRIES } from '../constants/countries';
-import { StickerPicker } from '../components/StickerPicker';
-import { Sticker } from '../components/stickers';
+import { useRecords } from '../../store/recordStore';
+import { COUNTRIES } from '../../constants/countries';
+import { StickerPicker } from '../../components/StickerPicker';
+import { Sticker } from '../../components/stickers';
 import {
   PencilIcon, TrashIcon, GalleryIcon, CameraIcon, CalendarIcon, PaletteIcon, StickerIcon,
   CoinIcon as SvgCoinIcon,
@@ -44,7 +44,7 @@ import {
   PartlyCloudyIcon as SvgPartlyCloudyIcon,
   WindIcon as SvgWindIcon,
   PlaneIcon as SvgPlaneIcon,
-} from '../components/icons';
+} from '../../components/icons';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const CELL = Math.floor((screenWidth - 48 - 12) / 7);
@@ -491,7 +491,7 @@ function DraggableItem({
     }
     if (element.type === 'sticker') {
       if (element.svgStickerId) {
-        const stickerData = require('../components/stickers').stickers.find(
+        const stickerData = require('../../components/stickers').stickers.find(
           (s: Sticker) => s.id === element.svgStickerId
         );
         if (stickerData) {
@@ -549,7 +549,8 @@ function DraggableItem({
 // 메인 앨범 레코드 스크린
 // ══════════════════════════════════════════════
 export default function AlbumRecordScreen({ navigation, route }: { navigation: any; route: any }) {
-  const { addRecord } = useRecords();
+  const { addRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+  const [draftId, setDraftId] = useState<string | null>(route?.params?.draftId ?? null);
 
   // ── 공통 상태 ──
   const [step, setStep] = useState(1);
@@ -634,6 +635,69 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
   const [selectedPhotos, setSelectedPhotos] = useState<string[]>([]);
   const [aiRecommending, setAiRecommending] = useState(false);
   const [aiRecommended, setAiRecommended] = useState(false);
+  const [aiDateSet, setAiDateSet] = useState(false);
+  const [aiRangePickerVisible, setAiRangePickerVisible] = useState(false);
+  const [draftListVisible, setDraftListVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(''), 2000);
+  };
+
+  // ── 앨범 임시저장 목록 (5일 이내) ──
+  const DRAFT_MAX_AGE = 5 * 24 * 60 * 60 * 1000;
+  useEffect(() => {
+    drafts.filter(d => d.viewType === 'album' && Date.now() - d.timestamp > DRAFT_MAX_AGE)
+      .forEach(d => deleteDraft(d.id));
+  }, []);
+  const albumDrafts = drafts.filter(d => d.viewType === 'album' && Date.now() - d.timestamp <= DRAFT_MAX_AGE);
+
+  const draftDaysLeft = (ts: number) => {
+    const left = Math.ceil((ts + DRAFT_MAX_AGE - Date.now()) / (24 * 60 * 60 * 1000));
+    return left <= 1 ? '오늘 만료' : `${left}일 남음`;
+  };
+
+  // ── 임시저장 불러오기 ──
+  const loadDraft = (draft: any) => {
+    setDraftId(draft.id);
+    if (draft.countryName) {
+      const found = COUNTRIES.find(c => c.name === draft.countryName);
+      if (found) setSelectedCountry({ flag: found.flag, name: found.name });
+    }
+    if (draft.content) setAlbumTitle(draft.content === '앨범 임시저장' ? '' : draft.content);
+    if (draft.medias) setSelectedPhotos(draft.medias);
+    if (draft.rating) setRating(draft.rating);
+    if (draft.memo) setMemo(draft.memo);
+    if (draft.companions) setCompanions(draft.companions);
+    if (draft.companionFriends) setCompanionFriends(draft.companionFriends);
+    if (draft.budget) { setBudget(String(draft.budget.amount)); setCurrency(draft.budget.currency); }
+    if (draft.weather) setWeather(draft.weather);
+    if (draft.flightType) setFlight(draft.flightType);
+    if (draft.keywords) setKeywords(draft.keywords);
+    if (draft.date) {
+      const parts = draft.date.split(' ~ ');
+      if (parts[0]) setStartDate(parts[0]);
+      if (parts[1]) setEndDate(parts[1]);
+      setAiDateSet(true);
+    }
+    if ((draft as any).albumPages) setPages((draft as any).albumPages);
+    if ((draft as any).albumStep) setStep((draft as any).albumStep);
+    setDraftListVisible(false);
+    showToast('임시저장을 불러왔어요');
+  };
+
+  // ── 임시저장 삭제 ──
+  const handleDeleteDraft = (id: string) => {
+    Alert.alert('임시저장 삭제', '이 임시저장을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => {
+        deleteDraft(id);
+        if (draftId === id) setDraftId(null);
+        showToast('임시저장이 삭제되었어요');
+      }},
+    ]);
+  };
 
   useEffect(() => {
     const params = route?.params;
@@ -917,6 +981,62 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
     addElement(dup);
   };
 
+  // ── 임시저장 데이터 수집 ──
+  const collectDraftData = () => ({
+    viewType: 'album' as const,
+    country: selectedCountry?.flag || '',
+    countryName: selectedCountry?.name || '',
+    countryFlag: selectedCountry?.flag || '',
+    countries: selectedCountry ? [selectedCountry] : [],
+    content: albumTitle || '앨범 임시저장',
+    medias: selectedPhotos,
+    rating,
+    memo,
+    companions,
+    companionFriends,
+    budget: budget ? { amount: Number(budget), currency } : undefined,
+    weather: weather || undefined,
+    flightType: flight || undefined,
+    keywords: keywords.length > 0 ? keywords : undefined,
+    date: `${startDate} ~ ${endDate}`,
+    visibility: 'friends' as const,
+    user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+    // 앨범 에디터 상태 보존
+    albumPages: pages,
+    albumStep: step,
+  });
+
+  // ── 임시저장 ──
+  const handleSaveDraft = () => {
+    const data = collectDraftData();
+    if (draftId) {
+      updateDraft(draftId, data as any);
+      showToast('임시저장이 업데이트되었어요');
+    } else {
+      const newId = saveDraft(data as any);
+      setDraftId(newId);
+      showToast('임시저장되었어요');
+    }
+  };
+
+  // ── 취소 (임시저장 여부 확인) ──
+  const handleCancel = () => {
+    const hasContent = selectedPhotos.length > 0 || albumTitle.length > 0 || memo.length > 0 || companions.length > 0;
+    if (hasContent) {
+      Alert.alert(
+        '작성 중인 내용이 있어요',
+        '임시저장 하시겠어요?',
+        [
+          { text: '삭제', style: 'destructive', onPress: () => navigation.goBack() },
+          { text: '임시저장', onPress: () => { handleSaveDraft(); navigation.goBack(); } },
+          { text: '계속 작성', style: 'cancel' },
+        ]
+      );
+    } else {
+      navigation.goBack();
+    }
+  };
+
   // ── 저장 ──
   const handleSave = () => {
     if (!selectedCountry) return;
@@ -942,12 +1062,14 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
       user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
       timestamp: Date.now(),
     } as any);
+    if (draftId) deleteDraft(draftId);
     navigation.goBack();
   };
 
   const canNext = () => {
-    if (step === 1) return !!selectedCountry && !!startDate && !!endDate && companions.length > 0 && rating > 0;
-    if (step === 2) return selectedPhotos.length > 0;
+    if (step === 1) return selectedPhotos.length > 0;
+    if (step === 2) return true;
+    if (step === 3) return !!selectedCountry && !!startDate && !!endDate && companions.length > 0 && rating > 0;
     return true;
   };
 
@@ -956,13 +1078,22 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
   // ══════════════════════════════════════════
   const renderHeader = () => (
     <View style={st.header}>
-      <TouchableOpacity onPress={() => navigation.goBack()} style={st.cancelBtn}>
+      <TouchableOpacity onPress={handleCancel} style={st.cancelBtn}>
         <Text style={st.cancelTxt}>취소</Text>
       </TouchableOpacity>
       <Text style={st.headerTitle}>
-        {step === 1 ? '여행 정보 입력' : step === 2 ? '사진 선택' : '앨범 꾸미기'}
+        {step === 1 ? '사진 선택' : step === 2 ? '앨범 꾸미기' : '여행 정보 입력'}
       </Text>
-      <View style={{ width: 44 }} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+        {albumDrafts.length > 0 && (
+          <TouchableOpacity onPress={() => setDraftListVisible(true)} style={st.draftListBtn}>
+            <Text style={st.draftListBtnTxt}>{albumDrafts.length}</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={handleSaveDraft} style={st.draftBtn}>
+          <Text style={st.draftBtnTxt}>임시저장</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
@@ -981,8 +1112,8 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
           style={[st.nextBtn, !canNext() && st.nextBtnDisabled]}
           onPress={() => {
             if (canNext()) {
-              if (step === 2) {
-                // Step 2에서 Step 3 이동 시 선택한 사진들을 캔버스에 자동 배치
+              if (step === 1) {
+                // Step 1에서 Step 2 이동 시 선택한 사진들을 캔버스에 자동 배치
                 const z = maxZ();
                 selectedPhotos.forEach((uri, idx) => {
                   const elem: CanvasElement = {
@@ -1292,6 +1423,10 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
 
   // ── AI 스마트 추천 ──
   const smartRecommend = async () => {
+    if (!aiDateSet) {
+      setAiRangePickerVisible(true);
+      return;
+    }
     setAiRecommending(true);
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync();
@@ -1467,8 +1602,9 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
             <View style={{ flex: 1 }}>
               <Text style={st.aiRecommendTitle}>AI 스마트 추천</Text>
               <Text style={st.aiRecommendDesc}>
-                {startDate} ~ {endDate} 기간의 사진을 분석하여{'\n'}
-                최적의 사진을 자동으로 추천합니다
+                {aiDateSet
+                  ? `${startDate} ~ ${endDate} 기간의 사진을 분석하여\n최적의 사진을 자동으로 추천합니다`
+                  : '여행 날짜를 선택하면 해당 기간의\n최적의 사진을 자동으로 추천합니다'}
               </Text>
             </View>
           </View>
@@ -1483,7 +1619,7 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
             </View>
           ) : (
             <View style={st.aiRecommendAction}>
-              <Text style={st.aiRecommendActionTxt}>추천 받기 →</Text>
+              <Text style={st.aiRecommendActionTxt}>{aiDateSet ? '추천 받기 →' : '날짜 선택하기 →'}</Text>
             </View>
           )}
         </TouchableOpacity>
@@ -1887,9 +2023,9 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
       {renderHeader()}
       {renderDots()}
       <View style={{ flex: 1 }}>
-        {step === 1 && renderStep1()}
-        {step === 2 && renderStep2()}
-        {step === 3 && renderStep3Editor()}
+        {step === 1 && renderStep2()}
+        {step === 2 && renderStep3Editor()}
+        {step === 3 && renderStep1()}
       </View>
       {renderNavBar()}
       <RangePickerModal
@@ -1898,6 +2034,19 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
         initialEnd={parseDS(endDate)}
         onConfirm={(s, e) => { setStartDate(formatDate(s)); setEndDate(formatDate(e)); }}
         onClose={() => setRangePickerVisible(false)}
+      />
+      <RangePickerModal
+        visible={aiRangePickerVisible}
+        initialStart={parseDS(startDate)}
+        initialEnd={parseDS(endDate)}
+        onConfirm={(s, e) => {
+          setStartDate(formatDate(s));
+          setEndDate(formatDate(e));
+          setAiDateSet(true);
+          setAiRangePickerVisible(false);
+          setTimeout(() => smartRecommend(), 300);
+        }}
+        onClose={() => setAiRangePickerVisible(false)}
       />
       {renderStickerModal()}
       {renderTextModal()}
@@ -1969,6 +2118,60 @@ export default function AlbumRecordScreen({ navigation, route }: { navigation: a
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* 임시저장 목록 모달 */}
+      <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
+        <TouchableOpacity style={st.draftOverlay} activeOpacity={1} onPress={() => setDraftListVisible(false)}>
+          <View style={st.draftListPanel} onStartShouldSetResponder={() => true}>
+            <View style={st.draftPanelHandle} />
+            <Text style={st.draftPanelTitle}>앨범 임시저장 목록</Text>
+            {albumDrafts.length === 0 ? (
+              <Text style={st.draftEmptyText}>저장된 임시저장이 없어요</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+                {albumDrafts.map(draft => {
+                  const draftDate = new Date(draft.timestamp);
+                  const dateLabel = `${draftDate.getMonth() + 1}/${draftDate.getDate()} ${String(draftDate.getHours()).padStart(2, '0')}:${String(draftDate.getMinutes()).padStart(2, '0')}`;
+                  const preview = draft.content || '(내용 없음)';
+                  const photoCount = draft.medias?.length || 0;
+                  const isCurrent = draftId === draft.id;
+                  return (
+                    <View key={draft.id} style={[st.draftItem, isCurrent && st.draftItemCurrent]}>
+                      <TouchableOpacity style={st.draftItemContent} onPress={() => loadDraft(draft)} activeOpacity={0.7}>
+                        <View style={st.draftItemHeader}>
+                          <Text style={st.draftItemTitle} numberOfLines={1}>
+                            {preview.length > 30 ? preview.slice(0, 30) + '...' : preview}
+                          </Text>
+                          {isCurrent && <Text style={st.draftCurrentBadge}>편집중</Text>}
+                        </View>
+                        <View style={st.draftItemMeta}>
+                          {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {draft.countryName}</Text> : null}
+                          {photoCount > 0 && <Text style={st.draftItemPhotos}>📷 {photoCount}</Text>}
+                          <Text style={st.draftItemDate}>{dateLabel}</Text>
+                          <Text style={st.draftExpiry}>{draftDaysLeft(draft.timestamp)}</Text>
+                        </View>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={st.draftDeleteBtn} onPress={() => handleDeleteDraft(draft.id)}>
+                        <Text style={st.draftDeleteText}>삭제</Text>
+                      </TouchableOpacity>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+            <TouchableOpacity style={st.draftPanelCloseBtn} onPress={() => setDraftListVisible(false)}>
+              <Text style={st.draftPanelCloseTxt}>닫기</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 토스트 */}
+      {toastMsg !== '' && (
+        <View style={st.toastWrap} pointerEvents="none">
+          <Text style={st.toastText}>{toastMsg}</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -1981,6 +2184,36 @@ const st = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10 },
   cancelBtn: { paddingHorizontal: 4, paddingVertical: 4 },
   cancelTxt: { color: COLORS.textDim, fontSize: 15, fontWeight: '500' },
+  draftBtn: { paddingHorizontal: 4, paddingVertical: 4 },
+  draftBtnTxt: { color: COLORS.purpleNeon, fontSize: 14, fontWeight: '600' },
+  draftListBtn: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(191,133,252,0.2)', alignItems: 'center' as const, justifyContent: 'center' as const },
+  draftListBtnTxt: { color: COLORS.purpleNeon, fontSize: 11, fontWeight: '700' },
+
+  // 임시저장 목록 모달
+  draftOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const },
+  draftListPanel: { backgroundColor: COLORS.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
+  draftPanelHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#4A4A59', alignSelf: 'center' as const, marginBottom: 14 },
+  draftPanelTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, marginBottom: 16 },
+  draftEmptyText: { color: COLORS.textMuted, fontSize: 14, textAlign: 'center' as const, paddingVertical: 40 },
+  draftItem: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: COLORS.divider, overflow: 'hidden' as const },
+  draftItemCurrent: { borderColor: 'rgba(191,133,252,0.3)' },
+  draftItemContent: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  draftItemHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 4 },
+  draftItemTitle: { color: COLORS.white, fontSize: 14, fontWeight: '600', flex: 1 },
+  draftCurrentBadge: { color: COLORS.purpleNeon, fontSize: 10, fontWeight: '700', backgroundColor: 'rgba(191,133,252,0.15)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' as const },
+  draftItemMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  draftItemCountry: { color: COLORS.textDim, fontSize: 12 },
+  draftItemPhotos: { color: COLORS.textDim, fontSize: 11 },
+  draftItemDate: { color: COLORS.textMuted, fontSize: 11 },
+  draftExpiry: { color: '#FFD60A', fontSize: 10, fontWeight: '600' },
+  draftDeleteBtn: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'center' as const, borderLeftWidth: 1, borderLeftColor: COLORS.divider },
+  draftDeleteText: { color: '#FF3B30', fontSize: 12, fontWeight: '600' },
+  draftPanelCloseBtn: { marginTop: 10, alignItems: 'center' as const, paddingVertical: 14, backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: 12 },
+  draftPanelCloseTxt: { color: COLORS.textDim, fontSize: 15, fontWeight: '600' },
+
+  // 토스트
+  toastWrap: { position: 'absolute' as const, bottom: 100, alignSelf: 'center' as const, backgroundColor: 'rgba(30,30,50,0.95)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
   headerTitle: { color: COLORS.white, fontSize: 17, fontWeight: '700' },
 
   navBar: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingVertical: 10, paddingBottom: 20, backgroundColor: COLORS.bg, borderTopWidth: 1, borderTopColor: COLORS.divider },

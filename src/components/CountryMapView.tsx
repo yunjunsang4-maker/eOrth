@@ -89,11 +89,11 @@ function render(geo){
     JPN:['Tokyo','Osaka','Kyoto','Fukuoka','Hokkaido','Okinawa'],
     CHN:['Beijing','Shanghai','Chongqing','Tianjin','Chengdu','Guangzhou','Shenzhen'],
     USA:['NewYork','LosAngeles','SanFrancisco','LasVegas','Miami','Chicago','Seattle','Honolulu','Alaska','Hawaii','Guam'],
-    DEU:['Berlin','Hamburg','Bayern','Hessen','Nordrhein-Westfalen','Sachsen'],
+    DEU:['Berlin','Hamburg','Munich','Frankfurt','Stuttgart','Cologne','Nordlingen'],
     ESP:['Madrid','Barcelona','Sevilla','Granada','M\\xe1laga','Valencia','Bilbao','ComunidaddeMadrid','IslasBaleares'],
     GBR:[],
     FRA:['Paris','Nice','Lyon','Marseille','Bordeaux','Strasbourg','Toulouse'],
-    ITA:['Roma','Firenze','Venezia','Milano','Napoli','Palermo']
+    ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa']
   };
   var highlight=HL[CODE]||[];
   function bindPaths(sel){

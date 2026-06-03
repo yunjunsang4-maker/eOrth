@@ -1,0 +1,12 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!--
+    ML Kit 의존성 메타데이터(com.google.mlkit.vision.DEPENDENCIES)는
+    여기(라이브러리 매니페스트)가 아니라 config plugin 으로 메인 매니페스트에 주입한다.
+    (../../withMlkitVisionDependencies.js 참고)
+
+    개발 빌드의 expo-dev-launcher 가 동일 키를 다른 값으로 선언하는데, 라이브러리끼리는
+    우선순위가 같아 라이브러리 매니페스트의 tools:replace 로는 병합 충돌을 막지 못한다.
+    메인 매니페스트(최상위 우선순위)에서 선언해야 모든 라이브러리 값을 덮어쓸 수 있다.
+  -->
+  <application />
+</manifest>

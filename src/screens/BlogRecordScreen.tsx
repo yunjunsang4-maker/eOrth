@@ -1013,7 +1013,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {FONT_OPTIONS.map(opt => (
           <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && st.pickerOptionActive]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
             {atb?.fontFamily === opt.value && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
@@ -1412,7 +1412,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
               color: tb.color || C.white,
               backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
-              fontFamily: tb.fontFamily || undefined,
+              fontFamily: tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined,
             }]}
             placeholder={index === 0 && blocks.length === 1 ? '여행 이야기를 자유롭게 적어보세요...' : ''}
             placeholderTextColor={C.muted}

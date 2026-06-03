@@ -1,0 +1,9 @@
+{
+  "platforms": ["apple", "android"],
+  "apple": {
+    "modules": ["PhotoVisionModule"]
+  },
+  "android": {
+    "modules": ["expo.modules.photovision.PhotoVisionModule"]
+  }
+}
