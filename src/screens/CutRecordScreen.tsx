@@ -96,6 +96,7 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
       content: '',
       visibility: 'friends',
       viewType: 'cut',
+      medias: [previewUri],   // 기존 피드/상세 렌더러가 합성 이미지를 그대로 표시
       cutPhoto: { layout: frame.layout, frameId, photos: photos as string[], previewUri },
     });
     navigation.goBack();
