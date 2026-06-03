@@ -83,6 +83,18 @@ const AlbumIcon = () => (
   </View>
 );
 
+// 네컷 — 프레임 안 2×2 (네컷 사진 느낌)
+const CutIcon = () => (
+  <View style={{ width: FAB_SZ, height: FAB_SZ, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 18, height: 22, borderWidth: 1.5, borderColor: FAB_C, borderRadius: 3, padding: 2.5, flexDirection: 'row', flexWrap: 'wrap', gap: 2, alignContent: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+    </View>
+  </View>
+);
+
 const COUNTRY_FLAGS: Record<string, string> = {
   '한국': '🇰🇷',
   '일본': '🇯🇵',
@@ -276,7 +288,7 @@ export default function MainScreen({ navigation }: Props) {
   const FAB_FORMATS = [
     { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
     { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-    { type: 'album', icon: <AlbumIcon />, name: '앨범' },
+    { type: 'cut',   icon: <CutIcon />,   name: '네컷' },
   ];
 
   const fabRotateDeg = fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
@@ -408,7 +420,7 @@ export default function MainScreen({ navigation }: Props) {
     const SCREEN_MAP: Record<string, string> = {
       feed: 'NewRecord',
       blog: 'BlogRecord',
-      album: 'AlbumRecord',
+      cut: 'CutRecord',
     };
     navigation.navigate(SCREEN_MAP[type] ?? 'NewRecord', {
       selectedCountry: pendingCountry,
@@ -506,16 +518,23 @@ export default function MainScreen({ navigation }: Props) {
         )}
       </View>
 
-      {/* ── 스냅 바로가기 버튼 (Liquid Glass) ── */}
-      <TouchableOpacity
-        style={styles.snapQuickBtn}
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('SnapRecord')}
-      >
-        <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-        <Text style={styles.snapQuickIcon}>⚡</Text>
-        <Text style={styles.snapQuickLabel}>스냅</Text>
-      </TouchableOpacity>
+      {/* ── 스냅 바로가기 버튼 (스냅 카드 그라디언트 보더) ── */}
+      <View style={styles.snapQuickWrap}>
+        <LinearGradient
+          colors={['#FFD60A', '#FF6B9D', '#BF85FC']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <TouchableOpacity
+          style={styles.snapQuickBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('SnapRecord')}
+        >
+          <Text style={styles.snapQuickIcon}>⚡</Text>
+          <Text style={styles.snapQuickLabel}>스냅</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── 하단 핸들 바 (시트 닫혔을 때 노출) ── */}
       {!sheetOpen && (
@@ -673,7 +692,7 @@ export default function MainScreen({ navigation }: Props) {
               {[
                 { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
                 { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-                { type: 'album', icon: <AlbumIcon />, name: '앨범' },
+                { type: 'cut',   icon: <CutIcon />,   name: '네컷' },
               ].map(fmt => (
                 <TouchableOpacity
                   key={fmt.type}
@@ -847,7 +866,7 @@ export default function MainScreen({ navigation }: Props) {
                 const SCREEN_MAP: Record<string, string> = {
                   feed: 'NewRecord',
                   blog: 'BlogRecord',
-                  album: 'AlbumRecord',
+                  cut: 'CutRecord',
                 };
                 navigation.navigate(SCREEN_MAP[fmt.type] ?? 'NewRecord');
               }}
@@ -1376,22 +1395,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  snapQuickBtn: {
+  snapQuickWrap: {
     position: 'absolute',
     bottom: 60,
     left: 16,
+    borderRadius: 21,
+    overflow: 'hidden',
+    zIndex: 20,
+    elevation: 20,
+  },
+  snapQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,214,10,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,214,10,0.35)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(10,1,24,0.9)',
+    borderRadius: 19.5,
+    margin: 1.5,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    zIndex: 20,
-    elevation: 20,
-    overflow: 'hidden',
   },
   snapQuickIcon: {
     fontSize: 16,

@@ -22,12 +22,13 @@ import TripRecordScreen from '../screens/TripRecordScreen';
 import TripGroupScreen from '../screens/TripGroupScreen';
 import TripDetailScreen from '../screens/TripDetailScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
-import AlbumRecordScreen from '../screens/AlbumRecordScreen';
 import BlogRecordScreen from '../screens/BlogRecordScreen';
+import CutRecordScreen from '../screens/CutRecordScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
+import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 
@@ -100,6 +101,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Friends" component={FriendsScreen} />
         <Stack.Screen name="DM" component={DMScreen} />
+        <Stack.Screen name="BestCut" component={BestCutScreen} />
         <Stack.Screen name="FriendSearch" component={FriendSearchScreen} />
         <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
         <Stack.Screen name="ArchivedPosts" component={ArchivedPostsScreen} />
@@ -130,14 +132,14 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen
-          name="AlbumRecord"
-          component={AlbumRecordScreen}
-          options={{ presentation: 'modal', gestureEnabled: false }}
-        />
-        <Stack.Screen
           name="BlogRecord"
           component={BlogRecordScreen}
           options={{ presentation: 'modal' }}
+        />
+        <Stack.Screen
+          name="CutRecord"
+          component={CutRecordScreen}
+          options={{ presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
           name="NaverBlogImport"
