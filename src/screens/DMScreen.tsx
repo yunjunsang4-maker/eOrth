@@ -16,6 +16,8 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRecords, TravelRecord } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
+import type { Message, MsgType, SharedRecord } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon } from '../components/icons';
 
 const { width: SW } = Dimensions.get('window');
@@ -35,64 +37,6 @@ const C = {
   theirBubble: '#2E2E3B',
 };
 
-// ─── 메시지 타입 ───
-type MsgType = 'text' | 'image' | 'record';
-
-interface SharedRecord {
-  id: string;
-  country: string;
-  content: string;
-  viewType: 'feed' | 'blog' | 'album' | 'snap';
-  date: string;
-  mediaUri?: string;
-  // 앨범용
-  albumUris?: string[];
-  // 스냅용
-  snapFrontUri?: string;
-  snapBackUri?: string;
-  snapCaption?: string;
-  // 블로그용
-  blogTitle?: string;
-  blogPreview?: string;
-}
-
-interface Message {
-  id: string;
-  type: MsgType;
-  text: string;
-  isMine: boolean;
-  time: string;
-  imageUri?: string;
-  record?: SharedRecord;
-}
-
-// 더미 대화 데이터
-const DUMMY_CHATS: Record<string, Message[]> = {
-  minji_travel: [
-    { id: '1', type: 'text', text: '파리 어때? 날씨 좋아?', isMine: false, time: '오후 2:10' },
-    { id: '2', type: 'text', text: '완전 좋아! 에펠탑 앞이야 지금', isMine: true, time: '오후 2:11' },
-    { id: '3', type: 'text', text: '파리 사진 너무 예쁘다!', isMine: false, time: '오후 2:12' },
-  ],
-  junho_world: [
-    { id: '1', type: 'text', text: '이번 여름에 어디 갈 거야?', isMine: true, time: '오후 1:30' },
-    { id: '2', type: 'text', text: '일본이랑 태국 고민 중', isMine: false, time: '오후 1:32' },
-    { id: '3', type: 'text', text: '다음 여행 어디로 갈 거야?', isMine: false, time: '오후 1:45' },
-  ],
-  seoyeon_log: [
-    { id: '1', type: 'text', text: '태국 맛집 알아?', isMine: true, time: '오전 11:20' },
-    { id: '2', type: 'text', text: '태국 맛집 리스트 보내줄게', isMine: false, time: '오전 11:25' },
-  ],
-  woojin_trip: [
-    { id: '1', type: 'text', text: '오사카 가고 싶다', isMine: true, time: '어제' },
-    { id: '2', type: 'text', text: '같이 일본 갈래?', isMine: false, time: '어제' },
-  ],
-  haneul_sky: [
-    { id: '1', type: 'text', text: '발리 스냅 봤어! 대박', isMine: false, time: '어제' },
-  ],
-  doyun_go: [
-    { id: '1', type: 'text', text: '베트남 숙소 추천해줘', isMine: false, time: '어제' },
-  ],
-};
 
 interface Props {
   navigation: any;
@@ -226,9 +170,8 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const { records } = useRecords();
-  const [messages, setMessages] = useState<Message[]>(
-    DUMMY_CHATS[friend.handle] || []
-  );
+  const { conversations, addMessage: dmAddMessage, sendRecord } = useDM();
+  const messages = conversations[friend.handle] ?? [];
   const [input, setInput] = useState('');
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [recordPickerOpen, setRecordPickerOpen] = useState(false);
@@ -244,46 +187,11 @@ export default function DMScreen({ navigation, route }: Props) {
     sharedRef.current = true;
     const r = records.find(rec => rec.id === sharePostId);
     if (!r) return;
-    const vt = (r.viewType || 'feed') as SharedRecord['viewType'];
-    let blogTitle = '';
-    let blogPreview = '';
-    if (vt === 'blog' && r.blogBlocks?.length) {
-      const heading = r.blogBlocks.find(b => b.type === 'heading');
-      blogTitle = (heading && 'value' in heading ? heading.value : '') || r.content;
-      const textBlock = r.blogBlocks.find(b => b.type === 'text');
-      blogPreview = textBlock && 'value' in textBlock ? textBlock.value : '';
-    }
-    setMessages(prev => [
-      ...prev,
-      {
-        id: String(Date.now()),
-        type: 'record',
-        text: '',
-        isMine: true,
-        time: getTimeString(),
-        record: {
-          id: r.id,
-          country: r.country,
-          content: r.content,
-          viewType: vt,
-          date: r.date,
-          mediaUri: r.medias?.[0] || r.snapBackUri,
-          albumUris: vt === 'album' ? (r.medias || []).slice(0, 4) : undefined,
-          snapFrontUri: r.snapFrontUri,
-          snapBackUri: r.snapBackUri,
-          snapCaption: r.snapCaption,
-          blogTitle: blogTitle || undefined,
-          blogPreview: blogPreview || undefined,
-        },
-      },
-    ]);
+    sendRecord(friend.handle, r);
   }, [sharePostId]);
 
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
-    setMessages(prev => [
-      ...prev,
-      { ...msg, id: String(Date.now()), isMine: true, time: getTimeString() },
-    ]);
+    dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record });
   };
 
   // ─── 텍스트 전송 ───
@@ -308,36 +216,7 @@ export default function DMScreen({ navigation, route }: Props) {
   // ─── 여행 기록 공유 ───
   const shareRecord = (r: TravelRecord) => {
     setRecordPickerOpen(false);
-    const vt = (r.viewType || 'feed') as SharedRecord['viewType'];
-
-    // 블로그 제목/미리보기 추출
-    let blogTitle = '';
-    let blogPreview = '';
-    if (vt === 'blog' && r.blogBlocks?.length) {
-      const heading = r.blogBlocks.find(b => b.type === 'heading');
-      blogTitle = (heading && 'value' in heading ? heading.value : '') || r.content;
-      const textBlock = r.blogBlocks.find(b => b.type === 'text');
-      blogPreview = textBlock && 'value' in textBlock ? textBlock.value : '';
-    }
-
-    addMessage({
-      type: 'record',
-      text: '',
-      record: {
-        id: r.id,
-        country: r.country,
-        content: r.content,
-        viewType: vt,
-        date: r.date,
-        mediaUri: r.medias?.[0] || r.snapBackUri,
-        albumUris: vt === 'album' ? (r.medias || []).slice(0, 4) : undefined,
-        snapFrontUri: r.snapFrontUri,
-        snapBackUri: r.snapBackUri,
-        snapCaption: r.snapCaption,
-        blogTitle: blogTitle || undefined,
-        blogPreview: blogPreview || undefined,
-      },
-    });
+    sendRecord(friend.handle, r);
   };
 
   // 스크롤
@@ -401,7 +280,6 @@ export default function DMScreen({ navigation, route }: Props) {
             <View style={st.headerAvatar}>
               <Text style={st.headerAvatarEmoji}>{friend.emoji}</Text>
             </View>
-            {friend.online && <View style={st.headerOnline} />}
           </View>
           <View>
             <Text style={st.headerName}>{friend.name}</Text>
