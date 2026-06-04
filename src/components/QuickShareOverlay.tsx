@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 
@@ -29,6 +29,7 @@ export default function QuickShareOverlay({
   onTargetLayout: (key: string, rect: { x: number; y: number; w: number; h: number }) => void;
   onCancel: () => void;
 }) {
+  const targetRefs = useRef<Record<string, View | null>>({});
   if (!visible || !cardRect) return null;
 
   // 타깃 키 목록: 친구 handle + 'other'
@@ -55,10 +56,13 @@ export default function QuickShareOverlay({
         return (
           <View
             key={t.key}
+            ref={(node) => { targetRefs.current[t.key] = node; }}
             style={[st.target, { left: colX, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
-            onLayout={(e) => {
-              const { x, y, width, height } = e.nativeEvent.layout;
-              onTargetLayout(t.key, { x, y, w: width, h: height });
+            onLayout={() => {
+              // window 절대 좌표로 보고 (드롭 판정은 gesture absoluteX/Y를 사용하므로 좌표계 일치)
+              targetRefs.current[t.key]?.measureInWindow((x, y, width, height) => {
+                onTargetLayout(t.key, { x, y, w: width, h: height });
+              });
             }}
             pointerEvents="none"
           >
