@@ -46,9 +46,11 @@ function assert(cond: boolean, msg: string) {
     c: [{} as Message, {} as Message],
     d: [],
   };
+  const origOrder = friends.map((f) => f.handle).join(',');
   const top = pickTopFriends(friends, conv, 3);
   assert(top.length === 3, '상위 3명');
   assert(top[0].handle === 'b' && top[1].handle === 'c' && top[2].handle === 'a', '메시지 수 desc 정렬');
+  assert(friends.map((f) => f.handle).join(',') === origOrder, 'pickTopFriends 입력 배열 불변');
 }
 
 // hitTestTarget
@@ -60,6 +62,8 @@ function assert(cond: boolean, msg: string) {
   assert(hitTestTarget(25, 25, targets) === 'f1', '첫 원 안쪽 명중');
   assert(hitTestTarget(25, 80, targets) === 'other', '기타 원 명중');
   assert(hitTestTarget(200, 200, targets) === null, '바깥은 null');
+  assert(hitTestTarget(0, 0, targets) === 'f1', '경계(좌상단) 포함');
+  assert(hitTestTarget(50, 50, targets) === 'f1', '경계(우하단) 포함');
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
