@@ -1,4 +1,5 @@
 import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
@@ -6,6 +7,7 @@ import { View, ActivityIndicator } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
+import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
@@ -51,12 +53,16 @@ export default function App() {
   }
 
   return (
-    <SettingsProvider>
-      <RecordProvider>
-        <StatusBar style="light" backgroundColor="#0A0118" translucent />
-        <SnapDetector />
-        <AppNavigator />
-      </RecordProvider>
-    </SettingsProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SettingsProvider>
+        <RecordProvider>
+          <DMProvider>
+            <StatusBar style="light" backgroundColor="#0A0118" translucent />
+            <SnapDetector />
+            <AppNavigator />
+          </DMProvider>
+        </RecordProvider>
+      </SettingsProvider>
+    </GestureHandlerRootView>
   );
 }
