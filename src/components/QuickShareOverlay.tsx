@@ -1,0 +1,119 @@
+import React from 'react';
+import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
+import type { Friend, SharedRecord } from '../store/dmTypes';
+
+const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const CIRCLE = 56;
+const GAP = 14;
+
+export interface CardRect { x: number; y: number; w: number; h: number }
+
+export default function QuickShareOverlay({
+  visible,
+  record,
+  cardRect,
+  side,
+  pos,
+  friends,
+  hoveredKey,
+  onTargetLayout,
+  onCancel,
+}: {
+  visible: boolean;
+  record: SharedRecord | null;
+  cardRect: CardRect | null;
+  side: 'left' | 'right';
+  pos: Animated.ValueXY;
+  friends: Friend[];           // 상위 3명
+  hoveredKey: string | null;
+  onTargetLayout: (key: string, rect: { x: number; y: number; w: number; h: number }) => void;
+  onCancel: () => void;
+}) {
+  if (!visible || !cardRect) return null;
+
+  // 타깃 키 목록: 친구 handle + 'other'
+  const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name })),
+                   { key: 'other', emoji: '⊙', label: '기타' }];
+
+  // 카드 옆 세로 배치 시작 좌표
+  const colX = side === 'right'
+    ? Math.min(cardRect.x + cardRect.w + GAP, SCREEN_W - CIRCLE - 8)
+    : Math.max(cardRect.x - CIRCLE - GAP, 8);
+  const totalH = targets.length * CIRCLE + (targets.length - 1) * GAP;
+  let startY = cardRect.y + cardRect.h / 2 - totalH / 2;
+  startY = Math.max(40, Math.min(startY, SCREEN_H - totalH - 40));
+
+  return (
+    <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+      {/* 어두운 배경 (탭/취소) */}
+      <TouchableOpacity style={[StyleSheet.absoluteFill, st.dim]} activeOpacity={1} onPress={onCancel} />
+
+      {/* 원형 타깃 */}
+      {targets.map((t, i) => {
+        const cy = startY + i * (CIRCLE + GAP);
+        const hovered = hoveredKey === t.key;
+        return (
+          <View
+            key={t.key}
+            style={[st.target, { left: colX, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
+            onLayout={(e) => {
+              const { x, y, width, height } = e.nativeEvent.layout;
+              onTargetLayout(t.key, { x, y, w: width, h: height });
+            }}
+            pointerEvents="none"
+          >
+            <Text style={st.targetEmoji}>{t.emoji}</Text>
+            <Text style={st.targetLabel} numberOfLines={1}>{t.label}</Text>
+          </View>
+        );
+      })}
+
+      {/* 드래그 고스트 (카드 미리보기) */}
+      <Animated.View
+        pointerEvents="none"
+        style={[
+          st.ghost,
+          { transform: [{ translateX: Animated.subtract(pos.x, CIRCLE) }, { translateY: Animated.subtract(pos.y, CIRCLE) }] },
+        ]}
+      >
+        {record?.mediaUri ? (
+          <Image source={{ uri: record.mediaUri }} style={st.ghostImg} resizeMode="cover" />
+        ) : (
+          <View style={[st.ghostImg, st.ghostEmpty]}>
+            <Text style={{ fontSize: 24 }}>📝</Text>
+          </View>
+        )}
+        <Text style={st.ghostText} numberOfLines={1}>{record?.blogTitle || record?.content || record?.country || '기록'}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+const st = StyleSheet.create({
+  dim: { backgroundColor: 'rgba(0,0,0,0.55)' },
+  target: {
+    position: 'absolute',
+    borderRadius: CIRCLE / 2,
+    backgroundColor: '#2E2E3B',
+    borderWidth: 2,
+    borderColor: 'rgba(191,133,252,0.4)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  targetHover: { borderColor: '#BF85FC', backgroundColor: '#3A2A55', transform: [{ scale: 1.12 }] },
+  targetEmoji: { fontSize: 20 },
+  targetLabel: { position: 'absolute', bottom: -16, fontSize: 9, color: '#A1A1B0', width: 64, textAlign: 'center' },
+  ghost: {
+    position: 'absolute',
+    width: 112,
+    borderRadius: 12,
+    backgroundColor: '#1A0A2E',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.5)',
+    padding: 6,
+    shadowColor: '#000', shadowOpacity: 0.5, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 8,
+  },
+  ghostImg: { width: '100%', height: 80, borderRadius: 8, backgroundColor: '#2A2735' },
+  ghostEmpty: { alignItems: 'center', justifyContent: 'center' },
+  ghostText: { color: '#FFFFFF', fontSize: 11, marginTop: 4 },
+});
