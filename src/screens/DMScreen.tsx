@@ -17,7 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
-import type { Message, MsgType, SharedRecord } from '../store/dmTypes';
+import type { Message, SharedRecord } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon } from '../components/icons';
 
 const { width: SW } = Dimensions.get('window');
