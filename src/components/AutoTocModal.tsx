@@ -42,7 +42,12 @@ export default function AutoTocModal({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={styles.card}>
-          <Text style={styles.title}>📋 AI가 목차를 만들었어요</Text>
+          <View style={styles.header}>
+            <Text style={styles.title}>📋 AI가 목차를 만들었어요</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+              <Text style={styles.close}>✕</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={styles.subtitle}>
             추가할 소제목을 선택하세요. 본문에 소제목으로 삽입돼요.
           </Text>
@@ -102,7 +107,9 @@ const styles = StyleSheet.create({
     padding: 20,
     maxHeight: '70%',
   },
-  title: { fontSize: 17, fontWeight: '700', color: '#FFFFFF' },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontSize: 17, fontWeight: '700', color: '#FFFFFF', flex: 1 },
+  close: { fontSize: 16, color: '#A1A1B0', fontWeight: '600', paddingLeft: 12 },
   subtitle: { fontSize: 13, color: '#A1A1B0', marginTop: 6, marginBottom: 12 },
   list: { flexGrow: 0, marginBottom: 4 },
   item: {
