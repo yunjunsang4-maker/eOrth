@@ -21,8 +21,7 @@ export interface TocSuggestion {
 const MIN_TEXT_BLOCKS = 3;
 const MIN_TOTAL_CHARS = 400;
 const EXISTING_HEADING_LIMIT = 2;
-const SECTION_CHARS = 500;       // 구조 경계 + 이 분량 누적 시 약한 분할
-const SECTION_CHARS_SOLO = 750;  // 신호 없이 분량만으로 분할하는 보수적 임계
+const SECTION_CHARS = 750; // 신호 없이 분량만으로 분할하는 보수적 임계
 const MAX_HEADING_LEN = 20;
 
 // ─── 강한 신호 정규식 ───
@@ -39,8 +38,9 @@ function truncate(s: string): string {
 
 /** 첫 문장/절(구두점·줄바꿈 전까지)을 다듬어 반환 */
 function firstClause(text: string): string {
-  const m = text.match(/^[^\n.!?]{1,80}/);
-  const clause = (m ? m[0] : text).trim();
+  const stripped = text.replace(/^[\s.!?]+/, '');
+  const m = stripped.match(/^[^\n.!?]{1,80}/);
+  const clause = (m ? m[0] : stripped).trim();
   return truncate(clause);
 }
 
@@ -61,8 +61,7 @@ function makeDayLabel(m: RegExpMatchArray, text: string): string {
 }
 
 function makeTimeLabel(marker: string, text: string): string {
-  const idx = text.indexOf(marker);
-  const extra = trailingExtra(text.slice(idx + marker.length));
+  const extra = trailingExtra(text.slice(text.indexOf(marker) + marker.length));
   return extra ? truncate(`${marker} — ${extra}`) : marker;
 }
 
@@ -75,18 +74,12 @@ export function analyzeForToc(blocks: BlogBlock[]): TocSuggestion[] {
   const existingHeadings = blocks.filter(b => b.type === 'heading').length;
   if (existingHeadings >= EXISTING_HEADING_LIMIT) return [];
 
-  // ─── 구획 분할 ───
+  // ─── 구획 분할: 강한 신호(일차/시간대) 우선, 없으면 분량 누적으로 보수적 분할 ───
   const suggestions: TocSuggestion[] = [];
   let charsSinceLast = 0;
-  let lastWasBreak = false;
 
   for (const b of blocks) {
-    if (b.type !== 'text') {
-      if (b.type === 'image' || b.type === 'images' || b.type === 'video' || b.type === 'separator') {
-        lastWasBreak = true;
-      }
-      continue;
-    }
+    if (b.type !== 'text') continue;
     const text = b.value.trim();
     if (!text) continue;
 
@@ -97,19 +90,16 @@ export function analyzeForToc(blocks: BlogBlock[]): TocSuggestion[] {
       heading = makeDayLabel(dayMatch, text);
     } else if (timeMatch) {
       heading = makeTimeLabel(timeMatch[1], text);
-    } else if (lastWasBreak && charsSinceLast >= SECTION_CHARS) {
-      heading = firstClause(text);
-    } else if (charsSinceLast >= SECTION_CHARS_SOLO) {
+    } else if (charsSinceLast >= SECTION_CHARS) {
       heading = firstClause(text);
     }
 
     if (heading) {
       suggestions.push({ beforeBlockId: b.id, level: 2, text: heading });
-      charsSinceLast = 0;
+      charsSinceLast = text.length; // 새 섹션은 이 블록부터 시작
     } else {
       charsSinceLast += text.length;
     }
-    lastWasBreak = false;
   }
 
   // ─── 검증: 중복 제거 + 빈 텍스트 제외 ───
