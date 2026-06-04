@@ -24,6 +24,8 @@ import { useRecords } from '../store/recordStore';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
 import { StickerPicker } from '../components/StickerPicker';
+import AutoTocModal from '../components/AutoTocModal';
+import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import type { Sticker } from '../components/stickers';
 import {
   CalendarIcon as SvgCalendarIcon,
@@ -298,6 +300,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [toastMsg, setToastMsg] = useState('');
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftListVisible, setDraftListVisible] = useState(false);
+  // ─── AI 자동 목차 ───
+  const [tocModalVisible, setTocModalVisible] = useState(false);
+  const [tocSuggestions, setTocSuggestions] = useState<TocSuggestion[]>([]);
   // 하단 툴바 서브패널
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
   const [fontBarVisible, setFontBarVisible] = useState(false);
@@ -741,11 +746,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   draftSaveRef.current = handleDraftSave;
 
   // ─── 공통 데이터 빌드 ───
-  const buildRecordData = () => {
+  const buildRecordData = (blocksOverride?: BlogBlock[]) => {
+    const srcBlocks = blocksOverride ?? blocks;
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
-    const photos = blocksToPhotos(blocks);
-    const bodyText = blocksToPlainText(blocks);
+    const photos = blocksToPhotos(srcBlocks);
+    const bodyText = blocksToPlainText(srcBlocks);
     return {
       user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
       country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
@@ -766,7 +772,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       flightType: flightType || undefined,
       keywords: keywords.length > 0 ? keywords : undefined,
       viewType: 'blog' as const,
-      blogBlocks: blocks,
+      blogBlocks: srcBlocks,
     };
   };
 
@@ -781,14 +787,26 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   })();
 
   // ─── 발행 ───
+  const publish = (finalBlocks: BlogBlock[]) => {
+    addRecord(buildRecordData(finalBlocks));
+    navigation.goBack();
+  };
+
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
     const bodyText = blocksToPlainText(blocks);
     if (!title.trim() && !bodyText) { Alert.alert('내용 입력', '제목이나 본문을 작성해주세요.'); return; }
     if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
     if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
-    addRecord(buildRecordData());
-    navigation.goBack();
+
+    // AI 목차 분석: 제안이 2개 이상이면 미리보기 모달, 아니면 그대로 발행
+    const suggestions = analyzeForToc(blocks);
+    if (suggestions.length >= 2) {
+      setTocSuggestions(suggestions);
+      setTocModalVisible(true);
+      return;
+    }
+    publish(blocks);
   };
 
   // ─── 국가 필터 ───
@@ -1394,6 +1412,20 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       )}
 
       <FullScreenImageViewer images={fullImgList} initialIndex={fullImgIndex} visible={fullImgVisible} onClose={() => setFullImgVisible(false)} />
+
+      <AutoTocModal
+        visible={tocModalVisible}
+        suggestions={tocSuggestions}
+        onConfirm={(accepted) => {
+          setTocModalVisible(false);
+          publish(applyTocSuggestions(blocks, accepted));
+        }}
+        onSkip={() => {
+          setTocModalVisible(false);
+          publish(blocks);
+        }}
+        onClose={() => setTocModalVisible(false)}
+      />
     </SafeAreaView>
   );
 
