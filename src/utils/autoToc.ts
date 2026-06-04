@@ -19,7 +19,7 @@ export interface TocSuggestion {
 
 // ─── 임계치 ───
 const MIN_TEXT_BLOCKS = 3;
-const MIN_TOTAL_CHARS = 150;
+const MIN_TOTAL_CHARS = 400;
 const EXISTING_HEADING_LIMIT = 2;
 const SECTION_CHARS = 500;       // 구조 경계 + 이 분량 누적 시 약한 분할
 const SECTION_CHARS_SOLO = 750;  // 신호 없이 분량만으로 분할하는 보수적 임계
