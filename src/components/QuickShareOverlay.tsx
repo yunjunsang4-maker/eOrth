@@ -40,9 +40,16 @@ export default function QuickShareOverlay({
   const colX = side === 'right'
     ? Math.min(cardRect.x + cardRect.w + GAP, SCREEN_W - CIRCLE - 8)
     : Math.max(cardRect.x - CIRCLE - GAP, 8);
+  // 세로 안전 영역: 상단 상태바 + 하단 탭바/홈인디케이터 + 라벨 삐져나옴(약 22px)을 고려해
+  // 원 기둥이 항상 화면 안에 들어오도록 clamp (하단 카드에서 원이 탭바 뒤로 꺼지는 문제 보완)
+  const TOP_SAFE = 64;
+  const BOTTOM_SAFE = 130;
+  const LABEL_PAD = 22;
   const totalH = targets.length * CIRCLE + (targets.length - 1) * GAP;
+  const minY = TOP_SAFE;
+  const maxY = Math.max(minY, SCREEN_H - BOTTOM_SAFE - LABEL_PAD - totalH);
   let startY = cardRect.y + cardRect.h / 2 - totalH / 2;
-  startY = Math.max(40, Math.min(startY, SCREEN_H - totalH - 40));
+  startY = Math.max(minY, Math.min(startY, maxY));
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
