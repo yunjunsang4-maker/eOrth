@@ -1,0 +1,87 @@
+// 과거여행 스캔 순수 로직 검증 (jest 미사용). 실행: npx tsx src/utils/pastTripScan.verify.ts
+import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto } from './pastTripScan';
+
+let failures = 0;
+function assert(cond: boolean, msg: string) {
+  if (cond) console.log('  ✓ ' + msg);
+  else { failures++; console.error('  ✗ ' + msg); }
+}
+
+const DAY = 24 * 60 * 60 * 1000;
+function p(uri: string, code: string | null, t: number): ScannedPhoto {
+  const info = code ? countryInfoFromCode(code) : { country: '', countryName: '', countryFlag: '' };
+  return { uri, creationTime: t, countryCode: code, countryName: info.countryName, countryFlag: info.countryFlag };
+}
+
+// countryInfoFromCode
+{
+  const jp = countryInfoFromCode('JP');
+  assert(jp.countryName === '일본' && jp.countryFlag === '🇯🇵' && jp.country === '🇯🇵 일본', '알려진 코드 매핑');
+  const kr = countryInfoFromCode('KR');
+  assert(kr.countryName === '한국', 'KR 매핑 추가됨');
+  const unknown = countryInfoFromCode('ZZ', 'Zedland');
+  assert(unknown.countryFlag === '✈️' && unknown.countryName === 'Zedland', '미등록 코드 폴백');
+}
+
+// 홈국가/무GPS 제외
+{
+  const photos = [
+    p('a', 'KR', 100),       // 국내 → 제외
+    p('b', null, 200),       // 무GPS → 제외
+    p('c', 'JP', 300),       // 해외 → 포함
+  ];
+  const trips = clusterForeignTrips(photos, 'KR');
+  assert(trips.length === 1 && trips[0].countryName === '일본', '국내·무GPS 제외, 해외만');
+  assert(trips[0].photoCount === 1, '여행 사진 수 1');
+}
+
+// 같은 국가 7일 이내 = 한 여행
+{
+  const photos = [
+    p('a', 'JP', 0),
+    p('b', 'JP', 2 * DAY),
+    p('c', 'JP', 5 * DAY),
+  ];
+  const trips = clusterForeignTrips(photos, 'KR');
+  assert(trips.length === 1 && trips[0].photoCount === 3, '같은국가 7일내 1개 여행');
+}
+
+// 같은 국가 7일 초과 = 별도 여행
+{
+  const photos = [
+    p('a', 'JP', 0),
+    p('b', 'JP', 30 * DAY),
+  ];
+  const trips = clusterForeignTrips(photos, 'KR');
+  assert(trips.length === 2, '같은국가 멀리 떨어지면 2개 여행');
+}
+
+// 다른 국가 = 별도 여행, 최신순 정렬
+{
+  const photos = [
+    p('a', 'JP', 0),
+    p('b', 'FR', 10 * DAY),
+  ];
+  const trips = clusterForeignTrips(photos, 'KR');
+  assert(trips.length === 2, '다른국가 2개 여행');
+  assert(trips[0].countryName === '프랑스', '최신 여행이 앞(내림차순)');
+}
+
+// 홈국가가 JP면 KR이 해외로 포함
+{
+  const photos = [p('a', 'KR', 0), p('b', 'JP', 10)];
+  const trips = clusterForeignTrips(photos, 'JP');
+  assert(trips.length === 1 && trips[0].countryName === '한국', '홈=JP일 때 KR은 해외');
+}
+
+// 날짜 포맷/필드
+{
+  const photos = [p('a', 'JP', Date.UTC(2025, 2, 1)), p('b', 'JP', Date.UTC(2025, 2, 5))];
+  const trips = clusterForeignTrips(photos, 'KR');
+  assert(/^\d{4}\.\d{2}\.\d{2}$/.test(trips[0].startDate), 'startDate YYYY.MM.DD');
+  assert(trips[0].medias.length === 1 && trips[0].medias[0] === 'a', '대표 미디어=첫 사진');
+  assert(trips[0].title === '일본 여행', '제목 국가단위');
+}
+
+console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);
+process.exit(failures === 0 ? 0 : 1);
