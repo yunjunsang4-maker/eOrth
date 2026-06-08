@@ -35,6 +35,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [scannedTrips, setScannedTrips] = useState<ScannedTrip[]>([]);
   const [isImporting, setIsImporting] = useState(false);
+  const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
 
   // Sync selected IDs when scannedTrips change
   useEffect(() => {
@@ -77,19 +78,14 @@ export default function TravelImportScreen({ navigation }: Props) {
 
   const requestPermission = async () => {
     try {
+      // 사진(MediaLibrary) 권한만 요청한다. 위치 권한은 불필요:
+      // info.location은 사진 EXIF의 GPS이고, reverseGeocodeAsync는 좌표를 직접 받는다.
       const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync(false);
 
       if (mediaStatus === 'granted' || (mediaStatus as string) === 'limited') {
         setPermissionStatus('granted');
-
-        // Request location permission as well (optional, but recommended for geocoding)
-        try {
-          const { status: locStatus } = await Location.requestForegroundPermissionsAsync();
-          startScan(locStatus === 'granted');
-        } catch (locErr) {
-          console.warn('Failed to request location permission:', locErr);
-          startScan(false);
-        }
+        setIsLimited((mediaStatus as string) === 'limited');
+        startScan();
       } else {
         setPermissionStatus('denied');
         setScanFinished(true);
@@ -101,79 +97,132 @@ export default function TravelImportScreen({ navigation }: Props) {
     }
   };
 
-  const startScan = async (hasLocationPermission: boolean) => {
+  // ────────────────────────────────────────────────────────────────────────
+  // startScan 데이터 흐름:
+  //   1) 권한    : MediaLibrary(사진) 권한만 사용. 위치 권한 불필요
+  //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
+  //   2) 전체스캔: getAssetsAsync를 endCursor/hasNextPage로 페이지네이션해 갤러리 전체 순회
+  //                (creationTime 정렬, 안전 상한 MAX_ASSETS).
+  //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:true})로 EXIF 위치 추출
+  //                (iCloud 원본도 내려받아 읽음). 위경도가 유한한 숫자인 사진만 통과.
+  //   4) 국가판정: 좌표를 0.5도 버킷으로 캐싱, reverseGeocodeAsync를 순차(250ms 간격,
+  //                실패 시 500ms 후 1회 재시도)로 호출해 isoCountryCode 획득(레이트리밋 회피).
+  //   5) 클러스터: clusterForeignTrips(scanned, homeCountryCode) → 거주국가 밖 + 7일 묶음.
+  // ────────────────────────────────────────────────────────────────────────
+  const startScan = async () => {
     setScanning(true);
     setProgress(0);
     setScannedTrips([]);
 
+    const MAX_ASSETS = 5000; // 안전 상한
+    const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
     try {
-      const { assets } = await MediaLibrary.getAssetsAsync({
-        first: 150,
-        mediaType: 'photo',
-        sortBy: 'creationTime',
-      });
-      if (!assets || assets.length === 0) throw new Error('No photos found in gallery');
+      // ── 2) 갤러리 전체 페이지네이션 스캔 ──
+      const assets: MediaLibrary.Asset[] = [];
+      let after: string | undefined = undefined;
+      let hasNext = true;
+      while (hasNext && assets.length < MAX_ASSETS) {
+        const page = await MediaLibrary.getAssetsAsync({
+          first: 100,
+          after,
+          mediaType: 'photo',
+          sortBy: 'creationTime',
+        });
+        if (page.assets.length === 0) break;
+        assets.push(...page.assets);
+        after = page.endCursor;
+        hasNext = page.hasNextPage;
+      }
+      if (assets.length === 0) throw new Error('No photos found in gallery');
 
       const totalAssets = assets.length;
-      const assetInfos: { id: string; uri: string; creationTime: number; location: any }[] = [];
-      const chunkSize = 15;
 
+      // ── 3) GPS 추출 (위치 권한과 무관, iCloud 다운로드 허용) ──
+      const located: { uri: string; creationTime: number; lat: number; lon: number }[] = [];
+      const chunkSize = 15;
       for (let i = 0; i < totalAssets; i += chunkSize) {
         const chunk = assets.slice(i, i + chunkSize);
         const results = await Promise.all(
           chunk.map(async (asset) => {
             try {
-              const info = await MediaLibrary.getAssetInfoAsync(asset.id);
-              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
+              const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: true });
+              return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
             } catch {
-              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined };
+              return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
             }
           })
         );
-        assetInfos.push(...results);
-        setProgress(Math.min(60, Math.round(((i + chunk.length) / totalAssets) * 60)));
+        for (const r of results) {
+          const lat = Number(r.location?.latitude);
+          const lon = Number(r.location?.longitude);
+          if (r.location && Number.isFinite(lat) && Number.isFinite(lon)) {
+            located.push({ uri: r.uri, creationTime: r.creationTime, lat, lon });
+          }
+        }
+        setProgress(Math.min(55, Math.round(((i + chunk.length) / totalAssets) * 55)));
       }
 
-      // 지오코딩 (해외 사진만 ScannedPhoto로 수집)
+      // ── 4) 국가 판정 (0.5도 버킷 캐시 + 순차 호출 + 재시도로 레이트리밋 회피) ──
       const geocodeCache: Record<string, { code: string; name: string } | null> = {};
+      const bucketKey = (lat: number, lon: number) =>
+        `${Math.round(lat * 2) / 2}_${Math.round(lon * 2) / 2}`; // 0.5도 단위(국가 판정엔 충분)
+
+      const reverseOnce = async (lat: number, lon: number) => {
+        const res = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
+        const addr = res && res[0];
+        return addr?.isoCountryCode
+          ? { code: addr.isoCountryCode, name: addr.country || addr.isoCountryCode }
+          : null;
+      };
+
       const scanned: ScannedPhoto[] = [];
+      let geocodedOk = 0;
 
-      for (let i = 0; i < assetInfos.length; i++) {
-        const info = assetInfos[i];
-        setProgress(60 + Math.min(35, Math.round((i / totalAssets) * 35)));
+      for (let i = 0; i < located.length; i++) {
+        const p = located[i];
+        setProgress(55 + Math.min(40, Math.round((i / Math.max(1, located.length)) * 40)));
 
-        // 위치 좌표를 숫자로 강제 변환 후 유효성 검사 (iOS에서 문자열로 올 수 있어 toFixed 크래시 방지)
-        const lat = Number(info.location?.latitude);
-        const lon = Number(info.location?.longitude);
-        if (!(hasLocationPermission && info.location && Number.isFinite(lat) && Number.isFinite(lon))) {
-          continue; // GPS 없음/좌표 이상 → 제외
-        }
-        const cacheKey = `${lat.toFixed(2)}_${lon.toFixed(2)}`;
-
-        let geo = geocodeCache[cacheKey];
+        const key = bucketKey(p.lat, p.lon);
+        let geo = geocodeCache[key];
         if (geo === undefined) {
           try {
-            const res = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
-            const addr = res && res[0];
-            geo = addr?.isoCountryCode ? { code: addr.isoCountryCode, name: addr.country || addr.isoCountryCode } : null;
+            geo = await reverseOnce(p.lat, p.lon);
           } catch {
-            geo = null;
+            await sleep(500); // 실패 → 잠시 후 1회 재시도
+            try {
+              geo = await reverseOnce(p.lat, p.lon);
+            } catch {
+              geo = null;
+            }
           }
-          geocodeCache[cacheKey] = geo;
+          geocodeCache[key] = geo;
+          await sleep(250); // 호출 간격(레이트리밋 회피). 캐시 히트 시엔 대기 없음
         }
-        if (!geo) continue; // 지오코딩 실패 → 제외
+        if (!geo) continue;
+        geocodedOk++;
 
         const cinfo = countryInfoFromCode(geo.code, geo.name);
         scanned.push({
-          uri: info.uri,
-          creationTime: info.creationTime,
+          uri: p.uri,
+          creationTime: p.creationTime,
           countryCode: geo.code,
           countryName: cinfo.countryName,
           countryFlag: cinfo.countryFlag,
         });
       }
 
+      // ── 5) 클러스터링 (거주국가 밖만) ──
+      const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
       const trips = clusterForeignTrips(scanned, homeCountryCode);
+
+      // 디버그 로그
+      console.log('[TravelImport] 총 스캔 사진:', totalAssets);
+      console.log('[TravelImport] location 있던 사진:', located.length);
+      console.log('[TravelImport] 지오코딩 성공:', geocodedOk);
+      console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
+      console.log('[TravelImport] 최종 여행 클러스터:', trips.length);
+
       setProgress(100);
       setTimeout(() => {
         setScanning(false);
@@ -320,7 +369,9 @@ export default function TravelImportScreen({ navigation }: Props) {
             </View>
             <Text style={styles.scanText}>해외 여행 사진을 찾지 못했어요</Text>
             <Text style={[styles.resultDesc, { textAlign: 'center', paddingHorizontal: 20 }]}>
-              거주국가 밖에서 GPS가 기록된 사진이 없어요.{'\n'}위치 접근을 허용하면 더 잘 찾을 수 있어요.
+              {isLimited
+                ? '선택한 사진만 분석했어요.\n설정 > 사진에서 "모든 사진 허용"으로 바꾸면\n과거 여행을 더 잘 찾을 수 있어요.'
+                : '거주국가 밖에서 GPS가 기록된 사진이 없어요.\n사진에 위치 정보(GPS)가 있어야 분석할 수 있어요.'}
             </Text>
             <TouchableOpacity style={styles.permissionBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
               <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
@@ -338,6 +389,11 @@ export default function TravelImportScreen({ navigation }: Props) {
               총 <Text style={styles.accentText}>{scannedTrips.length}개</Text>의 해외 여행을 발견했습니다!
             </Text>
             <Text style={styles.resultDesc}>가져올 여행 기록을 선택해 주세요. 지구본에 바로 연동됩니다.</Text>
+            {isLimited && (
+              <Text style={[styles.resultDesc, { color: Colors.primary, marginTop: -8 }]}>
+                💡 선택한 사진만 분석됨 — "모든 사진 허용" 시 더 많은 여행을 찾을 수 있어요.
+              </Text>
+            )}
 
             <View style={styles.listWrap}>
               {scannedTrips.map((trip) => {
