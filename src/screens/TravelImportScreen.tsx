@@ -142,11 +142,12 @@ export default function TravelImportScreen({ navigation }: Props) {
         const info = assetInfos[i];
         setProgress(60 + Math.min(35, Math.round((i / totalAssets) * 35)));
 
-        if (!(hasLocationPermission && info.location && info.location.latitude && info.location.longitude)) {
-          continue; // GPS 없음 → 제외
+        // 위치 좌표를 숫자로 강제 변환 후 유효성 검사 (iOS에서 문자열로 올 수 있어 toFixed 크래시 방지)
+        const lat = Number(info.location?.latitude);
+        const lon = Number(info.location?.longitude);
+        if (!(hasLocationPermission && info.location && Number.isFinite(lat) && Number.isFinite(lon))) {
+          continue; // GPS 없음/좌표 이상 → 제외
         }
-        const lat = info.location.latitude;
-        const lon = info.location.longitude;
         const cacheKey = `${lat.toFixed(2)}_${lon.toFixed(2)}`;
 
         let geo = geocodeCache[cacheKey];
