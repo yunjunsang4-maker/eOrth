@@ -5,6 +5,8 @@ import SplashScreen from '../screens/SplashScreen';
 import AppIntroScreen from '../screens/AppIntroScreen';
 import LoginScreen from '../screens/LoginScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
+import TravelImportScreen from '../screens/TravelImportScreen';
+import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
 import CountryScreen from '../screens/CountryScreen';
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
@@ -24,6 +26,7 @@ import TripDetailScreen from '../screens/TripDetailScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
 import BlogRecordScreen from '../screens/BlogRecordScreen';
 import CutRecordScreen from '../screens/CutRecordScreen';
+import CutTravelInfoScreen from '../screens/CutTravelInfoScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
 import FriendsScreen from '../screens/FriendsScreen';
@@ -88,7 +91,9 @@ export default function AppNavigator() {
         <Stack.Screen name="AppIntro" component={AppIntroScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="BasicInfo" component={BasicInfoScreen} />
-        <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen name="TravelImport" component={TravelImportScreen} />
+        <Stack.Screen name="ImportPhotoSelect" component={ImportPhotoSelectScreen} />
+        <Stack.Screen name="Main" component={TabNavigator} options={{ gestureEnabled: false }} />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
@@ -117,9 +122,22 @@ export default function AppNavigator() {
           component={PostDetailScreen}
           options={{
             cardStyle: { backgroundColor: 'transparent' },
+            // 게시물이 펼쳐지듯 줌인 + 페이드로 상세 진입
+            transitionSpec: {
+              open: { animation: 'timing', config: { duration: 300 } },
+              close: { animation: 'timing', config: { duration: 220 } },
+            },
             cardStyleInterpolator: ({ current }) => ({
               cardStyle: {
                 opacity: current.progress,
+                transform: [
+                  {
+                    scale: current.progress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.9, 1],
+                    }),
+                  },
+                ],
               },
               overlayStyle: {
                 backgroundColor: '#000',
@@ -139,6 +157,11 @@ export default function AppNavigator() {
         <Stack.Screen
           name="CutRecord"
           component={CutRecordScreen}
+          options={{ presentation: 'modal', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CutTravelInfo"
+          component={CutTravelInfoScreen}
           options={{ presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
