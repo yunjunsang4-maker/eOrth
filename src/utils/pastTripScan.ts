@@ -1,3 +1,5 @@
+import { COUNTRIES } from '../constants/countries';
+
 export interface ScannedPhoto {
   uri: string;
   creationTime: number;
@@ -23,27 +25,16 @@ export interface ScannedTrip {
   companions: string[];
 }
 
-export const COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = {
-  KR: { name: '한국', flag: '🇰🇷' },
-  JP: { name: '일본', flag: '🇯🇵' },
-  US: { name: '미국', flag: '🇺🇸' },
-  FR: { name: '프랑스', flag: '🇫🇷' },
-  IT: { name: '이탈리아', flag: '🇮🇹' },
-  GB: { name: '영국', flag: '🇬🇧' },
-  CN: { name: '중국', flag: '🇨🇳' },
-  ES: { name: '스페인', flag: '🇪🇸' },
-  TH: { name: '태국', flag: '🇹🇭' },
-  VN: { name: '베트남', flag: '🇻🇳' },
-  PH: { name: '필리핀', flag: '🇵🇭' },
-  TW: { name: '대만', flag: '🇹🇼' },
-  HK: { name: '홍콩', flag: '🇭🇰' },
-  SG: { name: '싱가포르', flag: '🇸🇬' },
-  GU: { name: '괌', flag: '🇬🇺' },
-  AU: { name: '호주', flag: '🇦🇺' },
-  CA: { name: '캐나다', flag: '🇨🇦' },
-  DE: { name: '독일', flag: '🇩🇪' },
-  CH: { name: '스위스', flag: '🇨🇭' },
-};
+// 국가 코드(ISO) → { 국문명, 국기 }
+// 앱 전체 국가 목록(constants/countries.ts)에서 자동 생성한다. 각 term의 첫 토큰이 ISO 코드.
+// → 포르투갈 등 누락 국가의 국기/국문명을 일괄 해결(하드코딩 목록 유지보수 불필요).
+const _COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = {};
+for (const c of COUNTRIES) {
+  const code = c.term.split(' ')[0].toUpperCase();
+  if (!_COUNTRY_FLAGS[code]) _COUNTRY_FLAGS[code] = { name: c.name, flag: c.flag };
+}
+_COUNTRY_FLAGS.KR = { name: '한국', flag: '🇰🇷' }; // 짧은 표기로 통일
+export const COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = _COUNTRY_FLAGS;
 
 export function countryInfoFromCode(
   code: string,

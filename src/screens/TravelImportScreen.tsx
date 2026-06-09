@@ -441,10 +441,8 @@ export default function TravelImportScreen({ navigation }: Props) {
                       </View>
                       <Text style={styles.cardTitle}>{trip.title}</Text>
                       <Text style={styles.cardDate}>{trip.startDate} ~ {trip.endDate.substring(5)}</Text>
-                      <Text style={styles.cardContent} numberOfLines={2}>{trip.content}</Text>
                       <View style={styles.cardFooter}>
                         <Text style={styles.photoCountText}>📷 사진 {trip.photoCount}장 발견</Text>
-                        <Text style={styles.ratingText}>★ {trip.rating}.0</Text>
                       </View>
                     </View>
                   </TouchableOpacity>
