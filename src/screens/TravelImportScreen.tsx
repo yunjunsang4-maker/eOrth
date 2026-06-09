@@ -16,7 +16,6 @@ import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
-import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 
@@ -41,7 +40,6 @@ interface Props {
 }
 
 export default function TravelImportScreen({ navigation }: Props) {
-  const { addRecord } = useRecords();
   const { homeCountryCode } = useSettings();
   const [permissionStatus, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
@@ -266,38 +264,17 @@ export default function TravelImportScreen({ navigation }: Props) {
   };
 
   const handleImport = () => {
-    setIsImporting(true);
-
-    // Simulate loading/saving process
-    setTimeout(() => {
-      // Add records to store
-      scannedTrips.forEach((trip) => {
-        if (selectedIds.includes(trip.id)) {
-          addRecord({
-            user: { name: '', emoji: '✈️', handle: '' }, // Replaced dynamically inside addRecord
-            country: trip.country,
-            countryName: trip.countryName,
-            countryFlag: trip.countryFlag,
-            date: trip.date,
-            startDate: trip.startDate,
-            endDate: trip.endDate,
-            rating: trip.rating,
-            content: trip.content,
-            medias: trip.medias,
-            isMyPost: true,
-            visibility: 'private',
-            viewType: 'feed',
-            weather: trip.weather,
-            companions: trip.companions,
-          });
-        }
-      });
-      setIsImporting(false);
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Main' }],
-      });
-    }, 1200);
+    const chosen = scannedTrips
+      .filter((t) => selectedIds.includes(t.id))
+      .sort((a, b) => new Date(a.startDate.replace(/\./g, '-')).getTime() - new Date(b.startDate.replace(/\./g, '-')).getTime());
+    if (chosen.length === 0) return;
+    const trips = chosen.map((t) => ({
+      id: t.id,
+      country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
+      title: t.title, date: t.date, startDate: t.startDate, endDate: t.endDate,
+      photos: t.photos, // {id?,uri}[]
+    }));
+    navigation.navigate('ImportPhotoSelect', { trips });
   };
 
   // Interpolations for Radar animation
