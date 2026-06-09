@@ -26,6 +26,7 @@ const { width } = Dimensions.get('window');
 // iOS: iCloud 최적화로 원본이 기기에서 내려가 다운로드가 필요 → 느릴 수 있음
 // Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
 const SCAN_YEARS = 1; // ⚠️ 임시: 기능 확인용 1년 조회. 원래 값은 3 (되돌릴 때 여기만 수정)
+const MIN_TRIP_PHOTOS = 30; // 이 장수 이하인 여행은 결과에서 제외 (30장 초과만 표시)
 const SCAN_NOTE =
   Platform.OS === 'ios'
     ? `☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 ${SCAN_YEARS}년간 촬영한 사진만 분석합니다.`
@@ -228,16 +229,18 @@ export default function TravelImportScreen({ navigation }: Props) {
         });
       }
 
-      // ── 5) 클러스터링 (거주국가 밖만) ──
+      // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
       const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
-      const trips = clusterForeignTrips(scanned, homeCountryCode);
+      const allTrips = clusterForeignTrips(scanned, homeCountryCode);
+      // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
+      const trips = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
 
       // 디버그 로그
       console.log('[TravelImport] 총 스캔 사진:', totalAssets);
       console.log('[TravelImport] location 있던 사진:', located.length);
       console.log('[TravelImport] 지오코딩 성공:', geocodedOk);
       console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
-      console.log('[TravelImport] 최종 여행 클러스터:', trips.length);
+      console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
       setProgress(100);
       setTimeout(() => {
