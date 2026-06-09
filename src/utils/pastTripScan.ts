@@ -1,6 +1,7 @@
 import { COUNTRIES } from '../constants/countries';
 
 export interface ScannedPhoto {
+  id?: string;
   uri: string;
   creationTime: number;
   countryCode: string | null;   // ISO 국가코드(reverse geocode). GPS 없거나 실패 시 null
@@ -21,6 +22,7 @@ export interface ScannedTrip {
   photoCount: number;
   content: string;
   medias: string[];
+  photos: { id?: string; uri: string }[];
   weather: string;
   companions: string[];
 }
@@ -65,7 +67,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     countryName: string;
     countryFlag: string;
     country: string;
-    photos: string[];
+    photos: { id?: string; uri: string }[];
     dates: number[];
   }
 
@@ -75,7 +77,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     const sameCountry = !!last && last.code === p.countryCode;
     const withinTime = !!last && p.creationTime - last.dates[last.dates.length - 1] <= SEVEN_DAYS_MS;
     if (last && sameCountry && withinTime) {
-      last.photos.push(p.uri);
+      last.photos.push({ id: p.id, uri: p.uri });
       last.dates.push(p.creationTime);
     } else {
       clusters.push({
@@ -83,7 +85,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
         countryName: p.countryName,
         countryFlag: p.countryFlag,
         country: `${p.countryFlag} ${p.countryName}`,
-        photos: [p.uri],
+        photos: [{ id: p.id, uri: p.uri }],
         dates: [p.creationTime],
       });
     }
@@ -105,7 +107,8 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
       title: `${c.countryName} 여행`,
       photoCount: c.photos.length,
       content: `${c.countryName}에서의 소중한 기록입니다. 총 ${c.photos.length}장의 사진이 타임라인에 저장됩니다.`,
-      medias: [c.photos[0]],
+      medias: [c.photos[0].uri],
+      photos: c.photos,
       weather: '맑음',
       companions: ['가족'],
     };
