@@ -479,6 +479,55 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
 
+  // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
+  // 같은 국가 + 기간이 겹치거나 7일 이내로 가까운 그룹이 있으면 그 그룹에 추가,
+  // 없으면 새 그룹(프로필 여행 카드)을 생성한다.
+  const GROUP_GAP_MS = 7 * 24 * 60 * 60 * 1000;
+  const parseRecDate = (s?: string): number | null => {
+    if (!s) return null;
+    const t = new Date(s.replace(/\./g, '-')).getTime();
+    return Number.isFinite(t) ? t : null;
+  };
+
+  const linkRecordToTrip = (rec: TravelRecord) => {
+    const country = rec.countryName;
+    const recStart = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
+    const recEnd = parseRecDate(rec.endDate) ?? recStart;
+    if (!country || recStart == null || recEnd == null) return; // 국가/날짜 없으면 매칭 불가
+
+    setTripGroups((prev) => {
+      const match = prev.find((g) => {
+        const members = g.records
+          .map((id) => records.find((r) => r.id === id))
+          .filter(Boolean) as TravelRecord[];
+        if (members.length === 0 || members[0].countryName !== country) return false;
+        let gStart = Infinity;
+        let gEnd = -Infinity;
+        for (const m of members) {
+          const s = parseRecDate(m.startDate) ?? parseRecDate(m.date);
+          const e = parseRecDate(m.endDate) ?? s;
+          if (s != null) gStart = Math.min(gStart, s);
+          if (e != null) gEnd = Math.max(gEnd, e);
+        }
+        if (!Number.isFinite(gStart) || !Number.isFinite(gEnd)) return false;
+        return recStart <= gEnd + GROUP_GAP_MS && recEnd >= gStart - GROUP_GAP_MS;
+      });
+
+      if (match) {
+        if (match.records.includes(rec.id)) return prev;
+        return prev.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
+      }
+      const newGroup: TripGroup = {
+        id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        title: `${country} 여행`,
+        records: [rec.id],
+        coverRecordId: rec.id,
+        createdAt: new Date(),
+      };
+      return [newGroup, ...prev];
+    });
+  };
+
   const addRecord = (
     data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>
   ) => {
@@ -498,6 +547,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       isDraft: false,
     };
     setRecords((prev) => [newRecord, ...prev]);
+    linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
   };
 
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
@@ -556,6 +606,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     };
     setRecords((prev) => [published, ...prev]);
     setDrafts((prev) => prev.filter((d) => d.id !== id));
+    linkRecordToTrip(published); // 프로필 여행 카드 자동 생성/연결
   };
 
   const archiveRecord = (id: string) => {
