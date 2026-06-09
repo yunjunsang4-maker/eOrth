@@ -101,8 +101,8 @@ export default function TravelImportScreen({ navigation }: Props) {
   // startScan 데이터 흐름:
   //   1) 권한    : MediaLibrary(사진) 권한만 사용. 위치 권한 불필요
   //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
-  //   2) 전체스캔: getAssetsAsync를 endCursor/hasNextPage로 페이지네이션해 갤러리 전체 순회
-  //                (creationTime 정렬, 안전 상한 MAX_ASSETS).
+  //   2) 스캔    : getAssetsAsync를 endCursor/hasNextPage로 페이지네이션. createdAfter로
+  //                최근 3년 사진만 순회(creationTime 정렬, 안전 상한 MAX_ASSETS).
   //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:true})로 EXIF 위치 추출
   //                (iCloud 원본도 내려받아 읽음). 위경도가 유한한 숫자인 사진만 통과.
   //   4) 국가판정: 좌표를 0.5도 버킷으로 캐싱, reverseGeocodeAsync를 순차(250ms 간격,
@@ -115,10 +115,11 @@ export default function TravelImportScreen({ navigation }: Props) {
     setScannedTrips([]);
 
     const MAX_ASSETS = 5000; // 안전 상한
+    const THREE_YEARS_AGO = Date.now() - 3 * 365 * 24 * 60 * 60 * 1000; // 최근 3년만 분석
     const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
     try {
-      // ── 2) 갤러리 전체 페이지네이션 스캔 ──
+      // ── 2) 최근 3년 사진 페이지네이션 스캔 ──
       const assets: MediaLibrary.Asset[] = [];
       let after: string | undefined = undefined;
       let hasNext = true;
@@ -128,6 +129,7 @@ export default function TravelImportScreen({ navigation }: Props) {
           after,
           mediaType: 'photo',
           sortBy: 'creationTime',
+          createdAfter: THREE_YEARS_AGO, // 최근 3년 사진만 (속도/범위 균형)
         });
         if (page.assets.length === 0) break;
         assets.push(...page.assets);
@@ -335,6 +337,13 @@ export default function TravelImportScreen({ navigation }: Props) {
             <TouchableOpacity style={styles.skipBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
               <Text style={styles.skipText}>건너뛰기 (수동으로 기록하기)</Text>
             </TouchableOpacity>
+
+            <View style={styles.noteBox}>
+              <Text style={styles.noteText}>
+                ☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.{'\n'}
+                최근 3년간 촬영한 사진만 분석합니다.
+              </Text>
+            </View>
           </View>
         ) : scanning ? (
           /* Scanning View */
@@ -353,6 +362,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
             <Text style={styles.scanText}>갤러리 메타데이터 분석 중...</Text>
             <Text style={styles.scanProgressText}>{progress}% 완료</Text>
+            <Text style={styles.scanSubNote}>최근 3년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요</Text>
 
             <View style={styles.progressContainer}>
               <View style={[styles.progressBar, { width: `${progress}%` }]} />
@@ -551,6 +561,30 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.medium,
+  },
+  noteBox: {
+    marginTop: Spacing[4],
+    backgroundColor: 'rgba(191, 133, 252, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(191, 133, 252, 0.2)',
+    borderRadius: BorderRadius.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  noteText: {
+    color: '#BF85FC',
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.medium,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  scanSubNote: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.regular,
+    textAlign: 'center',
+    marginBottom: Spacing[4],
+    paddingHorizontal: 24,
   },
 
   /* Scanning animation */
