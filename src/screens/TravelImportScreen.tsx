@@ -178,7 +178,9 @@ export default function TravelImportScreen({ navigation }: Props) {
       const totalAssets = assets.length;
 
       // ── 3) GPS 추출 (위치 권한과 무관, 로컬 메타데이터만 조회) ──
-      const located: { uri: string; creationTime: number; lat: number; lon: number }[] = [];
+      // asset.id를 끝까지 전달해야 저장 시 copyTripOriginals가 localUri(file://)를 얻어
+      // 복사할 수 있다 (iOS asset.uri는 ph:// 형식이라 직접 복사 불가).
+      const located: { id: string; uri: string; creationTime: number; lat: number; lon: number }[] = [];
       const chunkSize = 50; // 네트워크 없이 로컬 DB 조회라 크게 잡아도 안전
       for (let i = 0; i < totalAssets; i += chunkSize) {
         const chunk = assets.slice(i, i + chunkSize);
@@ -189,9 +191,9 @@ export default function TravelImportScreen({ navigation }: Props) {
               // shouldDownloadFromNetwork는 localUri/exif(원본 파일)에만 영향 → false로 두면
               // iCloud 최적화 사진도 원본 다운로드 없이 즉시 좌표를 읽는다.
               const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
-              return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
+              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
             } catch {
-              return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
+              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
             }
           })
         );
@@ -199,7 +201,7 @@ export default function TravelImportScreen({ navigation }: Props) {
           const lat = Number(r.location?.latitude);
           const lon = Number(r.location?.longitude);
           if (r.location && Number.isFinite(lat) && Number.isFinite(lon)) {
-            located.push({ uri: r.uri, creationTime: r.creationTime, lat, lon });
+            located.push({ id: r.id, uri: r.uri, creationTime: r.creationTime, lat, lon });
           }
         }
         setProgress(Math.min(55, Math.round(((i + chunk.length) / totalAssets) * 55)));
@@ -246,6 +248,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
         const cinfo = countryInfoFromCode(geo.code, geo.name);
         scanned.push({
+          id: p.id,
           uri: p.uri,
           creationTime: p.creationTime,
           countryCode: geo.code,

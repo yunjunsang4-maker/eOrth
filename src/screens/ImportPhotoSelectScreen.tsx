@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
-  Dimensions, ActivityIndicator, Alert, ScrollView,
+  Dimensions, ActivityIndicator, Alert, ScrollView, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
@@ -42,11 +42,15 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
   const [dayFilter, setDayFilter] = useState<string | null>(null); // null = 전체
+  // 여행별 썸네일(대표 사진) uri. 미지정/선택 해제 시 첫 번째 선택 사진으로 대체
+  const [covers, setCovers] = useState<Record<string, string>>({});
+  const [previewVisible, setPreviewVisible] = useState(false); // 기록 카드 미리보기
 
   const trip = trips[index];
   if (!trip) return null; // 방어: 빈 trips
   const sel = selected[trip.id] ?? [];
   const isLast = index === trips.length - 1;
+  const cover = covers[trip.id] && sel.includes(covers[trip.id]) ? covers[trip.id] : sel[0];
 
   // 이 여행에서 사진이 있는 날짜 목록(시간순). 선택(sel)은 uri 기준이라 필터와 무관하게 유지된다.
   const days = Array.from(
@@ -69,7 +73,14 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
     setSelected((prev) => ({ ...prev, [trip.id]: [...(prev[trip.id] ?? []), uri] }));
   };
 
+  // 다음/완료 → 바로 진행하지 않고 기록 카드 미리보기에서 썸네일을 확정하게 한다
   const next = () => {
+    if (sel.length === 0) return;
+    setPreviewVisible(true);
+  };
+
+  const confirmPreview = () => {
+    setPreviewVisible(false);
     if (!isLast) {
       setDayFilter(null); // 다음 여행으로 넘어가면 일별 필터 초기화
       setIndex((i) => i + 1);
@@ -78,13 +89,25 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
     save();
   };
 
+  const prev = () => {
+    if (index === 0) return;
+    setDayFilter(null); // 여행이 바뀌므로 일별 필터 초기화 (선택 내역은 여행별로 유지됨)
+    setIndex((i) => i - 1);
+  };
+
   const save = async () => {
     setSaving(true);
     try {
       for (const t of trips) {
         const uris = selected[t.id] ?? [];
         if (uris.length === 0) continue; // 선택 0장 → 카드 생성 안 함
-        const items: PhotoRef[] = t.photos.filter((p) => uris.includes(p.uri));
+        const coverUri = covers[t.id] && uris.includes(covers[t.id]) ? covers[t.id] : uris[0];
+        const picked = t.photos.filter((p) => uris.includes(p.uri));
+        // 썸네일(대표 사진)을 맨 앞에 복사 → medias[0]이 여행 기록 카드의 썸네일이 된다
+        const items: PhotoRef[] = [
+          ...picked.filter((p) => p.uri === coverUri),
+          ...picked.filter((p) => p.uri !== coverUri),
+        ];
         const copied = await copyTripOriginals(t.id, items);
         if (copied.length === 0) continue;
         const recId = addImportedAlbum({
@@ -92,7 +115,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
           date: t.date, startDate: t.startDate, endDate: t.endDate,
           title: t.title, medias: copied,
         });
-        addTripGroup({ title: `${t.countryFlag} ${t.title}`, records: [recId], coverRecordId: recId });
+        // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
+        addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
       }
       navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
     } catch (e) {
@@ -166,19 +190,76 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
       />
 
       <View style={st.bottom}>
-        <TouchableOpacity
-          style={[st.nextBtn, sel.length === 0 && st.nextBtnDisabled]}
-          onPress={next}
-          disabled={sel.length === 0}
-          activeOpacity={0.85}
-        >
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.nextGrad}>
-            <Text style={st.nextTxt}>
-              {sel.length === 0 ? '사진을 1장 이상 선택하세요' : isLast ? '완료' : '다음'}
-            </Text>
-          </LinearGradient>
-        </TouchableOpacity>
+        <View style={st.bottomRow}>
+          {index > 0 && (
+            <TouchableOpacity style={st.prevBtn} onPress={prev} activeOpacity={0.85}>
+              <Text style={st.prevTxt}>이전</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity
+            style={[st.nextBtn, sel.length === 0 && st.nextBtnDisabled]}
+            onPress={next}
+            disabled={sel.length === 0}
+            activeOpacity={0.85}
+          >
+            <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.nextGrad}>
+              <Text style={st.nextTxt}>
+                {sel.length === 0 ? '사진을 1장 이상 선택하세요' : isLast ? '완료' : '다음'}
+              </Text>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* 기록 카드 미리보기 + 썸네일 선택 */}
+      <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
+        <View style={st.pvOverlay}>
+          <View style={st.pvSheet}>
+            <Text style={st.pvTitle}>기록 카드 미리보기</Text>
+            <Text style={st.pvSub}>선택을 마치면 이 모습의 여행 기록 카드가 만들어져요.</Text>
+
+            {/* 카드 예시 */}
+            <View style={st.pvCard}>
+              {cover && <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+              <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']} style={st.pvCardShade} />
+              <View style={st.pvCardInfo}>
+                <Text style={st.pvCardTitle}>{trip.countryFlag} {trip.title}</Text>
+                <Text style={st.pvCardDate}>
+                  {trip.startDate} ~ {trip.endDate.substring(5)}
+                </Text>
+              </View>
+            </View>
+
+            {/* 썸네일 선택 */}
+            <Text style={st.pvPickLabel}>카드 썸네일로 쓸 사진을 골라주세요</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.pvStrip}>
+              {sel.map((uri) => {
+                const on = uri === cover;
+                return (
+                  <TouchableOpacity
+                    key={uri}
+                    onPress={() => setCovers((prev) => ({ ...prev, [trip.id]: uri }))}
+                    activeOpacity={0.85}
+                  >
+                    <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={st.pvBtnRow}>
+              <TouchableOpacity style={st.pvBackBtn} onPress={() => setPreviewVisible(false)} activeOpacity={0.85}>
+                <Text style={st.pvBackTxt}>다시 선택</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={st.pvOkBtn} onPress={confirmPreview} activeOpacity={0.85}>
+                <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.pvOkGrad}>
+                  <Text style={st.pvOkTxt}>{isLast ? '이대로 만들기' : '확인하고 다음'}</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -206,8 +287,44 @@ const st = StyleSheet.create({
   checkOn: { backgroundColor: '#7B61FF', borderColor: '#7B61FF' },
   checkTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' },
   bottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 40, backgroundColor: 'rgba(10,1,24,0.95)' },
-  nextBtn: { borderRadius: 999, overflow: 'hidden' },
+  bottomRow: { flexDirection: 'row', gap: 10 },
+  prevBtn: {
+    paddingHorizontal: 24, borderRadius: 999, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center',
+  },
+  prevTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
+  nextBtn: { flex: 1, borderRadius: 999, overflow: 'hidden' },
   nextBtnDisabled: { opacity: 0.5 },
   nextGrad: { paddingVertical: 18, alignItems: 'center' },
   nextTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  /* 기록 카드 미리보기 모달 */
+  pvOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  pvSheet: {
+    backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 40,
+  },
+  pvTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  pvSub: { color: '#A1A1B0', fontSize: 13, marginBottom: 16 },
+  pvCard: {
+    width: '100%', height: 180, borderRadius: 20, overflow: 'hidden',
+    backgroundColor: '#2A2735', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  pvCardShade: { ...StyleSheet.absoluteFillObject },
+  pvCardInfo: { position: 'absolute', left: 14, right: 14, bottom: 12 },
+  pvCardTitle: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginBottom: 2 },
+  pvCardDate: { color: 'rgba(255,255,255,0.85)', fontSize: 12, fontWeight: '500' },
+  pvPickLabel: { color: '#BF85FC', fontSize: 13, fontWeight: '700', marginTop: 16, marginBottom: 8 },
+  pvStrip: { gap: 8 },
+  pvThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: '#2A2735' },
+  pvThumbOn: { borderWidth: 2.5, borderColor: '#7B61FF' },
+  pvBtnRow: { flexDirection: 'row', gap: 10, marginTop: 20 },
+  pvBackBtn: {
+    paddingHorizontal: 20, borderRadius: 999, borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)', alignItems: 'center', justifyContent: 'center',
+  },
+  pvBackTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  pvOkBtn: { flex: 1, borderRadius: 999, overflow: 'hidden' },
+  pvOkGrad: { paddingVertical: 16, alignItems: 'center' },
+  pvOkTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
 });

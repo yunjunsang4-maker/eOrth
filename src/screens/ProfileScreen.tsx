@@ -308,6 +308,7 @@ interface TripThumbnail {
   date: string;
   color: string;
   records: { id: string; viewType: string }[];
+  coverUri?: string; // 대표 기록의 첫 사진 — 있으면 카드 썸네일 배경으로 사용
 }
 
 const TRIP_THUMBNAILS: TripThumbnail[] = [
@@ -1508,23 +1509,33 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         .filter(Boolean) as typeof records;
 
       const firstRec = groupRecords[0];
+      const coverRec = groupRecords.find(r => r.id === group.coverRecordId) ?? firstRec;
       const uniqueViewTypes = Array.from(new Set(groupRecords.map(r => r.viewType || 'feed')));
+
+      // 카드가 `${countryFlag} ${title}`로 그리므로, 제목에 이미 국기가 박혀 있으면 떼어낸다
+      // (과거에 "🇺🇸 미국 여행" 형식으로 저장된 그룹 대비 방어)
+      const flag = firstRec?.countryFlag || '';
+      const title = flag && group.title.startsWith(flag)
+        ? group.title.slice(flag.length).trim()
+        : group.title;
 
       return {
         id: group.id,
         emoji: firstRec?.user.emoji || '🗼',
-        title: group.title,
+        title,
         country: firstRec?.countryName || '',
         countryFlag: firstRec?.countryFlag || '',
         date: firstRec?.date ? firstRec.date.slice(0, 7) : '',
         color: TRIP_GRADIENT_COLORS[group.id] ? group.id : 'trip-japan',
         records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
         uniqueViewTypes,
+        coverUri: coverRec?.medias?.[0], // import 시 선택한 썸네일이 medias[0]에 위치
       };
     }).filter(t => t.records.length > 0);
   }, [tripGroups, records]);
 
-  // import/기록 기반 여행 카드(mappedThumbnails)를 하드코딩 trips 앞에 병합해 표시
+  // import/기록 기반 여행 카드(mappedThumbnails)를 맨 앞에 병합
+  // → 새로 만든 카드가 기본으로 큰 메인 카드 자리를 차지하고, 기존 카드는 그리드로 밀린다
   const displayTrips = useMemo(
     () => [...mappedThumbnails, ...trips],
     [mappedThumbnails, trips]
@@ -1731,9 +1742,22 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
               end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
-            <View style={thumbSt.mainEmojiWrap}>
-              <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
-            </View>
+            {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
+            {displayTrips[0].coverUri ? (
+              <>
+                <Image source={{ uri: displayTrips[0].coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <LinearGradient
+                  colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
+                  style={StyleSheet.absoluteFill}
+                />
+                {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
+                <View style={thumbSt.mainEmojiWrap} />
+              </>
+            ) : (
+              <View style={thumbSt.mainEmojiWrap}>
+                <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
+              </View>
+            )}
             <BlurView
               intensity={48}
               tint="dark"
@@ -1784,9 +1808,22 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
                   end={{ x: 0.5, y: 1 }}
                   style={StyleSheet.absoluteFill}
                 />
-                <View style={thumbSt.gridEmojiWrap}>
-                  <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
-                </View>
+                {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
+                {trip.coverUri ? (
+                  <>
+                    <Image source={{ uri: trip.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                    <LinearGradient
+                      colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
+                      style={StyleSheet.absoluteFill}
+                    />
+                    {/* flex:1 스페이서 — 정보 바(블러)를 하단으로 밀어준다 */}
+                    <View style={thumbSt.gridEmojiWrap} />
+                  </>
+                ) : (
+                  <View style={thumbSt.gridEmojiWrap}>
+                    <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
+                  </View>
+                )}
                 <BlurView
                   intensity={44}
                   tint="dark"
