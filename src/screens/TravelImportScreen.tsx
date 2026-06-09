@@ -25,14 +25,15 @@ const { width } = Dimensions.get('window');
 // 플랫폼별 안내 문구
 // iOS: iCloud 최적화로 원본이 기기에서 내려가 다운로드가 필요 → 느릴 수 있음
 // Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
+const SCAN_YEARS = 1; // ⚠️ 임시: 기능 확인용 1년 조회. 원래 값은 3 (되돌릴 때 여기만 수정)
 const SCAN_NOTE =
   Platform.OS === 'ios'
-    ? '☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 3년간 촬영한 사진만 분석합니다.'
-    : '📷 기기에 저장된 최근 3년 사진을 분석합니다.\n클라우드에만 있는(기기에서 내린) 사진은 제외될 수 있어요.';
+    ? `☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 ${SCAN_YEARS}년간 촬영한 사진만 분석합니다.`
+    : `📷 기기에 저장된 최근 ${SCAN_YEARS}년 사진을 분석합니다.\n클라우드에만 있는(기기에서 내린) 사진은 제외될 수 있어요.`;
 const SCAN_SUBNOTE =
   Platform.OS === 'ios'
-    ? '최근 3년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요'
-    : '기기에 저장된 최근 3년 사진을 분석 중이에요';
+    ? `최근 ${SCAN_YEARS}년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요`
+    : `기기에 저장된 최근 ${SCAN_YEARS}년 사진을 분석 중이에요`;
 
 interface Props {
   navigation: any;
@@ -115,7 +116,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   //   1) 권한    : MediaLibrary(사진) 권한만 사용. 위치 권한 불필요
   //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
   //   2) 스캔    : getAssetsAsync를 endCursor/hasNextPage로 페이지네이션. createdAfter로
-  //                최근 3년 사진만 순회(creationTime 정렬, 안전 상한 MAX_ASSETS).
+  //                최근 SCAN_YEARS년 사진만 순회(creationTime 정렬, 안전 상한 MAX_ASSETS).
   //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:true})로 EXIF 위치 추출
   //                (iCloud 원본도 내려받아 읽음). 위경도가 유한한 숫자인 사진만 통과.
   //   4) 국가판정: 좌표를 0.5도 버킷으로 캐싱, reverseGeocodeAsync를 순차(250ms 간격,
@@ -128,7 +129,7 @@ export default function TravelImportScreen({ navigation }: Props) {
     setScannedTrips([]);
 
     const MAX_ASSETS = 5000; // 안전 상한
-    const THREE_YEARS_AGO = Date.now() - 3 * 365 * 24 * 60 * 60 * 1000; // 최근 3년만 분석
+    const CREATED_AFTER = Date.now() - SCAN_YEARS * 365 * 24 * 60 * 60 * 1000; // 최근 SCAN_YEARS년만 분석
     const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
     try {
@@ -142,7 +143,7 @@ export default function TravelImportScreen({ navigation }: Props) {
           after,
           mediaType: 'photo',
           sortBy: 'creationTime',
-          createdAfter: THREE_YEARS_AGO, // 최근 3년 사진만 (속도/범위 균형)
+          createdAfter: CREATED_AFTER, // 최근 SCAN_YEARS년 사진만 (속도/범위 균형)
         });
         if (page.assets.length === 0) break;
         assets.push(...page.assets);
