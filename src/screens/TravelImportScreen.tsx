@@ -9,6 +9,7 @@ import {
   Animated,
   ActivityIndicator,
   Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
@@ -20,6 +21,18 @@ import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 
 const { width } = Dimensions.get('window');
+
+// 플랫폼별 안내 문구
+// iOS: iCloud 최적화로 원본이 기기에서 내려가 다운로드가 필요 → 느릴 수 있음
+// Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
+const SCAN_NOTE =
+  Platform.OS === 'ios'
+    ? '☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 3년간 촬영한 사진만 분석합니다.'
+    : '📷 기기에 저장된 최근 3년 사진을 분석합니다.\n클라우드에만 있는(기기에서 내린) 사진은 제외될 수 있어요.';
+const SCAN_SUBNOTE =
+  Platform.OS === 'ios'
+    ? '최근 3년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요'
+    : '기기에 저장된 최근 3년 사진을 분석 중이에요';
 
 interface Props {
   navigation: any;
@@ -339,10 +352,7 @@ export default function TravelImportScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             <View style={styles.noteBox}>
-              <Text style={styles.noteText}>
-                ☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.{'\n'}
-                최근 3년간 촬영한 사진만 분석합니다.
-              </Text>
+              <Text style={styles.noteText}>{SCAN_NOTE}</Text>
             </View>
           </View>
         ) : scanning ? (
@@ -362,7 +372,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
             <Text style={styles.scanText}>갤러리 메타데이터 분석 중...</Text>
             <Text style={styles.scanProgressText}>{progress}% 완료</Text>
-            <Text style={styles.scanSubNote}>최근 3년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요</Text>
+            <Text style={styles.scanSubNote}>{SCAN_SUBNOTE}</Text>
 
             <View style={styles.progressContainer}>
               <View style={[styles.progressBar, { width: `${progress}%` }]} />
