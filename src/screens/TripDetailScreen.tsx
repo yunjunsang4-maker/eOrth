@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,8 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Image,
+  TextInput,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -31,6 +33,10 @@ const COLORS = {
   blogBg: 'rgba(167,139,250,0.06)',
   albumAccent: '#FFA657',
   albumBg: 'rgba(255,166,87,0.06)',
+  snapAccent: '#FFD60A',
+  snapBg: 'rgba(255,214,10,0.06)',
+  cutAccent: '#BF85FC',
+  cutBg: 'rgba(191,133,252,0.06)',
 };
 
 const VIEW_CONFIG: Record<string, {
@@ -53,9 +59,21 @@ const VIEW_CONFIG: Record<string, {
   },
   album: {
     icon: '📷',
-    name: '앨범',
+    name: '사진첩',
     accent: COLORS.albumAccent,
     gradient: ['rgba(255,166,87,0.12)', 'rgba(255,166,87,0.02)'],
+  },
+  snap: {
+    icon: '⚡',
+    name: '스냅',
+    accent: COLORS.snapAccent,
+    gradient: ['rgba(255,214,10,0.12)', 'rgba(255,214,10,0.02)'],
+  },
+  cut: {
+    icon: '🎞️',
+    name: '스트립',
+    accent: COLORS.cutAccent,
+    gradient: ['rgba(191,133,252,0.12)', 'rgba(191,133,252,0.02)'],
   },
 };
 
@@ -78,7 +96,24 @@ export default function TripDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
-  const { records } = useRecords();
+  const { records, tripGroups, updateTripGroup } = useRecords();
+
+  const currentGroup = tripGroups.find((g) => g.id === trip.id);
+  const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(titleToDisplay);
+
+  useEffect(() => {
+    setEditedTitle(titleToDisplay);
+  }, [titleToDisplay]);
+
+  const handleSaveTitle = () => {
+    if (editedTitle.trim()) {
+      updateTripGroup(trip.id, { title: editedTitle.trim() });
+      setIsEditing(false);
+    }
+  };
 
   // 이 여행의 국가와 매칭되는 실제 기록 가져오기
   const matchedRecords = records.filter(
@@ -113,15 +148,9 @@ export default function TripDetailScreen() {
   }, []);
 
   const handleRecordPress = (rec: TravelRecord) => {
+    // 기록 전체를 넘겨야 사진첩(medias)·본문 등 실제 콘텐츠가 상세 화면에 표시된다
     navigation.navigate('TripRecord', {
-      record: {
-        id: rec.id,
-        country: `${trip.countryFlag} ${trip.country}`,
-        countryName: trip.country,
-        countryFlag: trip.countryFlag,
-        emoji: trip.emoji,
-        viewType: rec.viewType || 'feed',
-      },
+      record: rec,
       viewType: rec.viewType || 'feed',
     });
   };
@@ -134,8 +163,28 @@ export default function TripDetailScreen() {
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={s.headerCenter}>
-          <Text style={s.headerFlag}>{trip.countryFlag}</Text>
-          <Text style={s.headerTitle}>{trip.title}</Text>
+          {isEditing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TextInput
+                value={editedTitle}
+                onChangeText={setEditedTitle}
+                style={s.headerInput}
+                autoFocus
+                onSubmitEditing={handleSaveTitle}
+              />
+              <TouchableOpacity onPress={handleSaveTitle} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setIsEditing(false); setEditedTitle(titleToDisplay); }} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => setIsEditing(true)}>
+              <Text style={s.headerTitle}>{titleToDisplay}</Text>
+              <Text style={{ fontSize: 13, color: COLORS.textDim }}>✏️</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={s.backBtn} />
       </Animated.View>
@@ -197,9 +246,12 @@ export default function TripDetailScreen() {
                     onPress={() => handleRecordPress(record)}
                   >
                     {rec.viewType === 'feed' && <FeedCard record={record} accent={config.accent} />}
+                    {rec.viewType === 'blog' && <BlogCard record={record} accent={config.accent} />}
                     {rec.viewType === 'moment' && <MomentCard record={record} accent={config.accent} />}
                     {rec.viewType === 'storyboard' && <StoryboardCard record={record} accent={config.accent} />}
                     {rec.viewType === 'album' && <AlbumCard record={record} accent={config.accent} />}
+                    {rec.viewType === 'snap' && <SnapCard record={record} accent={config.accent} />}
+                    {rec.viewType === 'cut' && <CutCard record={record} accent={config.accent} />}
                   </TouchableOpacity>
                 ))
               ) : (
@@ -353,6 +405,9 @@ function StoryboardCard({ record, accent }: { record: TravelRecord; accent: stri
 
 // ─── 앨범 카드 ───
 function AlbumCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const medias = record.medias ?? [];
+  const cells = medias.slice(0, 6);
+  const extra = medias.length - cells.length; // 7장 이상이면 마지막 칸에 +N 표시
   return (
     <View style={[card.album, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -361,18 +416,31 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* 앨범 그리드 플레이스홀더 */}
+      {/* 사진첩 그리드 — 실제 사진이 있으면 썸네일, 없으면 플레이스홀더 */}
       <View style={card.albumGrid}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <View key={i} style={[card.albumCell, { backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
-            {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
-            {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
-            {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
-            {i === 3 && <Text style={card.albumCellIcon}>🚠</Text>}
-            {i === 4 && <Text style={card.albumCellIcon}>❄️</Text>}
-            {i === 5 && <Text style={{ fontSize: 11, color: accent }}>+</Text>}
-          </View>
-        ))}
+        {cells.length > 0 ? (
+          cells.map((uri, i) => (
+            <View key={i} style={[card.albumCell, card.albumCellPhoto]}>
+              <Image source={{ uri }} style={card.albumPhoto} resizeMode="cover" />
+              {i === cells.length - 1 && extra > 0 && (
+                <View style={card.albumMoreOverlay}>
+                  <Text style={card.albumMoreTxt}>+{extra}</Text>
+                </View>
+              )}
+            </View>
+          ))
+        ) : (
+          [0, 1, 2, 3, 4, 5].map((i) => (
+            <View key={i} style={[card.albumCell, { backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
+              {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
+              {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
+              {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
+              {i === 3 && <Text style={card.albumCellIcon}>🚠</Text>}
+              {i === 4 && <Text style={card.albumCellIcon}>❄️</Text>}
+              {i === 5 && <Text style={{ fontSize: 11, color: accent }}>+</Text>}
+            </View>
+          ))
+        )}
       </View>
       {/* 설명 */}
       <Text style={card.albumContent} numberOfLines={2}>{record.content}</Text>
@@ -384,6 +452,176 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
             💡 {record.memo}
           </Text>
         )}
+      </View>
+    </View>
+  );
+}
+
+// ─── 블로그 카드 ───
+function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const getBlogExcerpt = () => {
+    if (record.blogBlocks && record.blogBlocks.length > 0) {
+      const textBlock = record.blogBlocks.find((b) => b.type === 'text');
+      if (textBlock) return textBlock.value;
+    }
+    return record.content;
+  };
+
+  const getBlogTitle = () => {
+    if (record.blogBlocks && record.blogBlocks.length > 0) {
+      const headingBlock = record.blogBlocks.find((b) => b.type === 'heading');
+      if (headingBlock) return headingBlock.value;
+    }
+    return '블로그 여행기';
+  };
+
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>블로그</Text>
+        </View>
+      </View>
+      <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={1}>
+        {getBlogTitle()}
+      </Text>
+      <Text style={card.feedContent} numberOfLines={2}>
+        {getBlogExcerpt()}
+      </Text>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <Text style={card.feedStat}>💬 {record.comments}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── 스냅 카드 ───
+function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>스냅</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
+        {record.snapBackUri ? (
+          <Image
+            source={{ uri: record.snapBackUri }}
+            style={{ width: 60, height: 80, borderRadius: 6, backgroundColor: '#222' }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 60,
+              height: 80,
+              borderRadius: 6,
+              backgroundColor: '#2A2A3A',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>📸</Text>
+          </View>
+        )}
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 13, color: '#FFF', fontStyle: 'italic' }}>
+            "{record.snapCaption || '오늘의 순간'}"
+          </Text>
+          {record.snapLateSeconds !== undefined && (
+            <Text style={{ fontSize: 11, color: accent, marginTop: 4 }}>
+              ⏱ {record.snapLateSeconds}초 늦음
+            </Text>
+          )}
+        </View>
+      </View>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <Text style={card.feedStat}>💬 {record.comments}</Text>
+      </View>
+    </View>
+  );
+}
+
+// ─── 스트립 카드 ───
+function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const photos = record.cutPhoto?.photos ?? [];
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>스트립</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+        {photos.slice(0, 4).map((p, i) => (
+          <Image
+            key={i}
+            source={{ uri: p }}
+            style={{ width: 45, height: 60, borderRadius: 4, backgroundColor: '#222' }}
+          />
+        ))}
+        {photos.length === 0 && (
+          <View
+            style={{
+              width: 45,
+              height: 60,
+              borderRadius: 4,
+              backgroundColor: '#2A2A3A',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>🎞️</Text>
+          </View>
+        )}
+      </View>
+      <Text style={card.feedContent} numberOfLines={1}>
+        {record.content || '네컷 사진'}
+      </Text>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <Text style={card.feedStat}>💬 {record.comments}</Text>
       </View>
     </View>
   );
@@ -410,6 +648,31 @@ const s = StyleSheet.create({
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerFlag: { fontSize: 18 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3 },
+  headerInput: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.white,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 120,
+  },
+  saveTitleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveTitleTxt: {
+    fontSize: 12,
+    color: COLORS.white,
+    fontWeight: '700',
+  },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 60 },
   // 히어로
@@ -464,6 +727,7 @@ const card = StyleSheet.create({
   feedDate: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   feedTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   feedTypeText: { fontSize: 10, fontWeight: '700' },
+  feedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, marginBottom: 4 },
   feedContent: { fontSize: 14, color: COLORS.white, lineHeight: 21, marginBottom: 12 },
   feedFooter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   feedStatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -520,6 +784,13 @@ const card = StyleSheet.create({
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },
   albumCellIcon: { fontSize: 20 },
+  albumCellPhoto: { overflow: 'hidden', backgroundColor: '#1A0A2E' },
+  albumPhoto: { width: '100%', height: '100%' },
+  albumMoreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
+  },
+  albumMoreTxt: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   albumContent: { fontSize: 13, color: COLORS.white, lineHeight: 20, marginBottom: 10 },
   albumFooter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   albumDate: { fontSize: 11, color: COLORS.textMuted },
