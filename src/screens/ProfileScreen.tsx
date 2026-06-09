@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -15,10 +15,12 @@ import {
   PanResponder,
   Dimensions,
   Linking,
+  Vibration,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import Svg, { Path } from 'react-native-svg';
 import { GearIcon, PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
@@ -28,7 +30,8 @@ import {
   LiquidCardGlow,
   useEntranceAnimation,
 } from '../components/LiquidEffects';
-// import { useRecords } from '../store/recordStore';
+import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
 
 // ─── 컬러 상수 (Figma 디자인 기반) ───
 const COLORS = {
@@ -267,11 +270,9 @@ const AlbumBadgeIcon = () => (
 );
 
 const SnapBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: BADGE_C, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: BADGE_C }} />
-    </View>
-  </View>
+  <Svg width={16} height={18} viewBox="0 0 24 24" fill="none">
+    <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill={BADGE_C} />
+  </Svg>
 );
 
 const CutBadgeIcon = () => (
@@ -294,7 +295,7 @@ const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
 };
 
 const VIEW_TYPE_NAMES: Record<string, string> = {
-  feed: '피드', blog: '블로그', album: '앨범', snap: '스냅', cut: '네컷',
+  feed: '피드', blog: '블로그', album: '앨범', snap: '스냅', cut: '스트립',
 };
 
 // 하나의 여행 = 하나의 썸네일 (여러 형식 기록 포함)
@@ -321,6 +322,8 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
     records: [
       { id: '1', viewType: 'feed' },
       { id: '2', viewType: 'blog' },
+      { id: 'seed-snap2', viewType: 'snap' },
+      { id: 'seed-cut', viewType: 'cut' },
     ],
   },
   {
@@ -358,6 +361,7 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
     color: '#2E1A0A',
     records: [
       { id: 'seed-blog-1', viewType: 'blog' },
+      { id: 'seed-snap', viewType: 'snap' },
     ],
   },
   {
@@ -370,9 +374,13 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
     color: '#2E0A0A',
     records: [
       { id: 'seed-blog-2', viewType: 'blog' },
+      { id: 'seed-cut3', viewType: 'cut' },
     ],
   },
 ];
+
+let CURRENT_TRIP_THUMBNAILS = [...TRIP_THUMBNAILS];
+
 
 // ─── 팔로잉 친구 샘플 ───
 const FOLLOWING_FRIENDS = [
@@ -383,13 +391,153 @@ const FOLLOWING_FRIENDS = [
 
 // ─── 배지 데이터 ───
 const BADGES = [
-  { id: 1, emoji: '🛫', name: '첫 도장', desc: '첫 번째 여행 기록', earned: true, glow: 'rgba(47,217,244,0.6)' },
-  { id: 2, emoji: '🌏', name: '첫 아시아', desc: '아시아 첫 방문', earned: true, glow: 'rgba(168,85,247,0.6)' },
-  { id: 3, emoji: '🗼', name: '일본 마스터', desc: '일본 5회 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 4, emoji: '🎒', name: '혼행러', desc: '혼자 여행 10회', earned: true, glow: 'rgba(255,100,100,0.5)' },
-  { id: 5, emoji: '💍', name: '허니문', desc: '연인과 별점 5점', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 6, emoji: '🌟', name: '보이저 스타', desc: '보이저 공개 10개', earned: true, glow: 'rgba(47,217,244,0.6)' },
-  { id: 7, emoji: '👑', name: '지구 정복자', desc: '50개국 방문', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  // 대륙 & 첫 방문 배지 (1 ~ 8)
+  { id: 1, emoji: '🛫', name: '역사적인 당신의 첫 발자취!', desc: '첫 기록', earned: true, glow: 'rgba(47,217,244,0.6)' },
+  { id: 2, emoji: '🌏', name: '아시아에서의 첫발!', desc: '아시아 첫방문', earned: true, glow: 'rgba(47,217,244,0.6)' },
+  { id: 3, emoji: '🇪🇺', name: '유럽에서의 첫발!', desc: '유럽 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 4, emoji: '🍁', name: '북미에서의 첫발!', desc: '북아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 5, emoji: '🌴', name: '남미에서의 첫발!', desc: '남아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 6, emoji: '🦘', name: '오세아니아에서의 첫발!', desc: '오세아니아 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 7, emoji: '🦁', name: '아프리카에서의 첫발', desc: '아프리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 8, emoji: '🕌', name: '중동에서의 첫발!', desc: '중동 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+
+  // 여행 동행 & 스타일 배지 (9 ~ 15)
+  { id: 9, emoji: '🎒', name: '혼자만의 감성을 즐기는 유형인가요?', desc: '홀로 여행', earned: true, glow: 'rgba(255,100,100,0.5)' },
+  { id: 10, emoji: '💑', name: '여행에서 안 싸웠길 바래요^^', desc: '커플 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 11, emoji: '👵', name: '당신의 첫 효도인가요?', desc: '부모님 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 12, emoji: '🤝', name: '여행을 계획한 친구에게 불평하지 마세요.', desc: '친구 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 13, emoji: '🎂', name: '생일 축하드립니다', desc: '생일 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 14, emoji: '⚡', name: '스피드 트래블러', desc: '당일치기 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 15, emoji: '🚗', name: '가스는 잠궜죠?', desc: '30일 이상 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+
+  // 국가 & 지역 탐방 배지 (16 ~ 34)
+  { id: 16, emoji: '🇯🇵', name: '히사시부리!', desc: '일본 재방문', earned: true, glow: 'rgba(47,244,150,0.5)' },
+  { id: 17, emoji: '🍣', name: '열도에 새긴 발걸음', desc: '일본 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 18, emoji: '🥢', name: '젓가락만 챙기세요!', desc: '중국과 일본 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 19, emoji: '🇺🇸', name: '미주투어', desc: '미국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 20, emoji: '🇨🇳', name: '중국투어', desc: '중국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 21, emoji: '⛪', name: '당신은 종교대통합을 이뤘어요', desc: '각기 다른 종교국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 22, emoji: '🏝️', name: '섬 입문자', desc: '섬 3번 방문 (Lv.1)', earned: true, glow: 'rgba(47,244,150,0.5)' },
+  { id: 23, emoji: '🛥️', name: '섬 탐험가', desc: '섬 5번 방문 (Lv.2)', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 24, emoji: '👑', name: '섬 정복자', desc: '섬 10번 방문 (Lv.3)', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 25, emoji: '🗽', name: '당신도 이제 뉴욕커', desc: '뉴욕 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 26, emoji: '🎲', name: '당신은 타짜인가요?', desc: '카지노 지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 27, emoji: '☯️', name: '동방의 수호자', desc: '한자 문화권 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 28, emoji: '🇬🇧', name: 'You can speak english, right?', desc: '영어권(미국,영국,호주,캐나다,뉴질랜드) 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 29, emoji: '🐪', name: '오아시스는 찾으셨나요?', desc: '사막지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 30, emoji: '🥵', name: '데오드란트를 추천해 드릴까요?', desc: '열대지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 31, emoji: '🛂', name: '한국여권의 힘!', desc: '무비자 입국 가능 국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 32, emoji: '✈️', name: '월드투어는 성공적이었나요?', desc: '한번에 여러나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 33, emoji: '🌀', name: '이건 데자뷰?!', desc: '정확히 1년만에 같은 곳 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 34, emoji: '💖', name: '이 나라와 사랑에 빠지셨군요!', desc: '같은 나라 재방문 5회', earned: false, glow: 'rgba(47,244,150,0.5)' },
+
+  // 여행 마일스톤 배지 (35 ~ 61)
+  { id: 35, emoji: '🚶', name: '초보 여행자', desc: '3개국 방문 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
+  { id: 36, emoji: '🏃', name: '신흥 탐험가', desc: '5개국 방문 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 37, emoji: '🗺️', name: '네이션 컬렉터', desc: '10개국 방문 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 38, emoji: '🌎', name: '글로벌 트래블러', desc: '20개국 방문 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 39, emoji: '🪐', name: '월드 마스터', desc: '30개국 방문 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 40, emoji: '👾', name: '세계 정복자', desc: '50개국 방문 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 41, emoji: '🛡️', name: '전설의 탐험가', desc: '100개국 방문 (Lv.7)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 42, emoji: '🧭', name: '국경없는 이방인', desc: '모든 대륙 1개국 이상 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 43, emoji: '🏆', name: '지구정복자', desc: '모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 44, emoji: '🗺️', name: '대륙 정복자', desc: '대륙 하나의 모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 45, emoji: '✍️', name: '여행 기록가', desc: '여행기록 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
+  { id: 46, emoji: '📖', name: '여행 일지 마스터', desc: '여행기록 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 47, emoji: '📸', name: '남는건 사진뿐', desc: '사진 50장이상 업로드', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 48, emoji: '⭐', name: '별점 입문자', desc: '별점 1점 기록 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 49, emoji: '🌟', name: '별점 탐색자', desc: '별점 2점 기록 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 50, emoji: '⚖️', name: '별점 중립파', desc: '별점 3점 기록 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 51, emoji: '💯', name: '별점 후한 편', desc: '별점 4점 기록 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 52, emoji: '🥇', name: '별점 마스터', desc: '별점 5점 기록 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 53, emoji: '📅', name: '당신의 사계절은 여행으로 채워졌네요', desc: '매분기 여행', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 54, emoji: '💎', name: '저희의 워너비이십니다.', desc: '매달 여행', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 55, emoji: '🕰️', name: '잊지말아줘요..', desc: '1년전 오늘 기록 조회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 56, emoji: '🌱', name: '배지 입문', desc: '배지 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
+  { id: 57, emoji: '📂', name: '배지 수집가', desc: '배지 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 58, emoji: '🔥', name: '배지 매니아', desc: '배지 30개 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 59, emoji: '🎓', name: '배지 마스터', desc: '배지 50개 달성 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 60, emoji: '🏆', name: '배지 챔피언', desc: '배지 100개 달성 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 61, emoji: '👑', name: '배지 레전드', desc: '배지 200개 달성 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+
+  // 시즌 & 기념일 배지 (62 ~ 65)
+  { id: 62, emoji: '🙇', name: '부모님께 인사는 드렸죠?!', desc: '연휴 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 63, emoji: '🎍', name: '새해복 많이 받으세요!', desc: '해가 바뀌는 기간 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 64, emoji: '🥗', name: '다이어트는 성공하셨나요?', desc: '여름휴가 여행(7~8월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 65, emoji: '🧣', name: '당신은 겨울잠이 없군요', desc: '겨울휴가 여행(1~2월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+
+  // 기록 형식 배지 (66 ~ 72)
+  { id: 66, emoji: '📝', name: '블로그의 달인', desc: '블로그 형식 기록 10개 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 67, emoji: '🖼️', name: '앨범 큐레이터', desc: '앨범 형식 기록 5개 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 68, emoji: '⚡', name: '스냅 마스터', desc: '스냅 기록 30개 달성', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 69, emoji: '🎨', name: '만능 기록자', desc: '피드+블로그+앨범+스냅 각각 1개 이상 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 70, emoji: '🏷️', name: '앨범 아티스트', desc: '앨범 꾸미기에서 스티커 50개 이상 사용', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 71, emoji: '📷', name: '포토그래퍼', desc: '앨범 한 페이지에 사진 5장 이상 배치', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 72, emoji: '📚', name: '다중 페이지 마스터', desc: '앨범 5페이지 이상 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
+
+  // 소셜 배지 (73 ~ 85)
+  { id: 73, emoji: '💬', name: '첫 DM', desc: '친구에게 첫 DM 전송', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 74, emoji: '🔗', name: '공유왕', desc: '게시물 공유 10회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 75, emoji: '🧚', name: '댓글 요정', desc: '댓글 50개 작성', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 76, emoji: '🔥', name: '인싸 여행러', desc: '게시물에 좋아요 100개 받기', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 77, emoji: '👥', name: '여행 메이트', desc: '같은 친구와 동행기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 78, emoji: '🦋', name: '소셜 나비', desc: '친구 50명 달성', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 79, emoji: '🌟', name: '인기스타', desc: '팔로워 100명 달성', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 80, emoji: '📥', name: '첫 공유받기', desc: '다른 사람이 내 게시물을 DM으로 공유', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 81, emoji: '👋', name: '첫 친구', desc: '친구 1명 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
+  { id: 82, emoji: '🎉', name: '인싸의 시작', desc: '친구 10명 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 83, emoji: '👑', name: '인맥왕', desc: '친구 100명 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 84, emoji: '🤝', name: '첫 동행', desc: '앱 친구와 동행기록 1회 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 85, emoji: '👫', name: '동행 메이트', desc: '앱 친구와 동행기록 3회 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+
+  // 스냅 특별 배지 (86 ~ 90)
+  { id: 86, emoji: '⚡', name: '번개 촬영', desc: '스냅 알림 후 10초 이내 촬영', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 87, emoji: '🐌', name: '느긋한 여행자', desc: '스냅 알림 후 5분 이상 후 촬영', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 88, emoji: '🔥', name: '스냅 스트릭', desc: '7일 연속 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 89, emoji: '🦉', name: '야행성 스냅', desc: '새벽 2~5시 사이 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 90, emoji: '🌅', name: '일출 스냅', desc: '오전 5~7시 사이 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
+
+  // 지구본 & 탐험 배지 (91 ~ 96)
+  { id: 91, emoji: '🌐', name: '지구본 탐험가', desc: '지구본에서 5개국 이상 활성화', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 92, emoji: '↔️', name: '적도 횡단', desc: '북반구+남반구 국가 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 93, emoji: '↕️', name: '경도 마스터', desc: '동반구+서반구 국가 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 94, emoji: '⏰', name: '시차 정복', desc: '시차 12시간 이상 차이나는 두 나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 95, emoji: '🏝️', name: '섬나라 컬렉터', desc: '섬나라 5개국 이상 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 96, emoji: '⛰️', name: '내륙국 탐험가', desc: '바다 없는 나라 3개국 이상 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+
+  // 기록 습관 배지 (97 ~ 104)
+  { id: 97, emoji: '💪', name: '꾸준함의 힘', desc: '30일 연속 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 98, emoji: '📅', name: '새해 첫 기록', desc: '1월 1일에 기록 작성', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 99, emoji: '🎄', name: '크리스마스 트래블러', desc: '12월 25일에 여행 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 100, emoji: '🌃', name: '밤샘 여행기', desc: '자정~새벽 3시 사이 기록 작성 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 101, emoji: '☔', name: '비 오는 날의 기록', desc: '날씨 \'비\'로 기록 10회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 102, emoji: '❄️', name: '눈의 나라', desc: '날씨 \'눈\'으로 기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 103, emoji: '🥰', name: '별점 후한 사람', desc: '별점 5점 기록 10개', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 104, emoji: '🧐', name: '까다로운 평론가', desc: '별점 1점 기록 3개', earned: false, glow: 'rgba(168,85,247,0.6)' },
+
+  // 앱 활용 배지 (105 ~ 114)
+  { id: 105, emoji: '🏷️', name: '스티커 수집가', desc: '스티커 전체 카테고리 사용', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 106, emoji: '🖼️', name: '프레임 마스터', desc: '앨범에서 3가지 프레임 모두 사용', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 107, emoji: '🎨', name: '지구본 커스텀', desc: '지구본 색상 변경 3회', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 108, emoji: '👤', name: '프로필 완성', desc: '프로필 사진+이름+소개 모두 설정', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 109, emoji: '🔔', name: '알림 수호자', desc: '알림 설정 커스텀 완료', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 110, emoji: '🚨', name: '첫 신고', desc: '부적절한 게시물 신고 1회', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 111, emoji: '📁', name: '정리의 달인', desc: '게시물 보관 10개', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 112, emoji: '🏃', name: '꾸준한 여행자', desc: '앱 연속 접속 30일 (Lv.1)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 113, emoji: '💝', name: '충성 유저', desc: '앱 연속 접속 50일 (Lv.2)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 114, emoji: '🔥', name: 'eOrth 마니아', desc: '앱 연속 접속 100일 (Lv.3)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+
+  // 특별 & 시즌 배지 (115 ~ 121)
+  { id: 115, emoji: '🎂', name: 'eOrth 1주년', desc: '앱 설치 후 1년 경과', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 116, emoji: '🚀', name: '얼리어답터', desc: '앱 출시 첫 달 가입', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 117, emoji: '🎑', name: '명절 여행러', desc: '설날 또는 추석 연휴 중 해외 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 118, emoji: '🌸', name: '벚꽃 시즌', desc: '3~4월 일본 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 119, emoji: '🍺', name: '옥토버페스트', desc: '10월 독일 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 120, emoji: '🎭', name: '카니발 참가자', desc: '2~3월 브라질 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 121, emoji: '🌌', name: '오로라 헌터', desc: '노르웨이/아이슬란드/핀란드 겨울 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+
+  // 122
+  { id: 122, emoji: '🍔', name: '미식가', desc: '같은 나라 다른 도시 음식점 5곳 기록', earned: false, glow: 'rgba(255,100,100,0.5)' }
 ];
 
 // ─── 여행 카드 그라디언트 색상 매핑 ───
@@ -422,7 +570,67 @@ const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: strin
 );
 
 // ─── 배지 전체 목록 모달 ───
-function BadgeListModal({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+const getMetallicColors = (glow: string | undefined): [string, string, string, string] => {
+  if (!glow) return ['#FFE072', '#CBA32E', '#FCE9A6', '#A67C1E']; // 골드 기본
+  const g = glow.toLowerCase();
+  if (g.includes('47,217,244') || g.includes('cyan')) {
+    return ['#A5F3FC', '#06B6D4', '#CFFAFE', '#0891B2']; // 사이언
+  }
+  if (g.includes('168,85,247') || g.includes('purple')) {
+    return ['#E9D5FF', '#A855F7', '#F3E8FF', '#7E22CE']; // 퍼플
+  }
+  if (g.includes('255,100,100') || g.includes('255,70,85') || g.includes('red')) {
+    return ['#FECDD3', '#F43F5E', '#FFE4E6', '#BE123C']; // 레드/핑크
+  }
+  if (g.includes('47,244,150') || g.includes('green')) {
+    return ['#A7F3D0', '#10B981', '#D1FAE5', '#047857']; // 그린
+  }
+  return ['#E2E8F0', '#94A3B8', '#F1F5F9', '#475569']; // 실버
+};
+
+const BADGE_CATEGORIES = [
+  { name: '대륙 & 첫 방문 배지', range: [1, 8] },
+  { name: '여행 동행 & 스타일 배지', range: [9, 15] },
+  { name: '국가 & 지역 탐방 배지', range: [16, 34] },
+  { name: '여행 마일스톤 배지', range: [35, 61] },
+  { name: '시즌 & 기념일 배지', range: [62, 65] },
+  { name: '기록 형식 배지', range: [66, 72] },
+  { name: '소셜 배지', range: [73, 85] },
+  { name: '스냅 특별 배지', range: [86, 90] },
+  { name: '지구본 & 탐험 배지', range: [91, 96] },
+  { name: '기록 습관 배지', range: [97, 104] },
+  { name: '앱 활용 배지', range: [105, 114] },
+  { name: '특별 & 시즌 배지', range: [115, 122] },
+];
+
+function BadgeListModal({
+  visible,
+  onClose,
+  selectedBadgeIds,
+  setSelectedBadgeIds,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  selectedBadgeIds: number[];
+  setSelectedBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
+}) {
+  const earnedCount = BADGES.filter((b) => b.earned).length;
+
+  const handleToggleSelect = (badgeId: number, isEarned: boolean) => {
+    if (!isEarned) return; // 미획득 배지는 선택 불가
+    setSelectedBadgeIds((prev) => {
+      if (prev.includes(badgeId)) {
+        return prev.filter((id) => id !== badgeId);
+      } else {
+        if (prev.length >= 5) {
+          Alert.alert('알림', '대표 배지는 최대 5개까지 선택할 수 있어요.');
+          return prev;
+        }
+        return [...prev, badgeId];
+      }
+    });
+  };
+
   return (
     <Modal
       visible={visible}
@@ -433,22 +641,108 @@ function BadgeListModal({ visible, onClose }: { visible: boolean; onClose: () =>
       <View style={blStyles.root}>
         {/* 핸들 바 */}
         <View style={blStyles.handle} />
-        <Text style={blStyles.title}>획득한 배지</Text>
+        
+        <View style={blStyles.header}>
+          <Text style={blStyles.title}>나의 배지 컬렉션</Text>
+          <Text style={blStyles.subtitle}>
+            {earnedCount} / {BADGES.length} 획득 (프로필에 표시할 배지 선택)
+          </Text>
+        </View>
 
-        <ScrollView
-          contentContainerStyle={blStyles.grid}
-          showsVerticalScrollIndicator={false}
-        >
-          {BADGES.map((badge) => (
-            <View key={badge.id} style={[blStyles.cell, !badge.earned && { opacity: 0.3 }]}>
-              <View style={blStyles.cellCircle}>
-                <Text style={blStyles.cellEmoji}>{badge.emoji}</Text>
-              </View>
-              <Text style={blStyles.cellName}>{badge.name}</Text>
-              <Text style={blStyles.cellDesc}>{badge.desc}</Text>
-            </View>
-          ))}
-        </ScrollView>
+        <View style={blStyles.binderWrapper}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+          >
+            {BADGE_CATEGORIES.map((cat) => {
+              const catBadges = BADGES.filter(
+                (b) => b.id >= cat.range[0] && b.id <= cat.range[1]
+              );
+              // Group into rows of 3
+              const rows = [];
+              for (let i = 0; i < catBadges.length; i += 3) {
+                rows.push(catBadges.slice(i, i + 3));
+              }
+
+              return (
+                <View key={cat.name} style={blStyles.categorySection}>
+                  <Text style={blStyles.categoryTitle}>{cat.name}</Text>
+                  {rows.map((row, rowIndex) => (
+                    <View key={rowIndex} style={blStyles.row}>
+                      {row.map((badge, index) => {
+                        const isEarned = badge.earned;
+                        const isSelected = selectedBadgeIds.includes(badge.id);
+                        const metallicColors = getMetallicColors(badge.glow);
+
+                        return (
+                          <TouchableOpacity
+                            key={badge.id}
+                            style={[blStyles.cell, { marginRight: index === 2 ? 0 : 12 }]}
+                            activeOpacity={isEarned ? 0.75 : 1}
+                            onPress={() => handleToggleSelect(badge.id, isEarned)}
+                          >
+                            {isEarned ? (
+                              /* 획득한 메탈릭 코인 */
+                              <View style={blStyles.coinWrapper}>
+                                <LinearGradient
+                                  colors={metallicColors}
+                                  start={{ x: 0, y: 0 }}
+                                  end={{ x: 1, y: 1 }}
+                                  style={blStyles.coinBorder}
+                                >
+                                  <LinearGradient
+                                    colors={['#1E1B13', '#3A3525']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={blStyles.coinInner}
+                                  >
+                                    <Text style={blStyles.coinEmoji}>{badge.emoji}</Text>
+                                  </LinearGradient>
+                                </LinearGradient>
+                                {/* 메탈릭 광택 */}
+                                <LinearGradient
+                                  colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                                  start={{ x: 0.1, y: 0.1 }}
+                                  end={{ x: 0.9, y: 0.9 }}
+                                  style={blStyles.coinShine}
+                                  pointerEvents="none"
+                                />
+                                {/* 선택 체크 뱃지 */}
+                                {isSelected && (
+                                  <View style={blStyles.checkBadge}>
+                                    <Text style={blStyles.checkText}>✓</Text>
+                                  </View>
+                                )}
+                              </View>
+                            ) : (
+                              /* 미획득 구멍 */
+                              <View style={blStyles.emptyHole}>
+                                <LinearGradient
+                                  colors={['#07070B', '#111116']}
+                                  start={{ x: 0, y: 0 }}
+                                  end={{ x: 0, y: 1 }}
+                                  style={blStyles.emptyHoleInner}
+                                >
+                                  <Text style={blStyles.lockIcon}>🔒</Text>
+                                </LinearGradient>
+                              </View>
+                            )}
+                            
+                            <Text style={[blStyles.cellName, !isEarned && blStyles.lockedText]} numberOfLines={1}>
+                              {badge.name}
+                            </Text>
+                            <Text style={[blStyles.cellDesc, !isEarned && blStyles.lockedText]} numberOfLines={2}>
+                              {isEarned ? badge.desc : '미획득 배지'}
+                            </Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              );
+            })}
+          </ScrollView>
+        </View>
 
         <TouchableOpacity style={blStyles.closeBtn} onPress={onClose} activeOpacity={0.8}>
           <Text style={blStyles.closeBtnText}>닫기</Text>
@@ -874,6 +1168,128 @@ function OrderableList({
   );
 }
 
+
+
+// ─── 여행 기록 그리드 레이아웃 좌표 계산 유틸 ───
+function getCardLayout(idx: number): { x: number; y: number; w: number; h: number } {
+  if (idx === 0) {
+    return { x: 0, y: 0, w: SCREEN_WIDTH - 32, h: 260 };
+  }
+  const gridIdx = idx - 1;
+  const row = Math.floor(gridIdx / 2);
+  const col = gridIdx % 2;
+  const cardW = THUMB_WIDTH;
+  const cardH = 210;
+  const gap = 12;
+  const x = col * (cardW + gap);
+  const y = 260 + 12 + row * (cardH + gap);
+  return { x, y, w: cardW, h: cardH };
+}
+
+// ─── 인라인 카드 드래그 제스처 래핑 컴포넌트 ───
+interface DraggableCardWrapperProps {
+  idx: number;
+  activeIdx: number | null;
+  dragOffset: Animated.ValueXY;
+  onDragStart: (idx: number) => void;
+  onDragMove: (idx: number, dx: number, dy: number) => void;
+  onDragEnd: (idx: number, dx: number, dy: number) => void;
+  onPress: () => void;
+  children: React.ReactNode;
+  style: any;
+}
+
+function DraggableCardWrapper({
+  idx,
+  activeIdx,
+  dragOffset,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onPress,
+  children,
+  style,
+}: DraggableCardWrapperProps) {
+  const isDraggingRef = useRef(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => isDraggingRef.current,
+      onPanResponderGrant: (evt, gestureState) => {
+        isDraggingRef.current = false;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => {
+          isDraggingRef.current = true;
+          onDragStart(idx);
+        }, 400);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (isDraggingRef.current) {
+          onDragMove(idx, gestureState.dx, gestureState.dy);
+        } else {
+          if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
+            if (timerRef.current) {
+              clearTimeout(timerRef.current);
+              timerRef.current = null;
+            }
+          }
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        if (isDraggingRef.current) {
+          isDraggingRef.current = false;
+          onDragEnd(idx, gestureState.dx, gestureState.dy);
+        } else {
+          onPress();
+        }
+      },
+      onPanResponderTerminate: (evt, gestureState) => {
+        if (timerRef.current) {
+          clearTimeout(timerRef.current);
+          timerRef.current = null;
+        }
+        if (isDraggingRef.current) {
+          isDraggingRef.current = false;
+          onDragEnd(idx, gestureState.dx, gestureState.dy);
+        }
+      },
+      onPanResponderTerminationRequest: () => !isDraggingRef.current,
+    })
+  ).current;
+
+  const isActive = activeIdx === idx;
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        style,
+        isActive && {
+          transform: [
+            { translateX: dragOffset.x },
+            { translateY: dragOffset.y },
+            { scale: 1.05 }
+          ],
+          zIndex: 1000,
+          elevation: 12,
+          shadowColor: '#BF85FC',
+          shadowOffset: { width: 0, height: 10 },
+          shadowOpacity: 0.5,
+          shadowRadius: 20,
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
 // ─── 묶음 설정 모달 ───
 function GroupMergeModal({
   visible,
@@ -994,15 +1410,125 @@ function GroupMergeModal({
   );
 }
 
+const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
+  KR: { name: '대한민국', flag: '🇰🇷' },
+  JP: { name: '일본', flag: '🇯🇵' },
+  US: { name: '미국', flag: '🇺🇸' },
+  HK: { name: '홍콩', flag: '🇭🇰' },
+  TH: { name: '태국', flag: '🇹🇭' },
+  ES: { name: '스페인', flag: '🇪🇸' },
+};
+
 // ─── 메인 프로필 화면 ───
 export default function ProfileScreen({ navigation }: { navigation: any }) {
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
+  const [selectedBadgeIds, setSelectedBadgeIds] = useState<number[]>(() => {
+    return BADGES.filter((b) => b.earned).slice(0, 5).map((b) => b.id);
+  });
 
-  const [profileName, setProfileName] = useState('yunjunsung');
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  // ─── 여행 기록 순서 편집 상태 ───
+  const [trips, setTrips] = useState<TripThumbnail[]>(() => {
+    return [...CURRENT_TRIP_THUMBNAILS];
+  });
+  const [isDragging, setIsDragging] = useState(false);
+  const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
+  const handleReorder = (newTrips: TripThumbnail[]) => {
+    CURRENT_TRIP_THUMBNAILS = newTrips;
+    setTrips(newTrips);
+  };
+
+  const handleDragStart = (idx: number) => {
+    setActiveIdx(idx);
+    dragOffset.setValue({ x: 0, y: 0 });
+    setIsDragging(true);
+  };
+
+  const handleDragMove = (idx: number, dx: number, dy: number) => {
+    dragOffset.setValue({ x: dx, y: dy });
+  };
+
+  const handleDragEnd = (idx: number, dx: number, dy: number) => {
+    setIsDragging(false);
+    setActiveIdx(null);
+    dragOffset.setValue({ x: 0, y: 0 });
+
+    const layout = getCardLayout(idx);
+    const dropCenterX = layout.x + layout.w / 2 + dx;
+    const dropCenterY = layout.y + layout.h / 2 + dy;
+
+    let targetIdx = -1;
+    for (let i = 0; i < trips.length; i++) {
+      const targetLayout = getCardLayout(i);
+      const left = targetLayout.x;
+      const right = targetLayout.x + targetLayout.w;
+      const top = targetLayout.y;
+      const bottom = targetLayout.y + targetLayout.h;
+
+      if (
+        dropCenterX >= left &&
+        dropCenterX <= right &&
+        dropCenterY >= top &&
+        dropCenterY <= bottom
+      ) {
+        targetIdx = i;
+        break;
+      }
+    }
+
+    if (targetIdx !== -1 && targetIdx !== idx) {
+      const newTrips = [...trips];
+      const [removed] = newTrips.splice(idx, 1);
+      newTrips.splice(targetIdx, 0, removed);
+      handleReorder(newTrips);
+    }
+  };
+
+  const { 
+    nickname, 
+    handle, 
+    bio, 
+    profilePhoto, 
+    setProfilePhoto,
+    homeCountryCode,
+    arrivalDetect,
+    currentVisitedCountryCode,
+  } = useSettings();
+  const profileName = nickname ? nickname : handle;
+
+  const { records, tripGroups } = useRecords();
+
+  const mappedThumbnails = useMemo(() => {
+    return tripGroups.map(group => {
+      const groupRecords = group.records
+        .map(id => records.find(r => r.id === id))
+        .filter(Boolean) as typeof records;
+
+      const firstRec = groupRecords[0];
+      const uniqueViewTypes = Array.from(new Set(groupRecords.map(r => r.viewType || 'feed')));
+
+      return {
+        id: group.id,
+        emoji: firstRec?.user.emoji || '🗼',
+        title: group.title,
+        country: firstRec?.countryName || '',
+        countryFlag: firstRec?.countryFlag || '',
+        date: firstRec?.date ? firstRec.date.slice(0, 7) : '',
+        color: TRIP_GRADIENT_COLORS[group.id] ? group.id : 'trip-japan',
+        records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
+        uniqueViewTypes,
+      };
+    }).filter(t => t.records.length > 0);
+  }, [tripGroups, records]);
+
+  // import/기록 기반 여행 카드(mappedThumbnails)를 하드코딩 trips 앞에 병합해 표시
+  const displayTrips = useMemo(
+    () => [...mappedThumbnails, ...trips],
+    [mappedThumbnails, trips]
+  );
 
   const handleChangePhoto = async () => {
     setActionSheetVisible(false);
@@ -1087,6 +1613,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         style={styles.container}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        scrollEnabled={!isDragging}
       >
         {/* 상단 헤더 */}
         <View style={styles.headerRow}>
@@ -1124,10 +1651,21 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
             </GooeyCircle>
           </LiquidPressable>
 
-          {/* 이름 · 위치 · 통계 */}
+          {/* 이름 · 위치 · 소개 · 통계 */}
           <View style={styles.profileInfo}>
             <Text style={styles.userName}>{profileName}</Text>
-            <Text style={styles.userLocation}>🇰🇷 대한민국</Text>
+            {nickname ? <Text style={styles.userHandle}>@{handle}</Text> : null}
+            <Text style={styles.userLocation}>
+              {(() => {
+                const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
+                if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode) {
+                  const visit = COUNTRY_DATA[currentVisitedCountryCode] || { name: '일본', flag: '🇯🇵' };
+                  return `${visit.flag} ${visit.name} 여행 중`;
+                }
+                return `${home.flag} ${home.name}`;
+              })()}
+            </Text>
+            {bio ? <Text style={styles.userBio}>{bio}</Text> : null}
             <View style={styles.statsRow}>
               <StatCard value="8" label="기록 수" grad={STAT_GRADS[0]} />
               <StatCard value={String(FOLLOWING_FRIENDS.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
@@ -1143,20 +1681,22 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
           style={badgeHL.scroll}
           contentContainerStyle={badgeHL.scrollContent}
         >
-          {BADGES.slice(0, 5).map((badge) => (
-            <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={badge.earned} />
-          ))}
-          {BADGES.length > 5 && (
-            <LiquidPressable
-              style={badgeHL.item}
-              onPress={() => setBadgeListVisible(true)}
-              intensity={0.1}
-            >
-              <View style={badgeHL.moreCircle}>
-                <Text style={badgeHL.moreText}>{'전체\n보기'}</Text>
-              </View>
-            </LiquidPressable>
-          )}
+          {selectedBadgeIds.map((id) => {
+            const badge = BADGES.find(b => b.id === id);
+            if (!badge) return null;
+            return (
+              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={badge.earned} />
+            );
+          })}
+          <LiquidPressable
+            style={badgeHL.item}
+            onPress={() => setBadgeListVisible(true)}
+            intensity={0.1}
+          >
+            <View style={badgeHL.moreCircle}>
+              <Text style={badgeHL.moreText}>{'전체\n보기'}</Text>
+            </View>
+          </LiquidPressable>
         </ScrollView>
 
         <View style={styles.divider} />
@@ -1164,31 +1704,35 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         {/* 여행 기록 헤더 */}
         <View style={gridSt.gridHeaderRow}>
           <Text style={gridSt.gridHeaderTitle}>여행 기록</Text>
-          <Text style={gridSt.tripCount}>{TRIP_THUMBNAILS.length}개의 여행</Text>
+          <Text style={gridSt.tripCount}>{displayTrips.length}개의 여행</Text>
         </View>
 
-        {/* 여행 썸네일 - 첫 번째 카드 (풀 와이드 + 리퀴드 글로우) */}
-        {TRIP_THUMBNAILS.length > 0 && (
-          <LiquidPressable
+        {displayTrips.length > 0 && (
+          <DraggableCardWrapper
+            idx={0}
+            activeIdx={activeIdx}
+            dragOffset={dragOffset}
+            onDragStart={handleDragStart}
+            onDragMove={handleDragMove}
+            onDragEnd={handleDragEnd}
+            onPress={() => openTripDetail(displayTrips[0])}
             style={thumbSt.mainCard}
-            onPress={() => openTripDetail(TRIP_THUMBNAILS[0])}
-            intensity={0.04}
           >
             {/* 출렁이는 글로우 배경 */}
             <LiquidCardGlow
               width={SCREEN_WIDTH}
               height={320}
-              color={TRIP_THUMBNAILS[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
+              color={displayTrips[0].id === 'trip-japan' ? '#DDB7FF' : '#A855F7'}
               opacity={0.34}
             />
             <LinearGradient
-              colors={TRIP_GRADIENT_COLORS[TRIP_THUMBNAILS[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+              colors={TRIP_GRADIENT_COLORS[displayTrips[0].id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
               start={{ x: 0.5, y: 0 }}
               end={{ x: 0.5, y: 1 }}
               style={StyleSheet.absoluteFill}
             />
             <View style={thumbSt.mainEmojiWrap}>
-              <Text style={thumbSt.mainEmoji}>{TRIP_THUMBNAILS[0].emoji}</Text>
+              <Text style={thumbSt.mainEmoji}>{displayTrips[0].emoji}</Text>
             </View>
             <BlurView
               intensity={48}
@@ -1197,63 +1741,71 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
               style={thumbSt.mainInfoBar}
             >
               <View style={{ flex: 1 }}>
-                <Text style={thumbSt.mainTitle}>{TRIP_THUMBNAILS[0].countryFlag} {TRIP_THUMBNAILS[0].title}</Text>
-                <Text style={thumbSt.mainDate}>{TRIP_THUMBNAILS[0].date}</Text>
+                <Text style={thumbSt.mainTitle}>{displayTrips[0].countryFlag} {displayTrips[0].title}</Text>
+                <Text style={thumbSt.mainDate}>{displayTrips[0].date}</Text>
               </View>
               <View style={thumbSt.mainBadges}>
-                {TRIP_THUMBNAILS[0].records.map((rec) => (
+                {displayTrips[0].records.map((rec) => (
                   <LiquidPressable key={rec.id} style={thumbSt.mainBadge} intensity={0.15}>
                     {VIEW_TYPE_BADGE[rec.viewType] || null}
                   </LiquidPressable>
                 ))}
               </View>
             </BlurView>
-          </LiquidPressable>
+          </DraggableCardWrapper>
         )}
 
         {/* 여행 썸네일 - 그리드 카드 (2열 + 리퀴드 프레스 + 글로우) */}
         <View style={thumbSt.grid}>
-          {TRIP_THUMBNAILS.slice(1).map((trip) => (
-            <LiquidPressable
-              key={trip.id}
-              style={thumbSt.gridCard}
-              onPress={() => openTripDetail(trip)}
-              intensity={0.05}
-            >
-              {/* 출렁이는 글로우 */}
-              <LiquidCardGlow
-                width={THUMB_WIDTH}
-                height={260}
-                color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
-                opacity={0.3}
-              />
-              <LinearGradient
-                colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
-                start={{ x: 0.5, y: 0 }}
-                end={{ x: 0.5, y: 1 }}
-                style={StyleSheet.absoluteFill}
-              />
-              <View style={thumbSt.gridEmojiWrap}>
-                <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
-              </View>
-              <BlurView
-                intensity={44}
-                tint="dark"
-                experimentalBlurMethod="dimezisBlurView"
-                style={thumbSt.gridInfoBar}
+          {displayTrips.slice(1).map((trip, sliceIdx) => {
+            const idx = sliceIdx + 1;
+            return (
+              <DraggableCardWrapper
+                key={trip.id}
+                idx={idx}
+                activeIdx={activeIdx}
+                dragOffset={dragOffset}
+                onDragStart={handleDragStart}
+                onDragMove={handleDragMove}
+                onDragEnd={handleDragEnd}
+                onPress={() => openTripDetail(trip)}
+                style={thumbSt.gridCard}
               >
-                <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
-                <Text style={thumbSt.gridDate}>{trip.date}</Text>
-                <View style={thumbSt.gridBadges}>
-                  {trip.records.map((rec) => (
-                    <LiquidPressable key={rec.id} style={thumbSt.gridBadge} intensity={0.15}>
-                      {VIEW_TYPE_BADGE[rec.viewType] || null}
-                    </LiquidPressable>
-                  ))}
+                {/* 출렁이는 글로우 */}
+                <LiquidCardGlow
+                  width={THUMB_WIDTH}
+                  height={260}
+                  color={TRIP_GRADIENT_COLORS[trip.id]?.[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7'}
+                  opacity={0.3}
+                />
+                <LinearGradient
+                  colors={TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <View style={thumbSt.gridEmojiWrap}>
+                  <Text style={thumbSt.gridEmoji}>{trip.emoji}</Text>
                 </View>
-              </BlurView>
-            </LiquidPressable>
-          ))}
+                <BlurView
+                  intensity={44}
+                  tint="dark"
+                  experimentalBlurMethod="dimezisBlurView"
+                  style={thumbSt.gridInfoBar}
+                >
+                  <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
+                  <Text style={thumbSt.gridDate}>{trip.date}</Text>
+                  <View style={thumbSt.gridBadges}>
+                    {trip.records.map((rec) => (
+                      <LiquidPressable key={rec.id} style={thumbSt.gridBadge} intensity={0.15}>
+                        {VIEW_TYPE_BADGE[rec.viewType] || null}
+                      </LiquidPressable>
+                    ))}
+                  </View>
+                </BlurView>
+              </DraggableCardWrapper>
+            );
+          })}
         </View>
 
       </ScrollView>
@@ -1282,6 +1834,8 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
       <BadgeListModal
         visible={badgeListVisible}
         onClose={() => setBadgeListVisible(false)}
+        selectedBadgeIds={selectedBadgeIds}
+        setSelectedBadgeIds={setSelectedBadgeIds}
       />
     </View>
   );
@@ -1397,6 +1951,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#CFC2D6',
     letterSpacing: 0.6,
+  },
+  userBio: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    marginTop: 6,
+    lineHeight: 16,
   },
 
   // 통계 행
@@ -2100,49 +2660,167 @@ const blStyles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 16,
   },
+  header: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
   title: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#FFFFFF',
-    textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 12,
+    color: '#BF85FC',
+    fontWeight: '600',
+  },
+  binderWrapper: {
+    flex: 1,
+    marginHorizontal: 16,
+    backgroundColor: '#151522', // 앨범 내지 보드 색상 (동전 케이스 느낌의 플라스틱/가죽 질감 톤)
+    borderRadius: 24,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 16,
+    // 보드 판 입체감을 위한 그림자
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 8,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    paddingHorizontal: 16,
-    gap: 12,
+    justifyContent: 'flex-start',
+  },
+  row: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: 16,
   },
   cell: {
-    width: '47%',
-    backgroundColor: '#2E2E3B',
-    borderRadius: 14,
+    width: Math.floor((SCREEN_WIDTH - 32 - 32 - 24) / 3) - 1, // 3열 정렬 (소수점 올림 wrap 방지)
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 12,
-    gap: 6,
   },
-  cellCircle: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#1A1A24',
+  categorySection: {
+    marginBottom: 24,
+  },
+  categoryTitle: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#BF85FC',
+    marginBottom: 12,
+    marginTop: 8,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  coinWrapper: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    position: 'relative',
+    marginBottom: 8,
+    // 메탈릭 입체감 그림자 (양각)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  coinBorder: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 33,
+    padding: 3, // 테두리 링 두께
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 4,
   },
-  cellEmoji: {
-    fontSize: 28,
+  coinInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coinEmoji: {
+    fontSize: 26,
+  },
+  coinShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 33,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  checkBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#BF85FC',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  checkText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  emptyHole: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    padding: 2.5,
+    backgroundColor: '#0D0D14', // 음각 어두운 테두리
+    marginBottom: 8,
+    // 구멍 입체감 그림자 (음각)
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.8,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  emptyHoleInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 30.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lockIcon: {
+    fontSize: 16,
+    opacity: 0.35,
   },
   cellName: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    fontWeight: '700',
     color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 2,
   },
   cellDesc: {
-    fontSize: 11,
+    fontSize: 10,
     color: '#A1A1B0',
     textAlign: 'center',
+    lineHeight: 13,
+    paddingHorizontal: 4,
+  },
+  lockedText: {
+    color: 'rgba(255,255,255,0.25)',
   },
   closeBtn: {
     margin: 16,
@@ -2153,9 +2831,9 @@ const blStyles = StyleSheet.create({
     alignItems: 'center',
   },
   closeBtnText: {
-    fontSize: 14,
-    color: '#A1A1B0',
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });
 
