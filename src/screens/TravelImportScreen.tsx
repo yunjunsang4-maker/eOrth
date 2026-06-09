@@ -21,19 +21,34 @@ import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto, type Scann
 
 const { width } = Dimensions.get('window');
 
-// 플랫폼별 안내 문구
-// iOS: iCloud 최적화로 원본이 기기에서 내려가 다운로드가 필요 → 느릴 수 있음
-// Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
-const SCAN_YEARS = 1; // ⚠️ 임시: 기능 확인용 1년 조회. 원래 값은 3 (되돌릴 때 여기만 수정)
+// 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
+// maxAssets는 안전 상한: 스캔이 최신순(DESC)이라 도달 시 "오래된 사진부터" 잘림(과거 여행 앞부분 누락).
+type ScanPeriodKey = '1y' | '3y' | 'all';
+interface ScanPeriodOption {
+  key: ScanPeriodKey;
+  label: string;
+  years: number | null; // null = 전체 기간
+  maxAssets: number; // Infinity = 상한 없음
+}
+const SCAN_PERIODS: ScanPeriodOption[] = [
+  { key: '1y', label: '최근 1년', years: 1, maxAssets: 20000 },
+  { key: '3y', label: '최근 3년', years: 3, maxAssets: 50000 },
+  { key: 'all', label: '전체 스캔', years: null, maxAssets: Number.POSITIVE_INFINITY },
+];
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
-const SCAN_NOTE =
+
+// 플랫폼별 안내 문구
+// iOS: GPS는 로컬 메타데이터로 읽으므로 iCloud 최적화 사진도 다운로드 없이 빠르게 분석
+// Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
+const periodRangeText = (p: ScanPeriodOption) => (p.years ? `최근 ${p.years}년` : '전체 기간');
+const scanNote = (p: ScanPeriodOption) =>
   Platform.OS === 'ios'
-    ? `☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 ${SCAN_YEARS}년간 촬영한 사진만 분석합니다.`
-    : `📷 기기에 저장된 최근 ${SCAN_YEARS}년 사진을 분석합니다.\n클라우드에만 있는(기기에서 내린) 사진은 제외될 수 있어요.`;
-const SCAN_SUBNOTE =
+    ? `📷 ${p.years ? `최근 ${p.years}년간 촬영한 사진만 분석합니다.` : '갤러리 전체 사진을 분석합니다.'}`
+    : `📷 기기에 저장된 ${periodRangeText(p)} 사진을 분석합니다.\n클라우드에만 있는(기기에서 내린) 사진은 제외될 수 있어요.`;
+const scanSubNote = (p: ScanPeriodOption) =>
   Platform.OS === 'ios'
-    ? `최근 ${SCAN_YEARS}년 · iCloud 사진은 다운로드하며 분석해 시간이 걸려요`
-    : `기기에 저장된 최근 ${SCAN_YEARS}년 사진을 분석 중이에요`;
+    ? `${periodRangeText(p)} 사진을 분석 중이에요`
+    : `기기에 저장된 ${periodRangeText(p)} 사진을 분석 중이에요`;
 
 interface Props {
   navigation: any;
@@ -49,6 +64,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   const [scannedTrips, setScannedTrips] = useState<ScannedTrip[]>([]);
   const [isImporting, setIsImporting] = useState(false);
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
+  const [period, setPeriod] = useState<ScanPeriodOption>(SCAN_PERIODS[0]); // 분석 기간 (기본: 최근 1년)
 
   // Sync selected IDs when scannedTrips change
   useEffect(() => {
@@ -116,8 +132,9 @@ export default function TravelImportScreen({ navigation }: Props) {
   //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
   //   2) 스캔    : getAssetsAsync를 endCursor/hasNextPage로 페이지네이션. createdAfter로
   //                최근 SCAN_YEARS년 사진만 순회(creationTime 정렬, 안전 상한 MAX_ASSETS).
-  //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:true})로 EXIF 위치 추출
-  //                (iCloud 원본도 내려받아 읽음). 위경도가 유한한 숫자인 사진만 통과.
+  //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:false})로 위치 추출.
+  //                location은 PHAsset 로컬 DB 메타데이터라 iCloud 원본 다운로드 불필요
+  //                (iCloud 최적화 사진도 좌표는 기기에 남아 있음). 위경도가 유한한 숫자인 사진만 통과.
   //   4) 국가판정: 좌표를 0.5도 버킷으로 캐싱, reverseGeocodeAsync를 순차(250ms 간격,
   //                실패 시 500ms 후 1회 재시도)로 호출해 isoCountryCode 획득(레이트리밋 회피).
   //   5) 클러스터: clusterForeignTrips(scanned, homeCountryCode) → 거주국가 밖 + 7일 묶음.
@@ -127,8 +144,11 @@ export default function TravelImportScreen({ navigation }: Props) {
     setProgress(0);
     setScannedTrips([]);
 
-    const MAX_ASSETS = 5000; // 안전 상한
-    const CREATED_AFTER = Date.now() - SCAN_YEARS * 365 * 24 * 60 * 60 * 1000; // 최근 SCAN_YEARS년만 분석
+    // 기간 옵션에 따른 안전 상한·조회 시작점. 전체 스캔은 상한 없음(Infinity) + createdAfter 미적용.
+    const MAX_ASSETS = period.maxAssets;
+    const CREATED_AFTER = period.years
+      ? Date.now() - period.years * 365 * 24 * 60 * 60 * 1000
+      : undefined;
     const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
     try {
@@ -142,7 +162,7 @@ export default function TravelImportScreen({ navigation }: Props) {
           after,
           mediaType: 'photo',
           sortBy: 'creationTime',
-          createdAfter: CREATED_AFTER, // 최근 SCAN_YEARS년 사진만 (속도/범위 균형)
+          createdAfter: CREATED_AFTER, // 선택한 기간만 조회 (전체 스캔이면 undefined → 전체)
         });
         if (page.assets.length === 0) break;
         assets.push(...page.assets);
@@ -150,18 +170,25 @@ export default function TravelImportScreen({ navigation }: Props) {
         hasNext = page.hasNextPage;
       }
       if (assets.length === 0) throw new Error('No photos found in gallery');
+      if (hasNext && assets.length >= MAX_ASSETS) {
+        // 상한 도달 → 최신순 스캔이라 가장 오래된 쪽(과거 여행)이 잘림
+        console.warn(`[TravelImport] MAX_ASSETS(${MAX_ASSETS}) 도달: 스캔 범위가 "${period.label}"보다 짧게 잘렸을 수 있음`);
+      }
 
       const totalAssets = assets.length;
 
-      // ── 3) GPS 추출 (위치 권한과 무관, iCloud 다운로드 허용) ──
+      // ── 3) GPS 추출 (위치 권한과 무관, 로컬 메타데이터만 조회) ──
       const located: { uri: string; creationTime: number; lat: number; lon: number }[] = [];
-      const chunkSize = 15;
+      const chunkSize = 50; // 네트워크 없이 로컬 DB 조회라 크게 잡아도 안전
       for (let i = 0; i < totalAssets; i += chunkSize) {
         const chunk = assets.slice(i, i + chunkSize);
         const results = await Promise.all(
           chunk.map(async (asset) => {
             try {
-              const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: true });
+              // location(GPS)은 PHAsset 로컬 DB 메타데이터라 iCloud 다운로드 불필요.
+              // shouldDownloadFromNetwork는 localUri/exif(원본 파일)에만 영향 → false로 두면
+              // iCloud 최적화 사진도 원본 다운로드 없이 즉시 좌표를 읽는다.
+              const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
               return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
             } catch {
               return { uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
@@ -322,6 +349,27 @@ export default function TravelImportScreen({ navigation }: Props) {
               </LinearGradient>
             </View>
 
+            {/* 분석 기간 선택 */}
+            <View style={styles.periodSection}>
+              <Text style={styles.periodTitle}>분석 기간</Text>
+              <View style={styles.periodRow}>
+                {SCAN_PERIODS.map((p) => {
+                  const on = period.key === p.key;
+                  return (
+                    <TouchableOpacity
+                      key={p.key}
+                      style={[styles.periodChip, on && styles.periodChipOn]}
+                      onPress={() => setPeriod(p)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.periodTxt, on && styles.periodTxtOn]}>{p.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              <Text style={styles.periodHint}>⏱ 기간이 길수록 분석할 사진이 많아져 시간이 오래 걸려요.</Text>
+            </View>
+
             <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
               <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
                 <Text style={styles.btnText}>갤러리 접근 허용하고 찾기</Text>
@@ -333,7 +381,7 @@ export default function TravelImportScreen({ navigation }: Props) {
             </TouchableOpacity>
 
             <View style={styles.noteBox}>
-              <Text style={styles.noteText}>{SCAN_NOTE}</Text>
+              <Text style={styles.noteText}>{scanNote(period)}</Text>
             </View>
           </View>
         ) : scanning ? (
@@ -353,7 +401,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
             <Text style={styles.scanText}>갤러리 메타데이터 분석 중...</Text>
             <Text style={styles.scanProgressText}>{progress}% 완료</Text>
-            <Text style={styles.scanSubNote}>{SCAN_SUBNOTE}</Text>
+            <Text style={styles.scanSubNote}>{scanSubNote(period)}</Text>
 
             <View style={styles.progressContainer}>
               <View style={[styles.progressBar, { width: `${progress}%` }]} />
@@ -550,6 +598,50 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.medium,
+  },
+
+  /* 분석 기간 선택 */
+  periodSection: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: Spacing[5],
+  },
+  periodTitle: {
+    color: Colors.textSecondary,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.medium,
+    marginBottom: Spacing[2],
+  },
+  periodRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  periodChip: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: BorderRadius.full,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  periodChipOn: {
+    borderColor: '#7B61FF',
+    backgroundColor: 'rgba(123, 97, 255, 0.18)',
+  },
+  periodTxt: {
+    color: Colors.textSecondary,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  periodTxtOn: {
+    color: Colors.white,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  periodHint: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.regular,
+    marginTop: Spacing[2],
   },
   noteBox: {
     marginTop: Spacing[4],

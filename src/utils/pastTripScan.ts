@@ -22,7 +22,7 @@ export interface ScannedTrip {
   photoCount: number;
   content: string;
   medias: string[];
-  photos: { id?: string; uri: string }[];
+  photos: { id?: string; uri: string; creationTime?: number }[];
   weather: string;
   companions: string[];
 }
@@ -67,7 +67,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     countryName: string;
     countryFlag: string;
     country: string;
-    photos: { id?: string; uri: string }[];
+    photos: { id?: string; uri: string; creationTime?: number }[];
     dates: number[];
   }
 
@@ -77,7 +77,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     const sameCountry = !!last && last.code === p.countryCode;
     const withinTime = !!last && p.creationTime - last.dates[last.dates.length - 1] <= SEVEN_DAYS_MS;
     if (last && sameCountry && withinTime) {
-      last.photos.push({ id: p.id, uri: p.uri });
+      last.photos.push({ id: p.id, uri: p.uri, creationTime: p.creationTime });
       last.dates.push(p.creationTime);
     } else {
       clusters.push({
@@ -85,7 +85,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
         countryName: p.countryName,
         countryFlag: p.countryFlag,
         country: `${p.countryFlag} ${p.countryName}`,
-        photos: [{ id: p.id, uri: p.uri }],
+        photos: [{ id: p.id, uri: p.uri, creationTime: p.creationTime }],
         dates: [p.creationTime],
       });
     }
