@@ -30,19 +30,21 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
   const [saving, setSaving] = useState(false);
 
   const trip = trips[index];
+  if (!trip) return null; // 방어: 빈 trips
   const sel = selected[trip.id] ?? [];
   const isLast = index === trips.length - 1;
 
   const toggle = (uri: string) => {
-    setSelected((prev) => {
-      const cur = prev[trip.id] ?? [];
-      if (cur.includes(uri)) return { ...prev, [trip.id]: cur.filter((u) => u !== uri) };
-      if (cur.length >= MAX_PHOTOS_PER_TRIP) {
-        Alert.alert('알림', `여행당 최대 ${MAX_PHOTOS_PER_TRIP}장까지 선택할 수 있어요.`);
-        return prev;
-      }
-      return { ...prev, [trip.id]: [...cur, uri] };
-    });
+    const cur = selected[trip.id] ?? [];
+    if (cur.includes(uri)) {
+      setSelected((prev) => ({ ...prev, [trip.id]: (prev[trip.id] ?? []).filter((u) => u !== uri) }));
+      return;
+    }
+    if (cur.length >= MAX_PHOTOS_PER_TRIP) {
+      Alert.alert('알림', `여행당 최대 ${MAX_PHOTOS_PER_TRIP}장까지 선택할 수 있어요.`);
+      return;
+    }
+    setSelected((prev) => ({ ...prev, [trip.id]: [...(prev[trip.id] ?? []), uri] }));
   };
 
   const next = () => {
