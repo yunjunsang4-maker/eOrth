@@ -29,13 +29,13 @@ export async function copyTripOriginals(tripId: string, items: PhotoRef[]): Prom
   }
 
   const out: string[] = [];
-  for (let i = 0; i < items.length; i++) {
-    const it = items[i];
+  for (const it of items) {
     try {
       let from = it.uri;
       if (it.id) {
         const info = await MediaLibrary.getAssetInfoAsync(it.id, { shouldDownloadFromNetwork: true });
-        from = (info.localUri || info.uri || it.uri) as string;
+        // 복사 가능한 file:// 경로 우선(localUri). 없으면 원본 갤러리 uri로 시도(실패 시 skip)
+        from = (info.localUri || it.uri) as string;
       }
       const to = tripPhotoPath(base, tripId, out.length);
       await FileSystem.copyAsync({ from, to });
