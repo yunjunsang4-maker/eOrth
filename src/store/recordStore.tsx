@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
+import { useSettings } from './settingsStore';
 
 // ─────────────────────────────────────────────
 // 타입 정의
@@ -25,7 +26,9 @@ export interface TravelRecord {
     startDate?: string;
     endDate?: string;
     rating?: number;
+    representativePhoto?: string;
   }>;
+  representativePhoto?: string; // 대표 사진 (지구본/대륙 활성화용)
   date: string;             // 예: "2025.04.13"
   content: string;
   likes: number;
@@ -68,9 +71,12 @@ export interface TravelRecord {
   cutPhoto?: {
     layout: import('../constants/cutFrames').CutLayout;
     frameId: string;
+    frameColor?: string;              // 기본 프레임의 사용자 지정 색 (RGB)
     photos: string[];                 // 슬롯 순서대로 사진 URI
     previewUri: string;               // 합성 미리보기 이미지
   };
+  regionName?: string;                // 예: "도쿄" (대륙 기록 시 사용)
+  regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)
 }
 
 // ─────────────────────────────────────────────
@@ -102,7 +108,7 @@ const INITIAL_RECORDS: TravelRecord[] = [
     comments: 8,
     liked: false,
     visibility: 'public',
-    timestamp: Date.now() - 1000 * 60 * 60 * 48,
+    timestamp: Date.now() - 1000 * 60 * 60 * 12,
     viewType: 'feed',
     startDate: '2025.03.12',
     endDate: '2025.03.15',
@@ -127,7 +133,7 @@ const INITIAL_RECORDS: TravelRecord[] = [
     comments: 14,
     liked: false,
     visibility: 'public',
-    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+    timestamp: Date.now() - 1000 * 60 * 60 * 8,
     viewType: 'blog',
     startDate: '2025.04.17',
     endDate: '2025.04.20',
@@ -155,6 +161,162 @@ const INITIAL_RECORDS: TravelRecord[] = [
     budget: { amount: 800000, currency: 'KRW' },
     flightType: '직항',
     memo: '올드타운 입장권 12만동(약 6천원). 5곳 선택 가능. 야시장은 꼭 가볼 것.',
+  },
+  // ─── cut 형식 (네컷/필름) ───
+  {
+    id: 'seed-cut',
+    user: { name: '네컷장인 도이', emoji: '🎞️', handle: 'doe_cut' },
+    country: '🇯🇵 일본',
+    countryName: '일본',
+    countryFlag: '🇯🇵',
+    countries: [{ flag: '🇯🇵', name: '일본' }],
+    date: '2025.05.10',
+    content: '교토 골목에서 담은 필름 네컷 📸',
+    likes: 38,
+    comments: 6,
+    liked: false,
+    visibility: 'public',
+    timestamp: Date.now() - 1000 * 60 * 60 * 4,
+    viewType: 'cut',
+    keywords: ['교토', '네컷', '필름'],
+    cutPhoto: {
+      layout: 'film',
+      frameId: 'theme-film-mono',
+      photos: [
+        'https://picsum.photos/seed/eorth-cut1/400/520',
+        'https://picsum.photos/seed/eorth-cut2/400/520',
+        'https://picsum.photos/seed/eorth-cut3/400/520',
+        'https://picsum.photos/seed/eorth-cut4/400/520',
+      ],
+      previewUri: '',
+    },
+    medias: ['https://picsum.photos/seed/eorth-cut1/400/520'],
+  },
+  // 4컷 (브루클린 벽돌 테마)
+  {
+    id: 'seed-cut2',
+    user: { name: '컷부심 레오', emoji: '📷', handle: 'leo_4cut' },
+    country: '🇫🇷 프랑스',
+    countryName: '프랑스',
+    countryFlag: '🇫🇷',
+    countries: [{ flag: '🇫🇷', name: '프랑스' }],
+    date: '2025.05.08',
+    content: '파리 네컷 브루클린 벽돌 🧱',
+    likes: 27,
+    comments: 4,
+    liked: false,
+    visibility: 'public',
+    timestamp: Date.now() - 1000 * 60 * 60 * 16,
+    viewType: 'cut',
+    keywords: ['파리', '네컷', '브루클린벽돌'],
+    cutPhoto: {
+      layout: 'four-compact',
+      frameId: 'theme-brick-four',
+      photos: [
+        'https://picsum.photos/seed/eorth-c2a/400/400',
+        'https://picsum.photos/seed/eorth-c2b/400/400',
+        'https://picsum.photos/seed/eorth-c2c/400/400',
+        'https://picsum.photos/seed/eorth-c2d/400/400',
+      ],
+      previewUri: '',
+    },
+    medias: ['https://picsum.photos/seed/eorth-c2a/400/400'],
+  },
+  // 9컷 (기본 프레임 + 크림색)
+  {
+    id: 'seed-cut3',
+    user: { name: '모아찍기 수아', emoji: '🧩', handle: 'sua_9cut' },
+    country: '🇪🇸 스페인',
+    countryName: '스페인',
+    countryFlag: '🇪🇸',
+    countries: [{ flag: '🇪🇸', name: '스페인' }],
+    date: '2025.05.06',
+    content: '바르셀로나 9컷 모음 🧱',
+    likes: 19,
+    comments: 2,
+    liked: false,
+    visibility: 'public',
+    timestamp: Date.now() - 1000 * 60 * 60 * 24,
+    viewType: 'cut',
+    keywords: ['바르셀로나', '네컷'],
+    cutPhoto: {
+      layout: 'nine',
+      frameId: 'basic-nine',
+      frameColor: '#F5EBE0',
+      photos: [
+        'https://picsum.photos/seed/eorth-c3a/300/300',
+        'https://picsum.photos/seed/eorth-c3b/300/300',
+        'https://picsum.photos/seed/eorth-c3c/300/300',
+        'https://picsum.photos/seed/eorth-c3d/300/300',
+        'https://picsum.photos/seed/eorth-c3e/300/300',
+        'https://picsum.photos/seed/eorth-c3f/300/300',
+        'https://picsum.photos/seed/eorth-c3g/300/300',
+        'https://picsum.photos/seed/eorth-c3h/300/300',
+        'https://picsum.photos/seed/eorth-c3i/300/300',
+      ],
+      previewUri: '',
+    },
+    medias: ['https://picsum.photos/seed/eorth-c3a/300/300'],
+  },
+  // 필름 (모노 필름 테마)
+  {
+    id: 'seed-cut4',
+    user: { name: '필름러 지오', emoji: '🎞️', handle: 'geo_film' },
+    country: '🇮🇹 이탈리아',
+    countryName: '이탈리아',
+    countryFlag: '🇮🇹',
+    countries: [{ flag: '🇮🇹', name: '이탈리아' }],
+    date: '2025.05.04',
+    content: '로마 필름 🎞️',
+    likes: 33,
+    comments: 5,
+    liked: false,
+    visibility: 'public',
+    timestamp: Date.now() - 1000 * 60 * 60 * 28,
+    viewType: 'cut',
+    keywords: ['로마', '필름', '네컷'],
+    cutPhoto: {
+      layout: 'film',
+      frameId: 'theme-film-mono',
+      photos: [
+        'https://picsum.photos/seed/eorth-c4a/400/520',
+        'https://picsum.photos/seed/eorth-c4b/400/520',
+        'https://picsum.photos/seed/eorth-c4c/400/520',
+        'https://picsum.photos/seed/eorth-c4d/400/520',
+      ],
+      previewUri: '',
+    },
+    medias: ['https://picsum.photos/seed/eorth-c4a/400/520'],
+  },
+  // 3컷 세로 (기본 프레임 + 로즈색)
+  {
+    id: 'seed-cut5',
+    user: { name: '세로감성 미루', emoji: '🌷', handle: 'miru_3cut' },
+    country: '🇬🇧 영국',
+    countryName: '영국',
+    countryFlag: '🇬🇧',
+    countries: [{ flag: '🇬🇧', name: '영국' }],
+    date: '2025.05.02',
+    content: '런던 3컷 세로 🌧️',
+    likes: 22,
+    comments: 3,
+    liked: false,
+    visibility: 'public',
+    timestamp: Date.now() - 1000 * 60 * 60 * 36,
+    viewType: 'cut',
+    keywords: ['런던', '네컷'],
+    cutPhoto: {
+      layout: 'three-v',
+      frameId: 'basic-three-v',
+      frameColor: '#CD7F7D',
+      photos: [
+        'https://picsum.photos/seed/eorth-c5a/360/640',
+        'https://picsum.photos/seed/eorth-c5b/360/640',
+        'https://picsum.photos/seed/eorth-c5c/360/640',
+      ],
+      previewUri: '',
+    },
+    medias: ['https://picsum.photos/seed/eorth-c5a/360/640'],
   },
   // ─── snap 형식 (BeReal 스타일) ───
   {
@@ -236,7 +398,7 @@ const INITIAL_RECORDS: TravelRecord[] = [
     comments: 12,
     liked: true,
     visibility: 'friends',
-    timestamp: Date.now() - 1000 * 60 * 60 * 72,
+    timestamp: Date.now() - 1000 * 60 * 60 * 32,
     startDate: '2025.03.08',
     endDate: '2025.03.12',
     companions: ['혼자'],
@@ -256,7 +418,7 @@ const INITIAL_RECORDS: TravelRecord[] = [
     comments: 19,
     liked: false,
     visibility: 'public',
-    timestamp: Date.now() - 1000 * 60 * 60 * 96,
+    timestamp: Date.now() - 1000 * 60 * 60 * 20,
     startDate: '2025.03.01',
     endDate: '2025.03.07',
     companions: ['가족'],
@@ -300,11 +462,17 @@ interface RecordContextType {
   updateDraft: (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => void;
   deleteDraft: (id: string) => void;
   publishDraft: (id: string) => void;
+  addImportedAlbum: (data: {
+    countryName: string; countryFlag: string; country: string;
+    date: string; startDate: string; endDate: string;
+    title: string; medias: string[];
+  }) => string; // 생성된 record id 반환
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
+  const { nickname, handle } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -316,6 +484,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   ) => {
     const newRecord: TravelRecord = {
       ...data,
+      user: {
+        ...data.user,
+        name: nickname,
+        handle: handle,
+      },
       id: `rec-${Date.now()}`,
       likes: 0,
       comments: 0,
@@ -345,6 +518,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const draftId = `draft-${Date.now()}`;
     const draft: TravelRecord = {
       ...data,
+      user: {
+        ...data.user,
+        name: nickname,
+        handle: handle,
+      },
       id: draftId,
       likes: 0,
       comments: 0,
@@ -417,6 +595,33 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setBlockedUsers((prev) => prev.filter((b) => b.name !== name));
   };
 
+  const addImportedAlbum = (data: {
+    countryName: string; countryFlag: string; country: string;
+    date: string; startDate: string; endDate: string;
+    title: string; medias: string[];
+  }): string => {
+    const id = `rec-import-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const rec: TravelRecord = {
+      id,
+      user: { name: '', emoji: '🗺️', handle: '' },
+      country: data.country,
+      countryName: data.countryName,
+      countryFlag: data.countryFlag,
+      date: data.date,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      content: data.title,
+      likes: 0, comments: 0, liked: false,
+      isMyPost: true,
+      visibility: 'private',
+      timestamp: Date.now(),
+      viewType: 'album',
+      medias: data.medias,
+    };
+    setRecords((prev) => [rec, ...prev]);
+    return id;
+  };
+
   const addTripGroup = (data: Omit<TripGroup, 'id' | 'createdAt'>) => {
     const newGroup: TripGroup = {
       ...data,
@@ -437,7 +642,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum }}>
       {children}
     </RecordContext.Provider>
   );
