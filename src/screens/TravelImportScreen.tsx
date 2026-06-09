@@ -26,7 +26,7 @@ const { width } = Dimensions.get('window');
 // iOS: iCloud 최적화로 원본이 기기에서 내려가 다운로드가 필요 → 느릴 수 있음
 // Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
 const SCAN_YEARS = 1; // ⚠️ 임시: 기능 확인용 1년 조회. 원래 값은 3 (되돌릴 때 여기만 수정)
-const MIN_TRIP_PHOTOS = 30; // 이 장수 이하인 여행은 결과에서 제외 (30장 초과만 표시)
+const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
 const SCAN_NOTE =
   Platform.OS === 'ios'
     ? `☁️ iCloud에 사진이 있으면 다운로드하며 분석하느라 시간이 걸릴 수 있어요.\n최근 ${SCAN_YEARS}년간 촬영한 사진만 분석합니다.`
