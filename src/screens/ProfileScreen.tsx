@@ -1500,13 +1500,15 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
   } = useSettings();
   const profileName = nickname ? nickname : handle;
 
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups, archivedIds } = useRecords();
 
   const mappedThumbnails = useMemo(() => {
     return tripGroups.map(group => {
       const groupRecords = group.records
         .map(id => records.find(r => r.id === id))
-        .filter(Boolean) as typeof records;
+        .filter(Boolean)
+        // 보관된 기록은 카드에서 제외 → 전부 보관되면 카드 자체가 숨겨진다
+        .filter(r => !archivedIds.includes((r as NonNullable<typeof r>).id)) as typeof records;
 
       const firstRec = groupRecords[0];
       const coverRec = groupRecords.find(r => r.id === group.coverRecordId) ?? firstRec;
@@ -1532,7 +1534,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         coverUri: coverRec?.medias?.[0], // import 시 선택한 썸네일이 medias[0]에 위치
       };
     }).filter(t => t.records.length > 0);
-  }, [tripGroups, records]);
+  }, [tripGroups, records, archivedIds]);
 
   // import/기록 기반 여행 카드(mappedThumbnails)를 맨 앞에 병합
   // → 새로 만든 카드가 기본으로 큰 메인 카드 자리를 차지하고, 기존 카드는 그리드로 밀린다

@@ -9,6 +9,8 @@ import {
   Animated,
   Image,
   TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -96,13 +98,15 @@ export default function TripDetailScreen() {
   const navigation = useNavigation<any>();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
-  const { records, tripGroups, updateTripGroup } = useRecords();
+  const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup } = useRecords();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
   const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(titleToDisplay);
+  const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
+  const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
 
   useEffect(() => {
     setEditedTitle(titleToDisplay);
@@ -115,6 +119,70 @@ export default function TripDetailScreen() {
     }
   };
 
+  // ── ☰ 편집 메뉴 액션 ──
+  // 그룹 기반 카드만 보관/삭제/썸네일 변경 가능 (하드코딩 샘플 카드는 그룹이 없음)
+  const groupRecordObjs = currentGroup
+    ? (currentGroup.records.map((id) => records.find((r) => r.id === id)).filter(Boolean) as TravelRecord[])
+    : [];
+  const thumbCandidates = groupRecordObjs.flatMap((r) => r.medias ?? []);
+
+  const handleChangeThumb = () => {
+    setMenuVisible(false);
+    if (!currentGroup || thumbCandidates.length === 0) {
+      Alert.alert('알림', '변경할 수 있는 사진이 없어요.');
+      return;
+    }
+    setThumbPickerVisible(true);
+  };
+
+  const handlePickThumb = (uri: string) => {
+    if (!currentGroup) return;
+    const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
+    if (!owner) return;
+    // 선택한 사진을 해당 기록의 맨 앞으로 + 그 기록을 대표 기록으로 → 프로필 카드 썸네일(medias[0]) 반영
+    updateRecord(owner.id, { medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)] });
+    updateTripGroup(currentGroup.id, { coverRecordId: owner.id });
+    setThumbPickerVisible(false);
+  };
+
+  const handleArchiveCard = () => {
+    setMenuVisible(false);
+    if (!currentGroup) {
+      Alert.alert('알림', '샘플 여행 카드는 보관할 수 없어요.');
+      return;
+    }
+    Alert.alert('기록카드 보관', '이 여행의 모든 기록이 보관함으로 이동하고, 프로필에서 카드가 숨겨져요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '보관',
+        onPress: () => {
+          currentGroup.records.forEach((id) => archiveRecord(id));
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteCard = () => {
+    setMenuVisible(false);
+    if (!currentGroup) {
+      Alert.alert('알림', '샘플 여행 카드는 삭제할 수 없어요.');
+      return;
+    }
+    Alert.alert('기록카드 삭제', '이 여행의 모든 기록이 함께 삭제돼요. 되돌릴 수 없어요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          currentGroup.records.forEach((id) => deleteRecord(id));
+          deleteTripGroup(currentGroup.id);
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
   // 이 여행의 국가와 매칭되는 실제 기록 가져오기
   const matchedRecords = records.filter(
     (r) => r.countryName === trip.country || r.country?.includes(trip.country)
@@ -125,21 +193,23 @@ export default function TripDetailScreen() {
     return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType);
   };
 
+  // ── 포맷 콘솔: 기록이 있는 형식만 모듈 목록으로 표시, 탭하면 펼쳐짐 ──
+  const FORMAT_ORDER = ['feed', 'blog', 'album', 'snap', 'cut'];
+  const modules = FORMAT_ORDER
+    .map((vt) => ({ vt, config: VIEW_CONFIG[vt], items: getRecordsByType(vt) }))
+    .filter((m) => !!m.config && m.items.length > 0);
+  const [expandedType, setExpandedType] = useState<string | null>(null);
+
   // 애니메이션
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef(trip.records.map(() => new Animated.Value(0))).current;
+  const moduleAnims = useRef(FORMAT_ORDER.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    Animated.timing(headerAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-
-    trip.records.forEach((_, i) => {
-      Animated.spring(cardAnims[i], {
+    Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    moduleAnims.forEach((anim, i) => {
+      Animated.spring(anim, {
         toValue: 1,
-        delay: 150 + i * 100,
+        delay: 150 + i * 110,
         tension: 50,
         friction: 8,
         useNativeDriver: true,
@@ -180,14 +250,66 @@ export default function TripDetailScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => setIsEditing(true)}>
-              <Text style={s.headerTitle}>{titleToDisplay}</Text>
-              <Text style={{ fontSize: 13, color: COLORS.textDim }}>✏️</Text>
-            </TouchableOpacity>
+            <Text style={s.headerTitle}>{titleToDisplay}</Text>
           )}
         </View>
-        <View style={s.backBtn} />
+        {/* ☰ 편집 메뉴 */}
+        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)}>
+          <View style={s.menuBars}>
+            <View style={s.menuBar} />
+            <View style={s.menuBar} />
+            <View style={s.menuBar} />
+          </View>
+        </TouchableOpacity>
       </Animated.View>
+
+      {/* 편집 메뉴 시트 */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+          <View style={s.menuSheet}>
+            <TouchableOpacity
+              style={s.menuItem}
+              onPress={() => { setMenuVisible(false); setIsEditing(true); }}
+            >
+              <Text style={s.menuItemText}>✏️  제목 수정</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb}>
+              <Text style={s.menuItemText}>🖼️  썸네일 사진 변경</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard}>
+              <Text style={s.menuItemText}>📦  기록카드 보관</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard}>
+              <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  기록카드 삭제</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 썸네일 사진 선택 시트 */}
+      <Modal visible={thumbPickerVisible} transparent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
+        <View style={s.thumbOverlay}>
+          <View style={s.thumbSheet}>
+            <Text style={s.thumbTitle}>썸네일 사진 변경</Text>
+            <Text style={s.thumbSub}>프로필 여행 카드에 표시될 사진을 골라주세요.</Text>
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              <View style={s.thumbGrid}>
+                {thumbCandidates.map((uri, i) => (
+                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85}>
+                    <Image source={{ uri }} style={s.thumbCell} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            <TouchableOpacity style={s.thumbCancel} onPress={() => setThumbPickerVisible(false)} activeOpacity={0.85}>
+              <Text style={s.thumbCancelTxt}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <ScrollView
         style={s.scroll}
@@ -210,59 +332,115 @@ export default function TripDetailScreen() {
           </View>
         </Animated.View>
 
-        {/* 형식별 기록 카드 */}
-        {trip.records.map((rec, idx) => {
-          const config = VIEW_CONFIG[rec.viewType];
-          if (!config) return null;
-          const typeRecords = getRecordsByType(rec.viewType);
+        {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
+        <View style={s.console}>
+          {/* 에너지 레일 */}
+          <LinearGradient
+            colors={['rgba(191,133,252,0)', 'rgba(191,133,252,0.55)', 'rgba(191,133,252,0)']}
+            style={s.rail}
+          />
 
-          const animStyle = {
-            opacity: cardAnims[idx],
-            transform: [{
-              translateY: cardAnims[idx].interpolate({
-                inputRange: [0, 1],
-                outputRange: [30, 0],
-              }),
-            }],
-          };
+          {modules.map((m, idx) => {
+            const open = expandedType === m.vt;
+            const even = idx % 2 === 0;
+            const thumbs = m.items.flatMap((r) => r.medias ?? []).slice(0, 3);
+            const animStyle = {
+              opacity: moduleAnims[idx],
+              transform: [{
+                translateX: moduleAnims[idx].interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [even ? -48 : 48, 0],
+                }),
+              }],
+            };
+            return (
+              <Animated.View key={m.vt} style={[s.moduleWrap, animStyle]}>
+                {/* 레일 노드 + 커넥터 */}
+                <View style={[s.railNode, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
+                <View style={[s.railLink, { backgroundColor: m.config.accent + '55' }]} />
 
-          return (
-            <Animated.View key={rec.id} style={[s.section, animStyle]}>
-              {/* 섹션 헤더 */}
-              <View style={s.sectionHeader}>
-                <View style={[s.sectionDot, { backgroundColor: config.accent }]} />
-                <Text style={[s.sectionName, { color: config.accent }]}>
-                  {config.icon} {config.name}
-                </Text>
-                <View style={[s.sectionLine, { backgroundColor: config.accent + '20' }]} />
-              </View>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setExpandedType(open ? null : m.vt)}
+                  style={[
+                    s.module,
+                    even ? s.moduleCutA : s.moduleCutB,
+                    { borderColor: open ? m.config.accent : m.config.accent + '38' },
+                    even ? { marginRight: 22 } : { marginLeft: 22 },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={m.config.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <View style={[s.moduleEdge, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
 
-              {/* 기록 콘텐츠 */}
-              {typeRecords.length > 0 ? (
-                typeRecords.map((record) => (
-                  <TouchableOpacity
-                    key={record.id}
-                    activeOpacity={0.75}
-                    onPress={() => handleRecordPress(record)}
-                  >
-                    {rec.viewType === 'feed' && <FeedCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'blog' && <BlogCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'moment' && <MomentCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'storyboard' && <StoryboardCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'album' && <AlbumCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'snap' && <SnapCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'cut' && <CutCard record={record} accent={config.accent} />}
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={s.emptyCard}>
-                  <Text style={s.emptyIcon}>{config.icon}</Text>
-                  <Text style={s.emptyText}>아직 {config.name} 기록이 없어요</Text>
-                </View>
-              )}
-            </Animated.View>
-          );
-        })}
+                  <Text style={[s.moduleIndex, { color: m.config.accent }]}>
+                    {String(idx + 1).padStart(2, '0')}
+                  </Text>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.moduleCode, { color: m.config.accent + 'AA' }]}>
+                      MODULE // {m.vt.toUpperCase()}
+                    </Text>
+                    <Text style={s.moduleName}>{m.config.icon} {m.config.name}</Text>
+                    <View style={s.moduleMetaRow}>
+                      <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
+                      <Text style={[s.moduleCount, { color: m.config.accent }]}>{m.items.length}개 기록</Text>
+                    </View>
+                  </View>
+
+                  {thumbs.length > 0 ? (
+                    <View style={s.thumbStack}>
+                      {thumbs.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri }}
+                          style={[
+                            s.thumbMini,
+                            { marginLeft: i === 0 ? 0 : -14, transform: [{ rotate: `${(i - 1) * 7}deg` }] },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={s.moduleBigIcon}>{m.config.icon}</Text>
+                  )}
+
+                  <Text style={[s.moduleChevron, { color: m.config.accent }, open && s.moduleChevronOpen]}>❯</Text>
+                </TouchableOpacity>
+
+                {/* 펼침 — 해당 형식으로 기록된 것들 */}
+                {open && (
+                  <View style={[s.expandWrap, { borderLeftColor: m.config.accent + '44' }]}>
+                    {m.items.map((record) => (
+                      <TouchableOpacity
+                        key={record.id}
+                        activeOpacity={0.75}
+                        onPress={() => handleRecordPress(record)}
+                      >
+                        {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </Animated.View>
+            );
+          })}
+
+          {modules.length === 0 && (
+            <View style={s.emptyCard}>
+              <Text style={s.emptyIcon}>🛰️</Text>
+              <Text style={s.emptyText}>아직 이 여행에 기록이 없어요</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -705,6 +883,80 @@ const s = StyleSheet.create({
   },
   emptyIcon: { fontSize: 28, marginBottom: 8 },
   emptyText: { fontSize: 13, color: COLORS.textMuted },
+
+  /* ── ☰ 편집 메뉴 ── */
+  menuBars: { gap: 4, alignItems: 'center', justifyContent: 'center' },
+  menuBar: { width: 16, height: 2, borderRadius: 1, backgroundColor: COLORS.white },
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  menuSheet: {
+    position: 'absolute', top: 100, right: 20, minWidth: 160,
+    backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.cardBorder,
+    paddingVertical: 6, overflow: 'hidden',
+  },
+  menuItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  menuItemText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  menuItemDanger: { color: '#FF3B30' },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
+
+  /* ── 썸네일 사진 선택 시트 ── */
+  thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  thumbSheet: {
+    backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 40,
+  },
+  thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  thumbSub: { color: COLORS.textDim, fontSize: 13, marginBottom: 16 },
+  thumbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  thumbCell: {
+    width: (SCREEN_WIDTH - 40 - 16) / 3, height: (SCREEN_WIDTH - 40 - 16) / 3,
+    borderRadius: 10, backgroundColor: '#1A0A2E',
+  },
+  thumbCancel: {
+    marginTop: 16, paddingVertical: 14, borderRadius: 999, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  thumbCancelTxt: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+
+  /* ── 기록 포맷 콘솔 (네온 레일 + 모듈) ── */
+  console: { position: 'relative', paddingLeft: 30, paddingTop: 4 },
+  rail: { position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, borderRadius: 1 },
+  moduleWrap: { position: 'relative', marginBottom: 16 },
+  railNode: {
+    position: 'absolute', left: -23, top: 30, width: 10, height: 10, borderRadius: 5,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6, elevation: 6,
+    zIndex: 2,
+  },
+  railLink: { position: 'absolute', left: -14, top: 34, width: 14, height: 1.5, borderRadius: 1 },
+  module: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(26,26,38,0.85)',
+    borderWidth: 1, paddingVertical: 14, paddingHorizontal: 14,
+    overflow: 'hidden',
+  },
+  // 비대칭 컷 코너 — 짝수/홀수 모듈이 서로 거울 형태
+  moduleCutA: { borderTopLeftRadius: 4, borderTopRightRadius: 24, borderBottomRightRadius: 4, borderBottomLeftRadius: 24 },
+  moduleCutB: { borderTopLeftRadius: 24, borderTopRightRadius: 4, borderBottomRightRadius: 24, borderBottomLeftRadius: 4 },
+  moduleEdge: {
+    position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5, elevation: 4,
+  },
+  moduleIndex: { fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center' },
+  moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
+  moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },
+  moduleMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
+  moduleDataLine: { flex: 1, height: 1, maxWidth: 90 },
+  moduleCount: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  thumbStack: { flexDirection: 'row', alignItems: 'center' },
+  thumbMini: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: '#1A0A2E',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
+  },
+  moduleBigIcon: { fontSize: 22 },
+  moduleChevron: { fontSize: 14, fontWeight: '800', marginLeft: 2 },
+  moduleChevronOpen: { transform: [{ rotate: '90deg' }] },
+  expandWrap: { marginTop: 10, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 2 },
 });
 
 // ─── 카드 스타일 ───
