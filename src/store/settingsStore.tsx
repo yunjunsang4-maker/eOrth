@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState } from 'react';
+import { View } from 'react-native';
+import { usePersistence, STORE_KEYS } from './persist';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -31,6 +33,24 @@ interface SettingsContextType {
   setArrivalDetect: (v: boolean) => void;
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
+  resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
+}
+
+// AsyncStorage에 저장되는 설정 스냅샷
+interface SettingsPersistPayload {
+  showCounts: boolean;
+  homeCountryCode: string;
+  snapEnabled: boolean;
+  diaryCardMode: DiaryCardMode;
+  nickname: string;
+  handle: string;
+  bio: string;
+  profilePhoto: string | null;
+  handleLastChanged: number | null;
+  signUpMethod: SignUpMethod;
+  signUpEmail: string;
+  arrivalDetect: boolean;
+  currentVisitedCountryCode: string;
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -49,6 +69,76 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
   const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('JP'); // 여행국가: 기본값 일본(JP)
+
+  const hydrated = usePersistence<SettingsPersistPayload>(
+    STORE_KEYS.settings,
+    (p) => {
+      setShowCounts(p.showCounts);
+      setHomeCountryCode(p.homeCountryCode);
+      setSnapEnabled(p.snapEnabled);
+      setDiaryCardMode(p.diaryCardMode);
+      setNickname(p.nickname);
+      setHandle(p.handle);
+      setBio(p.bio);
+      setProfilePhoto(p.profilePhoto);
+      setHandleLastChanged(p.handleLastChanged);
+      setSignUpMethod(p.signUpMethod);
+      setSignUpEmail(p.signUpEmail);
+      setArrivalDetect(p.arrivalDetect);
+      setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
+    },
+    () => ({
+      showCounts,
+      homeCountryCode,
+      snapEnabled,
+      diaryCardMode,
+      nickname,
+      handle,
+      bio,
+      profilePhoto,
+      handleLastChanged,
+      signUpMethod,
+      signUpEmail,
+      arrivalDetect,
+      currentVisitedCountryCode,
+    }),
+    [
+      showCounts,
+      homeCountryCode,
+      snapEnabled,
+      diaryCardMode,
+      nickname,
+      handle,
+      bio,
+      profilePhoto,
+      handleLastChanged,
+      signUpMethod,
+      signUpEmail,
+      arrivalDetect,
+      currentVisitedCountryCode,
+    ],
+  );
+
+  const resetSettings = () => {
+    setShowCounts(true);
+    setHomeCountryCode('KR');
+    setSnapEnabled(true);
+    setDiaryCardMode('full');
+    setNickname('윤준상');
+    setHandle('yunjunsung');
+    setBio('');
+    setProfilePhoto(null);
+    setHandleLastChanged(null);
+    setSignUpMethod('email');
+    setSignUpEmail('user@eorth.app');
+    setArrivalDetect(true);
+    setCurrentVisitedCountryCode('JP');
+  };
+
+  // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
+  }
 
   return (
     <SettingsContext.Provider
@@ -79,6 +169,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
+        resetSettings,
       }}
     >
       {children}

@@ -12,11 +12,21 @@ import {
   Modal,
   ActivityIndicator,
   Image,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
+import { clearPersistedStores } from '../store/persist';
+import {
+  getPendingDeletion,
+  isDeletionExpired,
+  cancelAccountDeletion,
+  daysUntilPurge,
+} from '../store/pendingDeletion';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 
 const { width } = Dimensions.get('window');
@@ -26,7 +36,9 @@ interface Props {
 }
 
 export default function LoginScreen({ navigation }: Props) {
-  const { setSignUpMethod, setSignUpEmail, setNickname } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
+  const { resetRecords } = useRecords();
+  const { resetConversations } = useDM();
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -59,17 +71,72 @@ export default function LoginScreen({ navigation }: Props) {
     setAuthSuccess(false);
   };
 
+  // ─── 탈퇴 유예 계정 처리 ───
+  // 로그인 성공 시 탈퇴 신청 여부를 확인한다.
+  //  - 유예 기간(30일) 내 → 복구 여부를 묻고, 복구하면 데이터 그대로 Main 진입
+  //  - 만료 → 영구 파기 후 새 계정 온보딩 진행
+  // applySignup: 가입 정보(이메일·닉네임 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
+  const purgeAllData = () => {
+    resetRecords();
+    resetSettings();
+    resetConversations();
+    clearPersistedStores().catch(() => {});
+    cancelAccountDeletion().catch(() => {});
+  };
+
+  const proceedAfterAuth = async (applySignup: () => void) => {
+    const pending = await getPendingDeletion();
+
+    if (!pending) {
+      applySignup();
+      navigation.navigate('BasicInfo');
+      return;
+    }
+
+    if (isDeletionExpired(pending)) {
+      purgeAllData();
+      applySignup();
+      navigation.navigate('BasicInfo');
+      return;
+    }
+
+    Alert.alert(
+      '계정 복구',
+      `탈퇴 신청된 계정입니다.\n지금 복구하면 여행 기록과 설정이 그대로 유지됩니다.\n(영구 삭제까지 ${daysUntilPurge(pending)}일 남음)`,
+      [
+        {
+          text: '새로 시작',
+          style: 'destructive',
+          onPress: () => {
+            purgeAllData();
+            applySignup();
+            navigation.navigate('BasicInfo');
+          },
+        },
+        {
+          text: '복구하기',
+          onPress: () => {
+            cancelAccountDeletion().catch(() => {});
+            navigation.navigate('Main');
+          },
+        },
+      ],
+    );
+  };
+
   const confirmSocialLogin = (emailStr: string, nameStr: string) => {
     setSocialLoading(true);
     setTimeout(() => {
       setAuthSuccess(true);
       setTimeout(() => {
         setSocialLoading(false);
+        const provider = socialModal || 'google';
         setSocialModal(null);
-        setSignUpMethod(socialModal || 'google');
-        setSignUpEmail(emailStr);
-        setNickname(nameStr);
-        navigation.navigate('BasicInfo');
+        proceedAfterAuth(() => {
+          setSignUpMethod(provider);
+          setSignUpEmail(emailStr);
+          setNickname(nameStr);
+        });
       }, 800);
     }, 1200);
   };
@@ -97,9 +164,10 @@ export default function LoginScreen({ navigation }: Props) {
     (isSignup ? confirmPassword === password : true);
 
   const handleSubmit = () => {
-    setSignUpMethod('email');
-    setSignUpEmail(email.trim() || 'user@eorth.app');
-    navigation.navigate('BasicInfo');
+    proceedAfterAuth(() => {
+      setSignUpMethod('email');
+      setSignUpEmail(email.trim() || 'user@eorth.app');
+    });
   };
 
   return (

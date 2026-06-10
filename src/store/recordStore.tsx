@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState } from 'react';
+import { View } from 'react-native';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
+import { usePersistence, STORE_KEYS } from './persist';
 
 // ─────────────────────────────────────────────
 // 타입 정의
@@ -468,9 +470,19 @@ interface RecordContextType {
     title: string; medias: string[];
     representativePhoto?: string; // 카드 썸네일용 크롭본 (없으면 medias[0] 사용)
   }) => string; // 생성된 record id 반환
+  resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
+
+// JSON 직렬화 시 TripGroup.createdAt(Date)은 ISO 문자열이 되므로 복원 시 Date로 되살린다
+interface RecordPersistPayload {
+  records: TravelRecord[];
+  archivedIds: string[];
+  blockedUsers: BlockedUser[];
+  tripGroups: (Omit<TripGroup, 'createdAt'> & { createdAt: string | Date })[];
+  drafts: TravelRecord[];
+}
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { nickname, handle } = useSettings();
@@ -479,6 +491,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
+
+  const hydrated = usePersistence<RecordPersistPayload>(
+    STORE_KEYS.records,
+    (p) => {
+      setRecords(p.records);
+      setArchivedIds(p.archivedIds);
+      setBlockedUsers(p.blockedUsers);
+      setTripGroups(p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) })));
+      setDrafts(p.drafts);
+    },
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts],
+  );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
   // 같은 국가 + 기간이 겹치거나 7일 이내로 가까운 그룹이 있으면 그 그룹에 추가,
@@ -695,8 +720,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  const resetRecords = () => {
+    setRecords(INITIAL_RECORDS);
+    setArchivedIds([]);
+    setBlockedUsers([]);
+    setTripGroups([]);
+    setDrafts([]);
+  };
+
+  // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
+  }
+
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords }}>
       {children}
     </RecordContext.Provider>
   );

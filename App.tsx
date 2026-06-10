@@ -11,6 +11,7 @@ import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
+import ErrorBoundary from './src/components/ErrorBoundary';
 
 export default function App() {
   // 알림 탭 → 스냅 화면으로 이동
@@ -54,15 +55,17 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SettingsProvider>
-        <RecordProvider>
-          <DMProvider>
-            <StatusBar style="light" backgroundColor="#0A0118" translucent />
-            <SnapDetector />
-            <AppNavigator />
-          </DMProvider>
-        </RecordProvider>
-      </SettingsProvider>
+      <ErrorBoundary>
+        <SettingsProvider>
+          <RecordProvider>
+            <DMProvider>
+              <StatusBar style="light" backgroundColor="#0A0118" translucent />
+              <SnapDetector />
+              <AppNavigator />
+            </DMProvider>
+          </RecordProvider>
+        </SettingsProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }

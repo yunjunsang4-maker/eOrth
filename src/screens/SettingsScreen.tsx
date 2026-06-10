@@ -10,10 +10,14 @@ import {
   Switch,
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
+import { clearPersistedStores } from '../store/persist';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
+  TrashIcon,
 } from '../components/icons';
 
 const COLORS = {
@@ -90,7 +94,32 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
     showCounts, setShowCounts,
     homeCountryCode, setHomeCountryCode,
     diaryCardMode, setDiaryCardMode,
+    resetSettings,
   } = useSettings();
+  const { resetRecords } = useRecords();
+  const { resetConversations } = useDM();
+
+  const handleResetData = () => {
+    Alert.alert(
+      '데이터 초기화',
+      '모든 여행 기록·설정·대화 내역이 삭제되고 첫 실행 상태로 돌아갑니다.\n이 작업은 되돌릴 수 없어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '초기화',
+          style: 'destructive',
+          onPress: () => {
+            resetRecords();
+            resetSettings();
+            resetConversations();
+            clearPersistedStores().catch(() => {});
+            Alert.alert('완료', '데이터가 초기화되었습니다.');
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={st.safeArea}>
       {/* 상단 헤더 */}
@@ -189,6 +218,14 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
               onPress: () => Alert.alert('이용약관', '이용약관 페이지 준비 중입니다.'),
             },
             { icon: <InfoIcon size={22} />,      label: '앱 버전', value: 'v1.0.0' },
+          ]}
+        />
+
+        {/* 데이터 */}
+        <Text style={st.groupLabel}>데이터</Text>
+        <SettingGroup
+          items={[
+            { icon: <TrashIcon size={22} />, label: '데이터 초기화', onPress: handleResetData },
           ]}
         />
 

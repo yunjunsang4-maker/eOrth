@@ -2,6 +2,11 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography } from '../constants';
+import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
+import { useDM } from '../store/dmStore';
+import { clearPersistedStores } from '../store/persist';
+import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
 
 const { width, height } = Dimensions.get('window');
 
@@ -14,6 +19,23 @@ export default function SplashScreen({ navigation }: Props) {
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const { resetRecords } = useRecords();
+  const { resetSettings } = useSettings();
+  const { resetConversations } = useDM();
+
+  // 탈퇴 유예(30일) 만료 시 영구 파기
+  useEffect(() => {
+    (async () => {
+      const pending = await getPendingDeletion();
+      if (pending && isDeletionExpired(pending)) {
+        resetRecords();
+        resetSettings();
+        resetConversations();
+        await clearPersistedStores().catch(() => {});
+        await cancelAccountDeletion().catch(() => {});
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Entrance animations

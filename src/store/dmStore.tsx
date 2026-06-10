@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useCallback } from 'react';
+import { View } from 'react-native';
 import type { TravelRecord } from './recordStore';
 import type { Friend, Message, MsgType, SharedRecord } from './dmTypes';
 import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic';
+import { usePersistence, STORE_KEYS } from './persist';
 
 // ── 시드 (기존 DMScreen DUMMY_CHATS / SocialScreen SHARE_FRIENDS 이전) ──
 const INITIAL_FRIENDS: Friend[] = [
@@ -54,6 +56,7 @@ interface DMContextType {
   addMessage: (handle: string, msg: NewMessage) => void;
   sendRecord: (handle: string, record: TravelRecord) => void;
   topFriends: (n: number) => Friend[];
+  resetConversations: () => void; // 대화 내역을 첫 실행 상태(시드)로 되돌림
 }
 
 const DMContext = createContext<DMContextType | null>(null);
@@ -61,6 +64,14 @@ const DMContext = createContext<DMContextType | null>(null);
 export function DMProvider({ children }: { children: React.ReactNode }) {
   const [conversations, setConversations] = useState<Record<string, Message[]>>(INITIAL_CONVERSATIONS);
   const [friends] = useState<Friend[]>(INITIAL_FRIENDS);
+
+  // friends는 시드 고정이므로 대화 내역만 영속화한다
+  const hydrated = usePersistence<{ conversations: Record<string, Message[]> }>(
+    STORE_KEYS.dm,
+    (p) => setConversations(p.conversations),
+    () => ({ conversations }),
+    [conversations],
+  );
 
   const addMessage = useCallback((handle: string, msg: NewMessage) => {
     setConversations((prev) => {
@@ -83,8 +94,17 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
 
   const topFriends = useCallback((n: number) => pickTopFriends(friends, conversations, n), [friends, conversations]);
 
+  const resetConversations = useCallback(() => {
+    setConversations(INITIAL_CONVERSATIONS);
+  }, []);
+
+  // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다
+  if (!hydrated) {
+    return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
+  }
+
   return (
-    <DMContext.Provider value={{ conversations, friends, addMessage, sendRecord, topFriends }}>
+    <DMContext.Provider value={{ conversations, friends, addMessage, sendRecord, topFriends, resetConversations }}>
       {children}
     </DMContext.Provider>
   );

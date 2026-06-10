@@ -12,8 +12,8 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
+import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 
 const COLORS = {
@@ -80,7 +80,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [googleLinked, setGoogleLinked] = useState(signUpMethod === 'google');
   const [appleLinked, setAppleLinked] = useState(signUpMethod === 'apple');
   const [isPublic, setIsPublic] = useState(true);
-  const { records, deleteRecord } = useRecords();
 
   const handlePublicToggle = (newValue: boolean) => {
     const title = newValue ? '계정 공개 전환' : '계정 비공개 전환';
@@ -216,15 +215,15 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     }
 
     Alert.alert(
-      '탈퇴 처리 중',
-      '그동안 eOrth를 이용해주셔서 감사합니다.\n계정과 데이터를 완전히 파기하고 초기 화면으로 이동합니다.',
+      '탈퇴 신청 완료',
+      `그동안 eOrth를 이용해주셔서 감사합니다.\n${DELETION_GRACE_DAYS}일 이내에 다시 로그인하면 계정과 기록이 복구되며, 이후에는 모든 데이터가 영구 삭제됩니다.`,
       [
         {
           text: '확인',
           onPress: () => {
             closeDeleteAccountModal();
-            // 모든 records 삭제
-            [...records].forEach((r) => deleteRecord(r.id));
+            // 즉시 파기하지 않고 유예 플래그만 기록 (30일 내 재로그인 시 복구)
+            requestAccountDeletion().catch(() => {});
             // Splash로 앱 초기화
             navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
           },
@@ -563,6 +562,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {deleteStep === 3 && (
               <View>
                 <Text style={styles.modalDesc}>마지막 단계입니다. 본인 인증을 위해 아래 항목을 완료해주세요.</Text>
+                <Text style={styles.modalDesc}>탈퇴 후 {DELETION_GRACE_DAYS}일 이내에 다시 로그인하면 계정이 복구되며, 기간이 지나면 모든 기록이 영구 삭제됩니다.</Text>
                 
                 {signUpMethod === 'email' ? (
                   <View style={styles.inputGroup}>
