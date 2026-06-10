@@ -49,7 +49,9 @@ export default function AppIntroScreen({ navigation }: Props) {
 
   const goNext = () => {
     if (activeIdx < SLIDES.length - 1) {
-      flatListRef.current?.scrollToIndex({ index: activeIdx + 1, animated: true });
+      const nextIdx = activeIdx + 1;
+      setActiveIdx(nextIdx);
+      flatListRef.current?.scrollToIndex({ index: nextIdx, animated: true });
     } else {
       navigation.replace('Login');
     }
@@ -107,27 +109,16 @@ export default function AppIntroScreen({ navigation }: Props) {
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
-      {/* Skip button */}
-      <TouchableOpacity
-        style={styles.skipBtn}
-        onPress={() => navigation.replace('Login')}
-      >
-        <Text style={styles.skipText}>건너뛰기</Text>
-      </TouchableOpacity>
-
-      {/* Slides */}
+      {/* Slides (Disabled manual scrolling, only next button is allowed) */}
       <FlatList
         ref={flatListRef}
         data={SLIDES}
         horizontal
         pagingEnabled
+        scrollEnabled={false}
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
         renderItem={renderSlide}
-        onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / width);
-          setActiveIdx(idx);
-        }}
         style={styles.flatList}
       />
 

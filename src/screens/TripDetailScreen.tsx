@@ -140,7 +140,11 @@ export default function TripDetailScreen() {
     const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
     if (!owner) return;
     // 선택한 사진을 해당 기록의 맨 앞으로 + 그 기록을 대표 기록으로 → 프로필 카드 썸네일(medias[0]) 반영
-    updateRecord(owner.id, { medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)] });
+    // representativePhoto(위치 조정 크롭본)가 남아 있으면 새 썸네일을 가리므로 함께 비운다
+    updateRecord(owner.id, {
+      medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)],
+      representativePhoto: undefined,
+    });
     updateTripGroup(currentGroup.id, { coverRecordId: owner.id });
     setThumbPickerVisible(false);
   };
@@ -184,9 +188,13 @@ export default function TripDetailScreen() {
   };
 
   // 이 여행의 국가와 매칭되는 실제 기록 가져오기
-  const matchedRecords = records.filter(
-    (r) => r.countryName === trip.country || r.country?.includes(trip.country)
-  );
+  // 국가 없는 카드(사진첩 등 trip.country='')는 includes('')가 모든 기록을 통과시키므로
+  // 그룹에 직접 묶인 기록만 사용한다.
+  const matchedRecords = trip.country
+    ? records.filter(
+        (r) => r.countryName === trip.country || r.country?.includes(trip.country)
+      )
+    : groupRecordObjs;
 
   // viewType별 그룹
   const getRecordsByType = (viewType: string): TravelRecord[] => {

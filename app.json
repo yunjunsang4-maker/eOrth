@@ -14,7 +14,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yunjunsang.eorth"
+      "bundleIdentifier": "com.yunjunsang.eorth",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "package": "com.yunjunsang.eorth",
@@ -72,19 +75,14 @@
         }
       ],
       [
-        "expo-av",
-        {
-          "microphonePermission": "영상 재생 및 녹화를 위해 마이크 접근이 필요해요."
-        }
-      ],
-      [
         "expo-contacts",
         {
           "contactsPermission": "아는 사람을 찾기 위해 연락처 접근이 필요해요."
         }
       ],
       "expo-background-task",
-      "./modules/photo-vision/withMlkitVisionDependencies"
+      "./modules/photo-vision/withMlkitVisionDependencies",
+      "expo-video"
     ],
     "extra": {
       "eas": {

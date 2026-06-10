@@ -169,6 +169,8 @@ export function FloatingBlobs({ style }: FloatingBlobsProps) {
 interface LiquidPressableProps {
   children: React.ReactNode;
   onPress?: () => void;
+  onLongPress?: () => void;
+  delayLongPress?: number;
   style?: StyleProp<ViewStyle>;
   intensity?: number;
   disabled?: boolean;
@@ -177,6 +179,8 @@ interface LiquidPressableProps {
 export function LiquidPressable({
   children,
   onPress,
+  onLongPress,
+  delayLongPress,
   style,
   intensity = 0.06,
   disabled = false,
@@ -238,6 +242,8 @@ export function LiquidPressable({
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={delayLongPress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       disabled={disabled}

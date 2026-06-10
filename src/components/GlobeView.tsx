@@ -2,11 +2,13 @@ import React, { useMemo, useRef, useEffect } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 
-export type GlobeDisplayMode = 'flag' | 'color';
+export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
 
 export interface VisitedCountry {
   nameEn: string;       // GeoJSON 영문 이름
   color?: string;       // 사용자 지정 색상 (hex)
+  photo?: string;       // 대표 사진 URI (hex)
+  mode?: GlobeDisplayMode; // 개별 표시 모드
 }
 
 interface GlobeViewProps {
@@ -161,12 +163,33 @@ function loadFlagImage(isoCode) {
   });
 }
 
-// 방문 국가 국기 이미지 일괄 로드
-async function loadAllFlags() {
+// 사진 이미지 캐시
+var photoImageCache = {};
+function loadPhotoImage(url) {
+  if (!url) return Promise.resolve(null);
+  if (photoImageCache[url]) return Promise.resolve(photoImageCache[url]);
+  return new Promise(function(resolve) {
+    var img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = function() { photoImageCache[url] = img; resolve(img); };
+    img.onerror = function() { resolve(null); };
+    img.src = url;
+  });
+}
+
+// 방문 국가 이미지 일괄 로드 (국기 또는 사진)
+async function loadAllImages() {
   var promises = [];
   Object.keys(visitedMap).forEach(function(nameEn) {
-    var iso = EN_TO_ISO[nameEn];
-    if (iso) promises.push(loadFlagImage(iso));
+    var visited = visitedMap[nameEn];
+    if (globeDisplayMode === 'flag') {
+      var iso = EN_TO_ISO[nameEn];
+      if (iso) promises.push(loadFlagImage(iso));
+    } else if (globeDisplayMode === 'photo') {
+      if (visited.photo) {
+        promises.push(loadPhotoImage(visited.photo));
+      }
+    }
   });
   await Promise.all(promises);
 }
@@ -275,6 +298,7 @@ async function buildTexture() {
     var baseColor = visited.color || globeDefaultColor;
     var iso = EN_TO_ISO[nameEn];
     var flagImg = iso ? flagImageCache[iso] : null;
+    var photoImg = visited.photo ? photoImageCache[visited.photo] : null;
 
     if (mode === 'flag' && flagImg) {
       // 국기 모드: 각 폴리곤(영토)마다 개별적으로 국기 그리기
@@ -315,6 +339,58 @@ async function buildTexture() {
           dx = bx; dy = by - (dh - bh) / 2;
         }
         ctx.drawImage(flagImg, dx, dy, dw, dh);
+
+        ctx.restore();
+      });
+
+      // 전체 테두리
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.shadowColor = 'rgba(255,255,255,0.3)';
+      ctx.shadowBlur = 3;
+      ctx.beginPath();
+      path(f);
+      ctx.stroke();
+      ctx.shadowBlur = 0;
+    } else if (mode === 'photo' && photoImg) {
+      // 대표 사진 모드: 각 폴리곤(영토)마다 개별적으로 사진 그리기
+      var geom = f.geometry;
+      var polygons = [];
+      if (geom.type === 'Polygon') {
+        polygons.push(geom.coordinates);
+      } else if (geom.type === 'MultiPolygon') {
+        geom.coordinates.forEach(function(poly) { polygons.push(poly); });
+      }
+
+      polygons.forEach(function(coords) {
+        var subFeature = {
+          type: 'Feature',
+          properties: f.properties,
+          geometry: { type: 'Polygon', coordinates: coords }
+        };
+        var subBounds = pathForBounds.bounds(subFeature);
+        var bx = subBounds[0][0], by = subBounds[0][1];
+        var bw = subBounds[1][0] - bx, bh = subBounds[1][1] - by;
+        if (bw <= 0 || bh <= 0) return;
+
+        ctx.save();
+        ctx.beginPath();
+        path(subFeature);
+        ctx.clip();
+
+        // 사진을 cover 방식으로 채우기
+        var imgRatio = photoImg.width / photoImg.height;
+        var boxRatio = bw / bh;
+        var dw, dh, dx, dy;
+        if (imgRatio > boxRatio) {
+          dh = bh; dw = bh * imgRatio;
+          dx = bx - (dw - bw) / 2; dy = by;
+        } else {
+          dw = bw; dh = bw / imgRatio;
+          dx = bx; dy = by - (dh - bh) / 2;
+        }
+        ctx.drawImage(photoImg, dx, dy, dw, dh);
 
         ctx.restore();
       });
@@ -722,12 +798,12 @@ function handleVisitedMessage(msg) {
   if (msg.type === 'setVisitedCountries' && msg.countries) {
     visitedMap = {};
     msg.countries.forEach(function(c) {
-      visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null };
+      visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null };
     });
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
     if (worldData && globeMesh) {
-      loadAllFlags().then(function() {
+      loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
         globeMesh.material.map = tex;

@@ -47,8 +47,8 @@ interface Props {
 function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boolean; onPress: () => void }) {
   const vt = rec.viewType;
 
-  // ── 피드: 인스타 스타일 ──
-  if (vt === 'feed') {
+  // ── 피드 / 네컷: 인스타 스타일 ──
+  if (vt === 'feed' || vt === 'cut') {
     return (
       <TouchableOpacity style={[rc.feedCard, isMine ? rc.cardMine : rc.cardTheirs]} activeOpacity={0.8} onPress={onPress}>
         {rec.mediaUri ? (
@@ -184,11 +184,11 @@ export default function DMScreen({ navigation, route }: Props) {
   // 공유로 진입한 경우 자동 전송
   useEffect(() => {
     if (!sharePostId || sharedRef.current) return;
-    sharedRef.current = true;
     const r = records.find(rec => rec.id === sharePostId);
     if (!r) return;
+    sharedRef.current = true;
     sendRecord(friend.handle, r);
-  }, [sharePostId]);
+  }, [sharePostId, records, friend.handle, sendRecord]);
 
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
     dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record });

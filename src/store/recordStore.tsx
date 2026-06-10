@@ -466,6 +466,7 @@ interface RecordContextType {
     countryName: string; countryFlag: string; country: string;
     date: string; startDate: string; endDate: string;
     title: string; medias: string[];
+    representativePhoto?: string; // 카드 썸네일용 크롭본 (없으면 medias[0] 사용)
   }) => string; // 생성된 record id 반환
 }
 
@@ -650,6 +651,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     countryName: string; countryFlag: string; country: string;
     date: string; startDate: string; endDate: string;
     title: string; medias: string[];
+    representativePhoto?: string;
   }): string => {
     const id = `rec-import-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const rec: TravelRecord = {
@@ -668,6 +670,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       timestamp: Date.now(),
       viewType: 'album',
       medias: data.medias,
+      representativePhoto: data.representativePhoto,
     };
     setRecords((prev) => [rec, ...prev]);
     return id;

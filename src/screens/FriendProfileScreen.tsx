@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path } from 'react-native-svg';
 import { handleBlock as blockUser } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
@@ -72,11 +73,9 @@ const AlbumBadgeIcon = () => (
 );
 
 const SnapBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 10, height: 10, borderRadius: 5, borderWidth: 1.5, borderColor: BADGE_C, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 3, height: 3, borderRadius: 1.5, backgroundColor: BADGE_C }} />
-    </View>
-  </View>
+  <Svg width={16} height={18} viewBox="0 0 24 24" fill="none">
+    <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill={BADGE_C} />
+  </Svg>
 );
 
 const CutBadgeIcon = () => (
@@ -121,7 +120,7 @@ const friendProfile = {
     {
       id: 'trip-1',
       emoji: '🗼',
-      title: '도쿄 감성 여행',
+      title: '🇯🇵 2025.03.05',
       country: '일본',
       countryFlag: '🇯🇵',
       date: '2025.03',
@@ -129,12 +128,14 @@ const friendProfile = {
       records: [
         { id: '1', viewType: 'feed' },
         { id: '2', viewType: 'blog' },
+        { id: 'seed-snap2', viewType: 'snap' },
+        { id: 'seed-cut', viewType: 'cut' },
       ],
     },
     {
       id: 'trip-2',
       emoji: '🌴',
-      title: '태국 힐링 여행',
+      title: '🇹🇭 2025.01.15',
       country: '태국',
       countryFlag: '🇹🇭',
       date: '2025.01',
@@ -142,12 +143,13 @@ const friendProfile = {
       records: [
         { id: '4', viewType: 'blog' },
         { id: '5', viewType: 'feed' },
+        { id: 'seed-snap', viewType: 'snap' },
       ],
     },
     {
       id: 'trip-3',
       emoji: '🗽',
-      title: 'NYC 자유여행',
+      title: '🇺🇸 2024.12.01',
       country: '미국',
       countryFlag: '🇺🇸',
       date: '2024.12',
@@ -159,7 +161,7 @@ const friendProfile = {
     {
       id: 'trip-4',
       emoji: '🏛️',
-      title: '이탈리아 문화탐방',
+      title: '🇮🇹 2024.10.10',
       country: '이탈리아',
       countryFlag: '🇮🇹',
       date: '2024.10',
@@ -377,12 +379,12 @@ export default function FriendProfileScreen({
                 <Text style={s.thumbEmoji}>{trip.emoji}</Text>
               </View>
               <View style={s.thumbInfo}>
-                <Text style={s.thumbCountry}>{trip.countryFlag} {trip.title}</Text>
+                <Text style={s.thumbCountry}>{trip.title}</Text>
                 <Text style={s.thumbDate}>{trip.date}</Text>
                 <View style={s.thumbBadges}>
-                  {trip.records.map((rec) => (
-                    <View key={rec.id} style={s.thumbBadge}>
-                      {VIEW_TYPE_BADGE[rec.viewType] || null}
+                  {Array.from(new Set(trip.records.map((rec) => rec.viewType || 'feed'))).map((vt, idx) => (
+                    <View key={`${vt}-${idx}`} style={s.thumbBadge}>
+                      {VIEW_TYPE_BADGE[vt] || null}
                     </View>
                   ))}
                 </View>

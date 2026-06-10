@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
-import { copyTripOriginals, type PhotoRef } from '../utils/importPhotoStore';
+import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 
 export const MAX_PHOTOS_PER_TRIP = 30; // 프리미엄 seam: 나중에 이 한도만 상향
 
@@ -33,6 +34,11 @@ const { width } = Dimensions.get('window');
 const COL = 3;
 const CELL = Math.floor((width - 16 * 2 - 8 * (COL - 1)) / COL);
 
+// 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
+const CARD_W = width - 40; // 시트 좌우 패딩 20×2
+const CARD_H = 180;
+const CARD_ASPECT = CARD_W / CARD_H;
+
 export default function ImportPhotoSelectScreen({ navigation, route }: any) {
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup } = useRecords();
@@ -45,12 +51,17 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
   // 여행별 썸네일(대표 사진) uri. 미지정/선택 해제 시 첫 번째 선택 사진으로 대체
   const [covers, setCovers] = useState<Record<string, string>>({});
   const [previewVisible, setPreviewVisible] = useState(false); // 기록 카드 미리보기
+  // 여행별 썸네일 위치 조정값 — 어떤 사진에 대한 값인지 uri로 묶어 커버가 바뀌면 무시
+  const [coverAdjusts, setCoverAdjusts] = useState<Record<string, { uri: string; t: CutTransform }>>({});
+  const [adjustVisible, setAdjustVisible] = useState(false);
 
   const trip = trips[index];
   if (!trip) return null; // 방어: 빈 trips
   const sel = selected[trip.id] ?? [];
   const isLast = index === trips.length - 1;
   const cover = covers[trip.id] && sel.includes(covers[trip.id]) ? covers[trip.id] : sel[0];
+  const adjustEntry = coverAdjusts[trip.id];
+  const activeAdjust = adjustEntry && adjustEntry.uri === cover ? adjustEntry.t : null;
 
   // 이 여행에서 사진이 있는 날짜 목록(시간순). 선택(sel)은 uri 기준이라 필터와 무관하게 유지된다.
   const days = Array.from(
@@ -110,10 +121,17 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
         ];
         const copied = await copyTripOriginals(t.id, items);
         if (copied.length === 0) continue;
+        // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장
+        const adj = coverAdjusts[t.id];
+        let repUri: string | undefined;
+        if (adj && adj.uri === coverUri) {
+          repUri = (await bakeCoverCrop(copied[0], adj.t, CARD_ASPECT, t.id)) ?? undefined;
+        }
         const recId = addImportedAlbum({
           country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
           date: t.date, startDate: t.startDate, endDate: t.endDate,
           title: t.title, medias: copied,
+          representativePhoto: repUri,
         });
         // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
         addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
@@ -218,9 +236,11 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
             <Text style={st.pvTitle}>기록 카드 미리보기</Text>
             <Text style={st.pvSub}>선택을 마치면 이 모습의 여행 기록 카드가 만들어져요.</Text>
 
-            {/* 카드 예시 */}
-            <View style={st.pvCard}>
-              {cover && <Image source={{ uri: cover }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+            {/* 카드 예시 — 탭하면 노출 영역 조정 */}
+            <TouchableOpacity style={st.pvCard} activeOpacity={0.9} onPress={() => cover && setAdjustVisible(true)}>
+              {cover && (
+                <AdjustedCoverImage uri={cover} transform={activeAdjust} frameW={CARD_W} frameH={CARD_H} />
+              )}
               <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.7)']} style={st.pvCardShade} />
               <View style={st.pvCardInfo}>
                 <Text style={st.pvCardTitle}>{trip.countryFlag} {trip.title}</Text>
@@ -228,20 +248,36 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
                   {trip.startDate} ~ {trip.endDate.substring(5)}
                 </Text>
               </View>
-            </View>
+            </TouchableOpacity>
 
-            {/* 썸네일 선택 */}
-            <Text style={st.pvPickLabel}>카드 썸네일로 쓸 사진을 골라주세요</Text>
+            {/* 썸네일 선택 — 선택된 썸네일을 한 번 더 누르면 노출 영역 조정 */}
+            <Text style={st.pvPickLabel}>카드 썸네일로 쓸 사진을 골라주세요 · 한 번 더 누르면 위치 조정</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.pvStrip}>
               {sel.map((uri) => {
                 const on = uri === cover;
                 return (
                   <TouchableOpacity
                     key={uri}
-                    onPress={() => setCovers((prev) => ({ ...prev, [trip.id]: uri }))}
+                    onPress={() => {
+                      if (on) {
+                        setAdjustVisible(true);
+                      } else {
+                        setCovers((prev) => ({ ...prev, [trip.id]: uri }));
+                        setCoverAdjusts((prev) => {
+                          const next = { ...prev };
+                          delete next[trip.id];
+                          return next;
+                        });
+                      }
+                    }}
                     activeOpacity={0.85}
                   >
                     <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
+                    {on && (
+                      <View style={st.pvThumbAdjustBadge}>
+                        <Text style={st.pvThumbAdjustTxt}>조정</Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -258,6 +294,20 @@ export default function ImportPhotoSelectScreen({ navigation, route }: any) {
               </TouchableOpacity>
             </View>
           </View>
+
+          {/* 썸네일 노출 영역 조정 (드래그/핀치) */}
+          <CutPhotoAdjustModal
+            visible={adjustVisible}
+            uri={cover ?? null}
+            aspect={CARD_ASPECT}
+            initial={activeAdjust}
+            onConfirm={(t) => {
+              if (cover) setCoverAdjusts((prev) => ({ ...prev, [trip.id]: { uri: cover, t } }));
+              setAdjustVisible(false);
+            }}
+            onCancel={() => setAdjustVisible(false)}
+            onChangePhoto={() => setAdjustVisible(false)}
+          />
         </View>
       </Modal>
     </LinearGradient>
@@ -318,6 +368,11 @@ const st = StyleSheet.create({
   pvStrip: { gap: 8 },
   pvThumb: { width: 64, height: 64, borderRadius: 10, backgroundColor: '#2A2735' },
   pvThumbOn: { borderWidth: 2.5, borderColor: '#7B61FF' },
+  pvThumbAdjustBadge: {
+    position: 'absolute', bottom: 4, alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.65)', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 2,
+  },
+  pvThumbAdjustTxt: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
   pvBtnRow: { flexDirection: 'row', gap: 10, marginTop: 20 },
   pvBackBtn: {
     paddingHorizontal: 20, borderRadius: 999, borderWidth: 1,

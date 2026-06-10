@@ -15,6 +15,7 @@ import {
 const { width: SCREEN_W } = Dimensions.get('window');
 import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
+import { useSettings } from '../store/settingsStore';
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -137,6 +138,7 @@ interface Props {
 }
 
 export default function FriendSearchScreen({ navigation }: Props) {
+  const { nickname, handle } = useSettings();
   const [query, setQuery] = useState('');
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
   const [followState, setFollowState] = useState<Record<string, boolean>>({});
@@ -219,7 +221,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
         {/* 왼쪽: QR 코드 */}
         <View style={s.qrCodeWrap}>
           <QRCode
-            value="eOrth://user/윤준상"
+            value={`eOrth://user/${nickname || handle}`}
             size={160}
             color="#BF85FC"
             backgroundColor="#0A0A0F"
@@ -232,8 +234,8 @@ export default function FriendSearchScreen({ navigation }: Props) {
 
         {/* 오른쪽: 프로필 정보 */}
         <View style={s.profileInfo}>
-          <Text style={s.profileName}>윤준상</Text>
-          <Text style={s.profileUsername}>@yunjunsung</Text>
+          <Text style={s.profileName}>{nickname ? nickname : handle}</Text>
+          <Text style={s.profileUsername}>@{handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>3개국 방문</Text></View>
           <TouchableOpacity
             style={s.inlineScanBtn}

@@ -1526,6 +1526,12 @@ const tiltFor = (id: string): number => {
 };
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
+  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const isMyPost = item.isMyPost || item.user.handle === 'yunjunsung' || item.user.handle === globalHandle;
+  const displayName = isMyPost
+    ? (globalNickname ? globalNickname : globalHandle)
+    : (item.user.name ? item.user.name : item.user.handle);
+
   return (
     <View style={d.meta}>
       <TouchableOpacity
@@ -1533,8 +1539,14 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
         activeOpacity={0.7}
         onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
       >
-        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}><Text style={{ fontSize: 11 }}>{item.user.emoji}</Text></View>
-        <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{item.user.handle}</Text>
+        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
+          {isMyPost && globalProfilePhoto ? (
+            <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
+          ) : (
+            <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
+          )}
+        </View>
+        <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{displayName}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
@@ -1627,7 +1639,7 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
@@ -1678,7 +1690,23 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     .activateAfterLongPress(250)
     .onStart((e: any) => {
       cardRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
-        onQuickStart(item, { x, y, w, h } as CardRect);
+        let correctedX = x;
+        let correctedY = y;
+        let correctedW = w;
+        let correctedH = h;
+
+        if (correctedW <= 0) correctedW = (SCREEN_W_SOCIAL - 48 - 10) / 2;
+        if (correctedH <= 0) correctedH = 220;
+
+        if (correctedX <= 0 || correctedX > SCREEN_W_SOCIAL) {
+          correctedX = columnIndex === 0 ? 24 : 24 + correctedW + 10;
+        }
+
+        if (correctedY <= 0 || correctedY > e.absoluteY || (correctedY + correctedH) < e.absoluteY) {
+          correctedY = e.absoluteY - correctedH / 2;
+        }
+
+        onQuickStart(item, { x: correctedX, y: correctedY, w: correctedW, h: correctedH } as CardRect);
         dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
       });
     })
@@ -1902,7 +1930,15 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord } = useRecords();
-  const { diaryCardMode, showCounts } = useSettings();
+  const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  
+  const getPostDisplayName = (postUser: any, isMy: boolean) => {
+    if (isMy) {
+      return globalNickname ? globalNickname : globalHandle;
+    }
+    return postUser.name ? postUser.name : postUser.handle;
+  };
+  
   const { sendRecord, topFriends, friends } = useDM();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
@@ -2065,12 +2101,17 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   >
                     <View style={s.storyAvatarWrap}>
                       <View style={s.storyAvatar}>
-                        <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
+                        {(snap.isMyPost || snap.user.handle === 'yunjunsung' || snap.user.handle === globalHandle) && globalProfilePhoto ? (
+                          <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                        ) : (
+                          <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
+                        )}
                       </View>
                     </View>
                   </LinearGradient>
                   <Text style={s.storyName} numberOfLines={1}>
-                    {snap.countryFlag ? `${snap.countryFlag} ` : ''}{snap.user.handle}
+                    {snap.countryFlag ? `${snap.countryFlag} ` : ''}
+                    {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === 'yunjunsung' || snap.user.handle === globalHandle)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -2101,6 +2142,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     onQuickMove={handleQuickMove}
                     onQuickEnd={handleQuickEnd}
                     dragPos={dragPos}
+                    columnIndex={ci}
                   />
                 ))}
               </View>

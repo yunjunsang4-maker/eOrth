@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
+import CutPhotoCanvas from './CutPhotoCanvas';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -215,6 +216,120 @@ function AlbumView({ record }: { record: TravelRecord }) {
 }
 
 // ─────────────────────────────────────────────
+// 4. Snap (BeReal 스타일)
+// ─────────────────────────────────────────────
+function SnapView({ record }: { record: TravelRecord }) {
+  const lateText = (() => {
+    if (!record.snapLateSeconds || record.snapLateSeconds <= 0) return null;
+    const s = record.snapLateSeconds;
+    if (s < 60) return `${s}초 후 촬영`;
+    return `${Math.floor(s / 60)}분 ${s % 60}초 후 촬영`;
+  })();
+
+  return (
+    <View style={styles.snapWrap}>
+      {/* 헤더 */}
+      <View style={styles.snapHeader}>
+        <Text style={styles.snapCountry}>{record.countryFlag} {record.countryName}</Text>
+        <Text style={styles.snapDate}>{record.date}</Text>
+      </View>
+
+      {/* 사진 영역 */}
+      <View style={styles.snapPhotoArea}>
+        {/* 후면 사진 (메인) */}
+        <View style={styles.snapBackPhoto}>
+          {record.snapBackUri ? (
+            <Image source={{ uri: record.snapBackUri }} style={styles.snapBackImg} resizeMode="cover" />
+          ) : (
+            <View style={styles.snapPlaceholderBg}>
+              <Text style={styles.snapPlaceholderEmoji}>📸</Text>
+            </View>
+          )}
+        </View>
+
+        {/* 전면 사진 (PIP) */}
+        {record.snapFrontUri ? (
+          <View style={styles.snapPipWrap}>
+            <Image source={{ uri: record.snapFrontUri }} style={styles.snapPipImg} resizeMode="cover" />
+          </View>
+        ) : (
+          <View style={styles.snapPipWrap}>
+            <View style={styles.snapPipPlaceholder}>
+              <Text style={{ fontSize: 16 }}>🤳</Text>
+            </View>
+          </View>
+        )}
+
+        {/* 촬영 지연 뱃지 */}
+        {lateText && (
+          <View style={styles.snapLateBadge}>
+            <Text style={styles.snapLateBadgeText}>⏱ {lateText}</Text>
+          </View>
+        )}
+      </View>
+
+      {/* 캡션 */}
+      {record.snapCaption ? (
+        <Text style={styles.snapCaption}>{record.snapCaption}</Text>
+      ) : null}
+
+      {/* 별점 */}
+      {record.rating ? (
+        <View style={{ marginTop: 8 }}>
+          <StarRow rating={record.rating} size={14} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────
+// 5. Cut (스트립)
+// ─────────────────────────────────────────────
+function CutView({ record }: { record: TravelRecord }) {
+  const photos = record.cutPhoto?.photos ?? [];
+  return (
+    <View style={styles.cutWrap}>
+      {/* 헤더 */}
+      <View style={styles.cutHeader}>
+        <Text style={styles.cutCountry}>{record.countryFlag} {record.countryName}</Text>
+        <Text style={styles.cutDate}>{record.date}</Text>
+      </View>
+
+      {/* 스트립 캔버스 */}
+      {record.cutPhoto ? (
+        <View style={styles.cutCanvasWrap}>
+          <CutPhotoCanvas
+            frameId={record.cutPhoto.frameId}
+            photos={photos}
+            width={SCREEN_W - 32}
+            bgOverride={record.cutPhoto.frameColor}
+            capture
+          />
+        </View>
+      ) : (
+        <View style={styles.cutEmpty}>
+          <Text style={{ fontSize: 48 }}>🎞️</Text>
+          <Text style={styles.cutEmptyText}>네컷 사진이 없습니다</Text>
+        </View>
+      )}
+
+      {/* 설명 */}
+      {record.content ? (
+        <Text style={styles.cutContent}>{record.content}</Text>
+      ) : null}
+
+      {/* 별점 */}
+      {record.rating ? (
+        <View style={{ marginTop: 8 }}>
+          <StarRow rating={record.rating} size={14} />
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
 export default function TripRecordRenderer({ record, viewType, onClose }: Props) {
@@ -223,6 +338,10 @@ export default function TripRecordRenderer({ record, viewType, onClose }: Props)
       return <BlogView record={record} />;
     case 'album':
       return <AlbumView record={record} />;
+    case 'snap':
+      return <SnapView record={record} />;
+    case 'cut':
+      return <CutView record={record} />;
     case 'feed':
     default:
       return <FeedView record={record} />;
@@ -460,5 +579,138 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     minWidth: 60,
     textAlign: 'center',
+  },
+
+  // ── Snap ──
+  snapWrap: {
+    backgroundColor: '#0A0A0F',
+    padding: 16,
+    gap: 12,
+  },
+  snapHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  snapCountry: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFD60A',
+  },
+  snapDate: {
+    fontSize: 12,
+    color: '#A1A1B0',
+  },
+  snapPhotoArea: {
+    width: '100%',
+    aspectRatio: 3 / 4,
+    backgroundColor: '#1C1C28',
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  snapBackPhoto: {
+    width: '100%',
+    height: '100%',
+  },
+  snapBackImg: {
+    width: '100%',
+    height: '100%',
+  },
+  snapPlaceholderBg: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  snapPlaceholderEmoji: {
+    fontSize: 48,
+  },
+  snapPipWrap: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    width: '28%',
+    aspectRatio: 3 / 4,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#0A0A0F',
+    overflow: 'hidden',
+    backgroundColor: '#1E1E2E',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  snapPipImg: {
+    width: '100%',
+    height: '100%',
+  },
+  snapPipPlaceholder: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  snapLateBadge: {
+    position: 'absolute',
+    bottom: 16,
+    right: 16,
+    backgroundColor: 'rgba(255,214,10,0.85)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  snapLateBadgeText: {
+    color: '#0A0A0F',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  snapCaption: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+
+  // ── Cut ──
+  cutWrap: {
+    backgroundColor: '#0A0A0F',
+    padding: 16,
+    gap: 12,
+  },
+  cutHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  cutCountry: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#BF85FC',
+  },
+  cutDate: {
+    fontSize: 12,
+    color: '#A1A1B0',
+  },
+  cutCanvasWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cutEmpty: {
+    width: '100%',
+    paddingVertical: 60,
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#1C1C28',
+    borderRadius: 16,
+  },
+  cutEmptyText: {
+    fontSize: 14,
+    color: '#A1A1B0',
+  },
+  cutContent: {
+    fontSize: 14,
+    color: '#FFFFFF',
+    lineHeight: 20,
   },
 });

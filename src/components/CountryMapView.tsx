@@ -3,18 +3,52 @@ import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import COUNTRY_GEO from '../data/countryGeo';
 
+import { useRef, useEffect } from 'react';
+
 interface Props {
   countryCode: string;
   onMessage?: (e: any) => void;
+  recordedRegions?: Array<{ name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }>;
+  displayMode?: 'color' | 'photo';
+  defaultColor?: string;
 }
 
-export default function CountryMapView({ countryCode, onMessage }: Props) {
+export default function CountryMapView({
+  countryCode,
+  onMessage,
+  recordedRegions = [],
+  displayMode = 'color',
+  defaultColor = '#BF85FC',
+}: Props) {
   const height = useMemo(() => Dimensions.get('window').height * 0.75, []);
   const html = useMemo(() => buildHTML(countryCode), [countryCode]);
+  const webViewRef = useRef<WebView>(null);
+
+  const payload = useMemo(() => JSON.stringify({
+    type: 'setRecordedRegions',
+    regions: recordedRegions,
+    displayMode,
+    defaultColor,
+  }), [recordedRegions, displayMode, defaultColor]);
+
+  useEffect(() => {
+    if (webViewRef.current) {
+      webViewRef.current.postMessage(payload);
+    }
+  }, [payload]);
+
+  const handleLoad = () => {
+    if (webViewRef.current && recordedRegions.length > 0) {
+      setTimeout(() => {
+        webViewRef.current?.postMessage(payload);
+      }, 500);
+    }
+  };
 
   return (
     <View style={[styles.container, { height }]}>
       <WebView
+        ref={webViewRef}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
@@ -25,6 +59,7 @@ export default function CountryMapView({ countryCode, onMessage }: Props) {
         overScrollMode="never"
         bounces={false}
         onMessage={onMessage}
+        onLoad={handleLoad}
       />
     </View>
   );
@@ -54,6 +89,20 @@ body{background:#0A0A0F;width:100vw;height:100vh;overflow:hidden}
 <div id="loading"><div class="spinner"></div>지도를 불러오는 중...</div>
 <script>
 var CODE='${code}';
+var recordedRegions = [];
+var displayMode = 'color';
+var defaultColor = '#BF85FC';
+
+var svgElement = null;
+var mainFeatures = null;
+var insetFeatures = null;
+var projectionPath = null;
+var gElement = null;
+var pathElements = null;
+var insetPathElements = {};
+var highlight = [];
+var insetBoxes = [];
+
 function loadD3(cb){
   var u=['https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js','https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js'];
   var i=0;
@@ -74,9 +123,10 @@ loadD3(function(){
 function render(geo){
   var W=window.innerWidth,H=window.innerHeight,PAD=24;
   var svg=d3.select('body').append('svg').attr('width',W).attr('height',H);
+  svgElement = svg;
   var insets=['Alaska','Hawaii','Guam','Honolulu'];
-  var mainFeatures=geo.features;
-  var insetFeatures=[];
+  mainFeatures=geo.features;
+  insetFeatures=[];
   if(CODE==='USA'){
     mainFeatures=geo.features.filter(function(f){return insets.indexOf(f.properties.NAME_1)<0;});
     insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii'||f.properties.NAME_1==='Guam';});
@@ -84,7 +134,9 @@ function render(geo){
   var mainGeo={type:'FeatureCollection',features:mainFeatures};
   var proj=d3.geoMercator().fitExtent([[PAD,PAD],[W-PAD,H-PAD]],mainGeo);
   var path=d3.geoPath().projection(proj);
+  projectionPath = path;
   var g=svg.append('g');
+  gElement = g;
   var HL={
     JPN:['Tokyo','Osaka','Kyoto','Fukuoka','Hokkaido','Okinawa'],
     CHN:['Beijing','Shanghai','Chongqing','Tianjin','Chengdu','Guangzhou','Shenzhen'],
@@ -95,18 +147,45 @@ function render(geo){
     FRA:['Paris','Nice','Lyon','Marseille','Bordeaux','Strasbourg','Toulouse'],
     ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa']
   };
-  var highlight=HL[CODE]||[];
+  highlight=HL[CODE]||[];
+  
+  function getFill(d) {
+    var nameEn = d.properties.NAME_1 || '';
+    var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+    if (active) {
+      var mode = active.mode || displayMode;
+      if (mode === 'photo' && active.photo) {
+        var patId = 'pat-' + nameEn.replace(/[^a-zA-Z0-9]/g, '');
+        return 'url(#' + patId + ')';
+      }
+      return defaultColor;
+    }
+    var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+    return isHighlighted ? '#3A2E5C' : '#2E2E3B';
+  }
+
   function bindPaths(sel){
-    sel.attr('fill',function(d){return highlight.indexOf(d.properties.NAME_1)>=0?'#3A2E5C':'#2E2E3B';})
-    .attr('stroke',function(d){return highlight.indexOf(d.properties.NAME_1)>=0?'#BF85FC':'#7B5CF0';})
-    .attr('stroke-width',function(d){return highlight.indexOf(d.properties.NAME_1)>=0?1.2:0.3;})
+    sel.attr('fill',getFill)
+    .attr('stroke',function(d){
+      var nameEn = d.properties.NAME_1 || '';
+      var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+      if (active) return '#FFFFFF';
+      var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+      return isHighlighted ? '#BF85FC' : '#7B5CF0';
+    })
+    .attr('stroke-width',function(d){
+      var nameEn = d.properties.NAME_1 || '';
+      var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+      if (active) return 1.5;
+      var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+      return isHighlighted ? 1.2 : 0.3;
+    })
     .attr('stroke-linejoin','round').attr('stroke-linecap','round')
     .attr('vector-effect','non-scaling-stroke').style('cursor','pointer')
     .on('click',function(ev,d){
       d3.select(this).attr('fill','#BF85FC');
       var self=this;
-      var origFill=highlight.indexOf(d.properties.NAME_1)>=0?'#3A2E5C':'#2E2E3B';
-      setTimeout(function(){d3.select(self).attr('fill',origFill);},350);
+      setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
       var name=d.properties.NL_NAME_1||d.properties.NAME_1||'';
       var nameEn=d.properties.NAME_1||'';
       if(window.ReactNativeWebView){
@@ -116,7 +195,14 @@ function render(geo){
       }
     });
   }
-  bindPaths(g.selectAll('path').data(mainFeatures).enter().append('path').attr('d',path));
+  pathElements = g.selectAll('path.region-path')
+    .data(mainFeatures)
+    .enter()
+    .append('path')
+    .attr('class', 'region-path')
+    .attr('d',path);
+  bindPaths(pathElements);
+
   if(highlight.length>0){
     g.selectAll('.hl').data(mainFeatures.filter(function(f){return highlight.indexOf(f.properties.NAME_1)>=0;}))
       .enter().append('path').attr('class','hl').attr('d',path)
@@ -125,7 +211,7 @@ function render(geo){
       .attr('vector-effect','non-scaling-stroke').style('pointer-events','none');
   }
   if(CODE==='USA'&&insetFeatures.length>0){
-    var insetBoxes=[
+    insetBoxes=[
       {name:'Alaska',x:PAD,y:H*0.62,w:W*0.22,h:H*0.28},
       {name:'Hawaii',x:PAD+W*0.24,y:H*0.72,w:W*0.15,h:H*0.18},
       {name:'Guam',x:PAD+W*0.41,y:H*0.75,w:W*0.08,h:H*0.15}
@@ -140,7 +226,16 @@ function render(geo){
         .attr('rx',6).attr('fill','#15151F').attr('stroke','#2E2E3B').attr('stroke-width',0.8);
       g.append('text').attr('x',box.x+box.w/2).attr('y',box.y+14).attr('text-anchor','middle')
         .attr('fill','#A1A1B0').attr('font-size','10px').text(feat[0].properties.NL_NAME_1);
-      bindPaths(g.selectAll('.inset-'+box.name).data(feat).enter().append('path').attr('class','inset-'+box.name).attr('d',ipath));
+      
+      var insetPaths = g.selectAll('.inset-'+box.name)
+        .data(feat)
+        .enter()
+        .append('path')
+        .attr('class','inset-'+box.name)
+        .attr('d',ipath);
+      bindPaths(insetPaths);
+      insetPathElements[box.name] = insetPaths;
+      
       g.selectAll('.ihl-'+box.name).data(feat.filter(function(f){return highlight.indexOf(f.properties.NAME_1)>=0;}))
         .enter().append('path').attr('class','ihl-'+box.name).attr('d',ipath)
         .attr('fill','none').attr('stroke','#BF85FC').attr('stroke-width',1.2)
@@ -152,7 +247,121 @@ function render(geo){
   var zoom=d3.zoom().scaleExtent([1,maxZ])
     .on('zoom',function(ev){g.attr('transform',ev.transform);});
   svg.call(zoom);
+  
+  updateMap();
 }
+
+function updateMap() {
+  if (!svgElement) return;
+  
+  svgElement.selectAll('defs').remove();
+  var defs = svgElement.append('defs');
+  
+  recordedRegions.forEach(function(r) {
+    if (r.photo) {
+      var patId = 'pat-' + r.nameEn.replace(/[^a-zA-Z0-9]/g, '');
+      var pat = defs.append('pattern')
+        .attr('id', patId)
+        .attr('patternContentUnits', 'objectBoundingBox')
+        .attr('width', 1)
+        .attr('height', 1);
+      pat.append('image')
+        .attr('href', r.photo)
+        .attr('preserveAspectRatio', 'xMidYMid slice')
+        .attr('width', 1)
+        .attr('height', 1);
+    }
+  });
+
+  function getFill(d) {
+    var nameEn = d.properties.NAME_1 || '';
+    var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+    if (active) {
+      var mode = active.mode || displayMode;
+      if (mode === 'photo' && active.photo) {
+        var patId = 'pat-' + nameEn.replace(/[^a-zA-Z0-9]/g, '');
+        return 'url(#' + patId + ')';
+      }
+      return defaultColor;
+    }
+    var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+    return isHighlighted ? '#3A2E5C' : '#2E2E3B';
+  }
+
+  function getStroke(d) {
+    var nameEn = d.properties.NAME_1 || '';
+    var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+    if (active) return '#FFFFFF';
+    var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+    return isHighlighted ? '#BF85FC' : '#7B5CF0';
+  }
+
+  function getStrokeWidth(d) {
+    var nameEn = d.properties.NAME_1 || '';
+    var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+    if (active) return 1.5;
+    var isHighlighted = highlight.indexOf(nameEn) >= 0 && !active;
+    return isHighlighted ? 1.2 : 0.3;
+  }
+
+  if (pathElements) {
+    pathElements
+      .attr('fill', getFill)
+      .attr('stroke', getStroke)
+      .attr('stroke-width', getStrokeWidth);
+  }
+
+  Object.keys(insetPathElements).forEach(function(key) {
+    var sel = insetPathElements[key];
+    if (sel) {
+      sel
+        .attr('fill', getFill)
+        .attr('stroke', getStroke)
+        .attr('stroke-width', getStrokeWidth);
+    }
+  });
+
+  gElement.selectAll('.hl')
+    .style('display', function(d) {
+      var nameEn = d.properties.NAME_1 || '';
+      var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+      return active ? 'none' : 'block';
+    });
+
+  if (CODE === 'USA') {
+    insetBoxes.forEach(function(box) {
+      gElement.selectAll('.ihl-' + box.name)
+        .style('display', function(d) {
+          var nameEn = d.properties.NAME_1 || '';
+          var active = recordedRegions.find(function(r) { return r.nameEn === nameEn; });
+          return active ? 'none' : 'block';
+        });
+    });
+  }
+}
+
+window.addEventListener('message', function(e) {
+  try {
+    var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (msg.type === 'setRecordedRegions') {
+      recordedRegions = msg.regions || [];
+      displayMode = msg.displayMode || 'color';
+      defaultColor = msg.defaultColor || '#BF85FC';
+      updateMap();
+    }
+  } catch(e) {}
+});
+document.addEventListener('message', function(e) {
+  try {
+    var msg = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+    if (msg.type === 'setRecordedRegions') {
+      recordedRegions = msg.regions || [];
+      displayMode = msg.displayMode || 'color';
+      defaultColor = msg.defaultColor || '#BF85FC';
+      updateMap();
+    }
+  } catch(e) {}
+});
 <\/script>
 </body></html>`;
 }

@@ -19,11 +19,17 @@ import {
   PanResponder,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import Reanimated, {
+  useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
+  interpolate, Extrapolation, withTiming, withSpring, runOnJS,
+} from 'react-native-reanimated';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
+import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import type { BlogBlock, HeadingBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
@@ -404,6 +410,102 @@ const TableOfContents = ({
 };
 
 // ── 스냅 스토리 뷰어 (자립형 — 내부에서 스냅 인덱스 관리) ──
+// 같은 스토리 안에서 스냅 사진이 바뀔 때 부드럽게 크로스페이드
+function CrossfadePhoto({ uri }: { uri?: string }) {
+  const op = useRef(new Animated.Value(1)).current;
+  const prev = useRef(uri);
+  useEffect(() => {
+    if (prev.current !== uri) {
+      prev.current = uri;
+      op.setValue(0.4);
+      Animated.timing(op, { toValue: 1, duration: 200, useNativeDriver: true }).start();
+    }
+  }, [uri]);
+  if (!uri) {
+    return <View style={storyS.bgPlaceholder}><Text style={{ fontSize: 64, opacity: 0.2 }}>📸</Text></View>;
+  }
+  return <Animated.Image source={{ uri }} style={[storyS.bgPhoto, { opacity: op }]} resizeMode="cover" />;
+}
+
+// ── 큐브 페이지: scrollX 기반으로 100% UI 스레드에서 3D rotateY 회전 ──
+function SnapCubePage({ index, scrollX, width, leftCube, rightCube, children }: {
+  index: number; scrollX: any; width: number; leftCube: boolean; rightCube: boolean; children: React.ReactNode;
+}) {
+  // 같은 유저/여행 경계는 평범한 슬라이드(회전 0), 다른 유저 경계만 큐브 회전
+  const cubeStyle = useAnimatedStyle(() => {
+    const input = [(index - 1) * width, index * width, (index + 1) * width];
+    const lA = leftCube ? 88 : 0;
+    const rA = rightCube ? -88 : 0;
+    const rotateY = interpolate(scrollX.value, input, [lA, 0, rA], Extrapolation.CLAMP);
+    const pivot = interpolate(scrollX.value, input, [leftCube ? -width / 2 : 0, 0, rightCube ? width / 2 : 0], Extrapolation.CLAMP);
+    const scale = interpolate(scrollX.value, input, [leftCube ? 0.93 : 1, 1, rightCube ? 0.93 : 1], Extrapolation.CLAMP);
+    return {
+      transform: [
+        { perspective: width * 1.6 },
+        { translateX: pivot },
+        { rotateY: `${rotateY}deg` },
+        { translateX: -pivot },
+        { scale },
+      ],
+    };
+  });
+  const shadeStyle = useAnimatedStyle(() => {
+    const input = [(index - 1) * width, index * width, (index + 1) * width];
+    const opacity = interpolate(scrollX.value, input, [leftCube ? 0.5 : 0, 0, rightCube ? 0.5 : 0], Extrapolation.CLAMP);
+    return { opacity };
+  });
+  return (
+    <Reanimated.View style={[{ width, height: '100%', backfaceVisibility: 'hidden' }, cubeStyle]}>
+      {children}
+      <Reanimated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: '#000' }, shadeStyle]} />
+    </Reanimated.View>
+  );
+}
+
+function SnapViewerModal({
+  visible,
+  onClose,
+  viewers = [
+    { name: '김서연', handle: 'seoyeon_l', time: '5분 전', emoji: '🌸' },
+    { name: '김민준', handle: 'minjun_k', time: '20분 전', emoji: '⚡' },
+    { name: '박지훈', handle: 'jihoon_p', time: '1시간 전', emoji: '🎒' },
+  ]
+}: {
+  visible: boolean;
+  onClose: () => void;
+  viewers?: any[];
+}) {
+  return (
+    <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
+      <View style={viewerS.root}>
+        {/* 드래그바 */}
+        <View style={viewerS.handle} />
+        <Text style={viewerS.title}>이 스냅을 본 친구들</Text>
+        <Text style={viewerS.subtitle}>총 {viewers.length}명이 읽음</Text>
+        
+        <ScrollView contentContainerStyle={viewerS.list} showsVerticalScrollIndicator={false}>
+          {viewers.map((v, i) => (
+            <View key={i} style={viewerS.row}>
+              <View style={viewerS.avatar}>
+                <Text style={viewerS.avatarText}>{v.emoji}</Text>
+              </View>
+              <View style={viewerS.info}>
+                <Text style={viewerS.name}>{v.name}</Text>
+                <Text style={viewerS.handleText}>@{v.handle}</Text>
+              </View>
+              <Text style={viewerS.time}>{v.time}</Text>
+            </View>
+          ))}
+        </ScrollView>
+        
+        <TouchableOpacity style={viewerS.closeBtn} onPress={onClose} activeOpacity={0.8}>
+          <Text style={viewerS.closeBtnText}>닫기</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  );
+}
+
 function SnapStoryViewer({
   initialPostId, records, navigation, toggleLike, deleteRecord, markSnapViewed,
 }: {
@@ -420,10 +522,10 @@ function SnapStoryViewer({
   const getStoryKey = (s: any) =>
     `${s.user.handle}::${s.countryName || s.snapDetectedCountry || ''}`;
 
-  const groupedSnaps = useMemo(() => {
+  // 스토리(유저+국가) 단위 그룹 — 선택한 스토리를 맨 앞으로
+  const stories = useMemo(() => {
     const byKey: Record<string, any[]> = {};
     const order: string[] = [];
-    // 선택한 스냅의 키를 먼저 배치하기 위해 먼저 찾기
     const initialSnap = allSnaps.find((r: any) => r.id === initialPostId);
     const startKey = initialSnap ? getStoryKey(initialSnap) : '';
     allSnaps.forEach((s: any) => {
@@ -431,35 +533,29 @@ function SnapStoryViewer({
       if (!byKey[k]) { byKey[k] = []; order.push(k); }
       byKey[k].push(s);
     });
-    // 선택한 스토리를 맨 앞으로 재배치
-    const sorted = [startKey, ...order.filter(k => k !== startKey)];
-    const result: any[] = [];
-    sorted.forEach(k => { if (byKey[k]) result.push(...byKey[k]); });
-    return result;
+    const keys = [startKey, ...order.filter(k => k !== startKey)].filter(k => byKey[k]);
+    return keys.map(k => ({ key: k, snaps: byKey[k] }));
   }, [allSnaps, initialPostId]);
 
-  const initialIdx = useMemo(() => Math.max(0, groupedSnaps.findIndex((r: any) => r.id === initialPostId)), []);
-  const [snapIdx, setSnapIdx] = useState(initialIdx);
-  const snap = groupedSnaps[snapIdx];
+  const initPos = useMemo(() => {
+    for (let si = 0; si < stories.length; si++) {
+      const li = stories[si].snaps.findIndex((s: any) => s.id === initialPostId);
+      if (li >= 0) return { si, li };
+    }
+    return { si: 0, li: 0 };
+  }, []);
 
-  // 현재 스토리(작성자+국가)의 스냅 범위 (프로그레스 바용)
-  const currentStoryKey = snap ? getStoryKey(snap) : '';
-  const authorRange = useMemo(() => {
-    let start = snapIdx;
-    let end = snapIdx;
-    while (start > 0 && getStoryKey(groupedSnaps[start - 1]) === currentStoryKey) start--;
-    while (end < groupedSnaps.length - 1 && getStoryKey(groupedSnaps[end + 1]) === currentStoryKey) end++;
-    return { start, end, count: end - start + 1, localIdx: snapIdx - start };
-  }, [snapIdx, currentStoryKey, groupedSnaps]);
-
+  const [storyIdx, setStoryIdx] = useState(initPos.si);
+  const [localIdx, setLocalIdx] = useState(initPos.li);
+  const currentStory = stories[storyIdx];
+  const currentSnap = currentStory?.snaps[Math.min(localIdx, (currentStory?.snaps.length || 1) - 1)];
   // 스냅 열람 시 viewed 처리
   useEffect(() => {
-    if (snap && !snap.snapViewed) {
-      markSnapViewed(snap.id);
-    }
-  }, [snap?.id]);
+    if (currentSnap && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+  }, [currentSnap?.id]);
 
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
+  const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
   const [comments, setComments] = useState<any[]>(SAMPLE_COMMENTS);
   const [commentText, setCommentText] = useState('');
@@ -470,23 +566,40 @@ function SnapStoryViewer({
   const replyInputRef = useRef<TextInput>(null);
   const commentInputRef = useRef<TextInput>(null);
 
-  const slideAnim = useRef(new Animated.Value(0)).current;
   const commentSheetAnim = useRef(new Animated.Value(SCREEN_H * 0.6)).current;
   const commentOverlayAnim = useRef(new Animated.Value(0)).current;
-  const isAnimating = useRef(false);
 
-  if (!snap || groupedSnaps.length === 0) {
+  // ── Reanimated 큐브 캐러셀 (스토리 단위 페이지) ──
+  const scrollRef = useRef<any>(null);
+  const scrollX = useSharedValue(initPos.si * SCREEN_W);
+  const ty = useSharedValue(0); // 아래로 끌어 닫기
+  const onStoryChange = (i: number) => {
+    const t = Math.max(0, Math.min(stories.length - 1, i));
+    setStoryIdx(t); setLocalIdx(0);
+  };
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (e) => { scrollX.value = e.contentOffset.x; },
+    onMomentumEnd: (e) => { runOnJS(onStoryChange)(Math.round(e.contentOffset.x / SCREEN_W)); },
+  });
+  const dismissStyle = useAnimatedStyle(() => {
+    const scale = interpolate(ty.value, [0, SCREEN_H], [1, 0.86], Extrapolation.CLAMP);
+    const radius = interpolate(ty.value, [0, 120], [0, 22], Extrapolation.CLAMP);
+    return { transform: [{ translateY: ty.value }, { scale }], borderRadius: radius };
+  });
+  useEffect(() => {
+    if (initPos.si > 0) {
+      const t = setTimeout(() => scrollRef.current?.scrollTo({ x: initPos.si * SCREEN_W, animated: false }), 0);
+      return () => clearTimeout(t);
+    }
+  }, []);
+
+  if (!currentSnap || stories.length === 0) {
     navigation.goBack();
     return null;
   }
 
-  const lateText = (() => {
-    if (!snap.snapLateSeconds || snap.snapLateSeconds <= 0) return '';
-    const sec = snap.snapLateSeconds;
-    return sec < 60 ? `${sec}초 후 촬영` : `${Math.floor(sec / 60)}분 ${sec % 60}초 후 촬영`;
-  })();
   const totalComments = comments.reduce((sum: number, c: any) => sum + 1 + (c.replies?.length || 0), 0);
-  const isMyPost = snap.isMyPost === true;
+  const isMyPost = currentSnap.isMyPost === true;
 
   const addComment = () => {
     if (!commentText.trim()) return;
@@ -502,50 +615,116 @@ function SnapStoryViewer({
   const handleReply = (id: string, name: string) => { setReplyTo({ id, name }); commentInputRef.current?.focus(); };
   const cancelReply = () => setReplyTo(null);
 
-  // ── 스냅 전환 ──
-  const goTo = (direction: 'next' | 'prev') => {
-    if (isAnimating.current) return;
-    const targetIdx = direction === 'next' ? snapIdx + 1 : snapIdx - 1;
-    if (targetIdx < 0 || targetIdx >= groupedSnaps.length) {
-      // 모든 스냅을 다 봤으면 닫기
-      navigation.goBack();
-      return;
-    }
-    // 즉시 전환
-    slideAnim.setValue(0);
-    setSnapIdx(targetIdx);
+  const goToStory = (target: number) => {
+    if (target < 0 || target >= stories.length) { navigation.goBack(); return; }
+    scrollRef.current?.scrollTo({ x: target * SCREEN_W, animated: true });
   };
-
-  const onTapScreen = (evt: any) => {
+  // 같은 스토리 안에선 사진만 교체(localIdx), 끝이면 다음 스토리로(큐브)
+  const advance = (dir: 'next' | 'prev') => {
     if (replyBarOpen || commentSheetOpen) return;
-    const x = evt.nativeEvent.locationX;
-    if (x < SCREEN_W / 3) goTo('prev');
-    else goTo('next');
+    const len = currentStory.snaps.length;
+    if (dir === 'next') {
+      if (localIdx < len - 1) setLocalIdx(localIdx + 1);
+      else goToStory(storyIdx + 1);
+    } else {
+      if (localIdx > 0) setLocalIdx(localIdx - 1);
+      else goToStory(storyIdx - 1);
+    }
+  };
+  const onTapPage = (evt: any) => {
+    if (replyBarOpen || commentSheetOpen) return;
+    advance(evt.nativeEvent.locationX < SCREEN_W / 3 ? 'prev' : 'next');
   };
 
-  // 좌우 스와이프
-  const storyPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => false,
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dx) > 15 && Math.abs(g.dx) > Math.abs(g.dy),
-      onPanResponderMove: (_, g) => { slideAnim.setValue(g.dx); },
-      onPanResponderRelease: (_, g) => {
-        const isNext = g.dx < -60 || g.vx < -0.5;
-        const isPrev = g.dx > 60 || g.vx > 0.5;
-        if (isNext || isPrev) {
-          const targetIdx = isNext ? snapIdx + 1 : snapIdx - 1;
-          if (targetIdx < 0 || targetIdx >= groupedSnaps.length) {
-            navigation.goBack();
-          } else {
-            slideAnim.setValue(0);
-            setSnapIdx(targetIdx);
-          }
-        } else {
-          Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
-        }
-      },
-    })
-  ).current;
+  // 아래로 끌어 닫기 (gesture-handler + reanimated, 가로 스크롤과 공존)
+  const closeViewer = () => navigation.goBack();
+  const dismissGesture = Gesture.Pan()
+    .activeOffsetY([14, 9999])
+    .failOffsetX([-18, 18])
+    .onUpdate((e) => { 'worklet'; if (e.translationY > 0) ty.value = e.translationY; })
+    .onEnd((e) => {
+      'worklet';
+      if (e.translationY > 100 || e.velocityY > 700) {
+        ty.value = withTiming(SCREEN_H, { duration: 180 }, () => { runOnJS(closeViewer)(); });
+      } else {
+        ty.value = withSpring(0, { damping: 18, stiffness: 180 });
+      }
+    });
+
+  // 한 스토리(유저) 페이지 렌더 — 같은 스토리는 사진만 교체
+  const renderStoryPage = (story: any, si: number) => {
+    const li = si === storyIdx ? Math.min(localIdx, story.snaps.length - 1) : 0;
+    const s = story.snaps[li];
+    const late = (s.snapLateSeconds && s.snapLateSeconds > 0)
+      ? (s.snapLateSeconds < 60 ? `${s.snapLateSeconds}초 후 촬영` : `${Math.floor(s.snapLateSeconds / 60)}분 ${s.snapLateSeconds % 60}초 후 촬영`)
+      : '';
+    return (
+      <>
+        <CrossfadePhoto uri={s.snapBackUri} />
+        <Pressable style={StyleSheet.absoluteFill} onPress={onTapPage} />
+        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={storyS.topGradient} pointerEvents="box-none">
+          <View style={storyS.progressRow}>
+            {Array.from({ length: story.snaps.length }, (_, k) => (
+              <View key={k} style={[storyS.progressSeg, k === li && storyS.progressSegActive]} />
+            ))}
+          </View>
+          <View style={storyS.topRow}>
+            <View style={storyS.avatarRing}><View style={storyS.avatar}><Text style={storyS.avatarEmoji}>{s.user.emoji}</Text></View></View>
+            <View style={storyS.userInfo}>
+              <Text style={storyS.handle}>@{s.user.handle}</Text>
+              <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
+          </View>
+        </LinearGradient>
+        {s.snapFrontUri && (
+          <View style={storyS.pipWrap}><Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" /></View>
+        )}
+        {/* 스냅 및 촬영지연 뱃지 비활성화 */}
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={storyS.bottomGradient} pointerEvents="box-none">
+          {s.snapDetectedCountry && (
+            <View style={storyS.locationBadge}><Text style={storyS.locationText}>📍 {s.countryFlag} {s.snapDetectedCountry}</Text></View>
+          )}
+          {s.snapCaption ? <Text style={storyS.caption}>{s.snapCaption}</Text> : null}
+          <View style={storyS.actionRow}>
+            {s.isMyPost === true ? (
+              /* 내가 올린 스냅 */
+              <>
+                <TouchableOpacity style={storyS.actionBtnWithLabel} onPress={() => setViewerListOpen(true)}>
+                  <Text style={storyS.actionIcon}>👁</Text>
+                  <Text style={storyS.actionLabel}>조회 3</Text>
+                </TouchableOpacity>
+                <View style={{ flex: 1 }} />
+                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet}>
+                  <CommentSvg size={22} color="#fff" />
+                  {totalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{totalComments}</Text></View>)}
+                </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost}>
+                  <Text style={storyS.actionIcon}>↗</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              /* 타인이 올린 스냅 */
+              <>
+                <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }}>
+                  <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>메시지 보내기...</Text></View>
+                </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)}>
+                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet}>
+                  <CommentSvg size={22} color="#fff" />
+                  {totalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{totalComments}</Text></View>)}
+                </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost}><Text style={storyS.actionIcon}>↗</Text></TouchableOpacity>
+              </>
+            )}
+          </View>
+        </LinearGradient>
+      </>
+    );
+  };
 
   // 댓글 시트
   const openCommentSheet = () => {
@@ -573,9 +752,9 @@ function SnapStoryViewer({
     })
   ).current;
 
-  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${snap.id}`); setToastMsg('링크가 복사되었어요!'); setTimeout(() => setToastMsg(''), 2000); };
-  const handleSharePost = () => { setMenuVisible(false); Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${snap.id}` }); };
-  const handleDelete = () => { setMenuVisible(false); Alert.alert('게시물 삭제', '이 게시물을 삭제할까요?', [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: () => { deleteRecord(snap.id); navigation.goBack(); } }]); };
+  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg('링크가 복사되었어요!'); setTimeout(() => setToastMsg(''), 2000); };
+  const handleSharePost = () => { setMenuVisible(false); Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${currentSnap.id}` }); };
+  const handleDelete = () => { setMenuVisible(false); Alert.alert('게시물 삭제', '이 게시물을 삭제할까요?', [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
   const CommentSvg = ({ size = 20, color = '#fff' }: { size?: number; color?: string }) => (
@@ -584,98 +763,26 @@ function SnapStoryViewer({
 
   return (
     <View style={storyS.container}>
-      <Animated.View style={[StyleSheet.absoluteFill, { transform: [{ translateX: slideAnim }] }]} {...storyPan.panHandlers}>
-        {/* 배경 사진 */}
-        {snap.snapBackUri ? (
-          <Image source={{ uri: snap.snapBackUri }} style={storyS.bgPhoto} resizeMode="cover" />
-        ) : (
-          <View style={storyS.bgPlaceholder}>
-            <Text style={{ fontSize: 64, opacity: 0.2 }}>📸</Text>
-          </View>
-        )}
-
-
-        {/* 탭 영역 */}
-        <Pressable style={StyleSheet.absoluteFill} onPress={onTapScreen} />
-
-        {/* 상단 그라데이션 */}
-        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={storyS.topGradient} pointerEvents="box-none">
-          <View style={storyS.progressRow}>
-            {Array.from({ length: authorRange.count }, (_, i) => (
-              <View key={i} style={[storyS.progressSeg, i === authorRange.localIdx && storyS.progressSegActive]} />
+      <GestureDetector gesture={dismissGesture}>
+        <Reanimated.View style={[StyleSheet.absoluteFill, { overflow: 'hidden' }, dismissStyle]}>
+          <Reanimated.ScrollView
+            ref={scrollRef}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            onScroll={scrollHandler}
+            scrollEventThrottle={16}
+            contentOffset={{ x: initPos.si * SCREEN_W, y: 0 }}
+            style={StyleSheet.absoluteFill}
+          >
+            {stories.map((story: any, si: number) => (
+              <SnapCubePage key={story.key} index={si} scrollX={scrollX} width={SCREEN_W} leftCube={si > 0} rightCube={si < stories.length - 1}>
+                {renderStoryPage(story, si)}
+              </SnapCubePage>
             ))}
-          </View>
-
-          <View style={storyS.topRow}>
-            <View style={storyS.avatarRing}>
-              <View style={storyS.avatar}>
-                <Text style={storyS.avatarEmoji}>{snap.user.emoji}</Text>
-              </View>
-            </View>
-            <View style={storyS.userInfo}>
-              <Text style={storyS.handle}>@{snap.user.handle}</Text>
-              <Text style={storyS.timeText}>{timeAgo(snap.timestamp)}</Text>
-            </View>
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn}>
-              <Text style={storyS.moreBtnText}>···</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn}>
-              <Text style={storyS.closeBtnText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-
-        {/* PIP */}
-        {snap.snapFrontUri && (
-          <View style={storyS.pipWrap}>
-            <Image source={{ uri: snap.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" />
-          </View>
-        )}
-
-        <View style={storyS.snapBadge}>
-          <Text style={storyS.snapBadgeText}>⚡ SNAP</Text>
-        </View>
-
-        {lateText !== '' && (
-          <View style={storyS.lateBadge}>
-            <Text style={storyS.lateBadgeText}>⏱ {lateText}</Text>
-          </View>
-        )}
-
-        {/* 하단 그라데이션 */}
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={storyS.bottomGradient} pointerEvents="box-none">
-          {snap.snapDetectedCountry && (
-            <View style={storyS.locationBadge}>
-              <Text style={storyS.locationText}>📍 {snap.countryFlag} {snap.snapDetectedCountry}</Text>
-            </View>
-          )}
-          {snap.snapCaption ? <Text style={storyS.caption}>{snap.snapCaption}</Text> : null}
-
-          <View style={storyS.actionRow}>
-            <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }}>
-              <View style={storyS.replyInput} pointerEvents="none">
-                <Text style={storyS.replyPlaceholder}>메시지 보내기...</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(snap.id)}>
-              <Text style={[storyS.actionIcon, snap.liked && { color: '#FF6B9D' }]}>
-                {snap.liked ? '♥' : '♡'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet}>
-              <CommentSvg size={22} color="#fff" />
-              {totalComments > 0 && (
-                <View style={storyS.commentCountBadge}>
-                  <Text style={storyS.commentCountText}>{totalComments}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost}>
-              <Text style={storyS.actionIcon}>↗</Text>
-            </TouchableOpacity>
-          </View>
-        </LinearGradient>
-      </Animated.View>
+          </Reanimated.ScrollView>
+        </Reanimated.View>
+      </GestureDetector>
 
       {/* 인라인 메시지 입력 */}
       {replyBarOpen && (
@@ -787,6 +894,7 @@ function SnapStoryViewer({
 
       <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); setToastMsg('신고가 접수되었어요'); setTimeout(() => setToastMsg(''), 2000); }} />
       {toastMsg !== '' && <View style={s.toast} pointerEvents="none"><Text style={s.toastText}>{toastMsg}</Text></View>}
+      <SnapViewerModal visible={viewerListOpen} onClose={() => setViewerListOpen(false)} />
     </View>
   );
 }
@@ -800,6 +908,7 @@ export default function PostDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
   const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed } = useRecords();
+  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const [comments, setComments] = useState<Comment[]>(SAMPLE_COMMENTS);
   const [commentText, setCommentText] = useState('');
@@ -838,7 +947,7 @@ export default function PostDetailScreen() {
     );
   }
 
-  const viewType = record.viewType || 'feed';
+  const viewType = (record.viewType || 'feed') as any;
 
   const addComment = () => {
     if (!commentText.trim()) return;
@@ -1033,21 +1142,33 @@ export default function PostDetailScreen() {
           onScrollBeginDrag={() => setShowCompanions(false)}
         >
               {/* ── 유저 정보 + 이미지 + 본문 ── */}
-              <View style={s.userRow}>
-                <View style={s.avatar}>
-                  <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
-                </View>
-                <View style={s.userInfo}>
-                  <Text style={s.userName}>@{record.user.handle}</Text>
-                  <View style={s.userMeta}>
-                    {renderCountries()}
-                    <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+              {(() => {
+                const isMyPost = record.isMyPost === true || record.user.handle === 'yunjunsung' || record.user.handle === globalHandle;
+                const postDisplayName = isMyPost
+                  ? (globalNickname ? globalNickname : `@${globalHandle}`)
+                  : (record.user.name ? record.user.name : `@${record.user.handle}`);
+                return (
+                  <View style={s.userRow}>
+                    <View style={s.avatar}>
+                      {isMyPost && globalProfilePhoto ? (
+                        <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                      ) : (
+                        <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
+                      )}
+                    </View>
+                    <View style={s.userInfo}>
+                      <Text style={s.userName}>{postDisplayName}</Text>
+                      <View style={s.userMeta}>
+                        {renderCountries()}
+                        <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+                      </View>
+                    </View>
+                    {record.rating != null && record.rating > 0 && (
+                      <Text style={s.ratingStars}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
+                    )}
                   </View>
-                </View>
-                {record.rating != null && record.rating > 0 && (
-                  <Text style={s.ratingStars}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
-                )}
-              </View>
+                );
+              })()}
 
               {/* ── 스냅 콘텐츠 ── */}
               {viewType === 'snap' ? (
@@ -1073,14 +1194,7 @@ export default function PostDetailScreen() {
                         <Text style={snapS.countryBadgeText}>📍 {record.countryFlag} {record.snapDetectedCountry}</Text>
                       </View>
                     )}
-                    {/* 촬영 지연 */}
-                    {record.snapLateSeconds != null && record.snapLateSeconds > 0 && (
-                      <View style={snapS.lateBadge}>
-                        <Text style={snapS.lateBadgeText}>
-                          ⏱ {record.snapLateSeconds < 60 ? `${record.snapLateSeconds}초` : `${Math.floor(record.snapLateSeconds / 60)}분 ${record.snapLateSeconds % 60}초`} 후 촬영
-                        </Text>
-                      </View>
-                    )}
+                    {/* 촬영 지연 비활성화 */}
                     {/* 만료 오버레이 */}
                     {record.snapExpiresAt && Date.now() > record.snapExpiresAt && (
                       <View style={snapS.expiredOverlay}>
@@ -2240,6 +2354,18 @@ const storyS = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  actionBtnWithLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    height: 40,
+    paddingRight: 12,
+    gap: 6,
+  },
+  actionLabel: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   actionIcon: {
     fontSize: 24,
     color: '#FFFFFF',
@@ -2443,5 +2569,88 @@ const storyS = StyleSheet.create({
     fontSize: 13,
     fontWeight: '700',
     color: '#0A0A0F',
+  },
+});
+
+const viewerS = StyleSheet.create({
+  root: {
+    flex: 1,
+    backgroundColor: '#0A0A0F',
+    paddingTop: 12,
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    color: '#BF85FC',
+    textAlign: 'center',
+    marginBottom: 20,
+    fontWeight: '600',
+  },
+  list: {
+    paddingHorizontal: 20,
+    gap: 16,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1A1A26',
+  },
+  avatar: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#2E2E3B',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  avatarText: {
+    fontSize: 20,
+  },
+  info: {
+    flex: 1,
+  },
+  name: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 2,
+  },
+  handleText: {
+    fontSize: 12,
+    color: '#A1A1B0',
+  },
+  time: {
+    fontSize: 12,
+    color: '#4A4A59',
+  },
+  closeBtn: {
+    margin: 20,
+    height: 50,
+    borderRadius: 14,
+    backgroundColor: '#2E2E3B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  closeBtnText: {
+    fontSize: 15,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
   },
 });

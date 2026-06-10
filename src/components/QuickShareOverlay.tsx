@@ -40,16 +40,60 @@ export default function QuickShareOverlay({
   const colX = side === 'right'
     ? Math.min(cardRect.x + cardRect.w + GAP, SCREEN_W - CIRCLE - 8)
     : Math.max(cardRect.x - CIRCLE - GAP, 8);
-  // 세로 안전 영역: 상단 상태바 + 하단 탭바/홈인디케이터 + 라벨 삐져나옴(약 22px)을 고려해
-  // 원 기둥이 항상 화면 안에 들어오도록 clamp (하단 카드에서 원이 탭바 뒤로 꺼지는 문제 보완)
+
   const TOP_SAFE = 64;
   const BOTTOM_SAFE = 130;
   const LABEL_PAD = 22;
-  const totalH = targets.length * CIRCLE + (targets.length - 1) * GAP;
-  const minY = TOP_SAFE;
-  const maxY = Math.max(minY, SCREEN_H - BOTTOM_SAFE - LABEL_PAD - totalH);
-  let startY = cardRect.y + cardRect.h / 2 - totalH / 2;
-  startY = Math.max(minY, Math.min(startY, maxY));
+  const DY = CIRCLE + GAP;
+  const DX = CIRCLE + GAP;
+  const horizDir = side === 'right' ? 1 : -1;
+  const cardCenterY = cardRect.y + cardRect.h / 2;
+
+  let coords: { x: number; y: number }[] = [];
+
+  if (cardCenterY > SCREEN_H * 0.6) {
+    // 하단 게시물: ㄱ자 배치 (위로 올라가며 마지막에 수평 꺾임)
+    let startY = cardRect.y + cardRect.h - CIRCLE;
+    // 가장 아래 원(Target 0)의 하단이 BOTTOM_SAFE를 넘지 않도록 제한
+    const maxY = SCREEN_H - BOTTOM_SAFE - CIRCLE;
+    const minY = TOP_SAFE + 2 * DY;
+    startY = Math.max(minY, Math.min(startY, maxY));
+    coords = [
+      { x: colX, y: startY },
+      { x: colX, y: startY - DY },
+      { x: colX, y: startY - 2 * DY },
+      { x: colX + horizDir * DX, y: startY - 2 * DY },
+    ];
+  } else if (cardCenterY < SCREEN_H * 0.4) {
+    // 상단 게시물: ㄴ자 배치 (아래로 내려가며 마지막에 수평 꺾임)
+    let startY = cardRect.y;
+    // 가장 아래 원(Target 2, 3)의 하단이 BOTTOM_SAFE를 넘지 않도록 제한
+    const maxY = SCREEN_H - BOTTOM_SAFE - CIRCLE - 2 * DY;
+    const minY = TOP_SAFE;
+    startY = Math.max(minY, Math.min(startY, maxY));
+    coords = [
+      { x: colX, y: startY },
+      { x: colX, y: startY + DY },
+      { x: colX, y: startY + 2 * DY },
+      { x: colX + horizDir * DX, y: startY + 2 * DY },
+    ];
+  } else {
+    // 중간 게시물: 1자형 수직 배치 (기본형)
+    const totalH = targets.length * CIRCLE + (targets.length - 1) * GAP;
+    let startY = cardRect.y + cardRect.h / 2 - totalH / 2;
+    // 가장 아래 원(Target 3)의 하단이 BOTTOM_SAFE를 넘지 않도록 제한
+    const maxY = SCREEN_H - BOTTOM_SAFE - CIRCLE - 3 * DY;
+    const minY = TOP_SAFE;
+    startY = Math.max(minY, Math.min(startY, maxY));
+    coords = targets.map((_, i) => ({
+      x: colX,
+      y: startY + i * DY,
+    }));
+  }
+
+  // 화면 가로 경계를 벗어나지 않도록 clamp
+  const clampX = (x: number) => Math.max(8, Math.min(x, SCREEN_W - CIRCLE - 8));
+  coords = coords.map((c) => ({ x: clampX(c.x), y: c.y }));
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -58,13 +102,13 @@ export default function QuickShareOverlay({
 
       {/* 원형 타깃 */}
       {targets.map((t, i) => {
-        const cy = startY + i * (CIRCLE + GAP);
+        const { x: cx, y: cy } = coords[i];
         const hovered = hoveredKey === t.key;
         return (
           <View
             key={t.key}
             ref={(node) => { targetRefs.current[t.key] = node; }}
-            style={[st.target, { left: colX, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
+            style={[st.target, { left: cx, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
             onLayout={() => {
               // window 절대 좌표로 보고 (드롭 판정은 gesture absoluteX/Y를 사용하므로 좌표계 일치)
               targetRefs.current[t.key]?.measureInWindow((x, y, width, height) => {

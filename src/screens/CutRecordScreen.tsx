@@ -1,12 +1,12 @@
 import React, { useState, useRef, useMemo } from 'react';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, SafeAreaView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
+import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
-import { useRecords } from '../store/recordStore';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -18,8 +18,13 @@ const C = {
 
 type CountryParam = { flag?: string; name?: string } | null;
 
+// 기본 프레임 색 팔레트 — 사용자가 이 색들 중에서 선택
+const BASIC_COLORS = [
+  '#D4E6F1', '#F5EBE0', '#2C3E50', '#CD7F7D', '#D0D7CE',
+  '#F9F6F0', '#A3B19B', '#E6DFD3', '#F3DCD4', '#E1D5E7',
+];
+
 export default function CutRecordScreen({ navigation, route }: { navigation: any; route: any }) {
-  const { addRecord } = useRecords();
   const selectedCountry: CountryParam = route?.params?.selectedCountry ?? null;
 
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
@@ -28,11 +33,19 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
   const [photos, setPhotos] = useState<(string | null)[]>(
     Array(cutSlotCount(firstBasic.layout)).fill(null)
   );
+  const [transforms, setTransforms] = useState<(CutTransform | null)[]>(
+    Array(cutSlotCount(firstBasic.layout)).fill(null)
+  );
+  const [adjustSlot, setAdjustSlot] = useState<number | null>(null);
   const canvasRef = useRef<View>(null);
 
   const frame = getCutFrame(frameId)!;
   const slotN = cutSlotCount(frame.layout);
   const frames = useMemo(() => CUT_FRAMES.filter((f) => f.category === tab), [tab]);
+
+  // 기본 프레임 색 — 팔레트에서 선택 (기본 프레임일 때만 적용, 프레임 여백에만)
+  const isBasic = frame.category === '기본';
+  const [frameColor, setFrameColor] = useState<string>(BASIC_COLORS[0]);
 
   // 캔버스 크기 — 가로/세로 모두 화면에 맞게 fit (필름 같은 세로 스트립 대응)
   const canvasW = useMemo(() => {
@@ -48,9 +61,11 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
     const next = getCutFrame(id)!;
     setFrameId(id);
     setPhotos(Array(cutSlotCount(next.layout)).fill(null));
+    setTransforms(Array(cutSlotCount(next.layout)).fill(null));
   };
 
-  const fillSlot = async (i: number) => {
+  // 슬롯 사진 선택 → 성공 시 조정 모달 자동 오픈
+  const pickInto = async (i: number) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
       Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
@@ -61,15 +76,26 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
       quality: 0.85,
     });
     if (!r.canceled && r.assets[0]) {
-      setPhotos((p) => {
-        const n = [...p];
-        n[i] = r.assets[0].uri;
-        return n;
-      });
+      setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
+      setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
+      setAdjustSlot(i);
     }
   };
 
-  const save = async () => {
+  // 빈 칸 → 사진 선택, 채워진 칸 → 위치 조정
+  const handleSlotPress = (i: number) => {
+    if (photos[i]) setAdjustSlot(i);
+    else pickInto(i);
+  };
+
+  // 슬롯의 실제 가로/세로 비율 (조정 모달 프레임용)
+  const slotAspect = (i: number) => {
+    const s = CUT_LAYOUTS[frame.layout].slots[i];
+    return (s.w / s.h) * CUT_LAYOUTS[frame.layout].aspect;
+  };
+
+  // 네컷 완성 → 미리보기 캡처 후 여행정보 입력 화면으로 이동
+  const goNext = async () => {
     if (photos.filter(Boolean).length < slotN) {
       Alert.alert('알림', '모든 칸에 사진을 넣어주세요.');
       return;
@@ -83,83 +109,114 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
       Alert.alert('오류', '미리보기 생성에 실패했어요.');
       return;
     }
-    const today = new Date();
-    const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
-    addRecord({
-      user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
-      country: selectedCountry ? `${selectedCountry.flag ?? ''} ${selectedCountry.name ?? ''}`.trim() : '',
-      countryName: selectedCountry?.name || '',
-      countryFlag: selectedCountry?.flag || '',
-      countries: selectedCountry?.flag && selectedCountry?.name
-        ? [{ flag: selectedCountry.flag, name: selectedCountry.name }] : [],
-      date: dateStr,
-      content: '',
-      visibility: 'friends',
-      viewType: 'cut',
-      medias: [previewUri],   // 기존 피드/상세 렌더러가 합성 이미지를 그대로 표시
-      cutPhoto: { layout: frame.layout, frameId, photos: photos as string[], previewUri },
+    navigation.navigate('CutTravelInfo', {
+      cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri },
+      selectedCountry,
     });
-    navigation.goBack();
   };
 
   return (
-    <View style={st.root}>
+    <SafeAreaView style={st.root}>
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
           <Text style={st.cancel}>취소</Text>
         </TouchableOpacity>
-        <Text style={st.title}>네컷</Text>
-        <TouchableOpacity onPress={save} hitSlop={8}>
-          <Text style={st.save}>저장</Text>
+        <Text style={st.title}>스트립</Text>
+        <TouchableOpacity onPress={goNext} hitSlop={8}>
+          <Text style={st.save}>다음</Text>
         </TouchableOpacity>
       </View>
 
-      {/* 캔버스 */}
-      <View style={st.canvasWrap}>
+      {/* 캔버스 (중앙) */}
+      <View style={st.canvasArea}>
         <CutPhotoCanvas
           ref={canvasRef}
           frameId={frameId}
           photos={photos}
+          transforms={transforms}
           width={canvasW}
-          onSlotPress={fillSlot}
+          onSlotPress={handleSlotPress}
+          bgOverride={isBasic ? frameColor : undefined}
         />
-        <Text style={st.hint}>{`빈 칸을 눌러 사진을 넣어주세요  (${photos.filter(Boolean).length}/${slotN})`}</Text>
+        <Text style={st.hint}>{`빈 칸을 눌러 사진 넣기 · 사진을 눌러 위치 조정  (${photos.filter(Boolean).length}/${slotN})`}</Text>
       </View>
 
-      {/* 탭 */}
-      <View style={st.tabs}>
-        {(['기본', '테마'] as const).map((t) => (
-          <TouchableOpacity key={t} onPress={() => setTab(t)} style={[st.tab, tab === t && st.tabOn]}>
-            <Text style={[st.tabTxt, tab === t && st.tabTxtOn]}>{t}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {/* 하단: 기본/테마 탭 + 프레임 카탈로그 */}
+      <View style={st.bottomBar}>
+        <View style={st.tabs}>
+          {(['기본', '테마'] as const).map((t) => (
+            <TouchableOpacity key={t} onPress={() => setTab(t)} style={[st.tab, tab === t && st.tabOn]}>
+              <Text style={[st.tabTxt, tab === t && st.tabTxtOn]}>{t}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
-      {/* 프레임 카탈로그 */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={st.cat}
-      >
-        {frames.map((f) => (
-          <TouchableOpacity
-            key={f.id}
-            onPress={() => pickFrame(f.id)}
-            style={[st.catItem, frameId === f.id && st.catItemOn]}
-            activeOpacity={0.8}
+        {/* 기본 프레임 색 — 팔레트에서 선택 (한 줄 배치, 넘치면 가로 슬라이드) */}
+        {isBasic && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={st.paletteScroll}
+            contentContainerStyle={st.palette}
           >
-            <CutPhotoCanvas
-              frameId={f.id}
-              photos={Array(cutSlotCount(f.layout)).fill(null)}
-              width={72}
-              capture
-            />
-            <Text style={st.catLabel} numberOfLines={1}>{f.name}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-    </View>
+            {BASIC_COLORS.map((c) => (
+              <TouchableOpacity
+                key={c}
+                onPress={() => setFrameColor(c)}
+                style={[st.swatch, { backgroundColor: c }, frameColor === c && st.swatchOn]}
+                activeOpacity={0.8}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={st.catScroll}
+          contentContainerStyle={st.cat}
+        >
+          {frames.map((f) => {
+            const tw = Math.min(74, 84 * CUT_LAYOUTS[f.layout].aspect); // 썸네일 높이 ~84 이내로
+            return (
+              <TouchableOpacity
+                key={f.id}
+                onPress={() => pickFrame(f.id)}
+                style={[st.catItem, frameId === f.id && st.catItemOn]}
+                activeOpacity={0.8}
+              >
+                <CutPhotoCanvas
+                  frameId={f.id}
+                  photos={Array(cutSlotCount(f.layout)).fill(null)}
+                  width={tw}
+                  capture
+                />
+                <Text style={st.catLabel} numberOfLines={1}>{f.name}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </ScrollView>
+      </View>
+
+      {/* 사진 위치 조정 모달 */}
+      <CutPhotoAdjustModal
+        visible={adjustSlot !== null}
+        uri={adjustSlot !== null ? photos[adjustSlot] ?? null : null}
+        aspect={adjustSlot !== null ? slotAspect(adjustSlot) : 1}
+        initial={adjustSlot !== null ? transforms[adjustSlot] : null}
+        onConfirm={(t) => {
+          setTransforms((p) => { const n = [...p]; if (adjustSlot !== null) n[adjustSlot] = t; return n; });
+          setAdjustSlot(null);
+        }}
+        onCancel={() => setAdjustSlot(null)}
+        onChangePhoto={() => {
+          const i = adjustSlot;
+          setAdjustSlot(null);
+          if (i !== null) pickInto(i);
+        }}
+      />
+    </SafeAreaView>
   );
 }
 
@@ -167,17 +224,20 @@ const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 20, paddingTop: 54, paddingBottom: 14,
+    paddingHorizontal: 16, paddingVertical: 14,
     borderBottomWidth: 1, borderBottomColor: C.divider,
   },
-  cancel: { fontSize: 14, color: C.dim },
-  title: { fontSize: 16, fontWeight: 'bold', color: C.white },
-  save: { fontSize: 14, fontWeight: '700', color: C.purple },
+  cancel: { fontSize: 16, color: C.dim },
+  title: { fontSize: 17, fontWeight: 'bold', color: C.white },
+  save: { fontSize: 16, fontWeight: '700', color: C.purple },
 
-  canvasWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14 },
+  canvasArea: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 14, paddingHorizontal: 16 },
   hint: { fontSize: 12, color: C.dim },
 
-  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10 },
+  bottomBar: { paddingTop: 6, paddingBottom: 8 },
+  catScroll: { flexGrow: 0 },
+
+  tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 12, justifyContent: 'center' },
   tab: {
     paddingHorizontal: 18, paddingVertical: 8, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
@@ -186,11 +246,19 @@ const st = StyleSheet.create({
   tabTxt: { fontSize: 13, color: C.dim, fontWeight: '600' },
   tabTxtOn: { color: C.purple },
 
-  cat: { paddingHorizontal: 16, paddingBottom: 28, gap: 12, alignItems: 'flex-start' },
+  cat: { paddingHorizontal: 16, paddingBottom: 4, gap: 12, alignItems: 'flex-end' },
   catItem: {
     width: 88, alignItems: 'center', gap: 6, padding: 6, borderRadius: 12,
     borderWidth: 1, borderColor: 'transparent',
   },
   catItemOn: { borderColor: C.purple, backgroundColor: 'rgba(191,133,252,0.10)' },
   catLabel: { fontSize: 10, color: C.dim, textAlign: 'center' },
+
+  paletteScroll: { flexGrow: 0, marginBottom: 14 },
+  palette: {
+    flexDirection: 'row', alignItems: 'center',
+    gap: 10, paddingHorizontal: 20,
+  },
+  swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
+  swatchOn: { borderWidth: 3, borderColor: C.purple },
 });

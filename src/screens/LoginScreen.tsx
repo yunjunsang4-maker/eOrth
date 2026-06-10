@@ -9,10 +9,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Modal,
+  ActivityIndicator,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
+import { useSettings } from '../store/settingsStore';
+import { GoogleIcon, AppleIcon } from '../components/icons';
 
 const { width } = Dimensions.get('window');
 
@@ -21,6 +26,7 @@ interface Props {
 }
 
 export default function LoginScreen({ navigation }: Props) {
+  const { setSignUpMethod, setSignUpEmail, setNickname } = useSettings();
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -29,6 +35,61 @@ export default function LoginScreen({ navigation }: Props) {
   const [pwFocused, setPwFocused] = useState(false);
   const [confirmFocused, setConfirmFocused] = useState(false);
 
+  // Forgot password modal state
+  const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotEmailFocused, setForgotEmailFocused] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+
+  // Social login modals state
+  const [socialModal, setSocialModal] = useState<'google' | 'apple' | null>(null);
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [authSuccess, setAuthSuccess] = useState(false);
+
+  const handleGooglePress = () => {
+    setSocialModal('google');
+    setSocialLoading(false);
+    setAuthSuccess(false);
+  };
+
+  const handleApplePress = () => {
+    setSocialModal('apple');
+    setSocialLoading(false);
+    setAuthSuccess(false);
+  };
+
+  const confirmSocialLogin = (emailStr: string, nameStr: string) => {
+    setSocialLoading(true);
+    setTimeout(() => {
+      setAuthSuccess(true);
+      setTimeout(() => {
+        setSocialLoading(false);
+        setSocialModal(null);
+        setSignUpMethod(socialModal || 'google');
+        setSignUpEmail(emailStr);
+        setNickname(nameStr);
+        navigation.navigate('BasicInfo');
+      }, 800);
+    }, 1200);
+  };
+
+  const handleForgotPassword = () => {
+    setForgotEmail(email);
+    setResetSuccess(false);
+    setIsResetting(false);
+    setForgotPasswordVisible(true);
+  };
+
+  const handleSendResetLink = () => {
+    if (!forgotEmail.trim()) return;
+    setIsResetting(true);
+    setTimeout(() => {
+      setIsResetting(false);
+      setResetSuccess(true);
+    }, 1500);
+  };
+
   const isSignup = mode === 'signup';
   const canSubmit =
     email.trim().length > 0 &&
@@ -36,6 +97,8 @@ export default function LoginScreen({ navigation }: Props) {
     (isSignup ? confirmPassword === password : true);
 
   const handleSubmit = () => {
+    setSignUpMethod('email');
+    setSignUpEmail(email.trim() || 'user@eorth.app');
     navigation.navigate('BasicInfo');
   };
 
@@ -61,7 +124,11 @@ export default function LoginScreen({ navigation }: Props) {
                 style={styles.miniGlobe}
               />
             </View>
-            <Text style={styles.brandName}>eOrth</Text>
+            <Image
+              source={require('../../assets/logo.png')}
+              style={styles.brandLogoImage}
+              resizeMode="contain"
+            />
             <Text style={styles.tagline}>여행을 기록하고 나만의 지구본을 만들어요</Text>
           </View>
 
@@ -157,7 +224,7 @@ export default function LoginScreen({ navigation }: Props) {
 
             {/* Forgot password (login only) */}
             {!isSignup && (
-              <TouchableOpacity style={styles.forgotBtn}>
+              <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
                 <Text style={styles.forgotText}>비밀번호를 잊으셨나요?</Text>
               </TouchableOpacity>
             )}
@@ -184,11 +251,9 @@ export default function LoginScreen({ navigation }: Props) {
             <TouchableOpacity
               style={styles.socialBtn}
               activeOpacity={0.85}
-              onPress={() => navigation.navigate('BasicInfo')}
+              onPress={handleGooglePress}
             >
-              <View style={styles.googleIconWrap}>
-                <Text style={styles.googleG}>G</Text>
-              </View>
+              <GoogleIcon size={20} />
               <Text style={styles.socialBtnText}>Google로 계속하기</Text>
             </TouchableOpacity>
 
@@ -196,9 +261,9 @@ export default function LoginScreen({ navigation }: Props) {
             <TouchableOpacity
               style={[styles.socialBtn, styles.appleBtn]}
               activeOpacity={0.85}
-              onPress={() => navigation.navigate('BasicInfo')}
+              onPress={handleApplePress}
             >
-              <Text style={styles.appleIcon}></Text>
+              <AppleIcon size={20} color="#FFFFFF" />
               <Text style={[styles.socialBtnText, { color: Colors.white }]}>
                 Apple로 계속하기
               </Text>
@@ -213,6 +278,242 @@ export default function LoginScreen({ navigation }: Props) {
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Forgot Password Modal */}
+      <Modal
+        visible={forgotPasswordVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setForgotPasswordVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            {/* Header */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>비밀번호 재설정</Text>
+              <TouchableOpacity
+                onPress={() => setForgotPasswordVisible(false)}
+                style={styles.modalCloseBtn}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {!resetSuccess ? (
+              <View style={styles.modalBody}>
+                <Text style={styles.modalDesc}>
+                  가입하신 이메일 주소를 입력하시면{'\n'}비밀번호 재설정 링크를 보내드립니다.
+                </Text>
+
+                <View style={[styles.fieldWrap, { width: '100%' }]}>
+                  <Text style={styles.fieldLabel}>이메일 주소</Text>
+                  <View style={[styles.inputBox, forgotEmailFocused && styles.inputBoxFocused]}>
+                    <Text style={styles.inputIcon}>✉️</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="example@email.com"
+                      placeholderTextColor={Colors.textMuted}
+                      value={forgotEmail}
+                      onChangeText={setForgotEmail}
+                      keyboardType="email-address"
+                      autoCapitalize="none"
+                      autoCorrect={false}
+                      onFocus={() => setForgotEmailFocused(true)}
+                      onBlur={() => setForgotEmailFocused(false)}
+                      editable={!isResetting}
+                    />
+                  </View>
+                </View>
+
+                {isResetting ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <Text style={styles.loadingText}>재설정 링크 전송 중...</Text>
+                  </View>
+                ) : (
+                  <PrimaryButton
+                    label="재설정 링크 보내기"
+                    onPress={handleSendResetLink}
+                    disabled={!forgotEmail.trim() || !forgotEmail.includes('@')}
+                    style={styles.modalSubmitBtn}
+                  />
+                )}
+              </View>
+            ) : (
+              <View style={styles.modalBody}>
+                <View style={styles.successIconWrap}>
+                  <Text style={styles.successIcon}>✉️</Text>
+                </View>
+                <Text style={styles.successTitle}>재설정 메일 발송 완료</Text>
+                <Text style={styles.successDesc}>
+                  {forgotEmail} 주소로{'\n'}비밀번호 재설정 링크가 발송되었습니다.{'\n'}받은 편지함을 확인해 주세요.
+                </Text>
+                <PrimaryButton
+                  label="확인"
+                  onPress={() => setForgotPasswordVisible(false)}
+                  style={styles.modalSubmitBtn}
+                />
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Google Sign-In Mock Modal */}
+      <Modal
+        visible={socialModal === 'google'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSocialModal(null)}
+      >
+        <View style={styles.socialModalOverlay}>
+          <View style={styles.googleContainer}>
+            {/* Logo */}
+            <View style={styles.googleLogoRow}>
+              <GoogleIcon size={20} />
+              <Text style={styles.googleBrandText}>Google</Text>
+            </View>
+
+            <Text style={styles.googleTitle}>계정 선택</Text>
+            <Text style={styles.googleSubtitle}>eOrth(으)로 이동</Text>
+
+            {socialLoading ? (
+              <View style={styles.socialLoadingWrap}>
+                {authSuccess ? (
+                  <View style={styles.socialSuccessBadge}>
+                    <Text style={{ fontSize: 24, marginBottom: 8 }}>✅</Text>
+                    <Text style={styles.socialSuccessText}>로그인 성공</Text>
+                  </View>
+                ) : (
+                  <>
+                    <ActivityIndicator size="large" color="#4285F4" />
+                    <Text style={styles.socialLoadingText}>Google 계정 연동 중...</Text>
+                  </>
+                )}
+              </View>
+            ) : (
+              <View style={styles.googleBody}>
+                {/* Account row */}
+                <TouchableOpacity
+                  style={styles.googleAccountRow}
+                  onPress={() => confirmSocialLogin('yunjunsung@gmail.com', '윤준상')}
+                >
+                  <View style={styles.googleAvatar}>
+                    <Text style={styles.googleAvatarText}>윤</Text>
+                  </View>
+                  <View style={styles.googleAccountInfo}>
+                    <Text style={styles.googleAccountName}>윤준상</Text>
+                    <Text style={styles.googleAccountEmail}>yunjunsung@gmail.com</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Use another account */}
+                <TouchableOpacity
+                  style={[styles.googleAccountRow, { borderBottomWidth: 0 }]}
+                  onPress={() => confirmSocialLogin('newuser@gmail.com', '새 사용자')}
+                >
+                  <View style={[styles.googleAvatar, styles.googleAvatarOther]}>
+                    <Text style={styles.googleAvatarTextOther}>👤</Text>
+                  </View>
+                  <View style={styles.googleAccountInfo}>
+                    <Text style={styles.googleAccountNameOther}>다른 계정 사용</Text>
+                  </View>
+                </TouchableOpacity>
+
+                <Text style={styles.googleDisclaimer}>
+                  eOrth 서비스 제공을 위해 Google에서 귀하의 이름, 이메일 주소, 프로필 사진을 eOrth 서비스와 공유합니다.
+                </Text>
+              </View>
+            )}
+
+            {!socialLoading && (
+              <TouchableOpacity
+                onPress={() => setSocialModal(null)}
+                style={styles.googleCancelBtn}
+              >
+                <Text style={styles.googleCancelText}>취소</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Apple Sign-In Mock Modal */}
+      <Modal
+        visible={socialModal === 'apple'}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSocialModal(null)}
+      >
+        <View style={styles.appleModalOverlay}>
+          <View style={styles.appleSheet}>
+            {/* Handle bar */}
+            <View style={styles.appleHandle} />
+
+            <View style={styles.appleHeader}>
+              <AppleIcon size={32} color="#FFFFFF" />
+              <Text style={styles.appleTitle}>Apple ID</Text>
+              <Text style={styles.appleSubtitle}>eOrth에 로그인</Text>
+            </View>
+
+            {socialLoading ? (
+              <View style={styles.appleLoadingWrap}>
+                {authSuccess ? (
+                  <View style={styles.appleSuccessGlow}>
+                    <Text style={{ fontSize: 40, color: '#FFFFFF' }}></Text>
+                    <Text style={styles.appleSuccessText}>인증 완료</Text>
+                  </View>
+                ) : (
+                  <View style={styles.appleFaceIdScan}>
+                    <View style={styles.faceIdRing}>
+                      <Text style={{ fontSize: 32, color: '#00D2FF' }}>👤</Text>
+                    </View>
+                    <Text style={styles.appleFaceIdText}>Face ID를 통한 인증 중...</Text>
+                  </View>
+                )}
+              </View>
+            ) : (
+              <View style={styles.appleBody}>
+                {/* Account Details card */}
+                <View style={styles.appleCard}>
+                  <View style={styles.appleRow}>
+                    <Text style={styles.appleLabel}>계정</Text>
+                    <Text style={styles.appleValue}>윤준상 (yunjunsung@icloud.com)</Text>
+                  </View>
+                  <View style={styles.appleRowDivider} />
+                  <View style={styles.appleRow}>
+                    <Text style={styles.appleLabel}>이메일</Text>
+                    <Text style={styles.appleValue}>나의 이메일 공유</Text>
+                  </View>
+                </View>
+
+                <Text style={styles.appleDisclaimer}>
+                  "사용자 ID로 계속"을 클릭하면 Face ID 또는 비밀번호를 통해 eOrth 서비스에 가입하고 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
+                </Text>
+
+                <TouchableOpacity
+                  style={styles.appleSubmitBtn}
+                  onPress={() => confirmSocialLogin('yunjunsung@icloud.com', '윤준상')}
+                >
+                  <LinearGradient
+                    colors={['#007AFF', '#0055D0']}
+                    style={styles.appleSubmitGrad}
+                  >
+                    <Text style={styles.appleSubmitText}>사용자 ID로 계속</Text>
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setSocialModal(null)}
+                  style={styles.appleCancelBtn}
+                >
+                  <Text style={styles.appleCancelText}>취소</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </LinearGradient>
   );
 }
@@ -257,11 +558,10 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 10,
   },
-  brandName: {
-    fontSize: 32,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    letterSpacing: 2,
+  brandLogoImage: {
+    width: 138,
+    height: 38,
+    marginBottom: 6,
   },
   tagline: {
     fontSize: Typography.fontSize.sm,
@@ -427,5 +727,377 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
     textAlign: 'center',
     lineHeight: 18,
+  },
+
+  // Forgot Password Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 1, 15, 0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing[6],
+  },
+  modalContent: {
+    width: '100%',
+    backgroundColor: '#160B2C',
+    borderRadius: BorderRadius['2xl'],
+    borderWidth: 1,
+    borderColor: 'rgba(191, 133, 252, 0.15)',
+    padding: Spacing[6],
+    shadowColor: '#7B61FF',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: Spacing[4],
+  },
+  modalTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 16,
+  },
+  modalCloseText: {
+    fontSize: 16,
+    color: Colors.textSecondary,
+  },
+  modalBody: {
+    gap: Spacing[4],
+    alignItems: 'center',
+    width: '100%',
+  },
+  modalDesc: {
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing[2],
+  },
+  modalSubmitBtn: {
+    width: '100%',
+    marginTop: Spacing[2],
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing[2],
+    paddingVertical: 16,
+  },
+  loadingText: {
+    color: Colors.textSecondary,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  successIconWrap: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(123, 97, 255, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing[2],
+  },
+  successIcon: {
+    fontSize: 28,
+  },
+  successTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
+    marginBottom: Spacing[1],
+  },
+  successDesc: {
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: Spacing[4],
+  },
+
+  // Social Mock Modals
+  socialModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 1, 15, 0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: Spacing[6],
+  },
+  googleContainer: {
+    width: '100%',
+    backgroundColor: '#1E222D',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    padding: 24,
+    alignItems: 'center',
+  },
+  googleLogoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  googleBrandText: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
+  },
+  googleTitle: {
+    fontSize: 22,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
+    marginBottom: 4,
+  },
+  googleSubtitle: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    marginBottom: 24,
+  },
+  googleBody: {
+    width: '100%',
+    marginBottom: 20,
+  },
+  googleAccountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
+  },
+  googleAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3F51B5',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleAvatarText: {
+    color: Colors.white,
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  googleAccountInfo: {
+    flex: 1,
+  },
+  googleAccountName: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
+    color: Colors.white,
+  },
+  googleAccountEmail: {
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textMuted,
+  },
+  googleAvatarOther: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  googleAvatarTextOther: {
+    fontSize: 16,
+  },
+  googleAccountNameOther: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
+  },
+  googleDisclaimer: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textMuted,
+    lineHeight: 16,
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  googleCancelBtn: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    alignSelf: 'stretch',
+    alignItems: 'center',
+  },
+  googleCancelText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
+  },
+  socialLoadingWrap: {
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 16,
+  },
+  socialLoadingText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
+  },
+  socialSuccessBadge: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  socialSuccessText: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#00E676',
+  },
+
+  // Apple Sheet
+  appleModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(5, 1, 15, 0.75)',
+    justifyContent: 'flex-end',
+  },
+  appleSheet: {
+    backgroundColor: '#1C1C1E',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 24,
+    paddingBottom: 40,
+    alignItems: 'center',
+    width: '100%',
+  },
+  appleHandle: {
+    width: 36,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    marginBottom: 20,
+  },
+  appleHeader: {
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  appleTitle: {
+    fontSize: 20,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
+    marginTop: 8,
+  },
+  appleSubtitle: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textMuted,
+    marginTop: 2,
+  },
+  appleBody: {
+    width: '100%',
+    alignItems: 'center',
+  },
+  appleCard: {
+    width: '100%',
+    backgroundColor: '#2C2C2E',
+    borderRadius: 14,
+    paddingVertical: 4,
+    paddingHorizontal: 16,
+    marginBottom: 20,
+  },
+  appleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  appleRowDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  appleLabel: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textMuted,
+    width: 60,
+  },
+  appleValue: {
+    fontSize: 13,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.white,
+    flex: 1,
+    textAlign: 'right',
+  },
+  appleDisclaimer: {
+    fontSize: 11,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textMuted,
+    lineHeight: 16,
+    textAlign: 'center',
+    marginBottom: 24,
+    paddingHorizontal: 16,
+  },
+  appleSubmitBtn: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
+  appleSubmitGrad: {
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  appleSubmitText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  appleCancelBtn: {
+    paddingVertical: 12,
+  },
+  appleCancelText: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.regular,
+    color: '#007AFF', // iOS blue
+  },
+  appleLoadingWrap: {
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  appleFaceIdScan: {
+    alignItems: 'center',
+    gap: 16,
+  },
+  faceIdRing: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 2,
+    borderColor: '#00D2FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#00D2FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  appleFaceIdText: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.medium,
+    color: Colors.textSecondary,
+  },
+  appleSuccessGlow: {
+    alignItems: 'center',
+    gap: 12,
+  },
+  appleSuccessText: {
+    fontSize: 16,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.white,
   },
 });

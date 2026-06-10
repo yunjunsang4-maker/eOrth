@@ -16,6 +16,7 @@ import {
 import { CameraIcon } from '../components/icons';
 import * as ImagePicker from 'expo-image-picker';
 import Toast from '../components/Toast';
+import { useSettings } from '../store/settingsStore';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -35,11 +36,27 @@ const COLORS = {
 };
 
 export default function EditProfileScreen({ navigation }: { navigation: any }) {
-  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
-  const [nickname, setNickname] = useState('윤준상');
-  const [handle, setHandle] = useState('yunjunsung');
-  const [bio, setBio] = useState('');
-  const [country, setCountry] = useState('🇰🇷 대한민국');
+  const {
+    nickname: globalNickname,
+    setNickname: setGlobalNickname,
+    handle: globalHandle,
+    setHandle: setGlobalHandle,
+    bio: globalBio,
+    setBio: setGlobalBio,
+    profilePhoto: globalProfilePhoto,
+    setProfilePhoto: setGlobalProfilePhoto,
+    handleLastChanged,
+    setHandleLastChanged,
+  } = useSettings();
+
+  const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
+  const timeSinceLastChange = handleLastChanged ? Date.now() - handleLastChanged : null;
+  const canChangeHandle = !handleLastChanged || (timeSinceLastChange !== null && timeSinceLastChange >= TWO_WEEKS_MS);
+
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(globalProfilePhoto);
+  const [nickname, setNickname] = useState(globalNickname);
+  const [handle, setHandle] = useState(globalHandle);
+  const [bio, setBio] = useState(globalBio);
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -78,16 +95,30 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
   };
 
   const handleSave = () => {
-    if (!nickname.trim()) {
-      Alert.alert('알림', '닉네임을 입력해주세요.');
-      return;
-    }
     if (!handle.trim()) {
       Alert.alert('알림', '아이디를 입력해주세요.');
       return;
     }
+    
+    const trimmedHandle = handle.trim();
+    if (trimmedHandle !== globalHandle) {
+      if (!canChangeHandle) {
+        Alert.alert('알림', '아이디 변경 가능 기간이 아닙니다.');
+        return;
+      }
+      setGlobalHandle(trimmedHandle);
+      setHandleLastChanged(Date.now());
+    }
+
+    // Save to global context
+    setGlobalNickname(nickname.trim());
+    setGlobalBio(bio.trim());
+    setGlobalProfilePhoto(profilePhoto);
+
     showToast('프로필이 저장되었어요');
-    navigation.goBack();
+    setTimeout(() => {
+      navigation.goBack();
+    }, 1000);
   };
 
   return (
@@ -121,7 +152,7 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
               ) : (
                 <View style={s.avatarPlaceholder}>
                   <Text style={s.avatarText}>
-                    {nickname ? nickname.charAt(0) : '?'}
+                    {nickname.trim() ? nickname.trim().charAt(0) : (handle.trim() ? handle.trim().charAt(0) : '?')}
                   </Text>
                 </View>
               )}
@@ -165,10 +196,10 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
           {/* 아이디 */}
           <View style={s.fieldGroup}>
             <Text style={s.fieldLabel}>아이디</Text>
-            <View style={s.inputWrap}>
+            <View style={[s.inputWrap, !canChangeHandle && s.inputWrapDisabled]}>
               <Text style={s.atPrefix}>@</Text>
               <TextInput
-                style={[s.input, { flex: 1 }]}
+                style={[s.input, { flex: 1 }, !canChangeHandle && s.inputDisabled]}
                 value={handle}
                 onChangeText={(text) => setHandle(text.replace(/[^a-zA-Z0-9_]/g, ''))}
                 placeholder="영문, 숫자, _만 사용 가능"
@@ -176,9 +207,19 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
                 maxLength={30}
                 autoCorrect={false}
                 autoCapitalize="none"
+                editable={canChangeHandle}
               />
-              <Text style={s.charCount}>{handle.length}/30</Text>
+              {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
             </View>
+            {!canChangeHandle && (
+              <Text style={s.lockNotice}>
+                🔒 아이디는 2주에 한 번만 변경할 수 있습니다. (
+                {(() => {
+                  const d = new Date(handleLastChanged! + TWO_WEEKS_MS);
+                  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
+                })()} 이후 변경 가능)
+              </Text>
+            )}
           </View>
 
           {/* 소개 */}
@@ -197,40 +238,6 @@ export default function EditProfileScreen({ navigation }: { navigation: any }) {
               />
             </View>
             <Text style={s.charCountBelow}>{bio.length}/100</Text>
-          </View>
-
-          {/* 거주 국가 */}
-          <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>거주 국가</Text>
-            <TouchableOpacity
-              style={s.selectBtn}
-              activeOpacity={0.7}
-              onPress={() => {
-                if (Platform.OS === 'ios') {
-                  Alert.prompt(
-                    '거주 국가',
-                    '국가명을 입력해주세요. (예: 🇰🇷 대한민국)',
-                    [
-                      { text: '취소', style: 'cancel' },
-                      {
-                        text: '확인',
-                        onPress: (value: string | undefined) => {
-                          const trimmed = (value ?? '').trim();
-                          if (trimmed) setCountry(trimmed);
-                        },
-                      },
-                    ],
-                    'plain-text',
-                    country
-                  );
-                } else {
-                  Alert.alert('거주 국가', '국가 선택 기능은 준비 중이에요.', [{ text: '확인' }]);
-                }
-              }}
-            >
-              <Text style={s.selectBtnText}>{country}</Text>
-              <Text style={s.chevron}>›</Text>
-            </TouchableOpacity>
           </View>
 
           {/* 저장 버튼 (하단 대형) */}
@@ -440,5 +447,19 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: COLORS.white,
+  },
+  inputWrapDisabled: {
+    backgroundColor: 'rgba(255,255,255,0.02)',
+    borderColor: 'rgba(255,255,255,0.03)',
+    opacity: 0.6,
+  },
+  inputDisabled: {
+    color: '#4A4A59',
+  },
+  lockNotice: {
+    fontSize: 11,
+    color: '#FFB800',
+    marginTop: 6,
+    marginLeft: 4,
   },
 });

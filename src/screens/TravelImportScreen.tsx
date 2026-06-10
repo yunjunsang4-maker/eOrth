@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Platform,
+  Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
@@ -17,7 +18,7 @@ import * as Location from 'expo-location';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
 import { useSettings } from '../store/settingsStore';
-import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
+import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 
 const { width } = Dimensions.get('window');
 
@@ -66,10 +67,19 @@ export default function TravelImportScreen({ navigation }: Props) {
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
   const [period, setPeriod] = useState<ScanPeriodOption>(SCAN_PERIODS[0]); // 분석 기간 (기본: 최근 1년)
 
+  // 여행 합치기 (같은 국가가 여러 여행으로 나뉜 경우 — 예: 교환학생 거점 국가)
+  const [mergeVisible, setMergeVisible] = useState(false);
+  const [mergeIds, setMergeIds] = useState<string[]>([]);
+
   // Sync selected IDs when scannedTrips change
+  // 첫 스캔 결과에는 전체 선택, 합치기 등으로 목록이 바뀌면 기존 선택을 보존하며 유효한 id만 남긴다
   useEffect(() => {
     if (scannedTrips.length > 0) {
-      setSelectedIds(scannedTrips.map((t) => t.id));
+      setSelectedIds((prev) =>
+        prev.length === 0
+          ? scannedTrips.map((t) => t.id)
+          : prev.filter((id) => scannedTrips.some((t) => t.id === id))
+      );
     }
   }, [scannedTrips]);
 
@@ -143,6 +153,7 @@ export default function TravelImportScreen({ navigation }: Props) {
     setScanning(true);
     setProgress(0);
     setScannedTrips([]);
+    setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
 
     // 기간 옵션에 따른 안전 상한·조회 시작점. 전체 스캔은 상한 없음(Infinity) + createdAfter 미적용.
     const MAX_ASSETS = period.maxAssets;
@@ -291,6 +302,40 @@ export default function TravelImportScreen({ navigation }: Props) {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
+  };
+
+  // ── 여행 합치기 ──
+  // 같은 국가의 여행만 함께 선택 가능 (다른 국가가 섞이면 국가·지구본 매칭이 깨짐)
+  const mergeCountry = mergeIds.length > 0
+    ? scannedTrips.find((t) => t.id === mergeIds[0])?.countryName ?? null
+    : null;
+  // 같은 국가가 2개 이상으로 나뉜 경우에만 합치기 버튼 노출
+  const hasMergeable = scannedTrips.some((t, i) =>
+    scannedTrips.some((u, j) => j !== i && u.countryName === t.countryName)
+  );
+
+  const toggleMergeId = (id: string) => {
+    setMergeIds((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
+    );
+  };
+
+  const confirmMerge = () => {
+    const chosen = scannedTrips.filter((t) => mergeIds.includes(t.id));
+    if (chosen.length < 2) return;
+    const merged = mergeScannedTrips(chosen);
+    setScannedTrips((prev) => {
+      const rest = prev.filter((t) => !mergeIds.includes(t.id));
+      const next = [...rest, merged];
+      next.sort(
+        (a, b) => new Date(b.date.replace(/\./g, '-')).getTime() - new Date(a.date.replace(/\./g, '-')).getTime()
+      );
+      return next;
+    });
+    // 합쳐진 여행은 선택 상태로 추가 (기존 선택은 useEffect가 유효 id만 남겨 보존)
+    setSelectedIds((prev) => [...prev.filter((id) => !mergeIds.includes(id)), merged.id]);
+    setMergeIds([]);
+    setMergeVisible(false);
   };
 
   const handleImport = () => {
@@ -447,6 +492,18 @@ export default function TravelImportScreen({ navigation }: Props) {
               </Text>
             )}
 
+            {/* 같은 국가가 여러 여행으로 나뉜 경우 합치기 */}
+            {hasMergeable && (
+              <TouchableOpacity
+                style={styles.mergeBtn}
+                onPress={() => { setMergeIds([]); setMergeVisible(true); }}
+                activeOpacity={0.85}
+              >
+                <Text style={styles.mergeBtnTxt}>🧩 여행 합치기</Text>
+                <Text style={styles.mergeBtnSub}>같은 나라 여행이 여러 개로 나뉘었다면 하나로 합쳐보세요</Text>
+              </TouchableOpacity>
+            )}
+
             <View style={styles.listWrap}>
               {scannedTrips.map((trip) => {
                 const isSelected = selectedIds.includes(trip.id);
@@ -481,6 +538,63 @@ export default function TravelImportScreen({ navigation }: Props) {
         )}
 
       </ScrollView>
+
+      {/* ── 여행 합치기 모달 ── */}
+      <Modal visible={mergeVisible} transparent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
+        <View style={styles.mgOverlay}>
+          <View style={styles.mgSheet}>
+            <Text style={styles.mgTitle}>여행 합치기</Text>
+            <Text style={styles.mgSub}>
+              합칠 여행을 2개 이상 선택하세요.{'\n'}같은 나라의 여행끼리만 합칠 수 있어요.
+            </Text>
+
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              {scannedTrips.map((t) => {
+                const on = mergeIds.includes(t.id);
+                const disabled = !on && mergeCountry !== null && t.countryName !== mergeCountry;
+                return (
+                  <TouchableOpacity
+                    key={t.id}
+                    style={[styles.mgItem, on && styles.mgItemOn, disabled && styles.mgItemDisabled]}
+                    onPress={() => toggleMergeId(t.id)}
+                    disabled={disabled}
+                    activeOpacity={0.85}
+                  >
+                    <Image source={{ uri: t.medias[0] }} style={styles.mgThumb} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.mgItemTitle}>{t.countryFlag} {t.title}</Text>
+                      <Text style={styles.mgItemDate}>
+                        {t.startDate} ~ {t.endDate.substring(5)} · 사진 {t.photoCount}장
+                      </Text>
+                    </View>
+                    <View style={[styles.checkbox, on && styles.checkboxSelected]}>
+                      {on && <Text style={styles.checkmark}>✓</Text>}
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <View style={styles.mgBtnRow}>
+              <TouchableOpacity style={styles.mgCancelBtn} onPress={() => setMergeVisible(false)} activeOpacity={0.85}>
+                <Text style={styles.mgCancelTxt}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.mgOkBtn, mergeIds.length < 2 && styles.importBtnDisabled]}
+                onPress={confirmMerge}
+                disabled={mergeIds.length < 2}
+                activeOpacity={0.85}
+              >
+                <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.mgOkGrad}>
+                  <Text style={styles.mgOkTxt}>
+                    {mergeIds.length < 2 ? '여행을 2개 이상 선택하세요' : `${mergeIds.length}개 여행 합치기`}
+                  </Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {scanFinished && scannedTrips.length > 0 && (
         /* Floating Bottom Bar for importing */
@@ -727,6 +841,67 @@ const styles = StyleSheet.create({
   listWrap: {
     gap: Spacing[4],
   },
+
+  /* 여행 합치기 */
+  mergeBtn: {
+    backgroundColor: 'rgba(123, 97, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(123, 97, 255, 0.35)',
+    borderRadius: BorderRadius.lg,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginBottom: Spacing[4],
+  },
+  mergeBtnTxt: {
+    color: Colors.textPrimary,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.semiBold,
+    marginBottom: 2,
+  },
+  mergeBtnSub: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  mgOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  mgSheet: {
+    backgroundColor: '#16121F',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 20,
+    paddingBottom: 40,
+  },
+  mgTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  mgSub: { color: '#A1A1B0', fontSize: 13, lineHeight: 19, marginBottom: 16 },
+  mgItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    padding: 10,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    marginBottom: 8,
+  },
+  mgItemOn: { borderColor: '#7B61FF', backgroundColor: 'rgba(123, 97, 255, 0.08)' },
+  mgItemDisabled: { opacity: 0.35 },
+  mgThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#2A2735' },
+  mgItemTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginBottom: 2 },
+  mgItemDate: { color: '#A1A1B0', fontSize: 12 },
+  mgBtnRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  mgCancelBtn: {
+    paddingHorizontal: 20,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mgCancelTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  mgOkBtn: { flex: 1, borderRadius: 999, overflow: 'hidden' },
+  mgOkGrad: { paddingVertical: 16, alignItems: 'center' },
+  mgOkTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   tripCard: {
     backgroundColor: Colors.bgCard,
     borderRadius: BorderRadius['2xl'],

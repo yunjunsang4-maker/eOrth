@@ -13,6 +13,9 @@ import {
   Animated,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { PinIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -36,6 +39,67 @@ const C = {
   snapYellow: '#FFD60A',
   snapBg: '#0D0D12',
 };
+
+// ─── 리퀴드 글래스 (실제 BlurView — 디벨롭 빌드 전용) ───
+const GLASS = {
+  border:      'rgba(255,255,255,0.30)',
+  innerTop:    'rgba(255,255,255,0.16)',
+  innerBottom: 'rgba(255,255,255,0.02)',
+  specular:    'rgba(255,255,255,0.55)',
+};
+
+const GlassFill = ({
+  intensity = 30,
+  tint = 'dark',
+  specular = true,
+}: {
+  intensity?: number;
+  tint?: 'dark' | 'light' | 'default';
+  specular?: boolean;
+}) => (
+  <>
+    <BlurView
+      intensity={intensity}
+      tint={tint}
+      experimentalBlurMethod="dimezisBlurView"
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+    <LinearGradient
+      colors={[GLASS.innerTop, GLASS.innerBottom]}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 0, y: 1 }}
+      style={StyleSheet.absoluteFill}
+      pointerEvents="none"
+    />
+    {specular ? (
+      <LinearGradient
+        colors={[GLASS.specular, 'rgba(255,255,255,0)']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 0, y: 1 }}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%', opacity: 0.4 }}
+        pointerEvents="none"
+      />
+    ) : null}
+  </>
+);
+
+// ─── 그라데이션 카메라 회전 아이콘 ───
+const FlipIconGradient = ({ size = 26 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Defs>
+      <SvgLinearGradient id="flipGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <Stop offset="0%" stopColor="#22D3EE" />
+        <Stop offset="50%" stopColor="#A855F7" />
+        <Stop offset="100%" stopColor="#D946EF" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path
+      d="M19 8l-4 4h3c0 3.31-2.69 6-6 6-1.01 0-1.97-.25-2.8-.7l-1.46 1.46C8.97 19.54 10.43 20 12 20c4.42 0 8-3.58 8-8h3l-4-4zM6 12c0-3.31 2.69-6 6-6 1.01 0 1.97.25 2.8.7l1.46-1.46C15.03 4.46 13.57 4 12 4c-4.42 0-8 3.58-8 8H1l4 4 4-4H6z"
+      fill="url(#flipGrad)"
+    />
+  </Svg>
+);
 
 interface Props {
   navigation: any;
@@ -64,6 +128,24 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [detectedCity, setDetectedCity] = useState<string | null>(null);
   const [shotStartTime] = useState(Date.now());
   const notifTimestamp: number | undefined = route?.params?.notifTimestamp;
+
+  const preselected = route?.params?.selectedCountry;
+  const [selectedCountry, setSelectedCountry] = useState<{ name: string; flag: string; region?: string; regionEn?: string } | null>(null);
+
+  useEffect(() => {
+    if (preselected) {
+      const countryNameOnly = preselected.name.split(' - ')[0];
+      const matched = COUNTRIES.find(c => c.name === countryNameOnly);
+      if (matched) {
+        setSelectedCountry({
+          name: matched.name,
+          flag: matched.flag,
+          region: preselected.region,
+          regionEn: preselected.regionEn,
+        });
+      }
+    }
+  }, [preselected]);
 
   // ─── 애니메이션 ───
   const flashAnim = useRef(new Animated.Value(0)).current;
@@ -133,8 +215,15 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         <Text style={st.permEmoji}>📸</Text>
         <Text style={st.permTitle}>카메라 권한이 필요해요</Text>
         <Text style={st.permDesc}>여행의 순간을 포착하려면{'\n'}카메라 접근을 허용해주세요</Text>
-        <TouchableOpacity style={st.permBtn} onPress={requestPermission}>
-          <Text style={st.permBtnText}>권한 허용</Text>
+        <TouchableOpacity style={st.permBtnWrap} onPress={requestPermission} activeOpacity={0.8}>
+          <LinearGradient
+            colors={['#22D3EE', '#A855F7', '#D946EF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={st.permBtnGrad}
+          >
+            <Text style={st.permBtnText}>권한 허용</Text>
+          </LinearGradient>
         </TouchableOpacity>
         <TouchableOpacity style={st.permSkip} onPress={() => navigation.goBack()}>
           <Text style={st.permSkipText}>나중에</Text>
@@ -187,19 +276,21 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;
 
-    const matchedCountry = detectedCountry
+    const finalCountry = selectedCountry || (detectedCountry
       ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
-      : null;
+      : null);
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
 
     addRecord({
       user: { name: '나', emoji: '⚡', handle: 'yunjunsung' },
-      country: matchedCountry ? `${matchedCountry.flag} ${matchedCountry.name}` : (detectedCountry || ''),
-      countryName: matchedCountry?.name || detectedCountry || '',
-      countryFlag: matchedCountry?.flag || '',
-      countries: matchedCountry ? [{ flag: matchedCountry.flag, name: matchedCountry.name }] : [],
+      country: finalCountry ? `${finalCountry.flag} ${finalCountry.name}` : (detectedCountry || ''),
+      countryName: finalCountry?.name || detectedCountry || '',
+      countryFlag: finalCountry?.flag || '',
+      countries: finalCountry ? [{ flag: finalCountry.flag, name: finalCountry.name }] : [],
+      regionName: selectedCountry?.region || undefined,
+      regionNameEn: selectedCountry?.regionEn || undefined,
       date: dateStr,
       content: caption || '⚡ 순간 포착',
       visibility: 'friends',
@@ -232,6 +323,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         {/* 상단 바 */}
         <SafeAreaView style={st.topBar}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={st.topBtn}>
+            <GlassFill intensity={24} tint="dark" />
             <Text style={st.topBtnText}>✕</Text>
           </TouchableOpacity>
           <View style={st.topCenter}>
@@ -262,20 +354,66 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}
             disabled={shooting}
           >
-            <Text style={st.flipIcon}>🔄</Text>
+            <GlassFill intensity={20} tint="dark" />
+            <FlipIconGradient size={26} />
           </TouchableOpacity>
 
           {/* 셔터 버튼 */}
-          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
+          <Animated.View style={{ transform: [{ scale: pulseAnim }], alignItems: 'center', justifyContent: 'center' }}>
+            {/* 네온 글로우 배경 */}
+            <LinearGradient
+              colors={['rgba(34,211,238,0.3)', 'rgba(168,85,247,0.3)', 'rgba(217,70,239,0.3)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={st.shutterGlow}
+              pointerEvents="none"
+            />
             <TouchableOpacity
-              style={[st.shutterOuter, shooting && { opacity: 0.5 }]}
+              style={[shooting && { opacity: 0.5 }]}
               onPress={takePhoto}
               activeOpacity={0.7}
               disabled={shooting}
             >
-              <View style={st.shutterInner}>
-                <Text style={st.shutterIcon}>⚡</Text>
-              </View>
+              <LinearGradient
+                colors={['#22D3EE', '#A855F7', '#D946EF']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={st.shutterOuterGrad}
+              >
+                {/* 링 상단 아치 스페큘러 (유리 링 질감 극대화) */}
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.75)', 'rgba(255,255,255,0)']}
+                  start={{ x: 0.5, y: 0 }}
+                  end={{ x: 0.5, y: 0.6 }}
+                  style={st.shutterSpecular}
+                  pointerEvents="none"
+                />
+                
+                <View style={st.shutterMask}>
+                  {/* 안쪽 투명 글래스 */}
+                  <GlassFill intensity={35} tint="dark" />
+                  
+                  {/* 오로라 굴절광 */}
+                  <LinearGradient
+                    colors={['rgba(34,211,238,0.22)', 'rgba(168,85,247,0.22)', 'rgba(217,70,239,0.22)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFill}
+                    pointerEvents="none"
+                  />
+                  
+                  {/* 안쪽 스페큘러 */}
+                  <LinearGradient
+                    colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)']}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 0, y: 1 }}
+                    style={st.shutterInnerSpecular}
+                    pointerEvents="none"
+                  />
+                  
+                  <Text style={st.shutterIcon}>⚡</Text>
+                </View>
+              </LinearGradient>
             </TouchableOpacity>
           </Animated.View>
 
@@ -297,8 +435,16 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
         {/* 전면 사진 (오버레이 PIP) */}
         {frontPhoto && (
-          <View style={st.pipWrap}>
-            <Image source={{ uri: frontPhoto }} style={st.pipImage} resizeMode="cover" />
+          <View style={st.pipWrapContainer}>
+            <LinearGradient
+              colors={['#22D3EE', '#A855F7', '#D946EF']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={StyleSheet.absoluteFill}
+            />
+            <View style={st.pipInner}>
+              <Image source={{ uri: frontPhoto }} style={st.pipImage} resizeMode="cover" />
+            </View>
           </View>
         )}
 
@@ -338,8 +484,15 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         <TouchableOpacity style={st.retakeBtn} onPress={retake}>
           <Text style={st.retakeBtnText}>다시 찍기</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={st.sendBtn} onPress={handleSave} activeOpacity={0.7}>
-          <Text style={st.sendBtnText}>⚡ 공유하기</Text>
+        <TouchableOpacity style={st.sendBtnWrap} onPress={handleSave} activeOpacity={0.8}>
+          <LinearGradient
+            colors={['#22D3EE', '#A855F7', '#D946EF']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={st.sendBtnGrad}
+          >
+            <Text style={st.sendBtnText}>⚡ 공유하기</Text>
+          </LinearGradient>
         </TouchableOpacity>
       </View>
 
@@ -368,13 +521,15 @@ const st = StyleSheet.create({
   },
   topBtn: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
+    overflow: 'hidden',
   },
   topBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
   topCenter: { alignItems: 'center', gap: 4 },
   snapBadge: {
-    color: C.snapYellow, fontSize: 15, fontWeight: '900', letterSpacing: 2,
+    color: '#22D3EE', fontSize: 15, fontWeight: '900', letterSpacing: 2,
     textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   locationText: {
@@ -399,21 +554,46 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
     paddingHorizontal: 40,
   },
-  shutterOuter: {
+  shutterGlow: {
+    position: 'absolute',
+    width: 104, height: 104, borderRadius: 52,
+  },
+  shutterOuterGrad: {
     width: 80, height: 80, borderRadius: 40,
-    borderWidth: 4, borderColor: C.snapYellow,
+    padding: 5,
     alignItems: 'center', justifyContent: 'center',
+    position: 'relative',
+    overflow: 'hidden',
   },
-  shutterInner: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: C.snapYellow,
+  shutterSpecular: {
+    position: 'absolute',
+    top: 0, left: 0, right: 0,
+    height: '60%',
+    borderRadius: 40,
+  },
+  shutterMask: {
+    width: 70, height: 70, borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)',
   },
-  shutterIcon: { fontSize: 28 },
+  shutterInnerSpecular: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  shutterIcon: {
+    fontSize: 24,
+    color: '#fff',
+    textShadowColor: 'rgba(255,255,255,0.7)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
   flipBtn: {
     width: 50, height: 50, borderRadius: 25,
-    backgroundColor: 'rgba(255,255,255,0.15)',
+    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    overflow: 'hidden',
   },
   flipIcon: { fontSize: 24 },
 
@@ -424,9 +604,9 @@ const st = StyleSheet.create({
   },
   miniImg: {
     width: 60, height: 80, borderRadius: 10,
-    borderWidth: 2, borderColor: C.snapYellow,
+    borderWidth: 2, borderColor: '#A855F7',
   },
-  miniLabel: { color: C.snapYellow, fontSize: 10, fontWeight: '700' },
+  miniLabel: { color: '#BF85FC', fontSize: 10, fontWeight: '700' },
 
   // 권한 화면
   permScreen: {
@@ -436,11 +616,15 @@ const st = StyleSheet.create({
   permEmoji: { fontSize: 60, marginBottom: 20 },
   permTitle: { color: C.white, fontSize: 20, fontWeight: '700', marginBottom: 10 },
   permDesc: { color: C.dim, fontSize: 14, textAlign: 'center', lineHeight: 22, marginBottom: 30 },
-  permBtn: {
-    backgroundColor: C.snapYellow, borderRadius: 16,
-    paddingHorizontal: 32, paddingVertical: 14,
+  permBtnWrap: {
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  permBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
+  permBtnGrad: {
+    paddingHorizontal: 32, paddingVertical: 14,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  permBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
   permSkip: { marginTop: 16 },
   permSkipText: { color: C.dim, fontSize: 14 },
 
@@ -451,14 +635,19 @@ const st = StyleSheet.create({
     backgroundColor: '#111',
   },
   previewMain: { width: '100%', height: '100%' },
-  pipWrap: {
+  pipWrapContainer: {
     position: 'absolute', top: 16, left: 16,
     width: SW * 0.28, height: SW * 0.37,
     borderRadius: 16, overflow: 'hidden',
-    borderWidth: 3, borderColor: C.snapYellow,
+    padding: 3,
     shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5, shadowRadius: 8,
     elevation: 8,
+  },
+  pipInner: {
+    flex: 1,
+    borderRadius: 13,
+    overflow: 'hidden',
   },
   pipImage: { width: '100%', height: '100%' },
   previewBadges: {
@@ -493,11 +682,18 @@ const st = StyleSheet.create({
     borderWidth: 1, borderColor: C.muted, alignItems: 'center',
   },
   retakeBtnText: { color: C.dim, fontSize: 15, fontWeight: '600' },
-  sendBtn: {
-    flex: 2, paddingVertical: 14, borderRadius: 16,
-    backgroundColor: C.snapYellow, alignItems: 'center',
+  sendBtnWrap: {
+    flex: 2,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
-  sendBtnText: { color: '#000', fontSize: 16, fontWeight: '800' },
+  sendBtnGrad: {
+    width: '100%',
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
   // 안내
   expireNote: {

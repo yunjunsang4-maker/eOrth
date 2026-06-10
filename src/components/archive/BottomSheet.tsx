@@ -9,7 +9,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
-import { Colors, BorderRadius, Typography, Spacing } from '../constants';
+import { Colors, BorderRadius, Typography, Spacing } from '../../constants';
 
 interface BottomSheetProps {
   visible: boolean;

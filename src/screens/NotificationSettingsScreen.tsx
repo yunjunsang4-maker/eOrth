@@ -11,7 +11,8 @@ import {
   Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon } from '../components/icons';
+import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
+import { useSettings } from '../store/settingsStore';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -41,6 +42,7 @@ const ToggleRow = ({
   value,
   onValueChange,
   isLast,
+  disabled,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -48,38 +50,47 @@ const ToggleRow = ({
   value: boolean;
   onValueChange: (v: boolean) => void;
   isLast?: boolean;
-}) => (
-  <>
-    <View style={styles.row}>
-      <View style={styles.rowLeft}>
-        <View style={styles.rowIcon}>{icon}</View>
-        <View style={styles.rowText}>
-          <Text style={styles.rowLabel}>{label}</Text>
-          {description ? (
-            <Text style={styles.rowDesc}>{description}</Text>
-          ) : null}
+  disabled?: boolean;
+}) => {
+  const displayValue = disabled ? false : value;
+  return (
+    <>
+      <View style={[styles.row, disabled && { opacity: 0.4 }]}>
+        <View style={styles.rowLeft}>
+          <View style={styles.rowIcon}>{icon}</View>
+          <View style={styles.rowText}>
+            <Text style={styles.rowLabel}>{label}</Text>
+            {description ? (
+              <Text style={styles.rowDesc}>{description}</Text>
+            ) : null}
+          </View>
         </View>
+        <Switch
+          value={displayValue}
+          onValueChange={onValueChange}
+          disabled={disabled}
+          trackColor={{ false: COLORS.divider, true: COLORS.purpleDeep }}
+          thumbColor={COLORS.purpleNeon}
+          ios_backgroundColor={COLORS.divider}
+        />
       </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: COLORS.divider, true: COLORS.purpleDeep }}
-        thumbColor={value ? COLORS.purpleNeon : '#888'}
-        ios_backgroundColor={COLORS.divider}
-      />
-    </View>
-    {!isLast && <View style={styles.rowDivider} />}
-  </>
-);
+      {!isLast && <View style={styles.rowDivider} />}
+    </>
+  );
+};
 
 export default function NotificationSettingsScreen({ navigation }: Props) {
+  const { arrivalDetect, setArrivalDetect, snapEnabled, setSnapEnabled } = useSettings();
+
+  // 전체 마스터 알림 설정
+  const [masterEnabled, setMasterEnabled] = useState(true);
+
   // 소셜 알림
   const [friendTrip, setFriendTrip] = useState(true);
   const [likes, setLikes] = useState(true);
   const [newFollower, setNewFollower] = useState(true);
 
   // 여행 감지 알림
-  const [arrivalDetect, setArrivalDetect] = useState(true);
   const [returnDetect, setReturnDetect] = useState(false);
 
   // 추억 리마인드
@@ -166,6 +177,19 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
           </View>
         )}
 
+        {/* ── 기본 알림 설정 ── */}
+        <SectionLabel label="기본 알림 설정" />
+        <View style={styles.card}>
+          <ToggleRow
+            icon={<BellIcon size={20} />}
+            label="푸시 알림 허용"
+            description="eOrth에서 보내는 모든 푸시 알림을 켜고 끕니다"
+            value={masterEnabled}
+            onValueChange={setMasterEnabled}
+            isLast
+          />
+        </View>
+
         {/* ── 소셜 알림 ── */}
         <SectionLabel label="소셜 알림" />
         <View style={styles.card}>
@@ -175,13 +199,15 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="팔로우하는 친구가 여행 기록을 올렸을 때"
             value={friendTrip}
             onValueChange={setFriendTrip}
+            disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<HeartIcon size={20} />}
-            label="좋아요 · 감정 표현"
-            description="내 기록에 좋아요나 반응이 달렸을 때"
+            label="좋아요 · 댓글"
+            description="내 기록에 좋아요나 댓글이 달렸을 때"
             value={likes}
             onValueChange={setLikes}
+            disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<PersonIcon size={20} />}
@@ -189,6 +215,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="누군가 나를 팔로우했을 때"
             value={newFollower}
             onValueChange={setNewFollower}
+            disabled={!masterEnabled}
             isLast
           />
         </View>
@@ -202,6 +229,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="해외에 도착하면 여행 기록을 시작할지 알려줘요"
             value={arrivalDetect}
             onValueChange={setArrivalDetect}
+            disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<HomeIcon size={20} />}
@@ -209,6 +237,21 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="귀국하면 여행을 마무리할지 알려줘요"
             value={returnDetect}
             onValueChange={setReturnDetect}
+            disabled={!masterEnabled}
+            isLast
+          />
+        </View>
+
+        {/* ── 스냅 알림 ── */}
+        <SectionLabel label="스냅 알림" />
+        <View style={styles.card}>
+          <ToggleRow
+            icon={<BellIcon size={20} />}
+            label="실시간 스냅 알림"
+            description="해외 여행 중 무작위 시점에 사진을 기록하라고 알려줘요"
+            value={snapEnabled}
+            onValueChange={setSnapEnabled}
+            disabled={!masterEnabled}
             isLast
           />
         </View>
@@ -222,6 +265,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="1년 전 오늘의 여행 기록을 돌아봐요"
             value={memoryRemind}
             onValueChange={setMemoryRemind}
+            disabled={!masterEnabled}
             isLast
           />
         </View>
@@ -235,6 +279,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description="eOrth의 업데이트 소식과 이벤트를 받아요"
             value={marketing}
             onValueChange={setMarketing}
+            disabled={!masterEnabled}
             isLast
           />
         </View>

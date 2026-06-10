@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Image, Text, StyleSheet } from 'react-native';
-import { Colors, BorderRadius, Typography } from '../constants';
+import { Colors, BorderRadius, Typography } from '../../constants';
 
 interface AvatarProps {
   uri?: string | null;

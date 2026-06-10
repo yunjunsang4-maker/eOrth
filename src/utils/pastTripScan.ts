@@ -119,3 +119,31 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
   );
   return trips;
 }
+
+/**
+ * 같은 국가인데 여러 개로 나뉜 여행 클러스터를 하나로 합친다.
+ * (예: 독일 교환학생이 네덜란드·스페인을 다녀와 독일이 독일①/독일②로 끊기는 경우)
+ * - 사진은 시간순으로 합치고, 기간은 가장 이른 시작일~가장 늦은 종료일.
+ * - 호출 전 같은 countryName인지 검증해야 한다(다른 국가 혼합 금지).
+ */
+export function mergeScannedTrips(trips: ScannedTrip[]): ScannedTrip {
+  const base = trips[0];
+  const photos = trips
+    .flatMap((t) => t.photos)
+    .sort((a, b) => (a.creationTime ?? 0) - (b.creationTime ?? 0));
+  const parse = (s: string) => new Date(s.replace(/\./g, '-')).getTime();
+  const startDate = formatDate(Math.min(...trips.map((t) => parse(t.startDate))));
+  const endDate = formatDate(Math.max(...trips.map((t) => parse(t.endDate))));
+  return {
+    ...base,
+    id: `merged-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    date: endDate,
+    startDate,
+    endDate,
+    title: `${base.countryName} 여행`,
+    photoCount: photos.length,
+    content: `${base.countryName}에서의 소중한 기록입니다. 총 ${photos.length}장의 사진이 타임라인에 저장됩니다.`,
+    medias: [photos[0].uri],
+    photos,
+  };
+}

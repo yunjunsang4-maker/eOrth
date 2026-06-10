@@ -1,5 +1,5 @@
 // 과거여행 스캔 순수 로직 검증 (jest 미사용). 실행: npx tsx src/utils/pastTripScan.verify.ts
-import { countryInfoFromCode, clusterForeignTrips, type ScannedPhoto } from './pastTripScan';
+import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto } from './pastTripScan';
 
 let failures = 0;
 function assert(cond: boolean, msg: string) {
@@ -81,6 +81,28 @@ function p(uri: string, code: string | null, t: number): ScannedPhoto {
   assert(/^\d{4}\.\d{2}\.\d{2}$/.test(trips[0].startDate), 'startDate YYYY.MM.DD');
   assert(trips[0].medias.length === 1 && trips[0].medias[0] === 'a', '대표 미디어=첫 사진');
   assert(trips[0].title === '일본 여행', '제목 국가단위');
+}
+
+// 여행 합치기 — 거점 국가(독일)가 다른 나라 방문으로 끊긴 경우
+{
+  const photos = [
+    p('a', 'DE', 0),
+    p('b', 'DE', 2 * DAY),
+    p('c', 'NL', 10 * DAY),  // 네덜란드 방문으로 독일이 끊김
+    p('d', 'DE', 20 * DAY),
+    p('e', 'DE', 21 * DAY),
+  ];
+  const trips = clusterForeignTrips(photos, 'KR');
+  const germans = trips.filter((t) => t.countryName === '독일');
+  assert(germans.length === 2, '독일이 2개 여행으로 나뉨');
+
+  const merged = mergeScannedTrips(germans);
+  assert(merged.countryName === '독일', '합친 여행 국가 유지');
+  assert(merged.photoCount === 4, '합친 사진 수 = 2+2');
+  assert(merged.photos[0].uri === 'a' && merged.photos[3].uri === 'e', '사진 시간순 정렬');
+  assert(merged.medias[0] === 'a', '대표 미디어 = 가장 이른 사진');
+  assert(merged.startDate <= germans[0].startDate && merged.endDate >= germans[0].endDate, '기간 = 최소 시작~최대 종료');
+  assert(merged.title === '독일 여행', '합친 제목 국가단위');
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

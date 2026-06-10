@@ -43,3 +43,6 @@ yarn-error.*
 # IDE / tooling artifacts
 .idea/
 .understand-anything/
+
+# Brainstorming visual companion
+.superpowers/

@@ -1,3 +1,17 @@
+# eOrth - React Native Expo App
+
+## 개발 및 검증 명령어 (Commands)
+- 빌드/타입 체크: `npx tsc --noEmit`
+- 앱 실행: `npx expo start`
+- 안드로이드 실행: `npx expo start --android`
+- iOS 실행: `npx expo start --ios`
+
+## 기술 스택 (Tech Stack)
+- Core: React Native (Expo)
+- Language: TypeScript
+- Navigation: React Navigation (Stack, Bottom Tabs)
+- Styling: inline style, StyleSheet (Vanilla CSS-like React Native styling)
+
 ## 코드 검증 규칙
 
 새로운 기능이나 코드가 추가될 때마다
@@ -6,7 +20,7 @@
 1. 오류 확인
    - 새로 추가된 코드에 문법 오류가 없는지 확인
    - import 누락이나 잘못된 참조가 없는지 확인
-   - TypeScript 타입 오류가 없는지 확인
+   - TypeScript 타입 오류가 없는지 확인 (`npx tsc --noEmit` 활용)
 
 2. 호환성 확인
    - 새 기능이 기존 화면들과 충돌하지 않는지 확인

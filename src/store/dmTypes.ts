@@ -4,7 +4,7 @@ export interface SharedRecord {
   id: string;
   country: string;
   content: string;
-  viewType: 'feed' | 'blog' | 'album' | 'snap';
+  viewType: 'feed' | 'blog' | 'album' | 'snap' | 'cut';
   date: string;
   mediaUri?: string;
   albumUris?: string[];

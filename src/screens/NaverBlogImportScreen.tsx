@@ -120,9 +120,6 @@ export default function NaverBlogImportScreen({ navigation, route }: Props) {
         if (data.images && data.images.length > 0 && parsed.photos.length === 0) {
           parsed.photos = data.images;
         }
-        if (data.videos && data.videos.length > 0 && (!parsed.videos || parsed.videos.length === 0)) {
-          parsed.videos = data.videos;
-        }
         if (data.tags && data.tags.length > 0 && (!parsed.keywords || parsed.keywords.length === 0)) {
           parsed.keywords = data.tags;
         }
@@ -291,16 +288,7 @@ export default function NaverBlogImportScreen({ navigation, route }: Props) {
               </>
             )}
 
-            {/* 영상 수 */}
-            {blogData.videos && blogData.videos.length > 0 && (
-              <>
-                <View style={st.previewDivider} />
-                <View style={st.previewRow}>
-                  <Text style={st.previewLabel}>영상</Text>
-                  <Text style={st.previewValue}>{blogData.videos.length}개</Text>
-                </View>
-              </>
-            )}
+
 
             {/* 키워드 */}
             {blogData.keywords && blogData.keywords.length > 0 && (

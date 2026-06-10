@@ -1531,7 +1531,7 @@ export default function ProfileScreen({ navigation }: { navigation: any }) {
         color: TRIP_GRADIENT_COLORS[group.id] ? group.id : 'trip-japan',
         records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
         uniqueViewTypes,
-        coverUri: coverRec?.medias?.[0], // import 시 선택한 썸네일이 medias[0]에 위치
+        coverUri: coverRec?.representativePhoto ?? coverRec?.medias?.[0], // 위치 조정 크롭본 우선, 없으면 선택 썸네일(medias[0])
       };
     }).filter(t => t.records.length > 0);
   }, [tripGroups, records, archivedIds]);

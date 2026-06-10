@@ -13,7 +13,7 @@ import { useSettings } from '../store/settingsStore';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
-  QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon,
+  QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
 } from '../components/icons';
 
 const COLORS = {
@@ -64,7 +64,7 @@ const SettingGroup = ({
               value={item.toggle}
               onValueChange={item.onToggle}
               trackColor={{ false: '#3A3A4A', true: 'rgba(191,133,252,0.4)' }}
-              thumbColor={item.toggle ? COLORS.purpleNeon : '#888'}
+              thumbColor={COLORS.purpleNeon}
             />
           ) : item.badge ? (
             <View style={st.premiumBadge}>
@@ -88,8 +88,8 @@ const SettingGroup = ({
 export default function SettingsScreen({ navigation }: { navigation: any }) {
   const {
     showCounts, setShowCounts,
-    snapEnabled, setSnapEnabled,
     homeCountryCode, setHomeCountryCode,
+    diaryCardMode, setDiaryCardMode,
   } = useSettings();
   return (
     <SafeAreaView style={st.safeArea}>
@@ -124,7 +124,7 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         <SettingGroup
           items={[
             { icon: <EyeIcon size={22} />, label: '좋아요·댓글 수 표시', toggle: showCounts, onToggle: setShowCounts },
-            { icon: <BellIcon size={22} />, label: '스냅 알림', toggle: snapEnabled, onToggle: setSnapEnabled },
+            { icon: <GalleryIcon size={22} />, label: '소셜 카드 상호작용 표시', toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
               icon: <GlobeSkinIcon size={22} />,
               label: '지구본 스킨',

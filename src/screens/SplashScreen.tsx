@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography } from '../constants';
 
@@ -48,7 +48,7 @@ export default function SplashScreen({ navigation }: Props) {
 
     // Navigate to AppIntro after 2.8s
     const timer = setTimeout(() => {
-      navigation.replace('Main');
+      navigation.replace('AppIntro');
     }, 2800);
 
     return () => clearTimeout(timer);
@@ -101,7 +101,11 @@ export default function SplashScreen({ navigation }: Props) {
 
       {/* Brand Text */}
       <Animated.View style={[styles.brandContainer, { opacity: textOpacity }]}>
-        <Text style={styles.brandName}>eOrth</Text>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.brandLogoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.brandTagline}>이 어 스</Text>
       </Animated.View>
     </LinearGradient>
@@ -179,11 +183,10 @@ const styles = StyleSheet.create({
   brandContainer: {
     alignItems: 'center',
   },
-  brandName: {
-    fontSize: 42,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    letterSpacing: 2,
+  brandLogoImage: {
+    width: 182,
+    height: 50,
+    marginBottom: 8,
   },
   brandTagline: {
     fontSize: Typography.fontSize.base,
