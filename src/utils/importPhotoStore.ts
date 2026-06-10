@@ -70,7 +70,14 @@ export async function bakeCoverCrop(
 
     const base = FileSystem.documentDirectory;
     if (!base) return out.uri; // 폴백: 캐시 경로라도 반환
-    const to = `${tripDir(base, tripId)}cover.jpg`;
+    const dir = tripDir(base, tripId);
+    try {
+      await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+    } catch {
+      // 이미 존재하면 무시
+    }
+    // 파일명을 매번 다르게 — 같은 경로를 덮어쓰면 RN Image 캐시가 예전 크롭을 계속 보여준다
+    const to = `${dir}cover-${Date.now()}.jpg`;
     await FileSystem.copyAsync({ from: out.uri, to });
     return to;
   } catch {

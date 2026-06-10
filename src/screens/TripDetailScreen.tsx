@@ -16,8 +16,15 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
+import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
+import { bakeCoverCrop } from '../utils/importPhotoStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율
+const CARD_W = SCREEN_WIDTH - 40;
+const CARD_H = 180;
+const CARD_ASPECT = CARD_W / CARD_H;
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -107,6 +114,8 @@ export default function TripDetailScreen() {
   const [editedTitle, setEditedTitle] = useState(titleToDisplay);
   const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
   const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
+  const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
+  const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
 
   useEffect(() => {
     setEditedTitle(titleToDisplay);
@@ -135,18 +144,31 @@ export default function TripDetailScreen() {
     setThumbPickerVisible(true);
   };
 
+  // 사진을 고르면 바로 적용하지 않고 노출 영역 조정 단계를 거친다
   const handlePickThumb = (uri: string) => {
+    if (!currentGroup) return;
+    setThumbPickerVisible(false);
+    setPendingThumb(uri);
+    setAdjustVisible(true);
+  };
+
+  // 조정 확정 → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
+  const applyThumb = async (uri: string, t: CutTransform) => {
     if (!currentGroup) return;
     const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
     if (!owner) return;
+    const isIdentity = t.scale === 1 && t.tx === 0 && t.ty === 0;
+    let rep: string | undefined;
+    if (!isIdentity) {
+      rep = (await bakeCoverCrop(uri, t, CARD_ASPECT, owner.id)) ?? undefined;
+    }
     // 선택한 사진을 해당 기록의 맨 앞으로 + 그 기록을 대표 기록으로 → 프로필 카드 썸네일(medias[0]) 반영
-    // representativePhoto(위치 조정 크롭본)가 남아 있으면 새 썸네일을 가리므로 함께 비운다
+    // 조정 없이 확정하면 representativePhoto를 비워 원본 커버가 그대로 쓰이게 한다
     updateRecord(owner.id, {
       medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)],
-      representativePhoto: undefined,
+      representativePhoto: rep,
     });
     updateTripGroup(currentGroup.id, { coverRecordId: owner.id });
-    setThumbPickerVisible(false);
   };
 
   const handleArchiveCard = () => {
@@ -318,6 +340,29 @@ export default function TripDetailScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* 새 썸네일 노출 영역 조정 (드래그/핀치) — 확인 시 적용, 사진 변경 시 선택 시트로 복귀 */}
+      <CutPhotoAdjustModal
+        visible={adjustVisible}
+        uri={pendingThumb}
+        aspect={CARD_ASPECT}
+        initial={null}
+        onConfirm={(t) => {
+          setAdjustVisible(false);
+          const uri = pendingThumb;
+          setPendingThumb(null);
+          if (uri) applyThumb(uri, t);
+        }}
+        onCancel={() => {
+          setAdjustVisible(false);
+          setPendingThumb(null);
+        }}
+        onChangePhoto={() => {
+          setAdjustVisible(false);
+          setPendingThumb(null);
+          setThumbPickerVisible(true);
+        }}
+      />
 
       <ScrollView
         style={s.scroll}
