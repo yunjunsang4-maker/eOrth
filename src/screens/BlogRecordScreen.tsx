@@ -273,22 +273,31 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
-  const { addRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+  const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+
+  // ─── 편집 모드 ───
+  // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
+  const editRecord = route?.params?.record;
+  const isEdit = !!editRecord;
 
   // 국가
   const preselected = route?.params?.selectedCountry;
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(
-    preselected ? COUNTRIES.find(c => c.name === preselected.name.split(' - ')[0]) ?? null : null
-  );
-  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
-    preselected?.region ? { name: preselected.region, nameEn: preselected.regionEn || '' } : null
-  );
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(() => {
+    if (editRecord) return COUNTRIES.find(c => c.name === editRecord.countryName) ?? null;
+    return preselected ? COUNTRIES.find(c => c.name === preselected.name.split(' - ')[0]) ?? null : null;
+  });
+  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(() => {
+    if (editRecord?.regionName) return { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' };
+    return preselected?.region ? { name: preselected.region, nameEn: preselected.regionEn || '' } : null;
+  });
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
 
   // 콘텐츠
-  const [title, setTitle] = useState('');
-  const [blocks, setBlocks] = useState<BlogBlock[]>([createTextBlock()]);
+  const [title, setTitle] = useState(editRecord?.content ?? '');
+  const [blocks, setBlocks] = useState<BlogBlock[]>(
+    editRecord?.blogBlocks?.length ? editRecord.blogBlocks : [createTextBlock()]
+  );
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
   // 풀스크린 이미지 뷰어
@@ -302,31 +311,37 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
 
   // 메타
-  const [memo, setMemo] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [rating, setRating] = useState(0);
-  const [companions, setCompanions] = useState<string[]>([]);
-  const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [memo, setMemo] = useState(editRecord?.memo ?? '');
+  const [startDate, setStartDate] = useState(editRecord?.startDate ?? '');
+  const [endDate, setEndDate] = useState(editRecord?.endDate ?? '');
+  const [rating, setRating] = useState(editRecord?.rating ?? 0);
+  const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const [weather, setWeather] = useState('');
-  const [budget, setBudget] = useState('');
-  const [currency, setCurrency] = useState('KRW');
+  const [weather, setWeather] = useState(editRecord?.weather ?? '');
+  const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
+  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? 'KRW');
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [flightType, setFlightType] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
+  const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordInput, setKeywordInput] = useState('');
 
   // 날짜 캘린더
+  const parseDotDate = (s?: string): Date => {
+    const t = s ? new Date(s.replace(/\./g, '-')) : new Date(NaN);
+    return isNaN(t.getTime()) ? new Date() : t;
+  };
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [startDateObj, setStartDateObj] = useState<Date>(new Date());
-  const [endDateObj, setEndDateObj] = useState<Date>(new Date());
+  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate));
+  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate));
 
   // UI 모달
-  const [privateFriends, setPrivateFriends] = useState<string[]>([]);
+  const [privateFriends, setPrivateFriends] = useState<string[]>(editRecord?.mediaPrivacy?.[0] ?? []);
   const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
-  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(null);
+  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
+    editRecord?.representativePhoto ?? null
+  );
   const [repPhotoModalVisible, setRepPhotoModalVisible] = useState(false);
   const [travelInfoVisible, setTravelInfoVisible] = useState(false);
   const [colorPickerVisible, setColorPickerVisible] = useState(false);
@@ -810,7 +825,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // ─── 발행 ───
   const publish = (finalBlocks: BlogBlock[]) => {
-    addRecord(buildRecordData(finalBlocks));
+    const data = buildRecordData(finalBlocks);
+    if (isEdit && editRecord) {
+      // 작성자·공개범위는 유지하고 내용만 갱신
+      const { user, visibility, ...changes } = data;
+      updateRecord(editRecord.id, changes);
+    } else {
+      addRecord(data);
+    }
     navigation.goBack();
   };
 
@@ -862,7 +884,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         }} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={st.headerBtnText}>취소</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>블로그</Text>
+        <Text style={st.headerTitle}>{isEdit ? '블로그 수정' : '블로그'}</Text>
         <View style={st.headerRight}>
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}

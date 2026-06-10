@@ -272,7 +272,7 @@ export default function DMScreen({ navigation, route }: Props) {
         <TouchableOpacity
           style={st.headerCenter}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('FriendProfile', { handle: friend.handle })}
+          onPress={() => navigation.navigate('FriendProfile', { username: friend.name, handle: friend.handle })}
         >
           <View style={st.headerAvatarWrap}>
             <View style={st.headerAvatar}>

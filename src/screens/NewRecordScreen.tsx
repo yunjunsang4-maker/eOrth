@@ -1000,8 +1000,22 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
-  const { addRecord } = useRecords();
+  const { addRecord, updateRecord } = useRecords();
   const TOTAL_STEPS = 3;
+
+  // ─── 편집 모드 ───
+  // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
+  const editRecord = route.params?.editRecord ?? route.params?.record;
+  const isEdit = !!editRecord;
+  const parseDotDate = (s?: string): Date => {
+    if (s) {
+      const t = new Date(s.replace(/\./g, '-'));
+      if (!isNaN(t.getTime())) { t.setHours(0, 0, 0, 0); return t; }
+    }
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  };
+  // 다국가 기록이면 대표 국가의 데이터로 활성 상태를 채운다 (top-level medias는 전체 합본이므로)
+  const editFirstCountryData = editRecord?.perCountryData?.[editRecord.countryName];
 
   const [step, setStep] = useState(1);
   const scrollRef = useRef<ScrollView>(null);
@@ -1010,8 +1024,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // Step 1 - 국가 (복수 선택)
   const MAX_COUNTRIES = 10;
   const [countrySearch,     setCountrySearch]     = useState('');
-  const [selectedCountries, setSelectedCountries] = useState<{ flag: string; name: string }[]>([]);
-  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(null);
+  const [selectedCountries, setSelectedCountries] = useState<{ flag: string; name: string }[]>(
+    editRecord
+      ? editRecord.countries ?? [{ flag: editRecord.countryFlag, name: editRecord.countryName }]
+      : []
+  );
+  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
+    editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
+  );
 
   useEffect(() => {
     const params = route?.params;
@@ -1042,10 +1062,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   }, [countrySearch]);
 
   // Step 2 - 미디어
-  const [medias,            setMedias]           = useState<string[]>([]);
-  const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>({});
+  const [medias,            setMedias]           = useState<string[]>(
+    editFirstCountryData?.medias ?? editRecord?.medias ?? []
+  );
+  const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
+    editRecord?.mediaPrivacy ?? {}
+  );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
-  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(null);
+  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
+    editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
+  );
   const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
 
   const selectMedia = async () => {
@@ -1122,12 +1148,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
-  const [title,           setTitle]           = useState('');
-  const [startDate,       setStartDate]       = useState(todayInit);
-  const [endDate,         setEndDate]         = useState(todayInit);
+  const [title,           setTitle]           = useState(editRecord?.content ?? '');
+  const [startDate,       setStartDate]       = useState(
+    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : todayInit
+  );
+  const [endDate,         setEndDate]         = useState(
+    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : todayInit
+  );
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [memo,            setMemo]            = useState('');
-  const [rating,          setRating]          = useState(0);
+  const [memo,            setMemo]            = useState(editRecord?.memo ?? '');
+  const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
 
   // ── 국가별 데이터 관리 (2개국 이상 선택 시) ──
   const isMultiCountry = selectedCountries.length > 1;
@@ -1172,7 +1202,28 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     endDate: Date;
     rating: number;
     representativePhoto?: string;
-  }>>({});
+  }>>(
+    // 편집 모드: 기존 국가별 데이터를 시딩해서 국가 전환 시 그대로 표시
+    (() => {
+      const store: Record<string, {
+        medias: string[]; mediaPrivacy: Record<number, string[]>;
+        startDate: Date; endDate: Date; rating: number; representativePhoto?: string;
+      }> = {};
+      if (editRecord?.perCountryData) {
+        for (const [name, d] of Object.entries(editRecord.perCountryData)) {
+          store[name] = {
+            medias: d.medias ?? [],
+            mediaPrivacy: {},
+            startDate: parseDotDate(d.startDate),
+            endDate: parseDotDate(d.endDate),
+            rating: d.rating ?? 0,
+            representativePhoto: d.representativePhoto,
+          };
+        }
+      }
+      return store;
+    })()
+  );
 
   // 현재 국가 데이터 저장
   const saveCurrentCountryData = () => {
@@ -1271,8 +1322,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
 
   // Step 4 - 동행자
-  const [selectedCompanions, setSelectedCompanions] = useState<string[]>([]);
-  const [companionFriends,   setCompanionFriends]   = useState<string[]>([]);
+  const [selectedCompanions, setSelectedCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [companionFriends,   setCompanionFriends]   = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
 
   const toggleCompanion = (comp: string) => {
@@ -1288,13 +1339,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   // Step 5 - 선택 항목
-  const [budget,     setBudget]     = useState('');
-  const [currency,   setCurrency]   = useState('KRW');
+  const [budget,     setBudget]     = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
+  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? 'KRW');
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [weather,    setWeather]    = useState('');
-  const [flightType, setFlightType] = useState('');
-  const [keywords,   setKeywords]   = useState<string[]>([]);
+  const [weather,    setWeather]    = useState(editRecord?.weather ?? '');
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
+  const [keywords,   setKeywords]   = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordQuery, setKeywordQuery] = useState('');
 
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
@@ -1546,8 +1597,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       const firstRepPhoto = perCountryStore.current[first.name]?.representativePhoto || representativePhoto || undefined;
 
-      addRecord({
-        user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      const payload = {
         country: `${first.flag} ${first.name}`,
         countryName: first.name,
         countryFlag: first.flag,
@@ -1560,7 +1610,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         content: title || (selectedCountries.length === 1
           ? `${first.name} 여행 기록`
           : `${first.name} 외 ${selectedCountries.length - 1}개국 여행 기록`),
-        visibility: 'friends',
         memo,
         rating: firstRating,
         companions: selectedCompanions,
@@ -1573,8 +1622,19 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         weather:    weather    || undefined,
         flightType: flightType || undefined,
         keywords:   keywords.length > 0 ? keywords : undefined,
-        viewType:   'feed',
-      });
+      };
+
+      if (isEdit && editRecord) {
+        // 작성자·공개범위·형식은 유지하고 내용만 갱신
+        updateRecord(editRecord.id, payload);
+      } else {
+        addRecord({
+          user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+          visibility: 'friends',
+          viewType: 'feed',
+          ...payload,
+        });
+      }
     }
     navigation.goBack();
   };
@@ -1590,7 +1650,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
           <Text style={s.cancelTxt}>취소</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>새 기록하기</Text>
+        <Text style={s.headerTitle}>{isEdit ? '기록 수정' : '새 기록하기'}</Text>
         <View style={{ width: 44 }} />
       </View>
 
