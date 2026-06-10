@@ -21,7 +21,7 @@ export default function App() {
       if (data?.type === 'snap') {
         const nav = navigationRef.current;
         if (nav?.isReady()) {
-          (nav as any).navigate('SnapRecord', { notifTimestamp: data.timestamp });
+          nav.navigate('SnapRecord', { notifTimestamp: Number(data.timestamp) || undefined });
         }
       }
     });

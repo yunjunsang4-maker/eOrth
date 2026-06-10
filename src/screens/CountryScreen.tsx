@@ -10,6 +10,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
 
@@ -19,10 +20,7 @@ const SAMPLE_RECORDS = [
   { id: '3', date: '2023.11.10 ~ 11.15', duration: '5일', rating: 5, memo: '교토의 단풍은 평생 잊지 못할 것 같다.', photos: 32 },
 ];
 
-interface Props {
-  navigation: any;
-  route: any;
-}
+type Props = RootStackScreenProps<'Country'>;
 
 export default function CountryScreen({ navigation, route }: Props) {
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };

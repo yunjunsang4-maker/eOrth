@@ -28,7 +28,7 @@ const VIEW_TYPES: { type: RecordViewType; icon: string; name: string }[] = [
 ];
 
 export default function TripRecordScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripRecord'>>();
   const { record, viewType: initialViewType } = route.params;
 

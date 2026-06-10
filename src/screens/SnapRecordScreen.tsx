@@ -25,6 +25,7 @@ import {
   formatLateSeconds,
 } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -102,10 +103,7 @@ const FlipIconGradient = ({ size = 26 }: { size?: number }) => (
   </Svg>
 );
 
-interface Props {
-  navigation: any;
-  route?: any;
-}
+type Props = RootStackScreenProps<'SnapRecord'>;
 
 export default function SnapRecordScreen({ navigation, route }: Props) {
   const { addRecord } = useRecords();

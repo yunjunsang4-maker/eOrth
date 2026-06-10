@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { PlaneIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -25,7 +26,7 @@ const FOLLOWING_FRIENDS = [
   { id: '3', username: 'woosung_j',  isAbroad: false, currentCountry: null,     currentCountryFlag: null },
 ];
 
-export default function FollowingListScreen({ navigation }: { navigation: any }) {
+export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
   return (
     <View style={styles.root}>
       {/* 헤더 */}

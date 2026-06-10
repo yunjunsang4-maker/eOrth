@@ -15,6 +15,7 @@ import Svg, { Path } from 'react-native-svg';
 import { handleBlock as blockUser } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
+import type { RootStackScreenProps } from '../navigation/types';
 
 // ─── 디자인 토큰 ───
 const COLORS = {
@@ -196,10 +197,7 @@ const BadgeHighlightItem = ({ emoji, name }: { emoji: string; name: string }) =>
 export default function FriendProfileScreen({
   navigation,
   route,
-}: {
-  navigation: any;
-  route: any;
-}) {
+}: RootStackScreenProps<'FriendProfile'>) {
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const profile = friendProfile;
   const displayUsername = username ?? profile.username;

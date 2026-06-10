@@ -27,6 +27,7 @@ import { BlogData } from '../utils/naverBlogConverter';
 import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -269,7 +270,7 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
   <SvgMapIcon size={size} color={color} />
 );
 
-interface Props { navigation: any; route?: any; }
+type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const { addRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();

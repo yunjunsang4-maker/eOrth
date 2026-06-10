@@ -102,7 +102,7 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
   const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup } = useRecords();

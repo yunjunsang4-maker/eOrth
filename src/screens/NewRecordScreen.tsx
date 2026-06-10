@@ -31,6 +31,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import Svg, { Path } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -972,7 +973,7 @@ const ISO_TO_COUNTRY = COUNTRIES.reduce<Record<string, { flag: string; name: str
   return acc;
 }, {});
 
-function geoJsonToCountry(name: string, code: string) {
+function geoJsonToCountry(name: string, code?: string) {
   const cleanName = name.split(' - ')[0].toLowerCase();
   if (code) {
     const codeUpper = code.toUpperCase();
@@ -998,7 +999,7 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
-export default function NewRecordScreen({ navigation, route }: { navigation: any; route: any }) {
+export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { addRecord } = useRecords();
   const TOTAL_STEPS = 3;
 

@@ -18,6 +18,7 @@ import { BellIcon, GlobeIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import CountryMapView from '../components/CountryMapView';
 import { useRecords } from '../store/recordStore';
+import type { TabScreenProps } from '../navigation/types';
 
 const { height } = Dimensions.get('window');
 const SHEET_HEIGHT = height * 0.6;
@@ -201,9 +202,10 @@ const DUMMY_COUNTRY_PHOTOS: Record<string, string> = {
   '태국': 'https://picsum.photos/seed/thailand/400/300',
 };
 
-interface Props {
-  navigation: any;
-}
+type Props = TabScreenProps<'MainTab'>;
+
+// 기록 형식 선택 → 이동할 수 있는 작성 화면들
+type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord' | 'AlbumCreate';
 
 export default function MainScreen({ navigation }: Props) {
   const { records } = useRecords();
@@ -542,7 +544,7 @@ export default function MainScreen({ navigation }: Props) {
   const handleFormatSelect = (type: string) => {
     setFormatModalVisible(false);
     if (!pendingCountry) return;
-    const SCREEN_MAP: Record<string, string> = {
+    const SCREEN_MAP: Record<string, RecordFormatScreen> = {
       feed: 'NewRecord',
       blog: 'BlogRecord',
       cut: 'CutRecord',
@@ -1139,7 +1141,7 @@ export default function MainScreen({ navigation }: Props) {
               activeOpacity={0.85}
               onPress={() => {
                 closeFab();
-                const SCREEN_MAP: Record<string, string> = {
+                const SCREEN_MAP: Record<string, RecordFormatScreen> = {
                   feed: 'NewRecord',
                   blog: 'BlogRecord',
                   cut: 'CutRecord',

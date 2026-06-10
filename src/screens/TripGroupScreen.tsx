@@ -69,7 +69,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();
   const { groupId } = route.params;
 

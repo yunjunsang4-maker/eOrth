@@ -17,6 +17,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
@@ -29,9 +30,7 @@ const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'BasicInfo'>;
 
 export default function BasicInfoScreen({ navigation }: Props) {
   const { nickname: storeNickname, setNickname: setStoreNickname, setProfilePhoto, profilePhoto, homeCountryCode, setHomeCountryCode } = useSettings();

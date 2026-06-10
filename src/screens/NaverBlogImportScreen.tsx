@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { DeviceEventEmitter } from 'react-native';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   isNaverBlogUrl,
   toMobileNaverUrl,
@@ -36,14 +37,11 @@ const C = {
   red:        '#FF3B30',
 };
 
-interface Props {
-  navigation: any;
-  route?: any;
-}
+type Props = RootStackScreenProps<'NaverBlogImport'>;
 
 type Step = 'input' | 'loading' | 'preview';
 
-export default function NaverBlogImportScreen({ navigation, route }: Props) {
+export default function NaverBlogImportScreen({ navigation }: Props) {
   const [url, setUrl] = useState('');
   const [step, setStep] = useState<Step>('input');
   const [blogData, setBlogData] = useState<BlogData | null>(null);

@@ -13,6 +13,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
@@ -89,7 +90,7 @@ const SettingGroup = ({
   </View>
 );
 
-export default function SettingsScreen({ navigation }: { navigation: any }) {
+export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
   const {
     showCounts, setShowCounts,
     homeCountryCode, setHomeCountryCode,

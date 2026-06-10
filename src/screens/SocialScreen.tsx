@@ -24,6 +24,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, ChatIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
+import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
@@ -2201,7 +2202,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
-export default function SocialScreen({ navigation }: { navigation: any }) {
+export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
   return (
     <View style={s.container}>
       {/* 헤더 */}

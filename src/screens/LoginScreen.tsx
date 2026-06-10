@@ -28,12 +28,11 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { GoogleIcon, AppleIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();

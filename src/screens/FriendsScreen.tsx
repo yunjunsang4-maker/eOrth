@@ -15,6 +15,7 @@ import {
 import { SearchIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import Toast from '../components/Toast';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
   bg: '#0A0A0F',
@@ -50,9 +51,7 @@ const DUMMY_FRIENDS: Friend[] = [
   { id: '6', name: '강도윤', handle: 'doyun_go', emoji: '🎒', lastMessage: '베트남 숙소 추천해줘', time: '어제', unread: 0, online: true },
 ];
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
   const [search, setSearch] = useState('');

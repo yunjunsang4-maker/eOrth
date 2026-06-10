@@ -19,6 +19,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
 
@@ -51,9 +52,7 @@ const scanSubNote = (p: ScanPeriodOption) =>
     ? `${periodRangeText(p)} 사진을 분석 중이에요`
     : `기기에 저장된 ${periodRangeText(p)} 사진을 분석 중이에요`;
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'TravelImport'>;
 
 export default function TravelImportScreen({ navigation }: Props) {
   const { homeCountryCode } = useSettings();

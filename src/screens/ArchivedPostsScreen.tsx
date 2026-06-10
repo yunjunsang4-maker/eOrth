@@ -12,6 +12,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
   bg: '#0A0A0F',
@@ -123,7 +124,7 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // ─────────────────────────────────────────────
 // 보관된 게시물 화면
 // ─────────────────────────────────────────────
-export default function ArchivedPostsScreen({ navigation }: { navigation: any }) {
+export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
   const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -6,6 +6,7 @@ import {
 import { useRecords } from '../store/recordStore';
 import type { CutLayout } from '../constants/cutFrames';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
@@ -172,7 +173,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
 
-export default function CutTravelInfoScreen({ navigation, route }: { navigation: any; route: any }) {
+export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { addRecord } = useRecords();
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;

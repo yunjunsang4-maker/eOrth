@@ -33,6 +33,7 @@ import {
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { TabScreenProps } from '../navigation/types';
 
 // ─── 컬러 상수 (Figma 디자인 기반) ───
 const COLORS = {
@@ -1422,7 +1423,7 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
 };
 
 // ─── 메인 프로필 화면 ───
-export default function ProfileScreen({ navigation }: { navigation: any }) {
+export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab'>) {
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);

@@ -18,6 +18,8 @@ import * as ImagePicker from 'expo-image-picker';
 import Toast from '../components/Toast';
 import { useSettings } from '../store/settingsStore';
 
+import type { RootStackScreenProps } from '../navigation/types';
+
 const COLORS = {
   bg:           '#0A0A0F',
   card:         '#2E2E3B',
@@ -35,7 +37,7 @@ const COLORS = {
   red:          '#FF3B30',
 };
 
-export default function EditProfileScreen({ navigation }: { navigation: any }) {
+export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
   const {
     nickname: globalNickname,
     setNickname: setGlobalNickname,

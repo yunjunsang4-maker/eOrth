@@ -7,12 +7,11 @@ import { useSettings } from '../store/settingsStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
 import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width, height } = Dimensions.get('window');
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
   const scaleAnim = useRef(new Animated.Value(0.6)).current;

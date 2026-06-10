@@ -17,6 +17,7 @@ import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -134,9 +135,7 @@ function FriendItem({
 // ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation }: Props) {
   const { nickname, handle } = useSettings();

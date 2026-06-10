@@ -904,7 +904,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
   const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed } = useRecords();

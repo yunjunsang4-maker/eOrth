@@ -122,7 +122,7 @@ const { width } = Dimensions.get('window');
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const { records } = useRecords();
 
   const goToDetail = (statType: StatType) => {

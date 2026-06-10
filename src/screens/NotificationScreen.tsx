@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -17,7 +18,7 @@ const COLORS = {
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
-interface Props { navigation: any; }
+type Props = RootStackScreenProps<'Notifications'>;
 
 // 알림 카테고리 (매거진 "서브젝트")
 type CatKey = 'comment' | 'like' | 'follow' | 'memory' | 'record';

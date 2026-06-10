@@ -19,6 +19,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -38,10 +39,7 @@ const C = {
 };
 
 
-interface Props {
-  navigation: any;
-  route: any;
-}
+type Props = RootStackScreenProps<'DM'>;
 
 // ─── 형식별 기록 버블 ───
 function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boolean; onPress: () => void }) {

@@ -8,6 +8,7 @@ import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -17,16 +18,14 @@ const C = {
   purple: '#BF85FC', white: '#FFFFFF', dim: '#A1A1B0',
 };
 
-type CountryParam = { flag?: string; name?: string } | null;
-
 // 기본 프레임 색 팔레트 — 사용자가 이 색들 중에서 선택
 const BASIC_COLORS = [
   '#D4E6F1', '#F5EBE0', '#2C3E50', '#CD7F7D', '#D0D7CE',
   '#F9F6F0', '#A3B19B', '#E6DFD3', '#F3DCD4', '#E1D5E7',
 ];
 
-export default function CutRecordScreen({ navigation, route }: { navigation: any; route: any }) {
-  const selectedCountry: CountryParam = route?.params?.selectedCountry ?? null;
+export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
+  const selectedCountry = route.params?.selectedCountry ?? null;
 
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
   const firstBasic = CUT_FRAMES.find((f) => f.category === '기본')!;
@@ -112,7 +111,7 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
     }
     navigation.navigate('CutTravelInfo', {
       cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri },
-      selectedCountry,
+      selectedCountry: selectedCountry ?? undefined,
     });
   };
 

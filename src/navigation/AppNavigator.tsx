@@ -35,8 +35,9 @@ import DMScreen from '../screens/DMScreen';
 import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
+import type { RootStackParamList } from './types';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 const darkTheme = {
   dark: true,

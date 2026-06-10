@@ -6,6 +6,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 
 export const MAX_PHOTOS_PER_TRIP = 30; // 프리미엄 seam: 나중에 이 한도만 상향
@@ -39,7 +40,7 @@ const CARD_W = width - 40; // 시트 좌우 패딩 20×2
 const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
-export default function ImportPhotoSelectScreen({ navigation, route }: any) {
+export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup } = useRecords();
 

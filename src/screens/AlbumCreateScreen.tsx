@@ -9,6 +9,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
@@ -43,7 +44,7 @@ const CARD_W = width - 40; // 시트 좌우 패딩 20×2
 const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
-export default function AlbumCreateScreen({ navigation, route }: any) {
+export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
   const { addImportedAlbum, addTripGroup } = useRecords();
 
   // 기간 (기본: 최근 7일)

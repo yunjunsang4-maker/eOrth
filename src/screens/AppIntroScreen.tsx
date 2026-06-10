@@ -11,6 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton, PaginationDots } from '../components/ui';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width, height } = Dimensions.get('window');
 
@@ -38,9 +39,7 @@ const SLIDES = [
   },
 ];
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'AppIntro'>;
 
 export default function AppIntroScreen({ navigation }: Props) {
   const [activeIdx, setActiveIdx] = useState(0);

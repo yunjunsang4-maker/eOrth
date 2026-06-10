@@ -13,6 +13,7 @@ import {
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -25,9 +26,7 @@ const COLORS = {
   textMuted:   '#4A4A59',
 };
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'NotificationSettings'>;
 
 // ─── 섹션 타이틀 ───
 const SectionLabel = ({ label }: { label: string }) => (

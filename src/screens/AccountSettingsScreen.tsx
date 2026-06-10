@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
+import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 
 const COLORS = {
@@ -33,9 +34,7 @@ const COLORS = {
   green:        '#34C759',
 };
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'AccountSettings'>;
 
 // ─── 섹션 타이틀 ───
 const SectionTitle = ({ label }: { label: string }) => (
