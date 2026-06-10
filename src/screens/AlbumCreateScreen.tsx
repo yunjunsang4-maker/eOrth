@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
@@ -113,7 +114,7 @@ export default function AlbumCreateScreen({ navigation, route }: any) {
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync(false);
       if (status !== 'granted' && (status as string) !== 'limited') {
-        Alert.alert('알림', '갤러리 접근 권한이 필요해요.\n설정에서 사진 접근을 허용해 주세요.');
+        showPermissionDeniedAlert('갤러리');
         return;
       }
       setIsLimited((status as string) === 'limited');

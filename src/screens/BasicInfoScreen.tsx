@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useSettings } from '../store/settingsStore';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
@@ -52,7 +53,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+      showPermissionDeniedAlert('갤러리');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({

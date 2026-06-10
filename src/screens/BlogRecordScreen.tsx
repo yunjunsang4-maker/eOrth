@@ -26,6 +26,7 @@ import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
 import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -623,7 +624,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const handleCamera = async () => {
     setPhotoMenuVisible(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { Alert.alert('권한 필요', '카메라 접근 권한이 필요해요.'); return; }
+    if (!perm.granted) { showPermissionDeniedAlert('카메라'); return; }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'] as MediaType[], quality: 0.8,
     });

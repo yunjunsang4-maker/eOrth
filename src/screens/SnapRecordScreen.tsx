@@ -11,6 +11,7 @@ import {
   Platform,
   Alert,
   Animated,
+  Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -215,14 +216,19 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         <Text style={st.permEmoji}>📸</Text>
         <Text style={st.permTitle}>카메라 권한이 필요해요</Text>
         <Text style={st.permDesc}>여행의 순간을 포착하려면{'\n'}카메라 접근을 허용해주세요</Text>
-        <TouchableOpacity style={st.permBtnWrap} onPress={requestPermission} activeOpacity={0.8}>
+        <TouchableOpacity
+          style={st.permBtnWrap}
+          // 영구 거부 상태에선 요청 다이얼로그가 다시 뜨지 않으므로 설정으로 보낸다
+          onPress={() => (permission.canAskAgain ? requestPermission() : Linking.openSettings())}
+          activeOpacity={0.8}
+        >
           <LinearGradient
             colors={['#22D3EE', '#A855F7', '#D946EF']}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 1 }}
             style={st.permBtnGrad}
           >
-            <Text style={st.permBtnText}>권한 허용</Text>
+            <Text style={st.permBtnText}>{permission.canAskAgain ? '권한 허용' : '설정에서 허용'}</Text>
           </LinearGradient>
         </TouchableOpacity>
         <TouchableOpacity style={st.permSkip} onPress={() => navigation.goBack()}>

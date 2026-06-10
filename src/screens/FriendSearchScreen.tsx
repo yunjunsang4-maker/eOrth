@@ -16,6 +16,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -281,7 +282,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
               onPress={async () => {
                 const { status } = await Contacts.requestPermissionsAsync();
                 if (status === 'granted') setContactsPermission('granted');
-                else Alert.alert('권한 거부', '설정에서 연락처 접근을 허용해주세요.');
+                else showPermissionDeniedAlert('연락처');
               }}
             >
               <Text style={s.permissionBtnText}>연락처 접근 허용하기</Text>

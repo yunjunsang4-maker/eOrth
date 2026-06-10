@@ -32,6 +32,7 @@ import {
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 
 // ─── 컬러 상수 (Figma 디자인 기반) ───
 const COLORS = {
@@ -773,7 +774,7 @@ function EditProfileModal({
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+      showPermissionDeniedAlert('갤러리');
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({

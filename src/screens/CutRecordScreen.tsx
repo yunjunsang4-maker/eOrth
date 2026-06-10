@@ -7,6 +7,7 @@ import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -68,7 +69,7 @@ export default function CutRecordScreen({ navigation, route }: { navigation: any
   const pickInto = async (i: number) => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+      showPermissionDeniedAlert('갤러리');
       return;
     }
     const r = await ImagePicker.launchImageLibraryAsync({
