@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { PlaneIcon } from '../components/icons';
+import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -20,13 +21,8 @@ const COLORS = {
   textMuted:    '#4A4A59',
 };
 
-const FOLLOWING_FRIENDS = [
-  { id: '1', username: 'seoyeon_l',  isAbroad: true,  currentCountry: '일본',   currentCountryFlag: '🇯🇵' },
-  { id: '2', username: 'jihoon_p',   isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-  { id: '3', username: 'woosung_j',  isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-];
-
 export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
+  const { followingUsers } = useRecords();
   return (
     <View style={styles.root}>
       {/* 헤더 */}
@@ -42,7 +38,10 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {FOLLOWING_FRIENDS.map((friend, index) => (
+        {followingUsers.length === 0 && (
+          <Text style={styles.emptyText}>아직 팔로우한 친구가 없어요</Text>
+        )}
+        {followingUsers.map((friend, index) => (
           <React.Fragment key={friend.id}>
             <TouchableOpacity
               style={styles.friendRow}
@@ -68,7 +67,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
               <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
 
-            {index < FOLLOWING_FRIENDS.length - 1 && (
+            {index < followingUsers.length - 1 && (
               <View style={styles.divider} />
             )}
           </React.Fragment>
@@ -152,6 +151,12 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 22,
     color: COLORS.textMuted,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textDim,
+    textAlign: 'center',
+    marginTop: 48,
   },
   divider: {
     height: 1,

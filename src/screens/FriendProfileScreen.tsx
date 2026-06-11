@@ -12,7 +12,8 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
-import { handleBlock as blockUser } from '../utils/reportAndBlock';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
+import { useRecords } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -202,7 +203,22 @@ export default function FriendProfileScreen({
   const profile = friendProfile;
   const displayUsername = username ?? profile.username;
 
-  const [following, setFollowing] = useState(profile.isFollowing);
+  // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
+  const { followingUsers, followUser, unfollowUser, blockUser } = useRecords();
+  const following = followingUsers.some((f) => f.username === displayUsername);
+  const toggleFollow = () => {
+    if (following) {
+      unfollowUser(displayUsername);
+    } else {
+      followUser({
+        id: userId ?? displayUsername,
+        username: displayUsername,
+        isAbroad: profile.isAbroad,
+        currentCountry: profile.currentCountry,
+        currentCountryFlag: profile.currentCountryFlag,
+      });
+    }
+  };
   const [menuVisible, setMenuVisible] = useState(false);
   const [notifMuted, setNotifMuted] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
@@ -271,7 +287,9 @@ export default function FriendProfileScreen({
       label: '차단하기',
       onPress: () => {
         setMenuVisible(false);
-        blockUser(displayUsername, () => {
+        confirmBlock(displayUsername, () => {
+          blockUser({ name: displayUsername, emoji: '👤' });
+          unfollowUser(displayUsername); // 차단하면 팔로잉에서도 제거
           showToast('차단되었어요');
           setTimeout(() => navigation.goBack(), 600);
         });
@@ -338,7 +356,7 @@ export default function FriendProfileScreen({
         {/* ── 팔로우 버튼 ── */}
         <TouchableOpacity
           style={[s.followBtn, following && s.followingBtn]}
-          onPress={() => setFollowing((v) => !v)}
+          onPress={toggleFollow}
           activeOpacity={0.85}
         >
           <Text style={[s.followBtnText, following && s.followingBtnText]}>

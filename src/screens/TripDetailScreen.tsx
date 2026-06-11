@@ -381,7 +381,8 @@ export default function TripDetailScreen() {
           <Text style={s.heroEmoji}>{trip.emoji}</Text>
           <Text style={s.heroDate}>{trip.date}</Text>
           <View style={s.heroPill}>
-            <Text style={s.heroPillText}>{trip.records.length}개의 기록</Text>
+            {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
+            <Text style={s.heroPillText}>{matchedRecords.length}개의 기록</Text>
           </View>
         </Animated.View>
 
@@ -499,8 +500,16 @@ export default function TripDetailScreen() {
   );
 }
 
+// 실제 댓글 수 (시드 숫자 record.comments 대신 commentsByPost 기준 — 답글 포함)
+function useCommentCount(recordId: string): number {
+  const { commentsByPost } = useRecords();
+  const list = commentsByPost[recordId] ?? [];
+  return list.reduce((sum, c) => sum + 1 + (c.replies?.length ?? 0), 0);
+}
+
 // ─── 피드 카드 ───
 function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -529,7 +538,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
         <Text style={card.feedStat}>♥ {record.likes}</Text>
         <View style={card.feedStatRow}>
           <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{record.comments}</Text>
+          <Text style={card.feedStat}>{commentCount}</Text>
         </View>
         {record.keywords && record.keywords.length > 0 && (
           <View style={card.feedTags}>
@@ -690,6 +699,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
 
 // ─── 블로그 카드 ───
 function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
   const getBlogExcerpt = () => {
     if (record.blogBlocks && record.blogBlocks.length > 0) {
       const textBlock = record.blogBlocks.find((b) => b.type === 'text');
@@ -734,7 +744,10 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
       </Text>
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <Text style={card.feedStat}>💬 {record.comments}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
       </View>
     </View>
   );
@@ -742,6 +755,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
 
 // ─── 스냅 카드 ───
 function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -795,7 +809,10 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
       </View>
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <Text style={card.feedStat}>💬 {record.comments}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
       </View>
     </View>
   );
@@ -803,6 +820,7 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
 
 // ─── 스트립 카드 ───
 function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
   const photos = record.cutPhoto?.photos ?? [];
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
@@ -852,7 +870,10 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
       </Text>
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>
-        <Text style={card.feedStat}>💬 {record.comments}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
       </View>
     </View>
   );

@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, Alert,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -63,18 +63,18 @@ function fmtAgo(ts: number): string {
   return `${Math.floor(d / DAY)}일 전`;
 }
 
-// 임시 데이터 (createdAt = 도착 시각)
+// 임시 데이터 (createdAt = 도착 시각, postId = 시드 게시물과 연결)
 const NOTIS: Noti[] = [
-  { id: 'c1', category: 'comment', emoji: '✈️', avbg: '#3A2A5E', text: '서연님: "여기 진짜 가보고 싶다 🥹"', read: false, createdAt: ago(2 * MIN) },
-  { id: 'l1', category: 'like', emoji: '🏄', avbg: '#2A1A4E', text: '현우님 외 3명이 도쿄 여행 기록을 좋아합니다', read: false, createdAt: ago(2 * HOUR) },
+  { id: 'c1', category: 'comment', emoji: '✈️', avbg: '#3A2A5E', text: '서연님: "여기 진짜 가보고 싶다 🥹"', read: false, createdAt: ago(2 * MIN), postId: 'seed-1' },
+  { id: 'l1', category: 'like', emoji: '🏄', avbg: '#2A1A4E', text: '현우님 외 3명이 교토 여행 기록을 좋아합니다', read: false, createdAt: ago(2 * HOUR), postId: 'seed-3' },
   { id: 'f1', category: 'follow', emoji: '🌸', avbg: '#4E1A3A', text: '수진님이 회원님을 팔로우하기 시작했습니다', read: false, createdAt: ago(20 * HOUR), userId: 'u-soojin', userName: '수진' },
   { id: 'r1', category: 'record', emoji: '🗺️', avbg: '#1A3D2E', text: '지민님이 파리 여행 기록을 시작했어요', read: false, createdAt: ago(26 * HOUR), userId: 'u-jimin', userName: '지민' },
-  { id: 'm1', category: 'memory', emoji: '🗓️', avbg: '#3A2A1A', text: '1년 전 오늘 타이베이에 계셨네요. 추억을 꺼내볼까요?', read: false, createdAt: ago(2 * DAY) },
-  { id: 'l2', category: 'like', emoji: '🌅', avbg: '#2A1A4E', text: '민지님이 회원님의 발리 스냅을 좋아합니다', read: true, createdAt: ago(3 * DAY) },
+  { id: 'm1', category: 'memory', emoji: '🗓️', avbg: '#3A2A1A', text: '1년 전 오늘 산토리니에 계셨네요. 추억을 꺼내볼까요?', read: false, createdAt: ago(2 * DAY), postId: 'seed-2' },
+  { id: 'l2', category: 'like', emoji: '🌅', avbg: '#2A1A4E', text: '민지님이 회원님의 태국 스냅을 좋아합니다', read: true, createdAt: ago(3 * DAY), postId: 'seed-snap' },
   { id: 'f2', category: 'follow', emoji: '🎒', avbg: '#4E1A3A', text: '도윤님이 회원님을 팔로우하기 시작했습니다', read: true, createdAt: ago(5 * DAY), userId: 'u-doyun', userName: '도윤' },
-  { id: 'l3', category: 'like', emoji: '🌊', avbg: '#2A1A4E', text: '준호님이 회원님의 파리 기록을 좋아합니다', read: true, createdAt: ago(6 * DAY) },
+  { id: 'l3', category: 'like', emoji: '🌊', avbg: '#2A1A4E', text: '준호님이 회원님의 파리 기록을 좋아합니다', read: true, createdAt: ago(6 * DAY), postId: 'seed-cut2' },
   // 1주일 지난 알림 — 자동으로 제외됨 (만료 동작 예시)
-  { id: 'l4', category: 'like', emoji: '⛰️', avbg: '#2A1A4E', text: '태호님이 회원님의 교토 기록을 좋아합니다', read: true, createdAt: ago(8 * DAY) },
+  { id: 'l4', category: 'like', emoji: '⛰️', avbg: '#2A1A4E', text: '태호님이 회원님의 교토 기록을 좋아합니다', read: true, createdAt: ago(8 * DAY), postId: 'seed-cut' },
 ];
 
 export default function NotificationScreen({ navigation }: Props) {
@@ -82,10 +82,14 @@ export default function NotificationScreen({ navigation }: Props) {
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 팔로우·기록 → 프로필
+  // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
   const openNoti = (n: Noti) => {
     if (POST_CATEGORIES.includes(n.category)) {
-      const postId = n.postId ?? records[0]?.id;
-      if (postId) navigation.navigate('PostDetail', { postId });
+      if (n.postId && records.some((r) => r.id === n.postId)) {
+        navigation.navigate('PostDetail', { postId: n.postId });
+      } else {
+        Alert.alert('게시물 없음', '삭제되었거나 찾을 수 없는 게시물이에요.');
+      }
     } else {
       navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '' });
     }

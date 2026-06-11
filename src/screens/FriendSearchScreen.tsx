@@ -16,6 +16,7 @@ const { width: SCREEN_W } = Dimensions.get('window');
 import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -141,7 +142,8 @@ export default function FriendSearchScreen({ navigation }: Props) {
   const { nickname, handle } = useSettings();
   const [query, setQuery] = useState('');
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
-  const [followState, setFollowState] = useState<Record<string, boolean>>({});
+  // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
+  const { followingUsers, followUser, unfollowUser } = useRecords();
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
   const [loading, setLoading] = useState(true);
 
@@ -191,8 +193,18 @@ export default function FriendSearchScreen({ navigation }: Props) {
     loadContacts();
   }, []);
 
-  const toggleFollow = (id: string) => {
-    setFollowState(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleFollow = (friend: ContactFriend) => {
+    if (followingUsers.some((f) => f.username === friend.username)) {
+      unfollowUser(friend.username);
+    } else {
+      followUser({
+        id: friend.id,
+        username: friend.username,
+        isAbroad: false,
+        currentCountry: null,
+        currentCountryFlag: null,
+      });
+    }
   };
 
   const isSearching = query.trim().length > 0;
@@ -305,8 +317,8 @@ export default function FriendSearchScreen({ navigation }: Props) {
                 <React.Fragment key={item.id}>
                   <FriendItem
                     item={item}
-                    following={!!followState[item.id]}
-                    onToggle={() => toggleFollow(item.id)}
+                    following={followingUsers.some((f) => f.username === item.username)}
+                    onToggle={() => toggleFollow(item)}
                     onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
                   />
                   {idx < displayList.length - 1 && <View style={s.divider} />}

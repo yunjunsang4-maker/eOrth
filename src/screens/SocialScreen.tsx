@@ -52,13 +52,10 @@ const C = {
 };
 
 // ─────────────────────────────────────────────
-// 샘플 댓글 데이터
+// 댓글 — recordStore.commentsByPost 공유 (게시물별 저장, PostDetail과 동기화)
 // ─────────────────────────────────────────────
-const SAMPLE_COMMENTS = [
-  { id: '1', initial: '김', name: '김민준', text: '너무 부럽다 나도 가고싶어!', time: '2시간 전' },
-  { id: '2', initial: '이', name: '이서연', text: '사진 너무 예쁘다 🔥', time: '1시간 전' },
-  { id: '3', initial: '박', name: '박지훈', text: '도쿄 어느 동네야?', time: '30분 전' },
-];
+type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number };
+const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
 
 // ─────────────────────────────────────────────
 // 친구 목록 (공유용)
@@ -239,7 +236,7 @@ function CommentBottomSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  comments: { id: string; initial: string; name: string; text: string; time: string }[];
+  comments: SheetComment[];
   onSend: () => void;
   commentText: string;
   setCommentText: (t: string) => void;
@@ -275,12 +272,12 @@ function CommentBottomSheet({
                 <View key={c.id}>
                   <View style={cs.commentRow}>
                     <View style={cs.commentAvatar}>
-                      <Text style={cs.commentAvatarText}>{c.initial}</Text>
+                      <Text style={cs.commentAvatarText}>{c.name.charAt(0)}</Text>
                     </View>
                     <View style={cs.commentContent}>
                       <Text style={cs.commentName}>{c.name}</Text>
                       <Text style={cs.commentBody}>{c.text}</Text>
-                      <Text style={cs.commentTime}>{c.time}</Text>
+                      <Text style={cs.commentTime}>{sheetCommentTime(c)}</Text>
                     </View>
                   </View>
                   {idx < comments.length - 1 && <View style={cs.divider} />}
@@ -352,7 +349,8 @@ function FeedCard({
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [shareToast, setShareToast] = useState(false);
@@ -630,10 +628,7 @@ function FeedCard({
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments((prev) => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -653,7 +648,8 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
 
   // 촬영 지연
@@ -766,10 +762,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments(prev => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -876,7 +869,8 @@ function BlogCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -1105,10 +1099,7 @@ function BlogCard({
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments(prev => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -1173,7 +1164,8 @@ function AlbumCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -1437,10 +1429,7 @@ function AlbumCard({
       setCommentText={setCommentText}
       onSend={() => {
         if (commentText.trim()) {
-          setComments(prev => [
-            ...prev,
-            { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-          ]);
+          addComment(item.id, commentText.trim());
           setCommentText('');
         }
       }}

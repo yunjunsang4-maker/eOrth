@@ -51,22 +51,8 @@ const C = {
   red: '#FF6B9D',
 };
 
-type Comment = {
-  id: string;
-  emoji: string;
-  name: string;
-  text: string;
-  time: string;
-  replies?: Comment[];
-};
-
-const SAMPLE_COMMENTS: Comment[] = [
-  { id: '1', emoji: '🧑', name: '김민준', text: '너무 부럽다 나도 가고싶어!', time: '2시간 전', replies: [
-    { id: '1-1', emoji: '👩', name: '이서연', text: '맞아 진짜 부럽다!', time: '1시간 전' },
-  ] },
-  { id: '2', emoji: '👩', name: '이서연', text: '사진 너무 예쁘다 🔥', time: '1시간 전' },
-  { id: '3', emoji: '🧑‍💻', name: '박지훈', text: '어디 동네야? 정보 공유 좀!', time: '30분 전' },
-];
+// 댓글은 recordStore의 commentsByPost에 게시물별로 저장된다 (화면을 나가도 유지)
+const commentTime = (c: { time?: string; createdAt: number }) => c.time ?? timeAgo(c.createdAt);
 
 const currencySymbol = (code: string): string => {
   const map: Record<string, string> = {
@@ -557,7 +543,7 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const [comments, setComments] = useState<any[]>(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment: addCommentToStore } = useRecords();
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -598,18 +584,14 @@ function SnapStoryViewer({
     return null;
   }
 
-  const totalComments = comments.reduce((sum: number, c: any) => sum + 1 + (c.replies?.length || 0), 0);
+  const comments = commentsByPost[currentSnap.id] ?? [];
+  const totalComments = comments.reduce((sum: number, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = currentSnap.isMyPost === true;
 
   const addComment = () => {
     if (!commentText.trim()) return;
-    const nc = { id: `c-${Date.now()}`, emoji: '🙂', name: '나', text: commentText.trim(), time: '방금' };
-    if (replyTo) {
-      setComments(prev => prev.map(c => c.id === replyTo.id ? { ...c, replies: [...(c.replies || []), nc] } : c));
-      setReplyTo(null);
-    } else {
-      setComments(prev => [...prev, nc]);
-    }
+    addCommentToStore(currentSnap.id, commentText.trim(), replyTo?.id);
+    setReplyTo(null);
     setCommentText('');
   };
   const handleReply = (id: string, name: string) => { setReplyTo({ id, name }); commentInputRef.current?.focus(); };
@@ -837,7 +819,7 @@ function SnapStoryViewer({
                 <View style={storyS.csCommentItem}>
                   <View style={storyS.csAvatar}><Text style={{ fontSize: 15 }}>{c.emoji}</Text></View>
                   <View style={{ flex: 1 }}>
-                    <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{c.time}</Text></View>
+                    <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{commentTime(c)}</Text></View>
                     <Text style={storyS.csText}>{c.text}</Text>
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}><Text style={storyS.csReplyBtn}>답글</Text></TouchableOpacity>
                   </View>
@@ -846,7 +828,7 @@ function SnapStoryViewer({
                   <View key={r.id} style={[storyS.csCommentItem, { marginLeft: 42 }]}>
                     <View style={storyS.csAvatar}><Text style={{ fontSize: 13 }}>{r.emoji}</Text></View>
                     <View style={{ flex: 1 }}>
-                      <View style={storyS.csTopRow}><Text style={storyS.csName}>{r.name}</Text><Text style={storyS.csTime}>{r.time}</Text></View>
+                      <View style={storyS.csTopRow}><Text style={storyS.csName}>{r.name}</Text><Text style={storyS.csTime}>{commentTime(r)}</Text></View>
                       <Text style={storyS.csText}>{r.text}</Text>
                     </View>
                   </View>
@@ -907,10 +889,10 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed } = useRecords();
+  const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
-  const [comments, setComments] = useState<Comment[]>(SAMPLE_COMMENTS);
+  const comments = commentsByPost[postId] ?? [];
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
@@ -951,17 +933,8 @@ export default function PostDetailScreen() {
 
   const addComment = () => {
     if (!commentText.trim()) return;
-    const newComment: Comment = { id: `c-${Date.now()}`, emoji: '🙂', name: '나', text: commentText.trim(), time: '방금' };
-    if (replyTo) {
-      setComments((prev) => prev.map((c) =>
-        c.id === replyTo.id
-          ? { ...c, replies: [...(c.replies || []), newComment] }
-          : c
-      ));
-      setReplyTo(null);
-    } else {
-      setComments((prev) => [...prev, newComment]);
-    }
+    addCommentToStore(postId, commentText.trim(), replyTo?.id);
+    setReplyTo(null);
     setCommentText('');
   };
 
@@ -1373,7 +1346,7 @@ export default function PostDetailScreen() {
                 <View style={s.commentBody}>
                   <View style={s.commentTopRow}>
                     <Text style={s.commentName}>{c.name}</Text>
-                    <Text style={s.commentTime}>{c.time}</Text>
+                    <Text style={s.commentTime}>{commentTime(c)}</Text>
                   </View>
                   <Text style={s.commentText}>{c.text}</Text>
                   <TouchableOpacity style={s.replyBtn} onPress={() => handleReply(c.id, c.name)}>
@@ -1390,7 +1363,7 @@ export default function PostDetailScreen() {
                   <View style={s.commentBody}>
                     <View style={s.commentTopRow}>
                       <Text style={s.commentName}>{r.name}</Text>
-                      <Text style={s.commentTime}>{r.time}</Text>
+                      <Text style={s.commentTime}>{commentTime(r)}</Text>
                     </View>
                     <Text style={s.commentText}>{r.text}</Text>
                   </View>

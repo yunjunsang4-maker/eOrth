@@ -385,13 +385,6 @@ const TRIP_THUMBNAILS: TripThumbnail[] = [
 let CURRENT_TRIP_THUMBNAILS = [...TRIP_THUMBNAILS];
 
 
-// ─── 팔로잉 친구 샘플 ───
-const FOLLOWING_FRIENDS = [
-  { id: '1', username: 'seoyeon_l',  isAbroad: true,  currentCountry: '일본',   currentCountryFlag: '🇯🇵' },
-  { id: '2', username: 'jihoon_p',   isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-  { id: '3', username: 'woosung_j',  isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-];
-
 // ─── 배지 데이터 ───
 const BADGES = [
   // 대륙 & 첫 방문 배지 (1 ~ 8)
@@ -1502,7 +1495,7 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
   } = useSettings();
   const profileName = nickname ? nickname : handle;
 
-  const { records, tripGroups, archivedIds } = useRecords();
+  const { records, tripGroups, archivedIds, followingUsers } = useRecords();
 
   const mappedThumbnails = useMemo(() => {
     return tripGroups.map(group => {
@@ -1683,7 +1676,7 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
             {bio ? <Text style={styles.userBio}>{bio}</Text> : null}
             <View style={styles.statsRow}>
               <StatCard value="8" label="기록 수" grad={STAT_GRADS[0]} />
-              <StatCard value={String(FOLLOWING_FRIENDS.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
+              <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
               <StatCard value="3" label="방문국가" grad={STAT_GRADS[2]} />
             </View>
           </View>

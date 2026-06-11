@@ -441,6 +441,49 @@ export interface BlockedUser {
   blockedAt: number;
 }
 
+export interface FollowedFriend {
+  id: string;
+  username: string;
+  isAbroad: boolean;
+  currentCountry: string | null;
+  currentCountryFlag: string | null;
+  followedAt: number;
+}
+
+export interface PostComment {
+  id: string;
+  emoji: string;
+  name: string;
+  text: string;
+  createdAt: number;
+  time?: string; // 시드 댓글용 고정 표기 (없으면 createdAt 기준 상대시간으로 표시)
+  replies?: PostComment[];
+}
+
+// 팔로잉 시드 (프로필·팔로잉 목록·친구 프로필이 공유)
+const INITIAL_FOLLOWING: FollowedFriend[] = [
+  { id: '1', username: 'seoyeon_l', isAbroad: true,  currentCountry: '일본', currentCountryFlag: '🇯🇵', followedAt: 0 },
+  { id: '2', username: 'jihoon_p',  isAbroad: false, currentCountry: null,   currentCountryFlag: null,  followedAt: 0 },
+  { id: '3', username: 'woosung_j', isAbroad: false, currentCountry: null,   currentCountryFlag: null,  followedAt: 0 },
+];
+
+// 게시물별 댓글 시드 (나머지 게시물은 빈 상태로 시작)
+const INITIAL_COMMENTS: Record<string, PostComment[]> = {
+  'seed-1': [
+    { id: 'sc-1', emoji: '🧑', name: '김민준', text: '너무 부럽다 나도 가고싶어!', time: '2시간 전', createdAt: 0, replies: [
+      { id: 'sc-1-1', emoji: '👩', name: '이서연', text: '맞아 진짜 부럽다!', time: '1시간 전', createdAt: 0 },
+    ] },
+    { id: 'sc-2', emoji: '👩', name: '이서연', text: '사진 너무 예쁘다 🔥', time: '1시간 전', createdAt: 0 },
+    { id: 'sc-3', emoji: '🧑‍💻', name: '박지훈', text: '어디 동네야? 정보 공유 좀!', time: '30분 전', createdAt: 0 },
+  ],
+  'seed-2': [
+    { id: 'sc-4', emoji: '🧑', name: '김민준', text: '산토리니 진짜 그림이다...', time: '3시간 전', createdAt: 0 },
+  ],
+  'seed-3': [
+    { id: 'sc-5', emoji: '👩', name: '이서연', text: '새벽 대나무숲이라니 부지런해 👍', time: '5시간 전', createdAt: 0 },
+  ],
+};
+
 interface RecordContextType {
   records: TravelRecord[];
   addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => void;
@@ -453,6 +496,11 @@ interface RecordContextType {
   blockedUsers: BlockedUser[];
   blockUser: (user: { name: string; emoji: string }) => void;
   unblockUser: (name: string) => void;
+  followingUsers: FollowedFriend[];
+  followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
+  unfollowUser: (username: string) => void;
+  commentsByPost: Record<string, PostComment[]>;
+  addComment: (postId: string, text: string, replyToId?: string) => void;
   tripGroups: TripGroup[];
   addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>) => void;
   deleteTripGroup: (id: string) => void;
@@ -482,6 +530,9 @@ interface RecordPersistPayload {
   blockedUsers: BlockedUser[];
   tripGroups: (Omit<TripGroup, 'createdAt'> & { createdAt: string | Date })[];
   drafts: TravelRecord[];
+  // 아래 두 필드는 나중에 추가됨 — 과거 저장본에는 없을 수 있어 복원 시 시드로 폴백
+  followingUsers?: FollowedFriend[];
+  commentsByPost?: Record<string, PostComment[]>;
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
@@ -491,6 +542,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
+  const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
+  const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
 
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
@@ -500,9 +553,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setBlockedUsers(p.blockedUsers);
       setTripGroups(p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) })));
       setDrafts(p.drafts);
+      setFollowingUsers(p.followingUsers ?? INITIAL_FOLLOWING);
+      setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -672,6 +727,34 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setBlockedUsers((prev) => prev.filter((b) => b.name !== name));
   };
 
+  const followUser = (user: Omit<FollowedFriend, 'followedAt'>) => {
+    setFollowingUsers((prev) => {
+      if (prev.some((f) => f.username === user.username)) return prev;
+      return [...prev, { ...user, followedAt: Date.now() }];
+    });
+  };
+
+  const unfollowUser = (username: string) => {
+    setFollowingUsers((prev) => prev.filter((f) => f.username !== username));
+  };
+
+  const addComment = (postId: string, text: string, replyToId?: string) => {
+    const nc: PostComment = {
+      id: `c-${Date.now()}`,
+      emoji: '🙂',
+      name: nickname || '나',
+      text,
+      createdAt: Date.now(),
+    };
+    setCommentsByPost((prev) => {
+      const list = prev[postId] ?? [];
+      const next = replyToId
+        ? list.map((c) => (c.id === replyToId ? { ...c, replies: [...(c.replies ?? []), nc] } : c))
+        : [...list, nc];
+      return { ...prev, [postId]: next };
+    });
+  };
+
   const addImportedAlbum = (data: {
     countryName: string; countryFlag: string; country: string;
     date: string; startDate: string; endDate: string;
@@ -726,6 +809,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setBlockedUsers([]);
     setTripGroups([]);
     setDrafts([]);
+    setFollowingUsers(INITIAL_FOLLOWING);
+    setCommentsByPost(INITIAL_COMMENTS);
   };
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
@@ -734,7 +819,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, commentsByPost, addComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords }}>
       {children}
     </RecordContext.Provider>
   );
