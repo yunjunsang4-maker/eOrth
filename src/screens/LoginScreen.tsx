@@ -27,6 +27,8 @@ import {
   cancelAccountDeletion,
   daysUntilPurge,
 } from '../store/pendingDeletion';
+import { isSupabaseConfigured } from '../services/supabase';
+import { signUpWithEmail, signInWithEmail, sendPasswordReset } from '../services/auth';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -42,6 +44,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [emailFocused, setEmailFocused] = useState(false);
   const [pwFocused, setPwFocused] = useState(false);
   const [confirmFocused, setConfirmFocused] = useState(false);
@@ -83,12 +86,13 @@ export default function LoginScreen({ navigation }: Props) {
     cancelAccountDeletion().catch(() => {});
   };
 
-  const proceedAfterAuth = async (applySignup: () => void) => {
+  // destination: 신규 가입은 온보딩(BasicInfo), 기존 사용자 로그인은 Main
+  const proceedAfterAuth = async (applySignup: () => void, destination: 'BasicInfo' | 'Main' = 'BasicInfo') => {
     const pending = await getPendingDeletion();
 
     if (!pending) {
       applySignup();
-      navigation.navigate('BasicInfo');
+      navigation.navigate(destination);
       return;
     }
 
@@ -147,26 +151,65 @@ export default function LoginScreen({ navigation }: Props) {
     setForgotPasswordVisible(true);
   };
 
-  const handleSendResetLink = () => {
+  const handleSendResetLink = async () => {
     if (!forgotEmail.trim()) return;
     setIsResetting(true);
-    setTimeout(() => {
+    if (isSupabaseConfigured) {
+      const result = await sendPasswordReset(forgotEmail.trim());
       setIsResetting(false);
+      if (!result.ok) {
+        Alert.alert('알림', result.error ?? '메일 발송에 실패했어요.');
+        return;
+      }
       setResetSuccess(true);
-    }, 1500);
+    } else {
+      // Supabase 미설정: 기존 모의 동작
+      setTimeout(() => {
+        setIsResetting(false);
+        setResetSuccess(true);
+      }, 1500);
+    }
   };
 
   const isSignup = mode === 'signup';
   const canSubmit =
+    !submitting &&
     email.trim().length > 0 &&
     password.length >= 6 &&
     (isSignup ? confirmPassword === password : true);
 
-  const handleSubmit = () => {
-    proceedAfterAuth(() => {
+  const handleSubmit = async () => {
+    const applySignup = () => {
       setSignUpMethod('email');
       setSignUpEmail(email.trim() || 'user@eorth.app');
-    });
+    };
+    const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
+
+    // Supabase 미설정: 기존 모의 로그인 유지
+    if (!isSupabaseConfigured) {
+      proceedAfterAuth(applySignup, destination);
+      return;
+    }
+
+    setSubmitting(true);
+    const result = isSignup
+      ? await signUpWithEmail(email.trim(), password)
+      : await signInWithEmail(email.trim(), password);
+    setSubmitting(false);
+
+    if (!result.ok) {
+      Alert.alert('알림', result.error ?? '문제가 발생했어요.');
+      return;
+    }
+    if (result.needsEmailConfirm) {
+      Alert.alert(
+        '이메일 인증',
+        '인증 메일을 보냈어요.\n메일의 링크를 누른 뒤 로그인해주세요.',
+        [{ text: '확인', onPress: () => setMode('login') }],
+      );
+      return;
+    }
+    proceedAfterAuth(applySignup, destination);
   };
 
   return (

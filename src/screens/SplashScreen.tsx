@@ -7,6 +7,8 @@ import { useSettings } from '../store/settingsStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
 import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
+import { isSupabaseConfigured } from '../services/supabase';
+import { getCurrentSession } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width, height } = Dimensions.get('window');
@@ -67,8 +69,17 @@ export default function SplashScreen({ navigation }: Props) {
       ),
     ]).start();
 
-    // Navigate to AppIntro after 2.8s
-    const timer = setTimeout(() => {
+    // 2.8초 후 이동 — 로그인 세션이 있으면 Main으로 자동 로그인, 없으면 AppIntro
+    const timer = setTimeout(async () => {
+      if (isSupabaseConfigured) {
+        const pending = await getPendingDeletion();
+        const session = await getCurrentSession();
+        // 탈퇴 유예 중이면 자동 로그인하지 않고 로그인 화면에서 복구 여부를 묻는다
+        if (session && !pending) {
+          navigation.replace('Main');
+          return;
+        }
+      }
       navigation.replace('AppIntro');
     }, 2800);
 

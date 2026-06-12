@@ -46,3 +46,6 @@ yarn-error.*
 
 # Brainstorming visual companion
 .superpowers/
+
+# Supabase keys
+.env

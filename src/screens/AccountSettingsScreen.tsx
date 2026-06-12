@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
+import { signOut } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 
@@ -223,6 +224,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             closeDeleteAccountModal();
             // 즉시 파기하지 않고 유예 플래그만 기록 (30일 내 재로그인 시 복구)
             requestAccountDeletion().catch(() => {});
+            signOut(); // 세션 종료 → 재로그인 시 복구 여부를 묻는다
             // Splash로 앱 초기화
             navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
           },

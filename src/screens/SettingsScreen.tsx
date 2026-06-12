@@ -13,6 +13,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
+import { signOut } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
@@ -240,8 +241,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               {
                 text: '로그아웃',
                 style: 'destructive',
-                onPress: () =>
-                  navigation.reset({ index: 0, routes: [{ name: 'Splash' }] }),
+                onPress: () => {
+                  signOut(); // Supabase 세션 종료 (미설정 시 no-op)
+                  navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+                },
               },
             ])
           }
