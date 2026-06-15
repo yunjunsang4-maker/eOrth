@@ -1469,11 +1469,11 @@ export default function PostDetailScreen() {
                   if (viewType === 'snap') {
                     Alert.alert('수정 불가', '스냅은 수정할 수 없어요');
                   } else if (viewType === 'blog') {
-                    navigation.navigate('BlogRecord', { record });
+                    navigation.navigate('BlogRecord', { record: rawRecord });
                   } else if (viewType === 'album') {
                     Alert.alert('수정 불가', '앨범 형식은 현재 보관 중이라 수정할 수 없어요.');
                   } else {
-                    navigation.navigate('NewRecord', { record });
+                    navigation.navigate('NewRecord', { record: rawRecord });
                   }
                 }} activeOpacity={0.7}>
                   <PencilIcon size={16} color="#fff" />

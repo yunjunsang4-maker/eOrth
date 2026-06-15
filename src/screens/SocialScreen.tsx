@@ -352,7 +352,7 @@ function FeedCard({
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -386,7 +386,7 @@ function FeedCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -872,7 +872,7 @@ function BlogCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
@@ -899,7 +899,7 @@ function BlogCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -1167,7 +1167,7 @@ function AlbumCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const { commentsByPost, addComment } = useRecords();
+  const { records, commentsByPost, addComment } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
@@ -1197,7 +1197,7 @@ function AlbumCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -1633,6 +1633,7 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
 }
 
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+  const { records } = useRecords();
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
@@ -1663,7 +1664,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     ? [
         { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
         { key: 'archive', icon: '📦', label: '보관', onPress: () => onArchive(item.id) },
-        { key: 'edit', icon: '✏️', label: '편집', onPress: () => navigation.navigate('NewRecord', { editRecord: item }) },
+        { key: 'edit', icon: '✏️', label: '편집', onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
         { key: 'delete', icon: '🗑', label: '삭제', danger: true, onPress: confirmDelete },
       ]
     : [
