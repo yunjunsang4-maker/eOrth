@@ -28,6 +28,8 @@ import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
+import { applyViewer } from '../utils/mediaPrivacy';
+import { DUMMY_FRIENDS } from '../constants/friends';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -1920,7 +1922,7 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord } = useRecords();
+  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, setCurrentViewer } = useRecords();
   const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
   
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
@@ -2002,12 +2004,15 @@ function FriendsTab({ navigation }: { navigation: any }) {
   };
 
   const blockedNames = blockedUsers.map((b) => b.name);
-  const allVisible = records.filter(
-    (r) =>
-      (r.visibility === 'friends' || r.visibility === 'public') &&
-      !blockedNames.includes(r.user.name) &&
-      !archivedIds.includes(r.id)
-  );
+  const allVisible = records
+    .filter(
+      (r) =>
+        (r.visibility === 'friends' || r.visibility === 'public') &&
+        !blockedNames.includes(r.user.name) &&
+        !archivedIds.includes(r.id)
+    )
+    // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
+    .map((r) => applyViewer(r, currentViewer));
 
   // viewType별 분류
   const feedItems = allVisible.filter(r => !r.viewType || r.viewType === 'feed');
@@ -2075,6 +2080,33 @@ function FriendsTab({ navigation }: { navigation: any }) {
         )}
         scrollEventThrottle={16}
       >
+        {/* 친구로 보기 — 비공개 미리보기 뷰어 전환 */}
+        <View style={vc.bar}>
+          <Text style={vc.label}>미리보기</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={vc.row}>
+            <TouchableOpacity
+              style={[vc.chip, currentViewer === null && vc.chipOn]}
+              onPress={() => setCurrentViewer(null)}
+              activeOpacity={0.8}
+            >
+              <Text style={[vc.chipTxt, currentViewer === null && vc.chipTxtOn]}>전체 보기</Text>
+            </TouchableOpacity>
+            {DUMMY_FRIENDS.map((name) => {
+              const on = currentViewer === name;
+              return (
+                <TouchableOpacity
+                  key={name}
+                  style={[vc.chip, on && vc.chipOn]}
+                  onPress={() => setCurrentViewer(on ? null : name)}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[vc.chipTxt, on && vc.chipTxtOn]}>{name}로 보기</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+        </View>
+
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
         {snapItems.length > 0 && (
           <View style={s.storySection}>
@@ -2812,4 +2844,17 @@ const ss = StyleSheet.create({
     fontSize: 14,
     color: '#A1A1B0',
   },
+});
+
+const vc = StyleSheet.create({
+  bar: { paddingTop: 10, paddingBottom: 4, paddingHorizontal: 16, gap: 6 },
+  label: { color: '#A1A1B0', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  row: { gap: 8, paddingVertical: 4 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  chipOn: { borderColor: '#BF85FC', backgroundColor: 'rgba(191,133,252,0.18)' },
+  chipTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '500' },
+  chipTxtOn: { color: '#FFFFFF', fontWeight: '700' },
 });
