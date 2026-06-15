@@ -36,6 +36,7 @@ import type { BlogBlock, HeadingBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
 import { stickers } from '../components/stickers';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
+import { applyViewer } from '../utils/mediaPrivacy';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -891,7 +892,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore } = useRecords();
+  const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, currentViewer } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -914,7 +915,9 @@ export default function PostDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const blockYPositions = useRef<Record<string, number>>({});
 
-  const record = records.find((r) => r.id === postId);
+  const rawRecord = records.find((r) => r.id === postId);
+  // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
+  const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;
 
   if (!record) {
     return (
