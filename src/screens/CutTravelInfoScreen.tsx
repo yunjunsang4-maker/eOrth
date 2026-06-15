@@ -197,6 +197,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
+  const [privateFriends, setPrivateFriends] = useState<string[]>([]);
+  const [privacyVisible, setPrivacyVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [budget, setBudget] = useState('');
   const [currency, setCurrency] = useState('KRW');
@@ -211,6 +213,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     setCompanions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
   const toggleCompanionFriend = (f: string) =>
     setCompanionFriends(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
+  const togglePrivateFriend = (f: string) =>
+    setPrivateFriends(prev => prev.includes(f) ? prev.filter(x => x !== f) : [...prev, f]);
   const removeCompanionFriend = (f: string) =>
     setCompanionFriends(prev => prev.filter(x => x !== f));
   const addKeyword = (raw: string) => {
@@ -307,6 +311,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       rating: rating || undefined,
       companions: [...companions, ...companionFriends],
       medias: [cutPhoto.previewUri],
+      mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
       startDate: sStr,
       endDate: eStr,
       weather: weather || undefined,
@@ -327,9 +332,16 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <Text style={st.cancel}>취소</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>여행 정보</Text>
-        <TouchableOpacity onPress={handleSave} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.save}>저장</Text>
-        </TouchableOpacity>
+        <View style={st.headerRight}>
+          <TouchableOpacity onPress={() => setPrivacyVisible(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={[st.privacy, privateFriends.length > 0 && st.privacyOn]}>
+              {privateFriends.length > 0 ? `비공개 ${privateFriends.length}` : '비공개'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleSave} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={st.save}>저장</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -588,6 +600,50 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </View>
       </Modal>
 
+      {/* 비공개 대상 선택 모달 */}
+      <Modal visible={privacyVisible} transparent animationType="slide" onRequestClose={() => setPrivacyVisible(false)} statusBarTranslucent>
+        <View style={fp.overlay}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setPrivacyVisible(false)} />
+          <View style={fp.sheet}>
+            <View style={fp.handle} />
+            <View style={fp.header}>
+              <FriendIcon size={16} color={C.purpleNeon} />
+              <Text style={fp.headerTitle}>비공개 대상 선택</Text>
+            </View>
+            <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
+              {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+              {(() => {
+                const allPrivate = privateFriends.length === DUMMY_FRIENDS.length;
+                return (
+                  <TouchableOpacity
+                    style={[fp.row, allPrivate && fp.rowActive]}
+                    onPress={() => setPrivateFriends(allPrivate ? [] : [...DUMMY_FRIENDS])}
+                    activeOpacity={0.7}
+                  >
+                    <View style={[fp.avatar, allPrivate && fp.avatarActive]}><Text style={fp.avatarTxt}>🔒</Text></View>
+                    <Text style={[fp.name, allPrivate && fp.nameActive]}>전체 비공개</Text>
+                    <View style={[fp.check, allPrivate && fp.checkActive]}>{allPrivate && <Text style={fp.checkMark}>✓</Text>}</View>
+                  </TouchableOpacity>
+                );
+              })()}
+              {DUMMY_FRIENDS.map(friend => {
+                const selected = privateFriends.includes(friend);
+                return (
+                  <TouchableOpacity key={friend} style={[fp.row, selected && fp.rowActive]} onPress={() => togglePrivateFriend(friend)} activeOpacity={0.7}>
+                    <View style={[fp.avatar, selected && fp.avatarActive]}><Text style={fp.avatarTxt}>{friend[0]}</Text></View>
+                    <Text style={[fp.name, selected && fp.nameActive]}>{friend}</Text>
+                    <View style={[fp.check, selected && fp.checkActive]}>{selected && <Text style={fp.checkMark}>✓</Text>}</View>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={fp.doneBtn} onPress={() => setPrivacyVisible(false)} activeOpacity={0.85}>
+              <Text style={fp.doneTxt}>{privateFriends.length > 0 ? `${privateFriends.length}명 비공개 설정 완료` : '공개로 설정 (비공개 없음)'}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
       {/* 기타 통화 선택 모달 */}
       <Modal visible={currencyModalVisible} transparent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -682,6 +738,9 @@ const st = StyleSheet.create({
   },
   cancel: { fontSize: 16, color: C.textDim },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  privacy: { fontSize: 16, fontWeight: '600', color: C.textDim },
+  privacyOn: { color: C.purpleNeon, fontWeight: '700' },
   save: { fontSize: 16, fontWeight: '700', color: C.purpleNeon },
 
   scroll: { flex: 1 },
