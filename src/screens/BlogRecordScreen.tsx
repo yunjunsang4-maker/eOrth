@@ -708,6 +708,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const togglePrivateFriend = (friend: string) => {
     setPrivateFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
   };
+  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 친구 체크 상태까지 즉시 동기화
+  const setPrivateFriendsAll = (friends: string[]) => setPrivateFriends(friends);
   // ─── 별점 (0.5 단위) ───
   const STAR_SIZE = 28;
   const STAR_GAP = 6;
@@ -1488,6 +1490,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         selectedFriends={privateFriends}
         allFriends={DUMMY_FRIENDS}
         onToggle={togglePrivateFriend}
+        onSetAll={setPrivateFriendsAll}
         onClose={() => setPrivacyModalVisible(false)}
       />
 
@@ -1796,12 +1799,14 @@ function PrivacyModal({
   selectedFriends,
   allFriends,
   onToggle,
+  onSetAll,
   onClose,
 }: {
   visible: boolean;
   selectedFriends: string[];
   allFriends: string[];
   onToggle: (friend: string) => void;
+  onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
   const translateY = useRef(new Animated.Value(500)).current;
@@ -1841,6 +1846,29 @@ function PrivacyModal({
               </View>
             </View>
           </View>
+
+          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {allFriends.length > 0 && (() => {
+            const allPrivate = selectedFriends.length === allFriends.length;
+            return (
+              <TouchableOpacity
+                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
+                activeOpacity={0.7}
+              >
+                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
+                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 글을 숨겨요</Text>
+                </View>
+                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
 
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
@@ -2487,6 +2515,27 @@ const pm = StyleSheet.create({
   },
   listScroll: {
     maxHeight: 320,
+  },
+  allPrivateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 14,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  allPrivateLabel: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  allPrivateDesc: {
+    fontSize: 12,
+    color: '#8A8A99',
+    marginTop: 2,
   },
   friendRow: {
     flexDirection: 'row',
