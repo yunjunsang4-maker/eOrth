@@ -27,6 +27,7 @@ import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
+import { DUMMY_FRIENDS } from '../constants/friends';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -707,8 +708,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const togglePrivateFriend = (friend: string) => {
     setPrivateFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
   };
-  const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
-
   // ─── 별점 (0.5 단위) ───
   const STAR_SIZE = 28;
   const STAR_GAP = 6;

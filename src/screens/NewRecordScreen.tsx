@@ -31,6 +31,7 @@ import * as MediaLibrary from 'expo-media-library';
 import Svg, { Path } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
+import { DUMMY_FRIENDS } from '../constants/friends';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -1120,8 +1121,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
     editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
   );
-  const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
-
   const selectMedia = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
