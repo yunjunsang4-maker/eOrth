@@ -519,6 +519,9 @@ interface RecordContextType {
     representativePhoto?: string; // 카드 썸네일용 크롭본 (없으면 medias[0] 사용)
   }) => string; // 생성된 record id 반환
   resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
+  // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
+  currentViewer: string | null;
+  setCurrentViewer: (name: string | null) => void;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -544,6 +547,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
+  const [currentViewer, setCurrentViewer] = useState<string | null>(null);
 
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
@@ -811,6 +815,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setDrafts([]);
     setFollowingUsers(INITIAL_FOLLOWING);
     setCommentsByPost(INITIAL_COMMENTS);
+    setCurrentViewer(null);
   };
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
@@ -819,7 +824,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, commentsByPost, addComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, commentsByPost, addComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer }}>
       {children}
     </RecordContext.Provider>
   );
