@@ -18,6 +18,7 @@ interface GlobeViewProps {
   visitedCountries?: VisitedCountry[];
   displayMode?: GlobeDisplayMode;
   defaultColor?: string;
+  sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
 const globeHTML = `<!DOCTYPE html>
@@ -38,12 +39,43 @@ const globeHTML = `<!DOCTYPE html>
   body:active { cursor: grabbing; }
   #canvas-container { position: fixed; inset: 0; }
   canvas { display: block; }
+  /* 광고(스폰서) 마커 레이어 — 영토 위 지점에서 선이 올라가 작은 카드가 달린 형태.
+     .ad-pin 은 0크기 앵커(=영토 지점), 자식들은 그 지점 기준으로 배치. 카드만 터치 수신 */
+  #ad-layer { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  .ad-pin { position: absolute; width: 0; height: 0; display: none; }
+  .ad-pin .ad-dot {
+    position: absolute; left: 0; top: 0; width: 8px; height: 8px; transform: translate(-50%,-50%);
+    border-radius: 50%; background: #FFC45A; box-shadow: 0 0 8px 2px rgba(255,196,90,0.7);
+    animation: adpulse 1.7s ease-in-out infinite;
+  }
+  .ad-pin .ad-line {
+    position: absolute; left: 0; bottom: 0; width: 1.5px; height: 36px; transform: translateX(-50%);
+    background: linear-gradient(to top, rgba(255,196,90,0.95), rgba(255,196,90,0.15));
+  }
+  .ad-pin .ad-minicard {
+    position: absolute; left: 0; bottom: 36px; transform: translateX(-50%);
+    pointer-events: auto; cursor: pointer; white-space: nowrap;
+    background: rgba(18,16,26,0.94); border: 1px solid rgba(255,196,90,0.55);
+    border-radius: 7px; padding: 4px 7px; box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+  }
+  .ad-pin .ad-minicard .mc-row { display: flex; align-items: center; gap: 6px; }
+  .ad-pin .ad-minicard .mc-thumb { width: 26px; height: 26px; border-radius: 5px; object-fit: cover; background: #1A1A26; flex: none; display: block; }
+  .ad-pin .ad-minicard .mc-text { display: flex; flex-direction: column; }
+  .ad-pin .ad-minicard .mc-head { display: flex; align-items: center; gap: 4px; }
+  .ad-pin .ad-minicard .mc-ad {
+    font-size: 7px; font-weight: 800; letter-spacing: 0.3px;
+    color: #0A0A0F; background: #FFC45A; border-radius: 2px; padding: 0px 3px;
+  }
+  .ad-pin .ad-minicard .mc-title { font-size: 9.5px; font-weight: 700; color: #fff; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
+  .ad-pin .ad-minicard .mc-price { font-size: 9.5px; font-weight: 800; color: #FFC45A; margin-top: 1px; }
+  @keyframes adpulse { 0%,100% { transform: translate(-50%,-50%) scale(0.9); opacity: 0.85; } 50% { transform: translate(-50%,-50%) scale(1.2); opacity: 1; } }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
 <div id="canvas-container"></div>
+<div id="ad-layer"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"><\/script>
@@ -637,6 +669,9 @@ async function init() {
   borderGroup = buildBorders(worldData, cfg.borderColor);
   globe.add(borderGroup);
 
+  // 보류된 광고 마커 생성 (setSponsored가 worldData 로드 전에 도착한 경우)
+  if (pendingSponsored) buildAdMarkers(pendingSponsored);
+
   // Lights
   scene.add(new THREE.AmbientLight(0xaaaaaa, 1.2));
   [[5,3,5],[-5,3,5],[5,-3,5],[-5,-3,5],[0,0,-6],[0,5,0]].forEach(function(p) {
@@ -763,6 +798,96 @@ window.addEventListener('wheel', function(e) {
   targetZ = Math.max(MIN_Z, Math.min(MAX_Z, targetZ));
 }, { passive: false });
 
+// ── 광고(스폰서) 마커 ──
+// 캔버스 위 DOM 마커를 매 프레임 3D→2D 투영으로 영토에 붙인다(회전 추적). 뒷면이면 숨김.
+// 마커 탭은 국가 탭(raycaster)과 분리: 마커에서 이벤트 전파를 막아 드래그/국가탭이 안 일어난다.
+var adLayer = document.getElementById('ad-layer');
+var adMarkers = [];           // { nameEn, lon, lat, el }
+var pendingSponsored = null;  // worldData 로드 전에 도착한 목록
+var _adVec = new THREE.Vector3();
+var AD_FACING_MIN = 0.78;     // 카드 노출 임계값(0~1). 클수록 화면 중앙에 더 가까워야 뜸
+
+function clearAdMarkers() {
+  adMarkers.forEach(function(m) { if (m.el && m.el.parentNode) m.el.parentNode.removeChild(m.el); });
+  adMarkers = [];
+}
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(ch) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch];
+  });
+}
+function buildAdMarkers(list) {
+  clearAdMarkers();
+  if (!worldData || !list || !adLayer) return;
+  list.forEach(function(item) {
+    // item: { nameEn, label, price }
+    var nameEn = item && item.nameEn;
+    if (!nameEn) return;
+    var f = worldData.features.find(function(ft) { return ft.properties.name === nameEn; });
+    if (!f) return;
+    var c = d3.geoCentroid(f); // [lon, lat]
+    var priceHtml = item.price ? '<div class="mc-price">' + escapeHtml(item.price) + '</div>' : '';
+    var thumbHtml = item.image ? '<img class="mc-thumb" src="' + escapeHtml(item.image) + '" />' : '';
+    var el = document.createElement('div');
+    el.className = 'ad-pin';
+    el.innerHTML =
+      '<div class="ad-line"></div>' +
+      '<div class="ad-dot"></div>' +
+      '<div class="ad-minicard">' +
+        '<div class="mc-row">' +
+          thumbHtml +
+          '<div class="mc-text">' +
+            '<div class="mc-head"><span class="mc-ad">AD</span><span class="mc-title">' + escapeHtml(item.label || '여행 패키지') + '</span></div>' +
+            priceHtml +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    var fire = function(ev) {
+      ev.stopPropagation();
+      if (ev.cancelable) ev.preventDefault();
+      if (window.ReactNativeWebView) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'sponsoredTapped', countryEn: nameEn }));
+      }
+    };
+    // 전파 차단: 미니 카드 위 제스처가 지구본 드래그/국가 탭으로 이어지지 않도록 (카드에서 버블링됨)
+    el.addEventListener('touchstart', function(ev) { ev.stopPropagation(); }, { passive: true });
+    el.addEventListener('mousedown', function(ev) { ev.stopPropagation(); });
+    el.addEventListener('click', fire);
+    el.addEventListener('touchend', fire);
+    adLayer.appendChild(el);
+    adMarkers.push({ nameEn: nameEn, lon: c[0], lat: c[1], el: el });
+  });
+}
+function updateAdMarkers() {
+  if (!adMarkers.length) return;
+  for (var i = 0; i < adMarkers.length; i++) {
+    var m = adMarkers[i];
+    var latR = m.lat * Math.PI / 180, lonR = m.lon * Math.PI / 180;
+    var rh = Math.cos(latR);
+    var A = lonR + Math.PI;
+    _adVec.set(-rh * Math.cos(A), Math.sin(latR), rh * Math.sin(A)); // 단위구 로컬좌표(detectCountry 역매핑)
+    _adVec.multiplyScalar(1.02);
+    globe.localToWorld(_adVec); // 현재 회전 반영(렌더 후 호출)
+    // 정면 정도: 표면 법선(≈월드좌표 방향)과 시선(점→카메라)의 코사인.
+    // 1=화면 정중앙을 마주봄, 0=가장자리(림). 일정 이상 정면일 때만 카드 노출(너무 일찍 뜨는 것 방지).
+    var toCamX = camera.position.x - _adVec.x;
+    var toCamY = camera.position.y - _adVec.y;
+    var toCamZ = camera.position.z - _adVec.z;
+    var dotRaw = _adVec.x * toCamX + _adVec.y * toCamY + _adVec.z * toCamZ;
+    var lenW = Math.sqrt(_adVec.x * _adVec.x + _adVec.y * _adVec.y + _adVec.z * _adVec.z);
+    var lenC = Math.sqrt(toCamX * toCamX + toCamY * toCamY + toCamZ * toCamZ);
+    var facing = (lenW > 0 && lenC > 0) ? dotRaw / (lenW * lenC) : -1;
+    var ndc = _adVec.clone().project(camera);
+    if (facing > AD_FACING_MIN && ndc.z < 1) {
+      m.el.style.display = 'block';
+      m.el.style.left = ((ndc.x * 0.5 + 0.5) * window.innerWidth) + 'px';
+      m.el.style.top = ((-ndc.y * 0.5 + 0.5) * window.innerHeight) + 'px';
+    } else {
+      m.el.style.display = 'none';
+    }
+  }
+}
+
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
@@ -785,6 +910,7 @@ function animate() {
   globe.rotation.x = rotX;
 
   renderer.render(scene, camera);
+  updateAdMarkers(); // 렌더 후(월드행렬 최신) 마커 위치 갱신
 }
 
 window.addEventListener('resize', function() {
@@ -810,6 +936,10 @@ function handleVisitedMessage(msg) {
         globeMesh.material.needsUpdate = true;
       });
     }
+  } else if (msg.type === 'setSponsored') {
+    // 광고 항목 [{nameEn,label,price}]. worldData 로드 전이면 보류 후 init에서 생성.
+    pendingSponsored = msg.items || [];
+    if (worldData) buildAdMarkers(pendingSponsored);
   }
 }
 window.addEventListener('message', function(e) {
@@ -833,6 +963,7 @@ init();
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
+  sponsoredItems = [],
 }: GlobeViewProps) {
   const globeHeight = useMemo(() => Dimensions.get('window').height * 0.75, []);
   const webViewRef = useRef<WebView>(null);
@@ -844,18 +975,29 @@ export default function GlobeView({
     defaultColor,
   }), [visitedCountries, displayMode, defaultColor]);
 
+  const sponsoredPayload = useMemo(() => JSON.stringify({
+    type: 'setSponsored',
+    items: sponsoredItems,
+  }), [sponsoredItems]);
+
   useEffect(() => {
     if (webViewRef.current && visitedCountries.length > 0) {
       webViewRef.current.postMessage(payload);
     }
   }, [payload]);
 
-  const handleLoad = () => {
-    if (webViewRef.current && visitedCountries.length > 0) {
-      setTimeout(() => {
-        webViewRef.current?.postMessage(payload);
-      }, 2000);
+  useEffect(() => {
+    if (webViewRef.current) {
+      webViewRef.current.postMessage(sponsoredPayload);
     }
+  }, [sponsoredPayload]);
+
+  const handleLoad = () => {
+    // 로드 직후 WebView 초기화 타이밍을 고려해 약간 지연 후 재전송
+    setTimeout(() => {
+      if (visitedCountries.length > 0) webViewRef.current?.postMessage(payload);
+      webViewRef.current?.postMessage(sponsoredPayload);
+    }, 2000);
   };
 
   return (

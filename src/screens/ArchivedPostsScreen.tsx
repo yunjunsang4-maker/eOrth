@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -6,9 +7,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  Alert,
-  SafeAreaView,
-} from 'react-native';
+  Alert,} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';

@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Switch,
-  SafeAreaView,
-  Linking,
+  Switch,  Linking,
   Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';

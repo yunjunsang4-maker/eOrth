@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -2192,10 +2193,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // 메인 화면
 // ─────────────────────────────────────────────
 export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <Text style={s.headerTitle}>소셜</Text>
         <TouchableOpacity
           style={s.addFriendBtn}
@@ -2225,7 +2227,6 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[2],
     flexDirection: 'row',

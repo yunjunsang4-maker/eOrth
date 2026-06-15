@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,
-  SafeAreaView,
-  Alert,
+  TextInput,  Alert,
   Switch,
   Platform,
   Modal,

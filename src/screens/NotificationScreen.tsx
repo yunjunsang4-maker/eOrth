@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView, Platform, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';

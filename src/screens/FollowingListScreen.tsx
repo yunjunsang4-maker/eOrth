@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -22,11 +23,12 @@ const COLORS = {
 };
 
 export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
+  const insets = useSafeAreaInsets();
   const { followingUsers } = useRecords();
   return (
     <View style={styles.root}>
       {/* 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
@@ -87,7 +89,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 56,
     paddingBottom: 16,
   },
   backBtn: {

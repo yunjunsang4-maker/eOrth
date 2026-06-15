@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -20,6 +21,7 @@ const VIEW_TYPES: { type: RecordViewType; icon: string; name: string }[] = [
 ];
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
+  const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
   const { records, deleteRecord } = useRecords();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
@@ -67,7 +69,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   return (
     <View style={styles.container}>
       {/* 상단 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingBottom: 12,
     paddingHorizontal: 16,
     backgroundColor: '#0A0A0F',

@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -199,6 +200,7 @@ export default function FriendProfileScreen({
   navigation,
   route,
 }: RootStackScreenProps<'FriendProfile'>) {
+  const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const profile = friendProfile;
   const displayUsername = username ?? profile.username;
@@ -301,7 +303,7 @@ export default function FriendProfileScreen({
   return (
     <View style={s.container}>
       {/* ── 헤더 ── */}
-      <View style={s.header}>
+      <View style={[s.header, { marginTop: insets.top + 12 }]}>
         <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
@@ -496,7 +498,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 56,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.divider,
   },

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -886,6 +887,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
@@ -917,7 +919,7 @@ export default function PostDetailScreen() {
   if (!record) {
     return (
       <View style={s.container}>
-        <View style={s.header}>
+        <View style={[s.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
@@ -1082,7 +1084,7 @@ export default function PostDetailScreen() {
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 8 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
@@ -1549,7 +1551,7 @@ const s = StyleSheet.create({
   // ── 헤더 ──
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingTop: 54, paddingHorizontal: 20, paddingBottom: 10,
+    paddingHorizontal: 20, paddingBottom: 10,
     borderBottomWidth: 1, borderBottomColor: C.cardBorder,
   },
   backBtn: {

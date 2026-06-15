@@ -7,6 +7,7 @@ import LoginScreen from '../screens/LoginScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
 import TravelImportScreen from '../screens/TravelImportScreen';
 import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
+import ImportCompleteScreen from '../screens/ImportCompleteScreen';
 import CountryScreen from '../screens/CountryScreen';
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
@@ -95,6 +96,11 @@ export default function AppNavigator() {
         <Stack.Screen name="BasicInfo" component={BasicInfoScreen} />
         <Stack.Screen name="TravelImport" component={TravelImportScreen} />
         <Stack.Screen name="ImportPhotoSelect" component={ImportPhotoSelectScreen} />
+        <Stack.Screen
+          name="ImportComplete"
+          component={ImportCompleteScreen}
+          options={{ gestureEnabled: false }}
+        />
         <Stack.Screen name="Main" component={TabNavigator} options={{ gestureEnabled: false }} />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />

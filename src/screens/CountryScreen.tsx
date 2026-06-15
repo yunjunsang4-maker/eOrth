@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -23,12 +24,13 @@ const SAMPLE_RECORDS = [
 type Props = RootStackScreenProps<'Country'>;
 
 export default function CountryScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
@@ -114,7 +116,6 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 56,
     paddingHorizontal: Spacing[4],
     paddingBottom: Spacing[4],
   },

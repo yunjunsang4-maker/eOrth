@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, SafeAreaView,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';

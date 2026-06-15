@@ -1,12 +1,11 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  Alert,
+  TouchableOpacity,  Alert,
   Switch,
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';

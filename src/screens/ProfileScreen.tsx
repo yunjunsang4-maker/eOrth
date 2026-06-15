@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -1417,6 +1418,7 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
 
 // ─── 메인 프로필 화면 ───
 export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab'>) {
+  const insets = useSafeAreaInsets();
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
@@ -1624,7 +1626,7 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
         scrollEnabled={!isDragging}
       >
         {/* 상단 헤더 */}
-        <View style={styles.headerRow}>
+        <View style={[styles.headerRow, { marginTop: insets.top + 12 }]}>
           <Text style={styles.title}>프로필</Text>
           <LiquidPressable
             style={styles.settingBtn}
@@ -1901,7 +1903,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 56,
     marginBottom: 24,
   },
   title: {

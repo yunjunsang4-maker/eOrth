@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -285,6 +286,7 @@ function WorldSection({ items, accent }: { items: Item[]; accent: [string, strin
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
@@ -648,6 +650,7 @@ export default function StatsDetailScreen() {
       <Animated.View
         style={[
           s.header,
+          { paddingTop: insets.top + 10 },
           {
             opacity: headerAnim,
             transform: [
@@ -721,7 +724,6 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 14,

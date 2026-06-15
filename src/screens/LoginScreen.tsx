@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -37,6 +38,7 @@ const { width } = Dimensions.get('window');
 type Props = RootStackScreenProps<'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
@@ -219,7 +221,7 @@ export default function LoginScreen({ navigation }: Props) {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 16 }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -633,7 +635,6 @@ const styles = StyleSheet.create({
   keyboardView: { flex: 1 },
   scroll: {
     flexGrow: 1,
-    paddingTop: 64,
     paddingBottom: 48,
     paddingHorizontal: Spacing[6],
   },

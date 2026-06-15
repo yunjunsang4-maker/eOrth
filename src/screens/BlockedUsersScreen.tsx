@@ -1,12 +1,11 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Alert,
+  TouchableOpacity,  Alert,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';

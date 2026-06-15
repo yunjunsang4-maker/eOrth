@@ -4,6 +4,7 @@ import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
@@ -55,17 +56,19 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <ErrorBoundary>
-        <SettingsProvider>
-          <RecordProvider>
-            <DMProvider>
-              <StatusBar style="light" backgroundColor="#0A0118" translucent />
-              <SnapDetector />
-              <AppNavigator />
-            </DMProvider>
-          </RecordProvider>
-        </SettingsProvider>
-      </ErrorBoundary>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <SettingsProvider>
+            <RecordProvider>
+              <DMProvider>
+                <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                <SnapDetector />
+                <AppNavigator />
+              </DMProvider>
+            </RecordProvider>
+          </SettingsProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
     </GestureHandlerRootView>
   );
 }

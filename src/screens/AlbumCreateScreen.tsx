@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
   Dimensions, ActivityIndicator, Alert, ScrollView, Modal, TextInput,
@@ -45,6 +46,7 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
+  const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup } = useRecords();
 
   // 기간 (기본: 최근 7일)
@@ -230,8 +232,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   if (phase === 'setup') {
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
-        <View style={st.header}>
-          <TouchableOpacity style={st.closeBtn} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+        <View style={[st.header, { paddingTop: insets.top + 24 }]}>
+          <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8}>
             <Text style={st.closeTxt}>✕</Text>
           </TouchableOpacity>
           <Text style={st.title}>📷 사진첩 만들기</Text>
@@ -352,8 +354,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   // ── 2단계: 사진 선택 ──
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
-      <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => setPhase('setup')} activeOpacity={0.8}>
+      <View style={[st.header, { paddingTop: insets.top + 24 }]}>
+        <TouchableOpacity style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8}>
           <Text style={st.closeTxt}>←</Text>
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>사진 선택</Text>
@@ -532,9 +534,9 @@ const st = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   savingText: { color: '#FFFFFF', fontSize: 14 },
 
-  header: { paddingTop: 70, paddingHorizontal: 16, paddingBottom: 8 },
-  closeBtn: { position: 'absolute', top: 64, right: 16, padding: 8, zIndex: 2 },
-  backBtn: { position: 'absolute', top: 64, left: 16, padding: 8, zIndex: 2 },
+  header: { paddingHorizontal: 16, paddingBottom: 8 },
+  closeBtn: { position: 'absolute', right: 16, padding: 8, zIndex: 2 },
+  backBtn: { position: 'absolute', left: 16, padding: 8, zIndex: 2 },
   closeTxt: { color: '#A1A1B0', fontSize: 20, fontWeight: '600' },
   title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 4 },
   titleIndented: { marginLeft: 36 }, // 왼쪽 ← 버튼과 겹치지 않게 제목만 들여쓰기

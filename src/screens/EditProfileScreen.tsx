@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -7,9 +8,7 @@ import {
   TouchableOpacity,
   TextInput,
   Image,
-  Alert,
-  SafeAreaView,
-  KeyboardAvoidingView,
+  Alert,  KeyboardAvoidingView,
   Platform,
   Linking,
 } from 'react-native';

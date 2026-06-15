@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -10,10 +11,16 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
+import { getCurrentSession } from '../services/auth';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+
+// 통계 튜토리얼 1회 노출 플래그 키 (계정별)
+const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
 
 // ─── 눌림 애니메이션 카드 ───
 // Pressable 에도 레이아웃 스타일(flex, margin 등)을 동시 적용해 flex 배치가 깨지지 않게 함
@@ -122,12 +129,66 @@ const { width } = Dimensions.get('window');
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { records } = useRecords();
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
   };
+
+  // ── 통계 튜토리얼(코치마크) — 계정당 통계 탭 첫 진입 시 1회 ──
+  const heroRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+  const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
+
+  const measure = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
+        else resolve({ x, y, width, height });
+      });
+    });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (tutorialStarted.current) return;
+      tutorialStarted.current = true;
+      let cancelled = false;
+      (async () => {
+        // 계정별 키 (로그인 세션 없으면 guest)
+        const session = await getCurrentSession();
+        const uid = session?.user?.id || 'guest';
+        const key = `${STATS_TUTORIAL_KEY}:${uid}`;
+        const seen = await AsyncStorage.getItem(key).catch(() => null);
+        if (seen || cancelled) return;
+        setTimeout(async () => {
+          if (cancelled) return;
+          const hero = await measure(heroRef);
+          setCoachSteps([
+            {
+              rect: null,
+              title: '여행 통계 📊',
+              desc: '그동안의 여행을 한눈에 모았어요. 방문한 나라·도시·기록 수와 평가까지 통계로 확인할 수 있어요.',
+            },
+            {
+              rect: hero,
+              title: '상세 통계 보기',
+              desc: '각 통계 카드를 탭하면 더 자세한 상세 통계를 볼 수 있어요.',
+            },
+          ]);
+          setCoachVisible(true);
+          AsyncStorage.setItem(key, '1').catch(() => {});
+        }, 450);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
@@ -329,12 +390,13 @@ export default function StatsScreen() {
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.headerTitle}>통계</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {/* World coverage hero */}
+        <View ref={heroRef} collapsable={false}>
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
           <LinearGradient
             colors={['rgba(26,26,46,0.3)', 'rgba(22,20,42,0.3)']}
@@ -378,6 +440,7 @@ export default function StatsScreen() {
               </View>
             </LinearGradient>
         </PressCard>
+        </View>
 
         {/* Row 2: 연도별 여행 횟수 + 대륙별 방문 현황 */}
         <View style={styles.statsRow}>
@@ -483,6 +546,13 @@ export default function StatsScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* 통계 튜토리얼 코치마크 */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
+      />
     </LinearGradient>
   );
 }
@@ -490,7 +560,6 @@ export default function StatsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[4],
   },

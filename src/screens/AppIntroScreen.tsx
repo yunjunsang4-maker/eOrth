@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -42,6 +43,7 @@ const SLIDES = [
 type Props = RootStackScreenProps<'AppIntro'>;
 
 export default function AppIntroScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const [activeIdx, setActiveIdx] = useState(0);
   const flatListRef = useRef<FlatList>(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
@@ -59,7 +61,7 @@ export default function AppIntroScreen({ navigation }: Props) {
   const renderSlide = ({ item, index }: { item: typeof SLIDES[0]; index: number }) => {
     const lines = item.title.split('\n');
     return (
-      <View style={styles.slide}>
+      <View style={[styles.slide, { paddingTop: insets.top + 52 }]}>
         {/* Globe / Illustration area */}
         <View style={styles.illustrationWrap}>
           <View style={styles.bgGlow} />
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 100,
     paddingBottom: 20,
     paddingHorizontal: Spacing[6],
   },

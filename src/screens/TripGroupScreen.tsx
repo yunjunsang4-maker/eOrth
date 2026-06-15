@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -69,6 +70,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();
   const { groupId } = route.params;
@@ -83,7 +85,7 @@ export default function TripGroupScreen() {
   if (!group) {
     return (
       <View style={st.container}>
-        <View style={st.header}>
+        <View style={[st.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
             <Text style={st.backIcon}>←</Text>
           </TouchableOpacity>
@@ -155,7 +157,7 @@ export default function TripGroupScreen() {
   return (
     <View style={st.container}>
       {/* 헤더 */}
-      <View style={st.header}>
+      <View style={[st.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
@@ -283,7 +285,6 @@ const st = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingBottom: 12,
     paddingHorizontal: 16,
     backgroundColor: '#0A0A0F',

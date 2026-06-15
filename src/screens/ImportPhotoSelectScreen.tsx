@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
   Dimensions, ActivityIndicator, Alert, ScrollView, Modal,
@@ -43,6 +44,7 @@ const CARD_ASPECT = CARD_W / CARD_H;
 export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup } = useRecords();
+  const insets = useSafeAreaInsets();
 
   const [index, setIndex] = useState(0);
   // 여행별 선택된 사진 uri 집합
@@ -110,6 +112,10 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const save = async () => {
     setSaving(true);
     try {
+      // 완료 화면 요약용 — 실제로 만들어진 여행 수/사진 수/국가 누적
+      let tripCount = 0;
+      let photoCount = 0;
+      const countries: { flag: string; name: string }[] = [];
       for (const t of trips) {
         const uris = selected[t.id] ?? [];
         if (uris.length === 0) continue; // 선택 0장 → 카드 생성 안 함
@@ -136,8 +142,17 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         });
         // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
         addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
+        tripCount += 1;
+        photoCount += copied.length;
+        countries.push({ flag: t.countryFlag, name: t.countryName });
       }
-      navigation.reset({ index: 0, routes: [{ name: 'Main' }] });
+      navigation.reset({
+        index: 1,
+        routes: [
+          { name: 'Main' },
+          { name: 'ImportComplete', params: { tripCount, photoCount, countries } },
+        ],
+      });
     } catch (e) {
       setSaving(false);
       Alert.alert('저장 실패', '사진을 가져오는 중 문제가 발생했어요.');
@@ -155,7 +170,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
-      <View style={st.header}>
+      <View style={[st.header, { paddingTop: insets.top + 24 }]}>
         <Text style={st.step}>{index + 1} / {trips.length}</Text>
         <Text style={st.title}>{trip.countryFlag} {trip.title}</Text>
         <Text style={st.sub}>가져올 사진을 선택하세요 (최대 {MAX_PHOTOS_PER_TRIP}장)</Text>
@@ -319,7 +334,7 @@ const st = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 },
   savingText: { color: '#FFFFFF', fontSize: 14 },
-  header: { paddingTop: 70, paddingHorizontal: 16, paddingBottom: 8 },
+  header: { paddingHorizontal: 16, paddingBottom: 8 },
   step: { color: '#7B61FF', fontSize: 12, fontWeight: '700', letterSpacing: 2, marginBottom: 6 },
   title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 4 },
   sub: { color: '#A1A1B0', fontSize: 13 },

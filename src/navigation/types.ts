@@ -63,7 +63,7 @@ export type StatsDetailType = 'world' | 'yearly' | 'region' | 'countries' | 'rat
 // ─── 탭 ───
 
 export type TabParamList = {
-  MainTab: undefined;
+  MainTab: { startTutorial?: boolean } | undefined; // startTutorial: 기록 완성 후 메인 튜토리얼(코치마크) 자동 실행
   StatsTab: undefined;
   SocialTab: undefined;
   ProfileTab: undefined;
@@ -78,6 +78,7 @@ export type RootStackParamList = {
   BasicInfo: undefined;
   TravelImport: undefined;
   ImportPhotoSelect: { trips: ImportTrip[] };
+  ImportComplete: { tripCount: number; photoCount: number; countries: { flag: string; name: string }[] };
   Main: NavigatorScreenParams<TabParamList> | undefined;
   Country: { name: string; flag: string } | undefined;
   AccountSettings: undefined;

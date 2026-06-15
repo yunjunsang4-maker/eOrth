@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -33,6 +34,7 @@ const DEFAULT_COUNTRY: Country =
 type Props = RootStackScreenProps<'BasicInfo'>;
 
 export default function BasicInfoScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { nickname: storeNickname, setNickname: setStoreNickname, setProfilePhoto, profilePhoto, homeCountryCode, setHomeCountryCode } = useSettings();
   const [nickname, setNickname] = useState(storeNickname || '');
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
@@ -82,7 +84,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
         style={styles.keyboardView}
       >
         <ScrollView
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 32 }]}
           showsVerticalScrollIndicator={false}
         >
           {/* Header */}
@@ -196,7 +198,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardView: { flex: 1 },
   scroll: {
-    paddingTop: 80,
     paddingHorizontal: Spacing[6],
     paddingBottom: 120,
   },

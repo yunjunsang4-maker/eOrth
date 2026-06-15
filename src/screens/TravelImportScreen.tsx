@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -52,10 +53,36 @@ const scanSubNote = (p: ScanPeriodOption) =>
     ? `${periodRangeText(p)} 사진을 분석 중이에요`
     : `기기에 저장된 ${periodRangeText(p)} 사진을 분석 중이에요`;
 
+// EXIF 촬영일(DateTimeOriginal)을 ms 타임스탬프로 파싱. 형식: "YYYY:MM:DD HH:MM:SS"
+// iOS는 exif['{Exif}'] 아래, Android는 flat 키로 들어온다. 파싱 실패 시 null → creationTime 폴백.
+// creationTime은 '기기 갤러리 추가 시각'이라 iCloud 복원·재저장 사진은 부정확 → EXIF를 1순위로 쓴다.
+const parseExifDate = (exif: any): number | null => {
+  if (!exif) return null;
+  const raw: unknown =
+    exif.DateTimeOriginal ??
+    exif['{Exif}']?.DateTimeOriginal ??
+    exif.DateTimeDigitized ??
+    exif['{Exif}']?.DateTimeDigitized ??
+    exif.DateTime;
+  if (typeof raw !== 'string') return null;
+  const m = raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return null;
+  const ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  return Number.isFinite(ts) ? ts : null;
+};
+
 type Props = RootStackScreenProps<'TravelImport'>;
 
 export default function TravelImportScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { homeCountryCode } = useSettings();
+
+  // 과거 여행 불러오기를 건너뛰고(또는 결과 없이) 메인으로 갈 때도 튜토리얼(코치마크) 자동 실행
+  const goMainWithTutorial = () =>
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
+    });
   const [permissionStatus, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
   const [scanFinished, setScanFinished] = useState(false);
@@ -201,7 +228,10 @@ export default function TravelImportScreen({ navigation }: Props) {
               // shouldDownloadFromNetwork는 localUri/exif(원본 파일)에만 영향 → false로 두면
               // iCloud 최적화 사진도 원본 다운로드 없이 즉시 좌표를 읽는다.
               const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
-              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: info.location };
+              // 촬영일: EXIF(DateTimeOriginal) 1순위 → 없으면 creationTime(기기 추가 시각) → 그것도 없으면 오늘.
+              // EXIF는 로컬 원본이 있을 때만 채워지므로 추가 다운로드 없이 정확도만 끌어올린다.
+              const creationTime = parseExifDate(info.exif) ?? (asset.creationTime || Date.now());
+              return { id: asset.id, uri: asset.uri, creationTime, location: info.location };
             } catch {
               return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
             }
@@ -372,7 +402,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 32 }]} showsVerticalScrollIndicator={false}>
 
         {/* Header */}
         <View style={styles.header}>
@@ -423,7 +453,7 @@ export default function TravelImportScreen({ navigation }: Props) {
               </LinearGradient>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.skipBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
+            <TouchableOpacity style={styles.skipBtn} onPress={goMainWithTutorial}>
               <Text style={styles.skipText}>건너뛰기 (수동으로 기록하기)</Text>
             </TouchableOpacity>
 
@@ -469,12 +499,12 @@ export default function TravelImportScreen({ navigation }: Props) {
                 ? '선택한 사진만 분석했어요.\n설정 > 사진에서 "모든 사진 허용"으로 바꾸면\n과거 여행을 더 잘 찾을 수 있어요.'
                 : '거주국가 밖에서 GPS가 기록된 사진이 없어요.\n사진에 위치 정보(GPS)가 있어야 분석할 수 있어요.'}
             </Text>
-            <TouchableOpacity style={styles.permissionBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
+            <TouchableOpacity style={styles.permissionBtn} onPress={goMainWithTutorial}>
               <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
                 <Text style={styles.btnText}>수동으로 기록하기</Text>
               </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.skipBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'Main' }] })}>
+            <TouchableOpacity style={styles.skipBtn} onPress={goMainWithTutorial}>
               <Text style={styles.skipText}>건너뛰기</Text>
             </TouchableOpacity>
           </View>
@@ -627,7 +657,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scroll: {
-    paddingTop: 80,
     paddingHorizontal: Spacing[6],
     paddingBottom: 140,
   },

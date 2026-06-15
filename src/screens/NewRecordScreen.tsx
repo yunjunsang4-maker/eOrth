@@ -1,12 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
+  ScrollView,  TextInput,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -536,12 +535,14 @@ function PrivacyModal({
   selectedFriends,
   allFriends,
   onToggle,
+  onSetAll,
   onClose,
 }: {
   visible: boolean;
   selectedFriends: string[];
   allFriends: string[];
   onToggle: (friend: string) => void;
+  onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
   const translateY = useRef(new Animated.Value(500)).current;
@@ -581,6 +582,32 @@ function PrivacyModal({
               </View>
             </View>
           </View>
+
+          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {allFriends.length > 0 && (() => {
+            const allPrivate = selectedFriends.length === allFriends.length;
+            return (
+              <TouchableOpacity
+                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                onPress={() => {
+                  // 한 번에 전체 설정/해제 → 개별 친구 체크 상태도 즉시 동기화
+                  onSetAll(allPrivate ? [] : [...allFriends]);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
+                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 사진을 숨겨요</Text>
+                </View>
+                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
 
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
@@ -692,6 +719,27 @@ const pm = StyleSheet.create({
   },
   listScroll: {
     maxHeight: 320,
+  },
+  allPrivateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 14,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  allPrivateLabel: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  allPrivateDesc: {
+    fontSize: 12,
+    color: '#8A8A99',
+    marginTop: 2,
   },
   friendRow: {
     flexDirection: 'row',
@@ -1146,6 +1194,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
+  // 비공개 대상 전체 설정(전체 비공개) / 전체 해제 — 한 번에 목록을 통째로 교체해
+  // 개별 친구 체크 상태까지 즉시 동기화한다.
+  const setMediaPrivacyAll = (mediaIdx: number, friends: string[]) => {
+    setMediaPrivacy(prev => ({ ...prev, [mediaIdx]: friends }));
+  };
+
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
   const [title,           setTitle]           = useState(editRecord?.content ?? '');
@@ -1401,6 +1455,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [mediaPickerAssets,   setMediaPickerAssets]   = useState<MediaLibrary.Asset[]>([]);
   const [mediaPickerSelected, setMediaPickerSelected] = useState<Set<string>>(new Set());
   const [mediaPickerMax,      setMediaPickerMax]      = useState(30);
+  // 모달 열기 전 iCloud 사유로 제외된 장수 — 완료 메시지 안내에 사용
+  const cloudSkippedRef = useRef(0);
 
   const toggleMediaPickerItem = (id: string) => {
     setMediaPickerSelected(prev => {
@@ -1415,25 +1471,42 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
+  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환해 {asset, uri} 쌍을 돌려준다.
+  // iCloud로 오프로드된(원본이 기기에 없는) 사진은 Expo 관리형 API로 materialize가
+  // 불가능하다 — getAssetInfoAsync/ImageManipulator/FileSystem.copyAsync 모두 실패하며
+  // ph:// 그대로 두면 새 아키텍처에서 검은 타일로 뜬다. 따라서 가져올 수 없는 것으로
+  // 보고 제외한다(검은 타일/조용한 실패 방지). 변환은 Promise.all로 병렬 처리.
+  const resolveImportable = async (
+    assets: MediaLibrary.Asset[]
+  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+    const probed = await Promise.all(
+      assets.map(async (asset) => {
+        try {
+          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
+            const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
+            return info.localUri ? { asset, uri: info.localUri } : null; // localUri 없으면 iCloud → 제외
+          }
+          return { asset, uri: asset.uri };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return probed.filter((p): p is { asset: MediaLibrary.Asset; uri: string } => p !== null);
+  };
+
+  // iCloud 제외분 안내 문구 (없으면 빈 문자열)
+  const cloudNote = (skipped: number) =>
+    skipped > 0 ? `\n\niCloud에 보관된 ${skipped}장은 자동 불러오기로 가져올 수 없어, 아래 ‘갤러리에서 선택’으로 받아주세요.` : '';
+
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
     setMediaPickerVisible(false);
     setLoadingMedia(true);
 
     try {
-      const resolvedUris: string[] = [];
-      for (const asset of selectedAssets) {
-        try {
-          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
-            const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (info.localUri) resolvedUris.push(info.localUri);
-          } else {
-            resolvedUris.push(asset.uri);
-          }
-        } catch {
-          // 변환 실패 건너뜀
-        }
-      }
+      const ok = await resolveImportable(selectedAssets);
+      const resolvedUris = ok.map((p) => p.uri);
 
       setMedias((prev) => {
         const existingSet = new Set(prev);
@@ -1441,7 +1514,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         return [...prev, ...newUris];
       });
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!`);
+      // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
+      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudSkippedRef.current)}`);
     } catch (e: any) {
       Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
     } finally {
@@ -1486,43 +1560,44 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         first: 500,
       });
 
-      const assets = result?.assets ?? [];
-      const total = assets.length;
-
-      if (total === 0) {
+      const allAssets = result?.assets ?? [];
+      if (allAssets.length === 0) {
         Alert.alert('사진이 없어요', '해당 기간에 사진이 없어요.');
         return;
       }
 
+      // 가져올 수 있는(로컬) 사진만 추린다. iCloud 오프로드 사진은 materialize가 불가능하므로
+      // 여기서 미리 걸러내 검은 타일/조용한 실패를 막고, 몇 장이 iCloud인지 안내한다.
+      const ok = await resolveImportable(allAssets);
+      const cloudCount = allAssets.length - ok.length;
+      cloudSkippedRef.current = cloudCount;
+
+      if (ok.length === 0) {
+        Alert.alert(
+          'iCloud에 있는 사진이에요',
+          `이 기간 사진 ${cloudCount}장은 모두 iCloud에 보관돼 있어 자동 불러오기로는 가져올 수 없어요.\n\n‘갤러리에서 선택’으로 받아주세요. (iCloud 사진은 이 방식에서만 받아집니다)`
+        );
+        return;
+      }
+
+      const total = ok.length;
       const slotsAvailable = 30 - medias.length;
       if (slotsAvailable <= 0) {
         Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
         return;
       }
 
-      // 30개 초과 시 → 선택 모달 표시
+      // 30개 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
       if (total > slotsAvailable) {
-        setMediaPickerAssets(assets);
+        setMediaPickerAssets(ok.map((p) => p.asset));
         setMediaPickerMax(slotsAvailable);
         setMediaPickerSelected(new Set());
         setMediaPickerVisible(true);
         return;
       }
 
-      // 30개 이하 → 기존처럼 전체 추가
-      const resolvedUris: string[] = [];
-      for (const asset of assets) {
-        try {
-          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
-            const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (info.localUri) resolvedUris.push(info.localUri);
-          } else {
-            resolvedUris.push(asset.uri);
-          }
-        } catch {
-          // 변환 실패한 개별 항목은 건너뜀
-        }
-      }
+      // 30개 이하 → 전체 추가 (이미 변환된 localUri 사용)
+      const resolvedUris = ok.map((p) => p.uri);
 
       setMedias((prev) => {
         const existingSet = new Set(prev);
@@ -1530,7 +1605,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         return [...prev, ...newUris];
       });
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!`);
+      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudCount)}`);
     } catch (e: any) {
       Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
     } finally {
@@ -1541,6 +1616,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
+    if (step === 2) return medias.length > 0; // 사진 최소 1장 필수
     if (step === TOTAL_STEPS) {
       return memo.trim().length > 0 && rating > 0 && selectedCompanions.length > 0;
     }
@@ -2192,6 +2268,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         selectedFriends={privacyModalIndex !== null ? (mediaPrivacy[privacyModalIndex] || []) : []}
         allFriends={DUMMY_FRIENDS}
         onToggle={friend => privacyModalIndex !== null && toggleMediaPrivacyFriend(privacyModalIndex, friend)}
+        onSetAll={friends => privacyModalIndex !== null && setMediaPrivacyAll(privacyModalIndex, friends)}
         onClose={() => setPrivacyModalIndex(null)}
       />
 
@@ -2354,6 +2431,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             keyExtractor={(item) => item.id}
             numColumns={3}
             contentContainerStyle={mpStyles.gridContent}
+            // 최대 500장 그리드 — 가상화 튜닝으로 모달 오픈/스크롤 끊김 완화
+            initialNumToRender={15}
+            maxToRenderPerBatch={15}
+            windowSize={5}
+            removeClippedSubviews
+            getItemLayout={(_, index) => ({
+              length: PICKER_CELL + 2,
+              offset: (PICKER_CELL + 2) * Math.floor(index / 3),
+              index,
+            })}
             renderItem={({ item }) => {
               const selected = mediaPickerSelected.has(item.id);
               return (

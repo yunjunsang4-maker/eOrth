@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -17,6 +18,9 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { BellIcon, GlobeIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import CountryMapView from '../components/CountryMapView';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import SponsoredPackageCard from '../components/SponsoredPackageCard';
+import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 
@@ -207,10 +211,80 @@ type Props = TabScreenProps<'MainTab'>;
 // 기록 형식 선택 → 이동할 수 있는 작성 화면들
 type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord' | 'AlbumCreate';
 
-export default function MainScreen({ navigation }: Props) {
+export default function MainScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
   const { records } = useRecords();
+
+  // ── 튜토리얼(코치마크) ──
+  // 측정 대상: 지구본(WebView) / 모드 토글 / 지구본 설정 버튼 / 스냅 버튼 / FAB. measureInWindow를 쓰므로 any로 둔다.
+  const globeRef = useRef<any>(null);
+  const toggleRef = useRef<any>(null);
+  const settingsRef = useRef<any>(null);
+  const snapRef = useRef<any>(null);
+  const fabRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+
+  const measure = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) {
+          resolve(null);
+        } else {
+          resolve({ x, y, width, height });
+        }
+      });
+    });
+
+  // 기록 완성 화면에서 "튜토리얼 진행하기"로 들어온 경우 자동 시작
+  useEffect(() => {
+    if (!route.params?.startTutorial) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const [globe, toggle, settings, snap, fab] = await Promise.all([
+        measure(globeRef),
+        measure(toggleRef),
+        measure(settingsRef),
+        measure(snapRef),
+        measure(fabRef),
+      ]);
+      if (cancelled) return;
+      // 지구본(WebView)의 실제 프레임에서 three.js 투영 상수로 원을 계산.
+      // 카메라가 아래로(y=-0.35) 내려가 있어 구체 중심이 세로 ~39% 지점, 반지름 ~0.30×높이.
+      const globeCircle = globe
+        ? { cx: globe.x + globe.width / 2, cy: globe.y + globe.height * 0.39, r: globe.height * 0.3 }
+        : undefined;
+      setCoachSteps([
+        {
+          rect: globe,
+          shape: 'circle', // 지구본은 원형으로 강조
+          circleWin: globeCircle,
+          title: '여행 지구본 🌏',
+          desc: '방문한 나라가 활성화돼요. 나라를 탭하면 그 나라의 기록을 추가하거나 볼 수 있어요.',
+        },
+        { rect: toggle, title: '지구본 · 대륙 전환', desc: '지구본과 대륙(국가 지역) 지도를 자유롭게 전환할 수 있어요.' },
+        { rect: settings, title: '표시 방식 설정', desc: '기록한 나라를 국기 · 색상 · 사진 중 원하는 방식으로 꾸밀 수 있어요.' },
+        { rect: snap, title: '스냅 기록 ⚡', desc: '여행지에 도착한 순간을 빠르게 남기는 스냅 기록이에요.' },
+        { rect: fab, title: '기록 추가 +', desc: '피드 · 블로그 · 스트립 · 사진첩 등 원하는 형식으로 새 기록을 추가해요.' },
+      ]);
+      setCoachVisible(true);
+      // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
+      navigation.setParams({ startTutorial: undefined });
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [route.params?.startTutorial]);
+
   const [hasUnreadAlerts, setHasUnreadAlerts] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드
+  const [selectedAd, setSelectedAd] = useState<SponsoredPackage | null>(null);
+  const sponsoredMarkerItems = useMemo(() => getSponsoredMarkerItems(), []);
   // 방문한 나라 바텀시트 활성화 여부 (첫 출시 시 제외, 추후 보완하여 활성화 예정)
   const SHOW_VISITED_SHEET = false;
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
@@ -507,6 +581,11 @@ export default function MainScreen({ navigation }: Props) {
   const handleGlobeMessage = (e: any) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
+      if (data.type === 'sponsoredTapped') {
+        const pkg = getSponsoredByCountryEn(data.countryEn);
+        if (pkg) setSelectedAd(pkg);
+        return;
+      }
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
         const hasStaticRecord = !!COUNTRY_RECORDS[koreanName];
@@ -561,7 +640,7 @@ export default function MainScreen({ navigation }: Props) {
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
 
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Image
           source={require('../../assets/logo.png')}
           style={styles.headerLogoImage}
@@ -582,29 +661,36 @@ export default function MainScreen({ navigation }: Props) {
       <View style={styles.globeArea}>
         {/* 지구본/대륙 전환 토글 (Liquid Glass) */}
         <View style={styles.modeToggleWrap}>
-          <BlurView intensity={50} tint="dark" style={styles.modeToggle}>
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'globe' && styles.modeBtnActive]}
-              activeOpacity={0.7}
-              onPress={() => { setViewMode('globe'); setRegionCountry(null); }}
-            >
-              <Text style={[styles.modeBtnText, viewMode === 'globe' && styles.modeBtnTextActive]}>지구본</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'region' && styles.modeBtnActive]}
-              activeOpacity={0.7}
-              onPress={() => { setViewMode('region'); setRegionCountry(null); }}
-            >
-              <Text style={[styles.modeBtnText, viewMode === 'region' && styles.modeBtnTextActive]}>대륙</Text>
-            </TouchableOpacity>
-          </BlurView>
+          {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
+          <View ref={toggleRef} collapsable={false}>
+            <BlurView intensity={50} tint="dark" style={styles.modeToggle}>
+              <TouchableOpacity
+                style={[styles.modeBtn, viewMode === 'globe' && styles.modeBtnActive]}
+                activeOpacity={0.7}
+                onPress={() => { setViewMode('globe'); setRegionCountry(null); }}
+              >
+                <Text style={[styles.modeBtnText, viewMode === 'globe' && styles.modeBtnTextActive]}>지구본</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeBtn, viewMode === 'region' && styles.modeBtnActive]}
+                activeOpacity={0.7}
+                onPress={() => { setViewMode('region'); setRegionCountry(null); }}
+              >
+                <Text style={[styles.modeBtnText, viewMode === 'region' && styles.modeBtnTextActive]}>대륙</Text>
+              </TouchableOpacity>
+            </BlurView>
+          </View>
         </View>
 
         {/* 뷰 렌더링 */}
         {viewMode === 'globe' ? (
           <>
-            <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={visitedCountries} displayMode={globeDisplayMode} defaultColor={globeColor} />
+            {/* 지구본 측정용 래퍼 (WebView의 실제 프레임을 잡아 튜토리얼 원 강조에 사용) */}
+            <View ref={globeRef} collapsable={false}>
+              <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={visitedCountries} displayMode={globeDisplayMode} defaultColor={globeColor} sponsoredItems={sponsoredMarkerItems} />
+            </View>
             <TouchableOpacity
+              ref={settingsRef}
               style={styles.globeSettingsBtn}
               activeOpacity={0.7}
               onPress={() => setDisplaySettingsVisible(true)}
@@ -658,7 +744,7 @@ export default function MainScreen({ navigation }: Props) {
       </View>
 
       {/* ── 스냅 바로가기 버튼 (스냅 카드 그라디언트 보더) ── */}
-      <View style={styles.snapQuickWrap}>
+      <View style={styles.snapQuickWrap} ref={snapRef} collapsable={false}>
         <LinearGradient
           colors={['#22D3EE', '#A855F7', '#D946EF']}
           start={{ x: 0, y: 0 }}
@@ -1158,7 +1244,7 @@ export default function MainScreen({ navigation }: Props) {
         ))}
 
         {/* 메인 + 버튼 */}
-        <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+        <TouchableOpacity ref={fabRef} style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.fabGradient}>
             <Animated.View style={{ transform: [{ rotate: fabRotateDeg }] }}>
               <Text style={styles.fabIcon}>+</Text>
@@ -1166,6 +1252,16 @@ export default function MainScreen({ navigation }: Props) {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* ── 튜토리얼 코치마크 ── */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
+      />
+
+      {/* ── 광고(스폰서) 패키지 카드 ── */}
+      <SponsoredPackageCard pkg={selectedAd} onClose={() => setSelectedAd(null)} />
 
     </LinearGradient>
   );
@@ -1179,7 +1275,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[3],
   },
@@ -1610,7 +1705,12 @@ const styles = StyleSheet.create({
 
   // ── 대륙 모드 - 국가 선택 그리드
   countryGrid: {
-    flex: 1,
+    // 상단 토글 바의 흐름 오프셋을 무시하고 지도 영역 전체 기준 수직 정중앙에 배치
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,

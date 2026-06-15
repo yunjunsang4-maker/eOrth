@@ -1,4 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -102,6 +103,7 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
@@ -258,7 +260,7 @@ export default function TripDetailScreen() {
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <Animated.View style={[s.header, { opacity: headerAnim }]}>
+      <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
@@ -886,7 +888,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import {
   View,
@@ -139,6 +140,7 @@ function FriendItem({
 type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
   const { nickname, handle } = useSettings();
   const [query, setQuery] = useState('');
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
@@ -218,7 +220,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
   return (
     <View style={s.container}>
       {/* ── 헤더 ── */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={s.backBtn} onPress={handleGoBack}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
@@ -346,7 +348,6 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 12,
     flexDirection: 'row',
