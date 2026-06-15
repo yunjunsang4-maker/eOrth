@@ -28,7 +28,7 @@ import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
-import { applyViewer } from '../utils/mediaPrivacy';
+import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { DUMMY_FRIENDS } from '../constants/friends';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
@@ -2012,6 +2012,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
         !blockedNames.includes(r.user.name) &&
         !archivedIds.includes(r.id)
     )
+    // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
+    .filter((r) => !isPostHiddenForViewer(r, currentViewer))
     // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
     .map((r) => applyViewer(r, currentViewer));
 

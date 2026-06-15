@@ -38,6 +38,18 @@ export function visibleRepresentative(record: PrivacyRecord, viewer: string | nu
   return vis[0];
 }
 
+// 블로그·스트립(cut)은 사진/블록 개별이 아니라 '기록 전체' 비공개다(mediaPrivacy[0]=대상 친구).
+// 현재 뷰어가 그 대상에 포함되면 기록 전체를 숨겨야 한다(피드에서 제외). 피드(feed)는 사진 단위
+// 비공개라 여기서 숨기지 않는다. viewer=null(작성자/전체공개)은 숨김 없음.
+export function isPostHiddenForViewer(
+  record: PrivacyRecord & { viewType?: string },
+  viewer: string | null
+): boolean {
+  if (viewer === null) return false;
+  if (record.viewType !== 'blog' && record.viewType !== 'cut') return false;
+  return record.mediaPrivacy?.[0]?.includes(viewer) ?? false;
+}
+
 // 피드/상세에 넘기기 좋게 medias/representativePhoto만 뷰어 기준으로 교체한 얕은 복사본.
 // viewer=null이면 원본 객체를 그대로 반환(불필요한 재생성 방지).
 export function applyViewer<T extends PrivacyRecord>(record: T, viewer: string | null): T {
