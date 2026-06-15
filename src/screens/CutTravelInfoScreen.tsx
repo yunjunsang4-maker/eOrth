@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert,
+  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
 import type { CutLayout } from '../constants/cutFrames';
@@ -13,6 +13,7 @@ import {
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
   SoloIcon, FriendIcon, CoupleIcon, FamilyIcon, ParentIcon, SiblingIcon,
   SunIcon, CloudyIcon, RainIcon, SnowIcon, WindIcon,
+  LockClosedIcon, LockOpenIcon,
 } from '../components/icons';
 
 // 디자인 토큰
@@ -174,6 +175,117 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
 
+// ─── 비공개 친구 선택 모달 (블로그와 동일) ───
+function PrivacyModal({
+  visible,
+  selectedFriends,
+  allFriends,
+  onToggle,
+  onSetAll,
+  onClose,
+}: {
+  visible: boolean;
+  selectedFriends: string[];
+  allFriends: string[];
+  onToggle: (friend: string) => void;
+  onSetAll: (friends: string[]) => void;
+  onClose: () => void;
+}) {
+  const translateY = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 65, friction: 13 }).start();
+    } else {
+      Animated.timing(translateY, { toValue: 500, duration: 220, useNativeDriver: true }).start();
+    }
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={pm.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
+          <View style={pm.handle} />
+
+          {/* 헤더 */}
+          <View style={pm.header}>
+            <View style={pm.headerLeft}>
+              <LockClosedIcon size={24} color="#A1A1B0" />
+              <View>
+                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
+                <Text style={pm.headerDesc}>선택한 친구에게 이 스트립이 비공개됩니다</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {allFriends.length > 0 && (() => {
+            const allPrivate = selectedFriends.length === allFriends.length;
+            return (
+              <TouchableOpacity
+                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
+                activeOpacity={0.7}
+              >
+                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                  <LockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
+                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 스트립을 숨겨요</Text>
+                </View>
+                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+
+          {/* 전체 해제 버튼 */}
+          {selectedFriends.length > 0 && (
+            <TouchableOpacity style={pm.clearAllBtn} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
+              <Text style={pm.clearAllTxt}>전체 해제</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 친구 목록 */}
+          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
+            {allFriends.map(friend => {
+              const isSelected = selectedFriends.includes(friend);
+              return (
+                <TouchableOpacity
+                  key={friend}
+                  style={[pm.friendRow, isSelected && pm.friendRowActive]}
+                  onPress={() => onToggle(friend)}
+                  activeOpacity={0.7}
+                >
+                  <View style={[pm.avatar, isSelected && pm.avatarActive]}>
+                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
+                  </View>
+                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
+                  <View style={[pm.checkbox, isSelected && pm.checkboxActive]}>
+                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* 완료 버튼 */}
+          <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
+            <Text style={pm.doneTxt}>
+              {selectedFriends.length > 0
+                ? `${selectedFriends.length}명 비공개 설정 완료`
+                : '공개로 설정 (비공개 없음)'}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { addRecord } = useRecords();
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
@@ -333,10 +445,22 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </TouchableOpacity>
         <Text style={st.headerTitle}>여행 정보</Text>
         <View style={st.headerRight}>
-          <TouchableOpacity onPress={() => setPrivacyVisible(true)} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={[st.privacy, privateFriends.length > 0 && st.privacyOn]}>
-              {privateFriends.length > 0 ? `비공개 ${privateFriends.length}` : '비공개'}
-            </Text>
+          <TouchableOpacity
+            onPress={() => setPrivacyVisible(true)}
+            style={[st.lockBtn, privateFriends.length > 0 && st.lockBtnActive]}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            {privateFriends.length > 0 ? (
+              <LockClosedIcon size={13} color={C.white} />
+            ) : (
+              <LockOpenIcon size={13} color={C.textDim} />
+            )}
+            {privateFriends.length > 0 && (
+              <View style={st.lockBadge}>
+                <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSave} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
             <Text style={st.save}>저장</Text>
@@ -600,49 +724,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </View>
       </Modal>
 
-      {/* 비공개 대상 선택 모달 */}
-      <Modal visible={privacyVisible} transparent animationType="slide" onRequestClose={() => setPrivacyVisible(false)} statusBarTranslucent>
-        <View style={fp.overlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setPrivacyVisible(false)} />
-          <View style={fp.sheet}>
-            <View style={fp.handle} />
-            <View style={fp.header}>
-              <FriendIcon size={16} color={C.purpleNeon} />
-              <Text style={fp.headerTitle}>비공개 대상 선택</Text>
-            </View>
-            <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
-              {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
-              {(() => {
-                const allPrivate = privateFriends.length === DUMMY_FRIENDS.length;
-                return (
-                  <TouchableOpacity
-                    style={[fp.row, allPrivate && fp.rowActive]}
-                    onPress={() => setPrivateFriends(allPrivate ? [] : [...DUMMY_FRIENDS])}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[fp.avatar, allPrivate && fp.avatarActive]}><Text style={fp.avatarTxt}>🔒</Text></View>
-                    <Text style={[fp.name, allPrivate && fp.nameActive]}>전체 비공개</Text>
-                    <View style={[fp.check, allPrivate && fp.checkActive]}>{allPrivate && <Text style={fp.checkMark}>✓</Text>}</View>
-                  </TouchableOpacity>
-                );
-              })()}
-              {DUMMY_FRIENDS.map(friend => {
-                const selected = privateFriends.includes(friend);
-                return (
-                  <TouchableOpacity key={friend} style={[fp.row, selected && fp.rowActive]} onPress={() => togglePrivateFriend(friend)} activeOpacity={0.7}>
-                    <View style={[fp.avatar, selected && fp.avatarActive]}><Text style={fp.avatarTxt}>{friend[0]}</Text></View>
-                    <Text style={[fp.name, selected && fp.nameActive]}>{friend}</Text>
-                    <View style={[fp.check, selected && fp.checkActive]}>{selected && <Text style={fp.checkMark}>✓</Text>}</View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-            <TouchableOpacity style={fp.doneBtn} onPress={() => setPrivacyVisible(false)} activeOpacity={0.85}>
-              <Text style={fp.doneTxt}>{privateFriends.length > 0 ? `${privateFriends.length}명 비공개 설정 완료` : '공개로 설정 (비공개 없음)'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* 비공개 대상 선택 모달 (블로그와 동일) */}
+      <PrivacyModal
+        visible={privacyVisible}
+        selectedFriends={privateFriends}
+        allFriends={DUMMY_FRIENDS}
+        onToggle={togglePrivateFriend}
+        onSetAll={setPrivateFriends}
+        onClose={() => setPrivacyVisible(false)}
+      />
 
       {/* 기타 통화 선택 모달 */}
       <Modal visible={currencyModalVisible} transparent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
@@ -739,8 +829,10 @@ const st = StyleSheet.create({
   cancel: { fontSize: 16, color: C.textDim },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  privacy: { fontSize: 16, fontWeight: '600', color: C.textDim },
-  privacyOn: { color: C.purpleNeon, fontWeight: '700' },
+  lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
+  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
+  lockBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
   save: { fontSize: 16, fontWeight: '700', color: C.purpleNeon },
 
   scroll: { flex: 1 },
@@ -900,4 +992,33 @@ const ct = StyleSheet.create({
   name: { flex: 1, color: C.white, fontSize: 15 },
   check: { color: C.purpleNeon, fontSize: 15, fontWeight: '700' },
   empty: { color: C.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 30 },
+});
+
+// ─── 비공개 모달 스타일 (블로그 BlogRecordScreen의 pm과 동일) ───
+const pm = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '80%' },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 2 },
+  clearAllBtn: { alignSelf: 'flex-end', marginBottom: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(191,133,252,0.12)' },
+  clearAllTxt: { fontSize: 12, color: '#BF85FC', fontWeight: '600' },
+  listScroll: { maxHeight: 320 },
+  allPrivateRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  allPrivateLabel: { fontSize: 15, color: '#FFFFFF', fontWeight: '700' },
+  allPrivateDesc: { fontSize: 12, color: '#8A8A99', marginTop: 2 },
+  friendRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 2 },
+  friendRowActive: { backgroundColor: 'rgba(107,33,168,0.15)' },
+  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  avatarActive: { backgroundColor: 'rgba(107,33,168,0.4)' },
+  avatarTxt: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  friendName: { flex: 1, fontSize: 15, color: '#A1A1B0', fontWeight: '500' },
+  friendNameActive: { color: '#FFFFFF', fontWeight: '600' },
+  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#4A4A59', alignItems: 'center', justifyContent: 'center' },
+  checkboxActive: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
+  checkMark: { fontSize: 13, color: '#FFFFFF', fontWeight: '700' },
+  doneBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
+  doneTxt: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });
