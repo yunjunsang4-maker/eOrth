@@ -27,7 +27,6 @@ import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
-import { DUMMY_FRIENDS } from '../constants/friends';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -273,7 +272,9 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
-  const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+  const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
+  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const friendNames = followingUsers.map((f) => f.username);
 
   // ─── 편집 모드 ───
   // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
@@ -786,7 +787,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const photos = blocksToPhotos(srcBlocks);
     const bodyText = blocksToPlainText(srcBlocks);
     return {
-      user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
       country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
       countryName: selectedCountry?.name || '',
       countryFlag: selectedCountry?.flag || '',
@@ -1327,7 +1328,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>앱 친구 선택</Text>
                   <ScrollView style={{ maxHeight: 300 }}>
-                    {DUMMY_FRIENDS.map(friend => {
+                    {friendNames.length === 0 ? (
+                      <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                        아직 팔로우한 친구가 없어요
+                      </Text>
+                    ) : friendNames.map(friend => {
                       const isSelected = companionFriends.includes(friend);
                       return (
                         <TouchableOpacity key={friend} style={st.friendPickerItem} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.75}>
@@ -1488,7 +1493,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <PrivacyModal
         visible={privacyModalVisible}
         selectedFriends={privateFriends}
-        allFriends={DUMMY_FRIENDS}
+        allFriends={friendNames}
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriendsAll}
         onClose={() => setPrivacyModalVisible(false)}

@@ -30,6 +30,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
+import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import type { BlogBlock, HeadingBlock } from '../types/blogBlocks';
@@ -819,7 +820,7 @@ function SnapStoryViewer({
             {comments.map((c: any) => (
               <View key={c.id}>
                 <View style={storyS.csCommentItem}>
-                  <View style={storyS.csAvatar}><Text style={{ fontSize: 15 }}>{c.emoji}</Text></View>
+                  <View style={storyS.csAvatar}><AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} /></View>
                   <View style={{ flex: 1 }}>
                     <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{commentTime(c)}</Text></View>
                     <Text style={storyS.csText}>{c.text}</Text>
@@ -828,7 +829,7 @@ function SnapStoryViewer({
                 </View>
                 {c.replies && c.replies.map((r: any) => (
                   <View key={r.id} style={[storyS.csCommentItem, { marginLeft: 42 }]}>
-                    <View style={storyS.csAvatar}><Text style={{ fontSize: 13 }}>{r.emoji}</Text></View>
+                    <View style={storyS.csAvatar}><AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} /></View>
                     <View style={{ flex: 1 }}>
                       <View style={storyS.csTopRow}><Text style={storyS.csName}>{r.name}</Text><Text style={storyS.csTime}>{commentTime(r)}</Text></View>
                       <Text style={storyS.csText}>{r.text}</Text>
@@ -892,7 +893,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, currentViewer } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, currentViewer, refreshComments } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -915,7 +916,11 @@ export default function PostDetailScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const blockYPositions = useRef<Record<string, number>>({});
 
-  const rawRecord = records.find((r) => r.id === postId);
+  const rawRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
+  // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
+  useEffect(() => {
+    refreshComments(postId, rawRecord?.remoteId);
+  }, [postId, rawRecord?.remoteId]);
   // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
   const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;
 
@@ -1121,7 +1126,7 @@ export default function PostDetailScreen() {
         >
               {/* ── 유저 정보 + 이미지 + 본문 ── */}
               {(() => {
-                const isMyPost = record.isMyPost === true || record.user.handle === 'yunjunsung' || record.user.handle === globalHandle;
+                const isMyPost = record.isMyPost === true || record.user.handle === globalHandle;
                 const postDisplayName = isMyPost
                   ? (globalNickname ? globalNickname : `@${globalHandle}`)
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
@@ -1130,6 +1135,8 @@ export default function PostDetailScreen() {
                     <View style={s.avatar}>
                       {isMyPost && globalProfilePhoto ? (
                         <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                      ) : record.user.photo ? (
+                        <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                       ) : (
                         <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
                       )}
@@ -1346,7 +1353,7 @@ export default function PostDetailScreen() {
             <View key={c.id}>
               <View style={s.commentItem}>
                 <View style={s.commentAvatar}>
-                  <Text style={{ fontSize: 15 }}>{c.emoji}</Text>
+                  <AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} />
                 </View>
                 <View style={s.commentBody}>
                   <View style={s.commentTopRow}>
@@ -1363,7 +1370,7 @@ export default function PostDetailScreen() {
               {c.replies && c.replies.length > 0 && c.replies.map((r) => (
                 <View key={r.id} style={s.replyItem}>
                   <View style={s.commentAvatar}>
-                    <Text style={{ fontSize: 13 }}>{r.emoji}</Text>
+                    <AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} />
                   </View>
                   <View style={s.commentBody}>
                     <View style={s.commentTopRow}>

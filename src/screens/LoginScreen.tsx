@@ -29,7 +29,7 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider } from '../services/auth';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -63,17 +63,30 @@ export default function LoginScreen({ navigation }: Props) {
   const [socialLoading, setSocialLoading] = useState(false);
   const [authSuccess, setAuthSuccess] = useState(false);
 
-  const handleGooglePress = () => {
-    setSocialModal('google');
-    setSocialLoading(false);
+  // 실제 소셜 로그인 (Supabase OAuth). 로딩/성공 오버레이만 모달로 표시하고
+  // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
+  const handleSocialLogin = async (provider: 'google' | 'apple') => {
+    setSocialModal(provider);
+    setSocialLoading(true);
     setAuthSuccess(false);
+    const result = await signInWithProvider(provider);
+    if (!result.ok) {
+      setSocialModal(null);
+      setSocialLoading(false);
+      Alert.alert('로그인 실패', result.error || '다시 시도해주세요.');
+      return;
+    }
+    setAuthSuccess(true);
+    setTimeout(() => {
+      setSocialLoading(false);
+      setSocialModal(null);
+      // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
+      proceedAfterAuth(() => { setSignUpMethod(provider); });
+    }, 600);
   };
 
-  const handleApplePress = () => {
-    setSocialModal('apple');
-    setSocialLoading(false);
-    setAuthSuccess(false);
-  };
+  const handleGooglePress = () => handleSocialLogin('google');
+  const handleApplePress = () => handleSocialLogin('apple');
 
   // ─── 탈퇴 유예 계정 처리 ───
   // 로그인 성공 시 탈퇴 신청 여부를 확인한다.
@@ -127,23 +140,6 @@ export default function LoginScreen({ navigation }: Props) {
         },
       ],
     );
-  };
-
-  const confirmSocialLogin = (emailStr: string, nameStr: string) => {
-    setSocialLoading(true);
-    setTimeout(() => {
-      setAuthSuccess(true);
-      setTimeout(() => {
-        setSocialLoading(false);
-        const provider = socialModal || 'google';
-        setSocialModal(null);
-        proceedAfterAuth(() => {
-          setSignUpMethod(provider);
-          setSignUpEmail(emailStr);
-          setNickname(nameStr);
-        });
-      }, 800);
-    }, 1200);
   };
 
   const handleForgotPassword = () => {
@@ -503,40 +499,7 @@ export default function LoginScreen({ navigation }: Props) {
                   </>
                 )}
               </View>
-            ) : (
-              <View style={styles.googleBody}>
-                {/* Account row */}
-                <TouchableOpacity
-                  style={styles.googleAccountRow}
-                  onPress={() => confirmSocialLogin('yunjunsung@gmail.com', '윤준상')}
-                >
-                  <View style={styles.googleAvatar}>
-                    <Text style={styles.googleAvatarText}>윤</Text>
-                  </View>
-                  <View style={styles.googleAccountInfo}>
-                    <Text style={styles.googleAccountName}>윤준상</Text>
-                    <Text style={styles.googleAccountEmail}>yunjunsung@gmail.com</Text>
-                  </View>
-                </TouchableOpacity>
-
-                {/* Use another account */}
-                <TouchableOpacity
-                  style={[styles.googleAccountRow, { borderBottomWidth: 0 }]}
-                  onPress={() => confirmSocialLogin('newuser@gmail.com', '새 사용자')}
-                >
-                  <View style={[styles.googleAvatar, styles.googleAvatarOther]}>
-                    <Text style={styles.googleAvatarTextOther}>👤</Text>
-                  </View>
-                  <View style={styles.googleAccountInfo}>
-                    <Text style={styles.googleAccountNameOther}>다른 계정 사용</Text>
-                  </View>
-                </TouchableOpacity>
-
-                <Text style={styles.googleDisclaimer}>
-                  eOrth 서비스 제공을 위해 Google에서 귀하의 이름, 이메일 주소, 프로필 사진을 eOrth 서비스와 공유합니다.
-                </Text>
-              </View>
-            )}
+            ) : null}
 
             {!socialLoading && (
               <TouchableOpacity
@@ -584,45 +547,7 @@ export default function LoginScreen({ navigation }: Props) {
                   </View>
                 )}
               </View>
-            ) : (
-              <View style={styles.appleBody}>
-                {/* Account Details card */}
-                <View style={styles.appleCard}>
-                  <View style={styles.appleRow}>
-                    <Text style={styles.appleLabel}>계정</Text>
-                    <Text style={styles.appleValue}>윤준상 (yunjunsung@icloud.com)</Text>
-                  </View>
-                  <View style={styles.appleRowDivider} />
-                  <View style={styles.appleRow}>
-                    <Text style={styles.appleLabel}>이메일</Text>
-                    <Text style={styles.appleValue}>나의 이메일 공유</Text>
-                  </View>
-                </View>
-
-                <Text style={styles.appleDisclaimer}>
-                  "사용자 ID로 계속"을 클릭하면 Face ID 또는 비밀번호를 통해 eOrth 서비스에 가입하고 이용약관 및 개인정보 처리방침에 동의하게 됩니다.
-                </Text>
-
-                <TouchableOpacity
-                  style={styles.appleSubmitBtn}
-                  onPress={() => confirmSocialLogin('yunjunsung@icloud.com', '윤준상')}
-                >
-                  <LinearGradient
-                    colors={['#007AFF', '#0055D0']}
-                    style={styles.appleSubmitGrad}
-                  >
-                    <Text style={styles.appleSubmitText}>사용자 ID로 계속</Text>
-                  </LinearGradient>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setSocialModal(null)}
-                  style={styles.appleCancelBtn}
-                >
-                  <Text style={styles.appleCancelText}>취소</Text>
-                </TouchableOpacity>
-              </View>
-            )}
+            ) : null}
           </View>
         </View>
       </Modal>

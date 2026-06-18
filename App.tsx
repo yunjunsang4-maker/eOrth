@@ -10,9 +10,15 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
 import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
+import { ToastProvider } from './src/store/toastStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import BadgeToastHost from './src/components/BadgeToastHost';
+import BadgeEvaluator from './src/components/BadgeEvaluator';
+import DMToastHost from './src/components/DMToastHost';
+import ToastHost from './src/components/ToastHost';
+import ProfileSync from './src/components/ProfileSync';
 
 export default function App() {
   // 알림 탭 → 스냅 화면으로 이동
@@ -61,9 +67,16 @@ export default function App() {
           <SettingsProvider>
             <RecordProvider>
               <DMProvider>
-                <StatusBar style="light" backgroundColor="#0A0118" translucent />
-                <SnapDetector />
-                <AppNavigator />
+                <ToastProvider>
+                  <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                  <SnapDetector />
+                  <ProfileSync />
+                  <BadgeEvaluator />
+                  <AppNavigator />
+                  <BadgeToastHost />
+                  <DMToastHost />
+                  <ToastHost />
+                </ToastProvider>
               </DMProvider>
             </RecordProvider>
           </SettingsProvider>

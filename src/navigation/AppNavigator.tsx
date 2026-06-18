@@ -69,6 +69,8 @@ export default function AppNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           gestureResponseDistance: 150,
+          // 스와이프 뒤로가기 중 이전 화면이 분리되어 흰 화면이 깜빡이는 버그 방지
+          detachPreviousScreen: false,
           cardStyleInterpolator: ({ current, next, layouts }) => ({
             cardStyle: {
               transform: [

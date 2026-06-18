@@ -31,7 +31,6 @@ import * as MediaLibrary from 'expo-media-library';
 import Svg, { Path } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
-import { DUMMY_FRIENDS } from '../constants/friends';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -1049,7 +1048,9 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
-  const { addRecord, updateRecord } = useRecords();
+  const { addRecord, updateRecord, followingUsers } = useRecords();
+  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const friendNames = followingUsers.map((f) => f.username);
   const TOTAL_STEPS = 3;
 
   // ─── 편집 모드 ───
@@ -1704,7 +1705,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         updateRecord(editRecord.id, payload);
       } else {
         addRecord({
-          user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+          user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
           visibility: 'friends',
           viewType: 'feed',
           ...payload,
@@ -2265,7 +2266,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       <PrivacyModal
         visible={privacyModalIndex !== null}
         selectedFriends={privacyModalIndex !== null ? (mediaPrivacy[privacyModalIndex] || []) : []}
-        allFriends={DUMMY_FRIENDS}
+        allFriends={friendNames}
         onToggle={friend => privacyModalIndex !== null && toggleMediaPrivacyFriend(privacyModalIndex, friend)}
         onSetAll={friends => privacyModalIndex !== null && setMediaPrivacyAll(privacyModalIndex, friends)}
         onClose={() => setPrivacyModalIndex(null)}
@@ -2289,7 +2290,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             </View>
 
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
-              {DUMMY_FRIENDS.map(friend => {
+              {friendNames.length === 0 ? (
+                <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
+                  아직 팔로우한 친구가 없어요
+                </Text>
+              ) : friendNames.map(friend => {
                 const isSelected = companionFriends.includes(friend);
                 return (
                   <TouchableOpacity

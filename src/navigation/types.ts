@@ -66,7 +66,7 @@ export type TabParamList = {
   MainTab: { startTutorial?: boolean } | undefined; // startTutorial: 기록 완성 후 메인 튜토리얼(코치마크) 자동 실행
   StatsTab: undefined;
   SocialTab: undefined;
-  ProfileTab: undefined;
+  ProfileTab: { openBadgeList?: boolean } | undefined; // openBadgeList: 배지 획득 토스트 탭 시 배지 리스트 모달 자동 열기
 };
 
 // ─── 루트 스택 ───

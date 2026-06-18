@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -9,6 +9,7 @@ import {
   Dimensions,
   Alert,
   Share,
+  Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -17,6 +18,14 @@ import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { useRecords } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
+import { isSupabaseConfigured } from '../services/supabase';
+import { getProfileById, type ProfileRow } from '../services/profile';
+import { fetchUserPosts } from '../services/posts';
+import { fetchFollowerCount } from '../services/social';
+import { computeEarnedBadgeIds } from '../utils/badgeRules';
+import { BADGES } from '../constants/badges';
+import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
+import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ─── 디자인 토큰 ───
@@ -40,160 +49,8 @@ const COLORS = {
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
 
-// ─── 기록 형식 아이콘 (FAB과 동일한 View 기반) ───
-const BADGE_SZ = 14;
-const BADGE_C = '#FFFFFF';
-
-const FeedBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 5, height: 2.5, borderTopLeftRadius: 1, borderTopRightRadius: 1, backgroundColor: BADGE_C }} />
-    <View style={{ width: 12, height: 8, borderRadius: 2, backgroundColor: BADGE_C, alignItems: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 5, height: 5, borderRadius: 2.5, borderWidth: 1.2, borderColor: '#2E2E3B' }} />
-    </View>
-  </View>
-);
-
-const BlogBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 12, height: 12, gap: 1.5 }}>
-      <View style={{ width: 8, height: 2, borderRadius: 1, backgroundColor: BADGE_C }} />
-      <View style={{ width: 12, height: 1.5, borderRadius: 0.75, backgroundColor: BADGE_C, opacity: 0.6 }} />
-      <View style={{ width: 10, height: 1.5, borderRadius: 0.75, backgroundColor: BADGE_C, opacity: 0.6 }} />
-      <View style={{ width: 9, height: 1.5, borderRadius: 0.75, backgroundColor: BADGE_C, opacity: 0.6 }} />
-    </View>
-  </View>
-);
-
-const AlbumBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 12, height: 12, flexDirection: 'row', flexWrap: 'wrap', gap: 1.5 }}>
-      <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: BADGE_C }} />
-      <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: BADGE_C }} />
-      <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: BADGE_C }} />
-      <View style={{ width: 5, height: 5, borderRadius: 1, backgroundColor: BADGE_C }} />
-    </View>
-  </View>
-);
-
-const SnapBadgeIcon = () => (
-  <Svg width={16} height={18} viewBox="0 0 24 24" fill="none">
-    <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill={BADGE_C} />
-  </Svg>
-);
-
-const CutBadgeIcon = () => (
-  <View style={{ width: BADGE_SZ, height: BADGE_SZ, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: 11, height: 13, borderWidth: 1, borderColor: BADGE_C, borderRadius: 2, padding: 1.5, flexDirection: 'row', flexWrap: 'wrap', gap: 1, alignContent: 'center', justifyContent: 'center' }}>
-      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
-      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
-      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
-      <View style={{ width: 3, height: 3, borderRadius: 0.5, backgroundColor: BADGE_C }} />
-    </View>
-  </View>
-);
-
-const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
-  feed: <FeedBadgeIcon />,
-  blog: <BlogBadgeIcon />,
-  album: <AlbumBadgeIcon />,
-  snap: <SnapBadgeIcon />,
-  cut: <CutBadgeIcon />,
-};
-
-// ─── 샘플 데이터 ───
-const friendProfile = {
-  username: 'minjun_k',
-  name: '김민준',
-  flag: '🇰🇷',
-  country: '대한민국',
-  recordCount: 15,
-  visitedCountries: 8,
-  followers: 42,
-  isAbroad: true,
-  currentCountry: '일본',
-  currentCountryFlag: '🇯🇵',
-  isFollowing: false,
-  badges: [
-    { id: 1, emoji: '🛫', name: '첫 도장' },
-    { id: 2, emoji: '🌏', name: '첫 아시아' },
-    { id: 3, emoji: '🎒', name: '혼행러' },
-    { id: 4, emoji: '🌟', name: '보이저 스타' },
-  ],
-  trips: [
-    {
-      id: 'trip-1',
-      emoji: '🗼',
-      title: '🇯🇵 2025.03.05',
-      country: '일본',
-      countryFlag: '🇯🇵',
-      date: '2025.03',
-      color: '#1A0A2E',
-      records: [
-        { id: '1', viewType: 'feed' },
-        { id: '2', viewType: 'blog' },
-        { id: 'seed-snap2', viewType: 'snap' },
-        { id: 'seed-cut', viewType: 'cut' },
-      ],
-    },
-    {
-      id: 'trip-2',
-      emoji: '🌴',
-      title: '🇹🇭 2025.01.15',
-      country: '태국',
-      countryFlag: '🇹🇭',
-      date: '2025.01',
-      color: '#2E1A0A',
-      records: [
-        { id: '4', viewType: 'blog' },
-        { id: '5', viewType: 'feed' },
-        { id: 'seed-snap', viewType: 'snap' },
-      ],
-    },
-    {
-      id: 'trip-3',
-      emoji: '🗽',
-      title: '🇺🇸 2024.12.01',
-      country: '미국',
-      countryFlag: '🇺🇸',
-      date: '2024.12',
-      color: '#0A1A2E',
-      records: [
-        { id: '6', viewType: 'feed' },
-      ],
-    },
-    {
-      id: 'trip-4',
-      emoji: '🏛️',
-      title: '🇮🇹 2024.10.10',
-      country: '이탈리아',
-      countryFlag: '🇮🇹',
-      date: '2024.10',
-      color: '#1A1A0A',
-      records: [
-        { id: '7', viewType: 'blog' },
-      ],
-    },
-  ],
-};
-
-// ─── 배지 하이라이트 ───
-const BadgeHighlightItem = ({ emoji, name }: { emoji: string; name: string }) => (
-  <View style={badgeHL.item}>
-    <LinearGradient
-      colors={['#6B21A8', '#BF85FC']}
-      start={{ x: 0, y: 1 }}
-      end={{ x: 1, y: 0 }}
-      style={badgeHL.gradientRing}
-    >
-      <View style={badgeHL.circle}>
-        <Text style={badgeHL.emoji}>{emoji}</Text>
-      </View>
-    </LinearGradient>
-    <Text style={badgeHL.name} numberOfLines={1}>
-      {name.length > 6 ? name.slice(0, 5) + '…' : name}
-    </Text>
-  </View>
-);
+// 라우트 파라미터 누락 시 username 기본값으로만 사용 (실제 데이터는 백엔드에서 로드)
+const friendProfile = { username: '' };
 
 // ─── 메인 화면 ───
 export default function FriendProfileScreen({
@@ -202,22 +59,70 @@ export default function FriendProfileScreen({
 }: RootStackScreenProps<'FriendProfile'>) {
   const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
-  const profile = friendProfile;
-  const displayUsername = username ?? profile.username;
+  const displayUsername = username ?? friendProfile.username;
+
+  // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
+  const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
+  const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
+  const [followerCount, setFollowerCount] = useState(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !userId) return;
+    let alive = true;
+    (async () => {
+      const [p, posts, fc] = await Promise.all([
+        getProfileById(userId),
+        fetchUserPosts(userId),
+        fetchFollowerCount(userId),
+      ]);
+      if (!alive) return;
+      setProfileRow(p);
+      setUserPosts(posts);
+      setFollowerCount(fc);
+    })();
+    return () => { alive = false; };
+  }, [userId]);
+
+  // 친구의 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시)
+  const friendBadges = useMemo(() => {
+    const earned = computeEarnedBadgeIds(userPosts, BADGES);
+    return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
+  }, [userPosts]);
+
+  // 화면 표시값 (백엔드 우선, 없으면 빈 값)
+  const display = {
+    name: profileRow?.nickname || profileRow?.handle || displayUsername,
+    emoji: profileRow?.emoji || '🧳',
+    photo: profileRow?.profile_photo || null,
+    bio: profileRow?.bio || '',
+    recordCount: userPosts.length,
+    followers: followerCount,
+    visitedCountries: new Set(userPosts.map((p) => p.countryName).filter(Boolean)).size,
+    trips: userPosts.map((p) => ({
+      id: p.id,
+      emoji: p.countryFlag || '🌍',
+      countryFlag: p.countryFlag || '',
+      title: p.countryName || (p.content ? p.content.slice(0, 16) : '여행'),
+      date: p.date || '',
+      coverUri: p.representativePhoto || p.medias?.[0],
+      records: [{ id: p.id, viewType: p.viewType || 'feed' }],
+    })),
+  };
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
-  const { followingUsers, followUser, unfollowUser, blockUser } = useRecords();
-  const following = followingUsers.some((f) => f.username === displayUsername);
+  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser } = useRecords();
+  const followEntry = followingUsers.find((f) => f.username === displayUsername);
+  const following = !!followEntry;
+  const isMutual = !!followEntry?.isMutual;
   const toggleFollow = () => {
     if (following) {
       unfollowUser(displayUsername);
     } else {
       followUser({
-        id: userId ?? displayUsername,
+        id: userId ?? profileRow?.id ?? displayUsername,
         username: displayUsername,
-        isAbroad: profile.isAbroad,
-        currentCountry: profile.currentCountry,
-        currentCountryFlag: profile.currentCountryFlag,
+        isAbroad: false,
+        currentCountry: null,
+        currentCountryFlag: null,
       });
     }
   };
@@ -317,43 +222,20 @@ export default function FriendProfileScreen({
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ── 프로필 헤더 (아바타 + 정보) ── */}
-        <View style={s.profileRow}>
-          <View style={s.avatarWrap}>
-            <View style={s.avatar}>
-              <Text style={s.avatarText}>{displayUsername[0].toUpperCase()}</Text>
-            </View>
-            {profile.isAbroad && <View style={s.onlineDot} />}
-          </View>
-          <View style={s.profileInfo}>
-            <Text style={s.userName}>{profile.name}</Text>
-            <Text style={s.userHandle}>@{displayUsername}</Text>
-            <Text style={s.userLocation}>{profile.flag} {profile.country}</Text>
-            <View style={s.statsRow}>
-              <View style={s.statCard}>
-                <Text style={s.statValue}>{profile.recordCount}</Text>
-                <Text style={s.statLabel}>기록 수</Text>
-              </View>
-              <View style={s.statCard}>
-                <Text style={[s.statValue, { color: COLORS.accent }]}>{profile.followers}</Text>
-                <Text style={[s.statLabel, { color: COLORS.accent }]}>팔로워</Text>
-              </View>
-              <View style={s.statCard}>
-                <Text style={[s.statValue, { color: COLORS.accent }]}>{profile.visitedCountries}</Text>
-                <Text style={[s.statLabel, { color: COLORS.accent }]}>방문국가</Text>
-              </View>
+        {/* ── 프로필 헤더 (아바타 + 정보) — 내 프로필과 동일 ── */}
+        <View style={pv.profileRow}>
+          <ProfileAvatar photo={display.photo} initial={displayUsername[0] ?? '?'} />
+          <View style={pv.profileInfo}>
+            <Text style={pv.userName}>{display.name}</Text>
+            <Text style={pv.userHandle}>@{displayUsername}</Text>
+            {!!display.bio && <Text style={pv.userBio}>{display.bio}</Text>}
+            <View style={pv.statsRow}>
+              <StatCard value={String(display.recordCount)} label="기록 수" />
+              <StatCard value={String(display.followers)} label="팔로워" />
+              <StatCard value={String(display.visitedCountries)} label="방문국가" />
             </View>
           </View>
         </View>
-
-        {/* ── 여행 중 배너 ── */}
-        {profile.isAbroad && (
-          <View style={s.abroadBanner}>
-            <Text style={s.abroadText}>
-              ✈️ {profile.currentCountryFlag} {profile.currentCountry} 여행 중이에요!
-            </Text>
-          </View>
-        )}
 
         {/* ── 팔로우 버튼 ── */}
         <TouchableOpacity
@@ -366,50 +248,65 @@ export default function FriendProfileScreen({
           </Text>
         </TouchableOpacity>
 
-        {/* ── 배지 하이라이트 ── */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={badgeHL.scroll}
-          contentContainerStyle={badgeHL.scrollContent}
-        >
-          {profile.badges.map((badge) => (
-            <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} />
-          ))}
-        </ScrollView>
+        {/* ── 맞팔 토글 (팔로잉 중일 때만) — 친구 수 배지(78·81·82·83) 판정용 ── */}
+        {following && (
+          <TouchableOpacity
+            style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
+            onPress={() => setFollowMutual(displayUsername, !isMutual)}
+            activeOpacity={0.85}
+          >
+            <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
+              {isMutual ? '🤝 맞팔 중' : '맞팔로 표시'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
-        <View style={s.divider} />
+        {/* ── 배지 하이라이트 (친구 공개 글로 계산) — 내 프로필과 동일 ── */}
+        {friendBadges.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={pv.badgeScroll}
+            contentContainerStyle={pv.badgeScrollContent}
+          >
+            {friendBadges.map((badge) => (
+              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
+            ))}
+          </ScrollView>
+        )}
 
-        {/* ── 여행 기록 ── */}
-        <View style={s.gridHeaderRow}>
-          <Text style={s.gridHeaderTitle}>여행 기록</Text>
-          <Text style={s.tripCount}>{profile.trips.length}개의 여행</Text>
+        <View style={pv.divider} />
+
+        {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
+        <View style={pv.gridHeaderRow}>
+          <Text style={pv.gridHeaderTitle}>여행 기록</Text>
+          <Text style={pv.tripCount}>{display.trips.length}개의 여행</Text>
         </View>
 
-        <View style={s.thumbGrid}>
-          {profile.trips.map((trip) => (
-            <TouchableOpacity
-              key={trip.id}
-              style={[s.thumbCard, { backgroundColor: trip.color }]}
-              activeOpacity={0.85}
-            >
-              <View style={s.thumbEmojiWrap}>
-                <Text style={s.thumbEmoji}>{trip.emoji}</Text>
-              </View>
-              <View style={s.thumbInfo}>
-                <Text style={s.thumbCountry}>{trip.title}</Text>
-                <Text style={s.thumbDate}>{trip.date}</Text>
-                <View style={s.thumbBadges}>
-                  {Array.from(new Set(trip.records.map((rec) => rec.viewType || 'feed'))).map((vt, idx) => (
-                    <View key={`${vt}-${idx}`} style={s.thumbBadge}>
-                      {VIEW_TYPE_BADGE[vt] || null}
-                    </View>
-                  ))}
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {display.trips.length === 0 ? (
+          <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+            아직 공개된 여행 기록이 없어요
+          </Text>
+        ) : (
+          <>
+            {/* 메인 카드 (첫 여행) */}
+            <TripCard
+              trip={display.trips[0]}
+              main
+              onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].id })}
+            />
+            {/* 나머지 2열 그리드 */}
+            <View style={pv.tripGrid}>
+              {display.trips.slice(1).map((trip) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  onPress={() => navigation.navigate('PostDetail', { postId: trip.id })}
+                />
+              ))}
+            </View>
+          </>
+        )}
 
         <View style={{ height: 48 }} />
       </ScrollView>
@@ -525,6 +422,7 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   avatarText: { fontSize: 28, fontWeight: 'bold', color: COLORS.white },
+  avatarImg: { width: 80, height: 80, borderRadius: 40 },
   onlineDot: {
     position: 'absolute', bottom: 2, right: 2,
     width: 14, height: 14, borderRadius: 7,
@@ -561,6 +459,16 @@ const s = StyleSheet.create({
   followingBtn: { backgroundColor: COLORS.card },
   followBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
   followingBtnText: { color: COLORS.accent },
+  mutualBtn: {
+    height: 38, borderRadius: 12,
+    backgroundColor: COLORS.card,
+    borderWidth: 1, borderColor: COLORS.accent,
+    alignItems: 'center', justifyContent: 'center',
+    marginBottom: 4,
+  },
+  mutualBtnOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
+  mutualBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
+  mutualBtnTextOn: { color: COLORS.white },
 
   // ── 구분선 ──
   divider: {

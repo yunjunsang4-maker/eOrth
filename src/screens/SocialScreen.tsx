@@ -16,6 +16,7 @@ import {
   Animated,
   Pressable,
   Share,
+  RefreshControl,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
@@ -29,9 +30,9 @@ import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { DUMMY_FRIENDS } from '../constants/friends';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
+import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as blockUser, handleReport as openReport } from '../utils/reportAndBlock';
@@ -57,20 +58,10 @@ const C = {
 // ─────────────────────────────────────────────
 // 댓글 — recordStore.commentsByPost 공유 (게시물별 저장, PostDetail과 동기화)
 // ─────────────────────────────────────────────
-type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number };
+type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number; photo?: string };
 const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
 
 // ─────────────────────────────────────────────
-// 친구 목록 (공유용)
-const SHARE_FRIENDS = [
-  { id: '1', name: '김민지', handle: 'minji_travel', emoji: '🌸', online: true },
-  { id: '2', name: '이준호', handle: 'junho_world', emoji: '🏄', online: true },
-  { id: '3', name: '박서연', handle: 'seoyeon_log', emoji: '✈️', online: false },
-  { id: '4', name: '최우진', handle: 'woojin_trip', emoji: '🗺️', online: false },
-  { id: '5', name: '정하늘', handle: 'haneul_sky', emoji: '🌅', online: false },
-  { id: '6', name: '강도윤', handle: 'doyun_go', emoji: '🎒', online: true },
-];
-
 // 공유 바텀시트
 // ─────────────────────────────────────────────
 function ShareBottomSheet({
@@ -88,7 +79,11 @@ function ShareBottomSheet({
 }) {
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { records } = useRecords();
+  const { records, followingUsers } = useRecords();
+  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const shareFriends = followingUsers.map((f) => ({
+    id: f.id, name: f.username, handle: f.username, emoji: '🧳', online: false,
+  }));
 
   const handleSNS = () => {
     setPrepareVisible(true);
@@ -104,7 +99,7 @@ function ShareBottomSheet({
     setFriendPickerVisible(true);
   };
 
-  const handleSelectFriend = (friend: typeof SHARE_FRIENDS[0]) => {
+  const handleSelectFriend = (friend: typeof shareFriends[0]) => {
     // 내부 View 오버레이 닫기
     setFriendPickerVisible(false);
     const doNav = () => {
@@ -199,7 +194,11 @@ function ShareBottomSheet({
             <View style={ss.friendPickerCard}>
               <Text style={ss.friendPickerTitle}>보낼 친구 선택</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-                {SHARE_FRIENDS.map(f => (
+                {shareFriends.length === 0 ? (
+                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                    아직 팔로우한 친구가 없어요
+                  </Text>
+                ) : shareFriends.map(f => (
                   <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
                     <View style={ss.friendAvatarWrap}>
                       <View style={ss.friendAvatar}>
@@ -275,7 +274,11 @@ function CommentBottomSheet({
                 <View key={c.id}>
                   <View style={cs.commentRow}>
                     <View style={cs.commentAvatar}>
-                      <Text style={cs.commentAvatarText}>{c.name.charAt(0)}</Text>
+                      {c.photo ? (
+                        <Image source={{ uri: c.photo }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                      ) : (
+                        <Text style={cs.commentAvatarText}>{c.name.charAt(0)}</Text>
+                      )}
                     </View>
                     <View style={cs.commentContent}>
                       <Text style={cs.commentName}>{c.name}</Text>
@@ -406,16 +409,16 @@ function FeedCard({
       {/* 카드 헤더 */}
       <View style={s.cardHeader}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
           activeOpacity={0.7}
         >
           <View style={s.feedAvatar}>
-            <Text style={{ fontSize: 22 }}>{item.user.emoji}</Text>
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} />
           </View>
         </TouchableOpacity>
         <View style={s.userInfo}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             activeOpacity={0.7}
           >
             <Text style={s.userName}>{item.user.handle}</Text>
@@ -669,7 +672,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         {/* 헤더 */}
         <View style={sc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} activeOpacity={0.7}
           >
             <View style={sc.avatar}>
@@ -920,11 +923,11 @@ function BlogCard({
         {/* 블로그 헤더 */}
         <View style={bc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
           >
             <View style={bc.avatar}>
-              <Text style={{ fontSize: 14 }}>{item.user.emoji}</Text>
+              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} />
             </View>
             <View>
               <Text style={bc.userName}>{item.user.handle}</Text>
@@ -1218,11 +1221,11 @@ function AlbumCard({
       {/* 헤더 */}
       <View style={ab.header}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
           style={ab.userRow} activeOpacity={0.7}
         >
           <View style={ab.avatar}>
-            <Text style={{ fontSize: 18 }}>{item.user.emoji}</Text>
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} />
           </View>
           <View>
             <Text style={ab.userName}>{item.user.handle}</Text>
@@ -1520,7 +1523,7 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
-  const isMyPost = item.isMyPost || item.user.handle === 'yunjunsung' || item.user.handle === globalHandle;
+  const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
     ? (globalNickname ? globalNickname : globalHandle)
     : (item.user.name ? item.user.name : item.user.handle);
@@ -1530,11 +1533,13 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
       <TouchableOpacity
         style={d.metaUser}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
       >
         <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
           {isMyPost && globalProfilePhoto ? (
             <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
+          ) : item.user.photo ? (
+            <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : (
             <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
           )}
@@ -1923,7 +1928,15 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, setCurrentViewer } = useRecords();
+  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, setCurrentViewer, followingUsers, feedPosts, refreshFeed } = useRecords();
+  // '친구로 보기' 미리보기 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const viewerFriends = followingUsers.map((f) => f.username);
+  // 당겨서 새로고침 → 백엔드 피드 갱신
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await refreshFeed(); } finally { setRefreshing(false); }
+  };
   const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
   
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
@@ -2005,7 +2018,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
   };
 
   const blockedNames = blockedUsers.map((b) => b.name);
-  const allVisible = records
+  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드
+  const mergedFeed = [...records, ...feedPosts].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+  const allVisible = mergedFeed
     .filter(
       (r) =>
         (r.visibility === 'friends' || r.visibility === 'public') &&
@@ -2082,6 +2097,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           }
         )}
         scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BF85FC" colors={['#BF85FC']} />}
       >
         {/* 친구로 보기 — 비공개 미리보기 뷰어 전환 */}
         <View style={vc.bar}>
@@ -2094,7 +2110,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             >
               <Text style={[vc.chipTxt, currentViewer === null && vc.chipTxtOn]}>전체 보기</Text>
             </TouchableOpacity>
-            {DUMMY_FRIENDS.map((name) => {
+            {viewerFriends.map((name) => {
               const on = currentViewer === name;
               return (
                 <TouchableOpacity
@@ -2127,8 +2143,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   >
                     <View style={s.storyAvatarWrap}>
                       <View style={s.storyAvatar}>
-                        {(snap.isMyPost || snap.user.handle === 'yunjunsung' || snap.user.handle === globalHandle) && globalProfilePhoto ? (
+                        {(snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                        ) : snap.user.photo ? (
+                          <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : (
                           <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
                         )}
@@ -2137,7 +2155,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   </LinearGradient>
                   <Text style={s.storyName} numberOfLines={1}>
                     {snap.countryFlag ? `${snap.countryFlag} ` : ''}
-                    {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === 'yunjunsung' || snap.user.handle === globalHandle)}
+                    {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === globalHandle)}
                   </Text>
                 </TouchableOpacity>
               ))}

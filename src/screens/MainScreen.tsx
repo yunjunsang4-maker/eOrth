@@ -198,14 +198,6 @@ const CITY_TO_EN: Record<string, string> = {
   '방콕': 'Bangkok',
 };
 
-const DUMMY_COUNTRY_PHOTOS: Record<string, string> = {
-  '대한민국': 'https://picsum.photos/seed/korea/400/300',
-  '한국': 'https://picsum.photos/seed/korea/400/300',
-  '일본': 'https://picsum.photos/seed/japan/400/300',
-  '프랑스': 'https://picsum.photos/seed/france/400/300',
-  '태국': 'https://picsum.photos/seed/thailand/400/300',
-};
-
 type Props = TabScreenProps<'MainTab'>;
 
 // 기록 형식 선택 → 이동할 수 있는 작성 화면들
@@ -356,7 +348,7 @@ export default function MainScreen({ navigation, route }: Props) {
         return r.medias[0];
       }
     }
-    return DUMMY_COUNTRY_PHOTOS[countryName] || null;
+    return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
   };
 
   const visitedCountries: VisitedCountry[] = useMemo(() => {
@@ -387,7 +379,7 @@ export default function MainScreen({ navigation, route }: Props) {
         regionsMap.set(en, {
           name: sr.city,
           nameEn: en,
-          photo: DUMMY_COUNTRY_PHOTOS[countryKo] || undefined,
+          photo: undefined,
           mode: regionDisplayModes[en] || undefined,
         });
       }
@@ -408,10 +400,6 @@ export default function MainScreen({ navigation, route }: Props) {
           photo = r.snapBackUri;
         } else if (r.medias && r.medias.length > 0) {
           photo = r.medias[0];
-        }
-
-        if (!photo) {
-          photo = DUMMY_COUNTRY_PHOTOS[countryKo];
         }
 
         regionsMap.set(r.regionNameEn, {

@@ -17,6 +17,8 @@ import {
   Dimensions,
   Linking,
   Vibration,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,9 +34,25 @@ import {
   useEntranceAnimation,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
+import { computeTravelStats } from '../utils/badgeRules';
+import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { TabScreenProps } from '../navigation/types';
+
+// 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+// 리퀴드 글래스 카드 재정렬용 부드러운 스프링 레이아웃 전환
+// (이웃 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
+const LIQUID_LAYOUT = {
+  duration: 340,
+  create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+  update: { type: LayoutAnimation.Types.spring, springDamping: 0.78 },
+  delete: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
+};
 
 // ─── 컬러 상수 (Figma 디자인 기반) ───
 const COLORS = {
@@ -314,228 +332,17 @@ interface TripThumbnail {
   coverUri?: string; // 대표 기록의 첫 사진 — 있으면 카드 썸네일 배경으로 사용
 }
 
-const TRIP_THUMBNAILS: TripThumbnail[] = [
-  {
-    id: 'trip-japan',
-    emoji: '🗼',
-    title: '도쿄 감성 여행',
-    country: '일본',
-    countryFlag: '🇯🇵',
-    date: '2025.03',
-    color: '#1A0A2E',
-    records: [
-      { id: '1', viewType: 'feed' },
-      { id: '2', viewType: 'blog' },
-      { id: 'seed-snap2', viewType: 'snap' },
-      { id: 'seed-cut', viewType: 'cut' },
-    ],
-  },
-  {
-    id: 'trip-usa',
-    emoji: '🗽',
-    title: 'NYC 자유여행',
-    country: '미국',
-    countryFlag: '🇺🇸',
-    date: '2025.01',
-    color: '#0A1A2E',
-    records: [
-      { id: '3', viewType: 'blog' },
-      { id: '7', viewType: 'feed' },
-    ],
-  },
-  {
-    id: 'trip-hongkong',
-    emoji: '🌃',
-    title: '홍콩 야경 투어',
-    country: '홍콩',
-    countryFlag: '🇭🇰',
-    date: '2024.12',
-    color: '#1A1A0A',
-    records: [
-      { id: '5', viewType: 'feed' },
-    ],
-  },
-  {
-    id: 'trip-thailand',
-    emoji: '🏯',
-    title: '방콕 힐링 여행',
-    country: '태국',
-    countryFlag: '🇹🇭',
-    date: '2025.04',
-    color: '#2E1A0A',
-    records: [
-      { id: 'seed-blog-1', viewType: 'blog' },
-      { id: 'seed-snap', viewType: 'snap' },
-    ],
-  },
-  {
-    id: 'trip-spain',
-    emoji: '💃',
-    title: '스페인 건축 탐방',
-    country: '스페인',
-    countryFlag: '🇪🇸',
-    date: '2025.05',
-    color: '#2E0A0A',
-    records: [
-      { id: 'seed-blog-2', viewType: 'blog' },
-      { id: 'seed-cut3', viewType: 'cut' },
-    ],
-  },
-];
+// 프로필 여행 카드는 실제 작성 기록으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
+const TRIP_THUMBNAILS: TripThumbnail[] = [];
 
 let CURRENT_TRIP_THUMBNAILS = [...TRIP_THUMBNAILS];
 
+// 사용자가 드래그로 지정한 카드 표시 순서(카드 id 배열) — 화면 재진입 시 유지
+// displayTrips(mappedThumbnails + trips)를 이 순서로 정렬한다.
+// 여기에 없는(새로 만든) 카드는 맨 앞(메인 자리)으로 보낸다.
+let CARD_ORDER: string[] = [];
 
-// ─── 배지 데이터 ───
-const BADGES = [
-  // 대륙 & 첫 방문 배지 (1 ~ 8)
-  { id: 1, emoji: '🛫', name: '역사적인 당신의 첫 발자취!', desc: '첫 기록', earned: true, glow: 'rgba(47,217,244,0.6)' },
-  { id: 2, emoji: '🌏', name: '아시아에서의 첫발!', desc: '아시아 첫방문', earned: true, glow: 'rgba(47,217,244,0.6)' },
-  { id: 3, emoji: '🇪🇺', name: '유럽에서의 첫발!', desc: '유럽 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 4, emoji: '🍁', name: '북미에서의 첫발!', desc: '북아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 5, emoji: '🌴', name: '남미에서의 첫발!', desc: '남아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 6, emoji: '🦘', name: '오세아니아에서의 첫발!', desc: '오세아니아 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 7, emoji: '🦁', name: '아프리카에서의 첫발', desc: '아프리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 8, emoji: '🕌', name: '중동에서의 첫발!', desc: '중동 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
 
-  // 여행 동행 & 스타일 배지 (9 ~ 15)
-  { id: 9, emoji: '🎒', name: '혼자만의 감성을 즐기는 유형인가요?', desc: '홀로 여행', earned: true, glow: 'rgba(255,100,100,0.5)' },
-  { id: 10, emoji: '💑', name: '여행에서 안 싸웠길 바래요^^', desc: '커플 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 11, emoji: '👵', name: '당신의 첫 효도인가요?', desc: '부모님 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 12, emoji: '🤝', name: '여행을 계획한 친구에게 불평하지 마세요.', desc: '친구 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 13, emoji: '🎂', name: '생일 축하드립니다', desc: '생일 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 14, emoji: '⚡', name: '스피드 트래블러', desc: '당일치기 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 15, emoji: '🚗', name: '가스는 잠궜죠?', desc: '30일 이상 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-
-  // 국가 & 지역 탐방 배지 (16 ~ 34)
-  { id: 16, emoji: '🇯🇵', name: '히사시부리!', desc: '일본 재방문', earned: true, glow: 'rgba(47,244,150,0.5)' },
-  { id: 17, emoji: '🍣', name: '열도에 새긴 발걸음', desc: '일본 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 18, emoji: '🥢', name: '젓가락만 챙기세요!', desc: '중국과 일본 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 19, emoji: '🇺🇸', name: '미주투어', desc: '미국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 20, emoji: '🇨🇳', name: '중국투어', desc: '중국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 21, emoji: '⛪', name: '당신은 종교대통합을 이뤘어요', desc: '각기 다른 종교국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 22, emoji: '🏝️', name: '섬 입문자', desc: '섬 3번 방문 (Lv.1)', earned: true, glow: 'rgba(47,244,150,0.5)' },
-  { id: 23, emoji: '🛥️', name: '섬 탐험가', desc: '섬 5번 방문 (Lv.2)', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 24, emoji: '👑', name: '섬 정복자', desc: '섬 10번 방문 (Lv.3)', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 25, emoji: '🗽', name: '당신도 이제 뉴욕커', desc: '뉴욕 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 26, emoji: '🎲', name: '당신은 타짜인가요?', desc: '카지노 지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 27, emoji: '☯️', name: '동방의 수호자', desc: '한자 문화권 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 28, emoji: '🇬🇧', name: 'You can speak english, right?', desc: '영어권(미국,영국,호주,캐나다,뉴질랜드) 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 29, emoji: '🐪', name: '오아시스는 찾으셨나요?', desc: '사막지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 30, emoji: '🥵', name: '데오드란트를 추천해 드릴까요?', desc: '열대지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 31, emoji: '🛂', name: '한국여권의 힘!', desc: '무비자 입국 가능 국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 32, emoji: '✈️', name: '월드투어는 성공적이었나요?', desc: '한번에 여러나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 33, emoji: '🌀', name: '이건 데자뷰?!', desc: '정확히 1년만에 같은 곳 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 34, emoji: '💖', name: '이 나라와 사랑에 빠지셨군요!', desc: '같은 나라 재방문 5회', earned: false, glow: 'rgba(47,244,150,0.5)' },
-
-  // 여행 마일스톤 배지 (35 ~ 61)
-  { id: 35, emoji: '🚶', name: '초보 여행자', desc: '3개국 방문 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
-  { id: 36, emoji: '🏃', name: '신흥 탐험가', desc: '5개국 방문 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 37, emoji: '🗺️', name: '네이션 컬렉터', desc: '10개국 방문 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 38, emoji: '🌎', name: '글로벌 트래블러', desc: '20개국 방문 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 39, emoji: '🪐', name: '월드 마스터', desc: '30개국 방문 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 40, emoji: '👾', name: '세계 정복자', desc: '50개국 방문 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 41, emoji: '🛡️', name: '전설의 탐험가', desc: '100개국 방문 (Lv.7)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 42, emoji: '🧭', name: '국경없는 이방인', desc: '모든 대륙 1개국 이상 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 43, emoji: '🏆', name: '지구정복자', desc: '모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 44, emoji: '🗺️', name: '대륙 정복자', desc: '대륙 하나의 모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 45, emoji: '✍️', name: '여행 기록가', desc: '여행기록 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
-  { id: 46, emoji: '📖', name: '여행 일지 마스터', desc: '여행기록 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 47, emoji: '📸', name: '남는건 사진뿐', desc: '사진 50장이상 업로드', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 48, emoji: '⭐', name: '별점 입문자', desc: '별점 1점 기록 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 49, emoji: '🌟', name: '별점 탐색자', desc: '별점 2점 기록 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 50, emoji: '⚖️', name: '별점 중립파', desc: '별점 3점 기록 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 51, emoji: '💯', name: '별점 후한 편', desc: '별점 4점 기록 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 52, emoji: '🥇', name: '별점 마스터', desc: '별점 5점 기록 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 53, emoji: '📅', name: '당신의 사계절은 여행으로 채워졌네요', desc: '매분기 여행', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 54, emoji: '💎', name: '저희의 워너비이십니다.', desc: '매달 여행', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 55, emoji: '🕰️', name: '잊지말아줘요..', desc: '1년전 오늘 기록 조회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 56, emoji: '🌱', name: '배지 입문', desc: '배지 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
-  { id: 57, emoji: '📂', name: '배지 수집가', desc: '배지 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 58, emoji: '🔥', name: '배지 매니아', desc: '배지 30개 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 59, emoji: '🎓', name: '배지 마스터', desc: '배지 50개 달성 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 60, emoji: '🏆', name: '배지 챔피언', desc: '배지 100개 달성 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 61, emoji: '👑', name: '배지 레전드', desc: '배지 200개 달성 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-
-  // 시즌 & 기념일 배지 (62 ~ 65)
-  { id: 62, emoji: '🙇', name: '부모님께 인사는 드렸죠?!', desc: '연휴 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 63, emoji: '🎍', name: '새해복 많이 받으세요!', desc: '해가 바뀌는 기간 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 64, emoji: '🥗', name: '다이어트는 성공하셨나요?', desc: '여름휴가 여행(7~8월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 65, emoji: '🧣', name: '당신은 겨울잠이 없군요', desc: '겨울휴가 여행(1~2월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-
-  // 기록 형식 배지 (66 ~ 72)
-  { id: 66, emoji: '📝', name: '블로그의 달인', desc: '블로그 형식 기록 10개 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 67, emoji: '🖼️', name: '앨범 큐레이터', desc: '앨범 형식 기록 5개 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 68, emoji: '⚡', name: '스냅 마스터', desc: '스냅 기록 30개 달성', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 69, emoji: '🎨', name: '만능 기록자', desc: '피드+블로그+앨범+스냅 각각 1개 이상 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 70, emoji: '🏷️', name: '앨범 아티스트', desc: '앨범 꾸미기에서 스티커 50개 이상 사용', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 71, emoji: '📷', name: '포토그래퍼', desc: '앨범 한 페이지에 사진 5장 이상 배치', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 72, emoji: '📚', name: '다중 페이지 마스터', desc: '앨범 5페이지 이상 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
-
-  // 소셜 배지 (73 ~ 85)
-  { id: 73, emoji: '💬', name: '첫 DM', desc: '친구에게 첫 DM 전송', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 74, emoji: '🔗', name: '공유왕', desc: '게시물 공유 10회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 75, emoji: '🧚', name: '댓글 요정', desc: '댓글 50개 작성', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 76, emoji: '🔥', name: '인싸 여행러', desc: '게시물에 좋아요 100개 받기', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 77, emoji: '👥', name: '여행 메이트', desc: '같은 친구와 동행기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 78, emoji: '🦋', name: '소셜 나비', desc: '친구 50명 달성', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 79, emoji: '🌟', name: '인기스타', desc: '팔로워 100명 달성', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 80, emoji: '📥', name: '첫 공유받기', desc: '다른 사람이 내 게시물을 DM으로 공유', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 81, emoji: '👋', name: '첫 친구', desc: '친구 1명 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
-  { id: 82, emoji: '🎉', name: '인싸의 시작', desc: '친구 10명 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 83, emoji: '👑', name: '인맥왕', desc: '친구 100명 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 84, emoji: '🤝', name: '첫 동행', desc: '앱 친구와 동행기록 1회 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 85, emoji: '👫', name: '동행 메이트', desc: '앱 친구와 동행기록 3회 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-
-  // 스냅 특별 배지 (86 ~ 90)
-  { id: 86, emoji: '⚡', name: '번개 촬영', desc: '스냅 알림 후 10초 이내 촬영', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 87, emoji: '🐌', name: '느긋한 여행자', desc: '스냅 알림 후 5분 이상 후 촬영', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 88, emoji: '🔥', name: '스냅 스트릭', desc: '7일 연속 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 89, emoji: '🦉', name: '야행성 스냅', desc: '새벽 2~5시 사이 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
-  { id: 90, emoji: '🌅', name: '일출 스냅', desc: '오전 5~7시 사이 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
-
-  // 지구본 & 탐험 배지 (91 ~ 96)
-  { id: 91, emoji: '🌐', name: '지구본 탐험가', desc: '지구본에서 5개국 이상 활성화', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 92, emoji: '↔️', name: '적도 횡단', desc: '북반구+남반구 국가 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 93, emoji: '↕️', name: '경도 마스터', desc: '동반구+서반구 국가 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 94, emoji: '⏰', name: '시차 정복', desc: '시차 12시간 이상 차이나는 두 나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 95, emoji: '🏝️', name: '섬나라 컬렉터', desc: '섬나라 5개국 이상 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 96, emoji: '⛰️', name: '내륙국 탐험가', desc: '바다 없는 나라 3개국 이상 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-
-  // 기록 습관 배지 (97 ~ 104)
-  { id: 97, emoji: '💪', name: '꾸준함의 힘', desc: '30일 연속 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 98, emoji: '📅', name: '새해 첫 기록', desc: '1월 1일에 기록 작성', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 99, emoji: '🎄', name: '크리스마스 트래블러', desc: '12월 25일에 여행 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 100, emoji: '🌃', name: '밤샘 여행기', desc: '자정~새벽 3시 사이 기록 작성 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 101, emoji: '☔', name: '비 오는 날의 기록', desc: '날씨 \'비\'로 기록 10회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 102, emoji: '❄️', name: '눈의 나라', desc: '날씨 \'눈\'으로 기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 103, emoji: '🥰', name: '별점 후한 사람', desc: '별점 5점 기록 10개', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 104, emoji: '🧐', name: '까다로운 평론가', desc: '별점 1점 기록 3개', earned: false, glow: 'rgba(168,85,247,0.6)' },
-
-  // 앱 활용 배지 (105 ~ 114)
-  { id: 105, emoji: '🏷️', name: '스티커 수집가', desc: '스티커 전체 카테고리 사용', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 106, emoji: '🖼️', name: '프레임 마스터', desc: '앨범에서 3가지 프레임 모두 사용', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 107, emoji: '🎨', name: '지구본 커스텀', desc: '지구본 색상 변경 3회', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 108, emoji: '👤', name: '프로필 완성', desc: '프로필 사진+이름+소개 모두 설정', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 109, emoji: '🔔', name: '알림 수호자', desc: '알림 설정 커스텀 완료', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 110, emoji: '🚨', name: '첫 신고', desc: '부적절한 게시물 신고 1회', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 111, emoji: '📁', name: '정리의 달인', desc: '게시물 보관 10개', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 112, emoji: '🏃', name: '꾸준한 여행자', desc: '앱 연속 접속 30일 (Lv.1)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 113, emoji: '💝', name: '충성 유저', desc: '앱 연속 접속 50일 (Lv.2)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 114, emoji: '🔥', name: 'eOrth 마니아', desc: '앱 연속 접속 100일 (Lv.3)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-
-  // 특별 & 시즌 배지 (115 ~ 121)
-  { id: 115, emoji: '🎂', name: 'eOrth 1주년', desc: '앱 설치 후 1년 경과', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 116, emoji: '🚀', name: '얼리어답터', desc: '앱 출시 첫 달 가입', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 117, emoji: '🎑', name: '명절 여행러', desc: '설날 또는 추석 연휴 중 해외 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 118, emoji: '🌸', name: '벚꽃 시즌', desc: '3~4월 일본 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 119, emoji: '🍺', name: '옥토버페스트', desc: '10월 독일 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 120, emoji: '🎭', name: '카니발 참가자', desc: '2~3월 브라질 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 121, emoji: '🌌', name: '오로라 헌터', desc: '노르웨이/아이슬란드/핀란드 겨울 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-
-  // 122
-  { id: 122, emoji: '🍔', name: '미식가', desc: '같은 나라 다른 도시 음식점 5곳 기록', earned: false, glow: 'rgba(255,100,100,0.5)' }
-];
 
 // ─── 여행 카드 그라디언트 색상 매핑 ───
 const TRIP_GRADIENT_COLORS: Record<string, [string, string]> = {
@@ -585,33 +392,26 @@ const getMetallicColors = (glow: string | undefined): [string, string, string, s
   return ['#E2E8F0', '#94A3B8', '#F1F5F9', '#475569']; // 실버
 };
 
-const BADGE_CATEGORIES = [
-  { name: '대륙 & 첫 방문 배지', range: [1, 8] },
-  { name: '여행 동행 & 스타일 배지', range: [9, 15] },
-  { name: '국가 & 지역 탐방 배지', range: [16, 34] },
-  { name: '여행 마일스톤 배지', range: [35, 61] },
-  { name: '시즌 & 기념일 배지', range: [62, 65] },
-  { name: '기록 형식 배지', range: [66, 72] },
-  { name: '소셜 배지', range: [73, 85] },
-  { name: '스냅 특별 배지', range: [86, 90] },
-  { name: '지구본 & 탐험 배지', range: [91, 96] },
-  { name: '기록 습관 배지', range: [97, 104] },
-  { name: '앱 활용 배지', range: [105, 114] },
-  { name: '특별 & 시즌 배지', range: [115, 122] },
-];
 
 function BadgeListModal({
   visible,
   onClose,
   selectedBadgeIds,
   setSelectedBadgeIds,
+  earnedBadgeIds,
 }: {
   visible: boolean;
   onClose: () => void;
   selectedBadgeIds: number[];
   setSelectedBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
+  earnedBadgeIds: Set<number>;
 }) {
-  const earnedCount = BADGES.filter((b) => b.earned).length;
+  const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
+
+  // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
+  const [selectMode, setSelectMode] = useState(false);
+  // 확대해서 볼 배지 (null이면 닫힘)
+  const [enlargedBadge, setEnlargedBadge] = useState<(typeof BADGES)[number] | null>(null);
 
   const handleToggleSelect = (badgeId: number, isEarned: boolean) => {
     if (!isEarned) return; // 미획득 배지는 선택 불가
@@ -628,12 +428,28 @@ function BadgeListModal({
     });
   };
 
+  // 배지 탭 분기: 선택 모드면 토글, 아니면 확대해서 보기
+  const handleBadgePress = (badge: (typeof BADGES)[number]) => {
+    if (selectMode) {
+      handleToggleSelect(badge.id, earnedBadgeIds.has(badge.id));
+    } else {
+      setEnlargedBadge(badge);
+    }
+  };
+
+  // 모달을 닫을 때 선택 모드/확대 상태도 초기화
+  const handleClose = () => {
+    setSelectMode(false);
+    setEnlargedBadge(null);
+    onClose();
+  };
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
     >
       <View style={blStyles.root}>
         {/* 핸들 바 */}
@@ -642,8 +458,19 @@ function BadgeListModal({
         <View style={blStyles.header}>
           <Text style={blStyles.title}>나의 배지 컬렉션</Text>
           <Text style={blStyles.subtitle}>
-            {earnedCount} / {BADGES.length} 획득 (프로필에 표시할 배지 선택)
+            {selectMode
+              ? `프로필에 표시할 배지 선택 (${selectedBadgeIds.length}/5)`
+              : `${earnedCount} / ${BADGES.length} 획득 · 배지를 눌러 확대`}
           </Text>
+          <TouchableOpacity
+            style={[blStyles.selectBtn, selectMode && blStyles.selectBtnOn]}
+            onPress={() => setSelectMode((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <Text style={[blStyles.selectBtnText, selectMode && blStyles.selectBtnTextOn]}>
+              {selectMode ? '선택 완료' : '선택'}
+            </Text>
+          </TouchableOpacity>
         </View>
 
         <View style={blStyles.binderWrapper}>
@@ -651,9 +478,12 @@ function BadgeListModal({
             showsVerticalScrollIndicator={false}
           >
             {BADGE_CATEGORIES.map((cat) => {
-              const catBadges = BADGES.filter(
-                (b) => b.id >= cat.range[0] && b.id <= cat.range[1]
-              );
+              // ids가 있으면 그 순서대로, 없으면 range 구간. extra는 뒤에 덧붙인다.
+              const pick = (id: number) => { const b = BADGES.find((x) => x.id === id); return b ? [b] : []; };
+              const base = cat.ids
+                ? cat.ids.flatMap(pick)
+                : BADGES.filter((b) => b.id >= cat.range[0] && b.id <= cat.range[1]);
+              const catBadges = cat.extra ? [...base, ...cat.extra.flatMap(pick)] : base;
               // Group into rows of 3
               const rows = [];
               for (let i = 0; i < catBadges.length; i += 3) {
@@ -666,7 +496,7 @@ function BadgeListModal({
                   {rows.map((row, rowIndex) => (
                     <View key={rowIndex} style={blStyles.row}>
                       {row.map((badge, index) => {
-                        const isEarned = badge.earned;
+                        const isEarned = earnedBadgeIds.has(badge.id);
                         const isSelected = selectedBadgeIds.includes(badge.id);
                         const metallicColors = getMetallicColors(badge.glow);
 
@@ -674,8 +504,8 @@ function BadgeListModal({
                           <TouchableOpacity
                             key={badge.id}
                             style={[blStyles.cell, { marginRight: index === 2 ? 0 : 12 }]}
-                            activeOpacity={isEarned ? 0.75 : 1}
-                            onPress={() => handleToggleSelect(badge.id, isEarned)}
+                            activeOpacity={0.75}
+                            onPress={() => handleBadgePress(badge)}
                           >
                             {isEarned ? (
                               /* 획득한 메탈릭 코인 */
@@ -741,9 +571,76 @@ function BadgeListModal({
           </ScrollView>
         </View>
 
-        <TouchableOpacity style={blStyles.closeBtn} onPress={onClose} activeOpacity={0.8}>
+        <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
           <Text style={blStyles.closeBtnText}>닫기</Text>
         </TouchableOpacity>
+
+        {/* 배지 확대 보기 오버레이 */}
+        <Modal
+          visible={enlargedBadge !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setEnlargedBadge(null)}
+        >
+          <TouchableOpacity
+            style={blStyles.zoomBackdrop}
+            activeOpacity={1}
+            onPress={() => setEnlargedBadge(null)}
+          >
+            {enlargedBadge && (() => {
+              const isEarned = earnedBadgeIds.has(enlargedBadge.id);
+              const metallicColors = getMetallicColors(enlargedBadge.glow);
+              return (
+                <TouchableOpacity activeOpacity={1} style={blStyles.zoomCard}>
+                  {isEarned ? (
+                    <View style={blStyles.zoomCoinWrapper}>
+                      <LinearGradient
+                        colors={metallicColors}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                        style={blStyles.zoomCoinBorder}
+                      >
+                        <LinearGradient
+                          colors={['#1E1B13', '#3A3525']}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                          style={blStyles.zoomCoinInner}
+                        >
+                          <Text style={blStyles.zoomCoinEmoji}>{enlargedBadge.emoji}</Text>
+                        </LinearGradient>
+                      </LinearGradient>
+                      <LinearGradient
+                        colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                        start={{ x: 0.1, y: 0.1 }}
+                        end={{ x: 0.9, y: 0.9 }}
+                        style={blStyles.zoomCoinShine}
+                        pointerEvents="none"
+                      />
+                    </View>
+                  ) : (
+                    <View style={blStyles.zoomEmptyHole}>
+                      <LinearGradient
+                        colors={['#07070B', '#111116']}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 0, y: 1 }}
+                        style={blStyles.zoomEmptyHoleInner}
+                      >
+                        <Text style={blStyles.zoomLockIcon}>🔒</Text>
+                      </LinearGradient>
+                    </View>
+                  )}
+                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : '미획득 배지'}</Text>
+                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : '아직 획득하지 못한 배지예요.'}</Text>
+                  {selectedBadgeIds.includes(enlargedBadge.id) && (
+                    <View style={blStyles.zoomSelectedTag}>
+                      <Text style={blStyles.zoomSelectedTagText}>★ 프로필에 표시 중</Text>
+                    </View>
+                  )}
+                </TouchableOpacity>
+              );
+            })()}
+          </TouchableOpacity>
+        </Modal>
       </View>
     </Modal>
   );
@@ -1187,7 +1084,9 @@ function getCardLayout(idx: number): { x: number; y: number; w: number; h: numbe
 interface DraggableCardWrapperProps {
   idx: number;
   activeIdx: number | null;
+  hoverIdx: number | null;
   dragOffset: Animated.ValueXY;
+  dragScale: Animated.Value;
   onDragStart: (idx: number) => void;
   onDragMove: (idx: number, dx: number, dy: number) => void;
   onDragEnd: (idx: number, dx: number, dy: number) => void;
@@ -1199,7 +1098,9 @@ interface DraggableCardWrapperProps {
 function DraggableCardWrapper({
   idx,
   activeIdx,
+  hoverIdx,
   dragOffset,
+  dragScale,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -1209,6 +1110,10 @@ function DraggableCardWrapper({
 }: DraggableCardWrapperProps) {
   const isDraggingRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 최신 idx·콜백을 항상 참조 — 카드 추가/재정렬로 idx가 바뀌어도 stale 클로저 방지
+  // (PanResponder는 첫 렌더에 한 번만 생성되므로 직접 캡처하면 옛 값이 박제된다)
+  const cbRef = useRef({ idx, onDragStart, onDragMove, onDragEnd, onPress });
+  cbRef.current = { idx, onDragStart, onDragMove, onDragEnd, onPress };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -1219,12 +1124,12 @@ function DraggableCardWrapper({
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
           isDraggingRef.current = true;
-          onDragStart(idx);
+          cbRef.current.onDragStart(cbRef.current.idx);
         }, 400);
       },
       onPanResponderMove: (evt, gestureState) => {
         if (isDraggingRef.current) {
-          onDragMove(idx, gestureState.dx, gestureState.dy);
+          cbRef.current.onDragMove(cbRef.current.idx, gestureState.dx, gestureState.dy);
         } else {
           if (Math.abs(gestureState.dx) > 10 || Math.abs(gestureState.dy) > 10) {
             if (timerRef.current) {
@@ -1241,9 +1146,9 @@ function DraggableCardWrapper({
         }
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
-          onDragEnd(idx, gestureState.dx, gestureState.dy);
+          cbRef.current.onDragEnd(cbRef.current.idx, gestureState.dx, gestureState.dy);
         } else {
-          onPress();
+          cbRef.current.onPress();
         }
       },
       onPanResponderTerminate: (evt, gestureState) => {
@@ -1253,7 +1158,7 @@ function DraggableCardWrapper({
         }
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
-          onDragEnd(idx, gestureState.dx, gestureState.dy);
+          cbRef.current.onDragEnd(cbRef.current.idx, gestureState.dx, gestureState.dy);
         }
       },
       onPanResponderTerminationRequest: () => !isDraggingRef.current,
@@ -1261,17 +1166,35 @@ function DraggableCardWrapper({
   ).current;
 
   const isActive = activeIdx === idx;
+  // 드래그 중인 카드가 이 카드 위에 올라온 상태 → "여기로 바뀐다"는 신호를 준다
+  const isHoverTarget = activeIdx !== null && activeIdx !== idx && hoverIdx === idx;
+
+  // 호버 반응 애니메이션 (0 → 1 스프링)
+  const hoverAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(hoverAnim, {
+      toValue: isHoverTarget ? 1 : 0,
+      useNativeDriver: false,
+      friction: 7,
+      tension: 130,
+    }).start();
+  }, [isHoverTarget]);
+
+  // 카드 모서리 반경을 그대로 따와 링 오버레이가 카드와 정확히 겹치게 한다
+  const cornerRadius = StyleSheet.flatten(style)?.borderRadius ?? 24;
+  const hoverScale = hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.95] });
 
   return (
     <Animated.View
       {...panResponder.panHandlers}
       style={[
         style,
+        !isActive && { transform: [{ scale: hoverScale }] },
         isActive && {
           transform: [
             { translateX: dragOffset.x },
             { translateY: dragOffset.y },
-            { scale: 1.05 }
+            { scale: dragScale },
           ],
           zIndex: 1000,
           elevation: 12,
@@ -1283,6 +1206,39 @@ function DraggableCardWrapper({
       ]}
     >
       {children}
+      {/* 드롭 대상 표시 — 유리에 빛이 닿은 듯 리퀴드 글래스 질감을 밝힌다 */}
+      {!isActive && (
+        <Animated.View
+          pointerEvents="none"
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            borderRadius: cornerRadius,
+            borderWidth: 1.5,
+            borderColor: 'rgba(255,255,255,0.7)',
+            overflow: 'hidden',
+            opacity: hoverAnim,
+          }}
+        >
+          {/* 유리 안쪽 밝기 상승 (위→아래) */}
+          <LinearGradient
+            colors={[GLASS.innerTop, 'rgba(255,255,255,0.02)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+          {/* 좌상단 스페큘러 — 유리에 빛이 닿는 하이라이트 */}
+          <LinearGradient
+            colors={[GLASS.specular, 'rgba(255,255,255,0)']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 0.75, y: 0.75 }}
+            style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '60%' }}
+          />
+        </Animated.View>
+      )}
     </Animated.View>
   );
 }
@@ -1417,14 +1373,22 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
 };
 
 // ─── 메인 프로필 화면 ───
-export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab'>) {
+export default function ProfileScreen({ navigation, route }: TabScreenProps<'ProfileTab'>) {
   const insets = useSafeAreaInsets();
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
-  const [selectedBadgeIds, setSelectedBadgeIds] = useState<number[]>(() => {
-    return BADGES.filter((b) => b.earned).slice(0, 5).map((b) => b.id);
-  });
+
+  // 배지 획득 토스트를 누르면 openBadgeList 파라미터로 진입 → 배지 리스트 모달 자동 열기(1회).
+  useEffect(() => {
+    if (route.params?.openBadgeList) {
+      setBadgeListVisible(true);
+      navigation.setParams({ openBadgeList: undefined });
+    }
+  }, [route.params?.openBadgeList]);
+  // 프로필에 표시할 대표 배지는 settingsStore에서 영속 관리(selectedBadgeIds/setSelectedBadgeIds로 별칭).
+  // 저장된 값이 없을 때만 '획득한' 배지 중 앞 5개로 1회 자동 채운다(아래 effect).
+  const didSeedBadgesRef = useRef(false);
 
   // ─── 여행 기록 순서 편집 상태 ───
   const [trips, setTrips] = useState<TripThumbnail[]>(() => {
@@ -1432,72 +1396,140 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
   });
   const [isDragging, setIsDragging] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  // 카드 표시 순서(id 배열) — 드래그 재정렬은 이 순서만 갱신한다
+  const [cardOrder, setCardOrder] = useState<string[]>(() => [...CARD_ORDER]);
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragScale = useRef(new Animated.Value(1)).current;
+  // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응)
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
+  const hoverIdxRef = useRef<number | null>(null);
 
-  const handleReorder = (newTrips: TripThumbnail[]) => {
-    CURRENT_TRIP_THUMBNAILS = newTrips;
-    setTrips(newTrips);
+  // 드롭 중심 좌표가 어느 카드 슬롯 위에 있는지 찾는다 (-1이면 없음)
+  const findTargetIdx = (idx: number, dx: number, dy: number) => {
+    const layout = getCardLayout(idx);
+    const cx = layout.x + layout.w / 2 + dx;
+    const cy = layout.y + layout.h / 2 + dy;
+    for (let i = 0; i < displayTrips.length; i++) {
+      const t = getCardLayout(i);
+      if (cx >= t.x && cx <= t.x + t.w && cy >= t.y && cy <= t.y + t.h) {
+        return i;
+      }
+    }
+    return -1;
+  };
+
+  // 드롭/제자리 복귀 시 카드를 부드럽게 정착시키는 리퀴드 스프링
+  const settle = (onDone?: () => void) => {
+    Animated.parallel([
+      Animated.spring(dragOffset, {
+        toValue: { x: 0, y: 0 },
+        useNativeDriver: false,
+        friction: 7,
+        tension: 65,
+      }),
+      Animated.spring(dragScale, {
+        toValue: 1,
+        useNativeDriver: false,
+        friction: 7,
+        tension: 65,
+      }),
+    ]).start(({ finished }) => {
+      if (finished) onDone?.();
+    });
   };
 
   const handleDragStart = (idx: number) => {
+    // 진행 중인 정착 애니메이션이 있으면 멈추고 새 드래그 시작
+    dragOffset.stopAnimation();
+    dragScale.stopAnimation();
+    hoverIdxRef.current = null;
+    setHoverIdx(null);
     setActiveIdx(idx);
     dragOffset.setValue({ x: 0, y: 0 });
+    // 카드가 톡 튀지 않고 부드럽게 떠오르도록 스케일을 스프링으로 확대
+    Animated.spring(dragScale, {
+      toValue: 1.05,
+      useNativeDriver: false,
+      friction: 6,
+      tension: 140,
+    }).start();
     setIsDragging(true);
   };
 
   const handleDragMove = (idx: number, dx: number, dy: number) => {
     dragOffset.setValue({ x: dx, y: dy });
+    // 현재 올라가 있는 대상 카드를 갱신 (경계를 넘을 때만 setState → 매 프레임 리렌더 방지)
+    const target = findTargetIdx(idx, dx, dy);
+    const hv = target !== -1 && target !== idx ? target : null;
+    if (hoverIdxRef.current !== hv) {
+      hoverIdxRef.current = hv;
+      setHoverIdx(hv);
+    }
   };
 
   const handleDragEnd = (idx: number, dx: number, dy: number) => {
     setIsDragging(false);
-    setActiveIdx(null);
-    dragOffset.setValue({ x: 0, y: 0 });
+    hoverIdxRef.current = null;
+    setHoverIdx(null);
 
-    const layout = getCardLayout(idx);
-    const dropCenterX = layout.x + layout.w / 2 + dx;
-    const dropCenterY = layout.y + layout.h / 2 + dy;
-
-    let targetIdx = -1;
-    for (let i = 0; i < trips.length; i++) {
-      const targetLayout = getCardLayout(i);
-      const left = targetLayout.x;
-      const right = targetLayout.x + targetLayout.w;
-      const top = targetLayout.y;
-      const bottom = targetLayout.y + targetLayout.h;
-
-      if (
-        dropCenterX >= left &&
-        dropCenterX <= right &&
-        dropCenterY >= top &&
-        dropCenterY <= bottom
-      ) {
-        targetIdx = i;
-        break;
-      }
-    }
+    const targetIdx = findTargetIdx(idx, dx, dy);
 
     if (targetIdx !== -1 && targetIdx !== idx) {
-      const newTrips = [...trips];
-      const [removed] = newTrips.splice(idx, 1);
-      newTrips.splice(targetIdx, 0, removed);
-      handleReorder(newTrips);
+      // displayTrips(병합된 전체 목록) 기준으로 순서를 재배열하고 id 순서만 저장한다.
+      // → mappedThumbnails(컨텍스트) 카드와 메인 카드도 자유롭게 이동 가능
+      const newOrder = [...displayTrips];
+      const [removed] = newOrder.splice(idx, 1);
+      newOrder.splice(targetIdx, 0, removed);
+      const ids = newOrder.map((t) => t.id);
+      CARD_ORDER = ids;
+
+      // 이웃 카드들은 LayoutAnimation으로 새 위치까지 출렁이며 이동,
+      // 끌던 카드는 새 자리(targetIdx)에서 손가락 위치 → 슬롯으로 스프링 정착
+      LayoutAnimation.configureNext(LIQUID_LAYOUT);
+      setCardOrder(ids);
+      setActiveIdx(targetIdx);
+      settle(() => setActiveIdx(null));
+    } else {
+      // 유효한 대상이 없으면 원래 자리로 부드럽게 복귀
+      settle(() => setActiveIdx(null));
     }
   };
 
-  const { 
-    nickname, 
-    handle, 
-    bio, 
-    profilePhoto, 
+  const {
+    nickname,
+    handle,
+    bio,
+    profilePhoto,
     setProfilePhoto,
     homeCountryCode,
     arrivalDetect,
     currentVisitedCountryCode,
+    representativeBadgeIds: selectedBadgeIds,
+    setRepresentativeBadgeIds: setSelectedBadgeIds,
+    badgeEarnedAt,
   } = useSettings();
   const profileName = nickname ? nickname : handle;
 
   const { records, tripGroups, archivedIds, followingUsers } = useRecords();
+
+  // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
+  //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽고(중복 계산 제거),
+  //  - 통계 카드용 travelStats만 로컬 계산(보관 기록 포함).
+  const earnedBadgeIds = useMemo(
+    () => new Set<number>(Object.keys(badgeEarnedAt).map(Number)),
+    [badgeEarnedAt]
+  );
+  const travelStats = useMemo(() => computeTravelStats(records), [records]);
+
+  // 대표 배지 기본값: 저장된 선택이 없을 때만 획득 배지 중 앞 5개로 최초 1회 채운다.
+  // (이미 저장된 사용자 선택은 절대 덮어쓰지 않음)
+  useEffect(() => {
+    if (didSeedBadgesRef.current) return;
+    didSeedBadgesRef.current = true;
+    if (selectedBadgeIds.length > 0) return; // 영속 복원된 선택이 있으면 시드하지 않음
+    const defaults = BADGES.filter((b) => earnedBadgeIds.has(b.id)).slice(0, 5).map((b) => b.id);
+    if (defaults.length > 0) setSelectedBadgeIds(defaults);
+  }, [earnedBadgeIds, selectedBadgeIds, setSelectedBadgeIds]);
 
   const mappedThumbnails = useMemo(() => {
     return tripGroups.map(group => {
@@ -1535,10 +1567,22 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
 
   // import/기록 기반 여행 카드(mappedThumbnails)를 맨 앞에 병합
   // → 새로 만든 카드가 기본으로 큰 메인 카드 자리를 차지하고, 기존 카드는 그리드로 밀린다
-  const displayTrips = useMemo(
+  const baseTrips = useMemo(
     () => [...mappedThumbnails, ...trips],
     [mappedThumbnails, trips]
   );
+
+  // 사용자가 드래그로 지정한 순서(cardOrder)대로 정렬.
+  // cardOrder에 없는(새로 만든) 카드는 맨 앞으로 → 메인 카드 자리를 차지한다.
+  const displayTrips = useMemo(() => {
+    if (cardOrder.length === 0) return baseTrips;
+    const orderIndex = new Map(cardOrder.map((id, i) => [id, i] as const));
+    return [...baseTrips].sort((a, b) => {
+      const ia = orderIndex.has(a.id) ? (orderIndex.get(a.id) as number) : -1;
+      const ib = orderIndex.has(b.id) ? (orderIndex.get(b.id) as number) : -1;
+      return ia - ib;
+    });
+  }, [baseTrips, cardOrder]);
 
   const handleChangePhoto = async () => {
     setActionSheetVisible(false);
@@ -1677,9 +1721,9 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
             </Text>
             {bio ? <Text style={styles.userBio}>{bio}</Text> : null}
             <View style={styles.statsRow}>
-              <StatCard value="8" label="기록 수" grad={STAT_GRADS[0]} />
+              <StatCard value={String(travelStats.recordCount)} label="기록 수" grad={STAT_GRADS[0]} />
               <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
-              <StatCard value="3" label="방문국가" grad={STAT_GRADS[2]} />
+              <StatCard value={String(travelStats.countryCount)} label="방문국가" grad={STAT_GRADS[2]} />
             </View>
           </View>
         </View>
@@ -1695,7 +1739,7 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
             const badge = BADGES.find(b => b.id === id);
             if (!badge) return null;
             return (
-              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={badge.earned} />
+              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
             );
           })}
           <LiquidPressable
@@ -1721,7 +1765,9 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
           <DraggableCardWrapper
             idx={0}
             activeIdx={activeIdx}
+            hoverIdx={hoverIdx}
             dragOffset={dragOffset}
+            dragScale={dragScale}
             onDragStart={handleDragStart}
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
@@ -1787,7 +1833,9 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
                 key={trip.id}
                 idx={idx}
                 activeIdx={activeIdx}
+                hoverIdx={hoverIdx}
                 dragOffset={dragOffset}
+                dragScale={dragScale}
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
@@ -1872,6 +1920,7 @@ export default function ProfileScreen({ navigation }: TabScreenProps<'ProfileTab
         onClose={() => setBadgeListVisible(false)}
         selectedBadgeIds={selectedBadgeIds}
         setSelectedBadgeIds={setSelectedBadgeIds}
+        earnedBadgeIds={earnedBadgeIds}
       />
     </View>
   );
@@ -2869,6 +2918,135 @@ const blStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  // 선택 모드 토글 버튼 (헤더 우측)
+  selectBtn: {
+    position: 'absolute',
+    right: 16,
+    top: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.5)',
+    backgroundColor: 'rgba(191,133,252,0.08)',
+  },
+  selectBtnOn: {
+    backgroundColor: '#BF85FC',
+    borderColor: '#BF85FC',
+  },
+  selectBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#BF85FC',
+  },
+  selectBtnTextOn: {
+    color: '#0A0A0F',
+  },
+  // 배지 확대 오버레이
+  zoomBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 32,
+  },
+  zoomCard: {
+    width: '100%',
+    maxWidth: 320,
+    backgroundColor: '#151522',
+    borderRadius: 28,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.08)',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  zoomCoinWrapper: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    position: 'relative',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  zoomCoinBorder: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 75,
+    padding: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomCoinInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 69,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomCoinEmoji: {
+    fontSize: 64,
+  },
+  zoomCoinShine: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 75,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.25)',
+  },
+  zoomEmptyHole: {
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    padding: 5,
+    backgroundColor: '#0D0D14',
+    marginBottom: 20,
+  },
+  zoomEmptyHoleInner: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  zoomLockIcon: {
+    fontSize: 40,
+    opacity: 0.35,
+  },
+  zoomName: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  zoomDesc: {
+    fontSize: 13,
+    color: '#A1A1B0',
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  zoomSelectedTag: {
+    marginTop: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 12,
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.5)',
+  },
+  zoomSelectedTagText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#BF85FC',
   },
 });
 

@@ -48,7 +48,6 @@ const OTHER_CURRENCIES = [
   { code: 'TRY', name: '리라 (튀르키예)' }, { code: 'AED', name: '디르함 (UAE)' },
   { code: 'NZD', name: '뉴질랜드 달러' },
 ];
-const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
 
 // ─── 동행자 아이콘 ───
 const companionIcon = (comp: string, color: string): React.ReactNode => {
@@ -287,7 +286,9 @@ function PrivacyModal({
 }
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
-  const { addRecord } = useRecords();
+  const { addRecord, followingUsers } = useRecords();
+  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const friendNames = followingUsers.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
 
@@ -408,7 +409,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     const sStr = fmtDate(startDate);
     const eStr = fmtDate(endDate ?? startDate);
     addRecord({
-      user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
       country: selectedCountry ? `${selectedCountry.flag ?? ''} ${selectedCountry.name ?? ''}`.trim() : '',
       countryName: selectedCountry?.name || '',
       countryFlag: selectedCountry?.flag || '',
@@ -706,7 +707,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               <Text style={fp.headerTitle}>함께한 친구 선택</Text>
             </View>
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
-              {DUMMY_FRIENDS.map(friend => {
+              {friendNames.length === 0 ? (
+                <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
+                  아직 팔로우한 친구가 없어요
+                </Text>
+              ) : friendNames.map(friend => {
                 const selected = companionFriends.includes(friend);
                 return (
                   <TouchableOpacity key={friend} style={[fp.row, selected && fp.rowActive]} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.7}>
@@ -728,7 +733,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       <PrivacyModal
         visible={privacyVisible}
         selectedFriends={privateFriends}
-        allFriends={DUMMY_FRIENDS}
+        allFriends={friendNames}
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriends}
         onClose={() => setPrivacyVisible(false)}

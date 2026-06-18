@@ -19,6 +19,8 @@ import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { isSupabaseConfigured } from '../services/supabase';
+import { searchProfiles, getMyUserId } from '../services/profile';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
@@ -57,18 +59,8 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[\s\-\(\)]/g, '');
 }
 
-const REGISTERED_USERS: Record<string, { username: string; countries: number }> = {
-  '01012345678': { username: 'minjun_k', countries: 15 },
-  '+821012345678': { username: 'minjun_k', countries: 15 },
-  '01098765432': { username: 'seoyeon_l', countries: 8 },
-  '+821098765432': { username: 'seoyeon_l', countries: 8 },
-  '01055551234': { username: 'jihoon_p', countries: 23 },
-  '+821055551234': { username: 'jihoon_p', countries: 23 },
-  '01033334444': { username: 'yerin_c', countries: 6 },
-  '+821033334444': { username: 'yerin_c', countries: 6 },
-  '01077778888': { username: 'woosung_j', countries: 31 },
-  '+821077778888': { username: 'woosung_j', countries: 31 },
-};
+// 연락처 해시 매칭은 서버 API 필요 — 데모 목업 제거(빈 상태). 친구 찾기는 닉네임/핸들 검색으로.
+const REGISTERED_USERS: Record<string, { username: string; countries: number }> = {};
 
 async function findRegisteredUsers(
   contacts: { id: string; name: string; phone: string }[]
@@ -209,12 +201,41 @@ export default function FriendSearchScreen({ navigation }: Props) {
     }
   };
 
+  // 백엔드 사용자 검색 (닉네임/핸들) — 실제 테스터 찾기
+  const [remoteResults, setRemoteResults] = useState<ContactFriend[]>([]);
+  const myIdRef = useRef<string | null>(null);
+  useEffect(() => { getMyUserId().then((id) => { myIdRef.current = id; }); }, []);
+  useEffect(() => {
+    const q = query.trim();
+    if (!isSupabaseConfigured || q.length === 0) { setRemoteResults([]); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const rows = await searchProfiles(q);
+      if (!alive) return;
+      setRemoteResults(
+        rows
+          .filter((p) => p.id !== myIdRef.current)
+          .map((p) => ({
+            id: p.id,
+            name: p.nickname || p.handle || '여행자',
+            phone: '',
+            initial: (p.nickname || p.handle || '?').slice(0, 1),
+            username: p.handle || '',
+            countries: 0,
+          }))
+      );
+    }, 300); // 디바운스
+    return () => { alive = false; clearTimeout(t); };
+  }, [query]);
+
   const isSearching = query.trim().length > 0;
   const displayList = isSearching
-    ? contactFriends.filter(f =>
-        f.name.toLowerCase().includes(query.toLowerCase()) ||
-        f.username.toLowerCase().includes(query.toLowerCase())
-      )
+    ? (isSupabaseConfigured
+        ? remoteResults
+        : contactFriends.filter(f =>
+            f.name.toLowerCase().includes(query.toLowerCase()) ||
+            f.username.toLowerCase().includes(query.toLowerCase())
+          ))
     : contactFriends;
 
   return (

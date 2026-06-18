@@ -288,7 +288,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
 
     addRecord({
-      user: { name: '나', emoji: '⚡', handle: 'yunjunsung' },
+      user: { name: '', emoji: '⚡', handle: '' }, // addRecord가 로그인 사용자로 채움
       country: finalCountry ? `${finalCountry.flag} ${finalCountry.name}` : (detectedCountry || ''),
       countryName: finalCountry?.name || detectedCountry || '',
       countryFlag: finalCountry?.flag || '',
@@ -306,6 +306,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapDetectedCountry: detectedCountry || undefined,
       snapLateSeconds: lateSeconds > 0 ? lateSeconds : undefined,
       snapExpiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24시간 후 만료
+      snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
     });
 
     navigation.goBack();

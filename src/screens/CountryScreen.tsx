@@ -11,21 +11,41 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
+import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width } = Dimensions.get('window');
 
-const SAMPLE_RECORDS = [
-  { id: '1', date: '2025.03.01 ~ 03.07', duration: '7일', rating: 5, memo: '벚꽃 시즌의 도쿄는 정말 환상적이었어. 신주쿠 어원에서의 피크닉이 최고.', photos: 16 },
-  { id: '2', date: '2024.08.01 ~ 08.05', duration: '5일', rating: 4, memo: '오사카 도톤보리에서 타코야키를 실컷 먹었다.', photos: 24 },
-  { id: '3', date: '2023.11.10 ~ 11.15', duration: '5일', rating: 5, memo: '교토의 단풍은 평생 잊지 못할 것 같다.', photos: 32 },
-];
-
 type Props = RootStackScreenProps<'Country'>;
+
+// 'YYYY.MM.DD' → Date (실패 시 null)
+const parseDmy = (s?: string): Date | null => {
+  if (!s) return null;
+  const m = s.match(/(\d{4})\.(\d{1,2})\.(\d{1,2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+};
+// 여행 일수 (start~end, 양끝 포함)
+const tripDays = (start?: string, end?: string): number => {
+  const a = parseDmy(start), b = parseDmy(end);
+  if (a && b) return Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000) + 1);
+  return start || end ? 1 : 0;
+};
 
 export default function CountryScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
+
+  // 이 국가의 내 실제 여행 기록으로 통계·목록 구성 (데모 시드 제거)
+  const { records } = useRecords();
+  const countryRecords = records.filter(
+    (r) => r.isMyPost !== false && r.countryName === country.name
+  );
+  const visitCount = countryRecords.length;
+  const ratings = countryRecords
+    .map((r) => r.rating)
+    .filter((n): n is number => typeof n === 'number' && n > 0);
+  const avgRating = ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : '-';
+  const totalDays = countryRecords.reduce((sum, r) => sum + tripDays(r.startDate, r.endDate), 0);
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
@@ -45,15 +65,15 @@ export default function CountryScreen({ navigation, route }: Props) {
         {/* Stats cards */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>3</Text>
+            <Text style={styles.statValue}>{visitCount}</Text>
             <Text style={styles.statLabel}>회 방문</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>17</Text>
+            <Text style={styles.statValue}>{totalDays}</Text>
             <Text style={styles.statLabel}>전체 일수</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={[styles.statValue, { color: Colors.gold }]}>4.7</Text>
+            <Text style={[styles.statValue, { color: Colors.gold }]}>{avgRating}</Text>
             <Text style={styles.statLabel}>평균 별점</Text>
           </View>
         </View>
@@ -80,20 +100,33 @@ export default function CountryScreen({ navigation, route }: Props) {
         {/* Records */}
         <View style={styles.recordsSection}>
           <Text style={styles.sectionTitle}>여행 기록</Text>
-          {SAMPLE_RECORDS.map((rec) => (
-            <View key={rec.id} style={styles.recordCard}>
-              <View style={styles.recordHeader}>
-                <Text style={styles.recordDate}>{rec.date} · {rec.duration}</Text>
-                <View style={styles.ratingBadge}>
-                  <Text style={styles.ratingText}>{'★'.repeat(rec.rating)}</Text>
+          {countryRecords.length === 0 ? (
+            <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+              이 국가의 여행 기록이 아직 없어요
+            </Text>
+          ) : countryRecords.map((rec) => {
+            const days = tripDays(rec.startDate, rec.endDate);
+            const dateText = rec.startDate && rec.endDate ? `${rec.startDate} ~ ${rec.endDate}` : (rec.date ?? '');
+            const photoCount = rec.medias?.length ?? 0;
+            return (
+              <View key={rec.id} style={styles.recordCard}>
+                <View style={styles.recordHeader}>
+                  <Text style={styles.recordDate}>{dateText}{days > 0 ? ` · ${days}일` : ''}</Text>
+                  {!!rec.rating && rec.rating > 0 && (
+                    <View style={styles.ratingBadge}>
+                      <Text style={styles.ratingText}>{'★'.repeat(rec.rating)}</Text>
+                    </View>
+                  )}
                 </View>
+                <Text style={styles.recordMemo} numberOfLines={2}>{rec.content}</Text>
+                {photoCount > 0 && (
+                  <View style={styles.recordFooter}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><CameraIcon size={12} color="#A1A1B0" /><Text style={styles.photoCount}>사진 {photoCount}장</Text></View>
+                  </View>
+                )}
               </View>
-              <Text style={styles.recordMemo} numberOfLines={2}>{rec.memo}</Text>
-              <View style={styles.recordFooter}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><CameraIcon size={12} color="#A1A1B0" /><Text style={styles.photoCount}>사진 {rec.photos}장 발견</Text></View>
-              </View>
-            </View>
-          ))}
+            );
+          })}
         </View>
 
         <View style={{ height: 100 }} />
