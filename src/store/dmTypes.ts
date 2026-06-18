@@ -15,14 +15,25 @@ export interface SharedRecord {
   blogPreview?: string;
 }
 
+// 답글이 가리키는 원본 메시지의 요약 정보
+export interface ReplyInfo {
+  id: string;       // 원본 메시지 id
+  isMine: boolean;  // 원본이 내 메시지였는지
+  type: MsgType;    // 미리보기 렌더용
+  text: string;     // 미리보기 텍스트
+}
+
 export interface Message {
   id: string;
   type: MsgType;
   text: string;
   isMine: boolean;
   time: string;
+  createdAt?: number; // 전송 시각(ms). 날짜 구분 헤더용. 시드/구버전 메시지는 없을 수 있음
   imageUri?: string;
   record?: SharedRecord;
+  replyTo?: ReplyInfo;
+  remoteId?: string; // Supabase dm_messages.id (백엔드 동기화/중복제거용)
 }
 
 export interface Friend {

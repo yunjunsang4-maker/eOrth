@@ -24,6 +24,7 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false, // RN에는 브라우저 URL이 없음
+        flowType: 'pkce', // OAuth(구글/애플) 딥링크 콜백에서 code 교환
       },
     })
   : null;

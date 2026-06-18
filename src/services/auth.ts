@@ -6,6 +6,8 @@
  */
 
 import { supabase } from './supabase';
+import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 
 export interface AuthResult {
   ok: boolean;
@@ -59,6 +61,38 @@ export async function sendPasswordReset(email: string): Promise<AuthResult> {
   try {
     const { error } = await supabase.auth.resetPasswordForEmail(email);
     if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
+// OAuth 콜백이 돌아올 딥링크 (app.json scheme: "eorth" → eorth://auth-callback)
+const oauthRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'auth-callback' });
+
+/**
+ * 소셜 로그인 (Google / Apple) — Supabase OAuth(PKCE) + 인앱 브라우저.
+ * 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
+ * Redirect URL에 위 딥링크를 등록해야 한다.
+ */
+export async function signInWithProvider(provider: 'google' | 'apple'): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: oauthRedirect, skipBrowserRedirect: true },
+    });
+    if (error || !data?.url) return { ok: false, error: toKoMessage(error?.message || '로그인 URL 생성 실패') };
+
+    const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirect);
+    if (result.type !== 'success' || !result.url) {
+      return { ok: false, error: '로그인이 취소되었어요.' };
+    }
+    // PKCE: 콜백 URL의 code 를 세션으로 교환
+    const code = new URL(result.url).searchParams.get('code');
+    if (!code) return { ok: false, error: '인증 코드를 받지 못했어요.' };
+    const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+    if (exErr) return { ok: false, error: toKoMessage(exErr.message) };
     return { ok: true };
   } catch (e) {
     return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
