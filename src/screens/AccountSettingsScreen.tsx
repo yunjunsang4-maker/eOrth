@@ -15,7 +15,8 @@ import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
 import { signOut } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
-import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
+import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, CalendarIcon, PersonIcon } from '../components/icons';
+import type { Gender } from '../store/settingsStore';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -35,6 +36,34 @@ const COLORS = {
 };
 
 type Props = RootStackScreenProps<'AccountSettings'>;
+
+// 입력 숫자를 YYYY-MM-DD 형태로 자동 정렬 (최대 8자리)
+const formatBirthday = (raw: string) => {
+  const digits = raw.replace(/\D/g, '').slice(0, 8);
+  const y = digits.slice(0, 4);
+  const m = digits.slice(4, 6);
+  const d = digits.slice(6, 8);
+  let out = y;
+  if (digits.length > 4) out += '-' + m;
+  if (digits.length > 6) out += '-' + d;
+  return out;
+};
+
+// YYYY-MM-DD 유효성 검사 (실제 존재하는 날짜 + 합리적 연도 범위)
+const isValidBirthday = (v: string) => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const now = new Date().getFullYear();
+  if (year < 1900 || year > now) return false;
+  if (month < 1 || month > 12) return false;
+  const maxDay = new Date(year, month, 0).getDate();
+  return day >= 1 && day <= maxDay;
+};
+
+const genderLabel = (g: Gender) => (g === 'male' ? '남' : g === 'female' ? '여' : '미설정');
 
 // ─── 섹션 타이틀 ───
 const SectionTitle = ({ label }: { label: string }) => (
@@ -75,8 +104,41 @@ const CardRow = ({
 );
 
 export default function AccountSettingsScreen({ navigation }: Props) {
-  const { signUpMethod, signUpEmail, setSignUpEmail } = useSettings();
+  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender } = useSettings();
   const [googleLinked, setGoogleLinked] = useState(signUpMethod === 'google');
+
+  // 생일 편집 모달 상태
+  const [isBirthdayModalVisible, setIsBirthdayModalVisible] = useState(false);
+  const [birthdayDraft, setBirthdayDraft] = useState(birthday);
+  // 성별 편집 모달 상태
+  const [isGenderModalVisible, setIsGenderModalVisible] = useState(false);
+  const [genderDraft, setGenderDraft] = useState<Gender>(gender);
+
+  const openBirthdayModal = () => {
+    setBirthdayDraft(birthday);
+    setIsBirthdayModalVisible(true);
+  };
+  const submitBirthday = () => {
+    if (!isValidBirthday(birthdayDraft)) {
+      Alert.alert('오류', '생일을 YYYY-MM-DD 형식으로 정확히 입력해주세요.');
+      return;
+    }
+    setBirthday(birthdayDraft);
+    setIsBirthdayModalVisible(false);
+  };
+
+  const openGenderModal = () => {
+    setGenderDraft(gender);
+    setIsGenderModalVisible(true);
+  };
+  const submitGender = () => {
+    if (genderDraft === '') {
+      Alert.alert('오류', '성별을 선택해주세요.');
+      return;
+    }
+    setGender(genderDraft);
+    setIsGenderModalVisible(false);
+  };
   const [appleLinked, setAppleLinked] = useState(signUpMethod === 'apple');
   const [isPublic, setIsPublic] = useState(true);
 
@@ -295,6 +357,24 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        {/* ── 기본 정보 ── */}
+        <SectionTitle label="기본 정보" />
+        <View style={styles.card}>
+          <CardRow
+            icon={<CalendarIcon size={20} />}
+            label="생일"
+            value={birthday ? birthday : '설정 안 됨'}
+            onPress={openBirthdayModal}
+          />
+          <View style={styles.rowDivider} />
+          <CardRow
+            icon={<PersonIcon size={20} />}
+            label="성별"
+            value={genderLabel(gender)}
+            onPress={openGenderModal}
+          />
+        </View>
+
         {/* ── 비밀번호 ── */}
         <SectionTitle label="비밀번호" />
         <View style={styles.card}>
@@ -372,6 +452,110 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* ── 생일 편집 모달 ── */}
+      <Modal
+        visible={isBirthdayModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsBirthdayModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>생일 변경</Text>
+            <Text style={styles.modalDesc}>생일을 YYYY-MM-DD 형식으로 입력하세요.</Text>
+
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>생일</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  birthdayDraft.length > 0 && !isValidBirthday(birthdayDraft) && styles.modalInputError,
+                ]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="number-pad"
+                maxLength={10}
+                value={birthdayDraft}
+                onChangeText={(t) => setBirthdayDraft(formatBirthday(t))}
+              />
+              {birthdayDraft.length > 0 && !isValidBirthday(birthdayDraft) && (
+                <Text style={styles.inputErrorText}>형식: YYYY-MM-DD</Text>
+              )}
+            </View>
+
+            <View style={styles.modalBtnGroup}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                activeOpacity={0.7}
+                onPress={() => setIsBirthdayModalVisible(false)}
+              >
+                <Text style={styles.modalBtnTextCancel}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSubmit, !isValidBirthday(birthdayDraft) && styles.modalBtnDisabled]}
+                activeOpacity={0.7}
+                disabled={!isValidBirthday(birthdayDraft)}
+                onPress={submitBirthday}
+              >
+                <Text style={styles.modalBtnTextSubmit}>변경하기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── 성별 편집 모달 ── */}
+      <Modal
+        visible={isGenderModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setIsGenderModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>성별 변경</Text>
+            <Text style={styles.modalDesc}>성별을 선택하세요.</Text>
+
+            <View style={styles.genderRow}>
+              {([
+                { value: 'male', label: '남' },
+                { value: 'female', label: '여' },
+              ] as { value: Gender; label: string }[]).map((opt) => {
+                const active = genderDraft === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.genderBtn, active && styles.genderBtnActive]}
+                    activeOpacity={0.8}
+                    onPress={() => setGenderDraft(opt.value)}
+                  >
+                    <Text style={[styles.genderText, active && styles.genderTextActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <View style={styles.modalBtnGroup}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                activeOpacity={0.7}
+                onPress={() => setIsGenderModalVisible(false)}
+              >
+                <Text style={styles.modalBtnTextCancel}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnSubmit, genderDraft === '' && styles.modalBtnDisabled]}
+                activeOpacity={0.7}
+                disabled={genderDraft === ''}
+                onPress={submitGender}
+              >
+                <Text style={styles.modalBtnTextSubmit}>변경하기</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── 비밀번호 변경 모달 ── */}
       <Modal
@@ -894,5 +1078,35 @@ const styles = StyleSheet.create({
   radioLabel: {
     fontSize: 13,
     color: COLORS.white,
+  },
+
+  // 성별 선택 버튼
+  genderRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 20,
+  },
+  genderBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+  },
+  genderBtnActive: {
+    borderColor: COLORS.purpleNeon,
+    backgroundColor: COLORS.purpleBg,
+  },
+  genderText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: COLORS.textDim,
+  },
+  genderTextActive: {
+    color: COLORS.purpleNeon,
+    fontWeight: '700',
   },
 });

@@ -5,6 +5,8 @@ import { usePersistence, STORE_KEYS } from './persist';
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
 export type SignUpMethod = 'email' | 'google' | 'apple';
+// 성별: '' = 미설정
+export type Gender = 'male' | 'female' | '';
 
 interface SettingsContextType {
   showCounts: boolean;
@@ -17,6 +19,10 @@ interface SettingsContextType {
   setDiaryCardMode: (v: DiaryCardMode) => void;
   nickname: string;
   setNickname: (v: string) => void;
+  birthday: string; // YYYY-MM-DD
+  setBirthday: (v: string) => void;
+  gender: Gender;
+  setGender: (v: Gender) => void;
   handle: string;
   setHandle: (v: string) => void;
   bio: string;
@@ -43,6 +49,8 @@ interface SettingsPersistPayload {
   snapEnabled: boolean;
   diaryCardMode: DiaryCardMode;
   nickname: string;
+  birthday?: string; // 과거 저장본엔 없을 수 있어 optional
+  gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
   handle: string;
   bio: string;
   profilePhoto: string | null;
@@ -61,6 +69,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
   const [nickname, setNickname] = useState('윤준상');
+  const [birthday, setBirthday] = useState('');
+  const [gender, setGender] = useState<Gender>('');
   const [handle, setHandle] = useState('yunjunsung');
   const [bio, setBio] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
@@ -78,6 +88,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSnapEnabled(p.snapEnabled);
       setDiaryCardMode(p.diaryCardMode);
       setNickname(p.nickname);
+      setBirthday(p.birthday ?? '');
+      setGender(p.gender ?? '');
       setHandle(p.handle);
       setBio(p.bio);
       setProfilePhoto(p.profilePhoto);
@@ -93,6 +105,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       snapEnabled,
       diaryCardMode,
       nickname,
+      birthday,
+      gender,
       handle,
       bio,
       profilePhoto,
@@ -108,6 +122,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       snapEnabled,
       diaryCardMode,
       nickname,
+      birthday,
+      gender,
       handle,
       bio,
       profilePhoto,
@@ -125,6 +141,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSnapEnabled(true);
     setDiaryCardMode('full');
     setNickname('윤준상');
+    setBirthday('');
+    setGender('');
     setHandle('yunjunsung');
     setBio('');
     setProfilePhoto(null);
@@ -153,6 +171,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setDiaryCardMode,
         nickname,
         setNickname,
+        birthday,
+        setBirthday,
+        gender,
+        setGender,
         handle,
         setHandle,
         bio,
