@@ -18,6 +18,7 @@ import {
   Linking,
   Animated,
   PanResponder,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import Reanimated, {
@@ -907,6 +908,8 @@ export default function PostDetailScreen() {
   const [reportVisible, setReportVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [fontScale, setFontScale] = useState(1);
+  const [bodyExpanded, setBodyExpanded] = useState(false);
+  const [commentsLoading, setCommentsLoading] = useState(false);
   const [fullImgVisible, setFullImgVisible] = useState(false);
   const [fullImgList, setFullImgList] = useState<string[]>([]);
   const [fullImgIndex, setFullImgIndex] = useState(0);
@@ -928,7 +931,9 @@ export default function PostDetailScreen() {
   const rawRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
   // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
   useEffect(() => {
-    refreshComments(postId, rawRecord?.remoteId);
+    if (!rawRecord?.remoteId) return;
+    setCommentsLoading(true);
+    refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
   }, [postId, rawRecord?.remoteId]);
   // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
   const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;
@@ -960,12 +965,17 @@ export default function PostDetailScreen() {
   const headerTitleText = record.countryName
     ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
     : typeLabel;
+  // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
+  const bodyText = record.memo || record.content || '';
+  const bodyLong = bodyText.trim().length > 150;
 
   const addComment = () => {
     if (!commentText.trim()) return;
     addCommentToStore(postId, commentText.trim(), replyTo?.id);
     setReplyTo(null);
     setCommentText('');
+    // 새 댓글이 렌더된 뒤 맨 아래로 스크롤
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
   };
 
   const handleReply = (id: string, name: string) => {
@@ -1329,11 +1339,17 @@ export default function PostDetailScreen() {
                   <Text
                     style={[
                       s.content,
-                      { marginBottom: (record.memo || record.content || '').trim().length > 50 ? 4 : 0 },
+                      { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
                     ]}
+                    numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
                   >
-                    {record.memo || record.content}
+                    {bodyText}
                   </Text>
+                  {bodyLong && !bodyExpanded && (
+                    <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel="본문 더보기">
+                      <Text style={s.moreBtn}>더보기</Text>
+                    </TouchableOpacity>
+                  )}
                 </>
               )}
 
@@ -1476,9 +1492,11 @@ export default function PostDetailScreen() {
               ))}
             </View>
           ))}
-          {comments.length === 0 && (
+          {commentsLoading && comments.length === 0 ? (
+            <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />
+          ) : comments.length === 0 ? (
             <Text style={s.commentEmpty}>아직 댓글이 없어요. 첫 댓글을 남겨보세요!</Text>
-          )}
+          ) : null}
           <View style={{ height: 16 }} />
           </View>
         </ScrollView>
@@ -1902,6 +1920,7 @@ const s = StyleSheet.create({
   commentName: { fontSize: 13, fontWeight: '600', color: C.white },
   commentTime: { fontSize: 11, color: C.muted },
   commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
+  moreBtn: { color: C.accent, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 6 },
   commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   commentLikeIcon: { fontSize: 14, color: C.dim },
