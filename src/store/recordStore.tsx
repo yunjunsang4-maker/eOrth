@@ -475,10 +475,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     };
     setCommentsByPost((prev) => {
       const list = prev[postId] ?? [];
-      const next = replyToId
-        ? list.map((c) => (c.id === replyToId ? { ...c, replies: [...(c.replies ?? []), nc] } : c))
-        : [...list, nc];
-      return { ...prev, [postId]: next };
+      if (!replyToId) return { ...prev, [postId]: [...list, nc] };
+      // 답글은 항상 top-level 댓글 아래에 단다(단일 단계). 부모가 답글이면 그 답글이 속한 댓글에 붙임.
+      let attached = false;
+      const next = list.map((c) => {
+        if (c.id === replyToId || c.replies?.some((r) => r.id === replyToId)) {
+          attached = true;
+          return { ...c, replies: [...(c.replies ?? []), nc] };
+        }
+        return c;
+      });
+      // 부모를 못 찾으면 유실 방지를 위해 top-level로 추가
+      return { ...prev, [postId]: attached ? next : [...list, nc] };
     });
     // 백엔드 동기화: 게시물이 백엔드에 있으면 댓글도 저장
     if (isSupabaseConfigured) {
@@ -486,8 +494,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const feed = feedPosts.find((r) => r.id === postId);
       const remoteId = own?.remoteId ?? feed?.remoteId ?? feed?.id;
       if (remoteId) {
-        // 답글 부모는 백엔드 댓글 uuid일 때만 연결(로컬 즉시 작성분은 top-level로 저장)
-        const parent = replyToId && /^[0-9a-f-]{36}$/i.test(replyToId) ? replyToId : undefined;
+        // 답글 부모는 백엔드 댓글 uuid일 때만 연결. 답글의 답글이면 top-level 부모로 승격(단일 단계 유지).
+        let parent: string | undefined;
+        if (replyToId && /^[0-9a-f-]{36}$/i.test(replyToId)) {
+          const list = commentsByPost[postId] ?? [];
+          const top = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId));
+          parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
+        }
         apiAddComment(remoteId, text, parent).catch(() => {});
       }
     }
