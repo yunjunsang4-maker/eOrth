@@ -1,19 +1,42 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography } from '../constants';
+import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
+import { useDM } from '../store/dmStore';
+import { clearPersistedStores } from '../store/persist';
+import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
+import { isSupabaseConfigured } from '../services/supabase';
+import { getCurrentSession } from '../services/auth';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const { width, height } = Dimensions.get('window');
 
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
   const scaleAnim = useRef(new Animated.Value(0.6)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const textOpacity = useRef(new Animated.Value(0)).current;
   const glowAnim = useRef(new Animated.Value(0)).current;
+  const { resetRecords } = useRecords();
+  const { resetSettings } = useSettings();
+  const { resetConversations } = useDM();
+
+  // 탈퇴 유예(30일) 만료 시 영구 파기
+  useEffect(() => {
+    (async () => {
+      const pending = await getPendingDeletion();
+      if (pending && isDeletionExpired(pending)) {
+        resetRecords();
+        resetSettings();
+        resetConversations();
+        await clearPersistedStores().catch(() => {});
+        await cancelAccountDeletion().catch(() => {});
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     // Entrance animations
@@ -46,9 +69,18 @@ export default function SplashScreen({ navigation }: Props) {
       ),
     ]).start();
 
-    // Navigate to AppIntro after 2.8s
-    const timer = setTimeout(() => {
-      navigation.replace('Main');
+    // 2.8초 후 이동 — 로그인 세션이 있으면 Main으로 자동 로그인, 없으면 AppIntro
+    const timer = setTimeout(async () => {
+      if (isSupabaseConfigured) {
+        const pending = await getPendingDeletion();
+        const session = await getCurrentSession();
+        // 탈퇴 유예 중이면 자동 로그인하지 않고 로그인 화면에서 복구 여부를 묻는다
+        if (session && !pending) {
+          navigation.replace('Main');
+          return;
+        }
+      }
+      navigation.replace('AppIntro');
     }, 2800);
 
     return () => clearTimeout(timer);
@@ -101,7 +133,11 @@ export default function SplashScreen({ navigation }: Props) {
 
       {/* Brand Text */}
       <Animated.View style={[styles.brandContainer, { opacity: textOpacity }]}>
-        <Text style={styles.brandName}>eOrth</Text>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.brandLogoImage}
+          resizeMode="contain"
+        />
         <Text style={styles.brandTagline}>이 어 스</Text>
       </Animated.View>
     </LinearGradient>
@@ -179,11 +215,10 @@ const styles = StyleSheet.create({
   brandContainer: {
     alignItems: 'center',
   },
-  brandName: {
-    fontSize: 42,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    letterSpacing: 2,
+  brandLogoImage: {
+    width: 182,
+    height: 50,
+    marginBottom: 8,
   },
   brandTagline: {
     fontSize: Typography.fontSize.base,

@@ -1,0 +1,29 @@
+apply plugin: 'com.android.library'
+
+group = 'expo.modules.photovision'
+version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+useExpoPublishing()
+
+android {
+  namespace "expo.modules.photovision"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // ML Kit — 모델을 앱에 내장하지 않고 Google Play Services에서 호스팅 (앱 용량 최소화 제약 준수)
+  implementation 'com.google.android.gms:play-services-mlkit-text-recognition:19.0.1' // 문서/스크린샷 판정
+  implementation 'com.google.android.gms:play-services-mlkit-face-detection:17.1.0'   // 얼굴/웃음
+  implementation 'com.google.android.gms:play-services-mlkit-image-labeling:16.0.8'   // 음식/풍경/랜드마크
+}

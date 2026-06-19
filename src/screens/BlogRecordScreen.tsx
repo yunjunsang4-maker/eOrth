@@ -1,12 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
+  ScrollView,  TextInput,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import {
   DeviceEventEmitter,
   PanResponder,
   Linking,
+  Animated,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,8 +23,10 @@ import type { MediaType } from 'expo-image-picker';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
-import { StickerPicker } from '../components/StickerPicker';
-import type { Sticker } from '../components/stickers';
+import AutoTocModal from '../components/AutoTocModal';
+import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -45,6 +47,9 @@ import {
   SnowIcon as SvgSnowIcon,
   PartlyCloudyIcon as SvgPartlyCloudyIcon,
   WindIcon as SvgWindIcon,
+  LockClosedIcon as SvgLockClosedIcon,
+  LockOpenIcon as SvgLockOpenIcon,
+  MapIcon as SvgMapIcon,
   GalleryIcon,
   CameraIcon,
   StickerIcon,
@@ -52,7 +57,7 @@ import {
   PaperclipIcon,
 } from '../components/icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { Video, ResizeMode } from 'expo-av';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   BlogBlock, TextBlock, HeadingBlock, ImageBlock, ImagesBlock, VideoBlock,
   SeparatorBlock, QuoteBlock, LinkBlock, StickerBlock, FileBlock,
@@ -235,22 +240,65 @@ function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress
   );
 }
 
-interface Props { navigation: any; route?: any; }
+// ─── 로컬 영상 플레이어 (expo-video, SDK 54 New Architecture 대응) ───
+function LocalVideoPlayer({ uri, style }: { uri: string; style: any }) {
+  const player = useVideoPlayer(uri, (p) => {
+    p.loop = false;
+    p.muted = false;
+  });
+  return (
+    <VideoView
+      style={style}
+      player={player}
+      contentFit="contain"
+      nativeControls
+      allowsFullscreen
+    />
+  );
+}
+
+const LockClosedIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+  <SvgLockClosedIcon size={size} color={color} />
+);
+
+const LockOpenIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+  <SvgLockOpenIcon size={size} color={color} />
+);
+
+const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+  <SvgMapIcon size={size} color={color} />
+);
+
+type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
-  const { addRecord, saveDraft, updateDraft, deleteDraft, drafts } = useRecords();
+  const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
+  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const friendNames = followingUsers.map((f) => f.username);
+
+  // ─── 편집 모드 ───
+  // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
+  const editRecord = route?.params?.record;
+  const isEdit = !!editRecord;
 
   // 국가
   const preselected = route?.params?.selectedCountry;
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(
-    preselected ? COUNTRIES.find(c => c.name === preselected.name) ?? null : null
-  );
+  const [selectedCountry, setSelectedCountry] = useState<Country | null>(() => {
+    if (editRecord) return COUNTRIES.find(c => c.name === editRecord.countryName) ?? null;
+    return preselected ? COUNTRIES.find(c => c.name === preselected.name.split(' - ')[0]) ?? null : null;
+  });
+  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(() => {
+    if (editRecord?.regionName) return { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' };
+    return preselected?.region ? { name: preselected.region, nameEn: preselected.regionEn || '' } : null;
+  });
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
 
   // 콘텐츠
-  const [title, setTitle] = useState('');
-  const [blocks, setBlocks] = useState<BlogBlock[]>([createTextBlock()]);
+  const [title, setTitle] = useState(editRecord?.content ?? '');
+  const [blocks, setBlocks] = useState<BlogBlock[]>(
+    editRecord?.blogBlocks?.length ? editRecord.blogBlocks : [createTextBlock()]
+  );
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
 
   // 풀스크린 이미지 뷰어
@@ -264,40 +312,52 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
 
   // 메타
-  const [memo, setMemo] = useState('');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
-  const [rating, setRating] = useState(0);
-  const [companions, setCompanions] = useState<string[]>([]);
-  const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [memo, setMemo] = useState(editRecord?.memo ?? '');
+  const [startDate, setStartDate] = useState(editRecord?.startDate ?? '');
+  const [endDate, setEndDate] = useState(editRecord?.endDate ?? '');
+  const [rating, setRating] = useState(editRecord?.rating ?? 0);
+  const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const [weather, setWeather] = useState('');
-  const [budget, setBudget] = useState('');
-  const [currency, setCurrency] = useState('KRW');
+  const [weather, setWeather] = useState(editRecord?.weather ?? '');
+  const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
+  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? 'KRW');
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [flightType, setFlightType] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
+  const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordInput, setKeywordInput] = useState('');
 
   // 날짜 캘린더
+  const parseDotDate = (s?: string): Date => {
+    const t = s ? new Date(s.replace(/\./g, '-')) : new Date(NaN);
+    return isNaN(t.getTime()) ? new Date() : t;
+  };
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [startDateObj, setStartDateObj] = useState<Date>(new Date());
-  const [endDateObj, setEndDateObj] = useState<Date>(new Date());
+  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate));
+  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate));
 
   // UI 모달
+  const [privateFriends, setPrivateFriends] = useState<string[]>(editRecord?.mediaPrivacy?.[0] ?? []);
+  const [privacyModalVisible, setPrivacyModalVisible] = useState(false);
+  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
+    editRecord?.representativePhoto ?? null
+  );
+  const [repPhotoModalVisible, setRepPhotoModalVisible] = useState(false);
   const [travelInfoVisible, setTravelInfoVisible] = useState(false);
   const [colorPickerVisible, setColorPickerVisible] = useState(false);
   const [bgColorPickerVisible, setBgColorPickerVisible] = useState(false);
   const [fontPickerVisible, setFontPickerVisible] = useState(false);
   const [fontSizePickerVisible, setFontSizePickerVisible] = useState(false);
   const [sepStylePickerVisible, setSepStylePickerVisible] = useState(false);
-  const [stickerVisible, setStickerVisible] = useState(false);
   const [linkModalVisible, setLinkModalVisible] = useState(false);
   const [linkUrl, setLinkUrl] = useState('');
   const [toastMsg, setToastMsg] = useState('');
   const [draftId, setDraftId] = useState<string | null>(null);
   const [draftListVisible, setDraftListVisible] = useState(false);
+  // ─── AI 자동 목차 ───
+  const [tocModalVisible, setTocModalVisible] = useState(false);
+  const [tocSuggestions, setTocSuggestions] = useState<TocSuggestion[]>([]);
   // 하단 툴바 서브패널
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
   const [fontBarVisible, setFontBarVisible] = useState(false);
@@ -339,8 +399,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             importedBlocks.push(createImagesBlock(ob.value, layout));
           } else if (ob.type === 'image' && typeof ob.value === 'string' && ob.value) {
             importedBlocks.push(createImageBlock(ob.value));
-          } else if (ob.type === 'video' && typeof ob.value === 'string' && ob.value) {
-            importedBlocks.push(createVideoBlock(ob.value));
           }
         });
       } else {
@@ -354,9 +412,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           imported.photos?.slice(usedCount).forEach(uri => importedBlocks.push(createImageBlock(uri)));
         } else if (imported.photos?.length) {
           imported.photos.forEach(uri => importedBlocks.push(createImageBlock(uri)));
-        }
-        if (imported.videos?.length) {
-          imported.videos.forEach(uri => importedBlocks.push(createVideoBlock(uri)));
         }
       }
 
@@ -438,6 +493,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setCurrency(draft.budget?.currency || 'KRW');
     setFlightType(draft.flightType || '');
     setKeywords(draft.keywords || []);
+    if (draft.mediaPrivacy && draft.mediaPrivacy[0]) {
+      setPrivateFriends(draft.mediaPrivacy[0]);
+    } else {
+      setPrivateFriends([]);
+    }
+    setRepresentativePhoto(draft.representativePhoto || null);
     setDraftListVisible(false);
     showToast('임시저장을 불러왔어요');
   };
@@ -498,6 +559,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const deleteBlock = (id: string) => {
     if (blocks.length <= 1) { updateBlock(id, { value: '' } as any); return; }
     const idx = blocks.findIndex(b => b.id === id);
+    const target = blocks[idx];
+    if (target) {
+      if (target.type === 'image' && (target as ImageBlock).uri === representativePhoto) {
+        setRepresentativePhoto(null);
+      } else if (target.type === 'images') {
+        const uris = (target as ImagesBlock).items.map(it => it.uri);
+        if (representativePhoto && uris.includes(representativePhoto)) {
+          setRepresentativePhoto(null);
+        }
+      }
+    }
     setBlocks(prev => prev.filter(b => b.id !== id));
     if (idx > 0) {
       const prev = blocks[idx - 1];
@@ -538,16 +610,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
 
   const setBlockAlign = (align: TextAlign) => {
-    const tb = activeTextBlock();
-    if (tb) updateBlock(tb.id, { align } as any);
+    if (!activeBlockId) return;
+    const b = blocks.find(blk => blk.id === activeBlockId);
+    if (b && (b.type === 'text' || b.type === 'heading')) {
+      updateBlock(b.id, { align } as any);
+    }
   };
 
   // ─── 삽입 액션 ───
-  const isVideoAsset = (asset: ImagePicker.ImagePickerAsset) =>
-    asset.type === 'video'
-    || (asset.duration != null && asset.duration > 0)
-    || (asset.uri && /\.(mp4|mov|avi|mkv|webm|3gp)$/i.test(asset.uri));
-
   const handleAddPhoto = async () => {
     setPhotoMenuVisible(false);
     try {
@@ -568,46 +638,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleAddVideo = async () => {
-    setPhotoMenuVisible(false);
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('권한 필요', '영상을 불러오려면 사진 라이브러리 접근 권한이 필요해요.');
-        return;
-      }
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['videos'] as MediaType[],
-        allowsMultipleSelection: false,
-        videoExportPreset: ImagePicker.VideoExportPreset.Passthrough,
-        preferredAssetRepresentationMode: ImagePicker.UIImagePickerPreferredAssetRepresentationMode.Current,
-      });
-      if (!result.canceled && result.assets[0]) {
-        const asset = result.assets[0];
-        insertBlockAfter(createVideoBlock(asset.uri));
-        showToast('영상이 추가되었어요!');
-      }
-    } catch (err: any) {
-      console.error('[handleAddVideo] error:', err);
-      Alert.alert('영상 불러오기 오류', err?.message || '영상을 불러오는 중 오류가 발생했습니다.');
-    }
-  };
-
   const handleCamera = async () => {
     setPhotoMenuVisible(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { Alert.alert('권한 필요', '카메라 접근 권한이 필요해요.'); return; }
-    const cameraMediaTypes: MediaType[] = ['images', 'videos'];
+    if (!perm.granted) { showPermissionDeniedAlert('카메라'); return; }
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: cameraMediaTypes, quality: 0.8,
+      mediaTypes: ['images'] as MediaType[], quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
       const asset = result.assets[0];
-      if (isVideoAsset(asset)) {
-        insertBlockAfter(createVideoBlock(asset.uri));
-      } else {
-        insertBlockAfter(createImageBlock(asset.uri));
-      }
+      insertBlockAfter(createImageBlock(asset.uri));
     }
   };
 
@@ -635,11 +675,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     insertBlockAfter(createLinkBlock(linkUrl.trim()));
     setLinkUrl('');
     setLinkModalVisible(false);
-  };
-
-  const handleAddSticker = (sticker: Sticker) => {
-    insertBlockAfter(createStickerBlock(sticker.id, sticker.name));
-    setStickerVisible(false);
   };
 
   // ─── 날짜 포맷 ───
@@ -670,8 +705,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const removeCompanionFriend = (friend: string) => {
     setCompanionFriends(prev => prev.filter(f => f !== friend));
   };
-  const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
 
+  const togglePrivateFriend = (friend: string) => {
+    setPrivateFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
+  };
+  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 친구 체크 상태까지 즉시 동기화
+  const setPrivateFriendsAll = (friends: string[]) => setPrivateFriends(friends);
   // ─── 별점 (0.5 단위) ───
   const STAR_SIZE = 28;
   const STAR_GAP = 6;
@@ -741,17 +780,20 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   draftSaveRef.current = handleDraftSave;
 
   // ─── 공통 데이터 빌드 ───
-  const buildRecordData = () => {
+  const buildRecordData = (blocksOverride?: BlogBlock[]) => {
+    const srcBlocks = blocksOverride ?? blocks;
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
-    const photos = blocksToPhotos(blocks);
-    const bodyText = blocksToPlainText(blocks);
+    const photos = blocksToPhotos(srcBlocks);
+    const bodyText = blocksToPlainText(srcBlocks);
     return {
-      user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
       country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
       countryName: selectedCountry?.name || '',
       countryFlag: selectedCountry?.flag || '',
       countries: selectedCountry ? [{ flag: selectedCountry.flag, name: selectedCountry.name }] : [],
+      regionName: selectedRegion?.name || undefined,
+      regionNameEn: selectedRegion?.nameEn || undefined,
       date: startDate || dateStr,
       content: title.trim() || bodyText,
       visibility: 'friends' as const,
@@ -759,6 +801,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       rating: rating || undefined,
       companions: companions.length > 0 ? companions : undefined,
       medias: photos.length > 0 ? photos : undefined,
+      mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
+      representativePhoto: representativePhoto || undefined,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       weather: weather || undefined,
@@ -766,7 +810,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       flightType: flightType || undefined,
       keywords: keywords.length > 0 ? keywords : undefined,
       viewType: 'blog' as const,
-      blogBlocks: blocks,
+      blogBlocks: srcBlocks,
     };
   };
 
@@ -781,14 +825,33 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   })();
 
   // ─── 발행 ───
+  const publish = (finalBlocks: BlogBlock[]) => {
+    const data = buildRecordData(finalBlocks);
+    if (isEdit && editRecord) {
+      // 작성자·공개범위는 유지하고 내용만 갱신
+      const { user, visibility, ...changes } = data;
+      updateRecord(editRecord.id, changes);
+    } else {
+      addRecord(data);
+    }
+    navigation.goBack();
+  };
+
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
     const bodyText = blocksToPlainText(blocks);
     if (!title.trim() && !bodyText) { Alert.alert('내용 입력', '제목이나 본문을 작성해주세요.'); return; }
     if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
     if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
-    addRecord(buildRecordData());
-    navigation.goBack();
+
+    // AI 목차 분석: 제안이 2개 이상이면 미리보기 모달, 아니면 그대로 발행
+    const suggestions = analyzeForToc(blocks);
+    if (suggestions.length >= 2) {
+      setTocSuggestions(suggestions);
+      setTocModalVisible(true);
+      return;
+    }
+    publish(blocks);
   };
 
   // ─── 국가 필터 ───
@@ -822,8 +885,35 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         }} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={st.headerBtnText}>취소</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>블로그</Text>
+        <Text style={st.headerTitle}>{isEdit ? '블로그 수정' : '블로그'}</Text>
         <View style={st.headerRight}>
+          <TouchableOpacity
+            onPress={() => setRepPhotoModalVisible(true)}
+            style={[st.mapBtn, representativePhoto && st.mapBtnActive]}
+            activeOpacity={0.7}
+          >
+            {representativePhoto ? (
+              <Image source={{ uri: representativePhoto }} style={st.mapBtnThumb} />
+            ) : (
+              <MapIcon size={13} color={C.dim} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setPrivacyModalVisible(true)}
+            style={[st.lockBtn, privateFriends.length > 0 && st.lockBtnActive]}
+            activeOpacity={0.7}
+          >
+            {privateFriends.length > 0 ? (
+              <LockClosedIcon size={13} color={C.white} />
+            ) : (
+              <LockOpenIcon size={13} color={C.dim} />
+            )}
+            {privateFriends.length > 0 && (
+              <View style={st.lockBadge}>
+                <Text style={st.lockBadgeText}>{privateFriends.length}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
           <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
@@ -882,7 +972,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {photoMenuVisible && (
           <View style={st.subPanel}>
             <SubMenuItem icon={<GalleryIcon size={20} color="#A1A1B0" />} label="사진 선택" onPress={handleAddPhoto} />
-            <SubMenuItem icon={<Text style={{ fontSize: 18 }}>🎬</Text>} label="영상 선택" onPress={handleAddVideo} />
             <SubMenuItem icon={<CameraIcon size={20} color="#A1A1B0" />} label="카메라" onPress={handleCamera} />
           </View>
         )}
@@ -931,8 +1020,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.subPanel}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
               <ToolBtn icon="H" label="소제목" onPress={() => { setMoreMenuVisible(false); handleAddHeading(2); }} />
-              <ToolSep />
-              <ToolBtn icon={<StickerIcon size={22} color="#A1A1B0" />} label="스티커" onPress={() => { setMoreMenuVisible(false); setStickerVisible(true); }} />
               <ToolSep />
               <ToolBtn icon={<LinkIcon size={22} color="#A1A1B0" />} label="링크" onPress={() => { setMoreMenuVisible(false); setLinkModalVisible(true); }} />
               <ToolSep />
@@ -1013,7 +1100,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {FONT_OPTIONS.map(opt => (
           <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && st.pickerOptionActive]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
             {atb?.fontFamily === opt.value && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
@@ -1036,16 +1123,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <Text style={st.schedConfirmText}>삽입</Text>
         </TouchableOpacity>
       </PickerModal>
-
-      {/* 스티커 */}
-      <Modal visible={stickerVisible} transparent animationType="slide" onRequestClose={() => setStickerVisible(false)}>
-        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setStickerVisible(false)}>
-          <View style={st.stickerPanel} onStartShouldSetResponder={() => true}>
-            <View style={st.panelHandle} />
-            <StickerPicker onSelect={handleAddSticker} />
-          </View>
-        </TouchableOpacity>
-      </Modal>
 
       {/* 여행정보 패널 */}
       <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
@@ -1251,7 +1328,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>앱 친구 선택</Text>
                   <ScrollView style={{ maxHeight: 300 }}>
-                    {DUMMY_FRIENDS.map(friend => {
+                    {friendNames.length === 0 ? (
+                      <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                        아직 팔로우한 친구가 없어요
+                      </Text>
+                    ) : friendNames.map(friend => {
                       const isSelected = companionFriends.includes(friend);
                       return (
                         <TouchableOpacity key={friend} style={st.friendPickerItem} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.75}>
@@ -1394,6 +1475,37 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       )}
 
       <FullScreenImageViewer images={fullImgList} initialIndex={fullImgIndex} visible={fullImgVisible} onClose={() => setFullImgVisible(false)} />
+
+      <AutoTocModal
+        visible={tocModalVisible}
+        suggestions={tocSuggestions}
+        onConfirm={(accepted) => {
+          setTocModalVisible(false);
+          publish(applyTocSuggestions(blocks, accepted));
+        }}
+        onSkip={() => {
+          setTocModalVisible(false);
+          publish(blocks);
+        }}
+        onClose={() => setTocModalVisible(false)}
+      />
+
+      <PrivacyModal
+        visible={privacyModalVisible}
+        selectedFriends={privateFriends}
+        allFriends={friendNames}
+        onToggle={togglePrivateFriend}
+        onSetAll={setPrivateFriendsAll}
+        onClose={() => setPrivacyModalVisible(false)}
+      />
+
+      <RepPhotoModal
+        visible={repPhotoModalVisible}
+        photos={blocksToPhotos(blocks)}
+        selectedPhoto={representativePhoto}
+        onSelect={(uri) => setRepresentativePhoto(uri)}
+        onClose={() => setRepPhotoModalVisible(false)}
+      />
     </SafeAreaView>
   );
 
@@ -1412,7 +1524,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
               color: tb.color || C.white,
               backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
-              fontFamily: tb.fontFamily || undefined,
+              fontFamily: tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined,
             }]}
             placeholder={index === 0 && blocks.length === 1 ? '여행 이야기를 자유롭게 적어보세요...' : ''}
             placeholderTextColor={C.muted}
@@ -1509,15 +1621,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         return (
           <View key={block.id} style={st.imageBlock}>
             {isLocalVideo ? (
-              <Video
-                source={{ uri: vb.uri }}
-                style={st.videoBlockPlayer}
-                resizeMode={ResizeMode.CONTAIN}
-                useNativeControls={true}
-                shouldPlay={false}
-                isLooping={false}
-                onError={(e) => console.warn('[Video] playback error:', e)}
-              />
+              <LocalVideoPlayer uri={vb.uri} style={st.videoBlockPlayer} />
             ) : isEmbedVideo ? (
               <View style={st.videoBlockPlayer}>
                 <WebView
@@ -1694,6 +1798,263 @@ function PanelRow({ label, icon, labelText, required, children }: {
   );
 }
 
+// ─── 비공개 친구 선택 모달 ───
+function PrivacyModal({
+  visible,
+  selectedFriends,
+  allFriends,
+  onToggle,
+  onSetAll,
+  onClose,
+}: {
+  visible: boolean;
+  selectedFriends: string[];
+  allFriends: string[];
+  onToggle: (friend: string) => void;
+  onSetAll: (friends: string[]) => void;
+  onClose: () => void;
+}) {
+  const translateY = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 13,
+      }).start();
+    } else {
+      Animated.timing(translateY, {
+        toValue: 500,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={pm.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
+          {/* 핸들 */}
+          <View style={pm.handle} />
+
+          {/* 헤더 */}
+          <View style={pm.header}>
+            <View style={pm.headerLeft}>
+              <SvgLockClosedIcon size={24} color="#A1A1B0" />
+              <View>
+                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
+                <Text style={pm.headerDesc}>선택한 친구에게 이 블로그 글이 비공개됩니다</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {allFriends.length > 0 && (() => {
+            const allPrivate = selectedFriends.length === allFriends.length;
+            return (
+              <TouchableOpacity
+                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
+                activeOpacity={0.7}
+              >
+                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
+                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 글을 숨겨요</Text>
+                </View>
+                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
+
+          {/* 전체 해제 버튼 */}
+          {selectedFriends.length > 0 && (
+            <TouchableOpacity
+              style={pm.clearAllBtn}
+              onPress={() => selectedFriends.forEach(f => onToggle(f))}
+              activeOpacity={0.7}
+            >
+              <Text style={pm.clearAllTxt}>전체 해제</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* 친구 목록 */}
+          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
+            {allFriends.map(friend => {
+              const isSelected = selectedFriends.includes(friend);
+              return (
+                <TouchableOpacity
+                  key={friend}
+                  style={[pm.friendRow, isSelected && pm.friendRowActive]}
+                  onPress={() => onToggle(friend)}
+                  activeOpacity={0.7}
+                >
+                  {/* 아바타 */}
+                  <View style={[pm.avatar, isSelected && pm.avatarActive]}>
+                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
+                  </View>
+                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
+                  {/* 체크박스 */}
+                  <View style={[pm.checkbox, isSelected && pm.checkboxActive]}>
+                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
+                  </View>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* 완료 버튼 */}
+          <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
+            <Text style={pm.doneTxt}>
+              {selectedFriends.length > 0
+                ? `${selectedFriends.length}명 비공개 설정 완료`
+                : '공개로 설정 (비공개 없음)'}
+            </Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
+// ─── 지도 대표 사진 선택 모달 ───
+function RepPhotoModal({
+  visible,
+  photos,
+  selectedPhoto,
+  onSelect,
+  onClose,
+}: {
+  visible: boolean;
+  photos: string[];
+  selectedPhoto: string | null;
+  onSelect: (uri: string | null) => void;
+  onClose: () => void;
+}) {
+  const translateY = useRef(new Animated.Value(500)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        tension: 65,
+        friction: 13,
+      }).start();
+    } else {
+      Animated.timing(translateY, {
+        toValue: 500,
+        duration: 220,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+
+  const handlePickFromGallery = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'] as MediaType[],
+        allowsMultipleSelection: false,
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      onSelect(result.assets[0].uri);
+    } catch (err: any) {
+      console.error('[RepPhotoModal pick gallery] error:', err);
+      Alert.alert('사진 선택 오류', err?.message || '대표 사진을 선택하는 중 오류가 발생했습니다.');
+    }
+  };
+
+  const isSelectedFromGallery = selectedPhoto && !photos.includes(selectedPhoto);
+  const displayPhotos = isSelectedFromGallery ? [selectedPhoto, ...photos] : photos;
+
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      <View style={rpm.overlay}>
+        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
+        <Animated.View style={[rpm.sheet, { transform: [{ translateY }] }]}>
+          {/* 핸들 */}
+          <View style={rpm.handle} />
+
+          {/* 헤더 */}
+          <View style={rpm.header}>
+            <View style={rpm.headerLeft}>
+              <MapIcon size={24} color="#BF85FC" />
+              <View>
+                <Text style={rpm.headerTitle}>지도 대표 사진 선택</Text>
+                <Text style={rpm.headerDesc}>지구본과 대륙 지도에 이 사진이 노출됩니다</Text>
+              </View>
+            </View>
+          </View>
+
+          {/* 갤러리 선택 버튼 */}
+          <TouchableOpacity
+            style={rpm.galleryBtn}
+            onPress={handlePickFromGallery}
+            activeOpacity={0.8}
+          >
+            <Text style={rpm.galleryBtnTxt}>🖼️ 기기 갤러리에서 대표 사진 선택</Text>
+          </TouchableOpacity>
+
+          {displayPhotos.length === 0 ? (
+            <View style={rpm.emptyWrap}>
+              <Text style={rpm.emptyTxt}>선택된 대표 사진이 없습니다. 위 버튼을 눌러 갤러리에서 대표 사진을 선택하거나 사진을 먼저 본문에 추가해주세요.</Text>
+            </View>
+          ) : (
+            <>
+              {/* 대표 해제 버튼 */}
+              {selectedPhoto && (
+                <TouchableOpacity
+                  style={rpm.clearBtn}
+                  onPress={() => onSelect(null)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={rpm.clearTxt}>대표 지정 해제</Text>
+                </TouchableOpacity>
+              )}
+
+              {/* 사진 썸네일 그리드 */}
+              <ScrollView style={rpm.gridScroll} contentContainerStyle={rpm.gridContainer} showsVerticalScrollIndicator={false}>
+                {displayPhotos.map((uri, idx) => {
+                  const isSelected = selectedPhoto === uri;
+                  return (
+                    <TouchableOpacity
+                      key={`${uri}-${idx}`}
+                      style={[rpm.photoCard, isSelected && rpm.photoCardActive]}
+                      onPress={() => onSelect(uri)}
+                      activeOpacity={0.8}
+                    >
+                      <Image source={{ uri }} style={rpm.photoImg} resizeMode="cover" />
+                      {isSelected && (
+                        <View style={rpm.selectedOverlay}>
+                          <Text style={rpm.selectedMark}>★ 대표</Text>
+                        </View>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </>
+          )}
+
+          {/* 완료 버튼 */}
+          <TouchableOpacity style={rpm.doneBtn} onPress={onClose} activeOpacity={0.85}>
+            <Text style={rpm.doneTxt}>완료</Text>
+          </TouchableOpacity>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+}
+
 // ─── 스타일 ───
 const st = StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
@@ -1702,8 +2063,15 @@ const st = StyleSheet.create({
   headerBtnText: { color: C.dim, fontSize: 14 },
   headerTitle: { color: C.white, fontSize: 15, fontWeight: '700', position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  mapBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  mapBtnActive: { borderWidth: 1, borderColor: C.purpleNeon },
+  mapBtnThumb: { width: '100%', height: '100%', borderRadius: 5 },
   naverBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: C.naverGreen, alignItems: 'center', justifyContent: 'center' },
   naverBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
+  lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
+  lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
+  lockBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
   saveBtn: { backgroundColor: C.purpleDeep, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
   saveBtnDisabled: { backgroundColor: C.muted, opacity: 0.4 },
   saveBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
@@ -2091,3 +2459,181 @@ const calSt = StyleSheet.create({
   confirmBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
   confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });
+
+const pm = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    backgroundColor: '#1A1A28',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingBottom: 36,
+    maxHeight: '80%',
+  },
+  handle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerIcon: { fontSize: 24 },
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  headerDesc: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    marginTop: 2,
+  },
+  clearAllBtn: {
+    alignSelf: 'flex-end',
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+    backgroundColor: 'rgba(191,133,252,0.12)',
+  },
+  clearAllTxt: {
+    fontSize: 12,
+    color: '#BF85FC',
+    fontWeight: '600',
+  },
+  listScroll: {
+    maxHeight: 320,
+  },
+  allPrivateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 14,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  allPrivateLabel: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  allPrivateDesc: {
+    fontSize: 12,
+    color: '#8A8A99',
+    marginTop: 2,
+  },
+  friendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 14,
+    marginBottom: 2,
+  },
+  friendRowActive: {
+    backgroundColor: 'rgba(107,33,168,0.15)',
+  },
+  avatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2E2E3B',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarActive: {
+    backgroundColor: 'rgba(107,33,168,0.4)',
+  },
+  avatarTxt: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  friendName: {
+    flex: 1,
+    fontSize: 15,
+    color: '#A1A1B0',
+    fontWeight: '500',
+  },
+  friendNameActive: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#4A4A59',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  checkboxActive: {
+    backgroundColor: '#BF85FC',
+    borderColor: '#BF85FC',
+  },
+  checkMark: {
+    fontSize: 13,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  doneBtn: {
+    backgroundColor: '#6B21A8',
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 16,
+  },
+  doneTxt: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+});
+
+const rpm = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  sheet: { backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '80%' },
+  galleryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(191,133,252,0.1)', borderWidth: 1, borderColor: 'rgba(191,133,252,0.3)', borderRadius: 12, paddingVertical: 12, marginBottom: 16 },
+  galleryBtnTxt: { color: '#BF85FC', fontSize: 14, fontWeight: '700' },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 12, marginBottom: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 2 },
+  clearBtn: { alignSelf: 'flex-end', marginBottom: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,59,48,0.12)' },
+  clearTxt: { fontSize: 12, color: '#FF3B30', fontWeight: '600' },
+  emptyWrap: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center' },
+  emptyTxt: { fontSize: 14, color: '#A1A1B0', textAlign: 'center', lineHeight: 20 },
+  gridScroll: { maxHeight: 320 },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 10 },
+  photoCard: { width: (SCREEN_W - 40 - 20) / 3, aspectRatio: 1, borderRadius: 8, overflow: 'hidden', backgroundColor: '#2E2E3B', borderWidth: 2, borderColor: 'transparent' },
+  photoCardActive: { borderColor: '#BF85FC' },
+  photoImg: { width: '100%', height: '100%' },
+  selectedOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(107,33,168,0.85)', paddingVertical: 3, alignItems: 'center' },
+  selectedMark: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+  doneBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
+  doneTxt: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+});
+

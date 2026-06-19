@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { Colors, Typography, Spacing } from '../constants';
+import { Colors, Typography, Spacing } from '../../constants';
 
 interface EmptyStateProps {
   icon?: React.ReactNode;

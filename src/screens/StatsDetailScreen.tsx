@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -12,6 +13,8 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Colors, Typography, Spacing } from '../constants';
+import { useRecords } from '../store/recordStore';
+import { COUNTRIES } from '../constants/countries';
 
 // ─── 등장 애니메이션 래퍼 ───
 function FadeSlideView({
@@ -83,84 +86,9 @@ const ICONS: Record<StatType, string> = {
 
 type Item = { label: string; value: string; sub?: string };
 
-const DETAIL_CONTENT: Record<StatType, { title: string; subtitle: string; hero: string; heroLabel: string; items: Item[] }> = {
-  world: {
-    title: '세계 여행',
-    subtitle: '지금까지의 여행 기록 전체 요약',
-    hero: '5개국',
-    heroLabel: '총 방문 나라',
-    items: [
-      { label: '방문 나라', value: '5개국', sub: '일본 · 미국 · 프랑스 · 태국 · 싱가포르' },
-      { label: '방문 도시', value: '12개', sub: '도쿄, 오사카, 뉴욕, 파리 외 8개' },
-      { label: '총 기록', value: '28개', sub: '사진 · 글 · 영상 포함' },
-      { label: '총 여행 일수', value: '49일', sub: '2019년 ~ 2025년' },
-      { label: '세계 커버리지', value: '12.3%', sub: '195개국 중 5개국 방문' },
-      { label: '첫 해외 여행', value: '2019년', sub: '일본 도쿄' },
-      { label: '가장 활발한 해', value: '2024년', sub: '7회 방문' },
-    ],
-  },
-  yearly: {
-    title: '연도별 여행',
-    subtitle: '연도별 방문 나라 및 횟수',
-    hero: '21회',
-    heroLabel: '총 여행 횟수',
-    items: [
-      { label: '2025년', value: '4회', sub: '일본, 태국, 싱가포르, 미국' },
-      { label: '2024년', value: '7회', sub: '일본 3회, 유럽 2회, 동남아 2회' },
-      { label: '2023년', value: '5회', sub: '프랑스, 일본, 태국, 싱가포르, 미국' },
-      { label: '2022년', value: '3회', sub: '일본, 태국, 싱가포르' },
-      { label: '2021년', value: '1회', sub: '일본 도쿄' },
-      { label: '2020년', value: '0회', sub: '코로나19 영향' },
-      { label: '2019년', value: '1회', sub: '일본 오사카' },
-    ],
-  },
-  region: {
-    title: '대륙별 방문',
-    subtitle: '대륙별 방문 나라 및 현황',
-    hero: '3개 대륙',
-    heroLabel: '방문한 대륙',
-    items: [
-      { label: '아시아', value: '8개국', sub: '일본 · 태국 · 싱가포르 · 홍콩 외 4개' },
-      { label: '유럽', value: '3개국', sub: '프랑스 · 이탈리아 · 스페인' },
-      { label: '아메리카', value: '1개국', sub: '미국 뉴욕 · LA' },
-      { label: '오세아니아', value: '0개국', sub: '아직 미방문' },
-      { label: '아프리카', value: '0개국', sub: '아직 미방문' },
-      { label: '남극', value: '0개국', sub: '아직 미방문' },
-    ],
-  },
-  countries: {
-    title: '나라별 방문',
-    subtitle: '방문 나라별 도시 및 횟수',
-    hero: '5개국',
-    heroLabel: '총 방문 나라',
-    items: [
-      { label: '🇯🇵 일본', value: '3회', sub: '도쿄 · 오사카 · 교토 · 후쿠오카' },
-      { label: '🇺🇸 미국', value: '2회', sub: '뉴욕 · 로스앤젤레스' },
-      { label: '🇫🇷 프랑스', value: '1회', sub: '파리' },
-      { label: '🇹🇭 태국', value: '1회', sub: '방콕 · 치앙마이' },
-      { label: '🇸🇬 싱가포르', value: '1회', sub: '싱가포르 시티' },
-    ],
-  },
-  rating: {
-    title: '여행 평가',
-    subtitle: '별점별 여행 기록 분포',
-    hero: '4.2점',
-    heroLabel: '평균 별점',
-    items: [
-      { label: '5점', value: '8개', sub: '29' },
-      { label: '4점', value: '12개', sub: '43' },
-      { label: '3점', value: '5개', sub: '18' },
-      { label: '2점', value: '2개', sub: '7' },
-      { label: '1점', value: '1개', sub: '3' },
-    ],
-  },
-};
-
 function parseNum(s: string): number {
   return parseInt(s.replace(/[^0-9]/g, '')) || 0;
 }
-
-const REGION_MAX = 8; // 아시아 최대
 
 // ─── 연도별 바 카드 ───
 function YearlySection({ items, accent }: { items: Item[]; accent: [string, string] }) {
@@ -206,11 +134,13 @@ const REGION_ICONS: Record<string, string> = {
   '오세아니아': '🏝️', '아프리카': '🌍', '남극': '❄️',
 };
 function RegionSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
+  const counts = items.map(it => parseNum(it.value));
+  const regionMax = Math.max(...counts, 1);
   return (
     <View style={s.section}>
       {items.map((item, i) => {
-        const count = parseNum(item.value);
-        const pct = count / REGION_MAX;
+        const count = counts[i];
+        const pct = count / regionMax;
         const isEmpty = count === 0;
         const icon = REGION_ICONS[item.label] ?? '🌐';
         return (
@@ -356,10 +286,300 @@ function WorldSection({ items, accent }: { items: Item[]; accent: [string, strin
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
-  const content = DETAIL_CONTENT[statType];
+  const { records } = useRecords();
+
+  // Filter to "my posts" (including seed data for demo consistency)
+  const myRecords = records.filter((r) => r.isMyPost !== false);
+
+  // Compute stats dynamically based on statType and myRecords
+  const content = useMemo(() => {
+    // 1. Common aggregations
+    const visitedCountriesSet = new Set<string>();
+    const visitedCountriesList: { name: string; flag: string }[] = [];
+    const visitedCitiesSet = new Set<string>();
+
+    myRecords.forEach((r) => {
+      if (r.countries && r.countries.length > 0) {
+        r.countries.forEach((c) => {
+          if (!visitedCountriesSet.has(c.name)) {
+            visitedCountriesSet.add(c.name);
+            visitedCountriesList.push({ name: c.name, flag: c.flag });
+          }
+        });
+      } else if (r.countryName) {
+        if (!visitedCountriesSet.has(r.countryName)) {
+          visitedCountriesSet.add(r.countryName);
+          visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
+        }
+      }
+      if (r.regionName) {
+        visitedCitiesSet.add(r.regionName);
+      }
+    });
+
+    const countryCount = visitedCountriesSet.size;
+    const cityCount = visitedCitiesSet.size || countryCount;
+    const recordsCount = myRecords.length;
+
+    let totalDays = 0;
+    myRecords.forEach((r) => {
+      if (r.startDate && r.endDate) {
+        const start = new Date(r.startDate.replace(/\./g, '-'));
+        const end = new Date(r.endDate.replace(/\./g, '-'));
+        if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+          const diffTime = Math.abs(end.getTime() - start.getTime());
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+          totalDays += diffDays;
+        } else {
+          totalDays += 1;
+        }
+      } else {
+        totalDays += 1;
+      }
+    });
+
+    const worldCoveragePct = ((countryCount / 195) * 100).toFixed(1) + '%';
+
+    // First Travel year
+    let firstTravelYear = '-';
+    let firstTravelLoc = '';
+    if (myRecords.length > 0) {
+      const sortedByTime = [...myRecords].sort((a, b) => a.timestamp - b.timestamp);
+      const firstRecord = sortedByTime[0];
+      const yearStr = firstRecord.date ? firstRecord.date.split('.')[0] : (firstRecord.startDate ? firstRecord.startDate.split('.')[0] : '');
+      if (yearStr && yearStr.length === 4) {
+        firstTravelYear = yearStr + '년';
+        firstTravelLoc = firstRecord.countryName || (firstRecord.countries?.[0]?.name) || '';
+      }
+    }
+
+    // Most active year
+    const yearlyCounts: Record<string, number> = {};
+    myRecords.forEach((r) => {
+      const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
+      if (yearStr && yearStr.length === 4) {
+        yearlyCounts[yearStr] = (yearlyCounts[yearStr] || 0) + 1;
+      }
+    });
+    let mostActiveYear = '-';
+    let mostActiveCount = 0;
+    Object.keys(yearlyCounts).forEach((year) => {
+      if (yearlyCounts[year] > mostActiveCount) {
+        mostActiveCount = yearlyCounts[year];
+        mostActiveYear = year + '년';
+      }
+    });
+
+    // Yearly breakdown items
+    const currentYear = new Date().getFullYear();
+    const yearlyItems: Item[] = [];
+    const yearlyVisitedCountries: Record<string, Set<string>> = {};
+    myRecords.forEach((r) => {
+      const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
+      if (yearStr && yearStr.length === 4) {
+        if (!yearlyVisitedCountries[yearStr]) {
+          yearlyVisitedCountries[yearStr] = new Set<string>();
+        }
+        if (r.countries && r.countries.length > 0) {
+          r.countries.forEach((c) => yearlyVisitedCountries[yearStr].add(c.name));
+        } else if (r.countryName) {
+          yearlyVisitedCountries[yearStr].add(r.countryName);
+        }
+      }
+    });
+
+    for (let i = 6; i >= 0; i--) {
+      const year = String(currentYear - i);
+      const visits = yearlyCounts[year] || 0;
+      const countriesSet = yearlyVisitedCountries[year] || new Set<string>();
+      const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).join(', ') : (visits === 0 ? '기록 없음' : '');
+      yearlyItems.push({
+        label: year + '년',
+        value: visits + '회',
+        sub: countriesStr,
+      });
+    }
+
+    // Region breakdown items
+    const continentCounts: Record<string, number> = {
+      '아시아': 0,
+      '유럽': 0,
+      '아메리카': 0,
+      '오세아니아': 0,
+      '아프리카': 0,
+    };
+    const continentCountries: Record<string, Set<string>> = {
+      '아시아': new Set(),
+      '유럽': new Set(),
+      '아메리카': new Set(),
+      '오세아니아': new Set(),
+      '아프리카': new Set(),
+    };
+
+    myRecords.forEach((r) => {
+      const countryNames: string[] = [];
+      if (r.countries && r.countries.length > 0) {
+        r.countries.forEach((c) => countryNames.push(c.name));
+      } else if (r.countryName) {
+        countryNames.push(r.countryName);
+      }
+
+      countryNames.forEach((name) => {
+        const cMeta = COUNTRIES.find((c) => c.name === name);
+        if (cMeta) {
+          let cont = cMeta.continent;
+          if (cont === '북아메리카' || cont === '남아메리카') {
+            cont = '아메리카';
+          }
+          if (cont in continentCounts) {
+            continentCounts[cont]++;
+            continentCountries[cont].add(name);
+          }
+        } else {
+          continentCounts['아시아']++;
+          continentCountries['아시아'].add(name);
+        }
+      });
+    });
+
+    const regionItems: Item[] = ['아시아', '유럽', '아메리카', '오세아니아', '아프리카'].map((cont) => {
+      const count = continentCountries[cont].size;
+      const countriesListStr = Array.from(continentCountries[cont]).slice(0, 5).join(' · ') + (continentCountries[cont].size > 5 ? ` 외 ${continentCountries[cont].size - 5}개` : '');
+      return {
+        label: cont,
+        value: count + '개국',
+        sub: count > 0 ? countriesListStr : '아직 미방문',
+      };
+    });
+
+    // Countries breakdown items
+    const countryVisits: Record<string, { count: number; flag: string; cities: Set<string> }> = {};
+    myRecords.forEach((r) => {
+      const countriesList: { name: string; flag: string }[] = [];
+      if (r.countries && r.countries.length > 0) {
+        r.countries.forEach((c) => countriesList.push(c));
+      } else if (r.countryName) {
+        countriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
+      }
+
+      countriesList.forEach((c) => {
+        if (!countryVisits[c.name]) {
+          countryVisits[c.name] = { count: 0, flag: c.flag, cities: new Set<string>() };
+        }
+        countryVisits[c.name].count++;
+        if (r.regionName) {
+          countryVisits[c.name].cities.add(r.regionName);
+        }
+      });
+    });
+
+    const countriesItems: Item[] = Object.keys(countryVisits)
+      .map((name) => {
+        const cInfo = countryVisits[name];
+        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).join(' · ') : name;
+        return {
+          label: `${cInfo.flag} ${name}`,
+          value: cInfo.count + '회',
+          sub: citiesStr,
+          visits: cInfo.count, // for sorting
+        };
+      })
+      .sort((a, b) => b.visits - a.visits);
+
+    // Rating breakdown items
+    const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    let ratingSum = 0;
+    let ratedRecordsCount = 0;
+
+    myRecords.forEach((r) => {
+      let rating = r.rating;
+      if (rating === undefined && r.perCountryData) {
+        const ratings = Object.values(r.perCountryData)
+          .map((d) => d.rating)
+          .filter(Boolean) as number[];
+        if (ratings.length > 0) {
+          rating = Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length);
+        }
+      }
+
+      if (rating !== undefined && rating >= 1 && rating <= 5) {
+        ratingCounts[rating as 5 | 4 | 3 | 2 | 1]++;
+        ratingSum += rating;
+        ratedRecordsCount++;
+      }
+    });
+
+    const avgRating = ratedRecordsCount > 0 ? (ratingSum / ratedRecordsCount).toFixed(1) : '0.0';
+
+    const ratingItems: Item[] = [5, 4, 3, 2, 1].map((star) => {
+      const count = ratingCounts[star as 5 | 4 | 3 | 2 | 1];
+      const pct = ratedRecordsCount > 0 ? Math.round((count / ratedRecordsCount) * 100) : 0;
+      return {
+        label: star + '점',
+        value: count + '개',
+        sub: String(pct),
+      };
+    });
+
+    const totalYearlyVisits = Object.values(yearlyCounts).reduce((a, b) => a + b, 0);
+    const totalRegionCount = Object.keys(continentCounts).filter((k) => continentCounts[k] > 0).length;
+
+    switch (statType) {
+      case 'world':
+        return {
+          title: '세계 여행',
+          subtitle: '지금까지의 여행 기록 전체 요약',
+          hero: countryCount + '개국',
+          heroLabel: '총 방문 나라',
+          items: [
+            { label: '방문 나라', value: countryCount + '개국', sub: visitedCountriesList.map((c) => c.name).slice(0, 6).join(' · ') + (visitedCountriesList.length > 6 ? ` 외 ${visitedCountriesList.length - 6}개` : '') },
+            { label: '방문 도시', value: cityCount + '개', sub: visitedCitiesSet.size > 0 ? Array.from(visitedCitiesSet).slice(0, 6).join(', ') : '기록에 기반한 도시 계산' },
+            { label: '총 기록', value: recordsCount + '개', sub: '사진 · 글 · 영상 포함' },
+            { label: '총 여행 일수', value: totalDays + '일', sub: firstTravelYear !== '-' ? `${firstTravelYear.slice(0, 4)}년 ~ ${new Date().getFullYear()}년` : '' },
+            { label: '세계 커버리지', value: worldCoveragePct, sub: `195개국 중 ${countryCount}개국 방문` },
+            { label: '첫 해외 여행', value: firstTravelYear, sub: firstTravelLoc },
+            { label: '가장 활발한 해', value: mostActiveYear, sub: mostActiveCount > 0 ? `${mostActiveCount}회 방문` : '기록 없음' },
+          ],
+        };
+      case 'yearly':
+        return {
+          title: '연도별 여행',
+          subtitle: '연도별 방문 나라 및 횟수',
+          hero: totalYearlyVisits + '회',
+          heroLabel: '총 여행 횟수',
+          items: yearlyItems,
+        };
+      case 'region':
+        return {
+          title: '대륙별 방문',
+          subtitle: '대륙별 방문 나라 및 현황',
+          hero: totalRegionCount + '개 대륙',
+          heroLabel: '방문한 대륙',
+          items: regionItems,
+        };
+      case 'countries':
+        return {
+          title: '나라별 방문',
+          subtitle: '방문 나라별 도시 및 횟수',
+          hero: countryCount + '개국',
+          heroLabel: '총 방문 나라',
+          items: countriesItems,
+        };
+      case 'rating':
+        return {
+          title: '여행 평가',
+          subtitle: '별점별 여행 기록 분포',
+          hero: avgRating + '점',
+          heroLabel: '평균 별점',
+          items: ratingItems,
+        };
+    }
+  }, [statType, myRecords]);
+
   const accent = ACCENTS[statType];
 
   // 입장 애니메이션
@@ -430,6 +650,7 @@ export default function StatsDetailScreen() {
       <Animated.View
         style={[
           s.header,
+          { paddingTop: insets.top + 10 },
           {
             opacity: headerAnim,
             transform: [
@@ -503,7 +724,6 @@ const s = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 16,
     gap: 14,

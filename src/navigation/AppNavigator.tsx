@@ -5,6 +5,9 @@ import SplashScreen from '../screens/SplashScreen';
 import AppIntroScreen from '../screens/AppIntroScreen';
 import LoginScreen from '../screens/LoginScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
+import TravelImportScreen from '../screens/TravelImportScreen';
+import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
+import ImportCompleteScreen from '../screens/ImportCompleteScreen';
 import CountryScreen from '../screens/CountryScreen';
 import AccountSettingsScreen from '../screens/AccountSettingsScreen';
 import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
@@ -22,16 +25,20 @@ import TripRecordScreen from '../screens/TripRecordScreen';
 import TripGroupScreen from '../screens/TripGroupScreen';
 import TripDetailScreen from '../screens/TripDetailScreen';
 import PostDetailScreen from '../screens/PostDetailScreen';
-import AlbumRecordScreen from '../screens/AlbumRecordScreen';
 import BlogRecordScreen from '../screens/BlogRecordScreen';
+import CutRecordScreen from '../screens/CutRecordScreen';
+import CutTravelInfoScreen from '../screens/CutTravelInfoScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
+import AlbumCreateScreen from '../screens/AlbumCreateScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
+import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
+import type { RootStackParamList } from './types';
 
-const Stack = createStackNavigator();
+const Stack = createStackNavigator<RootStackParamList>();
 
 const darkTheme = {
   dark: true,
@@ -62,6 +69,8 @@ export default function AppNavigator() {
           gestureEnabled: true,
           gestureDirection: 'horizontal',
           gestureResponseDistance: 150,
+          // 스와이프 뒤로가기 중 이전 화면이 분리되어 흰 화면이 깜빡이는 버그 방지
+          detachPreviousScreen: false,
           cardStyleInterpolator: ({ current, next, layouts }) => ({
             cardStyle: {
               transform: [
@@ -87,7 +96,14 @@ export default function AppNavigator() {
         <Stack.Screen name="AppIntro" component={AppIntroScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="BasicInfo" component={BasicInfoScreen} />
-        <Stack.Screen name="Main" component={TabNavigator} />
+        <Stack.Screen name="TravelImport" component={TravelImportScreen} />
+        <Stack.Screen name="ImportPhotoSelect" component={ImportPhotoSelectScreen} />
+        <Stack.Screen
+          name="ImportComplete"
+          component={ImportCompleteScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen name="Main" component={TabNavigator} options={{ gestureEnabled: false }} />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
@@ -100,6 +116,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Friends" component={FriendsScreen} />
         <Stack.Screen name="DM" component={DMScreen} />
+        <Stack.Screen name="BestCut" component={BestCutScreen} />
         <Stack.Screen name="FriendSearch" component={FriendSearchScreen} />
         <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
         <Stack.Screen name="ArchivedPosts" component={ArchivedPostsScreen} />
@@ -115,9 +132,22 @@ export default function AppNavigator() {
           component={PostDetailScreen}
           options={{
             cardStyle: { backgroundColor: 'transparent' },
+            // 게시물이 펼쳐지듯 줌인 + 페이드로 상세 진입
+            transitionSpec: {
+              open: { animation: 'timing', config: { duration: 300 } },
+              close: { animation: 'timing', config: { duration: 220 } },
+            },
             cardStyleInterpolator: ({ current }) => ({
               cardStyle: {
                 opacity: current.progress,
+                transform: [
+                  {
+                    scale: current.progress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0.9, 1],
+                    }),
+                  },
+                ],
               },
               overlayStyle: {
                 backgroundColor: '#000',
@@ -130,14 +160,19 @@ export default function AppNavigator() {
           }}
         />
         <Stack.Screen
-          name="AlbumRecord"
-          component={AlbumRecordScreen}
-          options={{ presentation: 'modal', gestureEnabled: false }}
-        />
-        <Stack.Screen
           name="BlogRecord"
           component={BlogRecordScreen}
           options={{ presentation: 'modal' }}
+        />
+        <Stack.Screen
+          name="CutRecord"
+          component={CutRecordScreen}
+          options={{ presentation: 'modal', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="CutTravelInfo"
+          component={CutTravelInfoScreen}
+          options={{ presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
           name="NaverBlogImport"
@@ -148,6 +183,11 @@ export default function AppNavigator() {
           name="SnapRecord"
           component={SnapRecordScreen}
           options={{ presentation: 'modal', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="AlbumCreate"
+          component={AlbumCreateScreen}
+          options={{ presentation: 'modal' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

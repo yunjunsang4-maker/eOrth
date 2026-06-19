@@ -1,4 +1,5 @@
 import React from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -7,6 +8,8 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { PlaneIcon } from '../components/icons';
+import { useRecords } from '../store/recordStore';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -19,17 +22,13 @@ const COLORS = {
   textMuted:    '#4A4A59',
 };
 
-const FOLLOWING_FRIENDS = [
-  { id: '1', username: 'seoyeon_l',  isAbroad: true,  currentCountry: '일본',   currentCountryFlag: '🇯🇵' },
-  { id: '2', username: 'jihoon_p',   isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-  { id: '3', username: 'woosung_j',  isAbroad: false, currentCountry: null,     currentCountryFlag: null },
-];
-
-export default function FollowingListScreen({ navigation }: { navigation: any }) {
+export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
+  const insets = useSafeAreaInsets();
+  const { followingUsers } = useRecords();
   return (
     <View style={styles.root}>
       {/* 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
@@ -41,7 +40,10 @@ export default function FollowingListScreen({ navigation }: { navigation: any })
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {FOLLOWING_FRIENDS.map((friend, index) => (
+        {followingUsers.length === 0 && (
+          <Text style={styles.emptyText}>아직 팔로우한 친구가 없어요</Text>
+        )}
+        {followingUsers.map((friend, index) => (
           <React.Fragment key={friend.id}>
             <TouchableOpacity
               style={styles.friendRow}
@@ -67,7 +69,7 @@ export default function FollowingListScreen({ navigation }: { navigation: any })
               <Text style={styles.chevron}>›</Text>
             </TouchableOpacity>
 
-            {index < FOLLOWING_FRIENDS.length - 1 && (
+            {index < followingUsers.length - 1 && (
               <View style={styles.divider} />
             )}
           </React.Fragment>
@@ -87,7 +89,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 56,
     paddingBottom: 16,
   },
   backBtn: {
@@ -151,6 +152,12 @@ const styles = StyleSheet.create({
   chevron: {
     fontSize: 22,
     color: COLORS.textMuted,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: COLORS.textDim,
+    textAlign: 'center',
+    marginTop: 48,
   },
   divider: {
     height: 1,

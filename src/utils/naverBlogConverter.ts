@@ -270,7 +270,7 @@ export function parseNaverHtml(html: string): BlogData {
     const match = html.match(pattern);
     if (match && match[1]) {
       result.title = stripHtml(match[1]).trim();
-      if (result.title) break;
+        if (result.title) break;
     }
   }
 
@@ -292,64 +292,6 @@ export function parseNaverHtml(html: string): BlogData {
       result.photos.push(decodeHtmlEntities(src));
     }
   }
-
-  // 3-b) 비디오 URL 추출
-  const videos: string[] = [];
-  const addVideo = (src: string) => {
-    if (!src) return;
-    const decoded = decodeHtmlEntities(src.trim());
-    // vid만 있으면 tv.naver.com embed URL로 변환
-    const resolved = (decoded.length > 3 && !decoded.startsWith('http'))
-      ? `https://tv.naver.com/embed/${decoded}`
-      : decoded;
-    if (resolved && resolved.length > 10 && !videos.includes(resolved)) videos.push(resolved);
-  };
-  // <video> 태그의 src
-  const videoSrcRegex = /<video[^>]+src="([^"]+)"[^>]*>/gi;
-  let videoSrcMatch;
-  while ((videoSrcMatch = videoSrcRegex.exec(html)) !== null) addVideo(videoSrcMatch[1]);
-  // <source> 태그 (video 내부)
-  const sourceSrcRegex = /<source[^>]+src="([^"]+)"[^>]*/gi;
-  let sourceSrcMatch;
-  while ((sourceSrcMatch = sourceSrcRegex.exec(html)) !== null) addVideo(sourceSrcMatch[1]);
-  // data-play-url, data-video-url, data-vid, data-video-id
-  const dataVideoRegex = /data-(?:play-url|video-url|vid|video-id)="([^"]+)"/gi;
-  let dataVideoMatch;
-  while ((dataVideoMatch = dataVideoRegex.exec(html)) !== null) addVideo(dataVideoMatch[1]);
-  // __se_module_data 내 vid / videoId
-  const seModuleRegex = /__se_module_data="([^"]+)"/gi;
-  let seModMatch;
-  while ((seModMatch = seModuleRegex.exec(html)) !== null) {
-    try {
-      const decoded2 = decodeHtmlEntities(seModMatch[1]);
-      const m = JSON.parse(decoded2);
-      const d = m.data || m;
-      addVideo(d.vid || d.videoId || d.url || d.videoUrl || d.playUrl || '');
-    } catch {}
-  }
-  // data-module 내 vid / videoId
-  const dataModuleRegex = /data-module="([^"]+)"/gi;
-  let dmMatch;
-  while ((dmMatch = dataModuleRegex.exec(html)) !== null) {
-    try {
-      const decoded2 = decodeHtmlEntities(dmMatch[1]);
-      const m = JSON.parse(decoded2);
-      const d = m.data || m;
-      addVideo(d.vid || d.videoId || d.url || d.videoUrl || d.playUrl || '');
-    } catch {}
-  }
-  // script 내 "vid":"xxx" 패턴
-  const scriptVidRegex = /"vid"\s*:\s*"([A-Za-z0-9]+)"/g;
-  let svMatch;
-  while ((svMatch = scriptVidRegex.exec(html)) !== null) addVideo(svMatch[1]);
-  const scriptVideoIdRegex = /"videoId"\s*:\s*"([A-Za-z0-9]+)"/g;
-  let sviMatch;
-  while ((sviMatch = scriptVideoIdRegex.exec(html)) !== null) addVideo(sviMatch[1]);
-  // iframe 임베드 (tv.naver.com, youtube 등)
-  const iframeVideoRegex = /<iframe[^>]+src="([^"]*(?:tv\.naver|youtube|youtu\.be|player\.naver|smarteditor)[^"]*)"/gi;
-  let iframeMatch;
-  while ((iframeMatch = iframeVideoRegex.exec(html)) !== null) addVideo(iframeMatch[1]);
-  if (videos.length > 0) result.videos = videos;
 
   // 4) 본문 텍스트 추출
   const bodyTexts: string[] = [];
@@ -702,8 +644,8 @@ export const NAVER_BLOG_EXTRACT_JS = `
       title: title.trim(),
       html: content,
       images: images,
-      videos: videos,
-      orderedBlocks: orderedBlocks,
+      videos: [],
+      orderedBlocks: orderedBlocks.filter(function(b) { return b.type !== 'video'; }),
       tags: tags,
     }));
   } catch(e) {

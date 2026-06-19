@@ -5,8 +5,9 @@ import StatsScreen from '../screens/StatsScreen';
 import SocialScreen from '../screens/SocialScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { CustomTabBar } from '../components/CustomTabBar';
+import type { TabParamList } from './types';
 
-const Tab = createBottomTabNavigator();
+const Tab = createBottomTabNavigator<TabParamList>();
 
 export default function TabNavigator() {
   return (

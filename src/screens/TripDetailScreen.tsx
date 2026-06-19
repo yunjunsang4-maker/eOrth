@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -7,13 +8,24 @@ import {
   ScrollView,
   Dimensions,
   Animated,
+  Image,
+  TextInput,
+  Modal,
+  Alert,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
+import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
+import { bakeCoverCrop } from '../utils/importPhotoStore';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율
+const CARD_W = SCREEN_WIDTH - 40;
+const CARD_H = 180;
+const CARD_ASPECT = CARD_W / CARD_H;
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -31,6 +43,10 @@ const COLORS = {
   blogBg: 'rgba(167,139,250,0.06)',
   albumAccent: '#FFA657',
   albumBg: 'rgba(255,166,87,0.06)',
+  snapAccent: '#FFD60A',
+  snapBg: 'rgba(255,214,10,0.06)',
+  cutAccent: '#BF85FC',
+  cutBg: 'rgba(191,133,252,0.06)',
 };
 
 const VIEW_CONFIG: Record<string, {
@@ -53,9 +69,21 @@ const VIEW_CONFIG: Record<string, {
   },
   album: {
     icon: '📷',
-    name: '앨범',
+    name: '사진첩',
     accent: COLORS.albumAccent,
     gradient: ['rgba(255,166,87,0.12)', 'rgba(255,166,87,0.02)'],
+  },
+  snap: {
+    icon: '⚡',
+    name: '스냅',
+    accent: COLORS.snapAccent,
+    gradient: ['rgba(255,214,10,0.12)', 'rgba(255,214,10,0.02)'],
+  },
+  cut: {
+    icon: '🎞️',
+    name: '스트립',
+    accent: COLORS.cutAccent,
+    gradient: ['rgba(191,133,252,0.12)', 'rgba(191,133,252,0.02)'],
   },
 };
 
@@ -75,36 +103,145 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
-  const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
-  const { records } = useRecords();
+  const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup } = useRecords();
+
+  const currentGroup = tripGroups.find((g) => g.id === trip.id);
+  const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
+
+  const [isEditing, setIsEditing] = useState(false);
+  const [editedTitle, setEditedTitle] = useState(titleToDisplay);
+  const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
+  const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
+  const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
+  const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
+
+  useEffect(() => {
+    setEditedTitle(titleToDisplay);
+  }, [titleToDisplay]);
+
+  const handleSaveTitle = () => {
+    if (editedTitle.trim()) {
+      updateTripGroup(trip.id, { title: editedTitle.trim() });
+      setIsEditing(false);
+    }
+  };
+
+  // ── ☰ 편집 메뉴 액션 ──
+  // 그룹 기반 카드만 보관/삭제/썸네일 변경 가능 (하드코딩 샘플 카드는 그룹이 없음)
+  const groupRecordObjs = currentGroup
+    ? (currentGroup.records.map((id) => records.find((r) => r.id === id)).filter(Boolean) as TravelRecord[])
+    : [];
+  const thumbCandidates = groupRecordObjs.flatMap((r) => r.medias ?? []);
+
+  const handleChangeThumb = () => {
+    setMenuVisible(false);
+    if (!currentGroup || thumbCandidates.length === 0) {
+      Alert.alert('알림', '변경할 수 있는 사진이 없어요.');
+      return;
+    }
+    setThumbPickerVisible(true);
+  };
+
+  // 사진을 고르면 바로 적용하지 않고 노출 영역 조정 단계를 거친다
+  const handlePickThumb = (uri: string) => {
+    if (!currentGroup) return;
+    setThumbPickerVisible(false);
+    setPendingThumb(uri);
+    setAdjustVisible(true);
+  };
+
+  // 조정 확정 → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
+  const applyThumb = async (uri: string, t: CutTransform) => {
+    if (!currentGroup) return;
+    const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
+    if (!owner) return;
+    const isIdentity = t.scale === 1 && t.tx === 0 && t.ty === 0;
+    let rep: string | undefined;
+    if (!isIdentity) {
+      rep = (await bakeCoverCrop(uri, t, CARD_ASPECT, owner.id)) ?? undefined;
+    }
+    // 선택한 사진을 해당 기록의 맨 앞으로 + 그 기록을 대표 기록으로 → 프로필 카드 썸네일(medias[0]) 반영
+    // 조정 없이 확정하면 representativePhoto를 비워 원본 커버가 그대로 쓰이게 한다
+    updateRecord(owner.id, {
+      medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)],
+      representativePhoto: rep,
+    });
+    updateTripGroup(currentGroup.id, { coverRecordId: owner.id });
+  };
+
+  const handleArchiveCard = () => {
+    setMenuVisible(false);
+    if (!currentGroup) {
+      Alert.alert('알림', '샘플 여행 카드는 보관할 수 없어요.');
+      return;
+    }
+    Alert.alert('기록카드 보관', '이 여행의 모든 기록이 보관함으로 이동하고, 프로필에서 카드가 숨겨져요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '보관',
+        onPress: () => {
+          currentGroup.records.forEach((id) => archiveRecord(id));
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteCard = () => {
+    setMenuVisible(false);
+    if (!currentGroup) {
+      Alert.alert('알림', '샘플 여행 카드는 삭제할 수 없어요.');
+      return;
+    }
+    Alert.alert('기록카드 삭제', '이 여행의 모든 기록이 함께 삭제돼요. 되돌릴 수 없어요.', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          currentGroup.records.forEach((id) => deleteRecord(id));
+          deleteTripGroup(currentGroup.id);
+          navigation.goBack();
+        },
+      },
+    ]);
+  };
 
   // 이 여행의 국가와 매칭되는 실제 기록 가져오기
-  const matchedRecords = records.filter(
-    (r) => r.countryName === trip.country || r.country?.includes(trip.country)
-  );
+  // 국가 없는 카드(사진첩 등 trip.country='')는 includes('')가 모든 기록을 통과시키므로
+  // 그룹에 직접 묶인 기록만 사용한다.
+  const matchedRecords = trip.country
+    ? records.filter(
+        (r) => r.countryName === trip.country || r.country?.includes(trip.country)
+      )
+    : groupRecordObjs;
 
   // viewType별 그룹
   const getRecordsByType = (viewType: string): TravelRecord[] => {
     return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType);
   };
 
+  // ── 포맷 콘솔: 기록이 있는 형식만 모듈 목록으로 표시, 탭하면 펼쳐짐 ──
+  const FORMAT_ORDER = ['feed', 'blog', 'album', 'snap', 'cut'];
+  const modules = FORMAT_ORDER
+    .map((vt) => ({ vt, config: VIEW_CONFIG[vt], items: getRecordsByType(vt) }))
+    .filter((m) => !!m.config && m.items.length > 0);
+  const [expandedType, setExpandedType] = useState<string | null>(null);
+
   // 애니메이션
   const headerAnim = useRef(new Animated.Value(0)).current;
-  const cardAnims = useRef(trip.records.map(() => new Animated.Value(0))).current;
+  const moduleAnims = useRef(FORMAT_ORDER.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    Animated.timing(headerAnim, {
-      toValue: 1,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
-
-    trip.records.forEach((_, i) => {
-      Animated.spring(cardAnims[i], {
+    Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
+    moduleAnims.forEach((anim, i) => {
+      Animated.spring(anim, {
         toValue: 1,
-        delay: 150 + i * 100,
+        delay: 150 + i * 110,
         tension: 50,
         friction: 8,
         useNativeDriver: true,
@@ -113,15 +250,9 @@ export default function TripDetailScreen() {
   }, []);
 
   const handleRecordPress = (rec: TravelRecord) => {
+    // 기록 전체를 넘겨야 사진첩(medias)·본문 등 실제 콘텐츠가 상세 화면에 표시된다
     navigation.navigate('TripRecord', {
-      record: {
-        id: rec.id,
-        country: `${trip.countryFlag} ${trip.country}`,
-        countryName: trip.country,
-        countryFlag: trip.countryFlag,
-        emoji: trip.emoji,
-        viewType: rec.viewType || 'feed',
-      },
+      record: rec,
       viewType: rec.viewType || 'feed',
     });
   };
@@ -129,16 +260,111 @@ export default function TripDetailScreen() {
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <Animated.View style={[s.header, { opacity: headerAnim }]}>
+      <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={s.headerCenter}>
-          <Text style={s.headerFlag}>{trip.countryFlag}</Text>
-          <Text style={s.headerTitle}>{trip.title}</Text>
+          {isEditing ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TextInput
+                value={editedTitle}
+                onChangeText={setEditedTitle}
+                style={s.headerInput}
+                autoFocus
+                onSubmitEditing={handleSaveTitle}
+              />
+              <TouchableOpacity onPress={handleSaveTitle} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setIsEditing(false); setEditedTitle(titleToDisplay); }} style={s.saveTitleBtn}>
+                <Text style={s.saveTitleTxt}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <Text style={s.headerTitle}>{titleToDisplay}</Text>
+          )}
         </View>
-        <View style={s.backBtn} />
+        {/* ☰ 편집 메뉴 */}
+        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)}>
+          <View style={s.menuBars}>
+            <View style={s.menuBar} />
+            <View style={s.menuBar} />
+            <View style={s.menuBar} />
+          </View>
+        </TouchableOpacity>
       </Animated.View>
+
+      {/* 편집 메뉴 시트 */}
+      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+          <View style={s.menuSheet}>
+            <TouchableOpacity
+              style={s.menuItem}
+              onPress={() => { setMenuVisible(false); setIsEditing(true); }}
+            >
+              <Text style={s.menuItemText}>✏️  제목 수정</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb}>
+              <Text style={s.menuItemText}>🖼️  썸네일 사진 변경</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard}>
+              <Text style={s.menuItemText}>📦  기록카드 보관</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard}>
+              <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  기록카드 삭제</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 썸네일 사진 선택 시트 */}
+      <Modal visible={thumbPickerVisible} transparent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
+        <View style={s.thumbOverlay}>
+          <View style={s.thumbSheet}>
+            <Text style={s.thumbTitle}>썸네일 사진 변경</Text>
+            <Text style={s.thumbSub}>프로필 여행 카드에 표시될 사진을 골라주세요.</Text>
+            <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
+              <View style={s.thumbGrid}>
+                {thumbCandidates.map((uri, i) => (
+                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85}>
+                    <Image source={{ uri }} style={s.thumbCell} />
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+            <TouchableOpacity style={s.thumbCancel} onPress={() => setThumbPickerVisible(false)} activeOpacity={0.85}>
+              <Text style={s.thumbCancelTxt}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 새 썸네일 노출 영역 조정 (드래그/핀치) — 확인 시 적용, 사진 변경 시 선택 시트로 복귀 */}
+      <CutPhotoAdjustModal
+        visible={adjustVisible}
+        uri={pendingThumb}
+        aspect={CARD_ASPECT}
+        initial={null}
+        onConfirm={(t) => {
+          setAdjustVisible(false);
+          const uri = pendingThumb;
+          setPendingThumb(null);
+          if (uri) applyThumb(uri, t);
+        }}
+        onCancel={() => {
+          setAdjustVisible(false);
+          setPendingThumb(null);
+        }}
+        onChangePhoto={() => {
+          setAdjustVisible(false);
+          setPendingThumb(null);
+          setThumbPickerVisible(true);
+        }}
+      />
 
       <ScrollView
         style={s.scroll}
@@ -157,67 +383,135 @@ export default function TripDetailScreen() {
           <Text style={s.heroEmoji}>{trip.emoji}</Text>
           <Text style={s.heroDate}>{trip.date}</Text>
           <View style={s.heroPill}>
-            <Text style={s.heroPillText}>{trip.records.length}개의 기록</Text>
+            {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
+            <Text style={s.heroPillText}>{matchedRecords.length}개의 기록</Text>
           </View>
         </Animated.View>
 
-        {/* 형식별 기록 카드 */}
-        {trip.records.map((rec, idx) => {
-          const config = VIEW_CONFIG[rec.viewType];
-          if (!config) return null;
-          const typeRecords = getRecordsByType(rec.viewType);
+        {/* ── 기록 포맷 콘솔: 네온 레일에 도킹된 형식별 모듈 목록 ── */}
+        <View style={s.console}>
+          {/* 에너지 레일 */}
+          <LinearGradient
+            colors={['rgba(191,133,252,0)', 'rgba(191,133,252,0.55)', 'rgba(191,133,252,0)']}
+            style={s.rail}
+          />
 
-          const animStyle = {
-            opacity: cardAnims[idx],
-            transform: [{
-              translateY: cardAnims[idx].interpolate({
-                inputRange: [0, 1],
-                outputRange: [30, 0],
-              }),
-            }],
-          };
+          {modules.map((m, idx) => {
+            const open = expandedType === m.vt;
+            const even = idx % 2 === 0;
+            const thumbs = m.items.flatMap((r) => r.medias ?? []).slice(0, 3);
+            const animStyle = {
+              opacity: moduleAnims[idx],
+              transform: [{
+                translateX: moduleAnims[idx].interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [even ? -48 : 48, 0],
+                }),
+              }],
+            };
+            return (
+              <Animated.View key={m.vt} style={[s.moduleWrap, animStyle]}>
+                {/* 레일 노드 + 커넥터 */}
+                <View style={[s.railNode, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
+                <View style={[s.railLink, { backgroundColor: m.config.accent + '55' }]} />
 
-          return (
-            <Animated.View key={rec.id} style={[s.section, animStyle]}>
-              {/* 섹션 헤더 */}
-              <View style={s.sectionHeader}>
-                <View style={[s.sectionDot, { backgroundColor: config.accent }]} />
-                <Text style={[s.sectionName, { color: config.accent }]}>
-                  {config.icon} {config.name}
-                </Text>
-                <View style={[s.sectionLine, { backgroundColor: config.accent + '20' }]} />
-              </View>
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  onPress={() => setExpandedType(open ? null : m.vt)}
+                  style={[
+                    s.module,
+                    even ? s.moduleCutA : s.moduleCutB,
+                    { borderColor: open ? m.config.accent : m.config.accent + '38' },
+                    even ? { marginRight: 22 } : { marginLeft: 22 },
+                  ]}
+                >
+                  <LinearGradient
+                    colors={m.config.gradient}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={StyleSheet.absoluteFillObject}
+                  />
+                  <View style={[s.moduleEdge, { backgroundColor: m.config.accent, shadowColor: m.config.accent }]} />
 
-              {/* 기록 콘텐츠 */}
-              {typeRecords.length > 0 ? (
-                typeRecords.map((record) => (
-                  <TouchableOpacity
-                    key={record.id}
-                    activeOpacity={0.75}
-                    onPress={() => handleRecordPress(record)}
-                  >
-                    {rec.viewType === 'feed' && <FeedCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'moment' && <MomentCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'storyboard' && <StoryboardCard record={record} accent={config.accent} />}
-                    {rec.viewType === 'album' && <AlbumCard record={record} accent={config.accent} />}
-                  </TouchableOpacity>
-                ))
-              ) : (
-                <View style={s.emptyCard}>
-                  <Text style={s.emptyIcon}>{config.icon}</Text>
-                  <Text style={s.emptyText}>아직 {config.name} 기록이 없어요</Text>
-                </View>
-              )}
-            </Animated.View>
-          );
-        })}
+                  <Text style={[s.moduleIndex, { color: m.config.accent }]}>
+                    {String(idx + 1).padStart(2, '0')}
+                  </Text>
+
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.moduleCode, { color: m.config.accent + 'AA' }]}>
+                      MODULE // {m.vt.toUpperCase()}
+                    </Text>
+                    <Text style={s.moduleName}>{m.config.icon} {m.config.name}</Text>
+                    <View style={s.moduleMetaRow}>
+                      <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
+                      <Text style={[s.moduleCount, { color: m.config.accent }]}>{m.items.length}개 기록</Text>
+                    </View>
+                  </View>
+
+                  {thumbs.length > 0 ? (
+                    <View style={s.thumbStack}>
+                      {thumbs.map((uri, i) => (
+                        <Image
+                          key={i}
+                          source={{ uri }}
+                          style={[
+                            s.thumbMini,
+                            { marginLeft: i === 0 ? 0 : -14, transform: [{ rotate: `${(i - 1) * 7}deg` }] },
+                          ]}
+                        />
+                      ))}
+                    </View>
+                  ) : (
+                    <Text style={s.moduleBigIcon}>{m.config.icon}</Text>
+                  )}
+
+                  <Text style={[s.moduleChevron, { color: m.config.accent }, open && s.moduleChevronOpen]}>❯</Text>
+                </TouchableOpacity>
+
+                {/* 펼침 — 해당 형식으로 기록된 것들 */}
+                {open && (
+                  <View style={[s.expandWrap, { borderLeftColor: m.config.accent + '44' }]}>
+                    {m.items.map((record) => (
+                      <TouchableOpacity
+                        key={record.id}
+                        activeOpacity={0.75}
+                        onPress={() => handleRecordPress(record)}
+                      >
+                        {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
+                        {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </Animated.View>
+            );
+          })}
+
+          {modules.length === 0 && (
+            <View style={s.emptyCard}>
+              <Text style={s.emptyIcon}>🛰️</Text>
+              <Text style={s.emptyText}>아직 이 여행에 기록이 없어요</Text>
+            </View>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
 }
 
+// 실제 댓글 수 (시드 숫자 record.comments 대신 commentsByPost 기준 — 답글 포함)
+function useCommentCount(recordId: string): number {
+  const { commentsByPost } = useRecords();
+  const list = commentsByPost[recordId] ?? [];
+  return list.reduce((sum, c) => sum + 1 + (c.replies?.length ?? 0), 0);
+}
+
 // ─── 피드 카드 ───
 function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -246,7 +540,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
         <Text style={card.feedStat}>♥ {record.likes}</Text>
         <View style={card.feedStatRow}>
           <CommentIcon size={14} color="#A1A1B0" />
-          <Text style={card.feedStat}>{record.comments}</Text>
+          <Text style={card.feedStat}>{commentCount}</Text>
         </View>
         {record.keywords && record.keywords.length > 0 && (
           <View style={card.feedTags}>
@@ -353,6 +647,9 @@ function StoryboardCard({ record, accent }: { record: TravelRecord; accent: stri
 
 // ─── 앨범 카드 ───
 function AlbumCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const medias = record.medias ?? [];
+  const cells = medias.slice(0, 6);
+  const extra = medias.length - cells.length; // 7장 이상이면 마지막 칸에 +N 표시
   return (
     <View style={[card.album, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -361,18 +658,31 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* 앨범 그리드 플레이스홀더 */}
+      {/* 사진첩 그리드 — 실제 사진이 있으면 썸네일, 없으면 플레이스홀더 */}
       <View style={card.albumGrid}>
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <View key={i} style={[card.albumCell, { backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
-            {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
-            {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
-            {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
-            {i === 3 && <Text style={card.albumCellIcon}>🚠</Text>}
-            {i === 4 && <Text style={card.albumCellIcon}>❄️</Text>}
-            {i === 5 && <Text style={{ fontSize: 11, color: accent }}>+</Text>}
-          </View>
-        ))}
+        {cells.length > 0 ? (
+          cells.map((uri, i) => (
+            <View key={i} style={[card.albumCell, card.albumCellPhoto]}>
+              <Image source={{ uri }} style={card.albumPhoto} resizeMode="cover" />
+              {i === cells.length - 1 && extra > 0 && (
+                <View style={card.albumMoreOverlay}>
+                  <Text style={card.albumMoreTxt}>+{extra}</Text>
+                </View>
+              )}
+            </View>
+          ))
+        ) : (
+          [0, 1, 2, 3, 4, 5].map((i) => (
+            <View key={i} style={[card.albumCell, { backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
+              {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
+              {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
+              {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
+              {i === 3 && <Text style={card.albumCellIcon}>🚠</Text>}
+              {i === 4 && <Text style={card.albumCellIcon}>❄️</Text>}
+              {i === 5 && <Text style={{ fontSize: 11, color: accent }}>+</Text>}
+            </View>
+          ))
+        )}
       </View>
       {/* 설명 */}
       <Text style={card.albumContent} numberOfLines={2}>{record.content}</Text>
@@ -389,6 +699,188 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
   );
 }
 
+// ─── 블로그 카드 ───
+function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
+  const getBlogExcerpt = () => {
+    if (record.blogBlocks && record.blogBlocks.length > 0) {
+      const textBlock = record.blogBlocks.find((b) => b.type === 'text');
+      if (textBlock) return textBlock.value;
+    }
+    return record.content;
+  };
+
+  const getBlogTitle = () => {
+    if (record.blogBlocks && record.blogBlocks.length > 0) {
+      const headingBlock = record.blogBlocks.find((b) => b.type === 'heading');
+      if (headingBlock) return headingBlock.value;
+    }
+    return '블로그 여행기';
+  };
+
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>블로그</Text>
+        </View>
+      </View>
+      <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={1}>
+        {getBlogTitle()}
+      </Text>
+      <Text style={card.feedContent} numberOfLines={2}>
+        {getBlogExcerpt()}
+      </Text>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── 스냅 카드 ───
+function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>스냅</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
+        {record.snapBackUri ? (
+          <Image
+            source={{ uri: record.snapBackUri }}
+            style={{ width: 60, height: 80, borderRadius: 6, backgroundColor: '#222' }}
+          />
+        ) : (
+          <View
+            style={{
+              width: 60,
+              height: 80,
+              borderRadius: 6,
+              backgroundColor: '#2A2A3A',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>📸</Text>
+          </View>
+        )}
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <Text style={{ fontSize: 13, color: '#FFF', fontStyle: 'italic' }}>
+            "{record.snapCaption || '오늘의 순간'}"
+          </Text>
+          {record.snapLateSeconds !== undefined && (
+            <Text style={{ fontSize: 11, color: accent, marginTop: 4 }}>
+              ⏱ {record.snapLateSeconds}초 늦음
+            </Text>
+          )}
+        </View>
+      </View>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
+// ─── 스트립 카드 ───
+function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const commentCount = useCommentCount(record.id);
+  const photos = record.cutPhoto?.photos ?? [];
+  return (
+    <View style={[card.feed, { borderColor: accent + '18' }]}>
+      <LinearGradient
+        colors={[accent + '14', 'transparent']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFillObject}
+      />
+      <View style={card.feedHeader}>
+        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
+          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={card.feedUserName}>{record.user.name}</Text>
+          <Text style={card.feedDate}>{record.date}</Text>
+        </View>
+        <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
+          <Text style={[card.feedTypeText, { color: accent }]}>스트립</Text>
+        </View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+        {photos.slice(0, 4).map((p, i) => (
+          <Image
+            key={i}
+            source={{ uri: p }}
+            style={{ width: 45, height: 60, borderRadius: 4, backgroundColor: '#222' }}
+          />
+        ))}
+        {photos.length === 0 && (
+          <View
+            style={{
+              width: 45,
+              height: 60,
+              borderRadius: 4,
+              backgroundColor: '#2A2A3A',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>🎞️</Text>
+          </View>
+        )}
+      </View>
+      <Text style={card.feedContent} numberOfLines={1}>
+        {record.content || '네컷 사진'}
+      </Text>
+      <View style={card.feedFooter}>
+        <Text style={card.feedStat}>♥ {record.likes}</Text>
+        <View style={card.feedStatRow}>
+          <CommentIcon size={14} color="#A1A1B0" />
+          <Text style={card.feedStat}>{commentCount}</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
+
 // ─── 메인 스타일 ───
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bg },
@@ -396,7 +888,6 @@ const s = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 12,
   },
@@ -410,6 +901,31 @@ const s = StyleSheet.create({
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   headerFlag: { fontSize: 18 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3 },
+  headerInput: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.white,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    minWidth: 120,
+  },
+  saveTitleBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: COLORS.cardBorder,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveTitleTxt: {
+    fontSize: 12,
+    color: COLORS.white,
+    fontWeight: '700',
+  },
   scroll: { flex: 1 },
   scrollContent: { paddingBottom: 60 },
   // 히어로
@@ -442,6 +958,80 @@ const s = StyleSheet.create({
   },
   emptyIcon: { fontSize: 28, marginBottom: 8 },
   emptyText: { fontSize: 13, color: COLORS.textMuted },
+
+  /* ── ☰ 편집 메뉴 ── */
+  menuBars: { gap: 4, alignItems: 'center', justifyContent: 'center' },
+  menuBar: { width: 16, height: 2, borderRadius: 1, backgroundColor: COLORS.white },
+  menuOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.45)' },
+  menuSheet: {
+    position: 'absolute', top: 100, right: 20, minWidth: 160,
+    backgroundColor: COLORS.card, borderRadius: 14,
+    borderWidth: 1, borderColor: COLORS.cardBorder,
+    paddingVertical: 6, overflow: 'hidden',
+  },
+  menuItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  menuItemText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
+  menuItemDanger: { color: '#FF3B30' },
+  menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
+
+  /* ── 썸네일 사진 선택 시트 ── */
+  thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  thumbSheet: {
+    backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 40,
+  },
+  thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  thumbSub: { color: COLORS.textDim, fontSize: 13, marginBottom: 16 },
+  thumbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  thumbCell: {
+    width: (SCREEN_WIDTH - 40 - 16) / 3, height: (SCREEN_WIDTH - 40 - 16) / 3,
+    borderRadius: 10, backgroundColor: '#1A0A2E',
+  },
+  thumbCancel: {
+    marginTop: 16, paddingVertical: 14, borderRadius: 999, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+  },
+  thumbCancelTxt: { color: COLORS.white, fontSize: 15, fontWeight: '600' },
+
+  /* ── 기록 포맷 콘솔 (네온 레일 + 모듈) ── */
+  console: { position: 'relative', paddingLeft: 30, paddingTop: 4 },
+  rail: { position: 'absolute', left: 11, top: 0, bottom: 0, width: 2, borderRadius: 1 },
+  moduleWrap: { position: 'relative', marginBottom: 16 },
+  railNode: {
+    position: 'absolute', left: -23, top: 30, width: 10, height: 10, borderRadius: 5,
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6, elevation: 6,
+    zIndex: 2,
+  },
+  railLink: { position: 'absolute', left: -14, top: 34, width: 14, height: 1.5, borderRadius: 1 },
+  module: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(26,26,38,0.85)',
+    borderWidth: 1, paddingVertical: 14, paddingHorizontal: 14,
+    overflow: 'hidden',
+  },
+  // 비대칭 컷 코너 — 짝수/홀수 모듈이 서로 거울 형태
+  moduleCutA: { borderTopLeftRadius: 4, borderTopRightRadius: 24, borderBottomRightRadius: 4, borderBottomLeftRadius: 24 },
+  moduleCutB: { borderTopLeftRadius: 24, borderTopRightRadius: 4, borderBottomRightRadius: 24, borderBottomLeftRadius: 4 },
+  moduleEdge: {
+    position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5, elevation: 4,
+  },
+  moduleIndex: { fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center' },
+  moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
+  moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },
+  moduleMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
+  moduleDataLine: { flex: 1, height: 1, maxWidth: 90 },
+  moduleCount: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  thumbStack: { flexDirection: 'row', alignItems: 'center' },
+  thumbMini: {
+    width: 36, height: 36, borderRadius: 10, backgroundColor: '#1A0A2E',
+    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
+  },
+  moduleBigIcon: { fontSize: 22 },
+  moduleChevron: { fontSize: 14, fontWeight: '800', marginLeft: 2 },
+  moduleChevronOpen: { transform: [{ rotate: '90deg' }] },
+  expandWrap: { marginTop: 10, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 2 },
 });
 
 // ─── 카드 스타일 ───
@@ -464,6 +1054,7 @@ const card = StyleSheet.create({
   feedDate: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   feedTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   feedTypeText: { fontSize: 10, fontWeight: '700' },
+  feedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, marginBottom: 4 },
   feedContent: { fontSize: 14, color: COLORS.white, lineHeight: 21, marginBottom: 12 },
   feedFooter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   feedStatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -520,6 +1111,13 @@ const card = StyleSheet.create({
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },
   albumCellIcon: { fontSize: 20 },
+  albumCellPhoto: { overflow: 'hidden', backgroundColor: '#1A0A2E' },
+  albumPhoto: { width: '100%', height: '100%' },
+  albumMoreOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center',
+  },
+  albumMoreTxt: { color: COLORS.white, fontSize: 14, fontWeight: '700' },
   albumContent: { fontSize: 13, color: COLORS.white, lineHeight: 20, marginBottom: 10 },
   albumFooter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   albumDate: { fontSize: 11, color: COLORS.textMuted },

@@ -1,17 +1,17 @@
 import React, { useState, useRef } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  TextInput,
+  TouchableOpacity,  TextInput,
   ActivityIndicator,
   Alert,
   Keyboard,
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { DeviceEventEmitter } from 'react-native';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   isNaverBlogUrl,
   toMobileNaverUrl,
@@ -36,14 +36,11 @@ const C = {
   red:        '#FF3B30',
 };
 
-interface Props {
-  navigation: any;
-  route?: any;
-}
+type Props = RootStackScreenProps<'NaverBlogImport'>;
 
 type Step = 'input' | 'loading' | 'preview';
 
-export default function NaverBlogImportScreen({ navigation, route }: Props) {
+export default function NaverBlogImportScreen({ navigation }: Props) {
   const [url, setUrl] = useState('');
   const [step, setStep] = useState<Step>('input');
   const [blogData, setBlogData] = useState<BlogData | null>(null);
@@ -119,9 +116,6 @@ export default function NaverBlogImportScreen({ navigation, route }: Props) {
         if (data.title && !parsed.title) parsed.title = data.title;
         if (data.images && data.images.length > 0 && parsed.photos.length === 0) {
           parsed.photos = data.images;
-        }
-        if (data.videos && data.videos.length > 0 && (!parsed.videos || parsed.videos.length === 0)) {
-          parsed.videos = data.videos;
         }
         if (data.tags && data.tags.length > 0 && (!parsed.keywords || parsed.keywords.length === 0)) {
           parsed.keywords = data.tags;
@@ -291,16 +285,7 @@ export default function NaverBlogImportScreen({ navigation, route }: Props) {
               </>
             )}
 
-            {/* 영상 수 */}
-            {blogData.videos && blogData.videos.length > 0 && (
-              <>
-                <View style={st.previewDivider} />
-                <View style={st.previewRow}>
-                  <Text style={st.previewLabel}>영상</Text>
-                  <Text style={st.previewValue}>{blogData.videos.length}개</Text>
-                </View>
-              </>
-            )}
+
 
             {/* 키워드 */}
             {blogData.keywords && blogData.keywords.length > 0 && (

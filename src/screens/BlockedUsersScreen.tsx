@@ -1,14 +1,14 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
-  SafeAreaView,
-  Alert,
+  TouchableOpacity,  Alert,
 } from 'react-native';
 import { useRecords } from '../store/recordStore';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -22,7 +22,7 @@ const COLORS = {
   redBg: 'rgba(255,107,107,0.12)',
 };
 
-export default function BlockedUsersScreen({ navigation }: { navigation: any }) {
+export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<'BlockedUsers'>) {
   const { blockedUsers, unblockUser } = useRecords();
 
   const handleUnblock = (name: string) => {

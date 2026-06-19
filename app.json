@@ -3,6 +3,7 @@
     "name": "eOrth",
     "slug": "eOrth",
     "version": "1.0.0",
+    "scheme": "eorth",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -13,15 +14,44 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yunjunsang.eorth",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
+      "package": "com.yunjunsang.eorth",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.ACCESS_MEDIA_LOCATION",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.READ_CONTACTS",
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -46,17 +76,27 @@
         }
       ],
       [
-        "expo-av",
-        {
-          "microphonePermission": "영상 재생 및 녹화를 위해 마이크 접근이 필요해요."
-        }
-      ],
-      [
         "expo-contacts",
         {
           "contactsPermission": "아는 사람을 찾기 위해 연락처 접근이 필요해요."
         }
-      ]
-    ]
+      ],
+      "expo-background-task",
+      "./modules/photo-vision/withMlkitVisionDependencies",
+      "expo-video",
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "eb1ae94e-593c-4b43-ab51-d99b3546a098"
+      }
+    },
+    "owner": "monnani31",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/eb1ae94e-593c-4b43-ab51-d99b3546a098"
+    }
   }
 }

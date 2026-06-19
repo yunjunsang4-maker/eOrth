@@ -1,12 +1,11 @@
 import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  TextInput,
+  ScrollView,  TextInput,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -18,10 +17,20 @@ import {
   ActivityIndicator,
   Linking,
   Alert,
+  LayoutAnimation,
+  UIManager,
 } from 'react-native';
+
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import Svg, { Path } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -365,7 +374,7 @@ const nav = StyleSheet.create({
 const WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const CELL_SIZE = Math.floor((SCREEN_W - 32 - 12) / 7);
 
-function CalendarBottomSheet({
+export function CalendarBottomSheet({
   visible,
   initialStart,
   initialEnd,
@@ -526,12 +535,14 @@ function PrivacyModal({
   selectedFriends,
   allFriends,
   onToggle,
+  onSetAll,
   onClose,
 }: {
   visible: boolean;
   selectedFriends: string[];
   allFriends: string[];
   onToggle: (friend: string) => void;
+  onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
   const translateY = useRef(new Animated.Value(500)).current;
@@ -571,6 +582,32 @@ function PrivacyModal({
               </View>
             </View>
           </View>
+
+          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {allFriends.length > 0 && (() => {
+            const allPrivate = selectedFriends.length === allFriends.length;
+            return (
+              <TouchableOpacity
+                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                onPress={() => {
+                  // 한 번에 전체 설정/해제 → 개별 친구 체크 상태도 즉시 동기화
+                  onSetAll(allPrivate ? [] : [...allFriends]);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
+                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 사진을 숨겨요</Text>
+                </View>
+                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
+            );
+          })()}
 
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
@@ -682,6 +719,27 @@ const pm = StyleSheet.create({
   },
   listScroll: {
     maxHeight: 320,
+  },
+  allPrivateRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderRadius: 12,
+    gap: 14,
+    marginBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+  },
+  allPrivateLabel: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+  allPrivateDesc: {
+    fontSize: 12,
+    color: '#8A8A99',
+    marginTop: 2,
   },
   friendRow: {
     flexDirection: 'row',
@@ -963,13 +1021,25 @@ const ISO_TO_COUNTRY = COUNTRIES.reduce<Record<string, { flag: string; name: str
   return acc;
 }, {});
 
-function geoJsonToCountry(name: string, code: string) {
+function geoJsonToCountry(name: string, code?: string) {
+  const cleanName = name.split(' - ')[0].toLowerCase();
   if (code) {
-    const byCode = ISO_TO_COUNTRY[code.toUpperCase()];
+    const codeUpper = code.toUpperCase();
+    // Try code matching (either direct 2-letter match, or convert 3-letter match)
+    const byCode = ISO_TO_COUNTRY[codeUpper];
     if (byCode) return byCode;
+    
+    // Convert common 3-letter codes to 2-letter codes
+    const iso3ToIso2: Record<string, string> = {
+      JPN: 'JP', CHN: 'CN', USA: 'US', DEU: 'DE', ESP: 'ES',
+      GBR: 'GB', FRA: 'FR', ITA: 'IT', KOR: 'KR'
+    };
+    const converted = iso3ToIso2[codeUpper];
+    if (converted && ISO_TO_COUNTRY[converted]) {
+      return ISO_TO_COUNTRY[converted];
+    }
   }
-  const lower = name.toLowerCase();
-  const found = COUNTRIES.find(c => c.term.includes(lower));
+  const found = COUNTRIES.find(c => c.name === cleanName || c.term.includes(cleanName));
   return found ? { flag: found.flag, name: found.name } : null;
 }
 
@@ -977,24 +1047,57 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
-export default function NewRecordScreen({ navigation, route }: { navigation: any; route: any }) {
-  const { addRecord } = useRecords();
+export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
+  const { addRecord, updateRecord, followingUsers } = useRecords();
+  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const friendNames = followingUsers.map((f) => f.username);
   const TOTAL_STEPS = 3;
+
+  // ─── 편집 모드 ───
+  // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
+  const editRecord = route.params?.editRecord ?? route.params?.record;
+  const isEdit = !!editRecord;
+  const parseDotDate = (s?: string): Date => {
+    if (s) {
+      const t = new Date(s.replace(/\./g, '-'));
+      if (!isNaN(t.getTime())) { t.setHours(0, 0, 0, 0); return t; }
+    }
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  };
+  // 다국가 기록이면 대표 국가의 데이터로 활성 상태를 채운다 (top-level medias는 전체 합본이므로)
+  const editFirstCountryData = editRecord?.perCountryData?.[editRecord.countryName];
 
   const [step, setStep] = useState(1);
   const scrollRef = useRef<ScrollView>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true);
 
   // Step 1 - 국가 (복수 선택)
   const MAX_COUNTRIES = 10;
   const [countrySearch,     setCountrySearch]     = useState('');
-  const [selectedCountries, setSelectedCountries] = useState<{ flag: string; name: string }[]>([]);
+  const [selectedCountries, setSelectedCountries] = useState<{ flag: string; name: string }[]>(
+    editRecord
+      ? editRecord.countries ?? [{ flag: editRecord.countryFlag, name: editRecord.countryName }]
+      : []
+  );
+  const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
+    editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
+  );
 
   useEffect(() => {
     const params = route?.params;
     if (params?.selectedCountry) {
-      const mapped = geoJsonToCountry(params.selectedCountry.name, params.selectedCountry.code);
+      const rawName = params.selectedCountry.name;
+      const countryNameOnly = rawName.split(' - ')[0];
+      const mapped = geoJsonToCountry(countryNameOnly, params.selectedCountry.code);
       if (mapped && !selectedCountries.some(c => c.name === mapped.name)) {
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSelectedCountries(prev => [...prev, mapped]);
+      }
+      if (params.selectedCountry.region) {
+        setSelectedRegion({
+          name: params.selectedCountry.region,
+          nameEn: params.selectedCountry.regionEn || '',
+        });
       }
     }
   }, [route?.params]);
@@ -1009,16 +1112,21 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
   }, [countrySearch]);
 
   // Step 2 - 미디어
-  const [medias,            setMedias]           = useState<string[]>([]);
-  const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>({});
+  const [medias,            setMedias]           = useState<string[]>(
+    editFirstCountryData?.medias ?? editRecord?.medias ?? []
+  );
+  const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
+    editRecord?.mediaPrivacy ?? {}
+  );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
-  const DUMMY_FRIENDS = ['김민수', '이서연', '박준호', '최유진', '정하늘'];
-
+  const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
+    editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
+  );
   const selectMedia = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsMultipleSelection: true,
-      selectionLimit: 100 - medias.length,
+      selectionLimit: 30 - medias.length,
       quality: 0.8,
     });
     if (!result.canceled && result.assets) {
@@ -1026,7 +1134,55 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
     }
   };
 
-  const removeMedia = (index: number) => setMedias(prev => prev.filter((_, i) => i !== index));
+  const removeMedia = (index: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const removedUri = medias[index];
+    if (removedUri && removedUri === representativePhoto) {
+      setRepresentativePhoto(null);
+    }
+    setMedias(prev => prev.filter((_, i) => i !== index));
+    // Realign mediaPrivacy indices after deletion
+    setMediaPrivacy(prev => {
+      const updatedPrivacy: Record<number, string[]> = {};
+      Object.keys(prev).forEach(keyStr => {
+        const key = Number(keyStr);
+        const val = prev[key];
+        if (key > index) {
+          updatedPrivacy[key - 1] = val;
+        } else if (key < index) {
+          updatedPrivacy[key] = val;
+        }
+      });
+      return updatedPrivacy;
+    });
+  };
+
+  const handleReorderMedias = (fromIdx: number, toIdx: number) => {
+    // 1. Reorder medias array
+    let updatedMedias = [...medias];
+    const [movedMedia] = updatedMedias.splice(fromIdx, 1);
+    updatedMedias.splice(toIdx, 0, movedMedia);
+    setMedias(updatedMedias);
+
+    // 2. Reorder mediaPrivacy object to align with new indices
+    setMediaPrivacy(prev => {
+      const updatedPrivacy: Record<number, string[]> = {};
+      Object.keys(prev).forEach(keyStr => {
+        const key = Number(keyStr);
+        const val = prev[key];
+        if (key === fromIdx) {
+          updatedPrivacy[toIdx] = val;
+        } else if (fromIdx < toIdx && key > fromIdx && key <= toIdx) {
+          updatedPrivacy[key - 1] = val;
+        } else if (fromIdx > toIdx && key < fromIdx && key >= toIdx) {
+          updatedPrivacy[key + 1] = val;
+        } else {
+          updatedPrivacy[key] = val;
+        }
+      });
+      return updatedPrivacy;
+    });
+  };
 
   const toggleMediaPrivacyFriend = (mediaIdx: number, friend: string) => {
     setMediaPrivacy(prev => {
@@ -1038,25 +1194,90 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
     });
   };
 
+  // 비공개 대상 전체 설정(전체 비공개) / 전체 해제 — 한 번에 목록을 통째로 교체해
+  // 개별 친구 체크 상태까지 즉시 동기화한다.
+  const setMediaPrivacyAll = (mediaIdx: number, friends: string[]) => {
+    setMediaPrivacy(prev => ({ ...prev, [mediaIdx]: friends }));
+  };
+
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
-  const [title,           setTitle]           = useState('');
-  const [startDate,       setStartDate]       = useState(todayInit);
-  const [endDate,         setEndDate]         = useState(todayInit);
+  const [title,           setTitle]           = useState(editRecord?.content ?? '');
+  const [startDate,       setStartDate]       = useState(
+    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : todayInit
+  );
+  const [endDate,         setEndDate]         = useState(
+    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : todayInit
+  );
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [memo,            setMemo]            = useState('');
-  const [rating,          setRating]          = useState(0);
+  const [memo,            setMemo]            = useState(editRecord?.memo ?? '');
+  const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
 
   // ── 국가별 데이터 관리 (2개국 이상 선택 시) ──
   const isMultiCountry = selectedCountries.length > 1;
   const [activeCountryIdx, setActiveCountryIdx] = useState(0);
+
+  const handleReorder = (newCountries: { flag: string; name: string }[]) => {
+    const activeCountryName = selectedCountries[activeCountryIdx]?.name;
+    setSelectedCountries(newCountries);
+    if (activeCountryName) {
+      const newIdx = newCountries.findIndex(c => c.name === activeCountryName);
+      if (newIdx !== -1) {
+        setActiveCountryIdx(newIdx);
+      } else {
+        setActiveCountryIdx(0);
+      }
+    } else {
+      setActiveCountryIdx(0);
+    }
+  };
+
+  const handleRemoveCountry = (name: string) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setSelectedCountries(prev => {
+      const filtered = prev.filter(p => p.name !== name);
+      const activeCountryName = selectedCountries[activeCountryIdx]?.name;
+      if (activeCountryName === name) {
+        setActiveCountryIdx(0);
+      } else if (activeCountryName) {
+        const newIdx = filtered.findIndex(c => c.name === activeCountryName);
+        setActiveCountryIdx(newIdx !== -1 ? newIdx : 0);
+      } else {
+        setActiveCountryIdx(0);
+      }
+      return filtered;
+    });
+  };
+
   const perCountryStore = useRef<Record<string, {
     medias: string[];
     mediaPrivacy: Record<number, string[]>;
     startDate: Date;
     endDate: Date;
     rating: number;
-  }>>({});
+    representativePhoto?: string;
+  }>>(
+    // 편집 모드: 기존 국가별 데이터를 시딩해서 국가 전환 시 그대로 표시
+    (() => {
+      const store: Record<string, {
+        medias: string[]; mediaPrivacy: Record<number, string[]>;
+        startDate: Date; endDate: Date; rating: number; representativePhoto?: string;
+      }> = {};
+      if (editRecord?.perCountryData) {
+        for (const [name, d] of Object.entries(editRecord.perCountryData)) {
+          store[name] = {
+            medias: d.medias ?? [],
+            mediaPrivacy: {},
+            startDate: parseDotDate(d.startDate),
+            endDate: parseDotDate(d.endDate),
+            rating: d.rating ?? 0,
+            representativePhoto: d.representativePhoto,
+          };
+        }
+      }
+      return store;
+    })()
+  );
 
   // 현재 국가 데이터 저장
   const saveCurrentCountryData = () => {
@@ -1068,6 +1289,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         rating,
+        representativePhoto: representativePhoto || undefined,
       };
     }
   };
@@ -1084,12 +1306,14 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
       setStartDate(data.startDate);
       setEndDate(data.endDate);
       setRating(data.rating);
+      setRepresentativePhoto(data.representativePhoto || null);
     } else {
       setMedias([]);
       setMediaPrivacy({});
       setStartDate(todayInit);
       setEndDate(todayInit);
       setRating(0);
+      setRepresentativePhoto(null);
     }
     setActiveCountryIdx(newIdx);
   };
@@ -1152,8 +1376,8 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
     `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
 
   // Step 4 - 동행자
-  const [selectedCompanions, setSelectedCompanions] = useState<string[]>([]);
-  const [companionFriends,   setCompanionFriends]   = useState<string[]>([]);
+  const [selectedCompanions, setSelectedCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [companionFriends,   setCompanionFriends]   = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
 
   const toggleCompanion = (comp: string) => {
@@ -1169,13 +1393,13 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
   };
 
   // Step 5 - 선택 항목
-  const [budget,     setBudget]     = useState('');
-  const [currency,   setCurrency]   = useState('KRW');
+  const [budget,     setBudget]     = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
+  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? 'KRW');
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [weather,    setWeather]    = useState('');
-  const [flightType, setFlightType] = useState('');
-  const [keywords,   setKeywords]   = useState<string[]>([]);
+  const [weather,    setWeather]    = useState(editRecord?.weather ?? '');
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
+  const [keywords,   setKeywords]   = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordQuery, setKeywordQuery] = useState('');
 
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
@@ -1226,11 +1450,13 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
   const [loadingMedia,            setLoadingMedia]            = useState(false);
   const [autoLoadCalendarVisible, setAutoLoadCalendarVisible] = useState(false);
 
-  // ── 미디어 선택 모달 (100개 초과 시) ──
+  // ── 미디어 선택 모달 (30개 초과 시) ──
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
   const [mediaPickerAssets,   setMediaPickerAssets]   = useState<MediaLibrary.Asset[]>([]);
   const [mediaPickerSelected, setMediaPickerSelected] = useState<Set<string>>(new Set());
-  const [mediaPickerMax,      setMediaPickerMax]      = useState(100);
+  const [mediaPickerMax,      setMediaPickerMax]      = useState(30);
+  // 모달 열기 전 iCloud 사유로 제외된 장수 — 완료 메시지 안내에 사용
+  const cloudSkippedRef = useRef(0);
 
   const toggleMediaPickerItem = (id: string) => {
     setMediaPickerSelected(prev => {
@@ -1245,25 +1471,42 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
     });
   };
 
+  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환해 {asset, uri} 쌍을 돌려준다.
+  // iCloud로 오프로드된(원본이 기기에 없는) 사진은 Expo 관리형 API로 materialize가
+  // 불가능하다 — getAssetInfoAsync/ImageManipulator/FileSystem.copyAsync 모두 실패하며
+  // ph:// 그대로 두면 새 아키텍처에서 검은 타일로 뜬다. 따라서 가져올 수 없는 것으로
+  // 보고 제외한다(검은 타일/조용한 실패 방지). 변환은 Promise.all로 병렬 처리.
+  const resolveImportable = async (
+    assets: MediaLibrary.Asset[]
+  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+    const probed = await Promise.all(
+      assets.map(async (asset) => {
+        try {
+          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
+            const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
+            return info.localUri ? { asset, uri: info.localUri } : null; // localUri 없으면 iCloud → 제외
+          }
+          return { asset, uri: asset.uri };
+        } catch {
+          return null;
+        }
+      })
+    );
+    return probed.filter((p): p is { asset: MediaLibrary.Asset; uri: string } => p !== null);
+  };
+
+  // iCloud 제외분 안내 문구 (없으면 빈 문자열)
+  const cloudNote = (skipped: number) =>
+    skipped > 0 ? `\n\niCloud에 보관된 ${skipped}장은 자동 불러오기로 가져올 수 없어, 아래 ‘갤러리에서 선택’으로 받아주세요.` : '';
+
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
     setMediaPickerVisible(false);
     setLoadingMedia(true);
 
     try {
-      const resolvedUris: string[] = [];
-      for (const asset of selectedAssets) {
-        try {
-          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
-            const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (info.localUri) resolvedUris.push(info.localUri);
-          } else {
-            resolvedUris.push(asset.uri);
-          }
-        } catch {
-          // 변환 실패 건너뜀
-        }
-      }
+      const ok = await resolveImportable(selectedAssets);
+      const resolvedUris = ok.map((p) => p.uri);
 
       setMedias((prev) => {
         const existingSet = new Set(prev);
@@ -1271,7 +1514,8 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         return [...prev, ...newUris];
       });
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진·영상을 불러왔어요!`);
+      // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
+      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudSkippedRef.current)}`);
     } catch (e: any) {
       Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
     } finally {
@@ -1309,50 +1553,51 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
       endOfDay.setHours(23, 59, 59, 999);
 
       const result = await MediaLibrary.getAssetsAsync({
-        mediaType: [MediaLibrary.MediaType.photo, MediaLibrary.MediaType.video],
+        mediaType: [MediaLibrary.MediaType.photo],
         createdAfter:  startOfDay.getTime(),
         createdBefore: endOfDay.getTime(),
         sortBy: MediaLibrary.SortBy.creationTime,
         first: 500,
       });
 
-      const assets = result?.assets ?? [];
-      const total = assets.length;
-
-      if (total === 0) {
-        Alert.alert('사진·영상이 없어요', '해당 기간에 사진·영상이 없어요.');
+      const allAssets = result?.assets ?? [];
+      if (allAssets.length === 0) {
+        Alert.alert('사진이 없어요', '해당 기간에 사진이 없어요.');
         return;
       }
 
-      const slotsAvailable = 100 - medias.length;
+      // 가져올 수 있는(로컬) 사진만 추린다. iCloud 오프로드 사진은 materialize가 불가능하므로
+      // 여기서 미리 걸러내 검은 타일/조용한 실패를 막고, 몇 장이 iCloud인지 안내한다.
+      const ok = await resolveImportable(allAssets);
+      const cloudCount = allAssets.length - ok.length;
+      cloudSkippedRef.current = cloudCount;
+
+      if (ok.length === 0) {
+        Alert.alert(
+          'iCloud에 있는 사진이에요',
+          `이 기간 사진 ${cloudCount}장은 모두 iCloud에 보관돼 있어 자동 불러오기로는 가져올 수 없어요.\n\n‘갤러리에서 선택’으로 받아주세요. (iCloud 사진은 이 방식에서만 받아집니다)`
+        );
+        return;
+      }
+
+      const total = ok.length;
+      const slotsAvailable = 30 - medias.length;
       if (slotsAvailable <= 0) {
-        Alert.alert('알림', '사진·영상은 최대 100개까지 추가할 수 있어요.');
+        Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
         return;
       }
 
-      // 100개 초과 시 → 선택 모달 표시
+      // 30개 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
       if (total > slotsAvailable) {
-        setMediaPickerAssets(assets);
+        setMediaPickerAssets(ok.map((p) => p.asset));
         setMediaPickerMax(slotsAvailable);
         setMediaPickerSelected(new Set());
         setMediaPickerVisible(true);
         return;
       }
 
-      // 100개 이하 → 기존처럼 전체 추가
-      const resolvedUris: string[] = [];
-      for (const asset of assets) {
-        try {
-          if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
-            const info = await MediaLibrary.getAssetInfoAsync(asset);
-            if (info.localUri) resolvedUris.push(info.localUri);
-          } else {
-            resolvedUris.push(asset.uri);
-          }
-        } catch {
-          // 변환 실패한 개별 항목은 건너뜀
-        }
-      }
+      // 30개 이하 → 전체 추가 (이미 변환된 localUri 사용)
+      const resolvedUris = ok.map((p) => p.uri);
 
       setMedias((prev) => {
         const existingSet = new Set(prev);
@@ -1360,7 +1605,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         return [...prev, ...newUris];
       });
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진·영상을 불러왔어요!`);
+      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudCount)}`);
     } catch (e: any) {
       Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
     } finally {
@@ -1371,6 +1616,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
+    if (step === 2) return medias.length > 0; // 사진 최소 1장 필수
     if (step === TOTAL_STEPS) {
       return memo.trim().length > 0 && rating > 0 && selectedCompanions.length > 0;
     }
@@ -1400,7 +1646,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
       const first = selectedCountries[0];
 
       // 국가별 데이터 수집
-      const pcd: Record<string, { medias?: string[]; startDate?: string; endDate?: string; rating?: number }> = {};
+      const pcd: Record<string, { medias?: string[]; startDate?: string; endDate?: string; rating?: number; representativePhoto?: string }> = {};
       let allMedias: string[] = [];
       let firstRating = 0;
       let firstStart = formatDate(todayInit);
@@ -1414,6 +1660,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
             startDate: formatDate(d.startDate),
             endDate: formatDate(d.endDate),
             rating: d.rating,
+            representativePhoto: d.representativePhoto,
           };
           allMedias = [...allMedias, ...d.medias];
           if (i === 0) {
@@ -1424,18 +1671,21 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         }
       });
 
-      addRecord({
-        user: { name: '나', emoji: '✈️', handle: 'yunjunsung' },
+      const firstRepPhoto = perCountryStore.current[first.name]?.representativePhoto || representativePhoto || undefined;
+
+      const payload = {
         country: `${first.flag} ${first.name}`,
         countryName: first.name,
         countryFlag: first.flag,
         countries: selectedCountries,
+        regionName: selectedRegion?.name || undefined,
+        regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
+        representativePhoto: firstRepPhoto,
         date: firstStart,
         content: title || (selectedCountries.length === 1
           ? `${first.name} 여행 기록`
           : `${first.name} 외 ${selectedCountries.length - 1}개국 여행 기록`),
-        visibility: 'friends',
         memo,
         rating: firstRating,
         companions: selectedCompanions,
@@ -1448,14 +1698,25 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         weather:    weather    || undefined,
         flightType: flightType || undefined,
         keywords:   keywords.length > 0 ? keywords : undefined,
-        viewType:   'feed',
-      });
+      };
+
+      if (isEdit && editRecord) {
+        // 작성자·공개범위·형식은 유지하고 내용만 갱신
+        updateRecord(editRecord.id, payload);
+      } else {
+        addRecord({
+          user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
+          visibility: 'friends',
+          viewType: 'feed',
+          ...payload,
+        });
+      }
     }
     navigation.goBack();
   };
 
   // ── 단계별 제목 ──
-  const STEP_TITLES = ['국가 선택', '사진 · 영상', '기록 정보'];
+  const STEP_TITLES = ['국가 선택', '사진', '기록 정보'];
 
   // ─── 렌더 ───
   return (
@@ -1465,7 +1726,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
           <Text style={s.cancelTxt}>취소</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>새 기록하기</Text>
+        <Text style={s.headerTitle}>{isEdit ? '기록 수정' : '새 기록하기'}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -1485,25 +1746,40 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
           contentContainerStyle={s.content}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
+          scrollEnabled={scrollEnabled}
         >
 
           {/* ══════════════════ STEP 1 ══════════════════ */}
           {step === 1 && (
             <View style={s.step1Wrap}>
-              {/* 선택된 국가 칩 목록 */}
-              {selectedCountries.length > 0 && (
+              {/* 선택된 국가 목록 */}
+              {selectedCountries.length === 1 && (
                 <View style={s.selectedChipsWrap}>
                   {selectedCountries.map((c) => (
                     <View key={c.name} style={s.countryChip}>
                       <Text style={s.countryChipText}>{c.flag} {c.name}</Text>
                       <TouchableOpacity
-                        onPress={() => setSelectedCountries(prev => prev.filter(p => p.name !== c.name))}
+                        onPress={() => handleRemoveCountry(c.name)}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
                         <Text style={s.countryChipRemove}>✕</Text>
                       </TouchableOpacity>
                     </View>
                   ))}
+                </View>
+              )}
+
+              {selectedCountries.length >= 2 && (
+                <View style={{ marginBottom: 12 }}>
+                  <DraggableCountryList
+                    countries={selectedCountries}
+                    onReorder={handleReorder}
+                    onRemove={handleRemoveCountry}
+                    onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
+                  />
+                  <Text style={s.draggableHelperText}>
+                    드래그하여 국가 순서를 변경할 수 있습니다. (첫 번째 국가가 대표 국가가 됩니다)
+                  </Text>
                 </View>
               )}
 
@@ -1550,8 +1826,9 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
                                 style={[s.countryItem, isSelected && s.countryItemSelected]}
                                 onPress={() => {
                                   if (isSelected) {
-                                    setSelectedCountries(prev => prev.filter(p => p.name !== c.name));
+                                    handleRemoveCountry(c.name);
                                   } else if (selectedCountries.length < MAX_COUNTRIES) {
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
                                     setSelectedCountries(prev => [...prev, { flag: c.flag, name: c.name }]);
                                   }
                                 }}
@@ -1620,63 +1897,38 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
 
               {/* 갤러리 선택 버튼 */}
               <TouchableOpacity
-                style={[s.addMediaBtn, medias.length >= 100 && s.addMediaBtnDisabled]}
+                style={[s.addMediaBtn, medias.length >= 30 && s.addMediaBtnDisabled]}
                 onPress={selectMedia}
                 activeOpacity={0.8}
-                disabled={medias.length >= 100}
+                disabled={medias.length >= 30}
               >
                 <View style={s.addMediaLeft}>
                   <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
                   <View>
                     <Text style={s.addMediaText}>갤러리에서 선택</Text>
-                    <Text style={s.addMediaSub}>사진 · 영상 최대 100개</Text>
+                    <Text style={s.addMediaSub}>사진 최대 30장</Text>
                   </View>
                 </View>
                 <View style={s.addMediaCountBadge}>
-                  <Text style={s.addMediaCountTxt}>{medias.length}/100</Text>
+                  <Text style={s.addMediaCountTxt}>{medias.length}/30</Text>
                 </View>
               </TouchableOpacity>
 
-              {/* 썸네일 그리드 */}
+              {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
               {medias.length > 0 && (
-                <View style={s.mediaGrid}>
-                  {medias.map((uri, index) => {
-                    const isLocked = (mediaPrivacy[index]?.length ?? 0) > 0;
-                    return (
-                      <View key={index} style={[s.mediaThumbWrap, { width: THUMB_SIZE, height: THUMB_SIZE }]}>
-                        <Image source={{ uri }} style={s.mediaThumb} />
-
-                        {/* 비공개 오버레이 */}
-                        {isLocked && <View style={s.mediaLockedOverlay} />}
-
-                        {/* 삭제 버튼 — 좌측 상단 */}
-                        <TouchableOpacity
-                          style={s.mediaRemoveBtn}
-                          onPress={() => removeMedia(index)}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                        >
-                          <Text style={s.mediaRemoveTxt}>×</Text>
-                        </TouchableOpacity>
-
-                        {/* 🔒 버튼 — 우측 상단 */}
-                        <TouchableOpacity
-                          style={[s.mediaLockBtn, isLocked && s.mediaLockBtnActive]}
-                          onPress={() => setPrivacyModalIndex(index)}
-                          hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
-                        >
-                          {isLocked ? <LockClosedIcon size={12} color={COLORS.white} /> : <LockOpenIcon size={12} color={COLORS.white} />}
-                        </TouchableOpacity>
-
-                        {/* 비공개 인원 수 배지 */}
-                        {isLocked && (
-                          <View style={s.privacyCountBadge}>
-                            <Text style={s.privacyCountTxt}>{mediaPrivacy[index].length}명</Text>
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
+                <DraggablePhotoGrid
+                  medias={medias}
+                  mediaPrivacy={mediaPrivacy}
+                  onReorder={handleReorderMedias}
+                  onRemove={removeMedia}
+                  onOpenPrivacyModal={setPrivacyModalIndex}
+                  onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
+                  THUMB_SIZE={THUMB_SIZE}
+                  representativePhoto={representativePhoto}
+                  onSetRepresentative={(uri) => {
+                    setRepresentativePhoto(prev => prev === uri ? null : uri);
+                  }}
+                />
               )}
 
               {/* 빈 상태 */}
@@ -2014,8 +2266,9 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
       <PrivacyModal
         visible={privacyModalIndex !== null}
         selectedFriends={privacyModalIndex !== null ? (mediaPrivacy[privacyModalIndex] || []) : []}
-        allFriends={DUMMY_FRIENDS}
+        allFriends={friendNames}
         onToggle={friend => privacyModalIndex !== null && toggleMediaPrivacyFriend(privacyModalIndex, friend)}
+        onSetAll={friends => privacyModalIndex !== null && setMediaPrivacyAll(privacyModalIndex, friends)}
         onClose={() => setPrivacyModalIndex(null)}
       />
 
@@ -2037,7 +2290,11 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
             </View>
 
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
-              {DUMMY_FRIENDS.map(friend => {
+              {friendNames.length === 0 ? (
+                <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
+                  아직 팔로우한 친구가 없어요
+                </Text>
+              ) : friendNames.map(friend => {
                 const isSelected = companionFriends.includes(friend);
                 return (
                   <TouchableOpacity
@@ -2137,7 +2394,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
         onClose={() => setAutoLoadCalendarVisible(false)}
       />
 
-      {/* ── 미디어 선택 모달 (100개 초과 시) ── */}
+      {/* ── 미디어 선택 모달 (30개 초과 시) ── */}
       <Modal
         visible={mediaPickerVisible}
         animationType="slide"
@@ -2150,7 +2407,7 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
             <TouchableOpacity onPress={() => setMediaPickerVisible(false)} style={{ padding: 4 }}>
               <Text style={mpStyles.cancelText}>취소</Text>
             </TouchableOpacity>
-            <Text style={mpStyles.title}>사진·영상 선택</Text>
+            <Text style={mpStyles.title}>사진 선택</Text>
             <TouchableOpacity
               onPress={confirmMediaPickerSelection}
               style={{ padding: 4 }}
@@ -2178,6 +2435,16 @@ export default function NewRecordScreen({ navigation, route }: { navigation: any
             keyExtractor={(item) => item.id}
             numColumns={3}
             contentContainerStyle={mpStyles.gridContent}
+            // 최대 500장 그리드 — 가상화 튜닝으로 모달 오픈/스크롤 끊김 완화
+            initialNumToRender={15}
+            maxToRenderPerBatch={15}
+            windowSize={5}
+            removeClippedSubviews
+            getItemLayout={(_, index) => ({
+              length: PICKER_CELL + 2,
+              offset: (PICKER_CELL + 2) * Math.floor(index / 3),
+              index,
+            })}
             renderItem={({ item }) => {
               const selected = mediaPickerSelected.has(item.id);
               return (
@@ -2512,6 +2779,33 @@ const s = StyleSheet.create({
     paddingVertical: 2,
     borderRadius: 8,
     overflow: 'hidden',
+  },
+  // ⭐️ 지도대표 버튼 — 좌측 하단
+  mediaRepBtn: {
+    position: 'absolute',
+    bottom: -7,
+    left: -7,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 6,
+    zIndex: 10,
+  },
+  mediaRepBtnActive: {
+    backgroundColor: COLORS.purpleDeep,
+    borderColor: COLORS.purpleNeon,
+  },
+  mediaRepTxt: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: 'rgba(255,255,255,0.5)',
+  },
+  mediaRepTxtActive: {
+    color: '#BF85FC',
   },
 
   // 빈 상태
@@ -3180,7 +3474,594 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
+  draggableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.03)',
+    borderWidth: 1,
+    borderColor: '#1A1A26',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+  },
+  draggableRowActive: {
+    backgroundColor: 'rgba(191,133,252,0.12)',
+    borderColor: '#BF85FC',
+    shadowColor: '#BF85FC',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+    transform: [{ scale: 1.02 }],
+  },
+  dragHandle: {
+    paddingRight: 12,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  draggableRowContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  draggableRowFlag: {
+    fontSize: 20,
+  },
+  draggableRowName: {
+    fontSize: 15,
+    color: '#FFFFFF',
+    fontWeight: '500',
+  },
+  representativeTag: {
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderRadius: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    marginLeft: 6,
+  },
+  representativeTagText: {
+    fontSize: 10,
+    color: '#BF85FC',
+    fontWeight: '700',
+  },
+  draggableRemoveBtn: {
+    paddingHorizontal: 8,
+    height: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  draggableRemoveText: {
+    fontSize: 14,
+    color: '#A1A1B0',
+  },
+  draggableHelperText: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    marginTop: 4,
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  numberBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  numberBadgeText: {
+    fontSize: 11,
+    color: '#BF85FC',
+    fontWeight: '700',
+  },
+  mediaThumbActive: {
+    borderColor: '#BF85FC',
+    borderWidth: 1.5,
+    borderRadius: 12,
+    shadowColor: '#BF85FC',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 8,
+    transform: [{ scale: 1.05 }],
+  },
 });
+
+// ─── 드래그 앤 드롭 국가 리스트 컴포넌트 ───
+const DragHandleIcon = ({ size = 20, color = '#A1A1B0' }: { size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M4 8h16M4 16h16" stroke={color} strokeWidth={2} strokeLinecap="round" />
+  </Svg>
+);
+
+interface DraggableCountryListProps {
+  countries: { flag: string; name: string }[];
+  onReorder: (newCountries: { flag: string; name: string }[]) => void;
+  onRemove: (name: string) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
+}
+
+function DraggableRow({
+  c,
+  i,
+  dragIndex,
+  hoverIndex,
+  dragY,
+  ITEM_HEIGHT,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onRemove,
+}: {
+  c: { flag: string; name: string };
+  i: number;
+  dragIndex: number | null;
+  hoverIndex: number | null;
+  dragY: number;
+  ITEM_HEIGHT: number;
+  onDragStart: (idx: number) => void;
+  onDragMove: (dy: number) => void;
+  onDragEnd: (idx: number) => void;
+  onRemove: (name: string) => void;
+}) {
+  const latestProps = useRef({ i, onDragStart, onDragMove, onDragEnd });
+  useEffect(() => {
+    latestProps.current = { i, onDragStart, onDragMove, onDragEnd };
+  }, [i, onDragStart, onDragMove, onDragEnd]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: () => {
+        latestProps.current.onDragStart(latestProps.current.i);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        latestProps.current.onDragMove(gestureState.dy);
+      },
+      onPanResponderRelease: () => {
+        latestProps.current.onDragEnd(latestProps.current.i);
+      },
+      onPanResponderTerminate: () => {
+        latestProps.current.onDragEnd(latestProps.current.i);
+      },
+    })
+  ).current;
+
+  let top = i * ITEM_HEIGHT;
+  let zIndex = 1;
+  const isDragging = i === dragIndex;
+
+  if (dragIndex !== null) {
+    if (isDragging) {
+      top = i * ITEM_HEIGHT + dragY;
+      zIndex = 10;
+    } else {
+      const activeHover = hoverIndex !== null ? hoverIndex : dragIndex;
+      if (dragIndex < activeHover) {
+        if (i > dragIndex && i <= activeHover) {
+          top = (i - 1) * ITEM_HEIGHT;
+        }
+      } else if (dragIndex > activeHover) {
+        if (i < dragIndex && i >= activeHover) {
+          top = (i + 1) * ITEM_HEIGHT;
+        }
+      }
+    }
+  }
+
+  return (
+    <Animated.View
+      style={[
+        s.draggableRow,
+        {
+          position: 'absolute',
+          left: 0,
+          right: 0,
+          top: top,
+          height: ITEM_HEIGHT - 8,
+          zIndex: zIndex,
+        },
+        isDragging && s.draggableRowActive,
+      ]}
+    >
+      {/* Drag Handle */}
+      <View {...panResponder.panHandlers} style={s.dragHandle}>
+        <DragHandleIcon size={20} color={isDragging ? COLORS.purpleNeon : COLORS.textDim} />
+      </View>
+
+      {/* Flag and Name with Order Index Number */}
+      <View style={s.draggableRowContent}>
+        <View style={s.numberBadge}>
+          <Text style={s.numberBadgeText}>{i + 1}</Text>
+        </View>
+        <Text style={s.draggableRowFlag}>{c.flag}</Text>
+        <Text style={s.draggableRowName}>{c.name}</Text>
+        {i === 0 && (
+          <View style={s.representativeTag}>
+            <Text style={s.representativeTagText}>대표</Text>
+          </View>
+        )}
+      </View>
+
+      {/* Delete Button */}
+      <TouchableOpacity
+        onPress={() => onRemove(c.name)}
+        style={s.draggableRemoveBtn}
+        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      >
+        <Text style={s.draggableRemoveText}>✕</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+function DraggableCountryList({ countries, onReorder, onRemove, onDragStateChange }: DraggableCountryListProps) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragY, setDragY] = useState(0);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const prevHoverIndex = useRef<number | null>(null);
+
+  const ITEM_HEIGHT = 56;
+
+  const handleDragStart = useCallback((index: number) => {
+    setDragIndex(index);
+    setDragY(0);
+    setHoverIndex(index);
+    prevHoverIndex.current = index;
+    onDragStateChange?.(true);
+  }, [onDragStateChange]);
+
+  const handleDragMove = useCallback((dy: number) => {
+    if (dragIndex === null) return;
+    setDragY(dy);
+    const calculatedHover = Math.max(
+      0,
+      Math.min(countries.length - 1, dragIndex + Math.round(dy / ITEM_HEIGHT))
+    );
+    if (calculatedHover !== prevHoverIndex.current) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setHoverIndex(calculatedHover);
+      prevHoverIndex.current = calculatedHover;
+    }
+  }, [dragIndex, countries.length]);
+
+  const handleDragEnd = useCallback((index: number) => {
+    const finalHover = prevHoverIndex.current !== null ? prevHoverIndex.current : index;
+    if (finalHover !== index) {
+      const updated = [...countries];
+      const [moved] = updated.splice(index, 1);
+      updated.splice(finalHover, 0, moved);
+      onReorder(updated);
+    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setDragIndex(null);
+    setDragY(0);
+    setHoverIndex(null);
+    prevHoverIndex.current = null;
+    onDragStateChange?.(false);
+  }, [countries, onReorder, onDragStateChange]);
+
+  return (
+    <View style={{ height: countries.length * ITEM_HEIGHT, position: 'relative', marginVertical: 8 }}>
+      {countries.map((c, idx) => (
+        <DraggableRow
+          key={c.name}
+          c={c}
+          i={idx}
+          dragIndex={dragIndex}
+          hoverIndex={hoverIndex}
+          dragY={dragY}
+          ITEM_HEIGHT={ITEM_HEIGHT}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onRemove={onRemove}
+        />
+      ))}
+    </View>
+  );
+}
+
+// ─── 드래그 앤 드롭 사진 그리드 컴포넌트 ───
+interface DraggablePhotoGridProps {
+  medias: string[];
+  mediaPrivacy: Record<number, string[]>;
+  onReorder: (fromIdx: number, toIdx: number) => void;
+  onRemove: (index: number) => void;
+  onOpenPrivacyModal: (index: number) => void;
+  onDragStateChange?: (isDragging: boolean) => void;
+  THUMB_SIZE: number;
+  representativePhoto: string | null;
+  onSetRepresentative: (uri: string) => void;
+}
+
+function DraggablePhotoThumb({
+  uri,
+  idx,
+  mediaPrivacy,
+  dragIndex,
+  hoverIndex,
+  dragX,
+  dragY,
+  CELL_SIZE,
+  THUMB_SIZE,
+  onDragStart,
+  onDragMove,
+  onDragEnd,
+  onRemove,
+  onOpenPrivacyModal,
+  representativePhoto,
+  onSetRepresentative,
+}: {
+  uri: string;
+  idx: number;
+  mediaPrivacy: Record<number, string[]>;
+  dragIndex: number | null;
+  hoverIndex: number | null;
+  dragX: number;
+  dragY: number;
+  CELL_SIZE: number;
+  THUMB_SIZE: number;
+  onDragStart: (index: number) => void;
+  onDragMove: (dx: number, dy: number) => void;
+  onDragEnd: (index: number) => void;
+  onRemove: (index: number) => void;
+  onOpenPrivacyModal: (index: number) => void;
+  representativePhoto: string | null;
+  onSetRepresentative: (uri: string) => void;
+}) {
+  const isDragging = idx === dragIndex;
+  const isLocked = (mediaPrivacy[idx]?.length ?? 0) > 0;
+
+  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
+  const startCoords = useRef({ x: 0, y: 0 });
+  const hasStartedDrag = useRef(false);
+
+  const latestProps = useRef({ idx, onDragStart, onDragMove, onDragEnd });
+  useEffect(() => {
+    latestProps.current = { idx, onDragStart, onDragMove, onDragEnd };
+  }, [idx, onDragStart, onDragMove, onDragEnd]);
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onPanResponderGrant: (evt) => {
+        startCoords.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
+        hasStartedDrag.current = false;
+        
+        longPressTimer.current = setTimeout(() => {
+          hasStartedDrag.current = true;
+          latestProps.current.onDragStart(latestProps.current.idx);
+        }, 250);
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        if (!hasStartedDrag.current) {
+          const dx = evt.nativeEvent.pageX - startCoords.current.x;
+          const dy = evt.nativeEvent.pageY - startCoords.current.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance > 10) {
+            if (longPressTimer.current) {
+              clearTimeout(longPressTimer.current);
+              longPressTimer.current = null;
+            }
+          }
+        } else {
+          latestProps.current.onDragMove(gestureState.dx, gestureState.dy);
+        }
+      },
+      onPanResponderRelease: () => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+        if (hasStartedDrag.current) {
+          latestProps.current.onDragEnd(latestProps.current.idx);
+        }
+      },
+      onPanResponderTerminate: () => {
+        if (longPressTimer.current) {
+          clearTimeout(longPressTimer.current);
+          longPressTimer.current = null;
+        }
+        if (hasStartedDrag.current) {
+          latestProps.current.onDragEnd(latestProps.current.idx);
+        }
+      },
+    })
+  ).current;
+
+  useEffect(() => {
+    return () => {
+      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+    };
+  }, []);
+
+  let left = (idx % 3) * CELL_SIZE;
+  let top = Math.floor(idx / 3) * CELL_SIZE;
+  let zIndex = 1;
+
+  if (dragIndex !== null) {
+    if (isDragging) {
+      left = (idx % 3) * CELL_SIZE + dragX;
+      top = Math.floor(idx / 3) * CELL_SIZE + dragY;
+      zIndex = 10;
+    } else {
+      const activeHover = hoverIndex !== null ? hoverIndex : dragIndex;
+      if (dragIndex < activeHover) {
+        if (idx > dragIndex && idx <= activeHover) {
+          const shiftedIdx = idx - 1;
+          left = (shiftedIdx % 3) * CELL_SIZE;
+          top = Math.floor(shiftedIdx / 3) * CELL_SIZE;
+        }
+      } else if (dragIndex > activeHover) {
+        if (idx < dragIndex && idx >= activeHover) {
+          const shiftedIdx = idx + 1;
+          left = (shiftedIdx % 3) * CELL_SIZE;
+          top = Math.floor(shiftedIdx / 3) * CELL_SIZE;
+        }
+      }
+    }
+  }
+
+  return (
+    <Animated.View
+      style={[
+        s.mediaThumbWrap,
+        {
+          position: 'absolute',
+          left: left,
+          top: top,
+          width: THUMB_SIZE,
+          height: THUMB_SIZE,
+          zIndex: zIndex,
+        },
+        isDragging && s.mediaThumbActive,
+      ]}
+      {...panResponder.panHandlers}
+    >
+      <Image source={{ uri }} style={s.mediaThumb} />
+
+      {isLocked && <View style={s.mediaLockedOverlay} />}
+
+      {!isDragging && (
+        <TouchableOpacity
+          style={s.mediaRemoveBtn}
+          onPress={() => onRemove(idx)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          <Text style={s.mediaRemoveTxt}>×</Text>
+        </TouchableOpacity>
+      )}
+
+      {!isDragging && (
+        <TouchableOpacity
+          style={[s.mediaLockBtn, isLocked && s.mediaLockBtnActive]}
+          onPress={() => onOpenPrivacyModal(idx)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+        >
+          {isLocked ? <LockClosedIcon size={12} color={COLORS.white} /> : <LockOpenIcon size={12} color={COLORS.white} />}
+        </TouchableOpacity>
+      )}
+
+      {!isDragging && (
+        <TouchableOpacity
+          style={[s.mediaRepBtn, uri === representativePhoto && s.mediaRepBtnActive]}
+          onPress={() => onSetRepresentative(uri)}
+          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          activeOpacity={0.8}
+        >
+          <Text style={[s.mediaRepTxt, uri === representativePhoto && s.mediaRepTxtActive]}>
+            {uri === representativePhoto ? '★ 지도대표' : '대표 설정'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {!isDragging && isLocked && (
+        <View style={s.privacyCountBadge}>
+          <Text style={s.privacyCountTxt}>{mediaPrivacy[idx].length}명</Text>
+        </View>
+      )}
+    </Animated.View>
+  );
+}
+
+function DraggablePhotoGrid({
+  medias,
+  mediaPrivacy,
+  onReorder,
+  onRemove,
+  onOpenPrivacyModal,
+  onDragStateChange,
+  THUMB_SIZE,
+  representativePhoto,
+  onSetRepresentative,
+}: DraggablePhotoGridProps) {
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragX, setDragX] = useState(0);
+  const [dragY, setDragY] = useState(0);
+  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+  const prevHoverIndex = useRef<number | null>(null);
+
+  const GAP = 8;
+  const CELL_SIZE = THUMB_SIZE + GAP;
+
+  const handleDragStart = useCallback((index: number) => {
+    setDragIndex(index);
+    setDragX(0);
+    setDragY(0);
+    setHoverIndex(index);
+    prevHoverIndex.current = index;
+    onDragStateChange?.(true);
+  }, [onDragStateChange]);
+
+  const handleDragMove = useCallback((dx: number, dy: number) => {
+    if (dragIndex === null) return;
+    setDragX(dx);
+    setDragY(dy);
+
+    const startX = (dragIndex % 3) * CELL_SIZE;
+    const startY = Math.floor(dragIndex / 3) * CELL_SIZE;
+
+    const currentX = startX + dx;
+    const currentY = startY + dy;
+
+    const col = Math.max(0, Math.min(2, Math.round(currentX / CELL_SIZE)));
+    const row = Math.max(0, Math.min(Math.ceil(medias.length / 3) - 1, Math.round(currentY / CELL_SIZE)));
+
+    const calculatedHover = Math.max(0, Math.min(medias.length - 1, row * 3 + col));
+
+    if (calculatedHover !== prevHoverIndex.current) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setHoverIndex(calculatedHover);
+      prevHoverIndex.current = calculatedHover;
+    }
+  }, [dragIndex, medias.length, CELL_SIZE]);
+
+  const handleDragEnd = useCallback((index: number) => {
+    const finalHover = prevHoverIndex.current !== null ? prevHoverIndex.current : index;
+    if (finalHover !== index) {
+      onReorder(index, finalHover);
+    }
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setDragIndex(null);
+    setDragX(0);
+    setDragY(0);
+    setHoverIndex(null);
+    prevHoverIndex.current = null;
+    onDragStateChange?.(false);
+  }, [onReorder, onDragStateChange]);
+
+  const numRows = Math.ceil(medias.length / 3);
+
+  return (
+    <View style={{ height: numRows * CELL_SIZE, position: 'relative', marginTop: 12 }}>
+      {medias.map((uri, idx) => (
+        <DraggablePhotoThumb
+          key={uri + '_' + idx}
+          uri={uri}
+          idx={idx}
+          mediaPrivacy={mediaPrivacy}
+          dragIndex={dragIndex}
+          hoverIndex={hoverIndex}
+          dragX={dragX}
+          dragY={dragY}
+          CELL_SIZE={CELL_SIZE}
+          THUMB_SIZE={THUMB_SIZE}
+          onDragStart={handleDragStart}
+          onDragMove={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onRemove={onRemove}
+          onOpenPrivacyModal={onOpenPrivacyModal}
+          representativePhoto={representativePhoto}
+          onSetRepresentative={onSetRepresentative}
+        />
+      ))}
+    </View>
+  );
+}
 
 // ─── 캘린더 바텀시트 전용 스타일 ───
 const calS = StyleSheet.create({

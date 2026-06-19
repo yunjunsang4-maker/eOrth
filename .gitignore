@@ -39,3 +39,13 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# IDE / tooling artifacts
+.idea/
+.understand-anything/
+
+# Brainstorming visual companion
+.superpowers/
+
+# Supabase keys
+.env

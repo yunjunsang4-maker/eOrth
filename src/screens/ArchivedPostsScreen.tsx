@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -6,12 +7,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  Alert,
-  SafeAreaView,
-} from 'react-native';
+  Alert,} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
   bg: '#0A0A0F',
@@ -66,6 +66,9 @@ function ArchivedCard({
           <Text style={s.userName}>{item.user.name}</Text>
           <View style={s.metaRow}>
             <Text style={s.countryTag}>{item.country}</Text>
+            <Text style={s.typeTag}>
+              {item.viewType === 'blog' ? '블로그' : item.viewType === 'snap' ? '스냅' : item.viewType === 'cut' ? '스트립' : '피드'}
+            </Text>
             <Text style={s.dateMeta}>{item.date}</Text>
           </View>
         </View>
@@ -120,12 +123,39 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // ─────────────────────────────────────────────
 // 보관된 게시물 화면
 // ─────────────────────────────────────────────
-export default function ArchivedPostsScreen({ navigation }: { navigation: any }) {
+export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
   const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 기록 형식 필터링 상태 추가
+  const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'snap' | 'cut'>('all');
+
   const archivedRecords = records.filter((r) => archivedIds.includes(r.id));
+
+  // 개수 계산
+  const counts = {
+    all: archivedRecords.length,
+    feed: archivedRecords.filter((r) => r.viewType === 'feed' || !r.viewType).length,
+    blog: archivedRecords.filter((r) => r.viewType === 'blog').length,
+    snap: archivedRecords.filter((r) => r.viewType === 'snap').length,
+    cut: archivedRecords.filter((r) => r.viewType === 'cut').length,
+  };
+
+  // 필터링된 보관 기록
+  const filteredRecords = archivedRecords.filter((r) => {
+    if (activeTab === 'all') return true;
+    if (activeTab === 'feed') return r.viewType === 'feed' || !r.viewType;
+    return r.viewType === activeTab;
+  });
+
+  const TAB_LABELS = {
+    all: '전체',
+    feed: '피드',
+    blog: '블로그',
+    snap: '스냅',
+    cut: '스트립',
+  };
 
   const showToast = (msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -144,6 +174,11 @@ export default function ArchivedPostsScreen({ navigation }: { navigation: any })
     deleteRecord(id);
   };
 
+  const getEmptyMessage = () => {
+    if (activeTab === 'all') return '보관된 게시물이 없어요';
+    return `보관된 ${TAB_LABELS[activeTab]}이 없어요`;
+  };
+
   return (
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
@@ -155,10 +190,29 @@ export default function ArchivedPostsScreen({ navigation }: { navigation: any })
         <View style={s.headerPlaceholder} />
       </View>
 
-      {archivedRecords.length === 0 ? (
+      {/* 기록 형식 필터 탭바 */}
+      <View style={s.tabBar}>
+        {(['all', 'feed', 'blog', 'snap', 'cut'] as const).map((tab) => {
+          const isActive = activeTab === tab;
+          return (
+            <TouchableOpacity
+              key={tab}
+              style={[s.tabItem, isActive && s.tabItemActive]}
+              onPress={() => setActiveTab(tab)}
+              activeOpacity={0.7}
+            >
+              <Text style={[s.tabText, isActive && s.tabTextActive]}>
+                {TAB_LABELS[tab]} <Text style={[s.tabCount, isActive && s.tabCountActive]}>{counts[tab]}</Text>
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {filteredRecords.length === 0 ? (
         <View style={s.emptyContainer}>
           <Text style={s.emptyEmoji}>📦</Text>
-          <Text style={s.emptyText}>보관된 게시물이 없어요</Text>
+          <Text style={s.emptyText}>{getEmptyMessage()}</Text>
         </View>
       ) : (
         <View style={{ flex: 1 }}>
@@ -166,7 +220,7 @@ export default function ArchivedPostsScreen({ navigation }: { navigation: any })
             contentContainerStyle={s.scroll}
             showsVerticalScrollIndicator={false}
           >
-            {archivedRecords.map((item) => (
+            {filteredRecords.map((item) => (
               <ArchivedCard
                 key={item.id}
                 item={item}
@@ -190,6 +244,47 @@ const s = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: C.bg,
+  },
+
+  // 탭바 스타일
+  tabBar: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: C.divider,
+    backgroundColor: C.bg,
+  },
+  tabItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 18,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  tabItemActive: {
+    backgroundColor: C.accentDim,
+    borderColor: C.accentBorder,
+  },
+  tabText: {
+    fontSize: 11,
+    fontWeight: '500',
+    color: C.dim,
+  },
+  tabTextActive: {
+    color: C.white,
+    fontWeight: '700',
+  },
+  tabCount: {
+    fontSize: 10,
+    color: C.dim,
+    opacity: 0.6,
+  },
+  tabCountActive: {
+    color: C.accent,
+    opacity: 1,
   },
 
   // 헤더
@@ -273,6 +368,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 4,
+  },
+  typeTag: {
+    fontSize: 10,
+    color: C.white,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontWeight: '500',
   },
   dateMeta: {
     fontSize: 11,

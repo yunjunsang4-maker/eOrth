@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -8,18 +9,10 @@ import {
   Modal,
   Alert,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import TripRecordRenderer from '../components/TripRecordRenderer';
-import { TravelRecord, RecordViewType } from '../store/recordStore';
+import { useRecords, RecordViewType } from '../store/recordStore';
 import { PencilIcon, TrashIcon } from '../components/icons';
-
-type RouteParams = {
-  TripRecord: {
-    record: TravelRecord;
-    viewType: RecordViewType;
-  };
-};
+import type { RootStackScreenProps } from '../navigation/types';
 
 const VIEW_TYPES: { type: RecordViewType; icon: string; name: string }[] = [
   { type: 'feed',  icon: '📸', name: '피드' },
@@ -27,12 +20,14 @@ const VIEW_TYPES: { type: RecordViewType; icon: string; name: string }[] = [
   { type: 'album', icon: '📷', name: '앨범' },
 ];
 
-export default function TripRecordScreen() {
-  const navigation = useNavigation<any>();
-  const route = useRoute<RouteProp<RouteParams, 'TripRecord'>>();
-  const { record, viewType: initialViewType } = route.params;
+export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
+  const insets = useSafeAreaInsets();
+  const { record: paramRecord, viewType: initialViewType } = route.params;
+  const { records, deleteRecord } = useRecords();
+  // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
+  const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
-  const [viewType, setViewType] = useState<RecordViewType>(initialViewType);
+  const [viewType, setViewType] = useState<RecordViewType>(initialViewType ?? record.viewType ?? 'feed');
   const [menuVisible, setMenuVisible] = useState(false);
   const [formatModalVisible, setFormatModalVisible] = useState(false);
 
@@ -40,13 +35,30 @@ export default function TripRecordScreen() {
     setMenuVisible(false);
     Alert.alert('기록 삭제', '이 기록을 삭제할까요?', [
       { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => navigation.goBack() },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: () => {
+          deleteRecord(record.id);
+          navigation.goBack();
+        },
+      },
     ]);
   };
 
+  // 기록의 실제 형식(record.viewType)에 따라 편집 화면 분기 — PostDetailScreen과 동일한 규칙
   const handleEdit = () => {
     setMenuVisible(false);
-    // 수정 화면 연결 (추후 구현)
+    const recordType = record.viewType ?? 'feed';
+    if (recordType === 'snap') {
+      Alert.alert('수정 불가', '스냅은 수정할 수 없어요');
+    } else if (recordType === 'blog') {
+      navigation.navigate('BlogRecord', { record });
+    } else if (recordType === 'album') {
+      Alert.alert('수정 불가', '앨범 형식은 현재 보관 중이라 수정할 수 없어요.');
+    } else {
+      navigation.navigate('NewRecord', { record });
+    }
   };
 
   const handleFormatChange = (type: RecordViewType) => {
@@ -57,7 +69,7 @@ export default function TripRecordScreen() {
   return (
     <View style={styles.container}>
       {/* 상단 헤더 */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
@@ -132,7 +144,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingBottom: 12,
     paddingHorizontal: 16,
     backgroundColor: '#0A0A0F',

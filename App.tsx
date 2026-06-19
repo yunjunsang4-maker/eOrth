@@ -1,14 +1,24 @@
 import 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
+import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
+import { ToastProvider } from './src/store/toastStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
+import ErrorBoundary from './src/components/ErrorBoundary';
+import BadgeToastHost from './src/components/BadgeToastHost';
+import BadgeEvaluator from './src/components/BadgeEvaluator';
+import DMToastHost from './src/components/DMToastHost';
+import ToastHost from './src/components/ToastHost';
+import ProfileSync from './src/components/ProfileSync';
 
 export default function App() {
   // 알림 탭 → 스냅 화면으로 이동
@@ -18,7 +28,7 @@ export default function App() {
       if (data?.type === 'snap') {
         const nav = navigationRef.current;
         if (nav?.isReady()) {
-          (nav as any).navigate('SnapRecord', { notifTimestamp: data.timestamp });
+          nav.navigate('SnapRecord', { notifTimestamp: Number(data.timestamp) || undefined });
         }
       }
     });
@@ -51,12 +61,27 @@ export default function App() {
   }
 
   return (
-    <SettingsProvider>
-      <RecordProvider>
-        <StatusBar style="light" backgroundColor="#0A0118" translucent />
-        <SnapDetector />
-        <AppNavigator />
-      </RecordProvider>
-    </SettingsProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ErrorBoundary>
+          <SettingsProvider>
+            <RecordProvider>
+              <DMProvider>
+                <ToastProvider>
+                  <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                  <SnapDetector />
+                  <ProfileSync />
+                  <BadgeEvaluator />
+                  <AppNavigator />
+                  <BadgeToastHost />
+                  <DMToastHost />
+                  <ToastHost />
+                </ToastProvider>
+              </DMProvider>
+            </RecordProvider>
+          </SettingsProvider>
+        </ErrorBoundary>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -9,6 +10,7 @@ import {
   Animated,
   Modal,
   PanResponder,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -16,7 +18,11 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { BellIcon, GlobeIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import CountryMapView from '../components/CountryMapView';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import SponsoredPackageCard from '../components/SponsoredPackageCard';
+import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
+import type { TabScreenProps } from '../navigation/types';
 
 const { height } = Dimensions.get('window');
 const SHEET_HEIGHT = height * 0.6;
@@ -80,6 +86,25 @@ const AlbumIcon = () => (
       <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: FAB_C }} />
       <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: FAB_C }} />
     </View>
+  </View>
+);
+
+// 네컷 — 프레임 안 2×2 (네컷 사진 느낌)
+const CutIcon = () => (
+  <View style={{ width: FAB_SZ, height: FAB_SZ, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 18, height: 22, borderWidth: 1.5, borderColor: FAB_C, borderRadius: 3, padding: 2.5, flexDirection: 'row', flexWrap: 'wrap', gap: 2, alignContent: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: FAB_C }} />
+    </View>
+  </View>
+);
+
+// 스냅 — 번개 ⚡
+const SnapIcon = () => (
+  <View style={{ width: FAB_SZ, height: FAB_SZ, alignItems: 'center', justifyContent: 'center' }}>
+    <Text style={{ color: FAB_C, fontSize: 16, fontWeight: 'bold' }}>⚡</Text>
   </View>
 );
 
@@ -162,20 +187,104 @@ const KO_TO_EN: Record<string, string> = {
   '한국':'South Korea',
 };
 
-interface Props {
-  navigation: any;
-}
+const CITY_TO_EN: Record<string, string> = {
+  '도쿄': 'Tokyo', '오사카': 'Osaka', '교토': 'Kyoto',
+  '후쿠오카': 'Fukuoka', '홋카이도': 'Hokkaido', '오키나와': 'Okinawa',
+  '파리': 'Paris', '니스': 'Nice', '리옹': 'Lyon',
+  '로마': 'Rome', '밀라노': 'Milan', '피렌체': 'Florence', '베네치아': 'Venice',
+  '베를린': 'Berlin', '함부르크': 'Hamburg', '뮌헨': 'Munich', '프랑크푸르트': 'Frankfurt',
+  '런던': 'London',
+  '서울': 'Seoul', '부산': 'Busan',
+  '방콕': 'Bangkok',
+};
 
-export default function MainScreen({ navigation }: Props) {
+type Props = TabScreenProps<'MainTab'>;
+
+// 기록 형식 선택 → 이동할 수 있는 작성 화면들
+type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord' | 'AlbumCreate';
+
+export default function MainScreen({ navigation, route }: Props) {
+  const insets = useSafeAreaInsets();
   const { records } = useRecords();
+
+  // ── 튜토리얼(코치마크) ──
+  // 측정 대상: 지구본(WebView) / 모드 토글 / 지구본 설정 버튼 / 스냅 버튼 / FAB. measureInWindow를 쓰므로 any로 둔다.
+  const globeRef = useRef<any>(null);
+  const toggleRef = useRef<any>(null);
+  const settingsRef = useRef<any>(null);
+  const snapRef = useRef<any>(null);
+  const fabRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+
+  const measure = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) {
+          resolve(null);
+        } else {
+          resolve({ x, y, width, height });
+        }
+      });
+    });
+
+  // 기록 완성 화면에서 "튜토리얼 진행하기"로 들어온 경우 자동 시작
+  useEffect(() => {
+    if (!route.params?.startTutorial) return;
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      const [globe, toggle, settings, snap, fab] = await Promise.all([
+        measure(globeRef),
+        measure(toggleRef),
+        measure(settingsRef),
+        measure(snapRef),
+        measure(fabRef),
+      ]);
+      if (cancelled) return;
+      // 지구본(WebView)의 실제 프레임에서 three.js 투영 상수로 원을 계산.
+      // 카메라가 아래로(y=-0.35) 내려가 있어 구체 중심이 세로 ~39% 지점, 반지름 ~0.30×높이.
+      const globeCircle = globe
+        ? { cx: globe.x + globe.width / 2, cy: globe.y + globe.height * 0.39, r: globe.height * 0.3 }
+        : undefined;
+      setCoachSteps([
+        {
+          rect: globe,
+          shape: 'circle', // 지구본은 원형으로 강조
+          circleWin: globeCircle,
+          title: '여행 지구본 🌏',
+          desc: '방문한 나라가 활성화돼요. 나라를 탭하면 그 나라의 기록을 추가하거나 볼 수 있어요.',
+        },
+        { rect: toggle, title: '지구본 · 대륙 전환', desc: '지구본과 대륙(국가 지역) 지도를 자유롭게 전환할 수 있어요.' },
+        { rect: settings, title: '표시 방식 설정', desc: '기록한 나라를 국기 · 색상 · 사진 중 원하는 방식으로 꾸밀 수 있어요.' },
+        { rect: snap, title: '스냅 기록 ⚡', desc: '여행지에 도착한 순간을 빠르게 남기는 스냅 기록이에요.' },
+        { rect: fab, title: '기록 추가 +', desc: '피드 · 블로그 · 스트립 · 사진첩 등 원하는 형식으로 새 기록을 추가해요.' },
+      ]);
+      setCoachVisible(true);
+      // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
+      navigation.setParams({ startTutorial: undefined });
+    }, 450);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [route.params?.startTutorial]);
+
   const [hasUnreadAlerts, setHasUnreadAlerts] = useState(true);
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드
+  const [selectedAd, setSelectedAd] = useState<SponsoredPackage | null>(null);
+  const sponsoredMarkerItems = useMemo(() => getSponsoredMarkerItems(), []);
+  // 방문한 나라 바텀시트 활성화 여부 (첫 출시 시 제외, 추후 보완하여 활성화 예정)
+  const SHOW_VISITED_SHEET = false;
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [countrySheetOpen, setCountrySheetOpen] = useState(false);
 
   // 기록형식 선택 모달
   const [formatModalVisible, setFormatModalVisible] = useState(false);
-  const [pendingCountry, setPendingCountry] = useState<{ name: string; code: string } | null>(null);
+  const [pendingCountry, setPendingCountry] = useState<{ name: string; code: string; region?: string; regionEn?: string } | null>(null);
 
   // 지구본 표시 설정
   const [globeDisplayMode, setGlobeDisplayMode] = useState<GlobeDisplayMode>('flag');
@@ -183,6 +292,10 @@ export default function MainScreen({ navigation }: Props) {
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
+
+  // 국가 및 지역별 개별 표시 설정
+  const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, GlobeDisplayMode>>({});
+  const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
 
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');
@@ -215,12 +328,91 @@ export default function MainScreen({ navigation }: Props) {
     return nameSet;
   }, [records]);
 
+  // 특정 국가의 대표 사진 찾기
+  const getCountryPhoto = (countryName: string) => {
+    const matchingRecords = records.filter(r => r.countryName === countryName || r.countries?.some(c => c.name === countryName));
+    for (const r of matchingRecords) {
+      if (r.perCountryData?.[countryName]?.representativePhoto) {
+        return r.perCountryData[countryName].representativePhoto;
+      }
+      if (r.countryName === countryName && r.representativePhoto) {
+        return r.representativePhoto;
+      }
+      if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
+        return r.cutPhoto.previewUri;
+      }
+      if (r.viewType === 'snap' && r.snapBackUri) {
+        return r.snapBackUri;
+      }
+      if (r.medias && r.medias.length > 0) {
+        return r.medias[0];
+      }
+    }
+    return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
+  };
+
   const visitedCountries: VisitedCountry[] = useMemo(() => {
-    return Array.from(visitedNameSet).map(nameEn => ({
-      nameEn,
-      color: countryColors[nameEn] || undefined,
-    }));
-  }, [visitedNameSet, countryColors]);
+    return Array.from(visitedNameSet).map(nameEn => {
+      const koName = EN_TO_KO[nameEn] || nameEn;
+      return {
+        nameEn,
+        color: countryColors[nameEn] || undefined,
+        photo: getCountryPhoto(koName) || undefined,
+        mode: countryDisplayModes[nameEn] || undefined,
+      };
+    });
+  }, [visitedNameSet, countryColors, records, countryDisplayModes]);
+
+  // 현재 선택된 대륙 국가의 기록된 지역 목록
+  const recordedRegions = useMemo(() => {
+    if (!regionCountry) return [];
+    const countryKo = ISO3_TO_KO[regionCountry];
+    if (!countryKo) return [];
+
+    const regionsMap = new Map<string, { name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }>();
+
+    // 1) static COUNTRY_RECORDS
+    const staticRecs = COUNTRY_RECORDS[countryKo] || [];
+    staticRecs.forEach(sr => {
+      const en = CITY_TO_EN[sr.city];
+      if (en) {
+        regionsMap.set(en, {
+          name: sr.city,
+          nameEn: en,
+          photo: undefined,
+          mode: regionDisplayModes[en] || undefined,
+        });
+      }
+    });
+
+    // 2) dynamic records from store
+    records.forEach(r => {
+      const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
+      if (matchCountry && r.regionNameEn) {
+        let photo: string | undefined;
+        if (r.perCountryData?.[countryKo]?.representativePhoto) {
+          photo = r.perCountryData[countryKo].representativePhoto;
+        } else if (r.countryName === countryKo && r.representativePhoto) {
+          photo = r.representativePhoto;
+        } else if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
+          photo = r.cutPhoto.previewUri;
+        } else if (r.viewType === 'snap' && r.snapBackUri) {
+          photo = r.snapBackUri;
+        } else if (r.medias && r.medias.length > 0) {
+          photo = r.medias[0];
+        }
+
+        regionsMap.set(r.regionNameEn, {
+          name: r.regionName || r.regionNameEn,
+          nameEn: r.regionNameEn,
+          photo,
+          mode: regionDisplayModes[r.regionNameEn] || undefined,
+        });
+      }
+    });
+
+    return Array.from(regionsMap.values());
+  }, [records, regionCountry, regionDisplayModes]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -231,7 +423,7 @@ export default function MainScreen({ navigation }: Props) {
   const [fabOpen, setFabOpen] = useState(false);
   const fabRotate = useRef(new Animated.Value(0)).current;
   const fabOverlay = useRef(new Animated.Value(0)).current;
-  const fabAnims = useRef([0, 1, 2].map(() => ({
+  const fabAnims = useRef([0, 1, 2, 3].map(() => ({
     translateX: new Animated.Value(0),
     opacity: new Animated.Value(0),
   }))).current;
@@ -276,7 +468,8 @@ export default function MainScreen({ navigation }: Props) {
   const FAB_FORMATS = [
     { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
     { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-    { type: 'album', icon: <AlbumIcon />, name: '앨범' },
+    { type: 'cut',   icon: <CutIcon />,   name: '스트립' },
+    { type: 'album', icon: <AlbumIcon />, name: '사진첩' },
   ];
 
   const fabRotateDeg = fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
@@ -376,9 +569,17 @@ export default function MainScreen({ navigation }: Props) {
   const handleGlobeMessage = (e: any) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
+      if (data.type === 'sponsoredTapped') {
+        const pkg = getSponsoredByCountryEn(data.countryEn);
+        if (pkg) setSelectedAd(pkg);
+        return;
+      }
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
-        const hasRecord = !!COUNTRY_RECORDS[koreanName];
+        const hasStaticRecord = !!COUNTRY_RECORDS[koreanName];
+        const hasDynamicRecord = records.some(r => r.countryName === koreanName || r.countries?.some(c => c.name === koreanName));
+        const hasRecord = hasStaticRecord || hasDynamicRecord;
+
         if (hasRecord && koreanName) {
           openCountrySheet(koreanName);
         } else {
@@ -396,7 +597,12 @@ export default function MainScreen({ navigation }: Props) {
       if (data.type === 'regionTapped') {
         const countryKo = ISO3_TO_KO[data.countryCode] || data.countryCode;
         const regionName = data.region || data.regionEn;
-        setPendingCountry({ name: `${countryKo} - ${regionName}`, code: data.countryCode });
+        setPendingCountry({
+          name: `${countryKo} - ${regionName}`,
+          code: data.countryCode,
+          region: data.region,
+          regionEn: data.regionEn,
+        });
         setFormatModalVisible(true);
       }
     } catch (_) {}
@@ -405,10 +611,12 @@ export default function MainScreen({ navigation }: Props) {
   const handleFormatSelect = (type: string) => {
     setFormatModalVisible(false);
     if (!pendingCountry) return;
-    const SCREEN_MAP: Record<string, string> = {
+    const SCREEN_MAP: Record<string, RecordFormatScreen> = {
       feed: 'NewRecord',
       blog: 'BlogRecord',
-      album: 'AlbumRecord',
+      cut: 'CutRecord',
+      snap: 'SnapRecord',
+      album: 'AlbumCreate',
     };
     navigation.navigate(SCREEN_MAP[type] ?? 'NewRecord', {
       selectedCountry: pendingCountry,
@@ -420,8 +628,12 @@ export default function MainScreen({ navigation }: Props) {
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
 
       {/* ── 헤더 ── */}
-      <View style={styles.header}>
-        <Text style={styles.headerLogo}>eOrth</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+        <Image
+          source={require('../../assets/logo.png')}
+          style={styles.headerLogoImage}
+          resizeMode="contain"
+        />
         <TouchableOpacity
           style={styles.headerIcon}
           onPress={() => {
@@ -437,29 +649,36 @@ export default function MainScreen({ navigation }: Props) {
       <View style={styles.globeArea}>
         {/* 지구본/대륙 전환 토글 (Liquid Glass) */}
         <View style={styles.modeToggleWrap}>
-          <BlurView intensity={50} tint="dark" style={styles.modeToggle}>
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'globe' && styles.modeBtnActive]}
-              activeOpacity={0.7}
-              onPress={() => { setViewMode('globe'); setRegionCountry(null); }}
-            >
-              <Text style={[styles.modeBtnText, viewMode === 'globe' && styles.modeBtnTextActive]}>지구본</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.modeBtn, viewMode === 'region' && styles.modeBtnActive]}
-              activeOpacity={0.7}
-              onPress={() => { setViewMode('region'); setRegionCountry(null); }}
-            >
-              <Text style={[styles.modeBtnText, viewMode === 'region' && styles.modeBtnTextActive]}>대륙</Text>
-            </TouchableOpacity>
-          </BlurView>
+          {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
+          <View ref={toggleRef} collapsable={false}>
+            <BlurView intensity={50} tint="dark" style={styles.modeToggle}>
+              <TouchableOpacity
+                style={[styles.modeBtn, viewMode === 'globe' && styles.modeBtnActive]}
+                activeOpacity={0.7}
+                onPress={() => { setViewMode('globe'); setRegionCountry(null); }}
+              >
+                <Text style={[styles.modeBtnText, viewMode === 'globe' && styles.modeBtnTextActive]}>지구본</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modeBtn, viewMode === 'region' && styles.modeBtnActive]}
+                activeOpacity={0.7}
+                onPress={() => { setViewMode('region'); setRegionCountry(null); }}
+              >
+                <Text style={[styles.modeBtnText, viewMode === 'region' && styles.modeBtnTextActive]}>대륙</Text>
+              </TouchableOpacity>
+            </BlurView>
+          </View>
         </View>
 
         {/* 뷰 렌더링 */}
         {viewMode === 'globe' ? (
           <>
-            <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={visitedCountries} displayMode={globeDisplayMode} defaultColor={globeColor} />
+            {/* 지구본 측정용 래퍼 (WebView의 실제 프레임을 잡아 튜토리얼 원 강조에 사용) */}
+            <View ref={globeRef} collapsable={false}>
+              <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={visitedCountries} displayMode={globeDisplayMode} defaultColor={globeColor} sponsoredItems={sponsoredMarkerItems} />
+            </View>
             <TouchableOpacity
+              ref={settingsRef}
               style={styles.globeSettingsBtn}
               activeOpacity={0.7}
               onPress={() => setDisplaySettingsVisible(true)}
@@ -472,7 +691,13 @@ export default function MainScreen({ navigation }: Props) {
         ) : regionCountry ? (
           <>
             {/* 국가 지역 지도 */}
-            <CountryMapView countryCode={regionCountry} onMessage={handleRegionMessage} />
+            <CountryMapView
+              countryCode={regionCountry}
+              onMessage={handleRegionMessage}
+              recordedRegions={recordedRegions}
+              displayMode={globeDisplayMode === 'photo' ? 'photo' : 'color'}
+              defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
+            />
             {/* 뒤로가기 버튼 */}
             <TouchableOpacity
               style={styles.regionBackBtn}
@@ -506,19 +731,26 @@ export default function MainScreen({ navigation }: Props) {
         )}
       </View>
 
-      {/* ── 스냅 바로가기 버튼 (Liquid Glass) ── */}
-      <TouchableOpacity
-        style={styles.snapQuickBtn}
-        activeOpacity={0.8}
-        onPress={() => navigation.navigate('SnapRecord')}
-      >
-        <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-        <Text style={styles.snapQuickIcon}>⚡</Text>
-        <Text style={styles.snapQuickLabel}>스냅</Text>
-      </TouchableOpacity>
+      {/* ── 스냅 바로가기 버튼 (스냅 카드 그라디언트 보더) ── */}
+      <View style={styles.snapQuickWrap} ref={snapRef} collapsable={false}>
+        <LinearGradient
+          colors={['#22D3EE', '#A855F7', '#D946EF']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
+        <TouchableOpacity
+          style={styles.snapQuickBtn}
+          activeOpacity={0.8}
+          onPress={() => navigation.navigate('SnapRecord')}
+        >
+          <Text style={styles.snapQuickIcon}>⚡</Text>
+          <Text style={styles.snapQuickLabel}>스냅</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* ── 하단 핸들 바 (시트 닫혔을 때 노출) ── */}
-      {!sheetOpen && (
+      {SHOW_VISITED_SHEET && !sheetOpen && (
         <TouchableOpacity style={styles.handleTrigger} onPress={openSheet} activeOpacity={0.8}>
           <LinearGradient
             colors={['transparent', 'rgba(10,1,24,0.85)']}
@@ -531,7 +763,7 @@ export default function MainScreen({ navigation }: Props) {
       )}
 
       {/* ── 반투명 오버레이 ── */}
-      {sheetOpen && (
+      {SHOW_VISITED_SHEET && sheetOpen && (
         <Animated.View
           style={[styles.overlay, { opacity: overlayAnim }]}
           pointerEvents={sheetOpen ? 'auto' : 'none'}
@@ -541,51 +773,53 @@ export default function MainScreen({ navigation }: Props) {
       )}
 
       {/* ── 바텀시트 (Liquid Glass) ── */}
-      <Animated.View
-        style={[
-          styles.bottomSheet,
-          { transform: [{ translateY: sheetAnim }] },
-        ]}
-        pointerEvents={sheetOpen ? 'auto' : 'none'}
-      >
-        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-        {/* 시트 핸들 */}
-        <View style={styles.sheetHandleArea} {...sheetPan.panHandlers}>
-          <View style={styles.sheetHandle} />
-        </View>
-
-        {/* 타이틀 */}
-        <View style={styles.sheetTitleRow}>
-          <Text style={styles.sheetTitle}>방문한 나라</Text>
-          <Text style={styles.sheetCount}>{VISITED_COUNTRIES.length}개국</Text>
-        </View>
-
-        {/* 나라 리스트 */}
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.sheetList}
+      {SHOW_VISITED_SHEET && (
+        <Animated.View
+          style={[
+            styles.bottomSheet,
+            { transform: [{ translateY: sheetAnim }] },
+          ]}
+          pointerEvents={sheetOpen ? 'auto' : 'none'}
         >
-          {VISITED_COUNTRIES.map((c, i) => (
-            <TouchableOpacity
-              key={i}
-              style={styles.countryRow}
-              activeOpacity={0.7}
-              onPress={() => {
-                closeSheet();
-                navigation.navigate('Country', { name: c.name, flag: c.flag });
-              }}
-            >
-              <Text style={styles.countryFlag}>{c.flag}</Text>
-              <View style={styles.countryInfo}>
-                <Text style={styles.countryName}>{c.name}</Text>
-                <Text style={styles.countryVisits}>{c.visits}회 방문</Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </TouchableOpacity>
-          ))}
-          <View style={{ height: 24 }} />
-        </ScrollView>
-      </Animated.View>
+          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+          {/* 시트 핸들 */}
+          <View style={styles.sheetHandleArea} {...sheetPan.panHandlers}>
+            <View style={styles.sheetHandle} />
+          </View>
+
+          {/* 타이틀 */}
+          <View style={styles.sheetTitleRow}>
+            <Text style={styles.sheetTitle}>방문한 나라</Text>
+            <Text style={styles.sheetCount}>{VISITED_COUNTRIES.length}개국</Text>
+          </View>
+
+          {/* 나라 리스트 */}
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.sheetList}
+          >
+            {VISITED_COUNTRIES.map((c, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.countryRow}
+                activeOpacity={0.7}
+                onPress={() => {
+                  closeSheet();
+                  navigation.navigate('Country', { name: c.name, flag: c.flag });
+                }}
+              >
+                <Text style={styles.countryFlag}>{c.flag}</Text>
+                <View style={styles.countryInfo}>
+                  <Text style={styles.countryName}>{c.name}</Text>
+                  <Text style={styles.countryVisits}>{c.visits}회 방문</Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </TouchableOpacity>
+            ))}
+            <View style={{ height: 24 }} />
+          </ScrollView>
+        </Animated.View>
+      )}
 
       {/* ── 국가 기록 오버레이 ── */}
       {countrySheetOpen && (
@@ -673,7 +907,8 @@ export default function MainScreen({ navigation }: Props) {
               {[
                 { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
                 { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-                { type: 'album', icon: <AlbumIcon />, name: '앨범' },
+                { type: 'cut',   icon: <CutIcon />,   name: '스트립' },
+                { type: 'album', icon: <AlbumIcon />, name: '사진첩' },
               ].map(fmt => (
                 <TouchableOpacity
                   key={fmt.type}
@@ -690,7 +925,7 @@ export default function MainScreen({ navigation }: Props) {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── 지구본 표시 설정 모달 ── */}
+      {/* ── 영토 표시 설정 모달 ── */}
       <Modal
         visible={displaySettingsVisible}
         transparent
@@ -704,100 +939,236 @@ export default function MainScreen({ navigation }: Props) {
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-            <Text style={styles.dsTitle}>영토 표시 설정</Text>
-            <Text style={styles.dsSub}>기록한 국가의 영토를 어떻게 표시할지 선택하세요</Text>
-
-            {/* 모드 선택 */}
-            <View style={styles.dsSection}>
-              <TouchableOpacity
-                style={[styles.dsOption, globeDisplayMode === 'flag' && styles.dsOptionActive]}
-                activeOpacity={0.7}
-                onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
-              >
-                <Text style={{ fontSize: 24 }}>🏳️</Text>
-                <Text style={[styles.dsOptionText, globeDisplayMode === 'flag' && styles.dsOptionTextActive]}>국기</Text>
-                {globeDisplayMode === 'flag' && <View style={styles.dsCheck} />}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.dsOption, globeDisplayMode === 'color' && styles.dsOptionActive]}
-                activeOpacity={0.7}
-                onPress={() => setGlobeDisplayMode('color')}
-              >
-                <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
-                <Text style={[styles.dsOptionText, globeDisplayMode === 'color' && styles.dsOptionTextActive]}>색상</Text>
-                {globeDisplayMode === 'color' && <View style={styles.dsCheck} />}
-              </TouchableOpacity>
-            </View>
-
-            {/* 색상 모드: 기본 색상 + 국가별 색상 */}
-            {globeDisplayMode === 'color' && (
+            
+            {viewMode === 'globe' ? (
               <>
-                {/* 기본 색상 */}
+                <Text style={styles.dsTitle}>지구본 표시 설정</Text>
+                <Text style={styles.dsSub}>기록한 국가의 지구본 표시 방식을 선택하세요</Text>
+
+                {/* 글로벌 기본 모드 선택 */}
                 <View style={styles.dsColorSection}>
-                  <Text style={styles.dsColorLabel}>기본 색상</Text>
-                  <View style={styles.dsColorGrid}>
-                    {['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF'].map(c => (
-                      <TouchableOpacity
-                        key={c}
-                        style={[styles.dsColorItem, { backgroundColor: c }, globeColor === c && styles.dsColorItemActive]}
-                        activeOpacity={0.7}
-                        onPress={() => setGlobeColor(c)}
-                      />
-                    ))}
+                  <Text style={styles.dsColorLabel}>글로벌 기본 설정</Text>
+                  <View style={styles.dsSection}>
+                    <TouchableOpacity
+                      style={[styles.dsOption, globeDisplayMode === 'flag' && styles.dsOptionActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
+                    >
+                      <Text style={{ fontSize: 24 }}>🏳️</Text>
+                      <Text style={[styles.dsOptionText, globeDisplayMode === 'flag' && styles.dsOptionTextActive]}>국기</Text>
+                      {globeDisplayMode === 'flag' && <View style={styles.dsCheck} />}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.dsOption, globeDisplayMode === 'color' && styles.dsOptionActive]}
+                      activeOpacity={0.7}
+                      onPress={() => setGlobeDisplayMode('color')}
+                    >
+                      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
+                      <Text style={[styles.dsOptionText, globeDisplayMode === 'color' && styles.dsOptionTextActive]}>색상</Text>
+                      {globeDisplayMode === 'color' && <View style={styles.dsCheck} />}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.dsOption, globeDisplayMode === 'photo' && styles.dsOptionActive]}
+                      activeOpacity={0.7}
+                      onPress={() => { setGlobeDisplayMode('photo'); setEditingCountryColor(null); }}
+                    >
+                      <Text style={{ fontSize: 24 }}>🖼️</Text>
+                      <Text style={[styles.dsOptionText, globeDisplayMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
+                      {globeDisplayMode === 'photo' && <View style={styles.dsCheck} />}
+                    </TouchableOpacity>
                   </View>
                 </View>
 
-                {/* 국가별 색상 */}
-                <View style={styles.dsColorSection}>
-                  <Text style={styles.dsColorLabel}>국가별 색상</Text>
-                  <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                {/* 글로벌 기본 색상 선택 */}
+                {globeDisplayMode === 'color' && (
+                  <View style={styles.dsColorSection}>
+                    <Text style={styles.dsColorLabel}>글로벌 기본 색상</Text>
+                    <View style={styles.dsColorGrid}>
+                      {['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF'].map(c => (
+                        <TouchableOpacity
+                          key={c}
+                          style={[styles.dsColorItem, { backgroundColor: c }, globeColor === c && styles.dsColorItemActive]}
+                          activeOpacity={0.7}
+                          onPress={() => setGlobeColor(c)}
+                        />
+                      ))}
+                    </View>
+                  </View>
+                )}
+
+                {/* 국가별 개별 설정 */}
+                <View style={[styles.dsColorSection, { flex: 1, maxHeight: 220 }]}>
+                  <Text style={styles.dsColorLabel}>국가별 개별 설정</Text>
+                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                     {Array.from(visitedNameSet).map(nameEn => {
                       const ko = EN_TO_KO[nameEn] || nameEn;
+                      const currentMode = (countryDisplayModes[nameEn] || 'default') as GlobeDisplayMode | 'default';
                       const currentColor = countryColors[nameEn] || globeColor;
                       const isEditing = editingCountryColor === nameEn;
+                      const effectiveMode = currentMode === 'default' ? globeDisplayMode : currentMode;
+
                       return (
-                        <View key={nameEn}>
-                          <TouchableOpacity
-                            style={styles.dsCountryRow}
-                            activeOpacity={0.7}
-                            onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
-                          >
-                            <View style={[styles.dsCountryDot, { backgroundColor: currentColor }]} />
-                            <Text style={styles.dsCountryName}>{ko}</Text>
-                            {countryColors[nameEn] && (
+                        <View key={nameEn} style={{ marginBottom: 8 }}>
+                          <View style={styles.dsCountryRow}>
+                            {effectiveMode === 'color' ? (
                               <TouchableOpacity
-                                style={styles.dsCountryReset}
-                                onPress={() => {
-                                  setCountryColors(prev => {
-                                    const next = { ...prev };
-                                    delete next[nameEn];
-                                    return next;
-                                  });
-                                }}
-                              >
-                                <Text style={styles.dsCountryResetText}>초기화</Text>
-                              </TouchableOpacity>
+                                style={[styles.dsCountryDot, { backgroundColor: currentColor }]}
+                                onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
+                              />
+                            ) : (
+                              <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
+                                <Text style={{ fontSize: 10 }}>{effectiveMode === 'flag' ? '🏳️' : '🖼️'}</Text>
+                              </View>
                             )}
-                            <Text style={styles.dsCountryArrow}>{isEditing ? '▲' : '▼'}</Text>
-                          </TouchableOpacity>
-                          {isEditing && (
+                            <Text style={styles.dsCountryName} numberOfLines={1}>{ko}</Text>
+
+                            <View style={styles.dsSegmentWrap}>
+                              {(['default', 'flag', 'color', 'photo'] as const).map(m => {
+                                const label = m === 'default' ? '기본' : m === 'flag' ? '국기' : m === 'color' ? '색상' : '사진';
+                                const active = currentMode === m;
+                                return (
+                                  <TouchableOpacity
+                                    key={m}
+                                    style={[styles.dsSegmentBtn, active && styles.dsSegmentBtnActive]}
+                                    onPress={() => {
+                                      setCountryDisplayModes(prev => {
+                                        const next = { ...prev };
+                                        if (m === 'default') {
+                                          delete next[nameEn];
+                                        } else {
+                                          next[nameEn] = m;
+                                        }
+                                        return next;
+                                      });
+                                      if (m !== 'color') {
+                                        if (editingCountryColor === nameEn) setEditingCountryColor(null);
+                                      }
+                                    }}
+                                  >
+                                    <Text style={[styles.dsSegmentText, active && styles.dsSegmentTextActive]}>{label}</Text>
+                                  </TouchableOpacity>
+                                );
+                              })}
+                            </View>
+                          </View>
+
+                          {/* 국가별 색상 선택 피커 */}
+                          {isEditing && effectiveMode === 'color' && (
                             <View style={styles.dsCountryPalette}>
                               {['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF', '#E040FB', '#FF5252', '#448AFF', '#69F0AE', '#FFAB40'].map(c => (
                                 <TouchableOpacity
                                   key={c}
-                                  style={[styles.dsColorItemSm, { backgroundColor: c }, currentColor === c && countryColors[nameEn] === c && styles.dsColorItemSmActive]}
+                                  style={[styles.dsColorItemSm, { backgroundColor: c }, countryColors[nameEn] === c && styles.dsColorItemSmActive]}
                                   activeOpacity={0.7}
                                   onPress={() => {
                                     setCountryColors(prev => ({ ...prev, [nameEn]: c }));
                                   }}
                                 />
                               ))}
+                              {countryColors[nameEn] && (
+                                <TouchableOpacity
+                                  style={styles.dsCountryReset}
+                                  onPress={() => {
+                                    setCountryColors(prev => {
+                                      const next = { ...prev };
+                                      delete next[nameEn];
+                                      return next;
+                                    });
+                                  }}
+                                >
+                                  <Text style={styles.dsCountryResetText}>초기화</Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           )}
                         </View>
                       );
                     })}
                   </ScrollView>
+                </View>
+              </>
+            ) : (
+              <>
+                <Text style={styles.dsTitle}>대륙 지도 표시 설정</Text>
+                <Text style={styles.dsSub}>대륙 지도 내 각 지역의 표시 방식을 선택하세요</Text>
+
+                {/* 대륙 글로벌 기본 모드 선택 */}
+                <View style={styles.dsColorSection}>
+                  <Text style={styles.dsColorLabel}>글로벌 기본 설정</Text>
+                  <View style={styles.dsSection}>
+                    <TouchableOpacity
+                      style={[styles.dsOption, globeDisplayMode !== 'photo' && styles.dsOptionActive]}
+                      activeOpacity={0.7}
+                      onPress={() => setGlobeDisplayMode('color')}
+                    >
+                      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
+                      <Text style={[styles.dsOptionText, globeDisplayMode !== 'photo' && styles.dsOptionTextActive]}>색상</Text>
+                      {globeDisplayMode !== 'photo' && <View style={styles.dsCheck} />}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.dsOption, globeDisplayMode === 'photo' && styles.dsOptionActive]}
+                      activeOpacity={0.7}
+                      onPress={() => setGlobeDisplayMode('photo')}
+                    >
+                      <Text style={{ fontSize: 24 }}>🖼️</Text>
+                      <Text style={[styles.dsOptionText, globeDisplayMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
+                      {globeDisplayMode === 'photo' && <View style={styles.dsCheck} />}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
+                {/* 지역별 개별 설정 */}
+                <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
+                  <Text style={styles.dsColorLabel}>지역별 개별 설정</Text>
+                  {recordedRegions.length === 0 ? (
+                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
+                      기록된 지역이 없습니다.
+                    </Text>
+                  ) : (
+                    <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      {recordedRegions.map(r => {
+                        const currentMode = (regionDisplayModes[r.nameEn] || 'default') as 'color' | 'photo' | 'default';
+                        const effectiveMode = currentMode === 'default' ? (globeDisplayMode === 'photo' ? 'photo' : 'color') : currentMode;
+
+                        return (
+                          <View key={r.nameEn} style={{ marginBottom: 8 }}>
+                            <View style={styles.dsCountryRow}>
+                              <View style={[styles.dsCountryDot, { backgroundColor: effectiveMode === 'color' ? globeColor : '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
+                                {effectiveMode === 'photo' && <Text style={{ fontSize: 10 }}>🖼️</Text>}
+                              </View>
+                              <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
+
+                              <View style={styles.dsSegmentWrap}>
+                                {(['default', 'color', 'photo'] as const).map(m => {
+                                  const label = m === 'default' ? '기본' : m === 'color' ? '색상' : '사진';
+                                  const active = currentMode === m;
+                                  return (
+                                    <TouchableOpacity
+                                      key={m}
+                                      style={[styles.dsSegmentBtn, active && styles.dsSegmentBtnActive]}
+                                      onPress={() => {
+                                        setRegionDisplayModes(prev => {
+                                          const next = { ...prev };
+                                          if (m === 'default') {
+                                            delete next[r.nameEn];
+                                          } else {
+                                            next[r.nameEn] = m;
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                    >
+                                      <Text style={[styles.dsSegmentText, active && styles.dsSegmentTextActive]}>{label}</Text>
+                                    </TouchableOpacity>
+                                  );
+                                })}
+                              </View>
+                            </View>
+                          </View>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
                 </View>
               </>
             )}
@@ -844,10 +1215,12 @@ export default function MainScreen({ navigation }: Props) {
               activeOpacity={0.85}
               onPress={() => {
                 closeFab();
-                const SCREEN_MAP: Record<string, string> = {
+                const SCREEN_MAP: Record<string, RecordFormatScreen> = {
                   feed: 'NewRecord',
                   blog: 'BlogRecord',
-                  album: 'AlbumRecord',
+                  cut: 'CutRecord',
+                  snap: 'SnapRecord',
+                  album: 'AlbumCreate',
                 };
                 navigation.navigate(SCREEN_MAP[fmt.type] ?? 'NewRecord');
               }}
@@ -859,7 +1232,7 @@ export default function MainScreen({ navigation }: Props) {
         ))}
 
         {/* 메인 + 버튼 */}
-        <TouchableOpacity style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
+        <TouchableOpacity ref={fabRef} style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.fabGradient}>
             <Animated.View style={{ transform: [{ rotate: fabRotateDeg }] }}>
               <Text style={styles.fabIcon}>+</Text>
@@ -867,6 +1240,16 @@ export default function MainScreen({ navigation }: Props) {
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* ── 튜토리얼 코치마크 ── */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
+      />
+
+      {/* ── 광고(스폰서) 패키지 카드 ── */}
+      <SponsoredPackageCard pkg={selectedAd} onClose={() => setSelectedAd(null)} />
 
     </LinearGradient>
   );
@@ -880,15 +1263,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[3],
   },
-  headerLogo: {
-    fontSize: 22,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    letterSpacing: 1,
+  headerLogoImage: {
+    width: 95,
+    height: 26,
   },
   headerIcon: {
     padding: Spacing[1],
@@ -1313,7 +1693,12 @@ const styles = StyleSheet.create({
 
   // ── 대륙 모드 - 국가 선택 그리드
   countryGrid: {
-    flex: 1,
+    // 상단 토글 바의 흐름 오프셋을 무시하고 지도 영역 전체 기준 수직 정중앙에 배치
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -1376,22 +1761,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  snapQuickBtn: {
+  snapQuickWrap: {
     position: 'absolute',
     bottom: 60,
     left: 16,
+    borderRadius: 21,
+    overflow: 'hidden',
+    zIndex: 20,
+    elevation: 20,
+  },
+  snapQuickBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(255,214,10,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,214,10,0.35)',
-    borderRadius: 20,
+    backgroundColor: 'rgba(10,1,24,0.9)',
+    borderRadius: 19.5,
+    margin: 1.5,
     paddingHorizontal: 14,
     paddingVertical: 8,
-    zIndex: 20,
-    elevation: 20,
-    overflow: 'hidden',
   },
   snapQuickIcon: {
     fontSize: 16,
@@ -1399,7 +1786,7 @@ const styles = StyleSheet.create({
   snapQuickLabel: {
     fontSize: 13,
     fontWeight: '700',
-    color: '#FFD60A',
+    color: '#22D3EE',
   },
   globeSettingsIcon: {
     width: 18,
@@ -1411,6 +1798,7 @@ const styles = StyleSheet.create({
   // ── 표시 설정 모달
   dsCard: {
     width: '85%',
+    maxHeight: '80%',
     backgroundColor: 'rgba(20,20,32,0.5)',
     borderRadius: 20,
     padding: 24,
@@ -1432,20 +1820,21 @@ const styles = StyleSheet.create({
   },
   dsSection: {
     flexDirection: 'row',
-    gap: 12,
+    gap: 8,
     marginBottom: 16,
   },
   dsOption: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     backgroundColor: '#2E2E3B',
     borderRadius: 14,
     borderWidth: 1.5,
     borderColor: 'transparent',
+    minWidth: 80,
   },
   dsOptionActive: {
     borderColor: '#BF85FC',
@@ -1551,5 +1940,31 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 15,
     fontWeight: '700',
+  },
+  dsSegmentWrap: {
+    flexDirection: 'row',
+    backgroundColor: '#1E1E28',
+    borderRadius: 8,
+    padding: 2,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+  },
+  dsSegmentBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dsSegmentBtnActive: {
+    backgroundColor: '#BF85FC',
+  },
+  dsSegmentText: {
+    color: '#A1A1B0',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  dsSegmentTextActive: {
+    color: '#fff',
   },
 });

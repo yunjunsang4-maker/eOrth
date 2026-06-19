@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -13,19 +14,33 @@ import {
   Dimensions,
   Image,
   Animated,
+  Pressable,
+  Share,
+  RefreshControl,
 } from 'react-native';
+import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
+import { useDM } from '../store/dmStore';
+import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, ChatIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
+import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
+import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
+import { CUT_LAYOUTS } from '../constants/cutFrames';
+import CutPhotoCanvas from '../components/CutPhotoCanvas';
+import AuthorAvatar from '../components/AuthorAvatar';
+import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as blockUser, handleReport as openReport } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 
 const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W_SOCIAL = Dimensions.get('window').width;
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -41,25 +56,12 @@ const C = {
 };
 
 // ─────────────────────────────────────────────
-// 샘플 댓글 데이터
+// 댓글 — recordStore.commentsByPost 공유 (게시물별 저장, PostDetail과 동기화)
 // ─────────────────────────────────────────────
-const SAMPLE_COMMENTS = [
-  { id: '1', initial: '김', name: '김민준', text: '너무 부럽다 나도 가고싶어!', time: '2시간 전' },
-  { id: '2', initial: '이', name: '이서연', text: '사진 너무 예쁘다 🔥', time: '1시간 전' },
-  { id: '3', initial: '박', name: '박지훈', text: '도쿄 어느 동네야?', time: '30분 전' },
-];
+type SheetComment = { id: string; name: string; text: string; time?: string; createdAt: number; photo?: string };
+const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
 
 // ─────────────────────────────────────────────
-// 친구 목록 (공유용)
-const SHARE_FRIENDS = [
-  { id: '1', name: '김민지', handle: 'minji_travel', emoji: '🌸', online: true },
-  { id: '2', name: '이준호', handle: 'junho_world', emoji: '🏄', online: true },
-  { id: '3', name: '박서연', handle: 'seoyeon_log', emoji: '✈️', online: false },
-  { id: '4', name: '최우진', handle: 'woojin_trip', emoji: '🗺️', online: false },
-  { id: '5', name: '정하늘', handle: 'haneul_sky', emoji: '🌅', online: false },
-  { id: '6', name: '강도윤', handle: 'doyun_go', emoji: '🎒', online: true },
-];
-
 // 공유 바텀시트
 // ─────────────────────────────────────────────
 function ShareBottomSheet({
@@ -77,7 +79,11 @@ function ShareBottomSheet({
 }) {
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { records } = useRecords();
+  const { records, followingUsers } = useRecords();
+  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  const shareFriends = followingUsers.map((f) => ({
+    id: f.id, name: f.username, handle: f.username, emoji: '🧳', online: false,
+  }));
 
   const handleSNS = () => {
     setPrepareVisible(true);
@@ -93,7 +99,7 @@ function ShareBottomSheet({
     setFriendPickerVisible(true);
   };
 
-  const handleSelectFriend = (friend: typeof SHARE_FRIENDS[0]) => {
+  const handleSelectFriend = (friend: typeof shareFriends[0]) => {
     // 내부 View 오버레이 닫기
     setFriendPickerVisible(false);
     const doNav = () => {
@@ -188,7 +194,11 @@ function ShareBottomSheet({
             <View style={ss.friendPickerCard}>
               <Text style={ss.friendPickerTitle}>보낼 친구 선택</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-                {SHARE_FRIENDS.map(f => (
+                {shareFriends.length === 0 ? (
+                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                    아직 팔로우한 친구가 없어요
+                  </Text>
+                ) : shareFriends.map(f => (
                   <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
                     <View style={ss.friendAvatarWrap}>
                       <View style={ss.friendAvatar}>
@@ -228,7 +238,7 @@ function CommentBottomSheet({
 }: {
   visible: boolean;
   onClose: () => void;
-  comments: { id: string; initial: string; name: string; text: string; time: string }[];
+  comments: SheetComment[];
   onSend: () => void;
   commentText: string;
   setCommentText: (t: string) => void;
@@ -264,12 +274,16 @@ function CommentBottomSheet({
                 <View key={c.id}>
                   <View style={cs.commentRow}>
                     <View style={cs.commentAvatar}>
-                      <Text style={cs.commentAvatarText}>{c.initial}</Text>
+                      {c.photo ? (
+                        <Image source={{ uri: c.photo }} style={{ width: 36, height: 36, borderRadius: 18 }} />
+                      ) : (
+                        <Text style={cs.commentAvatarText}>{c.name.charAt(0)}</Text>
+                      )}
                     </View>
                     <View style={cs.commentContent}>
                       <Text style={cs.commentName}>{c.name}</Text>
                       <Text style={cs.commentBody}>{c.text}</Text>
-                      <Text style={cs.commentTime}>{c.time}</Text>
+                      <Text style={cs.commentTime}>{sheetCommentTime(c)}</Text>
                     </View>
                   </View>
                   {idx < comments.length - 1 && <View style={cs.divider} />}
@@ -341,7 +355,8 @@ function FeedCard({
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { records, commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [shareToast, setShareToast] = useState(false);
@@ -374,7 +389,7 @@ function FeedCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -394,16 +409,16 @@ function FeedCard({
       {/* 카드 헤더 */}
       <View style={s.cardHeader}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
           activeOpacity={0.7}
         >
           <View style={s.feedAvatar}>
-            <Text style={{ fontSize: 22 }}>{item.user.emoji}</Text>
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} />
           </View>
         </TouchableOpacity>
         <View style={s.userInfo}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             activeOpacity={0.7}
           >
             <Text style={s.userName}>{item.user.handle}</Text>
@@ -454,6 +469,18 @@ function FeedCard({
                 onPress={() => onOpenMenu(null)}
               />
               <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+                <TouchableOpacity
+                  style={s.myMenuItem}
+                  onPress={() => {
+                    onOpenMenu(null);
+                    setShareSheetVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.menuItemIcon}>↗</Text>
+                  <Text style={s.menuItemText}>공유</Text>
+                </TouchableOpacity>
+                <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>📦</Text>
                   <Text style={s.menuItemText}>보관</Text>
@@ -461,7 +488,7 @@ function FeedCard({
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>✏️</Text>
-                  <Text style={s.menuItemText}>수정</Text>
+                  <Text style={s.menuItemText}>편집</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
@@ -505,6 +532,18 @@ function FeedCard({
                   style={s.menuItem}
                   onPress={() => {
                     onOpenMenu(null);
+                    setShareSheetVisible(true);
+                  }}
+                  activeOpacity={0.7}
+                >
+                  <Text style={s.menuItemIcon}>↗</Text>
+                  <Text style={s.menuItemText}>공유</Text>
+                </TouchableOpacity>
+                <View style={s.menuDivider} />
+                <TouchableOpacity
+                  style={s.menuItem}
+                  onPress={() => {
+                    onOpenMenu(null);
                     blockUser(item.user.name, () => {
                       onBlock(item.user);
                       showMenuToast('차단되었어요');
@@ -513,7 +552,7 @@ function FeedCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>⛔</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>차단하기</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>차단</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity
@@ -525,7 +564,7 @@ function FeedCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>🚨</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>신고하기</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>신고</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -595,10 +634,7 @@ function FeedCard({
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments((prev) => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -618,7 +654,8 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
 
   // 촬영 지연
@@ -635,7 +672,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         {/* 헤더 */}
         <View style={sc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} activeOpacity={0.7}
           >
             <View style={sc.avatar}>
@@ -731,10 +768,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments(prev => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -841,7 +875,8 @@ function BlogCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { records, commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -867,7 +902,7 @@ function BlogCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -888,11 +923,11 @@ function BlogCard({
         {/* 블로그 헤더 */}
         <View style={bc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
           >
             <View style={bc.avatar}>
-              <Text style={{ fontSize: 14 }}>{item.user.emoji}</Text>
+              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} />
             </View>
             <View>
               <Text style={bc.userName}>{item.user.handle}</Text>
@@ -1070,10 +1105,7 @@ function BlogCard({
         setCommentText={setCommentText}
         onSend={() => {
           if (commentText.trim()) {
-            setComments(prev => [
-              ...prev,
-              { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-            ]);
+            addComment(item.id, commentText.trim());
             setCommentText('');
           }
         }}
@@ -1138,7 +1170,8 @@ function AlbumCard({
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
-  const [comments, setComments] = useState(SAMPLE_COMMENTS);
+  const { records, commentsByPost, addComment } = useRecords();
+  const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
   const [reportVisible, setReportVisible] = useState(false);
   const [menuToastMsg, setMenuToastMsg] = useState('');
@@ -1167,7 +1200,7 @@ function AlbumCard({
 
   const handleEdit = () => {
     onOpenMenu(null);
-    navigation.navigate('NewRecord', { editRecord: item });
+    navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item });
   };
 
   const handleDeletePress = () => {
@@ -1188,11 +1221,11 @@ function AlbumCard({
       {/* 헤더 */}
       <View style={ab.header}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
           style={ab.userRow} activeOpacity={0.7}
         >
           <View style={ab.avatar}>
-            <Text style={{ fontSize: 18 }}>{item.user.emoji}</Text>
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} />
           </View>
           <View>
             <Text style={ab.userName}>{item.user.handle}</Text>
@@ -1402,10 +1435,7 @@ function AlbumCard({
       setCommentText={setCommentText}
       onSend={() => {
         if (commentText.trim()) {
-          setComments(prev => [
-            ...prev,
-            { id: String(Date.now()), initial: '나', name: '나', text: commentText.trim(), time: '방금 전' },
-          ]);
+          addComment(item.id, commentText.trim());
           setCommentText('');
         }
       }}
@@ -1463,6 +1493,412 @@ const ab = StyleSheet.create({
 // 친구 피드
 // ─────────────────────────────────────────────
 // ── 몰입형 스크롤링: 카드 등장 애니메이션 래퍼 ──
+// ─────────────────────────────────────────────
+// 여행 다이어리 카드 (2단 매거진 배치)
+// ─────────────────────────────────────────────
+const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
+
+const firstPhoto = (item: any): string | null => {
+  if (item.viewType === 'cut') return item.cutPhoto?.previewUri || item.medias?.[0] || null;
+  return item.medias?.[0] || null;
+};
+const blogExcerpt = (item: any): string => {
+  let t = '';
+  if (item.blogBlocks) { try { t = blocksToPlainText(item.blogBlocks); } catch { t = ''; } }
+  if (!t) t = item.memo || item.content || '';
+  return t.trim();
+};
+const countryLabel = (item: any): string => {
+  if (item.countries?.length) return `${item.countries[0].flag} ${item.countries[0].name}`;
+  return item.country || '';
+};
+
+// 카드별 자연스러운 기울기 (id 기반 고정값 → 리렌더에도 흔들리지 않음)
+const TILTS = [-2.4, 1.8, -1.2, 2.2, -1.8, 1.2, -2.0, 1.5, -0.8, 2.0, -1.5, 0.9];
+const tiltFor = (id: string): number => {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
+  return TILTS[Math.abs(h) % TILTS.length];
+};
+
+function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
+  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const isMyPost = item.isMyPost || item.user.handle === globalHandle;
+  const displayName = isMyPost
+    ? (globalNickname ? globalNickname : globalHandle)
+    : (item.user.name ? item.user.name : item.user.handle);
+
+  return (
+    <View style={d.meta}>
+      <TouchableOpacity
+        style={d.metaUser}
+        activeOpacity={0.7}
+        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+      >
+        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
+          {isMyPost && globalProfilePhoto ? (
+            <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
+          ) : item.user.photo ? (
+            <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
+          ) : (
+            <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
+          )}
+        </View>
+        <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{displayName}</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)}>
+        <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
+        {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
+      </TouchableOpacity>
+      <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore}>
+        <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// 한 번 탭 → 상세, 두 번 연속 탭 → 좋아요
+function useDoubleTap(onSingle: () => void, onDouble: () => void) {
+  const last = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  return () => {
+    const now = Date.now();
+    if (now - last.current < 260) {
+      if (timer.current) { clearTimeout(timer.current); timer.current = null; }
+      last.current = 0;
+      onDouble();
+    } else {
+      last.current = now;
+      if (timer.current) clearTimeout(timer.current);
+      timer.current = setTimeout(() => { timer.current = null; onSingle(); }, 260);
+    }
+  };
+}
+
+// 탭 래퍼 + 더블탭 하트 팝 애니메이션
+function DiaryTappable({ style, tilt, onSingle, onDouble, onLayout, children }: any) {
+  const heart = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const pop = () => {
+    heart.stopAnimation();
+    heart.setValue(0);
+    Animated.sequence([
+      Animated.spring(heart, { toValue: 1, useNativeDriver: true, friction: 4, tension: 130 }),
+      Animated.timing(heart, { toValue: 0, duration: 220, delay: 420, useNativeDriver: true }),
+    ]).start();
+  };
+  const onPress = useDoubleTap(onSingle, () => { pop(); onDouble(); });
+  const pressIn = () => Animated.spring(scale, { toValue: 0.96, useNativeDriver: true, speed: 50, bounciness: 0 }).start();
+  const pressOut = () => Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 24, bounciness: 8 }).start();
+
+  const cardTransform: any[] = [];
+  if (tilt) cardTransform.push({ rotate: `${tilt}deg` });
+  cardTransform.push({ scale });
+
+  return (
+    <View style={d.tapWrap}>
+      <Pressable onPress={onPress} onPressIn={pressIn} onPressOut={pressOut} onLayout={onLayout}>
+        <Animated.View style={[style, { transform: cardTransform }]}>
+          {children}
+        </Animated.View>
+      </Pressable>
+      <Animated.View
+        pointerEvents="none"
+        style={[d.heartPop, { opacity: heart, transform: [{ scale: heart.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.1] }) }] }]}
+      >
+        <Text style={d.heartIcon}>♥</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
+// 네컷 카드 — 컬럼 폭을 측정해 프레임을 라이브 합성
+function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
+  const [w, setW] = useState(0);
+  return (
+    <DiaryTappable
+      style={d.cutCard}
+      tilt={tilt}
+      onSingle={onSingle}
+      onDouble={onDouble}
+      onLayout={(e: any) => setW(e.nativeEvent.layout.width)}
+    >
+      {w > 0 && (
+        <CutPhotoCanvas
+          frameId={item.cutPhoto.frameId}
+          photos={item.cutPhoto.photos}
+          width={w - 12}
+          bgOverride={item.cutPhoto.frameColor}
+          capture
+        />
+      )}
+      {meta}
+    </DiaryTappable>
+  );
+}
+
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+  const { records } = useRecords();
+  const vt = item.viewType || 'feed';
+  const open = () => navigation.navigate('PostDetail', { postId: item.id });
+  // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
+  const like = () => { if (!item.liked) toggleLike(item.id); };
+  const tilt = tiltFor(item.id);
+  const isMy = item.isMyPost ?? false;
+  const [reportVisible, setReportVisible] = useState(false);
+  const [menuVisible, setMenuVisible] = useState(false);
+
+  const onMore = () => setMenuVisible(true);
+
+  const handleShare = async () => {
+    const text = (item.content || item.memo || '').trim();
+    const url = `https://eorth.app/post/${item.id}`;
+    try {
+      await Share.share({ message: text ? `${text}\n${url}` : url, url });
+    } catch (e: any) {
+      Alert.alert('공유 실패', String(e?.message ?? e));
+    }
+  };
+
+  const confirmDelete = () => Alert.alert('정말 삭제할까요?', '되돌릴 수 없어요.', [
+    { text: '취소', style: 'cancel' },
+    { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+  ]);
+
+  const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = isMy
+    ? [
+        { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
+        { key: 'archive', icon: '📦', label: '보관', onPress: () => onArchive(item.id) },
+        { key: 'edit', icon: '✏️', label: '편집', onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
+        { key: 'delete', icon: '🗑', label: '삭제', danger: true, onPress: confirmDelete },
+      ]
+    : [
+        { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
+        { key: 'block', icon: '⛔', label: '차단', danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji }) },
+        { key: 'report', icon: '🚨', label: '신고', danger: true, onPress: () => setReportVisible(true) },
+      ];
+
+  const meta = mode === 'full'
+    ? <DiaryMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} showCounts={showCounts} onLight={vt === 'feed'} />
+    : null;
+
+  const cardRef = useRef<View>(null);
+
+  const panGesture = Gesture.Pan()
+    .runOnJS(true)
+    .activateAfterLongPress(250)
+    .onStart((e: any) => {
+      cardRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
+        let correctedX = x;
+        let correctedY = y;
+        let correctedW = w;
+        let correctedH = h;
+
+        if (correctedW <= 0) correctedW = (SCREEN_W_SOCIAL - 48 - 10) / 2;
+        if (correctedH <= 0) correctedH = 220;
+
+        if (correctedX <= 0 || correctedX > SCREEN_W_SOCIAL) {
+          correctedX = columnIndex === 0 ? 24 : 24 + correctedW + 10;
+        }
+
+        if (correctedY <= 0 || correctedY > e.absoluteY || (correctedY + correctedH) < e.absoluteY) {
+          correctedY = e.absoluteY - correctedH / 2;
+        }
+
+        onQuickStart(item, { x: correctedX, y: correctedY, w: correctedW, h: correctedH } as CardRect);
+        dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
+      });
+    })
+    .onUpdate((e: any) => {
+      dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
+      onQuickMove(e.absoluteX, e.absoluteY);
+    })
+    .onEnd((e: any) => {
+      onQuickEnd(e.absoluteX, e.absoluteY);
+    });
+
+  const card = (() => {
+  // 네컷 → 프레임 합성 라이브 렌더 (CutPhotoCanvas)
+  if (vt === 'cut') {
+    if (item.cutPhoto?.photos) {
+      return <CutDiaryCard item={item} meta={meta} tilt={tilt} onSingle={open} onDouble={like} />;
+    }
+    const uri = firstPhoto(item);
+    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
+    return (
+      <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
+        {uri ? <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" /> : null}
+        {meta}
+      </DiaryTappable>
+    );
+  }
+
+  // 블로그 / 앨범
+  if (vt === 'blog' || vt === 'album') {
+    const photo = firstPhoto(item);
+    const title = (item.content || '').trim();
+    const excerpt = blogExcerpt(item);
+    if (photo) {
+      return (
+        <DiaryTappable style={d.scrap} tilt={tilt} onSingle={open} onDouble={like}>
+          <View style={d.tape} />
+          <Image source={{ uri: photo }} style={d.scrapImg} resizeMode="cover" />
+          {!!title && <Text style={[d.scrapTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
+          {!!excerpt && <Text style={d.scrapExcerpt} numberOfLines={3}>{excerpt}</Text>}
+          {meta}
+        </DiaryTappable>
+      );
+    }
+    return (
+      <DiaryTappable style={d.jour} tilt={tilt} onSingle={open} onDouble={like}>
+        {!!countryLabel(item) && <Text style={d.jourLoc}>📍 {countryLabel(item)}</Text>}
+        {!!title && <Text style={[d.jourTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
+        {!!excerpt && <Text style={d.jourBody} numberOfLines={7}>{excerpt}</Text>}
+        <Text style={d.jourDate}>{timeAgo(item.timestamp)}</Text>
+        {meta}
+      </DiaryTappable>
+    );
+  }
+
+  // 피드 → 폴라로이드
+  const photo = firstPhoto(item);
+  const caption = (item.content || item.memo || '').trim();
+  return (
+    <DiaryTappable style={d.pola} tilt={tilt} onSingle={open} onDouble={like}>
+      {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
+      {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={2}>{caption}</Text>}
+      {meta}
+    </DiaryTappable>
+  );
+  })();
+
+  return (
+    <>
+      <GestureDetector gesture={panGesture}>
+        <View ref={cardRef} collapsable={false}>{card}</View>
+      </GestureDetector>
+      <Modal visible={menuVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <View style={ss.sheet}>
+            <View style={ss.handle} />
+            <View style={{ paddingTop: 4, paddingBottom: 8 }}>
+              {menuOptions.map((opt, i) => (
+                <View key={opt.key}>
+                  {i > 0 && <View style={[s.menuDivider, { marginHorizontal: 16 }]} />}
+                  <TouchableOpacity
+                    style={[s.menuItem, { height: 54 }]}
+                    activeOpacity={0.7}
+                    onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}
+                  >
+                    <Text style={[s.menuItemIcon, { fontSize: 18, width: 24, textAlign: 'center' }]}>{opt.icon}</Text>
+                    <Text style={[s.menuItemText, { fontSize: 15 }, opt.danger && s.menuItemDanger]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+            <TouchableOpacity style={ss.cancelCard} activeOpacity={0.7} onPress={() => setMenuVisible(false)}>
+              <Text style={ss.cancelText}>취소</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+      <ReportModal
+        visible={reportVisible}
+        onClose={() => setReportVisible(false)}
+        onSubmit={() => setReportVisible(false)}
+      />
+    </>
+  );
+}
+
+// 높이 추정 (2단 균형 분배용)
+const estDiaryHeight = (item: any, mode: string): number => {
+  const vt = item.viewType || 'feed';
+  let h = 200;
+  if (vt === 'cut') {
+    const a = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
+    h = 30 + 165 / a;
+  } else if (vt === 'blog' || vt === 'album') {
+    h = firstPhoto(item) ? 240 : 200;
+  } else {
+    h = 210;
+  }
+  return h + (mode === 'full' ? 34 : 0);
+};
+
+const d = StyleSheet.create({
+  masonry: { flexDirection: 'row', gap: 10 },
+  col: { flex: 1, gap: 12 },
+
+  // 더블탭 하트 팝
+  tapWrap: { position: 'relative' },
+  heartPop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
+  heartIcon: { fontSize: 68, color: 'rgba(255,255,255,0.95)', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
+
+  // 폴라로이드 (피드)
+  pola: { 
+    backgroundColor: 'rgba(26,10,46,0.5)', 
+    borderRadius: 8, 
+    padding: 10, 
+    paddingBottom: 8, 
+    borderWidth: 1, 
+    borderColor: 'rgba(191,133,252,0.15)',
+    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 
+  },
+  polaImg: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: '#2A2735' },
+  polaEmpty: { backgroundColor: '#1A0A2E' },
+  polaCap: { color: '#FFFFFF', fontSize: 12, textAlign: 'center', paddingTop: 8, paddingBottom: 2 },
+
+  // 스크랩 카드 (블로그/앨범 + 사진)
+  scrap: { 
+    backgroundColor: 'rgba(26,10,46,0.5)', 
+    borderWidth: 1, 
+    borderColor: 'rgba(191,133,252,0.15)', 
+    borderRadius: 8, 
+    padding: 10 
+  },
+  tape: { position: 'absolute', top: -8, left: 18, width: 42, height: 16, backgroundColor: 'rgba(191,133,252,0.30)', transform: [{ rotate: '-6deg' }], borderRadius: 1 },
+  scrapImg: { width: '100%', aspectRatio: 1.3, borderRadius: 4, backgroundColor: '#2A2735', marginBottom: 8 },
+  scrapTitle: { color: '#FFFFFF', fontSize: 14, lineHeight: 17 },
+  scrapExcerpt: { color: '#9A95A5', fontSize: 11, lineHeight: 16, marginTop: 5 },
+
+  // 저널 (텍스트 블로그)
+  jour: { 
+    backgroundColor: 'rgba(26,10,46,0.5)', 
+    borderWidth: 1, 
+    borderColor: 'rgba(191,133,252,0.15)', 
+    borderRadius: 8, 
+    padding: 12 
+  },
+  jourLoc: { color: '#BF85FC', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  jourTitle: { color: '#BF85FC', fontSize: 15, marginBottom: 6 },
+  jourBody: { color: '#B8B3C2', fontSize: 11, lineHeight: 17 },
+  jourDate: { color: '#5A5A6A', fontSize: 9, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(191,133,252,0.15)', paddingTop: 6 },
+
+  // 네컷
+  cutCard: { 
+    backgroundColor: 'rgba(26,10,46,0.55)', 
+    borderRadius: 8, 
+    padding: 6, 
+    borderWidth: 1, 
+    borderColor: 'rgba(191,133,252,0.15)' 
+  },
+
+  // 상호작용 푸터
+  meta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
+  metaUser: { flexDirection: 'row', alignItems: 'center', gap: 5, flex: 1, minWidth: 0 },
+  metaAvatar: { width: 18, height: 18, borderRadius: 9, backgroundColor: '#3A2A5E', alignItems: 'center', justifyContent: 'center' },
+  metaAvatarLight: { backgroundColor: '#ddd6c6' },
+  metaHandle: { color: '#9A95A5', fontSize: 10, flexShrink: 1 },
+  metaTextLight: { color: '#8a7f6c' },
+  metaLike: { flexDirection: 'row', alignItems: 'center' },
+  heart: { color: '#7A7A8A', fontSize: 13 },
+  heartOn: { color: '#FF6B9D' },
+  metaCount: { color: '#9A95A5', fontSize: 10, marginLeft: 3 },
+  more: { color: '#6A6A7A', fontSize: 14, paddingLeft: 4 },
+});
+
 function ImmersiveCard({ children, index }: { children: React.ReactNode; index: number }) {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(30)).current;
@@ -1492,11 +1928,74 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord } = useRecords();
+  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed } = useRecords();
+  // 당겨서 새로고침 → 백엔드 피드 갱신
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await refreshFeed(); } finally { setRefreshing(false); }
+  };
+  const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  
+  const getPostDisplayName = (postUser: any, isMy: boolean) => {
+    if (isMy) {
+      return globalNickname ? globalNickname : globalHandle;
+    }
+    return postUser.name ? postUser.name : postUser.handle;
+  };
+  
+  const { sendRecord, topFriends, friends } = useDM();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
+
+  // ── 빠른공유 드래그 상태 ──
+  const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const [quick, setQuick] = useState<{ active: boolean; item: any; cardRect: CardRect | null; side: 'left' | 'right' }>({ active: false, item: null, cardRect: null, side: 'right' });
+  const [quickHover, setQuickHover] = useState<string | null>(null);
+  const quickTargets = useRef<TargetRect[]>([]);
+  const [quickToast, setQuickToast] = useState('');
+  const [quickToastVisible, setQuickToastVisible] = useState(false);
+  const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
+  const top3 = topFriends(3);
+
+  const showQuickToast = (msg: string) => {
+    if (quickToastTimer.current) clearTimeout(quickToastTimer.current);
+    setQuickToast(msg); setQuickToastVisible(true);
+    quickToastTimer.current = setTimeout(() => setQuickToastVisible(false), 1800);
+  };
+
+  const handleQuickStart = (item: any, cardRect: CardRect) => {
+    const side: 'left' | 'right' = cardRect.x < SCREEN_W_SOCIAL / 2 ? 'right' : 'left';
+    quickTargets.current = [];
+    setQuick({ active: true, item, cardRect, side });
+    setQuickHover(null);
+  };
+  const handleQuickMove = (px: number, py: number) => {
+    setQuickHover(hitTestTarget(px, py, quickTargets.current));
+  };
+  const handleQuickEnd = (px: number, py: number) => {
+    const key = hitTestTarget(px, py, quickTargets.current);
+    const item = quick.item;
+    setQuick({ active: false, item: null, cardRect: null, side: 'right' });
+    setQuickHover(null);
+    if (!key || !item) return;
+    if (key === 'other') {
+      setOtherPickerItem(item);
+      return;
+    }
+    const friend = top3.find((f) => f.handle === key);
+    if (friend) {
+      sendRecord(friend.handle, item);
+      showQuickToast(`${friend.name}님에게 전송됨`);
+    }
+  };
+  const onQuickTargetLayout = (key: string, rect: { x: number; y: number; w: number; h: number }) => {
+    const others = quickTargets.current.filter((t) => t.key !== key);
+    quickTargets.current = [...others, { key, ...rect }];
+  };
 
   const showToast = (msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
@@ -1517,17 +2016,25 @@ function FriendsTab({ navigation }: { navigation: any }) {
   };
 
   const blockedNames = blockedUsers.map((b) => b.name);
-  const allVisible = records.filter(
-    (r) =>
-      (r.visibility === 'friends' || r.visibility === 'public') &&
-      !blockedNames.includes(r.user.name) &&
-      !archivedIds.includes(r.id)
-  );
+  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드
+  const mergedFeed = [...records, ...feedPosts].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+  const allVisible = mergedFeed
+    .filter(
+      (r) =>
+        (r.visibility === 'friends' || r.visibility === 'public') &&
+        !blockedNames.includes(r.user.name) &&
+        !archivedIds.includes(r.id)
+    )
+    // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
+    .filter((r) => !isPostHiddenForViewer(r, currentViewer))
+    // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
+    .map((r) => applyViewer(r, currentViewer));
 
   // viewType별 분류
   const feedItems = allVisible.filter(r => !r.viewType || r.viewType === 'feed');
   const blogItems = allVisible.filter(r => r.viewType === 'blog');
   const albumItems = allVisible.filter(r => r.viewType === 'album');
+  const cutItems = allVisible.filter(r => r.viewType === 'cut');
   const snapItems = useMemo(() => {
     const snaps = allVisible.filter(r => r.viewType === 'snap');
     const seen = new Set<string>();
@@ -1548,9 +2055,21 @@ function FriendsTab({ navigation }: { navigation: any }) {
       return acc;
     }, []);
   }, [allVisible]);
-  // 피드, 블로그, 앨범은 타임라인에 섞여 시간순으로 표시 (스냅은 상단 스토리 라인)
-  const timelineItems = [...feedItems, ...blogItems, ...albumItems]
+  // 피드·블로그·앨범·네컷을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
+  const timelineItems = [...feedItems, ...blogItems, ...albumItems, ...cutItems]
     .sort((a, b) => b.timestamp - a.timestamp);
+
+  // 높이 추정 기반 2단 균형 분배
+  const columns = useMemo(() => {
+    const cols: any[][] = [[], []];
+    const h = [0, 0];
+    timelineItems.forEach((item) => {
+      const c = h[0] <= h[1] ? 0 : 1;
+      cols[c].push(item);
+      h[c] += estDiaryHeight(item, diaryCardMode);
+    });
+    return cols;
+  }, [timelineItems, diaryCardMode]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -1576,6 +2095,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           }
         )}
         scrollEventThrottle={16}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BF85FC" colors={['#BF85FC']} />}
       >
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
         {snapItems.length > 0 && (
@@ -1589,17 +2109,24 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   onPress={() => navigation.navigate('PostDetail', { postId: snap.id })}
                 >
                   <LinearGradient
-                    colors={snap._hasUnviewed ? ['#FFD60A', '#FF6B9D', '#BF85FC'] : ['#3A3A4A', '#3A3A4A']}
+                    colors={snap._hasUnviewed ? ['#22D3EE', '#A855F7', '#D946EF'] : ['#3A3A4A', '#3A3A4A']}
                     style={s.storyRing}
                   >
                     <View style={s.storyAvatarWrap}>
                       <View style={s.storyAvatar}>
-                        <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
+                        {(snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
+                          <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                        ) : snap.user.photo ? (
+                          <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
+                        ) : (
+                          <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
+                        )}
                       </View>
                     </View>
                   </LinearGradient>
                   <Text style={s.storyName} numberOfLines={1}>
-                    {snap.countryFlag ? `${snap.countryFlag} ` : ''}{snap.user.handle}
+                    {snap.countryFlag ? `${snap.countryFlag} ` : ''}
+                    {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === globalHandle)}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1607,65 +2134,81 @@ function FriendsTab({ navigation }: { navigation: any }) {
           </View>
         )}
 
-        {/* 타임라인 (피드 + 블로그 + 앨범 혼합) — 몰입형 스크롤링 */}
+        {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
           {allVisible.length === 0 && (
             <Text style={s.emptyText}>아직 공유된 기록이 없어요</Text>
           )}
-          {timelineItems.map((item, idx) => {
-            const vt = item.viewType || 'feed';
-            if (vt === 'blog') {
-              return (
-                <ImmersiveCard key={item.id} index={idx}>
-                  <BlogCard
+          <View style={d.masonry}>
+            {[0, 1].map((ci) => (
+              <View key={ci} style={d.col}>
+                {columns[ci].map((item: any) => (
+                  <DiaryCard
+                    key={item.id}
                     item={item}
+                    mode={diaryCardMode}
+                    navigation={navigation}
                     toggleLike={toggleLike}
-                    onBlock={blockUser}
+                    showCounts={showCounts}
                     onArchive={handleArchive}
                     onDelete={handleDelete}
-                    navigation={navigation}
-                    activeMenuId={activeMenuId}
-                    onOpenMenu={setActiveMenuId}
-                  />
-                </ImmersiveCard>
-              );
-            }
-            if (vt === 'album') {
-              return (
-                <ImmersiveCard key={item.id} index={idx}>
-                  <AlbumCard
-                    item={item}
-                    toggleLike={toggleLike}
                     onBlock={blockUser}
-                    onArchive={handleArchive}
-                    onDelete={handleDelete}
-                    navigation={navigation}
-                    activeMenuId={activeMenuId}
-                    onOpenMenu={setActiveMenuId}
+                    onQuickStart={handleQuickStart}
+                    onQuickMove={handleQuickMove}
+                    onQuickEnd={handleQuickEnd}
+                    dragPos={dragPos}
+                    columnIndex={ci}
                   />
-                </ImmersiveCard>
-              );
-            }
-            // feed (기본)
-            return (
-              <ImmersiveCard key={item.id} index={idx}>
-                <FeedCard
-                  item={item}
-                  toggleLike={toggleLike}
-                  onBlock={blockUser}
-                  onArchive={handleArchive}
-                  onDelete={handleDelete}
-                  navigation={navigation}
-                  activeMenuId={activeMenuId}
-                  onOpenMenu={setActiveMenuId}
-                />
-              </ImmersiveCard>
-            );
-          })}
+                ))}
+              </View>
+            ))}
+          </View>
           <View style={{ height: 100 }} />
         </View>
       </Animated.ScrollView>
       <Toast message={toast.message} visible={toast.visible} />
+      <QuickShareOverlay
+        visible={quick.active}
+        record={quick.item ? buildSharedRecord(quick.item) : null}
+        cardRect={quick.cardRect}
+        side={quick.side}
+        pos={dragPos}
+        friends={top3}
+        hoveredKey={quickHover}
+        onTargetLayout={onQuickTargetLayout}
+        onCancel={() => { setQuick({ active: false, item: null, cardRect: null, side: 'right' }); setQuickHover(null); }}
+      />
+      <Toast visible={quickToastVisible} message={quickToast} />
+      {/* 기타 피커 */}
+      <Modal visible={!!otherPickerItem} transparent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
+          <View style={ss.sheet}>
+            <View style={ss.handle} />
+            <Text style={ss.sheetTitle}>보낼 친구 선택</Text>
+            <ScrollView style={{ maxHeight: 360 }}>
+              {friends.map((f) => (
+                <TouchableOpacity
+                  key={f.handle}
+                  style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 14 }}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const it = otherPickerItem;
+                    setOtherPickerItem(null);
+                    if (it) { sendRecord(f.handle, it); showQuickToast(`${f.name}님에게 전송됨`); }
+                  }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontSize: 18 }}>{f.emoji}</Text>
+                  </View>
+                  <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>{f.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <View style={{ height: 24 }} />
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -1673,17 +2216,19 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
-export default function SocialScreen({ navigation }: { navigation: any }) {
+export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
+  const insets = useSafeAreaInsets();
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <Text style={s.headerTitle}>소셜</Text>
         <TouchableOpacity
           style={s.addFriendBtn}
           onPress={() => navigation.navigate('Friends')}
+          accessibilityLabel="디엠"
         >
-          <Text style={s.addFriendText}>친구 목록</Text>
+          <ChatIcon size={20} color={C.accent} />
         </TouchableOpacity>
       </View>
 
@@ -1706,7 +2251,6 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[2],
     flexDirection: 'row',
@@ -1722,9 +2266,10 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(191,133,252,0.1)',
     borderWidth: 1,
     borderColor: 'rgba(191,133,252,0.2)',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    padding: 8,
     borderRadius: BorderRadius.full,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addFriendText: {
     fontSize: Typography.fontSize.sm,
@@ -2291,4 +2836,17 @@ const ss = StyleSheet.create({
     fontSize: 14,
     color: '#A1A1B0',
   },
+});
+
+const vc = StyleSheet.create({
+  bar: { paddingTop: 10, paddingBottom: 4, paddingHorizontal: 16, gap: 6 },
+  label: { color: '#A1A1B0', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  row: { gap: 8, paddingVertical: 4 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 7, borderRadius: 999,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)',
+  },
+  chipOn: { borderColor: '#BF85FC', backgroundColor: 'rgba(191,133,252,0.18)' },
+  chipTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '500' },
+  chipTxtOn: { color: '#FFFFFF', fontWeight: '700' },
 });

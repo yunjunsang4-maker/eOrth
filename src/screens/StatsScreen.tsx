@@ -1,4 +1,5 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -9,8 +10,17 @@ import {
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useNavigation } from '@react-navigation/native';
+import { BlurView } from 'expo-blur';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
+import { useRecords } from '../store/recordStore';
+import { COUNTRIES } from '../constants/countries';
+import { getCurrentSession } from '../services/auth';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+
+// 통계 튜토리얼 1회 노출 플래그 키 (계정별)
+const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
 
 // ─── 눌림 애니메이션 카드 ───
 // Pressable 에도 레이아웃 스타일(flex, margin 등)을 동시 적용해 flex 배치가 깨지지 않게 함
@@ -79,7 +89,24 @@ function PressCard({
 
   return (
     <Pressable style={layoutStyle} onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
-      <Animated.View style={[style, { transform: [{ scale }] }]}>
+      <Animated.View style={[style, { transform: [{ scale }], overflow: 'hidden' }]}>
+        {/* 리퀴드 글래스 블러 효과 */}
+        <BlurView
+          intensity={30}
+          tint="dark"
+          experimentalBlurMethod="dimezisBlurView"
+          style={StyleSheet.absoluteFill}
+          pointerEvents="none"
+        />
+        {/* 미세 그라데이션 반사 하이라이트 (Specular) */}
+        <LinearGradient
+          colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '50%', opacity: 0.3 }}
+          pointerEvents="none"
+        />
+
         {children}
         <Animated.View
           pointerEvents="none"
@@ -99,66 +126,285 @@ function PressCard({
 
 const { width } = Dimensions.get('window');
 
-const REGION_STATS = [
-  { label: '아시아', count: 8, color: '#7B61FF', pct: 0.72 },
-  { label: '유럽', count: 3, color: '#C084FC', pct: 0.27 },
-  { label: '아메리카', count: 1, color: '#4A9EFF', pct: 0.09 },
-  { label: '오세아니아', count: 0, color: '#4ADE80', pct: 0 },
-];
-
-const VISIT_HISTORY = [
-  { year: '2019', visits: 1 },
-  { year: '2020', visits: 0 },
-  { year: '2021', visits: 1 },
-  { year: '2022', visits: 3 },
-  { year: '2023', visits: 5 },
-  { year: '2024', visits: 7 },
-  { year: '2025', visits: 4 },
-];
-const MAX_VISITS = Math.max(...VISIT_HISTORY.map((v) => v.visits));
-
-const TOP_COUNTRIES = [
-  { rank: 1, flag: '🇯🇵', name: '일본', visits: 3, gold: true },
-  { rank: 2, flag: '🇺🇸', name: '미국', visits: 2, gold: false },
-  { rank: 3, flag: '🇫🇷', name: '프랑스', visits: 1, gold: false },
-  { rank: 4, flag: '🇹🇭', name: '태국', visits: 1, gold: false },
-  { rank: 5, flag: '🇸🇬', name: '싱가포르', visits: 1, gold: false },
-];
-
-const RATING_STATS = [
-  { star: 5, count: 8, pct: 0.29 },
-  { star: 4, count: 12, pct: 0.43 },
-  { star: 3, count: 5, pct: 0.18 },
-  { star: 2, count: 2, pct: 0.07 },
-  { star: 1, count: 1, pct: 0.03 },
-];
-
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
-  const navigation = useNavigation<any>();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation();
+  const { records } = useRecords();
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
   };
 
+  // ── 통계 튜토리얼(코치마크) — 계정당 통계 탭 첫 진입 시 1회 ──
+  const heroRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+  const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
+
+  const measure = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
+        else resolve({ x, y, width, height });
+      });
+    });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (tutorialStarted.current) return;
+      tutorialStarted.current = true;
+      let cancelled = false;
+      (async () => {
+        // 계정별 키 (로그인 세션 없으면 guest)
+        const session = await getCurrentSession();
+        const uid = session?.user?.id || 'guest';
+        const key = `${STATS_TUTORIAL_KEY}:${uid}`;
+        const seen = await AsyncStorage.getItem(key).catch(() => null);
+        if (seen || cancelled) return;
+        setTimeout(async () => {
+          if (cancelled) return;
+          const hero = await measure(heroRef);
+          setCoachSteps([
+            {
+              rect: null,
+              title: '여행 통계 📊',
+              desc: '그동안의 여행을 한눈에 모았어요. 방문한 나라·도시·기록 수와 평가까지 통계로 확인할 수 있어요.',
+            },
+            {
+              rect: hero,
+              title: '상세 통계 보기',
+              desc: '각 통계 카드를 탭하면 더 자세한 상세 통계를 볼 수 있어요.',
+            },
+          ]);
+          setCoachVisible(true);
+          AsyncStorage.setItem(key, '1').catch(() => {});
+        }, 450);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
+  // Filter to "my posts" (including seed data for demo consistency)
+  const myRecords = records.filter((r) => r.isMyPost !== false);
+
+  // 1. World Explorations Hero Stats
+  const visitedCountriesSet = new Set<string>();
+  const visitedCountriesList: { name: string; flag: string }[] = [];
+  const visitedCitiesSet = new Set<string>();
+
+  myRecords.forEach((r) => {
+    if (r.countries && r.countries.length > 0) {
+      r.countries.forEach((c) => {
+        if (!visitedCountriesSet.has(c.name)) {
+          visitedCountriesSet.add(c.name);
+          visitedCountriesList.push({ name: c.name, flag: c.flag });
+        }
+      });
+    } else if (r.countryName) {
+      if (!visitedCountriesSet.has(r.countryName)) {
+        visitedCountriesSet.add(r.countryName);
+        visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
+      }
+    }
+
+    if (r.regionName) {
+      visitedCitiesSet.add(r.regionName);
+    }
+  });
+
+  const countryCount = visitedCountriesSet.size;
+  const cityCount = visitedCitiesSet.size || countryCount;
+  const recordsCount = myRecords.length;
+
+  let totalDays = 0;
+  myRecords.forEach((r) => {
+    if (r.startDate && r.endDate) {
+      const start = new Date(r.startDate.replace(/\./g, '-'));
+      const end = new Date(r.endDate.replace(/\./g, '-'));
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        const diffTime = Math.abs(end.getTime() - start.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        totalDays += diffDays;
+      } else {
+        totalDays += 1;
+      }
+    } else {
+      totalDays += 1;
+    }
+  });
+
+  const worldCoveragePct = (((countryCount / 195) * 100).toFixed(1) + '%') as any;
+
+  // 2. Yearly Travel History
+  const yearlyCounts: Record<string, number> = {};
+  myRecords.forEach((r) => {
+    const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
+    if (yearStr && yearStr.length === 4) {
+      yearlyCounts[yearStr] = (yearlyCounts[yearStr] || 0) + 1;
+    }
+  });
+
+  const currentYear = new Date().getFullYear();
+  const VISIT_HISTORY = [];
+  for (let i = 6; i >= 0; i--) {
+    const year = String(currentYear - i);
+    VISIT_HISTORY.push({
+      year,
+      visits: yearlyCounts[year] || 0,
+    });
+  }
+  const MAX_VISITS = Math.max(...VISIT_HISTORY.map((v) => v.visits), 1);
+
+  // 3. Continent Breakdown
+  const continentColors: Record<string, string> = {
+    '아시아': '#7B61FF',
+    '유럽': '#C084FC',
+    '아메리카': '#4A9EFF',
+    '오세아니아': '#4ADE80',
+    '아프리카': '#F87171',
+  };
+
+  const continentCounts: Record<string, number> = {
+    '아시아': 0,
+    '유럽': 0,
+    '아메리카': 0,
+    '오세아니아': 0,
+  };
+
+  myRecords.forEach((r) => {
+    const countryNames: string[] = [];
+    if (r.countries && r.countries.length > 0) {
+      r.countries.forEach((c) => countryNames.push(c.name));
+    } else if (r.countryName) {
+      countryNames.push(r.countryName);
+    }
+
+    countryNames.forEach((name) => {
+      const cMeta = COUNTRIES.find((c) => c.name === name);
+      if (cMeta) {
+        let cont = cMeta.continent;
+        if (cont === '북아메리카' || cont === '남아메리카') {
+          cont = '아메리카';
+        }
+        if (cont in continentCounts) {
+          continentCounts[cont]++;
+        } else {
+          continentCounts[cont] = (continentCounts[cont] || 0) + 1;
+        }
+      } else {
+        continentCounts['아시아']++;
+      }
+    });
+  });
+
+  const totalContinentVisits = Object.values(continentCounts).reduce((a, b) => a + b, 0);
+  const regionOrder = ['아시아', '유럽', '아메리카', '오세아니아', '아프리카'];
+  const REGION_STATS = Object.keys(continentCounts).map((cont) => {
+    const count = continentCounts[cont];
+    const pct = totalContinentVisits > 0 ? count / totalContinentVisits : 0;
+    return {
+      label: cont,
+      count,
+      color: continentColors[cont] || '#7B61FF',
+      pct,
+    };
+  })
+  .filter((r) => r.count > 0 || regionOrder.slice(0, 4).includes(r.label))
+  .sort((a, b) => regionOrder.indexOf(a.label) - regionOrder.indexOf(b.label));
+
+  // 4. Top Countries
+  const countryVisits: Record<string, { count: number; flag: string }> = {};
+  myRecords.forEach((r) => {
+    const countriesList: { name: string; flag: string }[] = [];
+    if (r.countries && r.countries.length > 0) {
+      r.countries.forEach((c) => countriesList.push(c));
+    } else if (r.countryName) {
+      countriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
+    }
+
+    countriesList.forEach((c) => {
+      if (!countryVisits[c.name]) {
+        countryVisits[c.name] = { count: 0, flag: c.flag };
+      }
+      countryVisits[c.name].count++;
+    });
+  });
+
+  const sortedCountries = Object.keys(countryVisits)
+    .map((name) => ({
+      name,
+      flag: countryVisits[name].flag,
+      visits: countryVisits[name].count,
+    }))
+    .sort((a, b) => b.visits - a.visits);
+
+  const TOP_COUNTRIES = sortedCountries.slice(0, 5).map((c, index) => ({
+    rank: index + 1,
+    flag: c.flag,
+    name: c.name,
+    visits: c.visits,
+    gold: index === 0,
+  }));
+
+  // 5. Travel Rating Stats
+  const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+  let ratingSum = 0;
+  let ratedRecordsCount = 0;
+
+  myRecords.forEach((r) => {
+    let rating = r.rating;
+    if (rating === undefined && r.perCountryData) {
+      const ratings = Object.values(r.perCountryData)
+        .map((d) => d.rating)
+        .filter(Boolean) as number[];
+      if (ratings.length > 0) {
+        rating = Math.round(ratings.reduce((a, b) => a + b, 0) / ratings.length);
+      }
+    }
+
+    if (rating !== undefined && rating >= 1 && rating <= 5) {
+      ratingCounts[rating as 5 | 4 | 3 | 2 | 1]++;
+      ratingSum += rating;
+      ratedRecordsCount++;
+    }
+  });
+
+  const avgRating = ratedRecordsCount > 0 ? (ratingSum / ratedRecordsCount).toFixed(1) : '0.0';
+
+  const RATING_STATS = [5, 4, 3, 2, 1].map((star) => {
+    const count = ratingCounts[star as 5 | 4 | 3 | 2 | 1];
+    const pct = ratedRecordsCount > 0 ? count / ratedRecordsCount : 0;
+    return {
+      star,
+      count,
+      pct,
+    };
+  });
+
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <Text style={styles.headerTitle}>통계</Text>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
         {/* World coverage hero */}
+        <View ref={heroRef} collapsable={false}>
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
           <LinearGradient
-            colors={['#1A1A2E', '#16142A']}
+            colors={['rgba(26,26,46,0.3)', 'rgba(22,20,42,0.3)']}
             style={styles.heroCardGrad}
           >
               <View style={styles.heroTop}>
                 <View>
-                  <Text style={styles.heroPercentage}>12.3%</Text>
+                  <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
                   <Text style={styles.heroLabel}>🌏 세계를 여행했어요</Text>
                 </View>
                 <View style={styles.globeMini}>
@@ -171,29 +417,30 @@ export default function StatsScreen() {
                   colors={['#7B61FF', '#C084FC']}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
-                  style={[styles.progressBarFill, { width: '12.3%' }]}
+                  style={[styles.progressBarFill, { width: worldCoveragePct }]}
                 />
               </View>
               <View style={styles.heroStats}>
                 <View style={styles.miniStat}>
-                  <Text style={styles.miniStatVal}>5</Text>
+                  <Text style={styles.miniStatVal}>{countryCount}</Text>
                   <Text style={styles.miniStatLbl}>나라</Text>
                 </View>
                 <View style={styles.miniStat}>
-                  <Text style={styles.miniStatVal}>12</Text>
+                  <Text style={styles.miniStatVal}>{cityCount}</Text>
                   <Text style={styles.miniStatLbl}>도시</Text>
                 </View>
                 <View style={styles.miniStat}>
-                  <Text style={styles.miniStatVal}>28</Text>
+                  <Text style={styles.miniStatVal}>{recordsCount}</Text>
                   <Text style={styles.miniStatLbl}>기록</Text>
                 </View>
                 <View style={styles.miniStat}>
-                  <Text style={styles.miniStatVal}>49</Text>
+                  <Text style={styles.miniStatVal}>{totalDays}</Text>
                   <Text style={styles.miniStatLbl}>일수</Text>
                 </View>
               </View>
             </LinearGradient>
         </PressCard>
+        </View>
 
         {/* Row 2: 연도별 여행 횟수 + 대륙별 방문 현황 */}
         <View style={styles.statsRow}>
@@ -248,31 +495,35 @@ export default function StatsScreen() {
           {/* 3번 - Top countries */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('countries')}>
             <Text style={styles.cardTitle}>가장 많이 간 나라</Text>
-            {TOP_COUNTRIES.map((c) => (
-              <View key={c.rank} style={styles.topRow}>
-                <Text style={[styles.rankNum, c.gold && { color: Colors.gold }]}>
-                  #{c.rank}
-                </Text>
-                <Text style={styles.topFlag}>{c.flag}</Text>
-                <Text style={styles.topName}>{c.name}</Text>
-                <Text style={styles.topVisits}>{c.visits}회</Text>
-              </View>
-            ))}
+            {TOP_COUNTRIES.length > 0 ? (
+              TOP_COUNTRIES.map((c) => (
+                <View key={c.rank} style={styles.topRow}>
+                  <Text style={[styles.rankNum, c.gold && { color: Colors.gold }]}>
+                    #{c.rank}
+                  </Text>
+                  <Text style={styles.topFlag}>{c.flag}</Text>
+                  <Text style={styles.topName}>{c.name}</Text>
+                  <Text style={styles.topVisits}>{c.visits}회</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>기록이 없습니다</Text>
+            )}
           </PressCard>
 
           {/* 4번 - Travel rating stats */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('rating')}>
             <Text style={styles.cardTitle}>여행 평가 통계</Text>
             <View style={styles.ratingOverview}>
-              <Text style={styles.ratingBig}>4.2</Text>
+              <Text style={styles.ratingBig}>{avgRating}</Text>
               <View style={styles.ratingStars}>
                 {[1, 2, 3, 4, 5].map((star) => (
                   <Text key={star} style={styles.ratingStar}>
-                    {star <= 4 ? '★' : '☆'}
+                    {star <= Math.round(Number(avgRating)) ? '★' : '☆'}
                   </Text>
                 ))}
               </View>
-              <Text style={styles.ratingCount}>총 28개 기록 기준</Text>
+              <Text style={styles.ratingCount}>총 {myRecords.length}개 기록 기준</Text>
             </View>
             <View style={styles.ratingBars}>
               {RATING_STATS.map((r) => (
@@ -295,6 +546,13 @@ export default function StatsScreen() {
 
         <View style={{ height: 100 }} />
       </ScrollView>
+
+      {/* 통계 튜토리얼 코치마크 */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
+      />
     </LinearGradient>
   );
 }
@@ -302,7 +560,6 @@ export default function StatsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingTop: 56,
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[4],
   },
@@ -328,7 +585,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius['2xl'],
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   heroCardGrad: { padding: Spacing[5] },
   heroTop: {
@@ -389,12 +646,12 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(26, 26, 38, 0.45)',
     borderRadius: BorderRadius['2xl'],
     padding: Spacing[4],
     marginBottom: Spacing[4],
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255, 255, 255, 0.12)',
   },
   cardTitle: {
     fontSize: Typography.fontSize.sm,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
 import {
   View,
@@ -15,6 +16,12 @@ import {
 const { width: SCREEN_W } = Dimensions.get('window');
 import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
+import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { isSupabaseConfigured } from '../services/supabase';
+import { searchProfiles, getMyUserId } from '../services/profile';
+import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -52,18 +59,8 @@ function normalizePhone(phone: string): string {
   return phone.replace(/[\s\-\(\)]/g, '');
 }
 
-const REGISTERED_USERS: Record<string, { username: string; countries: number }> = {
-  '01012345678': { username: 'minjun_k', countries: 15 },
-  '+821012345678': { username: 'minjun_k', countries: 15 },
-  '01098765432': { username: 'seoyeon_l', countries: 8 },
-  '+821098765432': { username: 'seoyeon_l', countries: 8 },
-  '01055551234': { username: 'jihoon_p', countries: 23 },
-  '+821055551234': { username: 'jihoon_p', countries: 23 },
-  '01033334444': { username: 'yerin_c', countries: 6 },
-  '+821033334444': { username: 'yerin_c', countries: 6 },
-  '01077778888': { username: 'woosung_j', countries: 31 },
-  '+821077778888': { username: 'woosung_j', countries: 31 },
-};
+// 연락처 해시 매칭은 서버 API 필요 — 데모 목업 제거(빈 상태). 친구 찾기는 닉네임/핸들 검색으로.
+const REGISTERED_USERS: Record<string, { username: string; countries: number }> = {};
 
 async function findRegisteredUsers(
   contacts: { id: string; name: string; phone: string }[]
@@ -132,14 +129,15 @@ function FriendItem({
 // ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
-interface Props {
-  navigation: any;
-}
+type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation }: Props) {
+  const insets = useSafeAreaInsets();
+  const { nickname, handle } = useSettings();
   const [query, setQuery] = useState('');
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
-  const [followState, setFollowState] = useState<Record<string, boolean>>({});
+  // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
+  const { followingUsers, followUser, unfollowUser } = useRecords();
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
   const [loading, setLoading] = useState(true);
 
@@ -189,22 +187,61 @@ export default function FriendSearchScreen({ navigation }: Props) {
     loadContacts();
   }, []);
 
-  const toggleFollow = (id: string) => {
-    setFollowState(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleFollow = (friend: ContactFriend) => {
+    if (followingUsers.some((f) => f.username === friend.username)) {
+      unfollowUser(friend.username);
+    } else {
+      followUser({
+        id: friend.id,
+        username: friend.username,
+        isAbroad: false,
+        currentCountry: null,
+        currentCountryFlag: null,
+      });
+    }
   };
+
+  // 백엔드 사용자 검색 (닉네임/핸들) — 실제 테스터 찾기
+  const [remoteResults, setRemoteResults] = useState<ContactFriend[]>([]);
+  const myIdRef = useRef<string | null>(null);
+  useEffect(() => { getMyUserId().then((id) => { myIdRef.current = id; }); }, []);
+  useEffect(() => {
+    const q = query.trim();
+    if (!isSupabaseConfigured || q.length === 0) { setRemoteResults([]); return; }
+    let alive = true;
+    const t = setTimeout(async () => {
+      const rows = await searchProfiles(q);
+      if (!alive) return;
+      setRemoteResults(
+        rows
+          .filter((p) => p.id !== myIdRef.current)
+          .map((p) => ({
+            id: p.id,
+            name: p.nickname || p.handle || '여행자',
+            phone: '',
+            initial: (p.nickname || p.handle || '?').slice(0, 1),
+            username: p.handle || '',
+            countries: 0,
+          }))
+      );
+    }, 300); // 디바운스
+    return () => { alive = false; clearTimeout(t); };
+  }, [query]);
 
   const isSearching = query.trim().length > 0;
   const displayList = isSearching
-    ? contactFriends.filter(f =>
-        f.name.toLowerCase().includes(query.toLowerCase()) ||
-        f.username.toLowerCase().includes(query.toLowerCase())
-      )
+    ? (isSupabaseConfigured
+        ? remoteResults
+        : contactFriends.filter(f =>
+            f.name.toLowerCase().includes(query.toLowerCase()) ||
+            f.username.toLowerCase().includes(query.toLowerCase())
+          ))
     : contactFriends;
 
   return (
     <View style={s.container}>
       {/* ── 헤더 ── */}
-      <View style={s.header}>
+      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity style={s.backBtn} onPress={handleGoBack}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
@@ -219,7 +256,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
         {/* 왼쪽: QR 코드 */}
         <View style={s.qrCodeWrap}>
           <QRCode
-            value="eOrth://user/윤준상"
+            value={`eOrth://user/${nickname || handle}`}
             size={160}
             color="#BF85FC"
             backgroundColor="#0A0A0F"
@@ -232,8 +269,8 @@ export default function FriendSearchScreen({ navigation }: Props) {
 
         {/* 오른쪽: 프로필 정보 */}
         <View style={s.profileInfo}>
-          <Text style={s.profileName}>윤준상</Text>
-          <Text style={s.profileUsername}>@yunjunsung</Text>
+          <Text style={s.profileName}>{nickname ? nickname : handle}</Text>
+          <Text style={s.profileUsername}>@{handle}</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>3개국 방문</Text></View>
           <TouchableOpacity
             style={s.inlineScanBtn}
@@ -279,7 +316,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
               onPress={async () => {
                 const { status } = await Contacts.requestPermissionsAsync();
                 if (status === 'granted') setContactsPermission('granted');
-                else Alert.alert('권한 거부', '설정에서 연락처 접근을 허용해주세요.');
+                else showPermissionDeniedAlert('연락처');
               }}
             >
               <Text style={s.permissionBtnText}>연락처 접근 허용하기</Text>
@@ -303,8 +340,8 @@ export default function FriendSearchScreen({ navigation }: Props) {
                 <React.Fragment key={item.id}>
                   <FriendItem
                     item={item}
-                    following={!!followState[item.id]}
-                    onToggle={() => toggleFollow(item.id)}
+                    following={followingUsers.some((f) => f.username === item.username)}
+                    onToggle={() => toggleFollow(item)}
                     onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
                   />
                   {idx < displayList.length - 1 && <View style={s.divider} />}
@@ -332,7 +369,6 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingTop: 56,
     paddingHorizontal: 20,
     paddingBottom: 12,
     flexDirection: 'row',

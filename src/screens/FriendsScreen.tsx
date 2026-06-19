@@ -1,15 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  Image,
+  ScrollView,  Image,
   TextInput,
+  Alert,
+  Pressable,
+  Animated,
 } from 'react-native';
 import { SearchIcon } from '../components/icons';
+import { useRecords } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
+import type { Message } from '../store/dmTypes';
+import { buzz } from '../utils/haptics';
+import Toast from '../components/Toast';
+import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
   bg: '#0A0A0F',
@@ -30,39 +38,145 @@ interface Friend {
   handle: string;
   emoji: string;
   lastMessage: string;
-  time: string;
+  lastMessageAt: number; // 마지막 메시지 시각(ms)
   unread: number;
   online: boolean;
+  isMuted?: boolean;
 }
 
-const DUMMY_FRIENDS: Friend[] = [
-  { id: '1', name: '김민지', handle: 'minji_travel', emoji: '🌸', lastMessage: '파리 사진 너무 예쁘다!', time: '2분 전', unread: 2, online: true },
-  { id: '2', name: '이준호', handle: 'junho_world', emoji: '🏄', lastMessage: '다음 여행 어디로 갈 거야?', time: '15분 전', unread: 0, online: true },
-  { id: '3', name: '박서연', handle: 'seoyeon_log', emoji: '✈️', lastMessage: '태국 맛집 리스트 보내줄게', time: '1시간 전', unread: 1, online: false },
-  { id: '4', name: '최우진', handle: 'woojin_trip', emoji: '🗺️', lastMessage: '같이 일본 갈래?', time: '3시간 전', unread: 0, online: false },
-  { id: '5', name: '정하늘', handle: 'haneul_sky', emoji: '🌅', lastMessage: '발리 스냅 봤어! 대박', time: '어제', unread: 0, online: false },
-  { id: '6', name: '강도윤', handle: 'doyun_go', emoji: '🎒', lastMessage: '베트남 숙소 추천해줘', time: '어제', unread: 0, online: true },
-];
-
-interface Props {
-  navigation: any;
+// 상대시간 표기 (방금 전 / N분 전 / N시간 전 / 어제 / N일 전 / M월 D일)
+function timeAgo(ts: number): string {
+  const diff = Date.now() - ts;
+  const min = Math.floor(diff / 60000);
+  if (min < 1) return '방금 전';
+  if (min < 60) return `${min}분 전`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr}시간 전`;
+  const day = Math.floor(hr / 24);
+  if (day === 1) return '어제';
+  if (day < 7) return `${day}일 전`;
+  const d = new Date(ts);
+  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
+
+// 목록에 보여줄 마지막 메시지 미리보기
+function lastMessagePreview(m: Message): string {
+  if (m.type === 'image') return '사진을 보냈습니다';
+  if (m.type === 'record') return '여행 기록을 공유했습니다';
+  return m.text;
+}
+
+type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
-  const [search, setSearch] = useState('');
+  const { blockedUsers, blockUser, followingUsers } = useRecords();
+  const { conversations, unreadCount, markRead } = useDM();
 
-  const filtered = search.trim()
-    ? DUMMY_FRIENDS.filter(
+  const [search, setSearch] = useState('');
+  // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
+  const [friends, setFriends] = useState<Friend[]>(() =>
+    followingUsers.map((f) => ({
+      id: f.id, name: f.username, handle: f.username, emoji: '🧳',
+      lastMessage: '', lastMessageAt: 0, unread: 0, online: false,
+    }))
+  );
+  const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = (msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(msg);
+    setToastVisible(true);
+    toastTimer.current = setTimeout(() => {
+      setToastVisible(false);
+    }, 2000);
+  };
+
+  const handleToggleMute = () => {
+    if (!selectedFriendId) return;
+    setFriends(prev => prev.map(f => {
+      if (f.id === selectedFriendId) {
+        const newMute = !f.isMuted;
+        showToast(newMute ? `${f.name}님의 알림을 껐습니다.` : `${f.name}님의 알림을 켰습니다.`);
+        return { ...f, isMuted: newMute };
+      }
+      return f;
+    }));
+    setSelectedFriendId(null);
+  };
+
+  const handleMarkAsRead = () => {
+    const friend = friends.find(f => f.id === selectedFriendId);
+    if (!friend) return;
+    if (unreadCount(friend.handle) > 0) {
+      markRead(friend.handle);
+      showToast(`${friend.name}님의 메시지를 읽음 처리했습니다.`);
+    } else {
+      showToast('이미 읽은 대화입니다.');
+    }
+    setSelectedFriendId(null);
+  };
+
+  const handleBlockSelected = () => {
+    if (!selectedFriendId) return;
+    const friend = friends.find(f => f.id === selectedFriendId);
+    if (!friend) return;
+    Alert.alert(
+      '차단 확인',
+      `${friend.name}님을 차단하시겠습니까? 차단하면 이 친구와의 대화 및 게시물이 숨겨집니다.`,
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '차단하기',
+          style: 'destructive',
+          onPress: () => {
+            blockUser({ name: friend.name, emoji: friend.emoji });
+            showToast(`${friend.name}님을 차단했습니다.`);
+            setSelectedFriendId(null);
+          }
+        }
+      ]
+    );
+  };
+
+  const selectedFriend = friends.find(f => f.id === selectedFriendId);
+  const isCurrentlyMuted = selectedFriend?.isMuted ?? false;
+
+  // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
+  const mergedFriends = friends.map(f => {
+    const msgs = conversations[f.handle];
+    const last = msgs && msgs.length ? msgs[msgs.length - 1] : null;
+    const hasConvo = msgs !== undefined; // 대화 키가 있으면(=비웠어도) 더미로 되돌리지 않음
+    return {
+      ...f,
+      lastMessage: last ? lastMessagePreview(last) : (hasConvo ? '메시지 없음' : f.lastMessage),
+      lastMessageAt: last?.createdAt ?? (hasConvo ? 0 : f.lastMessageAt),
+      unread: unreadCount(f.handle),
+    };
+  });
+
+  const blockedNames = blockedUsers.map(b => b.name);
+  const visibleFriends = mergedFriends.filter(f => !blockedNames.includes(f.name));
+
+  const filtered = (search.trim()
+    ? visibleFriends.filter(
         f =>
           f.name.includes(search) ||
           f.handle.toLowerCase().includes(search.toLowerCase())
       )
-    : DUMMY_FRIENDS;
+    : visibleFriends
+  ).sort((a, b) => b.lastMessageAt - a.lastMessageAt);
 
   return (
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
-      <View style={st.header}>
+      <Pressable
+        onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
+        style={st.header}
+      >
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
@@ -73,10 +187,13 @@ export default function FriendsScreen({ navigation }: Props) {
         >
           <Text style={st.addBtnText}>+ 추가</Text>
         </TouchableOpacity>
-      </View>
+      </Pressable>
 
       {/* 검색 */}
-      <View style={st.searchWrap}>
+      <Pressable
+        onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
+        style={st.searchWrap}
+      >
         <TextInput
           style={st.searchInput}
           placeholder="친구 검색..."
@@ -84,60 +201,197 @@ export default function FriendsScreen({ navigation }: Props) {
           value={search}
           onChangeText={setSearch}
           returnKeyType="search"
+          editable={selectedFriendId === null}
         />
-      </View>
+      </Pressable>
 
       <ScrollView style={st.scroll} showsVerticalScrollIndicator={false}>
-        <Text style={st.sectionLabel}>친구 · {filtered.length}</Text>
-        {filtered.map(f => (
-          <FriendRow
-            key={f.id}
-            friend={f}
-            onPress={() => navigation.navigate('DM', { friend: f })}
-          />
-        ))}
+        <Pressable onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}>
+          <Text style={st.sectionLabel}>친구 · {filtered.length}</Text>
+          {filtered.map((f, idx) => {
+            const isSelected = selectedFriendId === f.id;
+            return (
+              <View key={f.id} style={{ zIndex: isSelected ? 999 : 1 }}>
+                <FriendRow
+                  friend={f}
+                  isSelected={isSelected}
+                  anySelected={selectedFriendId !== null}
+                  placeBelow={idx === 0}
+                  onPress={() => {
+                    if (selectedFriendId) {
+                      setSelectedFriendId(null);
+                    } else {
+                      markRead(f.handle);
+                      navigation.navigate('DM', { friend: f });
+                    }
+                  }}
+                  onLongPress={() => {
+                    buzz('light');
+                    setSelectedFriendId(f.id);
+                  }}
+                  onToggleMute={handleToggleMute}
+                  onMarkAsRead={handleMarkAsRead}
+                  onBlock={handleBlockSelected}
+                  isCurrentlyMuted={f.isMuted ?? false}
+                />
+              </View>
+            );
+          })}
 
-        {filtered.length === 0 && (
-          <View style={st.emptyWrap}>
-            <SearchIcon size={40} color="#A1A1B0" />
-            <Text style={st.emptyText}>검색 결과가 없어요</Text>
-          </View>
-        )}
+          {filtered.length === 0 && (
+            <View style={st.emptyWrap}>
+              <SearchIcon size={40} color="#A1A1B0" />
+              <Text style={st.emptyText}>{search.trim() ? '검색 결과가 없어요' : '아직 친구가 없어요'}</Text>
+            </View>
+          )}
 
-        <View style={{ height: 40 }} />
+          <View style={{ height: 40 }} />
+        </Pressable>
       </ScrollView>
+
+      {/* 토스트 피드백 */}
+      <Toast visible={toastVisible} message={toastMessage} />
     </SafeAreaView>
   );
 }
 
 // ─── 친구 행 ───
-function FriendRow({ friend, onPress }: { friend: Friend; onPress: () => void }) {
-  return (
-    <TouchableOpacity style={st.row} activeOpacity={0.7} onPress={onPress}>
-      {/* 아바타 */}
-      <View style={st.avatarWrap}>
-        <View style={st.avatar}>
-          <Text style={st.avatarEmoji}>{friend.emoji}</Text>
-        </View>
-        {friend.online && <View style={st.onlineDot} />}
-      </View>
+function FriendRow({
+  friend,
+  isSelected,
+  anySelected,
+  placeBelow,
+  onPress,
+  onLongPress,
+  onToggleMute,
+  onMarkAsRead,
+  onBlock,
+  isCurrentlyMuted,
+}: {
+  friend: Friend;
+  isSelected: boolean;
+  anySelected: boolean;
+  placeBelow: boolean;
+  onPress: () => void;
+  onLongPress: () => void;
+  onToggleMute: () => void;
+  onMarkAsRead: () => void;
+  onBlock: () => void;
+  isCurrentlyMuted: boolean;
+}) {
+  const popupScale = useRef(new Animated.Value(0.85)).current;
+  const popupOpacity = useRef(new Animated.Value(0)).current;
+  const selectedOverlayOpacity = useRef(new Animated.Value(0)).current;
+  const rowOpacity = useRef(new Animated.Value(1)).current;
 
-      {/* 정보 */}
-      <View style={st.rowInfo}>
-        <View style={st.rowTop}>
-          <Text style={st.rowName}>{friend.name}</Text>
-          <Text style={st.rowTime}>{friend.time}</Text>
+  useEffect(() => {
+    // 1. Popup spring and fade entry animations
+    if (isSelected) {
+      Animated.parallel([
+        Animated.spring(popupScale, {
+          toValue: 1,
+          tension: 60,
+          friction: 6,
+          useNativeDriver: true,
+        }),
+        Animated.timing(popupOpacity, {
+          toValue: 1,
+          duration: 150,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(popupScale, {
+          toValue: 0.85,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+        Animated.timing(popupOpacity, {
+          toValue: 0,
+          duration: 120,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+
+    // 2. Selected border & background overlay fade transition
+    Animated.timing(selectedOverlayOpacity, {
+      toValue: isSelected ? 1 : 0,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+
+    // 3. Other row dimming opacity transition
+    Animated.timing(rowOpacity, {
+      toValue: isSelected ? 1 : (anySelected ? 0.45 : 1),
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [isSelected, anySelected]);
+
+  return (
+    <Animated.View style={[st.rowContainer, { opacity: rowOpacity }]}>
+      {/* 팝업 메뉴 */}
+      {isSelected && (
+        <Animated.View style={[st.popupMenu, placeBelow ? st.popupMenuBelow : st.popupMenuAbove, { opacity: popupOpacity, transform: [{ scale: popupScale }] }]}>
+          <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
+            <Text style={st.popupIcon}>{isCurrentlyMuted ? '🔔' : '🔕'}</Text>
+            <Text style={st.popupText}>{isCurrentlyMuted ? '켜기' : '끄기'}</Text>
+          </TouchableOpacity>
+          <View style={st.popupDivider} />
+          <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
+            <Text style={st.popupIcon}>📖</Text>
+            <Text style={st.popupText}>읽음</Text>
+          </TouchableOpacity>
+          <View style={st.popupDivider} />
+          <TouchableOpacity style={st.popupBtn} onPress={onBlock}>
+            <Text style={st.popupIcon}>🚫</Text>
+            <Text style={[st.popupText, { color: '#FF6B6B' }]}>차단</Text>
+          </TouchableOpacity>
+          {/* 말풍선 꼬리 */}
+          <View style={placeBelow ? st.popupArrowBelow : st.popupArrow} />
+        </Animated.View>
+      )}
+
+      <TouchableOpacity
+        style={st.row}
+        activeOpacity={0.7}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        delayLongPress={400}
+      >
+        {/* 선택 강조 오버레이 */}
+        <Animated.View style={[st.selectedOverlay, { opacity: selectedOverlayOpacity }]} pointerEvents="none" />
+
+        {/* 아바타 */}
+        <View style={st.avatarWrap}>
+          <View style={st.avatar}>
+            <Text style={st.avatarEmoji}>{friend.emoji}</Text>
+          </View>
+          {friend.online && <View style={st.onlineDot} />}
         </View>
-        <View style={st.rowBottom}>
-          <Text style={st.rowMsg} numberOfLines={1}>{friend.lastMessage}</Text>
-          {friend.unread > 0 && (
-            <View style={st.unreadBadge}>
-              <Text style={st.unreadText}>{friend.unread}</Text>
-            </View>
-          )}
+
+        {/* 정보 */}
+        <View style={st.rowInfo}>
+          <View style={st.rowTop}>
+            <Text style={st.rowName}>
+              {friend.name}
+              {friend.isMuted && <Text style={st.rowMuteIcon}> 🔕</Text>}
+            </Text>
+            <Text style={st.rowTime}>{friend.lastMessageAt ? timeAgo(friend.lastMessageAt) : ''}</Text>
+          </View>
+          <View style={st.rowBottom}>
+            <Text style={st.rowMsg} numberOfLines={1}>{friend.lastMessage}</Text>
+            {friend.unread > 0 && !isSelected && (
+              <View style={st.unreadBadge}>
+                <Text style={st.unreadText}>{friend.unread}</Text>
+              </View>
+            )}
+          </View>
         </View>
-      </View>
-    </TouchableOpacity>
+      </TouchableOpacity>
+    </Animated.View>
   );
 }
 
@@ -220,6 +474,95 @@ const st = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 12,
+  },
+  selectedOverlay: {
+    position: 'absolute',
+    top: 4,
+    bottom: 4,
+    left: 12,
+    right: 12,
+    backgroundColor: 'rgba(191,133,252,0.12)',
+    borderColor: '#BF85FC',
+    borderWidth: 1.5,
+    borderRadius: 16,
+  },
+  rowContainer: {
+    position: 'relative',
+  },
+  popupMenu: {
+    position: 'absolute',
+    left: 20,
+    right: 20,
+    backgroundColor: '#1E1E28',
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: '#BF85FC',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 12,
+    zIndex: 9999,
+  },
+  popupMenuAbove: {
+    bottom: '100%',
+    marginBottom: 10,
+  },
+  popupMenuBelow: {
+    top: '100%',
+    marginTop: 10,
+  },
+  popupBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  popupIcon: {
+    fontSize: 14,
+  },
+  popupText: {
+    fontSize: 12,
+    color: C.white,
+    fontWeight: '600',
+  },
+  popupDivider: {
+    width: 1,
+    height: 16,
+    backgroundColor: 'rgba(255,255,255,0.15)',
+  },
+  popupArrow: {
+    position: 'absolute',
+    bottom: -6,
+    alignSelf: 'center',
+    width: 10,
+    height: 10,
+    backgroundColor: '#1E1E28',
+    borderBottomWidth: 1.5,
+    borderRightWidth: 1.5,
+    borderColor: '#BF85FC',
+    transform: [{ rotate: '45deg' }],
+  },
+  popupArrowBelow: {
+    position: 'absolute',
+    top: -6,
+    alignSelf: 'center',
+    width: 10,
+    height: 10,
+    backgroundColor: '#1E1E28',
+    borderTopWidth: 1.5,
+    borderLeftWidth: 1.5,
+    borderColor: '#BF85FC',
+    transform: [{ rotate: '45deg' }],
+  },
+  rowMuteIcon: {
+    fontSize: 11,
+    color: C.dim,
   },
   avatarWrap: {
     position: 'relative',

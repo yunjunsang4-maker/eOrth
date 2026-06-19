@@ -1,19 +1,24 @@
 import React from 'react';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
   Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,
-  SafeAreaView,
-  Alert,
+  TouchableOpacity,  Alert,
   Switch,
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
+import { clearPersistedStores } from '../store/persist';
+import { signOut } from '../services/auth';
+import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
-  QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon,
+  QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
+  TrashIcon,
 } from '../components/icons';
 
 const COLORS = {
@@ -64,7 +69,7 @@ const SettingGroup = ({
               value={item.toggle}
               onValueChange={item.onToggle}
               trackColor={{ false: '#3A3A4A', true: 'rgba(191,133,252,0.4)' }}
-              thumbColor={item.toggle ? COLORS.purpleNeon : '#888'}
+              thumbColor={COLORS.purpleNeon}
             />
           ) : item.badge ? (
             <View style={st.premiumBadge}>
@@ -85,12 +90,37 @@ const SettingGroup = ({
   </View>
 );
 
-export default function SettingsScreen({ navigation }: { navigation: any }) {
+export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
   const {
     showCounts, setShowCounts,
-    snapEnabled, setSnapEnabled,
     homeCountryCode, setHomeCountryCode,
+    diaryCardMode, setDiaryCardMode,
+    resetSettings,
   } = useSettings();
+  const { resetRecords } = useRecords();
+  const { resetConversations } = useDM();
+
+  const handleResetData = () => {
+    Alert.alert(
+      '데이터 초기화',
+      '모든 여행 기록·설정·대화 내역이 삭제되고 첫 실행 상태로 돌아갑니다.\n이 작업은 되돌릴 수 없어요.',
+      [
+        { text: '취소', style: 'cancel' },
+        {
+          text: '초기화',
+          style: 'destructive',
+          onPress: () => {
+            resetRecords();
+            resetSettings();
+            resetConversations();
+            clearPersistedStores().catch(() => {});
+            Alert.alert('완료', '데이터가 초기화되었습니다.');
+          },
+        },
+      ],
+    );
+  };
+
   return (
     <SafeAreaView style={st.safeArea}>
       {/* 상단 헤더 */}
@@ -124,7 +154,7 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
         <SettingGroup
           items={[
             { icon: <EyeIcon size={22} />, label: '좋아요·댓글 수 표시', toggle: showCounts, onToggle: setShowCounts },
-            { icon: <BellIcon size={22} />, label: '스냅 알림', toggle: snapEnabled, onToggle: setSnapEnabled },
+            { icon: <GalleryIcon size={22} />, label: '소셜 카드 상호작용 표시', toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
               icon: <GlobeSkinIcon size={22} />,
               label: '지구본 스킨',
@@ -192,6 +222,14 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
           ]}
         />
 
+        {/* 데이터 */}
+        <Text style={st.groupLabel}>데이터</Text>
+        <SettingGroup
+          items={[
+            { icon: <TrashIcon size={22} />, label: '데이터 초기화', onPress: handleResetData },
+          ]}
+        />
+
         {/* 로그아웃 */}
         <TouchableOpacity
           style={st.logoutBtn}
@@ -202,8 +240,10 @@ export default function SettingsScreen({ navigation }: { navigation: any }) {
               {
                 text: '로그아웃',
                 style: 'destructive',
-                onPress: () =>
-                  navigation.reset({ index: 0, routes: [{ name: 'Splash' }] }),
+                onPress: () => {
+                  signOut(); // Supabase 세션 종료 (미설정 시 no-op)
+                  navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+                },
               },
             ])
           }
