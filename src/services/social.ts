@@ -122,6 +122,38 @@ export async function fetchMyLikedPostIds(): Promise<string[]> {
   }
 }
 
+// 게시물 좋아요 누른 사람 목록 (프로필 조인)
+export interface PostLiker {
+  id: string;
+  name: string;
+  handle: string;
+  emoji: string;
+  photo?: string;
+}
+export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
+  if (!supabase || !postId) return [];
+  try {
+    const { data } = await supabase
+      .from('post_likes')
+      .select('user_id, created_at, profiles!post_likes_user_id_fkey(handle, nickname, emoji, profile_photo)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: false });
+    if (!data) return [];
+    return (data as any[]).map((r) => {
+      const p = r.profiles ?? {};
+      return {
+        id: r.user_id,
+        name: p.nickname || p.handle || '여행자',
+        handle: p.handle || '',
+        emoji: p.emoji || '🙂',
+        photo: p.profile_photo || undefined,
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ─── 댓글 ───
 // 평면(parent_id) 행을 중첩 PostComment[]로 변환
 export async function fetchComments(postId: string): Promise<PostComment[]> {
