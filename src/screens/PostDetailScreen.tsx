@@ -40,6 +40,7 @@ import { stickers } from '../components/stickers';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
+import { fetchPostLikers, PostLiker } from '../services/social';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -895,7 +896,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, currentViewer, refreshComments } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -910,6 +911,9 @@ export default function PostDetailScreen() {
   const [fontScale, setFontScale] = useState(1);
   const [bodyExpanded, setBodyExpanded] = useState(false);
   const [commentsLoading, setCommentsLoading] = useState(false);
+  const [likersVisible, setLikersVisible] = useState(false);
+  const [likers, setLikers] = useState<PostLiker[]>([]);
+  const [likersLoading, setLikersLoading] = useState(false);
   const [fullImgVisible, setFullImgVisible] = useState(false);
   const [fullImgList, setFullImgList] = useState<string[]>([]);
   const [fullImgIndex, setFullImgIndex] = useState(0);
@@ -985,6 +989,16 @@ export default function PostDetailScreen() {
 
   const cancelReply = () => {
     setReplyTo(null);
+  };
+
+  const canShowLikers = !!rawRecord?.remoteId && record.likes > 0;
+  const openLikers = async () => {
+    if (!canShowLikers) return;
+    setLikersVisible(true);
+    setLikersLoading(true);
+    const list = await fetchPostLikers(rawRecord!.remoteId!);
+    setLikers(list);
+    setLikersLoading(false);
   };
 
   const confirmDeleteComment = (commentId: string) => {
@@ -1221,6 +1235,15 @@ export default function PostDetailScreen() {
                 const postDisplayName = isMyPost
                   ? (globalNickname ? globalNickname : `@${globalHandle}`)
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
+                const authorUsername = record.user.name || record.user.handle;
+                const followedEntry = followingUsers.find(
+                  (f) => (record.authorId && f.id === record.authorId) || f.username === authorUsername
+                );
+                const toggleFollow = () => {
+                  buzz('light');
+                  if (followedEntry) unfollowUser(followedEntry.username);
+                  else followUser({ id: record.authorId ?? '', username: authorUsername, isAbroad: false, currentCountry: null, currentCountryFlag: null });
+                };
                 return (
                   <View style={s.userRow}>
                     <TouchableOpacity
@@ -1252,6 +1275,18 @@ export default function PostDetailScreen() {
                     </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
                       <Text style={s.ratingStars}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
+                    )}
+                    {!isMyPost && (
+                      <TouchableOpacity
+                        style={[s.followBtn, followedEntry && s.followingBtn]}
+                        onPress={toggleFollow}
+                        accessibilityRole="button"
+                        accessibilityLabel={followedEntry ? '팔로우 취소' : '팔로우'}
+                      >
+                        <Text style={[s.followBtnText, followedEntry && s.followingBtnText]}>
+                          {followedEntry ? '팔로잉' : '팔로우'}
+                        </Text>
+                      </TouchableOpacity>
                     )}
                   </View>
                 );
@@ -1419,12 +1454,16 @@ export default function PostDetailScreen() {
 
           {/* ── 좋아요 · 댓글 수 ── */}
           <View style={s.statsRow}>
-            <TouchableOpacity style={s.statBtn} onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? '좋아요 취소' : '좋아요'}>
-              <Text style={[s.statIcon, record.liked && { color: C.red }]}>
-                {record.liked ? '♥' : '♡'}
-              </Text>
-              <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
-            </TouchableOpacity>
+            <View style={s.statBtn}>
+              <TouchableOpacity onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? '좋아요 취소' : '좋아요'}>
+                <Text style={[s.statIcon, record.liked && { color: C.red }]}>
+                  {record.liked ? '♥' : '♡'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers} accessibilityRole="button" accessibilityLabel="좋아요한 사람 보기">
+                <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel="댓글 달기">
               <CommentSvg />
               <Text style={s.statCount}>{totalComments}</Text>
@@ -1480,6 +1519,9 @@ export default function PostDetailScreen() {
                       <TouchableOpacity style={s.commentLikeBtn} onPress={() => { buzz('light'); toggleCommentLike(postId, r.id); }}>
                         <Text style={[s.commentLikeIcon, r.liked && { color: C.red }]}>{r.liked ? '♥' : '♡'}</Text>
                         {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
+                        <Text style={s.commentActionText}>답글</Text>
                       </TouchableOpacity>
                       {r.isMine && (
                         <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
@@ -1627,6 +1669,38 @@ export default function PostDetailScreen() {
           setTimeout(() => setToastMsg(''), 2000);
         }}
       />
+
+      {/* ── 좋아요한 사람 목록 ── */}
+      <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setLikersVisible(false)}>
+        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)}>
+          <View style={s.likersSheet}>
+            <View style={s.likersHandle} />
+            <Text style={s.likersTitle}>좋아요 {likers.length}</Text>
+            {likersLoading ? (
+              <ActivityIndicator color={C.accent} style={{ marginTop: 24 }} />
+            ) : likers.length === 0 ? (
+              <Text style={s.commentEmpty}>아직 좋아요한 사람이 없어요</Text>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
+                {likers.map((u) => (
+                  <TouchableOpacity
+                    key={u.id}
+                    style={s.likerRow}
+                    activeOpacity={0.7}
+                    onPress={() => { setLikersVisible(false); navigation.navigate('FriendProfile', { userId: u.id, username: u.name, handle: u.handle }); }}
+                  >
+                    <AuthorAvatar photo={u.photo} emoji={u.emoji} size={38} emojiSize={17} />
+                    <View style={{ flex: 1, marginLeft: 10 }}>
+                      <Text style={s.likerName}>{u.name}</Text>
+                      {!!u.handle && <Text style={s.likerHandle}>@{u.handle}</Text>}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ── 토스트 ── */}
       {toastMsg !== '' && (
@@ -1783,6 +1857,10 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18,
   },
   authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
+  followBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: C.accent },
+  followBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  followingBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.cardBorder },
+  followingBtnText: { color: C.dim },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center',
@@ -1921,6 +1999,17 @@ const s = StyleSheet.create({
   commentTime: { fontSize: 11, color: C.muted },
   commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
   moreBtn: { color: C.accent, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 6 },
+  // ── 좋아요한 사람 목록 ──
+  likersOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  likersSheet: {
+    backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, maxHeight: '70%',
+  },
+  likersHandle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: C.cardBorder, marginBottom: 12 },
+  likersTitle: { fontSize: 16, fontWeight: '700', color: C.white, marginBottom: 12 },
+  likerRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 8 },
+  likerName: { fontSize: 14, fontWeight: '600', color: C.white },
+  likerHandle: { fontSize: 12, color: C.dim, marginTop: 1 },
   commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   commentLikeIcon: { fontSize: 14, color: C.dim },
