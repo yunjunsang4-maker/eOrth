@@ -189,8 +189,23 @@ const companionIcon = (name: string): React.ReactNode => {
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
 const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void }) => {
   const [activeIdx, setActiveIdx] = useState(0);
+  const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
   const slideW = SCREEN_W - 40; // 본문 좌우 패딩(20+20)과 일치
-  const slideH = slideW * 0.75;
+  // 각 사진의 원본 비율을 읽어 박스를 맞춤 (크롭 방지)
+  useEffect(() => {
+    let alive = true;
+    items.forEach((it, i) => {
+      Image.getSize(
+        it.uri,
+        (w, h) => { if (alive && w > 0) setRatios((p) => ({ ...p, [i]: h / w })); },
+        () => {},
+      );
+    });
+    return () => { alive = false; };
+  }, [items]);
+  // 너무 길거나 넓은 사진은 적당히 제한(0.6~1.4)
+  const heightFor = (i: number) => slideW * Math.min(Math.max(ratios[i] ?? 0.75, 0.6), 1.4);
+  const containerH = Math.max(slideW * 0.75, ...items.map((_, i) => heightFor(i)));
   return (
     <View style={{ marginBottom: 14 }}>
       <ScrollView
@@ -201,11 +216,16 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
           const idx = Math.round(e.nativeEvent.contentOffset.x / slideW);
           setActiveIdx(idx);
         }}
-        style={{ width: slideW, height: slideH }}
+        style={{ width: slideW, height: containerH }}
       >
         {items.map((item, i) => (
-          <TouchableOpacity key={i} activeOpacity={0.85} onPress={() => onImagePress?.(items.map(it => it.uri), i)}>
-            <Image source={{ uri: item.uri }} style={{ width: slideW, height: slideH, borderRadius: 8 }} resizeMode="cover" />
+          <TouchableOpacity
+            key={i}
+            activeOpacity={0.85}
+            onPress={() => onImagePress?.(items.map(it => it.uri), i)}
+            style={{ width: slideW, height: containerH, alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Image source={{ uri: item.uri }} style={{ width: slideW, height: heightFor(i), borderRadius: 8 }} resizeMode="cover" />
           </TouchableOpacity>
         ))}
       </ScrollView>
