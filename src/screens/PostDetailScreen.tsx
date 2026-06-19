@@ -28,7 +28,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon } from '../components/icons';
-import { useRecords, TravelRecord } from '../store/recordStore';
+import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
@@ -937,9 +937,11 @@ export default function PostDetailScreen() {
     return (
       <View style={s.container}>
         <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
+          <Text style={s.headerTitle}>게시물</Text>
+          <View style={{ width: 38 }} />
         </View>
         <View style={s.emptyWrap}>
           <Text style={s.emptyText}>게시물을 찾을 수 없어요</Text>
@@ -948,7 +950,16 @@ export default function PostDetailScreen() {
     );
   }
 
-  const viewType = (record.viewType || 'feed') as any;
+  const viewType: RecordViewType = record.viewType || 'feed';
+  // 헤더 타이틀: 국가명 우선, 없으면 형식 라벨
+  const typeLabel =
+    viewType === 'blog' ? '블로그' :
+    viewType === 'album' ? '앨범' :
+    viewType === 'cut' ? '네컷' :
+    viewType === 'snap' ? '스냅' : '피드';
+  const headerTitleText = record.countryName
+    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
+    : typeLabel;
 
   const addComment = () => {
     if (!commentText.trim()) return;
@@ -1161,20 +1172,22 @@ export default function PostDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
-          <Text style={s.headerTitle}>게시물</Text>
+          <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             {viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 && (
               <TouchableOpacity
                 onPress={() => setFontScale((p) => (p >= 1.4 ? 0.85 : p + 0.15))}
                 style={s.menuBtn}
+                accessibilityRole="button"
+                accessibilityLabel="글자 크기 변경"
               >
                 <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? C.accent : C.dim }}>가</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn}>
+            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel="더보기 메뉴">
               <Text style={s.menuDots}>···</Text>
             </TouchableOpacity>
           </View>
@@ -1390,13 +1403,13 @@ export default function PostDetailScreen() {
 
           {/* ── 좋아요 · 댓글 수 ── */}
           <View style={s.statsRow}>
-            <TouchableOpacity style={s.statBtn} onPress={() => { buzz('light'); toggleLike(record.id); }}>
+            <TouchableOpacity style={s.statBtn} onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? '좋아요 취소' : '좋아요'}>
               <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                 {record.liked ? '♥' : '♡'}
               </Text>
               <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()}>
+            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel="댓글 달기">
               <CommentSvg />
               <Text style={s.statCount}>{totalComments}</Text>
             </TouchableOpacity>
@@ -1556,9 +1569,7 @@ export default function PostDetailScreen() {
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={() => {
                   setMenuVisible(false);
-                  if (viewType === 'snap') {
-                    Alert.alert('수정 불가', '스냅은 수정할 수 없어요');
-                  } else if (viewType === 'blog') {
+                  if (viewType === 'blog') {
                     navigation.navigate('BlogRecord', { record: rawRecord });
                   } else if (viewType === 'album') {
                     Alert.alert('수정 불가', '앨범 형식은 현재 보관 중이라 수정할 수 없어요.');
@@ -1891,8 +1902,6 @@ const s = StyleSheet.create({
   commentName: { fontSize: 13, fontWeight: '600', color: C.white },
   commentTime: { fontSize: 11, color: C.muted },
   commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
-  replyBtn: { marginTop: 4 },
-  replyBtnText: { fontSize: 11, color: C.muted, fontWeight: '600' },
   commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
   commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   commentLikeIcon: { fontSize: 14, color: C.dim },
