@@ -14,6 +14,9 @@ import {
   fetchMyLikedPostIds,
   fetchComments,
   addComment as apiAddComment,
+  likeComment as apiLikeComment,
+  unlikeComment as apiUnlikeComment,
+  deleteComment as apiDeleteComment,
 } from '../services/social';
 
 // ─────────────────────────────────────────────
@@ -141,6 +144,9 @@ export interface PostComment {
   createdAt: number;
   time?: string; // 시드 댓글용 고정 표기 (없으면 createdAt 기준 상대시간으로 표시)
   replies?: PostComment[];
+  liked?: boolean;   // 내가 이 댓글에 좋아요했는지
+  likes?: number;    // 댓글 좋아요 수
+  isMine?: boolean;  // 내가 작성한 댓글(로컬 작성분) — 삭제 가능 여부
 }
 
 // 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
@@ -165,6 +171,8 @@ interface RecordContextType {
   setFollowMutual: (username: string, isMutual: boolean) => void;
   commentsByPost: Record<string, PostComment[]>;
   addComment: (postId: string, text: string, replyToId?: string) => void;
+  toggleCommentLike: (postId: string, commentId: string) => void;
+  deleteComment: (postId: string, commentId: string) => void;
   tripGroups: TripGroup[];
   addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>) => void;
   deleteTripGroup: (id: string) => void;
@@ -461,6 +469,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       photo: profilePhoto || undefined,
       text,
       createdAt: Date.now(),
+      liked: false,
+      likes: 0,
+      isMine: true,
     };
     setCommentsByPost((prev) => {
       const list = prev[postId] ?? [];
@@ -479,6 +490,54 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         const parent = replyToId && /^[0-9a-f-]{36}$/i.test(replyToId) ? replyToId : undefined;
         apiAddComment(remoteId, text, parent).catch(() => {});
       }
+    }
+  };
+
+  // top-level·답글에서 댓글 찾기 (현재 좋아요 상태 확인용)
+  const findCommentById = (list: PostComment[] | undefined, id: string): PostComment | undefined => {
+    if (!list) return undefined;
+    for (const c of list) {
+      if (c.id === id) return c;
+      const r = c.replies?.find((x) => x.id === id);
+      if (r) return r;
+    }
+    return undefined;
+  };
+  const isRemoteId = (id: string) => /^[0-9a-f-]{36}$/i.test(id);
+
+  // 댓글/답글 좋아요 토글 (로컬 즉시 반영 + 백엔드 동기화)
+  const toggleCommentLike = (postId: string, commentId: string) => {
+    const willLike = !findCommentById(commentsByPost[postId], commentId)?.liked;
+    setCommentsByPost((prev) => {
+      const list = prev[postId];
+      if (!list) return prev;
+      const flip = (c: PostComment): PostComment => {
+        if (c.id === commentId) {
+          const nowLiked = !c.liked;
+          return { ...c, liked: nowLiked, likes: Math.max(0, (c.likes ?? 0) + (nowLiked ? 1 : -1)) };
+        }
+        if (c.replies?.length) return { ...c, replies: c.replies.map(flip) };
+        return c;
+      };
+      return { ...prev, [postId]: list.map(flip) };
+    });
+    if (isSupabaseConfigured && isRemoteId(commentId)) {
+      (willLike ? apiLikeComment(commentId) : apiUnlikeComment(commentId)).catch(() => {});
+    }
+  };
+
+  // 댓글/답글 삭제 (top-level 또는 답글) — 로컬 즉시 반영 + 백엔드 동기화
+  const deleteComment = (postId: string, commentId: string) => {
+    setCommentsByPost((prev) => {
+      const list = prev[postId];
+      if (!list) return prev;
+      const next = list
+        .filter((c) => c.id !== commentId)
+        .map((c) => (c.replies?.length ? { ...c, replies: c.replies.filter((r) => r.id !== commentId) } : c));
+      return { ...prev, [postId]: next };
+    });
+    if (isSupabaseConfigured && isRemoteId(commentId)) {
+      apiDeleteComment(commentId).catch(() => {});
     }
   };
 
@@ -601,7 +660,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
       {children}
     </RecordContext.Provider>
   );

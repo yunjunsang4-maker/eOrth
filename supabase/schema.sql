@@ -226,6 +226,27 @@ drop trigger if exists trg_comments_count on public.comments;
 create trigger trg_comments_count after insert or delete on public.comments
   for each row execute function public.sync_comments_count();
 
+-- 댓글 좋아요
+create table if not exists public.comment_likes (
+  comment_id uuid not null references public.comments(id) on delete cascade,
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  primary key (comment_id, user_id)
+);
+alter table public.comment_likes enable row level security;
+
+drop policy if exists "comment_likes_select_all" on public.comment_likes;
+create policy "comment_likes_select_all" on public.comment_likes
+  for select to authenticated using (true);
+
+drop policy if exists "comment_likes_insert_own" on public.comment_likes;
+create policy "comment_likes_insert_own" on public.comment_likes
+  for insert to authenticated with check (user_id = auth.uid());
+
+drop policy if exists "comment_likes_delete_own" on public.comment_likes;
+create policy "comment_likes_delete_own" on public.comment_likes
+  for delete to authenticated using (user_id = auth.uid());
+
 -- ============================================================
 -- 4) DM — 1:1 대화 + 메시지 (실시간은 dm_messages를 Realtime publication에 추가)
 -- ============================================================

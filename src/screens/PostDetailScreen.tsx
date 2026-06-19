@@ -38,6 +38,7 @@ import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blo
 import { stickers } from '../components/stickers';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer } from '../utils/mediaPrivacy';
+import { buzz } from '../utils/haptics';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -186,7 +187,7 @@ const companionIcon = (name: string): React.ReactNode => {
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
 const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void }) => {
   const [activeIdx, setActiveIdx] = useState(0);
-  const slideW = SCREEN_W - 32;
+  const slideW = SCREEN_W - 40; // 본문 좌우 패딩(20+20)과 일치
   const slideH = slideW * 0.75;
   return (
     <View style={{ marginBottom: 14 }}>
@@ -893,12 +894,14 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, currentViewer, refreshComments } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, currentViewer, refreshComments } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
+  const [showTravelInfo, setShowTravelInfo] = useState(false);
+  const [heartBurst, setHeartBurst] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
   const [reportVisible, setReportVisible] = useState(false);
@@ -915,6 +918,12 @@ export default function PostDetailScreen() {
   const commentInputRef = useRef<TextInput>(null);
   const scrollRef = useRef<ScrollView>(null);
   const blockYPositions = useRef<Record<string, number>>({});
+  // 더블탭 좋아요
+  const heartScale = useRef(new Animated.Value(0)).current;
+  const lastTapRef = useRef(0);
+  const singleTapTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 언마운트 시 더블탭 단일탭 타이머 정리 (unmounted setState 방지)
+  useEffect(() => () => { if (singleTapTimer.current) clearTimeout(singleTapTimer.current); }, []);
 
   const rawRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
   // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
@@ -957,6 +966,13 @@ export default function PostDetailScreen() {
     setReplyTo(null);
   };
 
+  const confirmDeleteComment = (commentId: string) => {
+    Alert.alert('댓글 삭제', '이 댓글을 삭제할까요?', [
+      { text: '취소', style: 'cancel' },
+      { text: '삭제', style: 'destructive', onPress: () => deleteComment(postId, commentId) },
+    ]);
+  };
+
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = record?.isMyPost === true;
 
@@ -977,7 +993,7 @@ export default function PostDetailScreen() {
     const bodyText = record.blogBlocks ? blocksToPlainText(record.blogBlocks) : record.content;
     const photos = record.blogBlocks ? blocksToPhotos(record.blogBlocks) : (record.medias || []);
     const blogData: BlogData = {
-      title: record.content.slice(0, 50),
+      title: record.content.trim() || `${record.countryFlag ?? ''} ${record.countryName ?? ''}`.trim() || '여행기록',
       body: bodyText,
       photos,
       memo: record.memo,
@@ -1042,6 +1058,30 @@ export default function PostDetailScreen() {
     setReportVisible(true);
   };
 
+  // 더블탭: 좋아요(이미 좋아요면 유지) + 하트 버스트 애니메이션
+  const triggerLikeBurst = () => {
+    if (!record.liked) toggleLike(record.id);
+    buzz('light');
+    setHeartBurst(true);
+    heartScale.setValue(0);
+    Animated.sequence([
+      Animated.spring(heartScale, { toValue: 1, useNativeDriver: true, friction: 4, tension: 80 }),
+      Animated.timing(heartScale, { toValue: 0, duration: 250, delay: 450, useNativeDriver: true }),
+    ]).start(() => setHeartBurst(false));
+  };
+  // 단일 탭(풀스크린)과 더블 탭(좋아요) 구분
+  const handleMediaTap = (onSingle: () => void) => {
+    const now = Date.now();
+    if (now - lastTapRef.current < 280) {
+      if (singleTapTimer.current) { clearTimeout(singleTapTimer.current); singleTapTimer.current = null; }
+      lastTapRef.current = 0;
+      triggerLikeBurst();
+    } else {
+      lastTapRef.current = now;
+      singleTapTimer.current = setTimeout(() => { onSingle(); singleTapTimer.current = null; }, 280);
+    }
+  };
+
   const renderCountries = () => {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
@@ -1073,8 +1113,6 @@ export default function PostDetailScreen() {
     <CommentSvgIcon size={size} color={color} />
   );
 
-  const firstMedia = record.medias?.[0];
-
   // ── 스냅: 인스타 스토리 스타일 전체화면 ──
   if (viewType === 'snap') {
     return (
@@ -1088,6 +1126,36 @@ export default function PostDetailScreen() {
       />
     );
   }
+
+  // 사진/네컷/placeholder 위에 공통으로 올리는 동행자 오버레이
+  const companionsOverlay = record.companions && record.companions.length > 0 ? (
+    <>
+      <TouchableOpacity
+        style={s.tagBtn}
+        activeOpacity={0.8}
+        onPress={() => setShowCompanions(!showCompanions)}
+      >
+        <PersonIcon size={14} color="#fff" />
+      </TouchableOpacity>
+      {showCompanions && (
+        <View style={s.companionPopup}>
+          {record.companions.map((comp, i) => (
+            <View key={i} style={s.companionPopupItem}>
+              <View style={s.companionIconWrap}>{companionIcon(comp)}</View>
+              <Text style={s.companionPopupText}>{comp}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+    </>
+  ) : null;
+
+  // 더블탭 좋아요 하트 버스트 (사진/네컷 위 오버레이)
+  const heartOverlay = heartBurst ? (
+    <Animated.View pointerEvents="none" style={[s.heartBurst, { transform: [{ scale: heartScale }] }]}>
+      <Text style={s.heartBurstIcon}>♥</Text>
+    </Animated.View>
+  ) : null;
 
   return (
     <View style={s.container}>
@@ -1114,7 +1182,7 @@ export default function PostDetailScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         keyboardVerticalOffset={0}
       >
         <ScrollView
@@ -1132,22 +1200,33 @@ export default function PostDetailScreen() {
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
                 return (
                   <View style={s.userRow}>
-                    <View style={s.avatar}>
-                      {isMyPost && globalProfilePhoto ? (
-                        <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
-                      ) : record.user.photo ? (
-                        <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
-                      ) : (
-                        <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
-                      )}
-                    </View>
-                    <View style={s.userInfo}>
-                      <Text style={s.userName}>{postDisplayName}</Text>
-                      <View style={s.userMeta}>
-                        {renderCountries()}
-                        <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+                    <TouchableOpacity
+                      style={s.authorTouch}
+                      activeOpacity={isMyPost ? 1 : 0.7}
+                      disabled={isMyPost}
+                      onPress={() => navigation.navigate('FriendProfile', {
+                        userId: record.authorId ?? record.id,
+                        username: record.user.name,
+                        handle: record.user.handle,
+                      })}
+                    >
+                      <View style={s.avatar}>
+                        {isMyPost && globalProfilePhoto ? (
+                          <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                        ) : record.user.photo ? (
+                          <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
+                        ) : (
+                          <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
+                        )}
                       </View>
-                    </View>
+                      <View style={s.userInfo}>
+                        <Text style={s.userName}>{postDisplayName}</Text>
+                        <View style={s.userMeta}>
+                          {renderCountries()}
+                          <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+                        </View>
+                      </View>
+                    </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
                       <Text style={s.ratingStars}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
                     )}
@@ -1155,53 +1234,8 @@ export default function PostDetailScreen() {
                 );
               })()}
 
-              {/* ── 스냅 콘텐츠 ── */}
-              {viewType === 'snap' ? (
-                <>
-                  <View style={snapS.photoArea}>
-                    {/* 후면 사진 */}
-                    {record.snapBackUri ? (
-                      <Image source={{ uri: record.snapBackUri }} style={snapS.mainPhoto} resizeMode="cover" />
-                    ) : (
-                      <View style={snapS.placeholderBg}>
-                        <Text style={{ fontSize: 48, opacity: 0.3 }}>📸</Text>
-                      </View>
-                    )}
-                    {/* 전면 사진 (PIP) */}
-                    {record.snapFrontUri && (
-                      <View style={snapS.pipWrap}>
-                        <Image source={{ uri: record.snapFrontUri }} style={snapS.pipImg} resizeMode="cover" />
-                      </View>
-                    )}
-                    {/* 국가 뱃지 */}
-                    {record.snapDetectedCountry && (
-                      <View style={snapS.countryBadge}>
-                        <Text style={snapS.countryBadgeText}>📍 {record.countryFlag} {record.snapDetectedCountry}</Text>
-                      </View>
-                    )}
-                    {/* 촬영 지연 비활성화 */}
-                    {/* 만료 오버레이 */}
-                    {record.snapExpiresAt && Date.now() > record.snapExpiresAt && (
-                      <View style={snapS.expiredOverlay}>
-                        <Text style={snapS.expiredText}>24시간 경과</Text>
-                      </View>
-                    )}
-                  </View>
-                  {record.snapCaption ? (
-                    <Text style={snapS.caption}>{record.snapCaption}</Text>
-                  ) : null}
-                  {record.snapExpiresAt && Date.now() < record.snapExpiresAt && (
-                    <Text style={snapS.timeLeft}>
-                      ⏳ {(() => {
-                        const diff = record.snapExpiresAt! - Date.now();
-                        const h = Math.floor(diff / (1000 * 60 * 60));
-                        const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                        return h > 0 ? `${h}시간 ${m}분 남음` : `${m}분 남음`;
-                      })()}
-                    </Text>
-                  )}
-                </>
-              ) : viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 ? (
+              {/* ── 블로그 콘텐츠 ── (스냅은 viewType==='snap'에서 early return 처리) */}
+              {viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 ? (
                 <>
                   {/* 카테고리 뱃지 */}
                   {record.blogCategory && (
@@ -1239,51 +1273,86 @@ export default function PostDetailScreen() {
                 </>
               ) : (
                 <>
-                  <LinearGradient
-                    colors={
-                      viewType === 'album' ? ['#2E1A0A', '#1A0A2E'] :
-                      ['#1A0A2E', '#3B1E8E']
-                    }
-                    style={s.imageArea}
-                  >
-                    <View style={{ opacity: 0.4 }}>
-                      {viewType === 'album' ? <CameraIcon size={48} color="#fff" /> : <LandscapeIcon size={48} color="#fff" />}
-                    </View>
-                    <View style={s.viewTypeBadge}>
-                      <Text style={s.viewTypeText}>
-                        {viewType === 'feed' ? '피드' : '앨범'}
-                      </Text>
-                    </View>
-                    {record.companions && record.companions.length > 0 && (
-                      <TouchableOpacity
-                        style={s.tagBtn}
-                        activeOpacity={0.8}
-                        onPress={() => setShowCompanions(!showCompanions)}
-                      >
-                        <PersonIcon size={14} color="#fff" />
+                  {viewType === 'cut' && record.cutPhoto?.previewUri ? (
+                    /* 네컷: 합성 미리보기 이미지 */
+                    <View style={s.mediaWrap}>
+                      <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage([record.cutPhoto!.previewUri], 0))}>
+                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={s.cutImage} resizeMode="contain" />
                       </TouchableOpacity>
-                    )}
-                    {showCompanions && record.companions && record.companions.length > 0 && (
-                      <View style={s.companionPopup}>
-                        {record.companions.map((comp, i) => (
-                          <View key={i} style={s.companionPopupItem}>
-                            <View style={s.companionIconWrap}>{companionIcon(comp)}</View>
-                            <Text style={s.companionPopupText}>{comp}</Text>
-                          </View>
-                        ))}
+                      {companionsOverlay}
+                      {heartOverlay}
+                    </View>
+                  ) : record.medias && record.medias.length > 0 ? (
+                    /* 피드·앨범: 실제 첨부 사진 캐러셀 */
+                    <View style={s.mediaWrap}>
+                      <SlideImageViewerDetail
+                        items={record.medias.map((uri) => ({ uri }))}
+                        onImagePress={(uris, i) => handleMediaTap(() => openFullImage(uris, i))}
+                      />
+                      {companionsOverlay}
+                      {heartOverlay}
+                    </View>
+                  ) : (
+                    /* 사진 없음: 그라데이션 placeholder */
+                    <LinearGradient
+                      colors={
+                        viewType === 'album' ? ['#2E1A0A', '#1A0A2E'] :
+                        ['#1A0A2E', '#3B1E8E']
+                      }
+                      style={s.imageArea}
+                    >
+                      <View style={{ opacity: 0.4 }}>
+                        {viewType === 'album' ? <CameraIcon size={48} color="#fff" /> : <LandscapeIcon size={48} color="#fff" />}
                       </View>
-                    )}
-                  </LinearGradient>
+                      <View style={s.viewTypeBadge}>
+                        <Text style={s.viewTypeText}>
+                          {viewType === 'feed' ? '피드' : viewType === 'cut' ? '네컷' : '앨범'}
+                        </Text>
+                      </View>
+                      {companionsOverlay}
+                    </LinearGradient>
+                  )}
 
-                  <Text style={s.content}>{record.content}</Text>
+                  <Text
+                    style={[
+                      s.content,
+                      { marginBottom: (record.memo || record.content || '').trim().length > 50 ? 4 : 0 },
+                    ]}
+                  >
+                    {record.memo || record.content}
+                  </Text>
                 </>
               )}
 
           {/* ── 이하 공통: 정보 칩, 메모, 키워드, 좋아요, 댓글 ── */}
           <View>
 
-          {/* ── 정보 칩들 ── */}
+          {/* ── 키워드 (여행정보 위, 항상 표시) ── */}
+          {record.keywords && record.keywords.length > 0 && (
+            <View style={s.keywords}>
+              {record.keywords.map((k) => (
+                <View key={k} style={s.keyword}>
+                  <Text style={s.keywordText}>#{k}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── 여행정보 토글 버튼 ── */}
           {(record.startDate || record.weather || record.budget || record.flightType) && (
+            <TouchableOpacity
+              style={s.travelInfoBtn}
+              activeOpacity={0.8}
+              onPress={() => setShowTravelInfo((v) => !v)}
+            >
+              <CalendarIcon size={14} color={C.accent} />
+              <Text style={s.travelInfoBtnText}>여행정보</Text>
+              <Text style={s.travelInfoArrow}>{showTravelInfo ? '▲' : '▼'}</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* ── 정보 칩들 ── */}
+          {showTravelInfo && (record.startDate || record.weather || record.budget || record.flightType) && (
             <View style={s.infoRow}>
               {record.startDate && record.endDate && (
                 <View style={s.infoChip}>
@@ -1312,27 +1381,16 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 메모 ── */}
-          {record.memo && (
+          {/* ── 메모 (본문에 이미 표시된 피드·앨범은 중복 방지) ── */}
+          {record.memo && viewType !== 'feed' && viewType !== 'album' && (
             <View style={s.memoBox}>
               <Text style={s.memoText}>{record.memo}</Text>
             </View>
           )}
 
-          {/* ── 키워드 ── */}
-          {record.keywords && record.keywords.length > 0 && (
-            <View style={s.keywords}>
-              {record.keywords.map((k) => (
-                <View key={k} style={s.keyword}>
-                  <Text style={s.keywordText}>#{k}</Text>
-                </View>
-              ))}
-            </View>
-          )}
-
           {/* ── 좋아요 · 댓글 수 ── */}
           <View style={s.statsRow}>
-            <TouchableOpacity style={s.statBtn} onPress={() => toggleLike(record.id)}>
+            <TouchableOpacity style={s.statBtn} onPress={() => { buzz('light'); toggleLike(record.id); }}>
               <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                 {record.liked ? '♥' : '♡'}
               </Text>
@@ -1361,9 +1419,20 @@ export default function PostDetailScreen() {
                     <Text style={s.commentTime}>{commentTime(c)}</Text>
                   </View>
                   <Text style={s.commentText}>{c.text}</Text>
-                  <TouchableOpacity style={s.replyBtn} onPress={() => handleReply(c.id, c.name)}>
-                    <Text style={s.replyBtnText}>답글</Text>
-                  </TouchableOpacity>
+                  <View style={s.commentActions}>
+                    <TouchableOpacity style={s.commentLikeBtn} onPress={() => { buzz('light'); toggleCommentLike(postId, c.id); }}>
+                      <Text style={[s.commentLikeIcon, c.liked && { color: C.red }]}>{c.liked ? '♥' : '♡'}</Text>
+                      {!!c.likes && <Text style={s.commentLikeCount}>{c.likes}</Text>}
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
+                      <Text style={s.commentActionText}>답글</Text>
+                    </TouchableOpacity>
+                    {c.isMine && (
+                      <TouchableOpacity onPress={() => confirmDeleteComment(c.id)}>
+                        <Text style={[s.commentActionText, { color: C.red }]}>삭제</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
               </View>
               {/* 답글 목록 */}
@@ -1378,11 +1447,25 @@ export default function PostDetailScreen() {
                       <Text style={s.commentTime}>{commentTime(r)}</Text>
                     </View>
                     <Text style={s.commentText}>{r.text}</Text>
+                    <View style={s.commentActions}>
+                      <TouchableOpacity style={s.commentLikeBtn} onPress={() => { buzz('light'); toggleCommentLike(postId, r.id); }}>
+                        <Text style={[s.commentLikeIcon, r.liked && { color: C.red }]}>{r.liked ? '♥' : '♡'}</Text>
+                        {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
+                      </TouchableOpacity>
+                      {r.isMine && (
+                        <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
+                          <Text style={[s.commentActionText, { color: C.red }]}>삭제</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
                 </View>
               ))}
             </View>
           ))}
+          {comments.length === 0 && (
+            <Text style={s.commentEmpty}>아직 댓글이 없어요. 첫 댓글을 남겨보세요!</Text>
+          )}
           <View style={{ height: 16 }} />
           </View>
         </ScrollView>
@@ -1670,6 +1753,7 @@ const s = StyleSheet.create({
   userRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18,
   },
+  authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
     backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center',
@@ -1694,6 +1778,25 @@ const s = StyleSheet.create({
     width: '100%', aspectRatio: 4 / 3, borderRadius: 16, marginBottom: 18,
     alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
     zIndex: 10,
+  },
+
+  // ── 실제 사진/네컷 영역 ──
+  mediaWrap: { position: 'relative', marginBottom: 4 },
+  cutImage: {
+    width: SCREEN_W - 40, height: SCREEN_H * 0.6, borderRadius: 12,
+    marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',
+  },
+  heartBurst: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center', zIndex: 20,
+  },
+  heartBurstIcon: {
+    fontSize: 96, color: '#fff',
+    textShadowColor: 'rgba(0,0,0,0.35)', textShadowRadius: 16,
+  },
+  commentEmpty: {
+    color: C.muted, fontSize: 14, textAlign: 'center',
+    marginTop: 20, marginBottom: 8,
   },
   imageEmoji: { fontSize: 48, opacity: 0.4 },
   viewTypeBadge: {
@@ -1743,6 +1846,15 @@ const s = StyleSheet.create({
   },
   weatherEmoji: { fontSize: 18 },
 
+  // ── 여행정보 토글 버튼 ──
+  travelInfoBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, marginBottom: 18,
+    backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accentBorder,
+  },
+  travelInfoBtnText: { fontSize: 13, color: C.accent, fontWeight: '600' },
+  travelInfoArrow: { fontSize: 10, color: C.accent, marginLeft: 2 },
+
   // ── 메모 ──
   memoBox: {
     backgroundColor: 'rgba(191,133,252,0.06)', borderRadius: 12,
@@ -1781,6 +1893,11 @@ const s = StyleSheet.create({
   commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
   replyBtn: { marginTop: 4 },
   replyBtnText: { fontSize: 11, color: C.muted, fontWeight: '600' },
+  commentActions: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 6 },
+  commentLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  commentLikeIcon: { fontSize: 14, color: C.dim },
+  commentLikeCount: { fontSize: 12, color: C.dim },
+  commentActionText: { fontSize: 12, color: C.muted, fontWeight: '600' },
   replyItem: { flexDirection: 'row', gap: 8, marginBottom: 12, marginLeft: 42 },
   replyBar: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -1849,50 +1966,6 @@ const s = StyleSheet.create({
 });
 
 // ── 스냅 상세 스타일 ──
-const snapS = StyleSheet.create({
-  photoArea: {
-    borderRadius: 20, overflow: 'hidden', aspectRatio: 3 / 4,
-    backgroundColor: '#111', marginBottom: 12,
-  },
-  mainPhoto: { width: '100%', height: '100%' },
-  placeholderBg: {
-    flex: 1, backgroundColor: '#1A1A2E',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pipWrap: {
-    position: 'absolute', top: 16, left: 16,
-    width: SCREEN_W * 0.25, height: SCREEN_W * 0.33,
-    borderRadius: 16, overflow: 'hidden',
-    borderWidth: 3, borderColor: '#FFD60A',
-  },
-  pipImg: { width: '100%', height: '100%' },
-  countryBadge: {
-    position: 'absolute', bottom: 16, left: 16,
-    backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  countryBadgeText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-  lateBadge: {
-    position: 'absolute', bottom: 16, right: 16,
-    backgroundColor: 'rgba(255,214,10,0.2)', borderRadius: 12,
-    paddingHorizontal: 12, paddingVertical: 6,
-  },
-  lateBadgeText: { color: '#FFD60A', fontSize: 12, fontWeight: '700' },
-  expiredOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  expiredText: { color: 'rgba(255,255,255,0.5)', fontSize: 16, fontWeight: '600' },
-  caption: {
-    color: '#fff', fontSize: 17, lineHeight: 26, fontWeight: '500',
-    marginBottom: 8,
-  },
-  timeLeft: {
-    color: '#FFD60A', fontSize: 12, fontWeight: '600', marginBottom: 12,
-  },
-});
-
 // ── 블로그 블록 스타일 ──
 const blogS = StyleSheet.create({
   categoryBadge: {

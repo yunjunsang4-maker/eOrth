@@ -1928,9 +1928,7 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, setCurrentViewer, followingUsers, feedPosts, refreshFeed } = useRecords();
-  // '친구로 보기' 미리보기 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
-  const viewerFriends = followingUsers.map((f) => f.username);
+  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -2099,33 +2097,6 @@ function FriendsTab({ navigation }: { navigation: any }) {
         scrollEventThrottle={16}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BF85FC" colors={['#BF85FC']} />}
       >
-        {/* 친구로 보기 — 비공개 미리보기 뷰어 전환 */}
-        <View style={vc.bar}>
-          <Text style={vc.label}>미리보기</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={vc.row}>
-            <TouchableOpacity
-              style={[vc.chip, currentViewer === null && vc.chipOn]}
-              onPress={() => setCurrentViewer(null)}
-              activeOpacity={0.8}
-            >
-              <Text style={[vc.chipTxt, currentViewer === null && vc.chipTxtOn]}>전체 보기</Text>
-            </TouchableOpacity>
-            {viewerFriends.map((name) => {
-              const on = currentViewer === name;
-              return (
-                <TouchableOpacity
-                  key={name}
-                  style={[vc.chip, on && vc.chipOn]}
-                  onPress={() => setCurrentViewer(on ? null : name)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[vc.chipTxt, on && vc.chipTxtOn]}>{name}로 보기</Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
         {snapItems.length > 0 && (
           <View style={s.storySection}>

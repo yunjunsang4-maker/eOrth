@@ -127,12 +127,27 @@ export async function fetchMyLikedPostIds(): Promise<string[]> {
 export async function fetchComments(postId: string): Promise<PostComment[]> {
   if (!supabase || !postId) return [];
   try {
+    const uid = await getMyUserId();
     const { data } = await supabase
       .from('comments')
       .select('id, author_id, parent_id, text, created_at, profiles!comments_author_id_fkey(handle, nickname, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (!data) return [];
+    // 댓글 좋아요 집계 (좋아요 수 + 내가 누른 댓글)
+    const ids = (data as any[]).map((r) => r.id);
+    const likeCount = new Map<string, number>();
+    const myLiked = new Set<string>();
+    if (ids.length) {
+      const { data: likes } = await supabase
+        .from('comment_likes')
+        .select('comment_id, user_id')
+        .in('comment_id', ids);
+      for (const l of (likes ?? []) as any[]) {
+        likeCount.set(l.comment_id, (likeCount.get(l.comment_id) ?? 0) + 1);
+        if (uid && l.user_id === uid) myLiked.add(l.comment_id);
+      }
+    }
     const byId = new Map<string, PostComment>();
     const roots: PostComment[] = [];
     for (const row of data as any[]) {
@@ -145,6 +160,9 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
         text: row.text,
         createdAt: new Date(row.created_at).getTime(),
         replies: [],
+        liked: myLiked.has(row.id),
+        likes: likeCount.get(row.id) ?? 0,
+        isMine: !!uid && row.author_id === uid,
       };
       byId.set(row.id, c);
     }
@@ -177,5 +195,40 @@ export async function addComment(postId: string, text: string, parentId?: string
     return data.id as string;
   } catch {
     return null;
+  }
+}
+
+// 댓글 좋아요
+export async function likeComment(commentId: string): Promise<void> {
+  if (!supabase || !commentId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('comment_likes').insert({ comment_id: commentId, user_id: uid });
+  } catch {
+    /* 중복 무시 */
+  }
+}
+
+export async function unlikeComment(commentId: string): Promise<void> {
+  if (!supabase || !commentId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('comment_likes').delete().eq('comment_id', commentId).eq('user_id', uid);
+  } catch {
+    /* 무시 */
+  }
+}
+
+// 댓글 삭제 (RLS로 본인 댓글만 삭제 가능)
+export async function deleteComment(commentId: string): Promise<void> {
+  if (!supabase || !commentId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('comments').delete().eq('id', commentId).eq('author_id', uid);
+  } catch {
+    /* 무시 */
   }
 }
