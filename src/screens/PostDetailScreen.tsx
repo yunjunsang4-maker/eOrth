@@ -1268,13 +1268,14 @@ export default function PostDetailScreen() {
                   <View style={s.userRow}>
                     <TouchableOpacity
                       style={s.authorTouch}
-                      activeOpacity={isMyPost ? 1 : 0.7}
-                      disabled={isMyPost}
-                      onPress={() => navigation.navigate('FriendProfile', {
-                        userId: record.authorId ?? record.id,
-                        username: record.user.name,
-                        handle: record.user.handle,
-                      })}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={isMyPost ? '내 프로필 보기' : '작성자 프로필 보기'}
+                      onPress={() => {
+                        navigation.navigate('FriendProfile', isMyPost
+                          ? { userId: record.authorId ?? record.id, username: globalNickname || record.user.name, handle: globalHandle }
+                          : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
+                      }}
                     >
                       <View style={s.avatar}>
                         {isMyPost && globalProfilePhoto ? (
