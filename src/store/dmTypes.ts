@@ -34,6 +34,7 @@ export interface Message {
   record?: SharedRecord;
   replyTo?: ReplyInfo;
   remoteId?: string; // Supabase dm_messages.id (백엔드 동기화/중복제거용)
+  failed?: boolean;  // 백엔드 전송 실패(이미지 업로드/전송 오류) — 재시도 표시용
 }
 
 export interface Friend {
