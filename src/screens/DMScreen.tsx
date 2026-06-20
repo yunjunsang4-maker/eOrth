@@ -275,7 +275,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
   const { records } = useRecords();
   const { markBadgesEarned } = useSettings();
-  const { conversations, addMessage: dmAddMessage, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
+  const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
   const messages = conversations[friend.handle] ?? [];
 
   // 대화 진입 시 상대(profile uuid) 등록 + 서버 히스토리 로드 (백엔드 설정 시)
@@ -345,12 +345,16 @@ export default function DMScreen({ navigation, route }: Props) {
   // ─── 사진 전송 ───
   const pickImage = async () => {
     setAttachMenuOpen(false);
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
+    } catch (e: any) {
+      Alert.alert('사진 첨부 실패', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+    }
   };
 
   // ─── 카메라 촬영 전송 ───
@@ -361,12 +365,16 @@ export default function DMScreen({ navigation, route }: Props) {
       Alert.alert('카메라 권한 필요', '사진을 촬영하려면 설정에서 카메라 권한을 허용해주세요.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'],
-      quality: 0.8,
-    });
-    if (result.canceled || !result.assets?.length) return;
-    addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        quality: 0.8,
+      });
+      if (result.canceled || !result.assets?.length) return;
+      addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
+    } catch (e: any) {
+      Alert.alert('촬영 실패', e?.message ?? '사진을 촬영하는 중 오류가 발생했어요.');
+    }
   };
 
   // ─── 여행 기록 공유 ───
@@ -568,9 +576,13 @@ export default function DMScreen({ navigation, route }: Props) {
             {item.time}
           </Text>
         )}
-        {item.isMine && index === messages.length - 1 && (
+        {item.isMine && item.failed ? (
+          <TouchableOpacity onPress={() => retrySend(friend.handle, item.id)} hitSlop={6}>
+            <Text style={st.sendFailed}>⚠ 전송 실패 · 다시 시도</Text>
+          </TouchableOpacity>
+        ) : item.isMine && index === messages.length - 1 ? (
           <Text style={st.readReceipt}>읽음</Text>
-        )}
+        ) : null}
       </View>
     </View>
     </SwipeRow>
@@ -588,7 +600,7 @@ export default function DMScreen({ navigation, route }: Props) {
         <TouchableOpacity
           style={st.headerCenter}
           activeOpacity={0.7}
-          onPress={() => navigation.navigate('FriendProfile', { username: friend.name, handle: friend.handle })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: friend.id ?? null, username: friend.name, handle: friend.handle })}
         >
           <View style={st.headerAvatarWrap}>
             <View style={st.headerAvatar}>
@@ -920,6 +932,7 @@ const st = StyleSheet.create({
   // 시간
   msgTime: { fontSize: 10, color: C.muted, marginTop: 4, marginLeft: 4 },
   msgTimeMine: { textAlign: 'right', marginRight: 4, marginLeft: 0 },
+  sendFailed: { fontSize: 10, color: '#FF453A', textAlign: 'right', marginRight: 4, marginTop: 2, fontWeight: '600' },
 
   // 읽음 표시
   readReceipt: { fontSize: 10, color: C.accent, textAlign: 'right', marginRight: 4, marginTop: 2 },

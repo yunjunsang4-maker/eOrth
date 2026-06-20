@@ -70,7 +70,7 @@ type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
   const { blockedUsers, blockUser, followingUsers } = useRecords();
-  const { conversations, unreadCount, markRead } = useDM();
+  const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
   const [search, setSearch] = useState('');
   // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
@@ -81,6 +81,24 @@ export default function FriendsScreen({ navigation }: Props) {
     }))
   );
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+
+  // 팔로우 목록 변경을 친구 목록에 반영(새 팔로우 추가/언팔 제거). 로컬 상태(음소거 등)는 유지.
+  useEffect(() => {
+    setFriends((prev) => {
+      const byId = new Map(prev.map((f) => [f.id, f]));
+      return followingUsers.map((u) => {
+        const ex = byId.get(u.id);
+        return ex
+          ? { ...ex, name: u.username, handle: u.username }
+          : { id: u.id, name: u.username, handle: u.username, emoji: '🧳', lastMessage: '', lastMessageAt: 0, unread: 0, online: false };
+      });
+    });
+  }, [followingUsers]);
+
+  // 실시간 DM 수신이 목록과 같은 키(username)로 묶이도록 상대 uuid 매핑을 미리 등록
+  useEffect(() => {
+    followingUsers.forEach((u) => { if (u.id) registerPeer(u.username, u.id); });
+  }, [followingUsers, registerPeer]);
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
