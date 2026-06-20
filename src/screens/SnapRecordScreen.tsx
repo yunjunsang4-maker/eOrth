@@ -120,6 +120,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [backPhoto, setBackPhoto] = useState<string | null>(null);
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
 
   // ─── 메타 ───
   const [caption, setCaption] = useState('');
@@ -174,12 +176,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     })();
   }, []);
 
-  // 카메라 전환 후 자동 촬영
+  // 카메라 전환 후 자동 촬영 — 전환된 카메라가 준비되면 촬영(고정 지연 대신 onCameraReady 기반, 폴백 1.2s)
   useEffect(() => {
     if (phase !== 'switching' || !shooting) return;
 
-    const timer = setTimeout(async () => {
-      if (!cameraRef.current) { setShooting(false); return; }
+    const capture = async () => {
+      if (secondShotRef.current || !cameraRef.current) return;
+      secondShotRef.current = true;
 
       // 플래시 효과
       Animated.sequence([
@@ -187,21 +190,27 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
 
-      const secondPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-      if (!secondPhoto) { setShooting(false); setPhase('camera'); return; }
-
-      if (facing === 'front') {
-        setFrontPhoto(secondPhoto.uri);
-      } else {
-        setBackPhoto(secondPhoto.uri);
+      try {
+        const secondPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+        if (!secondPhoto) { setShooting(false); setPhase('camera'); return; }
+        if (facing === 'front') {
+          setFrontPhoto(secondPhoto.uri);
+        } else {
+          setBackPhoto(secondPhoto.uri);
+        }
+        setShooting(false);
+        setPhase('preview');
+      } catch (e) {
+        setShooting(false);
+        setPhase('camera');
+        Alert.alert('촬영 실패', '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.');
       }
+    };
 
-      setShooting(false);
-      setPhase('preview');
-    }, 800);
-
+    // 전환 카메라 준비되면 짧게, 아직이면 최대 1.2초 후 폴백 촬영
+    const timer = setTimeout(capture, cameraReady ? 250 : 1200);
     return () => clearTimeout(timer);
-  }, [phase, shooting]);
+  }, [phase, shooting, cameraReady, facing]);
 
   // ─── 카메라 권한 ───
   if (!permission) {
@@ -238,7 +247,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
   // ─── 동시 촬영 (BeReal 방식) ───
   const takePhoto = async () => {
-    if (!cameraRef.current || shooting) return;
+    if (!cameraRef.current || shooting || !cameraReady) return;
     setShooting(true);
 
     // 플래시 효과
@@ -247,22 +256,29 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start();
 
-    // 1) 현재 카메라(후면 or 전면) 촬영
-    const firstPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-    if (!firstPhoto) { setShooting(false); return; }
+    try {
+      // 1) 현재 카메라(후면 or 전면) 촬영
+      const firstPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      if (!firstPhoto) { setShooting(false); return; }
 
-    const firstFacing = facing;
-    const secondFacing = firstFacing === 'back' ? 'front' : 'back';
+      const firstFacing = facing;
+      const secondFacing = firstFacing === 'back' ? 'front' : 'back';
 
-    if (firstFacing === 'back') {
-      setBackPhoto(firstPhoto.uri);
-    } else {
-      setFrontPhoto(firstPhoto.uri);
+      if (firstFacing === 'back') {
+        setBackPhoto(firstPhoto.uri);
+      } else {
+        setFrontPhoto(firstPhoto.uri);
+      }
+
+      // 2) 카메라 전환 → 준비되면 자동 촬영
+      secondShotRef.current = false;
+      setCameraReady(false);
+      setFacing(secondFacing);
+      setPhase('switching');
+    } catch (e) {
+      setShooting(false);
+      Alert.alert('촬영 실패', '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.');
     }
-
-    // 2) 카메라 전환 → 자동 촬영
-    setFacing(secondFacing);
-    setPhase('switching');
   };
 
   // ─── 재촬영 ───
@@ -271,6 +287,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     setFrontPhoto(null);
     setFacing('back');
     setShooting(false);
+    secondShotRef.current = false;
     setPhase('camera');
   };
 
@@ -320,6 +337,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           ref={cameraRef}
           style={st.camera}
           facing={facing}
+          onCameraReady={() => setCameraReady(true)}
         />
 
         {/* 플래시 오버레이 */}
