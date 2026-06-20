@@ -298,7 +298,6 @@ function StepNavBar({
         <TouchableOpacity
           style={[nav.nextBtn, !canNext && nav.nextBtnDisabled]}
           onPress={onNext}
-          disabled={!canNext}
           activeOpacity={0.85}
         >
           <Text style={nav.nextTxt}>다음 →</Text>
@@ -307,7 +306,6 @@ function StepNavBar({
         <TouchableOpacity
           style={[nav.saveBtn, !canNext && nav.nextBtnDisabled]}
           onPress={onSave}
-          disabled={!canNext}
           activeOpacity={0.85}
         >
           <Text style={nav.saveTxt}>저장하기</Text>
@@ -1068,6 +1066,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const editFirstCountryData = editRecord?.perCountryData?.[editRecord.countryName];
 
   const [step, setStep] = useState(1);
+  const [hintMsg, setHintMsg] = useState(''); // 필수 미충족 안내 토스트
+  const savedRef = useRef(false);             // 저장 후 이탈은 확인 다이얼로그 건너뜀
   const scrollRef = useRef<ScrollView>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
 
@@ -1618,7 +1618,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     if (step === 1) return selectedCountries.length > 0;
     if (step === 2) return medias.length > 0; // 사진 최소 1장 필수
     if (step === TOTAL_STEPS) {
-      return memo.trim().length > 0 && rating > 0 && selectedCompanions.length > 0;
+      if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
+      // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
+      return selectedCountries.every((c, idx) =>
+        idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
+      );
     }
     return true;
   };
@@ -1639,7 +1643,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   const handleSave = () => {
-    if (selectedCountries.length > 0) {
+    if (selectedCountries.length === 0) {
+      Alert.alert('국가를 선택해주세요', '여행한 국가를 1개 이상 선택해야 저장할 수 있어요.');
+      return;
+    }
+    {
       // 현재 활성 국가 데이터 저장
       saveCurrentCountryData();
 
@@ -1712,7 +1720,66 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         });
       }
     }
+    savedRef.current = true;
     navigation.goBack();
+  };
+
+  // 입력 중 이탈 방지 (취소/뒤로가기/제스처) — 저장 시엔 건너뜀
+  useEffect(() => {
+    const hasInput =
+      selectedCountries.length > 0 || medias.length > 0 || memo.trim().length > 0 ||
+      rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
+      !!budget || !!weather || !!flightType;
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (savedRef.current || !hasInput) return;
+      e.preventDefault();
+      Alert.alert('작성을 취소할까요?', '입력한 내용이 저장되지 않아요.', [
+        { text: '계속 작성', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      ]);
+    });
+    return sub;
+  }, [navigation, selectedCountries, medias, memo, rating, selectedCompanions, keywords, budget, weather, flightType]);
+
+  // 필수 미충족 시 빠진 항목 안내
+  const showHint = (msg: string) => { setHintMsg(msg); setTimeout(() => setHintMsg(''), 2200); };
+  const missingHint = (): string[] => {
+    const m: string[] = [];
+    if (step === 1) { if (selectedCountries.length === 0) m.push('국가'); }
+    else if (step === 2) { if (medias.length === 0) m.push('사진'); }
+    else if (step === TOTAL_STEPS) {
+      if (memo.trim().length === 0) m.push('글');
+      const noRating = selectedCountries.some((c, idx) =>
+        idx === activeCountryIdx ? rating <= 0 : (perCountryStore.current[c.name]?.rating ?? 0) <= 0);
+      if (noRating) m.push(isMultiCountry ? '모든 국가 평점' : '평점');
+      if (selectedCompanions.length === 0) m.push('동행자');
+    }
+    return m;
+  };
+  const handleNextPress = () => {
+    if (canGoNext()) { goNext(); return; }
+    const miss = missingHint();
+    showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+  };
+  const handleSavePress = () => {
+    if (canGoNext()) { handleSave(); return; }
+    const miss = missingHint();
+    showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+  };
+
+  // 키워드 추가 (선행 # 정규화 + 중복 방지 + 빈값 무시 + 개수/길이 제한)
+  const KEYWORD_MAX = 10;
+  const KEYWORD_MAXLEN = 20;
+  const addKeyword = (raw: string) => {
+    const base = raw.trim().replace(/^#+/, '').trim().slice(0, KEYWORD_MAXLEN);
+    if (!base) { setKeywordQuery(''); return; }
+    const tag = `#${base}`;
+    setKeywords(prev => {
+      if (prev.includes(tag)) return prev;
+      if (prev.length >= KEYWORD_MAX) { showHint(`키워드는 최대 ${KEYWORD_MAX}개예요`); return prev; }
+      return [...prev, tag];
+    });
+    setKeywordQuery('');
   };
 
   // ── 단계별 제목 ──
@@ -2002,7 +2069,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   onChangeText={setMemo}
                   multiline
                   textAlignVertical="top"
+                  maxLength={1000}
                 />
+                <Text style={s.charCount}>{memo.length}/1000</Text>
               </View>
 
               {/* ── 동행자 선택 ── */}
@@ -2211,26 +2280,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     value={keywordQuery}
                     onChangeText={v => {
                       // 스페이스 입력 시 태그 추가
-                      if (v.endsWith(' ')) {
-                        const tag = v.trim();
-                        if (tag.length > 0 && !keywords.includes(tag)) {
-                          setKeywords(prev => [...prev, tag.startsWith('#') ? tag : `#${tag}`]);
-                        }
-                        setKeywordQuery('');
-                      } else {
-                        setKeywordQuery(v);
-                      }
+                      if (v.endsWith(' ')) addKeyword(v);
+                      else setKeywordQuery(v);
                     }}
                     placeholder={keywords.length === 0 ? '#키워드 추가' : '#'}
                     placeholderTextColor={COLORS.textMuted}
                     returnKeyType="done"
-                    onSubmitEditing={() => {
-                      const tag = keywordQuery.trim();
-                      if (tag.length > 0 && !keywords.includes(tag)) {
-                        setKeywords(prev => [...prev, tag.startsWith('#') ? tag : `#${tag}`]);
-                      }
-                      setKeywordQuery('');
-                    }}
+                    onSubmitEditing={() => addKeyword(keywordQuery)}
                   />
                 </View>
                 <Text style={s.kwHint}>스페이스 또는 엔터로 태그 추가 · 탭해서 삭제</Text>
@@ -2243,14 +2299,21 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* 필수 미충족 안내 토스트 */}
+      {hintMsg !== '' && (
+        <View style={s.hintToast} pointerEvents="none">
+          <Text style={s.hintToastText}>{hintMsg}</Text>
+        </View>
+      )}
+
       {/* 이전 / 다음 / 저장 버튼 */}
       <StepNavBar
         step={step}
         totalSteps={TOTAL_STEPS}
         canNext={canGoNext()}
         onPrev={goPrev}
-        onNext={goNext}
-        onSave={handleSave}
+        onNext={handleNextPress}
+        onSave={handleSavePress}
       />
 
       {/* 캘린더 바텀시트 */}
@@ -2863,6 +2926,23 @@ const s = StyleSheet.create({
     textAlignVertical: 'top',
     paddingTop: 14,
   },
+  charCount: {
+    alignSelf: 'flex-end',
+    marginTop: 4,
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  hintToast: {
+    marginHorizontal: 20,
+    marginBottom: 8,
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.35)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  hintToastText: { color: COLORS.purpleNeon, fontSize: 13, fontWeight: '600', textAlign: 'center' },
   dateBtn: {
     flexDirection: 'row',
     alignItems: 'center',
