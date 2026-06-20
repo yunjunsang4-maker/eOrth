@@ -112,7 +112,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   // ─── 카메라 상태 ───
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'front' | 'back'>('back');
+  const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
   const cameraRef = useRef<CameraView>(null);
+  const cycleFlash = () => setFlash(f => (f === 'off' ? 'auto' : f === 'auto' ? 'on' : 'off'));
 
   // ─── 촬영 단계 ───
   type Phase = 'camera' | 'switching' | 'preview' | 'caption';
@@ -120,6 +122,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [backPhoto, setBackPhoto] = useState<string | null>(null);
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
+  const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
 
   // ─── 메타 ───
   const [caption, setCaption] = useState('');
@@ -174,12 +179,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     })();
   }, []);
 
-  // 카메라 전환 후 자동 촬영
+  // 카메라 전환 후 자동 촬영 — 전환된 카메라가 준비되면 촬영(고정 지연 대신 onCameraReady 기반, 폴백 1.2s)
   useEffect(() => {
     if (phase !== 'switching' || !shooting) return;
 
-    const timer = setTimeout(async () => {
-      if (!cameraRef.current) { setShooting(false); return; }
+    const capture = async () => {
+      if (secondShotRef.current || !cameraRef.current) return;
+      secondShotRef.current = true;
 
       // 플래시 효과
       Animated.sequence([
@@ -187,21 +193,40 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
       ]).start();
 
-      const secondPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-      if (!secondPhoto) { setShooting(false); setPhase('camera'); return; }
-
-      if (facing === 'front') {
-        setFrontPhoto(secondPhoto.uri);
-      } else {
-        setBackPhoto(secondPhoto.uri);
+      try {
+        const secondPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+        if (!secondPhoto) { setShooting(false); setPhase('camera'); return; }
+        if (facing === 'front') {
+          setFrontPhoto(secondPhoto.uri);
+        } else {
+          setBackPhoto(secondPhoto.uri);
+        }
+        setShooting(false);
+        setPhase('preview');
+      } catch (e) {
+        setShooting(false);
+        setPhase('camera');
+        Alert.alert('촬영 실패', '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.');
       }
+    };
 
-      setShooting(false);
-      setPhase('preview');
-    }, 800);
-
+    // 전환 카메라 준비되면 짧게, 아직이면 최대 1.2초 후 폴백 촬영
+    const timer = setTimeout(capture, cameraReady ? 250 : 1200);
     return () => clearTimeout(timer);
-  }, [phase, shooting]);
+  }, [phase, shooting, cameraReady, facing]);
+
+  // 찍은 스냅 두고 나갈 때 확인 (뒤로/스와이프/닫기) — 저장 시엔 건너뜀
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (savedRef.current || (!backPhoto && !frontPhoto)) return;
+      e.preventDefault();
+      Alert.alert('스냅을 삭제할까요?', '찍은 사진이 저장되지 않아요.', [
+        { text: '계속', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      ]);
+    });
+    return sub;
+  }, [navigation, backPhoto, frontPhoto]);
 
   // ─── 카메라 권한 ───
   if (!permission) {
@@ -238,7 +263,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
   // ─── 동시 촬영 (BeReal 방식) ───
   const takePhoto = async () => {
-    if (!cameraRef.current || shooting) return;
+    if (!cameraRef.current || shooting || !cameraReady) return;
     setShooting(true);
 
     // 플래시 효과
@@ -247,22 +272,35 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       Animated.timing(flashAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start();
 
-    // 1) 현재 카메라(후면 or 전면) 촬영
-    const firstPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
-    if (!firstPhoto) { setShooting(false); return; }
+    try {
+      // 1) 현재 카메라(후면 or 전면) 촬영
+      const firstPhoto = await cameraRef.current.takePictureAsync({ quality: 0.85 });
+      if (!firstPhoto) { setShooting(false); return; }
 
-    const firstFacing = facing;
-    const secondFacing = firstFacing === 'back' ? 'front' : 'back';
+      const firstFacing = facing;
+      const secondFacing = firstFacing === 'back' ? 'front' : 'back';
 
-    if (firstFacing === 'back') {
-      setBackPhoto(firstPhoto.uri);
-    } else {
-      setFrontPhoto(firstPhoto.uri);
+      if (firstFacing === 'back') {
+        setBackPhoto(firstPhoto.uri);
+      } else {
+        setFrontPhoto(firstPhoto.uri);
+      }
+
+      // 2) 카메라 전환 → 준비되면 자동 촬영
+      secondShotRef.current = false;
+      setCameraReady(false);
+      setFacing(secondFacing);
+      setPhase('switching');
+    } catch (e) {
+      setShooting(false);
+      Alert.alert('촬영 실패', '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.');
     }
+  };
 
-    // 2) 카메라 전환 → 자동 촬영
-    setFacing(secondFacing);
-    setPhase('switching');
+  // ─── 메인 ↔ 전면(PIP) 스왑 (프리뷰에서 탭) ───
+  const swapPhotos = () => {
+    setBackPhoto(frontPhoto);
+    setFrontPhoto(backPhoto);
   };
 
   // ─── 재촬영 ───
@@ -271,8 +309,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     setFrontPhoto(null);
     setFacing('back');
     setShooting(false);
+    secondShotRef.current = false;
     setPhase('camera');
   };
+
+  // 위치 못 잡고 선택도 없을 때 폴백할 홈 국가 (term 첫 토큰 = 국가코드)
+  const homeCountry = COUNTRIES.find(c => c.term.split(' ')[0] === (homeCountryCode || '').toLowerCase()) || null;
 
   // ─── 저장 ───
   const handleSave = () => {
@@ -280,9 +322,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;
 
-    const finalCountry = selectedCountry || (detectedCountry
-      ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
-      : null);
+    const finalCountry = selectedCountry
+      || (detectedCountry
+        ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
+        : null)
+      || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
@@ -309,6 +353,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
     });
 
+    savedRef.current = true;
     navigation.goBack();
   };
 
@@ -320,6 +365,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           ref={cameraRef}
           style={st.camera}
           facing={facing}
+          flash={flash}
+          onCameraReady={() => setCameraReady(true)}
         />
 
         {/* 플래시 오버레이 */}
@@ -339,7 +386,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
               </Text>
             )}
           </View>
-          <View style={{ width: 44 }} />
+          <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel="플래시 전환">
+            <GlassFill intensity={24} tint="dark" />
+            <Text style={[st.topBtnText, { fontSize: 17, color: flash === 'on' ? C.snapYellow : flash === 'auto' ? '#22D3EE' : 'rgba(255,255,255,0.5)' }]}>
+              {flash === 'auto' ? '⚡A' : '⚡'}
+            </Text>
+          </TouchableOpacity>
         </SafeAreaView>
 
         {/* 안내 문구 */}
@@ -438,9 +490,20 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           <Image source={{ uri: backPhoto }} style={st.previewMain} resizeMode="cover" />
         )}
 
-        {/* 전면 사진 (오버레이 PIP) */}
-        {frontPhoto && (
-          <View style={st.pipWrapContainer}>
+        {/* 닫기 */}
+        <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="닫기">
+          <Text style={st.previewCloseText}>✕</Text>
+        </TouchableOpacity>
+
+        {/* 전면 사진 (오버레이 PIP) — 탭하면 메인과 전환 */}
+        {frontPhoto && backPhoto && (
+          <TouchableOpacity
+            style={st.pipWrapContainer}
+            onPress={swapPhotos}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="메인 사진과 전환"
+          >
             <LinearGradient
               colors={['#22D3EE', '#A855F7', '#D946EF']}
               start={{ x: 0, y: 0 }}
@@ -449,8 +512,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             />
             <View style={st.pipInner}>
               <Image source={{ uri: frontPhoto }} style={st.pipImage} resizeMode="cover" />
+              <View style={st.pipSwapBadge}>
+                <Text style={st.pipSwapIcon}>⇄</Text>
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* 위치 & 시간 뱃지 */}
@@ -464,6 +530,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             <View style={st.previewBadge}>
               <Text style={st.previewBadgeText}>
                 ⏱ {formatLateSeconds(Math.round((shotStartTime - notifTimestamp) / 1000))}
+              </Text>
+            </View>
+          )}
+          {!detectedCountry && !selectedCountry && (
+            <View style={st.previewBadge}>
+              <Text style={st.previewBadgeText}>
+                📍 위치 미확인{homeCountry ? ` · ${homeCountry.flag} ${homeCountry.name}로 기록` : ''}
               </Text>
             </View>
           )}
@@ -640,6 +713,13 @@ const st = StyleSheet.create({
     backgroundColor: '#111',
   },
   previewMain: { width: '100%', height: '100%' },
+  previewClose: {
+    position: 'absolute', top: 12, right: 12, zIndex: 10,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewCloseText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   pipWrapContainer: {
     position: 'absolute', top: 16, left: 16,
     width: SW * 0.28, height: SW * 0.37,
@@ -655,6 +735,13 @@ const st = StyleSheet.create({
     overflow: 'hidden',
   },
   pipImage: { width: '100%', height: '100%' },
+  pipSwapBadge: {
+    position: 'absolute', right: 4, bottom: 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pipSwapIcon: { color: '#fff', fontSize: 13, fontWeight: '700' },
   previewBadges: {
     position: 'absolute', bottom: 16, left: 16, gap: 6,
   },

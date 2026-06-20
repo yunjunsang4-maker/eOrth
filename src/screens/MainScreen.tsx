@@ -271,7 +271,9 @@ export default function MainScreen({ navigation, route }: Props) {
     };
   }, [route.params?.startTutorial]);
 
-  const [hasUnreadAlerts, setHasUnreadAlerts] = useState(true);
+  // 실제 미확인 알림 수에 연동돼야 함. 현재 알림 소스(NOTIS)가 비어 있어 기본은 점 없음.
+  // (추후 알림 스토어가 생기면 미확인 개수>0일 때 true로 연동)
+  const [hasUnreadAlerts, setHasUnreadAlerts] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드
@@ -587,7 +589,9 @@ export default function MainScreen({ navigation, route }: Props) {
           setFormatModalVisible(true);
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      if (__DEV__) console.warn('지구본 메시지 파싱 실패:', err, e?.nativeEvent?.data);
+    }
   };
 
   // 국가 지도 지역 탭 핸들러
@@ -605,7 +609,9 @@ export default function MainScreen({ navigation, route }: Props) {
         });
         setFormatModalVisible(true);
       }
-    } catch (_) {}
+    } catch (err) {
+      if (__DEV__) console.warn('지역 지도 메시지 파싱 실패:', err, e?.nativeEvent?.data);
+    }
   };
 
   const handleFormatSelect = (type: string) => {
