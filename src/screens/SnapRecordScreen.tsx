@@ -124,6 +124,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [shooting, setShooting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
+  const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
 
   // ─── 메타 ───
   const [caption, setCaption] = useState('');
@@ -214,6 +215,19 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     return () => clearTimeout(timer);
   }, [phase, shooting, cameraReady, facing]);
 
+  // 찍은 스냅 두고 나갈 때 확인 (뒤로/스와이프/닫기) — 저장 시엔 건너뜀
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (savedRef.current || (!backPhoto && !frontPhoto)) return;
+      e.preventDefault();
+      Alert.alert('스냅을 삭제할까요?', '찍은 사진이 저장되지 않아요.', [
+        { text: '계속', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      ]);
+    });
+    return sub;
+  }, [navigation, backPhoto, frontPhoto]);
+
   // ─── 카메라 권한 ───
   if (!permission) {
     return <View style={st.bg} />;
@@ -299,15 +313,20 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     setPhase('camera');
   };
 
+  // 위치 못 잡고 선택도 없을 때 폴백할 홈 국가 (term 첫 토큰 = 국가코드)
+  const homeCountry = COUNTRIES.find(c => c.term.split(' ')[0] === (homeCountryCode || '').toLowerCase()) || null;
+
   // ─── 저장 ───
   const handleSave = () => {
     const lateSeconds = notifTimestamp
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;
 
-    const finalCountry = selectedCountry || (detectedCountry
-      ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
-      : null);
+    const finalCountry = selectedCountry
+      || (detectedCountry
+        ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
+        : null)
+      || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
@@ -334,6 +353,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
     });
 
+    savedRef.current = true;
     navigation.goBack();
   };
 
@@ -470,6 +490,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           <Image source={{ uri: backPhoto }} style={st.previewMain} resizeMode="cover" />
         )}
 
+        {/* 닫기 */}
+        <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="닫기">
+          <Text style={st.previewCloseText}>✕</Text>
+        </TouchableOpacity>
+
         {/* 전면 사진 (오버레이 PIP) — 탭하면 메인과 전환 */}
         {frontPhoto && backPhoto && (
           <TouchableOpacity
@@ -505,6 +530,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             <View style={st.previewBadge}>
               <Text style={st.previewBadgeText}>
                 ⏱ {formatLateSeconds(Math.round((shotStartTime - notifTimestamp) / 1000))}
+              </Text>
+            </View>
+          )}
+          {!detectedCountry && !selectedCountry && (
+            <View style={st.previewBadge}>
+              <Text style={st.previewBadgeText}>
+                📍 위치 미확인{homeCountry ? ` · ${homeCountry.flag} ${homeCountry.name}로 기록` : ''}
               </Text>
             </View>
           )}
@@ -681,6 +713,13 @@ const st = StyleSheet.create({
     backgroundColor: '#111',
   },
   previewMain: { width: '100%', height: '100%' },
+  previewClose: {
+    position: 'absolute', top: 12, right: 12, zIndex: 10,
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  previewCloseText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   pipWrapContainer: {
     position: 'absolute', top: 16, left: 16,
     width: SW * 0.28, height: SW * 0.37,
