@@ -16,6 +16,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -60,6 +61,10 @@ export default function FriendProfileScreen({
   const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
+  // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
+  const { nickname: myNick, handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const isSelf = !!myHandle && route.params?.handle === myHandle;
+  const { records: myRecords } = useRecords();
 
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
@@ -82,22 +87,24 @@ export default function FriendProfileScreen({
     return () => { alive = false; };
   }, [userId]);
 
-  // 친구의 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시)
+  // 본인이면 로컬 기록, 타인이면 백엔드 공개 글을 사용
+  const sourcePosts = isSelf ? myRecords : userPosts;
+  // 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시)
   const friendBadges = useMemo(() => {
-    const earned = computeEarnedBadgeIds(userPosts, BADGES);
+    const earned = computeEarnedBadgeIds(sourcePosts, BADGES);
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
-  }, [userPosts]);
+  }, [sourcePosts]);
 
-  // 화면 표시값 (백엔드 우선, 없으면 빈 값)
+  // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {
-    name: profileRow?.nickname || profileRow?.handle || displayUsername,
+    name: isSelf ? (myNick || displayUsername) : (profileRow?.nickname || profileRow?.handle || displayUsername),
     emoji: profileRow?.emoji || '🧳',
-    photo: profileRow?.profile_photo || null,
-    bio: profileRow?.bio || '',
-    recordCount: userPosts.length,
+    photo: isSelf ? (myPhoto || null) : (profileRow?.profile_photo || null),
+    bio: isSelf ? (myBio || '') : (profileRow?.bio || ''),
+    recordCount: sourcePosts.length,
     followers: followerCount,
-    visitedCountries: new Set(userPosts.map((p) => p.countryName).filter(Boolean)).size,
-    trips: userPosts.map((p) => ({
+    visitedCountries: new Set(sourcePosts.map((p) => p.countryName).filter(Boolean)).size,
+    trips: sourcePosts.map((p) => ({
       id: p.id,
       emoji: p.countryFlag || '🌍',
       countryFlag: p.countryFlag || '',
@@ -237,28 +244,32 @@ export default function FriendProfileScreen({
           </View>
         </View>
 
-        {/* ── 팔로우 버튼 ── */}
-        <TouchableOpacity
-          style={[s.followBtn, following && s.followingBtn]}
-          onPress={toggleFollow}
-          activeOpacity={0.85}
-        >
-          <Text style={[s.followBtnText, following && s.followingBtnText]}>
-            {following ? '팔로잉 ✓' : '팔로우'}
-          </Text>
-        </TouchableOpacity>
+        {/* ── 팔로우 버튼 (본인 프로필이면 숨김) ── */}
+        {!isSelf && (
+          <>
+            <TouchableOpacity
+              style={[s.followBtn, following && s.followingBtn]}
+              onPress={toggleFollow}
+              activeOpacity={0.85}
+            >
+              <Text style={[s.followBtnText, following && s.followingBtnText]}>
+                {following ? '팔로잉 ✓' : '팔로우'}
+              </Text>
+            </TouchableOpacity>
 
-        {/* ── 맞팔 토글 (팔로잉 중일 때만) — 친구 수 배지(78·81·82·83) 판정용 ── */}
-        {following && (
-          <TouchableOpacity
-            style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
-            onPress={() => setFollowMutual(displayUsername, !isMutual)}
-            activeOpacity={0.85}
-          >
-            <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
-              {isMutual ? '🤝 맞팔 중' : '맞팔로 표시'}
-            </Text>
-          </TouchableOpacity>
+            {/* ── 맞팔 토글 (팔로잉 중일 때만) — 친구 수 배지(78·81·82·83) 판정용 ── */}
+            {following && (
+              <TouchableOpacity
+                style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
+                onPress={() => setFollowMutual(displayUsername, !isMutual)}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
+                  {isMutual ? '🤝 맞팔 중' : '맞팔로 표시'}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </>
         )}
 
         {/* ── 배지 하이라이트 (친구 공개 글로 계산) — 내 프로필과 동일 ── */}

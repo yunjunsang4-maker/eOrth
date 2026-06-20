@@ -409,7 +409,7 @@ function FeedCard({
       {/* 카드 헤더 */}
       <View style={s.cardHeader}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
           activeOpacity={0.7}
         >
           <View style={s.feedAvatar}>
@@ -418,7 +418,7 @@ function FeedCard({
         </TouchableOpacity>
         <View style={s.userInfo}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
             activeOpacity={0.7}
           >
             <Text style={s.userName}>{item.user.handle}</Text>
@@ -672,7 +672,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
         {/* 헤더 */}
         <View style={sc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }} activeOpacity={0.7}
           >
             <View style={sc.avatar}>
@@ -923,7 +923,7 @@ function BlogCard({
         {/* 블로그 헤더 */}
         <View style={bc.header}>
           <TouchableOpacity
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
           >
             <View style={bc.avatar}>
@@ -1221,7 +1221,7 @@ function AlbumCard({
       {/* 헤더 */}
       <View style={ab.header}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
           style={ab.userRow} activeOpacity={0.7}
         >
           <View style={ab.avatar}>
@@ -1533,7 +1533,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
       <TouchableOpacity
         style={d.metaUser}
         activeOpacity={0.7}
-        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name })}
+        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
       >
         <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
           {isMyPost && globalProfilePhoto ? (
