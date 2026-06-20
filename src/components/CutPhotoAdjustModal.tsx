@@ -17,6 +17,7 @@ interface Props {
   onConfirm: (t: CutTransform) => void;
   onCancel: () => void;
   onChangePhoto: () => void;
+  onRemove?: () => void; // 슬롯 비우기(빈 칸으로)
 }
 
 const MAX_SCALE = 5;
@@ -95,7 +96,7 @@ function clampT(tx: number, ty: number, s: number, cfg: Cfg) {
   };
 }
 
-export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto }: Props) {
+export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto, onRemove }: Props) {
   // 프레임 크기 — aspect에 맞춰 화면에 fit
   const maxW = SW * 0.82;
   const maxH = SH * 0.52;
@@ -207,6 +208,11 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
             <TouchableOpacity onPress={onChangePhoto} style={s.btnGhost} activeOpacity={0.8}>
               <Text style={s.btnGhostTxt}>사진 변경</Text>
             </TouchableOpacity>
+            {onRemove && (
+              <TouchableOpacity onPress={onRemove} style={s.btnDanger} activeOpacity={0.8}>
+                <Text style={s.btnDangerTxt}>삭제</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={onCancel} style={s.btnGhost} activeOpacity={0.8}>
               <Text style={s.btnGhostTxt}>취소</Text>
             </TouchableOpacity>
@@ -232,4 +238,6 @@ const s = StyleSheet.create({
   btnGhostTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   btnPrimary: { paddingHorizontal: 26, paddingVertical: 11, borderRadius: 22, backgroundColor: '#6B21A8' },
   btnPrimaryTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  btnDanger: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,59,48,0.5)' },
+  btnDangerTxt: { color: '#FF3B30', fontSize: 14, fontWeight: '600' },
 });

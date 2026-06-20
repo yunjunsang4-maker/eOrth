@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
@@ -60,26 +60,36 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
 
   const pickFrame = (id: string) => {
     const next = getCutFrame(id)!;
+    const nextN = cutSlotCount(next.layout);
     setFrameId(id);
-    setPhotos(Array(cutSlotCount(next.layout)).fill(null));
-    setTransforms(Array(cutSlotCount(next.layout)).fill(null));
+    if (nextN === slotN) {
+      // 같은 칸 수: 사진은 유지, 위치 조정만 초기화(프레임마다 슬롯 비율이 달라 재정렬)
+      setTransforms(Array(nextN).fill(null));
+    } else {
+      setPhotos(Array(nextN).fill(null));
+      setTransforms(Array(nextN).fill(null));
+    }
   };
 
   // 슬롯 사진 선택 → 성공 시 조정 모달 자동 오픈
   const pickInto = async (i: number) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showPermissionDeniedAlert('갤러리');
-      return;
-    }
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
-    if (!r.canceled && r.assets[0]) {
-      setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
-      setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
-      setAdjustSlot(i);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showPermissionDeniedAlert('갤러리');
+        return;
+      }
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        quality: 0.85,
+      });
+      if (!r.canceled && r.assets[0]) {
+        setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
+        setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
+        setAdjustSlot(i);
+      }
+    } catch (e: any) {
+      Alert.alert('오류', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
     }
   };
 
@@ -95,6 +105,18 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     return (s.w / s.h) * CUT_LAYOUTS[frame.layout].aspect;
   };
 
+  // 취소 — 사진 배치 중이면 확인
+  const handleCancel = () => {
+    if (photos.some(Boolean)) {
+      Alert.alert('나가시겠어요?', '편집 중인 스트립이 저장되지 않아요.', [
+        { text: '계속 편집', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: () => navigation.goBack() },
+      ]);
+    } else {
+      navigation.goBack();
+    }
+  };
+
   // 네컷 완성 → 미리보기 캡처 후 여행정보 입력 화면으로 이동
   const goNext = async () => {
     if (photos.filter(Boolean).length < slotN) {
@@ -103,8 +125,12 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     }
     let previewUri = '';
     try {
-      // 캡처 직전 레이아웃 안정화를 위해 한 프레임 양보
-      await new Promise((res) => requestAnimationFrame(() => res(null)));
+      // 캡처 전 사진 디코드/로드 보장 (빈·깨진 미리보기 방지)
+      await Promise.all(
+        (photos.filter(Boolean) as string[]).map((u) => Image.prefetch(u).catch(() => false))
+      );
+      // 레이아웃 안정화를 위해 두 프레임 양보
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
       previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.9 });
     } catch (e) {
       Alert.alert('오류', '미리보기 생성에 실패했어요.');
@@ -120,7 +146,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     <SafeAreaView style={st.root}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={handleCancel} hitSlop={8}>
           <Text style={st.cancel}>취소</Text>
         </TouchableOpacity>
         <Text style={st.title}>스트립</Text>
@@ -215,6 +241,14 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           const i = adjustSlot;
           setAdjustSlot(null);
           if (i !== null) pickInto(i);
+        }}
+        onRemove={() => {
+          const i = adjustSlot;
+          setAdjustSlot(null);
+          if (i !== null) {
+            setPhotos((p) => { const n = [...p]; n[i] = null; return n; });
+            setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
+          }
         }}
       />
     </SafeAreaView>
