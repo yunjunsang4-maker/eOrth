@@ -1123,14 +1123,28 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
   );
   const selectMedia = async () => {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsMultipleSelection: true,
-      selectionLimit: 30 - medias.length,
-      quality: 0.8,
-    });
-    if (!result.canceled && result.assets) {
-      setMedias(prev => [...prev, ...result.assets.map(a => a.uri)]);
+    const slots = 30 - medias.length;
+    if (slots <= 0) {
+      Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
+      return;
+    }
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsMultipleSelection: true,
+        selectionLimit: slots, // slots>=1 보장 (0이면 무제한이 되어 30장 초과 위험)
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets) {
+        const picked = result.assets.map(a => a.uri);
+        setMedias(prev => {
+          const existing = new Set(prev);
+          const add = picked.filter(u => !existing.has(u)).slice(0, 30 - prev.length);
+          return [...prev, ...add];
+        });
+      }
+    } catch (e: any) {
+      Alert.alert('불러오기 실패', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
     }
   };
 
