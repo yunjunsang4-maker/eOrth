@@ -60,26 +60,36 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
 
   const pickFrame = (id: string) => {
     const next = getCutFrame(id)!;
+    const nextN = cutSlotCount(next.layout);
     setFrameId(id);
-    setPhotos(Array(cutSlotCount(next.layout)).fill(null));
-    setTransforms(Array(cutSlotCount(next.layout)).fill(null));
+    if (nextN === slotN) {
+      // 같은 칸 수: 사진은 유지, 위치 조정만 초기화(프레임마다 슬롯 비율이 달라 재정렬)
+      setTransforms(Array(nextN).fill(null));
+    } else {
+      setPhotos(Array(nextN).fill(null));
+      setTransforms(Array(nextN).fill(null));
+    }
   };
 
   // 슬롯 사진 선택 → 성공 시 조정 모달 자동 오픈
   const pickInto = async (i: number) => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      showPermissionDeniedAlert('갤러리');
-      return;
-    }
-    const r = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.85,
-    });
-    if (!r.canceled && r.assets[0]) {
-      setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
-      setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
-      setAdjustSlot(i);
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showPermissionDeniedAlert('갤러리');
+        return;
+      }
+      const r = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.85,
+      });
+      if (!r.canceled && r.assets[0]) {
+        setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
+        setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
+        setAdjustSlot(i);
+      }
+    } catch (e: any) {
+      Alert.alert('오류', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
     }
   };
 
@@ -93,6 +103,18 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   const slotAspect = (i: number) => {
     const s = CUT_LAYOUTS[frame.layout].slots[i];
     return (s.w / s.h) * CUT_LAYOUTS[frame.layout].aspect;
+  };
+
+  // 취소 — 사진 배치 중이면 확인
+  const handleCancel = () => {
+    if (photos.some(Boolean)) {
+      Alert.alert('나가시겠어요?', '편집 중인 스트립이 저장되지 않아요.', [
+        { text: '계속 편집', style: 'cancel' },
+        { text: '나가기', style: 'destructive', onPress: () => navigation.goBack() },
+      ]);
+    } else {
+      navigation.goBack();
+    }
   };
 
   // 네컷 완성 → 미리보기 캡처 후 여행정보 입력 화면으로 이동
@@ -120,7 +142,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     <SafeAreaView style={st.root}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={8}>
+        <TouchableOpacity onPress={handleCancel} hitSlop={8}>
           <Text style={st.cancel}>취소</Text>
         </TouchableOpacity>
         <Text style={st.title}>스트립</Text>
