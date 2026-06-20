@@ -1466,8 +1466,8 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 메모 (본문에 이미 표시된 피드·앨범은 중복 방지) ── */}
-          {record.memo && viewType !== 'feed' && viewType !== 'album' && (
+          {/* ── 메모 (본문에 글이 나오는 피드·앨범·스트립은 중복 방지, 블로그만 표시) ── */}
+          {record.memo && viewType === 'blog' && (
             <View style={s.memoBox}>
               <Text style={s.memoText}>{record.memo}</Text>
             </View>

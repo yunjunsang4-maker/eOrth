@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
@@ -38,6 +38,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     Array(cutSlotCount(firstBasic.layout)).fill(null)
   );
   const [adjustSlot, setAdjustSlot] = useState<number | null>(null);
+  const [pickingPhoto, setPickingPhoto] = useState(false); // 사진 불러오는 중(특히 iCloud 다운로드)
   const canvasRef = useRef<View>(null);
 
   const frame = getCutFrame(frameId)!;
@@ -79,9 +80,10 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         showPermissionDeniedAlert('갤러리');
         return;
       }
+      setPickingPhoto(true); // iCloud 다운로드/처리 동안 멈춤 느낌 방지
+      // quality 미지정 = 재압축 생략(로컬 사진 선택이 더 빠름). iCloud 다운로드는 시스템 동작이라 별도.
       const r = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
-        quality: 0.85,
       });
       if (!r.canceled && r.assets[0]) {
         setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
@@ -90,6 +92,8 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       }
     } catch (e: any) {
       Alert.alert('오류', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+    } finally {
+      setPickingPhoto(false);
     }
   };
 
@@ -251,11 +255,25 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           }
         }}
       />
+
+      {/* 사진 불러오는 중 (특히 iCloud 다운로드) */}
+      {pickingPhoto && (
+        <View style={st.loadingOverlay}>
+          <ActivityIndicator size="large" color={C.purple} />
+          <Text style={st.loadingText}>사진 불러오는 중…</Text>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
 
 const st = StyleSheet.create({
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', gap: 12,
+  },
+  loadingText: { color: C.white, fontSize: 14, fontWeight: '600' },
   root: { flex: 1, backgroundColor: C.bg },
   header: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
