@@ -112,7 +112,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   // ─── 카메라 상태 ───
   const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'front' | 'back'>('back');
+  const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
   const cameraRef = useRef<CameraView>(null);
+  const cycleFlash = () => setFlash(f => (f === 'off' ? 'auto' : f === 'auto' ? 'on' : 'off'));
 
   // ─── 촬영 단계 ───
   type Phase = 'camera' | 'switching' | 'preview' | 'caption';
@@ -281,6 +283,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     }
   };
 
+  // ─── 메인 ↔ 전면(PIP) 스왑 (프리뷰에서 탭) ───
+  const swapPhotos = () => {
+    setBackPhoto(frontPhoto);
+    setFrontPhoto(backPhoto);
+  };
+
   // ─── 재촬영 ───
   const retake = () => {
     setBackPhoto(null);
@@ -337,6 +345,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           ref={cameraRef}
           style={st.camera}
           facing={facing}
+          flash={flash}
           onCameraReady={() => setCameraReady(true)}
         />
 
@@ -357,7 +366,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
               </Text>
             )}
           </View>
-          <View style={{ width: 44 }} />
+          <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel="플래시 전환">
+            <GlassFill intensity={24} tint="dark" />
+            <Text style={[st.topBtnText, { fontSize: 17, color: flash === 'on' ? C.snapYellow : flash === 'auto' ? '#22D3EE' : 'rgba(255,255,255,0.5)' }]}>
+              {flash === 'auto' ? '⚡A' : '⚡'}
+            </Text>
+          </TouchableOpacity>
         </SafeAreaView>
 
         {/* 안내 문구 */}
@@ -456,9 +470,15 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           <Image source={{ uri: backPhoto }} style={st.previewMain} resizeMode="cover" />
         )}
 
-        {/* 전면 사진 (오버레이 PIP) */}
-        {frontPhoto && (
-          <View style={st.pipWrapContainer}>
+        {/* 전면 사진 (오버레이 PIP) — 탭하면 메인과 전환 */}
+        {frontPhoto && backPhoto && (
+          <TouchableOpacity
+            style={st.pipWrapContainer}
+            onPress={swapPhotos}
+            activeOpacity={0.85}
+            accessibilityRole="button"
+            accessibilityLabel="메인 사진과 전환"
+          >
             <LinearGradient
               colors={['#22D3EE', '#A855F7', '#D946EF']}
               start={{ x: 0, y: 0 }}
@@ -467,8 +487,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             />
             <View style={st.pipInner}>
               <Image source={{ uri: frontPhoto }} style={st.pipImage} resizeMode="cover" />
+              <View style={st.pipSwapBadge}>
+                <Text style={st.pipSwapIcon}>⇄</Text>
+              </View>
             </View>
-          </View>
+          </TouchableOpacity>
         )}
 
         {/* 위치 & 시간 뱃지 */}
@@ -673,6 +696,13 @@ const st = StyleSheet.create({
     overflow: 'hidden',
   },
   pipImage: { width: '100%', height: '100%' },
+  pipSwapBadge: {
+    position: 'absolute', right: 4, bottom: 4,
+    width: 22, height: 22, borderRadius: 11,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  pipSwapIcon: { color: '#fff', fontSize: 13, fontWeight: '700' },
   previewBadges: {
     position: 'absolute', bottom: 16, left: 16, gap: 6,
   },
