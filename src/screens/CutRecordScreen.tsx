@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { captureRef } from 'react-native-view-shot';
@@ -80,7 +80,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         return;
       }
       const r = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.85,
       });
       if (!r.canceled && r.assets[0]) {
@@ -125,8 +125,12 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     }
     let previewUri = '';
     try {
-      // 캡처 직전 레이아웃 안정화를 위해 한 프레임 양보
-      await new Promise((res) => requestAnimationFrame(() => res(null)));
+      // 캡처 전 사진 디코드/로드 보장 (빈·깨진 미리보기 방지)
+      await Promise.all(
+        (photos.filter(Boolean) as string[]).map((u) => Image.prefetch(u).catch(() => false))
+      );
+      // 레이아웃 안정화를 위해 두 프레임 양보
+      await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
       previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.9 });
     } catch (e) {
       Alert.alert('오류', '미리보기 생성에 실패했어요.');
@@ -237,6 +241,14 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           const i = adjustSlot;
           setAdjustSlot(null);
           if (i !== null) pickInto(i);
+        }}
+        onRemove={() => {
+          const i = adjustSlot;
+          setAdjustSlot(null);
+          if (i !== null) {
+            setPhotos((p) => { const n = [...p]; n[i] = null; return n; });
+            setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
+          }
         }}
       />
     </SafeAreaView>

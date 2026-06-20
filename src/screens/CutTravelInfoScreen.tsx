@@ -331,10 +331,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const removeCompanionFriend = (f: string) =>
     setCompanionFriends(prev => prev.filter(x => x !== f));
   const addKeyword = (raw: string) => {
-    const tag = raw.trim();
-    if (!tag) return;
-    const kw = tag.startsWith('#') ? tag : `#${tag}`;
-    if (!keywords.includes(kw)) setKeywords(prev => [...prev, kw]);
+    const KEYWORD_MAX = 10, KEYWORD_MAXLEN = 20;
+    const base = raw.trim().replace(/^#+/, '').trim().slice(0, KEYWORD_MAXLEN);
+    if (!base) return;
+    const kw = `#${base}`;
+    setKeywords(prev => {
+      if (prev.includes(kw)) return prev;
+      if (prev.length >= KEYWORD_MAX) { Alert.alert('알림', `키워드는 최대 ${KEYWORD_MAX}개예요`); return prev; }
+      return [...prev, kw];
+    });
   };
 
   // ─── 별점 (0.5 단위 드래그) ───
@@ -434,7 +439,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       viewType: 'cut',
       cutPhoto,
     });
-    navigation.popToTop();
+    navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀
   };
 
   return (

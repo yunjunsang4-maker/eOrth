@@ -1130,7 +1130,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsMultipleSelection: true,
         selectionLimit: slots, // slots>=1 보장 (0이면 무제한이 되어 30장 초과 위험)
         quality: 0.8,
