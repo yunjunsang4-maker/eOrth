@@ -9,6 +9,10 @@ import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 
+// OAuth 콜백으로 인앱 브라우저가 돌아왔을 때 세션을 정상 종료시킨다.
+// (일부 기기에서 브라우저가 닫히지 않는 문제 예방 — expo-web-browser 권장 호출)
+WebBrowser.maybeCompleteAuthSession();
+
 export interface AuthResult {
   ok: boolean;
   /** 가입 후 이메일 인증 대기 상태 (Supabase "Confirm email" 활성화 시) */
