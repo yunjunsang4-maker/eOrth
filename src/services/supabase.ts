@@ -9,6 +9,7 @@
  */
 
 import 'react-native-url-polyfill/auto';
+import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
@@ -28,3 +29,15 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       },
     })
   : null;
+
+// 토큰 자동갱신을 앱 활성 상태에 묶는다 (Supabase React Native 권장 패턴).
+// 포그라운드일 때만 갱신 타이머를 돌려 장시간 백그라운드 후 복귀 시 세션 만료를 방지한다.
+if (supabase) {
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      supabase.auth.startAutoRefresh();
+    } else {
+      supabase.auth.stopAutoRefresh();
+    }
+  });
+}
