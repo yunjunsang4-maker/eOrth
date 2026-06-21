@@ -56,6 +56,18 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 }
 
+/** 가입 인증 메일 재전송 (Confirm email 활성화 시) */
+export async function resendEmailConfirmation(email: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
