@@ -36,6 +36,11 @@ import type { RootStackScreenProps } from '../navigation/types';
 // 이메일 형식 검증 (메인 폼·재설정 모달 공통)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
+// 전송 전 정규화: 공백 제거 + 소문자 (대소문자 차이로 인한 별도 계정/로그인 실패 방지)
+const normalizeEmail = (v: string) => v.trim().toLowerCase();
+
+// 인증 메일 재전송 최소 간격(초)
+const RESEND_COOLDOWN_SEC = 30;
 
 type Props = RootStackScreenProps<'Login'>;
 
@@ -58,6 +63,8 @@ export default function LoginScreen({ navigation }: Props) {
   // 입력 흐름(키보드 다음/완료) 제어용 refs
   const passwordRef = useRef<TextInput>(null);
   const confirmRef = useRef<TextInput>(null);
+  // 인증 메일 재전송 연타 방지용 마지막 전송 시각(ms)
+  const lastResendAt = useRef(0);
 
   // Forgot password modal state
   const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
@@ -184,7 +191,7 @@ export default function LoginScreen({ navigation }: Props) {
     if (!forgotEmail.trim()) return;
     setIsResetting(true);
     if (isSupabaseConfigured) {
-      const result = await sendPasswordReset(forgotEmail.trim());
+      const result = await sendPasswordReset(normalizeEmail(forgotEmail));
       setIsResetting(false);
       if (!result.ok) {
         Alert.alert('메일 발송 실패', result.error ?? '메일 발송에 실패했어요.');
@@ -219,7 +226,15 @@ export default function LoginScreen({ navigation }: Props) {
   // 인증 메일 재전송 (Confirm email 활성화 시 메일 미수신 대비)
   const handleResendConfirmation = async (targetEmail: string) => {
     if (!targetEmail) return;
+    // 연타 방지: 마지막 전송 후 RESEND_COOLDOWN_SEC 이내면 막는다
+    const remain = Math.ceil((lastResendAt.current + RESEND_COOLDOWN_SEC * 1000 - Date.now()) / 1000);
+    if (remain > 0) {
+      Alert.alert('잠시만요', `${remain}초 후에 다시 시도해주세요.`);
+      return;
+    }
+    lastResendAt.current = Date.now();
     const result = await resendEmailConfirmation(targetEmail);
+    if (!result.ok) lastResendAt.current = 0; // 실패 시 쿨다운 해제하여 재시도 허용
     Alert.alert(
       result.ok ? '재전송 완료' : '재전송 실패',
       result.ok ? '인증 메일을 다시 보냈어요.\n받은 편지함을 확인해주세요.' : (result.error ?? '잠시 후 다시 시도해주세요.'),
@@ -227,9 +242,10 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    const normEmail = normalizeEmail(email);
     const applySignup = () => {
       setSignUpMethod('email');
-      setSignUpEmail(email.trim() || 'user@eorth.app');
+      setSignUpEmail(normEmail || 'user@eorth.app');
     };
     const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
 
@@ -241,8 +257,8 @@ export default function LoginScreen({ navigation }: Props) {
 
     setSubmitting(true);
     const result = isSignup
-      ? await signUpWithEmail(email.trim(), password)
-      : await signInWithEmail(email.trim(), password);
+      ? await signUpWithEmail(normEmail, password)
+      : await signInWithEmail(normEmail, password);
     setSubmitting(false);
 
     if (!result.ok) {
@@ -250,7 +266,7 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
     if (result.needsEmailConfirm) {
-      const targetEmail = email.trim();
+      const targetEmail = normEmail;
       Alert.alert(
         '이메일 인증',
         '인증 메일을 보냈어요.\n메일의 링크를 누른 뒤 로그인해주세요.',
