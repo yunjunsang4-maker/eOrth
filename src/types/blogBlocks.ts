@@ -263,6 +263,15 @@ export function blocksToPhotos(blocks: BlogBlock[]): string[] {
   return photos;
 }
 
+// ─── 블록에서 영상 썸네일 URI 추출 (대표사진/커버 후보용) ───
+export function blocksToVideoThumbnails(blocks: BlogBlock[]): string[] {
+  const thumbs: string[] = [];
+  blocks.forEach(b => {
+    if (b.type === 'video' && b.thumbnail) thumbs.push(b.thumbnail);
+  });
+  return thumbs;
+}
+
 // ─── 블록에서 소제목 추출 (목차용) ───
 export function extractHeadings(blocks: BlogBlock[]): { id: string; level: HeadingLevel; text: string }[] {
   return blocks

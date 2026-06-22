@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as ImagePicker from 'expo-image-picker';
+import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
@@ -66,7 +67,7 @@ import {
   genBlockId, createTextBlock, createHeadingBlock, createImageBlock,
   createImagesBlock, createVideoBlock, createSeparatorBlock, createQuoteBlock,
   createLinkBlock, createFileBlock,
-  blocksToPlainText, blocksToPhotos,
+  blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -578,6 +579,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         if (representativePhoto && uris.includes(representativePhoto)) {
           setRepresentativePhoto(null);
         }
+      } else if (target.type === 'video' && (target as VideoBlock).thumbnail === representativePhoto) {
+        setRepresentativePhoto(null);
       }
     }
     setBlocks(prev => prev.filter(b => b.id !== id));
@@ -671,7 +674,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
       });
       if (result.canceled || !result.assets[0]) return;
-      insertBlockAfter(createVideoBlock(result.assets[0].uri));
+      const videoUri = result.assets[0].uri;
+      // 첫 프레임 썸네일 추출 → 피드/지도 커버 + 영상 단독 게시 지원 (실패해도 영상은 삽입)
+      let thumb: string | undefined;
+      try {
+        const t = await VideoThumbnails.getThumbnailAsync(videoUri, { time: 1000, quality: 0.7 });
+        thumb = t.uri;
+      } catch (thumbErr) {
+        console.warn('[handleAddVideo] 썸네일 추출 실패:', thumbErr);
+      }
+      insertBlockAfter(createVideoBlock(videoUri, undefined, thumb));
     } catch (err: any) {
       console.warn('[handleAddVideo] error:', err);
       Alert.alert(
@@ -816,7 +828,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
     const photos = blocksToPhotos(srcBlocks);
+    const videoThumbs = blocksToVideoThumbnails(srcBlocks);
     const bodyText = blocksToPlainText(srcBlocks);
+    // 커버: 직접 지정한 대표사진 → 본문 사진 → 영상 썸네일 순으로 폴백 (영상 단독 글도 커버 확보)
+    const cover = representativePhoto || photos[0] || videoThumbs[0] || undefined;
     return {
       user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
       country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
@@ -834,7 +849,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       companionFriends: companionFriends.length > 0 ? companionFriends : undefined,
       medias: photos.length > 0 ? photos : undefined,
       mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
-      representativePhoto: representativePhoto || undefined,
+      representativePhoto: cover,
       startDate: startDate || undefined,
       endDate: endDate || undefined,
       weather: weather || undefined,
@@ -850,7 +865,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const canSave = (() => {
     if (!selectedCountry) return false;
     const bodyText = blocksToPlainText(blocks);
-    if (!title.trim() && !bodyText) return false;
+    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || b.type === 'video');
+    if (!title.trim() && !bodyText && !hasMedia) return false;
     if (companions.length === 0) return false;
     if (rating <= 0) return false;
     return true;
@@ -872,7 +888,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
     const bodyText = blocksToPlainText(blocks);
-    if (!title.trim() && !bodyText) { Alert.alert('내용 입력', '제목이나 본문을 작성해주세요.'); return; }
+    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || b.type === 'video');
+    if (!title.trim() && !bodyText && !hasMedia) { Alert.alert('내용 입력', '제목·본문 또는 사진/영상을 추가해주세요.'); return; }
     if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
     if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
 
@@ -1543,7 +1560,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       <RepPhotoModal
         visible={repPhotoModalVisible}
-        photos={blocksToPhotos(blocks)}
+        photos={[...blocksToPhotos(blocks), ...blocksToVideoThumbnails(blocks)]}
         selectedPhoto={representativePhoto}
         onSelect={(uri) => setRepresentativePhoto(uri)}
         onClose={() => setRepPhotoModalVisible(false)}
