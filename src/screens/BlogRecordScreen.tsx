@@ -52,7 +52,6 @@ import {
   MapIcon as SvgMapIcon,
   GalleryIcon,
   CameraIcon,
-  StickerIcon,
   LinkIcon,
   PaperclipIcon,
 } from '../components/icons';
@@ -60,13 +59,13 @@ import * as DocumentPicker from 'expo-document-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
   BlogBlock, TextBlock, HeadingBlock, ImageBlock, ImagesBlock, VideoBlock,
-  SeparatorBlock, QuoteBlock, LinkBlock, StickerBlock, FileBlock,
+  SeparatorBlock, QuoteBlock, LinkBlock, FileBlock,
   TEXT_COLORS, BG_COLORS,
   FONT_OPTIONS, FONT_SIZE_OPTIONS, TextAlign, SeparatorStyle,
   ImageLayout, HeadingLevel,
   genBlockId, createTextBlock, createHeadingBlock, createImageBlock,
   createImagesBlock, createVideoBlock, createSeparatorBlock, createQuoteBlock,
-  createLinkBlock, createStickerBlock, createFileBlock,
+  createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos,
 } from '../types/blogBlocks';
 
@@ -399,6 +398,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             importedBlocks.push(createImagesBlock(ob.value, layout));
           } else if (ob.type === 'image' && typeof ob.value === 'string' && ob.value) {
             importedBlocks.push(createImageBlock(ob.value));
+          } else if (ob.type === 'video' && typeof ob.value === 'string' && ob.value) {
+            importedBlocks.push(createVideoBlock(ob.value));
           }
         });
       } else {
@@ -432,12 +433,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // ─── 자동 임시저장 (30초) ───
   const draftSaveRef = useRef<((silent?: boolean) => void) | null>(null);
   useEffect(() => {
+    // 편집 모드(기존 게시물 수정)에서는 임시저장을 만들지 않는다
+    if (isEdit) return;
     const timer = setInterval(() => {
       if (!title.trim() && blocks.every(b => b.type === 'text' && !(b as TextBlock).value.trim())) return;
       draftSaveRef.current?.(true);
     }, 30000);
     return () => clearInterval(timer);
-  }, [title, blocks]);
+  }, [title, blocks, isEdit]);
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2500); };
 
@@ -472,6 +475,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     } else {
       setSelectedCountry(null);
     }
+    // 지역
+    if (draft.regionName) {
+      setSelectedRegion({ name: draft.regionName, nameEn: draft.regionNameEn ?? '' });
+    } else {
+      setSelectedRegion(null);
+    }
     // 콘텐츠
     if (draft.blogBlocks && draft.blogBlocks.length > 0) {
       setBlocks(draft.blogBlocks);
@@ -488,6 +497,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setEndDate(draft.endDate || '');
     setRating(draft.rating || 0);
     setCompanions(draft.companions || []);
+    setCompanionFriends(draft.companionFriends || []);
     setWeather(draft.weather || '');
     setBudget(draft.budget ? String(draft.budget.amount) : '');
     setCurrency(draft.budget?.currency || 'KRW');
@@ -651,6 +661,26 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleAddVideo = async () => {
+    setPhotoMenuVisible(false);
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'] as MediaType[],
+        allowsMultipleSelection: false,
+        // 비-Passthrough 프리셋 → iOS가 iCloud 영상을 export 중 자동 다운로드 (PHPhotos 3164 회피, SDK54 대응)
+        videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      insertBlockAfter(createVideoBlock(result.assets[0].uri));
+    } catch (err: any) {
+      console.warn('[handleAddVideo] error:', err);
+      Alert.alert(
+        '영상을 불러올 수 없어요',
+        '영상을 가져오는 중 문제가 발생했어요. 잠시 후 다시 시도하거나 다른 영상을 선택해주세요.'
+      );
+    }
+  };
+
   const handleAddSeparator = (style: SeparatorStyle = 'dots') => {
     insertBlockAfter(createSeparatorBlock(style));
     setSepStylePickerVisible(false);
@@ -690,7 +720,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // ─── 키워드 ───
   const addKeyword = () => {
-    const kw = keywordInput.trim();
+    const raw = keywordInput.trim();
+    const kw = raw.startsWith('#') ? raw.slice(1).trim() : raw;
     if (kw && !keywords.includes(kw) && keywords.length < 10) { setKeywords(prev => [...prev, kw]); setKeywordInput(''); }
   };
 
@@ -800,6 +831,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       memo: memo.trim() || undefined,
       rating: rating || undefined,
       companions: companions.length > 0 ? companions : undefined,
+      companionFriends: companionFriends.length > 0 ? companionFriends : undefined,
       medias: photos.length > 0 ? photos : undefined,
       mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
       representativePhoto: representativePhoto || undefined,
@@ -877,6 +909,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <TouchableOpacity onPress={() => {
           const hasContent = title.trim() || blocks.some(b => b.type === 'text' && (b as TextBlock).value.trim());
           if (!hasContent) { navigation.goBack(); return; }
+          if (isEdit) {
+            Alert.alert('수정 중인 내용이 있어요', '수정을 취소하고 나갈까요?', [
+              { text: '나가기', style: 'destructive', onPress: () => navigation.goBack() },
+              { text: '계속 수정', style: 'cancel' },
+            ]);
+            return;
+          }
           Alert.alert('작성 중인 글이 있어요', '임시저장하고 나갈까요?', [
             { text: '저장 안 함', style: 'destructive', onPress: () => navigation.goBack() },
             { text: '임시저장', onPress: () => { handleDraftSave(false); navigation.goBack(); } },
@@ -973,6 +1012,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.subPanel}>
             <SubMenuItem icon={<GalleryIcon size={20} color="#A1A1B0" />} label="사진 선택" onPress={handleAddPhoto} />
             <SubMenuItem icon={<CameraIcon size={20} color="#A1A1B0" />} label="카메라" onPress={handleCamera} />
+            <SubMenuItem icon="▶" label="영상" onPress={handleAddVideo} />
           </View>
         )}
 
@@ -1047,10 +1087,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             </TouchableOpacity>
             <ToolBtn icon="≡" label="더보기" onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
             <View style={st.toolbarSpacer} />
-            <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
-              <Text style={st.toolbarDraftText}>임시저장</Text>
-            </TouchableOpacity>
-            {blogDrafts.length > 0 && (
+            {!isEdit && (
+              <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
+                <Text style={st.toolbarDraftText}>임시저장</Text>
+              </TouchableOpacity>
+            )}
+            {!isEdit && blogDrafts.length > 0 && (
               <TouchableOpacity style={st.toolbarDraftListBtn} onPress={() => setDraftListVisible(true)} activeOpacity={0.7}>
                 <Text style={st.toolbarDraftListText}>목록 {blogDrafts.length}</Text>
               </TouchableOpacity>
@@ -1506,6 +1548,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         onSelect={(uri) => setRepresentativePhoto(uri)}
         onClose={() => setRepPhotoModalVisible(false)}
       />
+
     </SafeAreaView>
   );
 
@@ -1694,17 +1737,6 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View key={block.id} style={st.linkBlock}>
             <LinkIcon size={16} color="#A1A1B0" />
             <Text style={st.linkUrl} numberOfLines={1}>{lb.url}</Text>
-            <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
-              <Text style={st.blockRemoveText}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        );
-      }
-      case 'sticker': {
-        const skb = block as StickerBlock;
-        return (
-          <View key={block.id} style={st.stickerBlock}>
-            <Text style={st.stickerLabel}>{skb.stickerName}</Text>
             <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.blockRemoveText}>✕</Text>
             </TouchableOpacity>
@@ -2120,12 +2152,8 @@ const st = StyleSheet.create({
   quoteMark: { color: C.purpleNeon, fontSize: 26, fontWeight: '700', opacity: 0.35, marginRight: 6, marginTop: -6 },
   quoteInput: { flex: 1, color: C.dim, fontSize: 14, fontStyle: 'italic', lineHeight: 22, minHeight: 22, paddingVertical: 0 },
   linkBlock: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider, gap: 8 },
-  linkIcon: { fontSize: 16 },
   linkUrl: { flex: 1, color: '#64B5F6', fontSize: 13, textDecorationLine: 'underline' },
-  stickerBlock: { marginVertical: 8, alignItems: 'center', paddingVertical: 16, backgroundColor: C.cardLight, borderRadius: 10 },
-  stickerLabel: { color: C.dim, fontSize: 13, marginTop: 6 },
   fileBlock: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider, gap: 10 },
-  fileIcon: { fontSize: 20 },
   fileName: { color: C.white, fontSize: 13, fontWeight: '500' },
   fileSize: { color: C.muted, fontSize: 11, marginTop: 2 },
   blockRemoveBtn: { position: 'absolute', top: 4, right: 4, width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
@@ -2179,13 +2207,11 @@ const st = StyleSheet.create({
   colorDotActive: { borderColor: C.purpleNeon },
 
   // 링크 입력
-  schedDesc: { color: C.dim, fontSize: 12, textAlign: 'center', marginBottom: 12 },
   schedInput: { height: 44, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
   schedConfirmBtn: { backgroundColor: C.purpleDeep, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   schedConfirmText: { color: C.white, fontSize: 14, fontWeight: '700' },
 
   // 스티커 패널
-  stickerPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, height: '55%', paddingTop: 10 },
   panelHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 8 },
 
   // 여행정보 패널

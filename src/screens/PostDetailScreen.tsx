@@ -21,6 +21,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { WebView } from 'react-native-webview';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
   interpolate, Extrapolation, withTiming, withSpring, runOnJS,
@@ -36,7 +38,6 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import type { BlogBlock, HeadingBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
-import { stickers } from '../components/stickers';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
@@ -244,6 +245,55 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
 };
 
 // ─── 블로그 블록 렌더러 ───
+// ─── 블로그 영상 플레이어 (로컬: expo-video, 임베드: WebView) ───
+const BlogLocalVideo = ({ uri }: { uri: string }) => {
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = false; });
+  return (
+    <VideoView style={blogS.video} player={player} contentFit="contain" nativeControls allowsFullscreen />
+  );
+};
+
+const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+
+const getPlayableVideoUrl = (uri: string) => {
+  const naverEmbedMatch = uri.match(/tv\.naver\.com\/embed\/([A-Za-z0-9]+)/);
+  if (naverEmbedMatch) return `https://m.tv.naver.com/v/${naverEmbedMatch[1]}`;
+  const playerMatch = uri.match(/player\.naver\.com[^"]*vid=([A-Za-z0-9]+)/);
+  if (playerMatch) return `https://m.tv.naver.com/v/${playerMatch[1]}`;
+  return uri;
+};
+
+const BlogVideoBlock = ({ uri, caption }: { uri: string; caption?: string }) => {
+  const isLocal = uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/');
+  const isEmbed = uri.startsWith('http');
+  return (
+    <View style={blogS.imageWrap}>
+      {isLocal ? (
+        <BlogLocalVideo uri={uri} />
+      ) : isEmbed ? (
+        <View style={blogS.video}>
+          <WebView
+            source={{ uri: getPlayableVideoUrl(uri) }}
+            style={{ flex: 1, backgroundColor: '#000' }}
+            userAgent={MOBILE_UA}
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo
+            javaScriptEnabled
+            domStorageEnabled
+          />
+        </View>
+      ) : (
+        <TouchableOpacity style={[blogS.video, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={0.7} onPress={() => Linking.openURL(uri).catch(() => {})}>
+          <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
+          <Text style={{ color: '#A1A1B0', fontSize: 12, marginTop: 8 }}>외부 영상 (탭하여 열기)</Text>
+        </TouchableOpacity>
+      )}
+      {caption ? <Text style={blogS.caption}>{caption}</Text> : null}
+    </View>
+  );
+};
+
 const BlogBlockRenderer = ({
   block,
   fontScale,
@@ -357,22 +407,8 @@ const BlogBlockRenderer = ({
           </View>
         </TouchableOpacity>
       );
-    case 'sticker': {
-      const found = stickers.find((s) => s.id === block.stickerId);
-      if (found) {
-        const StickerComp = found.component;
-        return (
-          <View style={blogS.stickerWrap}>
-            <StickerComp size={80} />
-          </View>
-        );
-      }
-      return (
-        <View style={blogS.stickerWrap}>
-          <Text style={blogS.stickerFallback}>{block.stickerName}</Text>
-        </View>
-      );
-    }
+    case 'video':
+      return <BlogVideoBlock uri={block.uri} caption={block.caption} />;
     case 'file': {
       const sizeStr = block.fileSize ? (block.fileSize < 1024 * 1024 ? `${(block.fileSize / 1024).toFixed(0)}KB` : `${(block.fileSize / (1024 * 1024)).toFixed(1)}MB`) : '';
       return (
@@ -2125,6 +2161,7 @@ const blogS = StyleSheet.create({
   },
   imageWrap: { marginBottom: 14, borderRadius: 12, overflow: 'hidden' },
   image: { width: '100%', aspectRatio: 4 / 3, borderRadius: 12 },
+  video: { width: '100%', height: 220, backgroundColor: '#000', borderRadius: 12 },
   caption: {
     fontSize: 12, color: '#A1A1B0', textAlign: 'center', marginTop: 6,
     fontStyle: 'italic',
@@ -2151,8 +2188,6 @@ const blogS = StyleSheet.create({
   linkTitle: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
   linkDesc: { fontSize: 11, color: '#A1A1B0', lineHeight: 16 },
   linkUrl: { fontSize: 10, color: '#5A5A6E' },
-  stickerWrap: { alignItems: 'center', marginVertical: 12 },
-  stickerFallback: { fontSize: 40 },
   fileBlock: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C28', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#2A2A3A', gap: 10, marginBottom: 12 },
   fileIcon: { fontSize: 20 },
   fileName: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },

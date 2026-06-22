@@ -134,9 +134,6 @@ export function toNaverHtmlFromBlocks(
         if (block.caption) lines.push(`<div class="se-caption"><p>${escapeHtml(block.caption)}</p></div>`);
         lines.push('</div></div>');
         break;
-      case 'sticker':
-        lines.push(`<div class="se-component se-sticker"><p style="font-size:48px;text-align:center;">🎨 ${escapeHtml(block.stickerName)}</p></div>`);
-        break;
     }
   }
 
@@ -644,8 +641,8 @@ export const NAVER_BLOG_EXTRACT_JS = `
       title: title.trim(),
       html: content,
       images: images,
-      videos: [],
-      orderedBlocks: orderedBlocks.filter(function(b) { return b.type !== 'video'; }),
+      videos: videos,
+      orderedBlocks: orderedBlocks,
       tags: tags,
     }));
   } catch(e) {
