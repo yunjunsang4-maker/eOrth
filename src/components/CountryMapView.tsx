@@ -300,7 +300,7 @@ function doSearch(query){
   if(q.length===0){
     searchedRegion=null;
     if(zoomBehavior&&svgElement){svgElement.transition().duration(450).call(zoomBehavior.transform, d3.zoomIdentity);}
-    setRegionChip(COUNTRY_NAME);
+    setRegionChip('');
     updateMap();
     return;
   }
@@ -495,7 +495,7 @@ function render(geo){
     .on('zoom',function(ev){g.attr('transform',ev.transform);});
   svg.call(zoomBehavior);
 
-  setRegionChip(COUNTRY_NAME);
+  setRegionChip('');
   updateMap();
   // RN 에 준비 완료 알림 → 현재 기록/검색/인기명소 상태를 받아옴
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));}

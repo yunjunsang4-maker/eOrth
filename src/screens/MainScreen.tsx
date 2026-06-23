@@ -685,19 +685,21 @@ export default function MainScreen({ navigation, route }: Props) {
               </TouchableOpacity>
             </ScrollView>
 
-            {/* 국가 지역 지도 */}
-            <CountryMapView
-              countryCode={regionCountry}
-              countryName={ISO3_TO_KO[regionCountry] || ''}
-              fill
-              chipBottom={insets.bottom + 96}
-              onMessage={handleRegionMessage}
-              recordedRegions={recordedRegions}
-              displayMode={regionGlobalMode}
-              defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
-              searchQuery={regionSearch}
-              showPopular={popularActive}
-            />
+            {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
+            <View style={styles.regionMapFill}>
+              <CountryMapView
+                countryCode={regionCountry}
+                countryName={ISO3_TO_KO[regionCountry] || ''}
+                fill
+                chipBottom={insets.bottom + 96}
+                onMessage={handleRegionMessage}
+                recordedRegions={recordedRegions}
+                displayMode={regionGlobalMode}
+                defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
+                searchQuery={regionSearch}
+                showPopular={popularActive}
+              />
+            </View>
             {/* 뒤로가기 버튼 */}
             <TouchableOpacity
               style={styles.regionBackBtn}
@@ -1294,8 +1296,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // ── 대륙 지도를 globeArea 전체로 채우는 배경 (검색바·칩 뒤)
+  regionMapFill: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+
   // ── 대륙(국가 지역) 검색바 (Figma 8:385: 353×36, radius 23, 흰색 10%)
   regionSearchWrap: {
+    zIndex: 2,
     height: 36,
     marginTop: 16,
     marginHorizontal: 24,
@@ -1333,6 +1342,7 @@ const styles = StyleSheet.create({
   },
   // ── 필터 칩 행 (Figma 8:392 + 8:395), 우측 정렬
   regionChipsRow: {
+    zIndex: 2,
     marginTop: 14,
     flexGrow: 0,
   },
