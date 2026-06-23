@@ -676,13 +676,20 @@ export default function MainScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.regionChip, popularActive && styles.regionChipActive]}
-                activeOpacity={0.8}
-                onPress={() => setPopularActive((v) => !v)}
+              <LinearGradient
+                colors={popularActive ? ['#00D8F3', '#FF14E4'] : ['rgba(117,26,173,0.3)', 'rgba(117,26,173,0.3)']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.popularChipBorder}
               >
-                <Text style={styles.regionChipText}>인기명소 모아보기 👀</Text>
-              </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.popularChipInner}
+                  activeOpacity={0.8}
+                  onPress={() => setPopularActive((v) => !v)}
+                >
+                  <Text style={styles.regionChipText}>인기명소 모아보기 👀</Text>
+                </TouchableOpacity>
+              </LinearGradient>
             </ScrollView>
 
             {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
@@ -1364,6 +1371,20 @@ const styles = StyleSheet.create({
   regionChipActive: {
     borderWidth: 1,
     borderColor: '#00D8F3',
+  },
+  // ── 인기명소 칩 그라데이션 테두리 (시안→마젠타). LinearGradient 래퍼 + 1px 패딩으로 구현
+  popularChipBorder: {
+    borderRadius: 15.5,
+    padding: 1,
+  },
+  popularChipInner: {
+    height: 28,
+    borderRadius: 14.5,
+    // 불투명이어야 그라데이션이 가운데로 비치지 않음 (#751AAD 30%가 다크 배경 위에 깔린 색)
+    backgroundColor: '#2A0F3E',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   regionChipText: {
     color: '#FFFFFF',
