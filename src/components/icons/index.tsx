@@ -280,6 +280,27 @@ export const BellIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, d
   </Svg>
 );
 
+// 검색 — 라인형 돋보기 (MynaUI search-line)
+export const SearchLineIcon: React.FC<IconProps> = ({ size = 24, color = '#A9A9A9' }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx={11} cy={11} r={7} stroke={color} strokeWidth={1.6} />
+    <Path d="M20 20L16.65 16.65" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+  </Svg>
+);
+
+// 알림(헤더) — 라인형 종 (Group.svg, 23×28 viewBox, stroke 2)
+export const NotificationBellIcon: React.FC<IconProps> = ({ size = 24, color = '#FFFFFF', dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={(size * 23) / 28} height={size} viewBox="0 0 23 28" fill="none">
+    <Path
+      d="M11.9404 25.8135C11.7393 25.9575 11.4859 26.04 11.1973 26.04C10.9084 26.04 10.6544 25.9576 10.4531 25.8135H11.9404ZM11.1973 1C11.4467 1.00007 11.577 1.07903 11.6426 1.14453C11.7082 1.21011 11.7871 1.34088 11.7871 1.59082V3.40332L12.6357 3.5332C16.241 4.08796 18.7861 7.13055 18.7861 11.1348V14.9521C18.7862 16.083 19.1538 17.2901 19.9854 18.1533L21.2129 19.6865V19.6875C21.6728 20.3007 21.1892 21.2683 20.4229 21.2686H1.97168C1.20726 21.2686 0.723372 20.3059 1.17676 19.6924L2.41211 18.1484C3.24075 17.2856 3.60734 16.0811 3.60742 14.9521V11.1348C3.60742 7.13047 6.15343 4.08787 9.75879 3.5332L10.6064 3.40332V1.59082C10.6064 1.34088 10.6854 1.21011 10.751 1.14453C10.8166 1.07896 10.9474 1 11.1973 1Z"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinejoin="round"
+    />
+    {dot && <Circle cx={18} cy={6} r={3} fill={dotColor} />}
+  </Svg>
+);
+
 export const FeedIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
   <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
     <Defs>

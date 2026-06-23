@@ -1665,7 +1665,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
       >

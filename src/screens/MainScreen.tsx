@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  TextInput,
   Dimensions,
   Animated,
   Modal,
@@ -15,13 +16,16 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { BellIcon, GlobeIcon } from '../components/icons';
+import { NotificationBellIcon, GlobeIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import CountryMapView from '../components/CountryMapView';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { EorthLogo } from '../components/EorthLogo';
+import { SegmentedToggle } from '../components/SegmentedToggle';
 import SponsoredPackageCard from '../components/SponsoredPackageCard';
 import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
+import type { TravelRecord } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 
 const { height } = Dimensions.get('window');
@@ -115,23 +119,6 @@ const COUNTRY_FLAGS: Record<string, string> = {
   '태국': '🇹🇭',
 };
 
-const COUNTRY_RECORDS: Record<string, Array<{ date: string; city: string; rating: number }>> = {
-  '한국': [
-    { date: '2024.10.03', city: '서울', rating: 5 },
-    { date: '2023.05.15', city: '부산', rating: 4 },
-  ],
-  '일본': [
-    { date: '2025.03.01', city: '도쿄', rating: 5 },
-    { date: '2024.08.01', city: '오사카', rating: 4 },
-    { date: '2023.11.10', city: '교토', rating: 5 },
-  ],
-  '프랑스': [
-    { date: '2022.09.10', city: '파리', rating: 5 },
-  ],
-  '태국': [
-    { date: '2023.01.20', city: '방콕', rating: 4 },
-  ],
-};
 
 // 한국어 국가명 → GeoJSON 영문 이름 매핑 (GlobeView의 KO_NAMES 역방향)
 const KO_TO_EN: Record<string, string> = {
@@ -212,8 +199,6 @@ export default function MainScreen({ navigation, route }: Props) {
   const globeRef = useRef<any>(null);
   const toggleRef = useRef<any>(null);
   const settingsRef = useRef<any>(null);
-  const snapRef = useRef<any>(null);
-  const fabRef = useRef<any>(null);
   const [coachVisible, setCoachVisible] = useState(false);
   const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
 
@@ -235,14 +220,29 @@ export default function MainScreen({ navigation, route }: Props) {
     if (!route.params?.startTutorial) return;
     let cancelled = false;
     const t = setTimeout(async () => {
-      const [globe, toggle, settings, snap, fab] = await Promise.all([
+      const [globe, toggle, settings] = await Promise.all([
         measure(globeRef),
         measure(toggleRef),
         measure(settingsRef),
-        measure(snapRef),
-        measure(fabRef),
       ]);
       if (cancelled) return;
+      // FAB(+) · SNAP 은 CustomTabBar 레이어(탭 바 위)로 이동해 ref 측정이 불가하다.
+      // 위치가 결정적이라 RecordFab 와 동일한 상수로 강조 영역을 계산한다.
+      const WIN_W = Dimensions.get('window').width;
+      const FAB_BTN = 56;
+      const fab: CoachRect = {
+        x: WIN_W / 2 - FAB_BTN / 2,
+        y: height - ((insets.bottom || 0) + 73) - FAB_BTN, // 하단 중앙, 탭 바 위 겹침
+        width: FAB_BTN,
+        height: FAB_BTN,
+      };
+      const SNAP_BTN = 60;
+      const snap: CoachRect = {
+        x: WIN_W - 46 - SNAP_BTN, // 우측 (오른쪽 모서리 46px 안쪽)
+        y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
+        width: SNAP_BTN,
+        height: SNAP_BTN,
+      };
       // 지구본(WebView)의 실제 프레임에서 three.js 투영 상수로 원을 계산.
       // 카메라가 아래로(y=-0.35) 내려가 있어 구체 중심이 세로 ~39% 지점, 반지름 ~0.30×높이.
       const globeCircle = globe
@@ -288,8 +288,15 @@ export default function MainScreen({ navigation, route }: Props) {
   const [formatModalVisible, setFormatModalVisible] = useState(false);
   const [pendingCountry, setPendingCountry] = useState<{ name: string; code: string; region?: string; regionEn?: string } | null>(null);
 
+  // 지역(주) 기존 기록 보기 모달
+  const [regionRecordsVisible, setRegionRecordsVisible] = useState(false);
+  const [regionRecords, setRegionRecords] = useState<TravelRecord[]>([]);
+  const [regionRecordsTitle, setRegionRecordsTitle] = useState('');
+
   // 지구본 표시 설정
   const [globeDisplayMode, setGlobeDisplayMode] = useState<GlobeDisplayMode>('flag');
+  // 대륙(지역 지도) 전용 글로벌 표시 모드 — 지구본 모드와 독립
+  const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
   const [globeColor, setGlobeColor] = useState('#BF85FC');
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
@@ -302,6 +309,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');
   const [regionCountry, setRegionCountry] = useState<string | null>(null); // ISO3 코드
+  // 대륙(국가 지역) 화면 검색/필터
+  const [regionSearch, setRegionSearch] = useState('');
+  const [popularActive, setPopularActive] = useState(false); // "인기명소 모아보기" — 눌러야 도시 선/강조 표시
 
   // 영→한 역매핑
   const EN_TO_KO: Record<string, string> = useMemo(() => {
@@ -313,10 +323,6 @@ export default function MainScreen({ navigation, route }: Props) {
   // 기록된 국가 → GlobeView에 전달할 방문국가 목록
   const visitedNameSet = useMemo(() => {
     const nameSet = new Set<string>();
-    Object.keys(COUNTRY_RECORDS).forEach(ko => {
-      const en = KO_TO_EN[ko];
-      if (en) nameSet.add(en);
-    });
     records.forEach(r => {
       if (r.countryName) {
         const en = KO_TO_EN[r.countryName];
@@ -373,21 +379,7 @@ export default function MainScreen({ navigation, route }: Props) {
 
     const regionsMap = new Map<string, { name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }>();
 
-    // 1) static COUNTRY_RECORDS
-    const staticRecs = COUNTRY_RECORDS[countryKo] || [];
-    staticRecs.forEach(sr => {
-      const en = CITY_TO_EN[sr.city];
-      if (en) {
-        regionsMap.set(en, {
-          name: sr.city,
-          nameEn: en,
-          photo: undefined,
-          mode: regionDisplayModes[en] || undefined,
-        });
-      }
-    });
-
-    // 2) dynamic records from store
+    // 실제 기록(store)에서 이 국가의 기록된 지역 수집
     records.forEach(r => {
       const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
       if (matchCountry && r.regionNameEn) {
@@ -421,60 +413,7 @@ export default function MainScreen({ navigation, route }: Props) {
   const countrySheetAnim = useRef(new Animated.Value(COUNTRY_SHEET_HEIGHT)).current;
   const countryOverlayAnim = useRef(new Animated.Value(0)).current;
 
-  // FAB 확장
-  const [fabOpen, setFabOpen] = useState(false);
-  const fabRotate = useRef(new Animated.Value(0)).current;
-  const fabOverlay = useRef(new Animated.Value(0)).current;
-  const fabAnims = useRef([0, 1, 2, 3].map(() => ({
-    translateX: new Animated.Value(0),
-    opacity: new Animated.Value(0),
-  }))).current;
-
-  const openFab = () => {
-    setFabOpen(true);
-    Animated.parallel([
-      Animated.timing(fabRotate, { toValue: 1, duration: 220, useNativeDriver: true }),
-      Animated.timing(fabOverlay, { toValue: 1, duration: 220, useNativeDriver: true }),
-      ...fabAnims.map((anim, i) =>
-        Animated.sequence([
-          Animated.delay(i * 50),
-          Animated.parallel([
-            Animated.spring(anim.translateX, {
-              toValue: -((i + 1) * (52 + 12)),
-              useNativeDriver: true,
-              tension: 80,
-              friction: 9,
-            }),
-            Animated.timing(anim.opacity, { toValue: 1, duration: 180, useNativeDriver: true }),
-          ]),
-        ])
-      ),
-    ]).start();
-  };
-
-  const closeFab = () => {
-    Animated.parallel([
-      Animated.timing(fabRotate, { toValue: 0, duration: 200, useNativeDriver: true }),
-      Animated.timing(fabOverlay, { toValue: 0, duration: 200, useNativeDriver: true }),
-      ...fabAnims.map((anim) =>
-        Animated.parallel([
-          Animated.timing(anim.translateX, { toValue: 0, duration: 180, useNativeDriver: true }),
-          Animated.timing(anim.opacity, { toValue: 0, duration: 150, useNativeDriver: true }),
-        ])
-      ),
-    ]).start(() => setFabOpen(false));
-  };
-
-  const toggleFab = () => (fabOpen ? closeFab() : openFab());
-
-  const FAB_FORMATS = [
-    { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
-    { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-    { type: 'cut',   icon: <CutIcon />,   name: '스트립' },
-    { type: 'album', icon: <AlbumIcon />, name: '사진첩' },
-  ];
-
-  const fabRotateDeg = fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
+  // FAB(기록 추가)는 CustomTabBar 레이어의 RecordFab 로 이동 (탭 바 위 겹침). 여기선 렌더하지 않음.
 
   const openSheet = () => {
     setSheetOpen(true);
@@ -578,9 +517,7 @@ export default function MainScreen({ navigation, route }: Props) {
       }
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
-        const hasStaticRecord = !!COUNTRY_RECORDS[koreanName];
-        const hasDynamicRecord = records.some(r => r.countryName === koreanName || r.countries?.some(c => c.name === koreanName));
-        const hasRecord = hasStaticRecord || hasDynamicRecord;
+        const hasRecord = records.some(r => r.countryName === koreanName || r.countries?.some(c => c.name === koreanName));
 
         if (hasRecord && koreanName) {
           openCountrySheet(koreanName);
@@ -607,7 +544,21 @@ export default function MainScreen({ navigation, route }: Props) {
           region: data.region,
           regionEn: data.regionEn,
         });
-        setFormatModalVisible(true);
+        // 이 지역(주)의 기존 기록 찾기
+        const matched = records.filter(r => {
+          const inCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
+          const regionMatch =
+            (data.regionEn && r.regionNameEn === data.regionEn) ||
+            (data.region && r.regionName === data.region);
+          return inCountry && regionMatch;
+        });
+        if (matched.length > 0) {
+          setRegionRecords(matched);
+          setRegionRecordsTitle(`${countryKo} · ${regionName}`);
+          setRegionRecordsVisible(true);
+        } else {
+          setFormatModalVisible(true);
+        }
       }
     } catch (err) {
       if (__DEV__) console.warn('지역 지도 메시지 파싱 실패:', err, e?.nativeEvent?.data);
@@ -631,15 +582,15 @@ export default function MainScreen({ navigation, route }: Props) {
   };
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+    // 배경을 지구본 배경(#0A0A0F)과 동일하게 — 하단에 보라색이 남지 않고 끝까지 이어짐
+    <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
 
       {/* ── 헤더 ── */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Image
-          source={require('../../assets/logo.png')}
-          style={styles.headerLogoImage}
-          resizeMode="contain"
-        />
+        {/* 로고를 살짝 위로 (레이아웃 영향 없이 시각적으로만 이동) */}
+        <View style={{ transform: [{ translateY: -8 }] }}>
+          <EorthLogo width={125} height={56} />
+        </View>
         <TouchableOpacity
           style={styles.headerIcon}
           onPress={() => {
@@ -647,7 +598,7 @@ export default function MainScreen({ navigation, route }: Props) {
             navigation.navigate('Notifications');
           }}
         >
-          <BellIcon size={24} dot={hasUnreadAlerts} />
+          <NotificationBellIcon size={24} dot={hasUnreadAlerts} />
         </TouchableOpacity>
       </View>
 
@@ -657,22 +608,14 @@ export default function MainScreen({ navigation, route }: Props) {
         <View style={styles.modeToggleWrap}>
           {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
           <View ref={toggleRef} collapsable={false}>
-            <BlurView intensity={50} tint="dark" style={styles.modeToggle}>
-              <TouchableOpacity
-                style={[styles.modeBtn, viewMode === 'globe' && styles.modeBtnActive]}
-                activeOpacity={0.7}
-                onPress={() => { setViewMode('globe'); setRegionCountry(null); }}
-              >
-                <Text style={[styles.modeBtnText, viewMode === 'globe' && styles.modeBtnTextActive]}>지구본</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modeBtn, viewMode === 'region' && styles.modeBtnActive]}
-                activeOpacity={0.7}
-                onPress={() => { setViewMode('region'); setRegionCountry(null); }}
-              >
-                <Text style={[styles.modeBtnText, viewMode === 'region' && styles.modeBtnTextActive]}>대륙</Text>
-              </TouchableOpacity>
-            </BlurView>
+            <SegmentedToggle
+              options={[
+                { value: 'globe', label: '지구본' },
+                { value: 'region', label: '대륙' },
+              ]}
+              value={viewMode}
+              onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); }}
+            />
           </View>
         </View>
 
@@ -696,19 +639,70 @@ export default function MainScreen({ navigation, route }: Props) {
           </>
         ) : regionCountry ? (
           <>
+            {/* 검색바 (Figma 8:385) */}
+            <View style={styles.regionSearchWrap}>
+              <TextInput
+                style={styles.regionSearchInput}
+                value={regionSearch}
+                onChangeText={setRegionSearch}
+                placeholder="구체적인 지역을 검색해주세요"
+                placeholderTextColor="#A9A9A9"
+                returnKeyType="search"
+              />
+              {regionSearch.length > 0 && (
+                <TouchableOpacity
+                  style={styles.regionClearBtn}
+                  activeOpacity={0.7}
+                  onPress={() => setRegionSearch('')}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={styles.regionClearText}>✕</Text>
+                </TouchableOpacity>
+              )}
+              <SearchLineIcon size={24} color="#A9A9A9" />
+            </View>
+
+            {/* 필터 칩 행 (Figma 8:392 + 8:395), 우측 정렬 + 가로 스크롤 */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.regionChipsRow}
+              contentContainerStyle={styles.regionChipsContent}
+            >
+              <TouchableOpacity
+                style={styles.regionChip}
+                activeOpacity={0.8}
+                onPress={() => setRegionSearch('')}
+              >
+                <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.regionChip, popularActive && styles.regionChipActive]}
+                activeOpacity={0.8}
+                onPress={() => setPopularActive((v) => !v)}
+              >
+                <Text style={styles.regionChipText}>인기명소 모아보기 👀</Text>
+              </TouchableOpacity>
+            </ScrollView>
+
             {/* 국가 지역 지도 */}
             <CountryMapView
               countryCode={regionCountry}
+              countryName={ISO3_TO_KO[regionCountry] || ''}
+              fill
+              chipBottom={insets.bottom + 96}
               onMessage={handleRegionMessage}
               recordedRegions={recordedRegions}
-              displayMode={globeDisplayMode === 'photo' ? 'photo' : 'color'}
+              displayMode={regionGlobalMode}
               defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
+              searchQuery={regionSearch}
+              showPopular={popularActive}
             />
             {/* 뒤로가기 버튼 */}
             <TouchableOpacity
               style={styles.regionBackBtn}
               activeOpacity={0.7}
-              onPress={() => setRegionCountry(null)}
+              onPress={() => { setRegionCountry(null); setRegionSearch(''); }}
             >
               <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
               <Text style={styles.regionBackArrow}>←</Text>
@@ -717,7 +711,7 @@ export default function MainScreen({ navigation, route }: Props) {
           </>
         ) : (
           /* 국가 선택 그리드 */
-          <View style={styles.countryGrid}>
+          <View style={[styles.countryGrid, { paddingBottom: insets.bottom + 73 }]}>
             <Text style={styles.countryGridTitle}>국가를 선택하세요</Text>
             <Text style={styles.countryGridSub}>지역별로 기록할 수 있는 국가입니다</Text>
             <View style={styles.countryGridList}>
@@ -726,7 +720,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   key={c.code}
                   style={styles.countryGridItem}
                   activeOpacity={0.7}
-                  onPress={() => setRegionCountry(c.code)}
+                  onPress={() => { setRegionCountry(c.code); setRegionSearch(''); }}
                 >
                   <Text style={styles.countryGridFlag}>{c.flag}</Text>
                   <Text style={styles.countryGridName}>{c.name}</Text>
@@ -737,23 +731,7 @@ export default function MainScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      {/* ── 스냅 바로가기 버튼 (스냅 카드 그라디언트 보더) ── */}
-      <View style={styles.snapQuickWrap} ref={snapRef} collapsable={false}>
-        <LinearGradient
-          colors={['#22D3EE', '#A855F7', '#D946EF']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={StyleSheet.absoluteFill}
-        />
-        <TouchableOpacity
-          style={styles.snapQuickBtn}
-          activeOpacity={0.8}
-          onPress={() => navigation.navigate('SnapRecord')}
-        >
-          <Text style={styles.snapQuickIcon}>⚡</Text>
-          <Text style={styles.snapQuickLabel}>스냅</Text>
-        </TouchableOpacity>
-      </View>
+      {/* 스냅 버튼(SNAP)은 CustomTabBar 레이어의 RecordFab 로 이동 (탭 바 위 우측에 떠 있음) */}
 
       {/* ── 하단 핸들 바 (시트 닫혔을 때 노출) ── */}
       {SHOW_VISITED_SHEET && !sheetOpen && (
@@ -859,17 +837,25 @@ export default function MainScreen({ navigation, route }: Props) {
           <Text style={styles.countrySheetName}>{selectedCountry}</Text>
         </View>
 
-        {/* 여행 기록 리스트 */}
+        {/* 여행 기록 리스트 (실제 기록) */}
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           <View style={styles.countryRecordList}>
-            {(selectedCountry ? COUNTRY_RECORDS[selectedCountry] ?? [] : []).map((rec, i) => (
-              <View key={i} style={styles.countryRecordCard}>
+            {(selectedCountry
+              ? records.filter(r => r.countryName === selectedCountry || r.countries?.some(c => c.name === selectedCountry))
+              : []
+            ).map((rec) => (
+              <TouchableOpacity
+                key={rec.id}
+                style={styles.countryRecordCard}
+                activeOpacity={0.7}
+                onPress={() => { closeCountrySheet(); navigation.navigate('PostDetail', { postId: rec.id }); }}
+              >
                 <View style={styles.countryRecordRow}>
                   <Text style={styles.countryRecordDate}>{rec.date}</Text>
-                  <Text style={styles.countryRecordRating}>{'★'.repeat(rec.rating)}</Text>
+                  {!!rec.rating && <Text style={styles.countryRecordRating}>{'★'.repeat(rec.rating)}</Text>}
                 </View>
-                <Text style={styles.countryRecordCity}>{rec.city}</Text>
-              </View>
+                <Text style={styles.countryRecordCity}>{rec.regionName || rec.countryName}</Text>
+              </TouchableOpacity>
             ))}
           </View>
           <View style={{ height: 100 }} />
@@ -927,6 +913,72 @@ export default function MainScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               ))}
             </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* ── 지역(주) 기존 기록 보기 모달 ── */}
+      <Modal
+        visible={regionRecordsVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRegionRecordsVisible(false)}
+      >
+        <TouchableOpacity
+          style={styles.fmOverlay}
+          activeOpacity={1}
+          onPress={() => setRegionRecordsVisible(false)}
+        >
+          <View style={styles.rrCard} onStartShouldSetResponder={() => true}>
+            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+            <Text style={styles.fmTitle}>{regionRecordsTitle}</Text>
+            <Text style={styles.fmSub}>{regionRecords.length}개의 기록</Text>
+
+            <ScrollView style={{ width: '100%', maxHeight: 300 }} showsVerticalScrollIndicator={false}>
+              {regionRecords.map(rec => {
+                const photo =
+                  rec.representativePhoto ||
+                  (rec.regionName && rec.perCountryData?.[rec.countryName]?.representativePhoto) ||
+                  rec.cutPhoto?.previewUri ||
+                  rec.snapBackUri ||
+                  rec.medias?.[0];
+                return (
+                  <TouchableOpacity
+                    key={rec.id}
+                    style={styles.rrItem}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      setRegionRecordsVisible(false);
+                      navigation.navigate('PostDetail', { postId: rec.id });
+                    }}
+                  >
+                    {photo ? (
+                      <Image source={{ uri: photo }} style={styles.rrThumb} />
+                    ) : (
+                      <View style={[styles.rrThumb, styles.rrThumbEmpty]} />
+                    )}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.rrItemTitle} numberOfLines={1}>
+                        {rec.regionName || rec.countryName}
+                      </Text>
+                      <Text style={styles.rrItemDate}>{rec.date}</Text>
+                    </View>
+                    {!!rec.rating && <Text style={styles.rrRating}>{'★'.repeat(rec.rating)}</Text>}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={[styles.countryAddBtn, { width: '100%', marginTop: 16 }]}
+              activeOpacity={0.85}
+              onPress={() => {
+                setRegionRecordsVisible(false);
+                setFormatModalVisible(true);
+              }}
+            >
+              <Text style={styles.countryAddBtnText}>+ 새 기록 추가</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -1103,22 +1155,22 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.dsColorLabel}>글로벌 기본 설정</Text>
                   <View style={styles.dsSection}>
                     <TouchableOpacity
-                      style={[styles.dsOption, globeDisplayMode !== 'photo' && styles.dsOptionActive]}
+                      style={[styles.dsOption, regionGlobalMode !== 'photo' && styles.dsOptionActive]}
                       activeOpacity={0.7}
-                      onPress={() => setGlobeDisplayMode('color')}
+                      onPress={() => setRegionGlobalMode('color')}
                     >
                       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
-                      <Text style={[styles.dsOptionText, globeDisplayMode !== 'photo' && styles.dsOptionTextActive]}>색상</Text>
-                      {globeDisplayMode !== 'photo' && <View style={styles.dsCheck} />}
+                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>색상</Text>
+                      {regionGlobalMode !== 'photo' && <View style={styles.dsCheck} />}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.dsOption, globeDisplayMode === 'photo' && styles.dsOptionActive]}
+                      style={[styles.dsOption, regionGlobalMode === 'photo' && styles.dsOptionActive]}
                       activeOpacity={0.7}
-                      onPress={() => setGlobeDisplayMode('photo')}
+                      onPress={() => setRegionGlobalMode('photo')}
                     >
                       <Text style={{ fontSize: 24 }}>🖼️</Text>
-                      <Text style={[styles.dsOptionText, globeDisplayMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
-                      {globeDisplayMode === 'photo' && <View style={styles.dsCheck} />}
+                      <Text style={[styles.dsOptionText, regionGlobalMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
+                      {regionGlobalMode === 'photo' && <View style={styles.dsCheck} />}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1134,7 +1186,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       {recordedRegions.map(r => {
                         const currentMode = (regionDisplayModes[r.nameEn] || 'default') as 'color' | 'photo' | 'default';
-                        const effectiveMode = currentMode === 'default' ? (globeDisplayMode === 'photo' ? 'photo' : 'color') : currentMode;
+                        const effectiveMode = currentMode === 'default' ? regionGlobalMode : currentMode;
 
                         return (
                           <View key={r.nameEn} style={{ marginBottom: 8 }}>
@@ -1190,62 +1242,7 @@ export default function MainScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </Modal>
 
-      {/* ── FAB 오버레이 ── */}
-      {fabOpen && (
-        <Animated.View
-          style={[styles.fabOverlay, { opacity: fabOverlay }]}
-          pointerEvents={fabOpen ? 'auto' : 'none'}
-        >
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeFab} />
-        </Animated.View>
-      )}
-
-      {/* ── FAB ── */}
-      <View style={styles.fabWrap}>
-        {/* 형식 버튼 4개 */}
-        {FAB_FORMATS.map((fmt, i) => (
-          <Animated.View
-            key={fmt.type}
-            style={[
-              styles.fabFormatWrap,
-              {
-                transform: [{ translateX: fabAnims[i].translateX }],
-                opacity: fabAnims[i].opacity,
-              },
-            ]}
-            pointerEvents={fabOpen ? 'auto' : 'none'}
-          >
-            <Text style={styles.fabFormatLabel}>{fmt.name}</Text>
-            <TouchableOpacity
-              style={styles.fabFormatBtn}
-              activeOpacity={0.85}
-              onPress={() => {
-                closeFab();
-                const SCREEN_MAP: Record<string, RecordFormatScreen> = {
-                  feed: 'NewRecord',
-                  blog: 'BlogRecord',
-                  cut: 'CutRecord',
-                  snap: 'SnapRecord',
-                  album: 'AlbumCreate',
-                };
-                navigation.navigate(SCREEN_MAP[fmt.type] ?? 'NewRecord');
-              }}
-            >
-              <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
-              {fmt.icon}
-            </TouchableOpacity>
-          </Animated.View>
-        ))}
-
-        {/* 메인 + 버튼 */}
-        <TouchableOpacity ref={fabRef} style={styles.fab} onPress={toggleFab} activeOpacity={0.85}>
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.fabGradient}>
-            <Animated.View style={{ transform: [{ rotate: fabRotateDeg }] }}>
-              <Text style={styles.fabIcon}>+</Text>
-            </Animated.View>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+      {/* FAB(기록 추가)는 CustomTabBar 레이어의 RecordFab 로 렌더 (탭 바 위 겹침) */}
 
       {/* ── 튜토리얼 코치마크 ── */}
       <MainCoachmark
@@ -1279,6 +1276,8 @@ const styles = StyleSheet.create({
   headerIcon: {
     padding: Spacing[1],
     position: 'relative',
+    // 로고가 translateY -8 로 올라가 있어, 종 아이콘도 로고 시각 중심에 맞춰 올림
+    transform: [{ translateY: -11 }],
   },
   redDot: {
     position: 'absolute',
@@ -1293,6 +1292,74 @@ const styles = StyleSheet.create({
   // ── 지구본 영역
   globeArea: {
     flex: 1,
+  },
+
+  // ── 대륙(국가 지역) 검색바 (Figma 8:385: 353×36, radius 23, 흰색 10%)
+  regionSearchWrap: {
+    height: 36,
+    marginTop: 16,
+    marginHorizontal: 24,
+    borderRadius: 23,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  regionSearchInput: {
+    flex: 1,
+    color: '#FFFFFF',
+    fontSize: 14,
+    letterSpacing: -0.4,
+    padding: 0,
+    marginRight: 8,
+  },
+  // ── 검색 초기화(X) 버튼 — 검색 아이콘 옆
+  regionClearBtn: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  regionClearText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    lineHeight: 13,
+    fontWeight: '700',
+  },
+  // ── 필터 칩 행 (Figma 8:392 + 8:395), 우측 정렬
+  regionChipsRow: {
+    marginTop: 14,
+    flexGrow: 0,
+  },
+  regionChipsContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 24,
+  },
+  regionChip: {
+    height: 30,
+    borderRadius: 31.538,
+    backgroundColor: 'rgba(117,26,173,0.3)',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  regionChipActive: {
+    borderWidth: 1,
+    borderColor: '#00D8F3',
+  },
+  regionChipText: {
+    color: '#FFFFFF',
+    fontSize: 12.6,
+    letterSpacing: 0.5,
+    lineHeight: 16,
   },
 
   // ── 핸들 트리거 (시트 닫혔을 때)
@@ -1513,72 +1580,6 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.semiBold,
   },
 
-  // ── FAB
-  fabOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    zIndex: 28,
-  },
-  fabWrap: {
-    position: 'absolute',
-    bottom: 16,
-    right: Spacing[6],
-    zIndex: 30,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  fab: {
-    shadowColor: '#7B61FF',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.6,
-    shadowRadius: 12,
-    elevation: 10,
-  },
-  fabGradient: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  fabIcon: {
-    fontSize: 28,
-    color: Colors.white,
-    lineHeight: 32,
-  },
-  fabFormatWrap: {
-    position: 'absolute',
-    right: 0,
-    alignItems: 'center',
-    gap: 4,
-  },
-  fabFormatLabel: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  fabFormatBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: 'rgba(46,46,59,0.35)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 6,
-    overflow: 'hidden',
-  },
-  fabFormatIcon: {},
-
   // ── 기록형식 선택 모달
   fmOverlay: {
     flex: 1,
@@ -1601,6 +1602,50 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 6,
+  },
+
+  // ── 지역(주) 기존 기록 모달
+  rrCard: {
+    width: '86%',
+    backgroundColor: 'rgba(20,20,32,0.5)',
+    borderRadius: 20,
+    padding: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
+  },
+  rrItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
+  },
+  rrThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#2E2E3B',
+  },
+  rrThumbEmpty: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rrItemTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.semiBold,
+  },
+  rrItemDate: {
+    color: '#A1A1B0',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rrRating: {
+    color: '#FFD93D',
+    fontSize: 12,
   },
   fmSub: {
     color: '#A1A1B0',
@@ -1643,32 +1688,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     zIndex: 5,
   },
-  modeToggle: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(30,30,42,0.35)',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    overflow: 'hidden',
-  },
-  modeBtn: {
-    paddingHorizontal: 22,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  modeBtnActive: {
-    backgroundColor: 'rgba(191,133,252,0.2)',
-  },
-  modeBtnText: {
-    color: '#A1A1B0',
-    fontSize: 13,
-    fontWeight: '500',
-  },
-  modeBtnTextActive: {
-    color: '#fff',
-    fontWeight: '700',
-  },
-
   // ── 대륙 모드 - 뒤로가기
   regionBackBtn: {
     flexDirection: 'row',
@@ -1766,33 +1785,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
-  },
-  snapQuickWrap: {
-    position: 'absolute',
-    bottom: 60,
-    left: 16,
-    borderRadius: 21,
-    overflow: 'hidden',
-    zIndex: 20,
-    elevation: 20,
-  },
-  snapQuickBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(10,1,24,0.9)',
-    borderRadius: 19.5,
-    margin: 1.5,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  snapQuickIcon: {
-    fontSize: 16,
-  },
-  snapQuickLabel: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#22D3EE',
   },
   globeSettingsIcon: {
     width: 18,

@@ -2087,6 +2087,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     <View style={{ flex: 1 }}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 110 }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {

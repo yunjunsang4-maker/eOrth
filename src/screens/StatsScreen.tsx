@@ -394,7 +394,7 @@ export default function StatsScreen() {
         <Text style={styles.headerTitle}>통계</Text>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: 110 }]}>
         {/* World coverage hero */}
         <View ref={heroRef} collapsable={false}>
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
