@@ -28,6 +28,7 @@ import SponsoredPackageCard from '../components/SponsoredPackageCard';
 import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
 import type { TabScreenProps } from '../navigation/types';
 
 const { height, width } = Dimensions.get('window');
@@ -302,12 +303,15 @@ export default function MainScreen({ navigation, route }: Props) {
   const [regionRecords, setRegionRecords] = useState<TravelRecord[]>([]);
   const [regionRecordsTitle, setRegionRecordsTitle] = useState('');
 
-  // 지구본 표시 설정
-  const [globeDisplayMode, setGlobeDisplayMode] = useState<GlobeDisplayMode>('flag');
-  // 대륙(지역 지도) 전용 글로벌 표시 모드 — 지구본 모드와 독립
-  const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
-  const [globeColor, setGlobeColor] = useState('#BF85FC');
-  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
+  // 지구본/대륙 표시 설정 — settingsStore에서 영속 관리
+  const {
+    globeDisplayMode, setGlobeDisplayMode,
+    regionGlobalMode, setRegionGlobalMode,
+    globeColor, setGlobeColor,
+    countryColors, setCountryColors,
+    countryDisplayModes, setCountryDisplayModes,
+    regionDisplayModes, setRegionDisplayModes,
+  } = useSettings();
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
   const [dsShowMoreColors, setDsShowMoreColors] = useState(false); // 기본 색상 팔레트 '+' 확장
@@ -323,9 +327,7 @@ export default function MainScreen({ navigation, route }: Props) {
     }
   };
 
-  // 국가 및 지역별 개별 표시 설정
-  const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, GlobeDisplayMode>>({});
-  const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
+  // (국가/지역별 개별 표시 설정도 settingsStore에서 영속 관리 — 위 useSettings 참조)
 
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');
@@ -635,7 +637,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 { value: 'region', label: '대륙' },
               ]}
               value={viewMode}
-              onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); }}
+              onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
             />
           </View>
         </View>
@@ -770,7 +772,7 @@ export default function MainScreen({ navigation, route }: Props) {
               style={styles.regionBackBtn}
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              onPress={() => { setRegionCountry(null); setRegionSearch(''); }}
+              onPress={() => { setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
             >
               <Svg width={16} height={28} viewBox="33 156 12 22">
                 <SvgPath
@@ -792,7 +794,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   key={c.code}
                   style={styles.countryGridItem}
                   activeOpacity={0.7}
-                  onPress={() => { setRegionCountry(c.code); setRegionSearch(''); }}
+                  onPress={() => { setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false); }}
                 >
                   <Text style={styles.countryGridFlag}>{c.flag}</Text>
                   <Text style={styles.countryGridName}>{c.name}</Text>

@@ -76,8 +76,14 @@ export default function CountryMapView({
   }, [recordedRegions]);
 
   // 사진 URI를 변환본으로 치환한 지역 목록
+  // ph:// 등 변환이 필요한데 아직(또는 끝내) 변환 못한 사진은 깨진 이미지 대신 색상으로 폴백(photo 제거)
   const resolvedRegions = useMemo(
-    () => recordedRegions.map(r => (r.photo && photoCache[r.photo] ? { ...r, photo: photoCache[r.photo] } : r)),
+    () => recordedRegions.map(r => {
+      if (!r.photo) return r;
+      if (photoCache[r.photo]) return { ...r, photo: photoCache[r.photo] };
+      if (needsMaterialize(r.photo)) return { ...r, photo: undefined };
+      return r;
+    }),
     [recordedRegions, photoCache]
   );
 
@@ -284,7 +290,7 @@ function applyProvince(prov){
 var ISO2={JPN:'jp',CHN:'cn',USA:'us',DEU:'de',ESP:'es',GBR:'gb',FRA:'fr',ITA:'it'};
 var geoCache={};
 function geocodeFallback(query){
-  if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); return; }
+  if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip('검색 결과 없음'); return; }
   var cc=ISO2[CODE]||'';
   var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
   fetch(url).then(function(r){return r.json();}).then(function(arr){
@@ -292,7 +298,8 @@ function geocodeFallback(query){
     if(arr&&arr.length){var lon=parseFloat(arr[0].lon),lat=parseFloat(arr[0].lat); if(!isNaN(lon)&&!isNaN(lat)) prov=provinceAt([lon,lat]);}
     geoCache[query]=prov;
     if(prov) applyProvince(prov);
-  }).catch(function(){});
+    else setRegionChip('검색 결과 없음');
+  }).catch(function(){ setRegionChip('검색 오류 · 네트워크를 확인하세요'); });
 }
 // 검색 실행
 function doSearch(query){

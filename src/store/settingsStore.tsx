@@ -5,6 +5,8 @@ import { usePersistence, STORE_KEYS } from './persist';
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
 export type SignUpMethod = 'email' | 'google' | 'apple';
+// 지도(지구본/대륙) 영토 표시 방식
+export type MapDisplayMode = 'flag' | 'color' | 'photo';
 // 성별: '' = 미설정
 export type Gender = 'male' | 'female' | '';
 
@@ -39,6 +41,19 @@ interface SettingsContextType {
   setArrivalDetect: (v: boolean) => void;
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
+  // ── 영토 표시 설정 (지구본/대륙) — 영속 저장 ──
+  globeDisplayMode: MapDisplayMode;
+  setGlobeDisplayMode: React.Dispatch<React.SetStateAction<MapDisplayMode>>;
+  globeColor: string;
+  setGlobeColor: React.Dispatch<React.SetStateAction<string>>;
+  countryColors: Record<string, string>;
+  setCountryColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  countryDisplayModes: Record<string, MapDisplayMode>;
+  setCountryDisplayModes: React.Dispatch<React.SetStateAction<Record<string, MapDisplayMode>>>;
+  regionGlobalMode: 'color' | 'photo';
+  setRegionGlobalMode: React.Dispatch<React.SetStateAction<'color' | 'photo'>>;
+  regionDisplayModes: Record<string, 'color' | 'photo'>;
+  setRegionDisplayModes: React.Dispatch<React.SetStateAction<Record<string, 'color' | 'photo'>>>;
   // 프로필에 표시할 대표 배지 id (사용자 선택, 영속)
   representativeBadgeIds: number[];
   setRepresentativeBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
@@ -74,6 +89,13 @@ interface SettingsPersistPayload {
   signUpEmail: string;
   arrivalDetect: boolean;
   currentVisitedCountryCode: string;
+  // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
+  globeDisplayMode?: MapDisplayMode;
+  globeColor?: string;
+  countryColors?: Record<string, string>;
+  countryDisplayModes?: Record<string, MapDisplayMode>;
+  regionGlobalMode?: 'color' | 'photo';
+  regionDisplayModes?: Record<string, 'color' | 'photo'>;
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
   shareSentCount?: number; // 과거 저장본엔 없을 수 있어 optional
@@ -101,6 +123,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
   const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
+  // ── 영토 표시 설정 (영속) ──
+  const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
+  const [globeColor, setGlobeColor] = useState('#BF85FC');
+  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
+  const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
+  const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
+  const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [representativeBadgeIds, setRepresentativeBadgeIds] = useState<number[]>([]);
   const [badgeEarnedAt, setBadgeEarnedAt] = useState<Record<number, number>>({});
   const [pendingBadgeToasts, setPendingBadgeToasts] = useState<number[]>([]); // 신규 획득 토스트 큐(비영속)
@@ -155,6 +184,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
+      setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
+      setGlobeColor(p.globeColor ?? '#BF85FC');
+      setCountryColors(p.countryColors ?? {});
+      setCountryDisplayModes(p.countryDisplayModes ?? {});
+      setRegionGlobalMode(p.regionGlobalMode ?? 'color');
+      setRegionDisplayModes(p.regionDisplayModes ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
@@ -178,6 +213,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      globeDisplayMode,
+      globeColor,
+      countryColors,
+      countryDisplayModes,
+      regionGlobalMode,
+      regionDisplayModes,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -201,6 +242,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      globeDisplayMode,
+      globeColor,
+      countryColors,
+      countryDisplayModes,
+      regionGlobalMode,
+      regionDisplayModes,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -240,7 +287,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSignUpMethod('email');
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
-    setCurrentVisitedCountryCode('JP');
+    setCurrentVisitedCountryCode('KR');
+    setGlobeDisplayMode('flag');
+    setGlobeColor('#BF85FC');
+    setCountryColors({});
+    setCountryDisplayModes({});
+    setRegionGlobalMode('color');
+    setRegionDisplayModes({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
     setPendingBadgeToasts([]);
@@ -289,6 +342,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
+        globeDisplayMode,
+        setGlobeDisplayMode,
+        globeColor,
+        setGlobeColor,
+        countryColors,
+        setCountryColors,
+        countryDisplayModes,
+        setCountryDisplayModes,
+        regionGlobalMode,
+        setRegionGlobalMode,
+        regionDisplayModes,
+        setRegionDisplayModes,
         representativeBadgeIds,
         setRepresentativeBadgeIds,
         badgeEarnedAt,
