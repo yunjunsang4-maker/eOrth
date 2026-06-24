@@ -2,6 +2,10 @@ import React, { useMemo } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import COUNTRY_GEO from '../data/countryGeo';
+import { D3_SRC } from '../data/vendorD3';
+
+// 오프라인 번들용 d3 소스 (script 태그 조기 종료 방지 위해 </script 만 이스케이프)
+const D3_INLINE = D3_SRC.replace(/<\/script/gi, '<\\/script');
 
 import { useRef, useEffect, useState } from 'react';
 
@@ -40,7 +44,7 @@ export default function CountryMapView({
   showPopular = false,
 }: Props) {
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
-  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom), [countryCode, countryName, chipBottom]);
+  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE), [countryCode, countryName, chipBottom]);
   const webViewRef = useRef<WebView>(null);
 
   // ph:// 등 WebView가 못 읽는 사진을 file:// 로 변환한 캐시 (원본 URI → file:// URI)
@@ -161,7 +165,7 @@ export default function CountryMapView({
   );
 }
 
-function buildHTML(code: string, countryName: string = '', chipBottom: number = 7) {
+function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '') {
   const geo = COUNTRY_GEO[code];
   if (!geo) {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>지도 데이터가 없습니다</body></html>`;
@@ -185,6 +189,7 @@ body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
 <body>
 <div id="loading"><div class="spinner"></div>지도를 불러오는 중...</div>
 <div id="region-chip"></div>
+${d3Src ? '<script>' + d3Src + '</script>' : ''}
 <script>
 var CODE='${code}';
 var COUNTRY_NAME=${JSON.stringify(countryName)};
@@ -329,11 +334,13 @@ function loadD3(cb){
   }
   next();
 }
-loadD3(function(){
+function boot(){
   var geo=${geoJSON};
   document.getElementById('loading').style.display='none';
   render(geo);
-});
+}
+// 오프라인 번들 d3가 이미 로드돼 있으면 바로 시작, 아니면 CDN 폴백
+if(typeof d3!=='undefined'){ boot(); } else { loadD3(boot); }
 
 // ── 채움색 ──
 function getFill(d){

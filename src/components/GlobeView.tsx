@@ -1,6 +1,16 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { THREE_SRC } from '../data/vendorThree';
+import { D3_SRC } from '../data/vendorD3';
+import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
+
+// 오프라인 번들: WebView HTML에 라이브러리/지형 데이터를 인라인 주입
+// (script 태그 조기 종료 방지를 위해 </script 만 이스케이프)
+const escScript = (s: string) => s.replace(/<\/script/gi, '<\\/script');
+const THREE_INLINE = escScript(THREE_SRC);
+const D3_INLINE = escScript(D3_SRC);
+const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
 
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
 
@@ -77,8 +87,9 @@ const globeHTML = `<!DOCTYPE html>
 <div id="canvas-container"></div>
 <div id="ad-layer"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"><\/script>
+<script>${THREE_INLINE}<\/script>
+<script>${D3_INLINE}<\/script>
+<script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
 
 <script>
 var cfg = {
@@ -650,7 +661,8 @@ var globeMesh, atmosphere, borderGroup;
 var worldData = null;
 
 async function init() {
-  worldData = await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+  // 오프라인 번들된 지형 데이터 우선, 없으면 원격 폴백
+  worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO) ? WORLD_GEO : await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
   var texture = await buildTexture();
 
   var geo = new THREE.SphereGeometry(1, 128, 128);
