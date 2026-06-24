@@ -15,8 +15,10 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
+import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { NotificationBellIcon, GlobeIcon, SearchLineIcon } from '../components/icons';
+import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import CountryMapView from '../components/CountryMapView';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
@@ -28,7 +30,14 @@ import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 
-const { height } = Dimensions.get('window');
+const { height, width } = Dimensions.get('window');
+// 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
+const DS_CARD_W = Math.min(325, width - 24);
+const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
+const DS_PAD = DS_CARD_W * (29 / 325); // 좌우 패딩 29 (버튼폭 268)
+const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
+const DS_PALETTE = ['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D'];
+const DS_PALETTE_MORE = ['#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF', '#E040FB'];
 const SHEET_HEIGHT = height * 0.6;
 const COUNTRY_SHEET_HEIGHT = height * 0.65;
 
@@ -301,6 +310,18 @@ export default function MainScreen({ navigation, route }: Props) {
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
+  const [dsShowMoreColors, setDsShowMoreColors] = useState(false); // 기본 색상 팔레트 '+' 확장
+
+  // 갤러리에서 사진 가져오기 → 표시 모드를 사진으로 전환
+  const handlePickGlobePhoto = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) return;
+    const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
+    if (!res.canceled) {
+      setGlobeDisplayMode('photo');
+      setEditingCountryColor(null);
+    }
+  };
 
   // 국가 및 지역별 개별 표시 설정
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, GlobeDisplayMode>>({});
@@ -633,7 +654,35 @@ export default function MainScreen({ navigation, route }: Props) {
               onPress={() => setDisplaySettingsVisible(true)}
             >
               <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
-                <GlobeIcon size={20} color="#BF85FC" />
+                <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
+                  <SvgDefs>
+                    {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (검은색 투명 → 흰색) */}
+                    <SvgLinearGradient id="globeBtnRim" x1="0" y1="0" x2="0.15" y2="1">
+                      <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
+                      <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
+                    </SvgLinearGradient>
+                  </SvgDefs>
+                  <Circle cx={14.5} cy={14.5} r={14.5} fill="#751AAD" fillOpacity={0.3} />
+                  <Circle cx={14.5} cy={14.5} r={13.8} fill="none" stroke="url(#globeBtnRim)" strokeOpacity={0.6} strokeWidth={1.3} />
+                  <SvgPath
+                    d="M23.7851 14.4998C23.7851 11.9165 22.8876 9.74402 21.0926 7.98266C19.37 6.2601 17.2696 5.37175 14.7913 5.31795L14.5504 5.31531C11.9671 5.31531 9.77802 6.20458 7.9831 7.98266L7.81884 8.14913C6.15012 9.88032 5.31578 11.9972 5.31575 14.4998L5.31839 14.7411C5.37226 17.2193 6.26057 19.3195 7.9831 21.042C9.72199 22.7484 11.8307 23.6283 14.3095 23.6816L14.5504 23.6842C17.1338 23.6842 19.3145 22.8034 21.0926 21.042C22.8875 19.2638 23.7851 17.0831 23.7851 14.4998ZM24.0982 14.7486C24.0419 17.3063 23.1133 19.4851 21.315 21.2666C19.4757 23.0886 17.214 24 14.5504 24C11.9701 24 9.75963 23.1448 7.93686 21.4357L7.76203 21.2675L7.75983 21.2653C5.9207 19.4261 5 17.1643 5 14.4998C5.00003 11.8353 5.92064 9.58125 7.76071 7.75851C9.61623 5.92033 11.8859 5 14.5504 5C17.2149 5 19.4768 5.92031 21.3159 7.75939C23.1719 9.58159 24.1008 11.8352 24.1008 14.4998L24.0982 14.7486Z"
+                    fill="#FFFFFF"
+                  />
+                  <SvgPath
+                    d="M15.0576 4.76074C17.5677 4.87152 19.7221 5.81266 21.4912 7.58105L21.8369 7.93652C23.512 9.74267 24.3506 11.9408 24.3506 14.5V14.502L24.3486 14.751V14.7539L24.0986 14.749L24.3477 14.7539C24.29 17.3755 23.3362 19.6166 21.4912 21.4443C19.7213 23.1976 17.5663 24.1297 15.0566 24.2393L14.5508 24.25C11.9094 24.25 9.63652 23.3724 7.76562 21.6182L7.76367 21.6162L7.58887 21.4473L7.58496 21.4443L7.58301 21.4424C5.69564 19.555 4.75005 17.2287 4.75 14.5L4.76074 13.9932C4.87152 11.483 5.81383 9.3355 7.58496 7.58105C9.48847 5.69535 11.8221 4.75 14.5508 4.75L15.0576 4.76074ZM14.5488 5.56543C12.0305 5.56579 9.90574 6.43004 8.15918 8.16016L7.99707 8.3252L7.99609 8.32422C6.37568 10.0063 5.56546 12.0603 5.56543 14.5L5.56836 14.7354L5.58789 15.1836C5.73195 17.4029 6.58789 19.2922 8.1582 20.8633C9.85069 22.5241 11.8982 23.3796 14.3145 23.4316H14.3135L14.5508 23.4336C17.0704 23.4335 19.1874 22.5776 20.917 20.8643C22.6631 19.1343 23.5351 17.0181 23.5352 14.5C23.5351 11.9819 22.6634 9.87402 20.918 8.16113L20.916 8.15918C19.2399 6.48314 17.2011 5.62085 14.7861 5.56836V5.56738L14.5488 5.56543Z"
+                    stroke="#FFFFFF"
+                    strokeOpacity={0.5}
+                    strokeWidth={0.5}
+                  />
+                  <SvgPath d="M14.4696 5.45068C12.8913 8.38182 12.2148 11.7639 12.2148 14.695C12.2148 18.3026 13.267 22.5866 14.4696 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                  <SvgPath d="M14.9211 5.45068C16.6747 8.41801 17.1758 12.9831 17.1758 15.0374C17.1758 17.0917 16.4242 22.5699 14.9211 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                  <SvgPath d="M14.4699 5.45068C11.0943 7.25419 9.05859 10.1877 9.05859 15.3728C9.05859 20.5578 11.7592 23.2631 13.5597 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                  <SvgPath d="M14.9207 5.45068C18.2963 7.25419 20.332 10.7006 20.332 15.0374C20.332 19.3743 17.6314 23.2631 15.831 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                  <SvgLine x1={14.8697} y1={5} x2={14.8697} y2={23.9397} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
+                  <SvgLine x1={5} y1={14.5204} x2={23.9397} y2={14.5204} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
+                  <SvgLine x1={5.90137} y1={18.1783} x2={23.0373} y2={18.1783} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                  <SvgLine x1={5.90137} y1={10.9635} x2={23.4882} y2={10.9635} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+                </Svg>
               </BlurView>
             </TouchableOpacity>
           </>
@@ -669,17 +718,26 @@ export default function MainScreen({ navigation, route }: Props) {
               style={styles.regionChipsRow}
               contentContainerStyle={styles.regionChipsContent}
             >
-              <TouchableOpacity
-                style={styles.regionChip}
-                activeOpacity={0.8}
-                onPress={() => setRegionSearch('')}
-              >
-                <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
-              </TouchableOpacity>
+              {/* 국가 표시 칩 — 메뉴탭바 배경 테두리(흰색/검은색 베벨) 그라데이션 */}
               <LinearGradient
-                colors={popularActive ? ['#00D8F3', '#FF14E4'] : ['rgba(117,26,173,0.3)', 'rgba(117,26,173,0.3)']}
+                colors={['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
                 start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
+                end={{ x: 0.15, y: 1 }}
+                style={styles.regionChipBorder}
+              >
+                <TouchableOpacity
+                  style={styles.regionChipInner}
+                  activeOpacity={0.8}
+                  onPress={() => setRegionSearch('')}
+                >
+                  <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
+                </TouchableOpacity>
+              </LinearGradient>
+              {/* 인기명소 모아보기 — 활성: 시안→마젠타 / 비활성: 흰색/검은색 베벨 그라데이션 */}
+              <LinearGradient
+                colors={popularActive ? ['#00D8F3', '#FF14E4'] : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
+                start={{ x: 0, y: 0 }}
+                end={popularActive ? { x: 1, y: 1 } : { x: 0.15, y: 1 }}
                 style={styles.popularChipBorder}
               >
                 <TouchableOpacity
@@ -707,15 +765,20 @@ export default function MainScreen({ navigation, route }: Props) {
                 showPopular={popularActive}
               />
             </View>
-            {/* 뒤로가기 버튼 */}
+            {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
             <TouchableOpacity
               style={styles.regionBackBtn}
               activeOpacity={0.7}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               onPress={() => { setRegionCountry(null); setRegionSearch(''); }}
             >
-              <BlurView intensity={50} tint="dark" style={StyleSheet.absoluteFill} />
-              <Text style={styles.regionBackArrow}>←</Text>
-              <Text style={styles.regionBackText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
+              <Svg width={16} height={28} viewBox="33 156 12 22">
+                <SvgPath
+                  d="M42.0981 159.422C42.6142 158.924 43.4364 158.939 43.9345 159.455C44.4326 159.971 44.418 160.793 43.9019 161.291L43 160.357L42.0981 159.422ZM36 167.348L35.0629 168.248C34.5827 167.747 34.5804 166.958 35.0578 166.454L36 167.348ZM43.9371 173.744C44.4337 174.262 44.4168 175.084 43.8992 175.58C43.3817 176.077 42.5595 176.06 42.0629 175.542L43 174.643L43.9371 173.744ZM38.653 164.552L37.7108 163.658L37.7305 163.638L37.7511 163.618L38.653 164.552ZM36 167.348L36.9371 166.449L43.9371 173.744L43 174.643L42.0629 175.542L35.0629 168.248L36 167.348ZM43 160.357L43.9019 161.291L39.5549 165.487L38.653 164.552L37.7511 163.618L42.0981 159.422L43 160.357ZM38.653 164.552L39.5952 165.446L36.9422 168.242L36 167.348L35.0578 166.454L37.7108 163.658L38.653 164.552Z"
+                  fill="#FFFFFF"
+                  fillOpacity={0.6}
+                />
+              </Svg>
             </TouchableOpacity>
           </>
         ) : (
@@ -1000,150 +1063,127 @@ export default function MainScreen({ navigation, route }: Props) {
         onRequestClose={() => setDisplaySettingsVisible(false)}
       >
         <TouchableOpacity
-          style={styles.fmOverlay}
+          style={[styles.fmOverlay, { justifyContent: 'flex-start', paddingTop: DS_CARD_TOP }]}
           activeOpacity={1}
           onPress={() => setDisplaySettingsVisible(false)}
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-            
+            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+            {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬 */}
+            <Svg
+              width={DS_CARD_W}
+              height={DS_CARD_H}
+              viewBox="0 0 325 569"
+              preserveAspectRatio="none"
+              style={{ position: 'absolute', top: 0, left: 0 }}
+              pointerEvents="none"
+            >
+              <SvgDefs>
+                <SvgLinearGradient id="dsBorder0" x1="32" y1="18.9326" x2="284.107" y2="511.12" gradientUnits="userSpaceOnUse">
+                  <SvgStop stopColor="#666666" />
+                  <SvgStop offset="1" stopColor="#666666" stopOpacity="0" />
+                </SvgLinearGradient>
+                <SvgLinearGradient id="dsBorder1" x1="316.5" y1="553.5" x2="173.5" y2="380.5" gradientUnits="userSpaceOnUse">
+                  <SvgStop stopColor="#FFFFFF" />
+                  <SvgStop offset="1" stopColor="#999999" stopOpacity="0" />
+                </SvgLinearGradient>
+              </SvgDefs>
+              <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder0)" strokeWidth={1.7} />
+              <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder1)" strokeOpacity={0.5} strokeWidth={1.7} />
+            </Svg>
+
             {viewMode === 'globe' ? (
               <>
-                <Text style={styles.dsTitle}>지구본 표시 설정</Text>
-                <Text style={styles.dsSub}>기록한 국가의 지구본 표시 방식을 선택하세요</Text>
+                <Text style={styles.dsTitle}>영토 표시 설정</Text>
+                <Text style={styles.dsSub}>기록한 국가의 영토를 어떻게 표시할지 선택하세요</Text>
 
-                {/* 글로벌 기본 모드 선택 */}
-                <View style={styles.dsColorSection}>
-                  <Text style={styles.dsColorLabel}>글로벌 기본 설정</Text>
-                  <View style={styles.dsSection}>
-                    <TouchableOpacity
-                      style={[styles.dsOption, globeDisplayMode === 'flag' && styles.dsOptionActive]}
-                      activeOpacity={0.7}
-                      onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
-                    >
-                      <Text style={{ fontSize: 24 }}>🏳️</Text>
-                      <Text style={[styles.dsOptionText, globeDisplayMode === 'flag' && styles.dsOptionTextActive]}>국기</Text>
-                      {globeDisplayMode === 'flag' && <View style={styles.dsCheck} />}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.dsOption, globeDisplayMode === 'color' && styles.dsOptionActive]}
-                      activeOpacity={0.7}
-                      onPress={() => setGlobeDisplayMode('color')}
-                    >
-                      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
-                      <Text style={[styles.dsOptionText, globeDisplayMode === 'color' && styles.dsOptionTextActive]}>색상</Text>
-                      {globeDisplayMode === 'color' && <View style={styles.dsCheck} />}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.dsOption, globeDisplayMode === 'photo' && styles.dsOptionActive]}
-                      activeOpacity={0.7}
-                      onPress={() => { setGlobeDisplayMode('photo'); setEditingCountryColor(null); }}
-                    >
-                      <Text style={{ fontSize: 24 }}>🖼️</Text>
-                      <Text style={[styles.dsOptionText, globeDisplayMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
-                      {globeDisplayMode === 'photo' && <View style={styles.dsCheck} />}
-                    </TouchableOpacity>
-                  </View>
+                {/* 국기 / 색상 세그먼트 토글 (솔리드 보라 + 라벤더 글로우) */}
+                <View style={dsm.toggleRow}>
+                  <TouchableOpacity
+                    style={[dsm.toggleBtn, globeDisplayMode !== 'color' ? dsm.toggleBtnActive : dsm.toggleBtnIdle]}
+                    activeOpacity={0.85}
+                    onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
+                  >
+                    <Text style={dsm.toggleText}>국기</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[dsm.toggleBtn, globeDisplayMode === 'color' ? dsm.toggleBtnActive : dsm.toggleBtnIdle]}
+                    activeOpacity={0.85}
+                    onPress={() => setGlobeDisplayMode('color')}
+                  >
+                    <Text style={dsm.toggleText}>색상</Text>
+                  </TouchableOpacity>
                 </View>
 
-                {/* 글로벌 기본 색상 선택 */}
-                {globeDisplayMode === 'color' && (
-                  <View style={styles.dsColorSection}>
-                    <Text style={styles.dsColorLabel}>글로벌 기본 색상</Text>
-                    <View style={styles.dsColorGrid}>
-                      {['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF'].map(c => (
-                        <TouchableOpacity
-                          key={c}
-                          style={[styles.dsColorItem, { backgroundColor: c }, globeColor === c && styles.dsColorItemActive]}
-                          activeOpacity={0.7}
-                          onPress={() => setGlobeColor(c)}
-                        />
-                      ))}
+                {/* 갤러리에서 가져오기 */}
+                <TouchableOpacity style={dsm.galleryBtn} activeOpacity={0.85} onPress={handlePickGlobePhoto}>
+                  <Text style={dsm.galleryText}>갤러리에서 가져오기</Text>
+                </TouchableOpacity>
+
+                {/* 기본 색상 팔레트 */}
+                <Text style={dsm.sectionLabel}>기본 색상</Text>
+                <View style={dsm.paletteRow}>
+                  {DS_PALETTE.map(c => (
+                    <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
+                      <View style={[dsm.swatch, { backgroundColor: c }, globeColor === c && dsm.swatchActive]} />
+                    </TouchableOpacity>
+                  ))}
+                  <TouchableOpacity activeOpacity={0.8} onPress={() => setDsShowMoreColors(v => !v)}>
+                    <View style={dsm.addSwatch}>
+                      <Svg width={18} height={18} viewBox="0 0 14 14">
+                        <SvgPath d="M7 1.5a1 1 0 0 1 1 1V6h3.5a1 1 0 1 1 0 2H8v3.5a1 1 0 1 1-2 0V8H2.5a1 1 0 1 1 0-2H6V2.5a1 1 0 0 1 1-1z" fill="#E7E7E7" fillOpacity={0.7} />
+                      </Svg>
                     </View>
+                  </TouchableOpacity>
+                </View>
+                {dsShowMoreColors && (
+                  <View style={[dsm.paletteRow, { marginTop: 10, flexWrap: 'wrap' }]}>
+                    {DS_PALETTE_MORE.map(c => (
+                      <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
+                        <View style={[dsm.swatch, { backgroundColor: c }, globeColor === c && dsm.swatchActive]} />
+                      </TouchableOpacity>
+                    ))}
                   </View>
                 )}
 
-                {/* 국가별 개별 설정 */}
-                <View style={[styles.dsColorSection, { flex: 1, maxHeight: 220 }]}>
-                  <Text style={styles.dsColorLabel}>국가별 개별 설정</Text>
-                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                {/* 국가별 색상 리스트 (하단 페이드) */}
+                <Text style={[dsm.sectionLabel, { marginTop: 18 }]}>국가별 색상</Text>
+                <View style={dsm.listWrap}>
+                  {visitedNameSet.size === 0 ? (
+                    <Text style={dsm.emptyHint}>기록한 국가가 없습니다</Text>
+                  ) : (
+                  <>
+                  <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
                     {Array.from(visitedNameSet).map(nameEn => {
                       const ko = EN_TO_KO[nameEn] || nameEn;
-                      const currentMode = (countryDisplayModes[nameEn] || 'default') as GlobeDisplayMode | 'default';
-                      const currentColor = countryColors[nameEn] || globeColor;
+                      const dotColor = countryColors[nameEn] || globeColor;
                       const isEditing = editingCountryColor === nameEn;
-                      const effectiveMode = currentMode === 'default' ? globeDisplayMode : currentMode;
-
                       return (
-                        <View key={nameEn} style={{ marginBottom: 8 }}>
-                          <View style={styles.dsCountryRow}>
-                            {effectiveMode === 'color' ? (
-                              <TouchableOpacity
-                                style={[styles.dsCountryDot, { backgroundColor: currentColor }]}
-                                onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
-                              />
-                            ) : (
-                              <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
-                                <Text style={{ fontSize: 10 }}>{effectiveMode === 'flag' ? '🏳️' : '🖼️'}</Text>
-                              </View>
-                            )}
-                            <Text style={styles.dsCountryName} numberOfLines={1}>{ko}</Text>
-
-                            <View style={styles.dsSegmentWrap}>
-                              {(['default', 'flag', 'color', 'photo'] as const).map(m => {
-                                const label = m === 'default' ? '기본' : m === 'flag' ? '국기' : m === 'color' ? '색상' : '사진';
-                                const active = currentMode === m;
-                                return (
-                                  <TouchableOpacity
-                                    key={m}
-                                    style={[styles.dsSegmentBtn, active && styles.dsSegmentBtnActive]}
-                                    onPress={() => {
-                                      setCountryDisplayModes(prev => {
-                                        const next = { ...prev };
-                                        if (m === 'default') {
-                                          delete next[nameEn];
-                                        } else {
-                                          next[nameEn] = m;
-                                        }
-                                        return next;
-                                      });
-                                      if (m !== 'color') {
-                                        if (editingCountryColor === nameEn) setEditingCountryColor(null);
-                                      }
-                                    }}
-                                  >
-                                    <Text style={[styles.dsSegmentText, active && styles.dsSegmentTextActive]}>{label}</Text>
-                                  </TouchableOpacity>
-                                );
-                              })}
-                            </View>
-                          </View>
-
-                          {/* 국가별 색상 선택 피커 */}
-                          {isEditing && effectiveMode === 'color' && (
-                            <View style={styles.dsCountryPalette}>
-                              {['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF', '#E040FB', '#FF5252', '#448AFF', '#69F0AE', '#FFAB40'].map(c => (
-                                <TouchableOpacity
-                                  key={c}
-                                  style={[styles.dsColorItemSm, { backgroundColor: c }, countryColors[nameEn] === c && styles.dsColorItemSmActive]}
-                                  activeOpacity={0.7}
-                                  onPress={() => {
-                                    setCountryColors(prev => ({ ...prev, [nameEn]: c }));
-                                  }}
-                                />
+                        <View key={nameEn}>
+                          <TouchableOpacity
+                            style={dsm.countryRow}
+                            activeOpacity={0.7}
+                            onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
+                          >
+                            <View style={[dsm.countryDot, { backgroundColor: dotColor }]} />
+                            <Text style={dsm.countryName} numberOfLines={1}>{ko}</Text>
+                            <Svg width={12} height={8} viewBox="0 0 12 8">
+                              <SvgPath d="M1 1.5 6 6.5 11 1.5" stroke="#8B8B91" strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                            </Svg>
+                          </TouchableOpacity>
+                          {isEditing && (
+                            <View style={dsm.countryPalette}>
+                              {[...DS_PALETTE, ...DS_PALETTE_MORE].map(c => (
+                                <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setCountryColors(prev => ({ ...prev, [nameEn]: c }))}>
+                                  <View style={[dsm.swatchSm, { backgroundColor: c }, (countryColors[nameEn] || globeColor) === c && dsm.swatchSmActive]} />
+                                </TouchableOpacity>
                               ))}
                               {countryColors[nameEn] && (
                                 <TouchableOpacity
-                                  style={styles.dsCountryReset}
-                                  onPress={() => {
-                                    setCountryColors(prev => {
-                                      const next = { ...prev };
-                                      delete next[nameEn];
-                                      return next;
-                                    });
-                                  }}
+                                  style={dsm.countryReset}
+                                  onPress={() => setCountryColors(prev => { const next = { ...prev }; delete next[nameEn]; return next; })}
                                 >
-                                  <Text style={styles.dsCountryResetText}>초기화</Text>
+                                  <Text style={dsm.countryResetText}>초기화</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -1152,6 +1192,13 @@ export default function MainScreen({ navigation, route }: Props) {
                       );
                     })}
                   </ScrollView>
+                  <LinearGradient
+                    colors={['rgba(10,11,15,0)', 'rgba(10,11,15,0.9)']}
+                    style={dsm.listFade}
+                    pointerEvents="none"
+                  />
+                  </>
+                  )}
                 </View>
               </>
             ) : (
@@ -1241,11 +1288,11 @@ export default function MainScreen({ navigation, route }: Props) {
             )}
 
             <TouchableOpacity
-              style={styles.dsConfirmBtn}
+              style={dsm.confirmBtn}
               activeOpacity={0.85}
               onPress={() => { setDisplaySettingsVisible(false); setEditingCountryColor(null); }}
             >
-              <Text style={styles.dsConfirmText}>확인</Text>
+              <Text style={dsm.confirmText}>확인</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1266,6 +1313,44 @@ export default function MainScreen({ navigation, route }: Props) {
     </LinearGradient>
   );
 }
+
+// ── 영토 표시 설정 모달 (Figma Frame_2147230197 100% 구현) ──
+const dsm = StyleSheet.create({
+  toggleRow: { flexDirection: 'row', gap: 11, height: 53, marginBottom: 13 },
+  toggleBtn: { flex: 1, borderRadius: 15, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  toggleBtnIdle: { backgroundColor: '#2E2E3B' },
+  toggleBtnActive: {
+    backgroundColor: '#6B21A8',
+    borderWidth: 1.5,
+    borderColor: '#CA83FF',
+    shadowColor: '#CA83FF',
+    shadowOpacity: 0.7,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 6,
+  },
+  toggleText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  galleryBtn: { height: 49, borderRadius: 15, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
+  galleryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  sectionLabel: { color: '#9A9A9A', fontSize: 13, fontWeight: '600', marginBottom: 14 },
+  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  swatch: { width: 34, height: 34, borderRadius: 17 },
+  swatchActive: { borderWidth: 2, borderColor: '#fff' },
+  addSwatch: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  listWrap: { flex: 1, marginTop: 4, position: 'relative' },
+  emptyHint: { color: '#6F6F7A', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 24 },
+  listFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 48 },
+  countryRow: { flexDirection: 'row', alignItems: 'center', height: 31, marginBottom: 6 },
+  countryDot: { width: 19, height: 19, borderRadius: 9.5, borderWidth: 1, borderColor: '#fff', marginRight: 12 },
+  countryName: { flex: 1, color: '#fff', fontSize: 15, fontWeight: '700' },
+  countryPalette: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingVertical: 8, paddingLeft: 31, alignItems: 'center' },
+  swatchSm: { width: 24, height: 24, borderRadius: 12 },
+  swatchSmActive: { borderWidth: 2, borderColor: '#fff' },
+  countryReset: { paddingHorizontal: 10, height: 24, borderRadius: 12, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  countryResetText: { color: '#A1A1B0', fontSize: 11, fontWeight: '600' },
+  confirmBtn: { height: 49, borderRadius: 15, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  confirmText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+});
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
@@ -1360,10 +1445,16 @@ const styles = StyleSheet.create({
     gap: 7,
     paddingHorizontal: 24,
   },
-  regionChip: {
-    height: 30,
-    borderRadius: 31.538,
-    backgroundColor: 'rgba(117,26,173,0.3)',
+  regionChipBorder: {
+    borderRadius: 15.5,
+    padding: 1,
+  },
+  regionChipInner: {
+    height: 28,
+    borderRadius: 14.5,
+    // 불투명이어야 테두리 그라데이션이 배경(가운데)으로 비치지 않음
+    // (#751AAD 30%가 다크 배경 위에 깔린 색과 동일)
+    backgroundColor: '#2A0F3E',
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1721,20 +1812,13 @@ const styles = StyleSheet.create({
   },
   // ── 대륙 모드 - 뒤로가기
   regionBackBtn: {
-    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     position: 'absolute',
     top: 12,
     left: 16,
     zIndex: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: 'rgba(20,20,30,0.25)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
-    gap: 4,
-    overflow: 'hidden',
+    padding: 8,
   },
   regionBackArrow: {
     color: '#BF85FC',
@@ -1826,25 +1910,27 @@ const styles = StyleSheet.create({
 
   // ── 표시 설정 모달
   dsCard: {
-    width: '85%',
-    maxHeight: '80%',
-    backgroundColor: 'rgba(20,20,32,0.5)',
-    borderRadius: 20,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.12)',
+    width: DS_CARD_W,
+    height: DS_CARD_H,
+    paddingTop: 36,
+    paddingHorizontal: DS_PAD,
+    paddingBottom: 22,
+    borderRadius: 29,
+    backgroundColor: 'rgba(10,11,15,0.8)',
     overflow: 'hidden',
   },
   dsTitle: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    marginBottom: 4,
+    fontSize: 24,
+    fontWeight: '800',
+    textAlign: 'left',
+    marginBottom: 8,
   },
   dsSub: {
-    color: '#A1A1B0',
+    color: '#9A9A9A',
     fontSize: 13,
-    marginBottom: 20,
+    fontWeight: '600',
+    marginBottom: 18,
     lineHeight: 18,
   },
   dsSection: {

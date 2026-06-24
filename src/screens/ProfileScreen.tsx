@@ -24,7 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
-import { GearIcon, PersonIcon } from '../components/icons';
+import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
   FloatingBlobs,
@@ -38,6 +38,8 @@ import { computeTravelStats } from '../utils/badgeRules';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { getMyUserId } from '../services/profile';
+import { fetchFollowerCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
@@ -235,18 +237,14 @@ const StatCard = ({
   value,
   label,
   onPress,
-  grad = STAT_GRADS[0],
 }: {
   value: string;
   label: string;
   onPress?: () => void;
-  grad?: readonly [string, string, ...string[]];
 }) => (
-  <LiquidPressable onPress={onPress} intensity={0.08}>
-    <NeonGlass colors={grad} glowColor={grad[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={styles.statCardContent}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </NeonGlass>
+  <LiquidPressable onPress={onPress} intensity={0.06} style={styles.statCol}>
+    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
   </LiquidPressable>
 );
 
@@ -1512,6 +1510,17 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
   const { records, tripGroups, archivedIds, followingUsers } = useRecords();
 
+  // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
+  const [followerCount, setFollowerCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const uid = await getMyUserId();
+      if (uid && alive) setFollowerCount(await fetchFollowerCount(uid));
+    })();
+    return () => { alive = false; };
+  }, []);
+
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
   //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽고(중복 계산 제거),
   //  - 통계 카드용 travelStats만 로컬 계산(보관 기록 포함).
@@ -1671,14 +1680,33 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
       >
         {/* 상단 헤더 */}
         <View style={[styles.headerRow, { marginTop: insets.top + 12 }]}>
-          <Text style={styles.title}>프로필</Text>
+          <Svg width={116} height={47} viewBox="0 0 116 47" fill="none">
+            <Path
+              d="M12.7309 14.6189C15.1149 14.6189 17.1056 15.5249 18.7029 17.3367C20.3241 19.1248 21.1347 21.3658 21.1347 24.0598C21.1347 26.7538 20.3241 29.0067 18.7029 30.8186C17.1056 32.6066 15.1149 33.5007 12.7309 33.5007C10.5614 33.5007 8.8687 32.7854 7.65283 31.355V40.1522H1.71652V15.1196H7.65283V16.7646C8.8687 15.3341 10.5614 14.6189 12.7309 14.6189ZM8.68989 26.8849C9.38127 27.6001 10.2872 27.9577 11.4077 27.9577C12.5282 27.9577 13.4342 27.6001 14.1255 26.8849C14.8169 26.1697 15.1626 25.228 15.1626 24.0598C15.1626 22.8916 14.8169 21.9499 14.1255 21.2347C13.4342 20.5195 12.5282 20.1618 11.4077 20.1618C10.2872 20.1618 9.38127 20.5195 8.68989 21.2347C7.99851 21.9499 7.65283 22.8916 7.65283 24.0598C7.65283 25.228 7.99851 26.1697 8.68989 26.8849ZM30.727 18.4453C31.0607 17.2771 31.7283 16.3712 32.7296 15.7275C33.7309 15.0838 34.8514 14.762 36.0911 14.762V21.342C34.7322 21.1274 33.4925 21.3777 32.372 22.0929C31.2753 22.8082 30.727 23.9763 30.727 25.5975V33H24.7907V15.1196H30.727V18.4453ZM47.6494 33.5007C45.0031 33.5007 42.7502 32.5947 40.8906 30.7828C39.031 28.9471 38.1012 26.7061 38.1012 24.0598C38.1012 21.4135 39.031 19.1844 40.8906 17.3725C42.7502 15.5368 45.0031 14.6189 47.6494 14.6189C50.3195 14.6189 52.5725 15.5368 54.4082 17.3725C56.2678 19.1844 57.1976 21.4135 57.1976 24.0598C57.1976 26.7061 56.2678 28.9471 54.4082 30.7828C52.5725 32.5947 50.3195 33.5007 47.6494 33.5007ZM47.6494 27.7789C48.6984 27.7789 49.5566 27.4332 50.2242 26.7418C50.9156 26.0505 51.2612 25.1564 51.2612 24.0598C51.2612 22.9631 50.9156 22.0691 50.2242 21.3777C49.5566 20.6863 48.6984 20.3407 47.6494 20.3407C46.6243 20.3407 45.766 20.6863 45.0746 21.3777C44.4071 22.0691 44.0733 22.9631 44.0733 24.0598C44.0733 25.1564 44.4071 26.0505 45.0746 26.7418C45.766 27.4332 46.6243 27.7789 47.6494 27.7789ZM70.5118 12.9382C68.4615 12.7951 67.4363 13.5222 67.4363 15.1196H70.5118V20.8055H67.4363V33H61.5V20.8055H59.2471V15.1196H61.5C61.5 12.5448 62.251 10.5779 63.753 9.21902C65.2788 7.86011 67.5317 7.26409 70.5118 7.43098V12.9382Z"
+              fill="#FFFFFF"
+            />
+            <Path
+              d="M80.6461 12.6521C79.9785 13.3196 79.1799 13.6534 78.2501 13.6534C77.3203 13.6534 76.5097 13.3196 75.8184 12.6521C75.1508 11.9607 74.8171 11.1501 74.8171 10.2203C74.8171 9.29054 75.1508 8.49188 75.8184 7.82435C76.5097 7.15681 77.3203 6.82304 78.2501 6.82304C79.1799 6.82304 79.9785 7.15681 80.6461 7.82435C81.3375 8.49188 81.6831 9.29054 81.6831 10.2203C81.6831 11.1501 81.3375 11.9607 80.6461 12.6521ZM75.282 33V15.1196H81.2183V33H75.282ZM85.7141 33V6.89457H91.6504V33H85.7141ZM101.404 26.2412C102 27.6955 103.335 28.4226 105.409 28.4226C106.696 28.4226 107.781 28.0054 108.663 27.171L112.955 30.1749C111.19 32.3921 108.628 33.5007 105.266 33.5007C102.238 33.5007 99.8066 32.6186 97.9708 30.8543C96.1589 29.0663 95.253 26.8134 95.253 24.0955C95.253 21.4016 96.147 19.1486 97.9351 17.3367C99.7231 15.5249 102 14.6189 104.765 14.6189C107.436 14.6189 109.641 15.5129 111.381 17.301C113.122 19.089 113.992 21.33 113.992 24.024C113.992 24.8108 113.908 25.5498 113.741 26.2412H101.404ZM101.332 22.1287H108.198C107.722 20.4599 106.601 19.6254 104.837 19.6254C103.001 19.6254 101.833 20.4599 101.332 22.1287Z"
+              fill="#FFFFFF"
+            />
+          </Svg>
           <LiquidPressable
             style={styles.settingBtn}
             onPress={() => navigation.navigate('Settings')}
             intensity={0.12}
           >
-            <GlassFill intensity={28} />
-            <GearIcon size={22} color="#A0A0B0" />
+            <Svg width={22} height={22} viewBox="0 0 27 27" fill="none">
+              <Path
+                d="M23.6061 14.1787L25.3441 15.7265C25.6651 15.9943 25.8795 16.3682 25.9487 16.7805C26.0178 17.1928 25.937 17.6162 25.721 17.9741L23.6254 21.5542C23.4628 21.8283 23.2306 22.0545 22.9525 22.2099C22.6711 22.3656 22.3551 22.4482 22.0335 22.4502C21.834 22.4514 21.6355 22.4216 21.4452 22.3618L19.2208 21.6273C18.8311 21.8772 18.4261 22.1009 18.0057 22.2983L17.5385 24.5537C17.4521 24.9685 17.2211 25.3392 16.8868 25.5996C16.5482 25.8647 16.1285 26.0046 15.6986 25.9957H11.3594C10.9295 26.0046 10.5098 25.8647 10.1712 25.5996C9.83762 25.3389 9.60735 24.9683 9.5214 24.5537L9.05229 22.2983C8.6374 22.0983 8.23486 21.8735 7.84684 21.6254L5.61474 22.3618C5.42441 22.4216 5.22593 22.4514 5.02643 22.4502C4.70548 22.4479 4.3902 22.3653 4.10937 22.2099C3.83144 22.055 3.59932 21.8295 3.43647 21.5561L1.26589 17.9741C1.04023 17.613 0.954008 17.182 1.02338 16.7618C1.09275 16.3417 1.31295 15.9613 1.64271 15.6919L3.37879 13.498V12.8174L1.64079 11.2696C1.31984 11.0018 1.10539 10.6279 1.03627 10.2156C0.967149 9.80327 1.04792 9.37985 1.26396 9.02197L3.43454 5.44187C3.59713 5.16782 3.82927 4.94163 4.10744 4.78623C4.38828 4.63081 4.70355 4.54819 5.02451 4.54589C5.22221 4.53341 5.42066 4.55157 5.61281 4.59972L7.8007 5.36881C8.19162 5.11886 8.59664 4.89518 9.01576 4.69778L9.48487 2.44244C9.57082 2.02784 9.80109 1.65719 10.1347 1.39648C10.4732 1.13142 10.893 0.991503 11.3228 1.0004H15.6256C16.0554 0.991503 16.4752 1.13142 16.8137 1.39648C17.1502 1.65989 17.3809 2.03097 17.4635 2.44244L17.9326 4.69778C18.3492 4.89646 18.751 5.12078 19.1381 5.37073L21.3721 4.63625C21.6201 4.55559 21.882 4.52727 22.1415 4.55308C22.4009 4.5789 22.6522 4.65829 22.8794 4.78623C23.1582 4.94389 23.3889 5.17077 23.5523 5.43995L25.721 9.02197C25.9497 9.38002 26.0403 9.80906 25.9759 10.229C25.9115 10.649 25.6965 11.0312 25.3711 11.3042L23.6061 12.8078V14.1787Z"
+                stroke="#FFFFFF"
+                strokeWidth={2}
+              />
+              <Path
+                d="M18.3043 13.4977C18.3043 14.7725 17.7979 15.9952 16.8965 16.8966C15.9951 17.7981 14.7726 18.3045 13.4978 18.3045C12.2231 18.3045 11.0006 17.7981 10.0992 16.8966C9.1978 15.9952 8.69141 14.7725 8.69141 13.4977C8.69141 12.2229 9.1978 11.0002 10.0992 10.0988C11.0006 9.19735 12.2231 8.69092 13.4978 8.69092C14.7726 8.69092 15.9951 9.19735 16.8965 10.0988C17.7979 11.0002 18.3043 12.2229 18.3043 13.4977Z"
+                stroke="#FFFFFF"
+                strokeWidth={2}
+              />
+            </Svg>
           </LiquidPressable>
         </View>
 
@@ -1687,18 +1715,29 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <GrainOverlay opacity={0.03} dotCount={60} />
           {/* 아바타 — 구이 이펙트 서클 */}
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
-            <GooeyCircle size={104} color={NEON.purple} glowOpacity={0.6}>
+            <GooeyCircle size={128} color={NEON.purple} glowOpacity={0.6}>
               <LinearGradient
                 colors={[NEON.cyan, NEON.purple, NEON.magenta]}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 1 }}
                 style={styles.avatarRing}
               >
+                {/* 글래스 광택 — 그라데이션 링 위에 비스듬한 스페큘러 하이라이트(유리 질감) */}
+                <LinearGradient
+                  colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0.03)', 'rgba(255,255,255,0.34)']}
+                  locations={[0, 0.32, 0.6, 1]}
+                  start={{ x: 0.08, y: 0 }}
+                  end={{ x: 0.92, y: 1 }}
+                  style={styles.avatarRingGlass}
+                  pointerEvents="none"
+                />
+                {/* 링 바깥 가장자리 유리 림 하이라이트 */}
+                <View style={styles.avatarRingRim} pointerEvents="none" />
                 {profilePhoto ? (
                   <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
                 ) : (
                   <View style={styles.avatar}>
-                    <PersonIcon size={44} color="#A0A0B0" />
+                    <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
               </LinearGradient>
@@ -1709,23 +1748,37 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <View style={styles.profileInfo}>
             <Text style={styles.userName}>{profileName}</Text>
             {nickname ? <Text style={styles.userHandle}>@{handle}</Text> : null}
-            <Text style={styles.userLocation}>
-              {(() => {
-                const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
-                if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode) {
-                  const visit = COUNTRY_DATA[currentVisitedCountryCode] || { name: '일본', flag: '🇯🇵' };
-                  return `${visit.flag} ${visit.name} 여행 중`;
-                }
-                return `${home.flag} ${home.name}`;
-              })()}
-            </Text>
-            {bio ? <Text style={styles.userBio}>{bio}</Text> : null}
+            <View style={styles.statusRow}>
+              <Text style={styles.userLocation}>
+                {(() => {
+                  const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
+                  if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode) {
+                    const visit = COUNTRY_DATA[currentVisitedCountryCode] || { name: '일본', flag: '🇯🇵' };
+                    return `${visit.flag} ${visit.name} 여행 중`;
+                  }
+                  return `${home.flag} ${home.name}`;
+                })()}
+              </Text>
+              <View style={styles.statusDot} />
+              <View style={styles.statusDot} />
+              <View style={styles.statusDot} />
+            </View>
             <View style={styles.statsRow}>
-              <StatCard value={String(travelStats.recordCount)} label="기록 수" grad={STAT_GRADS[0]} />
-              <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
-              <StatCard value={String(travelStats.countryCount)} label="방문국가" grad={STAT_GRADS[2]} />
+              <StatCard value={String(travelStats.recordCount)} label="기록 수" />
+              <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} />
+              <StatCard value={String(followerCount)} label="팔로워" />
             </View>
           </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {/* Travel badge 헤더 */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Travel badge</Text>
+          <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
+            <Text style={styles.sectionLink}>모두보기</Text>
+          </TouchableOpacity>
         </View>
 
         {/* 배지 하이라이트 (구이 서클) */}
@@ -1742,24 +1795,15 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
               <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
             );
           })}
-          <LiquidPressable
-            style={badgeHL.item}
-            onPress={() => setBadgeListVisible(true)}
-            intensity={0.1}
-          >
-            <View style={badgeHL.moreCircle}>
-              <Text style={badgeHL.moreText}>{'전체\n보기'}</Text>
-            </View>
-          </LiquidPressable>
         </ScrollView>
 
         <View style={styles.divider} />
 
-        {/* 여행 기록 헤더 */}
+        {/* Travel archive 헤더 */}
         <View style={gridSt.gridHeaderRow}>
-          <Text style={gridSt.gridHeaderTitle}>여행 기록</Text>
-          <Text style={gridSt.tripCount}>{displayTrips.length}개의 여행</Text>
+          <Text style={styles.sectionTitle}>Travel archive</Text>
         </View>
+        <Text style={styles.archiveSubtitle}>Total countries visited : {travelStats.countryCount}</Text>
 
         {displayTrips.length > 0 && (
           <DraggableCardWrapper
@@ -1962,32 +2006,25 @@ const styles = StyleSheet.create({
   settingBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(46,46,59,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    overflow: 'hidden',
   },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+    alignItems: 'flex-start',
+    gap: 20,
     marginBottom: 14,
-    paddingVertical: 16,
+    paddingVertical: 12,
     overflow: 'hidden',
     position: 'relative',
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     backgroundColor: '#1F1F22',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: 'rgba(168,85,247,0.6)',
@@ -1997,11 +2034,9 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   avatarImg: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
+    width: 112,
+    height: 112,
+    borderRadius: 56,
     shadowColor: 'rgba(168,85,247,0.6)',
     shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 1,
@@ -2015,72 +2050,85 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 2,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '800',
     color: COLORS.white,
-    marginBottom: 2,
-    textShadowColor: 'rgba(191,133,252,0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    letterSpacing: 0.66,
+    marginBottom: 4,
   },
   userHandle: {
-    fontSize: 13,
-    color: COLORS.purpleNeon,
-    marginBottom: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AA54C1',
+    marginBottom: 6,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   userLocation: {
     fontSize: 12,
-    color: '#CFC2D6',
-    letterSpacing: 0.6,
+    fontWeight: '600',
+    color: COLORS.white,
   },
-  userBio: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 6,
-    lineHeight: 16,
+  statusDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.white,
+    marginLeft: 5,
+    marginTop: 7,
   },
 
   // 통계 행
   statsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 8,
+    gap: 28,
+    marginTop: 18,
   },
-  statCard: {
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-    overflow: 'hidden',
-  },
-  statCardContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+  statCol: {
     alignItems: 'center',
   },
   avatarRing: {
-    width: 102,
-    height: 102,
-    borderRadius: 51,
-    padding: 3,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarRingGlass: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 64,
+  },
+  avatarRingRim: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 64,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.62)',
+  },
   statValue: {
-    fontSize: 13,
-    fontWeight: 'bold',
+    fontSize: 20,
+    fontFamily: 'Inter_800ExtraBold',
     color: COLORS.white,
-    marginBottom: 1,
+    marginBottom: 6,
   },
   statLabel: {
-    fontSize: 10,
-    color: '#CFC2D6',
-    letterSpacing: 0.4,
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   followingExpandedWrap: {
     marginTop: 8,
@@ -2093,9 +2141,33 @@ const styles = StyleSheet.create({
   // 구분선
   divider: {
     height: 1,
-    backgroundColor: COLORS.divider,
-    marginHorizontal: -16,
-    marginBottom: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: -1,
+    marginBottom: 16,
+  },
+  // 섹션 헤더 (Travel badge / Travel archive)
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 23,
+    fontFamily: 'Inter_800ExtraBold',
+    color: COLORS.white,
+  },
+  sectionLink: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#AA54C1',
+  },
+  archiveSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AA54C1',
+    marginTop: -4,
+    marginBottom: 16,
   },
   friendsSectionLabel: {
     fontSize: 13,
@@ -2668,19 +2740,19 @@ const gridSt = StyleSheet.create({
 // ─── 배지 하이라이트 스타일 ───
 const badgeHL = StyleSheet.create({
   scroll: {
-    marginBottom: 7,
-    height: 88,
+    marginBottom: 16,
+    height: 72,
   },
   scrollContent: {
-    paddingLeft: 16,
+    paddingLeft: 4,
     paddingRight: 8,
-    gap: 14,
+    gap: 21,
     flexDirection: 'row',
     alignItems: 'center',
   },
   item: {
     alignItems: 'center',
-    width: 60,
+    width: 64,
   },
   glassCircle: {
     width: 60,
@@ -3056,13 +3128,11 @@ const thumbSt = StyleSheet.create({
   mainCard: {
     width: '100%',
     height: 260,
-    borderRadius: 32,
+    borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginBottom: 12,
+    backgroundColor: 'rgba(217,217,217,0.2)',
+    marginBottom: 16,
   },
   mainEmojiWrap: {
     flex: 1,
@@ -3117,12 +3187,10 @@ const thumbSt = StyleSheet.create({
   gridCard: {
     width: THUMB_WIDTH,
     height: 210,
-    borderRadius: 24,
+    borderRadius: 30,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(217,217,217,0.2)',
   },
   gridEmojiWrap: {
     flex: 1,

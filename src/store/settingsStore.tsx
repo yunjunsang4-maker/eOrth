@@ -100,7 +100,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpMethod, setSignUpMethod] = useState<SignUpMethod>('email');
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
-  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('JP'); // 여행국가: 기본값 일본(JP)
+  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
   const [representativeBadgeIds, setRepresentativeBadgeIds] = useState<number[]>([]);
   const [badgeEarnedAt, setBadgeEarnedAt] = useState<Record<number, number>>({});
   const [pendingBadgeToasts, setPendingBadgeToasts] = useState<number[]>([]); // 신규 획득 토스트 큐(비영속)
