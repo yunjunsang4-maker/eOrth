@@ -54,6 +54,9 @@ interface SettingsContextType {
   setRegionGlobalMode: React.Dispatch<React.SetStateAction<'color' | 'photo'>>;
   regionDisplayModes: Record<string, 'color' | 'photo'>;
   setRegionDisplayModes: React.Dispatch<React.SetStateAction<Record<string, 'color' | 'photo'>>>;
+  // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
+  regionColors: Record<string, string>;
+  setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 프로필에 표시할 대표 배지 id (사용자 선택, 영속)
   representativeBadgeIds: number[];
   setRepresentativeBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
@@ -96,6 +99,7 @@ interface SettingsPersistPayload {
   countryDisplayModes?: Record<string, MapDisplayMode>;
   regionGlobalMode?: 'color' | 'photo';
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
+  regionColors?: Record<string, string>;
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
   shareSentCount?: number; // 과거 저장본엔 없을 수 있어 optional
@@ -130,6 +134,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
+  const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [representativeBadgeIds, setRepresentativeBadgeIds] = useState<number[]>([]);
   const [badgeEarnedAt, setBadgeEarnedAt] = useState<Record<number, number>>({});
   const [pendingBadgeToasts, setPendingBadgeToasts] = useState<number[]>([]); // 신규 획득 토스트 큐(비영속)
@@ -190,6 +195,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCountryDisplayModes(p.countryDisplayModes ?? {});
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
       setRegionDisplayModes(p.regionDisplayModes ?? {});
+      setRegionColors(p.regionColors ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
@@ -219,6 +225,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       countryDisplayModes,
       regionGlobalMode,
       regionDisplayModes,
+      regionColors,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -248,6 +255,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       countryDisplayModes,
       regionGlobalMode,
       regionDisplayModes,
+      regionColors,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -294,6 +302,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setCountryDisplayModes({});
     setRegionGlobalMode('color');
     setRegionDisplayModes({});
+    setRegionColors({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
     setPendingBadgeToasts([]);
@@ -354,6 +363,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionGlobalMode,
         regionDisplayModes,
         setRegionDisplayModes,
+        regionColors,
+        setRegionColors,
         representativeBadgeIds,
         setRepresentativeBadgeIds,
         badgeEarnedAt,

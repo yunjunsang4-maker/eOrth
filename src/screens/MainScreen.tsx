@@ -28,7 +28,7 @@ import SponsoredPackageCard from '../components/SponsoredPackageCard';
 import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
+import { useSettings, type MapDisplayMode } from '../store/settingsStore';
 import type { TabScreenProps } from '../navigation/types';
 
 const { height, width } = Dimensions.get('window');
@@ -53,6 +53,39 @@ const REGION_COUNTRIES = [
   { code: 'FRA', flag: '🇫🇷', name: '프랑스' },
   { code: 'ITA', flag: '🇮🇹', name: '이탈리아' },
 ];
+
+// ─── 영토 표시 설정 버튼 아이콘 (보라 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
+const GlobeDisplayIcon = () => (
+  <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
+    <SvgDefs>
+      {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (검은색 투명 → 흰색) */}
+      <SvgLinearGradient id="globeBtnRim" x1="0" y1="0" x2="0.15" y2="1">
+        <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
+        <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
+      </SvgLinearGradient>
+    </SvgDefs>
+    <Circle cx={14.5} cy={14.5} r={14.5} fill="#751AAD" fillOpacity={0.3} />
+    <Circle cx={14.5} cy={14.5} r={13.8} fill="none" stroke="url(#globeBtnRim)" strokeOpacity={0.6} strokeWidth={1.3} />
+    <SvgPath
+      d="M23.7851 14.4998C23.7851 11.9165 22.8876 9.74402 21.0926 7.98266C19.37 6.2601 17.2696 5.37175 14.7913 5.31795L14.5504 5.31531C11.9671 5.31531 9.77802 6.20458 7.9831 7.98266L7.81884 8.14913C6.15012 9.88032 5.31578 11.9972 5.31575 14.4998L5.31839 14.7411C5.37226 17.2193 6.26057 19.3195 7.9831 21.042C9.72199 22.7484 11.8307 23.6283 14.3095 23.6816L14.5504 23.6842C17.1338 23.6842 19.3145 22.8034 21.0926 21.042C22.8875 19.2638 23.7851 17.0831 23.7851 14.4998ZM24.0982 14.7486C24.0419 17.3063 23.1133 19.4851 21.315 21.2666C19.4757 23.0886 17.214 24 14.5504 24C11.9701 24 9.75963 23.1448 7.93686 21.4357L7.76203 21.2675L7.75983 21.2653C5.9207 19.4261 5 17.1643 5 14.4998C5.00003 11.8353 5.92064 9.58125 7.76071 7.75851C9.61623 5.92033 11.8859 5 14.5504 5C17.2149 5 19.4768 5.92031 21.3159 7.75939C23.1719 9.58159 24.1008 11.8352 24.1008 14.4998L24.0982 14.7486Z"
+      fill="#FFFFFF"
+    />
+    <SvgPath
+      d="M15.0576 4.76074C17.5677 4.87152 19.7221 5.81266 21.4912 7.58105L21.8369 7.93652C23.512 9.74267 24.3506 11.9408 24.3506 14.5V14.502L24.3486 14.751V14.7539L24.0986 14.749L24.3477 14.7539C24.29 17.3755 23.3362 19.6166 21.4912 21.4443C19.7213 23.1976 17.5663 24.1297 15.0566 24.2393L14.5508 24.25C11.9094 24.25 9.63652 23.3724 7.76562 21.6182L7.76367 21.6162L7.58887 21.4473L7.58496 21.4443L7.58301 21.4424C5.69564 19.555 4.75005 17.2287 4.75 14.5L4.76074 13.9932C4.87152 11.483 5.81383 9.3355 7.58496 7.58105C9.48847 5.69535 11.8221 4.75 14.5508 4.75L15.0576 4.76074ZM14.5488 5.56543C12.0305 5.56579 9.90574 6.43004 8.15918 8.16016L7.99707 8.3252L7.99609 8.32422C6.37568 10.0063 5.56546 12.0603 5.56543 14.5L5.56836 14.7354L5.58789 15.1836C5.73195 17.4029 6.58789 19.2922 8.1582 20.8633C9.85069 22.5241 11.8982 23.3796 14.3145 23.4316H14.3135L14.5508 23.4336C17.0704 23.4335 19.1874 22.5776 20.917 20.8643C22.6631 19.1343 23.5351 17.0181 23.5352 14.5C23.5351 11.9819 22.6634 9.87402 20.918 8.16113L20.916 8.15918C19.2399 6.48314 17.2011 5.62085 14.7861 5.56836V5.56738L14.5488 5.56543Z"
+      stroke="#FFFFFF"
+      strokeOpacity={0.5}
+      strokeWidth={0.5}
+    />
+    <SvgPath d="M14.4696 5.45068C12.8913 8.38182 12.2148 11.7639 12.2148 14.695C12.2148 18.3026 13.267 22.5866 14.4696 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+    <SvgPath d="M14.9211 5.45068C16.6747 8.41801 17.1758 12.9831 17.1758 15.0374C17.1758 17.0917 16.4242 22.5699 14.9211 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+    <SvgPath d="M14.4699 5.45068C11.0943 7.25419 9.05859 10.1877 9.05859 15.3728C9.05859 20.5578 11.7592 23.2631 13.5597 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+    <SvgPath d="M14.9207 5.45068C18.2963 7.25419 20.332 10.7006 20.332 15.0374C20.332 19.3743 17.6314 23.2631 15.831 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+    <SvgLine x1={14.8697} y1={5} x2={14.8697} y2={23.9397} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
+    <SvgLine x1={5} y1={14.5204} x2={23.9397} y2={14.5204} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
+    <SvgLine x1={5.90137} y1={18.1783} x2={23.0373} y2={18.1783} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+    <SvgLine x1={5.90137} y1={10.9635} x2={23.4882} y2={10.9635} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
+  </Svg>
+);
 
 const ISO3_TO_KO: Record<string, string> = {
   JPN: '일본', CHN: '중국', USA: '미국', DEU: '독일',
@@ -311,10 +344,46 @@ export default function MainScreen({ navigation, route }: Props) {
     countryColors, setCountryColors,
     countryDisplayModes, setCountryDisplayModes,
     regionDisplayModes, setRegionDisplayModes,
+    regionColors, setRegionColors,
   } = useSettings();
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
   const [dsShowMoreColors, setDsShowMoreColors] = useState(false); // 기본 색상 팔레트 '+' 확장
+
+  // 표시 설정 모달은 라이브로 적용되므로, 열 때 스냅샷을 떠두고 "취소(바깥 탭)" 시 원복한다
+  const dsSnapshot = useRef<{
+    globeDisplayMode: MapDisplayMode;
+    globeColor: string;
+    countryColors: Record<string, string>;
+    countryDisplayModes: Record<string, MapDisplayMode>;
+    regionGlobalMode: 'color' | 'photo';
+    regionDisplayModes: Record<string, 'color' | 'photo'>;
+    regionColors: Record<string, string>;
+  } | null>(null);
+  const openDisplaySettings = () => {
+    dsSnapshot.current = { globeDisplayMode, globeColor, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors };
+    setDisplaySettingsVisible(true);
+  };
+  const cancelDisplaySettings = () => {
+    const s = dsSnapshot.current;
+    if (s) {
+      setGlobeDisplayMode(s.globeDisplayMode);
+      setGlobeColor(s.globeColor);
+      setCountryColors(s.countryColors);
+      setCountryDisplayModes(s.countryDisplayModes);
+      setRegionGlobalMode(s.regionGlobalMode);
+      setRegionDisplayModes(s.regionDisplayModes);
+      setRegionColors(s.regionColors);
+    }
+    dsSnapshot.current = null;
+    setEditingCountryColor(null);
+    setDisplaySettingsVisible(false);
+  };
+  const confirmDisplaySettings = () => {
+    dsSnapshot.current = null;
+    setEditingCountryColor(null);
+    setDisplaySettingsVisible(false);
+  };
 
   // 갤러리에서 사진 가져오기 → 표시 모드를 사진으로 전환
   const handlePickGlobePhoto = async () => {
@@ -400,7 +469,7 @@ export default function MainScreen({ navigation, route }: Props) {
     const countryKo = ISO3_TO_KO[regionCountry];
     if (!countryKo) return [];
 
-    const regionsMap = new Map<string, { name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }>();
+    const regionsMap = new Map<string, { name: string; nameEn: string; key: string; photo?: string; mode?: 'color' | 'photo'; color?: string }>();
 
     // 실제 기록(store)에서 이 국가의 기록된 지역 수집
     records.forEach(r => {
@@ -419,17 +488,49 @@ export default function MainScreen({ navigation, route }: Props) {
           photo = r.medias[0];
         }
 
+        const key = `${regionCountry}|${r.regionNameEn}`; // 국가별 복합 키 (동명 지역 충돌 방지)
         regionsMap.set(r.regionNameEn, {
           name: r.regionName || r.regionNameEn,
           nameEn: r.regionNameEn,
+          key,
           photo,
-          mode: regionDisplayModes[r.regionNameEn] || undefined,
+          mode: regionDisplayModes[key] || undefined,
+          color: regionColors[key] || undefined,
         });
       }
     });
 
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, regionDisplayModes]);
+  }, [records, regionCountry, regionDisplayModes, regionColors]);
+
+  // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거
+  // (영속화 이후 누적 방지. 변경 없으면 같은 참조 반환 → 불필요한 저장/렌더 없음)
+  useEffect(() => {
+    const validRegions = new Set<string>();
+    records.forEach(r => { if (r.regionNameEn) validRegions.add(r.regionNameEn); });
+    const prune = <T,>(obj: Record<string, T>, valid: Set<string>): Record<string, T> => {
+      const remove = Object.keys(obj).filter(k => !valid.has(k));
+      if (remove.length === 0) return obj;
+      const next = { ...obj };
+      remove.forEach(k => delete next[k]);
+      return next;
+    };
+    // 지역 키는 `${ISO3}|${regionEn}` 복합 → region 부분만 떼서 유효성 검사
+    const pruneRegion = <T,>(obj: Record<string, T>): Record<string, T> => {
+      const remove = Object.keys(obj).filter(k => {
+        const regionPart = k.includes('|') ? k.split('|')[1] : k;
+        return !validRegions.has(regionPart);
+      });
+      if (remove.length === 0) return obj;
+      const next = { ...obj };
+      remove.forEach(k => delete next[k]);
+      return next;
+    };
+    setCountryColors(prev => prune(prev, visitedNameSet));
+    setCountryDisplayModes(prev => prune(prev, visitedNameSet));
+    setRegionDisplayModes(prev => pruneRegion(prev));
+    setRegionColors(prev => pruneRegion(prev));
+  }, [records, visitedNameSet, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -653,38 +754,12 @@ export default function MainScreen({ navigation, route }: Props) {
               ref={settingsRef}
               style={styles.globeSettingsBtn}
               activeOpacity={0.7}
-              onPress={() => setDisplaySettingsVisible(true)}
+              onPress={openDisplaySettings}
+              accessibilityRole="button"
+              accessibilityLabel="영토 표시 설정"
             >
               <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
-                <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
-                  <SvgDefs>
-                    {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (검은색 투명 → 흰색) */}
-                    <SvgLinearGradient id="globeBtnRim" x1="0" y1="0" x2="0.15" y2="1">
-                      <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
-                      <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
-                    </SvgLinearGradient>
-                  </SvgDefs>
-                  <Circle cx={14.5} cy={14.5} r={14.5} fill="#751AAD" fillOpacity={0.3} />
-                  <Circle cx={14.5} cy={14.5} r={13.8} fill="none" stroke="url(#globeBtnRim)" strokeOpacity={0.6} strokeWidth={1.3} />
-                  <SvgPath
-                    d="M23.7851 14.4998C23.7851 11.9165 22.8876 9.74402 21.0926 7.98266C19.37 6.2601 17.2696 5.37175 14.7913 5.31795L14.5504 5.31531C11.9671 5.31531 9.77802 6.20458 7.9831 7.98266L7.81884 8.14913C6.15012 9.88032 5.31578 11.9972 5.31575 14.4998L5.31839 14.7411C5.37226 17.2193 6.26057 19.3195 7.9831 21.042C9.72199 22.7484 11.8307 23.6283 14.3095 23.6816L14.5504 23.6842C17.1338 23.6842 19.3145 22.8034 21.0926 21.042C22.8875 19.2638 23.7851 17.0831 23.7851 14.4998ZM24.0982 14.7486C24.0419 17.3063 23.1133 19.4851 21.315 21.2666C19.4757 23.0886 17.214 24 14.5504 24C11.9701 24 9.75963 23.1448 7.93686 21.4357L7.76203 21.2675L7.75983 21.2653C5.9207 19.4261 5 17.1643 5 14.4998C5.00003 11.8353 5.92064 9.58125 7.76071 7.75851C9.61623 5.92033 11.8859 5 14.5504 5C17.2149 5 19.4768 5.92031 21.3159 7.75939C23.1719 9.58159 24.1008 11.8352 24.1008 14.4998L24.0982 14.7486Z"
-                    fill="#FFFFFF"
-                  />
-                  <SvgPath
-                    d="M15.0576 4.76074C17.5677 4.87152 19.7221 5.81266 21.4912 7.58105L21.8369 7.93652C23.512 9.74267 24.3506 11.9408 24.3506 14.5V14.502L24.3486 14.751V14.7539L24.0986 14.749L24.3477 14.7539C24.29 17.3755 23.3362 19.6166 21.4912 21.4443C19.7213 23.1976 17.5663 24.1297 15.0566 24.2393L14.5508 24.25C11.9094 24.25 9.63652 23.3724 7.76562 21.6182L7.76367 21.6162L7.58887 21.4473L7.58496 21.4443L7.58301 21.4424C5.69564 19.555 4.75005 17.2287 4.75 14.5L4.76074 13.9932C4.87152 11.483 5.81383 9.3355 7.58496 7.58105C9.48847 5.69535 11.8221 4.75 14.5508 4.75L15.0576 4.76074ZM14.5488 5.56543C12.0305 5.56579 9.90574 6.43004 8.15918 8.16016L7.99707 8.3252L7.99609 8.32422C6.37568 10.0063 5.56546 12.0603 5.56543 14.5L5.56836 14.7354L5.58789 15.1836C5.73195 17.4029 6.58789 19.2922 8.1582 20.8633C9.85069 22.5241 11.8982 23.3796 14.3145 23.4316H14.3135L14.5508 23.4336C17.0704 23.4335 19.1874 22.5776 20.917 20.8643C22.6631 19.1343 23.5351 17.0181 23.5352 14.5C23.5351 11.9819 22.6634 9.87402 20.918 8.16113L20.916 8.15918C19.2399 6.48314 17.2011 5.62085 14.7861 5.56836V5.56738L14.5488 5.56543Z"
-                    stroke="#FFFFFF"
-                    strokeOpacity={0.5}
-                    strokeWidth={0.5}
-                  />
-                  <SvgPath d="M14.4696 5.45068C12.8913 8.38182 12.2148 11.7639 12.2148 14.695C12.2148 18.3026 13.267 22.5866 14.4696 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                  <SvgPath d="M14.9211 5.45068C16.6747 8.41801 17.1758 12.9831 17.1758 15.0374C17.1758 17.0917 16.4242 22.5699 14.9211 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                  <SvgPath d="M14.4699 5.45068C11.0943 7.25419 9.05859 10.1877 9.05859 15.3728C9.05859 20.5578 11.7592 23.2631 13.5597 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                  <SvgPath d="M14.9207 5.45068C18.2963 7.25419 20.332 10.7006 20.332 15.0374C20.332 19.3743 17.6314 23.2631 15.831 23.9394" stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                  <SvgLine x1={14.8697} y1={5} x2={14.8697} y2={23.9397} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
-                  <SvgLine x1={5} y1={14.5204} x2={23.9397} y2={14.5204} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.8} />
-                  <SvgLine x1={5.90137} y1={18.1783} x2={23.0373} y2={18.1783} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                  <SvgLine x1={5.90137} y1={10.9635} x2={23.4882} y2={10.9635} stroke="#FFFFFF" strokeOpacity={0.5} strokeWidth={0.7} />
-                </Svg>
+                <GlobeDisplayIcon />
               </BlurView>
             </TouchableOpacity>
           </>
@@ -706,6 +781,8 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={0.7}
                   onPress={() => setRegionSearch('')}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="검색어 지우기"
                 >
                   <Text style={styles.regionClearText}>✕</Text>
                 </TouchableOpacity>
@@ -773,6 +850,8 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.7}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               onPress={() => { setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
+              accessibilityRole="button"
+              accessibilityLabel="국가 선택으로 돌아가기"
             >
               <Svg width={16} height={28} viewBox="33 156 12 22">
                 <SvgPath
@@ -781,6 +860,18 @@ export default function MainScreen({ navigation, route }: Props) {
                   fillOpacity={0.6}
                 />
               </Svg>
+            </TouchableOpacity>
+            {/* 영토 표시 설정 (대륙 모드에서도 진입) */}
+            <TouchableOpacity
+              style={styles.globeSettingsBtn}
+              activeOpacity={0.7}
+              onPress={openDisplaySettings}
+              accessibilityRole="button"
+              accessibilityLabel="영토 표시 설정"
+            >
+              <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
+                <GlobeDisplayIcon />
+              </BlurView>
             </TouchableOpacity>
           </>
         ) : (
@@ -1062,12 +1153,12 @@ export default function MainScreen({ navigation, route }: Props) {
         visible={displaySettingsVisible}
         transparent
         animationType="fade"
-        onRequestClose={() => setDisplaySettingsVisible(false)}
+        onRequestClose={cancelDisplaySettings}
       >
         <TouchableOpacity
           style={[styles.fmOverlay, { justifyContent: 'flex-start', paddingTop: DS_CARD_TOP }]}
           activeOpacity={1}
-          onPress={() => setDisplaySettingsVisible(false)}
+          onPress={cancelDisplaySettings}
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
@@ -1243,15 +1334,24 @@ export default function MainScreen({ navigation, route }: Props) {
                   ) : (
                     <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
                       {recordedRegions.map(r => {
-                        const currentMode = (regionDisplayModes[r.nameEn] || 'default') as 'color' | 'photo' | 'default';
+                        const currentMode = (regionDisplayModes[r.key] || 'default') as 'color' | 'photo' | 'default';
                         const effectiveMode = currentMode === 'default' ? regionGlobalMode : currentMode;
+                        const regionColor = regionColors[r.key] || globeColor;
+                        const isEditing = editingCountryColor === r.key;
 
                         return (
-                          <View key={r.nameEn} style={{ marginBottom: 8 }}>
+                          <View key={r.key} style={{ marginBottom: 8 }}>
                             <View style={styles.dsCountryRow}>
-                              <View style={[styles.dsCountryDot, { backgroundColor: effectiveMode === 'color' ? globeColor : '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
-                                {effectiveMode === 'photo' && <Text style={{ fontSize: 10 }}>🖼️</Text>}
-                              </View>
+                              {effectiveMode === 'color' ? (
+                                <TouchableOpacity
+                                  style={[styles.dsCountryDot, { backgroundColor: regionColor }]}
+                                  onPress={() => setEditingCountryColor(isEditing ? null : r.key)}
+                                />
+                              ) : (
+                                <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
+                                  {effectiveMode === 'photo' && <Text style={{ fontSize: 10 }}>🖼️</Text>}
+                                </View>
+                              )}
                               <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
 
                               <View style={styles.dsSegmentWrap}>
@@ -1266,12 +1366,13 @@ export default function MainScreen({ navigation, route }: Props) {
                                         setRegionDisplayModes(prev => {
                                           const next = { ...prev };
                                           if (m === 'default') {
-                                            delete next[r.nameEn];
+                                            delete next[r.key];
                                           } else {
-                                            next[r.nameEn] = m;
+                                            next[r.key] = m;
                                           }
                                           return next;
                                         });
+                                        if (m !== 'color' && editingCountryColor === r.key) setEditingCountryColor(null);
                                       }}
                                     >
                                       <Text style={[styles.dsSegmentText, active && styles.dsSegmentTextActive]}>{label}</Text>
@@ -1280,6 +1381,25 @@ export default function MainScreen({ navigation, route }: Props) {
                                 })}
                               </View>
                             </View>
+
+                            {/* 지역별 색상 선택 (색상 모드일 때 점 탭으로 펼침) */}
+                            {isEditing && effectiveMode === 'color' && (
+                              <View style={styles.dsCountryPalette}>
+                                {[...DS_PALETTE, ...DS_PALETTE_MORE].map(c => (
+                                  <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setRegionColors(prev => ({ ...prev, [r.key]: c }))}>
+                                    <View style={[styles.dsColorItemSm, { backgroundColor: c }, (regionColors[r.key] || globeColor) === c && styles.dsColorItemSmActive]} />
+                                  </TouchableOpacity>
+                                ))}
+                                {regionColors[r.key] && (
+                                  <TouchableOpacity
+                                    style={styles.dsCountryReset}
+                                    onPress={() => setRegionColors(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
+                                  >
+                                    <Text style={styles.dsCountryResetText}>초기화</Text>
+                                  </TouchableOpacity>
+                                )}
+                              </View>
+                            )}
                           </View>
                         );
                       })}
@@ -1292,7 +1412,7 @@ export default function MainScreen({ navigation, route }: Props) {
             <TouchableOpacity
               style={dsm.confirmBtn}
               activeOpacity={0.85}
-              onPress={() => { setDisplaySettingsVisible(false); setEditingCountryColor(null); }}
+              onPress={confirmDisplaySettings}
             >
               <Text style={dsm.confirmText}>확인</Text>
             </TouchableOpacity>
@@ -1401,7 +1521,8 @@ const styles = StyleSheet.create({
     zIndex: 2,
     height: 36,
     marginTop: 16,
-    marginHorizontal: 24,
+    marginLeft: 24,
+    marginRight: 64, // 우상단 표시 설정 버튼과 겹치지 않도록 여백 확보
     borderRadius: 23,
     backgroundColor: 'rgba(255,255,255,0.1)',
     flexDirection: 'row',

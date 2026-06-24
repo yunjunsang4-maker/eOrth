@@ -311,10 +311,10 @@ function doSearch(query){
     updateMap();
     return;
   }
-  if(q.length<2) return;
   var prov=resolveProvince(q);
-  if(prov) applyProvince(prov);       // 로컬(인기명소·주 이름) 즉시 매칭
-  else geocodeFallback(q);            // 실패 시 온라인 지오코딩으로 시 단위 검색
+  if(prov){ applyProvince(prov); return; }       // 로컬(인기명소·주 이름) 즉시 매칭 (한 글자도 시도)
+  if(q.length<2){ setRegionChip('두 글자 이상 입력하세요'); return; } // 한 글자 + 미매칭 → 안내
+  geocodeFallback(q);                            // 실패 시 온라인 지오코딩으로 시 단위 검색
 }
 
 function loadD3(cb){
@@ -344,7 +344,7 @@ function getFill(d){
     if(mode==='photo'&&active.photo){
       return 'url(#pat-'+(active.nameEn||nameEn).replace(/[^a-zA-Z0-9]/g,'')+')';
     }
-    return defaultColor||'#403257';
+    return active.color||defaultColor||'#403257'; // 지역별 색상 우선, 없으면 국가 기본색
   }
   if(nameEn===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
   return '#191920'; // 미방문
