@@ -41,6 +41,7 @@ export default function App() {
     Inter_600SemiBold: require('./assets/fonts/Inter_600SemiBold.ttf'),
     Inter_700Bold: require('./assets/fonts/Inter_700Bold.ttf'),
     Inter_800ExtraBold: require('./assets/fonts/Inter_800ExtraBold.ttf'),
+    'Gilroy-Black': require('./assets/fonts/Gilroy-Black.ttf'),
     NanumGothic_400Regular: require('./assets/fonts/NanumGothic_400Regular.ttf'),
     NanumMyeongjo_400Regular: require('./assets/fonts/NanumMyeongjo_400Regular.ttf'),
     NanumBrushScript_400Regular: require('./assets/fonts/NanumBrushScript_400Regular.ttf'),

@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Platform,
   useWindowDimensions,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import Svg, {
@@ -284,24 +284,37 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents="box-none"
     >
-      {/* 안쪽 글래스 (은은한 다크 블러 — 뒤 지구본이 프로스티드로 비침) */}
+      {/* 배경 컨테이너 — 다크 틴트 블러 글래스
+          (밝은 회색 방지: dark 틴트 + 낮은 강도 + 다크 스크림) */}
       <BlurView
-        intensity={25}
+        intensity={22}
         tint="dark"
         experimentalBlurMethod="dimezisBlurView"
         style={styles.glassInner}
       >
+        <View style={styles.glassScrim} pointerEvents="none" />
+        {/* 상단 반사광(specular sheen) — 유리 입체감의 핵심 */}
+        <LinearGradient
+          colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.05)', 'transparent']}
+          locations={[0, 0.4, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 0, y: 1 }}
+          style={styles.glassSheen}
+          pointerEvents="none"
+        />
         {tabs}
       </BlurView>
 
-      {/* 그라데이션 '테두리만' — stroke 전용(fill="none")이라 반투명 배경 위에 링만 그려짐 */}
+      {/* 테두리만 — stroke 전용(fill="none"), 선형 그라데이션 #CECFCD → #CECFCD(투명) */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%">
           <SvgDefs>
-            {/* iPhone 17 - 48.svg 의 paint0_linear_148_1988 (userSpaceOnUse) 를 rect 비율로 환산 */}
-            <SvgLinearGradient id="tabBorderGrad" x1="0.215" y1="-0.089" x2="0.283" y2="1.110">
+            {/* Figma 원본 그라데이션 (expo-linear-gradient 값 → SVG objectBoundingBox 매핑)
+                colors ['#CECFCD','rgba(206,207,205,0)'] / locations [0,0.607]
+                start (0.216,-0.08) → end (0.283,1.10) */}
+            <SvgLinearGradient id="tabBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
               <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-              <SvgStop offset="0.607176" stopColor="#CECFCD" stopOpacity="0" />
+              <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
             </SvgLinearGradient>
           </SvgDefs>
           <AnimatedRect
@@ -326,17 +339,17 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  // 떠 있는 컨테이너 (SVG: box-shadow 4 4 4 / 검정 25%)
+  // 떠 있는 배경 컨테이너 (Figma: 그림자 4/4/4 · 검정 3%)
   container: {
     position: 'absolute',
     height: BAR_H,
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowColor: '#000',
+    shadowOffset: { width: 4, height: 4 },
     shadowRadius: 4,
-    shadowOpacity: 0.25,
-    elevation: 8,
+    shadowOpacity: 0.03,
+    elevation: 2,
   },
-  // 안쪽 글래스 컨테이너 (반투명 배경 — 그라데이션은 위 stroke 레이어가 테두리에만 그림)
+  // 배경 컨테이너 면 (블러 없는 반투명 화이트 — 테두리는 위 stroke 레이어가 그림)
   glassInner: {
     ...StyleSheet.absoluteFillObject,
     borderRadius: BAR_R,        // 31.5 (= 높이의 절반)
@@ -345,7 +358,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.015)',
+    backgroundColor: '#FFFFFF1A', // 흰색 10%
+  },
+  // 블러 위 다크 스크림 — Android 블러가 밝은 회색으로 떠 보이는 것 방지
+  glassScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(10,10,15,0.3)',
+  },
+  // 상단 반사광(specular sheen) — 위쪽 흰빛 → 아래 투명 (유리 입체감)
+  glassSheen: {
+    ...StyleSheet.absoluteFillObject,
   },
   // 개별 탭 (콘텐츠 크기)
   tab: {
@@ -363,14 +385,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 본체 채움 (평면 보라 30%) + 은은한 검정 드롭섀도 (아래쪽). 네온 글로우 아님.
+  // 활성 알약 본체 (평면 보라 30%) + 검정 드롭섀도 (Figma: 0/4/4 · 검정 25%)
   bodyFill: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: PILL_FILL,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.25,
-    shadowRadius: 2,
+    shadowRadius: 4,
     elevation: 4,
   },
   // 콘텐츠(아이콘/라벨) 클립 레이어
@@ -416,6 +438,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: ACTIVE_COLOR,
+    fontFamily: 'Gilroy-Black', // 미등록 시 시스템 폰트로 폴백
     fontSize: 10,
     lineHeight: 13,
     fontWeight: '600',
