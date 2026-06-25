@@ -3,22 +3,23 @@ import { View, Pressable, StyleSheet, Platform, type LayoutChangeEvent } from 'r
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
+  useAnimatedProps,
   withTiming,
   Easing,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 
+const AnimatedRect = Animated.createAnimatedComponent(Rect);
+
 /**
- * 지구본/대륙 2단 세그먼트 토글 (Group_2085664516.svg 재현) — 옵션 2개.
+ * 지구본/대륙 2단 세그먼트 토글 (Figma Rectangle240652653 재현) — 옵션 2개.
  *
  * 색감: "반투명 보라 두 겹". 트랙·thumb 둘 다 rgba(117,26,173,0.3) (불투명 단색 금지).
- * 테두리: 메인탭(CustomTabBar)과 동일한 '이중 그라디언트 rim'으로 입체감.
- *   - rim1 중립 베벨(위 투명 → 아래 흰색), rim2 네온(시안→마젠타) 살짝 inset/offset.
- * thumb 폭/위치는 선택된 라벨 실제 폭에 맞춰 슬라이드.
+ * 테두리: 알약(CustomTabBar)과 동일한 #CECFCD 그라데이션 stroke. thumb 폭/위치는 선택된 라벨 실제 폭에 맞춰 슬라이드.
  */
 
 const PURPLE = 'rgba(117, 26, 173, 0.3)';
-const TRACK_H = 30;
+const TRACK_H = 30.49; // Figma Rectangle240652653
 const R = TRACK_H / 2;
 const ANIM = { duration: 280, easing: Easing.inOut(Easing.ease) };
 
@@ -53,10 +54,10 @@ export function SegmentedToggle<T extends string>({
   const [trackW, setTrackW] = useState(0);
   const inited = useRef(false);
 
-  // 그라디언트 id (인스턴스별 고유 — url(#id) 용이므로 영숫자만)
+  // 테두리 그라디언트 id (인스턴스별 고유 — url(#id) 용이므로 영숫자만)
   const gid = useId().replace(/[^a-zA-Z0-9]/g, '');
-  const neutralId = `segRimN${gid}`;
-  const neonId = `segRimNeon${gid}`;
+  const borderId = `segBorder${gid}`;
+  const thumbBorderId = `segThumbBorder${gid}`;
 
   const tx = useSharedValue(0);
   const tw = useSharedValue(0);
@@ -81,6 +82,8 @@ export function SegmentedToggle<T extends string>({
     transform: [{ translateX: tx.value }],
     width: tw.value,
   }));
+  // 선택 반쪽(thumb) 테두리 stroke 폭을 thumb 폭에 맞춰 애니메이션
+  const thumbBorderProps = useAnimatedProps(() => ({ width: Math.max(0, tw.value - 1) }));
 
   const onSegLayout = (i: number) => (e: LayoutChangeEvent) => {
     const { x, width } = e.nativeEvent.layout;
@@ -92,31 +95,46 @@ export function SegmentedToggle<T extends string>({
   };
 
   return (
-    // 트랙(전체 배경 알약) = 반투명 보라 한 겹
+    // 트랙(전체 배경 알약) = 반투명 보라 한 겹 + #CECFCD 그라데이션 테두리
     <View
       style={styles.track}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
     >
-      {/* 선택 인디케이터 thumb = 같은 반투명 보라 한 겹 더 → 선택 칸만 진해짐 */}
-      {ready && <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none" />}
+      {/* 선택 인디케이터 thumb = 같은 반투명 보라 한 겹 더 + 동일한 #CECFCD 그라데이션 테두리 */}
+      {ready && (
+        <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none">
+          <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+            <Defs>
+              <SvgLinearGradient id={thumbBorderId} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <Stop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                <Stop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
+              </SvgLinearGradient>
+            </Defs>
+            <AnimatedRect
+              animatedProps={thumbBorderProps}
+              x={0.5}
+              y={0.5}
+              height={TRACK_H - 1}
+              rx={R - 0.5}
+              ry={R - 0.5}
+              fill="none"
+              stroke={`url(#${thumbBorderId})`}
+              strokeWidth={1}
+            />
+          </Svg>
+        </Animated.View>
+      )}
 
-      {/* 이중 그라디언트 rim 테두리 (메인탭과 동일한 입체감) — 라벨 아래에 깔아 터치를 막지 않음 */}
+      {/* 테두리만 — 알약(CustomTabBar)과 동일한 #CECFCD 그라데이션 stroke */}
       {trackW > 0 && (
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg width={trackW} height={TRACK_H}>
             <Defs>
-              {/* 중립 베벨 라이트: 위 투명 → 아래 흰색 */}
-              <SvgLinearGradient id={neutralId} x1="0" y1="0" x2="0.15" y2="1">
-                <Stop offset="0" stopColor="#666666" stopOpacity="0" />
-                <Stop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
-              </SvgLinearGradient>
-              {/* 네온 엣지: 시안 → 마젠타 */}
-              <SvgLinearGradient id={neonId} x1="0" y1="0" x2="0.15" y2="1">
-                <Stop offset="0" stopColor="#00D8F3" />
-                <Stop offset="1" stopColor="#FF14E4" />
+              <SvgLinearGradient id={borderId} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <Stop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                <Stop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
               </SvgLinearGradient>
             </Defs>
-            {/* rim #1 — 중립 베벨 */}
             <Rect
               x={0.5}
               y={0.5}
@@ -125,22 +143,8 @@ export function SegmentedToggle<T extends string>({
               rx={R - 0.5}
               ry={R - 0.5}
               fill="none"
-              stroke={`url(#${neutralId})`}
-              strokeOpacity={0.6}
+              stroke={`url(#${borderId})`}
               strokeWidth={1}
-            />
-            {/* rim #2 — 네온 (안쪽 inset + 아래로 offset → 빗면 입체감) */}
-            <Rect
-              x={1.5}
-              y={1.9}
-              width={trackW - 3}
-              height={TRACK_H - 3}
-              rx={R - 1.5}
-              ry={R - 1.5}
-              fill="none"
-              stroke={`url(#${neonId})`}
-              strokeOpacity={0.6}
-              strokeWidth={1.5}
             />
           </Svg>
         </View>
