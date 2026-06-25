@@ -641,6 +641,20 @@ function SnapStoryViewer({
     }
   }, []);
 
+  // 댓글 시트 드래그 닫기 PanResponder — Hook이므로 early return 위에서 생성한다.
+  // (콜백은 렌더 시점이 아닌 제스처 시점에 실행되므로 아래의 closeCommentSheet 전방 참조는 안전)
+  const commentSheetPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) commentSheetAnim.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80 || g.vy > 0.5) closeCommentSheet();
+        else Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
+      },
+    })
+  ).current;
+
   if (!currentSnap || stories.length === 0) {
     navigation.goBack();
     return null;
@@ -784,17 +798,6 @@ function SnapStoryViewer({
       Animated.timing(commentOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => setCommentSheetOpen(false));
   };
-  const commentSheetPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) commentSheetAnim.setValue(g.dy); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) closeCommentSheet();
-        else Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
-      },
-    })
-  ).current;
 
   const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg('링크가 복사되었어요!'); setTimeout(() => setToastMsg(''), 2000); };
   const handleSharePost = () => { setMenuVisible(false); Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${currentSnap.id}` }); };
