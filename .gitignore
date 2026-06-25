@@ -36,6 +36,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# scratch / 임시 생성 파일 (실수 커밋 방지)
+cg_tmp.js
+*_tmp.js
+
 # generated native folders
 /ios
 /android

@@ -144,6 +144,8 @@ const CutPhotoCanvas = forwardRef<View, Props>(
   }
 );
 
+CutPhotoCanvas.displayName = 'CutPhotoCanvas';
+
 export default CutPhotoCanvas;
 
 const st = StyleSheet.create({
