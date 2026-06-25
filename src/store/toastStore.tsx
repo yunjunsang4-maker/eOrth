@@ -1,10 +1,18 @@
-import React, { createContext, useContext, useState, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useState, useCallback, useRef, useEffect } from 'react';
 
 // 앱내 알림 토스트 1건
 export interface ToastItem {
   id: string;
   message: string;
   onPress?: () => void;
+}
+
+// ── React 외부(스토어 콜백 등)에서 토스트를 띄우기 위한 명령형 브리지 ──
+// RecordProvider가 ToastProvider보다 바깥에 있어 useToast()를 쓸 수 없으므로,
+// ToastProvider가 마운트되면 pushToast를 여기에 등록해 둔다.
+let toastEmitter: ((message: string, onPress?: () => void) => void) | null = null;
+export function emitToast(message: string, onPress?: () => void) {
+  toastEmitter?.(message, onPress);
 }
 
 interface ToastContextType {
@@ -26,6 +34,14 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const shiftToast = useCallback(() => setQueue((q) => q.slice(1)), []);
   const clearToasts = useCallback(() => setQueue([]), []);
+
+  // 명령형 브리지에 현재 pushToast를 등록 (언마운트 시 해제)
+  useEffect(() => {
+    toastEmitter = pushToast;
+    return () => {
+      if (toastEmitter === pushToast) toastEmitter = null;
+    };
+  }, [pushToast]);
 
   return (
     <ToastContext.Provider value={{ queue, pushToast, shiftToast, clearToasts }}>

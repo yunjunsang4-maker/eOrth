@@ -4,6 +4,7 @@ import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
+import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed } from '../services/posts';
 import {
   followUser as apiFollow,
@@ -314,6 +315,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     publishToBackend(newRecord); // Supabase 발행(설정 시)
   };
 
+  // 백엔드 동기화 실패 알림 — 로컬은 이미 반영됐고 서버 반영만 실패한 경우.
+  // 좋아요 연타 등으로 토스트가 도배되지 않도록 일정 시간 내 중복은 억제한다.
+  const lastSyncErrorRef = useRef(0);
+  const notifySyncError = useCallback((e?: unknown) => {
+    if (__DEV__ && e) console.warn('[sync] 백엔드 동기화 실패:', e);
+    const now = Date.now();
+    if (now - lastSyncErrorRef.current < 4000) return; // 4초 내 중복 억제
+    lastSyncErrorRef.current = now;
+    emitToast('서버 동기화에 실패했어요. 네트워크를 확인해 주세요.');
+  }, []);
+
   // 백엔드 발행: 사진 업로드 후 posts insert → 받은 remoteId를 로컬 레코드에 연결.
   // 임시저장/미래 예약글은 제외(발행 시점에 처리). 레코드별 1회만 시도(중복 발행 방지).
   const publishAttemptRef = useRef<Set<string>>(new Set());
@@ -326,7 +338,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       .then((rid) => {
         if (rid) setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, remoteId: rid } : r)));
       })
-      .catch(() => {});
+      .catch(notifySyncError);
   };
 
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
@@ -335,7 +347,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
     if (isSupabaseConfigured) {
       const cur = records.find((r) => r.id === id);
-      if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(() => {});
+      if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(notifySyncError);
     }
   };
 
@@ -343,7 +355,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const target = records.find((r) => r.id === id);
     setRecords((prev) => prev.filter((r) => r.id !== id));
     setArchivedIds((prev) => prev.filter((i) => i !== id));
-    if (isSupabaseConfigured && target?.remoteId) deletePost(target.remoteId).catch(() => {});
+    if (isSupabaseConfigured && target?.remoteId) deletePost(target.remoteId).catch(notifySyncError);
   };
 
   // ─── 임시저장 ───
@@ -417,7 +429,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 백엔드 동기화 (feed 글은 id가 곧 remoteId)
     const remoteId = target.remoteId ?? (inFeed ? target.id : undefined);
     if (isSupabaseConfigured && remoteId) {
-      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch(() => {});
+      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch(notifySyncError);
     }
   };
 
@@ -446,14 +458,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return [...prev, { ...user, followedAt: Date.now() }];
     });
     if (isSupabaseConfigured && user.id) {
-      apiFollow(user.id).then(() => refreshFollowing()).catch(() => {});
+      apiFollow(user.id).then(() => refreshFollowing()).catch(notifySyncError);
     }
   };
 
   const unfollowUser = (username: string) => {
     const target = followingUsers.find((f) => f.username === username);
     setFollowingUsers((prev) => prev.filter((f) => f.username !== username));
-    if (isSupabaseConfigured && target?.id) apiUnfollow(target.id).catch(() => {});
+    if (isSupabaseConfigured && target?.id) apiUnfollow(target.id).catch(notifySyncError);
   };
 
   // 맞팔(서로 팔로우) 여부 설정 — 친구 수 배지(78·81·82·83) 판정용
@@ -501,7 +513,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           const top = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId));
           parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
         }
-        apiAddComment(remoteId, text, parent).catch(() => {});
+        apiAddComment(remoteId, text, parent).catch(notifySyncError);
       }
     }
   };
@@ -535,7 +547,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return { ...prev, [postId]: list.map(flip) };
     });
     if (isSupabaseConfigured && isRemoteId(commentId)) {
-      (willLike ? apiLikeComment(commentId) : apiUnlikeComment(commentId)).catch(() => {});
+      (willLike ? apiLikeComment(commentId) : apiUnlikeComment(commentId)).catch(notifySyncError);
     }
   };
 
@@ -550,7 +562,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return { ...prev, [postId]: next };
     });
     if (isSupabaseConfigured && isRemoteId(commentId)) {
-      apiDeleteComment(commentId).catch(() => {});
+      apiDeleteComment(commentId).catch(notifySyncError);
     }
   };
 
