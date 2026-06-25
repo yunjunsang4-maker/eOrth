@@ -674,6 +674,51 @@ export function toMobileNaverUrl(url: string): string {
   return url.replace('blog.naver.com', 'm.blog.naver.com');
 }
 
+// ─── URL에서 네이버 블로그 ID 추출 (소문자) ───
+// 지원: (m.)blog.naver.com/{blogId}/{logNo}, ...?blogId=xxx&logNo=yyy
+// 미지원: naver.me 단축 URL, in.naver.com(인플루언서) — null 반환(상위에서 안내)
+export function extractNaverBlogId(url: string): string | null {
+  try {
+    // 쿼리 파라미터 형태 (PostView.naver?blogId=xxx)
+    const q = url.match(/[?&]blogId=([^&#]+)/i);
+    if (q) return decodeURIComponent(q[1]).trim().toLowerCase() || null;
+    // 경로 형태: (m.)blog.naver.com/{blogId}/...
+    const m = url.match(/blog\.naver\.com\/([^/?#]+)/i);
+    if (m) {
+      const seg = decodeURIComponent(m[1]).trim();
+      // 예약 경로(PostView.naver, PostList.naver 등)는 blogId가 아님
+      if (/\.naver$/i.test(seg) || /^post/i.test(seg)) return null;
+      return seg.toLowerCase() || null;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── 블로그 소유권 인증 코드 생성 (혼동 문자 제외) ───
+export function makeNaverVerifyCode(): string {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'; // I,O,0,1,L 제외
+  let s = '';
+  for (let i = 0; i < 6; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return `eorth-${s}`;
+}
+
+// ─── 인증 코드 존재 여부를 페이지에서 확인하는 주입 JS ───
+// 로드된 페이지(블로그 소개/프로필 등) 전체 텍스트에서 코드를 찾아 결과를 postMessage.
+export function buildNaverVerifyJs(code: string): string {
+  const safe = code.replace(/[^a-zA-Z0-9-]/g, ''); // 인젝션 방지: 코드 문자만 허용
+  return `(function(){
+    try {
+      var txt = (document.body && document.body.innerText) || '';
+      var found = txt.toUpperCase().indexOf('${safe.toUpperCase()}') !== -1;
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: found }));
+    } catch (e) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: false }));
+    }
+  })(); true;`;
+}
+
 // ─── 헬퍼 함수들 ───
 function escapeHtml(str: string): string {
   return str

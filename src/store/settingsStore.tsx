@@ -43,6 +43,9 @@ interface SettingsContextType {
   setArrivalDetect: (v: boolean) => void;
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
+  // 소유권이 인증된 네이버 블로그 ID 목록(소문자) — 인증된 블로그 글만 가져오기 허용
+  verifiedNaverBlogIds: string[];
+  addVerifiedNaverBlogId: (blogId: string) => void;
   // ── 영토 표시 설정 (지구본/대륙) — 영속 저장 ──
   globeVariant: GlobeVariant;
   setGlobeVariant: React.Dispatch<React.SetStateAction<GlobeVariant>>;
@@ -96,6 +99,7 @@ interface SettingsPersistPayload {
   signUpEmail: string;
   arrivalDetect: boolean;
   currentVisitedCountryCode: string;
+  verifiedNaverBlogIds?: string[]; // 과거 저장본엔 없을 수 있어 optional
   // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
   globeVariant?: GlobeVariant;
   globeDisplayMode?: MapDisplayMode;
@@ -132,6 +136,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
   const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
+  const [verifiedNaverBlogIds, setVerifiedNaverBlogIds] = useState<string[]>([]); // 소유권 인증된 네이버 블로그 ID
+  const addVerifiedNaverBlogId = useCallback((blogId: string) => {
+    const id = blogId.trim().toLowerCase();
+    if (!id) return;
+    setVerifiedNaverBlogIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }, []);
   // ── 영토 표시 설정 (영속) ──
   const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
@@ -195,6 +205,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
+      setVerifiedNaverBlogIds(p.verifiedNaverBlogIds ?? []);
       setGlobeVariant(p.globeVariant ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
       setGlobeColor(p.globeColor ?? '#BF85FC');
@@ -226,6 +237,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      verifiedNaverBlogIds,
       globeVariant,
       globeDisplayMode,
       globeColor,
@@ -257,6 +269,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      verifiedNaverBlogIds,
       globeVariant,
       globeDisplayMode,
       globeColor,
@@ -305,6 +318,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
     setCurrentVisitedCountryCode('KR');
+    setVerifiedNaverBlogIds([]);
     setGlobeVariant('aurora');
     setGlobeDisplayMode('flag');
     setGlobeColor('#BF85FC');
@@ -361,6 +375,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
+        verifiedNaverBlogIds,
+        addVerifiedNaverBlogId,
         globeVariant,
         setGlobeVariant,
         globeDisplayMode,
