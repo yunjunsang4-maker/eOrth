@@ -6,10 +6,9 @@ import {
   TouchableOpacity,
   useWindowDimensions,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
+import { GlassSurface } from './GlassSurface';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -162,6 +161,14 @@ const TabItem: React.FC<{
   // 본체(평면 보라 알약)는 활성일 때만 페이드 인
   const depthStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
 
+  // 알약 테두리(stroke) 폭을 알약 폭에 맞춰 애니메이션 (1px stroke 안 잘리게 -1 인셋)
+  const pillBorderProps = useAnimatedProps(() => {
+    const w = isGlobe
+      ? interpolate(progress.value, [0, 1], [G_COLLAPSED_W, G_ACTIVE_W])
+      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]);
+    return { width: Math.max(0, w - 1) };
+  });
+
   // 라벨: 펼쳐질 때 페이드 인 (Globe는 아이콘 아래, 나머지는 우측)
   const labelStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.4, 1], [0, 1], 'clamp'),
@@ -185,9 +192,29 @@ const TabItem: React.FC<{
       accessibilityState={isFocused ? { selected: true } : {}}
     >
       <Animated.View style={[isGlobe ? styles.pillGlobe : styles.pillH, pillStyle]}>
-        {/* 활성 알약: 테두리/네온 글로우 없는 평면 보라 면 + 은은한 검정 드롭섀도 */}
+        {/* 활성 알약: 보라 면 + #CECFCD 그라데이션 '테두리만'(stroke) + 검정 드롭섀도 */}
         <Animated.View style={[StyleSheet.absoluteFill, depthStyle]} pointerEvents="none">
           <View style={[styles.bodyFill, { borderRadius: R }]} />
+          <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+            <SvgDefs>
+              {/* 배경 테두리와 동일한 #CECFCD → 투명 그라데이션 */}
+              <SvgLinearGradient id={`pillBorder-${uid}`} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <AnimatedRect
+              animatedProps={pillBorderProps}
+              x={0.5}
+              y={0.5}
+              height={H - 1}
+              rx={R - 0.5}
+              ry={R - 0.5}
+              fill="none"
+              stroke={`url(#pillBorder-${uid})`}
+              strokeWidth={1}
+            />
+          </Svg>
         </Animated.View>
 
         {/* 콘텐츠 (아이콘 + 라벨) — 맨 위, 알약 모양으로 클립 */}
@@ -284,26 +311,20 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents="box-none"
     >
-      {/* 배경 컨테이너 — 다크 틴트 블러 글래스
-          (밝은 회색 방지: dark 틴트 + 낮은 강도 + 다크 스크림) */}
-      <BlurView
-        intensity={22}
-        tint="dark"
-        experimentalBlurMethod="dimezisBlurView"
-        style={styles.glassInner}
-      >
-        <View style={styles.glassScrim} pointerEvents="none" />
-        {/* 상단 반사광(specular sheen) — 유리 입체감의 핵심 */}
-        <LinearGradient
-          colors={['rgba(255,255,255,0.22)', 'rgba(255,255,255,0.05)', 'transparent']}
-          locations={[0, 0.4, 1]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 0, y: 1 }}
-          style={styles.glassSheen}
-          pointerEvents="none"
-        />
+      {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 틴트 (방법 B) */}
+      <GlassSurface
+        style={StyleSheet.absoluteFill}
+        borderRadius={BAR_R}
+        tintColor="#0A0A0F80"
+        fallbackTint="rgba(10,10,15,0.38)"
+        androidTint="rgba(10,10,15,0.62)"
+        edgeHighlight
+      />
+
+      {/* 탭 콘텐츠 — 유리 위에 형제로 올림 */}
+      <View style={styles.tabRow} pointerEvents="box-none">
         {tabs}
-      </BlurView>
+      </View>
 
       {/* 테두리만 — stroke 전용(fill="none"), 선형 그라데이션 #CECFCD → #CECFCD(투명) */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
@@ -349,25 +370,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.03,
     elevation: 2,
   },
-  // 배경 컨테이너 면 (블러 없는 반투명 화이트 — 테두리는 위 stroke 레이어가 그림)
-  glassInner: {
+  // 탭 행 — 유리 재질(GlassSurface) 위에 형제로 올라가는 콘텐츠 레이아웃
+  tabRow: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: BAR_R,        // 31.5 (= 높이의 절반)
-    overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: '#FFFFFF1A', // 흰색 10%
-  },
-  // 블러 위 다크 스크림 — Android 블러가 밝은 회색으로 떠 보이는 것 방지
-  glassScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,10,15,0.3)',
-  },
-  // 상단 반사광(specular sheen) — 위쪽 흰빛 → 아래 투명 (유리 입체감)
-  glassSheen: {
-    ...StyleSheet.absoluteFillObject,
   },
   // 개별 탭 (콘텐츠 크기)
   tab: {
