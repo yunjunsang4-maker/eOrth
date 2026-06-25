@@ -8,7 +8,6 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import Svg, {
@@ -160,22 +159,8 @@ const TabItem: React.FC<{
       : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]),
   }));
 
-  // 입체 레이어(글로우 + 채움 + rim)는 활성일 때만 페이드 인
+  // 본체(평면 보라 알약)는 활성일 때만 페이드 인
   const depthStyle = useAnimatedStyle(() => ({ opacity: progress.value }));
-
-  // rim Rect 폭: 알약 폭에 맞춰 갱신 (네온은 안쪽으로 한 겹 더 inset)
-  const rimNeutralProps = useAnimatedProps(() => {
-    const w = isGlobe
-      ? interpolate(progress.value, [0, 1], [G_COLLAPSED_W, G_ACTIVE_W])
-      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]);
-    return { width: Math.max(0, w - 1) };
-  });
-  const rimNeonProps = useAnimatedProps(() => {
-    const w = isGlobe
-      ? interpolate(progress.value, [0, 1], [G_COLLAPSED_W, G_ACTIVE_W])
-      : interpolate(progress.value, [0, 1], [H_COLLAPSED_W, H_ACTIVE_W]);
-    return { width: Math.max(0, w - 3) };
-  });
 
   // 라벨: 펼쳐질 때 페이드 인 (Globe는 아이콘 아래, 나머지는 우측)
   const labelStyle = useAnimatedStyle(() => ({
@@ -191,9 +176,6 @@ const TabItem: React.FC<{
     transform: [{ translateY: isGlobe ? interpolate(progress.value, [0, 1], [0, -6]) : 0 }],
   }));
 
-  const rimNeutralId = `rimNeutral-${uid}`;
-  const rimNeonId = `rimNeon-${uid}`;
-
   return (
     <TouchableOpacity
       style={styles.tab}
@@ -203,61 +185,9 @@ const TabItem: React.FC<{
       accessibilityState={isFocused ? { selected: true } : {}}
     >
       <Animated.View style={[isGlobe ? styles.pillGlobe : styles.pillH, pillStyle]}>
-        {/* 입체 레이어 (뒤→앞: 글로우 → 본체 채움 → 이중 그라디언트 rim) */}
+        {/* 활성 알약: 테두리/네온 글로우 없는 평면 보라 면 + 은은한 검정 드롭섀도 */}
         <Animated.View style={[StyleSheet.absoluteFill, depthStyle]} pointerEvents="none">
-          {/* Android 글로우 폴백 (네이티브 컬러 글로우 미지원 → 흰색 헤일로) */}
-          {Platform.OS === 'android' && (
-            <View style={[styles.glowHalo, { borderRadius: R + 4 }]} />
-          )}
-          {/* 본체 채움 + iOS 흰색 글로우 그림자 */}
-          <View
-            style={[
-              styles.bodyFill,
-              { borderRadius: R },
-              Platform.OS === 'ios' && styles.glowIOS,
-            ]}
-          />
-          {/* 이중 그라디언트 테두리 (stroke 전용) */}
-          <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
-            <SvgDefs>
-              {/* 중립 베벨 라이트: 위 투명 → 아래 흰색 */}
-              <SvgLinearGradient id={rimNeutralId} x1="0" y1="0" x2="0.15" y2="1">
-                <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
-                <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
-              </SvgLinearGradient>
-              {/* 네온 엣지: 시안 → 마젠타 */}
-              <SvgLinearGradient id={rimNeonId} x1="0" y1="0" x2="0.15" y2="1">
-                <SvgStop offset="0" stopColor="#00D8F3" />
-                <SvgStop offset="1" stopColor="#FF14E4" />
-              </SvgLinearGradient>
-            </SvgDefs>
-            {/* rim #1 — 중립 베벨 */}
-            <AnimatedRect
-              animatedProps={rimNeutralProps}
-              x={0.5}
-              y={0.5}
-              height={H - 1}
-              rx={R - 0.5}
-              ry={R - 0.5}
-              fill="none"
-              stroke={`url(#${rimNeutralId})`}
-              strokeOpacity={0.6}
-              strokeWidth={1}
-            />
-            {/* rim #2 — 네온 (안쪽 inset + 아래로 offset → 빗면 입체감) */}
-            <AnimatedRect
-              animatedProps={rimNeonProps}
-              x={1.5}
-              y={1.9}
-              height={H - 3}
-              rx={R - 1.5}
-              ry={R - 1.5}
-              fill="none"
-              stroke={`url(#${rimNeonId})`}
-              strokeOpacity={0.6}
-              strokeWidth={1.5}
-            />
-          </Svg>
+          <View style={[styles.bodyFill, { borderRadius: R }]} />
         </Animated.View>
 
         {/* 콘텐츠 (아이콘 + 라벨) — 맨 위, 알약 모양으로 클립 */}
@@ -317,9 +247,9 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     width: barW.value,
     left: Math.max(16, (SCREEN_W - barW.value) / 2),
   }));
-  // 테두리 Rect: 폭만 컨테이너 폭에 맞춰 갱신 (x/y 0.5 인셋, 1px stroke 안 잘리게)
+  // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋)
   const borderRectProps = useAnimatedProps(() => ({
-    width: Math.max(0, barW.value - 1),
+    width: Math.max(0, barW.value - 1.5),
   }));
 
   const tabs = state.routes.map((route: any, index: number) => {
@@ -348,62 +278,42 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     );
   });
 
-  // 배경 살짝 어둡게 (글래스 위 은은한 다크 스크림)
-  const darkScrim = (
-    <View style={styles.darkScrim} pointerEvents="none" />
-  );
-
-  // 유리 표면 하이라이트 (상단 밝고 하단 옅은 세로 그라디언트)
-  const glassOverlay = (
-    <LinearGradient
-      colors={['rgba(255,255,255,0.12)', 'rgba(255,255,255,0.04)']}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
-  );
-
   return (
     <>
     <Animated.View
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents="box-none"
     >
-      {/* 글래스 알약 본체 (배경은 단색 반투명 — 그라디언트 아님) */}
-      {Platform.OS === 'android' ? (
-        <View style={[styles.pillBar, styles.pillBarAndroid]}>
-          {darkScrim}
-          {glassOverlay}
-          {tabs}
-        </View>
-      ) : (
-        <BlurView intensity={70} tint="dark" style={styles.pillBar}>
-          {darkScrim}
-          {glassOverlay}
-          {tabs}
-        </BlurView>
-      )}
+      {/* 안쪽 글래스 (은은한 다크 블러 — 뒤 지구본이 프로스티드로 비침) */}
+      <BlurView
+        intensity={25}
+        tint="dark"
+        experimentalBlurMethod="dimezisBlurView"
+        style={styles.glassInner}
+      >
+        {tabs}
+      </BlurView>
 
-      {/* 그라데이션 테두리 — stroke 전용(fill="none"), 모든 탭 공통 */}
+      {/* 그라데이션 '테두리만' — stroke 전용(fill="none")이라 반투명 배경 위에 링만 그려짐 */}
       <View style={StyleSheet.absoluteFill} pointerEvents="none">
         <Svg width="100%" height="100%">
           <SvgDefs>
-            <SvgLinearGradient id="borderGrad" x1="0" y1="0" x2="0.15" y2="1">
+            {/* iPhone 17 - 48.svg 의 paint0_linear_148_1988 (userSpaceOnUse) 를 rect 비율로 환산 */}
+            <SvgLinearGradient id="tabBorderGrad" x1="0.215" y1="-0.089" x2="0.283" y2="1.110">
               <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-              <SvgStop offset="0.61" stopColor="#CECFCD" stopOpacity="0" />
+              <SvgStop offset="0.607176" stopColor="#CECFCD" stopOpacity="0" />
             </SvgLinearGradient>
           </SvgDefs>
           <AnimatedRect
             animatedProps={borderRectProps}
-            x={0.5}
-            y={0.5}
-            height={BAR_H - 1}
-            rx={BAR_R - 0.5}
-            ry={BAR_R - 0.5}
+            x={0.75}
+            y={0.75}
+            height={BAR_H - 1.5}
+            rx={BAR_R - 0.75}
+            ry={BAR_R - 0.75}
             fill="none"
-            stroke="url(#borderGrad)"
-            strokeWidth={1}
+            stroke="url(#tabBorderGrad)"
+            strokeWidth={1.5}
           />
         </Svg>
       </View>
@@ -426,25 +336,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     elevation: 8,
   },
-  // 글래스 알약 본체 (단색 반투명 글래스 배경 — 그라디언트 테두리와 완전히 별개 레이어)
-  pillBar: {
+  // 안쪽 글래스 컨테이너 (반투명 배경 — 그라데이션은 위 stroke 레이어가 테두리에만 그림)
+  glassInner: {
     ...StyleSheet.absoluteFillObject,
-    borderRadius: BAR_R,
+    borderRadius: BAR_R,        // 31.5 (= 높이의 절반)
     overflow: 'hidden',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  // 배경 살짝 어둡게 (글래스 위 다크 스크림)
-  darkScrim: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,11,15,0.16)',
-  },
-  // Android: 블러 약함 → 불투명 폴백
-  pillBarAndroid: {
-    backgroundColor: 'rgba(15,15,23,0.78)',
+    backgroundColor: 'rgba(255,255,255,0.015)',
   },
   // 개별 탭 (콘텐츠 크기)
   tab: {
@@ -462,26 +363,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 본체 채움 (유리 질감 보라 30%)
+  // 본체 채움 (평면 보라 30%) + 은은한 검정 드롭섀도 (아래쪽). 네온 글로우 아님.
   bodyFill: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: PILL_FILL,
-  },
-  // iOS 외부 글로우 (떠 있는 느낌) — 흰색, blur 10, 사방 균일
-  glowIOS: {
-    shadowColor: '#FFFFFF',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-  },
-  // Android 글로우 폴백 (흰색 헤일로 한 겹)
-  glowHalo: {
-    position: 'absolute',
-    top: -4,
-    left: -4,
-    right: -4,
-    bottom: -4,
-    backgroundColor: 'rgba(255,255,255,0.12)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 2,
+    elevation: 4,
   },
   // 콘텐츠(아이콘/라벨) 클립 레이어
   contentClip: {
