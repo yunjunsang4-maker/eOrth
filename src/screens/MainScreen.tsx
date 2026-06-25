@@ -87,28 +87,6 @@ const GlobeDisplayIcon = () => (
   </Svg>
 );
 
-// ─── 지구본 형태 전환 버튼 아이콘 (보라 배경 + 지구본 + 전환 화살표) ───
-const GlobeSwitchIcon = () => (
-  <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
-    <SvgDefs>
-      <SvgLinearGradient id="globeSwitchRim" x1="0" y1="0" x2="0.15" y2="1">
-        <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
-        <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
-      </SvgLinearGradient>
-    </SvgDefs>
-    <Circle cx={14.5} cy={14.5} r={14.5} fill="#751AAD" fillOpacity={0.3} />
-    <Circle cx={14.5} cy={14.5} r={13.8} fill="none" stroke="url(#globeSwitchRim)" strokeOpacity={0.6} strokeWidth={1.3} />
-    {/* 안쪽 지구본 */}
-    <Circle cx={14.5} cy={14.5} r={7.4} fill="none" stroke="#FFFFFF" strokeOpacity={0.9} strokeWidth={1.2} />
-    <SvgPath d="M14.5 7.1C12.5 9.7 11.8 12.2 11.8 14.5C11.8 17.3 12.7 20.4 14.5 21.9" stroke="#FFFFFF" strokeOpacity={0.6} strokeWidth={0.9} />
-    <SvgPath d="M14.5 7.1C16.5 9.7 17.2 12.2 17.2 14.5C17.2 17.3 16.3 20.4 14.5 21.9" stroke="#FFFFFF" strokeOpacity={0.6} strokeWidth={0.9} />
-    <SvgLine x1={7.4} y1={14.5} x2={21.6} y2={14.5} stroke="#FFFFFF" strokeOpacity={0.6} strokeWidth={0.9} />
-    {/* 전환(swap) 화살표 — 우하단 */}
-    <SvgPath d="M19.2 21.6a4 4 0 0 0 3.9-4.8" stroke="#BF85FC" strokeWidth={1.6} strokeLinecap="round" fill="none" />
-    <SvgPath d="M21.0 17.0l2.1-0.6 0.6 2.1" stroke="#BF85FC" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" fill="none" />
-  </Svg>
-);
-
 const ISO3_TO_KO: Record<string, string> = {
   JPN: '일본', CHN: '중국', USA: '미국', DEU: '독일',
   ESP: '스페인', GBR: '영국', FRA: '프랑스', ITA: '이탈리아',
@@ -781,8 +759,10 @@ export default function MainScreen({ navigation, route }: Props) {
             <View ref={globeRef} collapsable={false}>
               <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} sponsoredItems={sponsoredMarkerItems} />
             </View>
-            {/* 지구본 형태 전환 토글 — 우상단(기존 설정 버튼 자리) */}
+            {/* 영역별 표시설정 버튼 — 누르면 지구본 형태 교체
+                (aurora=단색 활성화 ↔ classic=사진 활성화) */}
             <TouchableOpacity
+              ref={settingsRef}
               style={styles.globeSettingsBtn}
               activeOpacity={0.7}
               onPress={() => setGlobeVariant(v => (v === 'aurora' ? 'classic' : 'aurora'))}
@@ -790,24 +770,9 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityLabel="지구본 형태 전환"
             >
               <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
-                <GlobeSwitchIcon />
+                <GlobeDisplayIcon />
               </BlurView>
             </TouchableOpacity>
-            {/* 영토 표시 설정 — 현재(사진) 지구본일 때만 노출 */}
-            {globeVariant === 'classic' && (
-              <TouchableOpacity
-                ref={settingsRef}
-                style={[styles.globeSettingsBtn, { right: 60 }]}
-                activeOpacity={0.7}
-                onPress={openDisplaySettings}
-                accessibilityRole="button"
-                accessibilityLabel="영토 표시 설정"
-              >
-                <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
-                  <GlobeDisplayIcon />
-                </BlurView>
-              </TouchableOpacity>
-            )}
           </>
         ) : regionCountry ? (
           <>
