@@ -7,6 +7,8 @@ export type DiaryCardMode = 'full' | 'minimal';
 export type SignUpMethod = 'email' | 'google' | 'apple';
 // 지도(지구본/대륙) 영토 표시 방식
 export type MapDisplayMode = 'flag' | 'color' | 'photo';
+// 지구본 형태: aurora = 보라 발광 행성(디폴트, 색상 표시), classic = 현재 지구본(사진 표시)
+export type GlobeVariant = 'aurora' | 'classic';
 // 성별: '' = 미설정
 export type Gender = 'male' | 'female' | '';
 
@@ -42,6 +44,8 @@ interface SettingsContextType {
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
   // ── 영토 표시 설정 (지구본/대륙) — 영속 저장 ──
+  globeVariant: GlobeVariant;
+  setGlobeVariant: React.Dispatch<React.SetStateAction<GlobeVariant>>;
   globeDisplayMode: MapDisplayMode;
   setGlobeDisplayMode: React.Dispatch<React.SetStateAction<MapDisplayMode>>;
   globeColor: string;
@@ -93,6 +97,7 @@ interface SettingsPersistPayload {
   arrivalDetect: boolean;
   currentVisitedCountryCode: string;
   // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
+  globeVariant?: GlobeVariant;
   globeDisplayMode?: MapDisplayMode;
   globeColor?: string;
   countryColors?: Record<string, string>;
@@ -128,6 +133,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [arrivalDetect, setArrivalDetect] = useState(true);
   const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
   // ── 영토 표시 설정 (영속) ──
+  const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
   const [globeColor, setGlobeColor] = useState('#BF85FC');
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
@@ -189,6 +195,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
+      setGlobeVariant(p.globeVariant ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
       setGlobeColor(p.globeColor ?? '#BF85FC');
       setCountryColors(p.countryColors ?? {});
@@ -219,6 +226,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      globeVariant,
       globeDisplayMode,
       globeColor,
       countryColors,
@@ -249,6 +257,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      globeVariant,
       globeDisplayMode,
       globeColor,
       countryColors,
@@ -296,6 +305,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
     setCurrentVisitedCountryCode('KR');
+    setGlobeVariant('aurora');
     setGlobeDisplayMode('flag');
     setGlobeColor('#BF85FC');
     setCountryColors({});
@@ -351,6 +361,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
+        globeVariant,
+        setGlobeVariant,
         globeDisplayMode,
         setGlobeDisplayMode,
         globeColor,

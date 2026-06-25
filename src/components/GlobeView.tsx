@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { THREE_SRC } from '../data/vendorThree';
@@ -13,6 +13,17 @@ const D3_INLINE = escScript(D3_SRC);
 const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
 
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
+export type GlobeVariant = 'aurora' | 'classic';
+
+// 형태별 색상 테마 (WebView cfg로 주입).
+// aurora = 첨부 디자인의 보라 발광 행성 팔레트, classic = 현재(기존) 지구본
+export const GLOBE_THEMES: Record<GlobeVariant, {
+  oceanBase: string; deepRGB: string; zoneRGB: string;
+  landColor: string; neonColor: string; borderColor: string;
+}> = {
+  aurora: { oceanBase: '#1D0930', deepRGB: '40,12,70', zoneRGB: '150,70,230', landColor: '#5B1C96', neonColor: '#C982FF', borderColor: '#BF85FC' },
+  classic: { oceanBase: '#04102e', deepRGB: '5,15,55', zoneRGB: '50,110,220', landColor: '#6f6d6d', neonColor: '#a78bfa', borderColor: '#7B5CF0' },
+};
 
 export interface VisitedCountry {
   nameEn: string;       // GeoJSON 영문 이름
@@ -28,6 +39,7 @@ interface GlobeViewProps {
   visitedCountries?: VisitedCountry[];
   displayMode?: GlobeDisplayMode;
   defaultColor?: string;
+  variant?: GlobeVariant; // 지구본 형태(색상 테마). 기본 aurora
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
@@ -92,11 +104,15 @@ const globeHTML = `<!DOCTYPE html>
 <script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
 
 <script>
+// 색상은 RN에서 variant(aurora/classic)에 따라 setTheme 메시지로 주입된다.
+// 기본값 = aurora(보라 발광 행성) — 첫 페인트가 디폴트 형태와 일치하도록.
 var cfg = {
-  oceanColor: "#0a1a55",
-  landColor: "#6f6d6d",
-  neonColor: "#a78bfa",
-  borderColor: "#7B5CF0",
+  oceanBase: "#1D0930",   // 구체 바다/본체 베이스
+  deepRGB: "40,12,70",    // 딥 존(어두운 그라데이션) rgb
+  zoneRGB: "150,70,230",  // 발광 존(밝은 그라데이션) rgb
+  landColor: "#5B1C96",   // 비방문 대륙 색
+  neonColor: "#C982FF",   // 대기광
+  borderColor: "#BF85FC", // 국경선
   autoRotate: true,
   gridOpacity: 0
 };
@@ -244,7 +260,7 @@ async function buildTexture() {
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
 
-  ctx.fillStyle = '#04102e';
+  ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
 
   var deepZones = [
@@ -254,8 +270,8 @@ async function buildTexture() {
   deepZones.forEach(function(z) {
     var x = z[0], y = z[1];
     var rg = ctx.createRadialGradient(x, y, 0, x, y, W * 0.22);
-    rg.addColorStop(0, 'rgba(5,15,55,0.6)');
-    rg.addColorStop(1, 'rgba(5,15,55,0)');
+    rg.addColorStop(0, 'rgba(' + cfg.deepRGB + ',0.6)');
+    rg.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0)');
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, W, H);
   });
@@ -267,8 +283,8 @@ async function buildTexture() {
   blueZones.forEach(function(z) {
     var x = z[0], y = z[1], sz = z[2];
     var rg = ctx.createRadialGradient(x, y, 0, x, y, W * sz);
-    rg.addColorStop(0, 'rgba(50,110,220,0.50)');
-    rg.addColorStop(0.5,'rgba(20,50,150,0.25)');
+    rg.addColorStop(0, 'rgba(' + cfg.zoneRGB + ',0.50)');
+    rg.addColorStop(0.5, 'rgba(' + cfg.zoneRGB + ',0.22)');
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, W, H);
@@ -291,10 +307,10 @@ async function buildTexture() {
   ctx.fillRect(0, 0, W, H);
 
   var horizon = ctx.createLinearGradient(0, 0, 0, H);
-  horizon.addColorStop(0, 'rgba(5,15,55,0.35)');
+  horizon.addColorStop(0, 'rgba(' + cfg.deepRGB + ',0.35)');
   horizon.addColorStop(0.3, 'rgba(0,0,0,0)');
   horizon.addColorStop(0.7, 'rgba(0,0,0,0)');
-  horizon.addColorStop(1, 'rgba(5,15,55,0.35)');
+  horizon.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0.35)');
   ctx.fillStyle = horizon;
   ctx.fillRect(0, 0, W, H);
 
@@ -693,6 +709,12 @@ async function init() {
   });
 
   animate();
+
+  // 초기화 완료를 RN에 알림 → RN이 그때 테마/방문국/광고 페이로드를 전송한다.
+  // (고정 setTimeout 대신 실제 준비 시점에 맞춰 전송 — 저사양 기기 누락·고사양 불필요 지연 방지)
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'globeReady' }));
+  }
 }
 
 
@@ -931,9 +953,46 @@ window.addEventListener('resize', function() {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// 지구본 형태(테마) 적용 — cfg 색을 갈아끼우고 텍스처/대기광/국경선만 재생성
+// (WebView 통째 리로드 없이 부드럽게 전환. 회전 상태·카메라 유지)
+function applyTheme(t) {
+  if (!t) return;
+  if (t.oceanBase) cfg.oceanBase = t.oceanBase;
+  if (t.deepRGB) cfg.deepRGB = t.deepRGB;
+  if (t.zoneRGB) cfg.zoneRGB = t.zoneRGB;
+  if (t.landColor) cfg.landColor = t.landColor;
+  if (t.neonColor) cfg.neonColor = t.neonColor;
+  if (t.borderColor) cfg.borderColor = t.borderColor;
+  if (!worldData || !globeMesh) return; // init 전이면 cfg만 갱신 → init이 새 cfg로 생성
+  loadAllImages().then(function() {
+    return buildTexture();
+  }).then(function(tex) {
+    globeMesh.material.map = tex;
+    globeMesh.material.needsUpdate = true;
+  });
+  if (atmosphere) {
+    globe.remove(atmosphere);
+    if (atmosphere.geometry) atmosphere.geometry.dispose();
+    if (atmosphere.material) atmosphere.material.dispose();
+  }
+  atmosphere = buildAtmosphere(cfg.neonColor);
+  globe.add(atmosphere);
+  if (borderGroup) {
+    globe.remove(borderGroup);
+    borderGroup.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+  }
+  borderGroup = buildBorders(worldData, cfg.borderColor);
+  globe.add(borderGroup);
+}
+
 // 방문 국가 업데이트 수신
 function handleVisitedMessage(msg) {
-  if (msg.type === 'setVisitedCountries' && msg.countries) {
+  if (msg.type === 'setTheme') {
+    applyTheme(msg.theme);
+  } else if (msg.type === 'setVisitedCountries' && msg.countries) {
     visitedMap = {};
     msg.countries.forEach(function(c) {
       visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null };
@@ -975,7 +1034,7 @@ init();
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
-  sponsoredItems = [],
+  variant = 'aurora', sponsoredItems = [],
 }: GlobeViewProps) {
   const globeHeight = useMemo(() => Dimensions.get('window').height * 0.75, []);
   const webViewRef = useRef<WebView>(null);
@@ -992,6 +1051,11 @@ export default function GlobeView({
     items: sponsoredItems,
   }), [sponsoredItems]);
 
+  const themePayload = useMemo(() => JSON.stringify({
+    type: 'setTheme',
+    theme: GLOBE_THEMES[variant] || GLOBE_THEMES.aurora,
+  }), [variant]);
+
   useEffect(() => {
     if (webViewRef.current && visitedCountries.length > 0) {
       webViewRef.current.postMessage(payload);
@@ -1004,12 +1068,39 @@ export default function GlobeView({
     }
   }, [sponsoredPayload]);
 
+  useEffect(() => {
+    webViewRef.current?.postMessage(themePayload);
+  }, [themePayload]);
+
+  // WebView 준비 완료 여부 — globeReady 신호 수신 시 true.
+  const readyRef = useRef(false);
+
+  // 현재 페이로드 일괄 전송 (초기화 직후 1회 + 폴백)
+  const sendAll = useCallback(() => {
+    const wv = webViewRef.current;
+    if (!wv) return;
+    wv.postMessage(themePayload);
+    if (visitedCountries.length > 0) wv.postMessage(payload);
+    wv.postMessage(sponsoredPayload);
+  }, [themePayload, payload, sponsoredPayload, visitedCountries.length]);
+
+  // WebView → RN 메시지: globeReady면 그 시점에 페이로드 전송, 나머지는 부모로 전달
+  const handleMessage = useCallback((e: any) => {
+    let data: any = null;
+    try { data = JSON.parse(e.nativeEvent.data); } catch {}
+    if (data?.type === 'globeReady') {
+      readyRef.current = true;
+      sendAll();
+      return; // 내부 신호는 부모로 올리지 않음
+    }
+    onMessage?.(e);
+  }, [sendAll, onMessage]);
+
   const handleLoad = () => {
-    // 로드 직후 WebView 초기화 타이밍을 고려해 약간 지연 후 재전송
+    // globeReady 신호 유실 대비 폴백: 준비 신호가 끝내 안 오면 한 번만 전송
     setTimeout(() => {
-      if (visitedCountries.length > 0) webViewRef.current?.postMessage(payload);
-      webViewRef.current?.postMessage(sponsoredPayload);
-    }, 2000);
+      if (!readyRef.current) sendAll();
+    }, 2500);
   };
 
   return (
@@ -1029,7 +1120,7 @@ export default function GlobeView({
         bounces={false}
         allowsInlineMediaPlayback={true}
         mixedContentMode="always"
-        onMessage={onMessage}
+        onMessage={handleMessage}
         onLoad={handleLoad}
       />
     </View>
