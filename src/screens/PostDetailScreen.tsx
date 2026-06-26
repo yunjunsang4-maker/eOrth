@@ -43,8 +43,20 @@ import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker } from '../services/social';
+import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// 네컷(스트립) 미리보기를 프레임 규격(가로/세로 비율)에 딱 맞게 — 레터박스(여백) 제거
+const cutFitStyle = (layout?: import('../constants/cutFrames').CutLayout) => {
+  const aspect = (layout && CUT_LAYOUTS[layout]?.aspect) || 3 / 4; // width / height
+  const maxW = SCREEN_W - 40;
+  const maxH = SCREEN_H * 0.7;
+  let w = maxW;
+  let h = maxW / aspect;
+  if (h > maxH) { h = maxH; w = maxH * aspect; }
+  return { width: w, height: h };
+};
 
 const C = {
   bg: '#0A0A0F',
@@ -1165,7 +1177,10 @@ export default function PostDetailScreen() {
 
   const handleSharePost = () => {
     setMenuVisible(false);
-    Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${postId}` });
+    // 메뉴 모달이 닫히는 동안 공유 시트를 띄우면 표시할 화면이 없어 무동작 → 모달 닫힘 후 호출
+    setTimeout(() => {
+      Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${postId}` }).catch(() => {});
+    }, 350);
   };
 
   const handleExportToNaver = () => {
@@ -1481,7 +1496,7 @@ export default function PostDetailScreen() {
                     /* 네컷: 합성 미리보기 이미지 */
                     <View style={s.mediaWrap}>
                       <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage([record.cutPhoto!.previewUri], 0))}>
-                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={s.cutImage} resizeMode="contain" />
+                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout)]} resizeMode="cover" />
                       </TouchableOpacity>
                       {companionsOverlay}
                       {heartOverlay}
