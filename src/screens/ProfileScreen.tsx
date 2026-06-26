@@ -1735,7 +1735,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
               <View style={styles.statusDot} />
             </View>
             <View style={styles.statsRow}>
-              <StatCard value={String(travelStats.recordCount)} label="기록 수" />
+              <StatCard value={String(displayTrips.length)} label="기록 수" />
               <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} />
               <StatCard value={String(followerCount)} label="팔로워" />
             </View>
@@ -1829,9 +1829,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                 <Text style={thumbSt.mainDate}>{displayTrips[0].date}</Text>
               </View>
               <View style={thumbSt.mainBadges}>
-                {displayTrips[0].records.map((rec) => (
-                  <LiquidPressable key={rec.id} style={thumbSt.mainBadge} intensity={0.15}>
-                    {VIEW_TYPE_BADGE[rec.viewType] || null}
+                {Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                  <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
+                    {VIEW_TYPE_BADGE[vt] || null}
                   </LiquidPressable>
                 ))}
               </View>
@@ -1895,9 +1895,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                   <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
                   <Text style={thumbSt.gridDate}>{trip.date}</Text>
                   <View style={thumbSt.gridBadges}>
-                    {trip.records.map((rec) => (
-                      <LiquidPressable key={rec.id} style={thumbSt.gridBadge} intensity={0.15}>
-                        {VIEW_TYPE_BADGE[rec.viewType] || null}
+                    {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                      <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
+                        {VIEW_TYPE_BADGE[vt] || null}
                       </LiquidPressable>
                     ))}
                   </View>
