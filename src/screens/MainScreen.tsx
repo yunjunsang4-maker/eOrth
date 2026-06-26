@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
+import { imageToDataUri } from '../utils/imageCompress';
 import CountryMapView from '../components/CountryMapView';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { EorthLogo } from '../components/EorthLogo';
@@ -452,6 +453,10 @@ export default function MainScreen({ navigation, route }: Props) {
     return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
   };
 
+  // 지구본(WebView)은 file:// 이미지를 직접 못 그려서, 대표 사진을 작은 data URI(base64)로 변환해 캐시
+  const globePhotoCacheRef = useRef<Record<string, string>>({});
+  const [globePhotoVersion, setGlobePhotoVersion] = useState(0);
+
   const visitedCountries: VisitedCountry[] = useMemo(() => {
     return Array.from(visitedNameSet).map(nameEn => {
       const koName = EN_TO_KO[nameEn] || nameEn;
@@ -464,12 +469,35 @@ export default function MainScreen({ navigation, route }: Props) {
     });
   }, [visitedNameSet, countryColors, records, countryDisplayModes]);
 
+  // 대표 사진(file://)을 지구본용 data URI 로 변환 (아직 변환 안 된 것만)
+  useEffect(() => {
+    let cancelled = false;
+    const uris = Array.from(new Set(visitedCountries.map(c => c.photo).filter(Boolean) as string[]));
+    const todo = uris.filter(u => globePhotoCacheRef.current[u] === undefined);
+    if (todo.length === 0) return;
+    (async () => {
+      let changed = false;
+      for (const u of todo) {
+        const d = await imageToDataUri(u);
+        if (cancelled) return;
+        globePhotoCacheRef.current[u] = d ?? ''; // '' = 변환 실패(재시도 안 함)
+        if (d) changed = true;
+      }
+      if (changed && !cancelled) setGlobePhotoVersion(v => v + 1);
+    })();
+    return () => { cancelled = true; };
+  }, [visitedCountries]);
+
   // 지구본 형태별 강제 표시 모드: aurora = 색상(color), classic = 사진(photo)
   const globeForcedMode: GlobeDisplayMode = globeVariant === 'aurora' ? 'color' : 'photo';
-  // 폼이 모드를 강제하므로 국가별 개별 mode를 덮어써 일관되게 표시
+  // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
-    () => visitedCountries.map(c => ({ ...c, mode: globeForcedMode })),
-    [visitedCountries, globeForcedMode],
+    () => visitedCountries.map(c => ({
+      ...c,
+      mode: globeForcedMode,
+      photo: c.photo ? (globePhotoCacheRef.current[c.photo] || undefined) : undefined,
+    })),
+    [visitedCountries, globeForcedMode, globePhotoVersion],
   );
 
   // 현재 선택된 대륙 국가의 기록된 지역 목록

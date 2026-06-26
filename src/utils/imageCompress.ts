@@ -44,3 +44,26 @@ export async function compressImages(
 ): Promise<string[]> {
   return Promise.all(uris.map((u) => compressImage(u, maxEdge, quality)));
 }
+
+/**
+ * 지구본(WebView)용: 로컬 file:// 사진을 작은 base64 data URI 로 변환.
+ * WebView 는 inline HTML 에서 file:// 이미지를 못 그리므로 data URI 로 줘야 텍스처가 뜬다.
+ * http/data 는 그대로 통과, 실패 시 null.
+ */
+export async function imageToDataUri(
+  uri: string,
+  maxWidth: number = 512,
+  quality: number = 0.8,
+): Promise<string | null> {
+  if (!uri) return null;
+  if (uri.startsWith('http') || uri.startsWith('data:')) return uri;
+  try {
+    const ctx = ImageManipulator.manipulate(uri);
+    ctx.resize({ width: maxWidth }); // 지구본 텍스처라 작게 충분 (비율 자동)
+    const ref = await ctx.renderAsync();
+    const out = await ref.saveAsync({ compress: quality, format: SaveFormat.JPEG, base64: true });
+    return out.base64 ? `data:image/jpeg;base64,${out.base64}` : null;
+  } catch {
+    return null;
+  }
+}
