@@ -418,6 +418,7 @@ export default function MainScreen({ navigation, route }: Props) {
   const visitedNameSet = useMemo(() => {
     const nameSet = new Set<string>();
     records.forEach(r => {
+      if (r.viewType === 'snap') return; // 스냅만 기록된 국가는 지구본 활성화 제외 (실제 기록이 있어야 활성화)
       if (r.countryName) {
         const en = KO_TO_EN[r.countryName];
         if (en) nameSet.add(en);
@@ -510,6 +511,7 @@ export default function MainScreen({ navigation, route }: Props) {
 
     // 실제 기록(store)에서 이 국가의 기록된 지역 수집
     records.forEach(r => {
+      if (r.viewType === 'snap') return; // 스냅만 기록된 지역은 대륙(지역) 활성화 제외
       const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
       if (matchCountry && r.regionNameEn) {
         let photo: string | undefined;
@@ -519,8 +521,6 @@ export default function MainScreen({ navigation, route }: Props) {
           photo = r.representativePhoto;
         } else if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
           photo = r.cutPhoto.previewUri;
-        } else if (r.viewType === 'snap' && r.snapBackUri) {
-          photo = r.snapBackUri;
         } else if (r.medias && r.medias.length > 0) {
           photo = r.medias[0];
         }
@@ -678,7 +678,8 @@ export default function MainScreen({ navigation, route }: Props) {
       }
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
-        const hasRecord = records.some(r => r.countryName === koreanName || r.countries?.some(c => c.name === koreanName));
+        // 스냅만 있는 국가는 활성화되지 않으므로 '기록 없음'으로 취급(탭 시 새 기록 추가)
+        const hasRecord = records.some(r => r.viewType !== 'snap' && (r.countryName === koreanName || r.countries?.some(c => c.name === koreanName)));
 
         if (hasRecord && koreanName) {
           openCountrySheet(koreanName);
@@ -705,8 +706,9 @@ export default function MainScreen({ navigation, route }: Props) {
           region: data.region,
           regionEn: data.regionEn,
         });
-        // 이 지역(주)의 기존 기록 찾기
+        // 이 지역(주)의 기존 기록 찾기 (스냅은 활성화 대상이 아니므로 제외)
         const matched = records.filter(r => {
+          if (r.viewType === 'snap') return false;
           const inCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
           const regionMatch =
             (data.regionEn && r.regionNameEn === data.regionEn) ||
@@ -1009,25 +1011,31 @@ export default function MainScreen({ navigation, route }: Props) {
         </Animated.View>
       )}
 
-      {/* ── 국가 기록 오버레이 ── */}
-      {countrySheetOpen && (
+      {/* ── 국가 기록 오버레이 + 바텀시트 (탭바·FAB 위에 표시되도록 Modal로 렌더) ── */}
+      <Modal
+        visible={countrySheetOpen}
+        transparent
+        animationType="none"
+        statusBarTranslucent
+        onRequestClose={closeCountrySheet}
+      >
+        {/* 오버레이 */}
         <Animated.View
-          style={[styles.overlay, { opacity: countryOverlayAnim, zIndex: 40 }]}
+          style={[styles.overlay, { opacity: countryOverlayAnim }]}
           pointerEvents="auto"
         >
           <TouchableOpacity style={StyleSheet.absoluteFill} onPress={closeCountrySheet} activeOpacity={1} />
         </Animated.View>
-      )}
 
-      {/* ── 국가 기록 바텀시트 (Liquid Glass) ── */}
-      <Animated.View
-        style={[
-          styles.countrySheet,
-          { transform: [{ translateY: countrySheetAnim }] },
-        ]}
-        pointerEvents={countrySheetOpen ? 'auto' : 'none'}
-      >
-        <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+        {/* 바텀시트 (Liquid Glass) */}
+        <Animated.View
+          style={[
+            styles.countrySheet,
+            { transform: [{ translateY: countrySheetAnim }] },
+          ]}
+          pointerEvents="auto"
+        >
+          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
         {/* 핸들 */}
         <TouchableOpacity style={styles.sheetHandleArea} onPress={closeCountrySheet} activeOpacity={0.8}>
           <View style={styles.sheetHandle} />
@@ -1079,7 +1087,8 @@ export default function MainScreen({ navigation, route }: Props) {
             <Text style={styles.countryAddBtnText}>+ 새 기록 추가</Text>
           </TouchableOpacity>
         </View>
-      </Animated.View>
+        </Animated.View>
+      </Modal>
 
       {/* ── 기록형식 선택 모달 ── */}
       <Modal

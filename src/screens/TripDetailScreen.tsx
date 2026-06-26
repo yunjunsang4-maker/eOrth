@@ -27,6 +27,13 @@ const CARD_W = SCREEN_WIDTH - 40;
 const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
+// 형식 펼침 시 같은 형식 기록을 가로 스와이프로 넘길 때의 한 장 폭 (expandWrap 콘텐츠 폭에 맞춤)
+const SWIPE_GAP = 12;
+const SWIPE_CARD_W = SCREEN_WIDTH - 52;
+// 스냅은 세로 사진. 카드 폭을 사진 폭에 맞춰 좁게 (사진폭 + 카드 좌우 패딩 16*2)
+const SNAP_PHOTO_W = 108;
+const SNAP_CARD_W = SNAP_PHOTO_W + 32;
+
 const COLORS = {
   bg: '#0A0A0F',
   card: '#1C1C28',
@@ -220,6 +227,14 @@ export default function TripDetailScreen() {
       )
     : groupRecordObjs;
 
+  // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 그룹 커버 우선, 없으면 기록의 첫 사진
+  const pickPhoto = (r?: TravelRecord): string | undefined =>
+    r?.representativePhoto || r?.medias?.[0] || r?.snapBackUri || r?.snapFrontUri || r?.cutPhoto?.previewUri;
+  const coverPhoto: string | undefined =
+    (currentGroup?.coverRecordId
+      ? pickPhoto(records.find((r) => r.id === currentGroup.coverRecordId))
+      : undefined) ?? matchedRecords.map(pickPhoto).find(Boolean);
+
   // viewType별 그룹
   const getRecordsByType = (viewType: string): TravelRecord[] => {
     return matchedRecords.filter((r) => (r.viewType || 'feed') === viewType);
@@ -380,7 +395,11 @@ export default function TripDetailScreen() {
             colors={[trip.color, 'rgba(10,10,15,0.8)', COLORS.bg]}
             style={s.heroBg}
           />
-          <Text style={s.heroEmoji}>{trip.emoji}</Text>
+          {coverPhoto ? (
+            <Image source={{ uri: coverPhoto }} style={s.heroPhoto} resizeMode="cover" />
+          ) : (
+            <Text style={s.heroEmoji}>{trip.emoji}</Text>
+          )}
           <Text style={s.heroDate}>{trip.date}</Text>
           <View style={s.heroPill}>
             {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
@@ -400,6 +419,8 @@ export default function TripDetailScreen() {
             const open = expandedType === m.vt;
             const even = idx % 2 === 0;
             const thumbs = m.items.flatMap((r) => r.medias ?? []).slice(0, 3);
+            // 스냅은 세로 사진이라 카드도 좁고 긴 포트레이트 폭으로 스와이프
+            const cardW = m.vt === 'snap' ? SNAP_CARD_W : SWIPE_CARD_W;
             const animStyle = {
               opacity: moduleAnims[idx],
               transform: [{
@@ -468,22 +489,50 @@ export default function TripDetailScreen() {
                   <Text style={[s.moduleChevron, { color: m.config.accent }, open && s.moduleChevronOpen]}>❯</Text>
                 </TouchableOpacity>
 
-                {/* 펼침 — 해당 형식으로 기록된 것들 */}
+                {/* 펼침 — 해당 형식으로 기록된 것들 (여러 개면 가로 스와이프) */}
                 {open && (
                   <View style={[s.expandWrap, { borderLeftColor: m.config.accent + '44' }]}>
-                    {m.items.map((record) => (
-                      <TouchableOpacity
-                        key={record.id}
-                        activeOpacity={0.75}
-                        onPress={() => handleRecordPress(record)}
+                    {m.items.length > 1 ? (
+                      <ScrollView
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        snapToInterval={cardW + SWIPE_GAP}
+                        decelerationRate="fast"
+                        disableIntervalMomentum
                       >
-                        {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
-                        {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
-                        {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
-                        {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
-                        {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
-                      </TouchableOpacity>
-                    ))}
+                        {m.items.map((record, i) => (
+                          <TouchableOpacity
+                            key={record.id}
+                            activeOpacity={0.75}
+                            onPress={() => handleRecordPress(record)}
+                            style={{
+                              width: cardW,
+                              marginRight: i === m.items.length - 1 ? 0 : SWIPE_GAP,
+                            }}
+                          >
+                            {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
+                            {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
+                            {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
+                            {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
+                            {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    ) : (
+                      m.items.map((record) => (
+                        <TouchableOpacity
+                          key={record.id}
+                          activeOpacity={0.75}
+                          onPress={() => handleRecordPress(record)}
+                        >
+                          {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
+                          {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
+                          {m.vt === 'album' && <AlbumCard record={record} accent={m.config.accent} />}
+                          {m.vt === 'snap' && <SnapCard record={record} accent={m.config.accent} />}
+                          {m.vt === 'cut' && <CutCard record={record} accent={m.config.accent} />}
+                        </TouchableOpacity>
+                      ))
+                    )}
                   </View>
                 )}
               </Animated.View>
@@ -766,49 +815,25 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={card.feedHeader}>
-        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
-          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={card.feedUserName}>{record.user.name}</Text>
-          <Text style={card.feedDate}>{record.date}</Text>
-        </View>
+      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 스냅 배지만 */}
+      <View style={card.snapHeader}>
+        <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
           <Text style={[card.feedTypeText, { color: accent }]}>스냅</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
-        {(record.snapBackUri || record.snapFrontUri || record.medias?.[0]) ? (
-          <Image
-            source={{ uri: (record.snapBackUri || record.snapFrontUri || record.medias?.[0]) as string }}
-            style={{ width: 60, height: 80, borderRadius: 6, backgroundColor: '#222' }}
-          />
-        ) : (
-          <View
-            style={{
-              width: 60,
-              height: 80,
-              borderRadius: 6,
-              backgroundColor: '#2A2A3A',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>📸</Text>
-          </View>
-        )}
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 13, color: '#FFF', fontStyle: 'italic' }}>
-            "{record.snapCaption || '오늘의 순간'}"
-          </Text>
-          {record.snapLateSeconds !== undefined && (
-            <Text style={{ fontSize: 11, color: accent, marginTop: 4 }}>
-              ⏱ {record.snapLateSeconds}초 늦음
-            </Text>
-          )}
+      {/* 세로 스냅 사진 (촬영이 세로라 포트레이트로 표시) */}
+      {(record.snapBackUri || record.snapFrontUri || record.medias?.[0]) ? (
+        <Image
+          source={{ uri: (record.snapBackUri || record.snapFrontUri || record.medias?.[0]) as string }}
+          style={card.snapPortrait}
+          resizeMode="cover"
+        />
+      ) : (
+        <View style={[card.snapPortrait, card.snapPortraitPlaceholder]}>
+          <Text style={{ fontSize: 22, color: '#A1A1B0' }}>📸</Text>
         </View>
-      </View>
+      )}
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>
         <View style={card.feedStatRow}>
@@ -935,6 +960,11 @@ const s = StyleSheet.create({
   },
   heroBg: { ...StyleSheet.absoluteFillObject, opacity: 0.7 },
   heroEmoji: { fontSize: 64, marginBottom: 10 },
+  heroPhoto: {
+    width: 104, height: 104, borderRadius: 24, marginBottom: 10,
+    backgroundColor: '#1A0A2E',
+    borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)',
+  },
   heroDate: { fontSize: 14, color: COLORS.textDim, fontWeight: '500', letterSpacing: 0.5 },
   heroPill: {
     marginTop: 8, paddingHorizontal: 14, paddingVertical: 5,
@@ -1061,6 +1091,19 @@ const card = StyleSheet.create({
   feedStat: { fontSize: 12, color: COLORS.textDim },
   feedTags: { flexDirection: 'row', gap: 6, marginLeft: 'auto' },
   feedTag: { fontSize: 11, fontWeight: '600' },
+
+  // Snap (세로 포트레이트) — 카드 폭을 사진 폭에 맞춤
+  snapHeader: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  snapPortrait: {
+    width: SNAP_PHOTO_W, height: Math.round(SNAP_PHOTO_W * 4 / 3), borderRadius: 10, alignSelf: 'center',
+    backgroundColor: '#222', marginBottom: 10,
+  },
+  snapPortraitPlaceholder: {
+    backgroundColor: '#2A2A3A', alignItems: 'center', justifyContent: 'center',
+  },
 
   // Moment
   moment: {
