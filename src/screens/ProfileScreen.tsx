@@ -29,7 +29,6 @@ import GrainOverlay from '../components/GrainOverlay';
 import {
   FloatingBlobs,
   LiquidPressable,
-  GooeyCircle,
   LiquidCardGlow,
   useEntranceAnimation,
 } from '../components/LiquidEffects';
@@ -195,43 +194,6 @@ const NeonGlass = ({
   </View>
 );
 
-// 원형 네온 링 (배지/아바타)
-const NeonRing = ({
-  size,
-  colors,
-  borderWidth = 2,
-  intensity = 16,
-  children,
-}: {
-  size: number;
-  colors: readonly [string, string, ...string[]];
-  borderWidth?: number;
-  intensity?: number;
-  children?: React.ReactNode;
-}) => (
-  <LinearGradient
-    colors={colors}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={{ width: size, height: size, borderRadius: size / 2, padding: borderWidth, alignItems: 'center', justifyContent: 'center' }}
-  >
-    <View
-      style={{
-        width: size - borderWidth * 2,
-        height: size - borderWidth * 2,
-        borderRadius: (size - borderWidth * 2) / 2,
-        overflow: 'hidden',
-        backgroundColor: 'rgba(10,10,15,0.45)',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <GlassFill intensity={intensity} />
-      {children}
-    </View>
-  </LinearGradient>
-);
-
 // ─── 팔로워 카드 (네온 글래스 칩) ───
 const StatCard = ({
   value,
@@ -352,24 +314,31 @@ const TRIP_GRADIENT_COLORS: Record<string, [string, string]> = {
 };
 
 // ─── 배지 하이라이트 아이템 (리퀴드 구이 서클) ───
-const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => (
-  <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
-    <GooeyCircle size={64} color={glow || NEON.purple} glowOpacity={earned ? 0.5 : 0.12}>
-      <NeonRing
-        size={58}
-        borderWidth={1.6}
-        intensity={20}
-        colors={earned ? [NEON.cyan, NEON.purple, NEON.magenta] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}
-      >
+let badgeRingSeq = 0; // SVG 그라데이션 id 충돌 방지용 (인스턴스별 고유 id)
+const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => {
+  const ringId = React.useMemo(() => 'badgeRing' + (badgeRingSeq++), []);
+  return (
+    <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
+      {/* 배지 원 — Ellipse 2989 채움 + 유리 그라데이션 테두리(stroke만 → 안쪽엔 영향 없음) */}
+      <View style={badgeHL.circle}>
         {earned ? (
           <Text style={badgeHL.emoji}>{emoji}</Text>
         ) : (
           <Text style={badgeHL.lockIcon}>🔒</Text>
         )}
-      </NeonRing>
-    </GooeyCircle>
-  </LiquidPressable>
-);
+        <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+        </Svg>
+      </View>
+    </LiquidPressable>
+  );
+};
 
 // ─── 배지 전체 목록 모달 ───
 const getMetallicColors = (glow: string | undefined): [string, string, string, string] => {
@@ -2722,6 +2691,17 @@ const gridSt = StyleSheet.create({
 
 // ─── 배지 하이라이트 스타일 ───
 const badgeHL = StyleSheet.create({
+  // 배지 원 — Ellipse 2989 (단색 반투명 회색) 채움. 테두리는 위에 SVG stroke 그라데이션으로 그림
+  circle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#D9D9D933', // #D9D9D9 20%
+
+
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scroll: {
     marginBottom: 16,
     height: 72,

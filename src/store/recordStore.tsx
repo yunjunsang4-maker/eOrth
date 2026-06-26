@@ -86,8 +86,8 @@ export interface TravelRecord {
   snapCaption?: string;               // 한줄 캡션
   snapDetectedCountry?: string;       // 감지된 국가명
   snapLateSeconds?: number;           // 알림 후 촬영까지 소요 시간(초)
-  snapExpiresAt?: number;             // 24시간 후 만료 시각
-  snapViewed?: boolean;               // 스냅 열람 여부
+  snapViewed?: boolean;               // (현재 사용자가) 스냅 열람 여부
+  snapViewers?: { handle: string; name: string; time: number }[]; // 이 스냅을 본 사람들 (조회자)
   snapHour?: number;                  // 촬영 시점 '현지 시각'의 시(0~23) — 89·90 시간대 배지용
   // v5 네컷 필드 (viewType='cut'일 때)
   cutPhoto?: {
@@ -435,10 +435,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const markSnapViewed = (id: string) => {
+    // 호출 시점 = 현재 사용자가 (자기 것이 아닌) 스냅을 열람 → 열람 표시 + 조회자 기록(중복 방지)
+    const me = { handle, name: nickname || handle, time: Date.now() };
     setRecords((prev) =>
-      prev.map((r) =>
-        r.id === id && !r.snapViewed ? { ...r, snapViewed: true } : r
-      )
+      prev.map((r) => {
+        if (r.id !== id) return r;
+        const viewers = r.snapViewers ?? [];
+        const already = viewers.some((v) => v.handle === me.handle);
+        return {
+          ...r,
+          snapViewed: true,
+          snapViewers: already ? viewers : [...viewers, me],
+        };
+      })
     );
   };
 

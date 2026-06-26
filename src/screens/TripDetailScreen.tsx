@@ -779,9 +779,9 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
         </View>
       </View>
       <View style={{ flexDirection: 'row', gap: 12, marginBottom: 10 }}>
-        {record.snapBackUri ? (
+        {(record.snapBackUri || record.snapFrontUri || record.medias?.[0]) ? (
           <Image
-            source={{ uri: record.snapBackUri }}
+            source={{ uri: (record.snapBackUri || record.snapFrontUri || record.medias?.[0]) as string }}
             style={{ width: 60, height: 80, borderRadius: 6, backgroundColor: '#222' }}
           />
         ) : (

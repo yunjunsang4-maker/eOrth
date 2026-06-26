@@ -832,12 +832,6 @@ const sc = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
   },
   lateBadgeText: { color: '#FFD60A', fontSize: 11, fontWeight: '700' },
-  expiredOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  expiredText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
   caption: {
     color: '#fff', fontSize: 15, lineHeight: 22,
     paddingHorizontal: 16, paddingTop: 12,
@@ -1719,19 +1713,23 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     });
 
   const card = (() => {
-  // 네컷 → 프레임 합성 라이브 렌더 (CutPhotoCanvas)
+  // 네컷 → 저장된 합성본(previewUri)을 정적으로 렌더 (프로필과 동일·안정적, 카드마다 라이브 합성보다 가벼움)
   if (vt === 'cut') {
+    const uri = firstPhoto(item); // cutPhoto.previewUri || medias[0]
+    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
+    if (uri) {
+      return (
+        <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
+          <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" />
+          {meta}
+        </DiaryTappable>
+      );
+    }
+    // previewUri/medias 없는 옛 기록만 슬롯 사진으로 라이브 합성 폴백
     if (item.cutPhoto?.photos) {
       return <CutDiaryCard item={item} meta={meta} tilt={tilt} onSingle={open} onDouble={like} />;
     }
-    const uri = firstPhoto(item);
-    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
-    return (
-      <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
-        {uri ? <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" /> : null}
-        {meta}
-      </DiaryTappable>
-    );
+    return <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>{meta}</DiaryTappable>;
   }
 
   // 블로그 / 앨범
@@ -2037,9 +2035,12 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const albumItems = allVisible.filter(r => r.viewType === 'album');
   const cutItems = allVisible.filter(r => r.viewType === 'cut');
   const snapItems = useMemo(() => {
+    // 내 스냅 판정 (isMyPost 누락 대비 핸들 비교 병행). 내 스냅은 '본 것'으로 취급 → 안 본 링 안 뜸
+    const isMine = (s: any) => s.isMyPost || s.user.handle === globalHandle;
+    const isUnviewed = (s: any) => !isMine(s) && !s.snapViewed;
     const snaps = allVisible.filter(r => r.viewType === 'snap');
     const seen = new Set<string>();
-    return snaps.reduce<any[]>((acc, snap) => {
+    const reps = snaps.reduce<any[]>((acc, snap) => {
       // 같은 사용자라도 다른 나라면 별도 스토리로 인식
       const key = `${snap.user.handle}::${snap.countryName || snap.snapDetectedCountry || ''}`;
       if (seen.has(key)) {
@@ -2048,14 +2049,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
           s.user.handle === snap.user.handle &&
           (s.countryName || s.snapDetectedCountry || '') === (snap.countryName || snap.snapDetectedCountry || '')
         );
-        if (rep && !snap.snapViewed) rep._hasUnviewed = true;
+        if (rep && isUnviewed(snap)) rep._hasUnviewed = true;
         return acc;
       }
       seen.add(key);
-      acc.push({ ...snap, _hasUnviewed: !snap.snapViewed });
+      acc.push({ ...snap, _hasUnviewed: isUnviewed(snap) });
       return acc;
     }, []);
-  }, [allVisible]);
+    // 모든 스토리를 다 봤으면(내 스냅은 본 것으로 간주) 제일 먼저 올린 것부터(오름차순) 정렬
+    const allViewed = reps.every((s: any) => !s._hasUnviewed);
+    if (allViewed) reps.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    return reps;
+  }, [allVisible, globalHandle]);
   // 피드·블로그·앨범·네컷을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
   const timelineItems = [...feedItems, ...blogItems, ...albumItems, ...cutItems]
     .sort((a, b) => b.timestamp - a.timestamp);

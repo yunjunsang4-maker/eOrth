@@ -350,7 +350,6 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapCaption: caption || undefined,
       snapDetectedCountry: detectedCountry || undefined,
       snapLateSeconds: lateSeconds > 0 ? lateSeconds : undefined,
-      snapExpiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24시간 후 만료
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
     });
 
@@ -575,8 +574,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </View>
 
-      {/* 24시간 안내 */}
-      <Text style={st.expireNote}>스냅은 24시간 후 친구들에게 흐리게 보여요</Text>
+      {/* 스냅은 영구 보존 (인스타 스토리와 달리 사라지지 않음) */}
+      <Text style={st.expireNote}>스냅은 사라지지 않고 기록으로 남아요</Text>
     </SafeAreaView>
   );
 }
