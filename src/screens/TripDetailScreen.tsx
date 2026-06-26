@@ -94,6 +94,70 @@ const VIEW_CONFIG: Record<string, {
   },
 };
 
+// ─── 형식 아이콘 (FAB / RecordFab 와 동일한 커스텀 아이콘을 색상만 받아 재현) ───
+const FmtFeedIcon = ({ color }: { color: string }) => (
+  <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 8, height: 4, borderTopLeftRadius: 2, borderTopRightRadius: 2, backgroundColor: color }} />
+    <View style={{ width: 20, height: 13, borderRadius: 3, backgroundColor: color, alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 8, height: 8, borderRadius: 4, borderWidth: 2, borderColor: COLORS.card }} />
+    </View>
+  </View>
+);
+
+const FmtBlogIcon = ({ color }: { color: string }) => (
+  <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 20, height: 20, gap: 3 }}>
+      <View style={{ width: 14, height: 3, borderRadius: 1.5, backgroundColor: color }} />
+      <View style={{ width: 20, height: 2, borderRadius: 1, backgroundColor: color, opacity: 0.6 }} />
+      <View style={{ width: 18, height: 2, borderRadius: 1, backgroundColor: color, opacity: 0.6 }} />
+      <View style={{ width: 16, height: 2, borderRadius: 1, backgroundColor: color, opacity: 0.6 }} />
+    </View>
+  </View>
+);
+
+const FmtAlbumIcon = ({ color }: { color: string }) => (
+  <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 20, height: 20, flexDirection: 'row', flexWrap: 'wrap', gap: 2 }}>
+      <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: color }} />
+      <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: color }} />
+      <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: color }} />
+      <View style={{ width: 9, height: 9, borderRadius: 2, backgroundColor: color }} />
+    </View>
+  </View>
+);
+
+const FmtCutIcon = ({ color }: { color: string }) => (
+  <View style={{ width: 24, height: 24, alignItems: 'center', justifyContent: 'center' }}>
+    <View style={{ width: 18, height: 22, borderWidth: 1.5, borderColor: color, borderRadius: 3, padding: 2.5, flexDirection: 'row', flexWrap: 'wrap', gap: 2, alignContent: 'center', justifyContent: 'center' }}>
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: color }} />
+      <View style={{ width: 5.5, height: 5.5, borderRadius: 1, backgroundColor: color }} />
+    </View>
+  </View>
+);
+
+// 형식별 아이콘 디스패처 (스냅은 FAB에 없으므로 ⚡ 유지)
+function FormatIcon({ type, color }: { type: string; color: string }) {
+  switch (type) {
+    case 'feed':  return <FmtFeedIcon color={color} />;
+    case 'blog':  return <FmtBlogIcon color={color} />;
+    case 'album': return <FmtAlbumIcon color={color} />;
+    case 'cut':   return <FmtCutIcon color={color} />;
+    case 'snap':  return <Text style={{ fontSize: 20 }}>⚡</Text>;
+    default:      return null;
+  }
+}
+
+// 기록 추가 시 선택할 형식 목록
+const ADD_FORMATS: { type: string; name: string }[] = [
+  { type: 'feed',  name: '피드' },
+  { type: 'blog',  name: '블로그' },
+  { type: 'cut',   name: '스트립' },
+  { type: 'snap',  name: '스냅' },
+  { type: 'album', name: '사진첩' },
+];
+
 interface TripThumbnail {
   id: string;
   emoji: string;
@@ -125,6 +189,7 @@ export default function TripDetailScreen() {
   const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
   const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
   const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
+  const [formatPickerVisible, setFormatPickerVisible] = useState(false); // 기록 추가 — 형식 선택
 
   useEffect(() => {
     setEditedTitle(titleToDisplay);
@@ -264,8 +329,27 @@ export default function TripDetailScreen() {
     });
   }, []);
 
+  // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
+  const handleAddRecord = (type: string) => {
+    setFormatPickerVisible(false);
+    const selectedCountry = { name: trip.country || '', flag: trip.countryFlag };
+    const nav = navigation as any;
+    switch (type) {
+      case 'blog':  nav.navigate('BlogRecord', { selectedCountry }); break;
+      case 'cut':   nav.navigate('CutRecord', { selectedCountry }); break;
+      case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
+      case 'album': nav.navigate('AlbumCreate', { selectedCountry }); break;
+      default:      nav.navigate('NewRecord', { selectedCountry });
+    }
+  };
+
   const handleRecordPress = (rec: TravelRecord) => {
-    // 기록 전체를 넘겨야 사진첩(medias)·본문 등 실제 콘텐츠가 상세 화면에 표시된다
+    // 피드는 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
+    if ((rec.viewType || 'feed') === 'feed') {
+      navigation.navigate('PostDetail', { postId: rec.id });
+      return;
+    }
+    // 그 외 형식은 기존 기록 상세 화면 — 기록 전체를 넘겨야 사진첩(medias)·본문 등이 표시된다
     navigation.navigate('TripRecord', {
       record: rec,
       viewType: rec.viewType || 'feed',
@@ -316,6 +400,13 @@ export default function TripDetailScreen() {
           <View style={s.menuSheet}>
             <TouchableOpacity
               style={s.menuItem}
+              onPress={() => { setMenuVisible(false); setFormatPickerVisible(true); }}
+            >
+              <Text style={s.menuItemText}>➕  기록 추가</Text>
+            </TouchableOpacity>
+            <View style={s.menuDivider} />
+            <TouchableOpacity
+              style={s.menuItem}
               onPress={() => { setMenuVisible(false); setIsEditing(true); }}
             >
               <Text style={s.menuItemText}>✏️  제목 수정</Text>
@@ -332,6 +423,26 @@ export default function TripDetailScreen() {
             <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard}>
               <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  기록카드 삭제</Text>
             </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 기록 추가 — 형식 선택 모달 */}
+      <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+        <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
+          <View style={s.fmCard}>
+            <Text style={s.fmTitle}>기록 형식 선택</Text>
+            <Text style={s.fmSub}>
+              {trip.country ? `${trip.country}의 여행을 어떤 형식으로 기록할까요?` : '어떤 형식으로 기록할까요?'}
+            </Text>
+            <View style={s.fmGrid}>
+              {ADD_FORMATS.map((f) => (
+                <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)}>
+                  <FormatIcon type={f.type} color={VIEW_CONFIG[f.type]?.accent ?? COLORS.purpleNeon} />
+                  <Text style={s.fmName}>{f.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -419,8 +530,8 @@ export default function TripDetailScreen() {
             const open = expandedType === m.vt;
             const even = idx % 2 === 0;
             const thumbs = m.items.flatMap((r) => r.medias ?? []).slice(0, 3);
-            // 스냅은 세로 사진이라 카드도 좁고 긴 포트레이트 폭으로 스와이프
-            const cardW = m.vt === 'snap' ? SNAP_CARD_W : SWIPE_CARD_W;
+            // 스냅·피드는 세로 사진이라 카드도 좁고 긴 포트레이트 폭으로 스와이프
+            const cardW = (m.vt === 'snap' || m.vt === 'feed') ? SNAP_CARD_W : SWIPE_CARD_W;
             const animStyle = {
               opacity: moduleAnims[idx],
               transform: [{
@@ -462,7 +573,10 @@ export default function TripDetailScreen() {
                     <Text style={[s.moduleCode, { color: m.config.accent + 'AA' }]}>
                       MODULE // {m.vt.toUpperCase()}
                     </Text>
-                    <Text style={s.moduleName}>{m.config.icon} {m.config.name}</Text>
+                    <View style={s.moduleNameRow}>
+                      <FormatIcon type={m.vt} color={m.config.accent} />
+                      <Text style={s.moduleName}>{m.config.name}</Text>
+                    </View>
                     <View style={s.moduleMetaRow}>
                       <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
                       <Text style={[s.moduleCount, { color: m.config.accent }]}>{m.items.length}개 기록</Text>
@@ -483,7 +597,9 @@ export default function TripDetailScreen() {
                       ))}
                     </View>
                   ) : (
-                    <Text style={s.moduleBigIcon}>{m.config.icon}</Text>
+                    <View style={s.moduleBigIcon}>
+                      <FormatIcon type={m.vt} color={m.config.accent} />
+                    </View>
                   )}
 
                   <Text style={[s.moduleChevron, { color: m.config.accent }, open && s.moduleChevronOpen]}>❯</Text>
@@ -524,6 +640,7 @@ export default function TripDetailScreen() {
                           key={record.id}
                           activeOpacity={0.75}
                           onPress={() => handleRecordPress(record)}
+                          style={{ width: cardW }}
                         >
                           {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
                           {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
@@ -558,9 +675,10 @@ function useCommentCount(recordId: string): number {
   return list.reduce((sum, c) => sum + 1 + (c.replies?.length ?? 0), 0);
 }
 
-// ─── 피드 카드 ───
+// ─── 피드 카드 (스냅과 동일한 세로 포트레이트 형태) ───
 function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) {
   const commentCount = useCommentCount(record.id);
+  const img = record.medias?.[0] || record.representativePhoto;
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -569,35 +687,27 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      {/* 상단 유저 */}
-      <View style={card.feedHeader}>
-        <View style={card.feedAvatar}>
-          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={card.feedUserName}>{record.user.name}</Text>
-          <Text style={card.feedDate}>{record.date}</Text>
-        </View>
+      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 피드 배지만 */}
+      <View style={card.snapHeader}>
+        <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
           <Text style={[card.feedTypeText, { color: accent }]}>피드</Text>
         </View>
       </View>
-      {/* 본문 */}
-      <Text style={card.feedContent} numberOfLines={3}>{record.content}</Text>
-      {/* 하단 인터랙션 */}
+      {/* 세로 사진 */}
+      {img ? (
+        <Image source={{ uri: img }} style={card.snapPortrait} resizeMode="cover" />
+      ) : (
+        <View style={[card.snapPortrait, card.snapPortraitPlaceholder]}>
+          <Text style={{ fontSize: 22, color: '#A1A1B0' }}>📸</Text>
+        </View>
+      )}
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>
         <View style={card.feedStatRow}>
           <CommentIcon size={14} color="#A1A1B0" />
           <Text style={card.feedStat}>{commentCount}</Text>
         </View>
-        {record.keywords && record.keywords.length > 0 && (
-          <View style={card.feedTags}>
-            {record.keywords.slice(0, 2).map((k) => (
-              <Text key={k} style={[card.feedTag, { color: accent }]}>#{k}</Text>
-            ))}
-          </View>
-        )}
       </View>
     </View>
   );
@@ -1004,6 +1114,27 @@ const s = StyleSheet.create({
   menuItemDanger: { color: '#FF3B30' },
   menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
 
+  /* ── 기록 추가 형식 선택 모달 ── */
+  fmOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24,
+  },
+  fmCard: {
+    width: '100%', maxWidth: 360,
+    backgroundColor: COLORS.card, borderRadius: 20, padding: 20,
+    borderWidth: 1, borderColor: 'rgba(191,133,252,0.25)',
+  },
+  fmTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
+  fmSub: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', marginBottom: 18 },
+  fmGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
+  fmItem: {
+    width: 92, height: 82,
+    backgroundColor: '#2E2E3B', borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', gap: 6,
+    borderWidth: 1, borderColor: 'rgba(191,133,252,0.18)',
+  },
+  fmName: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
+
   /* ── 썸네일 사진 선택 시트 ── */
   thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   thumbSheet: {
@@ -1049,6 +1180,7 @@ const s = StyleSheet.create({
   },
   moduleIndex: { fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center' },
   moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
+  moduleNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },
   moduleMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5 },
   moduleDataLine: { flex: 1, height: 1, maxWidth: 90 },
@@ -1058,7 +1190,7 @@ const s = StyleSheet.create({
     width: 36, height: 36, borderRadius: 10, backgroundColor: '#1A0A2E',
     borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.35)',
   },
-  moduleBigIcon: { fontSize: 22 },
+  moduleBigIcon: { alignItems: 'center', justifyContent: 'center' },
   moduleChevron: { fontSize: 14, fontWeight: '800', marginLeft: 2 },
   moduleChevronOpen: { transform: [{ rotate: '90deg' }] },
   expandWrap: { marginTop: 10, marginLeft: 8, paddingLeft: 12, borderLeftWidth: 2 },
