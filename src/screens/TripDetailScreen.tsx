@@ -19,6 +19,7 @@ import { CommentIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
 import { bakeCoverCrop } from '../utils/importPhotoStore';
+import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -344,8 +345,9 @@ export default function TripDetailScreen() {
   };
 
   const handleRecordPress = (rec: TravelRecord) => {
-    // 피드는 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
-    if ((rec.viewType || 'feed') === 'feed') {
+    // 피드·스트립은 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
+    const vt = rec.viewType || 'feed';
+    if (vt === 'feed' || vt === 'cut') {
       navigation.navigate('PostDetail', { postId: rec.id });
       return;
     }
@@ -529,9 +531,17 @@ export default function TripDetailScreen() {
           {modules.map((m, idx) => {
             const open = expandedType === m.vt;
             const even = idx % 2 === 0;
-            const thumbs = m.items.flatMap((r) => r.medias ?? []).slice(0, 3);
-            // 스냅·피드는 세로 사진이라 카드도 좁고 긴 포트레이트 폭으로 스와이프
-            const cardW = (m.vt === 'snap' || m.vt === 'feed') ? SNAP_CARD_W : SWIPE_CARD_W;
+            // 모듈 미리보기 썸네일 — 형식별로 사진 위치가 달라 medias 외에 스냅/스트립 사진도 가져온다
+            const thumbs = m.items.flatMap((r) => {
+              if (r.medias && r.medias.length > 0) return r.medias;
+              if (r.viewType === 'snap') return [r.snapBackUri, r.snapFrontUri].filter(Boolean) as string[];
+              if (r.viewType === 'cut' && r.cutPhoto) {
+                return r.cutPhoto.previewUri ? [r.cutPhoto.previewUri] : (r.cutPhoto.photos ?? []);
+              }
+              return [];
+            }).slice(0, 3);
+            // 스냅·피드·블로그·스트립은 좁은 카드로 가로 스와이프(옆 카드가 보임), 앨범만 전체 폭
+            const cardW = m.vt === 'album' ? SWIPE_CARD_W : SNAP_CARD_W;
             const animStyle = {
               opacity: moduleAnims[idx],
               transform: [{
@@ -885,22 +895,17 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={card.feedHeader}>
-        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
-          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={card.feedUserName}>{record.user.name}</Text>
-          <Text style={card.feedDate}>{record.date}</Text>
-        </View>
+      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 블로그 배지만 */}
+      <View style={card.snapHeader}>
+        <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
           <Text style={[card.feedTypeText, { color: accent }]}>블로그</Text>
         </View>
       </View>
-      <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={1}>
+      <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={2}>
         {getBlogTitle()}
       </Text>
-      <Text style={card.feedContent} numberOfLines={2}>
+      <Text style={card.feedContent} numberOfLines={4}>
         {getBlogExcerpt()}
       </Text>
       <View style={card.feedFooter}>
@@ -959,6 +964,8 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
 function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
   const commentCount = useCommentCount(record.id);
   const photos = record.cutPhoto?.photos ?? [];
+  // 프레임 규격(가로/세로 비율)에 맞춰 미리보기를 렌더 (고정 높이 대신 실제 프레임 비율 사용)
+  const frameAspect = record.cutPhoto ? CUT_LAYOUTS[record.cutPhoto.layout]?.aspect ?? 3 / 4 : 3 / 4;
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
@@ -967,41 +974,45 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
       />
-      <View style={card.feedHeader}>
-        <View style={[card.feedAvatar, { backgroundColor: accent + '12' }]}>
-          <Text style={card.feedAvatarEmoji}>{record.user.emoji}</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text style={card.feedUserName}>{record.user.name}</Text>
-          <Text style={card.feedDate}>{record.date}</Text>
-        </View>
+      {/* 좁은 카드라 컴팩트 헤더: 날짜 + 스트립 배지만 */}
+      <View style={card.snapHeader}>
+        <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
           <Text style={[card.feedTypeText, { color: accent }]}>스트립</Text>
         </View>
       </View>
-      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
-        {photos.slice(0, 4).map((p, i) => (
-          <Image
-            key={i}
-            source={{ uri: p }}
-            style={{ width: 45, height: 60, borderRadius: 4, backgroundColor: '#222' }}
-          />
-        ))}
-        {photos.length === 0 && (
-          <View
-            style={{
-              width: 45,
-              height: 60,
-              borderRadius: 4,
-              backgroundColor: '#2A2A3A',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          >
-            <Text style={{ fontSize: 12, color: '#A1A1B0' }}>🎞️</Text>
-          </View>
-        )}
-      </View>
+      {/* 합성된 네컷 이미지(previewUri) 우선 — 영구 저장되어 안정적. 없으면 개별 사진 */}
+      {record.cutPhoto?.previewUri ? (
+        <Image
+          source={{ uri: record.cutPhoto.previewUri }}
+          style={{ width: '100%', aspectRatio: frameAspect, borderRadius: 8, backgroundColor: '#222', marginBottom: 10 }}
+          resizeMode="cover"
+        />
+      ) : photos.length > 0 ? (
+        <View style={{ flexDirection: 'row', gap: 6, marginBottom: 10 }}>
+          {photos.slice(0, 4).map((p, i) => (
+            <Image
+              key={i}
+              source={{ uri: p }}
+              style={{ width: 45, height: 60, borderRadius: 4, backgroundColor: '#222' }}
+            />
+          ))}
+        </View>
+      ) : (
+        <View
+          style={{
+            width: 45,
+            height: 60,
+            borderRadius: 4,
+            backgroundColor: '#2A2A3A',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 10,
+          }}
+        >
+          <Text style={{ fontSize: 12, color: '#A1A1B0' }}>🎞️</Text>
+        </View>
+      )}
       <Text style={card.feedContent} numberOfLines={1}>
         {record.content || '네컷 사진'}
       </Text>
