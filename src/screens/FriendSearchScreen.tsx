@@ -10,10 +10,8 @@ import {
   TextInput,
   Alert,
   Animated,
-  Dimensions,
 } from 'react-native';
 
-const { width: SCREEN_W } = Dimensions.get('window');
 import QRCode from 'react-native-qrcode-svg';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
@@ -256,7 +254,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
         {/* 왼쪽: QR 코드 */}
         <View style={s.qrCodeWrap}>
           <QRCode
-            value={`eOrth://user/${nickname || handle}`}
+            value={`eOrth://user/${handle || nickname}`}
             size={160}
             color="#BF85FC"
             backgroundColor="#0A0A0F"
@@ -275,7 +273,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
           <TouchableOpacity
             style={s.inlineScanBtn}
             activeOpacity={0.85}
-            onPress={() => Alert.alert('📷 카메라', 'QR 스캔 기능은 Firebase 연동 후 구현 예정입니다.')}
+            onPress={() => Alert.alert('📷 카메라', 'QR 스캔 기능은 추후 제공될 예정입니다.')}
           >
             <Text style={s.inlineScanBtnText}>📷 QR 스캔하기</Text>
           </TouchableOpacity>
@@ -302,8 +300,28 @@ export default function FriendSearchScreen({ navigation }: Props) {
       </View>
 
       {/* ── 친구 리스트 ── */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
-        {contactsPermission === 'denied' ? (
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
+        {isSearching ? (
+          /* 검색 중에는 연락처 권한과 무관하게 검색 결과(닉네임/핸들)를 보여준다 */
+          <>
+            <Text style={s.sectionLabel}>검색 결과</Text>
+            {displayList.length === 0 ? (
+              <Text style={s.emptyText}>검색 결과가 없어요 🔍</Text>
+            ) : (
+              displayList.map((item, idx) => (
+                <React.Fragment key={item.id}>
+                  <FriendItem
+                    item={item}
+                    following={followingUsers.some((f) => f.username === item.username)}
+                    onToggle={() => toggleFollow(item)}
+                    onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
+                  />
+                  {idx < displayList.length - 1 && <View style={s.divider} />}
+                </React.Fragment>
+              ))
+            )}
+          </>
+        ) : contactsPermission === 'denied' ? (
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📱</Text>
             <Text style={s.permissionTitle}>연락처 접근 권한이 필요해요</Text>
@@ -326,15 +344,9 @@ export default function FriendSearchScreen({ navigation }: Props) {
           <Text style={s.emptyText}>연락처에서 eOrth 사용자를 찾는 중...</Text>
         ) : (
           <>
-            <Text style={s.sectionLabel}>
-              {isSearching ? '검색 결과' : `내 연락처 중 eOrth 사용자 (${contactFriends.length}명)`}
-            </Text>
+            <Text style={s.sectionLabel}>내 연락처 중 eOrth 사용자 ({contactFriends.length}명)</Text>
             {displayList.length === 0 ? (
-              <Text style={s.emptyText}>
-                {isSearching
-                  ? '검색 결과가 없어요 🔍'
-                  : '연락처에 eOrth를 사용하는 친구가 없어요'}
-              </Text>
+              <Text style={s.emptyText}>연락처에 eOrth를 사용하는 친구가 없어요</Text>
             ) : (
               displayList.map((item, idx) => (
                 <React.Fragment key={item.id}>
@@ -461,9 +473,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 10,
     gap: 8,
-  },
-  searchIcon: {
-    fontSize: 16,
   },
   searchInput: {
     flex: 1,
