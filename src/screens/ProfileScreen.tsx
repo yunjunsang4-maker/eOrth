@@ -36,6 +36,8 @@ import { useRecords } from '../store/recordStore';
 import { computeTravelStats } from '../utils/badgeRules';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
+import { COUNTRIES } from '../constants/countries';
+import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { getMyUserId } from '../services/profile';
 import { fetchFollowerCount } from '../services/social';
@@ -1330,14 +1332,14 @@ function GroupMergeModal({
   );
 }
 
-const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
-  KR: { name: '대한민국', flag: '🇰🇷' },
-  JP: { name: '일본', flag: '🇯🇵' },
-  US: { name: '미국', flag: '🇺🇸' },
-  HK: { name: '홍콩', flag: '🇭🇰' },
-  TH: { name: '태국', flag: '🇹🇭' },
-  ES: { name: '스페인', flag: '🇪🇸' },
-};
+// 국가코드(ISO2) → {이름, 국기} — 공용 COUNTRIES 전체에서 생성 (일부 국가만 있던 데모 맵 대체)
+const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.reduce(
+  (acc, c) => {
+    acc[c.term.split(' ')[0].toUpperCase()] = { name: c.name, flag: c.flag };
+    return acc;
+  },
+  {} as Record<string, { name: string; flag: string }>,
+);
 
 // ─── 메인 프로필 화면 ───
 export default function ProfileScreen({ navigation, route }: TabScreenProps<'ProfileTab'>) {
@@ -1471,11 +1473,25 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     homeCountryCode,
     arrivalDetect,
     currentVisitedCountryCode,
+    setCurrentVisitedCountryCode,
     representativeBadgeIds: selectedBadgeIds,
     setRepresentativeBadgeIds: setSelectedBadgeIds,
     badgeEarnedAt,
   } = useSettings();
   const profileName = nickname ? nickname : handle;
+
+  // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
+  useEffect(() => {
+    if (!arrivalDetect) return;
+    let cancelled = false;
+    (async () => {
+      const { countryCode } = await detectCurrentCountry();
+      if (cancelled) return;
+      setCurrentVisitedCountryCode(countryCode ? countryCode.toUpperCase() : homeCountryCode);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalDetect, homeCountryCode]);
 
   const { records, tripGroups, archivedIds, followingUsers } = useRecords();
 
@@ -1723,16 +1739,14 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
               <Text style={styles.userLocation}>
                 {(() => {
                   const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
-                  if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode) {
-                    const visit = COUNTRY_DATA[currentVisitedCountryCode] || { name: '일본', flag: '🇯🇵' };
+                  const visit = COUNTRY_DATA[currentVisitedCountryCode];
+                  // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
+                  if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
                     return `${visit.flag} ${visit.name} 여행 중`;
                   }
                   return `${home.flag} ${home.name}`;
                 })()}
               </Text>
-              <View style={styles.statusDot} />
-              <View style={styles.statusDot} />
-              <View style={styles.statusDot} />
             </View>
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label="기록 수" />
