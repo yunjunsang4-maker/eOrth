@@ -42,6 +42,7 @@ export interface TravelRecord {
   countries?: { flag: string; name: string }[];  // 복수 국가 지원
   perCountryData?: Record<string, {              // 국가별 데이터
     medias?: string[];
+    mediaPrivacy?: Record<number, string[]>;     // 국가별 사진 비공개 대상 (인덱스: 해당 국가 medias 기준)
     startDate?: string;
     endDate?: string;
     rating?: number;

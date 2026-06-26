@@ -23,7 +23,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
@@ -1713,26 +1713,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         {/* 프로필 헤더 (아바타 + 정보) */}
         <View style={styles.profileRow}>
           <GrainOverlay opacity={0.03} dotCount={60} />
-          {/* 아바타 — 구이 이펙트 서클 */}
+          {/* 아바타 — 순수 그라데이션 링 (글로우 없음) */}
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
-            <GooeyCircle size={128} color={NEON.purple} glowOpacity={0.6}>
-              <LinearGradient
-                colors={[NEON.cyan, NEON.purple, NEON.magenta]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatarRing}
-              >
-                {/* 글래스 광택 — 그라데이션 링 위에 비스듬한 스페큘러 하이라이트(유리 질감) */}
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.78)', 'rgba(255,255,255,0.18)', 'rgba(255,255,255,0.03)', 'rgba(255,255,255,0.34)']}
-                  locations={[0, 0.32, 0.6, 1]}
-                  start={{ x: 0.08, y: 0 }}
-                  end={{ x: 0.92, y: 1 }}
-                  style={styles.avatarRingGlass}
-                  pointerEvents="none"
-                />
-                {/* 링 바깥 가장자리 유리 림 하이라이트 */}
-                <View style={styles.avatarRingRim} pointerEvents="none" />
+            <View style={styles.avatarRing}>
                 {profilePhoto ? (
                   <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
                 ) : (
@@ -1740,8 +1723,27 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                     <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
-              </LinearGradient>
-            </GooeyCircle>
+                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현 */}
+                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
+                  <Defs>
+                    <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                      <Stop stopColor="#000000" stopOpacity="0" />
+                      <Stop offset="1" stopColor="#FFFFFF" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
+                </Svg>
+                {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke) */}
+                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Defs>
+                    <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                      <Stop stopColor="#00D8F3" />
+                      <Stop offset="1" stopColor="#EC34F7" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
+                </Svg>
+            </View>
           </LiquidPressable>
 
           {/* 이름 · 위치 · 소개 · 통계 */}
@@ -2021,27 +2023,17 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   avatar: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: 'rgba(168,85,247,0.6)',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 10,
   },
   avatarImg: {
-    width: 112,
-    height: 112,
-    borderRadius: 56,
-    shadowColor: 'rgba(168,85,247,0.6)',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 10,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   avatarText: {
     fontSize: 28,
@@ -2084,12 +2076,14 @@ const styles = StyleSheet.create({
     marginTop: 7,
   },
 
-  // 통계 행
+  // 통계 행 — 상태 텍스트 아래, 3개 묶음 가로 정렬
   statsRow: {
     flexDirection: 'row',
-    gap: 28,
-    marginTop: 18,
+    alignItems: 'flex-start',
+    gap: 29, // 열 중심 간격 ≈60px 목표
+    marginTop: 23,
   },
+  // 각 묶음: 숫자(위)+라벨(아래) 가운데 정렬
   statCol: {
     alignItems: 'center',
   },
@@ -2097,38 +2091,27 @@ const styles = StyleSheet.create({
     width: 128,
     height: 128,
     borderRadius: 64,
-    padding: 8,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarRingGlass: {
+  // 사진 위 글래스 틴트/림 오버레이 (110x110, 128 링 안에서 중앙)
+  avatarInner: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 64,
-  },
-  avatarRingRim: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 64,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.62)',
+    top: 9,
+    left: 9,
   },
   statValue: {
     fontSize: 20,
+    fontWeight: '800', // 굵게 (Gilroy-Bold 쓰면 그걸로)
     fontFamily: 'Inter_800ExtraBold',
-    color: COLORS.white,
-    marginBottom: 6,
+    color: '#FFFFFF',
+    lineHeight: 24,
   },
   statLabel: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: COLORS.white,
+    fontSize: 13,
+    color: '#FFFFFF',
+    marginTop: 4, // 숫자~라벨 ≈10px
+    lineHeight: 16,
   },
   followingExpandedWrap: {
     marginTop: 8,

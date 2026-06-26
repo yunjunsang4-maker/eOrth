@@ -4,7 +4,9 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
 } from 'react-native';
-import { useRecords } from '../store/recordStore';
+import { useRecords, type Visibility } from '../store/recordStore';
+import { detectCurrentCountry } from '../services/snapService';
+import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -37,6 +39,11 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
+const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+  { value: 'public',  label: '🌐 전체 공개' },
+  { value: 'friends', label: '👥 친구만' },
+  { value: 'private', label: '🔒 나만 보기' },
+];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
   { code: 'GBP', name: '파운드 (영국)' }, { code: 'AUD', name: '호주 달러' },
@@ -309,18 +316,51 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState<Visibility>('friends');
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [privateFriends, setPrivateFriends] = useState<string[]>([]);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [budget, setBudget] = useState('');
   const [currency, setCurrency] = useState('KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
+  const currencyTouchedRef = useRef(false);
+  const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [weather, setWeather] = useState('');
   const [flightType, setFlightType] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordQuery, setKeywordQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
+  useEffect(() => {
+    if (currencyTouchedRef.current) return;
+    const cur = currencyForCountryName(selectedCountry?.name);
+    if (cur) setCurrency(cur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountry?.name]);
+
+  // 위치(국가·도시) 자동 채움 — 국가 지정 없이 들어왔을 때, 현재 위치로 1회 프리필
+  useEffect(() => {
+    if (initialCountry?.name) return;
+    let cancelled = false;
+    (async () => {
+      const { countryCode, countryName, city } = await detectCurrentCountry();
+      if (cancelled || (!countryCode && !countryName)) return;
+      const found =
+        (countryCode && COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === countryCode.toUpperCase())) ||
+        (countryName && COUNTRIES.find(c => c.name === countryName || c.term.toLowerCase().includes(countryName.toLowerCase()))) ||
+        null;
+      if (!found) return;
+      setSelectedCountry(prev => prev ?? found);
+      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleCompanion = (c: string) =>
     setCompanions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
@@ -404,6 +444,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
   // ─── 저장 ───
   const handleSave = () => {
+    if (savingRef.current) return; // 저장 중복 클릭 방지
     if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
     if (!startDate) { Alert.alert('날짜 입력', '여행 날짜를 선택해주세요.'); return; }
     if (!memo.trim()) { Alert.alert('내용 입력', '글을 작성해주세요.'); return; }
@@ -411,6 +452,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
     if (!cutPhoto) { Alert.alert('오류', '네컷 정보를 찾을 수 없어요.'); return; }
 
+    savingRef.current = true;
+    setSaving(true);
     const sStr = fmtDate(startDate);
     const eStr = fmtDate(endDate ?? startDate);
     addRecord({
@@ -424,10 +467,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: sStr,
       content: memo.trim(),
-      visibility: 'friends',
+      visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
-      companions: [...companions, ...companionFriends],
+      companions: companions,
+      companionFriends: companionFriends.length > 0 ? companionFriends : undefined,
       medias: [cutPhoto.previewUri],
       mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
       startDate: sStr,
@@ -468,8 +512,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSave} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={st.save}>저장</Text>
+          <TouchableOpacity onPress={handleSave} disabled={saving} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={[st.save, saving && { opacity: 0.5 }]}>{saving ? '저장 중…' : '저장'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -575,6 +619,26 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <View style={st.ratingCard}>{renderStars()}</View>
           </View>
 
+          {/* 공개 범위 */}
+          <View style={st.fieldBlock}>
+            <View style={st.labelRow}><Text style={st.label}>공개 범위</Text></View>
+            <View style={st.chipRow}>
+              {VISIBILITY_OPTIONS.map(opt => {
+                const isActive = visibility === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[st.smallBtn, isActive && st.smallBtnActive]}
+                    onPress={() => setVisibility(opt.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[st.smallTxt, isActive && st.smallTxtActive]}>{opt.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* 선택 항목 구분선 */}
           <View style={st.divider} />
           <Text style={st.optNotice}>선택 항목이에요 (건너뛰어도 돼요 😊)</Text>
@@ -588,7 +652,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             </View>
             <View style={st.budgetRow}>
               {CURRENCIES.map(c => (
-                <TouchableOpacity key={c} style={[st.curChip, currency === c && st.curChipActive]} onPress={() => setCurrency(c)} activeOpacity={0.75}>
+                <TouchableOpacity key={c} style={[st.curChip, currency === c && st.curChipActive]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
                   <Text style={[st.curTxt, currency === c && st.curTxtActive]}>{c}</Text>
                 </TouchableOpacity>
               ))}
@@ -770,7 +834,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   <TouchableOpacity
                     key={c.code}
                     style={[cur.item, idx < arr.length - 1 && cur.itemBorder]}
-                    onPress={() => { setCurrency(c.code); setCurrencyModalVisible(false); }}
+                    onPress={() => { chooseCurrency(c.code); setCurrencyModalVisible(false); }}
                     activeOpacity={0.75}
                   >
                     <Text style={cur.code}>{c.code}</Text>

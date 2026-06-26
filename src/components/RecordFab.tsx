@@ -161,7 +161,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
                 opacity: fabAnims[i].opacity,
               },
             ]}
-            pointerEvents={fabOpen ? 'auto' : 'none'}
+            pointerEvents={fabOpen ? 'box-none' : 'none'}
           >
             <Text style={styles.fabFormatLabel}>{fmt.name}</Text>
             <TouchableOpacity
@@ -210,8 +210,11 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
+    // 부채꼴로 펼쳐지는 형식 버튼(최대 위로 ~160px)을 모두 영역 안에 포함시켜
+    // 부모 bounds 밖이라 터치가 안 먹는 문제를 방지. FAB 본체는 아래에 고정.
+    height: 200,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'flex-end',
     zIndex: 30,
   },
   fabFormatWrap: {

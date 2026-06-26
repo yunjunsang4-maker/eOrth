@@ -19,9 +19,12 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import * as ImagePicker from 'expo-image-picker';
+import { compressImage, compressImages } from '../utils/imageCompress';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
-import { useRecords } from '../store/recordStore';
+import { useRecords, type Visibility } from '../store/recordStore';
+import { detectCurrentCountry } from '../services/snapService';
+import { currencyForCountryName } from '../constants/countryCurrency';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import { BlogData } from '../utils/naverBlogConverter';
 import AutoTocModal from '../components/AutoTocModal';
@@ -93,6 +96,11 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
+const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+  { value: 'public',  label: '🌐 전체 공개' },
+  { value: 'friends', label: '👥 친구만' },
+  { value: 'private', label: '🔒 나만 보기' },
+];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' },
   { code: 'CNY', name: '위안 (중국)' },
@@ -317,11 +325,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [endDate, setEndDate] = useState(editRecord?.endDate ?? '');
   const [rating, setRating] = useState(editRecord?.rating ?? 0);
   const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'friends');
   const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [weather, setWeather] = useState(editRecord?.weather ?? '');
   const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
   const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? 'KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다 (편집 모드는 처음부터 수동 취급)
+  const currencyTouchedRef = useRef(isEdit);
+  const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
@@ -343,6 +355,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
     editRecord?.representativePhoto ?? null
   );
+
+  // 압축본 uri → 원본 uri 매핑. "지도 대표" 사진은 저장 시 원본에서 고해상도로 재생성한다.
+  const originalUriMapRef = useRef<Record<string, string>>({});
+  const REP_HIRES_EDGE = 2560;
+  const REP_HIRES_QUALITY = 0.9;
+  const toRepHiRes = async (uri?: string): Promise<string | undefined> => {
+    if (!uri) return uri;
+    const original = originalUriMapRef.current[uri];
+    if (!original) return uri;
+    return compressImage(original, REP_HIRES_EDGE, REP_HIRES_QUALITY);
+  };
   const [repPhotoModalVisible, setRepPhotoModalVisible] = useState(false);
   const [travelInfoVisible, setTravelInfoVisible] = useState(false);
   const [colorPickerVisible, setColorPickerVisible] = useState(false);
@@ -367,6 +390,33 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const scrollRef = useRef<ScrollView>(null);
   const blockRefs = useRef<Record<string, TextInput | null>>({});
   const travelScrollRef = useRef<ScrollView>(null);
+
+  // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
+  useEffect(() => {
+    if (currencyTouchedRef.current) return;
+    const cur = currencyForCountryName(selectedCountry?.name);
+    if (cur) setCurrency(cur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountry?.name]);
+
+  // 위치(국가·도시) 자동 채움 — 신규 작성이고 지정 국가 없이 들어왔을 때, 현재 위치로 1회 프리필
+  useEffect(() => {
+    if (isEdit || preselected) return;
+    let cancelled = false;
+    (async () => {
+      const { countryCode, countryName, city } = await detectCurrentCountry();
+      if (cancelled || (!countryCode && !countryName)) return;
+      const found =
+        (countryCode && COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === countryCode.toUpperCase())) ||
+        (countryName && COUNTRIES.find(c => c.name === countryName || c.term.toLowerCase().includes(countryName.toLowerCase()))) ||
+        null;
+      if (!found) return;
+      setSelectedCountry(prev => prev ?? found);
+      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ─── 네이버 가져오기 수신 (이벤트) ───
   useEffect(() => {
@@ -499,9 +549,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setRating(draft.rating || 0);
     setCompanions(draft.companions || []);
     setCompanionFriends(draft.companionFriends || []);
+    setVisibility(draft.visibility ?? 'friends');
     setWeather(draft.weather || '');
     setBudget(draft.budget ? String(draft.budget.amount) : '');
-    setCurrency(draft.budget?.currency || 'KRW');
+    chooseCurrency(draft.budget?.currency || 'KRW');
     setFlightType(draft.flightType || '');
     setKeywords(draft.keywords || []);
     if (draft.mediaPrivacy && draft.mediaPrivacy[0]) {
@@ -639,11 +690,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       });
       if (result.canceled) return;
       if (result.assets.length > 1) {
-        const uris = result.assets.map(a => a.uri);
+        const originals = result.assets.map(a => a.uri);
+        const uris = await compressImages(originals);
+        uris.forEach((u, i) => { if (u !== originals[i]) originalUriMapRef.current[u] = originals[i]; });
         const layout: ImageLayout = uris.length === 2 ? 'grid2' : 'grid3';
         insertBlockAfter(createImagesBlock(uris, layout));
       } else if (result.assets.length === 1) {
-        insertBlockAfter(createImageBlock(result.assets[0].uri));
+        const orig = result.assets[0].uri;
+        const c = await compressImage(orig);
+        if (c !== orig) originalUriMapRef.current[c] = orig;
+        insertBlockAfter(createImageBlock(c));
       }
     } catch (err: any) {
       console.error('[handleAddPhoto] error:', err);
@@ -659,8 +715,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       mediaTypes: ['images'] as MediaType[], quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      const asset = result.assets[0];
-      insertBlockAfter(createImageBlock(asset.uri));
+      const orig = result.assets[0].uri;
+      const c = await compressImage(orig);
+      if (c !== orig) originalUriMapRef.current[c] = orig;
+      insertBlockAfter(createImageBlock(c));
     }
   };
 
@@ -705,10 +763,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const handleAddQuote = () => { insertBlockAfter(createQuoteBlock()); };
 
   const handleAddFile = async () => {
-    const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
-    if (!result.canceled && result.assets?.[0]) {
-      const file = result.assets[0];
-      insertBlockAfter(createFileBlock(file.uri, file.name, file.size, file.mimeType ?? undefined));
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ copyToCacheDirectory: true });
+      if (!result.canceled && result.assets?.[0]) {
+        const file = result.assets[0];
+        insertBlockAfter(createFileBlock(file.uri, file.name, file.size, file.mimeType ?? undefined));
+      }
+    } catch (err: any) {
+      console.warn('[handleAddFile] error:', err);
+      Alert.alert('파일 선택 오류', err?.message || '파일을 불러오는 중 문제가 발생했어요.');
     }
   };
 
@@ -842,7 +905,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: startDate || dateStr,
       content: title.trim() || bodyText,
-      visibility: 'friends' as const,
+      visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
       companions: companions.length > 0 ? companions : undefined,
@@ -873,16 +936,29 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   })();
 
   // ─── 발행 ───
-  const publish = (finalBlocks: BlogBlock[]) => {
-    const data = buildRecordData(finalBlocks);
-    if (isEdit && editRecord) {
-      // 작성자·공개범위는 유지하고 내용만 갱신
-      const { user, visibility, ...changes } = data;
-      updateRecord(editRecord.id, changes);
-    } else {
-      addRecord(data);
+  const [publishing, setPublishing] = useState(false);
+  const publishingRef = useRef(false);
+  const publish = async (finalBlocks: BlogBlock[]) => {
+    if (publishingRef.current) return; // 중복 발행(이중 저장) 방지
+    publishingRef.current = true;
+    setPublishing(true);
+    try {
+      const data = buildRecordData(finalBlocks);
+      // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 사진은 1600 유지)
+      data.representativePhoto = await toRepHiRes(data.representativePhoto);
+      if (isEdit && editRecord) {
+        // 작성자는 유지하고 내용(공개 범위 포함)만 갱신
+        const { user, ...changes } = data;
+        updateRecord(editRecord.id, changes);
+      } else {
+        addRecord(data);
+      }
+      navigation.goBack();
+    } catch {
+      // 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
+      publishingRef.current = false;
+      setPublishing(false);
     }
-    navigation.goBack();
   };
 
   const handleSave = () => {
@@ -973,8 +1049,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={canSave ? handleSave : undefined} style={[st.saveBtn, !canSave && st.saveBtnDisabled]} disabled={!canSave}>
-            <Text style={[st.saveBtnText, !canSave && st.saveBtnTextDisabled]}>저장</Text>
+          <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
+            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? '저장 중…' : '저장'}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1262,6 +1338,20 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 </View>
               </PanelRow>
 
+              {/* 공개 범위 */}
+              <PanelRow label="" icon={<LockOpenIcon size={18} color={IC} />} labelText="공개 범위">
+                <View style={st.chipRow}>
+                  {VISIBILITY_OPTIONS.map(opt => {
+                    const isActive = visibility === opt.value;
+                    return (
+                      <TouchableOpacity key={opt.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setVisibility(opt.value)}>
+                        <Text style={[st.chipText, isActive && st.chipTextActive]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </PanelRow>
+
               {/* 구분선 */}
               <View style={st.optDivider} />
               <Text style={st.optNotice}>선택 항목이에요 (건너뛰어도 돼요)</Text>
@@ -1270,7 +1360,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <PanelRow label="" icon={<SvgCoinIcon size={18} color={IC} />} labelText="예산">
                 <View style={st.budgetRow}>
                   {CURRENCIES.map(c => (
-                    <TouchableOpacity key={c} style={[st.currencyChip, currency === c && st.currencyChipActive]} onPress={() => setCurrency(c)}>
+                    <TouchableOpacity key={c} style={[st.currencyChip, currency === c && st.currencyChipActive]} onPress={() => chooseCurrency(c)}>
                       <Text style={[st.currencyTxt, currency === c && st.currencyTxtActive]}>{c}</Text>
                     </TouchableOpacity>
                   ))}
@@ -1436,7 +1526,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                         <TouchableOpacity
                           key={c.code}
                           style={[st.currModalItem, idx < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.divider }]}
-                          onPress={() => { setCurrency(c.code); setCurrencyModalVisible(false); }}
+                          onPress={() => { chooseCurrency(c.code); setCurrencyModalVisible(false); }}
                         >
                           <Text style={st.currModalCode}>{c.code}</Text>
                           <Text style={st.currModalName}>{c.name}</Text>
@@ -1562,7 +1652,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         visible={repPhotoModalVisible}
         photos={[...blocksToPhotos(blocks), ...blocksToVideoThumbnails(blocks)]}
         selectedPhoto={representativePhoto}
-        onSelect={(uri) => setRepresentativePhoto(uri)}
+        onSelect={(uri, original) => { if (uri && original) originalUriMapRef.current[uri] = original; setRepresentativePhoto(uri); }}
         onClose={() => setRepPhotoModalVisible(false)}
       />
 
@@ -1985,7 +2075,7 @@ function RepPhotoModal({
   visible: boolean;
   photos: string[];
   selectedPhoto: string | null;
-  onSelect: (uri: string | null) => void;
+  onSelect: (uri: string | null, original?: string) => void;
   onClose: () => void;
 }) {
   const translateY = useRef(new Animated.Value(500)).current;
@@ -2015,7 +2105,8 @@ function RepPhotoModal({
         quality: 0.8,
       });
       if (result.canceled || !result.assets[0]) return;
-      onSelect(result.assets[0].uri);
+      const orig = result.assets[0].uri;
+      onSelect(await compressImage(orig), orig);
     } catch (err: any) {
       console.error('[RepPhotoModal pick gallery] error:', err);
       Alert.alert('사진 선택 오류', err?.message || '대표 사진을 선택하는 중 오류가 발생했습니다.');

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -108,6 +108,7 @@ type Props = RootStackScreenProps<'SnapRecord'>;
 export default function SnapRecordScreen({ navigation, route }: Props) {
   const { addRecord } = useRecords();
   const { homeCountryCode } = useSettings();
+  const insets = useSafeAreaInsets();
 
   // ─── 카메라 상태 ───
   const [permission, requestPermission] = useCameraPermissions();
@@ -394,8 +395,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </SafeAreaView>
 
-        {/* 안내 문구 */}
-        <View style={st.guideWrap}>
+        {/* 안내 문구 — 상단 바(인셋+버튼 영역) 아래로 안전하게 배치 */}
+        <View style={[st.guideWrap, { top: insets.top + 70 }]}>
           {phase === 'switching' ? (
             <Text style={st.guideText}>📸 전환 중...</Text>
           ) : (
@@ -594,7 +595,8 @@ const st = StyleSheet.create({
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingHorizontal: 16, paddingTop: Platform.OS === 'ios' ? 54 : 40, paddingBottom: 12,
+    // SafeAreaView가 상단 노치/상태바 인셋을 자동 패딩으로 추가하므로 여기선 작은 여백만.
+    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
     zIndex: 10,
   },
   topBtn: {
@@ -617,7 +619,7 @@ const st = StyleSheet.create({
 
   // 안내 문구
   guideWrap: {
-    position: 'absolute', top: Platform.OS === 'ios' ? 120 : 100, left: 0, right: 0,
+    position: 'absolute', left: 0, right: 0,
     alignItems: 'center', zIndex: 5,
   },
   guideText: {

@@ -4,6 +4,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { compressImage } from '../utils/imageCompress';
 import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
@@ -86,7 +87,8 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         mediaTypes: ['images'],
       });
       if (!r.canceled && r.assets[0]) {
-        setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
+        const compressed = await compressImage(r.assets[0].uri);
+        setPhotos((p) => { const n = [...p]; n[i] = compressed; return n; });
         setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
         setAdjustSlot(i);
       }
@@ -135,7 +137,12 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       );
       // 레이아웃 안정화를 위해 두 프레임 양보
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
-      previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.9 });
+      // 지도 대표용 고해상도 캡처 — 장변 2000px 목표(화면 캡처 기본보다 선명), 비율 유지
+      const aspect = CUT_LAYOUTS[frame.layout].aspect; // = width / height
+      const REP_TARGET = 2000;
+      const capW = aspect >= 1 ? REP_TARGET : Math.round(REP_TARGET * aspect);
+      const capH = aspect >= 1 ? Math.round(REP_TARGET / aspect) : REP_TARGET;
+      previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.95, width: capW, height: capH });
     } catch (e) {
       Alert.alert('오류', '미리보기 생성에 실패했어요.');
       return;
