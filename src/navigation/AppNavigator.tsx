@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
@@ -59,6 +60,24 @@ const darkTheme = {
 };
 
 export default function AppNavigator() {
+  // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      const m = /eorth:\/\/user\/(.+)$/i.exec(url.trim());
+      if (!m) return;
+      const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
+      if (!handle || handle === 'unknown') return;
+      const go = () => navigationRef.current?.navigate('FriendSearch', { initialQuery: handle });
+      // 콜드 스타트면 네비게이터 준비를 기다렸다 이동
+      if (navigationRef.current?.isReady()) go();
+      else setTimeout(go, 1000);
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    Linking.getInitialURL().then(handleUrl).catch(() => {});
+    return () => sub.remove();
+  }, []);
+
   return (
     <NavigationContainer theme={darkTheme} ref={navigationRef}>
       <Stack.Navigator

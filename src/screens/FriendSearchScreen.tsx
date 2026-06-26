@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Contacts from 'expo-contacts';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
   View,
   Text,
@@ -8,8 +9,10 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
   Animated,
+  ActivityIndicator,
+  Modal,
+  Share,
 } from 'react-native';
 
 import QRCode from 'react-native-qrcode-svg';
@@ -19,6 +22,9 @@ import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId } from '../services/profile';
+import { computeTravelStats } from '../utils/badgeRules';
+import { buzz } from '../utils/haptics';
+import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
@@ -109,12 +115,16 @@ function FriendItem({
       <View style={s.friendInfo}>
         <Text style={s.friendName}>{item.name}</Text>
         <Text style={s.friendUsername}>@{item.username}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.friendCountries}>{item.countries}개국 방문</Text></View>
+        {item.countries > 0 && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.friendCountries}>{item.countries}개국 방문</Text></View>
+        )}
       </View>
       <TouchableOpacity
         style={[s.followBtn, following && s.followingBtn]}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={following ? `${item.name} 팔로우 취소` : `${item.name} 팔로우`}
       >
         <Text style={[s.followBtnText, following && s.followingBtnText]}>
           {following ? '팔로잉' : '팔로우'}
@@ -129,15 +139,37 @@ function FriendItem({
 // ─────────────────────────────────────────────
 type Props = RootStackScreenProps<'FriendSearch'>;
 
-export default function FriendSearchScreen({ navigation }: Props) {
+export default function FriendSearchScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { nickname, handle } = useSettings();
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(route.params?.initialQuery ?? '');
+
+  // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움
+  useEffect(() => {
+    const q = route.params?.initialQuery;
+    if (q) setQuery(q);
+  }, [route.params?.initialQuery]);
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
   // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
-  const { followingUsers, followUser, unfollowUser } = useRecords();
+  const { records, followingUsers, followUser, unfollowUser } = useRecords();
+  // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
+  const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
   const [loading, setLoading] = useState(true);
+  const [searching, setSearching] = useState(false); // 원격 검색 진행 중
+
+  // 팔로우/검색 피드백 토스트
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showToast = (msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMessage(msg);
+    setToastVisible(true);
+    toastTimer.current = setTimeout(() => setToastVisible(false), 2000);
+  };
+  // 언마운트 시 토스트 타이머 정리 (사라진 화면에서 setState 방지)
+  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
 
   // ── 진입/퇴장 애니메이션 ──
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -159,35 +191,63 @@ export default function FriendSearchScreen({ navigation }: Props) {
     });
   }, [navigation]);
 
-  useEffect(() => {
-    const loadContacts = async () => {
-      const { status } = await Contacts.requestPermissionsAsync();
-      if (status === 'granted') {
-        setContactsPermission('granted');
-        const { data } = await Contacts.getContactsAsync({
-          fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
-          sort: Contacts.SortTypes.LastName,
-        });
-        const rawContacts = data
-          .filter(c => c.name && c.phoneNumbers && c.phoneNumbers.length > 0)
-          .map((c, idx) => ({
-            id: c.id || `contact-${idx}`,
-            name: c.name!,
-            phone: c.phoneNumbers![0].number || '',
-          }));
-        const registered = await findRegisteredUsers(rawContacts);
-        setContactFriends(registered);
-      } else {
-        setContactsPermission('denied');
-      }
-      setLoading(false);
-    };
-    loadContacts();
+  // 실제 연락처를 읽어 가입자 매칭 (권한 granted 상태에서만 호출)
+  const fetchContactsData = useCallback(async () => {
+    try {
+      const { data } = await Contacts.getContactsAsync({
+        fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
+        sort: Contacts.SortTypes.LastName,
+      });
+      const rawContacts = data
+        .filter(c => c.name && c.phoneNumbers && c.phoneNumbers.length > 0)
+        .map((c, idx) => ({
+          id: c.id || `contact-${idx}`,
+          name: c.name!,
+          phone: c.phoneNumbers![0].number || '',
+        }));
+      const registered = await findRegisteredUsers(rawContacts);
+      setContactFriends(registered);
+    } catch {
+      setContactFriends([]);
+    }
   }, []);
 
+  // 진입 시에는 권한을 '묻지 않고' 현재 상태만 확인 — 설명 없는 자동 팝업 방지
+  useEffect(() => {
+    (async () => {
+      try {
+        const { status } = await Contacts.getPermissionsAsync();
+        if (status === 'granted') {
+          setContactsPermission('granted');
+          await fetchContactsData();
+        } else {
+          setContactsPermission(status === 'denied' ? 'denied' : 'pending');
+        }
+      } catch {
+        setContactsPermission('denied');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, [fetchContactsData]);
+
+  // 사용자가 직접 버튼을 눌렀을 때만 권한 요청
+  const requestContacts = useCallback(async () => {
+    const { status } = await Contacts.requestPermissionsAsync();
+    if (status === 'granted') {
+      setContactsPermission('granted');
+      await fetchContactsData();
+    } else {
+      setContactsPermission('denied');
+      showPermissionDeniedAlert('연락처');
+    }
+  }, [fetchContactsData]);
+
   const toggleFollow = (friend: ContactFriend) => {
+    buzz('light');
     if (followingUsers.some((f) => f.username === friend.username)) {
       unfollowUser(friend.username);
+      showToast(`${friend.name}님 팔로우를 취소했어요`);
     } else {
       followUser({
         id: friend.id,
@@ -196,7 +256,53 @@ export default function FriendSearchScreen({ navigation }: Props) {
         currentCountry: null,
         currentCountryFlag: null,
       });
+      showToast(`${friend.name}님을 팔로우했어요`);
     }
+  };
+
+  // ── QR 스캔 ──
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [camPermission, requestCamPermission] = useCameraPermissions();
+  const scannedRef = useRef(false);
+  const lastInvalidToast = useRef(0);
+
+  // 내 코드(공유/QR용) — 핸들 우선, 없으면 닉네임
+  const myCode = handle || nickname;
+
+  const openScanner = async () => {
+    if (!camPermission?.granted) {
+      const res = await requestCamPermission();
+      if (!res.granted) { showPermissionDeniedAlert('카메라'); return; }
+    }
+    scannedRef.current = false;
+    setScannerVisible(true);
+  };
+
+  const handleBarcode = ({ data }: { data: string }) => {
+    if (scannedRef.current) return;
+    const m = /eOrth:\/\/user\/(.+)$/i.exec((data || '').trim());
+    if (!m) {
+      // eOrth 코드가 아니면 계속 스캔하되, 안내는 2초에 한 번만 (연속 스캔 스팸 방지)
+      const now = Date.now();
+      if (now - lastInvalidToast.current > 2000) {
+        lastInvalidToast.current = now;
+        showToast('eOrth QR 코드가 아니에요');
+      }
+      return;
+    }
+    scannedRef.current = true;
+    const scanned = decodeURIComponent(m[1]).replace(/^@/, '');
+    setScannerVisible(false);
+    setQuery(scanned);          // 스캔한 핸들로 검색 실행 → 실제 유저(실 id) 결과 표시
+    showToast(`@${scanned} 검색 중...`);
+  };
+
+  // ── 내 코드 공유 ──
+  const handleShareMe = () => {
+    if (!myCode) { showToast('프로필(아이디)을 먼저 설정해주세요'); return; }
+    Share.share({
+      message: `eOrth에서 저를 친구로 추가해보세요!\neorth://user/${myCode}`,
+    }).catch(() => {});
   };
 
   // 백엔드 사용자 검색 (닉네임/핸들) — 실제 테스터 찾기
@@ -205,23 +311,30 @@ export default function FriendSearchScreen({ navigation }: Props) {
   useEffect(() => { getMyUserId().then((id) => { myIdRef.current = id; }); }, []);
   useEffect(() => {
     const q = query.trim();
-    if (!isSupabaseConfigured || q.length === 0) { setRemoteResults([]); return; }
+    if (!isSupabaseConfigured || q.length === 0) { setRemoteResults([]); setSearching(false); return; }
     let alive = true;
+    setSearching(true);
     const t = setTimeout(async () => {
-      const rows = await searchProfiles(q);
-      if (!alive) return;
-      setRemoteResults(
-        rows
-          .filter((p) => p.id !== myIdRef.current)
-          .map((p) => ({
-            id: p.id,
-            name: p.nickname || p.handle || '여행자',
-            phone: '',
-            initial: (p.nickname || p.handle || '?').slice(0, 1),
-            username: p.handle || '',
-            countries: 0,
-          }))
-      );
+      try {
+        const rows = await searchProfiles(q);
+        if (!alive) return;
+        setRemoteResults(
+          rows
+            .filter((p) => p.id !== myIdRef.current)
+            .map((p) => ({
+              id: p.id,
+              name: p.nickname || p.handle || '여행자',
+              phone: '',
+              initial: (p.nickname || p.handle || '?').slice(0, 1),
+              username: p.handle || '',
+              countries: 0,
+            }))
+        );
+      } catch {
+        if (alive) setRemoteResults([]); // 검색 실패 시 이전 결과 잔류 방지
+      } finally {
+        if (alive) setSearching(false);
+      }
     }, 300); // 디바운스
     return () => { alive = false; clearTimeout(t); };
   }, [query]);
@@ -240,7 +353,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
     <View style={s.container}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={handleGoBack}>
+        <TouchableOpacity style={s.backBtn} onPress={handleGoBack} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>친구 찾기</Text>
@@ -254,7 +367,7 @@ export default function FriendSearchScreen({ navigation }: Props) {
         {/* 왼쪽: QR 코드 */}
         <View style={s.qrCodeWrap}>
           <QRCode
-            value={`eOrth://user/${handle || nickname}`}
+            value={`eorth://user/${myCode || 'unknown'}`}
             size={160}
             color="#BF85FC"
             backgroundColor="#0A0A0F"
@@ -269,14 +382,28 @@ export default function FriendSearchScreen({ navigation }: Props) {
         <View style={s.profileInfo}>
           <Text style={s.profileName}>{nickname ? nickname : handle}</Text>
           <Text style={s.profileUsername}>@{handle}</Text>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>3개국 방문</Text></View>
-          <TouchableOpacity
-            style={s.inlineScanBtn}
-            activeOpacity={0.85}
-            onPress={() => Alert.alert('📷 카메라', 'QR 스캔 기능은 추후 제공될 예정입니다.')}
-          >
-            <Text style={s.inlineScanBtnText}>📷 QR 스캔하기</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{myCountryCount}개국 방문</Text></View>
+          <View style={s.qrBtnRow}>
+            <TouchableOpacity
+              style={s.inlineScanBtn}
+              activeOpacity={0.85}
+              onPress={openScanner}
+              accessibilityRole="button"
+              accessibilityLabel="QR 스캔하기"
+            >
+              <Text style={s.inlineScanBtnText}>📷 QR 스캔</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[s.inlineShareBtn, !myCode && s.inlineBtnDisabled]}
+              activeOpacity={0.85}
+              onPress={handleShareMe}
+              disabled={!myCode}
+              accessibilityRole="button"
+              accessibilityLabel="내 코드 공유하기"
+            >
+              <Text style={s.inlineShareBtnText}>↗ 공유</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </View>
 
@@ -291,9 +418,10 @@ export default function FriendSearchScreen({ navigation }: Props) {
           onChangeText={setQuery}
           autoCorrect={false}
           autoCapitalize="none"
+          accessibilityLabel="친구 이름 또는 아이디 검색"
         />
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')}>
+          <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="검색어 지우기">
             <Text style={s.clearBtn}>✕</Text>
           </TouchableOpacity>
         )}
@@ -305,7 +433,9 @@ export default function FriendSearchScreen({ navigation }: Props) {
           /* 검색 중에는 연락처 권한과 무관하게 검색 결과(닉네임/핸들)를 보여준다 */
           <>
             <Text style={s.sectionLabel}>검색 결과</Text>
-            {displayList.length === 0 ? (
+            {searching ? (
+              <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} />
+            ) : displayList.length === 0 ? (
               <Text style={s.emptyText}>검색 결과가 없어요 🔍</Text>
             ) : (
               displayList.map((item, idx) => (
@@ -321,27 +451,25 @@ export default function FriendSearchScreen({ navigation }: Props) {
               ))
             )}
           </>
-        ) : contactsPermission === 'denied' ? (
+        ) : loading ? (
+          <Text style={s.emptyText}>연락처에서 eOrth 사용자를 찾는 중...</Text>
+        ) : contactsPermission !== 'granted' ? (
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📱</Text>
-            <Text style={s.permissionTitle}>연락처 접근 권한이 필요해요</Text>
+            <Text style={s.permissionTitle}>연락처로 친구 찾기</Text>
             <Text style={s.permissionDesc}>
-              내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요
+              내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요.{'\n'}위 검색으로 아이디·닉네임을 직접 찾을 수도 있어요.
             </Text>
             <TouchableOpacity
               style={s.permissionBtn}
               activeOpacity={0.85}
-              onPress={async () => {
-                const { status } = await Contacts.requestPermissionsAsync();
-                if (status === 'granted') setContactsPermission('granted');
-                else showPermissionDeniedAlert('연락처');
-              }}
+              onPress={requestContacts}
+              accessibilityRole="button"
+              accessibilityLabel="연락처 접근 허용하기"
             >
               <Text style={s.permissionBtnText}>연락처 접근 허용하기</Text>
             </TouchableOpacity>
           </View>
-        ) : loading ? (
-          <Text style={s.emptyText}>연락처에서 eOrth 사용자를 찾는 중...</Text>
         ) : (
           <>
             <Text style={s.sectionLabel}>내 연락처 중 eOrth 사용자 ({contactFriends.length}명)</Text>
@@ -366,6 +494,34 @@ export default function FriendSearchScreen({ navigation }: Props) {
       </ScrollView>
 
       </Animated.View>
+
+      {/* QR 스캔 모달 */}
+      <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+        <View style={s.scanRoot}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={handleBarcode}
+          />
+          {/* 가이드 프레임 */}
+          <View style={s.scanOverlay} pointerEvents="none">
+            <View style={s.scanFrame} />
+            <Text style={s.scanHint}>친구의 eOrth QR 코드를 비춰주세요</Text>
+          </View>
+          <TouchableOpacity
+            style={[s.scanClose, { top: insets.top + 12 }]}
+            onPress={() => setScannerVisible(false)}
+            accessibilityRole="button"
+            accessibilityLabel="QR 스캔 닫기"
+          >
+            <Text style={s.scanCloseText}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
+      {/* 팔로우/검색 피드백 토스트 */}
+      <Toast visible={toastVisible} message={toastMessage} />
     </View>
   );
 }
@@ -449,16 +605,78 @@ const s = StyleSheet.create({
     color: C.dim,
     marginBottom: 8,
   },
+  qrBtnRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
   inlineScanBtn: {
     backgroundColor: C.accentDark,
     borderRadius: 12,
     paddingVertical: 10,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     alignSelf: 'flex-start',
   },
   inlineScanBtnText: {
     fontSize: 13,
     fontWeight: '600',
+    color: C.white,
+  },
+  inlineShareBtn: {
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.3)',
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    alignSelf: 'flex-start',
+  },
+  inlineShareBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.accent,
+  },
+  inlineBtnDisabled: {
+    opacity: 0.4,
+  },
+
+  // QR 스캔 모달
+  scanRoot: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
+  scanOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanFrame: {
+    width: 240,
+    height: 240,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderColor: C.accent,
+    backgroundColor: 'transparent',
+  },
+  scanHint: {
+    marginTop: 20,
+    fontSize: 14,
+    color: C.white,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  scanClose: {
+    position: 'absolute',
+    right: 20,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanCloseText: {
+    fontSize: 20,
     color: C.white,
   },
 
