@@ -1,10 +1,11 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   TouchableOpacity,
   useWindowDimensions,
+  PanResponder,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
@@ -279,6 +280,31 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     width: Math.max(0, barW.value - 1.5),
   }));
 
+  // 탭바 위에서 가로 슬라이드 → 바로 옆 탭으로 이동 (PanResponder는 첫 렌더 박제 → ref로 최신 상태 참조)
+  const navRef = useRef({ index: state.index, routes: state.routes, navigation });
+  navRef.current = { index: state.index, routes: state.routes, navigation };
+
+  const goAdjacentTab = (dir: 1 | -1) => {
+    const { index, routes, navigation: nav } = navRef.current;
+    const target = index + dir;
+    if (target < 0 || target >= routes.length) return;
+    const route = routes[target];
+    const event = nav.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+    if (!event.defaultPrevented) nav.navigate(route.name);
+  };
+
+  const swipeResponder = useRef(
+    PanResponder.create({
+      // 가로 이동이 충분히 클 때만 가로채 탭 터치(onPress)와 충돌 방지
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dx) > 14 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
+      onPanResponderRelease: (_, g) => {
+        if (g.dx <= -36 || g.vx <= -0.3) goAdjacentTab(1);       // 왼쪽으로 슬라이드 → 다음 탭
+        else if (g.dx >= 36 || g.vx >= 0.3) goAdjacentTab(-1);   // 오른쪽으로 슬라이드 → 이전 탭
+      },
+    })
+  ).current;
+
   const tabs = state.routes.map((route: any, index: number) => {
     const isFocused = state.index === index;
     const label = TAB_LABELS[route.name] ?? route.name;
@@ -321,8 +347,8 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         edgeHighlight
       />
 
-      {/* 탭 콘텐츠 — 유리 위에 형제로 올림 */}
-      <View style={styles.tabRow} pointerEvents="box-none">
+      {/* 탭 콘텐츠 — 유리 위에 형제로 올림. 가로 슬라이드로 옆 탭 이동 */}
+      <View style={styles.tabRow} {...swipeResponder.panHandlers}>
         {tabs}
       </View>
 
