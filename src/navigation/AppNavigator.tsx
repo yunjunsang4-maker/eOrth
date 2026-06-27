@@ -16,6 +16,7 @@ import NotificationScreen from '../screens/NotificationScreen';
 import NewRecordScreen from '../screens/NewRecordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import FriendSearchScreen from '../screens/FriendSearchScreen';
+import PhoneConsentScreen from '../screens/PhoneConsentScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import ArchivedPostsScreen from '../screens/ArchivedPostsScreen';
 import FriendProfileScreen from '../screens/FriendProfileScreen';
@@ -137,6 +138,7 @@ export default function AppNavigator() {
         <Stack.Screen name="DM" component={DMScreen} />
         <Stack.Screen name="BestCut" component={BestCutScreen} />
         <Stack.Screen name="FriendSearch" component={FriendSearchScreen} />
+        <Stack.Screen name="PhoneConsent" component={PhoneConsentScreen} />
         <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
         <Stack.Screen name="ArchivedPosts" component={ArchivedPostsScreen} />
         <Stack.Screen name="FriendProfile" component={FriendProfileScreen} />

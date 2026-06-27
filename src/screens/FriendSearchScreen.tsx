@@ -21,7 +21,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
-import { searchProfiles, getMyUserId, getCountryCounts } from '../services/profile';
+import { searchProfiles, getMyUserId, getCountryCounts, findUsersByPhones } from '../services/profile';
 import { computeTravelStats } from '../utils/badgeRules';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
@@ -54,44 +54,6 @@ interface ContactFriend {
   countries: number;
 }
 
-// ─────────────────────────────────────────────
-// 가입 유저 조회 (서버 연동 전 목업)
-// 실제 서비스에서는 전화번호 해시 목록을 서버에 보내고
-// 가입된 유저 정보를 받아오는 API로 교체
-// ─────────────────────────────────────────────
-function normalizePhone(phone: string): string {
-  return phone.replace(/[\s\-\(\)]/g, '');
-}
-
-// 연락처 해시 매칭은 서버 API 필요 — 데모 목업 제거(빈 상태). 친구 찾기는 닉네임/핸들 검색으로.
-const REGISTERED_USERS: Record<string, { username: string; countries: number }> = {};
-
-async function findRegisteredUsers(
-  contacts: { id: string; name: string; phone: string }[]
-): Promise<ContactFriend[]> {
-  // TODO: 서버 API 연동 시 아래를 fetch로 교체
-  // const res = await fetch('/api/users/find-by-phone', {
-  //   method: 'POST',
-  //   body: JSON.stringify({ phones: contacts.map(c => normalizePhone(c.phone)) }),
-  // });
-  // return await res.json();
-
-  return contacts
-    .map(c => {
-      const norm = normalizePhone(c.phone);
-      const user = REGISTERED_USERS[norm];
-      if (!user) return null;
-      return {
-        id: c.id,
-        name: c.name,
-        phone: c.phone,
-        initial: c.name[0],
-        username: user.username,
-        countries: user.countries,
-      };
-    })
-    .filter((x): x is ContactFriend => x !== null);
-}
 
 // ─────────────────────────────────────────────
 // 가입된 연락처 친구 아이템
@@ -141,7 +103,7 @@ type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { nickname, handle } = useSettings();
+  const { nickname, handle, phoneMatchConsent } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
 
   // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움
@@ -191,31 +153,43 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     });
   }, [navigation]);
 
-  // 실제 연락처를 읽어 가입자 매칭 (권한 granted 상태에서만 호출)
+  // 실제 연락처를 읽어 전화번호 해시로 가입자 매칭 (권한 granted + 동의 상태에서만 호출)
   const fetchContactsData = useCallback(async () => {
     try {
       const { data } = await Contacts.getContactsAsync({
         fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
         sort: Contacts.SortTypes.LastName,
       });
-      const rawContacts = data
-        .filter(c => c.name && c.phoneNumbers && c.phoneNumbers.length > 0)
-        .map((c, idx) => ({
-          id: c.id || `contact-${idx}`,
-          name: c.name!,
-          phone: c.phoneNumbers![0].number || '',
-        }));
-      const registered = await findRegisteredUsers(rawContacts);
-      setContactFriends(registered);
+      // 한 연락처의 여러 번호도 모두 매칭 대상으로 펼침
+      const rawContacts: { name: string; phone: string }[] = [];
+      data.forEach((c) => {
+        if (!c.name || !c.phoneNumbers) return;
+        c.phoneNumbers.forEach((p) => {
+          if (p.number) rawContacts.push({ name: c.name!, phone: p.number });
+        });
+      });
+      const matches = await findUsersByPhones(rawContacts);
+      const counts = await getCountryCounts(matches.map((m) => m.id));
+      setContactFriends(
+        matches.map((m) => ({
+          id: m.id,
+          name: m.contactName,
+          phone: '',
+          initial: (m.contactName || '?').slice(0, 1),
+          username: m.handle || '',
+          countries: counts[m.id] ?? 0,
+        }))
+      );
     } catch {
       setContactFriends([]);
     }
   }, []);
 
-  // 진입 시에는 권한을 '묻지 않고' 현재 상태만 확인 — 설명 없는 자동 팝업 방지
+  // 진입 시: 동의했을 때만 연락처 권한 상태 확인(설명 없는 자동 팝업 방지)
   useEffect(() => {
     (async () => {
       try {
+        if (!phoneMatchConsent) { setContactFriends([]); return; }
         const { status } = await Contacts.getPermissionsAsync();
         if (status === 'granted') {
           setContactsPermission('granted');
@@ -229,7 +203,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         setLoading(false);
       }
     })();
-  }, [fetchContactsData]);
+  }, [fetchContactsData, phoneMatchConsent]);
 
   // 사용자가 직접 버튼을 눌렀을 때만 권한 요청
   const requestContacts = useCallback(async () => {
@@ -455,12 +429,30 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           </>
         ) : loading ? (
           <Text style={s.emptyText}>연락처에서 eOrth 사용자를 찾는 중...</Text>
+        ) : !phoneMatchConsent ? (
+          /* 전화번호 수집 동의 전 — 동의 화면으로 유도 */
+          <View style={s.permissionCard}>
+            <Text style={s.permissionEmoji}>📇</Text>
+            <Text style={s.permissionTitle}>연락처로 친구 찾기</Text>
+            <Text style={s.permissionDesc}>
+              내 전화번호를 등록하면 번호를 저장한 친구가 나를 찾을 수 있고,{'\n'}내 연락처 속 eOrth 사용자도 찾아드려요.{'\n'}번호는 복원 불가능한 해시로만 저장돼요.
+            </Text>
+            <TouchableOpacity
+              style={s.permissionBtn}
+              activeOpacity={0.85}
+              onPress={() => navigation.navigate('PhoneConsent')}
+              accessibilityRole="button"
+              accessibilityLabel="전화번호로 친구 찾기 설정"
+            >
+              <Text style={s.permissionBtnText}>전화번호로 친구 찾기</Text>
+            </TouchableOpacity>
+          </View>
         ) : contactsPermission !== 'granted' ? (
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📱</Text>
-            <Text style={s.permissionTitle}>연락처로 친구 찾기</Text>
+            <Text style={s.permissionTitle}>연락처 접근 허용</Text>
             <Text style={s.permissionDesc}>
-              내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요.{'\n'}위 검색으로 아이디·닉네임을 직접 찾을 수도 있어요.
+              내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요.
             </Text>
             <TouchableOpacity
               style={s.permissionBtn}

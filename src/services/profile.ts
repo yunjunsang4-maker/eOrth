@@ -5,6 +5,7 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
+import { sha256 } from 'js-sha256';
 import { supabase } from './supabase';
 
 export interface ProfileRow {
@@ -92,6 +93,88 @@ export async function getCountryCounts(ids: string[]): Promise<Record<string, nu
     return map;
   } catch {
     return {};
+  }
+}
+
+// ─────────────────────────────────────────────
+// 연락처 기반 친구 찾기 (전화번호 해시 매칭)
+// ─────────────────────────────────────────────
+
+/** 전화번호 정규화 — 숫자만, 한국 +82 → 0 보정 */
+function normalizePhone(raw: string): string {
+  let d = (raw || '').replace(/\D/g, '');
+  if (d.startsWith('82') && d.length >= 11) d = '0' + d.slice(2); // +82 10... → 010...
+  return d;
+}
+
+/** 정규화 후 sha256 해시 (너무 짧으면 빈 문자열) */
+export function phoneHash(raw: string): string {
+  const n = normalizePhone(raw);
+  if (n.length < 9) return '';
+  return sha256(n);
+}
+
+/** 내 전화 해시 저장(연락처로 나를 찾을 수 있게). 성공 여부 반환 */
+export async function saveMyPhoneHash(phone: string): Promise<boolean> {
+  if (!supabase) return false;
+  const h = phoneHash(phone);
+  if (!h) return false;
+  const uid = await getMyUserId();
+  if (!uid) return false;
+  try {
+    const { error } = await supabase.from('user_phones').upsert({ user_id: uid, phone_hash: h });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+/** 내 전화 해시 삭제(연락처 매칭 해제) */
+export async function deleteMyPhoneHash(): Promise<void> {
+  if (!supabase) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('user_phones').delete().eq('user_id', uid);
+  } catch {
+    // 무시
+  }
+}
+
+export interface PhoneMatch {
+  id: string;
+  handle: string | null;
+  nickname: string | null;
+  emoji: string | null;
+  profile_photo: string | null;
+  contactName: string; // 매칭된 연락처의 표시 이름
+}
+
+/** 연락처(이름+전화) 목록을 해시해 가입자 매칭 (본인 제외) */
+export async function findUsersByPhones(
+  contacts: { name: string; phone: string }[]
+): Promise<PhoneMatch[]> {
+  if (!supabase || contacts.length === 0) return [];
+  const hashToName = new Map<string, string>();
+  const hashes: string[] = [];
+  for (const c of contacts) {
+    const h = phoneHash(c.phone);
+    if (!h) continue;
+    if (!hashToName.has(h)) { hashToName.set(h, c.name); hashes.push(h); }
+  }
+  if (hashes.length === 0) return [];
+  try {
+    const { data } = await supabase.rpc('find_users_by_phone_hashes', { hashes });
+    return (data as { id: string; handle: string | null; nickname: string | null; emoji: string | null; profile_photo: string | null; phone_hash: string }[] | null ?? []).map((r) => ({
+      id: r.id,
+      handle: r.handle,
+      nickname: r.nickname,
+      emoji: r.emoji,
+      profile_photo: r.profile_photo,
+      contactName: hashToName.get(r.phone_hash) || r.nickname || r.handle || '여행자',
+    }));
+  } catch {
+    return [];
   }
 }
 
