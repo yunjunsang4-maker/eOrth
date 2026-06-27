@@ -33,7 +33,6 @@ import {
   useEntranceAnimation,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
-import { computeTravelStats } from '../utils/badgeRules';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
@@ -1507,13 +1506,11 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   }, []);
 
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
-  //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽고(중복 계산 제거),
-  //  - 통계 카드용 travelStats만 로컬 계산(보관 기록 포함).
+  //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽는다(중복 계산 제거).
   const earnedBadgeIds = useMemo(
     () => new Set<number>(Object.keys(badgeEarnedAt).map(Number)),
     [badgeEarnedAt]
   );
-  const travelStats = useMemo(() => computeTravelStats(records), [records]);
 
   // 대표 배지 기본값: 저장된 선택이 없을 때만 획득 배지 중 앞 5개로 최초 1회 채운다.
   // (이미 저장된 사용자 선택은 절대 덮어쓰지 않음)
@@ -1788,7 +1785,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         <View style={gridSt.gridHeaderRow}>
           <Text style={styles.sectionTitle}>Travel archive</Text>
         </View>
-        <Text style={styles.archiveSubtitle}>Total countries visited : {travelStats.countryCount}</Text>
+        <Text style={styles.archiveSubtitle}>여행 기록 카드 수 : {displayTrips.length}</Text>
 
         {displayTrips.length > 0 && (
           <DraggableCardWrapper
