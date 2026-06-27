@@ -179,7 +179,7 @@ export default function TripDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
   const { trip } = route.params;
-  const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup } = useRecords();
+  const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup, archivedIds } = useRecords();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
   const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
@@ -205,8 +205,11 @@ export default function TripDetailScreen() {
 
   // ── ☰ 편집 메뉴 액션 ──
   // 그룹 기반 카드만 보관/삭제/썸네일 변경 가능 (하드코딩 샘플 카드는 그룹이 없음)
+  // 보관된 기록은 제외 — 프로필 여행 카드(mappedThumbnails)와 동일 기준
   const groupRecordObjs = currentGroup
-    ? (currentGroup.records.map((id) => records.find((r) => r.id === id)).filter(Boolean) as TravelRecord[])
+    ? currentGroup.records
+        .map((id) => records.find((r) => r.id === id))
+        .filter((r): r is TravelRecord => !!r && !archivedIds.includes(r.id))
     : [];
   const thumbCandidates = groupRecordObjs.flatMap((r) => r.medias ?? []);
 
@@ -291,7 +294,7 @@ export default function TripDetailScreen() {
     ? groupRecordObjs
     : trip.country
       ? records.filter(
-          (r) => r.countryName === trip.country || r.country?.includes(trip.country)
+          (r) => !archivedIds.includes(r.id) && (r.countryName === trip.country || r.country?.includes(trip.country))
         )
       : groupRecordObjs;
 
@@ -364,7 +367,7 @@ export default function TripDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={s.headerCenter}>
@@ -389,7 +392,7 @@ export default function TripDetailScreen() {
           )}
         </View>
         {/* ☰ 편집 메뉴 */}
-        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)}>
+        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="여행 카드 편집 메뉴">
           <View style={s.menuBars}>
             <View style={s.menuBar} />
             <View style={s.menuBar} />
@@ -404,6 +407,8 @@ export default function TripDetailScreen() {
           <View style={s.menuSheet}>
             <TouchableOpacity
               style={s.menuItem}
+              accessibilityRole="button"
+              accessibilityLabel="기록 추가"
               onPress={() => { setMenuVisible(false); setFormatPickerVisible(true); }}
             >
               <Text style={s.menuItemText}>➕  기록 추가</Text>
@@ -411,20 +416,27 @@ export default function TripDetailScreen() {
             <View style={s.menuDivider} />
             <TouchableOpacity
               style={s.menuItem}
-              onPress={() => { setMenuVisible(false); setIsEditing(true); }}
+              accessibilityRole="button"
+              accessibilityLabel="제목 수정"
+              onPress={() => {
+                setMenuVisible(false);
+                // 그룹이 없는 카드(샘플 등)는 제목 저장 대상이 없어 수정 불가 — 다른 메뉴와 동일하게 안내
+                if (!currentGroup) { Alert.alert('알림', '샘플 여행 카드는 제목을 수정할 수 없어요.'); return; }
+                setIsEditing(true);
+              }}
             >
               <Text style={s.menuItemText}>✏️  제목 수정</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb}>
+            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb} accessibilityRole="button" accessibilityLabel="썸네일 사진 변경">
               <Text style={s.menuItemText}>🖼️  썸네일 사진 변경</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard}>
+            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel="기록카드 보관">
               <Text style={s.menuItemText}>📦  기록카드 보관</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard}>
+            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard} accessibilityRole="button" accessibilityLabel="기록카드 삭제">
               <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  기록카드 삭제</Text>
             </TouchableOpacity>
           </View>
@@ -441,7 +453,7 @@ export default function TripDetailScreen() {
             </Text>
             <View style={s.fmGrid}>
               {ADD_FORMATS.map((f) => (
-                <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)}>
+                <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={`${f.name} 형식으로 기록 추가`}>
                   <FormatIcon type={f.type} color={VIEW_CONFIG[f.type]?.accent ?? COLORS.purpleNeon} />
                   <Text style={s.fmName}>{f.name}</Text>
                 </TouchableOpacity>
@@ -460,7 +472,7 @@ export default function TripDetailScreen() {
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
               <View style={s.thumbGrid}>
                 {thumbCandidates.map((uri, i) => (
-                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85}>
+                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="이 사진을 썸네일로 선택">
                     <Image source={{ uri }} style={s.thumbCell} />
                   </TouchableOpacity>
                 ))}
@@ -720,97 +732,6 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
           <CommentIcon size={14} color="#A1A1B0" />
           <Text style={card.feedStat}>{commentCount}</Text>
         </View>
-      </View>
-    </View>
-  );
-}
-
-// ─── 모먼트 카드 ───
-function MomentCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  return (
-    <View style={[card.moment, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={['rgba(255,107,205,0.1)', 'rgba(255,107,205,0.02)', 'transparent']}
-        start={{ x: 0.5, y: 0 }}
-        end={{ x: 0.5, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 감성 큰 따옴표 */}
-      <Text style={[card.momentQuote, { color: accent + '30' }]}>"</Text>
-      {/* 본문 (감성 강조) */}
-      <Text style={card.momentContent}>{record.content}</Text>
-      {/* 메모 */}
-      {record.memo && (
-        <View style={[card.momentMemoBox, { borderLeftColor: accent + '50' }]}>
-          <Text style={card.momentMemo}>{record.memo}</Text>
-        </View>
-      )}
-      {/* 하단 정보 */}
-      <View style={card.momentFooter}>
-        <Text style={card.momentDate}>{record.date}</Text>
-        {record.weather && <Text style={card.momentWeather}>{record.weather}</Text>}
-        {record.rating && (
-          <Text style={[card.momentRating, { color: accent }]}>
-            {'★'.repeat(record.rating)}
-          </Text>
-        )}
-      </View>
-    </View>
-  );
-}
-
-// ─── 스토리보드 카드 ───
-function StoryboardCard({ record, accent }: { record: TravelRecord; accent: string }) {
-  // DAY 파싱
-  const days = record.content.split('→').map((d) => d.trim());
-
-  return (
-    <View style={[card.story, { borderColor: accent + '18' }]}>
-      <LinearGradient
-        colors={['rgba(126,231,135,0.08)', 'transparent']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={StyleSheet.absoluteFillObject}
-      />
-      {/* 타임라인 */}
-      <View style={card.storyTimeline}>
-        {days.map((day, i) => (
-          <View key={i} style={card.storyDay}>
-            <View style={card.storyNodeCol}>
-              <View style={[card.storyNode, { backgroundColor: accent }]} />
-              {i < days.length - 1 && (
-                <View style={[card.storyConnector, { backgroundColor: accent + '30' }]} />
-              )}
-            </View>
-            <View style={card.storyDayContent}>
-              <Text style={card.storyDayText}>{day}</Text>
-            </View>
-          </View>
-        ))}
-      </View>
-      {/* 하단 메타 */}
-      <View style={card.storyMeta}>
-        {record.startDate && record.endDate && (
-          <View style={[card.storyMetaPill, { backgroundColor: accent + '12' }]}>
-            <Text style={[card.storyMetaText, { color: accent }]}>
-              {record.startDate} ~ {record.endDate}
-            </Text>
-          </View>
-        )}
-        {record.companions && record.companions.length > 0 && (
-          <View style={[card.storyMetaPill, { backgroundColor: accent + '12' }]}>
-            <Text style={[card.storyMetaText, { color: accent }]}>
-              👥 {record.companions.join(', ')}
-            </Text>
-          </View>
-        )}
-        {record.budget && (
-          <View style={[card.storyMetaPill, { backgroundColor: accent + '12' }]}>
-            <Text style={[card.storyMetaText, { color: accent }]}>
-              💰 {record.budget.amount.toLocaleString()}{record.budget.currency === 'KRW' ? '원' : record.budget.currency}
-            </Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -1249,42 +1170,6 @@ const card = StyleSheet.create({
   snapPortraitPlaceholder: {
     backgroundColor: '#2A2A3A', alignItems: 'center', justifyContent: 'center',
   },
-
-  // Moment
-  moment: {
-    backgroundColor: COLORS.card, borderRadius: 18,
-    borderWidth: 1, padding: 20, marginBottom: 10, overflow: 'hidden',
-    position: 'relative',
-  },
-  momentQuote: { fontSize: 48, fontWeight: '800', position: 'absolute', top: 8, left: 16 },
-  momentContent: {
-    fontSize: 15, color: COLORS.white, lineHeight: 24,
-    fontStyle: 'italic', marginTop: 10, marginBottom: 12,
-  },
-  momentMemoBox: {
-    borderLeftWidth: 2, paddingLeft: 10, marginBottom: 12,
-  },
-  momentMemo: { fontSize: 12, color: COLORS.textDim, lineHeight: 18 },
-  momentFooter: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  momentDate: { fontSize: 11, color: COLORS.textMuted },
-  momentWeather: { fontSize: 12 },
-  momentRating: { fontSize: 11, marginLeft: 'auto' },
-
-  // Storyboard
-  story: {
-    backgroundColor: COLORS.card, borderRadius: 18,
-    borderWidth: 1, padding: 16, marginBottom: 10, overflow: 'hidden',
-  },
-  storyTimeline: { marginBottom: 12 },
-  storyDay: { flexDirection: 'row', minHeight: 36 },
-  storyNodeCol: { width: 20, alignItems: 'center' },
-  storyNode: { width: 8, height: 8, borderRadius: 4, marginTop: 4 },
-  storyConnector: { width: 2, flex: 1, marginTop: 2, marginBottom: 2, borderRadius: 1 },
-  storyDayContent: { flex: 1, paddingLeft: 8, paddingBottom: 8 },
-  storyDayText: { fontSize: 13, color: COLORS.white, lineHeight: 20 },
-  storyMeta: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  storyMetaPill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
-  storyMetaText: { fontSize: 11, fontWeight: '600' },
 
   // Album
   album: {
