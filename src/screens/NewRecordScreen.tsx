@@ -419,6 +419,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
   const editRecord = route.params?.editRecord ?? route.params?.record;
   const isEdit = !!editRecord;
+  // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
+  const tripPeriod = route.params?.tripPeriod;
   const parseDotDate = (s?: string): Date => {
     if (s) {
       // "2025.04.13" / "2025-4-5" 등 구분자(. - /)·비패딩 모두 직접 파싱.
@@ -635,12 +637,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  // 신규 작성이면 여행 카드에서 넘어온 기간(tripPeriod)을 기본 날짜로, 없으면 오늘
+  const newStartInit = tripPeriod?.startDate ? parseDotDate(tripPeriod.startDate) : todayInit;
+  const newEndInit = tripPeriod?.endDate ? parseDotDate(tripPeriod.endDate) : newStartInit;
   const [title,           setTitle]           = useState(editRecord?.content ?? '');
   const [startDate,       setStartDate]       = useState(
-    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : todayInit
+    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : newStartInit
   );
   const [endDate,         setEndDate]         = useState(
-    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : todayInit
+    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : newEndInit
   );
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [memo,            setMemo]            = useState(editRecord?.memo ?? '');

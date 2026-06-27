@@ -288,6 +288,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
   const editRecord = route?.params?.record;
   const isEdit = !!editRecord;
+  // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
+  const tripPeriod = route?.params?.tripPeriod;
 
   // 국가
   const preselected = route?.params?.selectedCountry;
@@ -321,8 +323,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // 메타
   const [memo, setMemo] = useState(editRecord?.memo ?? '');
-  const [startDate, setStartDate] = useState(editRecord?.startDate ?? '');
-  const [endDate, setEndDate] = useState(editRecord?.endDate ?? '');
+  const [startDate, setStartDate] = useState(editRecord?.startDate ?? tripPeriod?.startDate ?? '');
+  const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPeriod?.endDate ?? '');
   const [rating, setRating] = useState(editRecord?.rating ?? 0);
   const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
   const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'friends');
@@ -346,8 +348,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     return isNaN(t.getTime()) ? new Date() : t;
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate));
-  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate));
+  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPeriod?.startDate));
+  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPeriod?.endDate));
 
   // UI 모달
   const [privateFriends, setPrivateFriends] = useState<string[]>(editRecord?.mediaPrivacy?.[0] ?? []);

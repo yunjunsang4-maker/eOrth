@@ -150,6 +150,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     navigation.navigate('CutTravelInfo', {
       cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri },
       selectedCountry: selectedCountry ?? undefined,
+      tripPeriod: route.params?.tripPeriod, // 여행 카드에서 추가 시 기간 자동 적용을 위해 전달
     });
   };
 

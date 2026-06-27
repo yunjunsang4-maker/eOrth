@@ -298,6 +298,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const friendNames = followingUsers.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
+  // 여행 카드에서 추가 시 받은 기간을 기본 날짜로 적용 ('YYYY.MM.DD' → Date)
+  const tripPeriod = route?.params?.tripPeriod;
+  const parseTripDate = (s?: string): Date | null => {
+    if (!s) return null;
+    const t = new Date(s.replace(/\./g, '-'));
+    return Number.isFinite(t.getTime()) ? t : null;
+  };
 
   // ─── 국가 선택 ───
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(
@@ -310,8 +317,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [countrySearch, setCountrySearch] = useState('');
 
   // ─── 메타 상태 (피드와 동일) ───
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
+  const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);

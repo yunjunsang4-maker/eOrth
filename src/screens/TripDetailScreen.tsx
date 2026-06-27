@@ -150,14 +150,44 @@ function FormatIcon({ type, color }: { type: string; color: string }) {
   }
 }
 
-// 기록 추가 시 선택할 형식 목록
+// 기록 추가 시 선택할 형식 목록 (스냅은 상세 카드에서 추가 대상 제외)
 const ADD_FORMATS: { type: string; name: string }[] = [
   { type: 'feed',  name: '피드' },
   { type: 'blog',  name: '블로그' },
   { type: 'cut',   name: '스트립' },
-  { type: 'snap',  name: '스냅' },
   { type: 'album', name: '사진첩' },
 ];
+
+// 'YYYY.MM.DD' / 'YYYY-MM-DD' → epoch(ms). 실패 시 null (recordStore의 그룹핑 파서와 동일 규칙)
+function parseTripDate(s?: string): number | null {
+  if (!s) return null;
+  const t = new Date(s.replace(/\./g, '-')).getTime();
+  return Number.isFinite(t) ? t : null;
+}
+
+// 기록들의 startDate/endDate/date에서 여행 기간(min~max)을 'YYYY.MM.DD'로 산출
+function computeTripPeriod(recs: { startDate?: string; endDate?: string; date?: string }[]): { startDate?: string; endDate?: string } {
+  const times: number[] = [];
+  for (const r of recs) {
+    const st = parseTripDate(r.startDate) ?? parseTripDate(r.date);
+    const en = parseTripDate(r.endDate) ?? st;
+    if (st != null) times.push(st);
+    if (en != null) times.push(en);
+  }
+  if (times.length === 0) return {};
+  const fmt = (t: number) => {
+    const d = new Date(t);
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  };
+  return { startDate: fmt(Math.min(...times)), endDate: fmt(Math.max(...times)) };
+}
+
+// 여행 기간을 'YYYY.MM.DD' 또는 'YYYY.MM.DD ~ YYYY.MM.DD' 표시 문자열로
+function computeTripDateRange(recs: { startDate?: string; endDate?: string; date?: string }[]): string | null {
+  const { startDate, endDate } = computeTripPeriod(recs);
+  if (!startDate) return null;
+  return startDate === endDate ? startDate : `${startDate} ~ ${endDate}`;
+}
 
 interface TripThumbnail {
   id: string;
@@ -298,6 +328,10 @@ export default function TripDetailScreen() {
         )
       : groupRecordObjs;
 
+  // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
+  const tripPeriod = computeTripPeriod(matchedRecords);
+  const tripDateRange = computeTripDateRange(matchedRecords) ?? trip.date;
+
   // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 그룹 커버 우선, 없으면 기록의 첫 사진
   const pickPhoto = (r?: TravelRecord): string | undefined =>
     r?.representativePhoto || r?.medias?.[0] || r?.snapBackUri || r?.snapFrontUri || r?.cutPhoto?.previewUri;
@@ -336,16 +370,18 @@ export default function TripDetailScreen() {
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
+  // 기간이 이미 정해진 여행이면 날짜(tripPeriod)를 함께 넘겨 작성 화면에서 자동 적용한다.
   const handleAddRecord = (type: string) => {
     setFormatPickerVisible(false);
     const selectedCountry = { name: trip.country || '', flag: trip.countryFlag };
+    const tp = tripPeriod.startDate ? tripPeriod : undefined;
     const nav = navigation as any;
     switch (type) {
-      case 'blog':  nav.navigate('BlogRecord', { selectedCountry }); break;
-      case 'cut':   nav.navigate('CutRecord', { selectedCountry }); break;
+      case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPeriod: tp }); break;
+      case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPeriod: tp }); break;
       case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
       case 'album': nav.navigate('AlbumCreate', { selectedCountry }); break;
-      default:      nav.navigate('NewRecord', { selectedCountry });
+      default:      nav.navigate('NewRecord', { selectedCountry, tripPeriod: tp });
     }
   };
 
@@ -451,6 +487,12 @@ export default function TripDetailScreen() {
             <Text style={s.fmSub}>
               {trip.country ? `${trip.country}의 여행을 어떤 형식으로 기록할까요?` : '어떤 형식으로 기록할까요?'}
             </Text>
+            {/* 기간이 정해진 여행이면 작성 화면에 이 여행 날짜가 자동 적용된다(국가+날짜로 그룹화되어 이 카드에 묶임) */}
+            {tripPeriod.startDate ? (
+              <Text style={s.fmHint}>
+                📅 이 여행 기간({tripDateRange})이 자동으로 적용돼요.
+              </Text>
+            ) : null}
             <View style={s.fmGrid}>
               {ADD_FORMATS.map((f) => (
                 <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={`${f.name} 형식으로 기록 추가`}>
@@ -527,7 +569,7 @@ export default function TripDetailScreen() {
           ) : (
             <Text style={s.heroEmoji}>{trip.emoji}</Text>
           )}
-          <Text style={s.heroDate}>{trip.date}</Text>
+          <Text style={s.heroDate}>{tripDateRange}</Text>
           <View style={s.heroPill}>
             {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
             <Text style={s.heroPillText}>{matchedRecords.length}개의 기록</Text>
@@ -664,7 +706,7 @@ export default function TripDetailScreen() {
                           key={record.id}
                           activeOpacity={0.75}
                           onPress={() => handleRecordPress(record)}
-                          style={{ width: cardW }}
+                          style={{ width: cardW, alignSelf: 'center' }}
                         >
                           {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
                           {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
@@ -1059,7 +1101,12 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(191,133,252,0.25)',
   },
   fmTitle: { color: COLORS.white, fontSize: 17, fontWeight: '800', textAlign: 'center', marginBottom: 4 },
-  fmSub: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', marginBottom: 18 },
+  fmSub: { color: COLORS.textDim, fontSize: 13, textAlign: 'center', marginBottom: 10 },
+  fmHint: {
+    color: COLORS.purpleNeon, fontSize: 12, textAlign: 'center', lineHeight: 17,
+    backgroundColor: 'rgba(191,133,252,0.1)', borderRadius: 10, paddingVertical: 8, paddingHorizontal: 10,
+    marginBottom: 16,
+  },
   fmGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10 },
   fmItem: {
     width: 92, height: 82,
