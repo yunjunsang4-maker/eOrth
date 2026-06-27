@@ -284,14 +284,16 @@ export default function TripDetailScreen() {
     ]);
   };
 
-  // 이 여행의 국가와 매칭되는 실제 기록 가져오기
-  // 국가 없는 카드(사진첩 등 trip.country='')는 includes('')가 모든 기록을 통과시키므로
-  // 그룹에 직접 묶인 기록만 사용한다.
-  const matchedRecords = trip.country
-    ? records.filter(
-        (r) => r.countryName === trip.country || r.country?.includes(trip.country)
-      )
-    : groupRecordObjs;
+  // 이 여행 카드의 기록 = 해당 그룹(currentGroup)에 묶인 기록만 사용한다.
+  // 국가명으로 매칭하면 같은 국가의 '다른 일정' 여행 기록까지 섞여 중복 표시되므로,
+  // 그룹이 있으면 그룹 기록만 쓴다. 그룹이 없는 예외 카드만 국가명으로 폴백.
+  const matchedRecords = currentGroup
+    ? groupRecordObjs
+    : trip.country
+      ? records.filter(
+          (r) => r.countryName === trip.country || r.country?.includes(trip.country)
+        )
+      : groupRecordObjs;
 
   // 히어로(상단 ⚡ 자리)에 넣을 대표 썸네일 — 그룹 커버 우선, 없으면 기록의 첫 사진
   const pickPhoto = (r?: TravelRecord): string | undefined =>
