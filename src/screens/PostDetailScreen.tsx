@@ -576,6 +576,8 @@ function SnapStoryViewer({
   deleteRecord: (id: string) => void;
   markSnapViewed: (id: string) => void;
 }) {
+  // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
+  const { handle: myHandle, profilePhoto: myPhoto } = useSettings();
   // 작성자별로 그룹화된 전체 스냅 목록 (같은 작성자끼리 연속 배치)
   const allSnaps = useMemo(() => records.filter((r: any) => r.viewType === 'snap'), [records]);
   // 작성자 + 국가별로 그룹화 (같은 사용자라도 다른 나라면 별도 스토리)
@@ -816,9 +818,15 @@ function SnapStoryViewer({
             })}
           </View>
           <View style={storyS.topRow}>
-            <View style={storyS.avatarRing}><View style={storyS.avatar}><Text style={storyS.avatarEmoji}>{s.user.emoji}</Text></View></View>
+            <View style={storyS.avatarRing}><View style={storyS.avatar}>
+              {s.isMyPost === true && myPhoto ? (
+                <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
+              ) : (
+                <Text style={storyS.avatarEmoji}>{s.user.emoji}</Text>
+              )}
+            </View></View>
             <View style={storyS.userInfo}>
-              <Text style={storyS.handle}>@{s.user.handle}</Text>
+              <Text style={storyS.handle}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
               <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
             </View>
             <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel="더보기"><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
@@ -2501,6 +2509,11 @@ const storyS = StyleSheet.create({
   },
   avatarEmoji: {
     fontSize: 16,
+  },
+  avatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   userInfo: {
     flex: 1,
