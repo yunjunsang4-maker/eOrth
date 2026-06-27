@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -28,6 +28,17 @@ const C = {
   gray: '#3A3A4A',
 };
 
+/** 한국 휴대폰 번호 자동 하이픈 (010-1234-5678) */
+function formatKoreanPhone(raw: string): string {
+  let n = raw.replace(/\D/g, '');
+  // +82 10... → 010... 먼저 보정한 뒤 자릿수 제한 (마지막 숫자 손실 방지)
+  if (n.startsWith('82')) n = '0' + n.slice(2);
+  const d = n.slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 7) return `${d.slice(0, 3)}-${d.slice(3)}`;
+  return `${d.slice(0, 3)}-${d.slice(3, 7)}-${d.slice(7)}`;
+}
+
 type Props = RootStackScreenProps<'PhoneConsent'>;
 
 export default function PhoneConsentScreen({ navigation }: Props) {
@@ -37,15 +48,24 @@ export default function PhoneConsentScreen({ navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showToast = (msg: string) => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
     setToastMessage(msg);
     setToastVisible(true);
-    setTimeout(() => setToastVisible(false), 2000);
+    toastTimer.current = setTimeout(() => setToastVisible(false), 2000);
   };
 
+  // 언마운트 시 타이머 정리 — 사라진 화면에서 setState 경고 방지
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (navTimer.current) clearTimeout(navTimer.current);
+  }, []);
+
   const digits = phone.replace(/\D/g, '');
-  const valid = digits.length >= 9;
+  const valid = digits.length === 10 || digits.length === 11; // 한국 휴대폰(10~11자리)
 
   const handleAgree = async () => {
     if (!valid || busy) return;
@@ -75,7 +95,7 @@ export default function PhoneConsentScreen({ navigation }: Props) {
       await deleteMyPhoneHash();
       setPhoneMatchConsent(false);
       showToast('연락처 친구 찾기를 껐어요');
-      setTimeout(() => navigation.goBack(), 600);
+      navTimer.current = setTimeout(() => navigation.goBack(), 600);
     } finally {
       setBusy(false);
     }
@@ -113,11 +133,11 @@ export default function PhoneConsentScreen({ navigation }: Props) {
           <TextInput
             style={s.input}
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(t) => setPhone(formatKoreanPhone(t))}
             placeholder="010-1234-5678"
             placeholderTextColor={C.dim}
             keyboardType="phone-pad"
-            maxLength={20}
+            maxLength={13}
             accessibilityLabel="내 전화번호 입력"
           />
 

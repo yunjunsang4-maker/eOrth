@@ -117,15 +117,17 @@ export default function FriendProfileScreen({
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
   const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser } = useRecords();
-  const followEntry = followingUsers.find((f) => f.username === displayUsername);
+  // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
+  const followId = userId ?? profileRow?.id ?? displayUsername;
+  const followEntry = followingUsers.find((f) => f.id === followId || (!!f.username && f.username === displayUsername));
   const following = !!followEntry;
   const isMutual = !!followEntry?.isMutual;
   const toggleFollow = () => {
     if (following) {
-      unfollowUser(displayUsername);
+      unfollowUser(followEntry?.id ?? followId);
     } else {
       followUser({
-        id: userId ?? profileRow?.id ?? displayUsername,
+        id: followId,
         username: displayUsername,
         isAbroad: false,
         currentCountry: null,
@@ -203,7 +205,7 @@ export default function FriendProfileScreen({
         setMenuVisible(false);
         confirmBlock(displayUsername, () => {
           blockUser({ name: displayUsername, emoji: '👤' });
-          unfollowUser(displayUsername); // 차단하면 팔로잉에서도 제거
+          unfollowUser(followEntry?.id ?? followId); // 차단하면 팔로잉에서도 제거
           showToast('차단되었어요');
           setTimeout(() => navigation.goBack(), 600);
         });
@@ -261,7 +263,7 @@ export default function FriendProfileScreen({
             {following && (
               <TouchableOpacity
                 style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
-                onPress={() => setFollowMutual(displayUsername, !isMutual)}
+                onPress={() => setFollowMutual(followEntry?.id ?? followId, !isMutual)}
                 activeOpacity={0.85}
               >
                 <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>

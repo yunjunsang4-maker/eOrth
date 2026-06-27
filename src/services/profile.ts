@@ -96,6 +96,25 @@ export async function getCountryCounts(ids: string[]): Promise<Record<string, nu
   }
 }
 
+/**
+ * 여러 사용자의 팔로워 수 일괄 조회 (친구 찾기 결과 표시용)
+ * follower_counts RPC로 follows.following_id 기준 집계 (N명을 1쿼리로).
+ * 반환: { [userId]: 팔로워수 }. 미설정/실패/데이터 없음이면 빈 객체.
+ */
+export async function getFollowerCounts(ids: string[]): Promise<Record<string, number>> {
+  if (!supabase || ids.length === 0) return {};
+  try {
+    const { data } = await supabase.rpc('follower_counts', { ids });
+    const map: Record<string, number> = {};
+    (data as { user_id: string; follower_count: number }[] | null)?.forEach((r) => {
+      map[r.user_id] = r.follower_count;
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 // ─────────────────────────────────────────────
 // 연락처 기반 친구 찾기 (전화번호 해시 매칭)
 // ─────────────────────────────────────────────

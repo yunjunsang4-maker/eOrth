@@ -169,8 +169,8 @@ interface RecordContextType {
   unblockUser: (name: string) => void;
   followingUsers: FollowedFriend[];
   followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
-  unfollowUser: (username: string) => void;
-  setFollowMutual: (username: string, isMutual: boolean) => void;
+  unfollowUser: (idOrUsername: string) => void;
+  setFollowMutual: (idOrUsername: string, isMutual: boolean) => void;
   commentsByPost: Record<string, PostComment[]>;
   addComment: (postId: string, text: string, replyToId?: string) => void;
   toggleCommentLike: (postId: string, commentId: string) => void;
@@ -462,9 +462,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setBlockedUsers((prev) => prev.filter((b) => b.name !== name));
   };
 
+  // 신원은 id 기준 — 핸들(username)이 빈 유저끼리 같은 사람으로 오판되지 않도록 한다.
+  // (빈 username은 매칭 키로 쓰지 않음)
+  const sameFollowed = (f: FollowedFriend, key: string) =>
+    f.id === key || (!!f.username && f.username === key);
+
   const followUser = (user: Omit<FollowedFriend, 'followedAt'>) => {
     setFollowingUsers((prev) => {
-      if (prev.some((f) => f.username === user.username)) return prev;
+      // id가 양쪽에 있으면 id로, 아니면 빈 값이 아닌 username으로만 중복 판정
+      const dup = prev.some((f) =>
+        (f.id && user.id) ? f.id === user.id : (!!f.username && f.username === user.username)
+      );
+      if (dup) return prev;
       return [...prev, { ...user, followedAt: Date.now() }];
     });
     if (isSupabaseConfigured && user.id) {
@@ -472,15 +481,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const unfollowUser = (username: string) => {
-    const target = followingUsers.find((f) => f.username === username);
-    setFollowingUsers((prev) => prev.filter((f) => f.username !== username));
-    if (isSupabaseConfigured && target?.id) apiUnfollow(target.id).catch(notifySyncError);
+  const unfollowUser = (idOrUsername: string) => {
+    // 정확히 한 항목만 제거(참조 비교) — 빈 username으로 인한 일괄 오삭제 방지
+    const target = followingUsers.find((f) => sameFollowed(f, idOrUsername));
+    if (!target) return;
+    setFollowingUsers((prev) => prev.filter((f) => f !== target));
+    if (isSupabaseConfigured && target.id) apiUnfollow(target.id).catch(notifySyncError);
   };
 
   // 맞팔(서로 팔로우) 여부 설정 — 친구 수 배지(78·81·82·83) 판정용
-  const setFollowMutual = (username: string, isMutual: boolean) => {
-    setFollowingUsers((prev) => prev.map((f) => (f.username === username ? { ...f, isMutual } : f)));
+  const setFollowMutual = (idOrUsername: string, isMutual: boolean) => {
+    setFollowingUsers((prev) => prev.map((f) => (sameFollowed(f, idOrUsername) ? { ...f, isMutual } : f)));
   };
 
   const addComment = (postId: string, text: string, replyToId?: string) => {

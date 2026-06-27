@@ -1401,7 +1401,7 @@ export default function PostDetailScreen() {
                 );
                 const toggleFollow = () => {
                   buzz('light');
-                  if (followedEntry) unfollowUser(followedEntry.username);
+                  if (followedEntry) unfollowUser(followedEntry.id || followedEntry.username);
                   else followUser({ id: record.authorId ?? '', username: authorUsername, isAbroad: false, currentCountry: null, currentCountryFlag: null });
                 };
                 return (

@@ -266,6 +266,22 @@ $$;
 grant execute on function public.profile_country_counts(uuid[]) to authenticated;
 
 -- ============================================================
+-- 3-c) RPC: 친구 찾기 결과의 팔로워 수
+--   여러 사용자의 팔로워 수(follows.following_id 기준)를 한 번에 집계.
+--   N명을 N쿼리 없이 한 번에 받기 위함. SECURITY DEFINER 로 일관된 공개 통계 제공.
+-- ============================================================
+create or replace function public.follower_counts(ids uuid[])
+returns table (user_id uuid, follower_count int)
+language sql security definer set search_path = public as $$
+  select f.following_id as user_id, count(*)::int as follower_count
+  from public.follows f
+  where f.following_id = any(ids)
+  group by f.following_id;
+$$;
+
+grant execute on function public.follower_counts(uuid[]) to authenticated;
+
+-- ============================================================
 -- 4) DM — 1:1 대화 + 메시지 (실시간은 dm_messages를 Realtime publication에 추가)
 -- ============================================================
 create table if not exists public.dm_threads (

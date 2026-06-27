@@ -69,7 +69,8 @@ export default function AppNavigator() {
       if (!m) return;
       const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
       if (!handle || handle === 'unknown') return;
-      const go = () => navigationRef.current?.navigate('FriendSearch', { initialQuery: handle });
+      // ts: 같은 핸들로 재진입해도 화면이 검색어를 다시 채우도록 매번 새 값 전달
+      const go = () => navigationRef.current?.navigate('FriendSearch', { initialQuery: handle, ts: Date.now() });
       // 콜드 스타트면 네비게이터 준비를 기다렸다 이동
       if (navigationRef.current?.isReady()) go();
       else setTimeout(go, 1000);

@@ -93,7 +93,7 @@ export type RootStackParamList = {
   Friends: undefined;
   DM: { friend: DMFriendParam; sharePostId?: string };
   BestCut: undefined;
-  FriendSearch: { initialQuery?: string } | undefined;
+  FriendSearch: { initialQuery?: string; ts?: number } | undefined;
   PhoneConsent: undefined;
   BlockedUsers: undefined;
   ArchivedPosts: undefined;
