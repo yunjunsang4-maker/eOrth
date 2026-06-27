@@ -1746,7 +1746,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
               </Text>
             </View>
             <View style={styles.statsRow}>
-              <StatCard value={String(displayTrips.length)} label="기록 수" />
+              <StatCard value={String(displayTrips.length)} label="여행 수" />
               <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} />
               <StatCard value={String(followerCount)} label="팔로워" />
             </View>
