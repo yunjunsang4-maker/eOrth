@@ -21,7 +21,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
-import { searchProfiles, getMyUserId } from '../services/profile';
+import { searchProfiles, getMyUserId, getCountryCounts } from '../services/profile';
 import { computeTravelStats } from '../utils/badgeRules';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
@@ -318,17 +318,19 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       try {
         const rows = await searchProfiles(q);
         if (!alive) return;
+        const others = rows.filter((p) => p.id !== myIdRef.current);
+        // 방문 국가 수 일괄 조회 후 병합 (실패해도 0으로 처리 → 줄 숨김)
+        const counts = await getCountryCounts(others.map((p) => p.id));
+        if (!alive) return;
         setRemoteResults(
-          rows
-            .filter((p) => p.id !== myIdRef.current)
-            .map((p) => ({
-              id: p.id,
-              name: p.nickname || p.handle || '여행자',
-              phone: '',
-              initial: (p.nickname || p.handle || '?').slice(0, 1),
-              username: p.handle || '',
-              countries: 0,
-            }))
+          others.map((p) => ({
+            id: p.id,
+            name: p.nickname || p.handle || '여행자',
+            phone: '',
+            initial: (p.nickname || p.handle || '?').slice(0, 1),
+            username: p.handle || '',
+            countries: counts[p.id] ?? 0,
+          }))
         );
       } catch {
         if (alive) setRemoteResults([]); // 검색 실패 시 이전 결과 잔류 방지

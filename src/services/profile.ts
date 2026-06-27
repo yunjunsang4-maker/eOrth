@@ -76,6 +76,25 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   }
 }
 
+/**
+ * 여러 사용자의 방문 국가 수 일괄 조회 (친구 찾기 결과 표시용)
+ * profile_country_counts RPC(SECURITY DEFINER)로 비공개 제외 게시물의 distinct country_name 집계.
+ * 반환: { [userId]: 방문국수 }. 미설정/실패/데이터 없음이면 빈 객체.
+ */
+export async function getCountryCounts(ids: string[]): Promise<Record<string, number>> {
+  if (!supabase || ids.length === 0) return {};
+  try {
+    const { data } = await supabase.rpc('profile_country_counts', { ids });
+    const map: Record<string, number> = {};
+    (data as { author_id: string; country_count: number }[] | null)?.forEach((r) => {
+      map[r.author_id] = r.country_count;
+    });
+    return map;
+  } catch {
+    return {};
+  }
+}
+
 /** id로 프로필 조회 */
 export async function getProfileById(id: string): Promise<ProfileRow | null> {
   if (!supabase) return null;

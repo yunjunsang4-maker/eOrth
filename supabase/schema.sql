@@ -248,6 +248,24 @@ create policy "comment_likes_delete_own" on public.comment_likes
   for delete to authenticated using (user_id = auth.uid());
 
 -- ============================================================
+-- 3-b) RPC: 친구 찾기 결과의 방문 국가 수
+--   여러 사용자의 '비공개가 아닌' 게시물에서 서로 다른 country_name 개수를 집계.
+--   SECURITY DEFINER 로 RLS를 우회해 공개 프로필 통계처럼 일관된 값을 돌려준다.
+-- ============================================================
+create or replace function public.profile_country_counts(ids uuid[])
+returns table (author_id uuid, country_count int)
+language sql security definer set search_path = public as $$
+  select p.author_id, count(distinct p.country_name)::int as country_count
+  from public.posts p
+  where p.author_id = any(ids)
+    and p.country_name is not null and p.country_name <> ''
+    and p.visibility <> 'private'
+  group by p.author_id;
+$$;
+
+grant execute on function public.profile_country_counts(uuid[]) to authenticated;
+
+-- ============================================================
 -- 4) DM — 1:1 대화 + 메시지 (실시간은 dm_messages를 Realtime publication에 추가)
 -- ============================================================
 create table if not exists public.dm_threads (
