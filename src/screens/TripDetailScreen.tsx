@@ -345,9 +345,9 @@ export default function TripDetailScreen() {
   };
 
   const handleRecordPress = (rec: TravelRecord) => {
-    // 피드·스트립은 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
+    // 피드·스트립·블로그는 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
     const vt = rec.viewType || 'feed';
-    if (vt === 'feed' || vt === 'cut') {
+    if (vt === 'feed' || vt === 'cut' || vt === 'blog') {
       navigation.navigate('PostDetail', { postId: rec.id });
       return;
     }
