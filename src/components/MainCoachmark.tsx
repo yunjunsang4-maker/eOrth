@@ -30,6 +30,8 @@ export interface CoachStep {
   // 말풍선을 강조 요소 기준 자동 배치 대신 화면 하단에서 이만큼 띄워 고정(윈도우 px).
   // 하단(스냅·FAB)처럼 박스를 강조 위쪽으로 올려야 할 때 사용.
   tipBottom?: number;
+  // 말풍선을 강조 요소 "아래쪽"에 배치(화면 상단 요소가 가려지지 않게). 예: 프로필 아바타.
+  tipBelow?: boolean;
   // 이 단계에서 밝게 유지할 하단 버튼(나머지는 어둡게). RecordFab가 참조.
   keepBright?: 'snap' | 'fab';
 }
@@ -161,6 +163,11 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   if (step.tipBottom != null) {
     // 스텝이 명시한 하단 오프셋으로 고정 (강조 요소 위쪽으로 박스를 올릴 때)
     tipStyle = { bottom: step.tipBottom };
+  } else if (step.tipBelow && (circle || box)) {
+    // 강조 요소 바로 아래에 배치 (상단 요소가 말풍선에 가려지지 않게)
+    const anchorBottom = circle ? circle.cy + circle.r : box!.y + box!.h;
+    const top = Math.min(anchorBottom + 16, rootSize.h - TIP_MIN);
+    tipStyle = { top };
   } else if (circle) {
     // 지구본: 말풍선을 지구본 상단에 겹쳐 배치 — 하단(스냅·FAB)과 겹치지 않도록 위쪽 고정
     const top = Math.min(Math.max(circle.cy - circle.r, 24), rootSize.h - TIP_MIN);

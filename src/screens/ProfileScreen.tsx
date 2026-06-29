@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -37,6 +39,8 @@ import { COUNTRIES } from '../constants/countries';
 import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { getMyUserId } from '../services/profile';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { setCoachActive } from '../components/coachOverlayState';
 import { fetchFollowerCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 
@@ -44,6 +48,9 @@ import type { TabScreenProps } from '../navigation/types';
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// 프로필 튜토리얼 1회 노출 플래그 키 (계정별)
+const PROFILE_TUTORIAL_KEY = '@eorth/profileTutorialSeen';
 
 // 리퀴드 글래스 카드 재정렬용 부드러운 스프링 레이아웃 전환
 // (이웃 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
@@ -1346,6 +1353,94 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
 
+  // ── 프로필 튜토리얼(코치마크) — 계정당 프로필 탭 첫 진입 시 1회 ──
+  const avatarRef = useRef<any>(null);
+  const badgeRef = useRef<any>(null);
+  const archiveRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+  const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
+
+  // 튜토리얼 중에는 탭 바도 함께 어둡게 처리되도록 전역 신호 동기화.
+  useEffect(() => {
+    setCoachActive(coachVisible);
+    return () => setCoachActive(false);
+  }, [coachVisible]);
+
+  const measureRect = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
+        else resolve({ x, y, width, height });
+      });
+    });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (tutorialStarted.current) return;
+      tutorialStarted.current = true;
+      let cancelled = false;
+      (async () => {
+        const uid = (await getMyUserId().catch(() => null)) || 'guest';
+        const key = `${PROFILE_TUTORIAL_KEY}:${uid}`;
+        const seen = await AsyncStorage.getItem(key).catch(() => null);
+        if (seen || cancelled) return;
+        setTimeout(async () => {
+          if (cancelled) return;
+          const [avatar, badge, archive] = await Promise.all([
+            measureRect(avatarRef),
+            measureRect(badgeRef),
+            measureRect(archiveRef),
+          ]);
+          // 아바타는 원형이라 원형 스포트라이트로 강조
+          const avatarCircle = avatar
+            ? { cx: avatar.x + avatar.width / 2, cy: avatar.y + avatar.height / 2, r: Math.max(avatar.width, avatar.height) / 2 + 4 }
+            : undefined;
+          // 배지 강조 링은 배지(글로우 포함)를 넉넉히 감싸도록 측정값을 확장(특히 세로 여유).
+          const badgeRect: CoachRect | null = badge
+            ? { x: badge.x - 4, y: badge.y - 12, width: badge.width + 8, height: badge.height + 24 }
+            : null;
+          // 여행 기록 강조 링도 동일하게 넉넉히 확장.
+          const archiveRect: CoachRect | null = archive
+            ? { x: archive.x - 4, y: archive.y - 12, width: archive.width + 8, height: archive.height + 24 }
+            : null;
+          setCoachSteps([
+            {
+              rect: null,
+              title: '내 프로필 👤',
+              desc: '나의 여행 기록과 배지, 프로필을 한곳에 모았어요. 주요 기능을 빠르게 둘러볼게요.',
+            },
+            {
+              rect: avatar,
+              shape: 'circle',
+              circleWin: avatarCircle,
+              tipBelow: true, // 아바타는 화면 상단이라 말풍선을 아래쪽에 둬 가리지 않게
+              title: '프로필 사진',
+              desc: '아바타를 탭하면 프로필 사진을 바꾸거나 크게 볼 수 있어요.',
+            },
+            {
+              rect: badgeRect,
+              title: '여행 배지',
+              desc: '여행하며 획득한 배지를 모아 보여줘요. "모두보기"로 전체 배지를 확인할 수 있어요.',
+            },
+            {
+              rect: archiveRect,
+              title: '여행 기록',
+              desc: '그동안의 여행 기록 카드를 모아둔 곳이에요. 카드를 길게 눌러 드래그하면 순서를 바꿀 수 있어요.',
+            },
+          ]);
+          setCoachVisible(true);
+          AsyncStorage.setItem(key, '1').catch(() => {});
+        }, 450);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   // 배지 획득 토스트를 누르면 openBadgeList 파라미터로 진입 → 배지 리스트 모달 자동 열기(1회).
   useEffect(() => {
     if (route.params?.openBadgeList) {
@@ -1696,7 +1791,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <GrainOverlay opacity={0.03} dotCount={60} />
           {/* 아바타 — 순수 그라데이션 링 (글로우 없음) */}
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
-            <View style={styles.avatarRing}>
+            <View ref={avatarRef} collapsable={false} style={styles.avatarRing}>
                 {profilePhoto ? (
                   <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
                 ) : (
@@ -1754,37 +1849,42 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
         <View style={styles.divider} />
 
-        {/* Travel badge 헤더 */}
-        <View style={styles.sectionHeaderRow}>
-          <Text style={styles.sectionTitle}>Travel badge</Text>
-          <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
-            <Text style={styles.sectionLink}>모두보기</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Travel badge 섹션 (튜토리얼 강조 대상) */}
+        <View ref={badgeRef} collapsable={false}>
+          {/* Travel badge 헤더 */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Travel badge</Text>
+            <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
+              <Text style={styles.sectionLink}>모두보기</Text>
+            </TouchableOpacity>
+          </View>
 
-        {/* 배지 하이라이트 (구이 서클) */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={badgeHL.scroll}
-          contentContainerStyle={badgeHL.scrollContent}
-        >
-          {selectedBadgeIds.map((id) => {
-            const badge = BADGES.find(b => b.id === id);
-            if (!badge) return null;
-            return (
-              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
-            );
-          })}
-        </ScrollView>
+          {/* 배지 하이라이트 (구이 서클) */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={badgeHL.scroll}
+            contentContainerStyle={badgeHL.scrollContent}
+          >
+            {selectedBadgeIds.map((id) => {
+              const badge = BADGES.find(b => b.id === id);
+              if (!badge) return null;
+              return (
+                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
+              );
+            })}
+          </ScrollView>
+        </View>
 
         <View style={styles.divider} />
 
-        {/* Travel archive 헤더 */}
-        <View style={gridSt.gridHeaderRow}>
-          <Text style={styles.sectionTitle}>Travel archive</Text>
+        {/* Travel archive 헤더 (튜토리얼 강조 대상) */}
+        <View ref={archiveRef} collapsable={false}>
+          <View style={gridSt.gridHeaderRow}>
+            <Text style={styles.sectionTitle}>Travel archive</Text>
+          </View>
+          <Text style={styles.archiveSubtitle}>여행 기록 카드 수 : {displayTrips.length}</Text>
         </View>
-        <Text style={styles.archiveSubtitle}>여행 기록 카드 수 : {displayTrips.length}</Text>
 
         {displayTrips.length === 0 && (
           <View style={{ alignItems: 'center', paddingVertical: 36, gap: 6 }}>
@@ -1954,6 +2054,13 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         selectedBadgeIds={selectedBadgeIds}
         setSelectedBadgeIds={setSelectedBadgeIds}
         earnedBadgeIds={earnedBadgeIds}
+      />
+
+      {/* 프로필 튜토리얼 코치마크 */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
       />
     </View>
   );
