@@ -17,7 +17,7 @@ const COLORS = {
   purpleNeon: '#BF85FC',
   white: '#FFFFFF',
   textDim: '#A1A1B0',
-  textMuted: '#4A4A59',
+  textMuted: '#8B8B9E',
   red: '#FF6B6B',
   redBg: 'rgba(255,107,107,0.12)',
 };

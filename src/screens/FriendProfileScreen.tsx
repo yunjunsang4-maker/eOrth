@@ -35,7 +35,7 @@ const COLORS = {
   accentBg:     'rgba(107,33,168,0.25)',
   accentBorder: 'rgba(191,133,252,0.3)',
   dim:          '#A1A1B0',
-  muted:        '#4A4A59',
+  muted:        '#8B8B9E',
   white:        '#FFFFFF',
   divider:      '#1A1A26',
   green:        '#34C759',

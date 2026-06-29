@@ -66,7 +66,7 @@ const COLORS = {
   purpleThumb:  '#1A0A2E',
   white:        '#FFFFFF',
   textDim:      '#A1A1B0',
-  textMuted:    '#4A4A59',
+  textMuted:    '#8B8B9E',
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
   red:          '#FF3B30',

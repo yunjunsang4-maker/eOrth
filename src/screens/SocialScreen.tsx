@@ -1894,7 +1894,7 @@ const d = StyleSheet.create({
   heart: { color: '#7A7A8A', fontSize: 13 },
   heartOn: { color: '#FF6B9D' },
   metaCount: { color: '#9A95A5', fontSize: 10, marginLeft: 3 },
-  more: { color: '#6A6A7A', fontSize: 14, paddingLeft: 4 },
+  more: { color: '#8B8B9E', fontSize: 14, paddingLeft: 4 },
 });
 
 function ImmersiveCard({ children, index }: { children: React.ReactNode; index: number }) {

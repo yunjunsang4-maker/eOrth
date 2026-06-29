@@ -37,7 +37,7 @@ const C = {
   accentBorder: 'rgba(191,133,252,0.3)',
   white: '#FFFFFF',
   dim: '#A1A1B0',
-  muted: '#4A4A59',
+  muted: '#8B8B9E',
   online: '#34C759',
   myBubble: '#6B21A8',
   theirBubble: '#2E2E3B',

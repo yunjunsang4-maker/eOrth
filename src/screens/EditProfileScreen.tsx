@@ -30,7 +30,7 @@ const COLORS = {
   purpleBorder: 'rgba(191,133,252,0.3)',
   white:        '#FFFFFF',
   textDim:      '#A1A1B0',
-  textMuted:    '#4A4A59',
+  textMuted:    '#8B8B9E',
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
   red:          '#FF3B30',

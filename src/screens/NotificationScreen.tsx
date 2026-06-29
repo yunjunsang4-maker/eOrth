@@ -15,7 +15,7 @@ const COLORS = {
   purpleDeep:  '#6B21A8',
   white:       '#FFFFFF',
   textDim:     '#A1A1B0',
-  textMuted:   '#6A6A7A',
+  textMuted:   '#8B8B9E',
 };
 
 const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
