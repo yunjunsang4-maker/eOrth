@@ -125,6 +125,7 @@ const INITIAL_RECORDS: TravelRecord[] = [];
 export interface BlockedUser {
   name: string;
   emoji: string;
+  handle?: string; // 차단 신원 키(표시이름 충돌 방지). 과거 저장본엔 없을 수 있어 optional
   blockedAt: number;
 }
 
@@ -166,8 +167,12 @@ interface RecordContextType {
   archiveRecord: (id: string) => void;
   unarchiveRecord: (id: string) => void;
   blockedUsers: BlockedUser[];
-  blockUser: (user: { name: string; emoji: string }) => void;
-  unblockUser: (name: string) => void;
+  blockUser: (user: { name: string; emoji: string; handle?: string }) => void;
+  unblockUser: (nameOrHandle: string) => void;
+  isBlocked: (user: { name?: string; handle?: string }) => boolean;
+  // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
+  reportedPostIds: string[];
+  reportPost: (id: string) => void;
   followingUsers: FollowedFriend[];
   followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
   unfollowUser: (idOrUsername: string) => void;
@@ -215,6 +220,7 @@ interface RecordPersistPayload {
   // 아래 두 필드는 나중에 추가됨 — 과거 저장본에는 없을 수 있어 복원 시 시드로 폴백
   followingUsers?: FollowedFriend[];
   commentsByPost?: Record<string, PostComment[]>;
+  reportedPostIds?: string[];
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
@@ -226,6 +232,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
+  const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
 
@@ -239,9 +246,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setDrafts(p.drafts);
       setFollowingUsers(p.followingUsers ?? INITIAL_FOLLOWING);
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
+      setReportedPostIds(p.reportedPostIds ?? []);
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -365,6 +373,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const target = records.find((r) => r.id === id);
     setRecords((prev) => prev.filter((r) => r.id !== id));
     setArchivedIds((prev) => prev.filter((i) => i !== id));
+    // 여행 묶음 정합성: 삭제된 기록 id를 그룹에서 제거하고, 멤버가 없어진 그룹은 폐기.
+    // 대표(coverRecordId)가 삭제됐으면 남은 첫 기록으로 승계.
+    setTripGroups((prev) =>
+      prev
+        .map((g) => {
+          if (!g.records.includes(id)) return g;
+          const remaining = g.records.filter((rid) => rid !== id);
+          const coverRecordId = g.coverRecordId === id ? (remaining[0] ?? '') : g.coverRecordId;
+          return { ...g, records: remaining, coverRecordId };
+        })
+        .filter((g) => g.records.length > 0)
+    );
     if (isSupabaseConfigured && target?.remoteId) deletePost(target.remoteId).catch(notifySyncError);
   };
 
@@ -460,15 +480,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const blockUser = (user: { name: string; emoji: string }) => {
+  const blockUser = (user: { name: string; emoji: string; handle?: string }) => {
     setBlockedUsers((prev) => {
-      if (prev.some((b) => b.name === user.name)) return prev;
+      // 신원은 handle(양쪽에 있으면) 우선, 없으면 표시이름으로 중복 판정
+      const dup = prev.some((b) =>
+        (b.handle && user.handle) ? b.handle === user.handle : b.name === user.name
+      );
+      if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
   };
 
-  const unblockUser = (name: string) => {
-    setBlockedUsers((prev) => prev.filter((b) => b.name !== name));
+  const unblockUser = (nameOrHandle: string) => {
+    setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
+  };
+
+  // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
+  const isBlocked = useCallback((user: { name?: string; handle?: string }) =>
+    blockedUsers.some((b) =>
+      (b.handle && user.handle && b.handle === user.handle) || (!!user.name && b.name === user.name)
+    ), [blockedUsers]);
+
+  // 게시물 신고 → 신고 목록에 추가(피드에서 숨김). 이미 신고했으면 무시.
+  const reportPost = (id: string) => {
+    setReportedPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
   // 신원은 id 기준 — 핸들(username)이 빈 유저끼리 같은 사람으로 오판되지 않도록 한다.
@@ -660,6 +695,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setDrafts([]);
     setFollowingUsers(INITIAL_FOLLOWING);
     setCommentsByPost(INITIAL_COMMENTS);
+    setReportedPostIds([]);
     setCurrentViewer(null);
     setFeedPosts([]);
   };
@@ -715,7 +751,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
       {children}
     </RecordContext.Provider>
   );

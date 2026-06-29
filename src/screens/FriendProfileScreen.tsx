@@ -201,7 +201,7 @@ export default function FriendProfileScreen({
       onPress: () => {
         setMenuVisible(false);
         confirmBlock(displayUsername, () => {
-          blockUser({ name: displayUsername, emoji: '👤' });
+          blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle });
           unfollowUser(followEntry?.id ?? followId); // 차단하면 팔로잉에서도 제거
           showToast('차단되었어요');
           setTimeout(() => navigation.goBack(), 600);

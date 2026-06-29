@@ -1631,7 +1631,7 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
   const { records } = useRecords();
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
@@ -1668,7 +1668,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       ]
     : [
         { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
-        { key: 'block', icon: '⛔', label: '차단', danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji }) },
+        { key: 'block', icon: '⛔', label: '차단', danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle }) },
         { key: 'report', icon: '🚨', label: '신고', danger: true, onPress: () => setReportVisible(true) },
       ];
 
@@ -1804,7 +1804,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
-        onSubmit={() => setReportVisible(false)}
+        onSubmit={() => { setReportVisible(false); onReport(item.id); }}
       />
     </>
   );
@@ -1926,7 +1926,7 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -1942,7 +1942,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return postUser.name ? postUser.name : postUser.handle;
   };
   
-  const { sendRecord, topFriends, friends } = useDM();
+  const { sendRecord, conversations } = useDM();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1957,7 +1957,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  const top3 = topFriends(3);
+  // 빠른공유 친구는 실제 팔로우 친구(followingUsers)에서 — 대화량 많은 순 상위 3명.
+  // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
+  const dmFriends = useMemo(
+    () => followingUsers.map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' })),
+    [followingUsers]
+  );
+  const top3 = useMemo(
+    () => [...dmFriends]
+      .sort((a, b) => (conversations[b.handle]?.length ?? 0) - (conversations[a.handle]?.length ?? 0))
+      .slice(0, 3),
+    [dmFriends, conversations]
+  );
 
   const showQuickToast = (msg: string) => {
     if (quickToastTimer.current) clearTimeout(quickToastTimer.current);
@@ -2013,15 +2024,15 @@ function FriendsTab({ navigation }: { navigation: any }) {
     showToast('게시물이 삭제되었어요');
   };
 
-  const blockedNames = blockedUsers.map((b) => b.name);
   // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드
   const mergedFeed = [...records, ...feedPosts].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
   const allVisible = mergedFeed
     .filter(
       (r) =>
         (r.visibility === 'friends' || r.visibility === 'public') &&
-        !blockedNames.includes(r.user.name) &&
-        !archivedIds.includes(r.id)
+        !isBlocked(r.user) &&
+        !archivedIds.includes(r.id) &&
+        !reportedPostIds.includes(r.id)
     )
     // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
     .filter((r) => !isPostHiddenForViewer(r, currentViewer))
@@ -2159,6 +2170,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     onArchive={handleArchive}
                     onDelete={handleDelete}
                     onBlock={blockUser}
+                    onReport={reportPost}
                     onQuickStart={handleQuickStart}
                     onQuickMove={handleQuickMove}
                     onQuickEnd={handleQuickEnd}
@@ -2193,7 +2205,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             <View style={ss.handle} />
             <Text style={ss.sheetTitle}>보낼 친구 선택</Text>
             <ScrollView style={{ maxHeight: 360 }}>
-              {friends.map((f) => (
+              {dmFriends.map((f) => (
                 <TouchableOpacity
                   key={f.handle}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 14 }}

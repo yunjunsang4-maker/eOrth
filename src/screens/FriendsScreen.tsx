@@ -69,7 +69,7 @@ function lastMessagePreview(m: Message): string {
 type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
-  const { blockedUsers, blockUser, followingUsers } = useRecords();
+  const { blockUser, followingUsers, isBlocked } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
   const [search, setSearch] = useState('');
@@ -151,7 +151,7 @@ export default function FriendsScreen({ navigation }: Props) {
           text: '차단하기',
           style: 'destructive',
           onPress: () => {
-            blockUser({ name: friend.name, emoji: friend.emoji });
+            blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle });
             showToast(`${friend.name}님을 차단했습니다.`);
             setSelectedFriendId(null);
           }
@@ -175,8 +175,7 @@ export default function FriendsScreen({ navigation }: Props) {
     };
   });
 
-  const blockedNames = blockedUsers.map(b => b.name);
-  const visibleFriends = mergedFriends.filter(f => !blockedNames.includes(f.name));
+  const visibleFriends = mergedFriends.filter(f => !isBlocked({ name: f.name, handle: f.handle }));
 
   const filtered = (search.trim()
     ? visibleFriends.filter(

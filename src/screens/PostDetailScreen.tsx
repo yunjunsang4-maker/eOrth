@@ -629,7 +629,7 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost } = useRecords();
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -1037,7 +1037,7 @@ function SnapStoryViewer({
         </TouchableOpacity>
       </Modal>
 
-      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); setToastMsg('신고가 접수되었어요'); setTimeout(() => setToastMsg(''), 2000); }} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); reportPost(currentSnap.id); setToastMsg('신고가 접수되었어요'); setTimeout(() => setToastMsg(''), 2000); }} />
       {toastMsg !== '' && <View style={s.toast} pointerEvents="none"><Text style={s.toastText}>{toastMsg}</Text></View>}
       <SnapViewerModal
         visible={viewerListOpen}
@@ -1062,7 +1062,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -1837,6 +1837,7 @@ export default function PostDetailScreen() {
         onClose={() => setReportVisible(false)}
         onSubmit={() => {
           setReportVisible(false);
+          reportPost(record.id);
           setToastMsg('신고가 접수되었어요');
           setTimeout(() => setToastMsg(''), 2000);
         }}
