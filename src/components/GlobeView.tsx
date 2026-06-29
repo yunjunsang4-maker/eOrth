@@ -1085,7 +1085,7 @@ const neonGlobeHTML = `<!DOCTYPE html>
 <script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
 
 <script>
-var NEON_LAND = '#D4C2FF';            // 비방문 대륙(라벤더)
+var NEON_LAND = 'rgba(255,255,255,0.20)';  // 비방문(기본) 대륙 — 흰색 20%(유리: 본체색이 비침)
 var globeDefaultColor = '#BF85FC';     // 방문국 기본 활성화 색 (RN에서 덮어씀)
 var visitedMap = {};                   // nameEn -> { color }
 
@@ -1238,9 +1238,13 @@ var NEON_FS =
   ' float spec = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),7.0);' +
   ' col += vec3(1.0)*spec*0.08;' +
   ' vec4 t = texture2D(uLand, vUv);' +                          // 대륙은 지오메트리 uv → 표면과 함께 회전
-  ' float landA = t.a;' +
-  ' col = mix(col, t.rgb, landA * uLandOpacity * mix(0.82,1.0,diff));' +
-  ' col += cyan * landA * 0.03 * uGlow;' +
+  ' float landA = t.a;' +                                        // 0.20=유리(기본)육지, 1.0=방문국
+  ' float landMask = step(0.004, t.a);' +                        // 육지 픽셀 여부(불투명도와 별개의 커버리지)
+  ' vec3 landCol = t.rgb * mix(0.85, 1.0, diff);' +              // 빛에 따른 미세 음영(불투명도엔 영향 없음)
+  ' col = mix(col, landCol, landA * uLandOpacity);' +            // 기본육지=흰20% → 보라 본체(지구색)가 비쳐 유리처럼
+  ' col += cyan * landMask * 0.02 * uGlow;' +                    // 아주 옅은 가장자리 톤
+  ' float gloss = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),16.0);' + // 유리 광택(또렷한 반사 스폿)
+  ' col += vec3(1.0) * gloss * landMask * 0.25;' +              // 육지에 글로시 하이라이트
   ' float facing = max(N.z,0.0);' +
   ' float alpha = smoothstep(0.0, 0.02, facing);' +             // 실루엣 페더(부드러운 가장자리)
   ' gl_FragColor = vec4(col, alpha);' +
@@ -1253,7 +1257,7 @@ async function init(){
 
   var tex = buildNeonTexture();
   material = new THREE.ShaderMaterial({
-    uniforms: { uLand:{value:tex}, uLandOpacity:{value:0.9}, uGlow:{value:1.0} },
+    uniforms: { uLand:{value:tex}, uLandOpacity:{value:1.0}, uGlow:{value:1.0} },
     vertexShader: NEON_VS, fragmentShader: NEON_FS, transparent: true,
   });
   globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,128,128), material);
