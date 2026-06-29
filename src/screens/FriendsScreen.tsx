@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
   Pressable,
   Animated,
 } from 'react-native';
@@ -17,6 +16,7 @@ import { useDM } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
@@ -139,22 +139,11 @@ export default function FriendsScreen({ navigation }: Props) {
     if (!selectedFriendId) return;
     const friend = friends.find(f => f.id === selectedFriendId);
     if (!friend) return;
-    Alert.alert(
-      '차단 확인',
-      `${friend.name}님을 차단하시겠습니까? 차단하면 이 친구와의 대화 및 게시물이 숨겨집니다.`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '차단하기',
-          style: 'destructive',
-          onPress: () => {
-            blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle });
-            showToast(`${friend.name}님을 차단했습니다.`);
-            setSelectedFriendId(null);
-          }
-        }
-      ]
-    );
+    confirmBlock(friend.name, () => {
+      blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle });
+      showToast(`${friend.name}님을 차단했습니다.`);
+      setSelectedFriendId(null);
+    });
   };
 
   const selectedFriend = friends.find(f => f.id === selectedFriendId);

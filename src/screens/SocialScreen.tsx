@@ -36,7 +36,7 @@ import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
-import { handleBlock as blockUser, handleReport as openReport } from '../utils/reportAndBlock';
+import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 
@@ -545,7 +545,7 @@ function FeedCard({
                   style={s.menuItem}
                   onPress={() => {
                     onOpenMenu(null);
-                    blockUser(item.user.name, () => {
+                    confirmBlock(item.user.name, () => {
                       onBlock(item.user);
                       showMenuToast('차단되었어요');
                     });
@@ -1001,7 +1001,7 @@ function BlogCard({
                     style={s.menuItem}
                     onPress={() => {
                       onOpenMenu(null);
-                      blockUser(item.user.name, () => {
+                      confirmBlock(item.user.name, () => {
                         onBlock(item.user);
                         showMenuToast('차단되었어요');
                       });
@@ -1310,7 +1310,7 @@ function AlbumCard({
                   style={s.menuItem}
                   onPress={() => {
                     onOpenMenu(null);
-                    blockUser(item.user.name, () => {
+                    confirmBlock(item.user.name, () => {
                       onBlock(item.user);
                       showMenuToast('차단되었어요');
                     });
@@ -2169,7 +2169,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     showCounts={showCounts}
                     onArchive={handleArchive}
                     onDelete={handleDelete}
-                    onBlock={blockUser}
+                    onBlock={(user: { name: string; emoji: string; handle?: string }) => confirmBlock(user.name, () => { blockUser(user); showToast('차단되었어요'); })}
                     onReport={reportPost}
                     onQuickStart={handleQuickStart}
                     onQuickMove={handleQuickMove}
