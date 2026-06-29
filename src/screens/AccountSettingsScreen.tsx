@@ -335,6 +335,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           onPress={() => navigation.goBack()}
           style={styles.backBtn}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="뒤로 가기"
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>

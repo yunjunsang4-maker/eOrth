@@ -46,7 +46,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
     <SafeAreaView style={st.safeArea}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={st.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>차단한 사용자</Text>

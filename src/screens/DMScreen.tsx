@@ -594,7 +594,7 @@ export default function DMScreen({ navigation, route }: Props) {
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <TouchableOpacity

@@ -126,7 +126,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()}>
+        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>프로필 편집</Text>

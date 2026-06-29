@@ -217,7 +217,7 @@ export default function FriendProfileScreen({
     <View style={s.container}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
-        <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>@{displayUsername}</Text>

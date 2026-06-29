@@ -180,7 +180,7 @@ export default function FriendsScreen({ navigation }: Props) {
         onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
         style={st.header}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>친구</Text>

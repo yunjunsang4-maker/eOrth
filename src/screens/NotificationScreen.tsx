@@ -164,7 +164,7 @@ export default function NotificationScreen({ navigation }: Props) {
     <SafeAreaView style={st.safeArea}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>알림</Text>

@@ -183,7 +183,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>보관된 게시물</Text>
