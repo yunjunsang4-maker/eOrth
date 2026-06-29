@@ -259,7 +259,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={() => setCountryModalVisible(false)}
       >
-        <View style={st.modalOverlay}>
+        <View style={st.modalOverlay} accessibilityViewIsModal>
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>거주 국가</Text>
             <Text style={st.modalDesc}>국가 코드를 입력하세요 (예: KR, US, JP)</Text>

@@ -22,12 +22,12 @@ export default function ReportModal({ visible, onClose, onSubmit }: ReportModalP
       animationType="fade"
       onRequestClose={onClose}
     >
-      <View style={s.overlay}>
+      <View style={s.overlay} accessibilityViewIsModal>
         <View style={s.card}>
           {/* 헤더 */}
           <View style={s.header}>
             <Text style={s.title}>신고 사유를 선택해주세요</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="닫기">
               <Text style={s.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
