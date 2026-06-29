@@ -1225,16 +1225,16 @@ var NEON_FS =
   'uniform sampler2D uLand; uniform float uLandOpacity; uniform float uGlow;' +
   'void main(){' +
   ' vec3 N = normalize(vN);' +                                  // 뷰공간 법선 → 화면고정 조명/림
-  ' vec3 darkP = vec3(0.31,0.075,0.40);' +
-  ' vec3 purp  = vec3(0.58,0.18,0.67);' +
-  ' vec3 magenta = vec3(1.0,0.078,0.894);' +
   ' vec3 cyan  = vec3(0.0,0.847,0.953);' +
   ' vec3 L = normalize(vec3(-0.55,-0.5,0.78));' +               // 좌하단 광원
   ' float diff = clamp(dot(N,L),0.0,1.0);' +
-  ' float lit = smoothstep(0.0,1.0,diff);' +
-  ' vec3 body = mix(darkP, purp, lit);' +
-  ' body = mix(body, magenta, pow(lit,3.0)*0.05);' +
-  ' vec3 col = body * mix(0.94,1.0,diff);' +
+  // 배경(본체) 사양: #FF14E4 베이스 + 수직(상→하) 선형그라데이션 3겹(불투명도 70/40/20%)
+  ' float ty = clamp(0.5 - 0.5 * N.y, 0.0, 1.0);' +             // 0=상단, 1=하단
+  ' vec3 bg = vec3(1.0,0.078,0.894);' +                          // #FF14E4
+  ' bg = mix(bg, mix(vec3(0.114,0.035,0.188), vec3(0.459,0.098,0.682), ty), 0.70);' + // #1D0930→#7519AE @70%
+  ' bg = mix(bg, vec3(ty), 0.40 * mix(1.0,0.2,ty));' +           // #000000→흰색(α20%) @40%
+  ' bg = mix(bg, mix(vec3(0.0), vec3(0.463,0.102,0.678), ty), 0.20);' + // #000000→#761AAD @20%
+  ' vec3 col = bg * mix(0.96,1.0,diff);' +                       // 아주 옅은 입체 음영
   ' float spec = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),7.0);' +
   ' col += vec3(1.0)*spec*0.08;' +
   ' vec4 t = texture2D(uLand, vUv);' +                          // 대륙은 지오메트리 uv → 표면과 함께 회전
