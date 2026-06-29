@@ -534,7 +534,7 @@ function SnapViewerModal({
 }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={viewerS.root}>
+      <View style={viewerS.root} accessibilityViewIsModal>
         {/* 드래그바 */}
         <View style={viewerS.handle} />
         <Text style={viewerS.title}>이 스냅을 본 친구들</Text>
@@ -1017,7 +1017,7 @@ function SnapStoryViewer({
 
       {/* 메뉴 모달 */}
       <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={s.menuCard}>
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
               <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>링크 복사</Text>
@@ -1845,7 +1845,7 @@ export default function PostDetailScreen() {
 
       {/* ── 좋아요한 사람 목록 ── */}
       <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setLikersVisible(false)}>
-        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)}>
+        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)} accessibilityViewIsModal>
           <View style={s.likersSheet}>
             <View style={s.likersHandle} />
             <Text style={s.likersTitle}>좋아요 {likers.length}</Text>

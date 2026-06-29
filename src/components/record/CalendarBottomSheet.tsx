@@ -113,7 +113,7 @@ export function CalendarBottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={calS.overlay}>
+      <View style={calS.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />

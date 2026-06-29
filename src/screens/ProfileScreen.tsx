@@ -798,7 +798,7 @@ function PhotoViewerModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pvStyles.container}>
+      <View style={pvStyles.container} accessibilityViewIsModal>
         {/* 배경 탭으로 닫기 */}
         <TouchableOpacity
           style={StyleSheet.absoluteFillObject}

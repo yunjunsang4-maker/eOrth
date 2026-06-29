@@ -78,6 +78,7 @@ export function CurrencyPickerModal({
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, justifyContent: 'flex-end' }}
+        accessibilityViewIsModal
       >
         <TouchableOpacity
           style={StyleSheet.absoluteFillObject}

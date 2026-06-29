@@ -49,7 +49,7 @@ export function MediaPickerModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={mpStyles.root}>
+      <View style={mpStyles.root} accessibilityViewIsModal>
         {/* 헤더 */}
         <View style={mpStyles.header}>
           <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>

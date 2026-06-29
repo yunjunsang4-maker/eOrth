@@ -40,7 +40,7 @@ export default function AutoTocModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={styles.backdrop} accessibilityViewIsModal>
         <View style={styles.card}>
           <View style={styles.header}>
             <Text style={styles.title}>📋 AI가 목차를 만들었어요</Text>

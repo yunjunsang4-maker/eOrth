@@ -1548,7 +1548,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 국가 모달 */}
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        <SafeAreaView style={st.modalSafe}>
+        <SafeAreaView style={st.modalSafe} accessibilityViewIsModal>
           <View style={st.modalHeader}>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}><Text style={st.modalClose}>닫기</Text></TouchableOpacity>
             <Text style={st.modalTitle}>국가 선택</Text>
@@ -1578,7 +1578,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 임시저장 목록 모달 */}
       <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
-        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setDraftListVisible(false)}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setDraftListVisible(false)} accessibilityViewIsModal>
           <View style={st.draftListPanel} onStartShouldSetResponder={() => true}>
             <View style={st.panelHandle} />
             <Text style={st.panelTitle}>임시저장 목록</Text>
@@ -1914,7 +1914,7 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
 function PickerModal({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
         <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
           <Text style={st.pickerTitle}>{title}</Text>
           {children}
@@ -1977,7 +1977,7 @@ function PrivacyModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay}>
+      <View style={pm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
           {/* 핸들 */}
@@ -2121,7 +2121,7 @@ function RepPhotoModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={rpm.overlay}>
+      <View style={rpm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[rpm.sheet, { transform: [{ translateY }] }]}>
           {/* 핸들 */}

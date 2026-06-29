@@ -759,7 +759,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
       {/* 여행 기록 선택 모달 */}
       <Modal visible={recordPickerOpen} transparent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
-        <View style={st.pickerOverlay}>
+        <View style={st.pickerOverlay} accessibilityViewIsModal>
           <View style={st.pickerSheet}>
             <View style={st.pickerHeader}>
               <Text style={st.pickerTitle}>여행 기록 공유</Text>
@@ -803,7 +803,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
       {/* 이미지 전체화면 뷰어 */}
       <Modal visible={!!viewerUri} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setViewerUri(null)}>
-        <TouchableOpacity style={st.viewerOverlay} activeOpacity={1} onPress={() => setViewerUri(null)}>
+        <TouchableOpacity style={st.viewerOverlay} activeOpacity={1} onPress={() => setViewerUri(null)} accessibilityViewIsModal>
           {viewerUri && (
             <Image source={{ uri: viewerUri }} style={st.viewerImage} resizeMode="contain" />
           )}
@@ -815,7 +815,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
       {/* 메시지 롱프레스 메뉴 */}
       <Modal visible={!!menuMsg} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setMenuMsg(null)}>
-        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setMenuMsg(null)}>
+        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setMenuMsg(null)} accessibilityViewIsModal>
           <View style={st.sheet}>
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleReplyFromMenu}>
@@ -838,7 +838,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
       {/* 헤더 메뉴: 대화 비우기 / 나가기 */}
       <Modal visible={headerMenuOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setHeaderMenuOpen(false)}>
-        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)}>
+        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal>
           <View style={st.sheet}>
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleClearConversation}>

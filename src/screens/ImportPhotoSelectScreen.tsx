@@ -247,7 +247,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
 
       {/* 기록 카드 미리보기 + 썸네일 선택 */}
       <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
-        <View style={st.pvOverlay}>
+        <View style={st.pvOverlay} accessibilityViewIsModal>
           <View style={st.pvSheet}>
             <Text style={st.pvTitle}>기록 카드 미리보기</Text>
             <Text style={st.pvSub}>선택을 마치면 이 모습의 여행 기록 카드가 만들어져요.</Text>

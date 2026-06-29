@@ -50,7 +50,7 @@ export function PrivacyModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay}>
+      <View style={pm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
           {/* 핸들 */}

@@ -44,7 +44,7 @@ export function FriendPickerModal({
       onRequestClose={onClose}
       statusBarTranslucent
     >
-      <View style={fp.overlay}>
+      <View style={fp.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <View style={fp.sheet}>
           <View style={fp.handle} />

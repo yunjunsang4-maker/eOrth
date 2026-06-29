@@ -239,7 +239,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </KeyboardAvoidingView>
 
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        <View style={styles.modalRoot}>
+        <View style={styles.modalRoot} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>거주국가 선택</Text>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}>

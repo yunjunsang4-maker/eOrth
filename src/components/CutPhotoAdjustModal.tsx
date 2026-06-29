@@ -172,7 +172,7 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={s.overlay}>
+        <View style={s.overlay} accessibilityViewIsModal>
           <Text style={s.title}>사진 위치 조정</Text>
           <GestureDetector gesture={composed}>
             <View style={[s.frame, { width: frameW, height: frameH }]}>

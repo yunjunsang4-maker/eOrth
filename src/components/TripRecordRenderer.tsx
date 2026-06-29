@@ -180,7 +180,7 @@ function AlbumView({ record }: { record: TravelRecord }) {
 
       {/* 라이트박스 */}
       <Modal visible={lightboxIdx !== null} transparent animationType="fade">
-        <View style={styles.lightboxOverlay}>
+        <View style={styles.lightboxOverlay} accessibilityViewIsModal>
           <TouchableOpacity style={styles.lightboxClose} onPress={() => setLightboxIdx(null)}>
             <Text style={styles.lightboxCloseText}>✕</Text>
           </TouchableOpacity>

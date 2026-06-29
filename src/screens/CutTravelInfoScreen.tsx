@@ -136,7 +136,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={cal.overlay}>
+      <View style={cal.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <View style={cal.sheet}>
           <View style={cal.handle} />
@@ -209,7 +209,7 @@ function PrivacyModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay}>
+      <View style={pm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
           <View style={pm.handle} />
@@ -774,7 +774,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
       {/* 앱 친구 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
-        <View style={fp.overlay}>
+        <View style={fp.overlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
           <View style={fp.sheet}>
             <View style={fp.handle} />

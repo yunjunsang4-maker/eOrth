@@ -35,7 +35,7 @@ export default function SponsoredPackageCard({ pkg, onClose }: Props) {
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={st.overlay} onPress={onClose}>
+      <Pressable style={st.overlay} onPress={onClose} accessibilityViewIsModal>
         {/* 카드 내부 탭은 닫힘 방지 */}
         <Pressable style={st.card} onPress={() => {}}>
           {/* 닫기 */}

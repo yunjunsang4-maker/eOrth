@@ -586,7 +586,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
       {/* QR 스캔 모달 */}
       <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
-        <View style={s.scanRoot}>
+        <View style={s.scanRoot} accessibilityViewIsModal>
           <CameraView
             style={StyleSheet.absoluteFill}
             facing="back"
