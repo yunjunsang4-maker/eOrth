@@ -73,7 +73,8 @@
       "expo-background-task",
       "./modules/photo-vision/withMlkitVisionDependencies",
       "expo-video",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store"
     ],
     "extra": {
       "eas": {

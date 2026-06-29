@@ -10,8 +10,8 @@
 
 import 'react-native-url-polyfill/auto';
 import { AppState } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseSecureStorage } from './secureStorage';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -21,7 +21,9 @@ export const isSupabaseConfigured = !!(url && anonKey);
 export const supabase: SupabaseClient | null = isSupabaseConfigured
   ? createClient(url!, anonKey!, {
       auth: {
-        storage: AsyncStorage,
+        // 세션(토큰)을 OS 보안 저장소(Keychain/Keystore)에 암호화 저장.
+        // 네이티브 모듈 재빌드 전에는 내부적으로 AsyncStorage로 폴백한다.
+        storage: SupabaseSecureStorage,
         autoRefreshToken: true,
         persistSession: true,
         detectSessionInUrl: false, // RN에는 브라우저 URL이 없음
