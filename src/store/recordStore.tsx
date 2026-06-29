@@ -6,6 +6,7 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed } from '../services/posts';
+import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
   unfollowUser as apiUnfollow,
@@ -314,6 +315,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setRecords((prev) => [newRecord, ...prev]);
     linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
     publishToBackend(newRecord); // Supabase 발행(설정 시)
+    // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
+    // 로컬 URI만 교체하며 백엔드 동기화는 건드리지 않는다(백엔드엔 publishToBackend가 이미 업로드).
+    persistRecordPhotos(newRecord)
+      .then((changes) => {
+        if (Object.keys(changes).length === 0) return;
+        setRecords((prev) => prev.map((r) => (r.id === newRecord.id ? { ...r, ...changes } : r)));
+      })
+      .catch(() => {});
   };
 
   // 백엔드 동기화 실패 알림 — 로컬은 이미 반영됐고 서버 반영만 실패한 경우.
