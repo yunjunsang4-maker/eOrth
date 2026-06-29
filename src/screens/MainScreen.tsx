@@ -236,7 +236,7 @@ type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord
 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { records } = useRecords();
+  const { records, tripGroups } = useRecords();
 
   // ── 튜토리얼(코치마크) ──
   // 측정 대상: 지구본(WebView) / 모드 토글 / 지구본 설정 버튼 / 스냅 버튼 / FAB. measureInWindow를 쓰므로 any로 둔다.
@@ -668,6 +668,38 @@ export default function MainScreen({ navigation, route }: Props) {
     });
   };
 
+  // 국가 시트에서 여행 기록 탭 → 그 기록이 속한 '여행 기록 카드'(TripDetail)로 이동.
+  // ProfileScreen의 여행 카드(mappedThumbnails)와 동일한 파라미터를 만들어, 어디서 열든 같은 카드가 뜨게 한다.
+  // TripDetail은 trip.id로 라이브 그룹을 다시 찾으므로 id(group.id)만 맞으면 기록·제목·기간이 실측된다.
+  // 그룹이 없는 예외 기록(국가/날짜 없음)만 기존처럼 기록 상세(PostDetail)로 폴백.
+  const openTripCardForRecord = (rec: TravelRecord) => {
+    closeCountrySheet();
+    const group = tripGroups.find((g) => g.records.includes(rec.id));
+    if (!group) {
+      navigation.navigate('PostDetail', { postId: rec.id });
+      return;
+    }
+    const groupRecords = group.records
+      .map((id) => records.find((r) => r.id === id))
+      .filter(Boolean) as TravelRecord[];
+    const firstRec = groupRecords[0] ?? rec;
+    const flag = firstRec.countryFlag || '';
+    const title = flag && group.title.startsWith(flag) ? group.title.slice(flag.length).trim() : group.title;
+    navigation.navigate('TripDetail', {
+      trip: {
+        id: group.id,
+        emoji: firstRec.user?.emoji || '🗼',
+        title,
+        country: firstRec.countryName || rec.countryName || '',
+        countryFlag: firstRec.countryFlag || '',
+        date: firstRec.date ? firstRec.date.slice(0, 7) : (rec.date ? rec.date.slice(0, 7) : ''),
+        // ProfileScreen mappedThumbnails와 동일: 자동 그룹 id는 그라데이션 키가 아니므로 기본값
+        color: 'trip-japan',
+        records: groupRecords.map((r) => ({ id: r.id, viewType: r.viewType || 'feed' })),
+      },
+    });
+  };
+
   const handleGlobeMessage = (e: any) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
@@ -1060,7 +1092,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 key={rec.id}
                 style={styles.countryRecordCard}
                 activeOpacity={0.7}
-                onPress={() => { closeCountrySheet(); navigation.navigate('PostDetail', { postId: rec.id }); }}
+                onPress={() => openTripCardForRecord(rec)}
               >
                 <View style={styles.countryRecordRow}>
                   <Text style={styles.countryRecordDate}>{rec.date}</Text>
