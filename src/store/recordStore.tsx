@@ -157,6 +157,10 @@ export interface PostComment {
 const INITIAL_FOLLOWING: FollowedFriend[] = [];
 const INITIAL_COMMENTS: Record<string, PostComment[]> = {};
 
+// 게시물 총 댓글 수(최상위 + 답글) — record.comments(표시용 숫자)를 commentsByPost와 동기화할 때 사용
+const countTotalComments = (list?: PostComment[]) =>
+  (list ?? []).reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
+
 interface RecordContextType {
   records: TravelRecord[];
   addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => void;
@@ -173,6 +177,10 @@ interface RecordContextType {
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
   reportedPostIds: string[];
   reportPost: (id: string) => void;
+  // 음소거한 사용자 handle — 영속(알림 백엔드 도입 시 알림 억제에 사용)
+  mutedHandles: string[];
+  toggleMute: (handle: string) => void;
+  isMuted: (handle: string) => boolean;
   followingUsers: FollowedFriend[];
   followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
   unfollowUser: (idOrUsername: string) => void;
@@ -221,6 +229,7 @@ interface RecordPersistPayload {
   followingUsers?: FollowedFriend[];
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
+  mutedHandles?: string[];
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
@@ -233,6 +242,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
+  const [mutedHandles, setMutedHandles] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
 
@@ -247,9 +257,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setFollowingUsers(p.followingUsers ?? INITIAL_FOLLOWING);
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
+      setMutedHandles(p.mutedHandles ?? []);
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -506,6 +517,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setReportedPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
   };
 
+  // 사용자 알림 음소거 토글/조회 (handle 기준, 영속)
+  const toggleMute = (handle: string) => {
+    if (!handle) return;
+    setMutedHandles((prev) => (prev.includes(handle) ? prev.filter((h) => h !== handle) : [...prev, handle]));
+  };
+  const isMuted = useCallback((handle: string) => mutedHandles.includes(handle), [mutedHandles]);
+
   // 신원은 id 기준 — 핸들(username)이 빈 유저끼리 같은 사람으로 오판되지 않도록 한다.
   // (빈 username은 매칭 키로 쓰지 않음)
   const sameFollowed = (f: FollowedFriend, key: string) =>
@@ -696,6 +714,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFollowingUsers(INITIAL_FOLLOWING);
     setCommentsByPost(INITIAL_COMMENTS);
     setReportedPostIds([]);
+    setMutedHandles([]);
     setCurrentViewer(null);
     setFeedPosts([]);
   };
@@ -745,13 +764,47 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
   }, [hydrated, records]);
 
+  // record.comments(표시용 숫자)를 commentsByPost(실제 댓글)와 동기화 — 단일 출처 유지.
+  // 로드되지 않은 글(백엔드 카운트만 있는 경우)은 건드리지 않는다.
+  useEffect(() => {
+    const sync = (list: TravelRecord[]) => {
+      let changed = false;
+      const next = list.map((r) => {
+        if (commentsByPost[r.id] === undefined) return r;
+        const cnt = countTotalComments(commentsByPost[r.id]);
+        if (r.comments === cnt) return r;
+        changed = true;
+        return { ...r, comments: cnt };
+      });
+      return changed ? next : list;
+    };
+    setRecords((prev) => sync(prev));
+    setFeedPosts((prev) => sync(prev));
+  }, [commentsByPost]);
+
+  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 닉네임/사진 변경 시 과거 글도 최신값으로.
+  useEffect(() => {
+    if (!hydrated) return;
+    const photo = profilePhoto || undefined;
+    setRecords((prev) => {
+      let changed = false;
+      const next = prev.map((r) => {
+        if (!r.isMyPost) return r;
+        if (r.user.name === nickname && r.user.handle === handle && r.user.photo === photo) return r;
+        changed = true;
+        return { ...r, user: { ...r.user, name: nickname, handle, photo } };
+      });
+      return changed ? next : prev;
+    });
+  }, [hydrated, nickname, handle, profilePhoto]);
+
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
       {children}
     </RecordContext.Provider>
   );

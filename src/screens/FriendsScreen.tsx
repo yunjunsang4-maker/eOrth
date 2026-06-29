@@ -69,7 +69,7 @@ function lastMessagePreview(m: Message): string {
 type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
-  const { blockUser, followingUsers, isBlocked } = useRecords();
+  const { blockUser, followingUsers, isBlocked, toggleMute, isMuted } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
   const [search, setSearch] = useState('');
@@ -115,14 +115,11 @@ export default function FriendsScreen({ navigation }: Props) {
 
   const handleToggleMute = () => {
     if (!selectedFriendId) return;
-    setFriends(prev => prev.map(f => {
-      if (f.id === selectedFriendId) {
-        const newMute = !f.isMuted;
-        showToast(newMute ? `${f.name}님의 알림을 껐습니다.` : `${f.name}님의 알림을 켰습니다.`);
-        return { ...f, isMuted: newMute };
-      }
-      return f;
-    }));
+    const friend = friends.find(f => f.id === selectedFriendId);
+    if (!friend) return;
+    const willMute = !isMuted(friend.handle);
+    toggleMute(friend.handle); // store에 영속 저장
+    showToast(willMute ? `${friend.name}님의 알림을 껐습니다.` : `${friend.name}님의 알림을 켰습니다.`);
     setSelectedFriendId(null);
   };
 
@@ -172,6 +169,7 @@ export default function FriendsScreen({ navigation }: Props) {
       lastMessage: last ? lastMessagePreview(last) : (hasConvo ? '메시지 없음' : f.lastMessage),
       lastMessageAt: last?.createdAt ?? (hasConvo ? 0 : f.lastMessageAt),
       unread: unreadCount(f.handle),
+      isMuted: isMuted(f.handle), // 음소거는 store(mutedHandles)에서 — 재진입·재시작에도 유지
     };
   });
 

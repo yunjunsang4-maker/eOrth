@@ -113,7 +113,7 @@ export default function FriendProfileScreen({
   };
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
-  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser } = useRecords();
+  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   const followId = userId ?? profileRow?.id ?? displayUsername;
   const followEntry = followingUsers.find((f) => f.id === followId || (!!f.username && f.username === displayUsername));
@@ -133,7 +133,9 @@ export default function FriendProfileScreen({
     }
   };
   const [menuVisible, setMenuVisible] = useState(false);
-  const [notifMuted, setNotifMuted] = useState(false);
+  // 음소거는 store(mutedHandles)에 영속 — handle 기준(차단과 동일 신원 키)
+  const muteKey = profileRow?.handle ?? route.params?.handle ?? displayUsername;
+  const notifMuted = isMuted(muteKey);
   const [reportVisible, setReportVisible] = useState(false);
   const [toastMsg, setToastMsg] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
@@ -164,7 +166,7 @@ export default function FriendProfileScreen({
   const handleToggleNotif = () => {
     setMenuVisible(false);
     if (notifMuted) {
-      setNotifMuted(false);
+      toggleMute(muteKey);
       showToast('알림을 켰어요');
     } else {
       Alert.alert(
@@ -175,7 +177,7 @@ export default function FriendProfileScreen({
           {
             text: '끄기',
             onPress: () => {
-              setNotifMuted(true);
+              toggleMute(muteKey);
               showToast('알림을 껐어요');
             },
           },
