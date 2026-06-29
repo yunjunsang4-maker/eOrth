@@ -417,7 +417,7 @@ function BadgeListModal({
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <View style={blStyles.root}>
+      <View style={blStyles.root} accessibilityViewIsModal>
         {/* 핸들 바 */}
         <View style={blStyles.handle} />
         
@@ -550,6 +550,7 @@ function BadgeListModal({
         >
           <TouchableOpacity
             style={blStyles.zoomBackdrop}
+            accessibilityViewIsModal
             activeOpacity={1}
             onPress={() => setEnlargedBadge(null)}
           >

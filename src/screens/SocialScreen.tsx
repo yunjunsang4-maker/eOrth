@@ -144,7 +144,7 @@ function ShareBottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
           if (!prepareVisible && !friendPickerVisible) onClose();
         }} />
@@ -2222,7 +2222,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
       <Modal visible={!!otherPickerItem} transparent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
           <View style={ss.sheet}>
             <View style={ss.handle} />

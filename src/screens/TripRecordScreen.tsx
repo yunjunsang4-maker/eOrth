@@ -159,7 +159,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
       {/* ⋯ 팝업 메뉴 */}
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+        <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={styles.menuSheet}>
             <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>삭제하기</Text></View>

@@ -566,7 +566,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
       {/* ── 여행 합치기 모달 ── */}
       <Modal visible={mergeVisible} transparent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
-        <View style={styles.mgOverlay}>
+        <View style={styles.mgOverlay} accessibilityViewIsModal>
           <View style={styles.mgSheet}>
             <Text style={styles.mgTitle}>여행 합치기</Text>
             <Text style={styles.mgSub}>

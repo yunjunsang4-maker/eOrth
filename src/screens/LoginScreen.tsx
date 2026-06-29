@@ -511,7 +511,7 @@ export default function LoginScreen({ navigation }: Props) {
         animationType="fade"
         onRequestClose={() => setForgotPasswordVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>

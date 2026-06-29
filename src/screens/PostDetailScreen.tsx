@@ -1764,6 +1764,7 @@ export default function PostDetailScreen() {
       >
         <TouchableOpacity
           style={s.menuOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
@@ -1885,7 +1886,7 @@ export default function PostDetailScreen() {
       {/* ── 풀스크린 이미지 뷰어 ── */}
       {fullImgVisible && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setFullImgVisible(false)} statusBarTranslucent>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
             <ScrollView
               horizontal
               pagingEnabled

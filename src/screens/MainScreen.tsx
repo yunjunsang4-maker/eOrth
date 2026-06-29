@@ -1119,6 +1119,7 @@ export default function MainScreen({ navigation, route }: Props) {
             { transform: [{ translateY: countrySheetAnim }] },
           ]}
           pointerEvents="auto"
+          accessibilityViewIsModal
         >
           <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
         {/* 핸들 */}

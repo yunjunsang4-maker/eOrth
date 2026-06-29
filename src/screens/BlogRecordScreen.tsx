@@ -1264,7 +1264,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 여행정보 패널 */}
       <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} accessibilityViewIsModal>
         <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setTravelInfoVisible(false)}>
           <View style={st.travelPanel} onStartShouldSetResponder={() => true}>
             <View style={st.panelHandle} />

@@ -207,6 +207,7 @@ export default function TripGroupScreen() {
       >
         <TouchableOpacity
           style={st.menuOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
@@ -236,6 +237,7 @@ export default function TripGroupScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1, justifyContent: 'flex-end' }}
+          accessibilityViewIsModal
         >
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}

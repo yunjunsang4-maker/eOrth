@@ -443,6 +443,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         <KeyboardAvoidingView
           style={st.pvOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          accessibilityViewIsModal
         >
           <View style={st.pvSheet}>
             <Text style={st.pvTitle}>여행기록카드 미리보기</Text>
