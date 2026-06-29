@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -7,6 +7,8 @@ import {
   StyleSheet,
   TouchableOpacity,  Alert,
   Switch,
+  Modal,
+  TextInput,
 } from 'react-native';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -100,6 +102,16 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
 
+  // 거주 국가 코드 입력 모달 — Alert.prompt는 iOS 전용이라 양 플랫폼 공용 모달로 처리
+  const [countryModalVisible, setCountryModalVisible] = useState(false);
+  const [countryDraft, setCountryDraft] = useState('');
+  const openCountryModal = () => { setCountryDraft(homeCountryCode); setCountryModalVisible(true); };
+  const submitCountry = () => {
+    const v = countryDraft.trim().toUpperCase();
+    if (v) setHomeCountryCode(v);
+    setCountryModalVisible(false);
+  };
+
   const handleResetData = () => {
     Alert.alert(
       '데이터 초기화',
@@ -177,24 +189,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               icon: <InfoIcon size={22} />,
               label: '거주 국가',
               value: homeCountryCode,
-              onPress: () =>
-                Alert.prompt(
-                  '거주 국가',
-                  '국가 코드를 입력하세요 (예: KR, US, JP)',
-                  [
-                    { text: '취소', style: 'cancel' },
-                    {
-                      text: '확인',
-                      onPress: (val: string | undefined) => {
-                        if (val && val.trim().length > 0) {
-                          setHomeCountryCode(val.trim().toUpperCase());
-                        }
-                      },
-                    },
-                  ],
-                  'plain-text',
-                  homeCountryCode,
-                ),
+              onPress: openCountryModal,
             },
           ]}
         />
@@ -256,6 +251,39 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
         <Text style={st.versionText}>eOrth · v1.0.0 · © 2025</Text>
       </ScrollView>
+
+      {/* 거주 국가 입력 모달 (iOS/Android 공용) */}
+      <Modal
+        visible={countryModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCountryModalVisible(false)}
+      >
+        <View style={st.modalOverlay}>
+          <View style={st.modalCard}>
+            <Text style={st.modalTitle}>거주 국가</Text>
+            <Text style={st.modalDesc}>국가 코드를 입력하세요 (예: KR, US, JP)</Text>
+            <TextInput
+              style={st.modalInput}
+              value={countryDraft}
+              onChangeText={setCountryDraft}
+              placeholder="KR"
+              placeholderTextColor={COLORS.textMuted}
+              autoCapitalize="characters"
+              autoCorrect={false}
+              maxLength={3}
+            />
+            <View style={st.modalBtnRow}>
+              <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel]} activeOpacity={0.7} onPress={() => setCountryModalVisible(false)}>
+                <Text style={st.modalBtnCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[st.modalBtn, st.modalBtnSubmit]} activeOpacity={0.7} onPress={submitCountry}>
+                <Text style={st.modalBtnSubmitText}>확인</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -402,4 +430,41 @@ const st = StyleSheet.create({
     textAlign: 'center',
     marginTop: 20,
   },
+
+  // 거주 국가 입력 모달
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,10,15,0.85)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: COLORS.purpleBorder,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', color: COLORS.white, marginBottom: 6 },
+  modalDesc: { fontSize: 12, color: COLORS.textDim, marginBottom: 16 },
+  modalInput: {
+    backgroundColor: COLORS.bg,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    color: COLORS.white,
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  modalBtnRow: { flexDirection: 'row', gap: 12 },
+  modalBtn: { flex: 1, height: 46, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  modalBtnCancel: { backgroundColor: 'transparent', borderWidth: 1, borderColor: COLORS.divider },
+  modalBtnSubmit: { backgroundColor: COLORS.purpleNeon },
+  modalBtnCancelText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },
+  modalBtnSubmitText: { color: COLORS.bg, fontSize: 14, fontWeight: '600' },
 });

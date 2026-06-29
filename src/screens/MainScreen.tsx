@@ -21,6 +21,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { imageToDataUri } from '../utils/imageCompress';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { EorthLogo } from '../components/EorthLogo';
@@ -433,7 +434,7 @@ export default function MainScreen({ navigation, route }: Props) {
   // 갤러리에서 사진 가져오기 → 표시 모드를 사진으로 전환
   const handlePickGlobePhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
+    if (!perm.granted) { showPermissionDeniedAlert('갤러리'); return; }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!res.canceled) {
       setGlobeDisplayMode('photo');

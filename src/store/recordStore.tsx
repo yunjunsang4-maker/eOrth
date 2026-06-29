@@ -161,6 +161,14 @@ const INITIAL_COMMENTS: Record<string, PostComment[]> = {};
 const countTotalComments = (list?: PostComment[]) =>
   (list ?? []).reduce((n, c) => n + 1 + (c.replies?.length ?? 0), 0);
 
+// 네트워크 요청 타임아웃 래퍼 — 연결이 끊기지 않고 'hang'하면 스피너가 무한 대기하는 것을 방지
+function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error('timeout')), ms)),
+  ]);
+}
+
 interface RecordContextType {
   records: TravelRecord[];
   addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => void;
@@ -722,9 +730,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 백엔드 피드 새로고침 (남들의 공개/친구 글 + 내 좋아요 표시)
   const refreshFeed = useCallback(async () => {
     if (!isSupabaseConfigured) return;
-    const [posts, likedIds] = await Promise.all([fetchFeed(), fetchMyLikedPostIds()]);
-    const likedSet = new Set(likedIds);
-    setFeedPosts(posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) })));
+    try {
+      // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
+      const [posts, likedIds] = await withTimeout(Promise.all([fetchFeed(), fetchMyLikedPostIds()]), 12000);
+      const likedSet = new Set(likedIds);
+      setFeedPosts(posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) })));
+    } catch {
+      // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
+      emitToast('피드를 불러오지 못했어요. 네트워크를 확인해 주세요.');
+    }
   }, []);
 
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
