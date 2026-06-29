@@ -27,7 +27,7 @@ export default function SponsoredPackageCard({ pkg, onClose }: Props) {
   const openLink = async () => {
     try {
       await Linking.openURL(pkg.affiliateUrl);
-    } catch (e) {
+    } catch {
       // 링크 열기 실패는 조용히 무시 (사용자 흐름 방해 X)
     }
     onClose();

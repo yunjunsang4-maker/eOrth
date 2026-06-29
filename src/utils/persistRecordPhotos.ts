@@ -17,7 +17,7 @@ function isLocalFileUri(uri?: string): uri is string {
 }
 
 export async function persistRecordPhotos(rec: TravelRecord): Promise<Partial<TravelRecord>> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+   
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
   const base = FileSystem.documentDirectory;
   if (!base) return {};

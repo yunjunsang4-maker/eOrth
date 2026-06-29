@@ -6,12 +6,10 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
   Image,
-  Alert,
   Modal,
   FlatList,
 } from 'react-native';
@@ -24,8 +22,6 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
 import { PersonIcon, PencilIcon } from '../components/icons';
 import { COUNTRIES, type Country } from '../constants/countries';
-
-const { width } = Dimensions.get('window');
 
 const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
 

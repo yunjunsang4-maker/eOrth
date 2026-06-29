@@ -67,7 +67,7 @@ import {
   TEXT_COLORS, BG_COLORS,
   FONT_OPTIONS, FONT_SIZE_OPTIONS, TextAlign, SeparatorStyle,
   ImageLayout, HeadingLevel,
-  genBlockId, createTextBlock, createHeadingBlock, createImageBlock,
+  createTextBlock, createHeadingBlock, createImageBlock,
   createImagesBlock, createVideoBlock, createSeparatorBlock, createQuoteBlock,
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
@@ -398,7 +398,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     if (currencyTouchedRef.current) return;
     const cur = currencyForCountryName(selectedCountry?.name);
     if (cur) setCurrency(cur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [selectedCountry?.name]);
 
   // 위치(국가·도시) 자동 채움 — 신규 작성이고 지정 국가 없이 들어왔을 때, 현재 위치로 1회 프리필

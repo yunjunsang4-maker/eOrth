@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
+import { View, Text, StyleSheet, Animated, Image } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography } from '../constants';
 import { useRecords } from '../store/recordStore';
@@ -10,8 +10,6 @@ import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '..
 import { isSupabaseConfigured } from '../services/supabase';
 import { getCurrentSession } from '../services/auth';
 import type { RootStackScreenProps } from '../navigation/types';
-
-const { width, height } = Dimensions.get('window');
 
 type Props = RootStackScreenProps<'Splash'>;
 

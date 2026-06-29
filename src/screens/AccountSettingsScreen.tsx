@@ -104,7 +104,7 @@ const CardRow = ({
 );
 
 export default function AccountSettingsScreen({ navigation }: Props) {
-  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender } = useSettings();
+  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender, accountPublic, setAccountPublic } = useSettings();
   const [googleLinked, setGoogleLinked] = useState(signUpMethod === 'google');
 
   // 생일 편집 모달 상태
@@ -140,7 +140,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setIsGenderModalVisible(false);
   };
   const [appleLinked, setAppleLinked] = useState(signUpMethod === 'apple');
-  const [isPublic, setIsPublic] = useState(true);
+  // 계정 공개 여부는 settingsStore에 영속 저장 (화면 재진입 시 유지)
+  const isPublic = accountPublic;
 
   const handlePublicToggle = (newValue: boolean) => {
     const title = newValue ? '계정 공개 전환' : '계정 비공개 전환';
@@ -153,7 +154,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       message,
       [
         { text: '취소', style: 'cancel' },
-        { text: '전환', onPress: () => setIsPublic(newValue) }
+        { text: '전환', onPress: () => setAccountPublic(newValue) }
       ]
     );
   };

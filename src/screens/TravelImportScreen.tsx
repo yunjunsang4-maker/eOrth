@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   ScrollView,
   Animated,
   ActivityIndicator,
@@ -17,12 +16,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PrimaryButton } from '../components/ui';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 import type { RootStackScreenProps } from '../navigation/types';
-
-const { width } = Dimensions.get('window');
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
 // maxAssets는 안전 상한: 스캔이 최신순(DESC)이라 도달 시 "오래된 사진부터" 잘림(과거 여행 앞부분 누락).

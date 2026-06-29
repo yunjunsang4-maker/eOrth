@@ -143,7 +143,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       const capW = aspect >= 1 ? REP_TARGET : Math.round(REP_TARGET * aspect);
       const capH = aspect >= 1 ? Math.round(REP_TARGET / aspect) : REP_TARGET;
       previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.95, width: capW, height: capH });
-    } catch (e) {
+    } catch {
       Alert.alert('오류', '미리보기 생성에 실패했어요.');
       return;
     }

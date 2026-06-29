@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Dimensions,
   Pressable,
   Animated,
 } from 'react-native';
@@ -135,8 +134,6 @@ function PressCard({
     </Pressable>
   );
 }
-
-const { width } = Dimensions.get('window');
 
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 

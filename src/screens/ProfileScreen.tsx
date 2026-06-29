@@ -16,7 +16,6 @@ import {
   PanResponder,
   Dimensions,
   Linking,
-  Vibration,
   LayoutAnimation,
   UIManager,
 } from 'react-native';
@@ -30,7 +29,6 @@ import {
   FloatingBlobs,
   LiquidPressable,
   LiquidCardGlow,
-  useEntranceAnimation,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
@@ -1786,6 +1784,14 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <Text style={styles.sectionTitle}>Travel archive</Text>
         </View>
         <Text style={styles.archiveSubtitle}>여행 기록 카드 수 : {displayTrips.length}</Text>
+
+        {displayTrips.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 36, gap: 6 }}>
+            <Text style={{ fontSize: 40 }}>🗺️</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>아직 여행 기록이 없어요</Text>
+            <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center' }}>지구본에서 나라를 눌러 첫 기록을 남겨보세요</Text>
+          </View>
+        )}
 
         {displayTrips.length > 0 && (
           <DraggableCardWrapper

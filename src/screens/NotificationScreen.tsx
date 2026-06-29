@@ -53,7 +53,6 @@ const MIN = 60_000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const NOTI_MAX_AGE = 7 * DAY;
-const ago = (ms: number) => Date.now() - ms;
 
 // 상대 시간 표시
 function fmtAgo(ts: number): string {
@@ -65,8 +64,9 @@ function fmtAgo(ts: number): string {
   return `${Math.floor(d / DAY)}일 전`;
 }
 
-// 알림은 실제 활동으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
-const NOTIS: Noti[] = [];
+// 알림은 실제 활동으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거).
+// 좋아요·댓글·팔로우는 상대 사용자(백엔드)가 있어야 발생하므로 더미를 넣지 않는다.
+// 단, '추억 리마인드(N년 전 오늘)'는 내 기록만으로 만들 수 있어 컴포넌트에서 계산한다(memoryNotis).
 
 export default function NotificationScreen({ navigation }: Props) {
   const { records } = useRecords();
@@ -94,10 +94,43 @@ export default function NotificationScreen({ navigation }: Props) {
   const vol = `VOL.${today.getMonth() + 1}-${Math.ceil(today.getDate() / 7)}`;
   const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
 
+  // '추억 리마인드' — 내 기록 중 오늘과 같은 월·일(과거 연도)인 여행을 'N년 전 오늘' 알림으로 만든다.
+  // 상대방이 필요한 좋아요·댓글·팔로우와 달리 내 데이터만으로 생성 가능.
+  const memoryNotis = useMemo<Noti[]>(() => {
+    const today = new Date();
+    const mm = today.getMonth();
+    const dd = today.getDate();
+    const todayStart = new Date(today.getFullYear(), mm, dd).getTime();
+    const out: Noti[] = [];
+    records
+      .filter((r) => r.isMyPost !== false)
+      .forEach((r) => {
+        const ds = r.date || r.startDate;
+        if (!ds) return;
+        const [y, m, d] = ds.split('.').map((s) => parseInt(s, 10));
+        if (!y || !m || !d) return;
+        if (m - 1 !== mm || d !== dd) return; // 오늘과 같은 월·일만
+        const yearsAgo = today.getFullYear() - y;
+        if (yearsAgo <= 0) return; // 과거 연도만
+        const place = r.countryName || r.countries?.[0]?.name || '여행';
+        out.push({
+          id: `mem-${r.id}`,
+          category: 'memory',
+          emoji: r.countryFlag || '📸',
+          avbg: 'rgba(107,33,168,0.35)',
+          text: `${yearsAgo}년 전 오늘, ${place} 여행을 기록했어요`,
+          read: false,
+          createdAt: todayStart,
+          postId: r.id,
+        });
+      });
+    return out;
+  }, [records]);
+
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
-    const fresh = NOTIS.filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
+    const fresh = memoryNotis.filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
     fresh.forEach((n) => {
       if (!map.has(n.category)) map.set(n.category, []);
@@ -109,7 +142,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, []);
+  }, [memoryNotis]);
 
   const Avatar = ({ emoji, bg, size = 28 }: { emoji: string; bg: string; size?: number }) => (
     <View style={[st.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>

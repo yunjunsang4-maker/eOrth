@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -16,15 +16,8 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
-
-if (Platform.OS === 'android') {
-  if (UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-  }
-}
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import Svg, { Path } from 'react-native-svg';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
@@ -36,15 +29,10 @@ import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
-// AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
-export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
-  CompassIcon as DesignerCompassIcon,
-  MapIcon as DesignerMapIcon,
-  FlagIcon as DesignerFlagIcon,
   SearchIcon as SvgSearchIcon,
   CalendarIcon as SvgCalendarIcon,
   GalleryIcon as SvgGalleryIcon,
@@ -68,6 +56,14 @@ import {
   PartlyCloudyIcon as SvgPartlyCloudyIcon,
   WindIcon as SvgWindIcon,
 } from '../components/icons';
+
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+// AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
+export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 

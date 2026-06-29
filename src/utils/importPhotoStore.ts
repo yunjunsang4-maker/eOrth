@@ -27,7 +27,6 @@ export function coverCropRect(
   const frameW = aspect;
   const frameH = 1;
   const rW = imgAspect >= aspect ? frameH * imgAspect : frameW;
-  const rH = imgAspect >= aspect ? frameH : frameW / imgAspect;
   const pxPerUnit = imgW / (rW * t.scale); // 렌더 단위 → 이미지 픽셀 (== imgH / (rH * t.scale))
   const cropW = Math.min(imgW, frameW * pxPerUnit);
   const cropH = Math.min(imgH, frameH * pxPerUnit);
@@ -54,9 +53,9 @@ export async function bakeCoverCrop(
   tripId: string
 ): Promise<string | null> {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const ImageManipulator = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
+     
     const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
 
     // 변형 없이 한 번 호출해 실제 픽셀 크기 측정
@@ -91,9 +90,9 @@ export async function bakeCoverCrop(
  * - 실패한 장은 건너뛰고 성공한 복사본 URI만 반환.
  */
 export async function copyTripOriginals(tripId: string, items: PhotoRef[]): Promise<string[]> {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+   
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
+   
   const MediaLibrary = require('expo-media-library') as typeof import('expo-media-library');
 
   const base = FileSystem.documentDirectory;
@@ -117,7 +116,7 @@ export async function copyTripOriginals(tripId: string, items: PhotoRef[]): Prom
       const to = tripPhotoPath(base, tripId, out.length);
       await FileSystem.copyAsync({ from, to });
       out.push(to);
-    } catch (e) {
+    } catch {
       // 이 장은 건너뜀
     }
   }

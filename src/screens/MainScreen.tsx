@@ -1184,7 +1184,7 @@ export default function MainScreen({ navigation, route }: Props) {
           activeOpacity={1}
           onPress={() => setFormatModalVisible(false)}
         >
-          <View style={styles.fmCard}>
+          <View style={styles.fmCard} onStartShouldSetResponder={() => true}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
             <Text style={styles.fmTitle}>기록 형식 선택</Text>
             <Text style={styles.fmSub}>

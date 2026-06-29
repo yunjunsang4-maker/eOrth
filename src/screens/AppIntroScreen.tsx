@@ -5,16 +5,14 @@ import {
   Text,
   StyleSheet,
   Dimensions,
-  TouchableOpacity,
   FlatList,
-  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants';
+import { Colors, Typography, Spacing } from '../constants';
 import { PrimaryButton, PaginationDots } from '../components/ui';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 const SLIDES = [
   {
@@ -46,7 +44,6 @@ export default function AppIntroScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [activeIdx, setActiveIdx] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const goNext = () => {
     if (activeIdx < SLIDES.length - 1) {

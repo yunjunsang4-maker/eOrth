@@ -27,7 +27,7 @@ import {
 import { COUNTRIES } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const { width: SW } = Dimensions.get('window');
 
 const C = {
   bg: '#0A0A0F',
@@ -176,7 +176,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         const { countryName, city } = await detectCurrentCountry();
         if (countryName) setDetectedCountry(countryName);
         if (city) setDetectedCity(city);
-      } catch (_) {}
+      } catch {}
     })();
   }, []);
 
@@ -204,7 +204,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         }
         setShooting(false);
         setPhase('preview');
-      } catch (e) {
+      } catch {
         setShooting(false);
         setPhase('camera');
         Alert.alert('촬영 실패', '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.');
@@ -292,7 +292,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       setCameraReady(false);
       setFacing(secondFacing);
       setPhase('switching');
-    } catch (e) {
+    } catch {
       setShooting(false);
       Alert.alert('촬영 실패', '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.');
     }

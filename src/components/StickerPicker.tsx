@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import {
-  stickers,
   stickerCategories,
   getStickersByCategory,
   StickerCategory,

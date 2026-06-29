@@ -6,15 +6,12 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
-
-const { width } = Dimensions.get('window');
 
 type Props = RootStackScreenProps<'Country'>;
 

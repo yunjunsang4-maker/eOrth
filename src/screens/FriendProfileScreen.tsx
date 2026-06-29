@@ -9,11 +9,8 @@ import {
   Dimensions,
   Alert,
   Share,
-  Image,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
-import { LinearGradient } from 'expo-linear-gradient';
-import Svg, { Path } from 'react-native-svg';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';

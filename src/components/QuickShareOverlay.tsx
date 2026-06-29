@@ -43,7 +43,6 @@ export default function QuickShareOverlay({
 
   const TOP_SAFE = 64;
   const BOTTOM_SAFE = 130;
-  const LABEL_PAD = 22;
   const DY = CIRCLE + GAP;
   const DX = CIRCLE + GAP;
   const horizDir = side === 'right' ? 1 : -1;

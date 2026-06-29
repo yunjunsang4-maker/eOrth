@@ -12,7 +12,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Colors, Typography, Spacing } from '../constants';
+import { Colors, Typography } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 
@@ -212,7 +212,6 @@ function CountriesSection({ items, accent }: { items: Item[]; accent: [string, s
 }
 
 // ─── 별점 분포 ───
-const STAR_COLORS = ['#FBBF24', '#FCD34D', '#FDE68A', '#D1D5DB', '#9CA3AF'];
 function RatingSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
   return (
     <View style={s.section}>

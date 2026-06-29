@@ -5,7 +5,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  Image,
+  ScrollView,
   TextInput,
   Alert,
   Pressable,
@@ -161,7 +161,6 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   const selectedFriend = friends.find(f => f.id === selectedFriendId);
-  const isCurrentlyMuted = selectedFriend?.isMuted ?? false;
 
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
   const mergedFriends = friends.map(f => {

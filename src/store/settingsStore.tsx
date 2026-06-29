@@ -11,6 +11,14 @@ export type MapDisplayMode = 'flag' | 'color' | 'photo';
 export type GlobeVariant = 'aurora' | 'classic';
 // 성별: '' = 미설정
 export type Gender = 'male' | 'female' | '';
+// 알림 설정 토글 키 (영속)
+export type NotifPrefKey =
+  | 'master' | 'friendTrip' | 'likes' | 'newFollower'
+  | 'returnDetect' | 'memoryRemind' | 'marketing';
+const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
+  master: true, friendTrip: true, likes: true, newFollower: true,
+  returnDetect: false, memoryRemind: true, marketing: false,
+};
 
 interface SettingsContextType {
   showCounts: boolean;
@@ -82,6 +90,12 @@ interface SettingsContextType {
   loginStreak: number;
   // 앱 첫 설치(첫 실행) 시각 — 배지 115용
   installedAt: number | null;
+  // 알림 설정 토글 — 영속
+  notifPrefs: Record<NotifPrefKey, boolean>;
+  setNotifPref: (key: NotifPrefKey, value: boolean) => void;
+  // 계정 공개 여부 — 영속(현재는 UI 상태 저장; 실제 공개범위 강제는 백엔드 도입 후)
+  accountPublic: boolean;
+  setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
 }
 
@@ -119,6 +133,8 @@ interface SettingsPersistPayload {
   loginStreak?: number;    // 과거 저장본엔 없을 수 있어 optional
   lastVisitDay?: number | null; // 마지막 접속일(로컬 자정 timestamp)
   installedAt?: number | null;  // 앱 첫 실행 시각
+  notifPrefs?: Partial<Record<NotifPrefKey, boolean>>; // 알림 설정 토글
+  accountPublic?: boolean; // 계정 공개 여부
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -163,6 +179,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loginStreak, setLoginStreak] = useState(0);
   const [lastVisitDay, setLastVisitDay] = useState<number | null>(null);
   const [installedAt, setInstalledAt] = useState<number | null>(null);
+  const [notifPrefs, setNotifPrefs] = useState<Record<NotifPrefKey, boolean>>(DEFAULT_NOTIF_PREFS);
+  const setNotifPref = useCallback((key: NotifPrefKey, value: boolean) => {
+    setNotifPrefs((prev) => ({ ...prev, [key]: value }));
+  }, []);
+  const [accountPublic, setAccountPublic] = useState(true);
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -226,6 +247,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLoginStreak(p.loginStreak ?? 0);
       setLastVisitDay(p.lastVisitDay ?? null);
       setInstalledAt(p.installedAt ?? null);
+      setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...(p.notifPrefs ?? {}) });
+      setAccountPublic(p.accountPublic ?? true);
     },
     () => ({
       showCounts,
@@ -259,6 +282,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       loginStreak,
       lastVisitDay,
       installedAt,
+      notifPrefs,
+      accountPublic,
     }),
     [
       showCounts,
@@ -292,6 +317,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       loginStreak,
       lastVisitDay,
       installedAt,
+      notifPrefs,
+      accountPublic,
     ],
   );
 
@@ -343,6 +370,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setLoginStreak(0);
     setLastVisitDay(null);
     setInstalledAt(null);
+    setNotifPrefs(DEFAULT_NOTIF_PREFS);
+    setAccountPublic(true);
     visitRecordedRef.current = false;
   };
 
@@ -414,6 +443,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         incrementShareSent,
         loginStreak,
         installedAt,
+        notifPrefs,
+        setNotifPref,
+        accountPublic,
+        setAccountPublic,
         resetSettings,
       }}
     >

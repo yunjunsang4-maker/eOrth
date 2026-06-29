@@ -126,7 +126,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       setSelected([]);
       setDayFilter(null);
       setPhase('select');
-    } catch (e) {
+    } catch {
       Alert.alert('알림', '사진을 불러오는 중 문제가 발생했어요.');
     } finally {
       setLoading(false);
@@ -213,7 +213,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       });
       addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
       navigation.goBack();
-    } catch (e) {
+    } catch {
       setSaving(false);
       Alert.alert('저장 실패', '사진첩을 만드는 중 문제가 발생했어요.');
     }

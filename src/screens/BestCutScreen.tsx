@@ -8,7 +8,7 @@
  * 표시는 thumbnailUri(file://) 우선 → 없으면 원본 uri.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,

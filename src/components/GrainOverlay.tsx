@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { StyleSheet } from 'react-native';
-import Svg, { Rect, Defs, Pattern, Circle } from 'react-native-svg';
+import Svg, { Circle } from 'react-native-svg';
 
 // Deterministic pseudo-random
 const srand = (seed: number) => {

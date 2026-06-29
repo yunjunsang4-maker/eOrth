@@ -8,9 +8,9 @@ import {
   ActivityIndicator,
   Alert,
   Keyboard,
-} from 'react-native';
+ DeviceEventEmitter } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
-import { DeviceEventEmitter } from 'react-native';
+
 import * as Clipboard from 'expo-clipboard';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';

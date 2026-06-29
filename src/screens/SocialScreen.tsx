@@ -80,7 +80,7 @@ function ShareBottomSheet({
 }) {
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { records, followingUsers } = useRecords();
+  const { followingUsers } = useRecords();
   // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const shareFriends = followingUsers.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: '🧳', online: false,
@@ -1175,7 +1175,6 @@ function AlbumCard({
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
   const medias: string[] = item.medias || [];
-  const displayCount = Math.min(medias.length, 4);
   const extraCount = medias.length - 4;
 
   const isMyPost = item.isMyPost ?? false;

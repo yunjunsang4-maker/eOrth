@@ -153,7 +153,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           { name: 'ImportComplete', params: { tripCount, photoCount, countries } },
         ],
       });
-    } catch (e) {
+    } catch {
       setSaving(false);
       Alert.alert('저장 실패', '사진을 가져오는 중 문제가 발생했어요.');
     }

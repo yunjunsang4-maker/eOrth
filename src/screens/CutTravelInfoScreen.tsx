@@ -347,7 +347,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     if (currencyTouchedRef.current) return;
     const cur = currencyForCountryName(selectedCountry?.name);
     if (cur) setCurrency(cur);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [selectedCountry?.name]);
 
   // 위치(국가·도시) 자동 채움 — 국가 지정 없이 들어왔을 때, 현재 위치로 1회 프리필

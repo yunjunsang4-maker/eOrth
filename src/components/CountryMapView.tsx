@@ -1,13 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo , useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import COUNTRY_GEO from '../data/countryGeo';
 import { D3_SRC } from '../data/vendorD3';
 
+
+
 // 오프라인 번들용 d3 소스 (script 태그 조기 종료 방지 위해 </script 만 이스케이프)
 const D3_INLINE = D3_SRC.replace(/<\/script/gi, '<\\/script');
-
-import { useRef, useEffect, useState } from 'react';
 
 // WebView(SVG)가 못 읽는 URI(ph://, assets-library://, content://)인지 판별
 const needsMaterialize = (u?: string) => !!u && !/^(file:|https?:|data:)/.test(u);
@@ -15,7 +15,7 @@ const needsMaterialize = (u?: string) => !!u && !/^(file:|https?:|data:)/.test(u
 interface Props {
   countryCode: string;
   onMessage?: (e: any) => void;
-  recordedRegions?: Array<{ name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }>;
+  recordedRegions?: { name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }[];
   displayMode?: 'color' | 'photo';
   defaultColor?: string;
   countryName?: string;
@@ -60,7 +60,7 @@ export default function CountryMapView({
     if (targets.length === 0) return;
     let cancelled = false;
     (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
+       
       const ImageManipulator = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
       const updates: Record<string, string> = {};
       for (const uri of targets) {
