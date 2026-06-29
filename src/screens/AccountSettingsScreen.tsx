@@ -463,7 +463,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true}
         onRequestClose={() => setIsBirthdayModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>생일 변경</Text>
             <Text style={styles.modalDesc}>생일을 YYYY-MM-DD 형식으로 입력하세요.</Text>
@@ -515,7 +515,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true}
         onRequestClose={() => setIsGenderModalVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>성별 변경</Text>
             <Text style={styles.modalDesc}>성별을 선택하세요.</Text>
@@ -567,7 +567,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true}
         onRequestClose={closePasswordModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>비밀번호 변경</Text>
             <Text style={styles.modalDesc}>
@@ -652,7 +652,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true}
         onRequestClose={closeDeleteAccountModal}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={[styles.modalContent, { borderColor: COLORS.redBorder }]}>
             <Text style={[styles.modalTitle, { color: COLORS.red }]}>계정 삭제</Text>
             

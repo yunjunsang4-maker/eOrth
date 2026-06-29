@@ -1184,6 +1184,7 @@ export default function MainScreen({ navigation, route }: Props) {
       >
         <TouchableOpacity
           style={styles.fmOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setFormatModalVisible(false)}
         >
@@ -1224,6 +1225,7 @@ export default function MainScreen({ navigation, route }: Props) {
       >
         <TouchableOpacity
           style={styles.fmOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setRegionRecordsVisible(false)}
         >
@@ -1290,6 +1292,7 @@ export default function MainScreen({ navigation, route }: Props) {
       >
         <TouchableOpacity
           style={[styles.fmOverlay, { justifyContent: 'flex-start', paddingTop: DS_CARD_TOP }]}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={cancelDisplaySettings}
         >
