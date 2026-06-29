@@ -846,6 +846,8 @@ export default function MainScreen({ navigation, route }: Props) {
             setHasUnreadAlerts(false);
             navigation.navigate('Notifications');
           }}
+          accessibilityRole="button"
+          accessibilityLabel="알림"
         >
           <NotificationBellIcon size={24} dot={hasUnreadAlerts} />
         </TouchableOpacity>

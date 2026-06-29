@@ -233,7 +233,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 24 }]}>
-          <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8}>
+          <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="닫기">
             <Text style={st.closeTxt}>✕</Text>
           </TouchableOpacity>
           <Text style={st.title}>📷 사진첩 만들기</Text>

@@ -86,7 +86,7 @@ export default function TripGroupScreen() {
     return (
       <View style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
             <Text style={st.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={st.headerTitle}>묶음을 찾을 수 없어요</Text>
@@ -158,7 +158,7 @@ export default function TripGroupScreen() {
     <View style={st.container}>
       {/* 헤더 */}
       <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle} numberOfLines={1}>{group.title}</Text>

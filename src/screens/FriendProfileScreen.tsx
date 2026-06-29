@@ -221,7 +221,7 @@ export default function FriendProfileScreen({
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>@{displayUsername}</Text>
-        <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7}>
+        <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="더보기">
           <Text style={s.moreIcon}>···</Text>
         </TouchableOpacity>
       </View>

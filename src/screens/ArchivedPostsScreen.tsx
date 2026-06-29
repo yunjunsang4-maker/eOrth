@@ -73,7 +73,7 @@ function ArchivedCard({
           </View>
         </View>
         <View>
-          <TouchableOpacity onPress={() => setMenuVisible((v) => !v)}>
+          <TouchableOpacity onPress={() => setMenuVisible((v) => !v)} accessibilityRole="button" accessibilityLabel="더보기">
             <Text style={s.moreIcon}>···</Text>
           </TouchableOpacity>
           {menuVisible && (
