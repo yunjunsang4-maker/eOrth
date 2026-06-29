@@ -1682,7 +1682,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .activateAfterLongPress(250)
-    .onStart((e: any) => {
+    .onStart((e) => {
       cardRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
         let correctedX = x;
         let correctedY = y;
@@ -1704,11 +1704,11 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
       });
     })
-    .onUpdate((e: any) => {
+    .onUpdate((e) => {
       dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
       onQuickMove(e.absoluteX, e.absoluteY);
     })
-    .onEnd((e: any) => {
+    .onEnd((e) => {
       onQuickEnd(e.absoluteX, e.absoluteY);
     });
 

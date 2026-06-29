@@ -500,12 +500,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // ─── 블로그 임시저장 목록 (viewType='blog'인 것만, 5일 이내) ───
   const DRAFT_MAX_AGE = 5 * 24 * 60 * 60 * 1000; // 5일 (ms)
 
-  // 마운트 시 5일 지난 블로그 임시저장 자동 삭제
+  // 마운트 시 5일 지난 블로그 임시저장 자동 삭제 (화면 진입 시 1회만 — 의도된 동작)
   useEffect(() => {
     const now = Date.now();
     drafts
       .filter(d => d.viewType === 'blog' && now - d.timestamp > DRAFT_MAX_AGE)
       .forEach(d => deleteDraft(d.id));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const blogDrafts = drafts.filter(d => d.viewType === 'blog' && Date.now() - d.timestamp <= DRAFT_MAX_AGE);

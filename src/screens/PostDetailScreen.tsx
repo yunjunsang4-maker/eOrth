@@ -530,7 +530,7 @@ function SnapViewerModal({
 }: {
   visible: boolean;
   onClose: () => void;
-  viewers?: any[];
+  viewers?: { handle: string; name: string; time: number; emoji?: string }[];
 }) {
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
@@ -570,7 +570,7 @@ function SnapStoryViewer({
   initialPostId, records, navigation, toggleLike, deleteRecord, markSnapViewed,
 }: {
   initialPostId: string;
-  records: any[];
+  records: TravelRecord[];
   navigation: any;
   toggleLike: (id: string) => void;
   deleteRecord: (id: string) => void;
@@ -620,9 +620,10 @@ function SnapStoryViewer({
   const [localIdx, setLocalIdx] = useState(initPos.li);
   const currentStory = stories[storyIdx];
   const currentSnap = currentStory?.snaps[Math.min(localIdx, (currentStory?.snaps.length || 1) - 1)];
-  // 스냅 열람 시 viewed 처리
+  // 스냅 열람 시 viewed 처리 — 스냅 id가 바뀔 때만 실행(snapViewed 변경으로 인한 재실행 방지)
   useEffect(() => {
     if (currentSnap && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id]);
 
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
@@ -1103,6 +1104,8 @@ export default function PostDetailScreen() {
     if (!rawRecord?.remoteId) return;
     setCommentsLoading(true);
     refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
+    // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, rawRecord?.remoteId]);
   // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
   const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;

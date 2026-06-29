@@ -612,7 +612,7 @@ export default function DMScreen({ navigation, route }: Props) {
             <Text style={st.headerStatus}>{friend.online ? '온라인' : '오프라인'}</Text>
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={st.headerMenuBtn} onPress={() => { searchOpen ? closeSearch() : setSearchOpen(true); }} activeOpacity={0.7}>
+        <TouchableOpacity style={st.headerMenuBtn} onPress={() => { if (searchOpen) closeSearch(); else setSearchOpen(true); }} activeOpacity={0.7}>
           <SearchIcon size={20} color={searchOpen ? C.accent : C.white} />
         </TouchableOpacity>
         <TouchableOpacity style={st.headerMenuBtn} onPress={() => setHeaderMenuOpen(true)} activeOpacity={0.7}>

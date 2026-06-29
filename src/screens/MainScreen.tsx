@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -474,8 +474,8 @@ export default function MainScreen({ navigation, route }: Props) {
     return nameSet;
   }, [records]);
 
-  // 특정 국가의 대표 사진 찾기
-  const getCountryPhoto = (countryName: string) => {
+  // 특정 국가의 대표 사진 찾기 (records만 읽으므로 useCallback으로 안정화 → visitedCountries memo가 매 렌더 재계산되지 않음)
+  const getCountryPhoto = useCallback((countryName: string) => {
     const matchingRecords = records.filter(r => r.countryName === countryName || r.countries?.some(c => c.name === countryName));
     for (const r of matchingRecords) {
       if (r.perCountryData?.[countryName]?.representativePhoto) {
@@ -495,7 +495,7 @@ export default function MainScreen({ navigation, route }: Props) {
       }
     }
     return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
-  };
+  }, [records]);
 
   // 지구본(WebView)은 file:// 이미지를 직접 못 그려서, 대표 사진을 작은 data URI(base64)로 변환해 캐시
   const globePhotoCacheRef = useRef<Record<string, string>>({});
@@ -511,7 +511,7 @@ export default function MainScreen({ navigation, route }: Props) {
         mode: countryDisplayModes[nameEn] || undefined,
       };
     });
-  }, [visitedNameSet, countryColors, records, countryDisplayModes]);
+  }, [visitedNameSet, countryColors, countryDisplayModes, EN_TO_KO, getCountryPhoto]);
 
   // 대표 사진(file://)을 지구본용 data URI 로 변환 (아직 변환 안 된 것만)
   useEffect(() => {
