@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -1925,6 +1925,9 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
   );
 }
 
+// 피드 카드 — props가 안정적일 때 리렌더를 건너뛰도록 memo화 (스크롤·다른 글 변경 시 불필요 렌더 방지)
+const DiaryCardMemo = React.memo(DiaryCard);
+
 function FriendsTab({ navigation }: { navigation: any }) {
   const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
@@ -2024,26 +2027,44 @@ function FriendsTab({ navigation }: { navigation: any }) {
     showToast('게시물이 삭제되었어요');
   };
 
-  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드
-  const mergedFeed = [...records, ...feedPosts].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-  const allVisible = mergedFeed
-    .filter(
-      (r) =>
-        (r.visibility === 'friends' || r.visibility === 'public') &&
-        !isBlocked(r.user) &&
-        !archivedIds.includes(r.id) &&
-        !reportedPostIds.includes(r.id)
-    )
-    // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
-    .filter((r) => !isPostHiddenForViewer(r, currentViewer))
-    // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
-    .map((r) => applyViewer(r, currentViewer));
+  // 차단(확인 다이얼로그 경유)
+  const handleBlock = (user: { name: string; emoji: string; handle?: string }) => {
+    confirmBlock(user.name, () => { blockUser(user); showToast('차단되었어요'); });
+  };
 
-  // viewType별 분류
-  const feedItems = allVisible.filter(r => !r.viewType || r.viewType === 'feed');
-  const blogItems = allVisible.filter(r => r.viewType === 'blog');
-  const albumItems = allVisible.filter(r => r.viewType === 'album');
-  const cutItems = allVisible.filter(r => r.viewType === 'cut');
+  // 메모이즈된 카드(DiaryCardMemo)에 넘길 콜백을 안정적인 ref로 박제 — 매 렌더 최신 함수를 가리키되
+  // 콜백 ref 자체는 불변 → 카드 props가 안정되어 React.memo가 불필요 리렌더를 건너뛴다.
+  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd });
+  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd };
+  const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
+  const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
+  const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
+  const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
+  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string }) => fnRef.current.handleBlock(user), []);
+  const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
+  const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
+  const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
+
+  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드.
+  // 정렬+다중 필터+applyViewer 비용이 커서 입력이 바뀔 때만 재계산하도록 memo화.
+  const allVisible = useMemo(
+    () =>
+      [...records, ...feedPosts]
+        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+        .filter(
+          (r) =>
+            (r.visibility === 'friends' || r.visibility === 'public') &&
+            !isBlocked(r.user) &&
+            !archivedIds.includes(r.id) &&
+            !reportedPostIds.includes(r.id)
+        )
+        // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
+        .filter((r) => !isPostHiddenForViewer(r, currentViewer))
+        // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
+        .map((r) => applyViewer(r, currentViewer)),
+    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked]
+  );
+
   const snapItems = useMemo(() => {
     // 내 스냅 판정 (isMyPost 누락 대비 핸들 비교 병행). 내 스냅은 '본 것'으로 취급 → 안 본 링 안 뜸
     const isMine = (s: any) => s.isMyPost || s.user.handle === globalHandle;
@@ -2071,9 +2092,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
     if (allViewed) reps.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
     return reps;
   }, [allVisible, globalHandle]);
-  // 피드·블로그·앨범·네컷을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
-  const timelineItems = [...feedItems, ...blogItems, ...albumItems, ...cutItems]
-    .sort((a, b) => b.timestamp - a.timestamp);
+  // 피드·블로그·앨범·네컷(스냅 제외)을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
+  const timelineItems = useMemo(
+    () => allVisible.filter((r) => r.viewType !== 'snap').sort((a, b) => b.timestamp - a.timestamp),
+    [allVisible]
+  );
 
   // 높이 추정 기반 2단 균형 분배
   const columns = useMemo(() => {
@@ -2160,20 +2183,20 @@ function FriendsTab({ navigation }: { navigation: any }) {
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
                 {columns[ci].map((item: any) => (
-                  <DiaryCard
+                  <DiaryCardMemo
                     key={item.id}
                     item={item}
                     mode={diaryCardMode}
                     navigation={navigation}
-                    toggleLike={toggleLike}
+                    toggleLike={cbToggleLike}
                     showCounts={showCounts}
-                    onArchive={handleArchive}
-                    onDelete={handleDelete}
-                    onBlock={(user: { name: string; emoji: string; handle?: string }) => confirmBlock(user.name, () => { blockUser(user); showToast('차단되었어요'); })}
-                    onReport={reportPost}
-                    onQuickStart={handleQuickStart}
-                    onQuickMove={handleQuickMove}
-                    onQuickEnd={handleQuickEnd}
+                    onArchive={cbArchive}
+                    onDelete={cbDelete}
+                    onBlock={cbBlock}
+                    onReport={cbReport}
+                    onQuickStart={cbQuickStart}
+                    onQuickMove={cbQuickMove}
+                    onQuickEnd={cbQuickEnd}
                     dragPos={dragPos}
                     columnIndex={ci}
                   />
