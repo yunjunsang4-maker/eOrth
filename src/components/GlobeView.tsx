@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { THREE_SRC } from '../data/vendorThree';
 import { D3_SRC } from '../data/vendorD3';
@@ -49,7 +49,7 @@ const globeHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   body {
     background: #0A0A0F;
     width: 100vw;
@@ -128,12 +128,14 @@ container.appendChild(renderer.domElement);
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 4.2;
-camera.position.y = -0.35;
+camera.position.y = 0; // 전체화면: 화면 세로 정중앙 배치(neon과 일치)
+camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 기본 크기(디스크=폭의 85%)
+camera.updateProjectionMatrix();
 
 // Stars
 var starGeo = new THREE.BufferGeometry();
 var starPositions = [];
-for (var i = 0; i < 3000; i++) {
+for (var i = 0; i < 600; i++) {
   var theta = Math.random() * Math.PI * 2;
   var phi = Math.acos(2 * Math.random() - 1);
   var r = 50 + Math.random() * 100;
@@ -144,7 +146,7 @@ for (var i = 0; i < 3000; i++) {
   );
 }
 starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, opacity: 0.4 });
+var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.6 });
 scene.add(new THREE.Points(starGeo, starMat));
 
 // Globe group
@@ -949,6 +951,7 @@ function animate() {
 
 window.addEventListener('resize', function() {
   camera.aspect = window.innerWidth / window.innerHeight;
+  camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 크기(디스크=폭의 85%)
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
@@ -1042,7 +1045,7 @@ const neonGlobeHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   body { background:#0A0B0F; width:100vw; height:100vh; overflow:hidden; font-family:'Noto Sans KR',sans-serif; cursor:grab; }
   body:active { cursor:grabbing; }
   #bg { position:fixed; inset:0; overflow:hidden; background:#0A0B0F; z-index:1; }
@@ -1075,6 +1078,12 @@ const neonGlobeHTML = `<!DOCTYPE html>
   <div style="position:absolute; left:9%; top:3%; width:54%; height:80%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(0,0,255,0.13), rgba(0,0,255,0) 65%); filter:blur(95px); animation:ng-glowdrift 18s ease-in-out infinite;"></div>
   <div style="position:absolute; left:12%; top:27%; width:32%; height:44%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.20), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 22s ease-in-out infinite;"></div>
   <div style="position:absolute; right:10%; bottom:9%; width:34%; height:46%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.16), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
+  <!-- 우주가스(nebula) 데코 — 첨부 SVG의 흐릿한 보라/파랑/흰 가스 블롭(가장자리에 산포) -->
+  <div style="position:absolute; left:-8%; top:15%; width:44%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.14), rgba(202,130,255,0) 70%); filter:blur(55px); animation:ng-glowdrift 24s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:-6%; bottom:1%; width:38%; height:28%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.13), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 30s ease-in-out infinite;"></div>
+  <div style="position:absolute; right:-8%; top:54%; width:38%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.15), rgba(202,130,255,0) 70%); filter:blur(54px); animation:ng-glowdrift 28s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:14%; top:22%; width:80%; height:54%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(48,64,255,0.07), rgba(48,64,255,0) 68%); filter:blur(100px); animation:ng-glowdrift 20s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:15%; top:29%; width:18%; height:11%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.07), rgba(255,255,255,0) 70%); filter:blur(34px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
   <div id="stars"></div>
 </div>
 <div id="canvas-container"></div>
@@ -1201,10 +1210,10 @@ function buildNeonTexture(){
   });
   ctx.globalCompositeOperation='source-over';
   // 흰 해안선/국경선 (전체)
-  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
+  ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
   worldData.features.forEach(function(f){ ctx.beginPath(); path(f); ctx.stroke(); });
   // 방문국은 더 또렷한 테두리
-  ctx.strokeStyle='rgba(255,255,255,0.85)'; ctx.lineWidth=3;
+  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=3;
   worldData.features.forEach(function(f){ if(visitedMap[f.properties.name||'']){ ctx.beginPath(); path(f); ctx.stroke(); } });
 
   var tex=new THREE.CanvasTexture(c);
@@ -1322,15 +1331,10 @@ window.addEventListener('wheel', function(e){ e.preventDefault(); targetZoom*=Ma
 function resize(){
   var w=window.innerWidth, h=window.innerHeight;
   renderer.setSize(w,h);
-  var aspect=w/h;
-  // 사진(classic) 글로브와 동일한 화면상 위치·크기로 맞춤.
-  // classic = PerspectiveCamera(fov45, pos(0,-0.35,4.2)) → 구체 반지름/중심의 NDC를 정사영으로 재현
-  var FOV_T=Math.tan(22.5*Math.PI/180), C_Z=4.2, C_Y=0.35, R=1.0;
-  var D=Math.sqrt(C_Y*C_Y+C_Z*C_Z);
-  var rNdc=Math.tan(Math.asin(R/D))/FOV_T;   // 구체 반지름의 NDC 크기(화면 절반=1)
-  var cyNdc=(C_Y/C_Z)/FOV_T;                 // 구체 중심의 NDC_y(위가 +)
-  var halfV=R/rNdc, cWorld=-cyNdc*halfV;     // 수직 반높이·프러스텀 수직 중심(월드)
-  camera.top=cWorld+halfV; camera.bottom=cWorld-halfV; camera.left=-halfV*aspect; camera.right=halfV*aspect;
+  var aspect=w/h, R=1.0;
+  // 기본 크기: 디스크 지름 = 화면 폭의 ~85%(좌우 여백, 사진과 동일). 화면 세로 정중앙. 확대는 줌으로만.
+  var halfV = R / (0.85 * aspect);            // 폭 기준 → 세로로 긴 화면에서도 폭을 안 넘침
+  camera.top=halfV; camera.bottom=-halfV; camera.left=-halfV*aspect; camera.right=halfV*aspect;
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
@@ -1423,7 +1427,6 @@ export default function GlobeView({
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
   variant = 'aurora', sponsoredItems = [],
 }: GlobeViewProps) {
-  const globeHeight = useMemo(() => Dimensions.get('window').height * 0.75, []);
   const webViewRef = useRef<WebView>(null);
 
   const payload = useMemo(() => JSON.stringify({
@@ -1494,7 +1497,7 @@ export default function GlobeView({
   };
 
   return (
-    <View style={fullscreen ? [styles.containerFull, { height: globeHeight }] : [styles.container, { width: size, height: size }]}>
+    <View style={fullscreen ? styles.containerFull : [styles.container, { width: size, height: size }]}>
       <WebView
         key={variant}
         ref={webViewRef}
@@ -1524,6 +1527,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   containerFull: {
+    flex: 1,
     overflow: 'hidden',
   },
 });

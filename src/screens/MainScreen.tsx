@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
+import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
@@ -234,6 +234,47 @@ type Props = TabScreenProps<'MainTab'>;
 // 기록 형식 선택 → 이동할 수 있는 작성 화면들
 type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord' | 'AlbumCreate';
 
+// 전체화면 우주배경 — 메인탭 모든 콘텐츠 뒤에 깔리는 별·무드글로우(비상호작용).
+// 별은 글로브 WebView(75% 영역) 밖(헤더·탭 영역)까지 화면 전체로 확장된다(첨부 SVG처럼).
+function SpaceBackdrop() {
+  const { width: W, height: H } = Dimensions.get('window');
+  const stars = useMemo(() => {
+    let s = 20260629;
+    const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
+    return Array.from({ length: 320 }, () => ({
+      x: +(rnd() * W).toFixed(1),
+      y: +(rnd() * H).toFixed(1),
+      r: +(0.5 + rnd() * 0.6).toFixed(2),
+      o: +(0.5 + rnd() * 0.4).toFixed(2),
+    }));
+  }, [W, H]);
+  return (
+    <Svg width={W} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
+      <SvgDefs>
+        <SvgRadialGradient id="sbGlowP" cx="50%" cy="50%" r="50%">
+          <SvgStop offset="0%" stopColor="#CA82FF" stopOpacity={0.18} />
+          <SvgStop offset="70%" stopColor="#CA82FF" stopOpacity={0} />
+        </SvgRadialGradient>
+        <SvgRadialGradient id="sbGlowB" cx="50%" cy="50%" r="50%">
+          <SvgStop offset="0%" stopColor="#1E3AFF" stopOpacity={0.1} />
+          <SvgStop offset="65%" stopColor="#1E3AFF" stopOpacity={0} />
+        </SvgRadialGradient>
+      </SvgDefs>
+      <SvgRect x={0} y={0} width={W} height={H} fill="#0A0B0F" />
+      <Circle cx={W * 0.32} cy={H * 0.22} r={W * 0.55} fill="url(#sbGlowB)" />
+      <Circle cx={W * 0.24} cy={H * 0.48} r={W * 0.42} fill="url(#sbGlowP)" />
+      <Circle cx={W * 0.82} cy={H * 0.8} r={W * 0.44} fill="url(#sbGlowP)" />
+      {/* 우주가스 추가 블롭 — globe #bg와 동일한 가장자리 산포 */}
+      <Circle cx={W * 0.06} cy={H * 0.28} r={W * 0.42} fill="url(#sbGlowP)" />
+      <Circle cx={W * 0.94} cy={H * 0.62} r={W * 0.4} fill="url(#sbGlowP)" />
+      <Circle cx={W * 0.1} cy={H * 0.9} r={W * 0.38} fill="url(#sbGlowP)" />
+      {stars.map((st, i) => (
+        <Circle key={i} cx={st.x} cy={st.y} r={st.r} fill="#ffffff" fillOpacity={st.o} />
+      ))}
+    </Svg>
+  );
+}
+
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { records, tripGroups } = useRecords();
@@ -322,7 +363,9 @@ export default function MainScreen({ navigation, route }: Props) {
 
   // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드
   const [selectedAd, setSelectedAd] = useState<SponsoredPackage | null>(null);
-  const sponsoredMarkerItems = useMemo(() => getSponsoredMarkerItems(), []);
+  // 지구본 팝업광고(스폰서 마커) 노출 여부 — 현재 숨김(추후 활성화 시 true)
+  const SHOW_GLOBE_ADS = false;
+  const sponsoredMarkerItems = useMemo(() => (SHOW_GLOBE_ADS ? getSponsoredMarkerItems() : []), []);
   // 방문한 나라 바텀시트 활성화 여부 (첫 출시 시 제외, 추후 보완하여 활성화 예정)
   const SHOW_VISITED_SHEET = false;
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
@@ -780,8 +823,18 @@ export default function MainScreen({ navigation, route }: Props) {
     // 배경을 지구본 배경(#0A0A0F)과 동일하게 — 하단에 보라색이 남지 않고 끝까지 이어짐
     <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
 
+      {/* ── 전체화면 우주배경 (별·글로우) — 모든 콘텐츠 뒤, 터치 통과 ── */}
+      <SpaceBackdrop />
+
+      {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
+      {viewMode === 'globe' && (
+        <View ref={globeRef} collapsable={false} style={StyleSheet.absoluteFill}>
+          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} sponsoredItems={sponsoredMarkerItems} />
+        </View>
+      )}
+
       {/* ── 헤더 ── */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]} pointerEvents="box-none">
         {/* 로고를 살짝 위로 (레이아웃 영향 없이 시각적으로만 이동) */}
         <View style={{ transform: [{ translateY: -8 }] }}>
           <EorthLogo width={125} height={56} />
@@ -798,7 +851,8 @@ export default function MainScreen({ navigation, route }: Props) {
       </View>
 
       {/* ── 지구본 / 국가 지도 영역 ── */}
-      <View style={styles.globeArea}>
+      {/* box-none: 빈 영역 터치는 뒤의 전체화면 글로브로 통과(토글·설정 등 자식만 터치 수신) */}
+      <View style={styles.globeArea} pointerEvents="box-none">
         {/* 지구본/대륙 전환 토글 (Liquid Glass) */}
         <View style={styles.modeToggleWrap}>
           {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
@@ -817,10 +871,6 @@ export default function MainScreen({ navigation, route }: Props) {
         {/* 뷰 렌더링 */}
         {viewMode === 'globe' ? (
           <>
-            {/* 지구본 측정용 래퍼 (WebView의 실제 프레임을 잡아 튜토리얼 원 강조에 사용) */}
-            <View ref={globeRef} collapsable={false}>
-              <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} sponsoredItems={sponsoredMarkerItems} />
-            </View>
             {/* 영역별 표시설정 버튼 — 누르면 지구본 형태 교체
                 (aurora=단색 활성화 ↔ classic=사진 활성화) */}
             <TouchableOpacity
