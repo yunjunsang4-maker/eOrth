@@ -27,12 +27,19 @@ export interface CoachStep {
   shape?: 'rect' | 'circle'; // 기본 rect. circle이면 원형 스포트라이트(지구본 강조용).
   // 원형일 때 정확한 원(윈도우 좌표). 지정 시 rect 중심 추정 대신 이 값을 사용한다.
   circleWin?: { cx: number; cy: number; r: number };
+  // 말풍선을 강조 요소 기준 자동 배치 대신 화면 하단에서 이만큼 띄워 고정(윈도우 px).
+  // 하단(스냅·FAB)처럼 박스를 강조 위쪽으로 올려야 할 때 사용.
+  tipBottom?: number;
+  // 이 단계에서 밝게 유지할 하단 버튼(나머지는 어둡게). RecordFab가 참조.
+  keepBright?: 'snap' | 'fab';
 }
 
 interface Props {
   visible: boolean;
   steps: CoachStep[];
   onClose: () => void;
+  // 현재 단계가 바뀔 때 호출(밝게 둘 하단 버튼 동기화 등에 사용).
+  onStepChange?: (step: CoachStep) => void;
 }
 
 const PAD = 8; // 강조 구멍 여백
@@ -47,7 +54,7 @@ const DIM = 'rgba(0,0,0,0.78)';
  */
 const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
 
-export default function MainCoachmark({ visible, steps, onClose }: Props) {
+export default function MainCoachmark({ visible, steps, onClose, onStepChange }: Props) {
   const [idx, setIdx] = useState(0);
 
   // 강조 링 맥동(pulse) 애니메이션 — 설명 중인 UI를 시선이 가도록 강조
@@ -78,6 +85,11 @@ export default function MainCoachmark({ visible, steps, onClose }: Props) {
   useEffect(() => {
     if (visible) setIdx(0);
   }, [visible]);
+
+  // 현재 단계 변경을 상위로 알림(밝게 둘 하단 버튼 동기화)
+  useEffect(() => {
+    if (visible) onStepChange?.(steps[Math.min(idx, steps.length - 1)]);
+  }, [idx, visible, steps]);
 
   // 표시되는 동안 맥동 루프 실행
   useEffect(() => {
@@ -146,7 +158,10 @@ export default function MainCoachmark({ visible, steps, onClose }: Props) {
 
   // 말풍선 세로 위치
   let tipStyle: { top?: number; bottom?: number };
-  if (circle) {
+  if (step.tipBottom != null) {
+    // 스텝이 명시한 하단 오프셋으로 고정 (강조 요소 위쪽으로 박스를 올릴 때)
+    tipStyle = { bottom: step.tipBottom };
+  } else if (circle) {
     // 지구본: 말풍선을 지구본 상단에 겹쳐 배치 — 하단(스냅·FAB)과 겹치지 않도록 위쪽 고정
     const top = Math.min(Math.max(circle.cy - circle.r, 24), rootSize.h - TIP_MIN);
     tipStyle = { top };

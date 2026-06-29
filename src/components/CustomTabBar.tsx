@@ -10,6 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
+import { useCoachActive } from './coachOverlayState';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -249,6 +250,8 @@ const TabItem: React.FC<{
 export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
   const { width: SCREEN_W } = useWindowDimensions();
+  // 튜토리얼(코치마크) 중에는 탭 바도 다른 구역처럼 어둡게.
+  const coachActive = useCoachActive();
 
   const isGlobeActive = state.routes[state.index]?.name === 'MainTab';
 
@@ -377,6 +380,14 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
           />
         </Svg>
       </View>
+
+      {/* 튜토리얼 딤 — 다른 구역(코치마크 딤 rgba0.78)과 동일한 어둠. 바만 덮고 FAB·스냅은 형제라 유지 */}
+      {coachActive && (
+        <View
+          pointerEvents="none"
+          style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: BAR_R }]}
+        />
+      )}
     </Animated.View>
 
       {/* 기록 추가 FAB — MainTab 에서만, 탭 바 위에 떠서 겹침 */}

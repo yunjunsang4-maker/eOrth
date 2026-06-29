@@ -2,8 +2,11 @@ import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { NeonFab } from './NeonFab';
-import { SnapButton } from './SnapButton';
+import { NeonFab, FAB_SIZE } from './NeonFab';
+import { SnapButton, SNAP_SIZE } from './SnapButton';
+import { useCoachOverlay } from './coachOverlayState';
+
+const COACH_DIM = 'rgba(0,0,0,0.78)'; // 코치마크 딤과 동일한 어둠
 
 /**
  * 기록 추가 FAB 클러스터 — 네온 "+" 버튼 + 형식 4개 부채꼴 메뉴 + 딤 오버레이.
@@ -82,6 +85,10 @@ interface RecordFabProps {
 
 export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  // 튜토리얼 중에는 강조 중인 버튼만 밝게, 나머지는 어둡게.
+  const { active: coachActive, bright: coachBright } = useCoachOverlay();
+  const dimSnap = coachActive && coachBright !== 'snap';
+  const dimFab = coachActive && coachBright !== 'fab';
 
   const [fabOpen, setFabOpen] = useState(false);
   const fabRotate = useRef(new Animated.Value(0)).current;
@@ -137,6 +144,13 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
         onPress={() => navigation.navigate('SnapRecord')}
         style={[styles.snap, { bottom: insets.bottom + 129 }]}
       />
+      {/* 튜토리얼 딤 — 스냅 강조 단계가 아닐 때 스냅 버튼을 어둡게 */}
+      {dimSnap && (
+        <View
+          pointerEvents="none"
+          style={[styles.snap, { bottom: insets.bottom + 129, width: SNAP_SIZE, height: SNAP_SIZE, borderRadius: SNAP_SIZE / 2, backgroundColor: COACH_DIM }]}
+        />
+      )}
 
       {/* 딤 오버레이 (메뉴 열렸을 때 전체 화면) */}
       {fabOpen && (
@@ -182,6 +196,13 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
         <Animated.View style={{ transform: [{ rotate: fabRotateDeg }] }}>
           <NeonFab onPress={toggleFab} accessibilityLabel="기록 추가" />
         </Animated.View>
+
+        {/* 튜토리얼 딤 — FAB 강조 단계가 아닐 때 + 버튼을 어둡게 (하단 중앙, NeonFab 위) */}
+        {dimFab && (
+          <View pointerEvents="none" style={styles.fabDimWrap}>
+            <View style={{ width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: COACH_DIM }} />
+          </View>
+        )}
       </View>
     </View>
   );
@@ -216,6 +237,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'flex-end',
     zIndex: 30,
+  },
+  fabDimWrap: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
   fabFormatWrap: {
     position: 'absolute',

@@ -24,6 +24,7 @@ import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { setCoachActive, setCoachBright } from '../components/coachOverlayState';
 import { EorthLogo } from '../components/EorthLogo';
 import { SegmentedToggle } from '../components/SegmentedToggle';
 import SponsoredPackageCard from '../components/SponsoredPackageCard';
@@ -285,8 +286,18 @@ export default function MainScreen({ navigation, route }: Props) {
   const globeRef = useRef<any>(null);
   const toggleRef = useRef<any>(null);
   const settingsRef = useRef<any>(null);
+  // 스냅 버튼은 탭 바 오버레이(RecordFab) 안이라 직접 측정이 불가하다.
+  // 같은 절대 제약(right:46, bottom:insets.bottom+129, 60×60)으로 숨김 앵커를 깔고 이를 측정해
+  // Dimensions 높이 오차(내비바 등) 없이 실제 위치를 얻는다.
+  const snapAnchorRef = useRef<any>(null);
   const [coachVisible, setCoachVisible] = useState(false);
   const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+
+  // 튜토리얼 중에는 탭 바도 함께 어둡게 처리되도록 전역 신호 동기화.
+  useEffect(() => {
+    setCoachActive(coachVisible);
+    return () => setCoachActive(false);
+  }, [coachVisible]);
 
   const measure = (ref: React.MutableRefObject<any>) =>
     new Promise<CoachRect | null>((resolve) => {
@@ -306,13 +317,14 @@ export default function MainScreen({ navigation, route }: Props) {
     if (!route.params?.startTutorial) return;
     let cancelled = false;
     const t = setTimeout(async () => {
-      const [globe, toggle, settings] = await Promise.all([
+      const [globe, toggle, settings, snapMeasured] = await Promise.all([
         measure(globeRef),
         measure(toggleRef),
         measure(settingsRef),
+        measure(snapAnchorRef), // 숨김 앵커 → 스냅 버튼 실제 위치
       ]);
       if (cancelled) return;
-      // FAB(+) · SNAP 은 CustomTabBar 레이어(탭 바 위)로 이동해 ref 측정이 불가하다.
+      // FAB(+) 는 CustomTabBar 레이어(탭 바 위)로 이동해 ref 측정이 불가하다.
       // 위치가 결정적이라 RecordFab 와 동일한 상수로 강조 영역을 계산한다.
       const WIN_W = Dimensions.get('window').width;
       const FAB_BTN = 56;
@@ -323,16 +335,29 @@ export default function MainScreen({ navigation, route }: Props) {
         height: FAB_BTN,
       };
       const SNAP_BTN = 60;
-      const snap: CoachRect = {
+      // 측정 성공 시 실제 위치, 실패 시 상수 폴백
+      const snap: CoachRect = snapMeasured ?? {
         x: WIN_W - 46 - SNAP_BTN, // 우측 (오른쪽 모서리 46px 안쪽)
         y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,
       };
+      // 하단 버튼(스냅·FAB)을 강조하는 단계의 말풍선은 가장 높은 하단 버튼(스냅) 위로 올린다.
+      // 스냅·FAB는 탭 바 위 오버레이(말풍선보다 앞 레이어)라, 겹치면 버튼이 말풍선을 가리기 때문.
+      // 박스 하단을 스냅 버튼 위 24px 지점에 고정 → 위로 펼쳐짐. (측정된 실제 y 기준)
+      const bottomTipBottom = height - snap.y + 24;
+      // 스냅 버튼은 원형이라 사각형 대신 원형 스포트라이트로 강조(사각 테두리 제거).
+      // 반지름은 기존 사각 강조(버튼 + PAD 8)와 동일하게 유지.
+      const snapCircle = {
+        cx: snap.x + snap.width / 2,
+        cy: snap.y + snap.height / 2,
+        r: snap.width / 2 + 8,
+      };
       // 지구본(WebView)의 실제 프레임에서 three.js 투영 상수로 원을 계산.
-      // 카메라가 아래로(y=-0.35) 내려가 있어 구체 중심이 세로 ~39% 지점, 반지름 ~0.30×높이.
+      // GlobeView는 두 형태(aurora·classic) 모두 카메라를 화면 정중앙(camera.position.y=0)에 두고
+      // 디스크를 화면 폭의 85%로 그린다 → 중심=세로 정중앙, 반지름≈폭×0.44(지름 0.85의 반 + 여유).
       const globeCircle = globe
-        ? { cx: globe.x + globe.width / 2, cy: globe.y + globe.height * 0.39, r: globe.height * 0.3 }
+        ? { cx: globe.x + globe.width / 2, cy: globe.y + globe.height / 2, r: globe.width * 0.44 }
         : undefined;
       setCoachSteps([
         {
@@ -343,9 +368,9 @@ export default function MainScreen({ navigation, route }: Props) {
           desc: '방문한 나라가 활성화돼요. 나라를 탭하면 그 나라의 기록을 추가하거나 볼 수 있어요.',
         },
         { rect: toggle, title: '지구본 · 대륙 전환', desc: '지구본과 대륙(국가 지역) 지도를 자유롭게 전환할 수 있어요.' },
-        { rect: settings, title: '표시 방식 설정', desc: '기록한 나라를 국기 · 색상 · 사진 중 원하는 방식으로 꾸밀 수 있어요.' },
-        { rect: snap, title: '스냅 기록 ⚡', desc: '여행지에 도착한 순간을 빠르게 남기는 스냅 기록이에요.' },
-        { rect: fab, title: '기록 추가 +', desc: '피드 · 블로그 · 스트립 · 사진첩 등 원하는 형식으로 새 기록을 추가해요.' },
+        { rect: settings, title: '지구본 형태 전환', desc: '버튼을 누를 때마다 기록한 나라를 색상 지구본과 사진 지구본으로 번갈아 전환할 수 있어요.' },
+        { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', title: '스냅 기록 ⚡', desc: '여행지에 도착한 순간을 빠르게 남기는 스냅 기록이에요.' },
+        { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: '기록 추가 +', desc: '피드 · 블로그 · 스트립 · 사진첩 등 원하는 형식으로 새 기록을 추가해요.' },
       ]);
       setCoachVisible(true);
       // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
@@ -826,6 +851,15 @@ export default function MainScreen({ navigation, route }: Props) {
 
       {/* ── 전체화면 우주배경 (별·글로우) — 모든 콘텐츠 뒤, 터치 통과 ── */}
       <SpaceBackdrop />
+
+      {/* 튜토리얼용 숨김 앵커 — 탭 바 오버레이의 스냅 버튼(RecordFab)과 동일한 절대 제약.
+          코치마크가 이 위치를 측정해 스냅 버튼을 정확히 강조한다(보이지 않음·터치 통과). */}
+      <View
+        ref={snapAnchorRef}
+        collapsable={false}
+        pointerEvents="none"
+        style={{ position: 'absolute', right: 46, bottom: (insets.bottom || 0) + 129, width: 60, height: 60, opacity: 0 }}
+      />
 
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
       {viewMode === 'globe' && (
@@ -1564,6 +1598,7 @@ export default function MainScreen({ navigation, route }: Props) {
         visible={coachVisible}
         steps={coachSteps}
         onClose={() => setCoachVisible(false)}
+        onStepChange={(step) => setCoachBright(step?.keepBright ?? null)}
       />
 
       {/* ── 광고(스폰서) 패키지 카드 ── */}
