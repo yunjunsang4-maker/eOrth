@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -122,9 +122,16 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
   const extractTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const messageReceived = useRef(false);
   const injectionCount = useRef(0);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 언마운트 시 폴링 인터벌·타임아웃 정리 — 화면 이탈 후 setState/Alert 실행(메모리 누수) 방지
+  useEffect(() => () => {
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+    if (extractTimeout.current) clearTimeout(extractTimeout.current);
+  }, []);
   const handleWebViewLoad = () => {
     messageReceived.current = false;
     injectionCount.current = 0;
+    if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); // 직전 폴링 중복 실행 방지
     const isVerify = webviewMode.current === 'verify';
     const injectJs = isVerify ? buildNaverVerifyJs(verifyCode) : NAVER_BLOG_EXTRACT_JS;
     // 폴링 방식: 1초 간격으로 콘텐츠가 로드될 때까지 반복 주입 (최대 20초)
@@ -140,6 +147,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
       webviewRef.current?.injectJavaScript(injectJs);
       if (!isVerify && injectionCount.current >= 3) setExtractAttempted(true);
     }, 1000);
+    pollIntervalRef.current = pollInterval; // 언마운트/중복 정리용으로 id 보관
     // 안전장치: 25초 후에도 응답 없으면 타임아웃
     if (extractTimeout.current) clearTimeout(extractTimeout.current);
     extractTimeout.current = setTimeout(() => {
