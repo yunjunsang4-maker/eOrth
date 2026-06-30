@@ -66,8 +66,9 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   const q = query.trim();
   if (!q) return [];
   try {
+    // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
     const { data } = await supabase
-      .from('profiles')
+      .from('public_profiles')
       .select('*')
       .or(`handle.ilike.%${q}%,nickname.ilike.%${q}%`)
       .limit(20);
@@ -197,11 +198,11 @@ export async function findUsersByPhones(
   }
 }
 
-/** id로 프로필 조회 */
+/** id로 프로필 조회 (타인 조회용 — PII 제외한 public_profiles 뷰) */
 export async function getProfileById(id: string): Promise<ProfileRow | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.from('profiles').select('*').eq('id', id).maybeSingle();
+    const { data } = await supabase.from('public_profiles').select('*').eq('id', id).maybeSingle();
     return (data as ProfileRow) ?? null;
   } catch {
     return null;
