@@ -33,6 +33,7 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
+import { SNS_SHARE_ENABLED } from '../constants/featureFlags';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -89,7 +90,14 @@ function ShareBottomSheet({
   }));
 
   const handleSNS = () => {
-    setPrepareVisible(true);
+    // 테스트/베타 빌드에서는 외부 SNS 공유를 막고 '준비 중'만 안내한다.
+    if (!SNS_SHARE_ENABLED) {
+      setPrepareVisible(true);
+      return;
+    }
+    // 프로덕션: OS 공유 시트로 인스타그램·틱톡 등 외부 앱 공유
+    Share.share({ message: 'https://eorth.app/post/share' }).catch(() => {});
+    onClose();
   };
 
   const handleCopyLink = async () => {
