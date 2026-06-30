@@ -11,6 +11,8 @@ export type MapDisplayMode = 'flag' | 'color' | 'photo';
 export type GlobeVariant = 'aurora' | 'classic';
 // 성별: '' = 미설정
 export type Gender = 'male' | 'female' | '';
+// 앱 언어: 한국어 / 영어
+export type AppLanguage = 'ko' | 'en';
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
   | 'master' | 'friendTrip' | 'likes' | 'newFollower'
@@ -35,6 +37,8 @@ interface SettingsContextType {
   setBirthday: (v: string) => void;
   gender: Gender;
   setGender: (v: Gender) => void;
+  language: AppLanguage;
+  setLanguage: (v: AppLanguage) => void;
   handle: string;
   setHandle: (v: string) => void;
   bio: string;
@@ -108,6 +112,7 @@ interface SettingsPersistPayload {
   nickname: string;
   birthday?: string; // 과거 저장본엔 없을 수 있어 optional
   gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
+  language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
   handle: string;
   bio: string;
   profilePhoto: string | null;
@@ -147,6 +152,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [nickname, setNickname] = useState(''); // 온보딩(BasicInfo)에서 입력
   const [birthday, setBirthday] = useState('');
   const [gender, setGender] = useState<Gender>('');
+  const [language, setLanguage] = useState<AppLanguage>('ko'); // 기본 언어: 한국어
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
   const [handle, setHandle] = useState(() => `user_${Math.random().toString(36).slice(2, 8)}`);
   const [bio, setBio] = useState('');
@@ -223,6 +229,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setNickname(p.nickname);
       setBirthday(p.birthday ?? '');
       setGender(p.gender ?? '');
+      setLanguage(p.language ?? 'ko');
       setHandle(p.handle);
       setBio(p.bio);
       setProfilePhoto(p.profilePhoto);
@@ -258,6 +265,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       nickname,
       birthday,
       gender,
+      language,
       handle,
       bio,
       profilePhoto,
@@ -293,6 +301,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       nickname,
       birthday,
       gender,
+      language,
       handle,
       bio,
       profilePhoto,
@@ -345,6 +354,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setNickname('');
     setBirthday('');
     setGender('');
+    setLanguage('ko');
     setHandle(`user_${Math.random().toString(36).slice(2, 8)}`);
     setBio('');
     setProfilePhoto(null);
@@ -397,6 +407,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setBirthday,
         gender,
         setGender,
+        language,
+        setLanguage,
         handle,
         setHandle,
         bio,

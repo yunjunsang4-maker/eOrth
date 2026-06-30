@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
+import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -78,6 +79,7 @@ const ToggleRow = ({
 };
 
 export default function NotificationSettingsScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const { arrivalDetect, setArrivalDetect, snapEnabled, setSnapEnabled, notifPrefs, setNotifPref } = useSettings();
 
   // 알림 토글은 settingsStore에 영속 저장 (재진입 시 유지)
@@ -137,11 +139,11 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
           onPress={() => navigation.goBack()}
           activeOpacity={0.7}
           accessibilityRole="button"
-          accessibilityLabel="뒤로 가기"
+          accessibilityLabel={t('notifSettings.back')}
         >
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>알림 설정</Text>
+        <Text style={styles.headerTitle}>{t('notifSettings.title')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -154,9 +156,9 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         {permissionGranted === false && (
           <View style={styles.permissionBanner}>
             <View style={styles.permissionTextWrap}>
-              <Text style={styles.permissionTitle}>알림 권한이 꺼져 있어요</Text>
+              <Text style={styles.permissionTitle}>{t('notifSettings.permissionTitle')}</Text>
               <Text style={styles.permissionDesc}>
-                기기 설정에서 알림을 허용해야{'\n'}아래 알림을 받을 수 있어요.
+                {t('notifSettings.permissionDesc')}
               </Text>
             </View>
             <TouchableOpacity
@@ -164,18 +166,18 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
               onPress={requestPermission}
               activeOpacity={0.8}
             >
-              <Text style={styles.permissionBtnText}>설정 열기</Text>
+              <Text style={styles.permissionBtnText}>{t('notifSettings.openSettings')}</Text>
             </TouchableOpacity>
           </View>
         )}
 
         {/* ── 기본 알림 설정 ── */}
-        <SectionLabel label="기본 알림 설정" />
+        <SectionLabel label={t('notifSettings.sectionBasic')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<BellIcon size={20} />}
-            label="푸시 알림 허용"
-            description="eOrth에서 보내는 모든 푸시 알림을 켜고 끕니다"
+            label={t('notifSettings.masterLabel')}
+            description={t('notifSettings.masterDesc')}
             value={masterEnabled}
             onValueChange={(v) => setNotifPref('master', v)}
             isLast
@@ -183,28 +185,28 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         </View>
 
         {/* ── 소셜 알림 ── */}
-        <SectionLabel label="소셜 알림" />
+        <SectionLabel label={t('notifSettings.sectionSocial')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<MapIcon size={20} />}
-            label="친구 새 여행 기록"
-            description="팔로우하는 친구가 여행 기록을 올렸을 때"
+            label={t('notifSettings.friendTripLabel')}
+            description={t('notifSettings.friendTripDesc')}
             value={friendTrip}
             onValueChange={(v) => setNotifPref('friendTrip', v)}
             disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<HeartIcon size={20} />}
-            label="좋아요 · 댓글"
-            description="내 기록에 좋아요나 댓글이 달렸을 때"
+            label={t('notifSettings.likesLabel')}
+            description={t('notifSettings.likesDesc')}
             value={likes}
             onValueChange={(v) => setNotifPref('likes', v)}
             disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<PersonIcon size={20} />}
-            label="새 팔로워"
-            description="누군가 나를 팔로우했을 때"
+            label={t('notifSettings.newFollowerLabel')}
+            description={t('notifSettings.newFollowerDesc')}
             value={newFollower}
             onValueChange={(v) => setNotifPref('newFollower', v)}
             disabled={!masterEnabled}
@@ -213,20 +215,20 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         </View>
 
         {/* ── 여행 감지 알림 ── */}
-        <SectionLabel label="여행 감지 알림" />
+        <SectionLabel label={t('notifSettings.sectionTravelDetect')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<PlaneIcon size={20} />}
-            label="해외 도착 감지"
-            description="해외에 도착하면 여행 기록을 시작할지 알려줘요"
+            label={t('notifSettings.arrivalLabel')}
+            description={t('notifSettings.arrivalDesc')}
             value={arrivalDetect}
             onValueChange={setArrivalDetect}
             disabled={!masterEnabled}
           />
           <ToggleRow
             icon={<HomeIcon size={20} />}
-            label="귀국 감지"
-            description="귀국하면 여행을 마무리할지 알려줘요"
+            label={t('notifSettings.returnLabel')}
+            description={t('notifSettings.returnDesc')}
             value={returnDetect}
             onValueChange={(v) => setNotifPref('returnDetect', v)}
             disabled={!masterEnabled}
@@ -235,12 +237,12 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         </View>
 
         {/* ── 스냅 알림 ── */}
-        <SectionLabel label="스냅 알림" />
+        <SectionLabel label={t('notifSettings.sectionSnap')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<BellIcon size={20} />}
-            label="실시간 스냅 알림"
-            description="해외 여행 중 무작위 시점에 사진을 기록하라고 알려줘요"
+            label={t('notifSettings.snapLabel')}
+            description={t('notifSettings.snapDesc')}
             value={snapEnabled}
             onValueChange={setSnapEnabled}
             disabled={!masterEnabled}
@@ -249,12 +251,12 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         </View>
 
         {/* ── 추억 리마인드 ── */}
-        <SectionLabel label="추억 리마인드" />
+        <SectionLabel label={t('notifSettings.sectionMemory')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<CalendarIcon size={20} />}
-            label="1년 전 오늘 알림"
-            description="1년 전 오늘의 여행 기록을 돌아봐요"
+            label={t('notifSettings.memoryLabel')}
+            description={t('notifSettings.memoryDesc')}
             value={memoryRemind}
             onValueChange={(v) => setNotifPref('memoryRemind', v)}
             disabled={!masterEnabled}
@@ -263,12 +265,12 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
         </View>
 
         {/* ── 마케팅 ── */}
-        <SectionLabel label="마케팅" />
+        <SectionLabel label={t('notifSettings.sectionMarketing')} />
         <View style={styles.card}>
           <ToggleRow
             icon={<MegaphoneIcon size={20} />}
-            label="새 기능 · 이벤트 알림"
-            description="eOrth의 업데이트 소식과 이벤트를 받아요"
+            label={t('notifSettings.marketingLabel')}
+            description={t('notifSettings.marketingDesc')}
             value={marketing}
             onValueChange={(v) => setNotifPref('marketing', v)}
             disabled={!masterEnabled}
@@ -278,8 +280,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
 
         {/* 안내 문구 */}
         <Text style={styles.footnote}>
-          일부 알림은 기기의 알림 설정에 따라 제한될 수 있어요.{'\n'}
-          기기 설정 → eOrth에서 전체 알림 권한을 확인해주세요.
+          {t('notifSettings.footnote')}
         </Text>
 
         <View style={{ height: 40 }} />

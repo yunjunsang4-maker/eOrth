@@ -6,7 +6,8 @@ import {
   Modal,
   TouchableOpacity,
 } from 'react-native';
-import { REPORT_REASONS } from '../utils/reportAndBlock';
+import { useTranslation } from 'react-i18next';
+import { REPORT_REASON_KEYS } from '../utils/reportAndBlock';
 
 interface ReportModalProps {
   visible: boolean;
@@ -15,6 +16,7 @@ interface ReportModalProps {
 }
 
 export default function ReportModal({ visible, onClose, onSubmit }: ReportModalProps) {
+  const { t } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -26,23 +28,23 @@ export default function ReportModal({ visible, onClose, onSubmit }: ReportModalP
         <View style={s.card}>
           {/* 헤더 */}
           <View style={s.header}>
-            <Text style={s.title}>신고 사유를 선택해주세요</Text>
-            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel="닫기">
+            <Text style={s.title}>{t('social.reportReasonTitle')}</Text>
+            <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('common.close')}>
               <Text style={s.closeBtn}>✕</Text>
             </TouchableOpacity>
           </View>
 
           {/* 사유 목록 */}
-          {REPORT_REASONS.map((reason, idx) => (
-            <View key={reason}>
+          {REPORT_REASON_KEYS.map((key, idx) => (
+            <View key={key}>
               <TouchableOpacity
                 style={s.item}
-                onPress={() => onSubmit(reason)}
+                onPress={() => onSubmit(t(key))}
                 activeOpacity={0.7}
               >
-                <Text style={s.itemText}>{reason}</Text>
+                <Text style={s.itemText}>{t(key)}</Text>
               </TouchableOpacity>
-              {idx < REPORT_REASONS.length - 1 && <View style={s.divider} />}
+              {idx < REPORT_REASON_KEYS.length - 1 && <View style={s.divider} />}
             </View>
           ))}
         </View>

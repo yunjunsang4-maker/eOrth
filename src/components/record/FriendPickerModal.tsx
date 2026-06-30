@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { FriendIcon as SvgFriendIcon } from '../icons';
 
 /**
@@ -36,6 +37,7 @@ export function FriendPickerModal({
   onToggle: (friend: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -50,13 +52,13 @@ export function FriendPickerModal({
           <View style={fp.handle} />
           <View style={fp.header}>
             <SvgFriendIcon size={16} color={COLORS.purpleNeon} />
-            <Text style={fp.headerTitle}>함께한 친구 선택</Text>
+            <Text style={fp.headerTitle}>{t('cutInfo.friendPickerTitle')}</Text>
           </View>
 
           <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
             {friends.length === 0 ? (
               <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
-                아직 팔로우한 친구가 없어요
+                {t('social.noFollowedFriends')}
               </Text>
             ) : friends.map(friend => {
               const isSelected = selected.includes(friend);
@@ -81,7 +83,7 @@ export function FriendPickerModal({
 
           <TouchableOpacity style={fp.doneBtn} onPress={onClose} activeOpacity={0.85}>
             <Text style={fp.doneTxt}>
-              {selected.length > 0 ? `${selected.length}명 선택 완료` : '선택 없이 닫기'}
+              {selected.length > 0 ? t('cutInfo.friendDoneN', { count: selected.length }) : t('cutInfo.closeWithoutSelect')}
             </Text>
           </TouchableOpacity>
         </View>

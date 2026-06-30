@@ -14,6 +14,8 @@ import {
   Alert,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
@@ -22,6 +24,18 @@ import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
+const viewTypeName = (type: string, tr: TFunction): string => {
+  switch (type) {
+    case 'feed': return tr('main.formatFeed');
+    case 'blog': return tr('main.formatBlog');
+    case 'album': return tr('main.formatAlbum');
+    case 'snap': return tr('main.formatSnap');
+    case 'cut': return tr('main.formatCut');
+    default: return type;
+  }
+};
 
 // 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율
 const CARD_W = SCREEN_WIDTH - 40;
@@ -205,6 +219,7 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
@@ -246,7 +261,7 @@ export default function TripDetailScreen() {
   const handleChangeThumb = () => {
     setMenuVisible(false);
     if (!currentGroup || thumbCandidates.length === 0) {
-      Alert.alert('알림', '변경할 수 있는 사진이 없어요.');
+      Alert.alert(t('trip.noticeTitle'), t('trip.noPhotoToChange'));
       return;
     }
     setThumbPickerVisible(true);
@@ -282,13 +297,13 @@ export default function TripDetailScreen() {
   const handleArchiveCard = () => {
     setMenuVisible(false);
     if (!currentGroup) {
-      Alert.alert('알림', '샘플 여행 카드는 보관할 수 없어요.');
+      Alert.alert(t('trip.noticeTitle'), t('trip.sampleNoArchive'));
       return;
     }
-    Alert.alert('기록카드 보관', '이 여행의 모든 기록이 보관함으로 이동하고, 프로필에서 카드가 숨겨져요.', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('trip.archiveCardTitle'), t('trip.archiveCardMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '보관',
+        text: t('trip.archive'),
         onPress: () => {
           currentGroup.records.forEach((id) => archiveRecord(id));
           navigation.goBack();
@@ -300,13 +315,13 @@ export default function TripDetailScreen() {
   const handleDeleteCard = () => {
     setMenuVisible(false);
     if (!currentGroup) {
-      Alert.alert('알림', '샘플 여행 카드는 삭제할 수 없어요.');
+      Alert.alert(t('trip.noticeTitle'), t('trip.sampleNoDelete'));
       return;
     }
-    Alert.alert('기록카드 삭제', '이 여행의 모든 기록이 함께 삭제돼요. 되돌릴 수 없어요.', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('trip.deleteCardTitle'), t('trip.deleteCardMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '삭제',
+        text: t('trip.delete'),
         style: 'destructive',
         onPress: () => {
           currentGroup.records.forEach((id) => deleteRecord(id));
@@ -403,7 +418,7 @@ export default function TripDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
           <Text style={s.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={s.headerCenter}>
@@ -428,7 +443,7 @@ export default function TripDetailScreen() {
           )}
         </View>
         {/* ☰ 편집 메뉴 */}
-        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel="여행 카드 편집 메뉴">
+        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
           <View style={s.menuBars}>
             <View style={s.menuBar} />
             <View style={s.menuBar} />
@@ -444,36 +459,36 @@ export default function TripDetailScreen() {
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"
-              accessibilityLabel="기록 추가"
+              accessibilityLabel={t('trip.addRecordA11y')}
               onPress={() => { setMenuVisible(false); setFormatPickerVisible(true); }}
             >
-              <Text style={s.menuItemText}>➕  기록 추가</Text>
+              <Text style={s.menuItemText}>➕  {t('comp2.tdAddRecord')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"
-              accessibilityLabel="제목 수정"
+              accessibilityLabel={t('trip.editTitleA11y')}
               onPress={() => {
                 setMenuVisible(false);
                 // 그룹이 없는 카드(샘플 등)는 제목 저장 대상이 없어 수정 불가 — 다른 메뉴와 동일하게 안내
-                if (!currentGroup) { Alert.alert('알림', '샘플 여행 카드는 제목을 수정할 수 없어요.'); return; }
+                if (!currentGroup) { Alert.alert(t('trip.noticeTitle'), t('trip.sampleNoTitleEdit')); return; }
                 setIsEditing(true);
               }}
             >
-              <Text style={s.menuItemText}>✏️  제목 수정</Text>
+              <Text style={s.menuItemText}>✏️  {t('comp2.tdEditTitle')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb} accessibilityRole="button" accessibilityLabel="썸네일 사진 변경">
-              <Text style={s.menuItemText}>🖼️  썸네일 사진 변경</Text>
+            <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb} accessibilityRole="button" accessibilityLabel={t('trip.changeThumbA11y')}>
+              <Text style={s.menuItemText}>🖼️  {t('comp2.tdChangeThumb')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel="기록카드 보관">
-              <Text style={s.menuItemText}>📦  기록카드 보관</Text>
+            <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel={t('trip.archiveCardA11y')}>
+              <Text style={s.menuItemText}>📦  {t('comp2.tdArchive')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
-            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard} accessibilityRole="button" accessibilityLabel="기록카드 삭제">
-              <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  기록카드 삭제</Text>
+            <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard} accessibilityRole="button" accessibilityLabel={t('trip.deleteCardA11y')}>
+              <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  {t('comp2.tdDelete')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -483,9 +498,9 @@ export default function TripDetailScreen() {
       <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
         <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
           <View style={s.fmCard}>
-            <Text style={s.fmTitle}>기록 형식 선택</Text>
+            <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
             <Text style={s.fmSub}>
-              {trip.country ? `${trip.country}의 여행을 어떤 형식으로 기록할까요?` : '어떤 형식으로 기록할까요?'}
+              {trip.country ? t('trip.recordFormatPromptCountry', { country: trip.country }) : t('trip.recordFormatPrompt')}
             </Text>
             {/* 기간이 정해진 여행이면 작성 화면에 이 여행 날짜가 자동 적용된다(국가+날짜로 그룹화되어 이 카드에 묶임) */}
             {tripPeriod.startDate ? (
@@ -495,9 +510,9 @@ export default function TripDetailScreen() {
             ) : null}
             <View style={s.fmGrid}>
               {ADD_FORMATS.map((f) => (
-                <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={`${f.name} 형식으로 기록 추가`}>
+                <TouchableOpacity key={f.type} style={s.fmItem} activeOpacity={0.8} onPress={() => handleAddRecord(f.type)} accessibilityRole="button" accessibilityLabel={t('trip.addFormatA11y', { format: viewTypeName(f.type, t) })}>
                   <FormatIcon type={f.type} color={VIEW_CONFIG[f.type]?.accent ?? COLORS.purpleNeon} />
-                  <Text style={s.fmName}>{f.name}</Text>
+                  <Text style={s.fmName}>{viewTypeName(f.type, t)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -509,19 +524,19 @@ export default function TripDetailScreen() {
       <Modal visible={thumbPickerVisible} transparent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
         <View style={s.thumbOverlay}>
           <View style={s.thumbSheet}>
-            <Text style={s.thumbTitle}>썸네일 사진 변경</Text>
-            <Text style={s.thumbSub}>프로필 여행 카드에 표시될 사진을 골라주세요.</Text>
+            <Text style={s.thumbTitle}>{t('trip.changeThumbTitle')}</Text>
+            <Text style={s.thumbSub}>{t('trip.changeThumbSub')}</Text>
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
               <View style={s.thumbGrid}>
                 {thumbCandidates.map((uri, i) => (
-                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel="이 사진을 썸네일로 선택">
+                  <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={t('trip.pickThumbA11y')}>
                     <Image source={{ uri }} style={s.thumbCell} />
                   </TouchableOpacity>
                 ))}
               </View>
             </ScrollView>
             <TouchableOpacity style={s.thumbCancel} onPress={() => setThumbPickerVisible(false)} activeOpacity={0.85}>
-              <Text style={s.thumbCancelTxt}>취소</Text>
+              <Text style={s.thumbCancelTxt}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -641,7 +656,7 @@ export default function TripDetailScreen() {
                     </Text>
                     <View style={s.moduleNameRow}>
                       <FormatIcon type={m.vt} color={m.config.accent} />
-                      <Text style={s.moduleName}>{m.config.name}</Text>
+                      <Text style={s.moduleName}>{viewTypeName(m.vt, t)}</Text>
                     </View>
                     <View style={s.moduleMetaRow}>
                       <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
@@ -725,7 +740,7 @@ export default function TripDetailScreen() {
           {modules.length === 0 && (
             <View style={s.emptyCard}>
               <Text style={s.emptyIcon}>🛰️</Text>
-              <Text style={s.emptyText}>아직 이 여행에 기록이 없어요</Text>
+              <Text style={s.emptyText}>{t('trip.emptyTrip')}</Text>
             </View>
           )}
         </View>
@@ -743,6 +758,7 @@ function useCommentCount(recordId: string): number {
 
 // ─── 피드 카드 (스냅과 동일한 세로 포트레이트 형태) ───
 function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const { t } = useTranslation();
   const commentCount = useCommentCount(record.id);
   const img = record.medias?.[0] || record.representativePhoto;
   return (
@@ -757,7 +773,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
       <View style={card.snapHeader}>
         <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>피드</Text>
+          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatFeed')}</Text>
         </View>
       </View>
       {/* 세로 사진 */}
@@ -835,6 +851,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
 
 // ─── 블로그 카드 ───
 function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const { t } = useTranslation();
   const commentCount = useCommentCount(record.id);
   const getBlogExcerpt = () => {
     if (record.blogBlocks && record.blogBlocks.length > 0) {
@@ -849,7 +866,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
       const headingBlock = record.blogBlocks.find((b) => b.type === 'heading');
       if (headingBlock) return headingBlock.value;
     }
-    return '블로그 여행기';
+    return t('trip.blogTravelogue');
   };
 
   return (
@@ -864,7 +881,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
       <View style={card.snapHeader}>
         <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>블로그</Text>
+          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatBlog')}</Text>
         </View>
       </View>
       <Text style={[card.feedTitle, { color: COLORS.white, marginBottom: 4 }]} numberOfLines={2}>
@@ -886,6 +903,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
 
 // ─── 스냅 카드 ───
 function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const { t } = useTranslation();
   const commentCount = useCommentCount(record.id);
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
@@ -899,7 +917,7 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
       <View style={card.snapHeader}>
         <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>스냅</Text>
+          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatSnap')}</Text>
         </View>
       </View>
       {/* 세로 스냅 사진 (촬영이 세로라 포트레이트로 표시) */}
@@ -927,6 +945,7 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
 
 // ─── 스트립 카드 ───
 function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  const { t } = useTranslation();
   const commentCount = useCommentCount(record.id);
   const photos = record.cutPhoto?.photos ?? [];
   // 프레임 규격(가로/세로 비율)에 맞춰 미리보기를 렌더 (고정 높이 대신 실제 프레임 비율 사용)
@@ -943,7 +962,7 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
       <View style={card.snapHeader}>
         <Text style={card.feedDate}>{record.date}</Text>
         <View style={[card.feedTypeBadge, { backgroundColor: accent + '15' }]}>
-          <Text style={[card.feedTypeText, { color: accent }]}>스트립</Text>
+          <Text style={[card.feedTypeText, { color: accent }]}>{t('main.formatCut')}</Text>
         </View>
       </View>
       {/* 합성된 네컷 이미지(previewUri) 우선 — 영구 저장되어 안정적. 없으면 개별 사진 */}
@@ -979,7 +998,7 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
         </View>
       )}
       <Text style={card.feedContent} numberOfLines={1}>
-        {record.content || '네컷 사진'}
+        {record.content || t('trip.fourCutPhoto')}
       </Text>
       <View style={card.feedFooter}>
         <Text style={card.feedStat}>♥ {record.likes}</Text>

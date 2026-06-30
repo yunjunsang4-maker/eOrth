@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,  Alert,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -23,13 +24,14 @@ const COLORS = {
 };
 
 export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<'BlockedUsers'>) {
+  const { t } = useTranslation();
   const { blockedUsers, unblockUser } = useRecords();
 
   const handleUnblock = (name: string) => {
-    Alert.alert('차단 해제', `${name}님의 차단을 해제하시겠습니까?`, [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name }), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '해제하기',
+        text: t('friends.unblock'),
         onPress: () => {
           unblockUser(name);
         },
@@ -46,10 +48,10 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
     <SafeAreaView style={st.safeArea}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={st.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>차단한 사용자</Text>
+        <Text style={st.headerTitle}>{t('friends.blockedTitle')}</Text>
         <View style={st.headerPlaceholder} />
       </View>
 
@@ -57,8 +59,8 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         {blockedUsers.length === 0 ? (
           <View style={st.emptyContainer}>
             <Text style={st.emptyIcon}>🚫</Text>
-            <Text style={st.emptyTitle}>차단한 사용자가 없어요</Text>
-            <Text style={st.emptyDesc}>소셜 피드에서 게시물의 ··· 버튼을 통해{'\n'}사용자를 차단할 수 있어요</Text>
+            <Text style={st.emptyTitle}>{t('friends.noBlocked')}</Text>
+            <Text style={st.emptyDesc}>{t('friends.noBlockedDesc')}</Text>
           </View>
         ) : (
           <>
@@ -77,7 +79,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
                   activeOpacity={0.7}
                   onPress={() => handleUnblock(user.name)}
                 >
-                  <Text style={st.unblockText}>해제</Text>
+                  <Text style={st.unblockText}>{t('friends.unblockShort')}</Text>
                 </TouchableOpacity>
               </View>
             ))}

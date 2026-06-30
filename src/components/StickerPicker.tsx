@@ -7,6 +7,7 @@ import {
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import {
   stickerCategories,
@@ -14,6 +15,15 @@ import {
   StickerCategory,
   Sticker,
 } from './stickers';
+
+// 카테고리/스티커 id → i18n 키 (라벨은 데이터가 아니라 UI 문구라 번역 대상)
+const CATEGORY_KEY: Record<StickerCategory, string> = {
+  travel: 'sticker.catTravel',
+  emotion: 'sticker.catEmotion',
+  weather: 'sticker.catWeather',
+  food: 'sticker.catFood',
+  activity: 'sticker.catActivity',
+};
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const ITEM_SIZE = Math.floor((SCREEN_W - 64) / 4);
@@ -23,6 +33,7 @@ interface StickerPickerProps {
 }
 
 export const StickerPicker: React.FC<StickerPickerProps> = ({ onSelect }) => {
+  const { t } = useTranslation();
   const [activeCategory, setActiveCategory] = useState<StickerCategory>('travel');
   const categoryStickers = getStickersByCategory(activeCategory);
 
@@ -39,7 +50,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({ onSelect }) => {
             >
               <Text style={styles.tabEmoji}>{cat.emoji}</Text>
               <Text style={[styles.tabLabel, activeCategory === cat.id && styles.tabLabelActive]}>
-                {cat.label}
+                {t(CATEGORY_KEY[cat.id] as any)}
               </Text>
             </TouchableOpacity>
           ))}
@@ -58,7 +69,7 @@ export const StickerPicker: React.FC<StickerPickerProps> = ({ onSelect }) => {
               activeOpacity={0.7}
             >
               <StickerComp size={40} />
-              <Text style={styles.itemLabel}>{sticker.name}</Text>
+              <Text style={styles.itemLabel}>{t(`sticker.${sticker.id}` as any)}</Text>
             </TouchableOpacity>
           );
         })}

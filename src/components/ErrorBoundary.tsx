@@ -8,6 +8,7 @@
 
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import i18n from '../i18n';
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -52,10 +53,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       <View style={st.container}>
         <View style={st.card}>
           <Text style={st.emoji}>🌍</Text>
-          <Text style={st.title}>문제가 발생했어요</Text>
+          <Text style={st.title}>{i18n.t('comp.errorTitle')}</Text>
           <Text style={st.desc}>
-            예상치 못한 오류로 화면을 표시할 수 없어요.{'\n'}
-            기록된 데이터는 안전하게 보관되어 있어요.
+            {i18n.t('comp.errorDesc')}
           </Text>
           {this.state.errorMessage ? (
             <Text style={st.errorDetail} numberOfLines={3}>
@@ -63,7 +63,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             </Text>
           ) : null}
           <TouchableOpacity style={st.retryBtn} activeOpacity={0.8} onPress={this.handleRetry}>
-            <Text style={st.retryText}>다시 시도</Text>
+            <Text style={st.retryText}>{i18n.t('comp.retry')}</Text>
           </TouchableOpacity>
         </View>
       </View>

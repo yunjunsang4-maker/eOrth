@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { CameraIcon } from '../components/icons';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
 import { useSettings } from '../store/settingsStore';
 
@@ -37,6 +38,7 @@ const COLORS = {
 };
 
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
+  const { t, i18n } = useTranslation();
   const {
     nickname: globalNickname,
     setNickname: setGlobalNickname,
@@ -72,15 +74,15 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     if (status !== 'granted') {
       if (!canAskAgain) {
         Alert.alert(
-          '갤러리 접근 권한 필요',
-          '설정에서 갤러리 접근을 허용해주세요.',
+          t('editProfile.galleryPermTitle'),
+          t('editProfile.galleryPermMsg'),
           [
-            { text: '취소', style: 'cancel' },
-            { text: '설정으로 이동', onPress: () => Linking.openSettings() },
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('editProfile.goToSettings'), onPress: () => Linking.openSettings() },
           ]
         );
       } else {
-        Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+        Alert.alert(t('editProfile.permNeededTitle'), t('editProfile.permNeededMsg'));
       }
       return;
     }
@@ -97,14 +99,14 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
   const handleSave = () => {
     if (!handle.trim()) {
-      Alert.alert('알림', '아이디를 입력해주세요.');
+      Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleEmpty'));
       return;
     }
-    
+
     const trimmedHandle = handle.trim();
     if (trimmedHandle !== globalHandle) {
       if (!canChangeHandle) {
-        Alert.alert('알림', '아이디 변경 가능 기간이 아닙니다.');
+        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleChangeBlocked'));
         return;
       }
       setGlobalHandle(trimmedHandle);
@@ -116,7 +118,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     setGlobalBio(bio.trim());
     setGlobalProfilePhoto(profilePhoto);
 
-    showToast('프로필이 저장되었어요');
+    showToast(t('editProfile.savedToast'));
     setTimeout(() => {
       navigation.goBack();
     }, 1000);
@@ -126,12 +128,12 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('editProfile.back')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>프로필 편집</Text>
+        <Text style={s.headerTitle}>{t('editProfile.title')}</Text>
         <TouchableOpacity style={s.saveBtn} activeOpacity={0.7} onPress={handleSave}>
-          <Text style={s.saveText}>저장</Text>
+          <Text style={s.saveText}>{t('editProfile.save')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -161,31 +163,31 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 <CameraIcon size={14} color="#A1A1B0" />
               </View>
             </TouchableOpacity>
-            <Text style={s.avatarHint}>탭하여 사진 변경</Text>
+            <Text style={s.avatarHint}>{t('editProfile.avatarHint')}</Text>
             {profilePhoto && (
               <TouchableOpacity
                 onPress={() =>
-                  Alert.alert('사진 삭제', '프로필 사진을 삭제할까요?', [
-                    { text: '취소', style: 'cancel' },
-                    { text: '삭제', style: 'destructive', onPress: () => setProfilePhoto(null) },
+                  Alert.alert(t('editProfile.removePhoto'), t('editProfile.removePhotoMsg'), [
+                    { text: t('common.cancel'), style: 'cancel' },
+                    { text: t('editProfile.delete'), style: 'destructive', onPress: () => setProfilePhoto(null) },
                   ])
                 }
                 activeOpacity={0.7}
               >
-                <Text style={s.removePhotoText}>사진 삭제</Text>
+                <Text style={s.removePhotoText}>{t('editProfile.removePhoto')}</Text>
               </TouchableOpacity>
             )}
           </View>
 
           {/* 닉네임 */}
           <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>닉네임</Text>
+            <Text style={s.fieldLabel}>{t('editProfile.nickname')}</Text>
             <View style={s.inputWrap}>
               <TextInput
                 style={s.input}
                 value={nickname}
                 onChangeText={setNickname}
-                placeholder="닉네임을 입력하세요"
+                placeholder={t('editProfile.nicknamePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={20}
                 autoCorrect={false}
@@ -196,14 +198,14 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 아이디 */}
           <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>아이디</Text>
+            <Text style={s.fieldLabel}>{t('editProfile.handleLabel')}</Text>
             <View style={[s.inputWrap, !canChangeHandle && s.inputWrapDisabled]}>
               <Text style={s.atPrefix}>@</Text>
               <TextInput
                 style={[s.input, { flex: 1 }, !canChangeHandle && s.inputDisabled]}
                 value={handle}
                 onChangeText={(text) => setHandle(text.replace(/[^a-zA-Z0-9_]/g, ''))}
-                placeholder="영문, 숫자, _만 사용 가능"
+                placeholder={t('editProfile.handlePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={30}
                 autoCorrect={false}
@@ -214,24 +216,25 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
             </View>
             {!canChangeHandle && (
               <Text style={s.lockNotice}>
-                🔒 아이디는 2주에 한 번만 변경할 수 있습니다. (
-                {(() => {
-                  const d = new Date(handleLastChanged! + TWO_WEEKS_MS);
-                  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일`;
-                })()} 이후 변경 가능)
+                {t('editProfile.lockNotice', {
+                  date: new Date(handleLastChanged! + TWO_WEEKS_MS).toLocaleDateString(
+                    i18n.language === 'ko' ? 'ko-KR' : 'en-US',
+                    { year: 'numeric', month: 'long', day: 'numeric' }
+                  ),
+                })}
               </Text>
             )}
           </View>
 
           {/* 소개 */}
           <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>소개</Text>
+            <Text style={s.fieldLabel}>{t('editProfile.bioLabel')}</Text>
             <View style={s.inputWrap}>
               <TextInput
                 style={[s.input, s.bioInput]}
                 value={bio}
                 onChangeText={setBio}
-                placeholder="간단한 자기소개를 작성해보세요"
+                placeholder={t('editProfile.bioPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={100}
                 multiline
@@ -243,11 +246,11 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
 
           {/* 저장 버튼 (하단 대형) */}
           <TouchableOpacity style={s.saveLargeBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Text style={s.saveLargeText}>저장하기</Text>
+            <Text style={s.saveLargeText}>{t('editProfile.saveLarge')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-      <Toast visible={toastVisible} message="프로필이 저장되었어요" />
+      <Toast visible={toastVisible} message={t('editProfile.savedToast')} />
     </SafeAreaView>
   );
 }

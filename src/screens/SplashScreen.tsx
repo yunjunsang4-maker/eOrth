@@ -68,8 +68,10 @@ export default function SplashScreen({ navigation }: Props) {
     ]).start();
 
     // 2.8초 후 이동 — 로그인 세션이 있으면 Main으로 자동 로그인, 없으면 AppIntro
+    // ⚠️ 임시: 온보딩 플로우 확인용. 자동 로그인을 끄려면 true로 둔다. 작업 끝나면 false로 되돌릴 것!
+    const FORCE_ONBOARDING = true;
     const timer = setTimeout(async () => {
-      if (isSupabaseConfigured) {
+      if (isSupabaseConfigured && !FORCE_ONBOARDING) {
         const pending = await getPendingDeletion();
         const session = await getCurrentSession();
         // 탈퇴 유예 중이면 자동 로그인하지 않고 로그인 화면에서 복구 여부를 묻는다

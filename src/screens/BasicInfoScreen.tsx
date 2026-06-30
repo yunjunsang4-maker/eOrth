@@ -14,7 +14,8 @@ import {
   FlatList,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { useSettings, type Gender } from '../store/settingsStore';
+import { useTranslation } from 'react-i18next';
+import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -57,6 +58,7 @@ type Props = RootStackScreenProps<'BasicInfo'>;
 
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const {
     nickname: storeNickname,
     setNickname: setStoreNickname,
@@ -68,11 +70,17 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setBirthday: setStoreBirthday,
     gender: storeGender,
     setGender: setStoreGender,
+    language: storeLanguage,
+    setLanguage: setStoreLanguage,
+    accountPublic: storeAccountPublic,
+    setAccountPublic: setStoreAccountPublic,
   } = useSettings();
   const [nickname, setNickname] = useState(storeNickname || '');
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
   const [birthday, setBirthday] = useState(storeBirthday || '');
   const [gender, setGender] = useState<Gender>(storeGender || '');
+  const [language, setLanguage] = useState<AppLanguage>(storeLanguage || 'ko');
+  const [accountPublic, setAccountPublic] = useState<boolean>(storeAccountPublic);
   const [selectedCountry, setSelectedCountry] = useState<Country>(
     COUNTRIES.find((c) => codeOf(c) === homeCountryCode) ?? DEFAULT_COUNTRY
   );
@@ -89,7 +97,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showPermissionDeniedAlert('갤러리');
+      showPermissionDeniedAlert(t('permission.gallery'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -109,6 +117,8 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setHomeCountryCode(codeOf(selectedCountry));
     setStoreBirthday(birthday);
     setStoreGender(gender);
+    setStoreLanguage(language);
+    setStoreAccountPublic(accountPublic);
     navigation.navigate('TravelImport');
   };
 
@@ -127,9 +137,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
         >
           {/* Header */}
           <View style={styles.header}>
-            <Text style={styles.stepText}>STEP 1 / 2</Text>
-            <Text style={styles.title}>나의 정보</Text>
-            <Text style={styles.subtitle}>eOrth에서 사용할 닉네임과 기본 정보를 설정해주세요</Text>
+            <Text style={styles.stepText}>{t('basicInfo.step')}</Text>
+            <Text style={styles.title}>{t('basicInfo.title')}</Text>
+            <Text style={styles.subtitle}>{t('basicInfo.subtitle')}</Text>
           </View>
 
           {/* Avatar Placeholder */}
@@ -151,11 +161,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
 
           {/* Nickname Input */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>닉네임</Text>
+            <Text style={styles.inputLabel}>{t('basicInfo.nickname')}</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
-                placeholder="닉네임을 입력하세요"
+                placeholder={t('basicInfo.nicknamePlaceholder')}
                 placeholderTextColor={Colors.textMuted}
                 value={nickname}
                 onChangeText={setNickname}
@@ -168,7 +178,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
 
           {/* 생일 */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>생일</Text>
+            <Text style={styles.inputLabel}>{t('basicInfo.birthday')}</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
@@ -180,18 +190,18 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 maxLength={10}
               />
               {birthday.length > 0 && !isValidBirthday(birthday) && (
-                <Text style={styles.birthdayHint}>형식: YYYY-MM-DD</Text>
+                <Text style={styles.birthdayHint}>{t('basicInfo.birthdayHint')}</Text>
               )}
             </View>
           </View>
 
           {/* 성별 */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>성별</Text>
+            <Text style={styles.inputLabel}>{t('basicInfo.gender')}</Text>
             <View style={styles.genderRow}>
               {([
-                { value: 'male', label: '남' },
-                { value: 'female', label: '여' },
+                { value: 'male', label: t('basicInfo.genderMale') },
+                { value: 'female', label: t('basicInfo.genderFemale') },
               ] as { value: Gender; label: string }[]).map((opt) => {
                 const active = gender === opt.value;
                 return (
@@ -210,9 +220,34 @@ export default function BasicInfoScreen({ navigation }: Props) {
             </View>
           </View>
 
+          {/* 언어 */}
+          <View style={styles.inputSection}>
+            <Text style={styles.inputLabel}>{t('basicInfo.language')}</Text>
+            <View style={styles.genderRow}>
+              {([
+                { value: 'ko', label: '한국어' },
+                { value: 'en', label: 'English' },
+              ] as { value: AppLanguage; label: string }[]).map((opt) => {
+                const active = language === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[styles.genderBtn, active && styles.genderBtnActive]}
+                    activeOpacity={0.8}
+                    onPress={() => setLanguage(opt.value)}
+                  >
+                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* 거주국가 */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>거주국가</Text>
+            <Text style={styles.inputLabel}>{t('basicInfo.residence')}</Text>
             <TouchableOpacity
               style={styles.inputWrapper}
               activeOpacity={0.8}
@@ -221,8 +256,38 @@ export default function BasicInfoScreen({ navigation }: Props) {
               <Text style={[styles.input, { paddingVertical: 16 }]}>
                 {selectedCountry.flag} {selectedCountry.name}
               </Text>
-              <Text style={styles.charCount}>변경</Text>
+              <Text style={styles.charCount}>{t('common.change')}</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* 계정 공개 범위 */}
+          <View style={styles.inputSection}>
+            <Text style={styles.inputLabel}>{t('basicInfo.accountVisibility')}</Text>
+            <View style={styles.genderRow}>
+              {([
+                { value: true, label: t('basicInfo.visibilityPublic') },
+                { value: false, label: t('basicInfo.visibilityPrivate') },
+              ] as { value: boolean; label: string }[]).map((opt) => {
+                const active = accountPublic === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.label}
+                    style={[styles.genderBtn, active && styles.genderBtnActive]}
+                    activeOpacity={0.8}
+                    onPress={() => setAccountPublic(opt.value)}
+                  >
+                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                      {opt.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <Text style={styles.privacyHint}>
+              {accountPublic
+                ? t('basicInfo.visibilityPublicHint')
+                : t('basicInfo.visibilityPrivateHint')}
+            </Text>
           </View>
 
         </ScrollView>
@@ -230,7 +295,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
         {/* Bottom CTA */}
         <View style={styles.bottomCTA}>
           <PrimaryButton
-            label="다음"
+            label={t('common.next')}
             onPress={handleFinish}
             disabled={!canContinue}
             style={styles.doneBtn}
@@ -241,14 +306,14 @@ export default function BasicInfoScreen({ navigation }: Props) {
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
         <View style={styles.modalRoot} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>거주국가 선택</Text>
+            <Text style={styles.modalTitle}>{t('basicInfo.residenceSelect')}</Text>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}>
-              <Text style={styles.modalClose}>닫기</Text>
+              <Text style={styles.modalClose}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
           <TextInput
             style={styles.modalSearch}
-            placeholder="국가 검색 (예: 한국, japan)"
+            placeholder={t('basicInfo.residenceSearchPlaceholder')}
             placeholderTextColor={Colors.textMuted}
             value={countrySearch}
             onChangeText={setCountrySearch}
@@ -373,6 +438,12 @@ const styles = StyleSheet.create({
     color: '#FF3B30',
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
+  },
+  privacyHint: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.regular,
+    marginTop: Spacing[2],
   },
 
   // Gender

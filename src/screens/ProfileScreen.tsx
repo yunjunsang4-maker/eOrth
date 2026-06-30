@@ -25,6 +25,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
@@ -379,6 +380,7 @@ function BadgeListModal({
   setSelectedBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
   earnedBadgeIds: Set<number>;
 }) {
+  const { t } = useTranslation();
   const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
 
   // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
@@ -393,7 +395,7 @@ function BadgeListModal({
         return prev.filter((id) => id !== badgeId);
       } else {
         if (prev.length >= 5) {
-          Alert.alert('알림', '대표 배지는 최대 5개까지 선택할 수 있어요.');
+          Alert.alert(t('profile.noticeTitle'), t('profile.badgeMaxAlert'));
           return prev;
         }
         return [...prev, badgeId];
@@ -429,11 +431,11 @@ function BadgeListModal({
         <View style={blStyles.handle} />
         
         <View style={blStyles.header}>
-          <Text style={blStyles.title}>나의 배지 컬렉션</Text>
+          <Text style={blStyles.title}>{t('profile.badgeCollection')}</Text>
           <Text style={blStyles.subtitle}>
             {selectMode
-              ? `프로필에 표시할 배지 선택 (${selectedBadgeIds.length}/5)`
-              : `${earnedCount} / ${BADGES.length} 획득 · 배지를 눌러 확대`}
+              ? t('profile.badgeSelectCount', { count: selectedBadgeIds.length })
+              : t('profile.badgeEarnedCount', { earned: earnedCount, total: BADGES.length })}
           </Text>
           <TouchableOpacity
             style={[blStyles.selectBtn, selectMode && blStyles.selectBtnOn]}
@@ -441,7 +443,7 @@ function BadgeListModal({
             activeOpacity={0.8}
           >
             <Text style={[blStyles.selectBtnText, selectMode && blStyles.selectBtnTextOn]}>
-              {selectMode ? '선택 완료' : '선택'}
+              {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -531,7 +533,7 @@ function BadgeListModal({
                               {badge.name}
                             </Text>
                             <Text style={[blStyles.cellDesc, !isEarned && blStyles.lockedText]} numberOfLines={2}>
-                              {isEarned ? badge.desc : '미획득 배지'}
+                              {isEarned ? badge.desc : t('profile.unearnedBadge')}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -545,7 +547,7 @@ function BadgeListModal({
         </View>
 
         <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
-          <Text style={blStyles.closeBtnText}>닫기</Text>
+          <Text style={blStyles.closeBtnText}>{t('common.close')}</Text>
         </TouchableOpacity>
 
         {/* 배지 확대 보기 오버레이 */}
@@ -603,11 +605,11 @@ function BadgeListModal({
                       </LinearGradient>
                     </View>
                   )}
-                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : '미획득 배지'}</Text>
-                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : '아직 획득하지 못한 배지예요.'}</Text>
+                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : t('profile.unearnedBadge')}</Text>
+                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : t('profile.unearnedBadgeDesc')}</Text>
                   {selectedBadgeIds.includes(enlargedBadge.id) && (
                     <View style={blStyles.zoomSelectedTag}>
-                      <Text style={blStyles.zoomSelectedTagText}>★ 프로필에 표시 중</Text>
+                      <Text style={blStyles.zoomSelectedTagText}>{t('profile.shownOnProfile')}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -634,13 +636,14 @@ function EditProfileModal({
   onSave: (name: string, photo: string | null) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(currentName);
   const [photo, setPhoto] = useState<string | null>(currentPhoto);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showPermissionDeniedAlert('갤러리');
+      showPermissionDeniedAlert(t('permission.gallery'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -656,7 +659,7 @@ function EditProfileModal({
 
   const handleSave = () => {
     if (!name.trim()) {
-      Alert.alert('알림', '닉네임을 입력해주세요.');
+      Alert.alert(t('profile.noticeTitle'), t('profile.nicknameRequired'));
       return;
     }
     onSave(name.trim(), photo);
@@ -685,11 +688,11 @@ function EditProfileModal({
         {/* 헤더 */}
         <View style={styles.modalHeader}>
           <TouchableOpacity onPress={onClose} style={styles.modalCancelBtn}>
-            <Text style={styles.modalCancelText}>취소</Text>
+            <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
-          <Text style={styles.modalTitle}>프로필 편집</Text>
+          <Text style={styles.modalTitle}>{t('profile.editProfile')}</Text>
           <TouchableOpacity onPress={handleSave} style={styles.modalSaveBtn}>
-            <Text style={styles.modalSaveText}>저장</Text>
+            <Text style={styles.modalSaveText}>{t('editProfile.save')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -713,18 +716,18 @@ function EditProfileModal({
                 <Text style={styles.editBadgeText}>📷</Text>
               </View>
             </TouchableOpacity>
-            <Text style={styles.modalAvatarHint}>탭하여 사진 변경</Text>
+            <Text style={styles.modalAvatarHint}>{t('profile.avatarHint')}</Text>
           </View>
 
           {/* 닉네임 입력 */}
           <View style={styles.modalField}>
-            <Text style={styles.modalFieldLabel}>닉네임</Text>
+            <Text style={styles.modalFieldLabel}>{t('profile.nickname')}</Text>
             <View style={styles.modalInputWrap}>
               <TextInput
                 style={styles.modalInput}
                 value={name}
                 onChangeText={setName}
-                placeholder="닉네임을 입력하세요"
+                placeholder={t('profile.nicknamePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={20}
                 autoCorrect={false}
@@ -735,7 +738,7 @@ function EditProfileModal({
 
           {/* 저장 버튼 (하단 대형) */}
           <TouchableOpacity style={styles.modalSaveLargeBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Text style={styles.modalSaveLargeText}>저장하기</Text>
+            <Text style={styles.modalSaveLargeText}>{t('profile.saveLarge')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -849,6 +852,7 @@ function AvatarActionSheet({
   onChangePhoto: () => void;
   onDeletePhoto: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -894,7 +898,7 @@ function AvatarActionSheet({
                   onPress={onViewPhoto}
                 >
                   <Text style={asStyles.optionIcon}>📷</Text>
-                  <Text style={asStyles.optionText}>사진 크게 보기</Text>
+                  <Text style={asStyles.optionText}>{t('profile.viewPhoto')}</Text>
                 </TouchableOpacity>
                 <View style={asStyles.divider} />
               </>
@@ -905,7 +909,7 @@ function AvatarActionSheet({
               onPress={onChangePhoto}
             >
               <Text style={asStyles.optionIcon}>✏️</Text>
-              <Text style={asStyles.optionText}>프로필 사진 변경</Text>
+              <Text style={asStyles.optionText}>{t('profile.changePhoto')}</Text>
             </TouchableOpacity>
             {hasPhoto && (
               <>
@@ -916,7 +920,7 @@ function AvatarActionSheet({
                   onPress={onDeletePhoto}
                 >
                   <Text style={asStyles.optionIcon}>🗑️</Text>
-                  <Text style={[asStyles.optionText, asStyles.deleteText]}>프로필 사진 삭제</Text>
+                  <Text style={[asStyles.optionText, asStyles.deleteText]}>{t('profile.deletePhoto')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -924,7 +928,7 @@ function AvatarActionSheet({
 
           {/* 취소 카드 */}
           <TouchableOpacity style={asStyles.cancelCard} activeOpacity={0.7} onPress={onClose}>
-            <Text style={asStyles.cancelText}>취소</Text>
+            <Text style={asStyles.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -1229,6 +1233,7 @@ function GroupMergeModal({
   onClose: () => void;
   onSave: (title: string, coverRecordId: string, ordered: TripItem[]) => void;
 }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [cover, setCover] = useState(selectedRecords[0]?.id ?? '');
   const [ordered, setOrdered] = useState<TripItem[]>([...selectedRecords]);
@@ -1243,7 +1248,7 @@ function GroupMergeModal({
 
   const handleSave = () => {
     if (!title.trim()) {
-      Alert.alert('알림', '묶음 이름을 입력해주세요.');
+      Alert.alert(t('profile.noticeTitle'), t('profile.groupNameRequired'));
       return;
     }
     onSave(title.trim(), cover, ordered);
@@ -1262,27 +1267,27 @@ function GroupMergeModal({
         />
         <View style={gmSt.sheet}>
           <View style={gmSt.handle} />
-          <Text style={gmSt.sheetTitle}>묶음 설정</Text>
+          <Text style={gmSt.sheetTitle}>{t('profile.groupSettings')}</Text>
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             {/* 묶음 제목 */}
-            <Text style={gmSt.sectionLabel}>묶음 제목</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.groupTitle')}</Text>
             <View style={gmSt.inputWrap}>
               <TextInput
                 style={gmSt.input}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="여행 묶음 이름을 입력해주세요"
+                placeholder={t('profile.groupTitlePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={30}
               />
             </View>
-            <Text style={gmSt.inputHint}>예시: "유럽 3개국 여행", "일본 두 번째 방문"</Text>
+            <Text style={gmSt.inputHint}>{t('profile.groupTitleHint')}</Text>
 
             {/* 대표 기록 선택 */}
-            <Text style={gmSt.sectionLabel}>대표 기록</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.groupCover')}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1315,19 +1320,19 @@ function GroupMergeModal({
                     {record.country.split(' ').slice(1).join(' ')}
                   </Text>
                   {cover !== record.id && (
-                    <Text style={gmSt.setAsLabel}>대표로 설정</Text>
+                    <Text style={gmSt.setAsLabel}>{t('profile.setAsCover')}</Text>
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
             {/* 기록 순서 조정 */}
-            <Text style={gmSt.sectionLabel}>기록 순서</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.recordOrder')}</Text>
             <OrderableList records={ordered} onReorder={setOrdered} />
 
             {/* 저장 */}
             <TouchableOpacity style={gmSt.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-              <Text style={gmSt.saveBtnText}>저장하기</Text>
+              <Text style={gmSt.saveBtnText}>{t('profile.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </ScrollView>
@@ -1349,6 +1354,7 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.r
 // ─── 메인 프로필 화면 ───
 export default function ProfileScreen({ navigation, route }: TabScreenProps<'ProfileTab'>) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
@@ -1409,26 +1415,26 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           setCoachSteps([
             {
               rect: null,
-              title: '내 프로필 👤',
-              desc: '나의 여행 기록과 배지, 프로필을 한곳에 모았어요. 주요 기능을 빠르게 둘러볼게요.',
+              title: t('profile.coach1Title'),
+              desc: t('profile.coach1Desc'),
             },
             {
               rect: avatar,
               shape: 'circle',
               circleWin: avatarCircle,
               tipBelow: true, // 아바타는 화면 상단이라 말풍선을 아래쪽에 둬 가리지 않게
-              title: '프로필 사진',
-              desc: '아바타를 탭하면 프로필 사진을 바꾸거나 크게 볼 수 있어요.',
+              title: t('profile.coach2Title'),
+              desc: t('profile.coach2Desc'),
             },
             {
               rect: badgeRect,
-              title: '여행 배지',
-              desc: '여행하며 획득한 배지를 모아 보여줘요. "모두보기"로 전체 배지를 확인할 수 있어요.',
+              title: t('profile.coach3Title'),
+              desc: t('profile.coach3Desc'),
             },
             {
               rect: archiveRect,
-              title: '여행 기록',
-              desc: '그동안의 여행 기록 카드를 모아둔 곳이에요. 카드를 길게 눌러 드래그하면 순서를 바꿀 수 있어요.',
+              title: t('profile.coach4Title'),
+              desc: t('profile.coach4Desc'),
             },
           ]);
           setCoachVisible(true);
@@ -1679,18 +1685,18 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
       if (!canAskAgain) {
         // 권한이 영구적으로 거부된 경우 → 설정 화면으로 유도
         Alert.alert(
-          '갤러리 접근 권한 필요',
-          '갤러리 접근 권한이 필요해요. 설정에서 권한을 허용해주세요.',
+          t('profile.galleryPermTitle'),
+          t('profile.galleryPermMsg'),
           [
-            { text: '취소', style: 'cancel' },
+            { text: t('common.cancel'), style: 'cancel' },
             {
-              text: '설정으로 이동',
+              text: t('profile.goToSettings'),
               onPress: () => Linking.openSettings(),
             },
           ]
         );
       } else {
-        Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+        Alert.alert(t('profile.permNeededTitle'), t('profile.permNeededMsg'));
       }
       return;
     }
@@ -1711,12 +1717,12 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   const handleDeletePhoto = () => {
     setActionSheetVisible(false);
     Alert.alert(
-      '프로필 사진 삭제',
-      '프로필 사진을 삭제할까요?',
+      t('profile.deletePhotoTitle'),
+      t('profile.deletePhotoMsg'),
       [
-        { text: '취소', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '삭제',
+          text: t('profile.delete'),
           style: 'destructive',
           onPress: () => setProfilePhoto(null),
         },
@@ -1833,16 +1839,16 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                   const visit = COUNTRY_DATA[currentVisitedCountryCode];
                   // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
                   if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
-                    return `${visit.flag} ${visit.name} 여행 중`;
+                    return t('profile.traveling', { flag: visit.flag, name: visit.name });
                   }
                   return `${home.flag} ${home.name}`;
                 })()}
               </Text>
             </View>
             <View style={styles.statsRow}>
-              <StatCard value={String(displayTrips.length)} label="여행 수" />
-              <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} />
-              <StatCard value={String(followerCount)} label="팔로워" />
+              <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
+              <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
+              <StatCard value={String(followerCount)} label={t('profile.followers')} />
             </View>
           </View>
         </View>
@@ -1855,7 +1861,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Travel badge</Text>
             <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
-              <Text style={styles.sectionLink}>모두보기</Text>
+              <Text style={styles.sectionLink}>{t('profile.seeAll')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -1883,14 +1889,14 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
           <View style={gridSt.gridHeaderRow}>
             <Text style={styles.sectionTitle}>Travel archive</Text>
           </View>
-          <Text style={styles.archiveSubtitle}>여행 기록 카드 수 : {displayTrips.length}</Text>
+          <Text style={styles.archiveSubtitle}>{t('profile.archiveCount', { count: displayTrips.length })}</Text>
         </View>
 
         {displayTrips.length === 0 && (
           <View style={{ alignItems: 'center', paddingVertical: 36, gap: 6 }}>
             <Text style={{ fontSize: 40 }}>🗺️</Text>
-            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>아직 여행 기록이 없어요</Text>
-            <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center' }}>지구본에서 나라를 눌러 첫 기록을 남겨보세요</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('profile.emptyTitle')}</Text>
+            <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center' }}>{t('profile.emptyDesc')}</Text>
           </View>
         )}
 

@@ -8,6 +8,7 @@ import {
   Animated,
   ScrollView,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { LockClosedIcon as SvgLockClosedIcon } from '../icons';
 
 /**
@@ -29,6 +30,7 @@ export function PrivacyModal({
   onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -61,8 +63,8 @@ export function PrivacyModal({
             <View style={pm.headerLeft}>
               <SvgLockClosedIcon size={24} color="#A1A1B0" />
               <View>
-                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
-                <Text style={pm.headerDesc}>선택한 친구에게 이 미디어가 비공개됩니다</Text>
+                <Text style={pm.headerTitle}>{t('blog.privacyTitle')}</Text>
+                <Text style={pm.headerDesc}>{t('comp.privacyMediaDesc')}</Text>
               </View>
             </View>
           </View>
@@ -83,8 +85,8 @@ export function PrivacyModal({
                   <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
-                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 사진을 숨겨요</Text>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('blog.allPrivate')}</Text>
+                  <Text style={pm.allPrivateDesc}>{t('comp.allPrivateMediaDesc')}</Text>
                 </View>
                 <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
                   {allPrivate && <Text style={pm.checkMark}>✓</Text>}
@@ -100,7 +102,7 @@ export function PrivacyModal({
               onPress={() => selectedFriends.forEach(f => onToggle(f))}
               activeOpacity={0.7}
             >
-              <Text style={pm.clearAllTxt}>전체 해제</Text>
+              <Text style={pm.clearAllTxt}>{t('blog.clearAll')}</Text>
             </TouchableOpacity>
           )}
 
@@ -133,8 +135,8 @@ export function PrivacyModal({
           <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
             <Text style={pm.doneTxt}>
               {selectedFriends.length > 0
-                ? `${selectedFriends.length}명 비공개 설정 완료`
-                : '공개로 설정 (비공개 없음)'}
+                ? t('blog.privacyDoneN', { count: selectedFriends.length })
+                : t('blog.setPublic')}
             </Text>
           </TouchableOpacity>
         </Animated.View>

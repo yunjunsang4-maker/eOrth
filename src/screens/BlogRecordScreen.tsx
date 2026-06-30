@@ -18,6 +18,7 @@ import {
   Animated,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useTranslation } from 'react-i18next';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -101,6 +102,12 @@ const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
   { value: 'friends', label: '👥 친구만' },
   { value: 'private', label: '🔒 나만 보기' },
 ];
+// 글자 크기 라벨 → i18n 키 (FONT_SIZE_OPTIONS.size 기준, 라벨은 UI 문구라 번역)
+const FONT_SIZE_KEY: Record<number, string> = {
+  13: 'comp2.fontSizeSmall', 15: 'comp2.fontSizeNormal', 18: 'comp2.fontSizeLarge',
+  22: 'comp2.fontSizeXLarge', 26: 'comp2.fontSizeHeading',
+};
+
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' },
   { code: 'CNY', name: '위안 (중국)' },
@@ -206,6 +213,7 @@ function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress
   onCaptionChange: (blockId: string, itemIdx: number, caption: string) => void;
   onImagePress?: (uris: string[], index: number) => void;
 }) {
+  const { t } = useTranslation();
   const [activeIdx, setActiveIdx] = useState(0);
   const imgH = width * 0.75;
   return (
@@ -239,7 +247,7 @@ function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress
       )}
       <TextInput
         style={{ color: '#A1A1B0', fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' }}
-        placeholder={`사진 ${activeIdx + 1} 설명을 입력하세요`}
+        placeholder={t('blog.photoCaptionN', { n: activeIdx + 1 })}
         placeholderTextColor="#4A4A59"
         value={items[activeIdx]?.caption || ''}
         onChangeText={v => onCaptionChange(blockId, activeIdx, v)}
@@ -280,7 +288,50 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
+  const { t } = useTranslation();
   const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
+  // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
+  const companionLabel = (c: string) => {
+    switch (c) {
+      case '혼자': return t('newRecord.compSolo');
+      case '친구': return t('newRecord.compFriend');
+      case '연인': return t('newRecord.compCouple');
+      case '가족': return t('newRecord.compFamily');
+      case '부모님': return t('newRecord.compParents');
+      case '형제': return t('newRecord.compSibling');
+      default: return c;
+    }
+  };
+  const weatherLabel = (v: string) => {
+    switch (v) {
+      case '맑음': return t('newRecord.wSunny');
+      case '부분흐림': return t('newRecord.wPartly');
+      case '흐림': return t('newRecord.wCloudy');
+      case '비': return t('newRecord.wRain');
+      case '눈': return t('newRecord.wSnow');
+      case '바람': return t('newRecord.wWind');
+      default: return v;
+    }
+  };
+  const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
+  const visibilityLabel = (v: Visibility) => {
+    switch (v) {
+      case 'public': return `🌐 ${t('newRecord.visPublic')}`;
+      case 'friends': return `👥 ${t('newRecord.visFriends')}`;
+      case 'private': return `🔒 ${t('newRecord.visPrivate')}`;
+      default: return '';
+    }
+  };
+  const sepLabel = (v: SeparatorStyle) => {
+    switch (v) {
+      case 'line': return t('blog.sepLine');
+      case 'dots': return t('blog.sepDots');
+      case 'dashed': return t('blog.sepDashed');
+      case 'thick': return t('blog.sepThick');
+      case 'space': return t('blog.sepSpace');
+      default: return '';
+    }
+  };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
 
@@ -478,7 +529,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         });
       }
 
-      showToast('네이버 블로그에서 가져왔어요!');
+      showToast(t('blog.naverImported'));
     });
     return () => sub.remove();
   }, []);
@@ -514,7 +565,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 남은 일수 계산
   const draftDaysLeft = (timestamp: number) => {
     const remaining = DRAFT_MAX_AGE - (Date.now() - timestamp);
-    if (remaining <= 0) return '만료됨';
+    if (remaining <= 0) return t('blog.expired');
     const days = Math.ceil(remaining / (24 * 60 * 60 * 1000));
     return `${days}일 남음`;
   };
@@ -565,17 +616,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
     setRepresentativePhoto(draft.representativePhoto || null);
     setDraftListVisible(false);
-    showToast('임시저장을 불러왔어요');
+    showToast(t('blog.draftLoaded'));
   };
 
   // ─── 임시저장 삭제 ───
   const handleDeleteDraft = (id: string) => {
-    Alert.alert('임시저장 삭제', '이 임시저장을 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => {
+    Alert.alert(t('blog.draftDeleteTitle'), t('blog.draftDeleteMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('blog.delete'), style: 'destructive', onPress: () => {
         deleteDraft(id);
         if (draftId === id) setDraftId(null);
-        showToast('임시저장이 삭제되었어요');
+        showToast(t('blog.draftDeleted'));
       }},
     ]);
   };
@@ -706,14 +757,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       }
     } catch (err: any) {
       console.error('[handleAddPhoto] error:', err);
-      Alert.alert('사진 선택 오류', err?.message || '사진을 불러오는 중 오류가 발생했습니다.');
+      Alert.alert(t('blog.photoPickError'), err?.message || t('blog.photoLoadErrMsg'));
     }
   };
 
   const handleCamera = async () => {
     setPhotoMenuVisible(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { showPermissionDeniedAlert('카메라'); return; }
+    if (!perm.granted) { showPermissionDeniedAlert(t('permission.camera')); return; }
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ['images'] as MediaType[], quality: 0.8,
     });
@@ -748,8 +799,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     } catch (err: any) {
       console.warn('[handleAddVideo] error:', err);
       Alert.alert(
-        '영상을 불러올 수 없어요',
-        '영상을 가져오는 중 문제가 발생했어요. 잠시 후 다시 시도하거나 다른 영상을 선택해주세요.'
+        t('blog.videoLoadFailTitle'),
+        t('blog.videoLoadFailMsg')
       );
     }
   };
@@ -774,7 +825,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       }
     } catch (err: any) {
       console.warn('[handleAddFile] error:', err);
-      Alert.alert('파일 선택 오류', err?.message || '파일을 불러오는 중 문제가 발생했어요.');
+      Alert.alert(t('blog.fileSelectError'), err?.message || t('blog.fileLoadErrMsg'));
     }
   };
 
@@ -884,7 +935,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       const id = saveDraft(data);
       setDraftId(id);
     }
-    if (!silent) showToast('임시저장 되었어요');
+    if (!silent) showToast(t('blog.draftSaved'));
   };
   draftSaveRef.current = handleDraftSave;
 
@@ -965,12 +1016,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
 
   const handleSave = () => {
-    if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
+    if (!selectedCountry) { Alert.alert(t('blog.countrySelectTitle'), t('blog.selectCountryMsg')); return; }
     const bodyText = blocksToPlainText(blocks);
     const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || b.type === 'video');
-    if (!title.trim() && !bodyText && !hasMedia) { Alert.alert('내용 입력', '제목·본문 또는 사진/영상을 추가해주세요.'); return; }
-    if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
-    if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
+    if (!title.trim() && !bodyText && !hasMedia) { Alert.alert(t('blog.contentTitle'), t('blog.contentMsg')); return; }
+    if (companions.length === 0) { Alert.alert(t('blog.companionTitle'), t('blog.companionMsg')); return; }
+    if (rating <= 0) { Alert.alert(t('blog.ratingTitle'), t('blog.ratingMsg')); return; }
 
     // AI 목차 분석: 제안이 2개 이상이면 미리보기 모달, 아니면 그대로 발행
     const suggestions = analyzeForToc(blocks);
@@ -1006,21 +1057,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           const hasContent = title.trim() || blocks.some(b => b.type === 'text' && (b as TextBlock).value.trim());
           if (!hasContent) { navigation.goBack(); return; }
           if (isEdit) {
-            Alert.alert('수정 중인 내용이 있어요', '수정을 취소하고 나갈까요?', [
-              { text: '나가기', style: 'destructive', onPress: () => navigation.goBack() },
-              { text: '계속 수정', style: 'cancel' },
+            Alert.alert(t('blog.editExitTitle'), t('blog.editExitMsg'), [
+              { text: t('blog.exit'), style: 'destructive', onPress: () => navigation.goBack() },
+              { text: t('blog.continueEdit'), style: 'cancel' },
             ]);
             return;
           }
-          Alert.alert('작성 중인 글이 있어요', '임시저장하고 나갈까요?', [
-            { text: '저장 안 함', style: 'destructive', onPress: () => navigation.goBack() },
-            { text: '임시저장', onPress: () => { handleDraftSave(false); navigation.goBack(); } },
-            { text: '계속 작성', style: 'cancel' },
+          Alert.alert(t('blog.draftExitTitle'), t('blog.draftExitMsg'), [
+            { text: t('blog.dontSave'), style: 'destructive', onPress: () => navigation.goBack() },
+            { text: t('blog.saveDraft'), onPress: () => { handleDraftSave(false); navigation.goBack(); } },
+            { text: t('blog.continueWrite'), style: 'cancel' },
           ]);
         }} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.headerBtnText}>취소</Text>
+          <Text style={st.headerBtnText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>{isEdit ? '블로그 수정' : '블로그'}</Text>
+        <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}
@@ -1053,7 +1104,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
-            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? '저장 중…' : '저장'}</Text>
+            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1073,7 +1124,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </View>
 
           {/* 제목 */}
-          <TextInput style={st.titleInput} placeholder="제목" placeholderTextColor={C.muted}
+          <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
             value={title} onChangeText={setTitle} maxLength={100}
             onSubmitEditing={() => { const f = blocks[0]; if (f) { setActiveBlockId(f.id); blockRefs.current[f.id]?.focus(); } }} />
           <View style={st.titleDivider} />
@@ -1085,7 +1136,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.tagSection}>
             <View style={st.tagInputRow}>
               <Text style={st.hashIcon}>#</Text>
-              <TextInput style={st.tagInput} placeholder="태그 입력" placeholderTextColor={C.muted}
+              <TextInput style={st.tagInput} placeholder={t('blog.tagPlaceholder')} placeholderTextColor={C.muted}
                 value={keywordInput} onChangeText={setKeywordInput} onSubmitEditing={addKeyword} returnKeyType="done" />
             </View>
             {keywords.length > 0 && (
@@ -1106,9 +1157,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {/* ── 서브 패널: 사진 메뉴 ── */}
         {photoMenuVisible && (
           <View style={st.subPanel}>
-            <SubMenuItem icon={<GalleryIcon size={20} color="#A1A1B0" />} label="사진 선택" onPress={handleAddPhoto} />
-            <SubMenuItem icon={<CameraIcon size={20} color="#A1A1B0" />} label="카메라" onPress={handleCamera} />
-            <SubMenuItem icon="▶" label="영상" onPress={handleAddVideo} />
+            <SubMenuItem icon={<GalleryIcon size={20} color="#A1A1B0" />} label={t('blog.selectPhoto')} onPress={handleAddPhoto} />
+            <SubMenuItem icon={<CameraIcon size={20} color="#A1A1B0" />} label={t('blog.camera')} onPress={handleCamera} />
+            <SubMenuItem icon="▶" label={t('blog.video')} onPress={handleAddVideo} />
           </View>
         )}
 
@@ -1128,7 +1179,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   <ToolSep />
                 </>
               )}
-              <FormatBtn label="가" onPress={() => setFontSizePickerVisible(true)} />
+              <FormatBtn label={t('blog.fontSizeBtn')} onPress={() => setFontSizePickerVisible(true)} />
               <FormatBtn label="Aa" onPress={() => setFontPickerVisible(true)} />
               {showFormatBar && (
                 <>
@@ -1145,9 +1196,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {/* ── 서브 패널: 줄정리 (정렬) ── */}
         {headingBarVisible && (
           <View style={st.subPanel}>
-            <SubMenuItem icon="⫷" label="왼쪽 정렬" onPress={() => { setBlockAlign('left'); setHeadingBarVisible(false); }} />
-            <SubMenuItem icon="☰" label="가운데 정렬" onPress={() => { setBlockAlign('center'); setHeadingBarVisible(false); }} />
-            <SubMenuItem icon="⫸" label="오른쪽 정렬" onPress={() => { setBlockAlign('right'); setHeadingBarVisible(false); }} />
+            <SubMenuItem icon="⫷" label={t('blog.alignLeft')} onPress={() => { setBlockAlign('left'); setHeadingBarVisible(false); }} />
+            <SubMenuItem icon="☰" label={t('blog.alignCenter')} onPress={() => { setBlockAlign('center'); setHeadingBarVisible(false); }} />
+            <SubMenuItem icon="⫸" label={t('blog.alignRight')} onPress={() => { setBlockAlign('right'); setHeadingBarVisible(false); }} />
           </View>
         )}
 
@@ -1155,15 +1206,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {moreMenuVisible && (
           <View style={st.subPanel}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
-              <ToolBtn icon="H" label="소제목" onPress={() => { setMoreMenuVisible(false); handleAddHeading(2); }} />
+              <ToolBtn icon="H" label={t('blog.heading')} onPress={() => { setMoreMenuVisible(false); handleAddHeading(2); }} />
               <ToolSep />
-              <ToolBtn icon={<LinkIcon size={22} color="#A1A1B0" />} label="링크" onPress={() => { setMoreMenuVisible(false); setLinkModalVisible(true); }} />
+              <ToolBtn icon={<LinkIcon size={22} color="#A1A1B0" />} label={t('blog.link')} onPress={() => { setMoreMenuVisible(false); setLinkModalVisible(true); }} />
               <ToolSep />
-              <ToolBtn icon={'\u201C'} label="인용구" onPress={() => { setMoreMenuVisible(false); handleAddQuote(); }} />
+              <ToolBtn icon={'\u201C'} label={t('blog.quote')} onPress={() => { setMoreMenuVisible(false); handleAddQuote(); }} />
               <ToolSep />
-              <ToolBtn icon="—" label="구분선" onPress={() => { setMoreMenuVisible(false); setSepStylePickerVisible(true); }} />
+              <ToolBtn icon="—" label={t('blog.separator')} onPress={() => { setMoreMenuVisible(false); setSepStylePickerVisible(true); }} />
               <ToolSep />
-              <ToolBtn icon={<PaperclipIcon size={22} color="#A1A1B0" />} label="파일" onPress={() => { setMoreMenuVisible(false); handleAddFile(); }} />
+              <ToolBtn icon={<PaperclipIcon size={22} color="#A1A1B0" />} label={t('blog.file')} onPress={() => { setMoreMenuVisible(false); handleAddFile(); }} />
             </ScrollView>
           </View>
         )}
@@ -1171,26 +1222,26 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {/* 하단 메인 툴바 */}
         <View style={st.toolbar}>
           <View style={st.mainToolRow}>
-            <ToolBtn icon={<CameraIcon size={22} color="#A1A1B0" />} label="사진" onPress={() => { setPhotoMenuVisible(!photoMenuVisible); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
-            <ToolBtn icon="Aa" label="글꼴" onPress={() => { setFontBarVisible(!fontBarVisible); setPhotoMenuVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
-            <ToolBtn icon="☰" label="줄정리" onPress={() => { setHeadingBarVisible(!headingBarVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon={<CameraIcon size={22} color="#A1A1B0" />} label={t('blog.photo')} onPress={() => { setPhotoMenuVisible(!photoMenuVisible); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon="Aa" label={t('blog.font')} onPress={() => { setFontBarVisible(!fontBarVisible); setPhotoMenuVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
+            <ToolBtn icon="☰" label={t('blog.lineCleanup')} onPress={() => { setHeadingBarVisible(!headingBarVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setMoreMenuVisible(false); }} />
             <TouchableOpacity style={st.toolBtn} onPress={() => { setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); setTravelInfoVisible(true); }} activeOpacity={0.6}>
               <View style={st.toolIcon}>
                 <SvgPlaneIcon size={22} color="#A1A1B0" />
                 {travelRequired && <View style={st.toolRequiredDot} />}
               </View>
-              <Text style={st.toolLabel}>{`여행${travelInfoCount > 0 ? ` ${travelInfoCount}` : ''}`}</Text>
+              <Text style={st.toolLabel}>{`${t('blog.travel')}${travelInfoCount > 0 ? ` ${travelInfoCount}` : ''}`}</Text>
             </TouchableOpacity>
-            <ToolBtn icon="≡" label="더보기" onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
+            <ToolBtn icon="≡" label={t('blog.more')} onPress={() => { setMoreMenuVisible(!moreMenuVisible); setPhotoMenuVisible(false); setFontBarVisible(false); setHeadingBarVisible(false); }} />
             <View style={st.toolbarSpacer} />
             {!isEdit && (
               <TouchableOpacity style={st.toolbarDraftBtn} onPress={() => handleDraftSave(false)} activeOpacity={0.7}>
-                <Text style={st.toolbarDraftText}>임시저장</Text>
+                <Text style={st.toolbarDraftText}>{t('blog.draft')}</Text>
               </TouchableOpacity>
             )}
             {!isEdit && blogDrafts.length > 0 && (
               <TouchableOpacity style={st.toolbarDraftListBtn} onPress={() => setDraftListVisible(true)} activeOpacity={0.7}>
-                <Text style={st.toolbarDraftListText}>목록 {blogDrafts.length}</Text>
+                <Text style={st.toolbarDraftListText}>{t('blog.listN', { count: blogDrafts.length })}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -1200,7 +1251,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* ─── 모달들 ─── */}
 
       {/* 글자색 */}
-      <PickerModal visible={colorPickerVisible} onClose={() => setColorPickerVisible(false)} title="글자 색상">
+      <PickerModal visible={colorPickerVisible} onClose={() => setColorPickerVisible(false)} title={t('blog.textColor')}>
         <View style={st.colorGrid}>
           {TEXT_COLORS.map(c => (
             <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, atb?.color === c && st.colorDotActive]}
@@ -1210,55 +1261,55 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       </PickerModal>
 
       {/* 배경색 */}
-      <PickerModal visible={bgColorPickerVisible} onClose={() => setBgColorPickerVisible(false)} title="배경 색상">
+      <PickerModal visible={bgColorPickerVisible} onClose={() => setBgColorPickerVisible(false)} title={t('blog.bgColor')}>
         <View style={st.colorGrid}>
           {BG_COLORS.map((c, i) => (
             <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
               atb?.bgColor === c && st.colorDotActive]}
               onPress={() => setBlockBgColor(c)}>
-              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>없음</Text>}
+              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>{t('blog.none')}</Text>}
             </TouchableOpacity>
           ))}
         </View>
       </PickerModal>
 
       {/* 글꼴 크기 */}
-      <PickerModal visible={fontSizePickerVisible} onClose={() => setFontSizePickerVisible(false)} title="글자 크기">
+      <PickerModal visible={fontSizePickerVisible} onClose={() => setFontSizePickerVisible(false)} title={t('blog.fontSize')}>
         {FONT_SIZE_OPTIONS.map(opt => (
           <TouchableOpacity key={opt.size} style={[st.pickerOption, atb?.fontSize === opt.size && st.pickerOptionActive]}
             onPress={() => setBlockFontSize(opt.size)}>
-            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && st.pickerOptionTextActive]}>{opt.label}</Text>
+            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && st.pickerOptionTextActive]}>{t((FONT_SIZE_KEY[opt.size] ?? opt.label) as any)}</Text>
             {atb?.fontSize === opt.size && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
       </PickerModal>
 
       {/* 글꼴 종류 */}
-      <PickerModal visible={fontPickerVisible} onClose={() => setFontPickerVisible(false)} title="글꼴">
+      <PickerModal visible={fontPickerVisible} onClose={() => setFontPickerVisible(false)} title={t('blog.fontFamily')}>
         {FONT_OPTIONS.map(opt => (
           <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && st.pickerOptionActive]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.label}</Text>
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
             {atb?.fontFamily === opt.value && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
       </PickerModal>
 
       {/* 구분선 스타일 */}
-      <PickerModal visible={sepStylePickerVisible} onClose={() => setSepStylePickerVisible(false)} title="구분선 스타일">
+      <PickerModal visible={sepStylePickerVisible} onClose={() => setSepStylePickerVisible(false)} title={t('blog.sepStyle')}>
         {SEP_STYLES.map(opt => (
           <TouchableOpacity key={opt.value} style={st.pickerOption} onPress={() => handleAddSeparator(opt.value)}>
-            <Text style={st.pickerOptionText}>{opt.label}</Text>
+            <Text style={st.pickerOptionText}>{sepLabel(opt.value)}</Text>
           </TouchableOpacity>
         ))}
       </PickerModal>
 
       {/* 링크 입력 */}
-      <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title="링크 삽입">
+      <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title={t('blog.insertLink')}>
         <TextInput style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
         <TouchableOpacity style={st.schedConfirmBtn} onPress={handleAddLink}>
-          <Text style={st.schedConfirmText}>삽입</Text>
+          <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
         </TouchableOpacity>
       </PickerModal>
 
@@ -1269,22 +1320,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.travelPanel} onStartShouldSetResponder={() => true}>
             <View style={st.panelHandle} />
             <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              <Text style={st.panelTitle}>여행 정보</Text>
+              <Text style={st.panelTitle}>{t('blog.travelInfoTitle')}</Text>
 
               {/* 날짜 */}
-              <PanelRow label="" icon={<SvgCalendarIcon size={18} color={IC} />} labelText="날짜" required>
+              <PanelRow label="" icon={<SvgCalendarIcon size={18} color={IC} />} labelText={t('blog.date')} required>
                 <TouchableOpacity
                   style={st.dateBtn}
                   onPress={() => setCalendarVisible(true)}
                   activeOpacity={0.85}
                 >
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>출발일</Text>
+                    <Text style={st.dateBtnLabel}>{t('blog.departDate')}</Text>
                     <Text style={st.dateBtnVal}>{startDate || '—'}</Text>
                   </View>
                   <Text style={st.dateBtnArrow}>→</Text>
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>도착일</Text>
+                    <Text style={st.dateBtnLabel}>{t('blog.arriveDate')}</Text>
                     <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
                   </View>
                   <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={C.purpleNeon} /></View>
@@ -1292,7 +1343,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </PanelRow>
 
               {/* 동행자 (필수) */}
-              <PanelRow label="" icon={<SvgFriendIcon size={18} color={IC} />} labelText="동행자 선택" required>
+              <PanelRow label="" icon={<SvgFriendIcon size={18} color={IC} />} labelText={t('blog.companionSelect')} required>
                 <View style={st.chipRow}>
                   {COMPANIONS.map(comp => {
                     const isActive = companions.includes(comp);
@@ -1301,7 +1352,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       <TouchableOpacity key={comp} style={[st.chip, isActive && st.chipActive]} onPress={() => toggleCompanion(comp)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {COMPANION_ICON_MAP[comp]?.(iconColor)}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{comp}</Text>
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{companionLabel(comp)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1324,7 +1375,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 )}
                 <TouchableOpacity style={st.addFriendBtn} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
                   <SvgFriendIcon size={16} color={C.purpleNeon} />
-                  <Text style={st.addFriendTxt}>앱 친구 추가</Text>
+                  <Text style={st.addFriendTxt}>{t('blog.addAppFriend')}</Text>
                   {companionFriends.length > 0 && (
                     <View style={st.addFriendBadge}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
                   )}
@@ -1332,23 +1383,23 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </PanelRow>
 
               {/* 별점 (필수) */}
-              <PanelRow label="" icon={null} labelText="별점" required>
+              <PanelRow label="" icon={null} labelText={t('blog.rating')} required>
                 <View style={st.ratingWrap}>
                   {renderStars()}
                   {rating > 0
                     ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
-                    : <Text style={st.ratingScoreEmpty}>탭하거나 드래그해 선택</Text>}
+                    : <Text style={st.ratingScoreEmpty}>{t('blog.ratingEmpty')}</Text>}
                 </View>
               </PanelRow>
 
               {/* 공개 범위 */}
-              <PanelRow label="" icon={<LockOpenIcon size={18} color={IC} />} labelText="공개 범위">
+              <PanelRow label="" icon={<LockOpenIcon size={18} color={IC} />} labelText={t('blog.visibility')}>
                 <View style={st.chipRow}>
                   {VISIBILITY_OPTIONS.map(opt => {
                     const isActive = visibility === opt.value;
                     return (
                       <TouchableOpacity key={opt.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setVisibility(opt.value)}>
-                        <Text style={[st.chipText, isActive && st.chipTextActive]}>{opt.label}</Text>
+                        <Text style={[st.chipText, isActive && st.chipTextActive]}>{visibilityLabel(opt.value)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1357,10 +1408,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               {/* 구분선 */}
               <View style={st.optDivider} />
-              <Text style={st.optNotice}>선택 항목이에요 (건너뛰어도 돼요)</Text>
+              <Text style={st.optNotice}>{t('blog.optionalNotice')}</Text>
 
               {/* 예산 */}
-              <PanelRow label="" icon={<SvgCoinIcon size={18} color={IC} />} labelText="예산">
+              <PanelRow label="" icon={<SvgCoinIcon size={18} color={IC} />} labelText={t('blog.budget')}>
                 <View style={st.budgetRow}>
                   {CURRENCIES.map(c => (
                     <TouchableOpacity key={c} style={[st.currencyChip, currency === c && st.currencyChipActive]} onPress={() => chooseCurrency(c)}>
@@ -1372,16 +1423,16 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
                   >
                     <Text style={[st.currencyTxt, !CURRENCIES.includes(currency) && st.currencyTxtActive]}>
-                      {CURRENCIES.includes(currency) ? '기타 ›' : currency}
+                      {CURRENCIES.includes(currency) ? t('blog.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
-                  <TextInput style={st.budgetInput} placeholder="금액" placeholderTextColor={C.muted}
+                  <TextInput style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
                     value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
                 </View>
               </PanelRow>
 
               {/* 날씨 */}
-              <PanelRow label="" icon={<SvgWeatherIcon size={18} color={IC} />} labelText="날씨">
+              <PanelRow label="" icon={<SvgWeatherIcon size={18} color={IC} />} labelText={t('blog.weather')}>
                 <View style={st.chipRow}>
                   {WEATHER_OPTIONS.map(w => {
                     const isActive = weather === w.value;
@@ -1389,7 +1440,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       <TouchableOpacity key={w.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setWeather(isActive ? '' : w.value)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {WEATHER_ICON_MAP[w.value]}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{w.value}</Text>
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{weatherLabel(w.value)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1398,7 +1449,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </PanelRow>
 
               {/* 직항/경유 */}
-              <PanelRow label="" icon={<SvgPlaneIcon size={18} color={IC} />} labelText="직항 / 경유">
+              <PanelRow label="" icon={<SvgPlaneIcon size={18} color={IC} />} labelText={t('blog.flightTitle')}>
                 <View style={st.chipRow}>
                   {FLIGHT_OPTIONS.map(f => {
                     const isActive = flightType === f;
@@ -1408,7 +1459,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                           {f === '직항'
                             ? <SvgTakeoffIcon size={14} color={isActive ? C.purpleNeon : C.dim} />
                             : <SvgTransferIcon size={14} color={isActive ? C.purpleNeon : C.dim} />}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{f}</Text>
+                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{flightLabel(f)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1417,7 +1468,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </PanelRow>
 
               {/* 키워드 */}
-              <PanelRow label="" icon={<SvgTagIcon size={18} color={IC} />} labelText="키워드">
+              <PanelRow label="" icon={<SvgTagIcon size={18} color={IC} />} labelText={t('blog.keyword')}>
                 <View style={st.kwWrap}>
                   {keywords.length > 0 && (
                     <View style={st.kwTagRow}>
@@ -1429,7 +1480,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       ))}
                     </View>
                   )}
-                  <TextInput style={st.kwInput} placeholder="#키워드 추가" placeholderTextColor={C.muted}
+                  <TextInput style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
                     value={keywordInput} onChangeText={v => {
                       if (v.endsWith(' ')) {
                         const tag = v.trim();
@@ -1447,8 +1498,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </PanelRow>
 
               {/* 메모 (비공개) */}
-              <PanelRow label="" icon={null} labelText="메모 (비공개)">
-                <TextInput style={st.memoInput} placeholder="나만 볼 수 있는 메모..." placeholderTextColor={C.muted}
+              <PanelRow label="" icon={null} labelText={t('blog.memoLabel')}>
+                <TextInput style={st.memoInput} placeholder={t('blog.memoPlaceholder')} placeholderTextColor={C.muted}
                   value={memo} onChangeText={setMemo} multiline textAlignVertical="top"
                   onFocus={() => setTimeout(() => travelScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
               </PanelRow>
@@ -1456,7 +1507,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <View style={{ height: 120 }} />
             </ScrollView>
             <TouchableOpacity style={st.panelDoneBtn} onPress={() => setTravelInfoVisible(false)}>
-              <Text style={st.panelDoneText}>완료</Text>
+              <Text style={st.panelDoneText}>{t('common.done')}</Text>
             </TouchableOpacity>
 
             {/* 캘린더 오버레이 (여행정보 패널 위에 표시) */}
@@ -1478,7 +1529,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
                 <View style={st.friendPickerSheet}>
                   <View style={st.panelHandle} />
-                  <Text style={st.panelTitle}>앱 친구 선택</Text>
+                  <Text style={st.panelTitle}>{t('blog.appFriendSelect')}</Text>
                   <ScrollView style={{ maxHeight: 300 }}>
                     {friendNames.length === 0 ? (
                       <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
@@ -1498,7 +1549,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     })}
                   </ScrollView>
                   <TouchableOpacity style={st.panelDoneBtn} onPress={() => setFriendPickerVisible(false)}>
-                    <Text style={st.panelDoneText}>완료</Text>
+                    <Text style={st.panelDoneText}>{t('common.done')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1510,12 +1561,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
                 <View style={st.currModalSheet}>
                   <View style={st.panelHandle} />
-                  <Text style={st.panelTitle}>통화 선택</Text>
+                  <Text style={st.panelTitle}>{t('blog.currencySelect')}</Text>
                   <TextInput
                     style={st.currModalSearch}
                     value={currencySearch}
                     onChangeText={setCurrencySearch}
-                    placeholder="통화 검색 (예: EUR, 유로)"
+                    placeholder={t('blog.currencySearchPlaceholder')}
                     placeholderTextColor={C.muted}
                     autoFocus
                   />
@@ -1550,12 +1601,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
         <SafeAreaView style={st.modalSafe} accessibilityViewIsModal>
           <View style={st.modalHeader}>
-            <TouchableOpacity onPress={() => setCountryModalVisible(false)}><Text style={st.modalClose}>닫기</Text></TouchableOpacity>
-            <Text style={st.modalTitle}>국가 선택</Text>
+            <TouchableOpacity onPress={() => setCountryModalVisible(false)}><Text style={st.modalClose}>{t('common.close')}</Text></TouchableOpacity>
+            <Text style={st.modalTitle}>{t('blog.countrySelectTitle')}</Text>
             <View style={{ width: 40 }} />
           </View>
           <View style={st.searchWrap}>
-            <TextInput style={st.searchInput} placeholder="국가명 검색..." placeholderTextColor={C.muted}
+            <TextInput style={st.searchInput} placeholder={t('blog.countrySearchPlaceholder')} placeholderTextColor={C.muted}
               value={countrySearch} onChangeText={setCountrySearch} autoFocus />
           </View>
           <ScrollView showsVerticalScrollIndicator={false}>
@@ -1581,9 +1632,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setDraftListVisible(false)} accessibilityViewIsModal>
           <View style={st.draftListPanel} onStartShouldSetResponder={() => true}>
             <View style={st.panelHandle} />
-            <Text style={st.panelTitle}>임시저장 목록</Text>
+            <Text style={st.panelTitle}>{t('blog.draftListTitle')}</Text>
             {blogDrafts.length === 0 ? (
-              <Text style={st.draftEmptyText}>저장된 임시저장이 없어요</Text>
+              <Text style={st.draftEmptyText}>{t('blog.noDrafts')}</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
                 {blogDrafts.map(draft => {
@@ -1598,7 +1649,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                           <Text style={st.draftItemTitle} numberOfLines={1}>
                             {preview.length > 30 ? preview.slice(0, 30) + '...' : preview}
                           </Text>
-                          {isCurrent && <Text style={st.draftCurrentBadge}>편집중</Text>}
+                          {isCurrent && <Text style={st.draftCurrentBadge}>{t('blog.editing')}</Text>}
                         </View>
                         <View style={st.draftItemMeta}>
                           {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {draft.countryName}</Text> : null}
@@ -1607,7 +1658,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                         </View>
                       </TouchableOpacity>
                       <TouchableOpacity style={st.draftDeleteBtn} onPress={() => handleDeleteDraft(draft.id)}>
-                        <Text style={st.draftDeleteText}>삭제</Text>
+                        <Text style={st.draftDeleteText}>{t('blog.delete')}</Text>
                       </TouchableOpacity>
                     </View>
                   );
@@ -1615,7 +1666,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </ScrollView>
             )}
             <TouchableOpacity style={st.panelDoneBtn} onPress={() => setDraftListVisible(false)}>
-              <Text style={st.panelDoneText}>닫기</Text>
+              <Text style={st.panelDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1679,7 +1730,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
               fontFamily: tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined,
             }]}
-            placeholder={index === 0 && blocks.length === 1 ? '여행 이야기를 자유롭게 적어보세요...' : ''}
+            placeholder={index === 0 && blocks.length === 1 ? t('blog.bodyPlaceholder') : ''}
             placeholderTextColor={C.muted}
             value={tb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
             onFocus={() => setActiveBlockId(block.id)} multiline textAlignVertical="top" scrollEnabled={false} />
@@ -1693,7 +1744,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TextInput
               ref={ref => { blockRefs.current[block.id] = ref; }}
               style={[st.headingInput, { fontSize: sizes[hb.level], textAlign: hb.align || 'left' }]}
-              placeholder={`소제목 H${hb.level}`} placeholderTextColor={C.muted}
+              placeholder={t('blog.headingPlaceholder', { level: hb.level })} placeholderTextColor={C.muted}
               value={hb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
               onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />
             <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
@@ -1709,7 +1760,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage([ib.uri], 0)}>
               <Image source={{ uri: ib.uri }} style={st.imageBlockImg} resizeMode="cover" />
             </TouchableOpacity>
-            <TextInput style={st.captionInput} placeholder="사진 설명을 입력하세요" placeholderTextColor={C.muted}
+            <TextInput style={st.captionInput} placeholder={t('blog.photoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={ib.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -1734,7 +1785,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage(imb.items.map(it => it.uri), i)}>
                       <Image source={{ uri: item.uri }} style={[st.gridImg, { width: imgW, height: imgW * 0.75 }]} resizeMode="cover" />
                     </TouchableOpacity>
-                    <TextInput style={st.gridCaptionInput} placeholder="설명" placeholderTextColor={C.muted}
+                    <TextInput style={st.gridCaptionInput} placeholder={t('blog.gridCaptionPlaceholder')} placeholderTextColor={C.muted}
                       value={item.caption || ''} onChangeText={v => updateImagesItemCaption(block.id, i, v)} />
                   </View>
                 ))}
@@ -1745,7 +1796,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && st.layoutBtnActive]}
                   onPress={() => updateBlock(block.id, { layout: l } as any)}>
                   <Text style={[st.layoutBtnText, imb.layout === l && st.layoutBtnTextActive]}>
-                    {l === 'grid2' ? '2열' : l === 'grid3' ? '3열' : '슬라이드'}
+                    {l === 'grid2' ? t('blog.grid2') : l === 'grid3' ? t('blog.grid3') : t('blog.slide')}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -1798,13 +1849,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 onPress={() => { if (vb.uri) Linking.openURL(vb.uri); }}
               >
                 <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
-                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }}>외부 영상 (탭하여 열기)</Text>
+                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }}>{t('blog.externalVideo')}</Text>
               </TouchableOpacity>
             )}
             <View style={st.videoLabel}>
-              <Text style={st.videoLabelText}>▶ 영상</Text>
+              <Text style={st.videoLabelText}>▶ {t('blog.video')}</Text>
             </View>
-            <TextInput style={st.captionInput} placeholder="영상 설명을 입력하세요" placeholderTextColor={C.muted}
+            <TextInput style={st.captionInput} placeholder={t('blog.videoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={vb.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -1832,7 +1883,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View key={block.id} style={st.quoteBlock}>
             <Text style={st.quoteMark}>"</Text>
             <TextInput ref={ref => { blockRefs.current[block.id] = ref; }}
-              style={st.quoteInput} placeholder="인용구를 입력하세요..." placeholderTextColor={C.muted}
+              style={st.quoteInput} placeholder={t('blog.quotePlaceholder')} placeholderTextColor={C.muted}
               value={qb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
               onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />
             <TouchableOpacity style={st.blockRemoveBtn} onPress={() => deleteBlock(block.id)}>
@@ -1956,6 +2007,7 @@ function PrivacyModal({
   onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -1988,8 +2040,8 @@ function PrivacyModal({
             <View style={pm.headerLeft}>
               <SvgLockClosedIcon size={24} color="#A1A1B0" />
               <View>
-                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
-                <Text style={pm.headerDesc}>선택한 친구에게 이 블로그 글이 비공개됩니다</Text>
+                <Text style={pm.headerTitle}>{t('blog.privacyTitle')}</Text>
+                <Text style={pm.headerDesc}>{t('blog.privacyDesc')}</Text>
               </View>
             </View>
           </View>
@@ -2007,8 +2059,8 @@ function PrivacyModal({
                   <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
-                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 글을 숨겨요</Text>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('blog.allPrivate')}</Text>
+                  <Text style={pm.allPrivateDesc}>{t('blog.allPrivateDesc')}</Text>
                 </View>
                 <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
                   {allPrivate && <Text style={pm.checkMark}>✓</Text>}
@@ -2024,7 +2076,7 @@ function PrivacyModal({
               onPress={() => selectedFriends.forEach(f => onToggle(f))}
               activeOpacity={0.7}
             >
-              <Text style={pm.clearAllTxt}>전체 해제</Text>
+              <Text style={pm.clearAllTxt}>{t('blog.clearAll')}</Text>
             </TouchableOpacity>
           )}
 
@@ -2057,8 +2109,8 @@ function PrivacyModal({
           <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
             <Text style={pm.doneTxt}>
               {selectedFriends.length > 0
-                ? `${selectedFriends.length}명 비공개 설정 완료`
-                : '공개로 설정 (비공개 없음)'}
+                ? t('blog.privacyDoneN', { count: selectedFriends.length })
+                : t('blog.setPublic')}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -2081,6 +2133,7 @@ function RepPhotoModal({
   onSelect: (uri: string | null, original?: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -2112,7 +2165,7 @@ function RepPhotoModal({
       onSelect(await compressImage(orig), orig);
     } catch (err: any) {
       console.error('[RepPhotoModal pick gallery] error:', err);
-      Alert.alert('사진 선택 오류', err?.message || '대표 사진을 선택하는 중 오류가 발생했습니다.');
+      Alert.alert(t('blog.photoPickError'), err?.message || t('blog.repPhotoErrMsg'));
     }
   };
 
@@ -2132,8 +2185,8 @@ function RepPhotoModal({
             <View style={rpm.headerLeft}>
               <MapIcon size={24} color="#BF85FC" />
               <View>
-                <Text style={rpm.headerTitle}>지도 대표 사진 선택</Text>
-                <Text style={rpm.headerDesc}>지구본과 대륙 지도에 이 사진이 노출됩니다</Text>
+                <Text style={rpm.headerTitle}>{t('blog.repPhotoTitle')}</Text>
+                <Text style={rpm.headerDesc}>{t('blog.repPhotoDesc')}</Text>
               </View>
             </View>
           </View>
@@ -2144,12 +2197,12 @@ function RepPhotoModal({
             onPress={handlePickFromGallery}
             activeOpacity={0.8}
           >
-            <Text style={rpm.galleryBtnTxt}>🖼️ 기기 갤러리에서 대표 사진 선택</Text>
+            <Text style={rpm.galleryBtnTxt}>{t('blog.repPhotoPickBtn')}</Text>
           </TouchableOpacity>
 
           {displayPhotos.length === 0 ? (
             <View style={rpm.emptyWrap}>
-              <Text style={rpm.emptyTxt}>선택된 대표 사진이 없습니다. 위 버튼을 눌러 갤러리에서 대표 사진을 선택하거나 사진을 먼저 본문에 추가해주세요.</Text>
+              <Text style={rpm.emptyTxt}>{t('blog.repPhotoEmpty')}</Text>
             </View>
           ) : (
             <>
@@ -2160,7 +2213,7 @@ function RepPhotoModal({
                   onPress={() => onSelect(null)}
                   activeOpacity={0.7}
                 >
-                  <Text style={rpm.clearTxt}>대표 지정 해제</Text>
+                  <Text style={rpm.clearTxt}>{t('blog.clearRep')}</Text>
                 </TouchableOpacity>
               )}
 
@@ -2178,7 +2231,7 @@ function RepPhotoModal({
                       <Image source={{ uri }} style={rpm.photoImg} resizeMode="cover" />
                       {isSelected && (
                         <View style={rpm.selectedOverlay}>
-                          <Text style={rpm.selectedMark}>★ 대표</Text>
+                          <Text style={rpm.selectedMark}>★ {t('comp.representative')}</Text>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -2190,7 +2243,7 @@ function RepPhotoModal({
 
           {/* 완료 버튼 */}
           <TouchableOpacity style={rpm.doneBtn} onPress={onClose} activeOpacity={0.85}>
-            <Text style={rpm.doneTxt}>완료</Text>
+            <Text style={rpm.doneTxt}>{t('common.done')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -2447,6 +2500,8 @@ function BlogCalendarSheet({
   onConfirm: (start: Date, end: Date) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
+  const weekDays = [t('blog.week0'), t('blog.week1'), t('blog.week2'), t('blog.week3'), t('blog.week4'), t('blog.week5'), t('blog.week6')];
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -2508,12 +2563,12 @@ function BlogCalendarSheet({
       <View style={calSt.handle} />
       <View style={calSt.selectedRow}>
         <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>출발일</Text>
+          <Text style={calSt.selectedLabel}>{t('blog.departDate')}</Text>
           <Text style={[calSt.selectedDate, !selectingEnd && calSt.selectedDateActive]}>{fmtSel(tempStart)}</Text>
         </View>
         <Text style={calSt.selectedArrow}>→</Text>
         <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>도착일</Text>
+          <Text style={calSt.selectedLabel}>{t('blog.arriveDate')}</Text>
           <Text style={[calSt.selectedDate, selectingEnd && calSt.selectedDateActive]}>{fmtSel(tempEnd)}</Text>
         </View>
       </View>
@@ -2523,7 +2578,7 @@ function BlogCalendarSheet({
         <TouchableOpacity onPress={handleNextMonth} style={calSt.navBtn}><Text style={calSt.navArrow}>›</Text></TouchableOpacity>
       </View>
       <View style={calSt.weekRow}>
-        {CAL_WEEK_DAYS.map((d, i) => (
+        {weekDays.map((d, i) => (
           <Text key={d} style={[calSt.weekDay, { width: CAL_CELL }, i===0 && calSt.sundayText, i===6 && calSt.saturdayText]}>{d}</Text>
         ))}
       </View>
@@ -2560,7 +2615,7 @@ function BlogCalendarSheet({
         })}
       </View>
       <TouchableOpacity style={calSt.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
-        <Text style={calSt.confirmText}>확인</Text>
+        <Text style={calSt.confirmText}>{t('common.confirm')}</Text>
       </TouchableOpacity>
     </View>
   );

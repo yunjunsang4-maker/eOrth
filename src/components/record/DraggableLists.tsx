@@ -10,6 +10,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
 import {
   LockClosedIcon as SvgLockClosedIcon,
   LockOpenIcon as SvgLockOpenIcon,
@@ -66,6 +67,7 @@ function DraggableRow({
   onDragEnd: (idx: number) => void;
   onRemove: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const latestProps = useRef({ i, onDragStart, onDragMove, onDragEnd });
   useEffect(() => {
     latestProps.current = { i, onDragStart, onDragMove, onDragEnd };
@@ -141,7 +143,7 @@ function DraggableRow({
         <Text style={ds.draggableRowName}>{c.name}</Text>
         {i === 0 && (
           <View style={ds.representativeTag}>
-            <Text style={ds.representativeTagText}>대표</Text>
+            <Text style={ds.representativeTagText}>{t('comp.representative')}</Text>
           </View>
         )}
       </View>
@@ -273,6 +275,7 @@ function DraggablePhotoThumb({
   representativePhoto: string | null;
   onSetRepresentative: (uri: string) => void;
 }) {
+  const { t } = useTranslation();
   const isDragging = idx === dragIndex;
   const isLocked = (mediaPrivacy[idx]?.length ?? 0) > 0;
 
@@ -415,14 +418,14 @@ function DraggablePhotoThumb({
           activeOpacity={0.8}
         >
           <Text style={[ds.mediaRepTxt, uri === representativePhoto && ds.mediaRepTxtActive]}>
-            {uri === representativePhoto ? '★ 지도대표' : '대표 설정'}
+            {uri === representativePhoto ? t('comp.mapRep') : t('comp.setRep')}
           </Text>
         </TouchableOpacity>
       )}
 
       {!isDragging && isLocked && (
         <View style={ds.privacyCountBadge}>
-          <Text style={ds.privacyCountTxt}>{mediaPrivacy[idx].length}명</Text>
+          <Text style={ds.privacyCountTxt}>{t('comp.peopleCount', { count: mediaPrivacy[idx].length })}</Text>
         </View>
       )}
     </Animated.View>

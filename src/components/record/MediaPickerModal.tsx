@@ -10,6 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
+import { useTranslation } from 'react-i18next';
 
 /**
  * 30장 초과 시 뜨는 사진 선택 모달 — NewRecordScreen 에서 분리.
@@ -42,6 +43,7 @@ export function MediaPickerModal({
   onConfirm: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -53,16 +55,16 @@ export function MediaPickerModal({
         {/* 헤더 */}
         <View style={mpStyles.header}>
           <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>
-            <Text style={mpStyles.cancelText}>취소</Text>
+            <Text style={mpStyles.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
-          <Text style={mpStyles.title}>사진 선택</Text>
+          <Text style={mpStyles.title}>{t('comp.selectPhoto')}</Text>
           <TouchableOpacity
             onPress={onConfirm}
             style={{ padding: 4 }}
             disabled={selected.size === 0}
           >
             <Text style={[mpStyles.confirmText, selected.size === 0 && { opacity: 0.4 }]}>
-              완료
+              {t('common.done')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -70,7 +72,7 @@ export function MediaPickerModal({
         {/* 안내 */}
         <View style={mpStyles.infoBar}>
           <Text style={mpStyles.infoText}>
-            {assets.length}장 중 최대 {max}장 선택 가능
+            {t('comp.pickerInfo', { count: assets.length, max })}
           </Text>
           <Text style={mpStyles.countText}>
             {selected.size}/{max}

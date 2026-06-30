@@ -12,6 +12,7 @@ import {
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 import * as Clipboard from 'expo-clipboard';
+import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import {
@@ -46,6 +47,7 @@ type Props = RootStackScreenProps<'NaverBlogImport'>;
 type Step = 'input' | 'verify' | 'verifying' | 'loading' | 'preview';
 
 export default function NaverBlogImportScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const { verifiedNaverBlogIds, addVerifiedNaverBlogId } = useSettings();
   const [url, setUrl] = useState('');
   const [step, setStep] = useState<Step>('input');
@@ -73,13 +75,13 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
     Keyboard.dismiss();
     const trimmed = url.trim();
     if (!trimmed) {
-      Alert.alert('URL 입력', '네이버 블로그 URL을 입력해주세요.');
+      Alert.alert(t('imports.nvUrlInputTitle'), t('imports.nvUrlInputMsg'));
       return;
     }
     if (!isNaverBlogUrl(trimmed)) {
       Alert.alert(
-        '잘못된 URL',
-        '네이버 블로그 URL만 지원합니다.\n예: https://blog.naver.com/아이디/글번호',
+        t('imports.nvInvalidUrlTitle'),
+        t('imports.nvInvalidUrlMsg'),
       );
       return;
     }
@@ -93,8 +95,8 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
     // blogId를 못 뽑으면(단축 URL 등) 인증 불가 → 전체 주소 요청
     if (!blogId) {
       Alert.alert(
-        '전체 주소가 필요해요',
-        '소유권 인증을 위해 단축 주소(naver.me) 대신\n전체 주소(blog.naver.com/아이디/글번호)를 입력해주세요.',
+        t('imports.nvFullUrlTitle'),
+        t('imports.nvFullUrlMsg'),
       );
       return;
     }
@@ -115,7 +117,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
 
   const handleCopyCode = async () => {
     await Clipboard.setStringAsync(verifyCode);
-    Alert.alert('복사됨', '인증 코드가 복사되었어요.');
+    Alert.alert(t('imports.nvCopiedTitle'), t('imports.nvCopiedMsg'));
   };
 
   // ─── WebView 로드 완료 → JS 인젝션 ───
@@ -154,10 +156,10 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
       clearInterval(pollInterval);
       if (!messageReceived.current) {
         if (isVerify) {
-          Alert.alert('확인 실패', '블로그 소개를 불러오지 못했어요.\n잠시 후 다시 시도해주세요.');
+          Alert.alert(t('imports.nvCheckFailTitle'), t('imports.nvCheckFailMsg'));
           setStep('verify');
         } else {
-          Alert.alert('시간 초과', '블로그 내용을 불러오지 못했어요.\n다시 시도해주세요.');
+          Alert.alert(t('imports.nvTimeoutTitle'), t('imports.nvTimeoutMsg'));
           setStep('input');
         }
       }
@@ -179,8 +181,8 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
           startExtraction(pendingPostUrl.current);
         } else {
           Alert.alert(
-            '코드를 찾지 못했어요',
-            '블로그 소개글에 인증 코드를 넣고 저장했는지 확인해주세요.\n저장 직후 반영까지 잠시 걸릴 수 있어요.',
+            t('imports.nvCodeNotFoundTitle'),
+            t('imports.nvCodeNotFoundMsg'),
           );
           setStep('verify');
         }
@@ -206,7 +208,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
         setBlogData(parsed);
         setStep('preview');
       } else if (data.type === 'naverBlogError') {
-        Alert.alert('파싱 오류', '블로그 내용을 읽는 데 실패했어요.\n다시 시도해주세요.');
+        Alert.alert(t('imports.nvParseErrorTitle'), t('imports.nvParseErrorMsg'));
         setStep('input');
       }
     } catch {
@@ -234,9 +236,9 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn}>
-          <Text style={st.headerBtnText}>닫기</Text>
+          <Text style={st.headerBtnText}>{t('common.close')}</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>네이버 블로그 가져오기</Text>
+        <Text style={st.headerTitle}>{t('imports.nvHeaderTitle')}</Text>
         <View style={{ width: 50 }} />
       </View>
 
@@ -267,14 +269,14 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
           </View>
 
           <TouchableOpacity style={st.loadBtn} onPress={handleLoadUrl} activeOpacity={0.8}>
-            <Text style={st.loadBtnText}>블로그 불러오기</Text>
+            <Text style={st.loadBtnText}>{t('imports.nvLoadBlog')}</Text>
           </TouchableOpacity>
 
           <View style={st.tipBox}>
-            <Text style={st.tipTitle}>이렇게 사용하세요</Text>
-            <Text style={st.tipItem}>1. 네이버 블로그 앱에서 글 공유 → 링크 복사</Text>
-            <Text style={st.tipItem}>2. 위 입력란에 붙여넣기</Text>
-            <Text style={st.tipItem}>3. 제목, 본문, 사진, 해시태그가 자동으로 채워져요</Text>
+            <Text style={st.tipTitle}>{t('imports.nvHowToTitle')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvHowStep1')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvHowStep2')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvHowStep3')}</Text>
           </View>
         </View>
       )}
@@ -286,31 +288,30 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <Text style={st.iconText}>🔒</Text>
           </View>
           <Text style={st.desc}>
-            본인 블로그의 글만 가져올 수 있어요.{'\n'}
-            아래 코드로 소유권을 한 번만 인증해주세요.
+            {t('imports.nvVerifyDesc')}
           </Text>
 
           <View style={st.codeBox}>
-            <Text style={st.codeLabel}>인증 코드</Text>
+            <Text style={st.codeLabel}>{t('imports.nvAuthCode')}</Text>
             <Text selectable style={st.codeValue}>{verifyCode}</Text>
             <TouchableOpacity style={st.codeCopyBtn} onPress={handleCopyCode} activeOpacity={0.8}>
-              <Text style={st.codeCopyBtnText}>코드 복사</Text>
+              <Text style={st.codeCopyBtnText}>{t('imports.nvCopyCode')}</Text>
             </TouchableOpacity>
           </View>
 
           <View style={st.tipBox}>
-            <Text style={st.tipTitle}>인증 방법 (@{pendingBlogId})</Text>
-            <Text style={st.tipItem}>1. 네이버 블로그 → 내 정보(프로필) → 블로그 소개 편집</Text>
-            <Text style={st.tipItem}>2. 소개글에 위 인증 코드를 붙여넣고 저장</Text>
-            <Text style={st.tipItem}>3. 아래 '인증 확인' 버튼 누르기</Text>
-            <Text style={st.tipItem}>4. 인증 후엔 코드를 지워도 되고, 이 블로그 글은 계속 가져올 수 있어요</Text>
+            <Text style={st.tipTitle}>{t('imports.nvAuthMethod', { blogId: pendingBlogId })}</Text>
+            <Text style={st.tipItem}>{t('imports.nvAuthStep1')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvAuthStep2')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvAuthStep3')}</Text>
+            <Text style={st.tipItem}>{t('imports.nvAuthStep4')}</Text>
           </View>
 
           <TouchableOpacity style={st.loadBtn} onPress={handleVerifyCheck} activeOpacity={0.8}>
-            <Text style={st.loadBtnText}>인증 확인</Text>
+            <Text style={st.loadBtnText}>{t('imports.nvVerify')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ marginTop: 14 }} onPress={() => setStep('input')}>
-            <Text style={st.retryBtnText}>다른 주소 입력</Text>
+            <Text style={st.retryBtnText}>{t('imports.nvOtherUrl')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -320,9 +321,9 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
         <View style={st.loadingContainer}>
           <ActivityIndicator size="large" color={C.purpleNeon} />
           <Text style={st.loadingText}>
-            {step === 'verifying' ? '소유권을 확인하는 중...' : '블로그 내용을 불러오는 중...'}
+            {step === 'verifying' ? t('imports.nvVerifying') : t('imports.nvLoadingContent')}
           </Text>
-          <Text style={st.loadingSubText}>잠시만 기다려주세요</Text>
+          <Text style={st.loadingSubText}>{t('imports.nvPleaseWait')}</Text>
 
           {/* 숨겨진 WebView */}
           <View style={st.hiddenWebview}>
@@ -332,13 +333,13 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
               onLoadEnd={handleWebViewLoad}
               onMessage={handleMessage}
               onError={() => {
-                Alert.alert('로드 실패', '블로그 페이지를 불러올 수 없어요.');
+                Alert.alert(t('imports.nvLoadFailTitle'), t('imports.nvLoadFailMsg'));
                 setStep(webviewMode.current === 'verify' ? 'verify' : 'input');
               }}
               onHttpError={(syntheticEvent) => {
                 const { statusCode } = syntheticEvent.nativeEvent;
                 if (statusCode >= 400) {
-                  Alert.alert('로드 실패', `블로그 페이지를 불러올 수 없어요. (${statusCode})`);
+                  Alert.alert(t('imports.nvLoadFailTitle'), t('imports.nvLoadFailStatus', { code: statusCode }));
                   setStep(webviewMode.current === 'verify' ? 'verify' : 'input');
                 }
               }}
@@ -357,7 +358,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <TouchableOpacity style={st.retryBtn} onPress={() => {
               webviewRef.current?.injectJavaScript(NAVER_BLOG_EXTRACT_JS);
             }}>
-              <Text style={st.retryBtnText}>콘텐츠 추출 재시도</Text>
+              <Text style={st.retryBtnText}>{t('imports.nvRetryExtract')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -368,14 +369,14 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
         <View style={st.previewContainer}>
           <View style={st.previewHeader}>
             <Text style={st.previewIcon}>✓</Text>
-            <Text style={st.previewTitle}>가져오기 완료!</Text>
-            <Text style={st.previewSubtitle}>아래 내용을 확인해주세요</Text>
+            <Text style={st.previewTitle}>{t('imports.nvImportDone')}</Text>
+            <Text style={st.previewSubtitle}>{t('imports.nvCheckBelow')}</Text>
           </View>
 
           <View style={st.previewCard}>
             {/* 제목 */}
             <View style={st.previewRow}>
-              <Text style={st.previewLabel}>제목</Text>
+              <Text style={st.previewLabel}>{t('imports.nvTitleLabel')}</Text>
               <Text style={st.previewValue} numberOfLines={2}>
                 {blogData.title || '(없음)'}
               </Text>
@@ -384,7 +385,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             {/* 본문 미리보기 */}
             <View style={st.previewDivider} />
             <View style={st.previewRow}>
-              <Text style={st.previewLabel}>본문</Text>
+              <Text style={st.previewLabel}>{t('imports.nvBodyLabel')}</Text>
               <Text style={st.previewValue} numberOfLines={4}>
                 {blogData.body ? blogData.body.substring(0, 200) + (blogData.body.length > 200 ? '...' : '') : '(없음)'}
               </Text>
@@ -395,7 +396,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
               <>
                 <View style={st.previewDivider} />
                 <View style={st.previewRow}>
-                  <Text style={st.previewLabel}>사진</Text>
+                  <Text style={st.previewLabel}>{t('imports.nvPhotoLabel')}</Text>
                   <Text style={st.previewValue}>{blogData.photos.length}장</Text>
                 </View>
               </>
@@ -408,7 +409,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
               <>
                 <View style={st.previewDivider} />
                 <View style={st.previewRow}>
-                  <Text style={st.previewLabel}>태그</Text>
+                  <Text style={st.previewLabel}>{t('imports.nvTagLabel')}</Text>
                   <Text style={st.previewValue}>
                     {blogData.keywords.map(k => `#${k}`).join(' ')}
                   </Text>
@@ -419,10 +420,10 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
 
           <View style={st.previewActions}>
             <TouchableOpacity style={st.retryOutlineBtn} onPress={handleRetry}>
-              <Text style={st.retryOutlineBtnText}>다시 시도</Text>
+              <Text style={st.retryOutlineBtnText}>{t('imports.nvRetry')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.confirmBtn} onPress={handleConfirmImport} activeOpacity={0.8}>
-              <Text style={st.confirmBtnText}>이 내용으로 작성하기</Text>
+              <Text style={st.confirmBtnText}>{t('imports.nvWriteWithThis')}</Text>
             </TouchableOpacity>
           </View>
         </View>

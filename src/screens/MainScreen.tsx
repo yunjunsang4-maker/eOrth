@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { useTranslation } from 'react-i18next';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
@@ -279,6 +280,7 @@ function SpaceBackdrop() {
 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { records, tripGroups } = useRecords();
 
   // ── 튜토리얼(코치마크) ──
@@ -316,7 +318,7 @@ export default function MainScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!route.params?.startTutorial) return;
     let cancelled = false;
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       const [globe, toggle, settings, snapMeasured] = await Promise.all([
         measure(globeRef),
         measure(toggleRef),
@@ -364,13 +366,13 @@ export default function MainScreen({ navigation, route }: Props) {
           rect: globe,
           shape: 'circle', // 지구본은 원형으로 강조
           circleWin: globeCircle,
-          title: '여행 지구본 🌏',
-          desc: '방문한 나라가 활성화돼요. 나라를 탭하면 그 나라의 기록을 추가하거나 볼 수 있어요.',
+          title: t('main.coachGlobeTitle'),
+          desc: t('main.coachGlobeDesc'),
         },
-        { rect: toggle, title: '지구본 · 대륙 전환', desc: '지구본과 대륙(국가 지역) 지도를 자유롭게 전환할 수 있어요.' },
-        { rect: settings, title: '지구본 형태 전환', desc: '버튼을 누를 때마다 기록한 나라를 색상 지구본과 사진 지구본으로 번갈아 전환할 수 있어요.' },
-        { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', title: '스냅 기록 ⚡', desc: '여행지에 도착한 순간을 빠르게 남기는 스냅 기록이에요.' },
-        { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: '기록 추가 +', desc: '피드 · 블로그 · 스트립 · 사진첩 등 원하는 형식으로 새 기록을 추가해요.' },
+        { rect: toggle, title: t('main.coachToggleTitle'), desc: t('main.coachToggleDesc') },
+        { rect: settings, title: t('main.coachFormTitle'), desc: t('main.coachFormDesc') },
+        { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', title: t('main.coachSnapTitle'), desc: t('main.coachSnapDesc') },
+        { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
       ]);
       setCoachVisible(true);
       // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
@@ -378,7 +380,7 @@ export default function MainScreen({ navigation, route }: Props) {
     }, 450);
     return () => {
       cancelled = true;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
   }, [route.params?.startTutorial]);
 
@@ -459,7 +461,7 @@ export default function MainScreen({ navigation, route }: Props) {
   // 갤러리에서 사진 가져오기 → 표시 모드를 사진으로 전환
   const handlePickGlobePhoto = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) { showPermissionDeniedAlert('갤러리'); return; }
+    if (!perm.granted) { showPermissionDeniedAlert(t('permission.gallery')); return; }
     const res = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.8 });
     if (!res.canceled) {
       setGlobeDisplayMode('photo');
@@ -881,7 +883,7 @@ export default function MainScreen({ navigation, route }: Props) {
             navigation.navigate('Notifications');
           }}
           accessibilityRole="button"
-          accessibilityLabel="알림"
+          accessibilityLabel={t('main.notifA11y')}
         >
           <NotificationBellIcon size={24} dot={hasUnreadAlerts} />
         </TouchableOpacity>
@@ -896,8 +898,8 @@ export default function MainScreen({ navigation, route }: Props) {
           <View ref={toggleRef} collapsable={false}>
             <SegmentedToggle
               options={[
-                { value: 'globe', label: '지구본' },
-                { value: 'region', label: '대륙' },
+                { value: 'globe', label: t('main.toggleGlobe') },
+                { value: 'region', label: t('main.toggleRegion') },
               ]}
               value={viewMode}
               onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
@@ -916,7 +918,7 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.7}
               onPress={() => setGlobeVariant(v => (v === 'aurora' ? 'classic' : 'aurora'))}
               accessibilityRole="button"
-              accessibilityLabel="지구본 형태 전환"
+              accessibilityLabel={t('main.globeFormA11y')}
             >
               <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon />
@@ -931,7 +933,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 style={styles.regionSearchInput}
                 value={regionSearch}
                 onChangeText={setRegionSearch}
-                placeholder="구체적인 지역을 검색해주세요"
+                placeholder={t('main.regionSearchPlaceholder')}
                 placeholderTextColor="#A9A9A9"
                 returnKeyType="search"
               />
@@ -942,7 +944,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   onPress={() => setRegionSearch('')}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
-                  accessibilityLabel="검색어 지우기"
+                  accessibilityLabel={t('main.clearSearchA11y')}
                 >
                   <Text style={styles.regionClearText}>✕</Text>
                 </TouchableOpacity>
@@ -984,7 +986,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={0.8}
                   onPress={() => setPopularActive((v) => !v)}
                 >
-                  <Text style={styles.regionChipText}>인기명소 모아보기 👀</Text>
+                  <Text style={styles.regionChipText}>{t('main.popularSpots')}</Text>
                 </TouchableOpacity>
               </LinearGradient>
             </ScrollView>
@@ -1011,7 +1013,7 @@ export default function MainScreen({ navigation, route }: Props) {
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
               onPress={() => { setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
               accessibilityRole="button"
-              accessibilityLabel="국가 선택으로 돌아가기"
+              accessibilityLabel={t('main.backToCountryA11y')}
             >
               <Svg width={16} height={28} viewBox="33 156 12 22">
                 <SvgPath
@@ -1027,7 +1029,7 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.7}
               onPress={openDisplaySettings}
               accessibilityRole="button"
-              accessibilityLabel="영토 표시 설정"
+              accessibilityLabel={t('main.territoryDisplayA11y')}
             >
               <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon />
@@ -1037,8 +1039,8 @@ export default function MainScreen({ navigation, route }: Props) {
         ) : (
           /* 국가 선택 그리드 */
           <View style={[styles.countryGrid, { paddingBottom: insets.bottom + 73 }]}>
-            <Text style={styles.countryGridTitle}>국가를 선택하세요</Text>
-            <Text style={styles.countryGridSub}>지역별로 기록할 수 있는 국가입니다</Text>
+            <Text style={styles.countryGridTitle}>{t('main.selectCountry')}</Text>
+            <Text style={styles.countryGridSub}>{t('main.selectCountrySub')}</Text>
             <View style={styles.countryGridList}>
               {REGION_COUNTRIES.map(c => (
                 <TouchableOpacity
@@ -1067,7 +1069,7 @@ export default function MainScreen({ navigation, route }: Props) {
             pointerEvents="none"
           />
           <View style={styles.handleBar} />
-          <Text style={styles.handleLabel}>방문한 나라 보기</Text>
+          <Text style={styles.handleLabel}>{t('main.viewVisitedCountries')}</Text>
         </TouchableOpacity>
       )}
 
@@ -1098,8 +1100,8 @@ export default function MainScreen({ navigation, route }: Props) {
 
           {/* 타이틀 */}
           <View style={styles.sheetTitleRow}>
-            <Text style={styles.sheetTitle}>방문한 나라</Text>
-            <Text style={styles.sheetCount}>{VISITED_COUNTRIES.length}개국</Text>
+            <Text style={styles.sheetTitle}>{t('main.visitedCountries')}</Text>
+            <Text style={styles.sheetCount}>{t('main.countriesCount', { count: VISITED_COUNTRIES.length })}</Text>
           </View>
 
           {/* 나라 리스트 */}
@@ -1204,7 +1206,7 @@ export default function MainScreen({ navigation, route }: Props) {
               setFormatModalVisible(true);
             }}
           >
-            <Text style={styles.countryAddBtnText}>+ 새 기록 추가</Text>
+            <Text style={styles.countryAddBtnText}>+ {t('comp2.addNewRecord')}</Text>
           </TouchableOpacity>
         </View>
         </Animated.View>
@@ -1225,16 +1227,16 @@ export default function MainScreen({ navigation, route }: Props) {
         >
           <View style={styles.fmCard} onStartShouldSetResponder={() => true}>
             <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
-            <Text style={styles.fmTitle}>기록 형식 선택</Text>
+            <Text style={styles.fmTitle}>{t('main.recordFormatTitle')}</Text>
             <Text style={styles.fmSub}>
-              {pendingCountry?.name ? `${pendingCountry.name}의 여행을 어떤 형식으로 기록할까요?` : '어떤 형식으로 기록할까요?'}
+              {pendingCountry?.name ? t('main.recordFormatPromptCountry', { country: pendingCountry.name }) : t('main.recordFormatPrompt')}
             </Text>
             <View style={styles.fmGrid}>
               {[
-                { type: 'feed',  icon: <FeedIcon />,  name: '피드' },
-                { type: 'blog',  icon: <BlogIcon />,  name: '블로그' },
-                { type: 'cut',   icon: <CutIcon />,   name: '스트립' },
-                { type: 'album', icon: <AlbumIcon />, name: '사진첩' },
+                { type: 'feed',  icon: <FeedIcon />,  name: t('main.formatFeed') },
+                { type: 'blog',  icon: <BlogIcon />,  name: t('main.formatBlog') },
+                { type: 'cut',   icon: <CutIcon />,   name: t('main.formatCut') },
+                { type: 'album', icon: <AlbumIcon />, name: t('main.formatAlbum') },
               ].map(fmt => (
                 <TouchableOpacity
                   key={fmt.type}
@@ -1312,7 +1314,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 setFormatModalVisible(true);
               }}
             >
-              <Text style={styles.countryAddBtnText}>+ 새 기록 추가</Text>
+              <Text style={styles.countryAddBtnText}>+ {t('comp2.addNewRecord')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1358,8 +1360,8 @@ export default function MainScreen({ navigation, route }: Props) {
 
             {viewMode === 'globe' ? (
               <>
-                <Text style={styles.dsTitle}>영토 표시 설정</Text>
-                <Text style={styles.dsSub}>기록한 국가의 영토를 어떻게 표시할지 선택하세요</Text>
+                <Text style={styles.dsTitle}>{t('main.territoryDisplayTitle')}</Text>
+                <Text style={styles.dsSub}>{t('main.territoryDisplaySub')}</Text>
 
                 {/* 국기 / 색상 세그먼트 토글 (솔리드 보라 + 라벤더 글로우) */}
                 <View style={dsm.toggleRow}>
@@ -1368,24 +1370,24 @@ export default function MainScreen({ navigation, route }: Props) {
                     activeOpacity={0.85}
                     onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
                   >
-                    <Text style={dsm.toggleText}>국기</Text>
+                    <Text style={dsm.toggleText}>{t('main.flag')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[dsm.toggleBtn, globeDisplayMode === 'color' ? dsm.toggleBtnActive : dsm.toggleBtnIdle]}
                     activeOpacity={0.85}
                     onPress={() => setGlobeDisplayMode('color')}
                   >
-                    <Text style={dsm.toggleText}>색상</Text>
+                    <Text style={dsm.toggleText}>{t('main.color')}</Text>
                   </TouchableOpacity>
                 </View>
 
                 {/* 갤러리에서 가져오기 */}
                 <TouchableOpacity style={dsm.galleryBtn} activeOpacity={0.85} onPress={handlePickGlobePhoto}>
-                  <Text style={dsm.galleryText}>갤러리에서 가져오기</Text>
+                  <Text style={dsm.galleryText}>{t('main.importFromGallery')}</Text>
                 </TouchableOpacity>
 
                 {/* 기본 색상 팔레트 */}
-                <Text style={dsm.sectionLabel}>기본 색상</Text>
+                <Text style={dsm.sectionLabel}>{t('main.defaultColor')}</Text>
                 <View style={dsm.paletteRow}>
                   {DS_PALETTE.map(c => (
                     <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
@@ -1411,10 +1413,10 @@ export default function MainScreen({ navigation, route }: Props) {
                 )}
 
                 {/* 국가별 색상 리스트 (하단 페이드) */}
-                <Text style={[dsm.sectionLabel, { marginTop: 18 }]}>국가별 색상</Text>
+                <Text style={[dsm.sectionLabel, { marginTop: 18 }]}>{t('main.countryColors')}</Text>
                 <View style={dsm.listWrap}>
                   {visitedNameSet.size === 0 ? (
-                    <Text style={dsm.emptyHint}>기록한 국가가 없습니다</Text>
+                    <Text style={dsm.emptyHint}>{t('main.noRecordedCountries')}</Text>
                   ) : (
                   <>
                   <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 28 }}>
@@ -1447,7 +1449,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                   style={dsm.countryReset}
                                   onPress={() => setCountryColors(prev => { const next = { ...prev }; delete next[nameEn]; return next; })}
                                 >
-                                  <Text style={dsm.countryResetText}>초기화</Text>
+                                  <Text style={dsm.countryResetText}>{t('main.reset')}</Text>
                                 </TouchableOpacity>
                               )}
                             </View>
@@ -1467,12 +1469,12 @@ export default function MainScreen({ navigation, route }: Props) {
               </>
             ) : (
               <>
-                <Text style={styles.dsTitle}>대륙 지도 표시 설정</Text>
-                <Text style={styles.dsSub}>대륙 지도 내 각 지역의 표시 방식을 선택하세요</Text>
+                <Text style={styles.dsTitle}>{t('main.regionDisplayTitle')}</Text>
+                <Text style={styles.dsSub}>{t('main.regionDisplaySub')}</Text>
 
                 {/* 대륙 글로벌 기본 모드 선택 */}
                 <View style={styles.dsColorSection}>
-                  <Text style={styles.dsColorLabel}>글로벌 기본 설정</Text>
+                  <Text style={styles.dsColorLabel}>{t('main.globalDefault')}</Text>
                   <View style={styles.dsSection}>
                     <TouchableOpacity
                       style={[styles.dsOption, regionGlobalMode !== 'photo' && styles.dsOptionActive]}
@@ -1480,7 +1482,7 @@ export default function MainScreen({ navigation, route }: Props) {
                       onPress={() => setRegionGlobalMode('color')}
                     >
                       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
-                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>색상</Text>
+                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>{t('main.color')}</Text>
                       {regionGlobalMode !== 'photo' && <View style={styles.dsCheck} />}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -1489,7 +1491,7 @@ export default function MainScreen({ navigation, route }: Props) {
                       onPress={() => setRegionGlobalMode('photo')}
                     >
                       <Text style={{ fontSize: 24 }}>🖼️</Text>
-                      <Text style={[styles.dsOptionText, regionGlobalMode === 'photo' && styles.dsOptionTextActive]}>사진</Text>
+                      <Text style={[styles.dsOptionText, regionGlobalMode === 'photo' && styles.dsOptionTextActive]}>{t('main.photo')}</Text>
                       {regionGlobalMode === 'photo' && <View style={styles.dsCheck} />}
                     </TouchableOpacity>
                   </View>
@@ -1497,7 +1499,7 @@ export default function MainScreen({ navigation, route }: Props) {
 
                 {/* 지역별 개별 설정 */}
                 <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
-                  <Text style={styles.dsColorLabel}>지역별 개별 설정</Text>
+                  <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
                   {recordedRegions.length === 0 ? (
                     <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
                       기록된 지역이 없습니다.
@@ -1527,7 +1529,7 @@ export default function MainScreen({ navigation, route }: Props) {
 
                               <View style={styles.dsSegmentWrap}>
                                 {(['default', 'color', 'photo'] as const).map(m => {
-                                  const label = m === 'default' ? '기본' : m === 'color' ? '색상' : '사진';
+                                  const label = m === 'default' ? t('main.modeDefault') : m === 'color' ? t('main.color') : t('main.photo');
                                   const active = currentMode === m;
                                   return (
                                     <TouchableOpacity
@@ -1566,7 +1568,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                     style={styles.dsCountryReset}
                                     onPress={() => setRegionColors(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
                                   >
-                                    <Text style={styles.dsCountryResetText}>초기화</Text>
+                                    <Text style={styles.dsCountryResetText}>{t('main.reset')}</Text>
                                   </TouchableOpacity>
                                 )}
                               </View>
@@ -1585,7 +1587,7 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >
-              <Text style={dsm.confirmText}>확인</Text>
+              <Text style={dsm.confirmText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

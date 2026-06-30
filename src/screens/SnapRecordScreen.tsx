@@ -14,6 +14,7 @@ import {
   Linking,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -106,6 +107,7 @@ const FlipIconGradient = ({ size = 26 }: { size?: number }) => (
 type Props = RootStackScreenProps<'SnapRecord'>;
 
 export default function SnapRecordScreen({ navigation, route }: Props) {
+  const { t } = useTranslation();
   const { addRecord } = useRecords();
   const { homeCountryCode } = useSettings();
   const insets = useSafeAreaInsets();
@@ -207,7 +209,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       } catch {
         setShooting(false);
         setPhase('camera');
-        Alert.alert('촬영 실패', '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.');
+        Alert.alert(t('snap.captureFailTitle'), t('snap.captureFail2nd'));
       }
     };
 
@@ -221,9 +223,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (savedRef.current || (!backPhoto && !frontPhoto)) return;
       e.preventDefault();
-      Alert.alert('스냅을 삭제할까요?', '찍은 사진이 저장되지 않아요.', [
-        { text: '계속', style: 'cancel' },
-        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      Alert.alert(t('snap.exitTitle'), t('snap.exitMsg'), [
+        { text: t('snap.continue'), style: 'cancel' },
+        { text: t('snap.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
       ]);
     });
     return sub;
@@ -238,8 +240,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
     return (
       <SafeAreaView style={st.permScreen}>
         <Text style={st.permEmoji}>📸</Text>
-        <Text style={st.permTitle}>카메라 권한이 필요해요</Text>
-        <Text style={st.permDesc}>여행의 순간을 포착하려면{'\n'}카메라 접근을 허용해주세요</Text>
+        <Text style={st.permTitle}>{t('snap.permTitle')}</Text>
+        <Text style={st.permDesc}>{t('snap.permDesc')}</Text>
         <TouchableOpacity
           style={st.permBtnWrap}
           // 영구 거부 상태에선 요청 다이얼로그가 다시 뜨지 않으므로 설정으로 보낸다
@@ -252,11 +254,11 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             end={{ x: 1, y: 1 }}
             style={st.permBtnGrad}
           >
-            <Text style={st.permBtnText}>{permission.canAskAgain ? '권한 허용' : '설정에서 허용'}</Text>
+            <Text style={st.permBtnText}>{permission.canAskAgain ? t('snap.permAllow') : t('snap.permSettings')}</Text>
           </LinearGradient>
         </TouchableOpacity>
         <TouchableOpacity style={st.permSkip} onPress={() => navigation.goBack()}>
-          <Text style={st.permSkipText}>나중에</Text>
+          <Text style={st.permSkipText}>{t('snap.later')}</Text>
         </TouchableOpacity>
       </SafeAreaView>
     );
@@ -294,7 +296,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       setPhase('switching');
     } catch {
       setShooting(false);
-      Alert.alert('촬영 실패', '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.');
+      Alert.alert(t('snap.captureFailTitle'), t('snap.captureFailMsg'));
     }
   };
 
@@ -386,7 +388,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
               </Text>
             )}
           </View>
-          <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel="플래시 전환">
+          <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel={t('snap.flashA11y')}>
             <GlassFill intensity={24} tint="dark" />
             <Text style={[st.topBtnText, { fontSize: 17, color: flash === 'on' ? C.snapYellow : flash === 'auto' ? '#22D3EE' : 'rgba(255,255,255,0.5)' }]}>
               {flash === 'auto' ? '⚡A' : '⚡'}
@@ -397,9 +399,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         {/* 안내 문구 — 상단 바(인셋+버튼 영역) 아래로 안전하게 배치 */}
         <View style={[st.guideWrap, { top: insets.top + 70 }]}>
           {phase === 'switching' ? (
-            <Text style={st.guideText}>📸 전환 중...</Text>
+            <Text style={st.guideText}>📸 {t('comp2.snapSwitching')}</Text>
           ) : (
-            <Text style={st.guideText}>탭 한 번으로 전면 · 후면 동시 촬영</Text>
+            <Text style={st.guideText}>{t('snap.guideText')}</Text>
           )}
         </View>
 
@@ -491,7 +493,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         )}
 
         {/* 닫기 */}
-        <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="닫기">
+        <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('snap.closeA11y')}>
           <Text style={st.previewCloseText}>✕</Text>
         </TouchableOpacity>
 
@@ -502,7 +504,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             onPress={swapPhotos}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="메인 사진과 전환"
+            accessibilityLabel={t('snap.swapA11y')}
           >
             <LinearGradient
               colors={['#22D3EE', '#A855F7', '#D946EF']}
@@ -547,7 +549,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       <View style={st.captionArea}>
         <TextInput
           style={st.captionInput}
-          placeholder="이 순간을 한 줄로 남겨보세요..."
+          placeholder={t('snap.captionPlaceholder')}
           placeholderTextColor={C.muted}
           value={caption}
           onChangeText={setCaption}
@@ -560,7 +562,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       {/* 하단 버튼 */}
       <View style={st.actionRow}>
         <TouchableOpacity style={st.retakeBtn} onPress={retake}>
-          <Text style={st.retakeBtnText}>다시 찍기</Text>
+          <Text style={st.retakeBtnText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={st.sendBtnWrap} onPress={handleSave} activeOpacity={0.8}>
           <LinearGradient
@@ -569,13 +571,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             end={{ x: 1, y: 1 }}
             style={st.sendBtnGrad}
           >
-            <Text style={st.sendBtnText}>⚡ 공유하기</Text>
+            <Text style={st.sendBtnText}>⚡ {t('comp2.snapShare')}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>
 
       {/* 스냅은 영구 보존 (인스타 스토리와 달리 사라지지 않음) */}
-      <Text style={st.expireNote}>스냅은 사라지지 않고 기록으로 남아요</Text>
+      <Text style={st.expireNote}>{t('snap.expireNote')}</Text>
     </SafeAreaView>
   );
 }

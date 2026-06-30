@@ -16,6 +16,8 @@ import {
   Alert,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { buzz } from '../utils/haptics';
@@ -48,6 +50,7 @@ type Props = RootStackScreenProps<'DM'>;
 
 // ─── 형식별 기록 버블 ───
 function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boolean; onPress: () => void }) {
+  const { t } = useTranslation();
   const vt = rec.viewType;
 
   // ── 피드 / 네컷: 인스타 스타일 ──
@@ -77,7 +80,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
     return (
       <TouchableOpacity style={[rc.blogCard, isMine ? rc.cardMine : rc.cardTheirs]} activeOpacity={0.8} onPress={onPress}>
         <View style={rc.blogBadgeRow}>
-          <Text style={rc.blogBadge}>블로그</Text>
+          <Text style={rc.blogBadge}>{t('postDetail.typeBlog')}</Text>
           <Text style={rc.blogDate}>{rec.date}</Text>
         </View>
         <Text style={rc.blogTitle} numberOfLines={2}>{rec.blogTitle || rec.content}</Text>
@@ -86,7 +89,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
         ) : null}
         <View style={rc.blogFooter}>
           <Text style={rc.blogCountry}>{rec.country}</Text>
-          <Text style={rc.blogReadMore}>읽기 →</Text>
+          <Text style={rc.blogReadMore}>{t('dm.readMore')}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -115,7 +118,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
           )}
         </View>
         <View style={rc.albumBottom}>
-          <Text style={rc.albumBadge}>앨범</Text>
+          <Text style={rc.albumBadge}>{t('postDetail.typeAlbum')}</Text>
           <Text style={rc.albumCountry}>{rec.country}</Text>
           <Text style={rc.albumDate}>{rec.date}</Text>
         </View>
@@ -159,22 +162,22 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
 }
 
 // ─── 답글 미리보기 텍스트 ───
-function replyPreviewText(m: Message): string {
-  if (m.type === 'image') return '사진';
+function replyPreviewText(m: Message, tr: TFunction): string {
+  if (m.type === 'image') return tr('dm.imageMsg');
   if (m.type === 'record') {
     const r = m.record;
-    if (!r) return '여행 기록';
+    if (!r) return tr('dm.travelRecord');
     const label =
-      r.viewType === 'blog' ? '블로그' :
-      r.viewType === 'album' ? '앨범' :
-      r.viewType === 'snap' ? '스냅' : '여행 기록';
+      r.viewType === 'blog' ? tr('postDetail.typeBlog') :
+      r.viewType === 'album' ? tr('postDetail.typeAlbum') :
+      r.viewType === 'snap' ? tr('postDetail.typeSnap') : tr('dm.travelRecord');
     return `${label} · ${r.country}`;
   }
   return m.text;
 }
 
-function toReplyInfo(m: Message): ReplyInfo {
-  return { id: m.id, isMine: m.isMine, type: m.type, text: replyPreviewText(m) };
+function toReplyInfo(m: Message, tr: TFunction): ReplyInfo {
+  return { id: m.id, isMine: m.isMine, type: m.type, text: replyPreviewText(m, tr) };
 }
 
 // ─── 날짜 구분 라벨 (오늘 / 어제 / 2026년 6월 16일 (월)) ───
@@ -184,15 +187,16 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
-function dayLabel(m: Message): string | null {
+const WEEKDAY_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
+function dayLabel(m: Message, tr: TFunction): string | null {
   if (!m.createdAt) return null; // 시각 정보가 없는 시드/구버전 메시지는 구분선 생략
   const d = new Date(m.createdAt);
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
-  if (sameDay(d, today)) return '오늘';
-  if (sameDay(d, yesterday)) return '어제';
-  return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${WEEKDAYS[d.getDay()]})`;
+  if (sameDay(d, today)) return tr('time.today');
+  if (sameDay(d, yesterday)) return tr('time.yesterday');
+  return tr('dm.fullDate', { y: d.getFullYear(), m: d.getMonth() + 1, d: d.getDate(), wd: tr(WEEKDAY_KEYS[d.getDay()]) });
 }
 
 // 텍스트를 검색어 기준으로 분할 (일치 구간 강조용)
@@ -273,6 +277,7 @@ export default function DMScreen({ navigation, route }: Props) {
     sharePostId?: string;
   };
 
+  const { t } = useTranslation();
   const { records } = useRecords();
   const { markBadgesEarned } = useSettings();
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
@@ -327,7 +332,7 @@ export default function DMScreen({ navigation, route }: Props) {
   }, [sharePostId, records, friend.handle, sendRecord]);
 
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
-    const replyTo = replyTarget ? toReplyInfo(replyTarget) : undefined;
+    const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;
     dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record, replyTo });
     markBadgesEarned([73]); // 친구에게 첫 DM 전송 → 배지 73(행동 기반, 영구)
     if (replyTarget) setReplyTarget(null);
@@ -353,7 +358,7 @@ export default function DMScreen({ navigation, route }: Props) {
       if (result.canceled || !result.assets?.length) return;
       addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
     } catch (e: any) {
-      Alert.alert('사진 첨부 실패', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('dm.photoAttachFailTitle'), e?.message ?? t('dm.photoAttachFailMsg'));
     }
   };
 
@@ -362,7 +367,7 @@ export default function DMScreen({ navigation, route }: Props) {
     setAttachMenuOpen(false);
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert('카메라 권한 필요', '사진을 촬영하려면 설정에서 카메라 권한을 허용해주세요.');
+      Alert.alert(t('dm.cameraPermTitle'), t('dm.cameraPermMsg'));
       return;
     }
     try {
@@ -373,7 +378,7 @@ export default function DMScreen({ navigation, route }: Props) {
       if (result.canceled || !result.assets?.length) return;
       addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
     } catch (e: any) {
-      Alert.alert('촬영 실패', e?.message ?? '사진을 촬영하는 중 오류가 발생했어요.');
+      Alert.alert(t('dm.captureFailTitle'), e?.message ?? t('dm.captureFailMsg'));
     }
   };
 
@@ -436,27 +441,27 @@ export default function DMScreen({ navigation, route }: Props) {
     const target = menuMsg;
     setMenuMsg(null);
     if (!target) return;
-    Alert.alert('메시지 삭제', '이 메시지를 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => deleteMessage(friend.handle, target.id) },
+    Alert.alert(t('dm.deleteMsgTitle'), t('dm.deleteMsgMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('dm.delete'), style: 'destructive', onPress: () => deleteMessage(friend.handle, target.id) },
     ]);
   };
 
   // ─── 헤더 메뉴: 대화 비우기 / 나가기 ───
   const handleClearConversation = () => {
     setHeaderMenuOpen(false);
-    Alert.alert('대화 비우기', '이 대화의 모든 메시지를 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
-      { text: '비우기', style: 'destructive', onPress: () => clearConversation(friend.handle) },
+    Alert.alert(t('dm.clearChatTitle'), t('dm.clearChatMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('dm.clear'), style: 'destructive', onPress: () => clearConversation(friend.handle) },
     ]);
   };
 
   const handleLeaveConversation = () => {
     setHeaderMenuOpen(false);
-    Alert.alert('대화 나가기', '대화를 나가면 메시지가 모두 삭제됩니다. 계속할까요?', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('dm.leaveChatTitle'), t('dm.leaveChatMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '나가기',
+        text: t('dm.leave'),
         style: 'destructive',
         onPress: () => {
           clearConversation(friend.handle);
@@ -490,8 +495,8 @@ export default function DMScreen({ navigation, route }: Props) {
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const prev = index > 0 ? messages[index - 1] : null;
     const next = index < messages.length - 1 ? messages[index + 1] : null;
-    const label = dayLabel(item);
-    const showDate = !!label && label !== (prev ? dayLabel(prev) : null);
+    const label = dayLabel(item, t);
+    const showDate = !!label && label !== (prev ? dayLabel(prev, t) : null);
 
     // 같은 사람이 5분 이내·같은 날 연달아 보낸 경우 다음 메시지와 묶는다
     const GROUP_GAP = 5 * 60 * 1000;
@@ -527,7 +532,7 @@ export default function DMScreen({ navigation, route }: Props) {
             activeOpacity={0.7}
             onPress={() => jumpToMessage(item.replyTo!.id)}
           >
-            <Text style={st.replyQuoteName}>{item.replyTo.isMine ? '나' : friend.name}</Text>
+            <Text style={st.replyQuoteName}>{item.replyTo.isMine ? t('dm.me') : friend.name}</Text>
             <Text style={st.replyQuoteText} numberOfLines={1}>{item.replyTo.text}</Text>
           </TouchableOpacity>
         )}
@@ -565,7 +570,7 @@ export default function DMScreen({ navigation, route }: Props) {
               if (exists) {
                 navigation.navigate('PostDetail', { postId: item.record!.id });
               } else {
-                Alert.alert('게시물을 찾을 수 없어요', '삭제되었거나 더 이상 볼 수 없는 게시물입니다.');
+                Alert.alert(t('dm.postNotFoundTitle'), t('dm.postNotFoundMsg'));
               }
             }}
           />
@@ -578,10 +583,10 @@ export default function DMScreen({ navigation, route }: Props) {
         )}
         {item.isMine && item.failed ? (
           <TouchableOpacity onPress={() => retrySend(friend.handle, item.id)} hitSlop={6}>
-            <Text style={st.sendFailed}>⚠ 전송 실패 · 다시 시도</Text>
+            <Text style={st.sendFailed}>⚠ {t('comp2.sendFailedRetry')}</Text>
           </TouchableOpacity>
         ) : item.isMine && index === messages.length - 1 ? (
-          <Text style={st.readReceipt}>읽음</Text>
+          <Text style={st.readReceipt}>{t('dm.read')}</Text>
         ) : null}
       </View>
     </View>
@@ -594,7 +599,7 @@ export default function DMScreen({ navigation, route }: Props) {
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -609,7 +614,7 @@ export default function DMScreen({ navigation, route }: Props) {
           </View>
           <View>
             <Text style={st.headerName}>{friend.name}</Text>
-            <Text style={st.headerStatus}>{friend.online ? '온라인' : '오프라인'}</Text>
+            <Text style={st.headerStatus}>{friend.online ? t('dm.online') : t('dm.offline')}</Text>
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={st.headerMenuBtn} onPress={() => { if (searchOpen) closeSearch(); else setSearchOpen(true); }} activeOpacity={0.7}>
@@ -625,7 +630,7 @@ export default function DMScreen({ navigation, route }: Props) {
         <View style={st.searchBar}>
           <TextInput
             style={st.searchInput}
-            placeholder="대화 내 검색..."
+            placeholder={t('dm.searchInChat')}
             placeholderTextColor={C.muted}
             value={searchQuery}
             onChangeText={setSearchQuery}
@@ -696,15 +701,15 @@ export default function DMScreen({ navigation, route }: Props) {
           <View style={st.attachMenu}>
             <TouchableOpacity style={st.attachItem} onPress={takePhoto}>
               <CameraIcon size={22} />
-              <Text style={st.attachLabel}>카메라</Text>
+              <Text style={st.attachLabel}>{t('dm.camera')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.attachItem} onPress={pickImage}>
               <GalleryIcon size={22} />
-              <Text style={st.attachLabel}>사진</Text>
+              <Text style={st.attachLabel}>{t('dm.photo')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.attachItem} onPress={() => { setAttachMenuOpen(false); setRecordPickerOpen(true); }}>
               <GlobeIcon size={22} />
-              <Text style={st.attachLabel}>여행 기록</Text>
+              <Text style={st.attachLabel}>{t('dm.travelRecord')}</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -715,9 +720,9 @@ export default function DMScreen({ navigation, route }: Props) {
             <View style={st.replyBarLine} />
             <View style={st.replyBarBody}>
               <Text style={st.replyBarName}>
-                {replyTarget.isMine ? '나' : friend.name}님에게 답장
+                {t('dm.replyToName', { name: replyTarget.isMine ? t('dm.me') : friend.name })}
               </Text>
-              <Text style={st.replyBarText} numberOfLines={1}>{replyPreviewText(replyTarget)}</Text>
+              <Text style={st.replyBarText} numberOfLines={1}>{replyPreviewText(replyTarget, t)}</Text>
             </View>
             <TouchableOpacity style={st.replyBarClose} onPress={() => setReplyTarget(null)} activeOpacity={0.7}>
               <Text style={st.replyBarCloseText}>✕</Text>
@@ -736,7 +741,7 @@ export default function DMScreen({ navigation, route }: Props) {
           </TouchableOpacity>
           <TextInput
             style={st.input}
-            placeholder="메시지 입력..."
+            placeholder={t('dm.messagePlaceholder')}
             placeholderTextColor={C.muted}
             value={input}
             onChangeText={setInput}
@@ -762,20 +767,20 @@ export default function DMScreen({ navigation, route }: Props) {
         <View style={st.pickerOverlay} accessibilityViewIsModal>
           <View style={st.pickerSheet}>
             <View style={st.pickerHeader}>
-              <Text style={st.pickerTitle}>여행 기록 공유</Text>
+              <Text style={st.pickerTitle}>{t('dm.shareTravelRecord')}</Text>
               <TouchableOpacity onPress={() => setRecordPickerOpen(false)}>
                 <Text style={st.pickerClose}>✕</Text>
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.pickerList}>
               {myRecords.length === 0 && (
-                <Text style={st.pickerEmpty}>공유할 여행 기록이 없어요</Text>
+                <Text style={st.pickerEmpty}>{t('dm.noTravelRecord')}</Text>
               )}
               {myRecords.map(r => {
                 const viewLabel =
-                  r.viewType === 'blog' ? '블로그' :
-                  r.viewType === 'album' ? '앨범' :
-                  r.viewType === 'snap' ? '스냅' : '피드';
+                  r.viewType === 'blog' ? t('postDetail.typeBlog') :
+                  r.viewType === 'album' ? t('postDetail.typeAlbum') :
+                  r.viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
                 return (
                   <TouchableOpacity key={r.id} style={st.pickerItem} activeOpacity={0.7} onPress={() => shareRecord(r)}>
                     {(r.medias?.[0] || r.snapBackUri) ? (
@@ -820,17 +825,17 @@ export default function DMScreen({ navigation, route }: Props) {
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleReplyFromMenu}>
               <Text style={st.sheetIcon}>↩</Text>
-              <Text style={st.sheetText}>답글</Text>
+              <Text style={st.sheetText}>{t('dm.reply')}</Text>
             </TouchableOpacity>
             {menuMsg?.type === 'text' && (
               <TouchableOpacity style={st.sheetItem} onPress={handleCopy}>
                 <Text style={st.sheetIcon}>📋</Text>
-                <Text style={st.sheetText}>복사</Text>
+                <Text style={st.sheetText}>{t('dm.copy')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={st.sheetItem} onPress={handleDelete}>
               <Text style={st.sheetIcon}>🗑</Text>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>삭제</Text>
+              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.delete')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -843,11 +848,11 @@ export default function DMScreen({ navigation, route }: Props) {
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleClearConversation}>
               <Text style={st.sheetIcon}>🧹</Text>
-              <Text style={st.sheetText}>대화 비우기</Text>
+              <Text style={st.sheetText}>{t('dm.clearChatTitle')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.sheetItem} onPress={handleLeaveConversation}>
               <Text style={st.sheetIcon}>🚪</Text>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>나가기</Text>
+              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.leave')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

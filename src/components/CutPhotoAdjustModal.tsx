@@ -3,6 +3,7 @@ import {
   View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, Dimensions,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -97,6 +98,7 @@ function clampT(tx: number, ty: number, s: number, cfg: Cfg) {
 }
 
 export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto, onRemove }: Props) {
+  const { t } = useTranslation();
   // 프레임 크기 — aspect에 맞춰 화면에 fit
   const maxW = SW * 0.82;
   const maxH = SH * 0.52;
@@ -173,7 +175,7 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={s.overlay} accessibilityViewIsModal>
-          <Text style={s.title}>사진 위치 조정</Text>
+          <Text style={s.title}>{t('comp.cutAdjustTitle')}</Text>
           <GestureDetector gesture={composed}>
             <View style={[s.frame, { width: frameW, height: frameH }]}>
               {uri ? (
@@ -203,21 +205,21 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
               </View>
             </View>
           </GestureDetector>
-          <Text style={s.hint}>드래그로 이동 · 두 손가락으로 확대/축소</Text>
+          <Text style={s.hint}>{t('comp.cutAdjustHint')}</Text>
           <View style={s.btnRow}>
             <TouchableOpacity onPress={onChangePhoto} style={s.btnGhost} activeOpacity={0.8}>
-              <Text style={s.btnGhostTxt}>사진 변경</Text>
+              <Text style={s.btnGhostTxt}>{t('comp.changePhoto')}</Text>
             </TouchableOpacity>
             {onRemove && (
               <TouchableOpacity onPress={onRemove} style={s.btnDanger} activeOpacity={0.8}>
-                <Text style={s.btnDangerTxt}>삭제</Text>
+                <Text style={s.btnDangerTxt}>{t('comp.delete')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={onCancel} style={s.btnGhost} activeOpacity={0.8}>
-              <Text style={s.btnGhostTxt}>취소</Text>
+              <Text style={s.btnGhostTxt}>{t('common.cancel')}</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={confirm} style={s.btnPrimary} activeOpacity={0.85}>
-              <Text style={s.btnPrimaryTxt}>확인</Text>
+              <Text style={s.btnPrimaryTxt}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
@@ -139,11 +140,24 @@ type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
+  };
+
+  // 대륙 키(한글, COUNTRIES 데이터 기준)를 표시용 라벨로 변환
+  const continentName = (cont: string) => {
+    switch (cont) {
+      case '아시아': return t('stats.continentAsia');
+      case '유럽': return t('stats.continentEurope');
+      case '아메리카': return t('stats.continentAmerica');
+      case '오세아니아': return t('stats.continentOceania');
+      case '아프리카': return t('stats.continentAfrica');
+      default: return cont;
+    }
   };
 
   // ── 통계 튜토리얼(코치마크) — 계정당 통계 탭 첫 진입 시 1회 ──
@@ -180,13 +194,13 @@ export default function StatsScreen() {
           setCoachSteps([
             {
               rect: null,
-              title: '여행 통계 📊',
-              desc: '그동안의 여행을 한눈에 모았어요. 방문한 나라·도시·기록 수와 평가까지 통계로 확인할 수 있어요.',
+              title: t('stats.coachTitle'),
+              desc: t('stats.coachDesc'),
             },
             {
               rect: hero,
-              title: '상세 통계 보기',
-              desc: '각 통계 카드를 탭하면 더 자세한 상세 통계를 볼 수 있어요.',
+              title: t('stats.coach2Title'),
+              desc: t('stats.coach2Desc'),
             },
           ]);
           setCoachVisible(true);
@@ -414,7 +428,7 @@ export default function StatsScreen() {
               <View style={styles.heroTop}>
                 <View>
                   <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
-                  <Text style={styles.heroLabel}>🌏 세계를 여행했어요</Text>
+                  <Text style={styles.heroLabel}>🌏 {t('comp2.worldTraveled')}</Text>
                 </View>
                 <View style={styles.globeMini}>
                   <LinearGradient colors={['#3B1E8E', '#7B61FF']} style={styles.globeMiniGrad} />
@@ -432,19 +446,19 @@ export default function StatsScreen() {
               <View style={styles.heroStats}>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{countryCount}</Text>
-                  <Text style={styles.miniStatLbl}>나라</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniCountries')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{cityCount}</Text>
-                  <Text style={styles.miniStatLbl}>도시</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniCities')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{recordsCount}</Text>
-                  <Text style={styles.miniStatLbl}>기록</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniRecords')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{totalDays}</Text>
-                  <Text style={styles.miniStatLbl}>일수</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniDays')}</Text>
                 </View>
               </View>
             </LinearGradient>
@@ -455,7 +469,7 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 1번 - Yearly bar chart */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('yearly')}>
-            <Text style={styles.cardTitle}>연도별 여행 횟수</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardYearlyTrips')}</Text>
             <View style={styles.barChart}>
               {VISIT_HISTORY.map((v, i) => (
                 <View key={i} style={styles.barGroup}>
@@ -478,12 +492,12 @@ export default function StatsScreen() {
 
           {/* 2번 - Region breakdown */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('region')}>
-            <Text style={styles.cardTitle}>대륙별 방문 현황</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardContinents')}</Text>
             {REGION_STATS.map((r, i) => (
               <View key={i} style={styles.regionRow}>
                 <View style={styles.regionLeft}>
                   <View style={[styles.regionDot, { backgroundColor: r.color }]} />
-                  <Text style={styles.regionLabel}>{r.label}</Text>
+                  <Text style={styles.regionLabel}>{continentName(r.label)}</Text>
                 </View>
                 <View style={styles.regionBarBg}>
                   <LinearGradient
@@ -493,7 +507,7 @@ export default function StatsScreen() {
                     style={[styles.regionBar, { width: `${r.pct * 100}%` }]}
                   />
                 </View>
-                <Text style={styles.regionCount}>{r.count}개</Text>
+                <Text style={styles.regionCount}>{t('stats.countUnit', { count: r.count })}</Text>
               </View>
             ))}
           </PressCard>
@@ -503,7 +517,7 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 3번 - Top countries */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('countries')}>
-            <Text style={styles.cardTitle}>가장 많이 간 나라</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardTopCountries')}</Text>
             {TOP_COUNTRIES.length > 0 ? (
               TOP_COUNTRIES.map((c) => (
                 <View key={c.rank} style={styles.topRow}>
@@ -512,17 +526,17 @@ export default function StatsScreen() {
                   </Text>
                   <Text style={styles.topFlag}>{c.flag}</Text>
                   <Text style={styles.topName}>{c.name}</Text>
-                  <Text style={styles.topVisits}>{c.visits}회</Text>
+                  <Text style={styles.topVisits}>{t('stats.visitsUnit', { count: c.visits })}</Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>기록이 없습니다</Text>
+              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>{t('stats.noRecords')}</Text>
             )}
           </PressCard>
 
           {/* 4번 - Travel rating stats */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('rating')}>
-            <Text style={styles.cardTitle}>여행 평가 통계</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardRating')}</Text>
             <View style={styles.ratingOverview}>
               <Text style={styles.ratingBig}>{avgRating}</Text>
               <View style={styles.ratingStars}>
@@ -532,7 +546,7 @@ export default function StatsScreen() {
                   </Text>
                 ))}
               </View>
-              <Text style={styles.ratingCount}>총 {myRecords.length}개 기록 기준</Text>
+              <Text style={styles.ratingCount}>{t('stats.ratingBasis', { count: myRecords.length })}</Text>
             </View>
             <View style={styles.ratingBars}>
               {RATING_STATS.map((r) => (

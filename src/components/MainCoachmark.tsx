@@ -9,6 +9,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -57,6 +58,7 @@ const DIM = 'rgba(0,0,0,0.78)';
 const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
 
 export default function MainCoachmark({ visible, steps, onClose, onStepChange }: Props) {
+  const { t } = useTranslation();
   const [idx, setIdx] = useState(0);
 
   // 강조 링 맥동(pulse) 애니메이션 — 설명 중인 UI를 시선이 가도록 강조
@@ -312,11 +314,11 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
             <View style={styles.actions}>
               {!isLast && (
                 <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.skipBtn}>
-                  <Text style={styles.skipTxt}>건너뛰기</Text>
+                  <Text style={styles.skipTxt}>{t('comp.coachSkip')}</Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity onPress={next} activeOpacity={0.85} style={styles.nextBtn}>
-                <Text style={styles.nextTxt}>{isLast ? '시작하기' : '다음'}</Text>
+                <Text style={styles.nextTxt}>{isLast ? t('comp.coachStart') : t('comp.coachNext')}</Text>
               </TouchableOpacity>
             </View>
           </View>

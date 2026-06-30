@@ -8,6 +8,7 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -40,6 +41,7 @@ function StarRow({ rating, size = 14 }: { rating?: number; size?: number }) {
 // 1. Feed
 // ─────────────────────────────────────────────
 function FeedView({ record }: { record: TravelRecord }) {
+  const { t } = useTranslation();
   const firstMedia = record.medias?.[0];
 
   return (
@@ -75,7 +77,7 @@ function FeedView({ record }: { record: TravelRecord }) {
           {record.companions && record.companions.length > 0 && (
             <Text style={styles.feedCompanions}>
               👥 {record.companions.slice(0, 2).join(', ')}
-              {record.companions.length > 2 ? ` 외 ${record.companions.length - 2}명` : ''}
+              {record.companions.length > 2 ? t('comp.andMore', { count: record.companions.length - 2 }) : ''}
             </Text>
           )}
         </View>
@@ -88,6 +90,7 @@ function FeedView({ record }: { record: TravelRecord }) {
 // 2. Blog
 // ─────────────────────────────────────────────
 function BlogView({ record }: { record: TravelRecord }) {
+  const { t } = useTranslation();
   return (
     <View style={styles.blogWrap}>
       {/* 국가 + 날짜 헤더 */}
@@ -105,7 +108,7 @@ function BlogView({ record }: { record: TravelRecord }) {
       {/* 메모 */}
       {record.memo ? (
         <View style={styles.blogMemoCard}>
-          <Text style={styles.blogMemoLabel}>메모</Text>
+          <Text style={styles.blogMemoLabel}>{t('comp.memo')}</Text>
           <Text style={styles.blogMemoText}>{record.memo}</Text>
         </View>
       ) : null}
@@ -137,6 +140,7 @@ function BlogView({ record }: { record: TravelRecord }) {
 const ALBUM_CELL = (SCREEN_W - 4) / 3;
 
 function AlbumView({ record }: { record: TravelRecord }) {
+  const { t } = useTranslation();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const medias = record.medias ?? [];
 
@@ -173,7 +177,7 @@ function AlbumView({ record }: { record: TravelRecord }) {
         ) : (
           <View style={styles.albumEmpty}>
             <CameraIcon size={48} color="#A1A1B0" />
-            <Text style={styles.albumEmptyText}>사진이 없어요</Text>
+            <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
           </View>
         )}
       </View>
@@ -219,11 +223,12 @@ function AlbumView({ record }: { record: TravelRecord }) {
 // 4. Snap (BeReal 스타일)
 // ─────────────────────────────────────────────
 function SnapView({ record }: { record: TravelRecord }) {
+  const { t } = useTranslation();
   const lateText = (() => {
     if (!record.snapLateSeconds || record.snapLateSeconds <= 0) return null;
     const s = record.snapLateSeconds;
-    if (s < 60) return `${s}초 후 촬영`;
-    return `${Math.floor(s / 60)}분 ${s % 60}초 후 촬영`;
+    if (s < 60) return t('comp.snapLateSec', { s });
+    return t('comp.snapLateMin', { m: Math.floor(s / 60), s: s % 60 });
   })();
 
   return (
@@ -287,6 +292,7 @@ function SnapView({ record }: { record: TravelRecord }) {
 // 5. Cut (스트립)
 // ─────────────────────────────────────────────
 function CutView({ record }: { record: TravelRecord }) {
+  const { t } = useTranslation();
   const photos = record.cutPhoto?.photos ?? [];
   return (
     <View style={styles.cutWrap}>
@@ -310,7 +316,7 @@ function CutView({ record }: { record: TravelRecord }) {
       ) : (
         <View style={styles.cutEmpty}>
           <Text style={{ fontSize: 48 }}>🎞️</Text>
-          <Text style={styles.cutEmptyText}>네컷 사진이 없습니다</Text>
+          <Text style={styles.cutEmptyText}>{t('comp.noCut')}</Text>
         </View>
       )}
 

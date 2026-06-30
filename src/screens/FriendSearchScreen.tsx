@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 
 import QRCode from 'react-native-qrcode-svg';
+import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -80,6 +81,7 @@ function FriendItem({
   onToggle: () => void;
   onPress?: () => void;
 }) {
+  const { t } = useTranslation();
   // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
   return (
@@ -97,7 +99,7 @@ function FriendItem({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries}>
-            {item.countries > 0 ? `${item.countries}개국 방문` : '방문 기록 없음'}
+            {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
             {item.followers ? ` · 팔로워 ${item.followers}` : ''}
           </Text>
         </View>
@@ -110,7 +112,7 @@ function FriendItem({
         accessibilityLabel={following ? `${item.name} 팔로우 취소` : `${item.name} 팔로우`}
       >
         <Text style={[s.followBtnText, following && s.followingBtnText]}>
-          {following ? '팔로잉' : '팔로우'}
+          {following ? t('friends.followingTitle') : t('friends.follow')}
         </Text>
       </TouchableOpacity>
     </TouchableOpacity>
@@ -123,6 +125,7 @@ function FriendItem({
 type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation, route }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { nickname, handle, phoneMatchConsent } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
@@ -250,7 +253,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       await fetchContactsData();
     } else {
       setContactsPermission('denied');
-      showPermissionDeniedAlert('연락처');
+      showPermissionDeniedAlert(t('permission.contacts'));
     }
   }, [fetchContactsData]);
 
@@ -260,7 +263,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     const followed = followingUsers.find((f) => (f.id ? f.id === friend.id : f.username === friend.username));
     if (followed) {
       unfollowUser(followed.id || followed.username);
-      showToast(`${friend.name}님 팔로우를 취소했어요`);
+      showToast(t('comp2.toastUnfollowed', { name: friend.name }));
     } else {
       followUser({
         id: friend.id,
@@ -269,7 +272,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         currentCountry: null,
         currentCountryFlag: null,
       });
-      showToast(`${friend.name}님을 팔로우했어요`);
+      showToast(t('comp2.toastFollowed', { name: friend.name }));
     }
   };
 
@@ -285,7 +288,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const openScanner = async () => {
     if (!camPermission?.granted) {
       const res = await requestCamPermission();
-      if (!res.granted) { showPermissionDeniedAlert('카메라'); return; }
+      if (!res.granted) { showPermissionDeniedAlert(t('permission.camera')); return; }
     }
     scannedRef.current = false;
     setScannerVisible(true);
@@ -299,7 +302,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       const now = Date.now();
       if (now - lastInvalidToast.current > 2000) {
         lastInvalidToast.current = now;
-        showToast('eOrth QR 코드가 아니에요');
+        showToast(t('comp2.toastNotEorthQR'));
       }
       return;
     }
@@ -309,21 +312,21 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       const now = Date.now();
       if (now - lastInvalidToast.current > 2000) {
         lastInvalidToast.current = now;
-        showToast('본인 코드예요');
+        showToast(t('friends.ownCode'));
       }
       return;
     }
     scannedRef.current = true;
     setScannerVisible(false);
     setQuery(scanned);          // 스캔한 핸들로 검색 실행 → 실제 유저(실 id) 결과 표시
-    showToast(`@${scanned} 검색 중...`);
+    showToast(t('comp2.toastSearching', { handle: scanned }));
   };
 
   // ── 내 코드 공유 ──
   const handleShareMe = () => {
-    if (!myCode) { showToast('프로필(아이디)을 먼저 설정해주세요'); return; }
+    if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
     Share.share({
-      message: `eOrth에서 저를 친구로 추가해보세요!\n${userLink(myCode)}`,
+      message: t('comp2.shareMeMessage', { link: userLink(myCode) }),
     }).catch(() => {});
   };
 
@@ -337,7 +340,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     let alive = true;
     setSearching(true);
     setSearchError(false);
-    const t = setTimeout(async () => {
+    const timer = setTimeout(async () => {
       try {
         const rows = await searchProfiles(q);
         if (!alive) return;
@@ -349,7 +352,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         setRemoteResults(
           others.map((p) => ({
             id: p.id,
-            name: p.nickname || p.handle || '여행자',
+            name: p.nickname || p.handle || t('friends.travelerDefault'),
             phone: '',
             initial: (p.nickname || p.handle || '?').slice(0, 1),
             username: p.handle || '',
@@ -365,7 +368,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         if (alive) setSearching(false);
       }
     }, 300); // 디바운스
-    return () => { alive = false; clearTimeout(t); };
+    return () => { alive = false; clearTimeout(timer); };
   }, [query, myId]);
 
   const isSearching = query.trim().length > 0;
@@ -407,10 +410,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     <View style={s.container}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={handleGoBack} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={s.backBtn} onPress={handleGoBack} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>친구 찾기</Text>
+        <Text style={s.headerTitle}>{t('friends.searchTitle')}</Text>
         <View style={s.backBtn} />
       </View>
 
@@ -436,7 +439,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               </>
             ) : (
               <View style={s.qrPlaceholder}>
-                <Text style={s.qrPlaceholderText}>아이디를 설정하면{'\n'}내 QR이 생성돼요</Text>
+                <Text style={s.qrPlaceholderText}>{t('friends.qrHint')}</Text>
               </View>
             )}
           </View>
@@ -456,9 +459,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             activeOpacity={0.85}
             onPress={openScanner}
             accessibilityRole="button"
-            accessibilityLabel="QR 스캔하기"
+            accessibilityLabel={t('comp2.qrScanA11y')}
           >
-            <Text style={s.inlineScanBtnText}>📷 QR 스캔</Text>
+            <Text style={s.inlineScanBtnText}>📷 {t('comp2.qrScan')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[s.inlineShareBtn, !myCode && s.inlineBtnDisabled]}
@@ -466,9 +469,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             onPress={handleShareMe}
             disabled={!myCode}
             accessibilityRole="button"
-            accessibilityLabel="내 코드 공유하기"
+            accessibilityLabel={t('friends.shareCodeA11y')}
           >
-            <Text style={s.inlineShareBtnText}>↗ 공유</Text>
+            <Text style={s.inlineShareBtnText}>↗ {t('comp2.shareShort')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -478,17 +481,17 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         <SearchIcon size={16} color="#A1A1B0" />
         <TextInput
           style={s.searchInput}
-          placeholder="이름 또는 아이디 검색"
+          placeholder={t('friends.nameOrIdPlaceholder')}
           placeholderTextColor={C.dim}
           value={query}
           onChangeText={setQuery}
           autoCorrect={false}
           autoCapitalize="none"
           returnKeyType="search"
-          accessibilityLabel="친구 이름 또는 아이디 검색"
+          accessibilityLabel={t('friends.nameOrIdA11y')}
         />
         {query.length > 0 && (
-          <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel="검색어 지우기">
+          <TouchableOpacity onPress={() => setQuery('')} accessibilityRole="button" accessibilityLabel={t('friends.clearSearchA11y')}>
             <Text style={s.clearBtn}>✕</Text>
           </TouchableOpacity>
         )}
@@ -513,13 +516,13 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         {isSearching ? (
           /* 검색 중에는 연락처 권한과 무관하게 검색 결과(닉네임/핸들)를 보여준다 */
           <>
-            <Text style={s.sectionLabel}>검색 결과</Text>
+            <Text style={s.sectionLabel}>{t('friends.searchResults')}</Text>
             {searching ? (
               <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} />
             ) : searchError ? (
-              <Text style={s.emptyText}>검색 중 문제가 생겼어요.{'\n'}잠시 후 다시 시도해주세요</Text>
+              <Text style={s.emptyText}>{t('friends.searchError')}</Text>
             ) : displayList.length === 0 ? (
-              <Text style={s.emptyText}>검색 결과가 없어요 🔍</Text>
+              <Text style={s.emptyText}>{t('friends.noResultSearch')}</Text>
             ) : (
               renderRows(displayList)
             )}
@@ -527,18 +530,18 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             {/* 검색 중에도 내 연락처에서 매칭되는 친구를 함께 노출 */}
             {contactMatches.length > 0 && (
               <>
-                <Text style={[s.sectionLabel, { marginTop: 24 }]}>내 연락처</Text>
+                <Text style={[s.sectionLabel, { marginTop: 24 }]}>{t('friends.myContacts')}</Text>
                 {renderRows(contactMatches)}
               </>
             )}
           </>
         ) : loading ? (
-          <Text style={s.emptyText}>연락처에서 eOrth 사용자를 찾는 중...</Text>
+          <Text style={s.emptyText}>{t('friends.findingContacts')}</Text>
         ) : !phoneMatchConsent ? (
           /* 전화번호 수집 동의 전 — 동의 화면으로 유도 */
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📇</Text>
-            <Text style={s.permissionTitle}>연락처로 친구 찾기</Text>
+            <Text style={s.permissionTitle}>{t('friends.contactFindTitle')}</Text>
             <Text style={s.permissionDesc}>
               내 전화번호를 등록하면 번호를 저장한 친구가 나를 찾을 수 있고,{'\n'}내 연락처 속 eOrth 사용자도 찾아드려요.{'\n'}번호는 복원 불가능한 해시로만 저장돼요.
             </Text>
@@ -547,15 +550,15 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
               onPress={() => navigation.navigate('PhoneConsent')}
               accessibilityRole="button"
-              accessibilityLabel="전화번호로 친구 찾기 설정"
+              accessibilityLabel={t('friends.phoneFindSettingA11y')}
             >
-              <Text style={s.permissionBtnText}>전화번호로 친구 찾기</Text>
+              <Text style={s.permissionBtnText}>{t('friends.phoneFindBtn')}</Text>
             </TouchableOpacity>
           </View>
         ) : contactsPermission !== 'granted' ? (
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📱</Text>
-            <Text style={s.permissionTitle}>연락처 접근 허용</Text>
+            <Text style={s.permissionTitle}>{t('friends.contactPermTitle')}</Text>
             <Text style={s.permissionDesc}>
               내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요.
             </Text>
@@ -564,16 +567,16 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
               onPress={requestContacts}
               accessibilityRole="button"
-              accessibilityLabel="연락처 접근 허용하기"
+              accessibilityLabel={t('friends.contactPermBtn')}
             >
-              <Text style={s.permissionBtnText}>연락처 접근 허용하기</Text>
+              <Text style={s.permissionBtnText}>{t('friends.contactPermBtn')}</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <>
-            <Text style={s.sectionLabel}>내 연락처 중 eOrth 사용자 ({contactFriends.length}명)</Text>
+            <Text style={s.sectionLabel}>{t('friends.eorthUsersN', { count: contactFriends.length })}</Text>
             {displayList.length === 0 ? (
-              <Text style={s.emptyText}>연락처에 eOrth를 사용하는 친구가 없어요</Text>
+              <Text style={s.emptyText}>{t('friends.noContactFriends')}</Text>
             ) : (
               renderRows(displayList)
             )}
@@ -596,13 +599,13 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           {/* 가이드 프레임 */}
           <View style={s.scanOverlay} pointerEvents="none">
             <View style={s.scanFrame} />
-            <Text style={s.scanHint}>친구의 eOrth QR 코드를 비춰주세요</Text>
+            <Text style={s.scanHint}>{t('friends.scanHint')}</Text>
           </View>
           <TouchableOpacity
             style={[s.scanClose, { top: insets.top + 12 }]}
             onPress={() => setScannerVisible(false)}
             accessibilityRole="button"
-            accessibilityLabel="QR 스캔 닫기"
+            accessibilityLabel={t('comp2.qrScanCloseA11y')}
           >
             <Text style={s.scanCloseText}>✕</Text>
           </TouchableOpacity>

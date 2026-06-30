@@ -10,6 +10,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { SearchIcon as SvgSearchIcon } from '../icons';
 
 /**
@@ -68,6 +69,7 @@ export function CurrencyPickerModal({
   onSelect: (code: string) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -87,14 +89,14 @@ export function CurrencyPickerModal({
         />
         <View style={cs.currModalSheet}>
           <View style={cs.currModalHandle} />
-          <Text style={cs.currModalTitle}>통화 선택</Text>
+          <Text style={cs.currModalTitle}>{t('blog.currencySelect')}</Text>
           <View style={cs.currModalSearchWrap}>
             <SvgSearchIcon size={14} color={COLORS.textDim} />
             <TextInput
               style={cs.currModalSearchInput}
               value={search}
               onChangeText={onSearchChange}
-              placeholder="통화 검색 (예: EUR, 유로)"
+              placeholder={t('blog.currencySearchPlaceholder')}
               placeholderTextColor={COLORS.textMuted}
               autoFocus
             />

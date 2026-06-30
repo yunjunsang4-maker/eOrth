@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -46,6 +47,7 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup } = useRecords();
 
@@ -110,14 +112,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   const startLoad = async () => {
     if (!selectedCountry) {
-      Alert.alert('국가 선택', '여행한 국가를 선택해주세요.');
+      Alert.alert(t('album.countrySelectTitle'), t('album.selectCountryMsg'));
       return;
     }
     setLoading(true);
     try {
       const { status } = await MediaLibrary.requestPermissionsAsync(false);
       if (status !== 'granted' && (status as string) !== 'limited') {
-        showPermissionDeniedAlert('갤러리');
+        showPermissionDeniedAlert(t('permission.gallery'));
         return;
       }
       setIsLimited((status as string) === 'limited');
@@ -127,7 +129,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       setDayFilter(null);
       setPhase('select');
     } catch {
-      Alert.alert('알림', '사진을 불러오는 중 문제가 발생했어요.');
+      Alert.alert(t('album.noticeTitle'), t('album.loadPhotoProblem'));
     } finally {
       setLoading(false);
     }
@@ -152,7 +154,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       return;
     }
     if (selected.length >= MAX_ALBUM_PHOTOS) {
-      Alert.alert('알림', `사진첩에는 최대 ${MAX_ALBUM_PHOTOS}장까지 담을 수 있어요.`);
+      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: MAX_ALBUM_PHOTOS }));
       return;
     }
     setSelected((prev) => [...prev, uri]);
@@ -215,7 +217,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       navigation.goBack();
     } catch {
       setSaving(false);
-      Alert.alert('저장 실패', '사진첩을 만드는 중 문제가 발생했어요.');
+      Alert.alert(t('album.saveFailTitle'), t('album.saveFailMsg'));
     }
   };
 
@@ -223,7 +225,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
         <ActivityIndicator color="#7B61FF" size="large" />
-        <Text style={st.savingText}>사진첩을 만들고 있어요…</Text>
+        <Text style={st.savingText}>{t('album.saving')}</Text>
       </LinearGradient>
     );
   }
@@ -233,15 +235,15 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 24 }]}>
-          <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel="닫기">
+          <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('album.closeA11y')}>
             <Text style={st.closeTxt}>✕</Text>
           </TouchableOpacity>
-          <Text style={st.title}>📷 사진첩 만들기</Text>
-          <Text style={st.sub}>기간을 설정하면 그 기간에 찍은 사진을 불러와요.{'\n'}최대 {MAX_ALBUM_PHOTOS}장을 골라 나만의 사진첩을 만들 수 있어요.</Text>
+          <Text style={st.title}>📷 {t('comp2.albumCreateTitle')}</Text>
+          <Text style={st.sub}>{t('album.sub', { max: MAX_ALBUM_PHOTOS })}</Text>
         </View>
 
         <ScrollView style={st.setupBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-          <Text style={st.fieldLabel}>국가</Text>
+          <Text style={st.fieldLabel}>{t('album.country')}</Text>
 
           {/* 선택된 국가 칩 */}
           {selectedCountry && (
@@ -264,7 +266,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               <SearchIcon size={16} color="#A1A1B0" />
               <TextInput
                 style={st.searchInput}
-                placeholder="국가명을 검색해보세요"
+                placeholder={t('album.countrySearchPlaceholder')}
                 placeholderTextColor="#5A5A6E"
                 value={countrySearch}
                 onChangeText={setCountrySearch}
@@ -286,7 +288,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             <View style={st.countryResultBox}>
               <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
                 {groupedCountries.length === 0 ? (
-                  <Text style={st.noResultText}>검색 결과가 없어요 🔍</Text>
+                  <Text style={st.noResultText}>{t('album.noResult')}</Text>
                 ) : (
                   groupedCountries.map(({ continent, countries }) => (
                     <View key={continent}>
@@ -315,7 +317,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             </View>
           )}
 
-          <Text style={[st.fieldLabel, { marginTop: 20 }]}>기간</Text>
+          <Text style={[st.fieldLabel, { marginTop: 20 }]}>{t('album.period')}</Text>
           <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
             <Text style={st.dateTxt}>{fmtDate(startDate)}</Text>
             <Text style={st.dateArrow}>→</Text>
@@ -326,7 +328,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.loadGrad}>
               {loading
                 ? <ActivityIndicator color="#FFFFFF" size="small" />
-                : <Text style={st.loadTxt}>사진 불러오기</Text>}
+                : <Text style={st.loadTxt}>{t('album.loadPhotos')}</Text>}
             </LinearGradient>
           </TouchableOpacity>
 
@@ -342,8 +344,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           visible={calendarVisible}
           initialStart={startDate}
           initialEnd={endDate}
-          startLabel="시작일"
-          endLabel="종료일"
+          startLabel={t('album.startLabel')}
+          endLabel={t('album.endLabel')}
           onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
           onClose={() => setCalendarVisible(false)}
         />
@@ -358,11 +360,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         <TouchableOpacity style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8}>
           <Text style={st.closeTxt}>←</Text>
         </TouchableOpacity>
-        <Text style={[st.title, st.titleIndented]}>사진 선택</Text>
+        <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
         <Text style={st.counter}>{selected.length} / {MAX_ALBUM_PHOTOS}</Text>
         {isLimited && (
-          <Text style={st.limitedTxt}>💡 선택한 사진만 보여요 — "모든 사진 허용" 시 더 많은 사진을 볼 수 있어요.</Text>
+          <Text style={st.limitedTxt}>{t('album.limitedTxt')}</Text>
         )}
       </View>
 
@@ -375,7 +377,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               onPress={() => setDayFilter(null)}
               activeOpacity={0.8}
             >
-              <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>전체</Text>
+              <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>{t('album.all')}</Text>
             </TouchableOpacity>
             {days.map((d) => {
               const on = dayFilter === d;
@@ -397,8 +399,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       {photos.length === 0 ? (
         <View style={st.emptyWrap}>
           <Text style={st.emptyEmoji}>🖼️</Text>
-          <Text style={st.emptyTitle}>이 기간에 찍은 사진이 없어요</Text>
-          <Text style={st.emptySub}>다른 기간으로 다시 설정해 보세요.</Text>
+          <Text style={st.emptyTitle}>{t('album.emptyTitle')}</Text>
+          <Text style={st.emptySub}>{t('album.emptySub')}</Text>
         </View>
       ) : (
         <FlatList
@@ -432,7 +434,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         >
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.nextGrad}>
             <Text style={st.nextTxt}>
-              {selected.length === 0 ? '사진을 1장 이상 선택하세요' : `사진 ${selected.length}장으로 사진첩 만들기`}
+              {selected.length === 0 ? t('album.selectAtLeastOne') : t('album.createWithN', { count: selected.length })}
             </Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -446,8 +448,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           accessibilityViewIsModal
         >
           <View style={st.pvSheet}>
-            <Text style={st.pvTitle}>여행기록카드 미리보기</Text>
-            <Text style={st.pvSub}>이 모습의 여행기록카드가 프로필에 만들어져요.</Text>
+            <Text style={st.pvTitle}>{t('album.previewTitle')}</Text>
+            <Text style={st.pvSub}>{t('album.previewSub')}</Text>
 
             {/* 카드 예시 — 탭하면 노출 영역 조정 */}
             <TouchableOpacity style={st.pvCard} activeOpacity={0.9} onPress={() => cover && setAdjustVisible(true)}>
@@ -464,7 +466,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             </TouchableOpacity>
 
             {/* 제목 입력 */}
-            <Text style={st.pvPickLabel}>사진첩 이름</Text>
+            <Text style={st.pvPickLabel}>{t('album.albumName')}</Text>
             <TextInput
               style={st.pvInput}
               value={title}
@@ -475,7 +477,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             />
 
             {/* 썸네일 선택 — 선택된 썸네일을 한 번 더 누르면 노출 영역 조정 */}
-            <Text style={st.pvPickLabel}>카드 썸네일로 쓸 사진을 골라주세요 · 한 번 더 누르면 위치 조정</Text>
+            <Text style={st.pvPickLabel}>{t('album.pickThumb')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.pvStrip}>
               {selected.map((uri) => {
                 const on = uri === cover;
@@ -491,7 +493,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                     <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
                     {on && (
                       <View style={st.pvThumbAdjustBadge}>
-                        <Text style={st.pvThumbAdjustTxt}>조정</Text>
+                        <Text style={st.pvThumbAdjustTxt}>{t('album.adjust')}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -501,11 +503,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
             <View style={st.pvBtnRow}>
               <TouchableOpacity style={st.pvBackBtn} onPress={() => setPreviewVisible(false)} activeOpacity={0.85}>
-                <Text style={st.pvBackTxt}>다시 선택</Text>
+                <Text style={st.pvBackTxt}>{t('album.reselect')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={st.pvOkBtn} onPress={save} activeOpacity={0.85}>
                 <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.pvOkGrad}>
-                  <Text style={st.pvOkTxt}>이대로 만들기</Text>
+                  <Text style={st.pvOkTxt}>{t('album.createNow')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>

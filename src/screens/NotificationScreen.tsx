@@ -3,6 +3,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -24,12 +26,12 @@ type Props = RootStackScreenProps<'Notifications'>;
 
 // 알림 카테고리 (매거진 "서브젝트")
 type CatKey = 'comment' | 'like' | 'follow' | 'memory' | 'record';
-const CATEGORY_LABEL: Record<CatKey, string> = {
-  comment: '댓글',
-  like: '좋아요',
-  follow: '팔로우',
-  memory: '추억 리마인드',
-  record: '기록 시작',
+const CATEGORY_LABEL_KEY: Record<CatKey, string> = {
+  comment: 'misc.catComment',
+  like: 'misc.catLike',
+  follow: 'misc.catFollow',
+  memory: 'misc.catMemory',
+  record: 'misc.catRecord',
 };
 
 interface Noti {
@@ -55,13 +57,13 @@ const DAY = 24 * HOUR;
 const NOTI_MAX_AGE = 7 * DAY;
 
 // 상대 시간 표시
-function fmtAgo(ts: number): string {
+function fmtAgo(ts: number, tr: TFunction): string {
   const d = Date.now() - ts;
-  if (d < MIN) return '방금 전';
-  if (d < HOUR) return `${Math.floor(d / MIN)}분 전`;
-  if (d < DAY) return `${Math.floor(d / HOUR)}시간 전`;
-  if (d < 2 * DAY) return '어제';
-  return `${Math.floor(d / DAY)}일 전`;
+  if (d < MIN) return tr('time.justNow');
+  if (d < HOUR) return tr('time.minAgo', { n: Math.floor(d / MIN) });
+  if (d < DAY) return tr('time.hourAgo', { n: Math.floor(d / HOUR) });
+  if (d < 2 * DAY) return tr('time.yesterday');
+  return tr('time.dayAgo', { n: Math.floor(d / DAY) });
 }
 
 // 알림은 실제 활동으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거).
@@ -69,6 +71,7 @@ function fmtAgo(ts: number): string {
 // 단, '추억 리마인드(N년 전 오늘)'는 내 기록만으로 만들 수 있어 컴포넌트에서 계산한다(memoryNotis).
 
 export default function NotificationScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const { records } = useRecords();
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
@@ -82,7 +85,7 @@ export default function NotificationScreen({ navigation }: Props) {
       if (n.postId && records.some((r) => r.id === n.postId)) {
         navigation.navigate('PostDetail', { postId: n.postId });
       } else {
-        Alert.alert('게시물 없음', '삭제되었거나 찾을 수 없는 게시물이에요.');
+        Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
     } else {
       navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '' });
@@ -112,13 +115,13 @@ export default function NotificationScreen({ navigation }: Props) {
         if (m - 1 !== mm || d !== dd) return; // 오늘과 같은 월·일만
         const yearsAgo = today.getFullYear() - y;
         if (yearsAgo <= 0) return; // 과거 연도만
-        const place = r.countryName || r.countries?.[0]?.name || '여행';
+        const place = r.countryName || r.countries?.[0]?.name || t('misc.tripDefault');
         out.push({
           id: `mem-${r.id}`,
           category: 'memory',
           emoji: r.countryFlag || '📸',
           avbg: 'rgba(107,33,168,0.35)',
-          text: `${yearsAgo}년 전 오늘, ${place} 여행을 기록했어요`,
+          text: t('misc.memoryText', { years: yearsAgo, place }),
           read: false,
           createdAt: todayStart,
           postId: r.id,
@@ -156,7 +159,7 @@ export default function NotificationScreen({ navigation }: Props) {
       <View style={[st.barDot, n.read && st.barDotRead]} />
       <Avatar emoji={n.emoji} bg={n.avbg} />
       <Text style={st.barText} numberOfLines={1}>{n.text}</Text>
-      <Text style={st.barTime}>{fmtAgo(n.createdAt)}</Text>
+      <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
     </TouchableOpacity>
   );
 
@@ -164,10 +167,10 @@ export default function NotificationScreen({ navigation }: Props) {
     <SafeAreaView style={st.safeArea}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={st.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>알림</Text>
+        <Text style={st.headerTitle}>{t('misc.notifTitle')}</Text>
         <View style={{ width: 40 }} />
       </View>
 
@@ -175,14 +178,14 @@ export default function NotificationScreen({ navigation }: Props) {
         {/* 매거진 표지 */}
         <View style={st.cover}>
           <Text style={st.vol}>{`eOrth Weekly · ${vol}`}</Text>
-          <Text style={[st.mast, { fontFamily: SERIF }]}>최근 소식</Text>
+          <Text style={[st.mast, { fontFamily: SERIF }]}>{t('misc.recentNews')}</Text>
           <Text style={st.date}>{dateStr}</Text>
         </View>
         <View style={st.rule} />
-        <Text style={st.contentsLabel}>목차 · Contents</Text>
+        <Text style={st.contentsLabel}>{t('misc.contents')}</Text>
 
         {cats.length === 0 && (
-          <Text style={st.empty}>새로운 소식이 없어요</Text>
+          <Text style={st.empty}>{t('misc.noNews')}</Text>
         )}
 
         {cats.map((cat, i) => {
@@ -200,7 +203,7 @@ export default function NotificationScreen({ navigation }: Props) {
                 onPress={() => { if (hasRead) setExpanded(open ? null : cat.key); }}
               >
                 <Text style={[st.idxNum, { fontFamily: SERIF }]}>{String(i + 1).padStart(2, '0')}</Text>
-                <Text style={[st.idxName, { fontFamily: SERIF }]}>{CATEGORY_LABEL[cat.key]}</Text>
+                <Text style={[st.idxName, { fontFamily: SERIF }]}>{t(CATEGORY_LABEL_KEY[cat.key])}</Text>
                 <View style={st.leader} />
                 <Text style={[st.badge, open && st.badgeOpen]}>
                   {cat.items.length}{hasRead ? (open ? ' ▾' : ' ›') : ''}

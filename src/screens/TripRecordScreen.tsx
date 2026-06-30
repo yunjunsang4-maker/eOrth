@@ -15,12 +15,14 @@ import {
   Keyboard,
 } from 'react-native';
 import TripRecordRenderer from '../components/TripRecordRenderer';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, CommentIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
   const { records, deleteRecord, toggleLike, commentsByPost, addComment } = useRecords();
@@ -54,10 +56,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   const handleDelete = () => {
     setMenuVisible(false);
-    Alert.alert('기록 삭제', '이 기록을 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('trip.recordDeleteTitle'), t('trip.recordDeleteMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '삭제',
+        text: t('trip.delete'),
         style: 'destructive',
         onPress: () => {
           deleteRecord(record.id);
@@ -71,7 +73,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     <View style={styles.container}>
       {/* 상단 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
           <Text style={styles.headerTitle}>{record.countryFlag ?? ''} {record.countryName ?? record.country ?? ''}</Text>
@@ -106,7 +108,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
             {/* 댓글 목록 */}
             {comments.length === 0 ? (
-              <Text style={styles.commentEmpty}>아직 댓글이 없어요. 첫 댓글을 남겨보세요!</Text>
+              <Text style={styles.commentEmpty}>{t('trip.noComments')}</Text>
             ) : (
               comments.map((c) => (
                 <View key={c.id} style={styles.commentItem}>
@@ -142,7 +144,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             style={styles.input}
             value={commentText}
             onChangeText={setCommentText}
-            placeholder="댓글 달기..."
+            placeholder={t('trip.commentPlaceholder')}
             placeholderTextColor="#5A5A6E"
             multiline
           />
@@ -152,7 +154,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             disabled={!commentText.trim()}
             activeOpacity={0.8}
           >
-            <Text style={styles.sendBtnText}>게시</Text>
+            <Text style={styles.sendBtnText}>{t('trip.post')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -162,7 +164,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={styles.menuSheet}>
             <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>삭제하기</Text></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>{t('trip.deleteAction')}</Text></View>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

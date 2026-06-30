@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   View,
   Text,
@@ -21,7 +22,7 @@ const toDateKey = (d: Date) =>
 const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
 const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
 
-const WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토'];
+const WEEK_DAY_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
 const CELL_SIZE = Math.floor((SCREEN_W - 32 - 12) / 7);
 
 export function CalendarBottomSheet({
@@ -30,8 +31,8 @@ export function CalendarBottomSheet({
   initialEnd,
   onConfirm,
   onClose,
-  startLabel = '출발일',
-  endLabel = '도착일',
+  startLabel,
+  endLabel,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -41,6 +42,9 @@ export function CalendarBottomSheet({
   startLabel?: string;
   endLabel?: string;
 }) {
+  const { t } = useTranslation();
+  const startLbl = startLabel ?? t('newRecord.departDate');
+  const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -119,23 +123,23 @@ export function CalendarBottomSheet({
           <View style={calS.handle} />
           <View style={calS.selectedRow}>
             <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{startLabel}</Text>
+              <Text style={calS.selectedLabel}>{startLbl}</Text>
               <Text style={[calS.selectedDate, !selectingEnd && calS.selectedDateActive]}>{fmtSel(tempStart)}</Text>
             </View>
             <Text style={calS.selectedArrow}>→</Text>
             <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{endLabel}</Text>
+              <Text style={calS.selectedLabel}>{endLbl}</Text>
               <Text style={[calS.selectedDate, selectingEnd && calS.selectedDateActive]}>{fmtSel(tempEnd)}</Text>
             </View>
           </View>
           <View style={calS.monthNav}>
             <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={calS.navArrow}>‹</Text></TouchableOpacity>
-            <Text style={calS.monthTitle}>{viewYear}년 {MONTH_NAMES[viewMonth]}</Text>
+            <Text style={calS.monthTitle}>{t('cutInfo.yearMonth', { y: viewYear, m: viewMonth + 1 })}</Text>
             <TouchableOpacity onPress={handleNextMonth} style={calS.navBtn}><Text style={calS.navArrow}>›</Text></TouchableOpacity>
           </View>
           <View style={calS.weekRow}>
-            {WEEK_DAYS.map((d, i) => (
-              <Text key={d} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{d}</Text>
+            {WEEK_DAY_KEYS.map((dk, i) => (
+              <Text key={dk} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{t(dk)}</Text>
             ))}
           </View>
           <View style={calS.grid}>
@@ -171,7 +175,7 @@ export function CalendarBottomSheet({
             })}
           </View>
           <TouchableOpacity style={calS.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
-            <Text style={calS.confirmText}>확인</Text>
+            <Text style={calS.confirmText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>

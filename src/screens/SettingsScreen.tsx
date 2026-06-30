@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
@@ -75,7 +76,7 @@ const SettingGroup = ({
             />
           ) : item.badge ? (
             <View style={st.premiumBadge}>
-              <Text style={st.premiumBadgeText}>🔒 프리미엄</Text>
+              <Text style={st.premiumBadgeText}>{item.badge}</Text>
             </View>
           ) : item.value ? (
             <View style={st.settingRight}>
@@ -93,10 +94,12 @@ const SettingGroup = ({
 );
 
 export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
+  const { t } = useTranslation();
   const {
     showCounts, setShowCounts,
     homeCountryCode, setHomeCountryCode,
     diaryCardMode, setDiaryCardMode,
+    language, setLanguage,
     resetSettings,
   } = useSettings();
   const { resetRecords } = useRecords();
@@ -114,21 +117,34 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
 
   const handleResetData = () => {
     Alert.alert(
-      '데이터 초기화',
-      '모든 여행 기록·설정·대화 내역이 삭제되고 첫 실행 상태로 돌아갑니다.\n이 작업은 되돌릴 수 없어요.',
+      t('settings.resetTitle'),
+      t('settings.resetMsg'),
       [
-        { text: '취소', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '초기화',
+          text: t('settings.resetConfirm'),
           style: 'destructive',
           onPress: () => {
             resetRecords();
             resetSettings();
             resetConversations();
             clearPersistedStores().catch(() => {});
-            Alert.alert('완료', '데이터가 초기화되었습니다.');
+            Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
           },
         },
+      ],
+    );
+  };
+
+  // 언어 전환 — 한국어/English 선택 (앱 전체 즉시 반영)
+  const handleLanguageChange = () => {
+    Alert.alert(
+      t('settings.languageChange'),
+      t('settings.languageSelectMsg'),
+      [
+        { text: t('settings.langKo'), onPress: () => setLanguage('ko') },
+        { text: t('settings.langEn'), onPress: () => setLanguage('en') },
+        { text: t('common.cancel'), style: 'cancel' },
       ],
     );
   };
@@ -137,10 +153,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     <SafeAreaView style={st.safeArea}>
       {/* 상단 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
           <Text style={st.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>설정</Text>
+        <Text style={st.headerTitle}>{t('settings.title')}</Text>
         <View style={st.headerPlaceholder} />
       </View>
 
@@ -150,44 +166,44 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         showsVerticalScrollIndicator={false}
       >
         {/* 계정 */}
-        <Text style={st.groupLabel}>계정</Text>
+        <Text style={st.groupLabel}>{t('settings.groupAccount')}</Text>
         <SettingGroup
           items={[
-            { icon: <PersonIcon size={22} />,  label: '프로필 편집',    onPress: () => navigation.navigate('EditProfile') },
-            { icon: <LockIcon size={22} />,    label: '계정 설정',      onPress: () => navigation.navigate('AccountSettings') },
-            { icon: <BellIcon size={22} />,    label: '알림 설정',      onPress: () => navigation.navigate('NotificationSettings') },
-            { icon: <BlockIcon size={22} />,   label: '차단한 사용자',  onPress: () => navigation.navigate('BlockedUsers') },
-            { icon: <ArchiveIcon size={22} />, label: '보관된 게시물',  onPress: () => navigation.navigate('ArchivedPosts') },
+            { icon: <PersonIcon size={22} />,  label: t('settings.editProfile'),    onPress: () => navigation.navigate('EditProfile') },
+            { icon: <LockIcon size={22} />,    label: t('settings.accountSettings'),      onPress: () => navigation.navigate('AccountSettings') },
+            { icon: <BellIcon size={22} />,    label: t('settings.notifications'),      onPress: () => navigation.navigate('NotificationSettings') },
+            { icon: <BlockIcon size={22} />,   label: t('settings.blockedUsers'),  onPress: () => navigation.navigate('BlockedUsers') },
+            { icon: <ArchiveIcon size={22} />, label: t('settings.archivedPosts'),  onPress: () => navigation.navigate('ArchivedPosts') },
           ]}
         />
 
         {/* 앱 설정 */}
-        <Text style={st.groupLabel}>앱 설정</Text>
+        <Text style={st.groupLabel}>{t('settings.groupApp')}</Text>
         <SettingGroup
           items={[
-            { icon: <EyeIcon size={22} />, label: '좋아요·댓글 수 표시', toggle: showCounts, onToggle: setShowCounts },
-            { icon: <GalleryIcon size={22} />, label: '소셜 카드 상호작용 표시', toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
+            { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
+            { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
               icon: <GlobeSkinIcon size={22} />,
-              label: '지구본 스킨',
-              badge: '프리미엄',
-              onPress: () => Alert.alert('프리미엄 기능', '프리미엄 기능 준비 중입니다.'),
+              label: t('settings.globeSkin'),
+              badge: t('settings.premiumBadge'),
+              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
             },
             {
               icon: <LanguageIcon size={22} />,
-              label: '언어 변경',
-              value: '한국어',
-              onPress: () => Alert.alert('언어', '현재 한국어만 지원합니다.'),
+              label: t('settings.languageChange'),
+              value: language === 'en' ? t('settings.langEn') : t('settings.langKo'),
+              onPress: handleLanguageChange,
             },
             {
               icon: <MoonIcon size={22} />,
-              label: '다크·라이트 모드',
-              value: '다크',
-              onPress: () => Alert.alert('테마', '현재 다크 모드만 지원합니다.'),
+              label: t('settings.theme'),
+              value: t('settings.themeDark'),
+              onPress: () => Alert.alert(t('settings.themeTitle'), t('settings.themeMsg')),
             },
             {
               icon: <InfoIcon size={22} />,
-              label: '거주 국가',
+              label: t('settings.residence'),
               value: homeCountryCode,
               onPress: openCountryModal,
             },
@@ -195,33 +211,33 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         />
 
         {/* 지원 */}
-        <Text style={st.groupLabel}>지원</Text>
+        <Text style={st.groupLabel}>{t('settings.groupSupport')}</Text>
         <SettingGroup
           items={[
             {
               icon: <QuestionIcon size={22} />,
-              label: 'FAQ',
-              onPress: () => Alert.alert('FAQ', 'FAQ 페이지 준비 중입니다.'),
+              label: t('settings.faq'),
+              onPress: () => Alert.alert(t('settings.faq'), t('settings.faqMsg')),
             },
             {
               icon: <ChatIcon size={22} />,
-              label: '피드백 보내기',
-              onPress: () => Alert.alert('피드백', '피드백 기능 준비 중입니다.'),
+              label: t('settings.feedback'),
+              onPress: () => Alert.alert(t('settings.feedbackTitle'), t('settings.feedbackMsg')),
             },
             {
               icon: <DocumentIcon size={22} />,
-              label: '이용약관 · 정책',
-              onPress: () => Alert.alert('이용약관', '이용약관 페이지 준비 중입니다.'),
+              label: t('settings.terms'),
+              onPress: () => Alert.alert(t('settings.termsTitle'), t('settings.termsMsg')),
             },
-            { icon: <InfoIcon size={22} />,      label: '앱 버전', value: 'v1.0.0' },
+            { icon: <InfoIcon size={22} />,      label: t('settings.appVersion'), value: 'v1.0.0' },
           ]}
         />
 
         {/* 데이터 */}
-        <Text style={st.groupLabel}>데이터</Text>
+        <Text style={st.groupLabel}>{t('settings.groupData')}</Text>
         <SettingGroup
           items={[
-            { icon: <TrashIcon size={22} />, label: '데이터 초기화', onPress: handleResetData },
+            { icon: <TrashIcon size={22} />, label: t('settings.resetData'), onPress: handleResetData },
           ]}
         />
 
@@ -230,10 +246,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           style={st.logoutBtn}
           activeOpacity={0.7}
           onPress={() =>
-            Alert.alert('로그아웃', '정말 로그아웃할까요?', [
-              { text: '취소', style: 'cancel' },
+            Alert.alert(t('settings.logout'), t('settings.logoutConfirm'), [
+              { text: t('common.cancel'), style: 'cancel' },
               {
-                text: '로그아웃',
+                text: t('settings.logout'),
                 style: 'destructive',
                 onPress: () => {
                   signOut(); // Supabase 세션 종료 (미설정 시 no-op)
@@ -245,11 +261,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         >
           <View style={st.logoutInner}>
             <ExitIcon size={22} />
-            <Text style={st.logoutText}>로그아웃</Text>
+            <Text style={st.logoutText}>{t('settings.logout')}</Text>
           </View>
         </TouchableOpacity>
 
-        <Text style={st.versionText}>eOrth · v1.0.0 · © 2025</Text>
+        <Text style={st.versionText}>{t('settings.footer')}</Text>
       </ScrollView>
 
       {/* 거주 국가 입력 모달 (iOS/Android 공용) */}
@@ -261,8 +277,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       >
         <View style={st.modalOverlay} accessibilityViewIsModal>
           <View style={st.modalCard}>
-            <Text style={st.modalTitle}>거주 국가</Text>
-            <Text style={st.modalDesc}>국가 코드를 입력하세요 (예: KR, US, JP)</Text>
+            <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
+            <Text style={st.modalDesc}>{t('settings.countryModalDesc')}</Text>
             <TextInput
               style={st.modalInput}
               value={countryDraft}
@@ -275,10 +291,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             />
             <View style={st.modalBtnRow}>
               <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel]} activeOpacity={0.7} onPress={() => setCountryModalVisible(false)}>
-                <Text style={st.modalBtnCancelText}>취소</Text>
+                <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[st.modalBtn, st.modalBtnSubmit]} activeOpacity={0.7} onPress={submitCountry}>
-                <Text style={st.modalBtnSubmitText}>확인</Text>
+                <Text style={st.modalBtnSubmitText}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>

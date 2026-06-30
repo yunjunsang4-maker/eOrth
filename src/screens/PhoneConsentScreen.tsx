@@ -11,6 +11,7 @@ import {
   Platform,
   ScrollView,
 } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { saveMyPhoneHash, deleteMyPhoneHash } from '../services/profile';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -42,6 +43,7 @@ function formatKoreanPhone(raw: string): string {
 type Props = RootStackScreenProps<'PhoneConsent'>;
 
 export default function PhoneConsentScreen({ navigation }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { phoneMatchConsent, setPhoneMatchConsent } = useSettings();
   const [phone, setPhone] = useState('');
@@ -76,7 +78,7 @@ export default function PhoneConsentScreen({ navigation }: Props) {
       if (isSupabaseConfigured) {
         const ok = await saveMyPhoneHash(phone);
         if (!ok) {
-          showToast('저장에 실패했어요. 로그인 상태를 확인해주세요.');
+          showToast(t('friends.saveFailToast'));
           setBusy(false);
           return;
         }
@@ -94,7 +96,7 @@ export default function PhoneConsentScreen({ navigation }: Props) {
     try {
       await deleteMyPhoneHash();
       setPhoneMatchConsent(false);
-      showToast('연락처 친구 찾기를 껐어요');
+      showToast(t('friends.phoneOffToast'));
       navTimer.current = setTimeout(() => navigation.goBack(), 600);
     } finally {
       setBusy(false);
@@ -105,40 +107,39 @@ export default function PhoneConsentScreen({ navigation }: Props) {
     <View style={s.container}>
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('comp2.backA11y')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>연락처로 친구 찾기</Text>
+        <Text style={s.headerTitle}>{t('friends.phoneTitle')}</Text>
         <View style={s.backBtn} />
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
         <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
           <Text style={s.emoji}>📇</Text>
-          <Text style={s.title}>전화번호로 친구를 찾고{'\n'}연결돼요</Text>
+          <Text style={s.title}>{t('friends.phoneHeading')}</Text>
           <Text style={s.desc}>
-            내 전화번호를 등록하면, 내 번호를 저장한 친구가 나를 쉽게 찾을 수 있어요.
-            반대로 내 연락처에 있는 eOrth 사용자도 찾아드려요.
+            {t('friends.phoneDesc')}
           </Text>
 
           {/* 개인정보 안내 */}
           <View style={s.privacyBox}>
-            <Text style={s.privacyLine}>🔒 전화번호는 <Text style={s.bold}>복원 불가능한 해시(SHA-256)</Text>로만 저장돼요.</Text>
-            <Text style={s.privacyLine}>🙈 원본 번호는 서버에 저장되지 않아요.</Text>
-            <Text style={s.privacyLine}>⚙️ 언제든 이 화면에서 끌 수 있어요.</Text>
+            <Text style={s.privacyLine}>{t('friends.privacyPrefix')}<Text style={s.bold}>{t('friends.privacyBold')}</Text>{t('friends.privacySuffix')}</Text>
+            <Text style={s.privacyLine}>{t('friends.privacyLine2')}</Text>
+            <Text style={s.privacyLine}>{t('friends.privacyLine3')}</Text>
           </View>
 
           {/* 입력 */}
-          <Text style={s.inputLabel}>내 전화번호</Text>
+          <Text style={s.inputLabel}>{t('friends.myPhone')}</Text>
           <TextInput
             style={s.input}
             value={phone}
-            onChangeText={(t) => setPhone(formatKoreanPhone(t))}
+            onChangeText={(v) => setPhone(formatKoreanPhone(v))}
             placeholder="010-1234-5678"
             placeholderTextColor={C.dim}
             keyboardType="phone-pad"
             maxLength={13}
-            accessibilityLabel="내 전화번호 입력"
+            accessibilityLabel={t('friends.myPhoneA11y')}
           />
 
           <TouchableOpacity
@@ -147,18 +148,18 @@ export default function PhoneConsentScreen({ navigation }: Props) {
             disabled={!valid || busy}
             activeOpacity={0.85}
             accessibilityRole="button"
-            accessibilityLabel="동의하고 연결하기"
+            accessibilityLabel={t('friends.agreeConnect')}
           >
             {busy ? (
               <ActivityIndicator color={C.white} />
             ) : (
-              <Text style={s.agreeBtnText}>동의하고 연결하기</Text>
+              <Text style={s.agreeBtnText}>{t('friends.agreeConnect')}</Text>
             )}
           </TouchableOpacity>
 
           {phoneMatchConsent && (
             <TouchableOpacity style={s.disableBtn} onPress={handleDisable} disabled={busy} activeOpacity={0.8}>
-              <Text style={s.disableBtnText}>연락처 친구 찾기 끄기</Text>
+              <Text style={s.disableBtnText}>{t('friends.disablePhone')}</Text>
             </TouchableOpacity>
           )}
 

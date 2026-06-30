@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
+import { useTranslation } from 'react-i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
@@ -285,11 +286,12 @@ function StepNavBar({
   onSave: () => void;
   saving?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={nav.wrap}>
       {step > 1 ? (
         <TouchableOpacity style={nav.prevBtn} onPress={onPrev} activeOpacity={0.8}>
-          <Text style={nav.prevTxt}>← 이전</Text>
+          <Text style={nav.prevTxt}>{t('newRecord.prev')}</Text>
         </TouchableOpacity>
       ) : (
         <View style={nav.prevPlaceholder} />
@@ -300,7 +302,7 @@ function StepNavBar({
           onPress={onNext}
           activeOpacity={0.85}
         >
-          <Text style={nav.nextTxt}>다음 →</Text>
+          <Text style={nav.nextTxt}>{t('newRecord.next')}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
@@ -309,7 +311,7 @@ function StepNavBar({
           activeOpacity={0.85}
           disabled={saving}
         >
-          <Text style={nav.saveTxt}>{saving ? '저장 중…' : '저장하기'}</Text>
+          <Text style={nav.saveTxt}>{saving ? t('newRecord.saving') : t('newRecord.save')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -406,7 +408,20 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
+  const { t } = useTranslation();
   const { addRecord, updateRecord, followingUsers } = useRecords();
+  // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
+  const companionLabel = (c: string) => {
+    switch (c) {
+      case '혼자': return t('newRecord.compSolo');
+      case '친구': return t('newRecord.compFriend');
+      case '연인': return t('newRecord.compCouple');
+      case '가족': return t('newRecord.compFamily');
+      case '부모님': return t('newRecord.compParents');
+      case '형제': return t('newRecord.compSibling');
+      default: return c;
+    }
+  };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
   const TOTAL_STEPS = 3;
@@ -543,7 +558,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const selectMedia = async () => {
     const slots = 30 - medias.length;
     if (slots <= 0) {
-      Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
+      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
       return;
     }
     try {
@@ -559,7 +574,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         setMedias(prev => [...prev, ...compressed].slice(0, 30));
       }
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
     } finally {
       setLoadingMedia(false);
     }
@@ -851,18 +866,19 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
   // OTHER_CURRENCIES 목록은 components/record/CurrencyPickerModal 로 이동
   const WEATHER_OPTIONS = [
-    { label: '☀️ 맑음',     value: '맑음' },
-    { label: '🌤️ 부분흐림', value: '부분흐림' },
-    { label: '⛅ 흐림',     value: '흐림' },
-    { label: '🌧️ 비',       value: '비' },
-    { label: '❄️ 눈',       value: '눈' },
-    { label: '💨 바람',     value: '바람' },
+    { label: `☀️ ${t('newRecord.wSunny')}`,     value: '맑음' },
+    { label: `🌤️ ${t('newRecord.wPartly')}`, value: '부분흐림' },
+    { label: `⛅ ${t('newRecord.wCloudy')}`,     value: '흐림' },
+    { label: `🌧️ ${t('newRecord.wRain')}`,       value: '비' },
+    { label: `❄️ ${t('newRecord.wSnow')}`,       value: '눈' },
+    { label: `💨 ${t('newRecord.wWind')}`,     value: '바람' },
   ];
   const FLIGHT_OPTIONS  = ['직항', '경유'];
+  const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
   const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-    { value: 'public',  label: '🌐 전체 공개' },
-    { value: 'friends', label: '👥 친구만' },
-    { value: 'private', label: '🔒 나만 보기' },
+    { value: 'public',  label: `🌐 ${t('newRecord.visPublic')}` },
+    { value: 'friends', label: `👥 ${t('newRecord.visFriends')}` },
+    { value: 'private', label: `🔒 ${t('newRecord.visPrivate')}` },
   ];
   const KEYWORD_OPTIONS = ['#맛집','#쇼핑','#자연','#역사','#휴양','#액티비티','#도시','#힐링','#백패킹','#럭셔리'];
 
@@ -922,7 +938,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // iCloud 제외분 안내 문구 (없으면 빈 문자열)
   const cloudNote = (skipped: number) =>
-    skipped > 0 ? `\n\niCloud에 보관된 ${skipped}장은 자동 불러오기로 가져올 수 없어, 아래 ‘갤러리에서 선택’으로 받아주세요.` : '';
+    skipped > 0 ? t('newRecord.cloudNote', { count: skipped }) : '';
 
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
@@ -936,9 +952,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudSkippedRef.current)}`);
+      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudSkippedRef.current));
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
       setLoadingMedia(false);
     }
@@ -949,7 +965,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const rangeEnd   = overrideEnd   ?? autoLoadEnd;
 
     if (!rangeStart || !rangeEnd || isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
-      Alert.alert('날짜 오류', '날짜를 다시 선택해주세요.');
+      Alert.alert(t('newRecord.dateErrorTitle'), t('newRecord.dateErrorMsg'));
       return;
     }
 
@@ -958,11 +974,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
-          '갤러리 접근 권한이 필요해요',
-          '설정에서 갤러리 접근을 허용해주세요.',
+          t('newRecord.galleryPermTitle'),
+          t('newRecord.galleryPermMsg'),
           [
-            { text: '취소', style: 'cancel' },
-            { text: '설정에서 허용하기', onPress: () => Linking.openSettings() },
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
           ]
         );
         return;
@@ -983,7 +999,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       const allAssets = result?.assets ?? [];
       if (allAssets.length === 0) {
-        Alert.alert('사진이 없어요', '해당 기간에 사진이 없어요.');
+        Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
         return;
       }
 
@@ -995,8 +1011,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       if (ok.length === 0) {
         Alert.alert(
-          'iCloud에 있는 사진이에요',
-          `이 기간 사진 ${cloudCount}장은 모두 iCloud에 보관돼 있어 자동 불러오기로는 가져올 수 없어요.\n\n‘갤러리에서 선택’으로 받아주세요. (iCloud 사진은 이 방식에서만 받아집니다)`
+          t('comp2.icloudTitle'),
+          t('newRecord.iCloudOnlyMsg', { count: cloudCount })
         );
         return;
       }
@@ -1004,7 +1020,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const total = ok.length;
       const slotsAvailable = 30 - medias.length;
       if (slotsAvailable <= 0) {
-        Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
         return;
       }
 
@@ -1022,9 +1038,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudCount)}`);
+      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudCount));
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
       setLoadingMedia(false);
     }
@@ -1066,7 +1082,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   const handleSave = async () => {
     if (selectedCountries.length === 0) {
-      Alert.alert('국가를 선택해주세요', '여행한 국가를 1개 이상 선택해야 저장할 수 있어요.');
+      Alert.alert(t('newRecord.selectCountryTitle'), t('newRecord.selectCountryMsg'));
       return;
     }
     {
@@ -1174,9 +1190,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const sub = navigation.addListener('beforeRemove', (e) => {
       if (savedRef.current || !hasInputRef.current) return;
       e.preventDefault();
-      Alert.alert('작성을 취소할까요?', '입력한 내용이 저장되지 않아요.', [
-        { text: '계속 작성', style: 'cancel' },
-        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      Alert.alert(t('newRecord.cancelWriteTitle'), t('newRecord.cancelWriteMsg'), [
+        { text: t('newRecord.continueWrite'), style: 'cancel' },
+        { text: t('newRecord.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
       ]);
     });
     return sub;
@@ -1186,31 +1202,31 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const showHint = (msg: string) => { setHintMsg(msg); setTimeout(() => setHintMsg(''), 2200); };
   const missingHint = (): string[] => {
     const m: string[] = [];
-    if (step === 1) { if (selectedCountries.length === 0) m.push('국가'); }
+    if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
     else if (step === 2) {
       const noPhoto = selectedCountries.some((c, idx) =>
         idx === activeCountryIdx ? medias.length === 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) === 0);
-      if (noPhoto) m.push(isMultiCountry ? '모든 국가 사진' : '사진');
+      if (noPhoto) m.push(isMultiCountry ? t('newRecord.missAllCountryPhotos') : t('newRecord.missPhoto'));
     }
     else if (step === TOTAL_STEPS) {
-      if (memo.trim().length === 0) m.push('글');
+      if (memo.trim().length === 0) m.push(t('newRecord.missText'));
       const noRating = selectedCountries.some((c, idx) =>
         idx === activeCountryIdx ? rating <= 0 : (perCountryStore.current[c.name]?.rating ?? 0) <= 0);
-      if (noRating) m.push(isMultiCountry ? '모든 국가 평점' : '평점');
-      if (selectedCompanions.length === 0) m.push('동행자');
+      if (noRating) m.push(isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating'));
+      if (selectedCompanions.length === 0) m.push(t('newRecord.missCompanion'));
     }
     return m;
   };
   const handleNextPress = () => {
     if (canGoNext()) { goNext(); return; }
     const miss = missingHint();
-    showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+    showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
   };
   const handleSavePress = async () => {
     if (savingRef.current) return; // 저장 중복 클릭 방지
     if (!canGoNext()) {
       const miss = missingHint();
-      showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+      showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
       return;
     }
     savingRef.current = true;
@@ -1233,14 +1249,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const tag = `#${base}`;
     setKeywords(prev => {
       if (prev.includes(tag)) return prev;
-      if (prev.length >= KEYWORD_MAX) { showHint(`키워드는 최대 ${KEYWORD_MAX}개예요`); return prev; }
+      if (prev.length >= KEYWORD_MAX) { showHint(t('newRecord.keywordMax', { max: KEYWORD_MAX })); return prev; }
       return [...prev, tag];
     });
     setKeywordQuery('');
   };
 
   // ── 단계별 제목 ──
-  const STEP_TITLES = ['국가 선택', '사진', '기록 정보'];
+  const STEP_TITLES = [t('newRecord.step1'), t('newRecord.step2'), t('newRecord.step3')];
 
   // ─── 렌더 ───
   return (
@@ -1248,9 +1264,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 헤더 */}
       <View style={s.header}>
         <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
-          <Text style={s.cancelTxt}>취소</Text>
+          <Text style={s.cancelTxt}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{isEdit ? '기록 수정' : '새 기록하기'}</Text>
+        <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -1315,8 +1331,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   <TextInput
                     style={s.searchInput}
                     placeholder={selectedCountries.length > 0
-                      ? "추가 국가를 검색해보세요"
-                      : "국가명을 검색해보세요"}
+                      ? t('newRecord.searchMore')
+                      : t('newRecord.searchCountry')}
                     placeholderTextColor={COLORS.textMuted}
                     value={countrySearch}
                     onChangeText={setCountrySearch}
@@ -1338,7 +1354,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.countryResultBox}>
                   <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
                     {groupedCountries.length === 0 ? (
-                      <Text style={s.noResultText}>검색 결과가 없어요 🔍</Text>
+                      <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
                     ) : (
                       groupedCountries.map(({ continent, countries }) => (
                         <View key={continent}>
@@ -1373,7 +1389,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 안내 문구 */}
               {selectedCountries.length === 0 && countrySearch.length === 0 && (
-                <Text style={s.stepHint}>{'어느 나라를 다녀오셨나요?\n여러 나라를 선택할 수 있어요 (최대 10개)'}</Text>
+                <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
               )}
 
               {/* 선택 완료 확인 */}
@@ -1415,7 +1431,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <CalendarIcon size={16} color={COLORS.purpleNeon} />
-                  <Text style={s.autoLoadBtnText}>기간으로 자동 불러오기</Text>
+                  <Text style={s.autoLoadBtnText}>{t('newRecord.autoLoadByPeriod')}</Text>
                 </View>
               </TouchableOpacity>
               {loadingMedia && <ActivityIndicator color="#BF85FC" size="large" style={{ marginVertical: 12 }} />}
@@ -1430,8 +1446,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.addMediaLeft}>
                   <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
                   <View>
-                    <Text style={s.addMediaText}>갤러리에서 선택</Text>
-                    <Text style={s.addMediaSub}>사진 최대 30장</Text>
+                    <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
+                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub')}</Text>
                   </View>
                 </View>
                 <View style={s.addMediaCountBadge}>
@@ -1460,8 +1476,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {medias.length === 0 && (
                 <View style={s.mediaEmptyBox}>
                   <DesignerCameraIcon size={32} color={COLORS.textMuted} />
-                  <Text style={s.mediaEmptyTitle}>아직 선택된 사진이 없어요</Text>
-                  <Text style={s.mediaEmptyDesc}>최소 1장의 사진을 추가해야 다음으로 넘어갈 수 있어요</Text>
+                  <Text style={s.mediaEmptyTitle}>{t('newRecord.noPhotoSelectedTitle')}</Text>
+                  <Text style={s.mediaEmptyDesc}>{t('newRecord.noPhotoSelectedDesc')}</Text>
                 </View>
               )}
 
@@ -1489,7 +1505,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 날짜 (국가별) */}
               <View style={s.fieldBlock}>
                 <View style={s.perCountryLabelRow}>
-                  <Text style={s.fieldLabelReq}>날짜</Text>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.date')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                   {isMultiCountry && (
                     <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
@@ -1501,12 +1517,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   activeOpacity={0.85}
                 >
                   <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>출발일</Text>
+                    <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
                     <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
                   </View>
                   <Text style={s.dateBtnArrow}>→</Text>
                   <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>도착일</Text>
+                    <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
                     <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
                   </View>
                   <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={COLORS.purpleNeon} /></View>
@@ -1516,12 +1532,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 글 (공통) */}
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
-                  <Text style={s.fieldLabelReq}>글</Text>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.textLabel')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                 </View>
                 <TextInput
                   style={[s.fieldInput, s.memoInput]}
-                  placeholder="여행의 순간을 기록해보세요"
+                  placeholder={t('newRecord.textPlaceholder')}
                   placeholderTextColor={COLORS.textMuted}
                   value={memo}
                   onChangeText={setMemo}
@@ -1535,7 +1551,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* ── 동행자 선택 ── */}
               <View style={s.companionSection}>
                 <View style={s.fieldLabelRow}>
-                  <Text style={s.companionSectionLabel}>동행자 선택</Text>
+                  <Text style={s.companionSectionLabel}>{t('newRecord.companionSelect')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                 </View>
                 {/* 컴팩트 칩 */}
@@ -1559,7 +1575,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                         activeOpacity={0.75}
                       >
                         <View style={s.companionChipIconWrap}>{COMP_ICONS[comp]}</View>
-                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{comp}</Text>
+                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{companionLabel(comp)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1590,7 +1606,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   activeOpacity={0.75}
                 >
                   <FriendIcon color={COLORS.purpleNeon} />
-                  <Text style={s.addFriendTxt}>앱 친구 추가</Text>
+                  <Text style={s.addFriendTxt}>{t('newRecord.addAppFriend')}</Text>
                   {companionFriends.length > 0 && (
                     <View style={s.addFriendBadge}>
                       <Text style={s.addFriendBadgeTxt}>{companionFriends.length}</Text>
@@ -1603,7 +1619,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.fieldBlock}>
                 <View style={s.ratingLabelRow}>
                   <View style={s.perCountryLabelRow}>
-                    <Text style={s.fieldLabelReq}>별점</Text>
+                    <Text style={s.fieldLabelReq}>{t('newRecord.ratingLabel')}</Text>
                     <Text style={s.reqTag}>✱</Text>
                     {isMultiCountry && (
                       <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
@@ -1611,7 +1627,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   </View>
                   {rating > 0
                     ? <Text style={s.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
-                    : <Text style={s.ratingScoreEmpty}>탭하거나 드래그해 선택</Text>}
+                    : <Text style={s.ratingScoreEmpty}>{t('newRecord.ratingEmpty')}</Text>}
                 </View>
                 <View style={s.ratingCard}>
                   {renderStars()}
@@ -1621,7 +1637,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 공개 범위 (공통) */}
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
-                  <Text style={s.fieldLabelReq}>공개 범위</Text>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.visibility')}</Text>
                 </View>
                 <View style={s.companionChipWrap}>
                   {VISIBILITY_OPTIONS.map(opt => {
@@ -1644,13 +1660,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.companionDivider} />
 
               {/* 안내 */}
-              <Text style={s.optNoticeText}>선택 항목이에요 (건너뛰어도 돼요 😊)</Text>
+              <Text style={s.optNoticeText}>{t('newRecord.optionalNotice')}</Text>
 
               {/* 예산 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <CoinIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>예산</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.budget')}</Text>
                   {budget ? <Text style={s.optCardValue}>{Number(budget).toLocaleString()} {currency}</Text> : null}
                 </View>
                 <View style={s.optBudgetRow}>
@@ -1671,12 +1687,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     activeOpacity={0.75}
                   >
                     <Text style={[s.optCurrencyTxt, !CURRENCIES.includes(currency) && s.optCurrencyTxtActive]}>
-                      {CURRENCIES.includes(currency) ? '기타 ›' : currency}
+                      {CURRENCIES.includes(currency) ? t('newRecord.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
                   <TextInput
                     style={s.optBudgetInput}
-                    placeholder="금액"
+                    placeholder={t('newRecord.amountPlaceholder')}
                     placeholderTextColor={COLORS.textMuted}
                     value={budget}
                     onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
@@ -1689,7 +1705,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <WeatherIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>날씨</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.weather')}</Text>
                   {weather ? <Text style={s.optCardValue}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
@@ -1713,8 +1729,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <DesignerPlaneIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>직항 / 경유</Text>
-                  {flightType ? <Text style={s.optCardValue}>{flightType}</Text> : null}
+                  <Text style={s.optRowTitle}>{t('newRecord.flightTitle')}</Text>
+                  {flightType ? <Text style={s.optCardValue}>{flightLabel(flightType)}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
                   {FLIGHT_OPTIONS.map(f => (
@@ -1727,7 +1743,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         {f === '직항' ? <TakeoffIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} /> : <TransferIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} />}
                         <Text style={[s.optFlightTxt, flightType === f && s.optFlightTxtActive]}>
-                          {f}
+                          {flightLabel(f)}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -1739,7 +1755,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <TagIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>키워드</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.keyword')}</Text>
                   {keywords.length > 0 && <Text style={s.optCardValue}>{keywords.length}개</Text>}
                 </View>
                 {/* 태그 + 입력창 인라인 */}
@@ -1769,7 +1785,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     onSubmitEditing={() => addKeyword(keywordQuery)}
                   />
                 </View>
-                <Text style={s.kwHint}>스페이스 또는 엔터로 태그 추가 · 탭해서 삭제</Text>
+                <Text style={s.kwHint}>{t('newRecord.keywordHint')}</Text>
               </View>
 
             </View>
@@ -1840,8 +1856,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         visible={autoLoadCalendarVisible}
         initialStart={autoLoadStart}
         initialEnd={autoLoadEnd}
-        startLabel="시작일"
-        endLabel="종료일"
+        startLabel={t('newRecord.startLabel')}
+        endLabel={t('newRecord.endLabel')}
         onConfirm={(s, e) => {
           setAutoLoadStart(s);
           setAutoLoadEnd(e);

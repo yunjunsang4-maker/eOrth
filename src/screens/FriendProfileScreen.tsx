@@ -11,6 +11,7 @@ import {
   Share,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -55,6 +56,7 @@ export default function FriendProfileScreen({
   navigation,
   route,
 }: RootStackScreenProps<'FriendProfile'>) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
@@ -105,7 +107,7 @@ export default function FriendProfileScreen({
       id: p.id,
       emoji: p.countryFlag || '🌍',
       countryFlag: p.countryFlag || '',
-      title: p.countryName || (p.content ? p.content.slice(0, 16) : '여행'),
+      title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
       date: p.date || '',
       coverUri: p.representativePhoto || p.medias?.[0],
       records: [{ id: p.id, viewType: p.viewType || 'feed' }],
@@ -152,14 +154,14 @@ export default function FriendProfileScreen({
   const handleCopyLink = async () => {
     setMenuVisible(false);
     await Clipboard.setStringAsync(`eOrth://profile/${displayUsername}`);
-    showToast('링크가 복사되었어요!');
+    showToast(t('social.linkCopiedToast'));
   };
 
   const handleShare = () => {
     setMenuVisible(false);
     Share.share({
-      message: `@${displayUsername}의 eOrth 프로필을 확인해보세요!\neOrth://profile/${displayUsername}`,
-      title: 'eOrth 프로필 공유',
+      message: t('comp2.shareProfileMsg', { username: displayUsername }),
+      title: t('comp2.shareProfileTitle'),
     });
   };
 
@@ -167,18 +169,18 @@ export default function FriendProfileScreen({
     setMenuVisible(false);
     if (notifMuted) {
       toggleMute(muteKey);
-      showToast('알림을 켰어요');
+      showToast(t('friends.notifOnToast'));
     } else {
       Alert.alert(
-        '알림 끄기',
-        '이 친구의 새 기록 알림을 끌까요?',
+        t('friends.muteTitle'),
+        t('friends.muteMsg'),
         [
-          { text: '취소', style: 'cancel' },
+          { text: t('common.cancel'), style: 'cancel' },
           {
-            text: '끄기',
+            text: t('friends.mute'),
             onPress: () => {
               toggleMute(muteKey);
-              showToast('알림을 껐어요');
+              showToast(t('friends.notifOffToast'));
             },
           },
         ]
@@ -187,11 +189,11 @@ export default function FriendProfileScreen({
   };
 
   const MENU_NORMAL = [
-    { icon: '🔗', label: '프로필 링크 복사', onPress: handleCopyLink },
-    { icon: '📤', label: '공유하기',          onPress: handleShare },
+    { icon: '🔗', label: t('friends.copyProfileLink'), onPress: handleCopyLink },
+    { icon: '📤', label: t('friends.share'),          onPress: handleShare },
     {
       icon:    notifMuted ? '🔔' : '🔕',
-      label:   notifMuted ? '알림 켜기' : '알림 끄기',
+      label:   notifMuted ? t('friends.notifOn') : t('friends.notifOff'),
       onPress: handleToggleNotif,
     },
   ];
@@ -199,29 +201,29 @@ export default function FriendProfileScreen({
   const MENU_DANGER = [
     {
       icon: '⛔',
-      label: '차단하기',
+      label: t('friends.blockAction'),
       onPress: () => {
         setMenuVisible(false);
         confirmBlock(displayUsername, () => {
           blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle });
           unfollowUser(followEntry?.id ?? followId); // 차단하면 팔로잉에서도 제거
-          showToast('차단되었어요');
+          showToast(t('social.blockedToast'));
           setTimeout(() => navigation.goBack(), 600);
-        });
+        }, t);
       },
     },
-    { icon: '🚨', label: '신고하기', onPress: () => { setMenuVisible(false); setReportVisible(true); } },
+    { icon: '🚨', label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
   return (
     <View style={s.container}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
-        <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+        <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>@{displayUsername}</Text>
-        <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel="더보기">
+        <TouchableOpacity style={s.headerBtn} onPress={() => setMenuVisible((v) => !v)} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.more')}>
           <Text style={s.moreIcon}>···</Text>
         </TouchableOpacity>
       </View>
@@ -238,9 +240,9 @@ export default function FriendProfileScreen({
             <Text style={pv.userHandle}>@{displayUsername}</Text>
             {!!display.bio && <Text style={pv.userBio}>{display.bio}</Text>}
             <View style={pv.statsRow}>
-              <StatCard value={String(display.recordCount)} label="기록 수" />
-              <StatCard value={String(display.followers)} label="팔로워" />
-              <StatCard value={String(display.visitedCountries)} label="방문국가" />
+              <StatCard value={String(display.recordCount)} label={t('friends.recordCount')} />
+              <StatCard value={String(display.followers)} label={t('friends.followers')} />
+              <StatCard value={String(display.visitedCountries)} label={t('friends.visitedCountries')} />
             </View>
           </View>
         </View>
@@ -254,7 +256,7 @@ export default function FriendProfileScreen({
               activeOpacity={0.85}
             >
               <Text style={[s.followBtnText, following && s.followingBtnText]}>
-                {following ? '팔로잉 ✓' : '팔로우'}
+                {following ? t('friends.followingCheck') : t('friends.follow')}
               </Text>
             </TouchableOpacity>
 
@@ -266,7 +268,7 @@ export default function FriendProfileScreen({
                 activeOpacity={0.85}
               >
                 <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
-                  {isMutual ? '🤝 맞팔 중' : '맞팔로 표시'}
+                  {isMutual ? t('friends.mutualYes') : t('friends.mutualMark')}
                 </Text>
               </TouchableOpacity>
             )}
@@ -291,7 +293,7 @@ export default function FriendProfileScreen({
 
         {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
         <View style={pv.gridHeaderRow}>
-          <Text style={pv.gridHeaderTitle}>여행 기록</Text>
+          <Text style={pv.gridHeaderTitle}>{t('friends.travelRecords')}</Text>
           <Text style={pv.tripCount}>{display.trips.length}개의 여행</Text>
         </View>
 
@@ -362,7 +364,7 @@ export default function FriendProfileScreen({
         onClose={() => setReportVisible(false)}
         onSubmit={(reason) => {
           setReportVisible(false);
-          showToast('신고가 접수되었어요');
+          showToast(t('social.reportReceivedToast'));
         }}
       />
 

@@ -74,7 +74,8 @@
       "./modules/photo-vision/withMlkitVisionDependencies",
       "expo-video",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-localization"
     ],
     "extra": {
       "eas": {

@@ -2,9 +2,14 @@ import React, { useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
 import { NeonFab, FAB_SIZE } from './NeonFab';
 import { SnapButton, SNAP_SIZE } from './SnapButton';
 import { useCoachOverlay } from './coachOverlayState';
+
+const FORMAT_LABEL_KEY: Record<string, string> = {
+  feed: 'main.formatFeed', blog: 'main.formatBlog', cut: 'main.formatCut', album: 'main.formatAlbum',
+};
 
 const COACH_DIM = 'rgba(0,0,0,0.78)'; // 코치마크 딤과 동일한 어둠
 
@@ -84,6 +89,7 @@ interface RecordFabProps {
 }
 
 export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // 튜토리얼 중에는 강조 중인 버튼만 밝게, 나머지는 어둡게.
   const { active: coachActive, bright: coachBright } = useCoachOverlay();
@@ -177,7 +183,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
             ]}
             pointerEvents={fabOpen ? 'box-none' : 'none'}
           >
-            <Text style={styles.fabFormatLabel}>{fmt.name}</Text>
+            <Text style={styles.fabFormatLabel}>{t(FORMAT_LABEL_KEY[fmt.type] ?? fmt.name)}</Text>
             <TouchableOpacity
               style={styles.fabFormatBtn}
               activeOpacity={0.85}
@@ -194,7 +200,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
 
         {/* 메인 + 버튼 (네온 FAB — Group 2085664476 재현) */}
         <Animated.View style={{ transform: [{ rotate: fabRotateDeg }] }}>
-          <NeonFab onPress={toggleFab} accessibilityLabel="기록 추가" />
+          <NeonFab onPress={toggleFab} accessibilityLabel={t('comp.addRecordA11y')} />
         </Animated.View>
 
         {/* 튜토리얼 딤 — FAB 강조 단계가 아닐 때 + 버튼을 어둡게 (하단 중앙, NeonFab 위) */}
