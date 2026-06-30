@@ -38,6 +38,7 @@ import DMScreen from '../screens/DMScreen';
 import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
+import { supabase } from '../services/supabase';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -78,6 +79,20 @@ export default function AppNavigator() {
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     Linking.getInitialURL().then(handleUrl).catch(() => {});
     return () => sub.remove();
+  }, []);
+
+  // 세션 무효화 대응: refresh 토큰 만료·서버측 로그아웃 등으로 SIGNED_OUT 이 발생하면
+  // 로그인 플로우(Splash)로 강제 이동한다. 토큰만 끊기고 화면은 로그인 상태로 남아
+  // API가 401만 받던 문제를 막는다. (이미 인증 전 화면이면 중복 이동·루프 방지)
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      const current = navigationRef.current?.getCurrentRoute()?.name;
+      if (current && ['Splash', 'AppIntro', 'Login'].includes(current)) return;
+      navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] });
+    });
+    return () => data.subscription.unsubscribe();
   }, []);
 
   return (

@@ -102,6 +102,16 @@ async function removeChunked(mod: SecureStoreModule, key: string): Promise<void>
   await mod.deleteItemAsync(key).catch(() => {});
 }
 
+/**
+ * 현재 세션 저장 백엔드(진단용).
+ *   'secure'   = OS 보안 저장소(iOS Keychain / Android Keystore) 사용 중
+ *   'fallback' = 네이티브 미링크(재빌드 전) → AsyncStorage 평문 폴백
+ * 토큰 값은 절대 노출하지 않고 백엔드 종류만 반환한다.
+ */
+export function getStorageBackend(): 'secure' | 'fallback' {
+  return getSecureStore() ? 'secure' : 'fallback';
+}
+
 /** supabase-js의 storage 인터페이스(getItem/setItem/removeItem) 구현. */
 export const SupabaseSecureStorage = {
   async getItem(key: string): Promise<string | null> {

@@ -11,7 +11,7 @@
 import 'react-native-url-polyfill/auto';
 import { AppState } from 'react-native';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { SupabaseSecureStorage } from './secureStorage';
+import { SupabaseSecureStorage, getStorageBackend } from './secureStorage';
 
 const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -31,6 +31,12 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
       },
     })
   : null;
+
+// 세션 저장 백엔드 진단(개발 빌드 한정) — 토큰 값은 출력하지 않고 백엔드 종류만 확인.
+// 'secure'면 Keychain/Keystore, 'fallback'이면 평문 폴백 중(재빌드 필요)임을 즉시 점검.
+if (__DEV__ && isSupabaseConfigured) {
+  console.log('[auth] 세션 저장 백엔드:', getStorageBackend());
+}
 
 // 토큰 자동갱신을 앱 활성 상태에 묶는다 (Supabase React Native 권장 패턴).
 // 포그라운드일 때만 갱신 타이머를 돌려 장시간 백그라운드 후 복귀 시 세션 만료를 방지한다.
