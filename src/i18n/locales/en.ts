@@ -87,6 +87,7 @@ const en = {
     terms: 'Terms · Policy',
     termsTitle: 'Terms',
     termsMsg: 'The terms page is coming soon.',
+    privacyPolicy: 'Privacy Policy',
     appVersion: 'App version',
     resetData: 'Reset data',
     resetTitle: 'Reset data',

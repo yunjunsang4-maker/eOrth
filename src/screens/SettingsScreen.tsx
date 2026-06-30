@@ -10,6 +10,7 @@ import {
   Modal,
   TextInput,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -23,6 +24,9 @@ import {
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
   TrashIcon,
 } from '../components/icons';
+
+// 개인정보처리방침 게시 URL (GitHub Pages)
+const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -136,6 +140,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     );
   };
 
+  // 개인정보처리방침 — 게시된 웹 페이지를 인앱 브라우저로 열기
+  const handleOpenPrivacyPolicy = () => {
+    WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch(() => {
+      Alert.alert(t('settings.privacyPolicy'), PRIVACY_POLICY_URL);
+    });
+  };
+
   // 언어 전환 — 한국어/English 선택 (앱 전체 즉시 반영)
   const handleLanguageChange = () => {
     Alert.alert(
@@ -228,6 +239,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               icon: <DocumentIcon size={22} />,
               label: t('settings.terms'),
               onPress: () => Alert.alert(t('settings.termsTitle'), t('settings.termsMsg')),
+            },
+            {
+              icon: <LockIcon size={22} />,
+              label: t('settings.privacyPolicy'),
+              onPress: handleOpenPrivacyPolicy,
             },
             { icon: <InfoIcon size={22} />,      label: t('settings.appVersion'), value: 'v1.0.0' },
           ]}

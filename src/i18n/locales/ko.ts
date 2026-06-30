@@ -88,6 +88,7 @@ const ko = {
     terms: '이용약관 · 정책',
     termsTitle: '이용약관',
     termsMsg: '이용약관 페이지 준비 중입니다.',
+    privacyPolicy: '개인정보처리방침',
     appVersion: '앱 버전',
     resetData: '데이터 초기화',
     resetTitle: '데이터 초기화',
