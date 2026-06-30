@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -6,7 +6,6 @@ import {
   TextInput,
   StyleSheet,
   TouchableOpacity,
-  Dimensions,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +15,7 @@ import {
   Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PrimaryButton } from '../components/ui';
 import { useSettings } from '../store/settingsStore';
@@ -29,16 +29,25 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation } from '../services/auth';
+import { getMyUserId, getProfileById } from '../services/profile';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const { width } = Dimensions.get('window');
+// 이메일 형식 검증 (메인 폼·재설정 모달 공통)
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
+// 전송 전 정규화: 공백 제거 + 소문자 (대소문자 차이로 인한 별도 계정/로그인 실패 방지)
+const normalizeEmail = (v: string) => v.trim().toLowerCase();
+
+// 인증 메일 재전송 최소 간격(초)
+const RESEND_COOLDOWN_SEC = 30;
 
 type Props = RootStackScreenProps<'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
@@ -50,6 +59,14 @@ export default function LoginScreen({ navigation }: Props) {
   const [emailFocused, setEmailFocused] = useState(false);
   const [pwFocused, setPwFocused] = useState(false);
   const [confirmFocused, setConfirmFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
+  // 입력 흐름(키보드 다음/완료) 제어용 refs
+  const passwordRef = useRef<TextInput>(null);
+  const confirmRef = useRef<TextInput>(null);
+  // 인증 메일 재전송 연타 방지용 마지막 전송 시각(ms)
+  const lastResendAt = useRef(0);
 
   // Forgot password modal state
   const [forgotPasswordVisible, setForgotPasswordVisible] = useState(false);
@@ -66,6 +83,7 @@ export default function LoginScreen({ navigation }: Props) {
   // 실제 소셜 로그인 (Supabase OAuth). 로딩/성공 오버레이만 모달로 표시하고
   // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
+    if (socialLoading) return; // 중복 탭 방지
     setSocialModal(provider);
     setSocialLoading(true);
     setAuthSuccess(false);
@@ -73,15 +91,25 @@ export default function LoginScreen({ navigation }: Props) {
     if (!result.ok) {
       setSocialModal(null);
       setSocialLoading(false);
-      Alert.alert('로그인 실패', result.error || '다시 시도해주세요.');
+      Alert.alert(t('login.loginFailed'), result.error || t('login.tryAgain'));
       return;
     }
     setAuthSuccess(true);
+    // 기존 프로필이 있으면 로그인(Main), 없으면 온보딩(BasicInfo) — 소셜 재온보딩 방지
+    // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
+    let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
+    try {
+      const myUid = await getMyUserId();
+      const existingProfile = myUid ? await getProfileById(myUid) : null;
+      if (existingProfile) dest = 'Main';
+    } catch {
+      // 조회 실패 → 온보딩으로 폴백
+    }
     setTimeout(() => {
       setSocialLoading(false);
       setSocialModal(null);
       // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      proceedAfterAuth(() => { setSignUpMethod(provider); });
+      proceedAfterAuth(() => { setSignUpMethod(provider); }, dest);
     }, 600);
   };
 
@@ -101,41 +129,53 @@ export default function LoginScreen({ navigation }: Props) {
     cancelAccountDeletion().catch(() => {});
   };
 
+  // 인증 후엔 로그인/온보딩 화면을 스택에서 제거(뒤로가기로 복귀 방지)
+  const goTo = (dest: 'BasicInfo' | 'Main') =>
+    navigation.reset({ index: 0, routes: [{ name: dest }] });
+
   // destination: 신규 가입은 온보딩(BasicInfo), 기존 사용자 로그인은 Main
   const proceedAfterAuth = async (applySignup: () => void, destination: 'BasicInfo' | 'Main' = 'BasicInfo') => {
-    const pending = await getPendingDeletion();
+    // 탈퇴 신청 조회 실패 시에도 인증 자체는 성공했으므로 정상 진입시킨다
+    let pending: Awaited<ReturnType<typeof getPendingDeletion>> = null;
+    try {
+      pending = await getPendingDeletion();
+    } catch {
+      applySignup();
+      goTo(destination);
+      return;
+    }
 
     if (!pending) {
       applySignup();
-      navigation.navigate(destination);
+      goTo(destination);
       return;
     }
 
     if (isDeletionExpired(pending)) {
       purgeAllData();
       applySignup();
-      navigation.navigate('BasicInfo');
+      goTo('BasicInfo');
       return;
     }
 
     Alert.alert(
-      '계정 복구',
-      `탈퇴 신청된 계정입니다.\n지금 복구하면 여행 기록과 설정이 그대로 유지됩니다.\n(영구 삭제까지 ${daysUntilPurge(pending)}일 남음)`,
+      t('login.recoverTitle'),
+      t('login.recoverMsg', { days: daysUntilPurge(pending) }),
       [
         {
-          text: '새로 시작',
+          text: t('login.recoverFresh'),
           style: 'destructive',
           onPress: () => {
             purgeAllData();
             applySignup();
-            navigation.navigate('BasicInfo');
+            goTo('BasicInfo');
           },
         },
         {
-          text: '복구하기',
+          text: t('login.recoverRestore'),
           onPress: () => {
             cancelAccountDeletion().catch(() => {});
-            navigation.navigate('Main');
+            goTo('Main');
           },
         },
       ],
@@ -153,10 +193,10 @@ export default function LoginScreen({ navigation }: Props) {
     if (!forgotEmail.trim()) return;
     setIsResetting(true);
     if (isSupabaseConfigured) {
-      const result = await sendPasswordReset(forgotEmail.trim());
+      const result = await sendPasswordReset(normalizeEmail(forgotEmail));
       setIsResetting(false);
       if (!result.ok) {
-        Alert.alert('알림', result.error ?? '메일 발송에 실패했어요.');
+        Alert.alert(t('login.mailSendFailed'), result.error ?? t('login.mailSendFailedMsg'));
         return;
       }
       setResetSuccess(true);
@@ -170,16 +210,44 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const isSignup = mode === 'signup';
+
+  // 모드 전환 시 확인 비밀번호 잔류 방지 (회원가입 전용 필드)
+  const switchMode = (next: 'login' | 'signup') => {
+    if (next === mode) return;
+    setMode(next);
+    setConfirmPassword('');
+    setConfirmFocused(false);
+  };
+
   const canSubmit =
     !submitting &&
-    email.trim().length > 0 &&
+    isValidEmail(email) &&
     password.length >= 6 &&
     (isSignup ? confirmPassword === password : true);
 
+  // 인증 메일 재전송 (Confirm email 활성화 시 메일 미수신 대비)
+  const handleResendConfirmation = async (targetEmail: string) => {
+    if (!targetEmail) return;
+    // 연타 방지: 마지막 전송 후 RESEND_COOLDOWN_SEC 이내면 막는다
+    const remain = Math.ceil((lastResendAt.current + RESEND_COOLDOWN_SEC * 1000 - Date.now()) / 1000);
+    if (remain > 0) {
+      Alert.alert(t('login.waitTitle'), t('login.waitMsg', { sec: remain }));
+      return;
+    }
+    lastResendAt.current = Date.now();
+    const result = await resendEmailConfirmation(targetEmail);
+    if (!result.ok) lastResendAt.current = 0; // 실패 시 쿨다운 해제하여 재시도 허용
+    Alert.alert(
+      result.ok ? t('login.resendDone') : t('login.resendFailed'),
+      result.ok ? t('login.resendDoneMsg') : (result.error ?? t('login.resendFailedMsg')),
+    );
+  };
+
   const handleSubmit = async () => {
+    const normEmail = normalizeEmail(email);
     const applySignup = () => {
       setSignUpMethod('email');
-      setSignUpEmail(email.trim() || 'user@eorth.app');
+      setSignUpEmail(normEmail || 'user@eorth.app');
     };
     const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
 
@@ -191,19 +259,23 @@ export default function LoginScreen({ navigation }: Props) {
 
     setSubmitting(true);
     const result = isSignup
-      ? await signUpWithEmail(email.trim(), password)
-      : await signInWithEmail(email.trim(), password);
+      ? await signUpWithEmail(normEmail, password)
+      : await signInWithEmail(normEmail, password);
     setSubmitting(false);
 
     if (!result.ok) {
-      Alert.alert('알림', result.error ?? '문제가 발생했어요.');
+      Alert.alert(isSignup ? t('login.signupFailed') : t('login.loginFailed'), result.error ?? t('login.genericError'));
       return;
     }
     if (result.needsEmailConfirm) {
+      const targetEmail = normEmail;
       Alert.alert(
-        '이메일 인증',
-        '인증 메일을 보냈어요.\n메일의 링크를 누른 뒤 로그인해주세요.',
-        [{ text: '확인', onPress: () => setMode('login') }],
+        t('login.emailVerifyTitle'),
+        t('login.emailVerifyMsg'),
+        [
+          { text: t('login.resendMail'), onPress: () => handleResendConfirmation(targetEmail) },
+          { text: t('common.confirm'), onPress: () => switchMode('login') },
+        ],
       );
       return;
     }
@@ -237,25 +309,25 @@ export default function LoginScreen({ navigation }: Props) {
               style={styles.brandLogoImage}
               resizeMode="contain"
             />
-            <Text style={styles.tagline}>여행을 기록하고 나만의 지구본을 만들어요</Text>
+            <Text style={styles.tagline}>{t('login.tagline')}</Text>
           </View>
 
           {/* Mode toggle */}
           <View style={styles.modeToggle}>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
-              onPress={() => setMode('signup')}
+              onPress={() => switchMode('signup')}
             >
               <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]}>
-                회원가입
+                {t('login.modeSignup')}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
-              onPress={() => setMode('login')}
+              onPress={() => switchMode('login')}
             >
               <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]}>
-                로그인
+                {t('login.modeLogin')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -264,7 +336,7 @@ export default function LoginScreen({ navigation }: Props) {
           <View style={styles.form}>
             {/* Email */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>이메일</Text>
+              <Text style={styles.fieldLabel}>{t('login.email')}</Text>
               <View style={[styles.inputBox, emailFocused && styles.inputBoxFocused]}>
                 <Text style={styles.inputIcon}>✉️</Text>
                 <TextInput
@@ -276,6 +348,12 @@ export default function LoginScreen({ navigation }: Props) {
                   keyboardType="email-address"
                   autoCapitalize="none"
                   autoCorrect={false}
+                  textContentType="emailAddress"
+                  autoComplete="email"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  onSubmitEditing={() => passwordRef.current?.focus()}
+                  accessibilityLabel={t('login.emailA11y')}
                   onFocus={() => setEmailFocused(true)}
                   onBlur={() => setEmailFocused(false)}
                 />
@@ -284,47 +362,79 @@ export default function LoginScreen({ navigation }: Props) {
 
             {/* Password */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>비밀번호</Text>
+              <Text style={styles.fieldLabel}>{t('login.password')}</Text>
               <View style={[styles.inputBox, pwFocused && styles.inputBoxFocused]}>
                 <Text style={styles.inputIcon}>🔒</Text>
                 <TextInput
+                  ref={passwordRef}
                   style={styles.input}
-                  placeholder="6자 이상 입력하세요"
+                  placeholder={t('login.passwordPlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   value={password}
                   onChangeText={setPassword}
-                  secureTextEntry
+                  secureTextEntry={!showPassword}
+                  textContentType={isSignup ? 'newPassword' : 'password'}
+                  autoComplete={isSignup ? 'password-new' : 'password'}
+                  returnKeyType={isSignup ? 'next' : 'done'}
+                  blurOnSubmit={!isSignup}
+                  onSubmitEditing={() => {
+                    if (isSignup) confirmRef.current?.focus();
+                    else if (canSubmit) handleSubmit();
+                  }}
+                  accessibilityLabel={t('login.passwordA11y')}
                   onFocus={() => setPwFocused(true)}
                   onBlur={() => setPwFocused(false)}
                 />
+                <TouchableOpacity
+                  onPress={() => setShowPassword((v) => !v)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? t('login.passwordHide') : t('login.passwordShow')}
+                >
+                  <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+                </TouchableOpacity>
               </View>
               {isSignup && password.length > 0 && password.length < 6 && (
-                <Text style={styles.fieldHint}>비밀번호는 6자 이상이어야 해요</Text>
+                <Text style={styles.fieldHint}>{t('login.passwordHint')}</Text>
               )}
             </View>
 
             {/* Confirm password (signup only) */}
             {isSignup && (
               <View style={styles.fieldWrap}>
-                <Text style={styles.fieldLabel}>비밀번호 확인</Text>
+                <Text style={styles.fieldLabel}>{t('login.confirmPassword')}</Text>
                 <View style={[styles.inputBox, confirmFocused && styles.inputBoxFocused,
                   confirmPassword.length > 0 && confirmPassword !== password && styles.inputBoxError,
                 ]}>
                   <Text style={styles.inputIcon}>🔑</Text>
                   <TextInput
+                    ref={confirmRef}
                     style={styles.input}
-                    placeholder="비밀번호를 다시 입력하세요"
+                    placeholder={t('login.confirmPlaceholder')}
                     placeholderTextColor={Colors.textMuted}
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
-                    secureTextEntry
+                    secureTextEntry={!showConfirm}
+                    textContentType="newPassword"
+                    autoComplete="password-new"
+                    returnKeyType="done"
+                    onSubmitEditing={() => { if (canSubmit) handleSubmit(); }}
+                    accessibilityLabel={t('login.confirmA11y')}
                     onFocus={() => setConfirmFocused(true)}
                     onBlur={() => setConfirmFocused(false)}
                   />
+                  <TouchableOpacity
+                    onPress={() => setShowConfirm((v) => !v)}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    accessibilityRole="button"
+                    accessibilityLabel={showConfirm ? t('login.confirmHide') : t('login.confirmShow')}
+                  >
+                    <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁️'}</Text>
+                  </TouchableOpacity>
                 </View>
                 {confirmPassword.length > 0 && confirmPassword !== password && (
                   <Text style={[styles.fieldHint, { color: '#FF6B6B' }]}>
-                    비밀번호가 일치하지 않아요
+                    {t('login.passwordMismatch')}
                   </Text>
                 )}
               </View>
@@ -333,15 +443,16 @@ export default function LoginScreen({ navigation }: Props) {
             {/* Forgot password (login only) */}
             {!isSignup && (
               <TouchableOpacity style={styles.forgotBtn} onPress={handleForgotPassword}>
-                <Text style={styles.forgotText}>비밀번호를 잊으셨나요?</Text>
+                <Text style={styles.forgotText}>{t('login.forgot')}</Text>
               </TouchableOpacity>
             )}
 
             {/* Submit button */}
             <PrimaryButton
-              label={isSignup ? '이메일로 시작하기' : '로그인'}
+              label={isSignup ? t('login.submitSignup') : t('login.submitLogin')}
               onPress={handleSubmit}
               disabled={!canSubmit}
+              loading={submitting}
               style={styles.submitBtn}
             />
           </View>
@@ -349,7 +460,7 @@ export default function LoginScreen({ navigation }: Props) {
           {/* Divider */}
           <View style={styles.divider}>
             <View style={styles.dividerLine} />
-            <Text style={styles.dividerText}>또는</Text>
+            <Text style={styles.dividerText}>{t('login.or')}</Text>
             <View style={styles.dividerLine} />
           </View>
 
@@ -360,29 +471,35 @@ export default function LoginScreen({ navigation }: Props) {
               style={styles.socialBtn}
               activeOpacity={0.85}
               onPress={handleGooglePress}
+              disabled={socialLoading}
+              accessibilityRole="button"
+              accessibilityLabel={t('login.googleContinue')}
             >
               <GoogleIcon size={20} />
-              <Text style={styles.socialBtnText}>Google로 계속하기</Text>
+              <Text style={styles.socialBtnText}>{t('login.googleContinue')}</Text>
             </TouchableOpacity>
 
-            {/* Apple */}
-            <TouchableOpacity
-              style={[styles.socialBtn, styles.appleBtn]}
-              activeOpacity={0.85}
-              onPress={handleApplePress}
-            >
-              <AppleIcon size={20} color="#FFFFFF" />
-              <Text style={[styles.socialBtnText, { color: Colors.white }]}>
-                Apple로 계속하기
-              </Text>
-            </TouchableOpacity>
+            {/* Apple — iOS 전용 노출 (App Store 정책상 iOS에서만 제공) */}
+            {Platform.OS === 'ios' && (
+              <TouchableOpacity
+                style={[styles.socialBtn, styles.appleBtn]}
+                activeOpacity={0.85}
+                onPress={handleApplePress}
+                disabled={socialLoading}
+                accessibilityRole="button"
+                accessibilityLabel={t('login.appleContinue')}
+              >
+                <AppleIcon size={20} color="#FFFFFF" />
+                <Text style={[styles.socialBtnText, { color: Colors.white }]}>
+                  {t('login.appleContinue')}
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Terms */}
           <Text style={styles.termsText}>
-            {isSignup
-              ? '가입 시 이용약관 및 개인정보 처리방침에 동의하시게 됩니다'
-              : '계속 진행하면 이용약관에 동의하는 것으로 간주됩니다'}
+            {isSignup ? t('login.termsSignup') : t('login.termsLogin')}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -394,14 +511,16 @@ export default function LoginScreen({ navigation }: Props) {
         animationType="fade"
         onRequestClose={() => setForgotPasswordVisible(false)}
       >
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             {/* Header */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>비밀번호 재설정</Text>
+              <Text style={styles.modalTitle}>{t('login.resetTitle')}</Text>
               <TouchableOpacity
                 onPress={() => setForgotPasswordVisible(false)}
                 style={styles.modalCloseBtn}
+                accessibilityRole="button"
+                accessibilityLabel={t('common.close')}
               >
                 <Text style={styles.modalCloseText}>✕</Text>
               </TouchableOpacity>
@@ -410,11 +529,11 @@ export default function LoginScreen({ navigation }: Props) {
             {!resetSuccess ? (
               <View style={styles.modalBody}>
                 <Text style={styles.modalDesc}>
-                  가입하신 이메일 주소를 입력하시면{'\n'}비밀번호 재설정 링크를 보내드립니다.
+                  {t('login.resetDesc')}
                 </Text>
 
                 <View style={[styles.fieldWrap, { width: '100%' }]}>
-                  <Text style={styles.fieldLabel}>이메일 주소</Text>
+                  <Text style={styles.fieldLabel}>{t('login.resetEmailLabel')}</Text>
                   <View style={[styles.inputBox, forgotEmailFocused && styles.inputBoxFocused]}>
                     <Text style={styles.inputIcon}>✉️</Text>
                     <TextInput
@@ -426,6 +545,11 @@ export default function LoginScreen({ navigation }: Props) {
                       keyboardType="email-address"
                       autoCapitalize="none"
                       autoCorrect={false}
+                      textContentType="emailAddress"
+                      autoComplete="email"
+                      returnKeyType="send"
+                      onSubmitEditing={() => { if (isValidEmail(forgotEmail) && !isResetting) handleSendResetLink(); }}
+                      accessibilityLabel={t('login.resetEmailA11y')}
                       onFocus={() => setForgotEmailFocused(true)}
                       onBlur={() => setForgotEmailFocused(false)}
                       editable={!isResetting}
@@ -436,13 +560,13 @@ export default function LoginScreen({ navigation }: Props) {
                 {isResetting ? (
                   <View style={styles.loadingContainer}>
                     <ActivityIndicator size="small" color={Colors.primary} />
-                    <Text style={styles.loadingText}>재설정 링크 전송 중...</Text>
+                    <Text style={styles.loadingText}>{t('login.resetSending')}</Text>
                   </View>
                 ) : (
                   <PrimaryButton
-                    label="재설정 링크 보내기"
+                    label={t('login.resetSend')}
                     onPress={handleSendResetLink}
-                    disabled={!forgotEmail.trim() || !forgotEmail.includes('@')}
+                    disabled={!isValidEmail(forgotEmail)}
                     style={styles.modalSubmitBtn}
                   />
                 )}
@@ -452,12 +576,12 @@ export default function LoginScreen({ navigation }: Props) {
                 <View style={styles.successIconWrap}>
                   <Text style={styles.successIcon}>✉️</Text>
                 </View>
-                <Text style={styles.successTitle}>재설정 메일 발송 완료</Text>
+                <Text style={styles.successTitle}>{t('login.resetSuccessTitle')}</Text>
                 <Text style={styles.successDesc}>
-                  {forgotEmail} 주소로{'\n'}비밀번호 재설정 링크가 발송되었습니다.{'\n'}받은 편지함을 확인해 주세요.
+                  {t('login.resetSuccessDesc', { email: forgotEmail })}
                 </Text>
                 <PrimaryButton
-                  label="확인"
+                  label={t('common.confirm')}
                   onPress={() => setForgotPasswordVisible(false)}
                   style={styles.modalSubmitBtn}
                 />
@@ -472,7 +596,7 @@ export default function LoginScreen({ navigation }: Props) {
         visible={socialModal === 'google'}
         transparent
         animationType="fade"
-        onRequestClose={() => setSocialModal(null)}
+        onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
       >
         <View style={styles.socialModalOverlay}>
           <View style={styles.googleContainer}>
@@ -482,20 +606,20 @@ export default function LoginScreen({ navigation }: Props) {
               <Text style={styles.googleBrandText}>Google</Text>
             </View>
 
-            <Text style={styles.googleTitle}>계정 선택</Text>
-            <Text style={styles.googleSubtitle}>eOrth(으)로 이동</Text>
+            <Text style={styles.googleTitle}>{t('login.googleSelectAccount')}</Text>
+            <Text style={styles.googleSubtitle}>{t('login.moveToApp')}</Text>
 
             {socialLoading ? (
               <View style={styles.socialLoadingWrap}>
                 {authSuccess ? (
                   <View style={styles.socialSuccessBadge}>
                     <Text style={{ fontSize: 24, marginBottom: 8 }}>✅</Text>
-                    <Text style={styles.socialSuccessText}>로그인 성공</Text>
+                    <Text style={styles.socialSuccessText}>{t('login.loginSuccess')}</Text>
                   </View>
                 ) : (
                   <>
                     <ActivityIndicator size="large" color="#4285F4" />
-                    <Text style={styles.socialLoadingText}>Google 계정 연동 중...</Text>
+                    <Text style={styles.socialLoadingText}>{t('login.googleLinking')}</Text>
                   </>
                 )}
               </View>
@@ -506,7 +630,7 @@ export default function LoginScreen({ navigation }: Props) {
                 onPress={() => setSocialModal(null)}
                 style={styles.googleCancelBtn}
               >
-                <Text style={styles.googleCancelText}>취소</Text>
+                <Text style={styles.googleCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -518,7 +642,7 @@ export default function LoginScreen({ navigation }: Props) {
         visible={socialModal === 'apple'}
         transparent
         animationType="slide"
-        onRequestClose={() => setSocialModal(null)}
+        onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
       >
         <View style={styles.appleModalOverlay}>
           <View style={styles.appleSheet}>
@@ -528,22 +652,22 @@ export default function LoginScreen({ navigation }: Props) {
             <View style={styles.appleHeader}>
               <AppleIcon size={32} color="#FFFFFF" />
               <Text style={styles.appleTitle}>Apple ID</Text>
-              <Text style={styles.appleSubtitle}>eOrth에 로그인</Text>
+              <Text style={styles.appleSubtitle}>{t('login.appleSignIn')}</Text>
             </View>
 
             {socialLoading ? (
               <View style={styles.appleLoadingWrap}>
                 {authSuccess ? (
                   <View style={styles.appleSuccessGlow}>
-                    <Text style={{ fontSize: 40, color: '#FFFFFF' }}></Text>
-                    <Text style={styles.appleSuccessText}>인증 완료</Text>
+                    <Text style={{ fontSize: 40, color: '#FFFFFF' }}>✓</Text>
+                    <Text style={styles.appleSuccessText}>{t('login.authComplete')}</Text>
                   </View>
                 ) : (
                   <View style={styles.appleFaceIdScan}>
                     <View style={styles.faceIdRing}>
                       <Text style={{ fontSize: 32, color: '#00D2FF' }}>👤</Text>
                     </View>
-                    <Text style={styles.appleFaceIdText}>Face ID를 통한 인증 중...</Text>
+                    <Text style={styles.appleFaceIdText}>{t('login.faceIdScanning')}</Text>
                   </View>
                 )}
               </View>
@@ -669,6 +793,10 @@ const styles = StyleSheet.create({
   inputIcon: {
     fontSize: 16,
   },
+  eyeIcon: {
+    fontSize: 18,
+    paddingLeft: Spacing[1],
+  },
   input: {
     flex: 1,
     color: Colors.textPrimary,
@@ -732,23 +860,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#000000',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.12)',
-  },
-  googleIconWrap: {
-    width: 22,
-    height: 22,
-    borderRadius: 4,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleG: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#4285F4',
-  },
-  appleIcon: {
-    fontSize: 18,
-    color: Colors.white,
   },
   socialBtnText: {
     fontSize: Typography.fontSize.base,
@@ -905,63 +1016,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginBottom: 24,
   },
-  googleBody: {
-    width: '100%',
-    marginBottom: 20,
-  },
-  googleAccountRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    gap: 12,
-  },
-  googleAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#3F51B5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  googleAvatarText: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  googleAccountInfo: {
-    flex: 1,
-  },
-  googleAccountName: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.white,
-  },
-  googleAccountEmail: {
-    fontSize: 12,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-  },
-  googleAvatarOther: {
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  googleAvatarTextOther: {
-    fontSize: 16,
-  },
-  googleAccountNameOther: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textSecondary,
-  },
-  googleDisclaimer: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    lineHeight: 16,
-    marginTop: 16,
-    textAlign: 'center',
-  },
   googleCancelBtn: {
     paddingVertical: 12,
     paddingHorizontal: 24,
@@ -1031,73 +1085,6 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
     color: Colors.textMuted,
     marginTop: 2,
-  },
-  appleBody: {
-    width: '100%',
-    alignItems: 'center',
-  },
-  appleCard: {
-    width: '100%',
-    backgroundColor: '#2C2C2E',
-    borderRadius: 14,
-    paddingVertical: 4,
-    paddingHorizontal: 16,
-    marginBottom: 20,
-  },
-  appleRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  appleRowDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  appleLabel: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    width: 60,
-  },
-  appleValue: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.white,
-    flex: 1,
-    textAlign: 'right',
-  },
-  appleDisclaimer: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    lineHeight: 16,
-    textAlign: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 16,
-  },
-  appleSubmitBtn: {
-    width: '100%',
-    borderRadius: 12,
-    overflow: 'hidden',
-    marginBottom: 12,
-  },
-  appleSubmitGrad: {
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  appleSubmitText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.semiBold,
-  },
-  appleCancelBtn: {
-    paddingVertical: 12,
-  },
-  appleCancelText: {
-    fontSize: 15,
-    fontFamily: Typography.fontFamily.regular,
-    color: '#007AFF', // iOS blue
   },
   appleLoadingWrap: {
     height: 200,

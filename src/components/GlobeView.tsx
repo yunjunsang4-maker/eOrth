@@ -1,8 +1,29 @@
-import React, { useMemo, useRef, useEffect } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { THREE_SRC } from '../data/vendorThree';
+import { D3_SRC } from '../data/vendorD3';
+import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
+
+// 오프라인 번들: WebView HTML에 라이브러리/지형 데이터를 인라인 주입
+// (script 태그 조기 종료 방지를 위해 </script 만 이스케이프)
+const escScript = (s: string) => s.replace(/<\/script/gi, '<\\/script');
+const THREE_INLINE = escScript(THREE_SRC);
+const D3_INLINE = escScript(D3_SRC);
+const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
 
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
+export type GlobeVariant = 'aurora' | 'classic';
+
+// 형태별 색상 테마 (WebView cfg로 주입).
+// aurora = 첨부 디자인의 보라 발광 행성 팔레트, classic = 현재(기존) 지구본
+export const GLOBE_THEMES: Record<GlobeVariant, {
+  oceanBase: string; deepRGB: string; zoneRGB: string;
+  landColor: string; neonColor: string; borderColor: string;
+}> = {
+  aurora: { oceanBase: '#1D0930', deepRGB: '40,12,70', zoneRGB: '150,70,230', landColor: '#5B1C96', neonColor: '#C982FF', borderColor: '#BF85FC' },
+  classic: { oceanBase: '#04102e', deepRGB: '5,15,55', zoneRGB: '50,110,220', landColor: '#6f6d6d', neonColor: '#a78bfa', borderColor: '#7B5CF0' },
+};
 
 export interface VisitedCountry {
   nameEn: string;       // GeoJSON 영문 이름
@@ -18,6 +39,7 @@ interface GlobeViewProps {
   visitedCountries?: VisitedCountry[];
   displayMode?: GlobeDisplayMode;
   defaultColor?: string;
+  variant?: GlobeVariant; // 지구본 형태(색상 테마). 기본 aurora
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
@@ -27,7 +49,7 @@ const globeHTML = `<!DOCTYPE html>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
   body {
     background: #0A0A0F;
     width: 100vw;
@@ -77,15 +99,20 @@ const globeHTML = `<!DOCTYPE html>
 <div id="canvas-container"></div>
 <div id="ad-layer"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"><\/script>
+<script>${THREE_INLINE}<\/script>
+<script>${D3_INLINE}<\/script>
+<script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
 
 <script>
+// 색상은 RN에서 variant(aurora/classic)에 따라 setTheme 메시지로 주입된다.
+// 기본값 = aurora(보라 발광 행성) — 첫 페인트가 디폴트 형태와 일치하도록.
 var cfg = {
-  oceanColor: "#0a1a55",
-  landColor: "#6f6d6d",
-  neonColor: "#a78bfa",
-  borderColor: "#7B5CF0",
+  oceanBase: "#1D0930",   // 구체 바다/본체 베이스
+  deepRGB: "40,12,70",    // 딥 존(어두운 그라데이션) rgb
+  zoneRGB: "150,70,230",  // 발광 존(밝은 그라데이션) rgb
+  landColor: "#5B1C96",   // 비방문 대륙 색
+  neonColor: "#C982FF",   // 대기광
+  borderColor: "#BF85FC", // 국경선
   autoRotate: true,
   gridOpacity: 0
 };
@@ -101,12 +128,14 @@ container.appendChild(renderer.domElement);
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.z = 4.2;
-camera.position.y = -0.35;
+camera.position.y = 0; // 전체화면: 화면 세로 정중앙 배치(neon과 일치)
+camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 기본 크기(디스크=폭의 85%)
+camera.updateProjectionMatrix();
 
 // Stars
 var starGeo = new THREE.BufferGeometry();
 var starPositions = [];
-for (var i = 0; i < 3000; i++) {
+for (var i = 0; i < 600; i++) {
   var theta = Math.random() * Math.PI * 2;
   var phi = Math.acos(2 * Math.random() - 1);
   var r = 50 + Math.random() * 100;
@@ -117,7 +146,7 @@ for (var i = 0; i < 3000; i++) {
   );
 }
 starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
-var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.08, transparent: true, opacity: 0.4 });
+var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.6 });
 scene.add(new THREE.Points(starGeo, starMat));
 
 // Globe group
@@ -233,7 +262,7 @@ async function buildTexture() {
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
 
-  ctx.fillStyle = '#04102e';
+  ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
 
   var deepZones = [
@@ -243,8 +272,8 @@ async function buildTexture() {
   deepZones.forEach(function(z) {
     var x = z[0], y = z[1];
     var rg = ctx.createRadialGradient(x, y, 0, x, y, W * 0.22);
-    rg.addColorStop(0, 'rgba(5,15,55,0.6)');
-    rg.addColorStop(1, 'rgba(5,15,55,0)');
+    rg.addColorStop(0, 'rgba(' + cfg.deepRGB + ',0.6)');
+    rg.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0)');
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, W, H);
   });
@@ -256,8 +285,8 @@ async function buildTexture() {
   blueZones.forEach(function(z) {
     var x = z[0], y = z[1], sz = z[2];
     var rg = ctx.createRadialGradient(x, y, 0, x, y, W * sz);
-    rg.addColorStop(0, 'rgba(50,110,220,0.50)');
-    rg.addColorStop(0.5,'rgba(20,50,150,0.25)');
+    rg.addColorStop(0, 'rgba(' + cfg.zoneRGB + ',0.50)');
+    rg.addColorStop(0.5, 'rgba(' + cfg.zoneRGB + ',0.22)');
     rg.addColorStop(1, 'rgba(0,0,0,0)');
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, W, H);
@@ -280,10 +309,10 @@ async function buildTexture() {
   ctx.fillRect(0, 0, W, H);
 
   var horizon = ctx.createLinearGradient(0, 0, 0, H);
-  horizon.addColorStop(0, 'rgba(5,15,55,0.35)');
+  horizon.addColorStop(0, 'rgba(' + cfg.deepRGB + ',0.35)');
   horizon.addColorStop(0.3, 'rgba(0,0,0,0)');
   horizon.addColorStop(0.7, 'rgba(0,0,0,0)');
-  horizon.addColorStop(1, 'rgba(5,15,55,0.35)');
+  horizon.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0.35)');
   ctx.fillStyle = horizon;
   ctx.fillRect(0, 0, W, H);
 
@@ -650,7 +679,8 @@ var globeMesh, atmosphere, borderGroup;
 var worldData = null;
 
 async function init() {
-  worldData = await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+  // 오프라인 번들된 지형 데이터 우선, 없으면 원격 폴백
+  worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO) ? WORLD_GEO : await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
   var texture = await buildTexture();
 
   var geo = new THREE.SphereGeometry(1, 128, 128);
@@ -681,6 +711,12 @@ async function init() {
   });
 
   animate();
+
+  // 초기화 완료를 RN에 알림 → RN이 그때 테마/방문국/광고 페이로드를 전송한다.
+  // (고정 setTimeout 대신 실제 준비 시점에 맞춰 전송 — 저사양 기기 누락·고사양 불필요 지연 방지)
+  if (window.ReactNativeWebView) {
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'globeReady' }));
+  }
 }
 
 
@@ -915,13 +951,51 @@ function animate() {
 
 window.addEventListener('resize', function() {
   camera.aspect = window.innerWidth / window.innerHeight;
+  camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 크기(디스크=폭의 85%)
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
+// 지구본 형태(테마) 적용 — cfg 색을 갈아끼우고 텍스처/대기광/국경선만 재생성
+// (WebView 통째 리로드 없이 부드럽게 전환. 회전 상태·카메라 유지)
+function applyTheme(t) {
+  if (!t) return;
+  if (t.oceanBase) cfg.oceanBase = t.oceanBase;
+  if (t.deepRGB) cfg.deepRGB = t.deepRGB;
+  if (t.zoneRGB) cfg.zoneRGB = t.zoneRGB;
+  if (t.landColor) cfg.landColor = t.landColor;
+  if (t.neonColor) cfg.neonColor = t.neonColor;
+  if (t.borderColor) cfg.borderColor = t.borderColor;
+  if (!worldData || !globeMesh) return; // init 전이면 cfg만 갱신 → init이 새 cfg로 생성
+  loadAllImages().then(function() {
+    return buildTexture();
+  }).then(function(tex) {
+    globeMesh.material.map = tex;
+    globeMesh.material.needsUpdate = true;
+  });
+  if (atmosphere) {
+    globe.remove(atmosphere);
+    if (atmosphere.geometry) atmosphere.geometry.dispose();
+    if (atmosphere.material) atmosphere.material.dispose();
+  }
+  atmosphere = buildAtmosphere(cfg.neonColor);
+  globe.add(atmosphere);
+  if (borderGroup) {
+    globe.remove(borderGroup);
+    borderGroup.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+  }
+  borderGroup = buildBorders(worldData, cfg.borderColor);
+  globe.add(borderGroup);
+}
+
 // 방문 국가 업데이트 수신
 function handleVisitedMessage(msg) {
-  if (msg.type === 'setVisitedCountries' && msg.countries) {
+  if (msg.type === 'setTheme') {
+    applyTheme(msg.theme);
+  } else if (msg.type === 'setVisitedCountries' && msg.countries) {
     visitedMap = {};
     msg.countries.forEach(function(c) {
       visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null };
@@ -960,12 +1034,399 @@ init();
 </body>
 </html>`;
 
+// ── Neon Globe (aurora 폼 전용) ──
+// 첨부 "Neon Globe (standalone)" 디자인을 이식: 정사영(Orthographic) 납작 원반 +
+// 커스텀 셰이더 바디(보라 그라데이션) + 라벤더 대륙 + 흰 해안선 + 방향성 네온 프레넬 림,
+// 캔버스 뒤 CSS 별·무드글로우·블룸 후광. eOrth의 THREE/D3/WORLD_GEO·CanvasTexture·탭·광고마커는 그대로 재사용.
+// classic(사진) 폼은 위의 globeHTML을 그대로 쓰므로 영향 없음.
+const neonGlobeHTML = `<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  body { background:#0A0B0F; width:100vw; height:100vh; overflow:hidden; font-family:'Noto Sans KR',sans-serif; cursor:grab; }
+  body:active { cursor:grabbing; }
+  #bg { position:fixed; inset:0; overflow:hidden; background:#0A0B0F; z-index:1; }
+  #canvas-container { position:fixed; inset:0; z-index:2; }
+  canvas { display:block; }
+  @keyframes ng-twinkle { 0%,100%{opacity:var(--o);} 50%{opacity:calc(var(--o)*0.35);} }
+  @keyframes ng-glowdrift { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(2%,-2%) scale(1.06);} }
+  #stars { position:absolute; inset:0; pointer-events:none; }
+  #stars i { position:absolute; border-radius:50%; background:#ffffff; display:block; }
+  /* 광고(스폰서) 마커 — classic과 동일 */
+  #ad-layer { position:fixed; inset:0; pointer-events:none; z-index:5; }
+  .ad-pin { position:absolute; width:0; height:0; display:none; }
+  .ad-pin .ad-dot { position:absolute; left:0; top:0; width:8px; height:8px; transform:translate(-50%,-50%); border-radius:50%; background:#FFC45A; box-shadow:0 0 8px 2px rgba(255,196,90,0.7); animation:adpulse 1.7s ease-in-out infinite; }
+  .ad-pin .ad-line { position:absolute; left:0; bottom:0; width:1.5px; height:36px; transform:translateX(-50%); background:linear-gradient(to top, rgba(255,196,90,0.95), rgba(255,196,90,0.15)); }
+  .ad-pin .ad-minicard { position:absolute; left:0; bottom:36px; transform:translateX(-50%); pointer-events:auto; cursor:pointer; white-space:nowrap; background:rgba(18,16,26,0.94); border:1px solid rgba(255,196,90,0.55); border-radius:7px; padding:4px 7px; box-shadow:0 3px 10px rgba(0,0,0,0.5); }
+  .ad-pin .ad-minicard .mc-row { display:flex; align-items:center; gap:6px; }
+  .ad-pin .ad-minicard .mc-thumb { width:26px; height:26px; border-radius:5px; object-fit:cover; background:#1A1A26; flex:none; display:block; }
+  .ad-pin .ad-minicard .mc-text { display:flex; flex-direction:column; }
+  .ad-pin .ad-minicard .mc-head { display:flex; align-items:center; gap:4px; }
+  .ad-pin .ad-minicard .mc-ad { font-size:7px; font-weight:800; letter-spacing:0.3px; color:#0A0A0F; background:#FFC45A; border-radius:2px; padding:0px 3px; }
+  .ad-pin .ad-minicard .mc-title { font-size:9.5px; font-weight:700; color:#fff; max-width:110px; overflow:hidden; text-overflow:ellipsis; }
+  .ad-pin .ad-minicard .mc-price { font-size:9.5px; font-weight:800; color:#FFC45A; margin-top:1px; }
+  @keyframes adpulse { 0%,100%{transform:translate(-50%,-50%) scale(0.9); opacity:0.85;} 50%{transform:translate(-50%,-50%) scale(1.2); opacity:1;} }
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+<div id="bg">
+  <div style="position:absolute; left:9%; top:3%; width:54%; height:80%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(0,0,255,0.13), rgba(0,0,255,0) 65%); filter:blur(95px); animation:ng-glowdrift 18s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:12%; top:27%; width:32%; height:44%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.20), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 22s ease-in-out infinite;"></div>
+  <div style="position:absolute; right:10%; bottom:9%; width:34%; height:46%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.16), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
+  <!-- 우주가스(nebula) 데코 — 첨부 SVG의 흐릿한 보라/파랑/흰 가스 블롭(가장자리에 산포) -->
+  <div style="position:absolute; left:-8%; top:15%; width:44%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.14), rgba(202,130,255,0) 70%); filter:blur(55px); animation:ng-glowdrift 24s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:-6%; bottom:1%; width:38%; height:28%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.13), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 30s ease-in-out infinite;"></div>
+  <div style="position:absolute; right:-8%; top:54%; width:38%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.15), rgba(202,130,255,0) 70%); filter:blur(54px); animation:ng-glowdrift 28s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:14%; top:22%; width:80%; height:54%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(48,64,255,0.07), rgba(48,64,255,0) 68%); filter:blur(100px); animation:ng-glowdrift 20s ease-in-out infinite;"></div>
+  <div style="position:absolute; left:15%; top:29%; width:18%; height:11%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.07), rgba(255,255,255,0) 70%); filter:blur(34px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
+  <div id="stars"></div>
+</div>
+<div id="canvas-container"></div>
+<div id="ad-layer"></div>
+
+<script>${THREE_INLINE}<\/script>
+<script>${D3_INLINE}<\/script>
+<script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
+
+<script>
+var NEON_LAND = 'rgba(255,255,255,0.20)';  // 비방문(기본) 대륙 — 흰색 20%(유리: 본체색이 비침)
+var globeDefaultColor = '#BF85FC';     // 방문국 기본 활성화 색 (RN에서 덮어씀)
+var visitedMap = {};                   // nameEn -> { color }
+
+// GeoJSON 영문명 → 한글명 (탭 시 RN이 한글명으로 기록을 찾으므로 필요)
+var KO_NAMES = {
+  "Afghanistan":"아프가니스탄","Albania":"알바니아","Algeria":"알제리",
+  "Angola":"앙골라","Argentina":"아르헨티나","Armenia":"아르메니아",
+  "Australia":"호주","Austria":"오스트리아","Azerbaijan":"아제르바이잔",
+  "Bangladesh":"방글라데시","Belarus":"벨라루스","Belgium":"벨기에",
+  "Bhutan":"부탄","Bolivia":"볼리비아","Bosnia and Herzegovina":"보스니아 헤르체고비나",
+  "Botswana":"보츠와나","Brazil":"브라질","Brunei":"브루나이",
+  "Bulgaria":"불가리아","Cambodia":"캄보디아","Cameroon":"카메룬","Canada":"캐나다",
+  "Chad":"차드","Chile":"칠레","China":"중국","Colombia":"콜롬비아",
+  "Congo":"콩고 공화국","Costa Rica":"코스타리카","Croatia":"크로아티아","Cuba":"쿠바",
+  "Czech Republic":"체코","Czechia":"체코",
+  "Democratic Republic of the Congo":"콩고민주공화국",
+  "Denmark":"덴마크","Dominican Republic":"도미니카공화국",
+  "Ecuador":"에콰도르","Egypt":"이집트","El Salvador":"엘살바도르",
+  "Estonia":"에스토니아","Ethiopia":"에티오피아","Finland":"핀란드","France":"프랑스",
+  "Georgia":"조지아","Germany":"독일","Ghana":"가나","Greece":"그리스",
+  "Guatemala":"과테말라","Guinea":"기니","Guyana":"가이아나","Haiti":"아이티",
+  "Honduras":"온두라스","Hungary":"헝가리","Iceland":"아이슬란드","India":"인도",
+  "Indonesia":"인도네시아","Iran":"이란","Iraq":"이라크","Ireland":"아일랜드",
+  "Israel":"이스라엘","Italy":"이탈리아","Jamaica":"자메이카","Japan":"일본",
+  "Jordan":"요르단","Kazakhstan":"카자흐스탄","Kenya":"케냐",
+  "Kuwait":"쿠웨이트","Kyrgyzstan":"키르기스스탄","Laos":"라오스",
+  "Latvia":"라트비아","Lebanon":"레바논","Libya":"리비아",
+  "Lithuania":"리투아니아","Luxembourg":"룩셈부르크",
+  "Madagascar":"마다가스카르","Malaysia":"말레이시아","Mali":"말리",
+  "Mexico":"멕시코","Moldova":"몰도바","Mongolia":"몽골","Montenegro":"몬테네그로",
+  "Morocco":"모로코","Mozambique":"모잠비크","Myanmar":"미얀마",
+  "Namibia":"나미비아","Nepal":"네팔","Netherlands":"네덜란드",
+  "New Zealand":"뉴질랜드","Nicaragua":"니카라과","Niger":"니제르",
+  "Nigeria":"나이지리아","North Korea":"북한","Norway":"노르웨이",
+  "Oman":"오만","Pakistan":"파키스탄","Panama":"파나마",
+  "Papua New Guinea":"파푸아뉴기니","Paraguay":"파라과이","Peru":"페루",
+  "Philippines":"필리핀","Poland":"폴란드","Portugal":"포르투갈",
+  "Qatar":"카타르","Romania":"루마니아","Russia":"러시아",
+  "Saudi Arabia":"사우디아라비아","Senegal":"세네갈","Serbia":"세르비아",
+  "Slovakia":"슬로바키아","Slovenia":"슬로베니아","Somalia":"소말리아",
+  "South Africa":"남아프리카공화국","South Korea":"대한민국","South Sudan":"남수단",
+  "Spain":"스페인","Sri Lanka":"스리랑카","Sudan":"수단",
+  "Sweden":"스웨덴","Switzerland":"스위스","Syria":"시리아",
+  "Taiwan":"대만","Tajikistan":"타지키스탄","Tanzania":"탄자니아",
+  "Thailand":"태국","Togo":"토고","Tunisia":"튀니지",
+  "Turkey":"튀르키예","Turkmenistan":"투르크메니스탄",
+  "Uganda":"우간다","Ukraine":"우크라이나",
+  "United Arab Emirates":"아랍에미리트",
+  "United Kingdom":"영국","United States of America":"미국",
+  "Uruguay":"우루과이","Uzbekistan":"우즈베키스탄",
+  "Venezuela":"베네수엘라","Vietnam":"베트남",
+  "Yemen":"예멘","Zambia":"잠비아","Zimbabwe":"짐바브웨",
+  "Greenland":"그린란드","Western Sahara":"서사하라",
+  "Palestine":"팔레스타인","Cyprus":"키프로스","Kosovo":"코소보",
+  "North Macedonia":"북마케도니아","Eswatini":"에스와티니",
+};
+
+// --- Three.js (정사영 카메라) ---
+var container = document.getElementById('canvas-container');
+var renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, premultipliedAlpha:false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.setClearColor(0x000000, 0);     // 투명 → 뒤 CSS 별/글로우가 비침
+container.appendChild(renderer.domElement);
+
+var scene = new THREE.Scene();
+var camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10); // 납작한 원반 룩
+camera.position.set(0, 0, 3);
+camera.lookAt(0, 0, 0);
+
+var globe = new THREE.Group();           // 회전은 그룹에 적용(탭 역매핑이 globe.matrixWorld 기준)
+scene.add(globe);
+
+var worldData = null, globeMesh = null, material = null;
+
+// 별밭(결정적): standalone과 동일 파라미터
+(function(){
+  var el = document.getElementById('stars'); if (!el) return;
+  var seed = 1337; function rnd(){ seed = (seed*1664525 + 1013904223) >>> 0; return seed/4294967296; }
+  var html = '';
+  for (var i=0;i<320;i++){
+    var o=(0.45+rnd()*0.4).toFixed(2), x=(rnd()*100).toFixed(2), y=(rnd()*100).toFixed(2);
+    var d=(0.8+rnd()*1.8).toFixed(2), t=(2.5+rnd()*4).toFixed(2);
+    html += '<i style="left:'+x+'%;top:'+y+'%;width:'+d+'px;height:'+d+'px;--o:'+o+';opacity:'+o+';animation:ng-twinkle '+t+'s ease-in-out infinite;"></i>';
+  }
+  el.innerHTML = html;
+})();
+
+// 적도원통(equirectangular) 텍스처: 바다는 투명(셰이더가 절차적으로 칠함),
+// 대륙은 라벤더/방문국 활성화 색, 흰 해안선/국경선. (탭 판정과 동일한 WORLD_GEO 사용)
+function buildNeonTexture(){
+  var W=4096, H=2048;
+  var c=document.createElement('canvas'); c.width=W; c.height=H;
+  var ctx=c.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  var proj=d3.geoEquirectangular().scale(H/Math.PI).translate([W/2,H/2]);
+  var path=d3.geoPath().projection(proj).context(ctx);
+
+  // 대륙 채우기 (비방문=라벤더, 방문=활성화 색)
+  worldData.features.forEach(function(f){
+    var v=visitedMap[f.properties.name||''];
+    ctx.fillStyle = v ? (v.color || globeDefaultColor) : NEON_LAND;
+    ctx.beginPath(); path(f); ctx.fill();
+  });
+  // 방문국 내부 발광(가산)
+  ctx.globalCompositeOperation='lighter';
+  worldData.features.forEach(function(f){
+    var v=visitedMap[f.properties.name||'']; if(!v) return;
+    var ctr=d3.geoCentroid(f), pc=proj(ctr); if(!pc) return;
+    var g=ctx.createRadialGradient(pc[0],pc[1],0,pc[0],pc[1],150);
+    g.addColorStop(0,'rgba(255,255,255,0.10)'); g.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=g; ctx.beginPath(); path(f); ctx.fill();
+  });
+  ctx.globalCompositeOperation='source-over';
+  // 흰 해안선/국경선 (전체)
+  ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
+  worldData.features.forEach(function(f){ ctx.beginPath(); path(f); ctx.stroke(); });
+  // 방문국은 더 또렷한 테두리
+  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=3;
+  worldData.features.forEach(function(f){ if(visitedMap[f.properties.name||'']){ ctx.beginPath(); path(f); ctx.stroke(); } });
+
+  var tex=new THREE.CanvasTexture(c);
+  tex.anisotropy=renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+  tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter; tex.generateMipmaps=true;
+  tex.wrapS=THREE.RepeatWrapping; tex.wrapT=THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
+// 셰이더: 절차적 보라 바디 + 텍스처 대륙(vUv) + 방향성 네온 프레넬 림
+var NEON_VS =
+  'varying vec3 vN; varying vec2 vUv;' +
+  'void main(){ vN = normalize(normalMatrix * normal); vUv = uv;' +
+  ' gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
+var NEON_FS =
+  'precision highp float;' +
+  'varying vec3 vN; varying vec2 vUv;' +
+  'uniform sampler2D uLand; uniform float uLandOpacity; uniform float uGlow;' +
+  'void main(){' +
+  ' vec3 N = normalize(vN);' +                                  // 뷰공간 법선 → 화면고정 조명/림
+  ' vec3 cyan  = vec3(0.0,0.847,0.953);' +
+  ' vec3 L = normalize(vec3(-0.55,-0.5,0.78));' +               // 좌하단 광원
+  ' float diff = clamp(dot(N,L),0.0,1.0);' +
+  // 배경(본체) 사양: #FF14E4 베이스 + 수직(상→하) 선형그라데이션 3겹(불투명도 70/40/20%)
+  ' float ty = clamp(0.5 - 0.5 * N.y, 0.0, 1.0);' +             // 0=상단, 1=하단
+  ' vec3 bg = vec3(1.0,0.078,0.894);' +                          // #FF14E4
+  ' bg = mix(bg, mix(vec3(0.114,0.035,0.188), vec3(0.459,0.098,0.682), ty), 0.70);' + // #1D0930→#7519AE @70%
+  ' bg = mix(bg, vec3(ty), 0.40 * mix(1.0,0.2,ty));' +           // #000000→흰색(α20%) @40%
+  ' bg = mix(bg, mix(vec3(0.0), vec3(0.463,0.102,0.678), ty), 0.20);' + // #000000→#761AAD @20%
+  ' vec3 col = bg * mix(0.96,1.0,diff);' +                       // 아주 옅은 입체 음영
+  ' float spec = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),7.0);' +
+  ' col += vec3(1.0)*spec*0.08;' +
+  ' vec4 t = texture2D(uLand, vUv);' +                          // 대륙은 지오메트리 uv → 표면과 함께 회전
+  ' float landA = t.a;' +                                        // 0.20=유리(기본)육지, 1.0=방문국
+  ' float landMask = step(0.004, t.a);' +                        // 육지 픽셀 여부(불투명도와 별개의 커버리지)
+  ' vec3 landCol = t.rgb * mix(0.85, 1.0, diff);' +              // 빛에 따른 미세 음영(불투명도엔 영향 없음)
+  ' col = mix(col, landCol, landA * uLandOpacity);' +            // 기본육지=흰20% → 보라 본체(지구색)가 비쳐 유리처럼
+  ' col += cyan * landMask * 0.02 * uGlow;' +                    // 아주 옅은 가장자리 톤
+  ' float gloss = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),16.0);' + // 유리 광택(또렷한 반사 스폿)
+  ' col += vec3(1.0) * gloss * landMask * 0.25;' +              // 육지에 글로시 하이라이트
+  ' float facing = max(N.z,0.0);' +
+  ' float alpha = smoothstep(0.0, 0.02, facing);' +             // 실루엣 페더(부드러운 가장자리)
+  ' gl_FragColor = vec4(col, alpha);' +
+  '}';
+
+async function init(){
+  worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO)
+    ? WORLD_GEO
+    : await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+
+  var tex = buildNeonTexture();
+  material = new THREE.ShaderMaterial({
+    uniforms: { uLand:{value:tex}, uLandOpacity:{value:1.0}, uGlow:{value:1.0} },
+    vertexShader: NEON_VS, fragmentShader: NEON_FS, transparent: true,
+  });
+  globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,128,128), material);
+  globe.add(globeMesh);
+
+  resize();
+  if (pendingSponsored) buildAdMarkers(pendingSponsored);
+  lastT = performance.now();
+  animate();
+
+  if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type:'globeReady' }));
+}
+
+// 회전/줌 상태
+var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=4.0;
+var isDragging=false, prevMouse={x:0,y:0}, velocity={x:0,y:0};
+var rotX=0, rotY=0, lastT=0;
+
+// 탭 → 국가 검출 (classic과 동일: 구체 레이캐스트 → 경위도 → geoContains)
+var raycaster=new THREE.Raycaster(), tapStartPos={x:0,y:0}, lastPinchDist=null;
+function detectCountry(clientX, clientY){
+  if(!globeMesh || !worldData) return null;
+  var mouse=new THREE.Vector2((clientX/window.innerWidth)*2-1, -(clientY/window.innerHeight)*2+1);
+  raycaster.setFromCamera(mouse, camera);
+  var hits=raycaster.intersectObject(globeMesh);
+  if(!hits.length) return null;
+  var pt=hits[0].point.clone();
+  var inv=new THREE.Matrix4().copy(globe.matrixWorld).invert();
+  pt.applyMatrix4(inv);
+  var lat=90 - THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, pt.y))));
+  var lon=THREE.MathUtils.radToDeg(Math.atan2(pt.z, -pt.x)) - 180;
+  return worldData.features.find(function(f){ return d3.geoContains(f,[lon,lat]); }) || null;
+}
+function onTap(x,y){
+  var f=detectCountry(x,y); if(!f) return;
+  var nameEn=f.properties.name, nameKo=KO_NAMES[nameEn] || nameEn;
+  if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type:'countryTapped', country:nameKo, countryEn:nameEn }));
+}
+
+window.addEventListener('mousedown', function(e){ isDragging=true; tapStartPos={x:e.clientX,y:e.clientY}; prevMouse={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mouseup', function(e){ if(Math.hypot(e.clientX-tapStartPos.x,e.clientY-tapStartPos.y)<5) onTap(e.clientX,e.clientY); isDragging=false; });
+window.addEventListener('mousemove', function(e){ if(!isDragging) return; var dx=e.clientX-prevMouse.x, dy=e.clientY-prevMouse.y; velocity.x=dy*0.005; velocity.y=dx*0.005; rotY+=dx*0.005; rotX+=dy*0.005; rotX=Math.max(-0.6,Math.min(0.6,rotX)); prevMouse={x:e.clientX,y:e.clientY}; });
+
+window.addEventListener('touchstart', function(e){ if(e.touches.length===2){ lastPinchDist=null; return; } isDragging=true; tapStartPos={x:e.touches[0].clientX,y:e.touches[0].clientY}; prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}; }, { passive:true });
+window.addEventListener('touchend', function(e){ var t=e.changedTouches[0]; if(Math.hypot(t.clientX-tapStartPos.x,t.clientY-tapStartPos.y)<8) onTap(t.clientX,t.clientY); isDragging=false; lastPinchDist=null; });
+window.addEventListener('touchmove', function(e){
+  if(e.touches.length===2){
+    var dx=e.touches[0].clientX-e.touches[1].clientX, dy=e.touches[0].clientY-e.touches[1].clientY;
+    var dist=Math.sqrt(dx*dx+dy*dy);
+    if(lastPinchDist!==null && lastPinchDist>0){ targetZoom*=dist/lastPinchDist; targetZoom=Math.max(MINZ,Math.min(MAXZ,targetZoom)); }
+    lastPinchDist=dist; return;
+  }
+  if(!isDragging) return;
+  var tdx=e.touches[0].clientX-prevMouse.x, tdy=e.touches[0].clientY-prevMouse.y;
+  velocity.x=tdy*0.005; velocity.y=tdx*0.005;
+  rotY+=tdx*0.005; rotX+=tdy*0.005; rotX=Math.max(-0.6,Math.min(0.6,rotX));
+  prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
+}, { passive:true });
+
+window.addEventListener('wheel', function(e){ e.preventDefault(); targetZoom*=Math.exp(-e.deltaY*0.0015); targetZoom=Math.max(MINZ,Math.min(MAXZ,targetZoom)); }, { passive:false });
+
+function resize(){
+  var w=window.innerWidth, h=window.innerHeight;
+  renderer.setSize(w,h);
+  var aspect=w/h, R=1.0;
+  // 기본 크기: 디스크 지름 = 화면 폭의 ~85%(좌우 여백, 사진과 동일). 화면 세로 정중앙. 확대는 줌으로만.
+  var halfV = R / (0.85 * aspect);            // 폭 기준 → 세로로 긴 화면에서도 폭을 안 넘침
+  camera.top=halfV; camera.bottom=-halfV; camera.left=-halfV*aspect; camera.right=halfV*aspect;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+// ── 광고(스폰서) 마커 (classic과 동일, facing만 정사영용으로 조정) ──
+var adLayer=document.getElementById('ad-layer');
+var adMarkers=[], pendingSponsored=null, _adVec=new THREE.Vector3();
+var AD_FACING_MIN=0.2;
+function clearAdMarkers(){ adMarkers.forEach(function(m){ if(m.el && m.el.parentNode) m.el.parentNode.removeChild(m.el); }); adMarkers=[]; }
+function escapeHtml(s){ return String(s==null?'':s).replace(/[&<>"]/g, function(ch){ return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[ch]; }); }
+function buildAdMarkers(list){
+  clearAdMarkers();
+  if(!worldData || !list || !adLayer) return;
+  list.forEach(function(item){
+    var nameEn=item && item.nameEn; if(!nameEn) return;
+    var f=worldData.features.find(function(ft){ return ft.properties.name===nameEn; }); if(!f) return;
+    var c=d3.geoCentroid(f);
+    var priceHtml=item.price ? '<div class="mc-price">'+escapeHtml(item.price)+'</div>' : '';
+    var thumbHtml=item.image ? '<img class="mc-thumb" src="'+escapeHtml(item.image)+'" />' : '';
+    var el=document.createElement('div'); el.className='ad-pin';
+    el.innerHTML='<div class="ad-line"></div><div class="ad-dot"></div>'+
+      '<div class="ad-minicard"><div class="mc-row">'+thumbHtml+
+      '<div class="mc-text"><div class="mc-head"><span class="mc-ad">AD</span><span class="mc-title">'+escapeHtml(item.label||'여행 패키지')+'</span></div>'+priceHtml+
+      '</div></div></div>';
+    var fire=function(ev){ ev.stopPropagation(); if(ev.cancelable) ev.preventDefault(); if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type:'sponsoredTapped', countryEn:nameEn })); };
+    el.addEventListener('touchstart', function(ev){ ev.stopPropagation(); }, { passive:true });
+    el.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
+    el.addEventListener('click', fire); el.addEventListener('touchend', fire);
+    adLayer.appendChild(el);
+    adMarkers.push({ nameEn:nameEn, lon:c[0], lat:c[1], el:el });
+  });
+}
+function updateAdMarkers(){
+  if(!adMarkers.length) return;
+  for(var i=0;i<adMarkers.length;i++){
+    var m=adMarkers[i];
+    var latR=m.lat*Math.PI/180, lonR=m.lon*Math.PI/180, rh=Math.cos(latR), A=lonR+Math.PI;
+    _adVec.set(-rh*Math.cos(A), Math.sin(latR), rh*Math.sin(A));   // 단위구 로컬좌표(detectCountry 역매핑)
+    _adVec.multiplyScalar(1.02);
+    globe.localToWorld(_adVec);                                    // 현재 회전 반영(렌더 후)
+    var lenW=Math.sqrt(_adVec.x*_adVec.x+_adVec.y*_adVec.y+_adVec.z*_adVec.z);
+    var facing=(lenW>0) ? _adVec.z/lenW : -1;                      // 정사영: 정면 = +z
+    var ndc=_adVec.clone().project(camera);
+    if(facing>AD_FACING_MIN && ndc.z<1){
+      m.el.style.display='block';
+      m.el.style.left=((ndc.x*0.5+0.5)*window.innerWidth)+'px';
+      m.el.style.top=((-ndc.y*0.5+0.5)*window.innerHeight)+'px';
+    } else { m.el.style.display='none'; }
+  }
+}
+
+function animate(){
+  requestAnimationFrame(animate);
+  var now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
+  if(!isDragging){ velocity.x*=0.95; velocity.y*=0.95; rotX+=velocity.x; rotY+=velocity.y; rotY-=dt*(Math.PI*2/45); } // 우→좌 자동회전 ~45s
+  rotX=Math.max(-0.6,Math.min(0.6,rotX));
+  currentZoom+=(targetZoom-currentZoom)*0.1;
+  if(Math.abs(camera.zoom-currentZoom)>1e-4){ camera.zoom=currentZoom; camera.updateProjectionMatrix(); }
+  globe.rotation.y=rotY; globe.rotation.x=rotX;
+  renderer.render(scene, camera);
+  updateAdMarkers();
+}
+
+// RN → WebView 메시지 (setTheme은 네온 룩 고정이라 무시)
+function handleMsg(msg){
+  if(msg.type==='setVisitedCountries' && msg.countries){
+    visitedMap={};
+    msg.countries.forEach(function(c){ visitedMap[c.nameEn]={ color:c.color||null }; });
+    if(msg.defaultColor) globeDefaultColor=msg.defaultColor;
+    if(worldData && material){
+      var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
+      material.uniforms.uLand.value=tex;
+      if(old && old.dispose) old.dispose();
+    }
+  } else if(msg.type==='setSponsored'){
+    pendingSponsored=msg.items||[];
+    if(worldData) buildAdMarkers(pendingSponsored);
+  }
+}
+window.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
+document.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
+
+init();
+<\/script>
+</body>
+</html>`;
+
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
-  sponsoredItems = [],
+  variant = 'aurora', sponsoredItems = [],
 }: GlobeViewProps) {
-  const globeHeight = useMemo(() => Dimensions.get('window').height * 0.75, []);
   const webViewRef = useRef<WebView>(null);
 
   const payload = useMemo(() => JSON.stringify({
@@ -980,6 +1441,11 @@ export default function GlobeView({
     items: sponsoredItems,
   }), [sponsoredItems]);
 
+  const themePayload = useMemo(() => JSON.stringify({
+    type: 'setTheme',
+    theme: GLOBE_THEMES[variant] || GLOBE_THEMES.aurora,
+  }), [variant]);
+
   useEffect(() => {
     if (webViewRef.current && visitedCountries.length > 0) {
       webViewRef.current.postMessage(payload);
@@ -992,22 +1458,53 @@ export default function GlobeView({
     }
   }, [sponsoredPayload]);
 
+  useEffect(() => {
+    webViewRef.current?.postMessage(themePayload);
+  }, [themePayload]);
+
+  // WebView 준비 완료 여부 — globeReady 신호 수신 시 true.
+  const readyRef = useRef(false);
+
+  // 폼(variant) 전환 시 WebView는 key 변경으로 리마운트되므로, 새 글로브의 globeReady를 다시 기다린다.
+  useEffect(() => { readyRef.current = false; }, [variant]);
+
+  // 현재 페이로드 일괄 전송 (초기화 직후 1회 + 폴백)
+  const sendAll = useCallback(() => {
+    const wv = webViewRef.current;
+    if (!wv) return;
+    wv.postMessage(themePayload);
+    if (visitedCountries.length > 0) wv.postMessage(payload);
+    wv.postMessage(sponsoredPayload);
+  }, [themePayload, payload, sponsoredPayload, visitedCountries.length]);
+
+  // WebView → RN 메시지: globeReady면 그 시점에 페이로드 전송, 나머지는 부모로 전달
+  const handleMessage = useCallback((e: any) => {
+    let data: any = null;
+    try { data = JSON.parse(e.nativeEvent.data); } catch {}
+    if (data?.type === 'globeReady') {
+      readyRef.current = true;
+      sendAll();
+      return; // 내부 신호는 부모로 올리지 않음
+    }
+    onMessage?.(e);
+  }, [sendAll, onMessage]);
+
   const handleLoad = () => {
-    // 로드 직후 WebView 초기화 타이밍을 고려해 약간 지연 후 재전송
+    // globeReady 신호 유실 대비 폴백: 준비 신호가 끝내 안 오면 한 번만 전송
     setTimeout(() => {
-      if (visitedCountries.length > 0) webViewRef.current?.postMessage(payload);
-      webViewRef.current?.postMessage(sponsoredPayload);
-    }, 2000);
+      if (!readyRef.current) sendAll();
+    }, 2500);
   };
 
   return (
-    <View style={fullscreen ? [styles.containerFull, { height: globeHeight }] : [styles.container, { width: size, height: size }]}>
+    <View style={fullscreen ? styles.containerFull : [styles.container, { width: size, height: size }]}>
       <WebView
+        key={variant}
         ref={webViewRef}
         originWhitelist={['*']}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        source={{ html: globeHTML }}
+        source={{ html: variant === 'aurora' ? neonGlobeHTML : globeHTML }}
         style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
         nestedScrollEnabled={false}
@@ -1017,7 +1514,7 @@ export default function GlobeView({
         bounces={false}
         allowsInlineMediaPlayback={true}
         mixedContentMode="always"
-        onMessage={onMessage}
+        onMessage={handleMessage}
         onLoad={handleLoad}
       />
     </View>
@@ -1030,6 +1527,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   containerFull: {
+    flex: 1,
     overflow: 'hidden',
   },
 });

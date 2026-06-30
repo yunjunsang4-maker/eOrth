@@ -1,5 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -16,34 +18,40 @@ import {
   PanResponder,
   Dimensions,
   Linking,
-  Vibration,
   LayoutAnimation,
   UIManager,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path } from 'react-native-svg';
-import { GearIcon, PersonIcon } from '../components/icons';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import { useTranslation } from 'react-i18next';
+import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import {
   FloatingBlobs,
   LiquidPressable,
-  GooeyCircle,
   LiquidCardGlow,
-  useEntranceAnimation,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
-import { computeTravelStats } from '../utils/badgeRules';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
+import { COUNTRIES } from '../constants/countries';
+import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { getMyUserId } from '../services/profile';
+import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { setCoachActive } from '../components/coachOverlayState';
+import { fetchFollowerCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
+
+// 프로필 튜토리얼 1회 노출 플래그 키 (계정별)
+const PROFILE_TUTORIAL_KEY = '@eorth/profileTutorialSeen';
 
 // 리퀴드 글래스 카드 재정렬용 부드러운 스프링 레이아웃 전환
 // (이웃 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
@@ -66,7 +74,7 @@ const COLORS = {
   purpleThumb:  '#1A0A2E',
   white:        '#FFFFFF',
   textDim:      '#A1A1B0',
-  textMuted:    '#4A4A59',
+  textMuted:    '#8B8B9E',
   redBg:        'rgba(255,59,48,0.1)',
   redBorder:    'rgba(255,59,48,0.2)',
   red:          '#FF3B30',
@@ -193,60 +201,19 @@ const NeonGlass = ({
   </View>
 );
 
-// 원형 네온 링 (배지/아바타)
-const NeonRing = ({
-  size,
-  colors,
-  borderWidth = 2,
-  intensity = 16,
-  children,
-}: {
-  size: number;
-  colors: readonly [string, string, ...string[]];
-  borderWidth?: number;
-  intensity?: number;
-  children?: React.ReactNode;
-}) => (
-  <LinearGradient
-    colors={colors}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 1 }}
-    style={{ width: size, height: size, borderRadius: size / 2, padding: borderWidth, alignItems: 'center', justifyContent: 'center' }}
-  >
-    <View
-      style={{
-        width: size - borderWidth * 2,
-        height: size - borderWidth * 2,
-        borderRadius: (size - borderWidth * 2) / 2,
-        overflow: 'hidden',
-        backgroundColor: 'rgba(10,10,15,0.45)',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}
-    >
-      <GlassFill intensity={intensity} />
-      {children}
-    </View>
-  </LinearGradient>
-);
-
 // ─── 팔로워 카드 (네온 글래스 칩) ───
 const StatCard = ({
   value,
   label,
   onPress,
-  grad = STAT_GRADS[0],
 }: {
   value: string;
   label: string;
   onPress?: () => void;
-  grad?: readonly [string, string, ...string[]];
 }) => (
-  <LiquidPressable onPress={onPress} intensity={0.08}>
-    <NeonGlass colors={grad} glowColor={grad[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={styles.statCardContent}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </NeonGlass>
+  <LiquidPressable onPress={onPress} intensity={0.06} style={styles.statCol}>
+    <Text style={styles.statValue}>{value}</Text>
+    <Text style={styles.statLabel}>{label}</Text>
   </LiquidPressable>
 );
 
@@ -354,24 +321,31 @@ const TRIP_GRADIENT_COLORS: Record<string, [string, string]> = {
 };
 
 // ─── 배지 하이라이트 아이템 (리퀴드 구이 서클) ───
-const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => (
-  <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
-    <GooeyCircle size={64} color={glow || NEON.purple} glowOpacity={earned ? 0.5 : 0.12}>
-      <NeonRing
-        size={58}
-        borderWidth={1.6}
-        intensity={20}
-        colors={earned ? [NEON.cyan, NEON.purple, NEON.magenta] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}
-      >
+let badgeRingSeq = 0; // SVG 그라데이션 id 충돌 방지용 (인스턴스별 고유 id)
+const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => {
+  const ringId = React.useMemo(() => 'badgeRing' + (badgeRingSeq++), []);
+  return (
+    <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
+      {/* 배지 원 — Ellipse 2989 채움 + 유리 그라데이션 테두리(stroke만 → 안쪽엔 영향 없음) */}
+      <View style={badgeHL.circle}>
         {earned ? (
           <Text style={badgeHL.emoji}>{emoji}</Text>
         ) : (
           <Text style={badgeHL.lockIcon}>🔒</Text>
         )}
-      </NeonRing>
-    </GooeyCircle>
-  </LiquidPressable>
-);
+        <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+        </Svg>
+      </View>
+    </LiquidPressable>
+  );
+};
 
 // ─── 배지 전체 목록 모달 ───
 const getMetallicColors = (glow: string | undefined): [string, string, string, string] => {
@@ -406,6 +380,7 @@ function BadgeListModal({
   setSelectedBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
   earnedBadgeIds: Set<number>;
 }) {
+  const { t } = useTranslation();
   const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
 
   // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
@@ -420,7 +395,7 @@ function BadgeListModal({
         return prev.filter((id) => id !== badgeId);
       } else {
         if (prev.length >= 5) {
-          Alert.alert('알림', '대표 배지는 최대 5개까지 선택할 수 있어요.');
+          Alert.alert(t('profile.noticeTitle'), t('profile.badgeMaxAlert'));
           return prev;
         }
         return [...prev, badgeId];
@@ -451,16 +426,16 @@ function BadgeListModal({
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <View style={blStyles.root}>
+      <View style={blStyles.root} accessibilityViewIsModal>
         {/* 핸들 바 */}
         <View style={blStyles.handle} />
         
         <View style={blStyles.header}>
-          <Text style={blStyles.title}>나의 배지 컬렉션</Text>
+          <Text style={blStyles.title}>{t('profile.badgeCollection')}</Text>
           <Text style={blStyles.subtitle}>
             {selectMode
-              ? `프로필에 표시할 배지 선택 (${selectedBadgeIds.length}/5)`
-              : `${earnedCount} / ${BADGES.length} 획득 · 배지를 눌러 확대`}
+              ? t('profile.badgeSelectCount', { count: selectedBadgeIds.length })
+              : t('profile.badgeEarnedCount', { earned: earnedCount, total: BADGES.length })}
           </Text>
           <TouchableOpacity
             style={[blStyles.selectBtn, selectMode && blStyles.selectBtnOn]}
@@ -468,7 +443,7 @@ function BadgeListModal({
             activeOpacity={0.8}
           >
             <Text style={[blStyles.selectBtnText, selectMode && blStyles.selectBtnTextOn]}>
-              {selectMode ? '선택 완료' : '선택'}
+              {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
         </View>
@@ -558,7 +533,7 @@ function BadgeListModal({
                               {badge.name}
                             </Text>
                             <Text style={[blStyles.cellDesc, !isEarned && blStyles.lockedText]} numberOfLines={2}>
-                              {isEarned ? badge.desc : '미획득 배지'}
+                              {isEarned ? badge.desc : t('profile.unearnedBadge')}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -572,7 +547,7 @@ function BadgeListModal({
         </View>
 
         <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
-          <Text style={blStyles.closeBtnText}>닫기</Text>
+          <Text style={blStyles.closeBtnText}>{t('common.close')}</Text>
         </TouchableOpacity>
 
         {/* 배지 확대 보기 오버레이 */}
@@ -584,6 +559,7 @@ function BadgeListModal({
         >
           <TouchableOpacity
             style={blStyles.zoomBackdrop}
+            accessibilityViewIsModal
             activeOpacity={1}
             onPress={() => setEnlargedBadge(null)}
           >
@@ -629,11 +605,11 @@ function BadgeListModal({
                       </LinearGradient>
                     </View>
                   )}
-                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : '미획득 배지'}</Text>
-                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : '아직 획득하지 못한 배지예요.'}</Text>
+                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : t('profile.unearnedBadge')}</Text>
+                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : t('profile.unearnedBadgeDesc')}</Text>
                   {selectedBadgeIds.includes(enlargedBadge.id) && (
                     <View style={blStyles.zoomSelectedTag}>
-                      <Text style={blStyles.zoomSelectedTagText}>★ 프로필에 표시 중</Text>
+                      <Text style={blStyles.zoomSelectedTagText}>{t('profile.shownOnProfile')}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -660,13 +636,14 @@ function EditProfileModal({
   onSave: (name: string, photo: string | null) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [name, setName] = useState(currentName);
   const [photo, setPhoto] = useState<string | null>(currentPhoto);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') {
-      showPermissionDeniedAlert('갤러리');
+      showPermissionDeniedAlert(t('permission.gallery'));
       return;
     }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -682,7 +659,7 @@ function EditProfileModal({
 
   const handleSave = () => {
     if (!name.trim()) {
-      Alert.alert('알림', '닉네임을 입력해주세요.');
+      Alert.alert(t('profile.noticeTitle'), t('profile.nicknameRequired'));
       return;
     }
     onSave(name.trim(), photo);
@@ -711,11 +688,11 @@ function EditProfileModal({
         {/* 헤더 */}
         <View style={styles.modalHeader}>
           <TouchableOpacity onPress={onClose} style={styles.modalCancelBtn}>
-            <Text style={styles.modalCancelText}>취소</Text>
+            <Text style={styles.modalCancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
-          <Text style={styles.modalTitle}>프로필 편집</Text>
+          <Text style={styles.modalTitle}>{t('profile.editProfile')}</Text>
           <TouchableOpacity onPress={handleSave} style={styles.modalSaveBtn}>
-            <Text style={styles.modalSaveText}>저장</Text>
+            <Text style={styles.modalSaveText}>{t('editProfile.save')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -739,18 +716,18 @@ function EditProfileModal({
                 <Text style={styles.editBadgeText}>📷</Text>
               </View>
             </TouchableOpacity>
-            <Text style={styles.modalAvatarHint}>탭하여 사진 변경</Text>
+            <Text style={styles.modalAvatarHint}>{t('profile.avatarHint')}</Text>
           </View>
 
           {/* 닉네임 입력 */}
           <View style={styles.modalField}>
-            <Text style={styles.modalFieldLabel}>닉네임</Text>
+            <Text style={styles.modalFieldLabel}>{t('profile.nickname')}</Text>
             <View style={styles.modalInputWrap}>
               <TextInput
                 style={styles.modalInput}
                 value={name}
                 onChangeText={setName}
-                placeholder="닉네임을 입력하세요"
+                placeholder={t('profile.nicknamePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={20}
                 autoCorrect={false}
@@ -761,7 +738,7 @@ function EditProfileModal({
 
           {/* 저장 버튼 (하단 대형) */}
           <TouchableOpacity style={styles.modalSaveLargeBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Text style={styles.modalSaveLargeText}>저장하기</Text>
+            <Text style={styles.modalSaveLargeText}>{t('profile.saveLarge')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -832,7 +809,7 @@ function PhotoViewerModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pvStyles.container}>
+      <View style={pvStyles.container} accessibilityViewIsModal>
         {/* 배경 탭으로 닫기 */}
         <TouchableOpacity
           style={StyleSheet.absoluteFillObject}
@@ -875,6 +852,7 @@ function AvatarActionSheet({
   onChangePhoto: () => void;
   onDeletePhoto: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -920,7 +898,7 @@ function AvatarActionSheet({
                   onPress={onViewPhoto}
                 >
                   <Text style={asStyles.optionIcon}>📷</Text>
-                  <Text style={asStyles.optionText}>사진 크게 보기</Text>
+                  <Text style={asStyles.optionText}>{t('profile.viewPhoto')}</Text>
                 </TouchableOpacity>
                 <View style={asStyles.divider} />
               </>
@@ -931,7 +909,7 @@ function AvatarActionSheet({
               onPress={onChangePhoto}
             >
               <Text style={asStyles.optionIcon}>✏️</Text>
-              <Text style={asStyles.optionText}>프로필 사진 변경</Text>
+              <Text style={asStyles.optionText}>{t('profile.changePhoto')}</Text>
             </TouchableOpacity>
             {hasPhoto && (
               <>
@@ -942,7 +920,7 @@ function AvatarActionSheet({
                   onPress={onDeletePhoto}
                 >
                   <Text style={asStyles.optionIcon}>🗑️</Text>
-                  <Text style={[asStyles.optionText, asStyles.deleteText]}>프로필 사진 삭제</Text>
+                  <Text style={[asStyles.optionText, asStyles.deleteText]}>{t('profile.deletePhoto')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -950,7 +928,7 @@ function AvatarActionSheet({
 
           {/* 취소 카드 */}
           <TouchableOpacity style={asStyles.cancelCard} activeOpacity={0.7} onPress={onClose}>
-            <Text style={asStyles.cancelText}>취소</Text>
+            <Text style={asStyles.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -1255,6 +1233,7 @@ function GroupMergeModal({
   onClose: () => void;
   onSave: (title: string, coverRecordId: string, ordered: TripItem[]) => void;
 }) {
+  const { t } = useTranslation();
   const [title, setTitle] = useState('');
   const [cover, setCover] = useState(selectedRecords[0]?.id ?? '');
   const [ordered, setOrdered] = useState<TripItem[]>([...selectedRecords]);
@@ -1269,7 +1248,7 @@ function GroupMergeModal({
 
   const handleSave = () => {
     if (!title.trim()) {
-      Alert.alert('알림', '묶음 이름을 입력해주세요.');
+      Alert.alert(t('profile.noticeTitle'), t('profile.groupNameRequired'));
       return;
     }
     onSave(title.trim(), cover, ordered);
@@ -1288,27 +1267,27 @@ function GroupMergeModal({
         />
         <View style={gmSt.sheet}>
           <View style={gmSt.handle} />
-          <Text style={gmSt.sheetTitle}>묶음 설정</Text>
+          <Text style={gmSt.sheetTitle}>{t('profile.groupSettings')}</Text>
           <ScrollView
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
           >
             {/* 묶음 제목 */}
-            <Text style={gmSt.sectionLabel}>묶음 제목</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.groupTitle')}</Text>
             <View style={gmSt.inputWrap}>
               <TextInput
                 style={gmSt.input}
                 value={title}
                 onChangeText={setTitle}
-                placeholder="여행 묶음 이름을 입력해주세요"
+                placeholder={t('profile.groupTitlePlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 maxLength={30}
               />
             </View>
-            <Text style={gmSt.inputHint}>예시: "유럽 3개국 여행", "일본 두 번째 방문"</Text>
+            <Text style={gmSt.inputHint}>{t('profile.groupTitleHint')}</Text>
 
             {/* 대표 기록 선택 */}
-            <Text style={gmSt.sectionLabel}>대표 기록</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.groupCover')}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1341,19 +1320,19 @@ function GroupMergeModal({
                     {record.country.split(' ').slice(1).join(' ')}
                   </Text>
                   {cover !== record.id && (
-                    <Text style={gmSt.setAsLabel}>대표로 설정</Text>
+                    <Text style={gmSt.setAsLabel}>{t('profile.setAsCover')}</Text>
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
             {/* 기록 순서 조정 */}
-            <Text style={gmSt.sectionLabel}>기록 순서</Text>
+            <Text style={gmSt.sectionLabel}>{t('profile.recordOrder')}</Text>
             <OrderableList records={ordered} onReorder={setOrdered} />
 
             {/* 저장 */}
             <TouchableOpacity style={gmSt.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-              <Text style={gmSt.saveBtnText}>저장하기</Text>
+              <Text style={gmSt.saveBtnText}>{t('profile.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </ScrollView>
@@ -1363,21 +1342,110 @@ function GroupMergeModal({
   );
 }
 
-const COUNTRY_DATA: Record<string, { name: string; flag: string }> = {
-  KR: { name: '대한민국', flag: '🇰🇷' },
-  JP: { name: '일본', flag: '🇯🇵' },
-  US: { name: '미국', flag: '🇺🇸' },
-  HK: { name: '홍콩', flag: '🇭🇰' },
-  TH: { name: '태국', flag: '🇹🇭' },
-  ES: { name: '스페인', flag: '🇪🇸' },
-};
+// 국가코드(ISO2) → {이름, 국기} — 공용 COUNTRIES 전체에서 생성 (일부 국가만 있던 데모 맵 대체)
+const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.reduce(
+  (acc, c) => {
+    acc[c.term.split(' ')[0].toUpperCase()] = { name: c.name, flag: c.flag };
+    return acc;
+  },
+  {} as Record<string, { name: string; flag: string }>,
+);
 
 // ─── 메인 프로필 화면 ───
 export default function ProfileScreen({ navigation, route }: TabScreenProps<'ProfileTab'>) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
+
+  // ── 프로필 튜토리얼(코치마크) — 계정당 프로필 탭 첫 진입 시 1회 ──
+  const avatarRef = useRef<any>(null);
+  const badgeRef = useRef<any>(null);
+  const archiveRef = useRef<any>(null);
+  const [coachVisible, setCoachVisible] = useState(false);
+  const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
+  const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
+
+  // 튜토리얼 중에는 탭 바도 함께 어둡게 처리되도록 전역 신호 동기화.
+  useEffect(() => {
+    setCoachActive(coachVisible);
+    return () => setCoachActive(false);
+  }, [coachVisible]);
+
+  const measureRect = (ref: React.MutableRefObject<any>) =>
+    new Promise<CoachRect | null>((resolve) => {
+      const node = ref.current;
+      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
+      node.measureInWindow((x: number, y: number, width: number, height: number) => {
+        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
+        else resolve({ x, y, width, height });
+      });
+    });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (tutorialStarted.current) return;
+      tutorialStarted.current = true;
+      let cancelled = false;
+      (async () => {
+        const uid = (await getMyUserId().catch(() => null)) || 'guest';
+        const key = `${PROFILE_TUTORIAL_KEY}:${uid}`;
+        const seen = await AsyncStorage.getItem(key).catch(() => null);
+        if (seen || cancelled) return;
+        setTimeout(async () => {
+          if (cancelled) return;
+          const [avatar, badge, archive] = await Promise.all([
+            measureRect(avatarRef),
+            measureRect(badgeRef),
+            measureRect(archiveRef),
+          ]);
+          // 아바타는 원형이라 원형 스포트라이트로 강조
+          const avatarCircle = avatar
+            ? { cx: avatar.x + avatar.width / 2, cy: avatar.y + avatar.height / 2, r: Math.max(avatar.width, avatar.height) / 2 + 4 }
+            : undefined;
+          // 배지 강조 링은 배지(글로우 포함)를 넉넉히 감싸도록 측정값을 확장(특히 세로 여유).
+          const badgeRect: CoachRect | null = badge
+            ? { x: badge.x - 4, y: badge.y - 12, width: badge.width + 8, height: badge.height + 24 }
+            : null;
+          // 여행 기록 강조 링도 동일하게 넉넉히 확장.
+          const archiveRect: CoachRect | null = archive
+            ? { x: archive.x - 4, y: archive.y - 12, width: archive.width + 8, height: archive.height + 24 }
+            : null;
+          setCoachSteps([
+            {
+              rect: null,
+              title: t('profile.coach1Title'),
+              desc: t('profile.coach1Desc'),
+            },
+            {
+              rect: avatar,
+              shape: 'circle',
+              circleWin: avatarCircle,
+              tipBelow: true, // 아바타는 화면 상단이라 말풍선을 아래쪽에 둬 가리지 않게
+              title: t('profile.coach2Title'),
+              desc: t('profile.coach2Desc'),
+            },
+            {
+              rect: badgeRect,
+              title: t('profile.coach3Title'),
+              desc: t('profile.coach3Desc'),
+            },
+            {
+              rect: archiveRect,
+              title: t('profile.coach4Title'),
+              desc: t('profile.coach4Desc'),
+            },
+          ]);
+          setCoachVisible(true);
+          AsyncStorage.setItem(key, '1').catch(() => {});
+        }, 450);
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
 
   // 배지 획득 토스트를 누르면 openBadgeList 파라미터로 진입 → 배지 리스트 모달 자동 열기(1회).
   useEffect(() => {
@@ -1504,22 +1572,45 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     homeCountryCode,
     arrivalDetect,
     currentVisitedCountryCode,
+    setCurrentVisitedCountryCode,
     representativeBadgeIds: selectedBadgeIds,
     setRepresentativeBadgeIds: setSelectedBadgeIds,
     badgeEarnedAt,
   } = useSettings();
   const profileName = nickname ? nickname : handle;
 
+  // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
+  useEffect(() => {
+    if (!arrivalDetect) return;
+    let cancelled = false;
+    (async () => {
+      const { countryCode } = await detectCurrentCountry();
+      if (cancelled) return;
+      setCurrentVisitedCountryCode(countryCode ? countryCode.toUpperCase() : homeCountryCode);
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arrivalDetect, homeCountryCode]);
+
   const { records, tripGroups, archivedIds, followingUsers } = useRecords();
 
+  // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
+  const [followerCount, setFollowerCount] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const uid = await getMyUserId();
+      if (uid && alive) setFollowerCount(await fetchFollowerCount(uid));
+    })();
+    return () => { alive = false; };
+  }, []);
+
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
-  //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽고(중복 계산 제거),
-  //  - 통계 카드용 travelStats만 로컬 계산(보관 기록 포함).
+  //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽는다(중복 계산 제거).
   const earnedBadgeIds = useMemo(
     () => new Set<number>(Object.keys(badgeEarnedAt).map(Number)),
     [badgeEarnedAt]
   );
-  const travelStats = useMemo(() => computeTravelStats(records), [records]);
 
   // 대표 배지 기본값: 저장된 선택이 없을 때만 획득 배지 중 앞 5개로 최초 1회 채운다.
   // (이미 저장된 사용자 선택은 절대 덮어쓰지 않음)
@@ -1594,18 +1685,18 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
       if (!canAskAgain) {
         // 권한이 영구적으로 거부된 경우 → 설정 화면으로 유도
         Alert.alert(
-          '갤러리 접근 권한 필요',
-          '갤러리 접근 권한이 필요해요. 설정에서 권한을 허용해주세요.',
+          t('profile.galleryPermTitle'),
+          t('profile.galleryPermMsg'),
           [
-            { text: '취소', style: 'cancel' },
+            { text: t('common.cancel'), style: 'cancel' },
             {
-              text: '설정으로 이동',
+              text: t('profile.goToSettings'),
               onPress: () => Linking.openSettings(),
             },
           ]
         );
       } else {
-        Alert.alert('권한 필요', '갤러리 접근 권한이 필요해요.');
+        Alert.alert(t('profile.permNeededTitle'), t('profile.permNeededMsg'));
       }
       return;
     }
@@ -1626,12 +1717,12 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   const handleDeletePhoto = () => {
     setActionSheetVisible(false);
     Alert.alert(
-      '프로필 사진 삭제',
-      '프로필 사진을 삭제할까요?',
+      t('profile.deletePhotoTitle'),
+      t('profile.deletePhotoMsg'),
       [
-        { text: '취소', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '삭제',
+          text: t('profile.delete'),
           style: 'destructive',
           onPress: () => setProfilePhoto(null),
         },
@@ -1665,101 +1756,149 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
       <ScrollView
         style={styles.container}
-        contentContainerStyle={styles.content}
+        contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
       >
         {/* 상단 헤더 */}
-        <View style={[styles.headerRow, { marginTop: insets.top + 12 }]}>
-          <Text style={styles.title}>프로필</Text>
+        <View style={[styles.headerRow, { paddingTop: insets.top + 11 }]}>
+          <Svg width={116} height={47} viewBox="0 0 116 47" fill="none">
+            <Path
+              d="M12.7309 14.6189C15.1149 14.6189 17.1056 15.5249 18.7029 17.3367C20.3241 19.1248 21.1347 21.3658 21.1347 24.0598C21.1347 26.7538 20.3241 29.0067 18.7029 30.8186C17.1056 32.6066 15.1149 33.5007 12.7309 33.5007C10.5614 33.5007 8.8687 32.7854 7.65283 31.355V40.1522H1.71652V15.1196H7.65283V16.7646C8.8687 15.3341 10.5614 14.6189 12.7309 14.6189ZM8.68989 26.8849C9.38127 27.6001 10.2872 27.9577 11.4077 27.9577C12.5282 27.9577 13.4342 27.6001 14.1255 26.8849C14.8169 26.1697 15.1626 25.228 15.1626 24.0598C15.1626 22.8916 14.8169 21.9499 14.1255 21.2347C13.4342 20.5195 12.5282 20.1618 11.4077 20.1618C10.2872 20.1618 9.38127 20.5195 8.68989 21.2347C7.99851 21.9499 7.65283 22.8916 7.65283 24.0598C7.65283 25.228 7.99851 26.1697 8.68989 26.8849ZM30.727 18.4453C31.0607 17.2771 31.7283 16.3712 32.7296 15.7275C33.7309 15.0838 34.8514 14.762 36.0911 14.762V21.342C34.7322 21.1274 33.4925 21.3777 32.372 22.0929C31.2753 22.8082 30.727 23.9763 30.727 25.5975V33H24.7907V15.1196H30.727V18.4453ZM47.6494 33.5007C45.0031 33.5007 42.7502 32.5947 40.8906 30.7828C39.031 28.9471 38.1012 26.7061 38.1012 24.0598C38.1012 21.4135 39.031 19.1844 40.8906 17.3725C42.7502 15.5368 45.0031 14.6189 47.6494 14.6189C50.3195 14.6189 52.5725 15.5368 54.4082 17.3725C56.2678 19.1844 57.1976 21.4135 57.1976 24.0598C57.1976 26.7061 56.2678 28.9471 54.4082 30.7828C52.5725 32.5947 50.3195 33.5007 47.6494 33.5007ZM47.6494 27.7789C48.6984 27.7789 49.5566 27.4332 50.2242 26.7418C50.9156 26.0505 51.2612 25.1564 51.2612 24.0598C51.2612 22.9631 50.9156 22.0691 50.2242 21.3777C49.5566 20.6863 48.6984 20.3407 47.6494 20.3407C46.6243 20.3407 45.766 20.6863 45.0746 21.3777C44.4071 22.0691 44.0733 22.9631 44.0733 24.0598C44.0733 25.1564 44.4071 26.0505 45.0746 26.7418C45.766 27.4332 46.6243 27.7789 47.6494 27.7789ZM70.5118 12.9382C68.4615 12.7951 67.4363 13.5222 67.4363 15.1196H70.5118V20.8055H67.4363V33H61.5V20.8055H59.2471V15.1196H61.5C61.5 12.5448 62.251 10.5779 63.753 9.21902C65.2788 7.86011 67.5317 7.26409 70.5118 7.43098V12.9382Z"
+              fill="#FFFFFF"
+            />
+            <Path
+              d="M80.6461 12.6521C79.9785 13.3196 79.1799 13.6534 78.2501 13.6534C77.3203 13.6534 76.5097 13.3196 75.8184 12.6521C75.1508 11.9607 74.8171 11.1501 74.8171 10.2203C74.8171 9.29054 75.1508 8.49188 75.8184 7.82435C76.5097 7.15681 77.3203 6.82304 78.2501 6.82304C79.1799 6.82304 79.9785 7.15681 80.6461 7.82435C81.3375 8.49188 81.6831 9.29054 81.6831 10.2203C81.6831 11.1501 81.3375 11.9607 80.6461 12.6521ZM75.282 33V15.1196H81.2183V33H75.282ZM85.7141 33V6.89457H91.6504V33H85.7141ZM101.404 26.2412C102 27.6955 103.335 28.4226 105.409 28.4226C106.696 28.4226 107.781 28.0054 108.663 27.171L112.955 30.1749C111.19 32.3921 108.628 33.5007 105.266 33.5007C102.238 33.5007 99.8066 32.6186 97.9708 30.8543C96.1589 29.0663 95.253 26.8134 95.253 24.0955C95.253 21.4016 96.147 19.1486 97.9351 17.3367C99.7231 15.5249 102 14.6189 104.765 14.6189C107.436 14.6189 109.641 15.5129 111.381 17.301C113.122 19.089 113.992 21.33 113.992 24.024C113.992 24.8108 113.908 25.5498 113.741 26.2412H101.404ZM101.332 22.1287H108.198C107.722 20.4599 106.601 19.6254 104.837 19.6254C103.001 19.6254 101.833 20.4599 101.332 22.1287Z"
+              fill="#FFFFFF"
+            />
+          </Svg>
           <LiquidPressable
             style={styles.settingBtn}
             onPress={() => navigation.navigate('Settings')}
             intensity={0.12}
           >
-            <GlassFill intensity={28} />
-            <GearIcon size={22} color="#A0A0B0" />
+            <Svg width={22} height={22} viewBox="0 0 27 27" fill="none">
+              <Path
+                d="M23.6061 14.1787L25.3441 15.7265C25.6651 15.9943 25.8795 16.3682 25.9487 16.7805C26.0178 17.1928 25.937 17.6162 25.721 17.9741L23.6254 21.5542C23.4628 21.8283 23.2306 22.0545 22.9525 22.2099C22.6711 22.3656 22.3551 22.4482 22.0335 22.4502C21.834 22.4514 21.6355 22.4216 21.4452 22.3618L19.2208 21.6273C18.8311 21.8772 18.4261 22.1009 18.0057 22.2983L17.5385 24.5537C17.4521 24.9685 17.2211 25.3392 16.8868 25.5996C16.5482 25.8647 16.1285 26.0046 15.6986 25.9957H11.3594C10.9295 26.0046 10.5098 25.8647 10.1712 25.5996C9.83762 25.3389 9.60735 24.9683 9.5214 24.5537L9.05229 22.2983C8.6374 22.0983 8.23486 21.8735 7.84684 21.6254L5.61474 22.3618C5.42441 22.4216 5.22593 22.4514 5.02643 22.4502C4.70548 22.4479 4.3902 22.3653 4.10937 22.2099C3.83144 22.055 3.59932 21.8295 3.43647 21.5561L1.26589 17.9741C1.04023 17.613 0.954008 17.182 1.02338 16.7618C1.09275 16.3417 1.31295 15.9613 1.64271 15.6919L3.37879 13.498V12.8174L1.64079 11.2696C1.31984 11.0018 1.10539 10.6279 1.03627 10.2156C0.967149 9.80327 1.04792 9.37985 1.26396 9.02197L3.43454 5.44187C3.59713 5.16782 3.82927 4.94163 4.10744 4.78623C4.38828 4.63081 4.70355 4.54819 5.02451 4.54589C5.22221 4.53341 5.42066 4.55157 5.61281 4.59972L7.8007 5.36881C8.19162 5.11886 8.59664 4.89518 9.01576 4.69778L9.48487 2.44244C9.57082 2.02784 9.80109 1.65719 10.1347 1.39648C10.4732 1.13142 10.893 0.991503 11.3228 1.0004H15.6256C16.0554 0.991503 16.4752 1.13142 16.8137 1.39648C17.1502 1.65989 17.3809 2.03097 17.4635 2.44244L17.9326 4.69778C18.3492 4.89646 18.751 5.12078 19.1381 5.37073L21.3721 4.63625C21.6201 4.55559 21.882 4.52727 22.1415 4.55308C22.4009 4.5789 22.6522 4.65829 22.8794 4.78623C23.1582 4.94389 23.3889 5.17077 23.5523 5.43995L25.721 9.02197C25.9497 9.38002 26.0403 9.80906 25.9759 10.229C25.9115 10.649 25.6965 11.0312 25.3711 11.3042L23.6061 12.8078V14.1787Z"
+                stroke="#FFFFFF"
+                strokeWidth={2}
+              />
+              <Path
+                d="M18.3043 13.4977C18.3043 14.7725 17.7979 15.9952 16.8965 16.8966C15.9951 17.7981 14.7726 18.3045 13.4978 18.3045C12.2231 18.3045 11.0006 17.7981 10.0992 16.8966C9.1978 15.9952 8.69141 14.7725 8.69141 13.4977C8.69141 12.2229 9.1978 11.0002 10.0992 10.0988C11.0006 9.19735 12.2231 8.69092 13.4978 8.69092C14.7726 8.69092 15.9951 9.19735 16.8965 10.0988C17.7979 11.0002 18.3043 12.2229 18.3043 13.4977Z"
+                stroke="#FFFFFF"
+                strokeWidth={2}
+              />
+            </Svg>
           </LiquidPressable>
         </View>
 
         {/* 프로필 헤더 (아바타 + 정보) */}
         <View style={styles.profileRow}>
           <GrainOverlay opacity={0.03} dotCount={60} />
-          {/* 아바타 — 구이 이펙트 서클 */}
+          {/* 아바타 — 순수 그라데이션 링 (글로우 없음) */}
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
-            <GooeyCircle size={104} color={NEON.purple} glowOpacity={0.6}>
-              <LinearGradient
-                colors={[NEON.cyan, NEON.purple, NEON.magenta]}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={styles.avatarRing}
-              >
+            <View ref={avatarRef} collapsable={false} style={styles.avatarRing}>
                 {profilePhoto ? (
                   <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
                 ) : (
                   <View style={styles.avatar}>
-                    <PersonIcon size={44} color="#A0A0B0" />
+                    <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
-              </LinearGradient>
-            </GooeyCircle>
+                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현 */}
+                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
+                  <Defs>
+                    <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                      <Stop stopColor="#000000" stopOpacity="0" />
+                      <Stop offset="1" stopColor="#FFFFFF" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
+                </Svg>
+                {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke) */}
+                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Defs>
+                    <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                      <Stop stopColor="#00D8F3" />
+                      <Stop offset="1" stopColor="#EC34F7" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
+                </Svg>
+            </View>
           </LiquidPressable>
 
           {/* 이름 · 위치 · 소개 · 통계 */}
           <View style={styles.profileInfo}>
             <Text style={styles.userName}>{profileName}</Text>
             {nickname ? <Text style={styles.userHandle}>@{handle}</Text> : null}
-            <Text style={styles.userLocation}>
-              {(() => {
-                const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
-                if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode) {
-                  const visit = COUNTRY_DATA[currentVisitedCountryCode] || { name: '일본', flag: '🇯🇵' };
-                  return `${visit.flag} ${visit.name} 여행 중`;
-                }
-                return `${home.flag} ${home.name}`;
-              })()}
-            </Text>
-            {bio ? <Text style={styles.userBio}>{bio}</Text> : null}
+            <View style={styles.statusRow}>
+              <Text style={styles.userLocation}>
+                {(() => {
+                  const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
+                  const visit = COUNTRY_DATA[currentVisitedCountryCode];
+                  // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
+                  if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
+                    return t('profile.traveling', { flag: visit.flag, name: visit.name });
+                  }
+                  return `${home.flag} ${home.name}`;
+                })()}
+              </Text>
+            </View>
             <View style={styles.statsRow}>
-              <StatCard value={String(travelStats.recordCount)} label="기록 수" grad={STAT_GRADS[0]} />
-              <StatCard value={String(followingUsers.length)} label="팔로잉" onPress={() => navigation.navigate('FollowingList')} grad={STAT_GRADS[1]} />
-              <StatCard value={String(travelStats.countryCount)} label="방문국가" grad={STAT_GRADS[2]} />
+              <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
+              <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
+              <StatCard value={String(followerCount)} label={t('profile.followers')} />
             </View>
           </View>
         </View>
 
-        {/* 배지 하이라이트 (구이 서클) */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={badgeHL.scroll}
-          contentContainerStyle={badgeHL.scrollContent}
-        >
-          {selectedBadgeIds.map((id) => {
-            const badge = BADGES.find(b => b.id === id);
-            if (!badge) return null;
-            return (
-              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
-            );
-          })}
-          <LiquidPressable
-            style={badgeHL.item}
-            onPress={() => setBadgeListVisible(true)}
-            intensity={0.1}
+        <View style={styles.divider} />
+
+        {/* Travel badge 섹션 (튜토리얼 강조 대상) */}
+        <View ref={badgeRef} collapsable={false}>
+          {/* Travel badge 헤더 */}
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>Travel badge</Text>
+            <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
+              <Text style={styles.sectionLink}>{t('profile.seeAll')}</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* 배지 하이라이트 (구이 서클) */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={badgeHL.scroll}
+            contentContainerStyle={badgeHL.scrollContent}
           >
-            <View style={badgeHL.moreCircle}>
-              <Text style={badgeHL.moreText}>{'전체\n보기'}</Text>
-            </View>
-          </LiquidPressable>
-        </ScrollView>
+            {selectedBadgeIds.map((id) => {
+              const badge = BADGES.find(b => b.id === id);
+              if (!badge) return null;
+              return (
+                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
+              );
+            })}
+          </ScrollView>
+        </View>
 
         <View style={styles.divider} />
 
-        {/* 여행 기록 헤더 */}
-        <View style={gridSt.gridHeaderRow}>
-          <Text style={gridSt.gridHeaderTitle}>여행 기록</Text>
-          <Text style={gridSt.tripCount}>{displayTrips.length}개의 여행</Text>
+        {/* Travel archive 헤더 (튜토리얼 강조 대상) */}
+        <View ref={archiveRef} collapsable={false}>
+          <View style={gridSt.gridHeaderRow}>
+            <Text style={styles.sectionTitle}>Travel archive</Text>
+          </View>
+          <Text style={styles.archiveSubtitle}>{t('profile.archiveCount', { count: displayTrips.length })}</Text>
         </View>
+
+        {displayTrips.length === 0 && (
+          <View style={{ alignItems: 'center', paddingVertical: 36, gap: 6 }}>
+            <Text style={{ fontSize: 40 }}>🗺️</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('profile.emptyTitle')}</Text>
+            <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center' }}>{t('profile.emptyDesc')}</Text>
+          </View>
+        )}
 
         {displayTrips.length > 0 && (
           <DraggableCardWrapper
@@ -1814,9 +1953,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                 <Text style={thumbSt.mainDate}>{displayTrips[0].date}</Text>
               </View>
               <View style={thumbSt.mainBadges}>
-                {displayTrips[0].records.map((rec) => (
-                  <LiquidPressable key={rec.id} style={thumbSt.mainBadge} intensity={0.15}>
-                    {VIEW_TYPE_BADGE[rec.viewType] || null}
+                {Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                  <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
+                    {VIEW_TYPE_BADGE[vt] || null}
                   </LiquidPressable>
                 ))}
               </View>
@@ -1880,9 +2019,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                   <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
                   <Text style={thumbSt.gridDate}>{trip.date}</Text>
                   <View style={thumbSt.gridBadges}>
-                    {trip.records.map((rec) => (
-                      <LiquidPressable key={rec.id} style={thumbSt.gridBadge} intensity={0.15}>
-                        {VIEW_TYPE_BADGE[rec.viewType] || null}
+                    {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                      <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
+                        {VIEW_TYPE_BADGE[vt] || null}
                       </LiquidPressable>
                     ))}
                   </View>
@@ -1922,6 +2061,13 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         setSelectedBadgeIds={setSelectedBadgeIds}
         earnedBadgeIds={earnedBadgeIds}
       />
+
+      {/* 프로필 튜토리얼 코치마크 */}
+      <MainCoachmark
+        visible={coachVisible}
+        steps={coachSteps}
+        onClose={() => setCoachVisible(false)}
+      />
     </View>
   );
 }
@@ -1950,8 +2096,13 @@ const styles = StyleSheet.create({
   // 헤더
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
+    // 목업(iPhone 17 - 52.svg) 정확 배치: 부모 content paddingHorizontal(16) 상쇄 후
+    // 워드마크 Svg 좌측 36px(잉크 ≈37.7), 기어 우측 24px
+    marginHorizontal: -16,
+    paddingLeft: 36,
+    paddingRight: 24,
     marginBottom: 24,
   },
   title: {
@@ -1962,51 +2113,32 @@ const styles = StyleSheet.create({
   settingBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(46,46,59,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    overflow: 'hidden',
   },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+    alignItems: 'flex-start',
+    gap: 20,
     marginBottom: 14,
-    paddingVertical: 16,
+    paddingVertical: 12,
     overflow: 'hidden',
     position: 'relative',
   },
   avatar: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     backgroundColor: '#1F1F22',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: 'rgba(168,85,247,0.6)',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 10,
   },
   avatarImg: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-    shadowColor: 'rgba(168,85,247,0.6)',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 1,
-    shadowRadius: 20,
-    elevation: 10,
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
   avatarText: {
     fontSize: 28,
@@ -2015,72 +2147,76 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    justifyContent: 'center',
+    justifyContent: 'flex-start',
+    paddingTop: 2,
   },
   userName: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 22,
+    fontWeight: '800',
     color: COLORS.white,
-    marginBottom: 2,
-    textShadowColor: 'rgba(191,133,252,0.4)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+    letterSpacing: 0.66,
+    marginBottom: 4,
   },
   userHandle: {
-    fontSize: 13,
-    color: COLORS.purpleNeon,
-    marginBottom: 2,
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AA54C1',
+    marginBottom: 6,
+  },
+  statusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   userLocation: {
     fontSize: 12,
-    color: '#CFC2D6',
-    letterSpacing: 0.6,
+    fontWeight: '600',
+    color: COLORS.white,
   },
-  userBio: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 6,
-    lineHeight: 16,
+  statusDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: COLORS.white,
+    marginLeft: 5,
+    marginTop: 7,
   },
 
-  // 통계 행
+  // 통계 행 — 상태 텍스트 아래, 3개 묶음 가로 정렬
   statsRow: {
     flexDirection: 'row',
-    gap: 6,
-    marginTop: 8,
+    alignItems: 'flex-start',
+    gap: 29, // 열 중심 간격 ≈60px 목표
+    marginTop: 23,
   },
-  statCard: {
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.32)',
-    overflow: 'hidden',
-  },
-  statCardContent: {
-    paddingVertical: 8,
-    paddingHorizontal: 14,
+  // 각 묶음: 숫자(위)+라벨(아래) 가운데 정렬
+  statCol: {
     alignItems: 'center',
   },
   avatarRing: {
-    width: 102,
-    height: 102,
-    borderRadius: 51,
-    padding: 3,
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 사진 위 글래스 틴트/림 오버레이 (110x110, 128 링 안에서 중앙)
+  avatarInner: {
+    position: 'absolute',
+    top: 9,
+    left: 9,
+  },
   statValue: {
-    fontSize: 13,
-    fontWeight: 'bold',
-    color: COLORS.white,
-    marginBottom: 1,
+    fontSize: 20,
+    fontWeight: '800', // 굵게 (Gilroy-Bold 쓰면 그걸로)
+    fontFamily: 'Inter_800ExtraBold',
+    color: '#FFFFFF',
+    lineHeight: 24,
   },
   statLabel: {
-    fontSize: 10,
-    color: '#CFC2D6',
-    letterSpacing: 0.4,
+    fontSize: 13,
+    color: '#FFFFFF',
+    marginTop: 4, // 숫자~라벨 ≈10px
+    lineHeight: 16,
   },
   followingExpandedWrap: {
     marginTop: 8,
@@ -2093,9 +2229,33 @@ const styles = StyleSheet.create({
   // 구분선
   divider: {
     height: 1,
-    backgroundColor: COLORS.divider,
-    marginHorizontal: -16,
-    marginBottom: 7,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    marginHorizontal: -1,
+    marginBottom: 16,
+  },
+  // 섹션 헤더 (Travel badge / Travel archive)
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    fontSize: 23,
+    fontFamily: 'Inter_800ExtraBold',
+    color: COLORS.white,
+  },
+  sectionLink: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#AA54C1',
+  },
+  archiveSubtitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#AA54C1',
+    marginTop: -4,
+    marginBottom: 16,
   },
   friendsSectionLabel: {
     fontSize: 13,
@@ -2667,20 +2827,31 @@ const gridSt = StyleSheet.create({
 
 // ─── 배지 하이라이트 스타일 ───
 const badgeHL = StyleSheet.create({
+  // 배지 원 — Ellipse 2989 (단색 반투명 회색) 채움. 테두리는 위에 SVG stroke 그라데이션으로 그림
+  circle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#D9D9D933', // #D9D9D9 20%
+
+
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   scroll: {
-    marginBottom: 7,
-    height: 88,
+    marginBottom: 16,
+    height: 72,
   },
   scrollContent: {
-    paddingLeft: 16,
+    paddingLeft: 4,
     paddingRight: 8,
-    gap: 14,
+    gap: 21,
     flexDirection: 'row',
     alignItems: 'center',
   },
   item: {
     alignItems: 'center',
-    width: 60,
+    width: 64,
   },
   glassCircle: {
     width: 60,
@@ -3056,13 +3227,11 @@ const thumbSt = StyleSheet.create({
   mainCard: {
     width: '100%',
     height: 260,
-    borderRadius: 32,
+    borderRadius: 20,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginBottom: 12,
+    backgroundColor: 'rgba(217,217,217,0.2)',
+    marginBottom: 16,
   },
   mainEmojiWrap: {
     flex: 1,
@@ -3117,12 +3286,10 @@ const thumbSt = StyleSheet.create({
   gridCard: {
     width: THUMB_WIDTH,
     height: 210,
-    borderRadius: 24,
+    borderRadius: 30,
     overflow: 'hidden',
     position: 'relative',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.28)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(217,217,217,0.2)',
   },
   gridEmojiWrap: {
     flex: 1,

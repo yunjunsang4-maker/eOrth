@@ -5,7 +5,6 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Dimensions,
   Pressable,
   Animated,
 } from 'react-native';
@@ -13,14 +12,27 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
 const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
+
+// 헤더 'analysis' 워드마크 (analysis.svg) — 소셜 글자 본체(x-height ≈18.9, 자연 1:1)와 동일 크기로
+// analysis x-height(≈27.5/52)를 소셜과 같게: 52 × 18.9/27.5 ≈ 36
+const AnalysisWordmark = ({ height = 36, color = Colors.textPrimary }: { height?: number; color?: string }) => (
+  <Svg width={(218 / 52) * height} height={height} viewBox="0 0 218 52" fill="none">
+    <SvgPath
+      d="M20.7349 12.76H29.8649V40.26H20.7349V37.73C18.8649 39.93 16.2616 41.03 12.9249 41.03C9.25827 41.03 6.17827 39.655 3.68493 36.905C1.22827 34.1183 -6.83479e-05 30.6533 -6.83479e-05 26.51C-6.83479e-05 22.3667 1.22827 18.92 3.68493 16.17C6.17827 13.3833 9.25827 11.99 12.9249 11.99C16.2616 11.99 18.8649 13.09 20.7349 15.29V12.76ZM10.7799 30.855C11.8433 31.955 13.2366 32.505 14.9599 32.505C16.6833 32.505 18.0766 31.955 19.1399 30.855C20.2033 29.755 20.7349 28.3067 20.7349 26.51C20.7349 24.7133 20.2033 23.265 19.1399 22.165C18.0766 21.065 16.6833 20.515 14.9599 20.515C13.2366 20.515 11.8433 21.065 10.7799 22.165C9.7166 23.265 9.18493 24.7133 9.18493 26.51C9.18493 28.3067 9.7166 29.755 10.7799 30.855ZM53.5828 11.99C56.5528 11.99 58.9728 13.0167 60.8428 15.07C62.7495 17.0867 63.7028 20.0017 63.7028 23.815V40.26H54.5728V24.97C54.5728 23.54 54.1878 22.4583 53.4178 21.725C52.6845 20.9917 51.6945 20.625 50.4478 20.625C49.0178 20.625 47.8995 21.065 47.0928 21.945C46.3228 22.7883 45.9378 24.0167 45.9378 25.63V40.26H36.8078V12.76H45.9378V15.51C47.5878 13.1633 50.1362 11.99 53.5828 11.99ZM89.6697 12.76H98.7997V40.26H89.6697V37.73C87.7997 39.93 85.1964 41.03 81.8597 41.03C78.193 41.03 75.113 39.655 72.6197 36.905C70.163 34.1183 68.9347 30.6533 68.9347 26.51C68.9347 22.3667 70.163 18.92 72.6197 16.17C75.113 13.3833 78.193 11.99 81.8597 11.99C85.1964 11.99 87.7997 13.09 89.6697 15.29V12.76ZM79.7147 30.855C80.778 31.955 82.1714 32.505 83.8947 32.505C85.618 32.505 87.0114 31.955 88.0747 30.855C89.138 29.755 89.6697 28.3067 89.6697 26.51C89.6697 24.7133 89.138 23.265 88.0747 22.165C87.0114 21.065 85.618 20.515 83.8947 20.515C82.1714 20.515 80.778 21.065 79.7147 22.165C78.6514 23.265 78.1197 24.7133 78.1197 26.51C78.1197 28.3067 78.6514 29.755 79.7147 30.855ZM105.743 40.26V0.110009H114.873V40.26H105.743ZM139.222 12.76H149.342L139.937 39.82C138.47 43.9633 136.399 46.9517 133.722 48.785C131.045 50.6183 127.58 51.4433 123.327 51.26V42.68C125.27 42.68 126.737 42.4417 127.727 41.965C128.717 41.4883 129.524 40.6267 130.147 39.38L119.147 12.76H129.377L134.932 28.71L139.222 12.76ZM160.703 20.79C160.703 21.3033 161.161 21.725 162.078 22.055C163.031 22.385 164.168 22.6967 165.488 22.99C166.844 23.2833 168.183 23.705 169.503 24.255C170.859 24.7683 171.996 25.6667 172.913 26.95C173.866 28.2333 174.343 29.8467 174.343 31.79C174.343 34.9433 173.169 37.2717 170.823 38.775C168.476 40.2783 165.689 41.03 162.463 41.03C156.303 41.03 152.196 38.8483 150.143 34.485L158.118 30.47C158.814 32.4867 160.244 33.495 162.408 33.495C164.058 33.495 164.883 33 164.883 32.01C164.883 31.4967 164.424 31.075 163.508 30.745C162.591 30.415 161.473 30.085 160.153 29.755C158.833 29.425 157.513 28.985 156.193 28.435C154.873 27.885 153.754 27.005 152.838 25.795C151.921 24.5483 151.463 23.0267 151.463 21.23C151.463 18.2967 152.544 16.0233 154.708 14.41C156.871 12.7967 159.474 11.99 162.518 11.99C167.944 11.99 171.721 14.1167 173.848 18.37L166.148 21.835C165.341 20.2583 164.204 19.47 162.738 19.47C161.381 19.47 160.703 19.91 160.703 20.79ZM187.8 8.96501C186.773 9.99168 185.545 10.505 184.115 10.505C182.685 10.505 181.438 9.99168 180.375 8.96501C179.348 7.90167 178.835 6.65501 178.835 5.22501C178.835 3.79501 179.348 2.56667 180.375 1.54001C181.438 0.51334 182.685 6.85453e-06 184.115 6.85453e-06C185.545 6.85453e-06 186.773 0.51334 187.8 1.54001C188.863 2.56667 189.395 3.79501 189.395 5.22501C189.395 6.65501 188.863 7.90167 187.8 8.96501ZM179.55 40.26V12.76H188.68V40.26H179.55ZM204.178 20.79C204.178 21.3033 204.637 21.725 205.553 22.055C206.507 22.385 207.643 22.6967 208.963 22.99C210.32 23.2833 211.658 23.705 212.978 24.255C214.335 24.7683 215.472 25.6667 216.388 26.95C217.342 28.2333 217.818 29.8467 217.818 31.79C217.818 34.9433 216.645 37.2717 214.298 38.775C211.952 40.2783 209.165 41.03 205.938 41.03C199.778 41.03 195.672 38.8483 193.618 34.485L201.593 30.47C202.29 32.4867 203.72 33.495 205.883 33.495C207.533 33.495 208.358 33 208.358 32.01C208.358 31.4967 207.9 31.075 206.983 30.745C206.067 30.415 204.948 30.085 203.628 29.755C202.308 29.425 200.988 28.985 199.668 28.435C198.348 27.885 197.23 27.005 196.313 25.795C195.397 24.5483 194.938 23.0267 194.938 21.23C194.938 18.2967 196.02 16.0233 198.183 14.41C200.347 12.7967 202.95 11.99 205.993 11.99C211.42 11.99 215.197 14.1167 217.323 18.37L209.623 21.835C208.817 20.2583 207.68 19.47 206.213 19.47C204.857 19.47 204.178 19.91 204.178 20.79Z"
+      fill={color}
+    />
+  </Svg>
+);
 
 // ─── 눌림 애니메이션 카드 ───
 // Pressable 에도 레이아웃 스타일(flex, margin 등)을 동시 적용해 flex 배치가 깨지지 않게 함
@@ -124,17 +136,28 @@ function PressCard({
   );
 }
 
-const { width } = Dimensions.get('window');
-
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
+  };
+
+  // 대륙 키(한글, COUNTRIES 데이터 기준)를 표시용 라벨로 변환
+  const continentName = (cont: string) => {
+    switch (cont) {
+      case '아시아': return t('stats.continentAsia');
+      case '유럽': return t('stats.continentEurope');
+      case '아메리카': return t('stats.continentAmerica');
+      case '오세아니아': return t('stats.continentOceania');
+      case '아프리카': return t('stats.continentAfrica');
+      default: return cont;
+    }
   };
 
   // ── 통계 튜토리얼(코치마크) — 계정당 통계 탭 첫 진입 시 1회 ──
@@ -171,13 +194,13 @@ export default function StatsScreen() {
           setCoachSteps([
             {
               rect: null,
-              title: '여행 통계 📊',
-              desc: '그동안의 여행을 한눈에 모았어요. 방문한 나라·도시·기록 수와 평가까지 통계로 확인할 수 있어요.',
+              title: t('stats.coachTitle'),
+              desc: t('stats.coachDesc'),
             },
             {
               rect: hero,
-              title: '상세 통계 보기',
-              desc: '각 통계 카드를 탭하면 더 자세한 상세 통계를 볼 수 있어요.',
+              title: t('stats.coach2Title'),
+              desc: t('stats.coach2Desc'),
             },
           ]);
           setCoachVisible(true);
@@ -390,11 +413,11 @@ export default function StatsScreen() {
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Text style={styles.headerTitle}>통계</Text>
+      <View style={[styles.header, { paddingTop: insets.top + 17 }]}>
+        <AnalysisWordmark height={36} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: 110 }]}>
         {/* World coverage hero */}
         <View ref={heroRef} collapsable={false}>
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
@@ -405,7 +428,7 @@ export default function StatsScreen() {
               <View style={styles.heroTop}>
                 <View>
                   <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
-                  <Text style={styles.heroLabel}>🌏 세계를 여행했어요</Text>
+                  <Text style={styles.heroLabel}>🌏 {t('comp2.worldTraveled')}</Text>
                 </View>
                 <View style={styles.globeMini}>
                   <LinearGradient colors={['#3B1E8E', '#7B61FF']} style={styles.globeMiniGrad} />
@@ -423,19 +446,19 @@ export default function StatsScreen() {
               <View style={styles.heroStats}>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{countryCount}</Text>
-                  <Text style={styles.miniStatLbl}>나라</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniCountries')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{cityCount}</Text>
-                  <Text style={styles.miniStatLbl}>도시</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniCities')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{recordsCount}</Text>
-                  <Text style={styles.miniStatLbl}>기록</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniRecords')}</Text>
                 </View>
                 <View style={styles.miniStat}>
                   <Text style={styles.miniStatVal}>{totalDays}</Text>
-                  <Text style={styles.miniStatLbl}>일수</Text>
+                  <Text style={styles.miniStatLbl}>{t('stats.miniDays')}</Text>
                 </View>
               </View>
             </LinearGradient>
@@ -446,7 +469,7 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 1번 - Yearly bar chart */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('yearly')}>
-            <Text style={styles.cardTitle}>연도별 여행 횟수</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardYearlyTrips')}</Text>
             <View style={styles.barChart}>
               {VISIT_HISTORY.map((v, i) => (
                 <View key={i} style={styles.barGroup}>
@@ -469,12 +492,12 @@ export default function StatsScreen() {
 
           {/* 2번 - Region breakdown */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('region')}>
-            <Text style={styles.cardTitle}>대륙별 방문 현황</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardContinents')}</Text>
             {REGION_STATS.map((r, i) => (
               <View key={i} style={styles.regionRow}>
                 <View style={styles.regionLeft}>
                   <View style={[styles.regionDot, { backgroundColor: r.color }]} />
-                  <Text style={styles.regionLabel}>{r.label}</Text>
+                  <Text style={styles.regionLabel}>{continentName(r.label)}</Text>
                 </View>
                 <View style={styles.regionBarBg}>
                   <LinearGradient
@@ -484,7 +507,7 @@ export default function StatsScreen() {
                     style={[styles.regionBar, { width: `${r.pct * 100}%` }]}
                   />
                 </View>
-                <Text style={styles.regionCount}>{r.count}개</Text>
+                <Text style={styles.regionCount}>{t('stats.countUnit', { count: r.count })}</Text>
               </View>
             ))}
           </PressCard>
@@ -494,7 +517,7 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 3번 - Top countries */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('countries')}>
-            <Text style={styles.cardTitle}>가장 많이 간 나라</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardTopCountries')}</Text>
             {TOP_COUNTRIES.length > 0 ? (
               TOP_COUNTRIES.map((c) => (
                 <View key={c.rank} style={styles.topRow}>
@@ -503,17 +526,17 @@ export default function StatsScreen() {
                   </Text>
                   <Text style={styles.topFlag}>{c.flag}</Text>
                   <Text style={styles.topName}>{c.name}</Text>
-                  <Text style={styles.topVisits}>{c.visits}회</Text>
+                  <Text style={styles.topVisits}>{t('stats.visitsUnit', { count: c.visits })}</Text>
                 </View>
               ))
             ) : (
-              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>기록이 없습니다</Text>
+              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>{t('stats.noRecords')}</Text>
             )}
           </PressCard>
 
           {/* 4번 - Travel rating stats */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('rating')}>
-            <Text style={styles.cardTitle}>여행 평가 통계</Text>
+            <Text style={styles.cardTitle}>{t('stats.cardRating')}</Text>
             <View style={styles.ratingOverview}>
               <Text style={styles.ratingBig}>{avgRating}</Text>
               <View style={styles.ratingStars}>
@@ -523,7 +546,7 @@ export default function StatsScreen() {
                   </Text>
                 ))}
               </View>
-              <Text style={styles.ratingCount}>총 {myRecords.length}개 기록 기준</Text>
+              <Text style={styles.ratingCount}>{t('stats.ratingBasis', { count: myRecords.length })}</Text>
             </View>
             <View style={styles.ratingBars}>
               {RATING_STATS.map((r) => (
@@ -560,8 +583,13 @@ export default function StatsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   header: {
-    paddingHorizontal: Spacing[6],
-    paddingBottom: Spacing[4],
+    // 소셜탭 헤더와 동일 배치: 좌측 36, 상단 정렬
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingLeft: 36,
+    paddingRight: Spacing[6],
+    paddingBottom: Spacing[3],
   },
   headerTitle: {
     fontSize: Typography.fontSize['2xl'],

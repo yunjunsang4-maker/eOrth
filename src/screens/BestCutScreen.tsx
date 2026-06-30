@@ -8,7 +8,7 @@
  * 표시는 thumbnailUri(file://) 우선 → 없으면 원본 uri.
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,20 +20,22 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { Colors } from '../constants/colors';
 import { usePhotoAI } from '../hooks/usePhotoAI';
 import type { PhotoMeta, SpotGroup } from '../services/photoAI/types';
 
-function formatSpan(start: number, end: number): string {
+function formatSpan(start: number, end: number, tr: TFunction): string {
   const d = new Date(start);
-  const date = `${d.getMonth() + 1}월 ${d.getDate()}일`;
-  const t = (ms: number) => {
+  const date = tr('bestCut.monthDay', { m: d.getMonth() + 1, d: d.getDate() });
+  const hm = (ms: number) => {
     const x = new Date(ms);
     return `${String(x.getHours()).padStart(2, '0')}:${String(
       x.getMinutes()
     ).padStart(2, '0')}`;
   };
-  return start === end ? `${date} ${t(start)}` : `${date} ${t(start)}~${t(end)}`;
+  return start === end ? `${date} ${hm(start)}` : `${date} ${hm(start)}~${hm(end)}`;
 }
 
 function SpotCard({
@@ -43,15 +45,16 @@ function SpotCard({
   group: SpotGroup;
   photosById: Record<string, PhotoMeta>;
 }) {
+  const { t } = useTranslation();
   const bestIds = group.bestCutIds ?? [];
   if (bestIds.length === 0) return null;
 
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
-        <Text style={styles.cardTitle}>{formatSpan(group.startTime, group.endTime)}</Text>
+        <Text style={styles.cardTitle}>{formatSpan(group.startTime, group.endTime, t)}</Text>
         <Text style={styles.cardMeta}>
-          {group.photoIds.length}장 중 {bestIds.length}장 추천
+          {t('bestCut.recommendCount', { total: group.photoIds.length, best: bestIds.length })}
         </Text>
       </View>
       <View style={styles.thumbRow}>
@@ -69,6 +72,7 @@ function SpotCard({
 }
 
 export default function BestCutScreen() {
+  const { t } = useTranslation();
   const {
     loading,
     analyzing,
@@ -94,8 +98,8 @@ export default function BestCutScreen() {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text style={styles.title}>AI 베스트컷</Text>
-        <Text style={styles.subtitle}>여행 사진 중 가장 잘 나온 순간을 골라드려요</Text>
+        <Text style={styles.title}>{t('bestCut.title')}</Text>
+        <Text style={styles.subtitle}>{t('bestCut.subtitle')}</Text>
       </View>
 
       <View style={styles.controls}>
@@ -107,12 +111,12 @@ export default function BestCutScreen() {
           {analyzing ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
-            <Text style={styles.analyzeBtnText}>지금 분석</Text>
+            <Text style={styles.analyzeBtnText}>{t('bestCut.analyzeNow')}</Text>
           )}
         </Pressable>
 
         <View style={styles.bgToggle}>
-          <Text style={styles.bgToggleLabel}>백그라운드 자동 분석</Text>
+          <Text style={styles.bgToggleLabel}>{t('bestCut.bgAuto')}</Text>
           <Switch
             value={bgOn}
             onValueChange={toggleBackground}
@@ -132,7 +136,7 @@ export default function BestCutScreen() {
       ) : recommendedGroups.length === 0 ? (
         <View style={styles.center}>
           <Text style={styles.emptyText}>
-            아직 추천이 없어요.{'\n'}'지금 분석'을 눌러 갤러리를 분석해 보세요.
+            {t('bestCut.empty')}
           </Text>
         </View>
       ) : (

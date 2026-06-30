@@ -9,6 +9,7 @@ import {
   Pressable,
   Alert,} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -36,6 +37,7 @@ function ArchivedCard({
   onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
+  const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
 
   const handleUnarchive = () => {
@@ -46,11 +48,11 @@ function ArchivedCard({
   const handleDeletePress = () => {
     setMenuVisible(false);
     Alert.alert(
-      '정말 삭제할까요?',
-      '이 작업은 되돌릴 수 없어요.',
+      t('social.deleteConfirmTitle'),
+      t('social.deleteConfirmMsg'),
       [
-        { text: '취소', style: 'cancel' },
-        { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
       ]
     );
   };
@@ -67,13 +69,13 @@ function ArchivedCard({
           <View style={s.metaRow}>
             <Text style={s.countryTag}>{item.country}</Text>
             <Text style={s.typeTag}>
-              {item.viewType === 'blog' ? '블로그' : item.viewType === 'snap' ? '스냅' : item.viewType === 'cut' ? '스트립' : '피드'}
+              {item.viewType === 'blog' ? t('main.formatBlog') : item.viewType === 'snap' ? t('main.formatSnap') : item.viewType === 'cut' ? t('main.formatCut') : t('main.formatFeed')}
             </Text>
             <Text style={s.dateMeta}>{item.date}</Text>
           </View>
         </View>
         <View>
-          <TouchableOpacity onPress={() => setMenuVisible((v) => !v)}>
+          <TouchableOpacity onPress={() => setMenuVisible((v) => !v)} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
             <Text style={s.moreIcon}>···</Text>
           </TouchableOpacity>
           {menuVisible && (
@@ -82,12 +84,12 @@ function ArchivedCard({
               <View style={s.dropdownMenu}>
                 <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>📤</Text>
-                  <Text style={s.menuItemText}>보관 해제</Text>
+                  <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDeletePress} activeOpacity={0.7}>
                   <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제</Text>
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
                 </TouchableOpacity>
               </View>
             </>
@@ -124,6 +126,7 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // 보관된 게시물 화면
 // ─────────────────────────────────────────────
 export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
+  const { t } = useTranslation();
   const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -150,11 +153,11 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   });
 
   const TAB_LABELS = {
-    all: '전체',
-    feed: '피드',
-    blog: '블로그',
-    snap: '스냅',
-    cut: '스트립',
+    all: t('misc.all'),
+    feed: t('main.formatFeed'),
+    blog: t('main.formatBlog'),
+    snap: t('main.formatSnap'),
+    cut: t('main.formatCut'),
   };
 
   const showToast = (msg: string) => {
@@ -167,7 +170,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
   const handleUnarchive = (id: string) => {
     unarchiveRecord(id);
-    showToast('게시물이 소셜 탭에 다시 표시돼요');
+    showToast(t('misc.unarchivedToast'));
   };
 
   const handleDelete = (id: string) => {
@@ -175,18 +178,18 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   };
 
   const getEmptyMessage = () => {
-    if (activeTab === 'all') return '보관된 게시물이 없어요';
-    return `보관된 ${TAB_LABELS[activeTab]}이 없어요`;
+    if (activeTab === 'all') return t('misc.noArchived');
+    return t('misc.noArchivedTab', { label: TAB_LABELS[activeTab] });
   };
 
   return (
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
+        <TouchableOpacity style={s.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>보관된 게시물</Text>
+        <Text style={s.headerTitle}>{t('misc.archivedTitle')}</Text>
         <View style={s.headerPlaceholder} />
       </View>
 

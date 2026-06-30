@@ -39,17 +39,6 @@
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.READ_CONTACTS",
-        "android.permission.WRITE_CONTACTS",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.ACCESS_MEDIA_LOCATION",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.READ_CONTACTS",
         "android.permission.WRITE_CONTACTS"
       ]
     },
@@ -84,7 +73,9 @@
       "expo-background-task",
       "./modules/photo-vision/withMlkitVisionDependencies",
       "expo-video",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-secure-store",
+      "expo-localization"
     ],
     "extra": {
       "eas": {

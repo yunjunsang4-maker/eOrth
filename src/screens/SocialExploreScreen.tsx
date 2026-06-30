@@ -11,6 +11,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
@@ -74,8 +75,9 @@ function CreatorItem({ initials, name }: { initials: string; name: string }) {
 // 서브 컴포넌트: 큰 기록 카드 (탐색 탭)
 // ─────────────────────────────────────────────
 function LargeRecordCard({ item }: { item: TravelRecord }) {
+  const { t } = useTranslation();
   const elapsed = Math.round((Date.now() - item.timestamp) / 3600000);
-  const timeStr = elapsed < 1 ? '방금 전' : elapsed < 24 ? `${elapsed}시간 전` : item.date;
+  const timeStr = elapsed < 1 ? t('time.justNow') : elapsed < 24 ? t('time.hourAgo', { n: elapsed }) : item.date;
   return (
     <View style={s.largeCard}>
       <View style={s.largeCardInner}>
@@ -114,6 +116,7 @@ function SmallRecordCard({ item }: { item: TravelRecord }) {
 // 서브 컴포넌트: 광고 배너 (실제 광고로 교체 가능)
 // ─────────────────────────────────────────────
 function AdBanner() {
+  const { t } = useTranslation();
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={() => {}}>
       <LinearGradient
@@ -128,12 +131,12 @@ function AdBanner() {
         {/* 중앙 텍스트 */}
         <View style={s.adTextWrap}>
           <Text style={s.adTitle}>eOrth Premium</Text>
-          <Text style={s.adSubtitle}>더 많은 기능을 경험해보세요</Text>
+          <Text style={s.adSubtitle}>{t('misc.adSubtitle')}</Text>
         </View>
 
         {/* 오른쪽 버튼 */}
         <View style={s.adBtn}>
-          <Text style={s.adBtnText}>보기</Text>
+          <Text style={s.adBtnText}>{t('misc.adView')}</Text>
         </View>
       </LinearGradient>
     </TouchableOpacity>
@@ -144,6 +147,7 @@ function AdBanner() {
 // 탐색 화면
 // ─────────────────────────────────────────────
 export default function SocialExploreScreen() {
+  const { t } = useTranslation();
   const { records } = useRecords();
   const publicRecords = records.filter((r) => r.visibility === 'public');
   const largeCard = publicRecords[0];
@@ -158,7 +162,7 @@ export default function SocialExploreScreen() {
   return (
     <View style={s.container}>
       {/* 보이저 라벨 - 고정 */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><SparkleIcon size={16} color="#A1A1B0" /><Text style={[s.sectionTitle, s.explorePadding]}>보이저</Text></View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><SparkleIcon size={16} color="#A1A1B0" /><Text style={[s.sectionTitle, s.explorePadding]}>{t('misc.voyager')}</Text></View>
 
       {/* 보이저 가로 스크롤 - 고정 */}
       <ScrollView
@@ -177,10 +181,10 @@ export default function SocialExploreScreen() {
 
       {/* 최근 공개 기록만 스크롤 */}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.exploreScroll}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><GlobeIcon size={16} color="#A1A1B0" /><Text style={[s.sectionTitle, { marginTop: Spacing[2] }]}>최근 공개 기록</Text></View>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}><GlobeIcon size={16} color="#A1A1B0" /><Text style={[s.sectionTitle, { marginTop: Spacing[2] }]}>{t('misc.recentPublic')}</Text></View>
 
         {publicRecords.length === 0 ? (
-          <Text style={s.emptyText}>아직 공개된 기록이 없어요</Text>
+          <Text style={s.emptyText}>{t('misc.noPublic')}</Text>
         ) : (
           <>
             {largeCard && <LargeRecordCard item={largeCard} />}

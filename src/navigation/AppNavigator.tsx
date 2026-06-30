@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect } from 'react';
+import { Linking } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
@@ -15,6 +16,7 @@ import NotificationScreen from '../screens/NotificationScreen';
 import NewRecordScreen from '../screens/NewRecordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import FriendSearchScreen from '../screens/FriendSearchScreen';
+import PhoneConsentScreen from '../screens/PhoneConsentScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import ArchivedPostsScreen from '../screens/ArchivedPostsScreen';
 import FriendProfileScreen from '../screens/FriendProfileScreen';
@@ -36,6 +38,7 @@ import DMScreen from '../screens/DMScreen';
 import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
+import { supabase } from '../services/supabase';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -59,6 +62,39 @@ const darkTheme = {
 };
 
 export default function AppNavigator() {
+  // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
+  useEffect(() => {
+    const handleUrl = (url: string | null) => {
+      if (!url) return;
+      const m = /eorth:\/\/user\/(.+)$/i.exec(url.trim());
+      if (!m) return;
+      const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
+      if (!handle || handle === 'unknown') return;
+      // ts: 같은 핸들로 재진입해도 화면이 검색어를 다시 채우도록 매번 새 값 전달
+      const go = () => navigationRef.current?.navigate('FriendSearch', { initialQuery: handle, ts: Date.now() });
+      // 콜드 스타트면 네비게이터 준비를 기다렸다 이동
+      if (navigationRef.current?.isReady()) go();
+      else setTimeout(go, 1000);
+    };
+    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    Linking.getInitialURL().then(handleUrl).catch(() => {});
+    return () => sub.remove();
+  }, []);
+
+  // 세션 무효화 대응: refresh 토큰 만료·서버측 로그아웃 등으로 SIGNED_OUT 이 발생하면
+  // 로그인 플로우(Splash)로 강제 이동한다. 토큰만 끊기고 화면은 로그인 상태로 남아
+  // API가 401만 받던 문제를 막는다. (이미 인증 전 화면이면 중복 이동·루프 방지)
+  useEffect(() => {
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event !== 'SIGNED_OUT') return;
+      const current = navigationRef.current?.getCurrentRoute()?.name;
+      if (current && ['Splash', 'AppIntro', 'Login'].includes(current)) return;
+      navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] });
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
   return (
     <NavigationContainer theme={darkTheme} ref={navigationRef}>
       <Stack.Navigator
@@ -118,6 +154,7 @@ export default function AppNavigator() {
         <Stack.Screen name="DM" component={DMScreen} />
         <Stack.Screen name="BestCut" component={BestCutScreen} />
         <Stack.Screen name="FriendSearch" component={FriendSearchScreen} />
+        <Stack.Screen name="PhoneConsent" component={PhoneConsentScreen} />
         <Stack.Screen name="BlockedUsers" component={BlockedUsersScreen} />
         <Stack.Screen name="ArchivedPosts" component={ArchivedPostsScreen} />
         <Stack.Screen name="FriendProfile" component={FriendProfileScreen} />

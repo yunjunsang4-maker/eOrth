@@ -1,5 +1,4 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Path, Circle, G, Rect } from 'react-native-svg';
 import { Colors } from '../../constants';
 

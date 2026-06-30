@@ -17,10 +17,14 @@ import {
   Image,
   Linking,
   Animated,
+  Easing,
   PanResponder,
   ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
+import { useTranslation } from 'react-i18next';
+import { WebView } from 'react-native-webview';
+import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
   useSharedValue, useAnimatedStyle, useAnimatedScrollHandler,
   interpolate, Extrapolation, withTiming, withSpring, runOnJS,
@@ -34,15 +38,26 @@ import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
-import type { BlogBlock, HeadingBlock } from '../types/blogBlocks';
+import type { BlogBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
-import { stickers } from '../components/stickers';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker } from '../services/social';
+import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+
+// 네컷(스트립) 미리보기를 프레임 규격(가로/세로 비율)에 딱 맞게 — 레터박스(여백) 제거
+const cutFitStyle = (layout?: import('../constants/cutFrames').CutLayout) => {
+  const aspect = (layout && CUT_LAYOUTS[layout]?.aspect) || 3 / 4; // width / height
+  const maxW = SCREEN_W - 40;
+  const maxH = SCREEN_H * 0.7;
+  let w = maxW;
+  let h = maxW / aspect;
+  if (h > maxH) { h = maxH; w = maxH * aspect; }
+  return { width: w, height: h };
+};
 
 const C = {
   bg: '#0A0A0F',
@@ -244,6 +259,56 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
 };
 
 // ─── 블로그 블록 렌더러 ───
+// ─── 블로그 영상 플레이어 (로컬: expo-video, 임베드: WebView) ───
+const BlogLocalVideo = ({ uri }: { uri: string }) => {
+  const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = false; });
+  return (
+    <VideoView style={blogS.video} player={player} contentFit="contain" nativeControls allowsFullscreen />
+  );
+};
+
+const MOBILE_UA = 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+
+const getPlayableVideoUrl = (uri: string) => {
+  const naverEmbedMatch = uri.match(/tv\.naver\.com\/embed\/([A-Za-z0-9]+)/);
+  if (naverEmbedMatch) return `https://m.tv.naver.com/v/${naverEmbedMatch[1]}`;
+  const playerMatch = uri.match(/player\.naver\.com[^"]*vid=([A-Za-z0-9]+)/);
+  if (playerMatch) return `https://m.tv.naver.com/v/${playerMatch[1]}`;
+  return uri;
+};
+
+const BlogVideoBlock = ({ uri, caption }: { uri: string; caption?: string }) => {
+  const { t } = useTranslation();
+  const isLocal = uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/');
+  const isEmbed = uri.startsWith('http');
+  return (
+    <View style={blogS.imageWrap}>
+      {isLocal ? (
+        <BlogLocalVideo uri={uri} />
+      ) : isEmbed ? (
+        <View style={blogS.video}>
+          <WebView
+            source={{ uri: getPlayableVideoUrl(uri) }}
+            style={{ flex: 1, backgroundColor: '#000' }}
+            userAgent={MOBILE_UA}
+            allowsInlineMediaPlayback
+            mediaPlaybackRequiresUserAction={false}
+            allowsFullscreenVideo
+            javaScriptEnabled
+            domStorageEnabled
+          />
+        </View>
+      ) : (
+        <TouchableOpacity style={[blogS.video, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={0.7} onPress={() => Linking.openURL(uri).catch(() => {})}>
+          <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
+          <Text style={{ color: '#A1A1B0', fontSize: 12, marginTop: 8 }}>{t('blog.externalVideo')}</Text>
+        </TouchableOpacity>
+      )}
+      {caption ? <Text style={blogS.caption}>{caption}</Text> : null}
+    </View>
+  );
+};
+
 const BlogBlockRenderer = ({
   block,
   fontScale,
@@ -357,22 +422,8 @@ const BlogBlockRenderer = ({
           </View>
         </TouchableOpacity>
       );
-    case 'sticker': {
-      const found = stickers.find((s) => s.id === block.stickerId);
-      if (found) {
-        const StickerComp = found.component;
-        return (
-          <View style={blogS.stickerWrap}>
-            <StickerComp size={80} />
-          </View>
-        );
-      }
-      return (
-        <View style={blogS.stickerWrap}>
-          <Text style={blogS.stickerFallback}>{block.stickerName}</Text>
-        </View>
-      );
-    }
+    case 'video':
+      return <BlogVideoBlock uri={block.uri} caption={block.caption} />;
     case 'file': {
       const sizeStr = block.fileSize ? (block.fileSize < 1024 * 1024 ? `${(block.fileSize / 1024).toFixed(0)}KB` : `${(block.fileSize / (1024 * 1024)).toFixed(1)}MB`) : '';
       return (
@@ -398,12 +449,13 @@ const TableOfContents = ({
   headings: { id: string; level: number; text: string }[];
   onPress: (id: string) => void;
 }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   if (headings.length === 0) return null;
   return (
     <View style={blogS.tocWrap}>
       <TouchableOpacity style={blogS.tocToggle} onPress={() => setOpen(!open)} activeOpacity={0.7}>
-        <Text style={blogS.tocToggleText}>📋 목차</Text>
+        <Text style={blogS.tocToggleText}>📋 {t('comp2.toc')}</Text>
         <Text style={blogS.tocArrow}>{open ? '▲' : '▼'}</Text>
       </TouchableOpacity>
       {open &&
@@ -477,25 +529,25 @@ function SnapCubePage({ index, scrollX, width, leftCube, rightCube, children }: 
 function SnapViewerModal({
   visible,
   onClose,
-  viewers = [
-    { name: '김서연', handle: 'seoyeon_l', time: '5분 전', emoji: '🌸' },
-    { name: '김민준', handle: 'minjun_k', time: '20분 전', emoji: '⚡' },
-    { name: '박지훈', handle: 'jihoon_p', time: '1시간 전', emoji: '🎒' },
-  ]
+  viewers = [],
 }: {
   visible: boolean;
   onClose: () => void;
-  viewers?: any[];
+  viewers?: { handle: string; name: string; time: number; emoji?: string }[];
 }) {
+  const { t } = useTranslation();
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={viewerS.root}>
+      <View style={viewerS.root} accessibilityViewIsModal>
         {/* 드래그바 */}
         <View style={viewerS.handle} />
-        <Text style={viewerS.title}>이 스냅을 본 친구들</Text>
-        <Text style={viewerS.subtitle}>총 {viewers.length}명이 읽음</Text>
-        
+        <Text style={viewerS.title}>{t('postDetail.snapViewersTitle')}</Text>
+        <Text style={viewerS.subtitle}>{t('postDetail.totalReadN', { count: viewers.length })}</Text>
+
         <ScrollView contentContainerStyle={viewerS.list} showsVerticalScrollIndicator={false}>
+          {viewers.length === 0 && (
+            <Text style={viewerS.subtitle}>{t('postDetail.noSnapViewers')}</Text>
+          )}
           {viewers.map((v, i) => (
             <View key={i} style={viewerS.row}>
               <View style={viewerS.avatar}>
@@ -511,7 +563,7 @@ function SnapViewerModal({
         </ScrollView>
         
         <TouchableOpacity style={viewerS.closeBtn} onPress={onClose} activeOpacity={0.8}>
-          <Text style={viewerS.closeBtnText}>닫기</Text>
+          <Text style={viewerS.closeBtnText}>{t('common.close')}</Text>
         </TouchableOpacity>
       </View>
     </Modal>
@@ -522,12 +574,15 @@ function SnapStoryViewer({
   initialPostId, records, navigation, toggleLike, deleteRecord, markSnapViewed,
 }: {
   initialPostId: string;
-  records: any[];
+  records: TravelRecord[];
   navigation: any;
   toggleLike: (id: string) => void;
   deleteRecord: (id: string) => void;
   markSnapViewed: (id: string) => void;
 }) {
+  const { t } = useTranslation();
+  // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
+  const { handle: myHandle, profilePhoto: myPhoto } = useSettings();
   // 작성자별로 그룹화된 전체 스냅 목록 (같은 작성자끼리 연속 배치)
   const allSnaps = useMemo(() => records.filter((r: any) => r.viewType === 'snap'), [records]);
   // 작성자 + 국가별로 그룹화 (같은 사용자라도 다른 나라면 별도 스토리)
@@ -546,30 +601,40 @@ function SnapStoryViewer({
       byKey[k].push(s);
     });
     const keys = [startKey, ...order.filter(k => k !== startKey)].filter(k => byKey[k]);
-    return keys.map(k => ({ key: k, snaps: byKey[k] }));
+    // 스토리 안 스냅은 제일 먼저 올린 것부터(오름차순) 재생
+    return keys.map(k => ({
+      key: k,
+      snaps: [...byKey[k]].sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0)),
+    }));
   }, [allSnaps, initialPostId]);
 
-  const initPos = useMemo(() => {
+  // 초기 위치는 한 번만 확정 (이후 store 변경으로 뷰어가 점프하지 않게).
+  // stories가 처음 채워진 렌더에서 계산해, 데이터가 늦게 와도 올바른 위치를 잡는다.
+  const initPosRef = useRef<{ si: number; li: number } | null>(null);
+  if (initPosRef.current === null && stories.length > 0) {
+    let pos = { si: 0, li: 0 };
     for (let si = 0; si < stories.length; si++) {
-      const li = stories[si].snaps.findIndex((s: any) => s.id === initialPostId);
-      if (li >= 0) return { si, li };
+      // 해당 스토리를 열면 제일 먼저 올린 스냅(li=0)부터 재생
+      if (stories[si].snaps.some((s: any) => s.id === initialPostId)) { pos = { si, li: 0 }; break; }
     }
-    return { si: 0, li: 0 };
-  }, []);
+    initPosRef.current = pos;
+  }
+  const initPos = initPosRef.current ?? { si: 0, li: 0 };
 
   const [storyIdx, setStoryIdx] = useState(initPos.si);
   const [localIdx, setLocalIdx] = useState(initPos.li);
   const currentStory = stories[storyIdx];
   const currentSnap = currentStory?.snaps[Math.min(localIdx, (currentStory?.snaps.length || 1) - 1)];
-  // 스냅 열람 시 viewed 처리
+  // 스냅 열람 시 viewed 처리 — 스냅 id가 바뀔 때만 실행(snapViewed 변경으로 인한 재실행 방지)
   useEffect(() => {
-    if (currentSnap && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+    if (currentSnap && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id]);
 
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost } = useRecords();
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -605,10 +670,66 @@ function SnapStoryViewer({
     }
   }, []);
 
-  if (!currentSnap || stories.length === 0) {
-    navigation.goBack();
-    return null;
-  }
+  // 댓글 시트 드래그 닫기 PanResponder — Hook이므로 early return 위에서 생성한다.
+  // (콜백은 렌더 시점이 아닌 제스처 시점에 실행되므로 아래의 closeCommentSheet 전방 참조는 안전)
+  const commentSheetPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
+      onPanResponderMove: (_, g) => { if (g.dy > 0) commentSheetAnim.setValue(g.dy); },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80 || g.vy > 0.5) closeCommentSheet();
+        else Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
+      },
+    })
+  ).current;
+
+  // 표시할 스냅이 없으면 닫기 — 렌더 중 부수효과 금지, useEffect에서 처리
+  useEffect(() => {
+    if (!currentSnap || stories.length === 0) navigation.goBack();
+  }, [currentSnap, stories.length, navigation]);
+
+  // ── 스토리 자동 넘김 + 진행 바 + 길게 눌러 일시정지 ──
+  const STORY_DURATION = 5000; // 스냅 1장 노출 시간(ms)
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const progressWidth = progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
+  const [paused, setPaused] = useState(false);
+  const [dragPaused, setDragPaused] = useState(false); // 아래로 끌어 닫기 드래그 중 일시정지
+  const advanceRef = useRef<(dir: 'next' | 'prev') => void>(() => {});
+
+  // 어떤 오버레이도 안 떠 있고 일시정지/드래그 아니면 재생
+  const storyPlaying =
+    !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen;
+
+  // 스냅이 바뀌면 진행도 리셋
+  useEffect(() => { progressAnim.setValue(0); }, [storyIdx, localIdx]);
+
+  // 다음 스냅 이미지 미리 받기 — 자동 넘김 전환 시 깜빡임/로딩 감소
+  useEffect(() => {
+    if (!currentStory) return;
+    const next = localIdx < currentStory.snaps.length - 1
+      ? currentStory.snaps[localIdx + 1]
+      : stories[storyIdx + 1]?.snaps?.[0];
+    const uri = next && (next.snapBackUri || next.snapFrontUri || next.medias?.[0]);
+    if (uri) Image.prefetch(uri).catch(() => {});
+  }, [storyIdx, localIdx, currentStory, stories]);
+
+  // 재생 중일 때 현재 값에서 이어서 진행, 완료되면 다음으로
+  useEffect(() => {
+    if (!storyPlaying) { progressAnim.stopAnimation(); return; }
+    progressAnim.stopAnimation((v: number) => {
+      const remaining = STORY_DURATION * (1 - v);
+      Animated.timing(progressAnim, {
+        toValue: 1,
+        duration: Math.max(0, remaining),
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }).start(({ finished }) => { if (finished) advanceRef.current('next'); });
+    });
+    return () => { progressAnim.stopAnimation(); };
+  }, [storyPlaying, storyIdx, localIdx]);
+
+  if (!currentSnap || stories.length === 0) return null;
 
   const comments = commentsByPost[currentSnap.id] ?? [];
   const totalComments = comments.reduce((sum: number, c) => sum + 1 + (c.replies?.length || 0), 0);
@@ -643,19 +764,24 @@ function SnapStoryViewer({
     if (replyBarOpen || commentSheetOpen) return;
     advance(evt.nativeEvent.locationX < SCREEN_W / 3 ? 'prev' : 'next');
   };
+  // 자동 넘김 타이머가 최신 advance를 참조하도록 (stale 클로저 방지)
+  advanceRef.current = advance;
 
   // 아래로 끌어 닫기 (gesture-handler + reanimated, 가로 스크롤과 공존)
   const closeViewer = () => navigation.goBack();
   const dismissGesture = Gesture.Pan()
     .activeOffsetY([14, 9999])
     .failOffsetX([-18, 18])
+    .onStart(() => { 'worklet'; runOnJS(setDragPaused)(true); }) // 드래그 동안 자동 넘김 정지
     .onUpdate((e) => { 'worklet'; if (e.translationY > 0) ty.value = e.translationY; })
     .onEnd((e) => {
       'worklet';
       if (e.translationY > 100 || e.velocityY > 700) {
         ty.value = withTiming(SCREEN_H, { duration: 180 }, () => { runOnJS(closeViewer)(); });
+        // 닫히는 중이므로 재개 불필요
       } else {
         ty.value = withSpring(0, { damping: 18, stiffness: 180 });
+        runOnJS(setDragPaused)(false); // 취소(원위치)면 자동 넘김 재개
       }
     });
 
@@ -663,30 +789,57 @@ function SnapStoryViewer({
   const renderStoryPage = (story: any, si: number) => {
     const li = si === storyIdx ? Math.min(localIdx, story.snaps.length - 1) : 0;
     const s = story.snaps[li];
+    // 이 페이지(스냅) 기준 댓글 수 — currentSnap 기준(totalComments)으로 그리면 다른 페이지에 오표시됨
+    const sComments = commentsByPost[s.id] ?? [];
+    const sTotalComments = sComments.reduce((sum: number, c: any) => sum + 1 + (c.replies?.length || 0), 0);
     const late = (s.snapLateSeconds && s.snapLateSeconds > 0)
       ? (s.snapLateSeconds < 60 ? `${s.snapLateSeconds}초 후 촬영` : `${Math.floor(s.snapLateSeconds / 60)}분 ${s.snapLateSeconds % 60}초 후 촬영`)
       : '';
     return (
       <>
-        <CrossfadePhoto uri={s.snapBackUri} />
-        <Pressable style={StyleSheet.absoluteFill} onPress={onTapPage} />
+        <CrossfadePhoto uri={s.snapBackUri || s.snapFrontUri || s.medias?.[0]} />
+        {/* 탭으로 넘기기 — 하단(캡션·지역 배지·액션)·상단 헤더 영역은 제외해 오탭 방지 */}
+        <Pressable
+          style={{ position: 'absolute', left: 0, right: 0, top: 64, bottom: 140 }}
+          onPress={onTapPage}
+          onLongPress={() => setPaused(true)}
+          delayLongPress={200}
+          onPressOut={() => setPaused(false)}
+        />
         <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={storyS.topGradient} pointerEvents="box-none">
           <View style={storyS.progressRow}>
-            {Array.from({ length: story.snaps.length }, (_, k) => (
-              <View key={k} style={[storyS.progressSeg, k === li && storyS.progressSegActive]} />
-            ))}
+            {story.snaps.map((_: any, k: number) => {
+              const isCurrentPage = si === storyIdx;
+              const isPast = isCurrentPage && k < li;
+              const isActive = isCurrentPage && k === li;
+              return (
+                <View key={k} style={storyS.progressSeg}>
+                  {isActive ? (
+                    <Animated.View style={[storyS.progressFill, { width: progressWidth }]} />
+                  ) : (
+                    <View style={[storyS.progressFill, { width: isPast ? '100%' : '0%' }]} />
+                  )}
+                </View>
+              );
+            })}
           </View>
           <View style={storyS.topRow}>
-            <View style={storyS.avatarRing}><View style={storyS.avatar}><Text style={storyS.avatarEmoji}>{s.user.emoji}</Text></View></View>
+            <View style={storyS.avatarRing}><View style={storyS.avatar}>
+              {s.isMyPost === true && myPhoto ? (
+                <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
+              ) : (
+                <Text style={storyS.avatarEmoji}>{s.user.emoji}</Text>
+              )}
+            </View></View>
             <View style={storyS.userInfo}>
-              <Text style={storyS.handle}>@{s.user.handle}</Text>
+              <Text style={storyS.handle}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
               <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
             </View>
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn} accessibilityRole="button" accessibilityLabel={t('common.close')}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
           </View>
         </LinearGradient>
-        {s.snapFrontUri && (
+        {s.snapBackUri && s.snapFrontUri && (
           <View style={storyS.pipWrap}><Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" /></View>
         )}
         {/* 스냅 및 촬영지연 뱃지 비활성화 */}
@@ -699,33 +852,33 @@ function SnapStoryViewer({
             {s.isMyPost === true ? (
               /* 내가 올린 스냅 */
               <>
-                <TouchableOpacity style={storyS.actionBtnWithLabel} onPress={() => setViewerListOpen(true)}>
+                <TouchableOpacity style={storyS.actionBtnWithLabel} onPress={() => setViewerListOpen(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.viewersA11y')}>
                   <Text style={storyS.actionIcon}>👁</Text>
-                  <Text style={storyS.actionLabel}>조회 3</Text>
+                  <Text style={storyS.actionLabel}>{t('postDetail.viewCountN', { count: s.snapViewers?.length ?? 0 })}</Text>
                 </TouchableOpacity>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet}>
+                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
                   <CommentSvg size={22} color="#fff" />
-                  {totalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{totalComments}</Text></View>)}
+                  {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost}>
+                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
                   <Text style={storyS.actionIcon}>↗</Text>
                 </TouchableOpacity>
               </>
             ) : (
               /* 타인이 올린 스냅 */
               <>
-                <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }}>
-                  <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>메시지 보내기...</Text></View>
+                <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
+                  <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)}>
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                   <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet}>
+                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
                   <CommentSvg size={22} color="#fff" />
-                  {totalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{totalComments}</Text></View>)}
+                  {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost}><Text style={storyS.actionIcon}>↗</Text></TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><Text style={storyS.actionIcon}>↗</Text></TouchableOpacity>
               </>
             )}
           </View>
@@ -748,21 +901,10 @@ function SnapStoryViewer({
       Animated.timing(commentOverlayAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
     ]).start(() => setCommentSheetOpen(false));
   };
-  const commentSheetPan = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
-      onPanResponderMove: (_, g) => { if (g.dy > 0) commentSheetAnim.setValue(g.dy); },
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 80 || g.vy > 0.5) closeCommentSheet();
-        else Animated.spring(commentSheetAnim, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
-      },
-    })
-  ).current;
 
-  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg('링크가 복사되었어요!'); setTimeout(() => setToastMsg(''), 2000); };
-  const handleSharePost = () => { setMenuVisible(false); Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${currentSnap.id}` }); };
-  const handleDelete = () => { setMenuVisible(false); Alert.alert('게시물 삭제', '이 게시물을 삭제할까요?', [{ text: '취소', style: 'cancel' }, { text: '삭제', style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
+  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
+  const handleSharePost = () => { setMenuVisible(false); Share.share({ message: t('comp2.sharePostMsg', { id: currentSnap.id }) }); };
+  const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
   const CommentSvg = ({ size = 20, color = '#fff' }: { size?: number; color?: string }) => (
@@ -801,7 +943,7 @@ function SnapStoryViewer({
               <TextInput
                 ref={replyInputRef}
                 style={storyS.inlineInput}
-                placeholder="메시지 보내기..."
+                placeholder={t('postDetail.sendMessagePlaceholder')}
                 placeholderTextColor="rgba(255,255,255,0.45)"
                 value={commentText}
                 onChangeText={setCommentText}
@@ -815,7 +957,7 @@ function SnapStoryViewer({
                 onPress={() => { addComment(); setReplyBarOpen(false); }}
                 disabled={!commentText.trim()}
               >
-                <Text style={storyS.inlineSendText}>전송</Text>
+                <Text style={storyS.inlineSendText}>{t('postDetail.send')}</Text>
               </TouchableOpacity>
             </View>
           </KeyboardAvoidingView>
@@ -835,7 +977,7 @@ function SnapStoryViewer({
           <View style={storyS.csHandle} />
         </View>
         <View style={storyS.csTitleRow}>
-          <Text style={storyS.csTitle}>댓글</Text>
+          <Text style={storyS.csTitle}>{t('social.comments')}</Text>
           <Text style={storyS.csCount}>{totalComments}</Text>
         </View>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
@@ -847,7 +989,7 @@ function SnapStoryViewer({
                   <View style={{ flex: 1 }}>
                     <View style={storyS.csTopRow}><Text style={storyS.csName}>{c.name}</Text><Text style={storyS.csTime}>{commentTime(c)}</Text></View>
                     <Text style={storyS.csText}>{c.text}</Text>
-                    <TouchableOpacity onPress={() => handleReply(c.id, c.name)}><Text style={storyS.csReplyBtn}>답글</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => handleReply(c.id, c.name)}><Text style={storyS.csReplyBtn}>{t('postDetail.reply')}</Text></TouchableOpacity>
                   </View>
                 </View>
                 {c.replies && c.replies.map((r: any) => (
@@ -861,7 +1003,7 @@ function SnapStoryViewer({
                 ))}
               </View>
             ))}
-            {comments.length === 0 && <Text style={{ color: '#5A5A6E', fontSize: 14, textAlign: 'center', marginTop: 32 }}>아직 댓글이 없어요</Text>}
+            {comments.length === 0 && <Text style={{ color: '#5A5A6E', fontSize: 14, textAlign: 'center', marginTop: 32 }}>{t('postDetail.noComments')}</Text>}
           </ScrollView>
           {replyTo && (
             <View style={storyS.csReplyBar}>
@@ -870,9 +1012,9 @@ function SnapStoryViewer({
             </View>
           )}
           <View style={storyS.csInputBar}>
-            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? `${replyTo.name}에게 답글...` : '댓글을 입력하세요...'} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" />
+            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" />
             <TouchableOpacity style={[storyS.csSendBtn, !commentText.trim() && { backgroundColor: '#2A2A3A' }]} onPress={addComment} disabled={!commentText.trim()}>
-              <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>전송</Text>
+              <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -880,29 +1022,38 @@ function SnapStoryViewer({
 
       {/* 메뉴 모달 */}
       <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
+        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={s.menuCard}>
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
-              <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>링크 복사</Text>
+              <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             {isMyPost ? (
               <><View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
-                <TrashIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제하기</Text>
+                <TrashIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
               </TouchableOpacity></>
             ) : (
               <><View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={() => { setMenuVisible(false); setReportVisible(true); }} activeOpacity={0.7}>
-                <MegaphoneIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>신고하기</Text>
+                <MegaphoneIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
               </TouchableOpacity></>
             )}
           </View>
         </TouchableOpacity>
       </Modal>
 
-      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); setToastMsg('신고가 접수되었어요'); setTimeout(() => setToastMsg(''), 2000); }} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); reportPost(currentSnap.id); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
       {toastMsg !== '' && <View style={s.toast} pointerEvents="none"><Text style={s.toastText}>{toastMsg}</Text></View>}
-      <SnapViewerModal visible={viewerListOpen} onClose={() => setViewerListOpen(false)} />
+      <SnapViewerModal
+        visible={viewerListOpen}
+        onClose={() => setViewerListOpen(false)}
+        viewers={(currentSnap.snapViewers ?? []).map((v: { handle: string; name: string; time: number }) => ({
+          name: v.name,
+          handle: v.handle,
+          time: timeAgo(v.time),
+          emoji: '👤',
+        }))}
+      />
     </View>
   );
 }
@@ -912,11 +1063,12 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost } = useRecords();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -958,6 +1110,8 @@ export default function PostDetailScreen() {
     if (!rawRecord?.remoteId) return;
     setCommentsLoading(true);
     refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
+    // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, rawRecord?.remoteId]);
   // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
   const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;
@@ -966,14 +1120,14 @@ export default function PostDetailScreen() {
     return (
       <View style={s.container}>
         <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
-          <Text style={s.headerTitle}>게시물</Text>
+          <Text style={s.headerTitle}>{t('postDetail.postTitle')}</Text>
           <View style={{ width: 38 }} />
         </View>
         <View style={s.emptyWrap}>
-          <Text style={s.emptyText}>게시물을 찾을 수 없어요</Text>
+          <Text style={s.emptyText}>{t('postDetail.postNotFound')}</Text>
         </View>
       </View>
     );
@@ -982,10 +1136,10 @@ export default function PostDetailScreen() {
   const viewType: RecordViewType = record.viewType || 'feed';
   // 헤더 타이틀: 국가명 우선, 없으면 형식 라벨
   const typeLabel =
-    viewType === 'blog' ? '블로그' :
-    viewType === 'album' ? '앨범' :
-    viewType === 'cut' ? '네컷' :
-    viewType === 'snap' ? '스냅' : '피드';
+    viewType === 'blog' ? t('postDetail.typeBlog') :
+    viewType === 'album' ? t('postDetail.typeAlbum') :
+    viewType === 'cut' ? t('postDetail.typeCut') :
+    viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
   const headerTitleText = record.countryName
     ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
     : typeLabel;
@@ -1022,9 +1176,9 @@ export default function PostDetailScreen() {
   };
 
   const confirmDeleteComment = (commentId: string) => {
-    Alert.alert('댓글 삭제', '이 댓글을 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
-      { text: '삭제', style: 'destructive', onPress: () => deleteComment(postId, commentId) },
+    Alert.alert(t('postDetail.deleteCommentTitle'), t('postDetail.deleteCommentMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('postDetail.delete'), style: 'destructive', onPress: () => deleteComment(postId, commentId) },
     ]);
   };
 
@@ -1034,13 +1188,16 @@ export default function PostDetailScreen() {
   const handleCopyLink = async () => {
     setMenuVisible(false);
     await Clipboard.setStringAsync(`eOrth://post/${postId}`);
-    setToastMsg('링크가 복사되었어요!');
+    setToastMsg(t('social.linkCopiedToast'));
     setTimeout(() => setToastMsg(''), 2000);
   };
 
   const handleSharePost = () => {
     setMenuVisible(false);
-    Share.share({ message: `eOrth에서 게시물을 확인해보세요!\neOrth://post/${postId}` });
+    // 메뉴 모달이 닫히는 동안 공유 시트를 띄우면 표시할 화면이 없어 무동작 → 모달 닫힘 후 호출
+    setTimeout(() => {
+      Share.share({ message: t('comp2.sharePostMsg', { id: postId }) }).catch(() => {});
+    }, 350);
   };
 
   const handleExportToNaver = () => {
@@ -1048,7 +1205,7 @@ export default function PostDetailScreen() {
     const bodyText = record.blogBlocks ? blocksToPlainText(record.blogBlocks) : record.content;
     const photos = record.blogBlocks ? blocksToPhotos(record.blogBlocks) : (record.medias || []);
     const blogData: BlogData = {
-      title: record.content.trim() || `${record.countryFlag ?? ''} ${record.countryName ?? ''}`.trim() || '여행기록',
+      title: record.content.trim() || `${record.countryFlag ?? ''} ${record.countryName ?? ''}`.trim() || t('postDetail.travelRecord'),
       body: bodyText,
       photos,
       memo: record.memo,
@@ -1062,25 +1219,25 @@ export default function PostDetailScreen() {
       countryFlag: record.countryFlag,
     };
     const html = toNaverHtml(blogData);
-    Alert.alert('네이버 블로그로 내보내기', 'HTML 또는 텍스트로 내보낼 수 있어요.', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('postDetail.naverExportTitle'), t('postDetail.naverExportMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: 'HTML 복사',
+        text: t('postDetail.htmlCopy'),
         onPress: async () => {
           await Clipboard.setStringAsync(html);
-          setToastMsg('HTML이 복사되었어요!');
+          setToastMsg(t('postDetail.htmlCopied'));
           setTimeout(() => setToastMsg(''), 2000);
         },
       },
       {
-        text: '텍스트 공유',
+        text: t('postDetail.textShare'),
         onPress: () => {
           const lines: string[] = [];
           if (record.countryFlag && record.countryName) lines.push(`📍 ${record.countryFlag} ${record.countryName}`);
           if (record.startDate && record.endDate) lines.push(`📅 ${record.startDate} ~ ${record.endDate}`);
           if (bodyText) lines.push('', bodyText);
           if (record.keywords?.length) lines.push('', record.keywords.map((k) => `#${k}`).join(' '));
-          lines.push('', '— eOrth 여행기록 앱에서 작성');
+          lines.push('', t('postDetail.shareFooter'));
           Share.share({ message: lines.join('\n') });
         },
       },
@@ -1090,16 +1247,16 @@ export default function PostDetailScreen() {
   const handleArchive = () => {
     setMenuVisible(false);
     archiveRecord(record.id);
-    setToastMsg('게시물이 보관되었어요');
+    setToastMsg(t('social.archivedToast'));
     setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000);
   };
 
   const handleDelete = () => {
     setMenuVisible(false);
-    Alert.alert('게시물 삭제', '이 게시물을 삭제할까요?', [
-      { text: '취소', style: 'cancel' },
+    Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
       {
-        text: '삭제', style: 'destructive',
+        text: t('postDetail.delete'), style: 'destructive',
         onPress: () => {
           deleteRecord(record.id);
           navigation.goBack();
@@ -1216,7 +1373,7 @@ export default function PostDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel="뒤로 가기">
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
             <Text style={s.backIcon}>‹</Text>
           </TouchableOpacity>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
@@ -1226,12 +1383,12 @@ export default function PostDetailScreen() {
                 onPress={() => setFontScale((p) => (p >= 1.4 ? 0.85 : p + 0.15))}
                 style={s.menuBtn}
                 accessibilityRole="button"
-                accessibilityLabel="글자 크기 변경"
+                accessibilityLabel={t('postDetail.fontSizeA11y')}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? C.accent : C.dim }}>가</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? C.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel="더보기 메뉴">
+            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
               <Text style={s.menuDots}>···</Text>
             </TouchableOpacity>
           </View>
@@ -1261,7 +1418,7 @@ export default function PostDetailScreen() {
                 );
                 const toggleFollow = () => {
                   buzz('light');
-                  if (followedEntry) unfollowUser(followedEntry.username);
+                  if (followedEntry) unfollowUser(followedEntry.id || followedEntry.username);
                   else followUser({ id: record.authorId ?? '', username: authorUsername, isAbroad: false, currentCountry: null, currentCountryFlag: null });
                 };
                 return (
@@ -1270,7 +1427,7 @@ export default function PostDetailScreen() {
                       style={s.authorTouch}
                       activeOpacity={0.7}
                       accessibilityRole="button"
-                      accessibilityLabel={isMyPost ? '내 프로필 보기' : '작성자 프로필 보기'}
+                      accessibilityLabel={isMyPost ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
                       onPress={() => {
                         navigation.navigate('FriendProfile', isMyPost
                           ? { userId: record.authorId ?? record.id, username: globalNickname || record.user.name, handle: globalHandle }
@@ -1302,10 +1459,10 @@ export default function PostDetailScreen() {
                         style={[s.followBtn, followedEntry && s.followingBtn]}
                         onPress={toggleFollow}
                         accessibilityRole="button"
-                        accessibilityLabel={followedEntry ? '팔로우 취소' : '팔로우'}
+                        accessibilityLabel={followedEntry ? t('postDetail.unfollowA11y') : t('postDetail.followA11y')}
                       >
                         <Text style={[s.followBtnText, followedEntry && s.followingBtnText]}>
-                          {followedEntry ? '팔로잉' : '팔로우'}
+                          {followedEntry ? t('postDetail.following') : t('postDetail.follow')}
                         </Text>
                       </TouchableOpacity>
                     )}
@@ -1356,7 +1513,7 @@ export default function PostDetailScreen() {
                     /* 네컷: 합성 미리보기 이미지 */
                     <View style={s.mediaWrap}>
                       <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage([record.cutPhoto!.previewUri], 0))}>
-                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={s.cutImage} resizeMode="contain" />
+                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout)]} resizeMode="cover" />
                       </TouchableOpacity>
                       {companionsOverlay}
                       {heartOverlay}
@@ -1385,7 +1542,7 @@ export default function PostDetailScreen() {
                       </View>
                       <View style={s.viewTypeBadge}>
                         <Text style={s.viewTypeText}>
-                          {viewType === 'feed' ? '피드' : viewType === 'cut' ? '네컷' : '앨범'}
+                          {viewType === 'feed' ? t('postDetail.typeFeed') : viewType === 'cut' ? t('postDetail.typeCut') : t('postDetail.typeAlbum')}
                         </Text>
                       </View>
                       {companionsOverlay}
@@ -1402,8 +1559,8 @@ export default function PostDetailScreen() {
                     {bodyText}
                   </Text>
                   {bodyLong && !bodyExpanded && (
-                    <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel="본문 더보기">
-                      <Text style={s.moreBtn}>더보기</Text>
+                    <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
+                      <Text style={s.moreBtn}>{t('postDetail.more')}</Text>
                     </TouchableOpacity>
                   )}
                 </>
@@ -1431,7 +1588,7 @@ export default function PostDetailScreen() {
               onPress={() => setShowTravelInfo((v) => !v)}
             >
               <CalendarIcon size={14} color={C.accent} />
-              <Text style={s.travelInfoBtnText}>여행정보</Text>
+              <Text style={s.travelInfoBtnText}>{t('postDetail.travelInfo')}</Text>
               <Text style={s.travelInfoArrow}>{showTravelInfo ? '▲' : '▼'}</Text>
             </TouchableOpacity>
           )}
@@ -1476,16 +1633,16 @@ export default function PostDetailScreen() {
           {/* ── 좋아요 · 댓글 수 ── */}
           <View style={s.statsRow}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? '좋아요 취소' : '좋아요'}>
+              <TouchableOpacity onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                   {record.liked ? '♥' : '♡'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers} accessibilityRole="button" accessibilityLabel="좋아요한 사람 보기">
+              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
                 <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel="댓글 달기">
+            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
               <CommentSvg />
               <Text style={s.statCount}>{totalComments}</Text>
             </TouchableOpacity>
@@ -1495,7 +1652,7 @@ export default function PostDetailScreen() {
           <View style={s.divider} />
 
           {/* ── 댓글 목록 ── */}
-          <Text style={s.commentTitle}>댓글 {totalComments}</Text>
+          <Text style={s.commentTitle}>{t('postDetail.commentCountN', { count: totalComments })}</Text>
           {comments.map((c) => (
             <View key={c.id}>
               <View style={s.commentItem}>
@@ -1514,11 +1671,11 @@ export default function PostDetailScreen() {
                       {!!c.likes && <Text style={s.commentLikeCount}>{c.likes}</Text>}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
-                      <Text style={s.commentActionText}>답글</Text>
+                      <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
                     </TouchableOpacity>
                     {c.isMine && (
                       <TouchableOpacity onPress={() => confirmDeleteComment(c.id)}>
-                        <Text style={[s.commentActionText, { color: C.red }]}>삭제</Text>
+                        <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -1542,11 +1699,11 @@ export default function PostDetailScreen() {
                         {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
-                        <Text style={s.commentActionText}>답글</Text>
+                        <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
                       </TouchableOpacity>
                       {r.isMine && (
                         <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
-                          <Text style={[s.commentActionText, { color: C.red }]}>삭제</Text>
+                          <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -1558,7 +1715,7 @@ export default function PostDetailScreen() {
           {commentsLoading && comments.length === 0 ? (
             <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />
           ) : comments.length === 0 ? (
-            <Text style={s.commentEmpty}>아직 댓글이 없어요. 첫 댓글을 남겨보세요!</Text>
+            <Text style={s.commentEmpty}>{t('trip.noComments')}</Text>
           ) : null}
           <View style={{ height: 16 }} />
           </View>
@@ -1578,7 +1735,7 @@ export default function PostDetailScreen() {
           <TextInput
             ref={commentInputRef}
             style={s.input}
-            placeholder={replyTo ? `${replyTo.name}에게 답글...` : '댓글을 입력하세요...'}
+            placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')}
             placeholderTextColor={C.muted}
             value={commentText}
             onChangeText={setCommentText}
@@ -1590,7 +1747,7 @@ export default function PostDetailScreen() {
             onPress={addComment}
             disabled={!commentText.trim()}
           >
-            <Text style={[s.sendText, !commentText.trim() && s.sendTextDisabled]}>전송</Text>
+            <Text style={[s.sendText, !commentText.trim() && s.sendTextDisabled]}>{t('postDetail.send')}</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -1613,6 +1770,7 @@ export default function PostDetailScreen() {
       >
         <TouchableOpacity
           style={s.menuOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
@@ -1620,12 +1778,12 @@ export default function PostDetailScreen() {
             {/* 공통 메뉴 */}
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
               <LinkIcon size={16} color="#fff" />
-              <Text style={s.menuItemText}>링크 복사</Text>
+              <Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleSharePost} activeOpacity={0.7}>
               <ShareIcon size={16} color="#fff" />
-              <Text style={s.menuItemText}>공유하기</Text>
+              <Text style={s.menuItemText}>{t('postDetail.shareAction')}</Text>
             </TouchableOpacity>
 
             {viewType === 'blog' && (
@@ -1635,7 +1793,7 @@ export default function PostDetailScreen() {
                   <View style={{ width: 20, height: 20, borderRadius: 4, backgroundColor: '#03C75A', alignItems: 'center', justifyContent: 'center' }}>
                     <Text style={{ color: '#fff', fontSize: 11, fontWeight: '900' }}>N</Text>
                   </View>
-                  <Text style={s.menuItemText}>네이버 블로그로 내보내기</Text>
+                  <Text style={s.menuItemText}>{t('postDetail.naverExportTitle')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1645,7 +1803,7 @@ export default function PostDetailScreen() {
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <ArchiveIcon size={16} color="#fff" />
-                  <Text style={s.menuItemText}>보관하기</Text>
+                  <Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={() => {
@@ -1653,18 +1811,18 @@ export default function PostDetailScreen() {
                   if (viewType === 'blog') {
                     navigation.navigate('BlogRecord', { record: rawRecord });
                   } else if (viewType === 'album') {
-                    Alert.alert('수정 불가', '앨범 형식은 현재 보관 중이라 수정할 수 없어요.');
+                    Alert.alert(t('postDetail.editBlockedTitle'), t('postDetail.editBlockedMsg'));
                   } else {
                     navigation.navigate('NewRecord', { record: rawRecord });
                   }
                 }} activeOpacity={0.7}>
                   <PencilIcon size={16} color="#fff" />
-                  <Text style={s.menuItemText}>수정하기</Text>
+                  <Text style={s.menuItemText}>{t('postDetail.editAction')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
                   <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제하기</Text>
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
                 </TouchableOpacity>
               </>
             ) : (
@@ -1672,7 +1830,7 @@ export default function PostDetailScreen() {
                 <View style={s.menuSectionDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleReport} activeOpacity={0.7}>
                   <MegaphoneIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>신고하기</Text>
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
               </>
             )}
@@ -1686,21 +1844,22 @@ export default function PostDetailScreen() {
         onClose={() => setReportVisible(false)}
         onSubmit={() => {
           setReportVisible(false);
-          setToastMsg('신고가 접수되었어요');
+          reportPost(record.id);
+          setToastMsg(t('social.reportReceivedToast'));
           setTimeout(() => setToastMsg(''), 2000);
         }}
       />
 
       {/* ── 좋아요한 사람 목록 ── */}
       <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setLikersVisible(false)}>
-        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)}>
+        <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)} accessibilityViewIsModal>
           <View style={s.likersSheet}>
             <View style={s.likersHandle} />
-            <Text style={s.likersTitle}>좋아요 {likers.length}</Text>
+            <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
             {likersLoading ? (
               <ActivityIndicator color={C.accent} style={{ marginTop: 24 }} />
             ) : likers.length === 0 ? (
-              <Text style={s.commentEmpty}>아직 좋아요한 사람이 없어요</Text>
+              <Text style={s.commentEmpty}>{t('postDetail.noLikers')}</Text>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
                 {likers.map((u) => (
@@ -1733,7 +1892,7 @@ export default function PostDetailScreen() {
       {/* ── 풀스크린 이미지 뷰어 ── */}
       {fullImgVisible && (
         <Modal visible transparent animationType="fade" onRequestClose={() => setFullImgVisible(false)} statusBarTranslucent>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
             <ScrollView
               horizontal
               pagingEnabled
@@ -2125,6 +2284,7 @@ const blogS = StyleSheet.create({
   },
   imageWrap: { marginBottom: 14, borderRadius: 12, overflow: 'hidden' },
   image: { width: '100%', aspectRatio: 4 / 3, borderRadius: 12 },
+  video: { width: '100%', height: 220, backgroundColor: '#000', borderRadius: 12 },
   caption: {
     fontSize: 12, color: '#A1A1B0', textAlign: 'center', marginTop: 6,
     fontStyle: 'italic',
@@ -2151,8 +2311,6 @@ const blogS = StyleSheet.create({
   linkTitle: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
   linkDesc: { fontSize: 11, color: '#A1A1B0', lineHeight: 16 },
   linkUrl: { fontSize: 10, color: '#5A5A6E' },
-  stickerWrap: { alignItems: 'center', marginVertical: 12 },
-  stickerFallback: { fontSize: 40 },
   fileBlock: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C28', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#2A2A3A', gap: 10, marginBottom: 12 },
   fileIcon: { fontSize: 20 },
   fileName: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },
@@ -2310,18 +2468,6 @@ const storyS = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  expiredOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 5,
-  },
-  expiredText: {
-    color: 'rgba(255,255,255,0.5)',
-    fontSize: 18,
-    fontWeight: '700',
-  },
 
   // 상단 그라데이션
   topGradient: {
@@ -2344,9 +2490,12 @@ const storyS = StyleSheet.create({
     height: 2,
     backgroundColor: 'rgba(255,255,255,0.25)',
     borderRadius: 1,
+    overflow: 'hidden',
   },
-  progressSegActive: {
-    backgroundColor: 'rgba(255,255,255,0.9)',
+  progressFill: {
+    height: '100%',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 1,
   },
   topRow: {
     flexDirection: 'row',
@@ -2371,6 +2520,11 @@ const storyS = StyleSheet.create({
   },
   avatarEmoji: {
     fontSize: 16,
+  },
+  avatarImg: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
   },
   userInfo: {
     flex: 1,

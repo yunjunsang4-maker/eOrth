@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -29,12 +30,13 @@ export default function QuickShareOverlay({
   onTargetLayout: (key: string, rect: { x: number; y: number; w: number; h: number }) => void;
   onCancel: () => void;
 }) {
+  const { t } = useTranslation();
   const targetRefs = useRef<Record<string, View | null>>({});
   if (!visible || !cardRect) return null;
 
   // 타깃 키 목록: 친구 handle + 'other'
   const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name })),
-                   { key: 'other', emoji: '⊙', label: '기타' }];
+                   { key: 'other', emoji: '⊙', label: t('comp.other') }];
 
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
@@ -43,7 +45,6 @@ export default function QuickShareOverlay({
 
   const TOP_SAFE = 64;
   const BOTTOM_SAFE = 130;
-  const LABEL_PAD = 22;
   const DY = CIRCLE + GAP;
   const DX = CIRCLE + GAP;
   const horizDir = side === 'right' ? 1 : -1;
@@ -101,24 +102,24 @@ export default function QuickShareOverlay({
       <TouchableOpacity style={[StyleSheet.absoluteFill, st.dim]} activeOpacity={1} onPress={onCancel} />
 
       {/* 원형 타깃 */}
-      {targets.map((t, i) => {
+      {targets.map((tg, i) => {
         const { x: cx, y: cy } = coords[i];
-        const hovered = hoveredKey === t.key;
+        const hovered = hoveredKey === tg.key;
         return (
           <View
-            key={t.key}
-            ref={(node) => { targetRefs.current[t.key] = node; }}
+            key={tg.key}
+            ref={(node) => { targetRefs.current[tg.key] = node; }}
             style={[st.target, { left: cx, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
             onLayout={() => {
               // window 절대 좌표로 보고 (드롭 판정은 gesture absoluteX/Y를 사용하므로 좌표계 일치)
-              targetRefs.current[t.key]?.measureInWindow((x, y, width, height) => {
-                onTargetLayout(t.key, { x, y, w: width, h: height });
+              targetRefs.current[tg.key]?.measureInWindow((x, y, width, height) => {
+                onTargetLayout(tg.key, { x, y, w: width, h: height });
               });
             }}
             pointerEvents="none"
           >
-            <Text style={st.targetEmoji}>{t.emoji}</Text>
-            <Text style={st.targetLabel} numberOfLines={1}>{t.label}</Text>
+            <Text style={st.targetEmoji}>{tg.emoji}</Text>
+            <Text style={st.targetLabel} numberOfLines={1}>{tg.label}</Text>
           </View>
         );
       })}
@@ -138,7 +139,7 @@ export default function QuickShareOverlay({
             <Text style={{ fontSize: 24 }}>📝</Text>
           </View>
         )}
-        <Text style={st.ghostText} numberOfLines={1}>{record?.blogTitle || record?.content || record?.country || '기록'}</Text>
+        <Text style={st.ghostText} numberOfLines={1}>{record?.blogTitle || record?.content || record?.country || t('comp.recordDefault')}</Text>
       </Animated.View>
     </View>
   );

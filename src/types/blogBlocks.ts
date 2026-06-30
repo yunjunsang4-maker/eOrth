@@ -13,7 +13,6 @@ export type BlogBlockType =
   | 'separator'
   | 'quote'
   | 'link'
-  | 'sticker'
   | 'file';
 
 // ─── 텍스트 정렬 ───
@@ -88,13 +87,6 @@ export interface LinkBlock {
   thumbnail?: string;
 }
 
-export interface StickerBlock {
-  id: string;
-  type: 'sticker';
-  stickerId: string;
-  stickerName: string;
-}
-
 export interface VideoBlock {
   id: string;
   type: 'video';
@@ -122,7 +114,6 @@ export type BlogBlock =
   | SeparatorBlock
   | QuoteBlock
   | LinkBlock
-  | StickerBlock
   | FileBlock;
 
 // ─── 블로그 카테고리 ───
@@ -240,13 +231,6 @@ export const createLinkBlock = (url: string): LinkBlock => ({
   url,
 });
 
-export const createStickerBlock = (stickerId: string, stickerName: string): StickerBlock => ({
-  id: genBlockId(),
-  type: 'sticker',
-  stickerId,
-  stickerName,
-});
-
 export const createFileBlock = (uri: string, fileName: string, fileSize?: number, mimeType?: string): FileBlock => ({
   id: genBlockId(),
   type: 'file',
@@ -277,6 +261,15 @@ export function blocksToPhotos(blocks: BlogBlock[]): string[] {
     if (b.type === 'images') b.items.forEach(item => photos.push(item.uri));
   });
   return photos;
+}
+
+// ─── 블록에서 영상 썸네일 URI 추출 (대표사진/커버 후보용) ───
+export function blocksToVideoThumbnails(blocks: BlogBlock[]): string[] {
+  const thumbs: string[] = [];
+  blocks.forEach(b => {
+    if (b.type === 'video' && b.thumbnail) thumbs.push(b.thumbnail);
+  });
+  return thumbs;
 }
 
 // ─── 블록에서 소제목 추출 (목차용) ───

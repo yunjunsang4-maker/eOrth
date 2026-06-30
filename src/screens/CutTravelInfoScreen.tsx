@@ -4,7 +4,11 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
 } from 'react-native';
-import { useRecords } from '../store/recordStore';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
+import { useRecords, type Visibility } from '../store/recordStore';
+import { detectCurrentCountry } from '../services/snapService';
+import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -37,6 +41,11 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
+const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+  { value: 'public',  label: '🌐 전체 공개' },
+  { value: 'friends', label: '👥 친구만' },
+  { value: 'private', label: '🔒 나만 보기' },
+];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
   { code: 'GBP', name: '파운드 (영국)' }, { code: 'AUD', name: '호주 달러' },
@@ -72,11 +81,44 @@ const WEATHER_ICON_MAP: Record<string, React.ReactNode> = {
   '바람':     <WindIcon size={16} />,
 };
 
-const fmtDate = (d: Date | null) =>
-  d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : '선택';
+const fmtDate = (d: Date | null, tr: TFunction) =>
+  d ? `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}` : tr('cutInfo.dateSelect');
+
+// 동행자/날씨/항공편/공개범위 값(저장 키)은 유지하고 표시만 번역
+const companionLabel = (c: string, tr: TFunction) => {
+  switch (c) {
+    case '혼자': return tr('newRecord.compSolo');
+    case '친구': return tr('newRecord.compFriend');
+    case '연인': return tr('newRecord.compCouple');
+    case '가족': return tr('newRecord.compFamily');
+    case '부모님': return tr('newRecord.compParents');
+    case '형제': return tr('newRecord.compSibling');
+    default: return c;
+  }
+};
+const weatherLabel = (v: string, tr: TFunction) => {
+  switch (v) {
+    case '맑음': return tr('newRecord.wSunny');
+    case '부분흐림': return tr('newRecord.wPartly');
+    case '흐림': return tr('newRecord.wCloudy');
+    case '비': return tr('newRecord.wRain');
+    case '눈': return tr('newRecord.wSnow');
+    case '바람': return tr('newRecord.wWind');
+    default: return v;
+  }
+};
+const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
+const visibilityLabel = (v: Visibility, tr: TFunction) => {
+  switch (v) {
+    case 'public': return `🌐 ${tr('newRecord.visPublic')}`;
+    case 'friends': return `👥 ${tr('newRecord.visFriends')}`;
+    case 'private': return `🔒 ${tr('newRecord.visPrivate')}`;
+    default: return '';
+  }
+};
 
 // ─── 기간 선택 캘린더 ───
-const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+const DOW_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
 const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
 const firstDow = (y: number, m: number) => new Date(y, m, 1).getDay();
 
@@ -87,6 +129,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
   onConfirm: (start: Date, end: Date) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const base = initialStart ?? new Date();
   const [vy, setVy] = useState(base.getFullYear());
   const [vm, setVm] = useState(base.getMonth());
@@ -129,7 +172,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
 
   return (
     <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={cal.overlay}>
+      <View style={cal.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <View style={cal.sheet}>
           <View style={cal.handle} />
@@ -137,14 +180,14 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
             <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={cal.navArrow}>‹</Text>
             </TouchableOpacity>
-            <Text style={cal.ymLabel}>{vy}년 {vm + 1}월</Text>
+            <Text style={cal.ymLabel}>{t('cutInfo.yearMonth', { y: vy, m: vm + 1 })}</Text>
             <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={cal.navArrow}>›</Text>
             </TouchableOpacity>
           </View>
           <View style={cal.dowRow}>
-            {DOW.map((d, i) => (
-              <Text key={d} style={[cal.dow, i === 0 && { color: '#FF6B6B' }, i === 6 && { color: '#6BA3FF' }]}>{d}</Text>
+            {DOW_KEYS.map((dk, i) => (
+              <Text key={dk} style={[cal.dow, i === 0 && { color: '#FF6B6B' }, i === 6 && { color: '#6BA3FF' }]}>{t(dk)}</Text>
             ))}
           </View>
           <View style={cal.grid}>
@@ -164,7 +207,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
             onPress={() => { if (start) { onConfirm(start, end ?? start); onClose(); } }}
             activeOpacity={0.85}
           >
-            <Text style={cal.confirmTxt}>확인</Text>
+            <Text style={cal.confirmTxt}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -190,6 +233,7 @@ function PrivacyModal({
   onSetAll: (friends: string[]) => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -202,7 +246,7 @@ function PrivacyModal({
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay}>
+      <View style={pm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
           <View style={pm.handle} />
@@ -212,8 +256,8 @@ function PrivacyModal({
             <View style={pm.headerLeft}>
               <LockClosedIcon size={24} color="#A1A1B0" />
               <View>
-                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
-                <Text style={pm.headerDesc}>선택한 친구에게 이 스트립이 비공개됩니다</Text>
+                <Text style={pm.headerTitle}>{t('cutInfo.privacyTitle')}</Text>
+                <Text style={pm.headerDesc}>{t('cutInfo.privacyDesc')}</Text>
               </View>
             </View>
           </View>
@@ -231,8 +275,8 @@ function PrivacyModal({
                   <LockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
-                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 스트립을 숨겨요</Text>
+                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('cutInfo.allPrivate')}</Text>
+                  <Text style={pm.allPrivateDesc}>{t('cutInfo.allPrivateDesc')}</Text>
                 </View>
                 <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
                   {allPrivate && <Text style={pm.checkMark}>✓</Text>}
@@ -244,7 +288,7 @@ function PrivacyModal({
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
             <TouchableOpacity style={pm.clearAllBtn} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
-              <Text style={pm.clearAllTxt}>전체 해제</Text>
+              <Text style={pm.clearAllTxt}>{t('cutInfo.clearAll')}</Text>
             </TouchableOpacity>
           )}
 
@@ -275,8 +319,8 @@ function PrivacyModal({
           <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
             <Text style={pm.doneTxt}>
               {selectedFriends.length > 0
-                ? `${selectedFriends.length}명 비공개 설정 완료`
-                : '공개로 설정 (비공개 없음)'}
+                ? t('cutInfo.privacyDoneN', { count: selectedFriends.length })
+                : t('cutInfo.setPublic')}
             </Text>
           </TouchableOpacity>
         </Animated.View>
@@ -286,11 +330,19 @@ function PrivacyModal({
 }
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
+  const { t } = useTranslation();
   const { addRecord, followingUsers } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
+  // 여행 카드에서 추가 시 받은 기간을 기본 날짜로 적용 ('YYYY.MM.DD' → Date)
+  const tripPeriod = route?.params?.tripPeriod;
+  const parseTripDate = (s?: string): Date | null => {
+    if (!s) return null;
+    const t = new Date(s.replace(/\./g, '-'));
+    return Number.isFinite(t.getTime()) ? t : null;
+  };
 
   // ─── 국가 선택 ───
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(
@@ -303,24 +355,57 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [countrySearch, setCountrySearch] = useState('');
 
   // ─── 메타 상태 (피드와 동일) ───
-  const [startDate, setStartDate] = useState<Date | null>(null);
-  const [endDate, setEndDate] = useState<Date | null>(null);
+  const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
+  const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [visibility, setVisibility] = useState<Visibility>('friends');
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [privateFriends, setPrivateFriends] = useState<string[]>([]);
   const [privacyVisible, setPrivacyVisible] = useState(false);
   const [rating, setRating] = useState(0);
   const [budget, setBudget] = useState('');
   const [currency, setCurrency] = useState('KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
+  const currencyTouchedRef = useRef(false);
+  const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [weather, setWeather] = useState('');
   const [flightType, setFlightType] = useState('');
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordQuery, setKeywordQuery] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
+  useEffect(() => {
+    if (currencyTouchedRef.current) return;
+    const cur = currencyForCountryName(selectedCountry?.name);
+    if (cur) setCurrency(cur);
+     
+  }, [selectedCountry?.name]);
+
+  // 위치(국가·도시) 자동 채움 — 국가 지정 없이 들어왔을 때, 현재 위치로 1회 프리필
+  useEffect(() => {
+    if (initialCountry?.name) return;
+    let cancelled = false;
+    (async () => {
+      const { countryCode, countryName, city } = await detectCurrentCountry();
+      if (cancelled || (!countryCode && !countryName)) return;
+      const found =
+        (countryCode && COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === countryCode.toUpperCase())) ||
+        (countryName && COUNTRIES.find(c => c.name === countryName || c.term.toLowerCase().includes(countryName.toLowerCase()))) ||
+        null;
+      if (!found) return;
+      setSelectedCountry(prev => prev ?? found);
+      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleCompanion = (c: string) =>
     setCompanions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
@@ -337,7 +422,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     const kw = `#${base}`;
     setKeywords(prev => {
       if (prev.includes(kw)) return prev;
-      if (prev.length >= KEYWORD_MAX) { Alert.alert('알림', `키워드는 최대 ${KEYWORD_MAX}개예요`); return prev; }
+      if (prev.length >= KEYWORD_MAX) { Alert.alert(t('cutInfo.noticeTitle'), t('cutInfo.keywordMax', { max: KEYWORD_MAX })); return prev; }
       return [...prev, kw];
     });
   };
@@ -404,15 +489,18 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
   // ─── 저장 ───
   const handleSave = () => {
-    if (!selectedCountry) { Alert.alert('국가 선택', '여행한 국가를 선택해주세요.'); return; }
-    if (!startDate) { Alert.alert('날짜 입력', '여행 날짜를 선택해주세요.'); return; }
-    if (!memo.trim()) { Alert.alert('내용 입력', '글을 작성해주세요.'); return; }
-    if (companions.length === 0) { Alert.alert('동행자 선택', '동행자를 선택해주세요.'); return; }
-    if (rating <= 0) { Alert.alert('별점 입력', '별점을 입력해주세요.'); return; }
-    if (!cutPhoto) { Alert.alert('오류', '네컷 정보를 찾을 수 없어요.'); return; }
+    if (savingRef.current) return; // 저장 중복 클릭 방지
+    if (!selectedCountry) { Alert.alert(t('cutInfo.selectCountryTitle'), t('cutInfo.selectCountryMsg')); return; }
+    if (!startDate) { Alert.alert(t('cutInfo.dateInputTitle'), t('cutInfo.dateInputMsg')); return; }
+    if (!memo.trim()) { Alert.alert(t('cutInfo.contentTitle'), t('cutInfo.contentMsg')); return; }
+    if (companions.length === 0) { Alert.alert(t('cutInfo.companionTitle'), t('cutInfo.companionMsg')); return; }
+    if (rating <= 0) { Alert.alert(t('cutInfo.ratingTitle'), t('cutInfo.ratingMsg')); return; }
+    if (!cutPhoto) { Alert.alert(t('cutInfo.errorTitle'), t('cutInfo.noCutInfo')); return; }
 
-    const sStr = fmtDate(startDate);
-    const eStr = fmtDate(endDate ?? startDate);
+    savingRef.current = true;
+    setSaving(true);
+    const sStr = fmtDate(startDate, t);
+    const eStr = fmtDate(endDate ?? startDate, t);
     addRecord({
       user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
       country: selectedCountry ? `${selectedCountry.flag ?? ''} ${selectedCountry.name ?? ''}`.trim() : '',
@@ -424,10 +512,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: sStr,
       content: memo.trim(),
-      visibility: 'friends',
+      visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
-      companions: [...companions, ...companionFriends],
+      companions: companions,
+      companionFriends: companionFriends.length > 0 ? companionFriends : undefined,
       medias: [cutPhoto.previewUri],
       mediaPrivacy: privateFriends.length > 0 ? { 0: privateFriends } : undefined,
       startDate: sStr,
@@ -447,9 +536,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.cancel}>취소</Text>
+          <Text style={st.cancel}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>여행 정보</Text>
+        <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
         <View style={st.headerRight}>
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
@@ -468,8 +557,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </View>
             )}
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleSave} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={st.save}>저장</Text>
+          <TouchableOpacity onPress={handleSave} disabled={saving} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+            <Text style={[st.save, saving && { opacity: 0.5 }]}>{saving ? t('cutInfo.saving') : t('common.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -486,7 +575,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 국가 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>국가</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={st.req}>✱</Text></View>
             <TouchableOpacity style={st.countryChip} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
                 {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '+ 여행지 선택'}
@@ -496,16 +585,16 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 날짜 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>날짜</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.date')}</Text><Text style={st.req}>✱</Text></View>
             <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
               <View style={st.dateCol}>
-                <Text style={st.dateColLabel}>출발일</Text>
-                <Text style={st.dateColVal}>{fmtDate(startDate)}</Text>
+                <Text style={st.dateColLabel}>{t('cutInfo.departDate')}</Text>
+                <Text style={st.dateColVal}>{fmtDate(startDate, t)}</Text>
               </View>
               <Text style={st.dateArrow}>→</Text>
               <View style={st.dateCol}>
-                <Text style={st.dateColLabel}>도착일</Text>
-                <Text style={st.dateColVal}>{fmtDate(endDate ?? startDate)}</Text>
+                <Text style={st.dateColLabel}>{t('cutInfo.arriveDate')}</Text>
+                <Text style={st.dateColVal}>{fmtDate(endDate ?? startDate, t)}</Text>
               </View>
               <View style={{ marginLeft: 8 }}><CalendarIcon size={18} color={C.purpleNeon} /></View>
             </TouchableOpacity>
@@ -513,10 +602,10 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 글 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>글</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text><Text style={st.req}>✱</Text></View>
             <TextInput
               style={st.memoInput}
-              placeholder="여행의 순간을 기록해보세요"
+              placeholder={t('cutInfo.textPlaceholder')}
               placeholderTextColor={C.textMuted}
               value={memo} onChangeText={setMemo}
               multiline textAlignVertical="top"
@@ -525,7 +614,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 동행자 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>동행자 선택</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.companionSelect')}</Text><Text style={st.req}>✱</Text></View>
             <View style={st.chipWrap}>
               {COMPANIONS.map(comp => {
                 const active = companions.includes(comp);
@@ -537,7 +626,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     activeOpacity={0.75}
                   >
                     <View style={st.compChipIcon}>{companionIcon(comp, active ? C.purpleNeon : C.textDim)}</View>
-                    <Text style={[st.compChipTxt, active && st.compChipTxtActive]}>{comp}</Text>
+                    <Text style={[st.compChipTxt, active && st.compChipTxtActive]}>{companionLabel(comp, t)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -557,7 +646,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             )}
             <TouchableOpacity style={st.addFriendBtn} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
               <FriendIcon size={16} color={C.purpleNeon} />
-              <Text style={st.addFriendTxt}>앱 친구 추가</Text>
+              <Text style={st.addFriendTxt}>{t('cutInfo.addAppFriend')}</Text>
               {companionFriends.length > 0 && (
                 <View style={st.addFriendBadge}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
               )}
@@ -567,28 +656,48 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 별점 */}
           <View style={st.fieldBlock}>
             <View style={st.ratingLabelRow}>
-              <View style={st.labelRow}><Text style={st.label}>별점</Text><Text style={st.req}>✱</Text></View>
+              <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.rating')}</Text><Text style={st.req}>✱</Text></View>
               {rating > 0
                 ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
-                : <Text style={st.ratingScoreEmpty}>탭하거나 드래그해 선택</Text>}
+                : <Text style={st.ratingScoreEmpty}>{t('cutInfo.ratingEmpty')}</Text>}
             </View>
             <View style={st.ratingCard}>{renderStars()}</View>
           </View>
 
+          {/* 공개 범위 */}
+          <View style={st.fieldBlock}>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.visibility')}</Text></View>
+            <View style={st.chipRow}>
+              {VISIBILITY_OPTIONS.map(opt => {
+                const isActive = visibility === opt.value;
+                return (
+                  <TouchableOpacity
+                    key={opt.value}
+                    style={[st.smallBtn, isActive && st.smallBtnActive]}
+                    onPress={() => setVisibility(opt.value)}
+                    activeOpacity={0.75}
+                  >
+                    <Text style={[st.smallTxt, isActive && st.smallTxtActive]}>{visibilityLabel(opt.value, t)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           {/* 선택 항목 구분선 */}
           <View style={st.divider} />
-          <Text style={st.optNotice}>선택 항목이에요 (건너뛰어도 돼요 😊)</Text>
+          <Text style={st.optNotice}>{t('cutInfo.optionalNotice')}</Text>
 
           {/* 예산 */}
           <View style={st.optRow}>
             <View style={st.optHeader}>
               <CoinIcon size={18} color={IC} />
-              <Text style={st.optTitle}>예산</Text>
+              <Text style={st.optTitle}>{t('cutInfo.budget')}</Text>
               {budget ? <Text style={st.optValue}>{Number(budget).toLocaleString()} {currency}</Text> : null}
             </View>
             <View style={st.budgetRow}>
               {CURRENCIES.map(c => (
-                <TouchableOpacity key={c} style={[st.curChip, currency === c && st.curChipActive]} onPress={() => setCurrency(c)} activeOpacity={0.75}>
+                <TouchableOpacity key={c} style={[st.curChip, currency === c && st.curChipActive]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
                   <Text style={[st.curTxt, currency === c && st.curTxtActive]}>{c}</Text>
                 </TouchableOpacity>
               ))}
@@ -598,12 +707,12 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 activeOpacity={0.75}
               >
                 <Text style={[st.curTxt, !CURRENCIES.includes(currency) && st.curTxtActive]}>
-                  {CURRENCIES.includes(currency) ? '기타 ›' : currency}
+                  {CURRENCIES.includes(currency) ? t('cutInfo.otherCurrency') : currency}
                 </Text>
               </TouchableOpacity>
               <TextInput
                 style={st.budgetInput}
-                placeholder="금액" placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.amountPlaceholder')} placeholderTextColor={C.textMuted}
                 value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
                 keyboardType="numeric"
               />
@@ -614,8 +723,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <View style={st.optRow}>
             <View style={st.optHeader}>
               <PartlyCloudyIcon size={18} />
-              <Text style={st.optTitle}>날씨</Text>
-              {weather ? <Text style={st.optValue}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
+              <Text style={st.optTitle}>{t('cutInfo.weather')}</Text>
+              {weather ? <Text style={st.optValue}>{weatherLabel(weather, t)}</Text> : null}
             </View>
             <View style={st.chipRow}>
               {WEATHER_OPTIONS.map(w => (
@@ -626,7 +735,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   activeOpacity={0.75}
                 >
                   {WEATHER_ICON_MAP[w.value]}
-                  <Text style={[st.smallTxt, weather === w.value && st.smallTxtActive]}>{w.value}</Text>
+                  <Text style={[st.smallTxt, weather === w.value && st.smallTxtActive]}>{weatherLabel(w.value, t)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -636,8 +745,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <View style={st.optRow}>
             <View style={st.optHeader}>
               <PlaneIcon size={18} color={IC} />
-              <Text style={st.optTitle}>직항 / 경유</Text>
-              {flightType ? <Text style={st.optValue}>{flightType}</Text> : null}
+              <Text style={st.optTitle}>{t('cutInfo.flightTitle')}</Text>
+              {flightType ? <Text style={st.optValue}>{flightLabel(flightType, t)}</Text> : null}
             </View>
             <View style={st.chipRow}>
               {FLIGHT_OPTIONS.map(f => (
@@ -651,7 +760,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     {f === '직항'
                       ? <TakeoffIcon size={14} color={flightType === f ? C.purpleNeon : C.textDim} />
                       : <TransferIcon size={14} color={flightType === f ? C.purpleNeon : C.textDim} />}
-                    <Text style={[st.flightTxt, flightType === f && st.flightTxtActive]}>{f}</Text>
+                    <Text style={[st.flightTxt, flightType === f && st.flightTxtActive]}>{flightLabel(f, t)}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -662,7 +771,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <View style={st.optRow}>
             <View style={st.optHeader}>
               <TagIcon size={18} color={IC} />
-              <Text style={st.optTitle}>키워드</Text>
+              <Text style={st.optTitle}>{t('cutInfo.keyword')}</Text>
               {keywords.length > 0 && <Text style={st.optValue}>{keywords.length}개</Text>}
             </View>
             <View style={st.kwBox}>
@@ -685,7 +794,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 onSubmitEditing={() => { addKeyword(keywordQuery); setKeywordQuery(''); }}
               />
             </View>
-            <Text style={st.kwHint}>스페이스 또는 엔터로 태그 추가 · 탭해서 삭제</Text>
+            <Text style={st.kwHint}>{t('cutInfo.keywordHint')}</Text>
           </View>
 
           <View style={{ height: 40 }} />
@@ -703,13 +812,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
       {/* 앱 친구 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
-        <View style={fp.overlay}>
+        <View style={fp.overlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
           <View style={fp.sheet}>
             <View style={fp.handle} />
             <View style={fp.header}>
               <FriendIcon size={16} color={C.purpleNeon} />
-              <Text style={fp.headerTitle}>함께한 친구 선택</Text>
+              <Text style={fp.headerTitle}>{t('cutInfo.friendPickerTitle')}</Text>
             </View>
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
               {friendNames.length === 0 ? (
@@ -728,7 +837,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               })}
             </ScrollView>
             <TouchableOpacity style={fp.doneBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
-              <Text style={fp.doneTxt}>{companionFriends.length > 0 ? `${companionFriends.length}명 선택 완료` : '선택 없이 닫기'}</Text>
+              <Text style={fp.doneTxt}>{companionFriends.length > 0 ? t('cutInfo.friendDoneN', { count: companionFriends.length }) : t('cutInfo.closeWithoutSelect')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -746,17 +855,17 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
       {/* 기타 통화 선택 모달 */}
       <Modal visible={currencyModalVisible} transparent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
           <View style={cur.sheet}>
             <View style={cur.handle} />
-            <Text style={cur.title}>통화 선택</Text>
+            <Text style={cur.title}>{t('cutInfo.currencySelect')}</Text>
             <View style={cur.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
               <TextInput
                 style={cur.searchInput}
                 value={currencySearch} onChangeText={setCurrencySearch}
-                placeholder="통화 검색 (예: EUR, 유로)" placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.currencySearchPlaceholder')} placeholderTextColor={C.textMuted}
                 autoFocus
               />
             </View>
@@ -770,7 +879,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   <TouchableOpacity
                     key={c.code}
                     style={[cur.item, idx < arr.length - 1 && cur.itemBorder]}
-                    onPress={() => { setCurrency(c.code); setCurrencyModalVisible(false); }}
+                    onPress={() => { chooseCurrency(c.code); setCurrencyModalVisible(false); }}
                     activeOpacity={0.75}
                   >
                     <Text style={cur.code}>{c.code}</Text>
@@ -786,17 +895,17 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
       {/* 국가 선택 모달 */}
       <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCountryModalVisible(false)} />
           <View style={ct.sheet}>
             <View style={ct.handle} />
-            <Text style={ct.title}>여행지 선택</Text>
+            <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>
             <View style={ct.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
               <TextInput
                 style={ct.searchInput}
                 value={countrySearch} onChangeText={setCountrySearch}
-                placeholder="국가 검색 (예: 일본, japan)" placeholderTextColor={C.textMuted}
+                placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.textMuted}
                 autoFocus
               />
             </View>
@@ -819,7 +928,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 </View>
               ))}
               {groupedCountries.length === 0 && (
-                <Text style={ct.empty}>검색 결과가 없어요</Text>
+                <Text style={ct.empty}>{t('cutInfo.noResult')}</Text>
               )}
             </ScrollView>
             <View style={{ height: 24 }} />

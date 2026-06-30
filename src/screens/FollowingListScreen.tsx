@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { PlaneIcon } from '../components/icons';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -23,16 +24,17 @@ const COLORS = {
 };
 
 export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { followingUsers } = useRecords();
   return (
     <View style={styles.root}>
       {/* 헤더 */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>팔로잉</Text>
+        <Text style={styles.headerTitle}>{t('friends.followingTitle')}</Text>
         <View style={styles.backBtn} />
       </View>
 
@@ -41,7 +43,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
         showsVerticalScrollIndicator={false}
       >
         {followingUsers.length === 0 && (
-          <Text style={styles.emptyText}>아직 팔로우한 친구가 없어요</Text>
+          <Text style={styles.emptyText}>{t('friends.noFollowing')}</Text>
         )}
         {followingUsers.map((friend, index) => (
           <React.Fragment key={friend.id}>
@@ -61,7 +63,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
                 {friend.isAbroad ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><PlaneIcon size={13} color="#BF85FC" /><Text style={styles.abroadText}>{friend.currentCountryFlag} {friend.currentCountry} 여행중</Text></View>
                 ) : (
-                  <Text style={styles.homeText}>거주지에 있어요</Text>
+                  <Text style={styles.homeText}>{t('friends.atHome')}</Text>
                 )}
               </View>
 

@@ -58,6 +58,12 @@ export interface TripThumbnailParam {
   records: { id: string; viewType: string }[];
 }
 
+/** 여행 카드에서 새 기록 추가 시 자동 적용할 여행 기간 (YYYY.MM.DD) */
+export interface TripPeriodParam {
+  startDate?: string;
+  endDate?: string;
+}
+
 export type StatsDetailType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 // ─── 탭 ───
@@ -88,12 +94,14 @@ export type RootStackParamList = {
     editRecord?: TravelRecord;
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
+    tripPeriod?: TripPeriodParam;
   } | undefined;
   Settings: undefined;
   Friends: undefined;
   DM: { friend: DMFriendParam; sharePostId?: string };
   BestCut: undefined;
-  FriendSearch: undefined;
+  FriendSearch: { initialQuery?: string; ts?: number } | undefined;
+  PhoneConsent: undefined;
   BlockedUsers: undefined;
   ArchivedPosts: undefined;
   FriendProfile: {
@@ -111,9 +119,10 @@ export type RootStackParamList = {
   BlogRecord: {
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
+    tripPeriod?: TripPeriodParam;
   } | undefined;
-  CutRecord: { selectedCountry?: SelectedCountryParam } | undefined;
-  CutTravelInfo: { cutPhoto: CutPhotoParam; selectedCountry?: SelectedCountryParam };
+  CutRecord: { selectedCountry?: SelectedCountryParam; tripPeriod?: TripPeriodParam } | undefined;
+  CutTravelInfo: { cutPhoto: CutPhotoParam; selectedCountry?: SelectedCountryParam; tripPeriod?: TripPeriodParam };
   NaverBlogImport: undefined;
   SnapRecord: {
     notifTimestamp?: number;

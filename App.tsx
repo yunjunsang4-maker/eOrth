@@ -6,6 +6,8 @@ import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
+import LanguageBridge from './src/i18n/LanguageBridge';
 import AppNavigator from './src/navigation/AppNavigator';
 import { RecordProvider } from './src/store/recordStore';
 import { DMProvider } from './src/store/dmStore';
@@ -41,6 +43,7 @@ export default function App() {
     Inter_600SemiBold: require('./assets/fonts/Inter_600SemiBold.ttf'),
     Inter_700Bold: require('./assets/fonts/Inter_700Bold.ttf'),
     Inter_800ExtraBold: require('./assets/fonts/Inter_800ExtraBold.ttf'),
+    'Gilroy-Black': require('./assets/fonts/Gilroy-Black.ttf'),
     NanumGothic_400Regular: require('./assets/fonts/NanumGothic_400Regular.ttf'),
     NanumMyeongjo_400Regular: require('./assets/fonts/NanumMyeongjo_400Regular.ttf'),
     NanumBrushScript_400Regular: require('./assets/fonts/NanumBrushScript_400Regular.ttf'),
@@ -65,6 +68,7 @@ export default function App() {
       <SafeAreaProvider>
         <ErrorBoundary>
           <SettingsProvider>
+            <LanguageBridge />
             <RecordProvider>
               <DMProvider>
                 <ToastProvider>

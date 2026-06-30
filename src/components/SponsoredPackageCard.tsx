@@ -10,6 +10,7 @@ import {
   Linking,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import type { SponsoredPackage } from '../constants/sponsoredPackages';
 
 interface Props {
@@ -22,12 +23,13 @@ interface Props {
  * "AD" 표기(표시광고법) 필수. CTA 탭 시 제휴 링크를 외부 브라우저로 연다.
  */
 export default function SponsoredPackageCard({ pkg, onClose }: Props) {
+  const { t } = useTranslation();
   if (!pkg) return null;
 
   const openLink = async () => {
     try {
       await Linking.openURL(pkg.affiliateUrl);
-    } catch (e) {
+    } catch {
       // 링크 열기 실패는 조용히 무시 (사용자 흐름 방해 X)
     }
     onClose();
@@ -35,7 +37,7 @@ export default function SponsoredPackageCard({ pkg, onClose }: Props) {
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable style={st.overlay} onPress={onClose}>
+      <Pressable style={st.overlay} onPress={onClose} accessibilityViewIsModal>
         {/* 카드 내부 탭은 닫힘 방지 */}
         <Pressable style={st.card} onPress={() => {}}>
           {/* 닫기 */}
@@ -65,11 +67,11 @@ export default function SponsoredPackageCard({ pkg, onClose }: Props) {
 
             <TouchableOpacity style={st.cta} onPress={openLink} activeOpacity={0.85}>
               <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.ctaGrad}>
-                <Text style={st.ctaTxt}>패키지 보러가기 →</Text>
+                <Text style={st.ctaTxt}>{t('comp.sponsorCta')}</Text>
               </LinearGradient>
             </TouchableOpacity>
 
-            <Text style={st.disclaimer}>제휴 링크 · 구매 시 일정 수수료를 받을 수 있어요</Text>
+            <Text style={st.disclaimer}>{t('comp.sponsorDisclaimer')}</Text>
           </View>
         </Pressable>
       </Pressable>

@@ -6,15 +6,13 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
-
-const { width } = Dimensions.get('window');
 
 type Props = RootStackScreenProps<'Country'>;
 
@@ -32,6 +30,7 @@ const tripDays = (start?: string, end?: string): number => {
 };
 
 export default function CountryScreen({ navigation, route }: Props) {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
 
@@ -51,7 +50,7 @@ export default function CountryScreen({ navigation, route }: Props) {
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={styles.backIcon}>←</Text>
         </TouchableOpacity>
         <View style={styles.headerCenter}>
@@ -66,15 +65,15 @@ export default function CountryScreen({ navigation, route }: Props) {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{visitCount}</Text>
-            <Text style={styles.statLabel}>회 방문</Text>
+            <Text style={styles.statLabel}>{t('misc.countryVisitCount')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{totalDays}</Text>
-            <Text style={styles.statLabel}>전체 일수</Text>
+            <Text style={styles.statLabel}>{t('misc.countryTotalDays')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: Colors.gold }]}>{avgRating}</Text>
-            <Text style={styles.statLabel}>평균 별점</Text>
+            <Text style={styles.statLabel}>{t('misc.countryAvgRating')}</Text>
           </View>
         </View>
 
@@ -99,7 +98,7 @@ export default function CountryScreen({ navigation, route }: Props) {
 
         {/* Records */}
         <View style={styles.recordsSection}>
-          <Text style={styles.sectionTitle}>여행 기록</Text>
+          <Text style={styles.sectionTitle}>{t('friends.travelRecords')}</Text>
           {countryRecords.length === 0 ? (
             <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
               이 국가의 여행 기록이 아직 없어요
@@ -121,7 +120,7 @@ export default function CountryScreen({ navigation, route }: Props) {
                 <Text style={styles.recordMemo} numberOfLines={2}>{rec.content}</Text>
                 {photoCount > 0 && (
                   <View style={styles.recordFooter}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><CameraIcon size={12} color="#A1A1B0" /><Text style={styles.photoCount}>사진 {photoCount}장</Text></View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><CameraIcon size={12} color="#A1A1B0" /><Text style={styles.photoCount}>{t('misc.photoCountN', { count: photoCount })}</Text></View>
                   </View>
                 )}
               </View>
@@ -136,7 +135,7 @@ export default function CountryScreen({ navigation, route }: Props) {
       <View style={styles.bottomBtn}>
         <TouchableOpacity style={styles.addRecordBtn} activeOpacity={0.85}>
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.addRecordGrad}>
-            <Text style={styles.addRecordText}>+ 새 기록 추가</Text>
+            <Text style={styles.addRecordText}>+ {t('comp2.addNewRecord')}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </View>

@@ -13,6 +13,7 @@ import {
   Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useTranslation } from 'react-i18next';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
 
@@ -70,6 +71,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
+  const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();
@@ -86,10 +88,10 @@ export default function TripGroupScreen() {
     return (
       <View style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
             <Text style={st.backIcon}>←</Text>
           </TouchableOpacity>
-          <Text style={st.headerTitle}>묶음을 찾을 수 없어요</Text>
+          <Text style={st.headerTitle}>{t('trip.groupNotFound')}</Text>
           <View style={{ width: 36 }} />
         </View>
       </View>
@@ -104,12 +106,12 @@ export default function TripGroupScreen() {
   const handleUngroup = () => {
     setMenuVisible(false);
     Alert.alert(
-      '묶음 해제',
-      '묶음을 해제할까요? 각 기록은 그대로 유지돼요.',
+      t('trip.ungroupTitle'),
+      t('trip.ungroupMsg'),
       [
-        { text: '취소', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '해제하기',
+          text: t('trip.ungroup'),
           style: 'destructive',
           onPress: () => {
             deleteTripGroup(group.id);
@@ -123,12 +125,12 @@ export default function TripGroupScreen() {
   const handleDelete = () => {
     setMenuVisible(false);
     Alert.alert(
-      '묶음 삭제',
-      '묶음을 삭제할까요? 각 기록은 그대로 유지돼요.',
+      t('trip.groupDeleteTitle'),
+      t('trip.groupDeleteMsg'),
       [
-        { text: '취소', style: 'cancel' },
+        { text: t('common.cancel'), style: 'cancel' },
         {
-          text: '삭제',
+          text: t('trip.delete'),
           style: 'destructive',
           onPress: () => {
             deleteTripGroup(group.id);
@@ -147,7 +149,7 @@ export default function TripGroupScreen() {
 
   const handleSaveEdit = () => {
     if (!editTitle.trim()) {
-      Alert.alert('알림', '묶음 이름을 입력해주세요.');
+      Alert.alert(t('trip.noticeTitle'), t('trip.groupNameRequired'));
       return;
     }
     updateTripGroup(group.id, { title: editTitle.trim() });
@@ -158,7 +160,7 @@ export default function TripGroupScreen() {
     <View style={st.container}>
       {/* 헤더 */}
       <View style={[st.header, { paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle} numberOfLines={1}>{group.title}</Text>
@@ -172,8 +174,8 @@ export default function TripGroupScreen() {
         {groupRecords.length === 0 ? (
           <View style={st.emptyState}>
             <Text style={st.emptyIcon}>📦</Text>
-            <Text style={st.emptyTitle}>기록이 없어요</Text>
-            <Text style={st.emptyDesc}>묶음에 포함된 기록을 불러올 수 없어요.</Text>
+            <Text style={st.emptyTitle}>{t('trip.noRecords')}</Text>
+            <Text style={st.emptyDesc}>{t('trip.noRecordsDesc')}</Text>
           </View>
         ) : (
           groupRecords.map((record, index) => {
@@ -207,20 +209,21 @@ export default function TripGroupScreen() {
       >
         <TouchableOpacity
           style={st.menuOverlay}
+          accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
           <View style={st.menuSheet}>
             <TouchableOpacity style={st.menuItem} onPress={openEdit}>
-              <Text style={st.menuItemText}>✏️  묶음 편집</Text>
+              <Text style={st.menuItemText}>✏️  {t('comp2.groupEdit')}</Text>
             </TouchableOpacity>
             <View style={st.menuDivider} />
             <TouchableOpacity style={st.menuItem} onPress={handleUngroup}>
-              <Text style={st.menuItemText}>🔓  묶음 해제</Text>
+              <Text style={st.menuItemText}>🔓  {t('comp2.groupUngroup')}</Text>
             </TouchableOpacity>
             <View style={st.menuDivider} />
             <TouchableOpacity style={st.menuItem} onPress={handleDelete}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[st.menuItemText, st.menuItemDelete]}>묶음 삭제</Text></View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[st.menuItemText, st.menuItemDelete]}>{t('trip.groupDelete')}</Text></View>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -236,6 +239,7 @@ export default function TripGroupScreen() {
         <KeyboardAvoidingView
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           style={{ flex: 1, justifyContent: 'flex-end' }}
+          accessibilityViewIsModal
         >
           <TouchableOpacity
             style={StyleSheet.absoluteFillObject}
@@ -244,15 +248,15 @@ export default function TripGroupScreen() {
           />
           <View style={st.editSheet}>
             <View style={st.editHandle} />
-            <Text style={st.editSheetTitle}>묶음 편집</Text>
+            <Text style={st.editSheetTitle}>{t('trip.editGroup')}</Text>
 
-            <Text style={st.editLabel}>묶음 제목</Text>
+            <Text style={st.editLabel}>{t('trip.groupTitle')}</Text>
             <View style={st.editInputWrap}>
               <TextInput
                 style={st.editInput}
                 value={editTitle}
                 onChangeText={setEditTitle}
-                placeholder="여행 묶음 이름을 입력해주세요"
+                placeholder={t('trip.groupNamePlaceholder')}
                 placeholderTextColor="#4A4A59"
                 maxLength={30}
                 autoFocus
@@ -264,7 +268,7 @@ export default function TripGroupScreen() {
               onPress={handleSaveEdit}
               activeOpacity={0.85}
             >
-              <Text style={st.editSaveBtnText}>저장하기</Text>
+              <Text style={st.editSaveBtnText}>{t('trip.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </View>

@@ -78,7 +78,9 @@ export function usePersistence<T>(
       });
     }, SAVE_DEBOUNCE_MS);
     return () => clearTimeout(timer);
-  }, [hydrated, ...deps]);
+    // deps는 호출부가 저장 시점을 제어하는 의도된 가변 배열(정적 검증 불가). key는 저장 키라 포함.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, key, ...deps]);
 
   return hydrated;
 }

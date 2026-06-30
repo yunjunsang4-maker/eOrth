@@ -9,6 +9,10 @@ import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 
+// OAuth 콜백으로 인앱 브라우저가 돌아왔을 때 세션을 정상 종료시킨다.
+// (일부 기기에서 브라우저가 닫히지 않는 문제 예방 — expo-web-browser 권장 호출)
+WebBrowser.maybeCompleteAuthSession();
+
 export interface AuthResult {
   ok: boolean;
   /** 가입 후 이메일 인증 대기 상태 (Supabase "Confirm email" 활성화 시) */
@@ -56,6 +60,18 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 }
 
+/** 가입 인증 메일 재전송 (Confirm email 활성화 시) */
+export async function resendEmailConfirmation(email: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
@@ -84,12 +100,20 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
     });
     if (error || !data?.url) return { ok: false, error: toKoMessage(error?.message || '로그인 URL 생성 실패') };
 
+    // CSRF 방어 심화: 인증 시작 URL의 state 를 보관해 콜백 state 와 대조(PKCE code_verifier와 별개 이중 방어)
+    const expectedState = new URL(data.url).searchParams.get('state');
+
     const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirect);
     if (result.type !== 'success' || !result.url) {
       return { ok: false, error: '로그인이 취소되었어요.' };
     }
+    const cbUrl = new URL(result.url);
+    // state 불일치(콜백 가로채기 의심)면 코드 교환을 중단한다
+    if (expectedState && cbUrl.searchParams.get('state') !== expectedState) {
+      return { ok: false, error: '인증 상태 검증에 실패했어요. 다시 시도해주세요.' };
+    }
     // PKCE: 콜백 URL의 code 를 세션으로 교환
-    const code = new URL(result.url).searchParams.get('code');
+    const code = cbUrl.searchParams.get('code');
     if (!code) return { ok: false, error: '인증 코드를 받지 못했어요.' };
     const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
     if (exErr) return { ok: false, error: toKoMessage(exErr.message) };
@@ -102,9 +126,12 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
 export async function signOut(): Promise<void> {
   if (!supabase) return;
   try {
-    await supabase.auth.signOut();
+    const { error } = await supabase.auth.signOut();
+    // 서버 revoke 실패(네트워크 등)에도 로컬 세션(토큰)은 확실히 제거한다.
+    if (error) await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   } catch {
-    // 로그아웃 실패는 무시 (로컬 세션은 supabase-js가 정리)
+    // 예외 시에도 최소한 로컬 세션은 지워 토큰 잔류를 막는다.
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
   }
 }
 

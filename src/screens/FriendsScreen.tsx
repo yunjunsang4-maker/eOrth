@@ -5,18 +5,20 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  Image,
+  ScrollView,
   TextInput,
-  Alert,
   Pressable,
   Animated,
 } from 'react-native';
 import { SearchIcon } from '../components/icons';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import type { Message } from '../store/dmTypes';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
@@ -28,7 +30,7 @@ const C = {
   accentBorder: 'rgba(191,133,252,0.3)',
   white: '#FFFFFF',
   dim: '#A1A1B0',
-  muted: '#4A4A59',
+  muted: '#8B8B9E',
   online: '#34C759',
 };
 
@@ -45,31 +47,32 @@ interface Friend {
 }
 
 // 상대시간 표기 (방금 전 / N분 전 / N시간 전 / 어제 / N일 전 / M월 D일)
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, tr: TFunction): string {
   const diff = Date.now() - ts;
   const min = Math.floor(diff / 60000);
-  if (min < 1) return '방금 전';
-  if (min < 60) return `${min}분 전`;
+  if (min < 1) return tr('time.justNow');
+  if (min < 60) return tr('time.minAgo', { n: min });
   const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}시간 전`;
+  if (hr < 24) return tr('time.hourAgo', { n: hr });
   const day = Math.floor(hr / 24);
-  if (day === 1) return '어제';
-  if (day < 7) return `${day}일 전`;
+  if (day === 1) return tr('time.yesterday');
+  if (day < 7) return tr('time.dayAgo', { n: day });
   const d = new Date(ts);
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  return tr('time.monthDay', { m: d.getMonth() + 1, d: d.getDate() });
 }
 
 // 목록에 보여줄 마지막 메시지 미리보기
-function lastMessagePreview(m: Message): string {
-  if (m.type === 'image') return '사진을 보냈습니다';
-  if (m.type === 'record') return '여행 기록을 공유했습니다';
+function lastMessagePreview(m: Message, tr: TFunction): string {
+  if (m.type === 'image') return tr('friends.sentImage');
+  if (m.type === 'record') return tr('friends.sharedRecord');
   return m.text;
 }
 
 type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
-  const { blockedUsers, blockUser, followingUsers } = useRecords();
+  const { t } = useTranslation();
+  const { blockUser, followingUsers, isBlocked, toggleMute, isMuted } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
   const [search, setSearch] = useState('');
@@ -115,14 +118,11 @@ export default function FriendsScreen({ navigation }: Props) {
 
   const handleToggleMute = () => {
     if (!selectedFriendId) return;
-    setFriends(prev => prev.map(f => {
-      if (f.id === selectedFriendId) {
-        const newMute = !f.isMuted;
-        showToast(newMute ? `${f.name}님의 알림을 껐습니다.` : `${f.name}님의 알림을 켰습니다.`);
-        return { ...f, isMuted: newMute };
-      }
-      return f;
-    }));
+    const friend = friends.find(f => f.id === selectedFriendId);
+    if (!friend) return;
+    const willMute = !isMuted(friend.handle);
+    toggleMute(friend.handle); // store에 영속 저장
+    showToast(willMute ? t('comp2.toastMuteOn', { name: friend.name }) : t('comp2.toastMuteOff', { name: friend.name }));
     setSelectedFriendId(null);
   };
 
@@ -131,9 +131,9 @@ export default function FriendsScreen({ navigation }: Props) {
     if (!friend) return;
     if (unreadCount(friend.handle) > 0) {
       markRead(friend.handle);
-      showToast(`${friend.name}님의 메시지를 읽음 처리했습니다.`);
+      showToast(t('comp2.toastMarkRead', { name: friend.name }));
     } else {
-      showToast('이미 읽은 대화입니다.');
+      showToast(t('friends.alreadyRead'));
     }
     setSelectedFriendId(null);
   };
@@ -142,26 +142,14 @@ export default function FriendsScreen({ navigation }: Props) {
     if (!selectedFriendId) return;
     const friend = friends.find(f => f.id === selectedFriendId);
     if (!friend) return;
-    Alert.alert(
-      '차단 확인',
-      `${friend.name}님을 차단하시겠습니까? 차단하면 이 친구와의 대화 및 게시물이 숨겨집니다.`,
-      [
-        { text: '취소', style: 'cancel' },
-        {
-          text: '차단하기',
-          style: 'destructive',
-          onPress: () => {
-            blockUser({ name: friend.name, emoji: friend.emoji });
-            showToast(`${friend.name}님을 차단했습니다.`);
-            setSelectedFriendId(null);
-          }
-        }
-      ]
-    );
+    confirmBlock(friend.name, () => {
+      blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle });
+      showToast(t('friends.blockedNameToast', { name: friend.name }));
+      setSelectedFriendId(null);
+    }, t);
   };
 
   const selectedFriend = friends.find(f => f.id === selectedFriendId);
-  const isCurrentlyMuted = selectedFriend?.isMuted ?? false;
 
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
   const mergedFriends = friends.map(f => {
@@ -170,14 +158,14 @@ export default function FriendsScreen({ navigation }: Props) {
     const hasConvo = msgs !== undefined; // 대화 키가 있으면(=비웠어도) 더미로 되돌리지 않음
     return {
       ...f,
-      lastMessage: last ? lastMessagePreview(last) : (hasConvo ? '메시지 없음' : f.lastMessage),
+      lastMessage: last ? lastMessagePreview(last, t) : (hasConvo ? t('friends.noMessage') : f.lastMessage),
       lastMessageAt: last?.createdAt ?? (hasConvo ? 0 : f.lastMessageAt),
       unread: unreadCount(f.handle),
+      isMuted: isMuted(f.handle), // 음소거는 store(mutedHandles)에서 — 재진입·재시작에도 유지
     };
   });
 
-  const blockedNames = blockedUsers.map(b => b.name);
-  const visibleFriends = mergedFriends.filter(f => !blockedNames.includes(f.name));
+  const visibleFriends = mergedFriends.filter(f => !isBlocked({ name: f.name, handle: f.handle }));
 
   const filtered = (search.trim()
     ? visibleFriends.filter(
@@ -195,15 +183,15 @@ export default function FriendsScreen({ navigation }: Props) {
         onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
         style={st.header}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>친구</Text>
+        <Text style={st.headerTitle}>{t('friends.title')}</Text>
         <TouchableOpacity
           style={st.addBtn}
           onPress={() => navigation.navigate('FriendSearch')}
         >
-          <Text style={st.addBtnText}>+ 추가</Text>
+          <Text style={st.addBtnText}>+ {t('comp2.addShort')}</Text>
         </TouchableOpacity>
       </Pressable>
 
@@ -214,7 +202,7 @@ export default function FriendsScreen({ navigation }: Props) {
       >
         <TextInput
           style={st.searchInput}
-          placeholder="친구 검색..."
+          placeholder={t('friends.searchPlaceholder')}
           placeholderTextColor={C.muted}
           value={search}
           onChangeText={setSearch}
@@ -225,7 +213,7 @@ export default function FriendsScreen({ navigation }: Props) {
 
       <ScrollView style={st.scroll} showsVerticalScrollIndicator={false}>
         <Pressable onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}>
-          <Text style={st.sectionLabel}>친구 · {filtered.length}</Text>
+          <Text style={st.sectionLabel}>{t('friends.friendsCountN', { count: filtered.length })}</Text>
           {filtered.map((f, idx) => {
             const isSelected = selectedFriendId === f.id;
             return (
@@ -259,7 +247,7 @@ export default function FriendsScreen({ navigation }: Props) {
           {filtered.length === 0 && (
             <View style={st.emptyWrap}>
               <SearchIcon size={40} color="#A1A1B0" />
-              <Text style={st.emptyText}>{search.trim() ? '검색 결과가 없어요' : '아직 친구가 없어요'}</Text>
+              <Text style={st.emptyText}>{search.trim() ? t('friends.noResult') : t('friends.noFriends')}</Text>
             </View>
           )}
 
@@ -297,6 +285,7 @@ function FriendRow({
   onBlock: () => void;
   isCurrentlyMuted: boolean;
 }) {
+  const { t } = useTranslation();
   const popupScale = useRef(new Animated.Value(0.85)).current;
   const popupOpacity = useRef(new Animated.Value(0)).current;
   const selectedOverlayOpacity = useRef(new Animated.Value(0)).current;
@@ -355,17 +344,17 @@ function FriendRow({
         <Animated.View style={[st.popupMenu, placeBelow ? st.popupMenuBelow : st.popupMenuAbove, { opacity: popupOpacity, transform: [{ scale: popupScale }] }]}>
           <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
             <Text style={st.popupIcon}>{isCurrentlyMuted ? '🔔' : '🔕'}</Text>
-            <Text style={st.popupText}>{isCurrentlyMuted ? '켜기' : '끄기'}</Text>
+            <Text style={st.popupText}>{isCurrentlyMuted ? t('friends.muteOnShort') : t('friends.muteOffShort')}</Text>
           </TouchableOpacity>
           <View style={st.popupDivider} />
           <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
             <Text style={st.popupIcon}>📖</Text>
-            <Text style={st.popupText}>읽음</Text>
+            <Text style={st.popupText}>{t('friends.read')}</Text>
           </TouchableOpacity>
           <View style={st.popupDivider} />
           <TouchableOpacity style={st.popupBtn} onPress={onBlock}>
             <Text style={st.popupIcon}>🚫</Text>
-            <Text style={[st.popupText, { color: '#FF6B6B' }]}>차단</Text>
+            <Text style={[st.popupText, { color: '#FF6B6B' }]}>{t('friends.block')}</Text>
           </TouchableOpacity>
           {/* 말풍선 꼬리 */}
           <View style={placeBelow ? st.popupArrowBelow : st.popupArrow} />
@@ -397,7 +386,7 @@ function FriendRow({
               {friend.name}
               {friend.isMuted && <Text style={st.rowMuteIcon}> 🔕</Text>}
             </Text>
-            <Text style={st.rowTime}>{friend.lastMessageAt ? timeAgo(friend.lastMessageAt) : ''}</Text>
+            <Text style={st.rowTime}>{friend.lastMessageAt ? timeAgo(friend.lastMessageAt, t) : ''}</Text>
           </View>
           <View style={st.rowBottom}>
             <Text style={st.rowMsg} numberOfLines={1}>{friend.lastMessage}</Text>

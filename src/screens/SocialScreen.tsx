@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -19,11 +19,13 @@ import {
   RefreshControl,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { useTranslation } from 'react-i18next';
+import Svg, { Path } from 'react-native-svg';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
 import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, ChatIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
@@ -35,7 +37,7 @@ import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
-import { handleBlock as blockUser, handleReport as openReport } from '../utils/reportAndBlock';
+import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 
@@ -77,9 +79,10 @@ function ShareBottomSheet({
   postId?: string;
   navigation: any;
 }) {
+  const { t } = useTranslation();
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { records, followingUsers } = useRecords();
+  const { followingUsers } = useRecords();
   // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const shareFriends = followingUsers.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: '🧳', online: false,
@@ -124,10 +127,10 @@ function ShareBottomSheet({
   };
 
   const SHARE_OPTIONS = [
-    { key: 'friends', icon: '👥', label: '친구에게\n보내기', onPress: handleFriendSend },
-    { key: 'instagram', icon: '📷', label: '인스타그램', onPress: handleSNS },
-    { key: 'tiktok', icon: '🎵', label: '틱톡', onPress: handleSNS },
-    { key: 'link', icon: '🔗', label: '링크 복사', onPress: handleCopyLink },
+    { key: 'friends', icon: '👥', label: t('social.friendsSend'), onPress: handleFriendSend },
+    { key: 'instagram', icon: '📷', label: t('social.instagram'), onPress: handleSNS },
+    { key: 'tiktok', icon: '🎵', label: t('social.tiktok'), onPress: handleSNS },
+    { key: 'link', icon: '🔗', label: t('social.copyLink'), onPress: handleCopyLink },
   ];
 
   // 네비게이션 대기 ref — Modal의 onDismiss에서 실행
@@ -143,7 +146,7 @@ function ShareBottomSheet({
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
           if (!prepareVisible && !friendPickerVisible) onClose();
         }} />
@@ -154,7 +157,7 @@ function ShareBottomSheet({
           <View style={ss.handle} />
 
           {/* 타이틀 */}
-          <Text style={ss.sheetTitle}>공유하기</Text>
+          <Text style={ss.sheetTitle}>{t('social.shareTitle')}</Text>
 
           {/* 공유 옵션 */}
           <View style={ss.optionsRow}>
@@ -170,7 +173,7 @@ function ShareBottomSheet({
 
           {/* 취소 */}
           <TouchableOpacity style={ss.cancelCard} onPress={onClose} activeOpacity={0.75}>
-            <Text style={ss.cancelText}>취소</Text>
+            <Text style={ss.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -179,10 +182,10 @@ function ShareBottomSheet({
           <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
             <View style={ss.prepareCard}>
               <Text style={ss.prepareEmoji}>🚧</Text>
-              <Text style={ss.prepareTitle}>서비스 준비 중이에요</Text>
-              <Text style={ss.prepareDesc}>{'eOrth만의 방식으로 더 특별하게\n공유할 수 있도록 준비 중이에요 ✨'}</Text>
+              <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
+              <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
               <TouchableOpacity style={ss.prepareBtn} onPress={() => setPrepareVisible(false)} activeOpacity={0.85}>
-                <Text style={ss.prepareBtnText}>확인</Text>
+                <Text style={ss.prepareBtnText}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -192,11 +195,11 @@ function ShareBottomSheet({
         {friendPickerVisible && (
           <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
             <View style={ss.friendPickerCard}>
-              <Text style={ss.friendPickerTitle}>보낼 친구 선택</Text>
+              <Text style={ss.friendPickerTitle}>{t('social.friendPickerTitle')}</Text>
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
                 {shareFriends.length === 0 ? (
                   <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-                    아직 팔로우한 친구가 없어요
+                    {t('social.noFollowedFriends')}
                   </Text>
                 ) : shareFriends.map(f => (
                   <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
@@ -215,7 +218,7 @@ function ShareBottomSheet({
                 ))}
               </ScrollView>
               <TouchableOpacity style={ss.friendCancelBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
-                <Text style={ss.friendCancelText}>취소</Text>
+                <Text style={ss.friendCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -243,6 +246,7 @@ function CommentBottomSheet({
   commentText: string;
   setCommentText: (t: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -262,7 +266,7 @@ function CommentBottomSheet({
 
             {/* 헤더 */}
             <View style={cs.sheetHeader}>
-              <Text style={cs.sheetTitle}>댓글</Text>
+              <Text style={cs.sheetTitle}>{t('social.comments')}</Text>
               <TouchableOpacity onPress={onClose}>
                 <Text style={cs.closeBtn}>✕</Text>
               </TouchableOpacity>
@@ -294,12 +298,12 @@ function CommentBottomSheet({
             {/* 입력창 */}
             <View style={cs.inputRow}>
               <View style={cs.myAvatar}>
-                <Text style={cs.myAvatarText}>나</Text>
+                <Text style={cs.myAvatarText}>{t('social.me')}</Text>
               </View>
               <View style={cs.inputWrap}>
                 <TextInput
                   style={cs.input}
-                  placeholder="댓글을 입력하세요"
+                  placeholder={t('social.commentPlaceholder')}
                   placeholderTextColor="#4A4A59"
                   value={commentText}
                   onChangeText={setCommentText}
@@ -348,6 +352,7 @@ function FeedCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const { showCounts } = useSettings();
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
@@ -395,11 +400,11 @@ function FeedCard({
   const handleDeletePress = () => {
     onOpenMenu(null);
     Alert.alert(
-      '정말 삭제할까요?',
-      '이 작업은 되돌릴 수 없어요.',
+      t('social.deleteConfirmTitle'),
+      t('social.deleteConfirmMsg'),
       [
-        { text: '취소', style: 'cancel' },
-        { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
       ]
     );
   };
@@ -478,22 +483,22 @@ function FeedCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>↗</Text>
-                  <Text style={s.menuItemText}>공유</Text>
+                  <Text style={s.menuItemText}>{t('social.share')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>📦</Text>
-                  <Text style={s.menuItemText}>보관</Text>
+                  <Text style={s.menuItemText}>{t('social.archive')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>✏️</Text>
-                  <Text style={s.menuItemText}>편집</Text>
+                  <Text style={s.menuItemText}>{t('social.edit')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
                   <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제</Text>
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -537,22 +542,22 @@ function FeedCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>↗</Text>
-                  <Text style={s.menuItemText}>공유</Text>
+                  <Text style={s.menuItemText}>{t('social.share')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity
                   style={s.menuItem}
                   onPress={() => {
                     onOpenMenu(null);
-                    blockUser(item.user.name, () => {
+                    confirmBlock(item.user.name, () => {
                       onBlock(item.user);
-                      showMenuToast('차단되었어요');
-                    });
+                      showMenuToast(t('social.blockedToast'));
+                    }, t);
                   }}
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>⛔</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>차단</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.block')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity
@@ -564,7 +569,7 @@ function FeedCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>🚨</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>신고</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.report')}</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -612,7 +617,7 @@ function FeedCard({
       />
       {shareToast && (
         <View style={s.toast} pointerEvents="none">
-          <Text style={s.toastText}>링크가 복사되었어요!</Text>
+          <Text style={s.toastText}>{t('social.linkCopiedToast')}</Text>
         </View>
       )}
       <ReportModal
@@ -620,7 +625,7 @@ function FeedCard({
         onClose={() => setReportVisible(false)}
         onSubmit={(reason) => {
           setReportVisible(false);
-          showMenuToast('신고가 접수되었어요');
+          showMenuToast(t('social.reportReceivedToast'));
         }}
       />
 
@@ -831,12 +836,6 @@ const sc = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
   },
   lateBadgeText: { color: '#FFD60A', fontSize: 11, fontWeight: '700' },
-  expiredOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  expiredText: { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
   caption: {
     color: '#fff', fontSize: 15, lineHeight: 22,
     paddingHorizontal: 16, paddingTop: 12,
@@ -872,6 +871,7 @@ function BlogCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
@@ -908,11 +908,11 @@ function BlogCard({
   const handleDeletePress = () => {
     onOpenMenu(null);
     Alert.alert(
-      '정말 삭제할까요?',
-      '이 작업은 되돌릴 수 없어요.',
+      t('social.deleteConfirmTitle'),
+      t('social.deleteConfirmMsg'),
       [
-        { text: '취소', style: 'cancel' },
-        { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
       ]
     );
   };
@@ -962,17 +962,17 @@ function BlogCard({
                 <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
                   <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                     <Text style={s.menuItemIcon}>📦</Text>
-                    <Text style={s.menuItemText}>보관</Text>
+                    <Text style={s.menuItemText}>{t('social.archive')}</Text>
                   </TouchableOpacity>
                   <View style={s.myMenuDivider} />
                   <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
                     <Text style={s.menuItemIcon}>✏️</Text>
-                    <Text style={s.menuItemText}>수정</Text>
+                    <Text style={s.menuItemText}>{t('social.modify')}</Text>
                   </TouchableOpacity>
                   <View style={s.myMenuDivider} />
                   <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
                     <TrashIcon size={16} color="#FF3B30" />
-                    <Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제</Text>
+                    <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
                   </TouchableOpacity>
                 </View>
               </Modal>
@@ -1006,15 +1006,15 @@ function BlogCard({
                     style={s.menuItem}
                     onPress={() => {
                       onOpenMenu(null);
-                      blockUser(item.user.name, () => {
+                      confirmBlock(item.user.name, () => {
                         onBlock(item.user);
-                        showMenuToast('차단되었어요');
-                      });
+                        showMenuToast(t('social.blockedToast'));
+                      }, t);
                     }}
                     activeOpacity={0.7}
                   >
                     <Text style={s.menuItemIcon}>⛔</Text>
-                    <Text style={[s.menuItemText, s.menuItemDanger]}>차단하기</Text>
+                    <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
                   </TouchableOpacity>
                   <View style={s.menuDivider} />
                   <TouchableOpacity
@@ -1026,7 +1026,7 @@ function BlogCard({
                     activeOpacity={0.7}
                   >
                     <Text style={s.menuItemIcon}>🚨</Text>
-                    <Text style={[s.menuItemText, s.menuItemDanger]}>신고하기</Text>
+                    <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                   </TouchableOpacity>
                 </View>
               </Modal>
@@ -1115,7 +1115,7 @@ function BlogCard({
         onClose={() => setReportVisible(false)}
         onSubmit={() => {
           setReportVisible(false);
-          showMenuToast('신고가 접수되었어요');
+          showMenuToast(t('social.reportReceivedToast'));
         }}
       />
       <Toast visible={menuToastVisible} message={menuToastMsg} />
@@ -1167,6 +1167,7 @@ function AlbumCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
+  const { t } = useTranslation();
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
@@ -1180,7 +1181,6 @@ function AlbumCard({
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
   const medias: string[] = item.medias || [];
-  const displayCount = Math.min(medias.length, 4);
   const extraCount = medias.length - 4;
 
   const isMyPost = item.isMyPost ?? false;
@@ -1206,11 +1206,11 @@ function AlbumCard({
   const handleDeletePress = () => {
     onOpenMenu(null);
     Alert.alert(
-      '정말 삭제할까요?',
-      '이 작업은 되돌릴 수 없어요.',
+      t('social.deleteConfirmTitle'),
+      t('social.deleteConfirmMsg'),
       [
-        { text: '취소', style: 'cancel' },
-        { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
       ]
     );
   };
@@ -1272,17 +1272,17 @@ function AlbumCard({
               <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>📦</Text>
-                  <Text style={s.menuItemText}>보관</Text>
+                  <Text style={s.menuItemText}>{t('social.archive')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
                   <Text style={s.menuItemIcon}>✏️</Text>
-                  <Text style={s.menuItemText}>수정</Text>
+                  <Text style={s.menuItemText}>{t('social.modify')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleDeletePress} activeOpacity={0.7}>
                   <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>삭제</Text>
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -1316,15 +1316,15 @@ function AlbumCard({
                   style={s.menuItem}
                   onPress={() => {
                     onOpenMenu(null);
-                    blockUser(item.user.name, () => {
+                    confirmBlock(item.user.name, () => {
                       onBlock(item.user);
-                      showMenuToast('차단되었어요');
-                    });
+                      showMenuToast(t('social.blockedToast'));
+                    }, t);
                   }}
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>⛔</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>차단하기</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity
@@ -1336,7 +1336,7 @@ function AlbumCard({
                   activeOpacity={0.7}
                 >
                   <Text style={s.menuItemIcon}>🚨</Text>
-                  <Text style={[s.menuItemText, s.menuItemDanger]}>신고하기</Text>
+                  <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
               </View>
             </Modal>
@@ -1394,7 +1394,7 @@ function AlbumCard({
       ) : (
         <LinearGradient colors={['#1A0A2E', '#2A1052']} style={ab.noMedia}>
           <GalleryIcon size={40} color="#A1A1B0" />
-          <Text style={ab.noMediaText}>사진 앨범</Text>
+          <Text style={ab.noMediaText}>{t('social.album')}</Text>
         </LinearGradient>
       )}
 
@@ -1445,7 +1445,7 @@ function AlbumCard({
       onClose={() => setReportVisible(false)}
       onSubmit={() => {
         setReportVisible(false);
-        showMenuToast('신고가 접수되었어요');
+        showMenuToast(t('social.reportReceivedToast'));
       }}
     />
     <Toast visible={menuToastVisible} message={menuToastMsg} />
@@ -1522,6 +1522,7 @@ const tiltFor = (id: string): number => {
 };
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
+  const { t } = useTranslation();
   const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
@@ -1546,11 +1547,11 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
         </View>
         <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{displayName}</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)}>
+      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
         {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
-      <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore}>
+      <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
         <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
       </TouchableOpacity>
     </View>
@@ -1637,7 +1638,8 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+  const { t } = useTranslation();
   const { records } = useRecords();
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
@@ -1656,26 +1658,26 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     try {
       await Share.share({ message: text ? `${text}\n${url}` : url, url });
     } catch (e: any) {
-      Alert.alert('공유 실패', String(e?.message ?? e));
+      Alert.alert(t('social.shareFailed'), String(e?.message ?? e));
     }
   };
 
-  const confirmDelete = () => Alert.alert('정말 삭제할까요?', '되돌릴 수 없어요.', [
-    { text: '취소', style: 'cancel' },
-    { text: '삭제', style: 'destructive', onPress: () => onDelete(item.id) },
+  const confirmDelete = () => Alert.alert(t('social.deleteConfirmTitle'), t('social.deleteConfirmMsgShort'), [
+    { text: t('common.cancel'), style: 'cancel' },
+    { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
   ]);
 
   const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = isMy
     ? [
-        { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
-        { key: 'archive', icon: '📦', label: '보관', onPress: () => onArchive(item.id) },
-        { key: 'edit', icon: '✏️', label: '편집', onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
-        { key: 'delete', icon: '🗑', label: '삭제', danger: true, onPress: confirmDelete },
+        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
+        { key: 'archive', icon: '📦', label: t('social.archive'), onPress: () => onArchive(item.id) },
+        { key: 'edit', icon: '✏️', label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
+        { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
       ]
     : [
-        { key: 'share', icon: '↗', label: '공유', onPress: handleShare },
-        { key: 'block', icon: '⛔', label: '차단', danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji }) },
-        { key: 'report', icon: '🚨', label: '신고', danger: true, onPress: () => setReportVisible(true) },
+        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
+        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle }) },
+        { key: 'report', icon: '🚨', label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
   const meta = mode === 'full'
@@ -1687,7 +1689,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const panGesture = Gesture.Pan()
     .runOnJS(true)
     .activateAfterLongPress(250)
-    .onStart((e: any) => {
+    .onStart((e) => {
       cardRef.current?.measureInWindow((x: number, y: number, w: number, h: number) => {
         let correctedX = x;
         let correctedY = y;
@@ -1709,28 +1711,32 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
       });
     })
-    .onUpdate((e: any) => {
+    .onUpdate((e) => {
       dragPos.setValue({ x: e.absoluteX, y: e.absoluteY });
       onQuickMove(e.absoluteX, e.absoluteY);
     })
-    .onEnd((e: any) => {
+    .onEnd((e) => {
       onQuickEnd(e.absoluteX, e.absoluteY);
     });
 
   const card = (() => {
-  // 네컷 → 프레임 합성 라이브 렌더 (CutPhotoCanvas)
+  // 네컷 → 저장된 합성본(previewUri)을 정적으로 렌더 (프로필과 동일·안정적, 카드마다 라이브 합성보다 가벼움)
   if (vt === 'cut') {
+    const uri = firstPhoto(item); // cutPhoto.previewUri || medias[0]
+    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
+    if (uri) {
+      return (
+        <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
+          <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" />
+          {meta}
+        </DiaryTappable>
+      );
+    }
+    // previewUri/medias 없는 옛 기록만 슬롯 사진으로 라이브 합성 폴백
     if (item.cutPhoto?.photos) {
       return <CutDiaryCard item={item} meta={meta} tilt={tilt} onSingle={open} onDouble={like} />;
     }
-    const uri = firstPhoto(item);
-    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
-    return (
-      <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
-        {uri ? <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" /> : null}
-        {meta}
-      </DiaryTappable>
-    );
+    return <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>{meta}</DiaryTappable>;
   }
 
   // 블로그 / 앨범
@@ -1798,7 +1804,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
               ))}
             </View>
             <TouchableOpacity style={ss.cancelCard} activeOpacity={0.7} onPress={() => setMenuVisible(false)}>
-              <Text style={ss.cancelText}>취소</Text>
+              <Text style={ss.cancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -1806,7 +1812,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
-        onSubmit={() => setReportVisible(false)}
+        onSubmit={() => { setReportVisible(false); onReport(item.id); }}
       />
     </>
   );
@@ -1896,7 +1902,7 @@ const d = StyleSheet.create({
   heart: { color: '#7A7A8A', fontSize: 13 },
   heartOn: { color: '#FF6B9D' },
   metaCount: { color: '#9A95A5', fontSize: 10, marginLeft: 3 },
-  more: { color: '#6A6A7A', fontSize: 14, paddingLeft: 4 },
+  more: { color: '#8B8B9E', fontSize: 14, paddingLeft: 4 },
 });
 
 function ImmersiveCard({ children, index }: { children: React.ReactNode; index: number }) {
@@ -1927,8 +1933,12 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
   );
 }
 
+// 피드 카드 — props가 안정적일 때 리렌더를 건너뛰도록 memo화 (스크롤·다른 글 변경 시 불필요 렌더 방지)
+const DiaryCardMemo = React.memo(DiaryCard);
+
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { records, toggleLike, blockedUsers, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed } = useRecords();
+  const { t } = useTranslation();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -1944,7 +1954,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return postUser.name ? postUser.name : postUser.handle;
   };
   
-  const { sendRecord, topFriends, friends } = useDM();
+  const { sendRecord, conversations } = useDM();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1959,7 +1969,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  const top3 = topFriends(3);
+  // 빠른공유 친구는 실제 팔로우 친구(followingUsers)에서 — 대화량 많은 순 상위 3명.
+  // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
+  const dmFriends = useMemo(
+    () => followingUsers.map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' })),
+    [followingUsers]
+  );
+  const top3 = useMemo(
+    () => [...dmFriends]
+      .sort((a, b) => (conversations[b.handle]?.length ?? 0) - (conversations[a.handle]?.length ?? 0))
+      .slice(0, 3),
+    [dmFriends, conversations]
+  );
 
   const showQuickToast = (msg: string) => {
     if (quickToastTimer.current) clearTimeout(quickToastTimer.current);
@@ -1989,7 +2010,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     const friend = top3.find((f) => f.handle === key);
     if (friend) {
       sendRecord(friend.handle, item);
-      showQuickToast(`${friend.name}님에게 전송됨`);
+      showQuickToast(t('comp2.toastSentTo', { name: friend.name }));
     }
   };
   const onQuickTargetLayout = (key: string, rect: { x: number; y: number; w: number; h: number }) => {
@@ -2007,38 +2028,59 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   const handleArchive = (id: string) => {
     archiveRecord(id);
-    showToast('게시물이 보관되었어요');
+    showToast(t('social.archivedToast'));
   };
 
   const handleDelete = (id: string) => {
     deleteRecord(id);
-    showToast('게시물이 삭제되었어요');
+    showToast(t('social.deletedToast'));
   };
 
-  const blockedNames = blockedUsers.map((b) => b.name);
-  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드
-  const mergedFeed = [...records, ...feedPosts].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
-  const allVisible = mergedFeed
-    .filter(
-      (r) =>
-        (r.visibility === 'friends' || r.visibility === 'public') &&
-        !blockedNames.includes(r.user.name) &&
-        !archivedIds.includes(r.id)
-    )
-    // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
-    .filter((r) => !isPostHiddenForViewer(r, currentViewer))
-    // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
-    .map((r) => applyViewer(r, currentViewer));
+  // 차단(확인 다이얼로그 경유)
+  const handleBlock = (user: { name: string; emoji: string; handle?: string }) => {
+    confirmBlock(user.name, () => { blockUser(user); showToast(t('social.blockedToast')); }, t);
+  };
 
-  // viewType별 분류
-  const feedItems = allVisible.filter(r => !r.viewType || r.viewType === 'feed');
-  const blogItems = allVisible.filter(r => r.viewType === 'blog');
-  const albumItems = allVisible.filter(r => r.viewType === 'album');
-  const cutItems = allVisible.filter(r => r.viewType === 'cut');
+  // 메모이즈된 카드(DiaryCardMemo)에 넘길 콜백을 안정적인 ref로 박제 — 매 렌더 최신 함수를 가리키되
+  // 콜백 ref 자체는 불변 → 카드 props가 안정되어 React.memo가 불필요 리렌더를 건너뛴다.
+  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd });
+  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd };
+  const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
+  const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
+  const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
+  const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
+  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string }) => fnRef.current.handleBlock(user), []);
+  const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
+  const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
+  const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
+
+  // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드.
+  // 정렬+다중 필터+applyViewer 비용이 커서 입력이 바뀔 때만 재계산하도록 memo화.
+  const allVisible = useMemo(
+    () =>
+      [...records, ...feedPosts]
+        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+        .filter(
+          (r) =>
+            (r.visibility === 'friends' || r.visibility === 'public') &&
+            !isBlocked(r.user) &&
+            !archivedIds.includes(r.id) &&
+            !reportedPostIds.includes(r.id)
+        )
+        // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
+        .filter((r) => !isPostHiddenForViewer(r, currentViewer))
+        // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
+        .map((r) => applyViewer(r, currentViewer)),
+    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked]
+  );
+
   const snapItems = useMemo(() => {
+    // 내 스냅 판정 (isMyPost 누락 대비 핸들 비교 병행). 내 스냅은 '본 것'으로 취급 → 안 본 링 안 뜸
+    const isMine = (s: any) => s.isMyPost || s.user.handle === globalHandle;
+    const isUnviewed = (s: any) => !isMine(s) && !s.snapViewed;
     const snaps = allVisible.filter(r => r.viewType === 'snap');
     const seen = new Set<string>();
-    return snaps.reduce<any[]>((acc, snap) => {
+    const reps = snaps.reduce<any[]>((acc, snap) => {
       // 같은 사용자라도 다른 나라면 별도 스토리로 인식
       const key = `${snap.user.handle}::${snap.countryName || snap.snapDetectedCountry || ''}`;
       if (seen.has(key)) {
@@ -2047,17 +2089,23 @@ function FriendsTab({ navigation }: { navigation: any }) {
           s.user.handle === snap.user.handle &&
           (s.countryName || s.snapDetectedCountry || '') === (snap.countryName || snap.snapDetectedCountry || '')
         );
-        if (rep && !snap.snapViewed) rep._hasUnviewed = true;
+        if (rep && isUnviewed(snap)) rep._hasUnviewed = true;
         return acc;
       }
       seen.add(key);
-      acc.push({ ...snap, _hasUnviewed: !snap.snapViewed });
+      acc.push({ ...snap, _hasUnviewed: isUnviewed(snap) });
       return acc;
     }, []);
-  }, [allVisible]);
-  // 피드·블로그·앨범·네컷을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
-  const timelineItems = [...feedItems, ...blogItems, ...albumItems, ...cutItems]
-    .sort((a, b) => b.timestamp - a.timestamp);
+    // 모든 스토리를 다 봤으면(내 스냅은 본 것으로 간주) 제일 먼저 올린 것부터(오름차순) 정렬
+    const allViewed = reps.every((s: any) => !s._hasUnviewed);
+    if (allViewed) reps.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+    return reps;
+  }, [allVisible, globalHandle]);
+  // 피드·블로그·앨범·네컷(스냅 제외)을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
+  const timelineItems = useMemo(
+    () => allVisible.filter((r) => r.viewType !== 'snap').sort((a, b) => b.timestamp - a.timestamp),
+    [allVisible]
+  );
 
   // 높이 추정 기반 2단 균형 분배
   const columns = useMemo(() => {
@@ -2087,6 +2135,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     <View style={{ flex: 1 }}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 110 }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
@@ -2137,25 +2186,26 @@ function FriendsTab({ navigation }: { navigation: any }) {
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
           {allVisible.length === 0 && (
-            <Text style={s.emptyText}>아직 공유된 기록이 없어요</Text>
+            <Text style={s.emptyText}>{t('social.emptyText')}</Text>
           )}
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
                 {columns[ci].map((item: any) => (
-                  <DiaryCard
+                  <DiaryCardMemo
                     key={item.id}
                     item={item}
                     mode={diaryCardMode}
                     navigation={navigation}
-                    toggleLike={toggleLike}
+                    toggleLike={cbToggleLike}
                     showCounts={showCounts}
-                    onArchive={handleArchive}
-                    onDelete={handleDelete}
-                    onBlock={blockUser}
-                    onQuickStart={handleQuickStart}
-                    onQuickMove={handleQuickMove}
-                    onQuickEnd={handleQuickEnd}
+                    onArchive={cbArchive}
+                    onDelete={cbDelete}
+                    onBlock={cbBlock}
+                    onReport={cbReport}
+                    onQuickStart={cbQuickStart}
+                    onQuickMove={cbQuickMove}
+                    onQuickEnd={cbQuickEnd}
                     dragPos={dragPos}
                     columnIndex={ci}
                   />
@@ -2181,13 +2231,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
       <Modal visible={!!otherPickerItem} transparent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
           <View style={ss.sheet}>
             <View style={ss.handle} />
-            <Text style={ss.sheetTitle}>보낼 친구 선택</Text>
+            <Text style={ss.sheetTitle}>{t('social.friendPickerTitle')}</Text>
             <ScrollView style={{ maxHeight: 360 }}>
-              {friends.map((f) => (
+              {dmFriends.map((f) => (
                 <TouchableOpacity
                   key={f.handle}
                   style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20, paddingVertical: 14 }}
@@ -2195,7 +2245,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   onPress={() => {
                     const it = otherPickerItem;
                     setOtherPickerItem(null);
-                    if (it) { sendRecord(f.handle, it); showQuickToast(`${f.name}님에게 전송됨`); }
+                    if (it) { sendRecord(f.handle, it); showQuickToast(t('comp2.toastSentTo', { name: f.name })); }
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }}>
@@ -2218,17 +2268,31 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // ─────────────────────────────────────────────
 export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   return (
     <View style={s.container}>
       {/* 헤더 */}
-      <View style={[s.header, { paddingTop: insets.top + 10 }]}>
-        <Text style={s.headerTitle}>소셜</Text>
+      <View style={[s.header, { paddingTop: insets.top + 17 }]}>
+        <Svg width={101} height={27} viewBox="0 0 101 27" fill="none">
+          <Path
+            d="M6.86637 13.5174C6.86637 13.8512 7.16437 14.1253 7.76039 14.3399C8.38024 14.5545 9.1193 14.7571 9.97756 14.9478C10.8597 15.1386 11.7298 15.4127 12.5881 15.7703C13.4702 16.1041 14.2093 16.6882 14.8053 17.5226C15.4251 18.357 15.7351 19.406 15.7351 20.6696C15.7351 22.7199 14.9722 24.2338 13.4464 25.2112C11.9206 26.1887 10.1087 26.6774 8.01071 26.6774C4.0055 26.6774 1.33535 25.2589 0.00028023 22.4219L5.18561 19.8113C5.63858 21.1226 6.56836 21.7782 7.97495 21.7782C9.04778 21.7782 9.58419 21.4563 9.58419 20.8126C9.58419 20.4789 9.28619 20.2047 8.69017 19.9901C8.09416 19.7756 7.36702 19.561 6.50876 19.3464C5.6505 19.1319 4.79224 18.8458 3.93398 18.4882C3.07571 18.1306 2.34858 17.5584 1.75256 16.7716C1.15655 15.9611 0.858541 14.9717 0.858541 13.8035C0.858541 11.8963 1.56184 10.4181 2.96843 9.36915C4.37503 8.32016 6.06771 7.79567 8.04648 7.79567C11.5749 7.79567 14.0305 9.17842 15.4132 11.9439L10.4067 14.1969C9.8822 13.1717 9.14314 12.6591 8.18952 12.6591C7.30742 12.6591 6.86637 12.9452 6.86637 13.5174ZM27.7409 26.6774C25.0946 26.6774 22.8417 25.7715 20.9821 23.9596C19.1226 22.1239 18.1928 19.8828 18.1928 17.2365C18.1928 14.5902 19.1226 12.3611 20.9821 10.5493C22.8417 8.71353 25.0946 7.79567 27.7409 7.79567C30.4111 7.79567 32.664 8.71353 34.4997 10.5493C36.3593 12.3611 37.2891 14.5902 37.2891 17.2365C37.2891 19.8828 36.3593 22.1239 34.4997 23.9596C32.664 25.7715 30.4111 26.6774 27.7409 26.6774ZM27.7409 20.9557C28.7899 20.9557 29.6482 20.61 30.3157 19.9186C31.0071 19.2272 31.3528 18.3332 31.3528 17.2365C31.3528 16.1399 31.0071 15.2459 30.3157 14.5545C29.6482 13.8631 28.7899 13.5174 27.7409 13.5174C26.7158 13.5174 25.8575 13.8631 25.1662 14.5545C24.4986 15.2459 24.1649 16.1399 24.1649 17.2365C24.1649 18.3332 24.4986 19.2272 25.1662 19.9186C25.8575 20.61 26.7158 20.9557 27.7409 20.9557ZM49.6269 26.6774C46.909 26.6774 44.6442 25.7715 42.8323 23.9596C41.0204 22.1477 40.1145 19.9067 40.1145 17.2365C40.1145 14.5664 41.0204 12.3254 42.8323 10.5135C44.6442 8.70161 46.909 7.79567 49.6269 7.79567C51.3911 7.79567 52.9884 8.21288 54.4188 9.0473C55.8731 9.88172 56.9936 11.0022 57.7803 12.4088L52.7023 15.3412C52.0586 14.173 51.0215 13.5889 49.5911 13.5889C48.5898 13.5889 47.7554 13.9346 47.0878 14.626C46.4203 15.2935 46.0865 16.1637 46.0865 17.2365C46.0865 18.3094 46.4203 19.1915 47.0878 19.8828C47.7554 20.5504 48.5898 20.8841 49.5911 20.8841C51.0692 20.8841 52.1063 20.2881 52.7023 19.0961L57.7803 22.0285C56.9936 23.4589 55.8731 24.5914 54.4188 25.4258C52.9884 26.2602 51.3911 26.6774 49.6269 26.6774ZM66.1283 5.82882C65.4607 6.49636 64.6621 6.83013 63.7323 6.83013C62.8025 6.83013 61.9919 6.49636 61.3006 5.82882C60.633 5.13745 60.2993 4.32687 60.2993 3.39708C60.2993 2.4673 60.633 1.66864 61.3006 1.0011C61.9919 0.333569 62.8025 -0.000199509 63.7323 -0.000199509C64.6621 -0.000199509 65.4607 0.333569 66.1283 1.0011C66.8197 1.66864 67.1653 2.4673 67.1653 3.39708C67.1653 4.32687 66.8197 5.13745 66.1283 5.82882ZM60.7641 26.1768V8.29632H66.7004V26.1768H60.7641ZM83.7849 8.29632H89.7212V26.1768H83.7849V24.5318C82.5691 25.9622 80.8764 26.6774 78.7069 26.6774C76.3228 26.6774 74.3202 25.7834 72.6991 23.9953C71.1017 22.1835 70.3031 19.9305 70.3031 17.2365C70.3031 14.5426 71.1017 12.3015 72.6991 10.5135C74.3202 8.70161 76.3228 7.79567 78.7069 7.79567C80.8764 7.79567 82.5691 8.51089 83.7849 9.94132V8.29632ZM77.3122 20.0616C78.0036 20.7769 78.9095 21.1345 80.03 21.1345C81.1505 21.1345 82.0565 20.7769 82.7479 20.0616C83.4392 19.3464 83.7849 18.4047 83.7849 17.2365C83.7849 16.0684 83.4392 15.1266 82.7479 14.4114C82.0565 13.6962 81.1505 13.3386 80.03 13.3386C78.9095 13.3386 78.0036 13.6962 77.3122 14.4114C76.6208 15.1266 76.2751 16.0684 76.2751 17.2365C76.2751 18.4047 76.6208 19.3464 77.3122 20.0616ZM94.2355 26.1768V0.0713234H100.172V26.1768H94.2355Z"
+            fill={C.white}
+          />
+        </Svg>
         <TouchableOpacity
           style={s.addFriendBtn}
           onPress={() => navigation.navigate('Friends')}
-          accessibilityLabel="디엠"
+          accessibilityLabel={t('social.dmA11y')}
         >
-          <ChatIcon size={20} color={C.accent} />
+          <Svg width={29} height={27} viewBox="0 0 29 27" fill="none">
+            <Path
+              d="M11.0985 18.4679L23.3398 22.8466C23.5455 22.9205 23.7651 22.9475 23.9825 22.9257C24.2 22.9038 24.4098 22.8336 24.5966 22.7203C24.7835 22.6069 24.9426 22.4532 25.0625 22.2705C25.1823 22.0877 25.2597 21.8805 25.2892 21.6639L27.7865 2.78659C27.9385 1.63725 26.7478 0.77992 25.6972 1.27992L1.96518 12.6079C0.791842 13.1679 0.879842 14.8613 2.10651 15.2973L5.35984 16.4546L7.13317 17.0773M15.7998 20.1479L13.1465 24.5826C12.2798 25.6599 10.5345 25.0506 10.5345 23.6719V20.1213C10.5346 19.4512 10.7868 18.8057 11.2412 18.3133L21.9663 8.13452"
+              stroke={C.white}
+              strokeWidth={2.26667}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </Svg>
         </TouchableOpacity>
       </View>
 
@@ -2251,10 +2315,12 @@ const s = StyleSheet.create({
 
   // 헤더
   header: {
-    paddingHorizontal: Spacing[6],
-    paddingBottom: Spacing[2],
+    // 목업(iPhone 17 - 53.svg) 정확 배치: 워드마크 잉크 좌측 ≈36, DM 아이콘 우측 ≈35, 상단 정렬
+    paddingLeft: 36,
+    paddingRight: 31,
+    paddingBottom: Spacing[3],
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     justifyContent: 'space-between',
   },
   headerTitle: {
@@ -2263,11 +2329,7 @@ const s = StyleSheet.create({
     color: C.white,
   },
   addFriendBtn: {
-    backgroundColor: 'rgba(191,133,252,0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
-    padding: 8,
-    borderRadius: BorderRadius.full,
+    padding: Spacing[1],
     alignItems: 'center',
     justifyContent: 'center',
   },

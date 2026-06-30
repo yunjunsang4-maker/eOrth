@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import { useDM } from '../store/dmStore';
 import { useToast } from '../store/toastStore';
 import { navigationRef } from '../navigation/navigationRef';
@@ -6,15 +8,16 @@ import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import type { Message } from '../store/dmTypes';
 
 // 메시지 종류별 미리보기 텍스트
-const previewOf = (m: Message): string => {
-  if (m.type === 'image') return '📷 사진';
-  if (m.type === 'record') return '📍 여행 기록을 공유했어요';
-  return m.text || '메시지';
+const previewOf = (m: Message, t: TFunction): string => {
+  if (m.type === 'image') return t('comp.photoMsg');
+  if (m.type === 'record') return t('comp.sharedRecord');
+  return m.text || t('comp.message');
 };
 
 // 새 DM 수신 → 공용 알림 큐(toastStore)로 발생 순서대로 넘기는 브리지. (자체 렌더 없음)
 // 지금 보고 있는 대화/인증 전/시드 메시지는 알리지 않는다. 표시·순차 처리는 ToastHost가 담당.
 export default function DMToastHost() {
+  const { t } = useTranslation();
   const { conversations, friends } = useDM();
   const { pushToast } = useToast();
   const entered = useIsAppEntered();
@@ -45,7 +48,7 @@ export default function DMToastHost() {
             const friend = friends.find((f) => f.handle === h);
             const name = friend?.name ?? h;
             const emoji = friend?.emoji ?? '💬';
-            pushToast(`${emoji} ${name}: ${previewOf(m)}`, () => {
+            pushToast(`${emoji} ${name}: ${previewOf(m, t)}`, () => {
               if (friend) {
                 navigationRef.current?.navigate('DM', {
                   friend: { name: friend.name, handle: friend.handle, emoji: friend.emoji, online: friend.online },

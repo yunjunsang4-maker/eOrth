@@ -1,24 +1,27 @@
 import { Alert } from 'react-native';
+import type { TFunction } from 'i18next';
 
-export const REPORT_REASONS = [
-  '스팸 또는 광고',
-  '부적절한 콘텐츠',
-  '사칭 계정',
-  '혐오 발언',
-  '기타',
+// 신고 사유 i18n 키 (표시는 ReportModal에서 t()로 변환)
+export const REPORT_REASON_KEYS = [
+  'social.reportReason1',
+  'social.reportReason2',
+  'social.reportReason3',
+  'social.reportReason4',
+  'social.reportReason5',
 ];
 
 /** 차단 확인 Alert. 확인 시 onConfirm 실행. */
 export const handleBlock = (
   username: string,
-  onConfirm: () => void
+  onConfirm: () => void,
+  t: TFunction
 ) => {
   Alert.alert(
-    '차단하기',
-    `@${username}을 차단할까요?\n차단하면 서로의 게시물과 프로필이 보이지 않아요.`,
+    t('social.blockTitle'),
+    t('social.blockConfirmMsg', { username }),
     [
-      { text: '취소', style: 'cancel' },
-      { text: '차단하기', style: 'destructive', onPress: onConfirm },
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('social.blockTitle'), style: 'destructive', onPress: onConfirm },
     ]
   );
 };

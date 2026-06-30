@@ -1,9 +1,11 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
+  const { t } = useTranslation();
   const { tripCount, photoCount, countries } = route.params;
 
   // 진입 시 체크 아이콘 스케일/페이드 인
@@ -25,9 +27,9 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
   const lead = countries[0];
   const tripLine = lead
     ? tripCount > 1
-      ? `${lead.flag} ${lead.name} 외 ${tripCount - 1}개 여행`
-      : `${lead.flag} ${lead.name} 여행`
-    : `여행 ${tripCount}개`;
+      ? t('imports.icTripMulti', { flag: lead.flag, name: lead.name, count: tripCount - 1 })
+      : t('imports.icTripSingle', { flag: lead.flag, name: lead.name })
+    : t('imports.icTripNone', { count: tripCount });
 
   // "이어스 시작하기" → 메인으로 이동하면서 MainTab에 startTutorial 플래그 전달 → 코치마크 튜토리얼 자동 시작
   const startEorth = () =>
@@ -49,10 +51,10 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
         </Animated.View>
 
         <Animated.View style={{ opacity: bodyOpacity, alignItems: 'center' }}>
-          <Text style={st.title}>기록이 완성됐어요!</Text>
+          <Text style={st.title}>{t('imports.icTitle')}</Text>
           <Text style={st.tripLine}>{tripLine}</Text>
           <Text style={st.photoLine}>
-            사진 <Text style={st.accent}>{photoCount}장</Text>을 추가했어요
+            {t('imports.icPhotoPrefix')}<Text style={st.accent}>{t('imports.icPhotoCountN', { count: photoCount })}</Text>{t('imports.icPhotoSuffix')}
           </Text>
         </Animated.View>
       </View>
@@ -60,7 +62,7 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       <Animated.View style={[st.bottom, { opacity: bodyOpacity }]}>
         <TouchableOpacity style={st.primaryBtn} onPress={startEorth} activeOpacity={0.85}>
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.primaryGrad}>
-            <Text style={st.primaryTxt}>이어스 시작하기</Text>
+            <Text style={st.primaryTxt}>{t('imports.icStart')}</Text>
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>

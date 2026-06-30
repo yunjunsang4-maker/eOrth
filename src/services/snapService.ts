@@ -138,23 +138,6 @@ export async function scheduleRandomSnapNotification(
   return id;
 }
 
-// ─── 스냅 만료 체크 (24시간) ───
-export function isSnapExpired(expiresAt?: number): boolean {
-  if (!expiresAt) return false;
-  return Date.now() > expiresAt;
-}
-
-// ─── 남은 시간 포맷 ───
-export function snapTimeLeft(expiresAt?: number): string {
-  if (!expiresAt) return '';
-  const diff = expiresAt - Date.now();
-  if (diff <= 0) return '만료됨';
-  const h = Math.floor(diff / (1000 * 60 * 60));
-  const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-  if (h > 0) return `${h}시간 ${m}분 남음`;
-  return `${m}분 남음`;
-}
-
 // ─── 촬영 지연시간 포맷 ───
 export function formatLateSeconds(seconds?: number): string {
   if (!seconds || seconds <= 0) return '즉시 촬영';

@@ -5,8 +5,22 @@ import { usePersistence, STORE_KEYS } from './persist';
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
 export type SignUpMethod = 'email' | 'google' | 'apple';
+// 지도(지구본/대륙) 영토 표시 방식
+export type MapDisplayMode = 'flag' | 'color' | 'photo';
+// 지구본 형태: aurora = 보라 발광 행성(디폴트, 색상 표시), classic = 현재 지구본(사진 표시)
+export type GlobeVariant = 'aurora' | 'classic';
 // 성별: '' = 미설정
 export type Gender = 'male' | 'female' | '';
+// 앱 언어: 한국어 / 영어
+export type AppLanguage = 'ko' | 'en';
+// 알림 설정 토글 키 (영속)
+export type NotifPrefKey =
+  | 'master' | 'friendTrip' | 'likes' | 'newFollower'
+  | 'returnDetect' | 'memoryRemind' | 'marketing';
+const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
+  master: true, friendTrip: true, likes: true, newFollower: true,
+  returnDetect: false, memoryRemind: true, marketing: false,
+};
 
 interface SettingsContextType {
   showCounts: boolean;
@@ -23,6 +37,8 @@ interface SettingsContextType {
   setBirthday: (v: string) => void;
   gender: Gender;
   setGender: (v: Gender) => void;
+  language: AppLanguage;
+  setLanguage: (v: AppLanguage) => void;
   handle: string;
   setHandle: (v: string) => void;
   bio: string;
@@ -39,6 +55,30 @@ interface SettingsContextType {
   setArrivalDetect: (v: boolean) => void;
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
+  // 연락처 기반 친구 찾기(전화번호 해시 매칭) 동의 여부 — 영속
+  phoneMatchConsent: boolean;
+  setPhoneMatchConsent: (v: boolean) => void;
+  // 소유권이 인증된 네이버 블로그 ID 목록(소문자) — 인증된 블로그 글만 가져오기 허용
+  verifiedNaverBlogIds: string[];
+  addVerifiedNaverBlogId: (blogId: string) => void;
+  // ── 영토 표시 설정 (지구본/대륙) — 영속 저장 ──
+  globeVariant: GlobeVariant;
+  setGlobeVariant: React.Dispatch<React.SetStateAction<GlobeVariant>>;
+  globeDisplayMode: MapDisplayMode;
+  setGlobeDisplayMode: React.Dispatch<React.SetStateAction<MapDisplayMode>>;
+  globeColor: string;
+  setGlobeColor: React.Dispatch<React.SetStateAction<string>>;
+  countryColors: Record<string, string>;
+  setCountryColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  countryDisplayModes: Record<string, MapDisplayMode>;
+  setCountryDisplayModes: React.Dispatch<React.SetStateAction<Record<string, MapDisplayMode>>>;
+  regionGlobalMode: 'color' | 'photo';
+  setRegionGlobalMode: React.Dispatch<React.SetStateAction<'color' | 'photo'>>;
+  regionDisplayModes: Record<string, 'color' | 'photo'>;
+  setRegionDisplayModes: React.Dispatch<React.SetStateAction<Record<string, 'color' | 'photo'>>>;
+  // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
+  regionColors: Record<string, string>;
+  setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 프로필에 표시할 대표 배지 id (사용자 선택, 영속)
   representativeBadgeIds: number[];
   setRepresentativeBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
@@ -54,6 +94,12 @@ interface SettingsContextType {
   loginStreak: number;
   // 앱 첫 설치(첫 실행) 시각 — 배지 115용
   installedAt: number | null;
+  // 알림 설정 토글 — 영속
+  notifPrefs: Record<NotifPrefKey, boolean>;
+  setNotifPref: (key: NotifPrefKey, value: boolean) => void;
+  // 계정 공개 여부 — 영속(현재는 UI 상태 저장; 실제 공개범위 강제는 백엔드 도입 후)
+  accountPublic: boolean;
+  setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
 }
 
@@ -66,6 +112,7 @@ interface SettingsPersistPayload {
   nickname: string;
   birthday?: string; // 과거 저장본엔 없을 수 있어 optional
   gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
+  language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
   handle: string;
   bio: string;
   profilePhoto: string | null;
@@ -74,12 +121,25 @@ interface SettingsPersistPayload {
   signUpEmail: string;
   arrivalDetect: boolean;
   currentVisitedCountryCode: string;
+  phoneMatchConsent?: boolean; // 과거 저장본엔 없을 수 있어 optional
+  verifiedNaverBlogIds?: string[]; // 과거 저장본엔 없을 수 있어 optional
+  // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
+  globeVariant?: GlobeVariant;
+  globeDisplayMode?: MapDisplayMode;
+  globeColor?: string;
+  countryColors?: Record<string, string>;
+  countryDisplayModes?: Record<string, MapDisplayMode>;
+  regionGlobalMode?: 'color' | 'photo';
+  regionDisplayModes?: Record<string, 'color' | 'photo'>;
+  regionColors?: Record<string, string>;
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
   shareSentCount?: number; // 과거 저장본엔 없을 수 있어 optional
   loginStreak?: number;    // 과거 저장본엔 없을 수 있어 optional
   lastVisitDay?: number | null; // 마지막 접속일(로컬 자정 timestamp)
   installedAt?: number | null;  // 앱 첫 실행 시각
+  notifPrefs?: Partial<Record<NotifPrefKey, boolean>>; // 알림 설정 토글
+  accountPublic?: boolean; // 계정 공개 여부
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -92,6 +152,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [nickname, setNickname] = useState(''); // 온보딩(BasicInfo)에서 입력
   const [birthday, setBirthday] = useState('');
   const [gender, setGender] = useState<Gender>('');
+  const [language, setLanguage] = useState<AppLanguage>('ko'); // 기본 언어: 한국어
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
   const [handle, setHandle] = useState(() => `user_${Math.random().toString(36).slice(2, 8)}`);
   const [bio, setBio] = useState('');
@@ -100,7 +161,23 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpMethod, setSignUpMethod] = useState<SignUpMethod>('email');
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
-  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('JP'); // 여행국가: 기본값 일본(JP)
+  const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
+  const [phoneMatchConsent, setPhoneMatchConsent] = useState(false); // 연락처 친구 찾기 동의
+  const [verifiedNaverBlogIds, setVerifiedNaverBlogIds] = useState<string[]>([]); // 소유권 인증된 네이버 블로그 ID
+  const addVerifiedNaverBlogId = useCallback((blogId: string) => {
+    const id = blogId.trim().toLowerCase();
+    if (!id) return;
+    setVerifiedNaverBlogIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }, []);
+  // ── 영토 표시 설정 (영속) ──
+  const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
+  const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
+  const [globeColor, setGlobeColor] = useState('#BF85FC');
+  const [countryColors, setCountryColors] = useState<Record<string, string>>({});
+  const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
+  const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
+  const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
+  const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [representativeBadgeIds, setRepresentativeBadgeIds] = useState<number[]>([]);
   const [badgeEarnedAt, setBadgeEarnedAt] = useState<Record<number, number>>({});
   const [pendingBadgeToasts, setPendingBadgeToasts] = useState<number[]>([]); // 신규 획득 토스트 큐(비영속)
@@ -108,6 +185,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [loginStreak, setLoginStreak] = useState(0);
   const [lastVisitDay, setLastVisitDay] = useState<number | null>(null);
   const [installedAt, setInstalledAt] = useState<number | null>(null);
+  const [notifPrefs, setNotifPrefs] = useState<Record<NotifPrefKey, boolean>>(DEFAULT_NOTIF_PREFS);
+  const setNotifPref = useCallback((key: NotifPrefKey, value: boolean) => {
+    setNotifPrefs((prev) => ({ ...prev, [key]: value }));
+  }, []);
+  const [accountPublic, setAccountPublic] = useState(true);
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -147,6 +229,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setNickname(p.nickname);
       setBirthday(p.birthday ?? '');
       setGender(p.gender ?? '');
+      setLanguage(p.language ?? 'ko');
       setHandle(p.handle);
       setBio(p.bio);
       setProfilePhoto(p.profilePhoto);
@@ -155,12 +238,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
+      setPhoneMatchConsent(p.phoneMatchConsent ?? false);
+      setVerifiedNaverBlogIds(p.verifiedNaverBlogIds ?? []);
+      setGlobeVariant(p.globeVariant ?? 'aurora');
+      setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
+      setGlobeColor(p.globeColor ?? '#BF85FC');
+      setCountryColors(p.countryColors ?? {});
+      setCountryDisplayModes(p.countryDisplayModes ?? {});
+      setRegionGlobalMode(p.regionGlobalMode ?? 'color');
+      setRegionDisplayModes(p.regionDisplayModes ?? {});
+      setRegionColors(p.regionColors ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
       setLoginStreak(p.loginStreak ?? 0);
       setLastVisitDay(p.lastVisitDay ?? null);
       setInstalledAt(p.installedAt ?? null);
+      setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...(p.notifPrefs ?? {}) });
+      setAccountPublic(p.accountPublic ?? true);
     },
     () => ({
       showCounts,
@@ -170,6 +265,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       nickname,
       birthday,
       gender,
+      language,
       handle,
       bio,
       profilePhoto,
@@ -178,12 +274,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      phoneMatchConsent,
+      verifiedNaverBlogIds,
+      globeVariant,
+      globeDisplayMode,
+      globeColor,
+      countryColors,
+      countryDisplayModes,
+      regionGlobalMode,
+      regionDisplayModes,
+      regionColors,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
       loginStreak,
       lastVisitDay,
       installedAt,
+      notifPrefs,
+      accountPublic,
     }),
     [
       showCounts,
@@ -193,6 +301,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       nickname,
       birthday,
       gender,
+      language,
       handle,
       bio,
       profilePhoto,
@@ -201,12 +310,24 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
+      phoneMatchConsent,
+      verifiedNaverBlogIds,
+      globeVariant,
+      globeDisplayMode,
+      globeColor,
+      countryColors,
+      countryDisplayModes,
+      regionGlobalMode,
+      regionDisplayModes,
+      regionColors,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
       loginStreak,
       lastVisitDay,
       installedAt,
+      notifPrefs,
+      accountPublic,
     ],
   );
 
@@ -233,6 +354,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setNickname('');
     setBirthday('');
     setGender('');
+    setLanguage('ko');
     setHandle(`user_${Math.random().toString(36).slice(2, 8)}`);
     setBio('');
     setProfilePhoto(null);
@@ -240,7 +362,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSignUpMethod('email');
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
-    setCurrentVisitedCountryCode('JP');
+    setCurrentVisitedCountryCode('KR');
+    setPhoneMatchConsent(false);
+    setVerifiedNaverBlogIds([]);
+    setGlobeVariant('aurora');
+    setGlobeDisplayMode('flag');
+    setGlobeColor('#BF85FC');
+    setCountryColors({});
+    setCountryDisplayModes({});
+    setRegionGlobalMode('color');
+    setRegionDisplayModes({});
+    setRegionColors({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
     setPendingBadgeToasts([]);
@@ -248,6 +380,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setLoginStreak(0);
     setLastVisitDay(null);
     setInstalledAt(null);
+    setNotifPrefs(DEFAULT_NOTIF_PREFS);
+    setAccountPublic(true);
     visitRecordedRef.current = false;
   };
 
@@ -273,6 +407,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setBirthday,
         gender,
         setGender,
+        language,
+        setLanguage,
         handle,
         setHandle,
         bio,
@@ -289,6 +425,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
+        phoneMatchConsent,
+        setPhoneMatchConsent,
+        verifiedNaverBlogIds,
+        addVerifiedNaverBlogId,
+        globeVariant,
+        setGlobeVariant,
+        globeDisplayMode,
+        setGlobeDisplayMode,
+        globeColor,
+        setGlobeColor,
+        countryColors,
+        setCountryColors,
+        countryDisplayModes,
+        setCountryDisplayModes,
+        regionGlobalMode,
+        setRegionGlobalMode,
+        regionDisplayModes,
+        setRegionDisplayModes,
+        regionColors,
+        setRegionColors,
         representativeBadgeIds,
         setRepresentativeBadgeIds,
         badgeEarnedAt,
@@ -299,6 +455,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         incrementShareSent,
         loginStreak,
         installedAt,
+        notifPrefs,
+        setNotifPref,
+        accountPublic,
+        setAccountPublic,
         resetSettings,
       }}
     >

@@ -5,6 +5,7 @@ import {
   Dimensions, ActivityIndicator, Alert, ScrollView, Modal,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -42,6 +43,7 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
+  const { t } = useTranslation();
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup } = useRecords();
   const insets = useSafeAreaInsets();
@@ -81,7 +83,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       return;
     }
     if (cur.length >= MAX_PHOTOS_PER_TRIP) {
-      Alert.alert('알림', `여행당 최대 ${MAX_PHOTOS_PER_TRIP}장까지 선택할 수 있어요.`);
+      Alert.alert(t('imports.noticeTitle'), t('imports.maxPhotosAlert', { max: MAX_PHOTOS_PER_TRIP }));
       return;
     }
     setSelected((prev) => ({ ...prev, [trip.id]: [...(prev[trip.id] ?? []), uri] }));
@@ -153,9 +155,9 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           { name: 'ImportComplete', params: { tripCount, photoCount, countries } },
         ],
       });
-    } catch (e) {
+    } catch {
       setSaving(false);
-      Alert.alert('저장 실패', '사진을 가져오는 중 문제가 발생했어요.');
+      Alert.alert(t('imports.saveFailTitle'), t('imports.saveFailMsg'));
     }
   };
 
@@ -163,7 +165,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
         <ActivityIndicator color="#7B61FF" size="large" />
-        <Text style={st.savingText}>여행 사진첩을 만들고 있어요…</Text>
+        <Text style={st.savingText}>{t('imports.savingAlbum')}</Text>
       </LinearGradient>
     );
   }
@@ -173,7 +175,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       <View style={[st.header, { paddingTop: insets.top + 24 }]}>
         <Text style={st.step}>{index + 1} / {trips.length}</Text>
         <Text style={st.title}>{trip.countryFlag} {trip.title}</Text>
-        <Text style={st.sub}>가져올 사진을 선택하세요 (최대 {MAX_PHOTOS_PER_TRIP}장)</Text>
+        <Text style={st.sub}>{t('imports.selectPhotosMax', { max: MAX_PHOTOS_PER_TRIP })}</Text>
         <Text style={st.counter}>{sel.length} / {MAX_PHOTOS_PER_TRIP}</Text>
       </View>
 
@@ -186,7 +188,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
               onPress={() => setDayFilter(null)}
               activeOpacity={0.8}
             >
-              <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>전체</Text>
+              <Text style={[st.dayTxt, dayFilter === null && st.dayTxtOn]}>{t('imports.all')}</Text>
             </TouchableOpacity>
             {days.map((d) => {
               const on = dayFilter === d;
@@ -227,7 +229,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         <View style={st.bottomRow}>
           {index > 0 && (
             <TouchableOpacity style={st.prevBtn} onPress={prev} activeOpacity={0.85}>
-              <Text style={st.prevTxt}>이전</Text>
+              <Text style={st.prevTxt}>{t('imports.prev')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity
@@ -238,7 +240,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           >
             <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.nextGrad}>
               <Text style={st.nextTxt}>
-                {sel.length === 0 ? '사진을 1장 이상 선택하세요' : isLast ? '완료' : '다음'}
+                {sel.length === 0 ? t('imports.selectAtLeastOne') : isLast ? t('imports.done') : t('imports.next')}
               </Text>
             </LinearGradient>
           </TouchableOpacity>
@@ -247,10 +249,10 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
 
       {/* 기록 카드 미리보기 + 썸네일 선택 */}
       <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
-        <View style={st.pvOverlay}>
+        <View style={st.pvOverlay} accessibilityViewIsModal>
           <View style={st.pvSheet}>
-            <Text style={st.pvTitle}>기록 카드 미리보기</Text>
-            <Text style={st.pvSub}>선택을 마치면 이 모습의 여행 기록 카드가 만들어져요.</Text>
+            <Text style={st.pvTitle}>{t('imports.previewTitle')}</Text>
+            <Text style={st.pvSub}>{t('imports.previewSub')}</Text>
 
             {/* 카드 예시 — 탭하면 노출 영역 조정 */}
             <TouchableOpacity style={st.pvCard} activeOpacity={0.9} onPress={() => cover && setAdjustVisible(true)}>
@@ -267,7 +269,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
             </TouchableOpacity>
 
             {/* 썸네일 선택 — 선택된 썸네일을 한 번 더 누르면 노출 영역 조정 */}
-            <Text style={st.pvPickLabel}>카드 썸네일로 쓸 사진을 골라주세요 · 한 번 더 누르면 위치 조정</Text>
+            <Text style={st.pvPickLabel}>{t('imports.pickThumb')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.pvStrip}>
               {sel.map((uri) => {
                 const on = uri === cover;
@@ -291,7 +293,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
                     <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
                     {on && (
                       <View style={st.pvThumbAdjustBadge}>
-                        <Text style={st.pvThumbAdjustTxt}>조정</Text>
+                        <Text style={st.pvThumbAdjustTxt}>{t('imports.adjust')}</Text>
                       </View>
                     )}
                   </TouchableOpacity>
@@ -301,11 +303,11 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
 
             <View style={st.pvBtnRow}>
               <TouchableOpacity style={st.pvBackBtn} onPress={() => setPreviewVisible(false)} activeOpacity={0.85}>
-                <Text style={st.pvBackTxt}>다시 선택</Text>
+                <Text style={st.pvBackTxt}>{t('imports.reselect')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={st.pvOkBtn} onPress={confirmPreview} activeOpacity={0.85}>
                 <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.pvOkGrad}>
-                  <Text style={st.pvOkTxt}>{isLast ? '이대로 만들기' : '확인하고 다음'}</Text>
+                  <Text style={st.pvOkTxt}>{isLast ? t('imports.createNow') : t('imports.confirmNext')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>

@@ -185,7 +185,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
               <Text style={thumbSt.mainDate}>{trip.date}</Text>
             </View>
             <View style={thumbSt.mainBadges}>
-              {trip.records.map((rec) => <View key={rec.id} style={thumbSt.mainBadge}>{VIEW_TYPE_BADGE[rec.viewType] || null}</View>)}
+              {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => <View key={vt} style={thumbSt.mainBadge}>{VIEW_TYPE_BADGE[vt] || null}</View>)}
             </View>
           </>
         ) : (
@@ -193,7 +193,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
             <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
             <Text style={thumbSt.gridDate}>{trip.date}</Text>
             <View style={thumbSt.gridBadges}>
-              {trip.records.map((rec) => <View key={rec.id} style={thumbSt.gridBadge}>{VIEW_TYPE_BADGE[rec.viewType] || null}</View>)}
+              {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => <View key={vt} style={thumbSt.gridBadge}>{VIEW_TYPE_BADGE[vt] || null}</View>)}
             </View>
           </>
         )}

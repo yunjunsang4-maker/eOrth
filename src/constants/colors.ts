@@ -28,7 +28,7 @@ export const Colors = {
   // Text
   textPrimary: '#FFFFFF',   // Primary white text
   textSecondary: '#A0A0B0', // Secondary gray text
-  textMuted: '#6B6B80',     // Muted text
+  textMuted: '#8B8B9E',     // Muted text (WCAG AA 대비 ≥4.5:1 충족하도록 상향)
 
   // Social Login
   googleWhite: '#FFFFFF',   // Google button background

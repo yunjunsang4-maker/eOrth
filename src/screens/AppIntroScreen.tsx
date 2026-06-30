@@ -5,48 +5,48 @@ import {
   Text,
   StyleSheet,
   Dimensions,
-  TouchableOpacity,
   FlatList,
-  Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Colors, Typography, Spacing, BorderRadius } from '../constants';
+import { useTranslation } from 'react-i18next';
+import { Colors, Typography, Spacing } from '../constants';
 import { PrimaryButton, PaginationDots } from '../components/ui';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
+// 문구는 i18n(appIntro.slides.*)에서 가져오고, 여기엔 구조 정보(이모지·강조 줄)만 둔다.
 const SLIDES = [
   {
     id: '1',
     emoji: '🌏',
-    title: '지구본을 돌리며\n나만의 세계를\n만들어보세요.',
-    subtitle: '방문한 나라들이 지구본 위에서 특별하게 빛나요',
-    highlightLines: [1], // "나만의 세계를" is highlighted
+    titleKey: 'appIntro.slides.1.title',
+    subtitleKey: 'appIntro.slides.1.subtitle',
+    highlightLines: [1], // 강조할 줄 인덱스
   },
   {
     id: '2',
     emoji: '📖',
-    title: '소중한 여행의\n기억을 기록하고\n간직하세요.',
-    subtitle: '사진, 날짜, 별점으로 여행의 순간을 담아보세요',
+    titleKey: 'appIntro.slides.2.title',
+    subtitleKey: 'appIntro.slides.2.subtitle',
     highlightLines: [1],
   },
   {
     id: '3',
     emoji: '🤝',
-    title: '친구들과 함께\n여행 이야기를 나눠보세요.',
-    subtitle: '소셜 피드에서 서로의 여행을 구경하고 공유해요',
+    titleKey: 'appIntro.slides.3.title',
+    subtitleKey: 'appIntro.slides.3.subtitle',
     highlightLines: [0],
   },
-];
+] as const;
 
 type Props = RootStackScreenProps<'AppIntro'>;
 
 export default function AppIntroScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useTranslation();
   const [activeIdx, setActiveIdx] = useState(0);
   const flatListRef = useRef<FlatList>(null);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
 
   const goNext = () => {
     if (activeIdx < SLIDES.length - 1) {
@@ -54,12 +54,13 @@ export default function AppIntroScreen({ navigation }: Props) {
       setActiveIdx(nextIdx);
       flatListRef.current?.scrollToIndex({ index: nextIdx, animated: true });
     } else {
-      navigation.replace('Login');
+      // ⚠️ 임시: 로그인 화면 건너뛰고 온보딩 다음 단계로 직행. 작업 끝나면 'Login'으로 되돌릴 것!
+      navigation.replace('BasicInfo');
     }
   };
 
-  const renderSlide = ({ item, index }: { item: typeof SLIDES[0]; index: number }) => {
-    const lines = item.title.split('\n');
+  const renderSlide = ({ item, index }: { item: typeof SLIDES[number]; index: number }) => {
+    const lines = t(item.titleKey).split('\n');
     return (
       <View style={[styles.slide, { paddingTop: insets.top + 52 }]}>
         {/* Globe / Illustration area */}
@@ -93,7 +94,7 @@ export default function AppIntroScreen({ navigation }: Props) {
           <Text style={styles.title}>
             {lines.map((line, li) => (
               <Text key={li}>
-                {item.highlightLines.includes(li) ? (
+                {(item.highlightLines as readonly number[]).includes(li) ? (
                   <Text style={styles.titleHighlight}>{line}</Text>
                 ) : (
                   line
@@ -102,7 +103,7 @@ export default function AppIntroScreen({ navigation }: Props) {
               </Text>
             ))}
           </Text>
-          <Text style={styles.subtitle}>{item.subtitle}</Text>
+          <Text style={styles.subtitle}>{t(item.subtitleKey)}</Text>
         </View>
       </View>
     );
@@ -127,7 +128,7 @@ export default function AppIntroScreen({ navigation }: Props) {
       <View style={styles.bottomArea}>
         <PaginationDots count={SLIDES.length} activeIndex={activeIdx} />
         <PrimaryButton
-          label={activeIdx === SLIDES.length - 1 ? '시작하기' : '다음'}
+          label={activeIdx === SLIDES.length - 1 ? t('appIntro.getStarted') : t('common.next')}
           onPress={goNext}
           style={styles.nextBtn}
         />

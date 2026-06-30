@@ -4,6 +4,8 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { useTranslation } from 'react-i18next';
+import { compressImage } from '../utils/imageCompress';
 import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
@@ -26,9 +28,11 @@ const BASIC_COLORS = [
 ];
 
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
+  const { t } = useTranslation();
   const selectedCountry = route.params?.selectedCountry ?? null;
 
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
+  const tabLabel = (cat: '기본' | '테마') => (cat === '기본' ? t('cut.tabBasic') : t('cut.tabTheme'));
   const firstBasic = CUT_FRAMES.find((f) => f.category === '기본')!;
   const [frameId, setFrameId] = useState<string>(firstBasic.id);
   const [photos, setPhotos] = useState<(string | null)[]>(
@@ -77,7 +81,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== 'granted') {
-        showPermissionDeniedAlert('갤러리');
+        showPermissionDeniedAlert(t('permission.gallery'));
         return;
       }
       setPickingPhoto(true); // iCloud 다운로드/처리 동안 멈춤 느낌 방지
@@ -86,12 +90,13 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         mediaTypes: ['images'],
       });
       if (!r.canceled && r.assets[0]) {
-        setPhotos((p) => { const n = [...p]; n[i] = r.assets[0].uri; return n; });
+        const compressed = await compressImage(r.assets[0].uri);
+        setPhotos((p) => { const n = [...p]; n[i] = compressed; return n; });
         setTransforms((p) => { const n = [...p]; n[i] = null; return n; });
         setAdjustSlot(i);
       }
     } catch (e: any) {
-      Alert.alert('오류', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('cut.errorTitle'), e?.message ?? t('cut.loadPhotoError'));
     } finally {
       setPickingPhoto(false);
     }
@@ -112,9 +117,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   // 취소 — 사진 배치 중이면 확인
   const handleCancel = () => {
     if (photos.some(Boolean)) {
-      Alert.alert('나가시겠어요?', '편집 중인 스트립이 저장되지 않아요.', [
-        { text: '계속 편집', style: 'cancel' },
-        { text: '나가기', style: 'destructive', onPress: () => navigation.goBack() },
+      Alert.alert(t('cut.exitTitle'), t('cut.exitMsg'), [
+        { text: t('cut.continueEdit'), style: 'cancel' },
+        { text: t('cut.exit'), style: 'destructive', onPress: () => navigation.goBack() },
       ]);
     } else {
       navigation.goBack();
@@ -124,7 +129,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   // 네컷 완성 → 미리보기 캡처 후 여행정보 입력 화면으로 이동
   const goNext = async () => {
     if (photos.filter(Boolean).length < slotN) {
-      Alert.alert('알림', '모든 칸에 사진을 넣어주세요.');
+      Alert.alert(t('cut.noticeTitle'), t('cut.fillAllSlots'));
       return;
     }
     let previewUri = '';
@@ -135,14 +140,20 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       );
       // 레이아웃 안정화를 위해 두 프레임 양보
       await new Promise((res) => requestAnimationFrame(() => requestAnimationFrame(() => res(null))));
-      previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.9 });
-    } catch (e) {
-      Alert.alert('오류', '미리보기 생성에 실패했어요.');
+      // 지도 대표용 고해상도 캡처 — 장변 2000px 목표(화면 캡처 기본보다 선명), 비율 유지
+      const aspect = CUT_LAYOUTS[frame.layout].aspect; // = width / height
+      const REP_TARGET = 2000;
+      const capW = aspect >= 1 ? REP_TARGET : Math.round(REP_TARGET * aspect);
+      const capH = aspect >= 1 ? Math.round(REP_TARGET / aspect) : REP_TARGET;
+      previewUri = await captureRef(canvasRef, { format: 'jpg', quality: 0.95, width: capW, height: capH });
+    } catch {
+      Alert.alert(t('cut.errorTitle'), t('cut.previewError'));
       return;
     }
     navigation.navigate('CutTravelInfo', {
       cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri },
       selectedCountry: selectedCountry ?? undefined,
+      tripPeriod: route.params?.tripPeriod, // 여행 카드에서 추가 시 기간 자동 적용을 위해 전달
     });
   };
 
@@ -151,11 +162,11 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={handleCancel} hitSlop={8}>
-          <Text style={st.cancel}>취소</Text>
+          <Text style={st.cancel}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={st.title}>스트립</Text>
+        <Text style={st.title}>{t('cut.title')}</Text>
         <TouchableOpacity onPress={goNext} hitSlop={8}>
-          <Text style={st.save}>다음</Text>
+          <Text style={st.save}>{t('common.next')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -170,15 +181,15 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           onSlotPress={handleSlotPress}
           bgOverride={isBasic ? frameColor : undefined}
         />
-        <Text style={st.hint}>{`빈 칸을 눌러 사진 넣기 · 사진을 눌러 위치 조정  (${photos.filter(Boolean).length}/${slotN})`}</Text>
+        <Text style={st.hint}>{t('cut.hint', { filled: photos.filter(Boolean).length, total: slotN })}</Text>
       </View>
 
       {/* 하단: 기본/테마 탭 + 프레임 카탈로그 */}
       <View style={st.bottomBar}>
         <View style={st.tabs}>
-          {(['기본', '테마'] as const).map((t) => (
-            <TouchableOpacity key={t} onPress={() => setTab(t)} style={[st.tab, tab === t && st.tabOn]}>
-              <Text style={[st.tabTxt, tab === t && st.tabTxtOn]}>{t}</Text>
+          {(['기본', '테마'] as const).map((cat) => (
+            <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && st.tabOn]}>
+              <Text style={[st.tabTxt, tab === cat && st.tabTxtOn]}>{tabLabel(cat)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -260,7 +271,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {pickingPhoto && (
         <View style={st.loadingOverlay}>
           <ActivityIndicator size="large" color={C.purple} />
-          <Text style={st.loadingText}>사진 불러오는 중…</Text>
+          <Text style={st.loadingText}>{t('cut.loading')}</Text>
         </View>
       )}
     </SafeAreaView>

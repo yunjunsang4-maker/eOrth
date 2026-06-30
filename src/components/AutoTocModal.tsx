@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Modal,
   View,
@@ -24,6 +25,7 @@ export default function AutoTocModal({
   onSkip,
   onClose,
 }: AutoTocModalProps) {
+  const { t } = useTranslation();
   const [checked, setChecked] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
@@ -40,16 +42,16 @@ export default function AutoTocModal({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.backdrop}>
+      <View style={styles.backdrop} accessibilityViewIsModal>
         <View style={styles.card}>
           <View style={styles.header}>
-            <Text style={styles.title}>📋 AI가 목차를 만들었어요</Text>
+            <Text style={styles.title}>{t('comp.tocTitle')}</Text>
             <TouchableOpacity onPress={onClose} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
               <Text style={styles.close}>✕</Text>
             </TouchableOpacity>
           </View>
           <Text style={styles.subtitle}>
-            추가할 소제목을 선택하세요. 본문에 소제목으로 삽입돼요.
+            {t('comp.tocSubtitle')}
           </Text>
 
           <ScrollView style={styles.list} contentContainerStyle={{ paddingVertical: 4 }}>
@@ -78,14 +80,14 @@ export default function AutoTocModal({
 
           <View style={styles.btnRow}>
             <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={onSkip}>
-              <Text style={styles.btnGhostText}>목차 없이 저장</Text>
+              <Text style={styles.btnGhostText}>{t('comp.tocSkip')}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.btn, styles.btnPrimary, accepted.length === 0 && styles.btnDisabled]}
               onPress={() => onConfirm(accepted)}
               disabled={accepted.length === 0}
             >
-              <Text style={styles.btnPrimaryText}>추가하고 저장</Text>
+              <Text style={styles.btnPrimaryText}>{t('comp.tocAdd')}</Text>
             </TouchableOpacity>
           </View>
         </View>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -6,37 +6,34 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,  TextInput,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Dimensions,
   PanResponder,
-  Modal,
-  Animated,
-  FlatList,
   ActivityIndicator,
   Linking,
   Alert,
   LayoutAnimation,
   UIManager,
 } from 'react-native';
-
-if (Platform.OS === 'android') {
-  if (UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
-  }
-}
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
-import Svg, { Path } from 'react-native-svg';
-import { useRecords } from '../store/recordStore';
+import { useTranslation } from 'react-i18next';
+import { useRecords, type Visibility } from '../store/recordStore';
+import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
+import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { PrivacyModal } from '../components/record/PrivacyModal';
+import { MediaPickerModal } from '../components/record/MediaPickerModal';
+import { FriendPickerModal } from '../components/record/FriendPickerModal';
+import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
+import { compressImage, compressImages } from '../utils/imageCompress';
+import { detectCurrentCountry } from '../services/snapService';
+import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
-  CompassIcon as DesignerCompassIcon,
-  MapIcon as DesignerMapIcon,
-  FlagIcon as DesignerFlagIcon,
   SearchIcon as SvgSearchIcon,
   CalendarIcon as SvgCalendarIcon,
   GalleryIcon as SvgGalleryIcon,
@@ -60,6 +57,14 @@ import {
   PartlyCloudyIcon as SvgPartlyCloudyIcon,
   WindIcon as SvgWindIcon,
 } from '../components/icons';
+
+if (Platform.OS === 'android') {
+  if (UIManager.setLayoutAnimationEnabledExperimental) {
+    UIManager.setLayoutAnimationEnabledExperimental(true);
+  }
+}
+// AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
+export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
@@ -191,12 +196,6 @@ const WEATHER_ICON_MAP: Record<string, React.ReactNode> = {
   '바람':     <WindIcon size={16} />,
 };
 
-// ─── 날짜 유틸 ───
-const toDateKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
-const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
-
 // ─── 진행 바 ───
 function StepProgressBar({ current, total }: { current: number; total: number }) {
   return (
@@ -277,6 +276,7 @@ function StepNavBar({
   onPrev,
   onNext,
   onSave,
+  saving = false,
 }: {
   step: number;
   totalSteps: number;
@@ -284,12 +284,14 @@ function StepNavBar({
   onPrev: () => void;
   onNext: () => void;
   onSave: () => void;
+  saving?: boolean;
 }) {
+  const { t } = useTranslation();
   return (
     <View style={nav.wrap}>
       {step > 1 ? (
         <TouchableOpacity style={nav.prevBtn} onPress={onPrev} activeOpacity={0.8}>
-          <Text style={nav.prevTxt}>← 이전</Text>
+          <Text style={nav.prevTxt}>{t('newRecord.prev')}</Text>
         </TouchableOpacity>
       ) : (
         <View style={nav.prevPlaceholder} />
@@ -300,15 +302,16 @@ function StepNavBar({
           onPress={onNext}
           activeOpacity={0.85}
         >
-          <Text style={nav.nextTxt}>다음 →</Text>
+          <Text style={nav.nextTxt}>{t('newRecord.next')}</Text>
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
-          style={[nav.saveBtn, !canNext && nav.nextBtnDisabled]}
+          style={[nav.saveBtn, (!canNext || saving) && nav.nextBtnDisabled]}
           onPress={onSave}
           activeOpacity={0.85}
+          disabled={saving}
         >
-          <Text style={nav.saveTxt}>저장하기</Text>
+          <Text style={nav.saveTxt}>{saving ? t('newRecord.saving') : t('newRecord.save')}</Text>
         </TouchableOpacity>
       )}
     </View>
@@ -368,650 +371,9 @@ const nav = StyleSheet.create({
   },
 });
 
-// ─── 커스텀 캘린더 바텀시트 ───
-const WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토'];
-const CELL_SIZE = Math.floor((SCREEN_W - 32 - 12) / 7);
+// 캘린더/비공개 모달은 components/record/ 로 분리
 
-export function CalendarBottomSheet({
-  visible,
-  initialStart,
-  initialEnd,
-  onConfirm,
-  onClose,
-  startLabel = '출발일',
-  endLabel = '도착일',
-}: {
-  visible: boolean;
-  initialStart: Date;
-  initialEnd: Date;
-  onConfirm: (start: Date, end: Date) => void;
-  onClose: () => void;
-  startLabel?: string;
-  endLabel?: string;
-}) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [viewYear, setViewYear]         = useState(initialStart.getFullYear());
-  const [viewMonth, setViewMonth]       = useState(initialStart.getMonth());
-  const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
-  const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
-  const [selectingEnd, setSelectingEnd] = useState(false);
-  const translateY = useRef(new Animated.Value(600)).current;
-
-  useEffect(() => {
-    if (visible) {
-      setTempStart(initialStart);
-      setTempEnd(initialEnd);
-      setSelectingEnd(false);
-      setViewYear(initialStart.getFullYear());
-      setViewMonth(initialStart.getMonth());
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 60, friction: 12 }).start();
-    } else {
-      translateY.setValue(600);
-    }
-  }, [visible]);
-
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
-  };
-  const handleNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
-  };
-
-  const handleDayPress = (date: Date) => {
-    if (!selectingEnd) {
-      setTempStart(date); setTempEnd(null); setSelectingEnd(true);
-    } else {
-      if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
-      else { setTempEnd(date); setSelectingEnd(false); }
-    }
-  };
-
-  const handleConfirm = () => {
-    const s = tempStart ?? today;
-    const e = tempEnd ?? s;
-    onConfirm(s, e);
-    onClose();
-  };
-
-  const buildGrid = useCallback(() => {
-    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const cells: (Date | null)[] = [];
-    for (let i = 0; i < firstDay; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(viewYear, viewMonth, d);
-      date.setHours(0, 0, 0, 0);
-      cells.push(date);
-    }
-    while (cells.length % 7 !== 0) cells.push(null);
-    return cells;
-  }, [viewYear, viewMonth]);
-
-  const grid = buildGrid();
-  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
-  const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
-  const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
-  const MONTH_NAMES  = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
-  const fmtSel = (d: Date | null) =>
-    d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={calS.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
-          <View style={calS.handle} />
-          <View style={calS.selectedRow}>
-            <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{startLabel}</Text>
-              <Text style={[calS.selectedDate, !selectingEnd && calS.selectedDateActive]}>{fmtSel(tempStart)}</Text>
-            </View>
-            <Text style={calS.selectedArrow}>→</Text>
-            <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{endLabel}</Text>
-              <Text style={[calS.selectedDate, selectingEnd && calS.selectedDateActive]}>{fmtSel(tempEnd)}</Text>
-            </View>
-          </View>
-          <View style={calS.monthNav}>
-            <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={calS.navArrow}>‹</Text></TouchableOpacity>
-            <Text style={calS.monthTitle}>{viewYear}년 {MONTH_NAMES[viewMonth]}</Text>
-            <TouchableOpacity onPress={handleNextMonth} style={calS.navBtn}><Text style={calS.navArrow}>›</Text></TouchableOpacity>
-          </View>
-          <View style={calS.weekRow}>
-            {WEEK_DAYS.map((d, i) => (
-              <Text key={d} style={[calS.weekDay, { width: CELL_SIZE }, i===0 && calS.sundayText, i===6 && calS.saturdayText]}>{d}</Text>
-            ))}
-          </View>
-          <View style={calS.grid}>
-            {grid.map((date, idx) => {
-              if (!date) return <View key={`e-${idx}`} style={{ width: CELL_SIZE, height: CELL_SIZE }} />;
-              const dow = date.getDay();
-              const isToday = isSameDay(date, today);
-              const isStart = isRangeStart(date);
-              const isEnd   = isRangeEnd(date);
-              const inRange = isInRange(date);
-              const isEdge  = isStart || isEnd;
-              return (
-                <TouchableOpacity
-                  key={toDateKey(date)}
-                  onPress={() => handleDayPress(date)}
-                  activeOpacity={0.7}
-                  style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
-                    inRange && !isEdge && calS.inRange,
-                    isStart && calS.rangeStartCell,
-                    isEnd   && calS.rangeEndCell,
-                  ]}
-                >
-                  <View style={[calS.dayInner, isEdge && calS.edgeCircle]}>
-                    <Text style={[calS.dayText,
-                      isToday && !isEdge && calS.todayText,
-                      dow===0 && !isEdge && calS.sundayText,
-                      dow===6 && !isEdge && calS.saturdayText,
-                      isEdge && calS.edgeText,
-                    ]}>{date.getDate()}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <TouchableOpacity style={calS.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
-            <Text style={calS.confirmText}>확인</Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
-// ─── 비공개 친구 선택 모달 ───
-function PrivacyModal({
-  visible,
-  selectedFriends,
-  allFriends,
-  onToggle,
-  onSetAll,
-  onClose,
-}: {
-  visible: boolean;
-  selectedFriends: string[];
-  allFriends: string[];
-  onToggle: (friend: string) => void;
-  onSetAll: (friends: string[]) => void;
-  onClose: () => void;
-}) {
-  const translateY = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 13,
-      }).start();
-    } else {
-      Animated.timing(translateY, {
-        toValue: 500,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay}>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
-          {/* 핸들 */}
-          <View style={pm.handle} />
-
-          {/* 헤더 */}
-          <View style={pm.header}>
-            <View style={pm.headerLeft}>
-              <SvgLockClosedIcon size={24} color="#A1A1B0" />
-              <View>
-                <Text style={pm.headerTitle}>비공개 대상 선택</Text>
-                <Text style={pm.headerDesc}>선택한 친구에게 이 미디어가 비공개됩니다</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
-          {allFriends.length > 0 && (() => {
-            const allPrivate = selectedFriends.length === allFriends.length;
-            return (
-              <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
-                onPress={() => {
-                  // 한 번에 전체 설정/해제 → 개별 친구 체크 상태도 즉시 동기화
-                  onSetAll(allPrivate ? [] : [...allFriends]);
-                }}
-                activeOpacity={0.7}
-              >
-                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
-                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>전체 비공개</Text>
-                  <Text style={pm.allPrivateDesc}>모든 친구에게 이 사진을 숨겨요</Text>
-                </View>
-                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
-                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
-                </View>
-              </TouchableOpacity>
-            );
-          })()}
-
-          {/* 전체 해제 버튼 */}
-          {selectedFriends.length > 0 && (
-            <TouchableOpacity
-              style={pm.clearAllBtn}
-              onPress={() => selectedFriends.forEach(f => onToggle(f))}
-              activeOpacity={0.7}
-            >
-              <Text style={pm.clearAllTxt}>전체 해제</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 친구 목록 */}
-          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
-            {allFriends.map(friend => {
-              const isSelected = selectedFriends.includes(friend);
-              return (
-                <TouchableOpacity
-                  key={friend}
-                  style={[pm.friendRow, isSelected && pm.friendRowActive]}
-                  onPress={() => onToggle(friend)}
-                  activeOpacity={0.7}
-                >
-                  {/* 아바타 */}
-                  <View style={[pm.avatar, isSelected && pm.avatarActive]}>
-                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
-                  </View>
-                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
-                  {/* 체크박스 */}
-                  <View style={[pm.checkbox, isSelected && pm.checkboxActive]}>
-                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* 완료 버튼 */}
-          <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
-            <Text style={pm.doneTxt}>
-              {selectedFriends.length > 0
-                ? `${selectedFriends.length}명 비공개 설정 완료`
-                : '공개로 설정 (비공개 없음)'}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
-const pm = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#1A1A28',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-    maxHeight: '80%',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerIcon: { fontSize: 24 },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  headerDesc: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 2,
-  },
-  clearAllBtn: {
-    alignSelf: 'flex-end',
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(191,133,252,0.12)',
-  },
-  clearAllTxt: {
-    fontSize: 12,
-    color: '#BF85FC',
-    fontWeight: '600',
-  },
-  listScroll: {
-    maxHeight: 320,
-  },
-  allPrivateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    gap: 14,
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  allPrivateLabel: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  allPrivateDesc: {
-    fontSize: 12,
-    color: '#8A8A99',
-    marginTop: 2,
-  },
-  friendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    gap: 14,
-    marginBottom: 2,
-  },
-  friendRowActive: {
-    backgroundColor: 'rgba(107,33,168,0.15)',
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#2E2E3B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarActive: {
-    backgroundColor: 'rgba(107,33,168,0.4)',
-  },
-  avatarTxt: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  friendName: {
-    flex: 1,
-    fontSize: 15,
-    color: '#A1A1B0',
-    fontWeight: '500',
-  },
-  friendNameActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#4A4A59',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: '#BF85FC',
-    borderColor: '#BF85FC',
-  },
-  checkMark: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  doneBtn: {
-    backgroundColor: '#6B21A8',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  doneTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-});
-
-// ─── 국가 데이터 ───
-type Country = { term: string; flag: string; name: string; continent: string };
-const CONTINENT_ORDER = ['아시아', '유럽', '북아메리카', '남아메리카', '아프리카', '오세아니아'];
-const COUNTRIES: Country[] = [
-  { term: 'kr 대한민국 korea', flag: '🇰🇷', name: '대한민국', continent: '아시아' },
-  { term: 'jp 일본 japan', flag: '🇯🇵', name: '일본', continent: '아시아' },
-  { term: 'cn 중국 china', flag: '🇨🇳', name: '중국', continent: '아시아' },
-  { term: 'tw 대만 taiwan', flag: '🇹🇼', name: '대만', continent: '아시아' },
-  { term: 'hk 홍콩 hong kong', flag: '🇭🇰', name: '홍콩', continent: '아시아' },
-  { term: 'mo 마카오 macau', flag: '🇲🇴', name: '마카오', continent: '아시아' },
-  { term: 'th 태국 thailand', flag: '🇹🇭', name: '태국', continent: '아시아' },
-  { term: 'vn 베트남 vietnam', flag: '🇻🇳', name: '베트남', continent: '아시아' },
-  { term: 'ph 필리핀 philippines', flag: '🇵🇭', name: '필리핀', continent: '아시아' },
-  { term: 'id 인도네시아 indonesia', flag: '🇮🇩', name: '인도네시아', continent: '아시아' },
-  { term: 'my 말레이시아 malaysia', flag: '🇲🇾', name: '말레이시아', continent: '아시아' },
-  { term: 'sg 싱가포르 singapore', flag: '🇸🇬', name: '싱가포르', continent: '아시아' },
-  { term: 'kh 캄보디아 cambodia', flag: '🇰🇭', name: '캄보디아', continent: '아시아' },
-  { term: 'la 라오스 laos', flag: '🇱🇦', name: '라오스', continent: '아시아' },
-  { term: 'mm 미얀마 myanmar burma', flag: '🇲🇲', name: '미얀마', continent: '아시아' },
-  { term: 'bn 브루나이 brunei', flag: '🇧🇳', name: '브루나이', continent: '아시아' },
-  { term: 'tl 동티모르 east timor timor-leste', flag: '🇹🇱', name: '동티모르', continent: '아시아' },
-  { term: 'in 인도 india', flag: '🇮🇳', name: '인도', continent: '아시아' },
-  { term: 'lk 스리랑카 sri lanka', flag: '🇱🇰', name: '스리랑카', continent: '아시아' },
-  { term: 'np 네팔 nepal', flag: '🇳🇵', name: '네팔', continent: '아시아' },
-  { term: 'bt 부탄 bhutan', flag: '🇧🇹', name: '부탄', continent: '아시아' },
-  { term: 'pk 파키스탄 pakistan', flag: '🇵🇰', name: '파키스탄', continent: '아시아' },
-  { term: 'bd 방글라데시 bangladesh', flag: '🇧🇩', name: '방글라데시', continent: '아시아' },
-  { term: 'mv 몰디브 maldives', flag: '🇲🇻', name: '몰디브', continent: '아시아' },
-  { term: 'mn 몽골 mongolia', flag: '🇲🇳', name: '몽골', continent: '아시아' },
-  { term: 'kz 카자흐스탄 kazakhstan', flag: '🇰🇿', name: '카자흐스탄', continent: '아시아' },
-  { term: 'uz 우즈베키스탄 uzbekistan', flag: '🇺🇿', name: '우즈베키스탄', continent: '아시아' },
-  { term: 'tm 투르크메니스탄 turkmenistan', flag: '🇹🇲', name: '투르크메니스탄', continent: '아시아' },
-  { term: 'tj 타지키스탄 tajikistan', flag: '🇹🇯', name: '타지키스탄', continent: '아시아' },
-  { term: 'kg 키르기스스탄 kyrgyzstan', flag: '🇰🇬', name: '키르기스스탄', continent: '아시아' },
-  { term: 'af 아프가니스탄 afghanistan', flag: '🇦🇫', name: '아프가니스탄', continent: '아시아' },
-  { term: 'ir 이란 iran', flag: '🇮🇷', name: '이란', continent: '아시아' },
-  { term: 'iq 이라크 iraq', flag: '🇮🇶', name: '이라크', continent: '아시아' },
-  { term: 'sa 사우디아라비아 saudi arabia', flag: '🇸🇦', name: '사우디아라비아', continent: '아시아' },
-  { term: 'ae 아랍에미리트 uae united arab emirates', flag: '🇦🇪', name: '아랍에미리트', continent: '아시아' },
-  { term: 'kw 쿠웨이트 kuwait', flag: '🇰🇼', name: '쿠웨이트', continent: '아시아' },
-  { term: 'bh 바레인 bahrain', flag: '🇧🇭', name: '바레인', continent: '아시아' },
-  { term: 'qa 카타르 qatar', flag: '🇶🇦', name: '카타르', continent: '아시아' },
-  { term: 'om 오만 oman', flag: '🇴🇲', name: '오만', continent: '아시아' },
-  { term: 'ye 예멘 yemen', flag: '🇾🇪', name: '예멘', continent: '아시아' },
-  { term: 'jo 요르단 jordan', flag: '🇯🇴', name: '요르단', continent: '아시아' },
-  { term: 'il 이스라엘 israel', flag: '🇮🇱', name: '이스라엘', continent: '아시아' },
-  { term: 'ps 팔레스타인 palestine', flag: '🇵🇸', name: '팔레스타인', continent: '아시아' },
-  { term: 'lb 레바논 lebanon', flag: '🇱🇧', name: '레바논', continent: '아시아' },
-  { term: 'sy 시리아 syria', flag: '🇸🇾', name: '시리아', continent: '아시아' },
-  { term: 'tr 튀르키예 turkey turkiye', flag: '🇹🇷', name: '튀르키예', continent: '아시아' },
-  { term: 'cy 키프로스 cyprus', flag: '🇨🇾', name: '키프로스', continent: '아시아' },
-  { term: 'am 아르메니아 armenia', flag: '🇦🇲', name: '아르메니아', continent: '아시아' },
-  { term: 'az 아제르바이잔 azerbaijan', flag: '🇦🇿', name: '아제르바이잔', continent: '아시아' },
-  { term: 'ge 조지아 georgia', flag: '🇬🇪', name: '조지아', continent: '아시아' },
-  { term: 'gb 영국 uk united kingdom', flag: '🇬🇧', name: '영국', continent: '유럽' },
-  { term: 'fr 프랑스 france', flag: '🇫🇷', name: '프랑스', continent: '유럽' },
-  { term: 'de 독일 germany', flag: '🇩🇪', name: '독일', continent: '유럽' },
-  { term: 'it 이탈리아 italy', flag: '🇮🇹', name: '이탈리아', continent: '유럽' },
-  { term: 'es 스페인 spain', flag: '🇪🇸', name: '스페인', continent: '유럽' },
-  { term: 'pt 포르투갈 portugal', flag: '🇵🇹', name: '포르투갈', continent: '유럽' },
-  { term: 'nl 네덜란드 netherlands', flag: '🇳🇱', name: '네덜란드', continent: '유럽' },
-  { term: 'be 벨기에 belgium', flag: '🇧🇪', name: '벨기에', continent: '유럽' },
-  { term: 'ch 스위스 switzerland', flag: '🇨🇭', name: '스위스', continent: '유럽' },
-  { term: 'at 오스트리아 austria', flag: '🇦🇹', name: '오스트리아', continent: '유럽' },
-  { term: 'se 스웨덴 sweden', flag: '🇸🇪', name: '스웨덴', continent: '유럽' },
-  { term: 'no 노르웨이 norway', flag: '🇳🇴', name: '노르웨이', continent: '유럽' },
-  { term: 'dk 덴마크 denmark', flag: '🇩🇰', name: '덴마크', continent: '유럽' },
-  { term: 'fi 핀란드 finland', flag: '🇫🇮', name: '핀란드', continent: '유럽' },
-  { term: 'is 아이슬란드 iceland', flag: '🇮🇸', name: '아이슬란드', continent: '유럽' },
-  { term: 'ie 아일랜드 ireland', flag: '🇮🇪', name: '아일랜드', continent: '유럽' },
-  { term: 'pl 폴란드 poland', flag: '🇵🇱', name: '폴란드', continent: '유럽' },
-  { term: 'cz 체코 czech republic czechia', flag: '🇨🇿', name: '체코', continent: '유럽' },
-  { term: 'sk 슬로바키아 slovakia', flag: '🇸🇰', name: '슬로바키아', continent: '유럽' },
-  { term: 'hu 헝가리 hungary', flag: '🇭🇺', name: '헝가리', continent: '유럽' },
-  { term: 'ro 루마니아 romania', flag: '🇷🇴', name: '루마니아', continent: '유럽' },
-  { term: 'bg 불가리아 bulgaria', flag: '🇧🇬', name: '불가리아', continent: '유럽' },
-  { term: 'gr 그리스 greece', flag: '🇬🇷', name: '그리스', continent: '유럽' },
-  { term: 'hr 크로아티아 croatia', flag: '🇭🇷', name: '크로아티아', continent: '유럽' },
-  { term: 'si 슬로베니아 slovenia', flag: '🇸🇮', name: '슬로베니아', continent: '유럽' },
-  { term: 'rs 세르비아 serbia', flag: '🇷🇸', name: '세르비아', continent: '유럽' },
-  { term: 'ba 보스니아 헤르체고비나 bosnia herzegovina', flag: '🇧🇦', name: '보스니아 헤르체고비나', continent: '유럽' },
-  { term: 'me 몬테네그로 montenegro', flag: '🇲🇪', name: '몬테네그로', continent: '유럽' },
-  { term: 'mk 북마케도니아 north macedonia', flag: '🇲🇰', name: '북마케도니아', continent: '유럽' },
-  { term: 'al 알바니아 albania', flag: '🇦🇱', name: '알바니아', continent: '유럽' },
-  { term: 'xk 코소보 kosovo', flag: '🇽🇰', name: '코소보', continent: '유럽' },
-  { term: 'ru 러시아 russia', flag: '🇷🇺', name: '러시아', continent: '유럽' },
-  { term: 'ua 우크라이나 ukraine', flag: '🇺🇦', name: '우크라이나', continent: '유럽' },
-  { term: 'by 벨라루스 belarus', flag: '🇧🇾', name: '벨라루스', continent: '유럽' },
-  { term: 'md 몰도바 moldova', flag: '🇲🇩', name: '몰도바', continent: '유럽' },
-  { term: 'ee 에스토니아 estonia', flag: '🇪🇪', name: '에스토니아', continent: '유럽' },
-  { term: 'lv 라트비아 latvia', flag: '🇱🇻', name: '라트비아', continent: '유럽' },
-  { term: 'lt 리투아니아 lithuania', flag: '🇱🇹', name: '리투아니아', continent: '유럽' },
-  { term: 'lu 룩셈부르크 luxembourg', flag: '🇱🇺', name: '룩셈부르크', continent: '유럽' },
-  { term: 'mc 모나코 monaco', flag: '🇲🇨', name: '모나코', continent: '유럽' },
-  { term: 'ad 안도라 andorra', flag: '🇦🇩', name: '안도라', continent: '유럽' },
-  { term: 'li 리히텐슈타인 liechtenstein', flag: '🇱🇮', name: '리히텐슈타인', continent: '유럽' },
-  { term: 'sm 산마리노 san marino', flag: '🇸🇲', name: '산마리노', continent: '유럽' },
-  { term: 'va 바티칸 vatican', flag: '🇻🇦', name: '바티칸', continent: '유럽' },
-  { term: 'mt 몰타 malta', flag: '🇲🇹', name: '몰타', continent: '유럽' },
-  { term: 'us 미국 usa united states', flag: '🇺🇸', name: '미국', continent: '북아메리카' },
-  { term: 'ca 캐나다 canada', flag: '🇨🇦', name: '캐나다', continent: '북아메리카' },
-  { term: 'mx 멕시코 mexico', flag: '🇲🇽', name: '멕시코', continent: '북아메리카' },
-  { term: 'gt 과테말라 guatemala', flag: '🇬🇹', name: '과테말라', continent: '북아메리카' },
-  { term: 'bz 벨리즈 belize', flag: '🇧🇿', name: '벨리즈', continent: '북아메리카' },
-  { term: 'hn 온두라스 honduras', flag: '🇭🇳', name: '온두라스', continent: '북아메리카' },
-  { term: 'sv 엘살바도르 el salvador', flag: '🇸🇻', name: '엘살바도르', continent: '북아메리카' },
-  { term: 'ni 니카라과 nicaragua', flag: '🇳🇮', name: '니카라과', continent: '북아메리카' },
-  { term: 'cr 코스타리카 costa rica', flag: '🇨🇷', name: '코스타리카', continent: '북아메리카' },
-  { term: 'pa 파나마 panama', flag: '🇵🇦', name: '파나마', continent: '북아메리카' },
-  { term: 'cu 쿠바 cuba', flag: '🇨🇺', name: '쿠바', continent: '북아메리카' },
-  { term: 'jm 자메이카 jamaica', flag: '🇯🇲', name: '자메이카', continent: '북아메리카' },
-  { term: 'ht 아이티 haiti', flag: '🇭🇹', name: '아이티', continent: '북아메리카' },
-  { term: 'do 도미니카공화국 dominican republic', flag: '🇩🇴', name: '도미니카공화국', continent: '북아메리카' },
-  { term: 'tt 트리니다드 토바고 trinidad tobago', flag: '🇹🇹', name: '트리니다드 토바고', continent: '북아메리카' },
-  { term: 'bs 바하마 bahamas', flag: '🇧🇸', name: '바하마', continent: '북아메리카' },
-  { term: 'bb 바베이도스 barbados', flag: '🇧🇧', name: '바베이도스', continent: '북아메리카' },
-  { term: 'gd 그레나다 grenada', flag: '🇬🇩', name: '그레나다', continent: '북아메리카' },
-  { term: 'lc 세인트루시아 saint lucia', flag: '🇱🇨', name: '세인트루시아', continent: '북아메리카' },
-  { term: 'vc 세인트빈센트 그레나딘 saint vincent grenadines', flag: '🇻🇨', name: '세인트빈센트 그레나딘', continent: '북아메리카' },
-  { term: 'ag 앤티가 바부다 antigua barbuda', flag: '🇦🇬', name: '앤티가 바부다', continent: '북아메리카' },
-  { term: 'kn 세인트키츠 네비스 saint kitts nevis', flag: '🇰🇳', name: '세인트키츠 네비스', continent: '북아메리카' },
-  { term: 'dm 도미니카 dominica', flag: '🇩🇲', name: '도미니카', continent: '북아메리카' },
-  { term: 'br 브라질 brazil', flag: '🇧🇷', name: '브라질', continent: '남아메리카' },
-  { term: 'ar 아르헨티나 argentina', flag: '🇦🇷', name: '아르헨티나', continent: '남아메리카' },
-  { term: 'cl 칠레 chile', flag: '🇨🇱', name: '칠레', continent: '남아메리카' },
-  { term: 'co 콜롬비아 colombia', flag: '🇨🇴', name: '콜롬비아', continent: '남아메리카' },
-  { term: 'pe 페루 peru', flag: '🇵🇪', name: '페루', continent: '남아메리카' },
-  { term: 'ec 에콰도르 ecuador', flag: '🇪🇨', name: '에콰도르', continent: '남아메리카' },
-  { term: 'bo 볼리비아 bolivia', flag: '🇧🇴', name: '볼리비아', continent: '남아메리카' },
-  { term: 'py 파라과이 paraguay', flag: '🇵🇾', name: '파라과이', continent: '남아메리카' },
-  { term: 'uy 우루과이 uruguay', flag: '🇺🇾', name: '우루과이', continent: '남아메리카' },
-  { term: 've 베네수엘라 venezuela', flag: '🇻🇪', name: '베네수엘라', continent: '남아메리카' },
-  { term: 'gy 가이아나 guyana', flag: '🇬🇾', name: '가이아나', continent: '남아메리카' },
-  { term: 'sr 수리남 suriname', flag: '🇸🇷', name: '수리남', continent: '남아메리카' },
-  { term: 'eg 이집트 egypt', flag: '🇪🇬', name: '이집트', continent: '아프리카' },
-  { term: 'ma 모로코 morocco', flag: '🇲🇦', name: '모로코', continent: '아프리카' },
-  { term: 'tn 튀니지 tunisia', flag: '🇹🇳', name: '튀니지', continent: '아프리카' },
-  { term: 'dz 알제리 algeria', flag: '🇩🇿', name: '알제리', continent: '아프리카' },
-  { term: 'ly 리비아 libya', flag: '🇱🇾', name: '리비아', continent: '아프리카' },
-  { term: 'sd 수단 sudan', flag: '🇸🇩', name: '수단', continent: '아프리카' },
-  { term: 'ss 남수단 south sudan', flag: '🇸🇸', name: '남수단', continent: '아프리카' },
-  { term: 'et 에티오피아 ethiopia', flag: '🇪🇹', name: '에티오피아', continent: '아프리카' },
-  { term: 'er 에리트레아 eritrea', flag: '🇪🇷', name: '에리트레아', continent: '아프리카' },
-  { term: 'dj 지부티 djibouti', flag: '🇩🇯', name: '지부티', continent: '아프리카' },
-  { term: 'so 소말리아 somalia', flag: '🇸🇴', name: '소말리아', continent: '아프리카' },
-  { term: 'ke 케냐 kenya', flag: '🇰🇪', name: '케냐', continent: '아프리카' },
-  { term: 'tz 탄자니아 tanzania', flag: '🇹🇿', name: '탄자니아', continent: '아프리카' },
-  { term: 'ug 우간다 uganda', flag: '🇺🇬', name: '우간다', continent: '아프리카' },
-  { term: 'rw 르완다 rwanda', flag: '🇷🇼', name: '르완다', continent: '아프리카' },
-  { term: 'bi 부룬디 burundi', flag: '🇧🇮', name: '부룬디', continent: '아프리카' },
-  { term: 'za 남아프리카공화국 south africa', flag: '🇿🇦', name: '남아프리카공화국', continent: '아프리카' },
-  { term: 'ng 나이지리아 nigeria', flag: '🇳🇬', name: '나이지리아', continent: '아프리카' },
-  { term: 'gh 가나 ghana', flag: '🇬🇭', name: '가나', continent: '아프리카' },
-  { term: 'sn 세네갈 senegal', flag: '🇸🇳', name: '세네갈', continent: '아프리카' },
-  { term: 'ci 코트디부아르 ivory coast cote divoire', flag: '🇨🇮', name: '코트디부아르', continent: '아프리카' },
-  { term: 'cm 카메룬 cameroon', flag: '🇨🇲', name: '카메룬', continent: '아프리카' },
-  { term: 'ao 앙골라 angola', flag: '🇦🇴', name: '앙골라', continent: '아프리카' },
-  { term: 'mz 모잠비크 mozambique', flag: '🇲🇿', name: '모잠비크', continent: '아프리카' },
-  { term: 'zw 짐바브웨 zimbabwe', flag: '🇿🇼', name: '짐바브웨', continent: '아프리카' },
-  { term: 'zm 잠비아 zambia', flag: '🇿🇲', name: '잠비아', continent: '아프리카' },
-  { term: 'mw 말라위 malawi', flag: '🇲🇼', name: '말라위', continent: '아프리카' },
-  { term: 'mg 마다가스카르 madagascar', flag: '🇲🇬', name: '마다가스카르', continent: '아프리카' },
-  { term: 'mu 모리셔스 mauritius', flag: '🇲🇺', name: '모리셔스', continent: '아프리카' },
-  { term: 'sc 세이셸 seychelles', flag: '🇸🇨', name: '세이셸', continent: '아프리카' },
-  { term: 'km 코모로 comoros', flag: '🇰🇲', name: '코모로', continent: '아프리카' },
-  { term: 'cf 중앙아프리카공화국 central african republic', flag: '🇨🇫', name: '중앙아프리카공화국', continent: '아프리카' },
-  { term: 'cg 콩고 congo', flag: '🇨🇬', name: '콩고', continent: '아프리카' },
-  { term: 'cd 콩고민주공화국 democratic republic of the congo drc', flag: '🇨🇩', name: '콩고민주공화국', continent: '아프리카' },
-  { term: 'ga 가봉 gabon', flag: '🇬🇦', name: '가봉', continent: '아프리카' },
-  { term: 'gq 적도기니 equatorial guinea', flag: '🇬🇶', name: '적도기니', continent: '아프리카' },
-  { term: 'st 상투메 프린시페 sao tome principe', flag: '🇸🇹', name: '상투메 프린시페', continent: '아프리카' },
-  { term: 'cv 카보베르데 cape verde', flag: '🇨🇻', name: '카보베르데', continent: '아프리카' },
-  { term: 'gw 기니비사우 guinea-bissau', flag: '🇬🇼', name: '기니비사우', continent: '아프리카' },
-  { term: 'gn 기니 guinea', flag: '🇬🇳', name: '기니', continent: '아프리카' },
-  { term: 'sl 시에라리온 sierra leone', flag: '🇸🇱', name: '시에라리온', continent: '아프리카' },
-  { term: 'lr 라이베리아 liberia', flag: '🇱🇷', name: '라이베리아', continent: '아프리카' },
-  { term: 'tg 토고 togo', flag: '🇹🇬', name: '토고', continent: '아프리카' },
-  { term: 'bj 베냉 benin', flag: '🇧🇯', name: '베냉', continent: '아프리카' },
-  { term: 'bf 부르키나파소 burkina faso', flag: '🇧🇫', name: '부르키나파소', continent: '아프리카' },
-  { term: 'ml 말리 mali', flag: '🇲🇱', name: '말리', continent: '아프리카' },
-  { term: 'ne 니제르 niger', flag: '🇳🇪', name: '니제르', continent: '아프리카' },
-  { term: 'td 차드 chad', flag: '🇹🇩', name: '차드', continent: '아프리카' },
-  { term: 'mr 모리타니 mauritania', flag: '🇲🇷', name: '모리타니', continent: '아프리카' },
-  { term: 'gm 감비아 gambia', flag: '🇬🇲', name: '감비아', continent: '아프리카' },
-  { term: 'na 나미비아 namibia', flag: '🇳🇦', name: '나미비아', continent: '아프리카' },
-  { term: 'bw 보츠와나 botswana', flag: '🇧🇼', name: '보츠와나', continent: '아프리카' },
-  { term: 'ls 레소토 lesotho', flag: '🇱🇸', name: '레소토', continent: '아프리카' },
-  { term: 'sz 에스와티니 eswatini swaziland', flag: '🇸🇿', name: '에스와티니', continent: '아프리카' },
-  { term: 'au 호주 australia', flag: '🇦🇺', name: '호주', continent: '오세아니아' },
-  { term: 'nz 뉴질랜드 new zealand', flag: '🇳🇿', name: '뉴질랜드', continent: '오세아니아' },
-  { term: 'pg 파푸아뉴기니 papua new guinea', flag: '🇵🇬', name: '파푸아뉴기니', continent: '오세아니아' },
-  { term: 'fj 피지 fiji', flag: '🇫🇯', name: '피지', continent: '오세아니아' },
-  { term: 'sb 솔로몬제도 solomon islands', flag: '🇸🇧', name: '솔로몬제도', continent: '오세아니아' },
-  { term: 'vu 바누아투 vanuatu', flag: '🇻🇺', name: '바누아투', continent: '오세아니아' },
-  { term: 'ws 사모아 samoa', flag: '🇼🇸', name: '사모아', continent: '오세아니아' },
-  { term: 'to 통가 tonga', flag: '🇹🇴', name: '통가', continent: '오세아니아' },
-  { term: 'fm 미크로네시아 micronesia', flag: '🇫🇲', name: '미크로네시아', continent: '오세아니아' },
-  { term: 'pw 팔라우 palau', flag: '🇵🇼', name: '팔라우', continent: '오세아니아' },
-  { term: 'mh 마셜제도 marshall islands', flag: '🇲🇭', name: '마셜제도', continent: '오세아니아' },
-  { term: 'ki 키리바시 kiribati', flag: '🇰🇮', name: '키리바시', continent: '오세아니아' },
-  { term: 'tv 투발루 tuvalu', flag: '🇹🇻', name: '투발루', continent: '오세아니아' },
-  { term: 'nr 나우루 nauru', flag: '🇳🇷', name: '나우루', continent: '오세아니아' },
-];
+// 국가 데이터: 공용 모듈(../constants/countries)에서 가져옴
 
 const ISO_TO_COUNTRY = COUNTRIES.reduce<Record<string, { flag: string; name: string }>>((acc, c) => {
   const code = c.term.split(' ')[0].toUpperCase();
@@ -1046,7 +408,20 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
+  const { t } = useTranslation();
   const { addRecord, updateRecord, followingUsers } = useRecords();
+  // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
+  const companionLabel = (c: string) => {
+    switch (c) {
+      case '혼자': return t('newRecord.compSolo');
+      case '친구': return t('newRecord.compFriend');
+      case '연인': return t('newRecord.compCouple');
+      case '가족': return t('newRecord.compFamily');
+      case '부모님': return t('newRecord.compParents');
+      case '형제': return t('newRecord.compSibling');
+      default: return c;
+    }
+  };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
   const TOTAL_STEPS = 3;
@@ -1055,12 +430,24 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
   const editRecord = route.params?.editRecord ?? route.params?.record;
   const isEdit = !!editRecord;
+  // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
+  const tripPeriod = route.params?.tripPeriod;
   const parseDotDate = (s?: string): Date => {
     if (s) {
-      const t = new Date(s.replace(/\./g, '-'));
-      if (!isNaN(t.getTime())) { t.setHours(0, 0, 0, 0); return t; }
+      // "2025.04.13" / "2025-4-5" 등 구분자(. - /)·비패딩 모두 직접 파싱.
+      // new Date(문자열)은 Hermes에서 비패딩 날짜에 Invalid Date가 될 수 있어 쓰지 않는다.
+      const [y, m, d] = s.split(/[.\-/]/).map(p => parseInt(p, 10));
+      if (
+        Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) &&
+        m >= 1 && m <= 12 && d >= 1 && d <= 31
+      ) {
+        const dt = new Date(y, m - 1, d);
+        dt.setHours(0, 0, 0, 0);
+        // 월/일 롤오버(예: 2월 31일 → 3월 3일) 방지: 파싱값과 동일해야 유효
+        if (dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d) return dt;
+      }
     }
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+    const today = new Date(); today.setHours(0, 0, 0, 0); return today;
   };
   // 다국가 기록이면 대표 국가의 데이터로 활성 상태를 채운다 (top-level medias는 전체 합본이므로)
   const editFirstCountryData = editRecord?.perCountryData?.[editRecord.countryName];
@@ -1102,6 +489,23 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
   }, [route?.params]);
 
+  // 위치(국가·도시) 자동 채움 — 신규 작성이고 지정 국가 없이 들어왔을 때, 현재 위치로 1회 프리필
+  useEffect(() => {
+    if (isEdit) return;
+    if (route?.params?.selectedCountry) return; // 글로브 등에서 국가 지정해 들어온 경우는 패스
+    let cancelled = false;
+    (async () => {
+      const { countryCode, countryName, city } = await detectCurrentCountry();
+      if (cancelled || (!countryCode && !countryName)) return;
+      const mapped = geoJsonToCountry(countryName ?? '', countryCode ?? undefined);
+      if (!mapped) return;
+      setSelectedCountries(prev => (prev.length === 0 ? [mapped] : prev)); // 비어있을 때만
+      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const groupedCountries = useMemo(() => {
     const filtered = COUNTRIES.filter(c => c.term.toLowerCase().includes(countrySearch.toLowerCase()));
     const sorted   = [...filtered].sort((a, b) => a.name.localeCompare(b.name, 'ko'));
@@ -1116,16 +520,45 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     editFirstCountryData?.medias ?? editRecord?.medias ?? []
   );
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
-    editRecord?.mediaPrivacy ?? {}
+    editFirstCountryData?.mediaPrivacy ?? editRecord?.mediaPrivacy ?? {}
   );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
     editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
   );
+
+  // 압축본 uri → 원본 uri 매핑. "지도 대표" 사진은 저장 시 이 원본에서 고해상도로 다시 생성한다.
+  const originalUriMapRef = useRef<Record<string, string>>({});
+  // 지도 대표용 고해상도(장변 2560 / 품질 0.9) — 일반 미디어(1600/0.75)보다 선명
+  const REP_HIRES_EDGE = 2560;
+  const REP_HIRES_QUALITY = 0.9;
+  // 대표 사진을 원본 기반 고해상도로 변환. 원본을 모르면(편집 등) 기존 uri 그대로 사용.
+  const toRepHiRes = async (uri?: string): Promise<string | undefined> => {
+    if (!uri) return uri;
+    const original = originalUriMapRef.current[uri];
+    if (!original) return uri;
+    return compressImage(original, REP_HIRES_EDGE, REP_HIRES_QUALITY);
+  };
+
+  // 저장 중복 클릭 방지
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+
+  // 원본 uri 배열 → 이미 추가된 것·중복을 제거한 뒤 압축본 반환 + (압축본→원본) 매핑 기록.
+  // 압축본 URI는 매번 달라 중복 비교가 안 되므로 반드시 '원본' 기준으로 dedup 한다.
+  const addNewOriginals = async (originals: string[], currentMedias: string[]): Promise<string[]> => {
+    const addedOriginals = new Set(currentMedias.map(u => originalUriMapRef.current[u] ?? u));
+    const uniqueFresh = Array.from(new Set(originals.filter(o => !addedOriginals.has(o))))
+      .slice(0, 30 - currentMedias.length);
+    const compressed = await compressImages(uniqueFresh);
+    compressed.forEach((u, i) => { if (u !== uniqueFresh[i]) originalUriMapRef.current[u] = uniqueFresh[i]; });
+    return compressed;
+  };
+
   const selectMedia = async () => {
     const slots = 30 - medias.length;
     if (slots <= 0) {
-      Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
+      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
       return;
     }
     try {
@@ -1136,15 +569,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         quality: 0.8,
       });
       if (!result.canceled && result.assets) {
-        const picked = result.assets.map(a => a.uri);
-        setMedias(prev => {
-          const existing = new Set(prev);
-          const add = picked.filter(u => !existing.has(u)).slice(0, 30 - prev.length);
-          return [...prev, ...add];
-        });
+        setLoadingMedia(true);
+        const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
+        setMedias(prev => [...prev, ...compressed].slice(0, 30));
       }
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '사진을 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
+    } finally {
+      setLoadingMedia(false);
     }
   };
 
@@ -1216,16 +648,21 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
+  // 신규 작성이면 여행 카드에서 넘어온 기간(tripPeriod)을 기본 날짜로, 없으면 오늘
+  const newStartInit = tripPeriod?.startDate ? parseDotDate(tripPeriod.startDate) : todayInit;
+  const newEndInit = tripPeriod?.endDate ? parseDotDate(tripPeriod.endDate) : newStartInit;
   const [title,           setTitle]           = useState(editRecord?.content ?? '');
   const [startDate,       setStartDate]       = useState(
-    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : todayInit
+    editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : newStartInit
   );
   const [endDate,         setEndDate]         = useState(
-    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : todayInit
+    editRecord ? parseDotDate(editFirstCountryData?.endDate ?? editRecord.endDate ?? editRecord.date) : newEndInit
   );
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [memo,            setMemo]            = useState(editRecord?.memo ?? '');
   const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
+  // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 친구만 기본
+  const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'friends');
 
   // ── 국가별 데이터 관리 (2개국 이상 선택 시) ──
   const isMultiCountry = selectedCountries.length > 1;
@@ -1281,7 +718,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         for (const [name, d] of Object.entries(editRecord.perCountryData)) {
           store[name] = {
             medias: d.medias ?? [],
-            mediaPrivacy: {},
+            mediaPrivacy: d.mediaPrivacy ?? {},
             startDate: parseDotDate(d.startDate),
             endDate: parseDotDate(d.endDate),
             rating: d.rating ?? 0,
@@ -1389,7 +826,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const formatDate = (d: Date) =>
     `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
 
-  // Step 4 - 동행자
+  // 동행자 (step 3)
   const [selectedCompanions, setSelectedCompanions] = useState<string[]>(editRecord?.companions ?? []);
   const [companionFriends,   setCompanionFriends]   = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
@@ -1406,9 +843,19 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     setCompanionFriends(prev => prev.filter(f => f !== friend));
   };
 
-  // Step 5 - 선택 항목
+  // 선택 항목 (step 3)
   const [budget,     setBudget]     = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
   const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? 'KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다 (편집 모드는 처음부터 수동 취급)
+  const currencyTouchedRef = useRef(isEdit);
+  const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
+  // 대표(첫) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
+  useEffect(() => {
+    if (currencyTouchedRef.current) return;
+    const cur = currencyForCountryName(selectedCountries[0]?.name);
+    if (cur) setCurrency(cur);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCountries[0]?.name]);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [weather,    setWeather]    = useState(editRecord?.weather ?? '');
@@ -1417,42 +864,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [keywordQuery, setKeywordQuery] = useState('');
 
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
-  const OTHER_CURRENCIES = [
-    { code: 'EUR', name: '유로 (EU)' },
-    { code: 'CNY', name: '위안 (중국)' },
-    { code: 'GBP', name: '파운드 (영국)' },
-    { code: 'AUD', name: '호주 달러' },
-    { code: 'CAD', name: '캐나다 달러' },
-    { code: 'CHF', name: '스위스 프랑' },
-    { code: 'HKD', name: '홍콩 달러' },
-    { code: 'SGD', name: '싱가포르 달러' },
-    { code: 'THB', name: '바트 (태국)' },
-    { code: 'VND', name: '동 (베트남)' },
-    { code: 'MYR', name: '링깃 (말레이시아)' },
-    { code: 'PHP', name: '페소 (필리핀)' },
-    { code: 'IDR', name: '루피아 (인도네시아)' },
-    { code: 'INR', name: '루피 (인도)' },
-    { code: 'TRY', name: '리라 (튀르키예)' },
-    { code: 'MXN', name: '페소 (멕시코)' },
-    { code: 'BRL', name: '헤알 (브라질)' },
-    { code: 'AED', name: '디르함 (UAE)' },
-    { code: 'NZD', name: '뉴질랜드 달러' },
-    { code: 'SEK', name: '크로나 (스웨덴)' },
-    { code: 'NOK', name: '크로네 (노르웨이)' },
-    { code: 'DKK', name: '크로네 (덴마크)' },
-    { code: 'CZK', name: '코루나 (체코)' },
-    { code: 'HUF', name: '포린트 (헝가리)' },
-    { code: 'PLN', name: '즐로티 (폴란드)' },
-  ];
+  // OTHER_CURRENCIES 목록은 components/record/CurrencyPickerModal 로 이동
   const WEATHER_OPTIONS = [
-    { label: '☀️ 맑음',     value: '맑음' },
-    { label: '🌤️ 부분흐림', value: '부분흐림' },
-    { label: '⛅ 흐림',     value: '흐림' },
-    { label: '🌧️ 비',       value: '비' },
-    { label: '❄️ 눈',       value: '눈' },
-    { label: '💨 바람',     value: '바람' },
+    { label: `☀️ ${t('newRecord.wSunny')}`,     value: '맑음' },
+    { label: `🌤️ ${t('newRecord.wPartly')}`, value: '부분흐림' },
+    { label: `⛅ ${t('newRecord.wCloudy')}`,     value: '흐림' },
+    { label: `🌧️ ${t('newRecord.wRain')}`,       value: '비' },
+    { label: `❄️ ${t('newRecord.wSnow')}`,       value: '눈' },
+    { label: `💨 ${t('newRecord.wWind')}`,     value: '바람' },
   ];
   const FLIGHT_OPTIONS  = ['직항', '경유'];
+  const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
+  const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
+    { value: 'public',  label: `🌐 ${t('newRecord.visPublic')}` },
+    { value: 'friends', label: `👥 ${t('newRecord.visFriends')}` },
+    { value: 'private', label: `🔒 ${t('newRecord.visPrivate')}` },
+  ];
   const KEYWORD_OPTIONS = ['#맛집','#쇼핑','#자연','#역사','#휴양','#액티비티','#도시','#힐링','#백패킹','#럭셔리'];
 
   const toggleKeyword = (kw: string) =>
@@ -1511,7 +938,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // iCloud 제외분 안내 문구 (없으면 빈 문자열)
   const cloudNote = (skipped: number) =>
-    skipped > 0 ? `\n\niCloud에 보관된 ${skipped}장은 자동 불러오기로 가져올 수 없어, 아래 ‘갤러리에서 선택’으로 받아주세요.` : '';
+    skipped > 0 ? t('newRecord.cloudNote', { count: skipped }) : '';
 
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
@@ -1520,18 +947,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
     try {
       const ok = await resolveImportable(selectedAssets);
-      const resolvedUris = ok.map((p) => p.uri);
+      const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => {
-        const existingSet = new Set(prev);
-        const newUris = resolvedUris.filter((uri) => !existingSet.has(uri));
-        return [...prev, ...newUris];
-      });
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudSkippedRef.current)}`);
+      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudSkippedRef.current));
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
       setLoadingMedia(false);
     }
@@ -1542,7 +965,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const rangeEnd   = overrideEnd   ?? autoLoadEnd;
 
     if (!rangeStart || !rangeEnd || isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
-      Alert.alert('날짜 오류', '날짜를 다시 선택해주세요.');
+      Alert.alert(t('newRecord.dateErrorTitle'), t('newRecord.dateErrorMsg'));
       return;
     }
 
@@ -1551,11 +974,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const { status } = await MediaLibrary.requestPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert(
-          '갤러리 접근 권한이 필요해요',
-          '설정에서 갤러리 접근을 허용해주세요.',
+          t('newRecord.galleryPermTitle'),
+          t('newRecord.galleryPermMsg'),
           [
-            { text: '취소', style: 'cancel' },
-            { text: '설정에서 허용하기', onPress: () => Linking.openSettings() },
+            { text: t('common.cancel'), style: 'cancel' },
+            { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
           ]
         );
         return;
@@ -1576,7 +999,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       const allAssets = result?.assets ?? [];
       if (allAssets.length === 0) {
-        Alert.alert('사진이 없어요', '해당 기간에 사진이 없어요.');
+        Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
         return;
       }
 
@@ -1588,8 +1011,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       if (ok.length === 0) {
         Alert.alert(
-          'iCloud에 있는 사진이에요',
-          `이 기간 사진 ${cloudCount}장은 모두 iCloud에 보관돼 있어 자동 불러오기로는 가져올 수 없어요.\n\n‘갤러리에서 선택’으로 받아주세요. (iCloud 사진은 이 방식에서만 받아집니다)`
+          t('comp2.icloudTitle'),
+          t('newRecord.iCloudOnlyMsg', { count: cloudCount })
         );
         return;
       }
@@ -1597,7 +1020,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const total = ok.length;
       const slotsAvailable = 30 - medias.length;
       if (slotsAvailable <= 0) {
-        Alert.alert('알림', '사진은 최대 30장까지 추가할 수 있어요.');
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
         return;
       }
 
@@ -1611,17 +1034,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       }
 
       // 30개 이하 → 전체 추가 (이미 변환된 localUri 사용)
-      const resolvedUris = ok.map((p) => p.uri);
+      const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => {
-        const existingSet = new Set(prev);
-        const newUris = resolvedUris.filter((uri) => !existingSet.has(uri));
-        return [...prev, ...newUris];
-      });
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
-      Alert.alert('불러오기 완료', `${resolvedUris.length}장의 사진을 불러왔어요!${cloudNote(cloudCount)}`);
+      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudCount));
     } catch (e: any) {
-      Alert.alert('불러오기 실패', e?.message ?? '갤러리를 불러오는 중 오류가 발생했어요.');
+      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
       setLoadingMedia(false);
     }
@@ -1630,7 +1049,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
-    if (step === 2) return medias.length > 0; // 사진 최소 1장 필수
+    if (step === 2) {
+      // 사진 최소 1장 필수 — 다국가면 모든 국가에 1장 이상 (활성은 전역 medias, 나머지는 국가별 저장값)
+      return selectedCountries.every((c, idx) =>
+        idx === activeCountryIdx ? medias.length > 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) > 0
+      );
+    }
     if (step === TOTAL_STEPS) {
       if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
       // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
@@ -1656,9 +1080,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (selectedCountries.length === 0) {
-      Alert.alert('국가를 선택해주세요', '여행한 국가를 1개 이상 선택해야 저장할 수 있어요.');
+      Alert.alert(t('newRecord.selectCountryTitle'), t('newRecord.selectCountryMsg'));
       return;
     }
     {
@@ -1668,8 +1092,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const first = selectedCountries[0];
 
       // 국가별 데이터 수집
-      const pcd: Record<string, { medias?: string[]; startDate?: string; endDate?: string; rating?: number; representativePhoto?: string }> = {};
+      const pcd: Record<string, { medias?: string[]; mediaPrivacy?: Record<number, string[]>; startDate?: string; endDate?: string; rating?: number; representativePhoto?: string }> = {};
       let allMedias: string[] = [];
+      // 합본 medias(allMedias) 기준으로 국가별 비공개 인덱스를 오프셋 보정해 하나로 합친다
+      const mergedPrivacy: Record<number, string[]> = {};
       let firstRating = 0;
       let firstStart = formatDate(todayInit);
       let firstEnd = formatDate(todayInit);
@@ -1677,13 +1103,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       selectedCountries.forEach((c, i) => {
         const d = perCountryStore.current[c.name];
         if (d) {
+          const hasPrivacy = Object.values(d.mediaPrivacy).some(v => v && v.length > 0);
           pcd[c.name] = {
             medias: d.medias,
+            mediaPrivacy: hasPrivacy ? d.mediaPrivacy : undefined,
             startDate: formatDate(d.startDate),
             endDate: formatDate(d.endDate),
             rating: d.rating,
             representativePhoto: d.representativePhoto,
           };
+          // 이 국가 medias가 합본에서 시작하는 위치(offset)만큼 비공개 인덱스를 밀어 매핑
+          const offset = allMedias.length;
+          Object.entries(d.mediaPrivacy).forEach(([k, v]) => {
+            if (v && v.length > 0) mergedPrivacy[offset + Number(k)] = v;
+          });
           allMedias = [...allMedias, ...d.medias];
           if (i === 0) {
             firstRating = d.rating;
@@ -1695,6 +1128,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       const firstRepPhoto = perCountryStore.current[first.name]?.representativePhoto || representativePhoto || undefined;
 
+      // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지)
+      const firstRepHiRes = await toRepHiRes(firstRepPhoto);
+      for (const name of Object.keys(pcd)) {
+        pcd[name].representativePhoto = await toRepHiRes(pcd[name].representativePhoto);
+      }
+
       const payload = {
         country: `${first.flag} ${first.name}`,
         countryName: first.name,
@@ -1703,7 +1142,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         regionName: selectedRegion?.name || undefined,
         regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
-        representativePhoto: firstRepPhoto,
+        representativePhoto: firstRepHiRes,
         date: firstStart,
         content: title || (selectedCountries.length === 1
           ? `${first.name} 여행 기록`
@@ -1712,8 +1151,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         rating: firstRating,
         companions: selectedCompanions,
         companionFriends,
+        visibility,
         medias: allMedias,
-        mediaPrivacy,
+        mediaPrivacy: mergedPrivacy,
         startDate: firstStart,
         endDate: firstEnd,
         budget:     budget ? { amount: Number(budget), currency } : undefined,
@@ -1723,12 +1163,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       };
 
       if (isEdit && editRecord) {
-        // 작성자·공개범위·형식은 유지하고 내용만 갱신
+        // 작성자·형식은 유지하고 내용(공개 범위 포함)만 갱신
         updateRecord(editRecord.id, payload);
       } else {
         addRecord({
           user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
-          visibility: 'friends',
           viewType: 'feed',
           ...payload,
         });
@@ -1739,46 +1178,66 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   // 입력 중 이탈 방지 (취소/뒤로가기/제스처) — 저장 시엔 건너뜀
+  // 최신 입력 여부는 ref로 참조 → 리스너는 1회만 등록 (키 입력마다 재구독 방지)
+  const hasInput =
+    selectedCountries.length > 0 || medias.length > 0 || memo.trim().length > 0 ||
+    rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
+    !!budget || !!weather || !!flightType;
+  const hasInputRef = useRef(hasInput);
+  hasInputRef.current = hasInput;
+
   useEffect(() => {
-    const hasInput =
-      selectedCountries.length > 0 || medias.length > 0 || memo.trim().length > 0 ||
-      rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
-      !!budget || !!weather || !!flightType;
     const sub = navigation.addListener('beforeRemove', (e) => {
-      if (savedRef.current || !hasInput) return;
+      if (savedRef.current || !hasInputRef.current) return;
       e.preventDefault();
-      Alert.alert('작성을 취소할까요?', '입력한 내용이 저장되지 않아요.', [
-        { text: '계속 작성', style: 'cancel' },
-        { text: '나가기', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      Alert.alert(t('newRecord.cancelWriteTitle'), t('newRecord.cancelWriteMsg'), [
+        { text: t('newRecord.continueWrite'), style: 'cancel' },
+        { text: t('newRecord.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
       ]);
     });
     return sub;
-  }, [navigation, selectedCountries, medias, memo, rating, selectedCompanions, keywords, budget, weather, flightType]);
+  }, [navigation]);
 
   // 필수 미충족 시 빠진 항목 안내
   const showHint = (msg: string) => { setHintMsg(msg); setTimeout(() => setHintMsg(''), 2200); };
   const missingHint = (): string[] => {
     const m: string[] = [];
-    if (step === 1) { if (selectedCountries.length === 0) m.push('국가'); }
-    else if (step === 2) { if (medias.length === 0) m.push('사진'); }
+    if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
+    else if (step === 2) {
+      const noPhoto = selectedCountries.some((c, idx) =>
+        idx === activeCountryIdx ? medias.length === 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) === 0);
+      if (noPhoto) m.push(isMultiCountry ? t('newRecord.missAllCountryPhotos') : t('newRecord.missPhoto'));
+    }
     else if (step === TOTAL_STEPS) {
-      if (memo.trim().length === 0) m.push('글');
+      if (memo.trim().length === 0) m.push(t('newRecord.missText'));
       const noRating = selectedCountries.some((c, idx) =>
         idx === activeCountryIdx ? rating <= 0 : (perCountryStore.current[c.name]?.rating ?? 0) <= 0);
-      if (noRating) m.push(isMultiCountry ? '모든 국가 평점' : '평점');
-      if (selectedCompanions.length === 0) m.push('동행자');
+      if (noRating) m.push(isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating'));
+      if (selectedCompanions.length === 0) m.push(t('newRecord.missCompanion'));
     }
     return m;
   };
   const handleNextPress = () => {
     if (canGoNext()) { goNext(); return; }
     const miss = missingHint();
-    showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+    showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
   };
-  const handleSavePress = () => {
-    if (canGoNext()) { handleSave(); return; }
-    const miss = missingHint();
-    showHint(miss.length ? `${miss.join(', ')} 입력이 필요해요` : '필수 항목을 입력해주세요');
+  const handleSavePress = async () => {
+    if (savingRef.current) return; // 저장 중복 클릭 방지
+    if (!canGoNext()) {
+      const miss = missingHint();
+      showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
+      return;
+    }
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await handleSave();
+    } catch {
+      // 저장 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   // 키워드 추가 (선행 # 정규화 + 중복 방지 + 빈값 무시 + 개수/길이 제한)
@@ -1790,14 +1249,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const tag = `#${base}`;
     setKeywords(prev => {
       if (prev.includes(tag)) return prev;
-      if (prev.length >= KEYWORD_MAX) { showHint(`키워드는 최대 ${KEYWORD_MAX}개예요`); return prev; }
+      if (prev.length >= KEYWORD_MAX) { showHint(t('newRecord.keywordMax', { max: KEYWORD_MAX })); return prev; }
       return [...prev, tag];
     });
     setKeywordQuery('');
   };
 
   // ── 단계별 제목 ──
-  const STEP_TITLES = ['국가 선택', '사진', '기록 정보'];
+  const STEP_TITLES = [t('newRecord.step1'), t('newRecord.step2'), t('newRecord.step3')];
 
   // ─── 렌더 ───
   return (
@@ -1805,9 +1264,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 헤더 */}
       <View style={s.header}>
         <TouchableOpacity style={s.cancelBtn} onPress={() => navigation.goBack()}>
-          <Text style={s.cancelTxt}>취소</Text>
+          <Text style={s.cancelTxt}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={s.headerTitle}>{isEdit ? '기록 수정' : '새 기록하기'}</Text>
+        <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
         <View style={{ width: 44 }} />
       </View>
 
@@ -1820,7 +1279,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         <Text style={s.stepCountText}>{step} / {TOTAL_STEPS}</Text>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* Android: edge-to-edge(SDK54)에서 adjustResize가 무력화될 수 있어 'height'로 스크롤 영역을 직접 축소 */}
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView
           ref={scrollRef}
           style={s.scroll}
@@ -1871,8 +1331,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   <TextInput
                     style={s.searchInput}
                     placeholder={selectedCountries.length > 0
-                      ? "추가 국가를 검색해보세요"
-                      : "국가명을 검색해보세요"}
+                      ? t('newRecord.searchMore')
+                      : t('newRecord.searchCountry')}
                     placeholderTextColor={COLORS.textMuted}
                     value={countrySearch}
                     onChangeText={setCountrySearch}
@@ -1894,7 +1354,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.countryResultBox}>
                   <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
                     {groupedCountries.length === 0 ? (
-                      <Text style={s.noResultText}>검색 결과가 없어요 🔍</Text>
+                      <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
                     ) : (
                       groupedCountries.map(({ continent, countries }) => (
                         <View key={continent}>
@@ -1929,7 +1389,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 안내 문구 */}
               {selectedCountries.length === 0 && countrySearch.length === 0 && (
-                <Text style={s.stepHint}>{'어느 나라를 다녀오셨나요?\n여러 나라를 선택할 수 있어요 (최대 10개)'}</Text>
+                <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
               )}
 
               {/* 선택 완료 확인 */}
@@ -1971,7 +1431,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                   <CalendarIcon size={16} color={COLORS.purpleNeon} />
-                  <Text style={s.autoLoadBtnText}>기간으로 자동 불러오기</Text>
+                  <Text style={s.autoLoadBtnText}>{t('newRecord.autoLoadByPeriod')}</Text>
                 </View>
               </TouchableOpacity>
               {loadingMedia && <ActivityIndicator color="#BF85FC" size="large" style={{ marginVertical: 12 }} />}
@@ -1986,8 +1446,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.addMediaLeft}>
                   <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
                   <View>
-                    <Text style={s.addMediaText}>갤러리에서 선택</Text>
-                    <Text style={s.addMediaSub}>사진 최대 30장</Text>
+                    <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
+                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub')}</Text>
                   </View>
                 </View>
                 <View style={s.addMediaCountBadge}>
@@ -2016,8 +1476,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {medias.length === 0 && (
                 <View style={s.mediaEmptyBox}>
                   <DesignerCameraIcon size={32} color={COLORS.textMuted} />
-                  <Text style={s.mediaEmptyTitle}>아직 선택된 사진이 없어요</Text>
-                  <Text style={s.mediaEmptyDesc}>사진 없이도 다음 단계로 넘어갈 수 있어요</Text>
+                  <Text style={s.mediaEmptyTitle}>{t('newRecord.noPhotoSelectedTitle')}</Text>
+                  <Text style={s.mediaEmptyDesc}>{t('newRecord.noPhotoSelectedDesc')}</Text>
                 </View>
               )}
 
@@ -2045,7 +1505,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 날짜 (국가별) */}
               <View style={s.fieldBlock}>
                 <View style={s.perCountryLabelRow}>
-                  <Text style={s.fieldLabelReq}>날짜</Text>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.date')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                   {isMultiCountry && (
                     <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
@@ -2057,12 +1517,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   activeOpacity={0.85}
                 >
                   <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>출발일</Text>
+                    <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
                     <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
                   </View>
                   <Text style={s.dateBtnArrow}>→</Text>
                   <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>도착일</Text>
+                    <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
                     <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
                   </View>
                   <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={COLORS.purpleNeon} /></View>
@@ -2072,12 +1532,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 글 (공통) */}
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
-                  <Text style={s.fieldLabelReq}>글</Text>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.textLabel')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                 </View>
                 <TextInput
                   style={[s.fieldInput, s.memoInput]}
-                  placeholder="여행의 순간을 기록해보세요"
+                  placeholder={t('newRecord.textPlaceholder')}
                   placeholderTextColor={COLORS.textMuted}
                   value={memo}
                   onChangeText={setMemo}
@@ -2091,7 +1551,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* ── 동행자 선택 ── */}
               <View style={s.companionSection}>
                 <View style={s.fieldLabelRow}>
-                  <Text style={s.companionSectionLabel}>동행자 선택</Text>
+                  <Text style={s.companionSectionLabel}>{t('newRecord.companionSelect')}</Text>
                   <Text style={s.reqTag}>✱</Text>
                 </View>
                 {/* 컴팩트 칩 */}
@@ -2115,7 +1575,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                         activeOpacity={0.75}
                       >
                         <View style={s.companionChipIconWrap}>{COMP_ICONS[comp]}</View>
-                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{comp}</Text>
+                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{companionLabel(comp)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -2146,7 +1606,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   activeOpacity={0.75}
                 >
                   <FriendIcon color={COLORS.purpleNeon} />
-                  <Text style={s.addFriendTxt}>앱 친구 추가</Text>
+                  <Text style={s.addFriendTxt}>{t('newRecord.addAppFriend')}</Text>
                   {companionFriends.length > 0 && (
                     <View style={s.addFriendBadge}>
                       <Text style={s.addFriendBadgeTxt}>{companionFriends.length}</Text>
@@ -2159,7 +1619,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.fieldBlock}>
                 <View style={s.ratingLabelRow}>
                   <View style={s.perCountryLabelRow}>
-                    <Text style={s.fieldLabelReq}>별점</Text>
+                    <Text style={s.fieldLabelReq}>{t('newRecord.ratingLabel')}</Text>
                     <Text style={s.reqTag}>✱</Text>
                     {isMultiCountry && (
                       <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
@@ -2167,10 +1627,32 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   </View>
                   {rating > 0
                     ? <Text style={s.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
-                    : <Text style={s.ratingScoreEmpty}>탭하거나 드래그해 선택</Text>}
+                    : <Text style={s.ratingScoreEmpty}>{t('newRecord.ratingEmpty')}</Text>}
                 </View>
                 <View style={s.ratingCard}>
                   {renderStars()}
+                </View>
+              </View>
+
+              {/* 공개 범위 (공통) */}
+              <View style={s.fieldBlock}>
+                <View style={s.fieldLabelRow}>
+                  <Text style={s.fieldLabelReq}>{t('newRecord.visibility')}</Text>
+                </View>
+                <View style={s.companionChipWrap}>
+                  {VISIBILITY_OPTIONS.map(opt => {
+                    const isActive = visibility === opt.value;
+                    return (
+                      <TouchableOpacity
+                        key={opt.value}
+                        style={[s.companionChip, isActive && s.companionChipActive]}
+                        onPress={() => setVisibility(opt.value)}
+                        activeOpacity={0.75}
+                      >
+                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{opt.label}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
 
@@ -2178,13 +1660,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.companionDivider} />
 
               {/* 안내 */}
-              <Text style={s.optNoticeText}>선택 항목이에요 (건너뛰어도 돼요 😊)</Text>
+              <Text style={s.optNoticeText}>{t('newRecord.optionalNotice')}</Text>
 
               {/* 예산 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <CoinIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>예산</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.budget')}</Text>
                   {budget ? <Text style={s.optCardValue}>{Number(budget).toLocaleString()} {currency}</Text> : null}
                 </View>
                 <View style={s.optBudgetRow}>
@@ -2192,7 +1674,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     <TouchableOpacity
                       key={c}
                       style={[s.optCurrencyChip, currency === c && s.optCurrencyChipActive]}
-                      onPress={() => setCurrency(c)}
+                      onPress={() => chooseCurrency(c)}
                       activeOpacity={0.75}
                     >
                       <Text style={[s.optCurrencyTxt, currency === c && s.optCurrencyTxtActive]}>{c}</Text>
@@ -2205,12 +1687,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     activeOpacity={0.75}
                   >
                     <Text style={[s.optCurrencyTxt, !CURRENCIES.includes(currency) && s.optCurrencyTxtActive]}>
-                      {CURRENCIES.includes(currency) ? '기타 ›' : currency}
+                      {CURRENCIES.includes(currency) ? t('newRecord.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
                   <TextInput
                     style={s.optBudgetInput}
-                    placeholder="금액"
+                    placeholder={t('newRecord.amountPlaceholder')}
                     placeholderTextColor={COLORS.textMuted}
                     value={budget}
                     onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
@@ -2223,7 +1705,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <WeatherIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>날씨</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.weather')}</Text>
                   {weather ? <Text style={s.optCardValue}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
@@ -2247,8 +1729,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <DesignerPlaneIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>직항 / 경유</Text>
-                  {flightType ? <Text style={s.optCardValue}>{flightType}</Text> : null}
+                  <Text style={s.optRowTitle}>{t('newRecord.flightTitle')}</Text>
+                  {flightType ? <Text style={s.optCardValue}>{flightLabel(flightType)}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
                   {FLIGHT_OPTIONS.map(f => (
@@ -2261,7 +1743,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                         {f === '직항' ? <TakeoffIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} /> : <TransferIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} />}
                         <Text style={[s.optFlightTxt, flightType === f && s.optFlightTxtActive]}>
-                          {f}
+                          {flightLabel(f)}
                         </Text>
                       </View>
                     </TouchableOpacity>
@@ -2273,7 +1755,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
                   <TagIcon size={18} color={IC} />
-                  <Text style={s.optRowTitle}>키워드</Text>
+                  <Text style={s.optRowTitle}>{t('newRecord.keyword')}</Text>
                   {keywords.length > 0 && <Text style={s.optCardValue}>{keywords.length}개</Text>}
                 </View>
                 {/* 태그 + 입력창 인라인 */}
@@ -2303,7 +1785,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     onSubmitEditing={() => addKeyword(keywordQuery)}
                   />
                 </View>
-                <Text style={s.kwHint}>스페이스 또는 엔터로 태그 추가 · 탭해서 삭제</Text>
+                <Text style={s.kwHint}>{t('newRecord.keywordHint')}</Text>
               </View>
 
             </View>
@@ -2328,6 +1810,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onPrev={goPrev}
         onNext={handleNextPress}
         onSave={handleSavePress}
+        saving={saving}
       />
 
       {/* 캘린더 바텀시트 */}
@@ -2350,118 +1833,31 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       />
 
       {/* 앱 친구 선택 모달 */}
-      <Modal
+      <FriendPickerModal
         visible={friendPickerVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setFriendPickerVisible(false)}
-        statusBarTranslucent
-      >
-        <View style={fp.overlay}>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
-          <View style={fp.sheet}>
-            <View style={fp.handle} />
-            <View style={fp.header}>
-              <FriendIcon color={COLORS.purpleNeon} />
-              <Text style={fp.headerTitle}>함께한 친구 선택</Text>
-            </View>
-
-            <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
-              {friendNames.length === 0 ? (
-                <Text style={{ color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
-                  아직 팔로우한 친구가 없어요
-                </Text>
-              ) : friendNames.map(friend => {
-                const isSelected = companionFriends.includes(friend);
-                return (
-                  <TouchableOpacity
-                    key={friend}
-                    style={[fp.row, isSelected && fp.rowActive]}
-                    onPress={() => toggleCompanionFriend(friend)}
-                    activeOpacity={0.7}
-                  >
-                    <View style={[fp.avatar, isSelected && fp.avatarActive]}>
-                      <Text style={fp.avatarTxt}>{friend[0]}</Text>
-                    </View>
-                    <Text style={[fp.name, isSelected && fp.nameActive]}>{friend}</Text>
-                    <View style={[fp.check, isSelected && fp.checkActive]}>
-                      {isSelected && <Text style={fp.checkMark}>✓</Text>}
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
-
-            <TouchableOpacity style={fp.doneBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
-              <Text style={fp.doneTxt}>
-                {companionFriends.length > 0 ? `${companionFriends.length}명 선택 완료` : '선택 없이 닫기'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        friends={friendNames}
+        selected={companionFriends}
+        onToggle={toggleCompanionFriend}
+        onClose={() => setFriendPickerVisible(false)}
+      />
 
       {/* 기타 통화 선택 모달 */}
-      <Modal
+      <CurrencyPickerModal
         visible={currencyModalVisible}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setCurrencyModalVisible(false)}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={{ flex: 1, justifyContent: 'flex-end' }}
-        >
-          <TouchableOpacity
-            style={StyleSheet.absoluteFillObject}
-            activeOpacity={1}
-            onPress={() => setCurrencyModalVisible(false)}
-          />
-          <View style={s.currModalSheet}>
-            <View style={s.currModalHandle} />
-            <Text style={s.currModalTitle}>통화 선택</Text>
-            <View style={s.currModalSearchWrap}>
-              <SearchIcon size={14} color={COLORS.textDim} />
-              <TextInput
-                style={s.currModalSearchInput}
-                value={currencySearch}
-                onChangeText={setCurrencySearch}
-                placeholder="통화 검색 (예: EUR, 유로)"
-                placeholderTextColor={COLORS.textMuted}
-                autoFocus
-              />
-            </View>
-            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
-              {OTHER_CURRENCIES
-                .filter(c => {
-                  const q = currencySearch.trim().toLowerCase();
-                  return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
-                })
-                .map((c, idx, arr) => (
-                  <TouchableOpacity
-                    key={c.code}
-                    style={[s.currModalItem, idx < arr.length - 1 && s.currModalItemBorder]}
-                    onPress={() => { setCurrency(c.code); setCurrencyModalVisible(false); }}
-                    activeOpacity={0.75}
-                  >
-                    <Text style={s.currModalCode}>{c.code}</Text>
-                    <Text style={s.currModalName}>{c.name}</Text>
-                    {currency === c.code && <Text style={s.currModalCheck}>✓</Text>}
-                  </TouchableOpacity>
-                ))}
-            </ScrollView>
-            <View style={{ height: 24 }} />
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        search={currencySearch}
+        onSearchChange={setCurrencySearch}
+        selected={currency}
+        onSelect={(code) => { chooseCurrency(code); setCurrencyModalVisible(false); }}
+        onClose={() => setCurrencyModalVisible(false)}
+      />
 
       {/* 자동 불러오기용 캘린더 */}
       <CalendarBottomSheet
         visible={autoLoadCalendarVisible}
         initialStart={autoLoadStart}
         initialEnd={autoLoadEnd}
-        startLabel="시작일"
-        endLabel="종료일"
+        startLabel={t('newRecord.startLabel')}
+        endLabel={t('newRecord.endLabel')}
         onConfirm={(s, e) => {
           setAutoLoadStart(s);
           setAutoLoadEnd(e);
@@ -2472,85 +1868,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       />
 
       {/* ── 미디어 선택 모달 (30개 초과 시) ── */}
-      <Modal
+      <MediaPickerModal
         visible={mediaPickerVisible}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setMediaPickerVisible(false)}
-      >
-        <View style={mpStyles.root}>
-          {/* 헤더 */}
-          <View style={mpStyles.header}>
-            <TouchableOpacity onPress={() => setMediaPickerVisible(false)} style={{ padding: 4 }}>
-              <Text style={mpStyles.cancelText}>취소</Text>
-            </TouchableOpacity>
-            <Text style={mpStyles.title}>사진 선택</Text>
-            <TouchableOpacity
-              onPress={confirmMediaPickerSelection}
-              style={{ padding: 4 }}
-              disabled={mediaPickerSelected.size === 0}
-            >
-              <Text style={[mpStyles.confirmText, mediaPickerSelected.size === 0 && { opacity: 0.4 }]}>
-                완료
-              </Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* 안내 */}
-          <View style={mpStyles.infoBar}>
-            <Text style={mpStyles.infoText}>
-              {mediaPickerAssets.length}장 중 최대 {mediaPickerMax}장 선택 가능
-            </Text>
-            <Text style={mpStyles.countText}>
-              {mediaPickerSelected.size}/{mediaPickerMax}
-            </Text>
-          </View>
-
-          {/* 그리드 */}
-          <FlatList
-            data={mediaPickerAssets}
-            keyExtractor={(item) => item.id}
-            numColumns={3}
-            contentContainerStyle={mpStyles.gridContent}
-            // 최대 500장 그리드 — 가상화 튜닝으로 모달 오픈/스크롤 끊김 완화
-            initialNumToRender={15}
-            maxToRenderPerBatch={15}
-            windowSize={5}
-            removeClippedSubviews
-            getItemLayout={(_, index) => ({
-              length: PICKER_CELL + 2,
-              offset: (PICKER_CELL + 2) * Math.floor(index / 3),
-              index,
-            })}
-            renderItem={({ item }) => {
-              const selected = mediaPickerSelected.has(item.id);
-              return (
-                <TouchableOpacity
-                  style={mpStyles.cell}
-                  activeOpacity={0.8}
-                  onPress={() => toggleMediaPickerItem(item.id)}
-                >
-                  <Image source={{ uri: item.uri }} style={mpStyles.cellImage} />
-                  {/* 선택 오버레이 */}
-                  {selected && <View style={mpStyles.selectedOverlay} />}
-                  {/* 체크박스 */}
-                  <View style={[mpStyles.checkbox, selected && mpStyles.checkboxActive]}>
-                    {selected && <Text style={mpStyles.checkmark}>✓</Text>}
-                  </View>
-                  {/* 영상 표시 */}
-                  {item.mediaType === 'video' && (
-                    <View style={mpStyles.videoBadge}>
-                      <Text style={mpStyles.videoBadgeText}>
-                        {Math.floor(item.duration / 60)}:{String(Math.floor(item.duration % 60)).padStart(2, '0')}
-                      </Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              );
-            }}
-          />
-        </View>
-      </Modal>
+        assets={mediaPickerAssets}
+        selected={mediaPickerSelected}
+        max={mediaPickerMax}
+        onToggle={toggleMediaPickerItem}
+        onConfirm={confirmMediaPickerSelection}
+        onClose={() => setMediaPickerVisible(false)}
+      />
 
     </SafeAreaView>
   );
@@ -2614,7 +1940,6 @@ const s = StyleSheet.create({
     gap: 10,
     paddingVertical: 14,
   },
-  searchIcon: { fontSize: 16 },
   searchInput: {
     flex: 1,
     color: COLORS.white,
@@ -2767,7 +2092,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 14,
   },
-  addMediaIcon: { fontSize: 26 },
   addMediaText: { fontSize: 15, color: COLORS.white, fontWeight: '600' },
   addMediaSub:  { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
   addMediaCountBadge: {
@@ -2778,112 +2102,7 @@ const s = StyleSheet.create({
   },
   addMediaCountTxt: { fontSize: 13, color: COLORS.purpleNeon, fontWeight: '700' },
 
-  mediaGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-    marginTop: 14,
-  },
-  mediaThumbWrap: {
-    position: 'relative',
-    borderRadius: 10,
-    overflow: 'visible',
-  },
-  mediaThumb: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 10,
-  },
-  mediaLockedOverlay: {
-    position: 'absolute',
-    inset: 0,
-    borderRadius: 10,
-    backgroundColor: 'rgba(107,33,168,0.35)',
-    zIndex: 1,
-  },
-  // 삭제 버튼 — 좌측 상단
-  mediaRemoveBtn: {
-    position: 'absolute',
-    top: -7,
-    left: -7,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.82)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
-    zIndex: 10,
-  },
-  mediaRemoveTxt: { color: COLORS.white, fontSize: 14, fontWeight: 'bold', lineHeight: 16 },
-  // 🔒 버튼 — 우측 상단
-  mediaLockBtn: {
-    position: 'absolute',
-    top: -7,
-    right: -7,
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    zIndex: 10,
-  },
-  mediaLockBtnActive: {
-    backgroundColor: COLORS.purpleDeep,
-    borderColor: COLORS.purpleNeon,
-  },
-  mediaLockIcon: { fontSize: 13 },
-  // 비공개 인원 배지 — 하단 중앙
-  privacyCountBadge: {
-    position: 'absolute',
-    bottom: 4,
-    alignSelf: 'center',
-    left: 0,
-    right: 0,
-    alignItems: 'center',
-    zIndex: 5,
-  },
-  privacyCountTxt: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: COLORS.white,
-    backgroundColor: 'rgba(107,33,168,0.85)',
-    paddingHorizontal: 7,
-    paddingVertical: 2,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  // ⭐️ 지도대표 버튼 — 좌측 하단
-  mediaRepBtn: {
-    position: 'absolute',
-    bottom: -7,
-    left: -7,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.75)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    paddingHorizontal: 6,
-    zIndex: 10,
-  },
-  mediaRepBtnActive: {
-    backgroundColor: COLORS.purpleDeep,
-    borderColor: COLORS.purpleNeon,
-  },
-  mediaRepTxt: {
-    fontSize: 9,
-    fontWeight: 'bold',
-    color: 'rgba(255,255,255,0.5)',
-  },
-  mediaRepTxtActive: {
-    color: '#BF85FC',
-  },
+  // 사진 썸네일/드래그 행 스타일은 components/record/DraggableLists 로 이동
 
   // 빈 상태
   mediaEmptyBox: {
@@ -2891,7 +2110,6 @@ const s = StyleSheet.create({
     paddingVertical: 48,
     gap: 10,
   },
-  mediaEmptyIcon:  { fontSize: 44 },
   mediaEmptyTitle: { fontSize: 15, fontWeight: '600', color: COLORS.white },
   mediaEmptyDesc:  { fontSize: 13, color: COLORS.textMuted },
 
@@ -2922,11 +2140,6 @@ const s = StyleSheet.create({
     lineHeight: 14,
   },
   // 선택 항목 라벨 — 회색 (Step 4·5용)
-  fieldLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.textDim,
-  },
   fieldInput: {
     backgroundColor: COLORS.card,   // #2E2E3B
     borderRadius: 12,
@@ -2969,7 +2182,6 @@ const s = StyleSheet.create({
   dateBtnLabel: { fontSize: 11, color: COLORS.textMuted, marginBottom: 4 },
   dateBtnVal:   { fontSize: 15, fontWeight: '600', color: COLORS.white },
   dateBtnArrow: { fontSize: 18, color: COLORS.textMuted, marginHorizontal: 12 },
-  dateBtnIcon:  { fontSize: 18, marginLeft: 10 },
 
   ratingLabelRow: {
     flexDirection: 'row',
@@ -3003,12 +2215,8 @@ const s = StyleSheet.create({
   starFillClip: { position: 'absolute', left: 0, top: 0, height: 32, overflow: 'hidden' },
   starChar: { fontSize: 28, color: '#3A3A4A', textAlign: 'center', lineHeight: 32, width: 32 },
   starCharActive: { color: COLORS.gold },
-  ratingNum: { fontSize: 15, color: COLORS.purpleNeon, fontWeight: '700' },
 
   // ── Step 4 ──
-  step4Wrap: {
-    gap: 0,
-  },
   companionSection: {
     gap: 12,
   },
@@ -3039,7 +2247,6 @@ const s = StyleSheet.create({
     backgroundColor: 'rgba(107,33,168,0.3)',
     borderColor: COLORS.purpleNeon,
   },
-  companionChipIcon: { fontSize: 15 },
   companionChipIconWrap: { width: 18, height: 18, alignItems: 'center', justifyContent: 'center' },
   companionChipTxt: {
     fontSize: 13,
@@ -3055,18 +2262,6 @@ const s = StyleSheet.create({
     gap: 8,
     marginTop: 10,
   },
-  customChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 20,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderWidth: 1,
-    borderColor: COLORS.purpleNeon,
-  },
-  customChipTxt: { fontSize: 14, color: COLORS.white, fontWeight: '600' },
   customChipX:   { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
 
   // 앱 친구 칩
@@ -3122,83 +2317,9 @@ const s = StyleSheet.create({
     marginVertical: 20,
   },
 
-  customCompRow: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  customCompInput: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    color: COLORS.white,
-    fontSize: 15,
-  },
-  addCustomBtn: {
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 12,
-    paddingHorizontal: 18,
-    justifyContent: 'center',
-  },
-  addCustomBtnDisabled: { opacity: 0.4 },
-  addCustomTxt: { color: COLORS.white, fontWeight: '600', fontSize: 14 },
-
-  friendListBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    gap: 12,
-  },
-  friendListIcon: { fontSize: 22 },
-  friendListTxt:  { fontSize: 15, color: COLORS.white, fontWeight: '600' },
-  friendListSub:  { fontSize: 12, color: COLORS.textMuted, marginTop: 2 },
-  friendListArrow:{ fontSize: 20, color: COLORS.textMuted },
-
-  companionSummary: {
-    marginTop: 16,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(191,133,252,0.1)',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 9,
-  },
-  companionSummaryTxt: {
-    fontSize: 13,
-    color: COLORS.purpleNeon,
-    fontWeight: '600',
-  },
-
   // Step 5에서도 쓰는 칩 (날씨·비행·키워드)
-  chipWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  chip: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 20,
-    backgroundColor: COLORS.card,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  chipActive: {
-    backgroundColor: COLORS.purpleDeep,
-    borderColor: COLORS.purpleNeon,
-  },
-  chipTxt:       { fontSize: 14, color: COLORS.textDim },
-  chipTxtActive: { fontSize: 14, color: COLORS.white, fontWeight: '600' },
 
   // ── Step 5 ──
-  step5Wrap: {
-    gap: 12,
-  },
 
   // 안내 텍스트
   optNoticeText: {
@@ -3222,7 +2343,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     gap: 6,
   },
-  optRowIcon: { fontSize: 15 },
   optRowTitle: { fontSize: 13, fontWeight: '600', color: COLORS.white },
   optCardValue: {
     fontSize: 11,
@@ -3291,7 +2411,6 @@ const s = StyleSheet.create({
     backgroundColor: COLORS.purpleDeep,
     borderColor: COLORS.purpleNeon,
   },
-  optSmallEmoji: { fontSize: 14 },
   optSmallTxt:       { fontSize: 12, color: COLORS.textDim, fontWeight: '500' },
   optSmallTxtActive: { color: COLORS.white, fontWeight: '600' },
 
@@ -3313,7 +2432,6 @@ const s = StyleSheet.create({
   optFlightTxt:       { fontSize: 13, fontWeight: '600', color: COLORS.textDim },
   optFlightTxtActive: { color: COLORS.white },
 
-  // 여행 키워드
   // 키워드 인풋 박스 (태그 + 입력 인라인)
   kwInputBox: {
     flexDirection: 'row',
@@ -3355,74 +2473,9 @@ const s = StyleSheet.create({
     flex: 1,
   },
 
-  keywordWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 6,
-  },
-  keywordChip: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
-    backgroundColor: COLORS.bg,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  keywordChipActive: {
-    backgroundColor: COLORS.purpleDeep,
-    borderColor: COLORS.purpleNeon,
-  },
-  keywordTxt:       { fontSize: 12, color: COLORS.textDim, fontWeight: '500' },
-  keywordTxtActive: { color: COLORS.white, fontWeight: '600' },
-
   // (비공개 모달 스타일은 pm 객체로 분리됨)
 
-  // ── 기타 통화 모달 ──
-  currModalSheet: {
-    backgroundColor: '#1E1E2E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(191,133,252,0.2)',
-  },
-  currModalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    backgroundColor: '#3A3A55',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  currModalTitle: {
-    fontSize: 16, fontWeight: '700', color: COLORS.white,
-    textAlign: 'center', marginBottom: 14,
-  },
-  currModalSearchWrap: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.bg,
-    borderRadius: 10, borderWidth: 1, borderColor: COLORS.divider,
-    paddingHorizontal: 12, paddingVertical: 8, gap: 8, marginBottom: 10,
-  },
-  currModalSearchInput: {
-    flex: 1, fontSize: 13, color: COLORS.white, padding: 0,
-  },
-  currModalItem: {
-    flexDirection: 'row', alignItems: 'center',
-    paddingVertical: 13, gap: 12,
-  },
-  currModalItemBorder: {
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
-  },
-  currModalCode: {
-    fontSize: 14, fontWeight: '700', color: COLORS.white, width: 44,
-  },
-  currModalName: {
-    flex: 1, fontSize: 13, color: COLORS.textDim,
-  },
-  currModalCheck: {
-    fontSize: 15, color: COLORS.purpleNeon, fontWeight: '700',
-  },
+  // 기타 통화 모달 스타일은 components/record/CurrencyPickerModal 로 이동
 
   // ── 기간 자동 불러오기 ──
   autoLoadBtn: {
@@ -3440,195 +2493,20 @@ const s = StyleSheet.create({
   },
 
   // 모달 전체 배경
-  alOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.65)',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  alSheet: {
-    backgroundColor: '#1E1E2E',
-    borderRadius: 20,
-    padding: 24,
-  },
 
   // 로딩
-  alLoadingBox: {
-    alignItems: 'center',
-    paddingVertical: 24,
-  },
-  alLoadingText: {
-    fontSize: 14,
-    color: COLORS.textDim,
-    textAlign: 'center',
-  },
 
   // 제목
-  alTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
 
   // 날짜 범위
-  alDateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 14,
-  },
-  alDateBox: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  alDateLabel: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-  },
-  alDateValue: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  alDateArrow: {
-    fontSize: 16,
-    color: COLORS.textMuted,
-  },
 
   // 날짜 수정 버튼
-  alEditDateBtn: {
-    alignSelf: 'center',
-    backgroundColor: 'rgba(191,133,252,0.12)',
-    borderRadius: 10,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  alEditDateText: {
-    fontSize: 13,
-    color: COLORS.purpleNeon,
-    fontWeight: '600',
-  },
 
   // 안내 문구
-  alHint: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginBottom: 20,
-  },
 
   // 버튼 행
-  alBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  alCancelBtn: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  alCancelText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.textDim,
-  },
-  alConfirmBtn: {
-    flex: 2,
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  alConfirmText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
 
   // 토스트
-  alToast: {
-    position: 'absolute',
-    bottom: 110,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(30,30,46,0.96)',
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-  },
-  alToastText: {
-    color: COLORS.white,
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  draggableRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.03)',
-    borderWidth: 1,
-    borderColor: '#1A1A26',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-  },
-  draggableRowActive: {
-    backgroundColor: 'rgba(191,133,252,0.12)',
-    borderColor: '#BF85FC',
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-    transform: [{ scale: 1.02 }],
-  },
-  dragHandle: {
-    paddingRight: 12,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  draggableRowContent: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  draggableRowFlag: {
-    fontSize: 20,
-  },
-  draggableRowName: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '500',
-  },
-  representativeTag: {
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    borderRadius: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    marginLeft: 6,
-  },
-  representativeTagText: {
-    fontSize: 10,
-    color: '#BF85FC',
-    fontWeight: '700',
-  },
-  draggableRemoveBtn: {
-    paddingHorizontal: 8,
-    height: '100%',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  draggableRemoveText: {
-    fontSize: 14,
-    color: '#A1A1B0',
-  },
   draggableHelperText: {
     fontSize: 12,
     color: '#A1A1B0',
@@ -3636,837 +2514,10 @@ const s = StyleSheet.create({
     marginBottom: 12,
     paddingHorizontal: 4,
   },
-  numberBadge: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  numberBadgeText: {
-    fontSize: 11,
-    color: '#BF85FC',
-    fontWeight: '700',
-  },
-  mediaThumbActive: {
-    borderColor: '#BF85FC',
-    borderWidth: 1.5,
-    borderRadius: 12,
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
-    transform: [{ scale: 1.05 }],
-  },
 });
 
-// ─── 드래그 앤 드롭 국가 리스트 컴포넌트 ───
-const DragHandleIcon = ({ size = 20, color = '#A1A1B0' }: { size?: number; color?: string }) => (
-  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-    <Path d="M4 8h16M4 16h16" stroke={color} strokeWidth={2} strokeLinecap="round" />
-  </Svg>
-);
-
-interface DraggableCountryListProps {
-  countries: { flag: string; name: string }[];
-  onReorder: (newCountries: { flag: string; name: string }[]) => void;
-  onRemove: (name: string) => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-}
-
-function DraggableRow({
-  c,
-  i,
-  dragIndex,
-  hoverIndex,
-  dragY,
-  ITEM_HEIGHT,
-  onDragStart,
-  onDragMove,
-  onDragEnd,
-  onRemove,
-}: {
-  c: { flag: string; name: string };
-  i: number;
-  dragIndex: number | null;
-  hoverIndex: number | null;
-  dragY: number;
-  ITEM_HEIGHT: number;
-  onDragStart: (idx: number) => void;
-  onDragMove: (dy: number) => void;
-  onDragEnd: (idx: number) => void;
-  onRemove: (name: string) => void;
-}) {
-  const latestProps = useRef({ i, onDragStart, onDragMove, onDragEnd });
-  useEffect(() => {
-    latestProps.current = { i, onDragStart, onDragMove, onDragEnd };
-  }, [i, onDragStart, onDragMove, onDragEnd]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: () => {
-        latestProps.current.onDragStart(latestProps.current.i);
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        latestProps.current.onDragMove(gestureState.dy);
-      },
-      onPanResponderRelease: () => {
-        latestProps.current.onDragEnd(latestProps.current.i);
-      },
-      onPanResponderTerminate: () => {
-        latestProps.current.onDragEnd(latestProps.current.i);
-      },
-    })
-  ).current;
-
-  let top = i * ITEM_HEIGHT;
-  let zIndex = 1;
-  const isDragging = i === dragIndex;
-
-  if (dragIndex !== null) {
-    if (isDragging) {
-      top = i * ITEM_HEIGHT + dragY;
-      zIndex = 10;
-    } else {
-      const activeHover = hoverIndex !== null ? hoverIndex : dragIndex;
-      if (dragIndex < activeHover) {
-        if (i > dragIndex && i <= activeHover) {
-          top = (i - 1) * ITEM_HEIGHT;
-        }
-      } else if (dragIndex > activeHover) {
-        if (i < dragIndex && i >= activeHover) {
-          top = (i + 1) * ITEM_HEIGHT;
-        }
-      }
-    }
-  }
-
-  return (
-    <Animated.View
-      style={[
-        s.draggableRow,
-        {
-          position: 'absolute',
-          left: 0,
-          right: 0,
-          top: top,
-          height: ITEM_HEIGHT - 8,
-          zIndex: zIndex,
-        },
-        isDragging && s.draggableRowActive,
-      ]}
-    >
-      {/* Drag Handle */}
-      <View {...panResponder.panHandlers} style={s.dragHandle}>
-        <DragHandleIcon size={20} color={isDragging ? COLORS.purpleNeon : COLORS.textDim} />
-      </View>
-
-      {/* Flag and Name with Order Index Number */}
-      <View style={s.draggableRowContent}>
-        <View style={s.numberBadge}>
-          <Text style={s.numberBadgeText}>{i + 1}</Text>
-        </View>
-        <Text style={s.draggableRowFlag}>{c.flag}</Text>
-        <Text style={s.draggableRowName}>{c.name}</Text>
-        {i === 0 && (
-          <View style={s.representativeTag}>
-            <Text style={s.representativeTagText}>대표</Text>
-          </View>
-        )}
-      </View>
-
-      {/* Delete Button */}
-      <TouchableOpacity
-        onPress={() => onRemove(c.name)}
-        style={s.draggableRemoveBtn}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={s.draggableRemoveText}>✕</Text>
-      </TouchableOpacity>
-    </Animated.View>
-  );
-}
-
-function DraggableCountryList({ countries, onReorder, onRemove, onDragStateChange }: DraggableCountryListProps) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragY, setDragY] = useState(0);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const prevHoverIndex = useRef<number | null>(null);
-
-  const ITEM_HEIGHT = 56;
-
-  const handleDragStart = useCallback((index: number) => {
-    setDragIndex(index);
-    setDragY(0);
-    setHoverIndex(index);
-    prevHoverIndex.current = index;
-    onDragStateChange?.(true);
-  }, [onDragStateChange]);
-
-  const handleDragMove = useCallback((dy: number) => {
-    if (dragIndex === null) return;
-    setDragY(dy);
-    const calculatedHover = Math.max(
-      0,
-      Math.min(countries.length - 1, dragIndex + Math.round(dy / ITEM_HEIGHT))
-    );
-    if (calculatedHover !== prevHoverIndex.current) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setHoverIndex(calculatedHover);
-      prevHoverIndex.current = calculatedHover;
-    }
-  }, [dragIndex, countries.length]);
-
-  const handleDragEnd = useCallback((index: number) => {
-    const finalHover = prevHoverIndex.current !== null ? prevHoverIndex.current : index;
-    if (finalHover !== index) {
-      const updated = [...countries];
-      const [moved] = updated.splice(index, 1);
-      updated.splice(finalHover, 0, moved);
-      onReorder(updated);
-    }
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setDragIndex(null);
-    setDragY(0);
-    setHoverIndex(null);
-    prevHoverIndex.current = null;
-    onDragStateChange?.(false);
-  }, [countries, onReorder, onDragStateChange]);
-
-  return (
-    <View style={{ height: countries.length * ITEM_HEIGHT, position: 'relative', marginVertical: 8 }}>
-      {countries.map((c, idx) => (
-        <DraggableRow
-          key={c.name}
-          c={c}
-          i={idx}
-          dragIndex={dragIndex}
-          hoverIndex={hoverIndex}
-          dragY={dragY}
-          ITEM_HEIGHT={ITEM_HEIGHT}
-          onDragStart={handleDragStart}
-          onDragMove={handleDragMove}
-          onDragEnd={handleDragEnd}
-          onRemove={onRemove}
-        />
-      ))}
-    </View>
-  );
-}
-
-// ─── 드래그 앤 드롭 사진 그리드 컴포넌트 ───
-interface DraggablePhotoGridProps {
-  medias: string[];
-  mediaPrivacy: Record<number, string[]>;
-  onReorder: (fromIdx: number, toIdx: number) => void;
-  onRemove: (index: number) => void;
-  onOpenPrivacyModal: (index: number) => void;
-  onDragStateChange?: (isDragging: boolean) => void;
-  THUMB_SIZE: number;
-  representativePhoto: string | null;
-  onSetRepresentative: (uri: string) => void;
-}
-
-function DraggablePhotoThumb({
-  uri,
-  idx,
-  mediaPrivacy,
-  dragIndex,
-  hoverIndex,
-  dragX,
-  dragY,
-  CELL_SIZE,
-  THUMB_SIZE,
-  onDragStart,
-  onDragMove,
-  onDragEnd,
-  onRemove,
-  onOpenPrivacyModal,
-  representativePhoto,
-  onSetRepresentative,
-}: {
-  uri: string;
-  idx: number;
-  mediaPrivacy: Record<number, string[]>;
-  dragIndex: number | null;
-  hoverIndex: number | null;
-  dragX: number;
-  dragY: number;
-  CELL_SIZE: number;
-  THUMB_SIZE: number;
-  onDragStart: (index: number) => void;
-  onDragMove: (dx: number, dy: number) => void;
-  onDragEnd: (index: number) => void;
-  onRemove: (index: number) => void;
-  onOpenPrivacyModal: (index: number) => void;
-  representativePhoto: string | null;
-  onSetRepresentative: (uri: string) => void;
-}) {
-  const isDragging = idx === dragIndex;
-  const isLocked = (mediaPrivacy[idx]?.length ?? 0) > 0;
-
-  const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const startCoords = useRef({ x: 0, y: 0 });
-  const hasStartedDrag = useRef(false);
-
-  const latestProps = useRef({ idx, onDragStart, onDragMove, onDragEnd });
-  useEffect(() => {
-    latestProps.current = { idx, onDragStart, onDragMove, onDragEnd };
-  }, [idx, onDragStart, onDragMove, onDragEnd]);
-
-  const panResponder = useRef(
-    PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderGrant: (evt) => {
-        startCoords.current = { x: evt.nativeEvent.pageX, y: evt.nativeEvent.pageY };
-        hasStartedDrag.current = false;
-        
-        longPressTimer.current = setTimeout(() => {
-          hasStartedDrag.current = true;
-          latestProps.current.onDragStart(latestProps.current.idx);
-        }, 250);
-      },
-      onPanResponderMove: (evt, gestureState) => {
-        if (!hasStartedDrag.current) {
-          const dx = evt.nativeEvent.pageX - startCoords.current.x;
-          const dy = evt.nativeEvent.pageY - startCoords.current.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          if (distance > 10) {
-            if (longPressTimer.current) {
-              clearTimeout(longPressTimer.current);
-              longPressTimer.current = null;
-            }
-          }
-        } else {
-          latestProps.current.onDragMove(gestureState.dx, gestureState.dy);
-        }
-      },
-      onPanResponderRelease: () => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-        if (hasStartedDrag.current) {
-          latestProps.current.onDragEnd(latestProps.current.idx);
-        }
-      },
-      onPanResponderTerminate: () => {
-        if (longPressTimer.current) {
-          clearTimeout(longPressTimer.current);
-          longPressTimer.current = null;
-        }
-        if (hasStartedDrag.current) {
-          latestProps.current.onDragEnd(latestProps.current.idx);
-        }
-      },
-    })
-  ).current;
-
-  useEffect(() => {
-    return () => {
-      if (longPressTimer.current) clearTimeout(longPressTimer.current);
-    };
-  }, []);
-
-  let left = (idx % 3) * CELL_SIZE;
-  let top = Math.floor(idx / 3) * CELL_SIZE;
-  let zIndex = 1;
-
-  if (dragIndex !== null) {
-    if (isDragging) {
-      left = (idx % 3) * CELL_SIZE + dragX;
-      top = Math.floor(idx / 3) * CELL_SIZE + dragY;
-      zIndex = 10;
-    } else {
-      const activeHover = hoverIndex !== null ? hoverIndex : dragIndex;
-      if (dragIndex < activeHover) {
-        if (idx > dragIndex && idx <= activeHover) {
-          const shiftedIdx = idx - 1;
-          left = (shiftedIdx % 3) * CELL_SIZE;
-          top = Math.floor(shiftedIdx / 3) * CELL_SIZE;
-        }
-      } else if (dragIndex > activeHover) {
-        if (idx < dragIndex && idx >= activeHover) {
-          const shiftedIdx = idx + 1;
-          left = (shiftedIdx % 3) * CELL_SIZE;
-          top = Math.floor(shiftedIdx / 3) * CELL_SIZE;
-        }
-      }
-    }
-  }
-
-  return (
-    <Animated.View
-      style={[
-        s.mediaThumbWrap,
-        {
-          position: 'absolute',
-          left: left,
-          top: top,
-          width: THUMB_SIZE,
-          height: THUMB_SIZE,
-          zIndex: zIndex,
-        },
-        isDragging && s.mediaThumbActive,
-      ]}
-      {...panResponder.panHandlers}
-    >
-      <Image source={{ uri }} style={s.mediaThumb} />
-
-      {isLocked && <View style={s.mediaLockedOverlay} />}
-
-      {!isDragging && (
-        <TouchableOpacity
-          style={s.mediaRemoveBtn}
-          onPress={() => onRemove(idx)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          <Text style={s.mediaRemoveTxt}>×</Text>
-        </TouchableOpacity>
-      )}
-
-      {!isDragging && (
-        <TouchableOpacity
-          style={[s.mediaLockBtn, isLocked && s.mediaLockBtnActive]}
-          onPress={() => onOpenPrivacyModal(idx)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        >
-          {isLocked ? <LockClosedIcon size={12} color={COLORS.white} /> : <LockOpenIcon size={12} color={COLORS.white} />}
-        </TouchableOpacity>
-      )}
-
-      {!isDragging && (
-        <TouchableOpacity
-          style={[s.mediaRepBtn, uri === representativePhoto && s.mediaRepBtnActive]}
-          onPress={() => onSetRepresentative(uri)}
-          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          activeOpacity={0.8}
-        >
-          <Text style={[s.mediaRepTxt, uri === representativePhoto && s.mediaRepTxtActive]}>
-            {uri === representativePhoto ? '★ 지도대표' : '대표 설정'}
-          </Text>
-        </TouchableOpacity>
-      )}
-
-      {!isDragging && isLocked && (
-        <View style={s.privacyCountBadge}>
-          <Text style={s.privacyCountTxt}>{mediaPrivacy[idx].length}명</Text>
-        </View>
-      )}
-    </Animated.View>
-  );
-}
-
-function DraggablePhotoGrid({
-  medias,
-  mediaPrivacy,
-  onReorder,
-  onRemove,
-  onOpenPrivacyModal,
-  onDragStateChange,
-  THUMB_SIZE,
-  representativePhoto,
-  onSetRepresentative,
-}: DraggablePhotoGridProps) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [dragX, setDragX] = useState(0);
-  const [dragY, setDragY] = useState(0);
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null);
-  const prevHoverIndex = useRef<number | null>(null);
-
-  const GAP = 8;
-  const CELL_SIZE = THUMB_SIZE + GAP;
-
-  const handleDragStart = useCallback((index: number) => {
-    setDragIndex(index);
-    setDragX(0);
-    setDragY(0);
-    setHoverIndex(index);
-    prevHoverIndex.current = index;
-    onDragStateChange?.(true);
-  }, [onDragStateChange]);
-
-  const handleDragMove = useCallback((dx: number, dy: number) => {
-    if (dragIndex === null) return;
-    setDragX(dx);
-    setDragY(dy);
-
-    const startX = (dragIndex % 3) * CELL_SIZE;
-    const startY = Math.floor(dragIndex / 3) * CELL_SIZE;
-
-    const currentX = startX + dx;
-    const currentY = startY + dy;
-
-    const col = Math.max(0, Math.min(2, Math.round(currentX / CELL_SIZE)));
-    const row = Math.max(0, Math.min(Math.ceil(medias.length / 3) - 1, Math.round(currentY / CELL_SIZE)));
-
-    const calculatedHover = Math.max(0, Math.min(medias.length - 1, row * 3 + col));
-
-    if (calculatedHover !== prevHoverIndex.current) {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setHoverIndex(calculatedHover);
-      prevHoverIndex.current = calculatedHover;
-    }
-  }, [dragIndex, medias.length, CELL_SIZE]);
-
-  const handleDragEnd = useCallback((index: number) => {
-    const finalHover = prevHoverIndex.current !== null ? prevHoverIndex.current : index;
-    if (finalHover !== index) {
-      onReorder(index, finalHover);
-    }
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setDragIndex(null);
-    setDragX(0);
-    setDragY(0);
-    setHoverIndex(null);
-    prevHoverIndex.current = null;
-    onDragStateChange?.(false);
-  }, [onReorder, onDragStateChange]);
-
-  const numRows = Math.ceil(medias.length / 3);
-
-  return (
-    <View style={{ height: numRows * CELL_SIZE, position: 'relative', marginTop: 12 }}>
-      {medias.map((uri, idx) => (
-        <DraggablePhotoThumb
-          key={uri + '_' + idx}
-          uri={uri}
-          idx={idx}
-          mediaPrivacy={mediaPrivacy}
-          dragIndex={dragIndex}
-          hoverIndex={hoverIndex}
-          dragX={dragX}
-          dragY={dragY}
-          CELL_SIZE={CELL_SIZE}
-          THUMB_SIZE={THUMB_SIZE}
-          onDragStart={handleDragStart}
-          onDragMove={handleDragMove}
-          onDragEnd={handleDragEnd}
-          onRemove={onRemove}
-          onOpenPrivacyModal={onOpenPrivacyModal}
-          representativePhoto={representativePhoto}
-          onSetRepresentative={onSetRepresentative}
-        />
-      ))}
-    </View>
-  );
-}
-
-// ─── 캘린더 바텀시트 전용 스타일 ───
-const calS = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#1E1E2E',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 36,
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  selectedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(191,133,252,0.08)',
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    marginBottom: 16,
-  },
-  selectedItem: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  selectedLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  selectedDate:  { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
-  selectedDateActive: { color: '#BF85FC' },
-  selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
-
-  monthNav: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
-  monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-
-  weekRow: { flexDirection: 'row', marginBottom: 4 },
-  weekDay: {
-    textAlign: 'center',
-    fontSize: 12,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.45)',
-    paddingVertical: 6,
-  },
-  sundayText:  { color: '#FF3B30' },
-  saturdayText:{ color: '#5AC8FA' },
-
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { alignItems: 'center', justifyContent: 'center' },
-  dayInner: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
-  },
-  dayText:     { fontSize: 14, color: '#FFFFFF' },
-  todayText:   { color: '#BF85FC', fontWeight: '700' },
-
-  inRange: { backgroundColor: 'rgba(191,133,252,0.18)' },
-  rangeStartCell: {
-    backgroundColor: 'rgba(191,133,252,0.18)',
-    borderTopLeftRadius: 17,
-    borderBottomLeftRadius: 17,
-  },
-  rangeEndCell: {
-    backgroundColor: 'rgba(191,133,252,0.18)',
-    borderTopRightRadius: 17,
-    borderBottomRightRadius: 17,
-  },
-  edgeCircle: { backgroundColor: '#BF85FC' },
-  edgeText: { color: '#FFFFFF', fontWeight: '700' },
-
-  confirmBtn: {
-    backgroundColor: '#6B21A8',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-});
+// 드래그 앤 드롭 리스트(국가/사진)는 components/record/DraggableLists 로 분리
 
 // ─── 앱 친구 선택 모달 스타일 ───
-const fp = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#1A1A28',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-    maxHeight: '65%',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#4A4A59',
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 16,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginBottom: 16,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  list: {
-    flex: 1,
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    marginBottom: 4,
-  },
-  rowActive: {
-    backgroundColor: 'rgba(107,33,168,0.15)',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: COLORS.card,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  avatarActive: {
-    backgroundColor: COLORS.purpleDeep,
-  },
-  avatarTxt: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.textDim,
-  },
-  name: {
-    flex: 1,
-    fontSize: 15,
-    color: COLORS.white,
-    fontWeight: '500',
-  },
-  nameActive: {
-    color: COLORS.purpleNeon,
-    fontWeight: '600',
-  },
-  check: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: COLORS.divider,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkActive: {
-    backgroundColor: COLORS.purpleNeon,
-    borderColor: COLORS.purpleNeon,
-  },
-  checkMark: {
-    fontSize: 12,
-    color: COLORS.white,
-    fontWeight: '800',
-  },
-  doneBtn: {
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  doneTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-});
-
-// ─── 미디어 선택 모달 스타일 ───
-const PICKER_CELL = Math.floor((Dimensions.get('window').width - 6) / 3);
-const mpStyles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: COLORS.bg,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  cancelText: {
-    fontSize: 15,
-    color: COLORS.textDim,
-  },
-  title: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  confirmText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.purpleNeon,
-  },
-  infoBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: 'rgba(107,33,168,0.15)',
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
-  },
-  infoText: {
-    fontSize: 13,
-    color: COLORS.textDim,
-  },
-  countText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: COLORS.purpleNeon,
-  },
-  gridContent: {
-    paddingTop: 2,
-  },
-  cell: {
-    width: PICKER_CELL,
-    height: PICKER_CELL,
-    margin: 1,
-    position: 'relative',
-  },
-  cellImage: {
-    width: '100%',
-    height: '100%',
-  },
-  selectedOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(191,133,252,0.3)',
-  },
-  checkbox: {
-    position: 'absolute',
-    top: 6,
-    right: 6,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.6)',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: COLORS.purpleNeon,
-    borderColor: COLORS.purpleNeon,
-  },
-  checkmark: {
-    fontSize: 13,
-    color: COLORS.white,
-    fontWeight: 'bold',
-  },
-  videoBadge: {
-    position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
-  videoBadgeText: {
-    fontSize: 10,
-    color: COLORS.white,
-  },
-});
+// 앱 친구 선택 모달은 components/record/FriendPickerModal 로 분리
+// 미디어 선택 모달은 components/record/MediaPickerModal 로 분리
