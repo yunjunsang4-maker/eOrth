@@ -554,6 +554,13 @@ const ko = {
     expireNote: '스냅은 사라지지 않고 기록으로 남아요',
   },
   newRecord: {
+    defaultTitleOne: '{{country}} 여행 기록',
+    defaultTitleMany: '{{country}} 외 {{count}}개국 여행 기록',
+    countrySelectedDone: '{{count}}개 국가 선택 완료',
+    countryCanAdd: ' · 추가 가능',
+    countryMax: ' · 최대',
+    keywordCountN: '{{count}}개',
+    keywordPlaceholder: '#키워드 추가',
     prev: '← 이전',
     next: '다음 →',
     saving: '저장 중…',
@@ -827,6 +834,9 @@ const ko = {
     noCutInfo: '네컷 정보를 찾을 수 없어요.',
   },
   postDetail: {
+    snapLateSec: '{{sec}}초 후 촬영',
+    snapLateMinSec: '{{min}}분 {{sec}}초 후 촬영',
+    replyingTo: '{{name}}에게 답글 남기는 중',
     back: '뒤로 가기',
     postTitle: '게시물',
     postNotFound: '게시물을 찾을 수 없어요',

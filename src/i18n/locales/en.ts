@@ -553,6 +553,13 @@ const en = {
     expireNote: 'Snaps never disappear — they stay as records',
   },
   newRecord: {
+    defaultTitleOne: '{{country}} trip',
+    defaultTitleMany: 'Trip to {{country}} & {{count}} more',
+    countrySelectedDone: '{{count}} countries selected',
+    countryCanAdd: ' · can add more',
+    countryMax: ' · max',
+    keywordCountN: '{{count}}',
+    keywordPlaceholder: '#Add keyword',
     prev: '← Back',
     next: 'Next →',
     saving: 'Saving…',
@@ -826,6 +833,9 @@ const en = {
     noCutInfo: "Couldn't find the four-cut info.",
   },
   postDetail: {
+    snapLateSec: 'Taken {{sec}}s later',
+    snapLateMinSec: 'Taken {{min}}m {{sec}}s later',
+    replyingTo: 'Replying to {{name}}',
     back: 'Back',
     postTitle: 'Post',
     postNotFound: "Couldn't find this post",
