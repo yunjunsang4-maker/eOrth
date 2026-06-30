@@ -578,7 +578,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={st.req}>✱</Text></View>
             <TouchableOpacity style={st.countryChip} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
-                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '+ 여행지 선택'}
+                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -772,7 +772,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <View style={st.optHeader}>
               <TagIcon size={18} color={IC} />
               <Text style={st.optTitle}>{t('cutInfo.keyword')}</Text>
-              {keywords.length > 0 && <Text style={st.optValue}>{keywords.length}개</Text>}
+              {keywords.length > 0 && <Text style={st.optValue}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
             </View>
             <View style={st.kwBox}>
               {keywords.map(kw => (
@@ -788,7 +788,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   if (v.endsWith(' ')) { addKeyword(v); setKeywordQuery(''); }
                   else setKeywordQuery(v);
                 }}
-                placeholder={keywords.length === 0 ? '#키워드 추가' : '#'}
+                placeholder={keywords.length === 0 ? t('newRecord.keywordPlaceholder') : '#'}
                 placeholderTextColor={C.textMuted}
                 returnKeyType="done"
                 onSubmitEditing={() => { addKeyword(keywordQuery); setKeywordQuery(''); }}
@@ -823,7 +823,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
               {friendNames.length === 0 ? (
                 <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 32 }}>
-                  아직 팔로우한 친구가 없어요
+                  {t('friends.noFollowing')}
                 </Text>
               ) : friendNames.map(friend => {
                 const selected = companionFriends.includes(friend);
