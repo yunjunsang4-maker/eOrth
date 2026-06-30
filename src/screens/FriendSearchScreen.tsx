@@ -100,7 +100,7 @@ function FriendItem({
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries}>
             {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
-            {item.followers ? ` · 팔로워 ${item.followers}` : ''}
+            {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
           </Text>
         </View>
       </View>
@@ -109,7 +109,7 @@ function FriendItem({
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         activeOpacity={0.8}
         accessibilityRole="button"
-        accessibilityLabel={following ? `${item.name} 팔로우 취소` : `${item.name} 팔로우`}
+        accessibilityLabel={following ? t('friends.unfollowNameA11y', { name: item.name }) : t('friends.followNameA11y', { name: item.name })}
       >
         <Text style={[s.followBtnText, following && s.followingBtnText]}>
           {following ? t('friends.followingTitle') : t('friends.follow')}
@@ -448,7 +448,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           <View style={s.profileInfo}>
             <Text style={s.profileName} numberOfLines={1}>{nickname ? nickname : handle}</Text>
             <Text style={s.profileUsername} numberOfLines={1}>@{handle}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{myCountryCount}개국 방문</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{t('friends.countriesVisitedN', { count: myCountryCount })}</Text></View>
           </View>
         </View>
 
@@ -543,7 +543,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             <Text style={s.permissionEmoji}>📇</Text>
             <Text style={s.permissionTitle}>{t('friends.contactFindTitle')}</Text>
             <Text style={s.permissionDesc}>
-              내 전화번호를 등록하면 번호를 저장한 친구가 나를 찾을 수 있고,{'\n'}내 연락처 속 eOrth 사용자도 찾아드려요.{'\n'}번호는 복원 불가능한 해시로만 저장돼요.
+              {t('friends.contactFindDesc')}
             </Text>
             <TouchableOpacity
               style={s.permissionBtn}
@@ -560,7 +560,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             <Text style={s.permissionEmoji}>📱</Text>
             <Text style={s.permissionTitle}>{t('friends.contactPermTitle')}</Text>
             <Text style={s.permissionDesc}>
-              내 연락처에 있는 친구 중{'\n'}eOrth를 사용하는 사람을 찾아드려요.
+              {t('friends.contactPermDesc')}
             </Text>
             <TouchableOpacity
               style={s.permissionBtn}

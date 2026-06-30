@@ -164,7 +164,7 @@ export default function PhoneConsentScreen({ navigation }: Props) {
           )}
 
           <Text style={s.footnote}>
-            계속하면 위 안내에 동의하는 것으로 간주됩니다.
+            {t('friends.consentFootnote')}
           </Text>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -971,6 +971,13 @@ const ko = {
     eorthUsersN: '내 연락처 중 eOrth 사용자 ({{count}}명)',
     noContactFriends: '연락처에 eOrth를 사용하는 친구가 없어요',
     scanHint: '친구의 eOrth QR 코드를 비춰주세요',
+    contactFindDesc: '내 전화번호를 등록하면 번호를 저장한 친구가 나를 찾을 수 있고,\n내 연락처 속 eOrth 사용자도 찾아드려요.\n번호는 복원 불가능한 해시로만 저장돼요.',
+    contactPermDesc: '내 연락처에 있는 친구 중\neOrth를 사용하는 사람을 찾아드려요.',
+    tripCountN: '{{count}}개의 여행',
+    noPublicTrips: '아직 공개된 여행 기록이 없어요',
+    consentFootnote: '계속하면 위 안내에 동의하는 것으로 간주됩니다.',
+    followNameA11y: '{{name}} 팔로우',
+    unfollowNameA11y: '{{name}} 팔로우 취소',
   },
   time: {
     justNow: '방금 전',

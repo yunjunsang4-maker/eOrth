@@ -970,6 +970,13 @@ const en = {
     eorthUsersN: 'eOrth users in your contacts ({{count}})',
     noContactFriends: 'No friends in your contacts use eOrth',
     scanHint: "Point at your friend's eOrth QR code",
+    contactFindDesc: 'Register your phone number so friends who saved it can find you,\nand we\'ll find eOrth users in your contacts too.\nNumbers are stored only as an irreversible hash.',
+    contactPermDesc: "We'll find people who use eOrth\namong your contacts.",
+    tripCountN: '{{count}} trips',
+    noPublicTrips: 'No public travel records yet',
+    consentFootnote: 'By continuing, you agree to the notice above.',
+    followNameA11y: 'Follow {{name}}',
+    unfollowNameA11y: 'Unfollow {{name}}',
   },
   time: {
     justNow: 'just now',

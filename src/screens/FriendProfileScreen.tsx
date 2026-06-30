@@ -294,12 +294,12 @@ export default function FriendProfileScreen({
         {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
         <View style={pv.gridHeaderRow}>
           <Text style={pv.gridHeaderTitle}>{t('friends.travelRecords')}</Text>
-          <Text style={pv.tripCount}>{display.trips.length}개의 여행</Text>
+          <Text style={pv.tripCount}>{t('friends.tripCountN', { count: display.trips.length })}</Text>
         </View>
 
         {display.trips.length === 0 ? (
           <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-            아직 공개된 여행 기록이 없어요
+            {t('friends.noPublicTrips')}
           </Text>
         ) : (
           <>
