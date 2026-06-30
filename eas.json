@@ -27,6 +27,12 @@
         "simulator": false
       }
     },
+    "beta-ios": {
+      "channel": "preview",
+      "environment": "preview",
+      "distribution": "store",
+      "autoIncrement": true
+    },
     "production": {
       "channel": "production",
       "environment": "production",
