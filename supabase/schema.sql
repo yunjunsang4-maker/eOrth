@@ -57,6 +57,16 @@ drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles
   for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
+-- 타인에게 노출할 '공개 컬럼만' 담은 뷰. RLS는 컬럼 단위 제한이 안 되므로
+-- birthday·gender 같은 PII를 빼고 이 뷰로 조회하도록 클라이언트 read 경로를 전환할 것.
+-- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
+create or replace view public.public_profiles
+  with (security_invoker = true) as
+  select id, handle, nickname, emoji, bio, profile_photo, created_at
+  from public.profiles;
+
+grant select on public.public_profiles to authenticated;
+
 -- 가입 시 빈 프로필 자동 생성 (클라이언트 upsert와 병행, 어느 쪽이든 안전)
 create or replace function public.handle_new_user()
 returns trigger language plpgsql security definer set search_path = public as $$
@@ -199,9 +209,25 @@ create index if not exists idx_comments_post on public.comments (post_id, create
 
 alter table public.comments enable row level security;
 
+-- 댓글 조회는 '해당 게시물을 볼 수 있는 사용자'로 제한 (posts 가시성과 동일).
+-- 기존 select_all(true)는 비공개/friends 글의 댓글 내용·작성자를 전원에게 노출했다.
 drop policy if exists "comments_select_all" on public.comments;
-create policy "comments_select_all" on public.comments
-  for select to authenticated using (true);
+drop policy if exists "comments_select_visible" on public.comments;
+create policy "comments_select_visible" on public.comments
+  for select to authenticated using (
+    exists (
+      select 1 from public.posts p
+      where p.id = comments.post_id
+        and (
+          p.visibility = 'public'
+          or p.author_id = auth.uid()
+          or (p.visibility = 'friends' and exists (
+            select 1 from public.follows f
+            where f.follower_id = auth.uid() and f.following_id = p.author_id
+          ))
+        )
+    )
+  );
 
 drop policy if exists "comments_insert_own" on public.comments;
 create policy "comments_insert_own" on public.comments
@@ -422,6 +448,20 @@ create policy "media_delete_own" on storage.objects
   for delete to authenticated using (
     bucket_id = 'media' and (storage.foldername(name))[1] = auth.uid()::text
   );
+
+-- ============================================================
+-- [선택/후속] 비공개 콘텐츠 보호 — media 버킷 private 전환
+--   'media'는 현재 public 버킷이라 URL만 알면 비인증 접근이 가능하다.
+--   private/friends 글의 사진까지 보호하려면 버킷을 private로 바꾸고
+--   클라이언트가 supabase.storage.createSignedUrl()로 서명 URL을 발급하도록 전환해야 한다.
+--   ⚠️ 클라이언트 서명 URL 전환 전에 아래를 실행하면 기존 공개 URL 이미지가 모두 깨지므로
+--      반드시 클라이언트 작업과 함께 적용할 것. (그래서 기본은 주석 처리해 둔다.)
+--
+-- update storage.buckets set public = false where id = 'media';
+-- drop policy if exists "media_read_all" on storage.objects;
+-- create policy "media_read_auth" on storage.objects
+--   for select to authenticated using (bucket_id = 'media');  -- 접근은 서명 URL 발급 경로로만
+-- ============================================================
 
 -- 실시간 DM을 쓰려면 (대시보드 > Database > Replication 에서 dm_messages 추가하거나):
 -- alter publication supabase_realtime add table public.dm_messages;
