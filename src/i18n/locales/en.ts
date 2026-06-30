@@ -768,6 +768,11 @@ const en = {
     repPhotoEmpty: 'No cover photo selected. Tap the button above to choose one from the gallery, or add a photo to the body first.',
     clearRep: 'Clear cover',
     week0: 'Sun', week1: 'Mon', week2: 'Tue', week3: 'Wed', week4: 'Thu', week5: 'Fri', week6: 'Sat',
+    month0: 'January', month1: 'February', month2: 'March', month3: 'April', month4: 'May', month5: 'June', month6: 'July', month7: 'August', month8: 'September', month9: 'October', month10: 'November', month11: 'December',
+    monthTitle: '{{month}} {{year}}',
+    daysLeftN: '{{days}} days left',
+    selectDestination: '+ Select destination',
+    noContent: '(No content)',
   },
   bestCut: {
     title: 'AI Best Cut',

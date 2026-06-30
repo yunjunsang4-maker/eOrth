@@ -769,6 +769,11 @@ const ko = {
     repPhotoEmpty: '선택된 대표 사진이 없습니다. 위 버튼을 눌러 갤러리에서 대표 사진을 선택하거나 사진을 먼저 본문에 추가해주세요.',
     clearRep: '대표 지정 해제',
     week0: '일', week1: '월', week2: '화', week3: '수', week4: '목', week5: '금', week6: '토',
+    month0: '1월', month1: '2월', month2: '3월', month3: '4월', month4: '5월', month5: '6월', month6: '7월', month7: '8월', month8: '9월', month9: '10월', month10: '11월', month11: '12월',
+    monthTitle: '{{year}}년 {{month}}',
+    daysLeftN: '{{days}}일 남음',
+    selectDestination: '+ 여행지 선택',
+    noContent: '(내용 없음)',
   },
   bestCut: {
     title: 'AI 베스트컷',
