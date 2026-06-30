@@ -375,6 +375,93 @@ create policy "blocks_all_own" on public.blocks
   for all to authenticated using (blocker_id = auth.uid()) with check (blocker_id = auth.uid());
 
 -- ============================================================
+-- 4-b) 차단의 서버단 강제 (RLS) — UI뿐 아니라 API 단에서도 차단 적용
+--   차단 관계(양방향: 내가 차단했거나 / 당했거나)면 서로의 게시물·댓글을 못 보고 DM도 막힌다.
+--   blocks 는 RLS(본인 행만 조회)라 정책 안에서 양방향을 보려면 SECURITY DEFINER 함수로 우회한다.
+--   blocks 테이블이 위에서 먼저 생성된 뒤 이 섹션이 와야 하므로 여기(섹션 4 끝)에 둔다.
+--   기존 posts/comments/DM 정책을 drop+recreate 하므로 schema 재실행 시 마지막 정의(차단 포함)가 적용된다.
+-- ============================================================
+create or replace function public.is_blocked_between(a uuid, b uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select exists (
+    select 1 from public.blocks
+    where (blocker_id = a and blocked_id = b)
+       or (blocker_id = b and blocked_id = a)
+  );
+$$;
+grant execute on function public.is_blocked_between(uuid, uuid) to authenticated;
+
+-- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
+drop policy if exists "posts_select" on public.posts;
+create policy "posts_select" on public.posts
+  for select to authenticated using (
+    not public.is_blocked_between(auth.uid(), posts.author_id)
+    and (
+      visibility = 'public'
+      or author_id = auth.uid()
+      or (visibility = 'friends' and exists (
+        select 1 from public.follows f
+        where f.follower_id = auth.uid() and f.following_id = posts.author_id
+      ))
+    )
+  );
+
+-- comments: 차단한/당한 사용자의 댓글은 숨김 (+ 기존 글 가시성 유지)
+drop policy if exists "comments_select_visible" on public.comments;
+create policy "comments_select_visible" on public.comments
+  for select to authenticated using (
+    not public.is_blocked_between(auth.uid(), comments.author_id)
+    and exists (
+      select 1 from public.posts p
+      where p.id = comments.post_id
+        and (
+          p.visibility = 'public'
+          or p.author_id = auth.uid()
+          or (p.visibility = 'friends' and exists (
+            select 1 from public.follows f
+            where f.follower_id = auth.uid() and f.following_id = p.author_id
+          ))
+        )
+    )
+  );
+
+-- DM: 차단 관계면 스레드 생성·메시지 전송·조회를 모두 차단
+drop policy if exists "threads_select_participant" on public.dm_threads;
+create policy "threads_select_participant" on public.dm_threads
+  for select to authenticated using (
+    auth.uid() in (user_a, user_b)
+    and not public.is_blocked_between(user_a, user_b)
+  );
+
+drop policy if exists "threads_insert_participant" on public.dm_threads;
+create policy "threads_insert_participant" on public.dm_threads
+  for insert to authenticated with check (
+    auth.uid() in (user_a, user_b)
+    and not public.is_blocked_between(user_a, user_b)
+  );
+
+drop policy if exists "messages_select_participant" on public.dm_messages;
+create policy "messages_select_participant" on public.dm_messages
+  for select to authenticated using (exists (
+    select 1 from public.dm_threads t
+    where t.id = dm_messages.thread_id
+      and auth.uid() in (t.user_a, t.user_b)
+      and not public.is_blocked_between(t.user_a, t.user_b)
+  ));
+
+drop policy if exists "messages_insert_sender" on public.dm_messages;
+create policy "messages_insert_sender" on public.dm_messages
+  for insert to authenticated with check (
+    sender_id = auth.uid() and exists (
+      select 1 from public.dm_threads t
+      where t.id = dm_messages.thread_id
+        and auth.uid() in (t.user_a, t.user_b)
+        and not public.is_blocked_between(t.user_a, t.user_b)
+    )
+  );
+
+-- ============================================================
 -- 5) user_phones — 연락처 기반 친구 찾기용 전화번호 해시
 --    개인정보(전화 해시)는 profiles(전체 조회 허용)와 분리해 별도 테이블에 둔다.
 --    SELECT 정책을 두지 않아 직접 조회 불가 → 매칭은 SECURITY DEFINER RPC로만.
