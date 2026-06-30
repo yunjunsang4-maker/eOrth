@@ -408,12 +408,15 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   // 탭 행 — 유리 재질(GlassSurface) 위에 형제로 올라가는 콘텐츠 레이아웃
+  // 좌우 비대칭 패딩(좌 18 / 우 28)은 SVG 시안의 여백을 그대로 반영한다.
+  // Globe 활성(폭 323)에서 비활성 아이콘 간 간격이 ~15px로 좁혀져 시안과 ~2px 내로 일치.
   tabRow: {
     ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingLeft: 18,
+    paddingRight: 28,
   },
   // 개별 탭 (콘텐츠 크기)
   tab: {
