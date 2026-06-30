@@ -1145,8 +1145,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         representativePhoto: firstRepHiRes,
         date: firstStart,
         content: title || (selectedCountries.length === 1
-          ? `${first.name} 여행 기록`
-          : `${first.name} 외 ${selectedCountries.length - 1}개국 여행 기록`),
+          ? t('newRecord.defaultTitleOne', { country: first.name })
+          : t('newRecord.defaultTitleMany', { country: first.name, count: selectedCountries.length - 1 })),
         memo,
         rating: firstRating,
         companions: selectedCompanions,
@@ -1395,7 +1395,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 선택 완료 확인 */}
               {selectedCountries.length > 0 && countrySearch.length === 0 && (
                 <View style={s.selectedBadge}>
-                  <Text style={s.selectedBadgeTxt}>✓ {selectedCountries.length}개 국가 선택 완료{selectedCountries.length < MAX_COUNTRIES ? ' · 추가 가능' : ' · 최대'}</Text>
+                  <Text style={s.selectedBadgeTxt}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
                 </View>
               )}
             </View>
@@ -1756,7 +1756,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.optRowHeader}>
                   <TagIcon size={18} color={IC} />
                   <Text style={s.optRowTitle}>{t('newRecord.keyword')}</Text>
-                  {keywords.length > 0 && <Text style={s.optCardValue}>{keywords.length}개</Text>}
+                  {keywords.length > 0 && <Text style={s.optCardValue}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
                 </View>
                 {/* 태그 + 입력창 인라인 */}
                 <View style={s.kwInputBox}>
@@ -1779,7 +1779,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       if (v.endsWith(' ')) addKeyword(v);
                       else setKeywordQuery(v);
                     }}
-                    placeholder={keywords.length === 0 ? '#키워드 추가' : '#'}
+                    placeholder={keywords.length === 0 ? t('newRecord.keywordPlaceholder') : '#'}
                     placeholderTextColor={COLORS.textMuted}
                     returnKeyType="done"
                     onSubmitEditing={() => addKeyword(keywordQuery)}

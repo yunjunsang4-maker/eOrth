@@ -567,7 +567,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const remaining = DRAFT_MAX_AGE - (Date.now() - timestamp);
     if (remaining <= 0) return t('blog.expired');
     const days = Math.ceil(remaining / (24 * 60 * 60 * 1000));
-    return `${days}일 남음`;
+    return t('blog.daysLeftN', { days });
   };
 
   // ─── 임시저장 불러오기 ───
@@ -1117,7 +1117,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
             <TouchableOpacity style={[st.countryChip, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? st.countryChipText : st.countryChipPlaceholder}>
-                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '+ 여행지 선택'}
+                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
             {countryRequired && <View style={st.requiredDot} />}
@@ -1640,7 +1640,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 {blogDrafts.map(draft => {
                   const draftDate = new Date(draft.timestamp);
                   const dateLabel = `${draftDate.getMonth() + 1}/${draftDate.getDate()} ${String(draftDate.getHours()).padStart(2, '0')}:${String(draftDate.getMinutes()).padStart(2, '0')}`;
-                  const preview = draft.content || '(내용 없음)';
+                  const preview = draft.content || t('blog.noContent');
                   const isCurrent = draftId === draft.id;
                   return (
                     <View key={draft.id} style={[st.draftItem, isCurrent && st.draftItemCurrent]}>
@@ -2554,7 +2554,7 @@ function BlogCalendarSheet({
   const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
-  const MONTH_NAMES  = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
+  const MONTH_NAMES  = [t('blog.month0'), t('blog.month1'), t('blog.month2'), t('blog.month3'), t('blog.month4'), t('blog.month5'), t('blog.month6'), t('blog.month7'), t('blog.month8'), t('blog.month9'), t('blog.month10'), t('blog.month11')];
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
@@ -2574,7 +2574,7 @@ function BlogCalendarSheet({
       </View>
       <View style={calSt.monthNav}>
         <TouchableOpacity onPress={handlePrevMonth} style={calSt.navBtn}><Text style={calSt.navArrow}>‹</Text></TouchableOpacity>
-        <Text style={calSt.monthTitle}>{viewYear}년 {MONTH_NAMES[viewMonth]}</Text>
+        <Text style={calSt.monthTitle}>{t('blog.monthTitle', { year: viewYear, month: MONTH_NAMES[viewMonth] })}</Text>
         <TouchableOpacity onPress={handleNextMonth} style={calSt.navBtn}><Text style={calSt.navArrow}>›</Text></TouchableOpacity>
       </View>
       <View style={calSt.weekRow}>

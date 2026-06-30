@@ -793,7 +793,7 @@ function SnapStoryViewer({
     const sComments = commentsByPost[s.id] ?? [];
     const sTotalComments = sComments.reduce((sum: number, c: any) => sum + 1 + (c.replies?.length || 0), 0);
     const late = (s.snapLateSeconds && s.snapLateSeconds > 0)
-      ? (s.snapLateSeconds < 60 ? `${s.snapLateSeconds}초 후 촬영` : `${Math.floor(s.snapLateSeconds / 60)}분 ${s.snapLateSeconds % 60}초 후 촬영`)
+      ? (s.snapLateSeconds < 60 ? t('postDetail.snapLateSec', { sec: s.snapLateSeconds }) : t('postDetail.snapLateMinSec', { min: Math.floor(s.snapLateSeconds / 60), sec: s.snapLateSeconds % 60 }))
       : '';
     return (
       <>
@@ -1007,7 +1007,7 @@ function SnapStoryViewer({
           </ScrollView>
           {replyTo && (
             <View style={storyS.csReplyBar}>
-              <Text style={storyS.csReplyBarText}>{replyTo.name}에게 답글 남기는 중</Text>
+              <Text style={storyS.csReplyBarText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
               <TouchableOpacity onPress={cancelReply}><Text style={storyS.csReplyBarCancel}>✕</Text></TouchableOpacity>
             </View>
           )}
@@ -1724,7 +1724,7 @@ export default function PostDetailScreen() {
         {/* ── 답글 표시 바 ── */}
         {replyTo && (
           <View style={s.replyBar}>
-            <Text style={s.replyBarText}>{replyTo.name}에게 답글 남기는 중</Text>
+            <Text style={s.replyBarText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
             <TouchableOpacity onPress={cancelReply}>
               <Text style={s.replyBarCancel}>✕</Text>
             </TouchableOpacity>
