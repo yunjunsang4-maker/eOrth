@@ -17,7 +17,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Rect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { PinIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -104,6 +104,39 @@ const FlipIconGradient = ({ size = 26 }: { size?: number }) => (
   </Svg>
 );
 
+// ─── 그라데이션 번개(촬영) 아이콘 — 노랑→주황 ───
+const BoltGradient = ({ size = 32 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Defs>
+      <SvgLinearGradient id="boltGrad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0" stopColor="#FFE072" />
+        <Stop offset="1" stopColor="#FF9F0A" />
+      </SvgLinearGradient>
+    </Defs>
+    <Path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" fill="url(#boltGrad)" />
+  </Svg>
+);
+
+// ─── 셔터(촬영) 버튼 프레임 — Group 2085664476.svg 그대로 재현 ───
+// 어두운 보라 반투명 원판 + 흰 rim + 시안→마젠타 네온 링. (viewBox 34 좌표계 유지, 크기만 스케일)
+const ShutterGraphic = ({ size = 80 }: { size?: number }) => (
+  <Svg width={size} height={size} viewBox="0 0 34 34" fill="none">
+    <Defs>
+      <SvgLinearGradient id="shutRim" x1="16.8365" y1="4.639" x2="24.035" y2="29.034" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#666666" stopOpacity="0" />
+        <Stop offset="1" stopColor="#FFFFFF" />
+      </SvgLinearGradient>
+      <SvgLinearGradient id="shutNeon" x1="16.8585" y1="6.0997" x2="23.1709" y2="27.4916" gradientUnits="userSpaceOnUse">
+        <Stop stopColor="#00D8F3" />
+        <Stop offset="1" stopColor="#FF14E4" />
+      </SvgLinearGradient>
+    </Defs>
+    <Circle cx="16.8365" cy="16.8365" r="12.1975" fill="#390048" fillOpacity={0.38} />
+    <Circle cx="16.8365" cy="16.8365" r="11.9975" stroke="url(#shutRim)" strokeOpacity={0.6} strokeWidth={0.4} fill="none" />
+    <Circle cx="16.8585" cy="16.7957" r="10.3769" stroke="url(#shutNeon)" strokeOpacity={0.6} strokeWidth={0.638} fill="none" />
+  </Svg>
+);
+
 type Props = RootStackScreenProps<'SnapRecord'>;
 
 export default function SnapRecordScreen({ navigation, route }: Props) {
@@ -126,6 +159,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [frontPhoto, setFrontPhoto] = useState<string | null>(null);
   const [shooting, setShooting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
+  const [guidePillSize, setGuidePillSize] = useState({ w: 0, h: 0 }); // 안내 알약 SVG 배경 크기
   const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
   const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
 
@@ -319,6 +353,12 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   // 위치 못 잡고 선택도 없을 때 폴백할 홈 국가 (term 첫 토큰 = 국가코드)
   const homeCountry = COUNTRIES.find(c => c.term.split(' ')[0] === (homeCountryCode || '').toLowerCase()) || null;
 
+  // 상단 위치 라벨(📍 국가 · 도시)
+  const locCountryObj = selectedCountry
+    || (detectedCountry ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase()) : null)
+    || homeCountry;
+  const locName = detectedCountry || locCountryObj?.name || '';
+
   // ─── 저장 ───
   const handleSave = () => {
     const lateSeconds = notifTimestamp
@@ -376,17 +416,17 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
         {/* 상단 바 */}
         <SafeAreaView style={st.topBar}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={st.topBtn}>
-            <GlassFill intensity={24} tint="dark" />
-            <Text style={st.topBtnText}>✕</Text>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn}>
+            <GlassFill intensity={20} tint="dark" />
+            <Text style={st.backBtnText}>✕</Text>
           </TouchableOpacity>
           <View style={st.topCenter}>
-            <Text style={st.snapBadge}>⚡ SNAP</Text>
-            {detectedCountry && (
+            <Text style={st.snapBadge}>SNAP</Text>
+            {locName ? (
               <Text style={st.locationText}>
-                📍 {detectedCountry}{detectedCity ? ` · ${detectedCity}` : ''}
+                📍 {locName}{detectedCity ? ` · ${detectedCity}` : ''}
               </Text>
-            )}
+            ) : null}
           </View>
           <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel={t('snap.flashA11y')}>
             <GlassFill intensity={24} tint="dark" />
@@ -396,13 +436,40 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </SafeAreaView>
 
-        {/* 안내 문구 — 상단 바(인셋+버튼 영역) 아래로 안전하게 배치 */}
+        {/* 안내 문구 — 상단 바 아래. 배경 #751AAD 30% + 테두리 시안→마젠타 그라데이션 (Rectangle 240652656.svg) */}
         <View style={[st.guideWrap, { top: insets.top + 70 }]}>
-          {phase === 'switching' ? (
-            <Text style={st.guideText}>📸 {t('comp2.snapSwitching')}</Text>
-          ) : (
-            <Text style={st.guideText}>{t('snap.guideText')}</Text>
-          )}
+          <View
+            style={st.guidePill}
+            onLayout={(e) => {
+              const { width, height } = e.nativeEvent.layout;
+              if (width !== guidePillSize.w || height !== guidePillSize.h) setGuidePillSize({ w: width, h: height });
+            }}
+          >
+            {guidePillSize.w > 0 && (
+              <Svg width={guidePillSize.w} height={guidePillSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Defs>
+                  <SvgLinearGradient id="guideBorder" x1="0" y1="0" x2={String(guidePillSize.w)} y2={String(guidePillSize.h)} gradientUnits="userSpaceOnUse">
+                    <Stop stopColor="#00D8F3" />
+                    <Stop offset="1" stopColor="#FF14E4" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect
+                  x={0.75}
+                  y={0.75}
+                  width={guidePillSize.w - 1.5}
+                  height={guidePillSize.h - 1.5}
+                  rx={(guidePillSize.h - 1.5) / 2}
+                  fill="#751AAD"
+                  fillOpacity={0.3}
+                  stroke="url(#guideBorder)"
+                  strokeWidth={1.5}
+                />
+              </Svg>
+            )}
+            <Text style={st.guideText}>
+              {phase === 'switching' ? `📸 ${t('comp2.snapSwitching')}` : t('snap.guideText')}
+            </Text>
+          </View>
         </View>
 
         {/* 하단 컨트롤 */}
@@ -417,62 +484,21 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             <FlipIconGradient size={26} />
           </TouchableOpacity>
 
-          {/* 셔터 버튼 */}
-          <Animated.View style={{ transform: [{ scale: pulseAnim }], alignItems: 'center', justifyContent: 'center' }}>
-            {/* 네온 글로우 배경 */}
-            <LinearGradient
-              colors={['rgba(34,211,238,0.3)', 'rgba(168,85,247,0.3)', 'rgba(217,70,239,0.3)', 'transparent']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={st.shutterGlow}
-              pointerEvents="none"
-            />
+          {/* 셔터 버튼 — Group 2085664476.svg 디자인 (보라 원판 + 네온 링) + 번개 아이콘 */}
+          <Animated.View style={{ transform: [{ scale: pulseAnim }] }}>
             <TouchableOpacity
-              style={[shooting && { opacity: 0.5 }]}
+              style={[st.shutterBtn, shooting && { opacity: 0.5 }]}
               onPress={takePhoto}
               activeOpacity={0.7}
               disabled={shooting}
             >
-              <LinearGradient
-                colors={['#22D3EE', '#A855F7', '#D946EF']}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-                style={st.shutterOuterGrad}
-              >
-                {/* 링 상단 아치 스페큘러 (유리 링 질감 극대화) */}
-                <LinearGradient
-                  colors={['rgba(255,255,255,0.75)', 'rgba(255,255,255,0)']}
-                  start={{ x: 0.5, y: 0 }}
-                  end={{ x: 0.5, y: 0.6 }}
-                  style={st.shutterSpecular}
-                  pointerEvents="none"
-                />
-                
-                <View style={st.shutterMask}>
-                  {/* 안쪽 투명 글래스 */}
-                  <GlassFill intensity={35} tint="dark" />
-                  
-                  {/* 오로라 굴절광 */}
-                  <LinearGradient
-                    colors={['rgba(34,211,238,0.22)', 'rgba(168,85,247,0.22)', 'rgba(217,70,239,0.22)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 1 }}
-                    style={StyleSheet.absoluteFill}
-                    pointerEvents="none"
-                  />
-                  
-                  {/* 안쪽 스페큘러 */}
-                  <LinearGradient
-                    colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 0, y: 1 }}
-                    style={st.shutterInnerSpecular}
-                    pointerEvents="none"
-                  />
-                  
-                  <Text style={st.shutterIcon}>⚡</Text>
+              <ShutterGraphic size={112} />
+              {/* 중앙 번개 (노랑→주황 + 따뜻한 글로우) */}
+              <View style={st.shutterBoltWrap} pointerEvents="none">
+                <View style={st.boltGlow}>
+                  <BoltGradient size={34} />
                 </View>
-              </LinearGradient>
+              </View>
             </TouchableOpacity>
           </Animated.View>
 
@@ -494,6 +520,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
         {/* 닫기 */}
         <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('snap.closeA11y')}>
+          <GlassFill intensity={22} tint="dark" />
           <Text style={st.previewCloseText}>✕</Text>
         </TouchableOpacity>
 
@@ -515,6 +542,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             <View style={st.pipInner}>
               <Image source={{ uri: frontPhoto }} style={st.pipImage} resizeMode="cover" />
               <View style={st.pipSwapBadge}>
+                <GlassFill intensity={18} tint="dark" />
                 <Text style={st.pipSwapIcon}>⇄</Text>
               </View>
             </View>
@@ -562,6 +590,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       {/* 하단 버튼 */}
       <View style={st.actionRow}>
         <TouchableOpacity style={st.retakeBtn} onPress={retake}>
+          <GlassFill intensity={18} tint="dark" />
           <Text style={st.retakeBtnText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={st.sendBtnWrap} onPress={handleSave} activeOpacity={0.8}>
@@ -571,6 +600,14 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             end={{ x: 1, y: 1 }}
             style={st.sendBtnGrad}
           >
+            {/* 유리 스페큘러 하이라이트 (상단) */}
+            <LinearGradient
+              colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
+              start={{ x: 0.5, y: 0 }}
+              end={{ x: 0.5, y: 1 }}
+              style={st.sendSpecular}
+              pointerEvents="none"
+            />
             <Text style={st.sendBtnText}>⚡ {t('comp2.snapShare')}</Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -608,13 +645,22 @@ const st = StyleSheet.create({
     overflow: 'hidden',
   },
   topBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
+  // 이전(닫기) 버튼 — 보라 틴트 글래스 (디자인 iPhone 17-58)
+  backBtn: {
+    width: 48, height: 48, borderRadius: 24,
+    backgroundColor: 'rgba(123,97,255,0.30)',
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
+    overflow: 'hidden',
+  },
+  backBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
   topCenter: { alignItems: 'center', gap: 4 },
   snapBadge: {
-    color: '#22D3EE', fontSize: 15, fontWeight: '900', letterSpacing: 2,
+    color: '#22D3EE', fontSize: 24, fontWeight: '900', letterSpacing: 3,
     textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   locationText: {
-    color: 'rgba(255,255,255,0.8)', fontSize: 12,
+    color: 'rgba(255,255,255,0.9)', fontSize: 13,
     textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
 
@@ -623,10 +669,13 @@ const st = StyleSheet.create({
     position: 'absolute', left: 0, right: 0,
     alignItems: 'center', zIndex: 5,
   },
+  guidePill: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 18, paddingVertical: 8,
+  },
   guideText: {
-    color: '#fff', fontSize: 16, fontWeight: '600',
-    backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: 20, paddingVertical: 8,
-    borderRadius: 20, overflow: 'hidden',
+    color: '#fff', fontSize: 14, fontWeight: '700',
+    textShadowColor: 'rgba(0,0,0,0.4)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 2,
   },
 
   // 하단 컨트롤
@@ -635,39 +684,23 @@ const st = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-around',
     paddingHorizontal: 40,
   },
-  shutterGlow: {
-    position: 'absolute',
-    width: 104, height: 104, borderRadius: 52,
-  },
-  shutterOuterGrad: {
-    width: 80, height: 80, borderRadius: 40,
-    padding: 5,
+  // 셔터 버튼 (Group 2085664476 디자인) — 시안 네온 글로우.
+  // SVG는 원판 주위 여백이 있어(원판=프레임의 ~72%) 원래 외곽 ~80px에 맞추려 112로 렌더한다.
+  shutterBtn: {
+    width: 112, height: 112,
     alignItems: 'center', justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
+    shadowColor: '#22D3EE', shadowOpacity: 0.5, shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
   },
-  shutterSpecular: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    height: '60%',
-    borderRadius: 40,
-  },
-  shutterMask: {
-    width: 70, height: 70, borderRadius: 35,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden',
-    borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.18)',
-  },
-  shutterInnerSpecular: {
+  shutterBoltWrap: {
     ...StyleSheet.absoluteFillObject,
+    alignItems: 'center', justifyContent: 'center',
   },
-  shutterIcon: {
-    fontSize: 24,
-    color: '#fff',
-    textShadowColor: 'rgba(255,255,255,0.7)',
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 10,
+  // 번개 아이콘 따뜻한 글로우
+  boltGlow: {
+    alignItems: 'center', justifyContent: 'center',
+    shadowColor: '#FFC53D', shadowOpacity: 0.9, shadowRadius: 10,
+    shadowOffset: { width: 0, height: 0 },
   },
   flipBtn: {
     width: 50, height: 50, borderRadius: 25,
@@ -719,8 +752,10 @@ const st = StyleSheet.create({
   previewClose: {
     position: 'absolute', top: 12, right: 12, zIndex: 10,
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.35)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    overflow: 'hidden',
   },
   previewCloseText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   pipWrapContainer: {
@@ -741,8 +776,10 @@ const st = StyleSheet.create({
   pipSwapBadge: {
     position: 'absolute', right: 4, bottom: 4,
     width: 22, height: 22, borderRadius: 11,
-    backgroundColor: 'rgba(0,0,0,0.55)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)',
+    overflow: 'hidden',
   },
   pipSwapIcon: { color: '#fff', fontSize: 13, fontWeight: '700' },
   previewBadges: {
@@ -774,7 +811,9 @@ const st = StyleSheet.create({
   },
   retakeBtn: {
     flex: 1, paddingVertical: 14, borderRadius: 16,
-    borderWidth: 1, borderColor: C.muted, alignItems: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
   },
   retakeBtnText: { color: C.dim, fontSize: 15, fontWeight: '600' },
   sendBtnWrap: {
@@ -787,6 +826,10 @@ const st = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  sendSpecular: {
+    position: 'absolute', top: 0, left: 0, right: 0, height: '55%',
   },
   sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
