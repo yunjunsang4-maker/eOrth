@@ -32,6 +32,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
 import { getMyProfile } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
+import { withTimeout } from '../utils/withTimeout';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -107,23 +108,29 @@ export default function LoginScreen({ navigation }: Props) {
     let accountProvider: 'email' | 'google' | 'apple' = provider;
     let accountEmail: string | null = null;
     try {
-      const myProfile = await getMyProfile();
+      // 병렬 조회 + 타임아웃 (느린/끊긴 네트워크에서 무한 대기 방지)
+      const [myProfile, original, email] = await withTimeout(
+        Promise.all([getMyProfile(), getAuthProvider(), getAuthEmail()]),
+        12000,
+      );
       if (myProfile && myProfile.nickname && myProfile.nickname.trim()) dest = 'Main';
-      const original = await getAuthProvider();
       if (original) accountProvider = original;
-      accountEmail = await getAuthEmail();
+      accountEmail = email;
     } catch {
-      // 조회 실패 → 온보딩으로 폴백 (accountProvider는 방금 provider)
+      // 타임아웃/조회 실패 → 온보딩으로 폴백 (accountProvider는 방금 provider)
     }
-    setTimeout(() => {
-      setSocialLoading(false);
-      setSocialModal(null);
+    // 성공 표시를 잠깐 보여준 뒤 진행. 네비게이션 완료까지 로딩 인디케이터를 유지한다.
+    await new Promise((r) => setTimeout(r, 600));
+    try {
       // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      proceedAfterAuth(() => {
+      await proceedAfterAuth(() => {
         setSignUpMethod(accountProvider);
         if (accountEmail) setSignUpEmail(accountEmail);
       }, dest);
-    }, 600);
+    } finally {
+      setSocialLoading(false);
+      setSocialModal(null);
+    }
   };
 
   const handleGooglePress = () => handleSocialLogin('google');

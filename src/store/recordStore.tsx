@@ -748,10 +748,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const hydrateMyRecords = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
-      const mine = await fetchMyPosts();
+      const mine = await withTimeout(fetchMyPosts(), 12000);
       setRecords(mine);
     } catch {
-      // 실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
+      // 타임아웃/실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
     }
   }, []);
 

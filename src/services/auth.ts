@@ -8,6 +8,10 @@
 import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import { withTimeout } from '../utils/withTimeout';
+
+// 인증 네트워크 호출 타임아웃(ms) — 응답이 없을 때 무한 대기를 막는다.
+const AUTH_TIMEOUT_MS = 15000;
 
 // OAuth 콜백으로 인앱 브라우저가 돌아왔을 때 세션을 정상 종료시킨다.
 // (일부 기기에서 브라우저가 닫히지 않는 문제 예방 — expo-web-browser 권장 호출)
@@ -29,6 +33,7 @@ const ERROR_KO: { match: string; message: string }[] = [
   { match: 'Unable to validate email address', message: '올바른 이메일 형식이 아니에요.' },
   { match: 'For security purposes', message: '잠시 후 다시 시도해주세요.' },
   { match: 'Network request failed', message: '네트워크 연결을 확인해주세요.' },
+  { match: 'timeout', message: '응답이 지연되고 있어요.\n네트워크를 확인한 뒤 다시 시도해주세요.' },
 ];
 
 function toKoMessage(raw: string): string {
@@ -40,11 +45,11 @@ export async function signUpWithEmail(email: string, password: string): Promise<
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
     // emailRedirectTo: 인증 메일 링크 클릭 시 앱으로 복귀(eorth://email-confirm)해 자동 로그인/온보딩으로 이어진다.
-    const { data, error } = await supabase.auth.signUp({
+    const { data, error } = await withTimeout(supabase.auth.signUp({
       email,
       password,
       options: { emailRedirectTo: emailConfirmRedirect },
-    });
+    }), AUTH_TIMEOUT_MS);
     if (error) return { ok: false, error: toKoMessage(error.message) };
     // 이메일 인증이 켜져 있으면 session 없이 user만 반환된다
     if (data.user && !data.session) return { ok: true, needsEmailConfirm: true };
@@ -57,7 +62,7 @@ export async function signUpWithEmail(email: string, password: string): Promise<
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }), AUTH_TIMEOUT_MS);
     if (error) return { ok: false, error: toKoMessage(error.message) };
     return { ok: true };
   } catch (e) {
@@ -99,7 +104,7 @@ export async function sendPasswordReset(email: string): Promise<AuthResult> {
 export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
-    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await withTimeout(supabase.auth.exchangeCodeForSession(code), AUTH_TIMEOUT_MS);
     if (error) return { ok: false, error: toKoMessage(error.message) };
     return { ok: true };
   } catch (e) {
@@ -157,7 +162,7 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
     // PKCE: 콜백 URL의 code 를 세션으로 교환
     const code = cbUrl.searchParams.get('code');
     if (!code) return { ok: false, error: '인증 코드를 받지 못했어요.' };
-    const { error: exErr } = await supabase.auth.exchangeCodeForSession(code);
+    const { error: exErr } = await withTimeout(supabase.auth.exchangeCodeForSession(code), AUTH_TIMEOUT_MS);
     if (exErr) return { ok: false, error: toKoMessage(exErr.message) };
     return { ok: true };
   } catch (e) {
@@ -173,7 +178,7 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
 export async function getAuthProvider(): Promise<'email' | 'google' | 'apple' | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await withTimeout(supabase.auth.getUser(), AUTH_TIMEOUT_MS);
     const p = data.user?.app_metadata?.provider;
     if (p === 'email' || p === 'google' || p === 'apple') return p;
     return null;
@@ -186,7 +191,7 @@ export async function getAuthProvider(): Promise<'email' | 'google' | 'apple' | 
 export async function getAuthEmail(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await withTimeout(supabase.auth.getUser(), AUTH_TIMEOUT_MS);
     return data.user?.email ?? null;
   } catch {
     return null;

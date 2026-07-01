@@ -7,6 +7,9 @@
 
 import { sha256 } from 'js-sha256';
 import { supabase } from './supabase';
+import { withTimeout } from '../utils/withTimeout';
+
+const READ_TIMEOUT_MS = 12000;
 
 export interface ProfileRow {
   id: string;
@@ -24,7 +27,7 @@ export interface ProfileRow {
 export async function getMyUserId(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await withTimeout(supabase.auth.getUser(), READ_TIMEOUT_MS);
     return data.user?.id ?? null;
   } catch {
     return null;
@@ -67,7 +70,10 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   const uid = await getMyUserId();
   if (!uid) return null;
   try {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+    const { data } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
     return (data as ProfileRow) ?? null;
   } catch {
     return null;
