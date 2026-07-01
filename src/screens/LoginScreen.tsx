@@ -592,87 +592,26 @@ export default function LoginScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      {/* Google Sign-In Mock Modal */}
+      {/* 소셜 로그인 로딩 오버레이 (실제 인증은 인앱 브라우저에서 진행 — 가짜 인증 UI 없음) */}
       <Modal
-        visible={socialModal === 'google'}
+        visible={socialModal !== null}
         transparent
         animationType="fade"
         onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
       >
         <View style={styles.socialModalOverlay}>
-          <View style={styles.googleContainer}>
-            {/* Logo */}
-            <View style={styles.googleLogoRow}>
-              <GoogleIcon size={20} />
-              <Text style={styles.googleBrandText}>Google</Text>
-            </View>
-
-            <Text style={styles.googleTitle}>{t('login.googleSelectAccount')}</Text>
-            <Text style={styles.googleSubtitle}>{t('login.moveToApp')}</Text>
-
-            {socialLoading ? (
-              <View style={styles.socialLoadingWrap}>
-                {authSuccess ? (
-                  <View style={styles.socialSuccessBadge}>
-                    <Text style={{ fontSize: 24, marginBottom: 8 }}>✅</Text>
-                    <Text style={styles.socialSuccessText}>{t('login.loginSuccess')}</Text>
-                  </View>
-                ) : (
-                  <>
-                    <ActivityIndicator size="large" color="#4285F4" />
-                    <Text style={styles.socialLoadingText}>{t('login.googleLinking')}</Text>
-                  </>
-                )}
-              </View>
-            ) : null}
-
-            {!socialLoading && (
-              <TouchableOpacity
-                onPress={() => setSocialModal(null)}
-                style={styles.googleCancelBtn}
-              >
-                <Text style={styles.googleCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
+          <View style={styles.loaderCard}>
+            {authSuccess ? (
+              <>
+                <Text style={styles.loaderEmoji}>✅</Text>
+                <Text style={styles.loaderText}>{t('login.loginSuccess')}</Text>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loaderText}>{t('login.signingIn')}</Text>
+              </>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Apple Sign-In Mock Modal */}
-      <Modal
-        visible={socialModal === 'apple'}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
-      >
-        <View style={styles.appleModalOverlay}>
-          <View style={styles.appleSheet}>
-            {/* Handle bar */}
-            <View style={styles.appleHandle} />
-
-            <View style={styles.appleHeader}>
-              <AppleIcon size={32} color="#FFFFFF" />
-              <Text style={styles.appleTitle}>Apple ID</Text>
-              <Text style={styles.appleSubtitle}>{t('login.appleSignIn')}</Text>
-            </View>
-
-            {socialLoading ? (
-              <View style={styles.appleLoadingWrap}>
-                {authSuccess ? (
-                  <View style={styles.appleSuccessGlow}>
-                    <Text style={{ fontSize: 40, color: '#FFFFFF' }}>✓</Text>
-                    <Text style={styles.appleSuccessText}>{t('login.authComplete')}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.appleFaceIdScan}>
-                    <View style={styles.faceIdRing}>
-                      <Text style={{ fontSize: 32, color: '#00D2FF' }}>👤</Text>
-                    </View>
-                    <Text style={styles.appleFaceIdText}>{t('login.faceIdScanning')}</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
           </View>
         </View>
       </Modal>
@@ -985,143 +924,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing[6],
   },
-  googleContainer: {
-    width: '100%',
-    backgroundColor: '#1E222D',
+  loaderCard: {
+    minWidth: 200,
+    backgroundColor: '#160B2C',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    padding: 24,
-    alignItems: 'center',
-  },
-  googleLogoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  googleBrandText: {
-    fontSize: 18,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-  },
-  googleTitle: {
-    fontSize: 22,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    marginBottom: 4,
-  },
-  googleSubtitle: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginBottom: 24,
-  },
-  googleCancelBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  googleCancelText: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textSecondary,
-  },
-  socialLoadingWrap: {
-    height: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  socialLoadingText: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textSecondary,
-  },
-  socialSuccessBadge: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  socialSuccessText: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#00E676',
-  },
-
-  // Apple Sheet
-  appleModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5, 1, 15, 0.75)',
-    justifyContent: 'flex-end',
-  },
-  appleSheet: {
-    backgroundColor: '#1C1C1E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-    alignItems: 'center',
-    width: '100%',
-  },
-  appleHandle: {
-    width: 36,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    marginBottom: 20,
-  },
-  appleHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  appleTitle: {
-    fontSize: 20,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    marginTop: 8,
-  },
-  appleSubtitle: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  appleLoadingWrap: {
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleFaceIdScan: {
+    borderColor: 'rgba(191,133,252,0.15)',
+    paddingVertical: 32,
+    paddingHorizontal: 40,
     alignItems: 'center',
     gap: 16,
   },
-  faceIdRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 2,
-    borderColor: '#00D2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#00D2FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
+  loaderEmoji: {
+    fontSize: 40,
   },
-  appleFaceIdText: {
-    fontSize: 14,
+  loaderText: {
+    fontSize: 15,
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-  },
-  appleSuccessGlow: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  appleSuccessText: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
   },
 });

@@ -139,6 +139,7 @@ const ko = {
     googleSelectAccount: '계정 선택',
     moveToApp: 'eOrth(으)로 이동',
     loginSuccess: '로그인 성공',
+    signingIn: '로그인 중...',
     googleLinking: 'Google 계정 연동 중...',
     appleSignIn: 'eOrth에 로그인',
     authComplete: '인증 완료',

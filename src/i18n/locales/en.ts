@@ -138,6 +138,7 @@ const en = {
     googleSelectAccount: 'Choose an account',
     moveToApp: 'to continue to eOrth',
     loginSuccess: 'Login successful',
+    signingIn: 'Signing in...',
     googleLinking: 'Connecting your Google account...',
     appleSignIn: 'Sign in to eOrth',
     authComplete: 'Authenticated',
