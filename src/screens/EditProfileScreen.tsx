@@ -21,8 +21,8 @@ import { isHandleAvailable } from '../services/profile';
 
 import type { RootStackScreenProps } from '../navigation/types';
 
-// 아이디(handle) 형식: 영문/숫자/_ 3~30자
-const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
+// 아이디(handle) 형식: 영문/숫자/_ 4~30자
+const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
 const COLORS = {
   bg:           '#0A0A0F',

@@ -28,8 +28,8 @@ import { COUNTRIES, type Country } from '../constants/countries';
 
 const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
 
-// 아이디(handle) 형식: 영문/숫자/_ 3~30자
-const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
+// 아이디(handle) 형식: 영문/숫자/_ 4~30자
+const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
 // 입력 숫자를 YYYY-MM-DD 형태로 자동 정렬 (최대 8자리)
 const formatBirthday = (raw: string) => {
@@ -190,7 +190,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               />
               <Text style={styles.charCount}>{handle.length}/30</Text>
             </View>
-            <Text style={styles.birthdayHint}>{t('basicInfo.handleHint')}</Text>
+            <Text style={[styles.birthdayHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
           </View>
 
           {/* 생일 */}

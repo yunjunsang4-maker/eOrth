@@ -42,8 +42,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
 // 전송 전 정규화: 공백 제거 + 소문자 (대소문자 차이로 인한 별도 계정/로그인 실패 방지)
 const normalizeEmail = (v: string) => v.trim().toLowerCase();
-// 아이디(handle) 형식: 영문/숫자/_ 3~30자 (로그인 입력이 아이디인지 판별)
-const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
+// 아이디(handle) 형식: 영문/숫자/_ 4~30자 (로그인 입력이 아이디인지 판별)
+const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 const isValidHandle = (v: string) => HANDLE_RE.test(v.trim());
 
 // 인증 메일 재전송 최소 간격(초)
