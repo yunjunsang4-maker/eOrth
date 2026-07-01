@@ -32,10 +32,19 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
     })
   : null;
 
-// 세션 저장 백엔드 진단(개발 빌드 한정) — 토큰 값은 출력하지 않고 백엔드 종류만 확인.
-// 'secure'면 Keychain/Keystore, 'fallback'이면 평문 폴백 중(재빌드 필요)임을 즉시 점검.
-if (__DEV__ && isSupabaseConfigured) {
-  console.log('[auth] 세션 저장 백엔드:', getStorageBackend());
+// 세션 저장 백엔드 진단 — 토큰 값은 출력하지 않고 백엔드 종류만 확인.
+// 'secure'면 Keychain/Keystore, 'fallback'이면 평문(AsyncStorage) 저장 중.
+// 폴백은 모든 빌드에서 경고(프로덕션 빌드가 실수로 평문 저장 시 로그로 감지 가능).
+if (isSupabaseConfigured) {
+  const backend = getStorageBackend();
+  if (backend === 'fallback') {
+    console.warn(
+      '[auth] SecureStore를 사용할 수 없어 세션이 AsyncStorage(평문)에 저장됩니다. ' +
+        'expo-secure-store 네이티브 링크/빌드를 확인하세요.',
+    );
+  } else if (__DEV__) {
+    console.log('[auth] 세션 저장 백엔드:', backend);
+  }
 }
 
 // 토큰 자동갱신을 앱 활성 상태에 묶는다 (Supabase React Native 권장 패턴).

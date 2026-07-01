@@ -109,11 +109,20 @@ export default function AppNavigator() {
       if (!m) return;
       const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
       if (!handle || handle === 'unknown') return;
-      // ts: 같은 핸들로 재진입해도 화면이 검색어를 다시 채우도록 매번 새 값 전달
-      const go = () => navigationRef.current?.navigate('FriendSearch', { initialQuery: handle, ts: Date.now() });
-      // 콜드 스타트면 네비게이터 준비를 기다렸다 이동
-      if (navigationRef.current?.isReady()) go();
-      else setTimeout(go, 1000);
+      // 방어 심화: 인증되어 본화면(Main)에 진입한 상태에서만 내부 화면으로 이동한다.
+      // 미인증 상태의 딥링크로 인증 화면이 열리는 것을 막고, 콜드 스타트에서는
+      // Main 진입까지 잠시(최대 ~5초) 기다렸다 이동(그 사이 인증 안 되면 무시).
+      const tryGo = (attempts: number) => {
+        const authed = navigationRef.current?.getRootState?.()?.routes?.some((r) => r.name === 'Main');
+        if (authed) {
+          // ts: 같은 핸들로 재진입해도 화면이 검색어를 다시 채우도록 매번 새 값 전달
+          navigationRef.current?.navigate('FriendSearch', { initialQuery: handle, ts: Date.now() });
+        } else if (attempts > 0) {
+          setTimeout(() => tryGo(attempts - 1), 800);
+        }
+        // attempts 소진 = 미인증으로 간주 → 딥링크 무시
+      };
+      tryGo(6);
     };
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     Linking.getInitialURL().then(handleUrl).catch(() => {});
