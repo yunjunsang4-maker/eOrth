@@ -182,6 +182,17 @@ export async function getAuthProvider(): Promise<'email' | 'google' | 'apple' | 
   }
 }
 
+/** 현재 인증된 사용자의 이메일 (소셜 로그인 시 표시·문의용). 없으면 null. */
+export async function getAuthEmail(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    return data.user?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function signOut(): Promise<void> {
   if (!supabase) return;
   try {

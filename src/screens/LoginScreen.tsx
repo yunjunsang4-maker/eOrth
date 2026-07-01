@@ -29,7 +29,7 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
 import { getMyProfile } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { GoogleIcon, AppleIcon } from '../components/icons';
@@ -105,11 +105,13 @@ export default function LoginScreen({ navigation }: Props) {
     // 계정의 원래 가입 수단을 반영한다. 연동 계정이면 최초 provider가 우선(예: 이메일 계정에 구글 연동 시 email 유지).
     // 조회 실패 시 방금 사용한 provider로 폴백.
     let accountProvider: 'email' | 'google' | 'apple' = provider;
+    let accountEmail: string | null = null;
     try {
       const myProfile = await getMyProfile();
       if (myProfile && myProfile.nickname && myProfile.nickname.trim()) dest = 'Main';
       const original = await getAuthProvider();
       if (original) accountProvider = original;
+      accountEmail = await getAuthEmail();
     } catch {
       // 조회 실패 → 온보딩으로 폴백 (accountProvider는 방금 provider)
     }
@@ -117,7 +119,10 @@ export default function LoginScreen({ navigation }: Props) {
       setSocialLoading(false);
       setSocialModal(null);
       // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      proceedAfterAuth(() => { setSignUpMethod(accountProvider); }, dest);
+      proceedAfterAuth(() => {
+        setSignUpMethod(accountProvider);
+        if (accountEmail) setSignUpEmail(accountEmail);
+      }, dest);
     }, 600);
   };
 
