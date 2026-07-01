@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Linking } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
@@ -41,6 +42,7 @@ import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
 import { exchangeAuthCode } from '../services/auth';
+import { emitToast } from '../store/toastStore';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -64,6 +66,11 @@ const darkTheme = {
 };
 
 export default function AppNavigator() {
+  // 세션 만료 안내 문구를 항상 최신 언어로 쓰기 위한 ref (onAuthStateChange 콜백은 마운트 시 1회 등록)
+  const { t } = useTranslation();
+  const tRef = useRef(t);
+  tRef.current = t;
+
   // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
   useEffect(() => {
     const handleUrl = async (url: string | null) => {
@@ -122,6 +129,8 @@ export default function AppNavigator() {
       if (event !== 'SIGNED_OUT') return;
       const current = navigationRef.current?.getCurrentRoute()?.name;
       if (current && ['Splash', 'AppIntro', 'Login'].includes(current)) return;
+      // 인증 화면이 아닌 곳에서 SIGNED_OUT = 강제 로그아웃(세션 만료 등) → 이유를 안내한다.
+      emitToast(tRef.current('login.sessionExpired'));
       navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] });
     });
     return () => data.subscription.unsubscribe();

@@ -139,6 +139,7 @@ const en = {
     moveToApp: 'to continue to eOrth',
     loginSuccess: 'Login successful',
     signingIn: 'Signing in...',
+    sessionExpired: 'Your session expired. Please sign in again.',
     newPassword: 'New password',
     setNewPasswordTitle: 'Set a new password',
     setNewPasswordDesc: 'Enter a new password for your account.',
