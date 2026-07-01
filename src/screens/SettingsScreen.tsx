@@ -267,8 +267,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               {
                 text: t('settings.logout'),
                 style: 'destructive',
-                onPress: () => {
-                  signOut(); // Supabase 세션 종료 (미설정 시 no-op)
+                onPress: async () => {
+                  // 세션 종료를 기다린 뒤 이동한다. 먼저 이동하면 Splash가 남은 세션으로 자동 재로그인할 수 있음.
+                  await signOut(); // Supabase 세션 종료 (미설정 시 no-op)
                   navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                 },
               },

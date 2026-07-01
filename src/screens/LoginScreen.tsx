@@ -30,7 +30,7 @@ import {
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
 import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation } from '../services/auth';
-import { getMyUserId, getProfileById } from '../services/profile';
+import { getMyProfile } from '../services/profile';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -95,13 +95,14 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
     setAuthSuccess(true);
-    // 기존 프로필이 있으면 로그인(Main), 없으면 온보딩(BasicInfo) — 소셜 재온보딩 방지
+    // 온보딩을 마친 사용자면 로그인(Main), 아니면 온보딩(BasicInfo).
+    // ⚠️ DB 트리거가 가입 즉시 빈 프로필 행을 생성하므로 "행 존재"로 판정하면 신규도 기존으로 오판된다.
+    //    → 닉네임이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
     try {
-      const myUid = await getMyUserId();
-      const existingProfile = myUid ? await getProfileById(myUid) : null;
-      if (existingProfile) dest = 'Main';
+      const myProfile = await getMyProfile();
+      if (myProfile && myProfile.nickname && myProfile.nickname.trim()) dest = 'Main';
     } catch {
       // 조회 실패 → 온보딩으로 폴백
     }
