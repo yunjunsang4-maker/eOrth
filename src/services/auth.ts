@@ -96,7 +96,13 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: oauthRedirect, skipBrowserRedirect: true },
+      options: {
+        redirectTo: oauthRedirect,
+        skipBrowserRedirect: true,
+        // 브라우저에 캐시된 계정으로 자동 로그인되어 항상 같은 계정으로 들어가는 것을 방지.
+        // 구글은 매번 계정 선택창을 강제한다(애플은 해당 파라미터 미지원).
+        queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
+      },
     });
     if (error || !data?.url) return { ok: false, error: toKoMessage(error?.message || '로그인 URL 생성 실패') };
 
