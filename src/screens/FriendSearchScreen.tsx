@@ -127,7 +127,7 @@ type Props = RootStackScreenProps<'FriendSearch'>;
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { nickname, handle, phoneMatchConsent } = useSettings();
+  const { handle, phoneMatchConsent } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
 
   // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움
@@ -330,7 +330,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
-  // 백엔드 사용자 검색 (닉네임/핸들) — 실제 테스터 찾기
+  // 백엔드 사용자 검색 (아이디/핸들) — 실제 테스터 찾기
   const [remoteResults, setRemoteResults] = useState<ContactFriend[]>([]);
   const [searchError, setSearchError] = useState(false); // 검색 실패 ↔ 결과 없음 구분
   useEffect(() => { getMyUserId().then(setMyId); }, []);
@@ -352,9 +352,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         setRemoteResults(
           others.map((p) => ({
             id: p.id,
-            name: p.nickname || p.handle || t('friends.travelerDefault'),
+            name: p.handle || t('friends.travelerDefault'),
             phone: '',
-            initial: (p.nickname || p.handle || '?').slice(0, 1),
+            initial: (p.handle || '?').slice(0, 1),
             username: p.handle || '',
             countries: counts[p.id] ?? 0,
             followers: fcounts[p.id] ?? 0,
@@ -446,7 +446,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
           {/* 오른쪽: 프로필 정보 */}
           <View style={s.profileInfo}>
-            <Text style={s.profileName} numberOfLines={1}>{nickname ? nickname : handle}</Text>
+            <Text style={s.profileName} numberOfLines={1}>{handle}</Text>
             <Text style={s.profileUsername} numberOfLines={1}>@{handle}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{t('friends.countriesVisitedN', { count: myCountryCount })}</Text></View>
           </View>
@@ -514,7 +514,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         }
       >
         {isSearching ? (
-          /* 검색 중에는 연락처 권한과 무관하게 검색 결과(닉네임/핸들)를 보여준다 */
+          /* 검색 중에는 연락처 권한과 무관하게 검색 결과(아이디/핸들)를 보여준다 */
           <>
             <Text style={s.sectionLabel}>{t('friends.searchResults')}</Text>
             {searching ? (

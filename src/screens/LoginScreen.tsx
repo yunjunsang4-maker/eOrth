@@ -29,7 +29,7 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
@@ -42,6 +42,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
 // 전송 전 정규화: 공백 제거 + 소문자 (대소문자 차이로 인한 별도 계정/로그인 실패 방지)
 const normalizeEmail = (v: string) => v.trim().toLowerCase();
+// 아이디(handle) 형식: 영문/숫자/_ 3~30자 (로그인 입력이 아이디인지 판별)
+const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
+const isValidHandle = (v: string) => HANDLE_RE.test(v.trim());
 
 // 인증 메일 재전송 최소 간격(초)
 const RESEND_COOLDOWN_SEC = 30;
@@ -51,7 +54,7 @@ type Props = RootStackScreenProps<'Login'>;
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, resetSettings } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
@@ -114,7 +117,7 @@ export default function LoginScreen({ navigation }: Props) {
     setAuthSuccess(true);
     // 온보딩을 마친 사용자면 로그인(Main), 아니면 온보딩(BasicInfo).
     // ⚠️ DB 트리거가 가입 즉시 빈 프로필 행을 생성하므로 "행 존재"로 판정하면 신규도 기존으로 오판된다.
-    //    → 닉네임이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
+    //    → 생일이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
     let reached = false; // 프로필 조회가 서버에 도달했는가(신규/기존 판정 신뢰 가능 여부)
@@ -129,7 +132,7 @@ export default function LoginScreen({ navigation }: Props) {
         12000,
       );
       reached = status.reached;
-      if (status.profile && status.profile.nickname && status.profile.nickname.trim()) dest = 'Main';
+      if (status.profile && status.profile.birthday && status.profile.birthday.trim()) dest = 'Main';
       if (original) accountProvider = original;
       accountEmail = email;
     } catch {
@@ -163,7 +166,7 @@ export default function LoginScreen({ navigation }: Props) {
   // 로그인 성공 시 탈퇴 신청 여부를 확인한다.
   //  - 유예 기간(30일) 내 → 복구 여부를 묻고, 복구하면 데이터 그대로 Main 진입
   //  - 만료 → 영구 파기 후 새 계정 온보딩 진행
-  // applySignup: 가입 정보(이메일·닉네임 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
+  // applySignup: 가입 정보(이메일·가입 수단 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
   const purgeAllData = () => {
     resetRecords();
     resetSettings();
@@ -265,9 +268,11 @@ export default function LoginScreen({ navigation }: Props) {
     setConfirmFocused(false);
   };
 
+  // 로그인은 이메일 또는 아이디(handle) 허용, 회원가입은 이메일만
+  const identifierValid = isSignup ? isValidEmail(email) : (isValidEmail(email) || isValidHandle(email));
   const canSubmit =
     !submitting &&
-    isValidEmail(email) &&
+    identifierValid &&
     password.length >= 6 &&
     (isSignup ? confirmPassword === password : true);
 
@@ -290,23 +295,25 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    const identifier = email.trim();
     const normEmail = normalizeEmail(email);
-    const applySignup = () => {
-      setSignUpMethod('email');
-      setSignUpEmail(normEmail || 'user@eorth.app');
-    };
+    const usedEmail = isValidEmail(identifier); // 로그인 입력이 이메일인지(아니면 아이디)
     const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
 
     // Supabase 미설정: 기존 모의 로그인 유지
     if (!isSupabaseConfigured) {
-      proceedAfterAuth(applySignup, destination);
+      const applyMock = () => {
+        setSignUpMethod('email');
+        setSignUpEmail(normEmail || 'user@eorth.app');
+      };
+      proceedAfterAuth(applyMock, destination);
       return;
     }
 
     setSubmitting(true);
     const result = isSignup
       ? await signUpWithEmail(normEmail, password)
-      : await signInWithEmail(normEmail, password);
+      : await signInWithIdentifier(identifier, password); // 이메일 또는 아이디로 로그인
     setSubmitting(false);
 
     if (!result.ok) {
@@ -325,6 +332,16 @@ export default function LoginScreen({ navigation }: Props) {
       );
       return;
     }
+    // 아이디로 로그인했으면 실제 이메일을 서버에서 조회해 저장(아이디를 이메일로 저장하지 않도록).
+    let storedEmail: string | null = usedEmail ? normEmail : null;
+    if (!isSignup && !usedEmail) {
+      storedEmail = await getAuthEmail();
+    }
+    const applySignup = () => {
+      setSignUpMethod('email');
+      if (storedEmail) setSignUpEmail(storedEmail);
+      else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
+    };
     proceedAfterAuth(applySignup, destination);
   };
 
@@ -380,26 +397,26 @@ export default function LoginScreen({ navigation }: Props) {
 
           {/* Email / Password form */}
           <View style={styles.form}>
-            {/* Email */}
+            {/* Email (로그인 시엔 이메일 또는 아이디) */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>{t('login.email')}</Text>
+              <Text style={styles.fieldLabel}>{isSignup ? t('login.email') : t('login.emailOrId')}</Text>
               <View style={[styles.inputBox, emailFocused && styles.inputBoxFocused]}>
                 <Text style={styles.inputIcon}>✉️</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="example@email.com"
+                  placeholder={isSignup ? 'example@email.com' : t('login.emailOrIdPlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   value={email}
                   onChangeText={setEmail}
-                  keyboardType="email-address"
+                  keyboardType={isSignup ? 'email-address' : 'default'}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType="emailAddress"
-                  autoComplete="email"
+                  textContentType={isSignup ? 'emailAddress' : 'username'}
+                  autoComplete={isSignup ? 'email' : 'username'}
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passwordRef.current?.focus()}
-                  accessibilityLabel={t('login.emailA11y')}
+                  accessibilityLabel={isSignup ? t('login.emailA11y') : t('login.emailOrIdA11y')}
                   onFocus={() => setEmailFocused(true)}
                   onBlur={() => setEmailFocused(false)}
                 />

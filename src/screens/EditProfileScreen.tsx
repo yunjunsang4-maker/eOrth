@@ -17,8 +17,12 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
 import { useSettings } from '../store/settingsStore';
+import { isHandleAvailable } from '../services/profile';
 
 import type { RootStackScreenProps } from '../navigation/types';
+
+// 아이디(handle) 형식: 영문/숫자/_ 3~30자
+const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -40,8 +44,6 @@ const COLORS = {
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
   const { t, i18n } = useTranslation();
   const {
-    nickname: globalNickname,
-    setNickname: setGlobalNickname,
     handle: globalHandle,
     setHandle: setGlobalHandle,
     bio: globalBio,
@@ -50,6 +52,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     setProfilePhoto: setGlobalProfilePhoto,
     handleLastChanged,
     setHandleLastChanged,
+    setHandleChosen,
   } = useSettings();
 
   const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000;
@@ -57,9 +60,9 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
   const canChangeHandle = !handleLastChanged || (timeSinceLastChange !== null && timeSinceLastChange >= TWO_WEEKS_MS);
 
   const [profilePhoto, setProfilePhoto] = useState<string | null>(globalProfilePhoto);
-  const [nickname, setNickname] = useState(globalNickname);
   const [handle, setHandle] = useState(globalHandle);
   const [bio, setBio] = useState(globalBio);
+  const [saving, setSaving] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -97,24 +100,38 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
     if (!handle.trim()) {
       Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleEmpty'));
       return;
     }
 
     const trimmedHandle = handle.trim();
-    if (trimmedHandle !== globalHandle) {
+    const handleChanged = trimmedHandle !== globalHandle;
+    if (handleChanged) {
       if (!canChangeHandle) {
         Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleChangeBlocked'));
         return;
       }
+      if (!HANDLE_RE.test(trimmedHandle)) {
+        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleInvalid'));
+        return;
+      }
+      // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
+      setSaving(true);
+      const avail = await isHandleAvailable(trimmedHandle);
+      setSaving(false);
+      if (avail === false) {
+        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleTaken'));
+        return;
+      }
       setGlobalHandle(trimmedHandle);
       setHandleLastChanged(Date.now());
+      setHandleChosen(true); // 사용자가 아이디를 직접 변경 → 충돌 시 임의 재생성 금지
     }
 
     // Save to global context
-    setGlobalNickname(nickname.trim());
     setGlobalBio(bio.trim());
     setGlobalProfilePhoto(profilePhoto);
 
@@ -132,7 +149,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('editProfile.title')}</Text>
-        <TouchableOpacity style={s.saveBtn} activeOpacity={0.7} onPress={handleSave}>
+        <TouchableOpacity style={s.saveBtn} activeOpacity={0.7} onPress={handleSave} disabled={saving}>
           <Text style={s.saveText}>{t('editProfile.save')}</Text>
         </TouchableOpacity>
       </View>
@@ -155,7 +172,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
               ) : (
                 <View style={s.avatarPlaceholder}>
                   <Text style={s.avatarText}>
-                    {nickname.trim() ? nickname.trim().charAt(0) : (handle.trim() ? handle.trim().charAt(0) : '?')}
+                    {handle.trim() ? handle.trim().charAt(0) : '?'}
                   </Text>
                 </View>
               )}
@@ -177,23 +194,6 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 <Text style={s.removePhotoText}>{t('editProfile.removePhoto')}</Text>
               </TouchableOpacity>
             )}
-          </View>
-
-          {/* 닉네임 */}
-          <View style={s.fieldGroup}>
-            <Text style={s.fieldLabel}>{t('editProfile.nickname')}</Text>
-            <View style={s.inputWrap}>
-              <TextInput
-                style={s.input}
-                value={nickname}
-                onChangeText={setNickname}
-                placeholder={t('editProfile.nicknamePlaceholder')}
-                placeholderTextColor={COLORS.textMuted}
-                maxLength={20}
-                autoCorrect={false}
-              />
-              <Text style={s.charCount}>{nickname.length}/20</Text>
-            </View>
           </View>
 
           {/* 아이디 */}
@@ -245,8 +245,8 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           </View>
 
           {/* 저장 버튼 (하단 대형) */}
-          <TouchableOpacity style={s.saveLargeBtn} onPress={handleSave} activeOpacity={0.85}>
-            <Text style={s.saveLargeText}>{t('editProfile.saveLarge')}</Text>
+          <TouchableOpacity style={[s.saveLargeBtn, saving && { opacity: 0.6 }]} onPress={handleSave} activeOpacity={0.85} disabled={saving}>
+            <Text style={s.saveLargeText}>{saving ? t('editProfile.checking') : t('editProfile.saveLarge')}</Text>
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>

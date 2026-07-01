@@ -72,6 +72,44 @@ export async function signInWithEmail(email: string, password: string): Promise<
   }
 }
 
+// 이메일 형식 간이 판별(아이디 로그인 분기용) — 로그인 입력이 이메일인지 아이디인지 구분한다.
+const IDENTIFIER_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * 이메일 또는 아이디(handle) + 비밀번호로 로그인 (인스타처럼 아이디 로그인 지원).
+ *
+ * - 이메일이면 기존 경로로 바로 로그인(엣지 함수 불필요).
+ * - 아이디면 Edge Function(login-with-identifier)이 서버(서비스 롤)에서만 이메일을 조회해
+ *   로그인하고 세션 토큰만 반환한다 → 이메일이 클라이언트에 노출되지 않는다.
+ *   (엣지 함수 미배포 시 아이디 로그인은 실패하며 이메일 로그인은 계속 동작한다.)
+ */
+export async function signInWithIdentifier(identifier: string, password: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  const id = identifier.trim();
+  if (IDENTIFIER_EMAIL_RE.test(id)) {
+    return signInWithEmail(id.toLowerCase(), password);
+  }
+  try {
+    const { data, error } = await withTimeout(
+      supabase.functions.invoke('login-with-identifier', { body: { identifier: id, password } }),
+      AUTH_TIMEOUT_MS,
+    );
+    if (error) return { ok: false, error: toKoMessage(error.message || 'Network request failed') };
+    // 계정 존재 여부 노출 방지: 아이디 없음/비번 틀림 모두 동일한 일반 메시지로 처리
+    if (!data?.ok || !data?.session?.access_token || !data?.session?.refresh_token) {
+      return { ok: false, error: '아이디 또는 비밀번호가 올바르지 않아요.' };
+    }
+    const { error: setErr } = await supabase.auth.setSession({
+      access_token: data.session.access_token,
+      refresh_token: data.session.refresh_token,
+    });
+    if (setErr) return { ok: false, error: toKoMessage(setErr.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
 /** 가입 인증 메일 재전송 (Confirm email 활성화 시) */
 export async function resendEmailConfirmation(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };

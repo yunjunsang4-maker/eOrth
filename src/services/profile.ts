@@ -14,7 +14,6 @@ const READ_TIMEOUT_MS = 12000;
 export interface ProfileRow {
   id: string;
   handle: string | null;
-  nickname: string | null;
   emoji: string | null;
   bio: string | null;
   birthday: string | null; // YYYY-MM-DD
@@ -100,7 +99,7 @@ export async function getMyProfileStatus(): Promise<{ reached: boolean; profile:
   }
 }
 
-/** 핸들/닉네임으로 사용자 검색 (친구 찾기용) */
+/** 핸들(아이디)로 사용자 검색 (친구 찾기용) */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
   const q = query.trim();
@@ -110,7 +109,7 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
     const { data } = await supabase
       .from('public_profiles')
       .select('*')
-      .or(`handle.ilike.%${q}%,nickname.ilike.%${q}%`)
+      .ilike('handle', `%${q}%`)
       .limit(20);
     return (data as ProfileRow[]) ?? [];
   } catch {
@@ -204,7 +203,6 @@ export async function deleteMyPhoneHash(): Promise<void> {
 export interface PhoneMatch {
   id: string;
   handle: string | null;
-  nickname: string | null;
   emoji: string | null;
   profile_photo: string | null;
   contactName: string; // 매칭된 연락처의 표시 이름
@@ -225,16 +223,33 @@ export async function findUsersByPhones(
   if (hashes.length === 0) return [];
   try {
     const { data } = await supabase.rpc('find_users_by_phone_hashes', { hashes });
-    return (data as { id: string; handle: string | null; nickname: string | null; emoji: string | null; profile_photo: string | null; phone_hash: string }[] | null ?? []).map((r) => ({
+    return (data as { id: string; handle: string | null; emoji: string | null; profile_photo: string | null; phone_hash: string }[] | null ?? []).map((r) => ({
       id: r.id,
       handle: r.handle,
-      nickname: r.nickname,
       emoji: r.emoji,
       profile_photo: r.profile_photo,
-      contactName: hashToName.get(r.phone_hash) || r.nickname || r.handle || '여행자',
+      contactName: hashToName.get(r.phone_hash) || r.handle || '여행자',
     }));
   } catch {
     return [];
+  }
+}
+
+/**
+ * 아이디(handle) 사용 가능 여부 검사 (온보딩·프로필 편집 중복 방지용).
+ * 반환: true=사용 가능, false=이미 사용 중, null=검사 불가(미설정/오류) → 호출부는 null이면 통과 처리.
+ * (최종 방어는 profiles.handle UNIQUE 제약)
+ */
+export async function isHandleAvailable(handle: string): Promise<boolean | null> {
+  if (!supabase) return null;
+  const h = handle.trim();
+  if (!h) return false;
+  try {
+    const { data, error } = await withTimeout(supabase.rpc('is_handle_available', { h }), READ_TIMEOUT_MS);
+    if (error) return null;
+    return !!data;
+  } catch {
+    return null;
   }
 }
 

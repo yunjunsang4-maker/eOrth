@@ -12,10 +12,12 @@ import {
   Image,
   Modal,
   FlatList,
+  Alert,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
+import { isHandleAvailable } from '../services/profile';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -25,6 +27,9 @@ import { PersonIcon, PencilIcon } from '../components/icons';
 import { COUNTRIES, type Country } from '../constants/countries';
 
 const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
+
+// 아이디(handle) 형식: 영문/숫자/_ 3~30자
+const HANDLE_RE = /^[a-zA-Z0-9_]{3,30}$/;
 
 // 입력 숫자를 YYYY-MM-DD 형태로 자동 정렬 (최대 8자리)
 const formatBirthday = (raw: string) => {
@@ -60,8 +65,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const {
-    nickname: storeNickname,
-    setNickname: setStoreNickname,
     setProfilePhoto,
     profilePhoto,
     homeCountryCode,
@@ -74,9 +77,14 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setLanguage: setStoreLanguage,
     accountPublic: storeAccountPublic,
     setAccountPublic: setStoreAccountPublic,
+    handle: storeHandle,
+    setHandle: setStoreHandle,
+    setHandleChosen,
   } = useSettings();
-  const [nickname, setNickname] = useState(storeNickname || '');
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
+  // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능
+  const [handle, setHandle] = useState(storeHandle || '');
+  const [checkingHandle, setCheckingHandle] = useState(false);
   const [birthday, setBirthday] = useState(storeBirthday || '');
   const [gender, setGender] = useState<Gender>(storeGender || '');
   const [language, setLanguage] = useState<AppLanguage>(storeLanguage || 'ko');
@@ -86,13 +94,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
-
-  // Sync state if storeNickname updates (e.g. from social login)
-  React.useEffect(() => {
-    if (storeNickname) {
-      setNickname(storeNickname);
-    }
-  }, [storeNickname]);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -111,8 +112,23 @@ export default function BasicInfoScreen({ navigation }: Props) {
     }
   };
 
-  const handleFinish = () => {
-    setStoreNickname(nickname.trim());
+  const handleFinish = async () => {
+    if (checkingHandle) return;
+    const h = handle.trim();
+    if (!HANDLE_RE.test(h)) {
+      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.handleInvalid'));
+      return;
+    }
+    // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
+    setCheckingHandle(true);
+    const avail = await isHandleAvailable(h);
+    setCheckingHandle(false);
+    if (avail === false) {
+      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.handleTaken'));
+      return;
+    }
+    setStoreHandle(h);
+    setHandleChosen(true); // 사용자가 온보딩에서 아이디를 확정 → 충돌 시 임의 재생성 금지
     setProfilePhoto(photo);
     setHomeCountryCode(codeOf(selectedCountry));
     setStoreBirthday(birthday);
@@ -122,8 +138,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     navigation.navigate('TravelImport');
   };
 
-  const canContinue =
-    nickname.trim().length > 0 && isValidBirthday(birthday) && gender !== '';
+  const canContinue = HANDLE_RE.test(handle.trim()) && isValidBirthday(birthday) && gender !== '';
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
@@ -159,21 +174,23 @@ export default function BasicInfoScreen({ navigation }: Props) {
             </View>
           </TouchableOpacity>
 
-          {/* Nickname Input */}
+          {/* 아이디 (필수·고유) */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>{t('basicInfo.nickname')}</Text>
+            <Text style={styles.inputLabel}>{t('basicInfo.handle')}</Text>
             <View style={styles.inputWrapper}>
               <TextInput
                 style={styles.input}
-                placeholder={t('basicInfo.nicknamePlaceholder')}
+                placeholder={t('basicInfo.handlePlaceholder')}
                 placeholderTextColor={Colors.textMuted}
-                value={nickname}
-                onChangeText={setNickname}
-                maxLength={16}
+                value={handle}
+                onChangeText={(v) => setHandle(v.replace(/[^a-zA-Z0-9_]/g, ''))}
+                maxLength={30}
                 autoCapitalize="none"
+                autoCorrect={false}
               />
-              <Text style={styles.charCount}>{nickname.length}/16</Text>
+              <Text style={styles.charCount}>{handle.length}/30</Text>
             </View>
+            <Text style={styles.birthdayHint}>{t('basicInfo.handleHint')}</Text>
           </View>
 
           {/* 생일 */}
@@ -298,6 +315,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
             label={t('common.next')}
             onPress={handleFinish}
             disabled={!canContinue}
+            loading={checkingHandle}
             style={styles.doneBtn}
           />
         </View>

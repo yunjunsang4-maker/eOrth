@@ -61,7 +61,7 @@ export default function FriendProfileScreen({
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { nickname: myNick, handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
   const isSelf = !!myHandle && route.params?.handle === myHandle;
   const { records: myRecords } = useRecords();
 
@@ -96,7 +96,7 @@ export default function FriendProfileScreen({
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {
-    name: isSelf ? (myNick || displayUsername) : (profileRow?.nickname || profileRow?.handle || displayUsername),
+    name: isSelf ? (myHandle || displayUsername) : (profileRow?.handle || displayUsername),
     emoji: profileRow?.emoji || '🧳',
     photo: isSelf ? (myPhoto || null) : (profileRow?.profile_photo || null),
     bio: isSelf ? (myBio || '') : (profileRow?.bio || ''),

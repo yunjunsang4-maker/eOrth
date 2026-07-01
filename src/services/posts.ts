@@ -121,7 +121,7 @@ function mapRowToRecord(row: any): TravelRecord {
     comments: row.comments_count ?? rec.comments ?? 0,
     timestamp: rec.timestamp ?? new Date(row.created_at).getTime(),
     user: {
-      name: prof.nickname || prof.handle || rec.user?.name || '여행자',
+      name: prof.handle || rec.user?.name || '여행자',
       emoji: prof.emoji || rec.user?.emoji || '🧳',
       handle: prof.handle || rec.user?.handle || '',
       photo: prof.profile_photo || rec.user?.photo || undefined,
@@ -129,7 +129,7 @@ function mapRowToRecord(row: any): TravelRecord {
   } as TravelRecord;
 }
 
-const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles(handle, nickname, emoji, profile_photo)';
+const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles(handle, emoji, profile_photo)';
 
 // 피드: 남들의 공개/친구 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
 export async function fetchFeed(): Promise<TravelRecord[]> {

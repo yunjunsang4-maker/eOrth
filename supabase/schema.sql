@@ -25,7 +25,6 @@ end; $$;
 create table if not exists public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   handle        text unique,
-  nickname      text,
   emoji         text default '🧳',
   bio           text default '',
   birthday      date,
@@ -37,6 +36,12 @@ create table if not exists public.profiles (
 
 -- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
 alter table public.profiles add column if not exists country text;
+
+-- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
+-- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
+drop view if exists public.public_profiles;
+drop function if exists public.find_users_by_phone_hashes(text[]);
+alter table public.profiles drop column if exists nickname;
 
 drop trigger if exists trg_profiles_updated on public.profiles;
 create trigger trg_profiles_updated before update on public.profiles
@@ -65,10 +70,39 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, nickname, emoji, bio, profile_photo, created_at
+  select id, handle, emoji, bio, profile_photo, created_at
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
+
+-- 아이디(handle) 사용 가능 여부 — 본인(auth.uid()) 제외 중복이 없으면 true.
+-- 온보딩·프로필 편집에서 실시간 중복 검사에 사용(최종 방어는 handle UNIQUE 제약).
+create or replace function public.is_handle_available(h text)
+returns boolean
+language sql security definer set search_path = public as $$
+  select not exists (
+    select 1 from public.profiles
+    where lower(handle) = lower(h) and id <> auth.uid()
+  );
+$$;
+grant execute on function public.is_handle_available(text) to authenticated;
+
+-- 아이디(handle) → 이메일 조회. 아이디 로그인 시 Edge Function(login-with-identifier)이
+-- service_role 로만 호출한다. anon/authenticated 에는 권한을 주지 않아 이메일이 클라이언트에
+-- 노출되지 않는다(공개된 아이디로 타인 이메일 수집 방지).
+create or replace function public.email_for_handle(h text)
+returns text
+language sql security definer set search_path = public as $$
+  select u.email
+  from public.profiles p
+  join auth.users u on u.id = p.id
+  where lower(p.handle) = lower(h)
+  limit 1;
+$$;
+revoke all on function public.email_for_handle(text) from public;
+revoke all on function public.email_for_handle(text) from anon;
+revoke all on function public.email_for_handle(text) from authenticated;
+grant execute on function public.email_for_handle(text) to service_role;
 
 -- 가입 시 빈 프로필 자동 생성 (클라이언트 upsert와 병행, 어느 쪽이든 안전)
 create or replace function public.handle_new_user()
@@ -518,9 +552,9 @@ create policy "user_phones_delete_own" on public.user_phones
 
 -- 연락처 전화 해시 목록으로 가입자 매칭 (caller가 가진 해시만 비교 → 추가 정보 노출 없음)
 create or replace function public.find_users_by_phone_hashes(hashes text[])
-returns table (id uuid, handle text, nickname text, emoji text, profile_photo text, phone_hash text)
+returns table (id uuid, handle text, emoji text, profile_photo text, phone_hash text)
 language sql security definer set search_path = public as $$
-  select pr.id, pr.handle, pr.nickname, pr.emoji, pr.profile_photo, up.phone_hash
+  select pr.id, pr.handle, pr.emoji, pr.profile_photo, up.phone_hash
   from public.user_phones up
   join public.profiles pr on pr.id = up.user_id
   where up.phone_hash = any(hashes)

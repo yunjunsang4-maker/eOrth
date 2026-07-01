@@ -28,6 +28,7 @@ import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } fr
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
+import StarFieldBackground from '../components/StarFieldBackground';
 import {
   FloatingBlobs,
   LiquidPressable,
@@ -1564,7 +1565,6 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   };
 
   const {
-    nickname,
     handle,
     bio,
     profilePhoto,
@@ -1577,7 +1577,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     setRepresentativeBadgeIds: setSelectedBadgeIds,
     badgeEarnedAt,
   } = useSettings();
-  const profileName = nickname ? nickname : handle;
+  const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
 
   // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
   useEffect(() => {
@@ -1742,6 +1742,8 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
   return (
     <View style={styles.safeArea}>
+      {/* 별 배경 (Star Field.svg) — 콘텐츠 뒤에 깔린다 */}
+      <StarFieldBackground />
       {/* 배경 떠다니는 블롭들 */}
       <FloatingBlobs />
 
@@ -1755,7 +1757,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
       />
 
       <ScrollView
-        style={styles.container}
+        style={[styles.container, { backgroundColor: 'transparent' }]}
         contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
@@ -1815,23 +1817,25 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                   </Defs>
                   <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
                 </Svg>
-                {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke) */}
-                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-                  <Defs>
-                    <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                      <Stop stopColor="#00D8F3" />
-                      <Stop offset="1" stopColor="#EC34F7" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
-                </Svg>
+                {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke). */}
+                {/* 기본 프사(사진 미설정)일 때만 표시하고, 실제 프사가 설정되면 그라데이션 링을 제거한다. */}
+                {!profilePhoto && (
+                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Defs>
+                      <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                        <Stop stopColor="#00D8F3" />
+                        <Stop offset="1" stopColor="#EC34F7" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
+                  </Svg>
+                )}
             </View>
           </LiquidPressable>
 
           {/* 이름 · 위치 · 소개 · 통계 */}
           <View style={styles.profileInfo}>
             <Text style={styles.userName}>{profileName}</Text>
-            {nickname ? <Text style={styles.userHandle}>@{handle}</Text> : null}
             <View style={styles.statusRow}>
               <Text style={styles.userLocation}>
                 {(() => {
@@ -2151,11 +2155,11 @@ const styles = StyleSheet.create({
     paddingTop: 2,
   },
   userName: {
-    fontSize: 22,
+    fontSize: 26,
     fontWeight: '800',
     color: COLORS.white,
-    letterSpacing: 0.66,
-    marginBottom: 4,
+    letterSpacing: 0.4,
+    marginBottom: 8,
   },
   userHandle: {
     fontSize: 12,
@@ -2168,7 +2172,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   userLocation: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: '600',
     color: COLORS.white,
   },
@@ -2206,11 +2210,11 @@ const styles = StyleSheet.create({
     left: 9,
   },
   statValue: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800', // 굵게 (Gilroy-Bold 쓰면 그걸로)
     fontFamily: 'Inter_800ExtraBold',
     color: '#FFFFFF',
-    lineHeight: 24,
+    lineHeight: 26,
   },
   statLabel: {
     fontSize: 13,

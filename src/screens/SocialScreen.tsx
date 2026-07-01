@@ -1531,10 +1531,10 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { t } = useTranslation();
-  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
-    ? (globalNickname ? globalNickname : globalHandle)
+    ? globalHandle
     : (item.user.name ? item.user.name : item.user.handle);
 
   return (
@@ -1953,11 +1953,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
     setRefreshing(true);
     try { await refreshFeed(); } finally { setRefreshing(false); }
   };
-  const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
-  
+  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
-      return globalNickname ? globalNickname : globalHandle;
+      return globalHandle;
     }
     return postUser.name ? postUser.name : postUser.handle;
   };

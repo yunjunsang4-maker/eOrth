@@ -20,14 +20,13 @@ const LAST_UID_KEY = '@eorth/lastUserId';
  */
 export function useAccountBoundary(): () => Promise<void> {
   const {
-    nickname,
-    setNickname, setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode, resetSettings,
+    birthday,
+    setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode, resetSettings,
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords } = useRecords();
   const { resetConversations } = useDM();
 
   const applyServerProfile = (p: ProfileRow) => {
-    if (p.nickname) setNickname(p.nickname);
     if (p.handle) setHandle(p.handle);
     if (p.bio) setBio(p.bio);
     if (p.birthday) setBirthday(p.birthday);
@@ -59,8 +58,8 @@ export function useAccountBoundary(): () => Promise<void> {
       } else if (last !== uid) {
         // 새 기기/이 설치 최초 진입(last=null): 로컬을 지우지 않는다(이 사용자의 로컬 초안 보존).
         // 기존 사용자가 새 기기에서 로그인할 때 빈 로컬이 서버 프로필을 덮어쓰는 것을 막기 위해,
-        // 로컬 프로필이 비어 있으면 서버에서 복원한다(닉네임·handle 유실 방지).
-        if (!nickname || !nickname.trim()) {
+        // 로컬 프로필이 비어 있으면 서버에서 복원한다(handle·기본정보 유실 방지).
+        if (!birthday || !birthday.trim()) {
           try {
             const p = await getMyProfile();
             if (p) applyServerProfile(p);

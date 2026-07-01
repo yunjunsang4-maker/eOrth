@@ -243,7 +243,7 @@ interface RecordPersistPayload {
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { nickname, handle, profilePhoto } = useSettings();
+  const { handle, profilePhoto } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -329,7 +329,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
@@ -418,7 +418,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
@@ -486,7 +486,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const markSnapViewed = (id: string) => {
     // 호출 시점 = 현재 사용자가 (자기 것이 아닌) 스냅을 열람 → 열람 표시 + 조회자 기록(중복 방지)
-    const me = { handle, name: nickname || handle, time: Date.now() };
+    const me = { handle, name: handle, time: Date.now() };
     setRecords((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -570,7 +570,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const nc: PostComment = {
       id: `c-${Date.now()}`,
       emoji: '🙂',
-      name: nickname || '나',
+      name: handle || '나',
       photo: profilePhoto || undefined,
       text,
       createdAt: Date.now(),
@@ -763,7 +763,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFollowingUsers(
       list.map((p) => ({
         id: p.id,
-        username: p.handle || p.nickname || p.id,
+        username: p.handle || p.id,
         isAbroad: false,
         currentCountry: null,
         currentCountryFlag: null,
@@ -810,7 +810,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFeedPosts((prev) => sync(prev));
   }, [commentsByPost]);
 
-  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 닉네임/사진 변경 시 과거 글도 최신값으로.
+  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 아이디/사진 변경 시 과거 글도 최신값으로.
   useEffect(() => {
     if (!hydrated) return;
     const photo = profilePhoto || undefined;
@@ -818,13 +818,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       let changed = false;
       const next = prev.map((r) => {
         if (!r.isMyPost) return r;
-        if (r.user.name === nickname && r.user.handle === handle && r.user.photo === photo) return r;
+        if (r.user.name === handle && r.user.handle === handle && r.user.photo === photo) return r;
         changed = true;
-        return { ...r, user: { ...r.user, name: nickname, handle, photo } };
+        return { ...r, user: { ...r.user, name: handle, handle, photo } };
       });
       return changed ? next : prev;
     });
-  }, [hydrated, nickname, handle, profilePhoto]);
+  }, [hydrated, handle, profilePhoto]);
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {

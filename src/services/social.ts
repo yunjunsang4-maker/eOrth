@@ -14,7 +14,6 @@ import type { PostComment } from '../store/recordStore';
 export interface FollowedProfile {
   id: string;
   handle: string | null;
-  nickname: string | null;
   emoji: string | null;
   isMutual: boolean;
 }
@@ -49,7 +48,7 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
   try {
     const { data: following } = await supabase
       .from('follows')
-      .select('following_id, profiles!follows_following_id_fkey(id, handle, nickname, emoji)')
+      .select('following_id, profiles!follows_following_id_fkey(id, handle, emoji)')
       .eq('follower_id', uid);
     if (!following) return [];
     const { data: followers } = await supabase
@@ -62,7 +61,6 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
       return {
         id: row.following_id as string,
         handle: p.handle ?? null,
-        nickname: p.nickname ?? null,
         emoji: p.emoji ?? null,
         isMutual: followerSet.has(row.following_id),
       };
@@ -135,7 +133,7 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
   try {
     const { data } = await supabase
       .from('post_likes')
-      .select('user_id, created_at, profiles!post_likes_user_id_fkey(handle, nickname, emoji, profile_photo)')
+      .select('user_id, created_at, profiles!post_likes_user_id_fkey(handle, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: false });
     if (!data) return [];
@@ -143,7 +141,7 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
       const p = r.profiles ?? {};
       return {
         id: r.user_id,
-        name: p.nickname || p.handle || '여행자',
+        name: p.handle || '여행자',
         handle: p.handle || '',
         emoji: p.emoji || '🙂',
         photo: p.profile_photo || undefined,
@@ -162,7 +160,7 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
     const uid = await getMyUserId();
     const { data } = await supabase
       .from('comments')
-      .select('id, author_id, parent_id, text, created_at, profiles!comments_author_id_fkey(handle, nickname, emoji, profile_photo)')
+      .select('id, author_id, parent_id, text, created_at, profiles!comments_author_id_fkey(handle, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (!data) return [];
@@ -187,7 +185,7 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
       const c: PostComment = {
         id: row.id,
         emoji: p.emoji || '🙂',
-        name: p.nickname || p.handle || '여행자',
+        name: p.handle || '여행자',
         photo: p.profile_photo || undefined,
         text: row.text,
         createdAt: new Date(row.created_at).getTime(),
