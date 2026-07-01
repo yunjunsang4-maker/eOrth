@@ -932,6 +932,8 @@ const ko = {
     unblockShort: '해제',
     followingTitle: '팔로잉',
     noFollowing: '아직 팔로우한 친구가 없어요',
+    followersTitle: '팔로워',
+    noFollowers: '아직 팔로워가 없어요',
     atHome: '거주지에 있어요',
     saveFailToast: '저장에 실패했어요. 로그인 상태를 확인해주세요.',
     phoneOffToast: '연락처 친구 찾기를 껐어요',

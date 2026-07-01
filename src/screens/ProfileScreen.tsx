@@ -1852,7 +1852,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
-              <StatCard value={String(followerCount)} label={t('profile.followers')} />
+              <StatCard value={String(followerCount)} label={t('profile.followers')} onPress={() => navigation.navigate('FollowerList')} />
             </View>
           </View>
         </View>

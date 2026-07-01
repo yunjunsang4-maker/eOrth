@@ -111,6 +111,7 @@ export type RootStackParamList = {
     handle?: string;
   } | undefined;
   FollowingList: undefined;
+  FollowerList: undefined;
   EditProfile: undefined;
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };

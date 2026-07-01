@@ -70,6 +70,37 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
   }
 }
 
+// 나를 팔로우한 사람(팔로워) 목록 + 맞팔 여부 (오류 시 null)
+export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data: followers } = await supabase
+      .from('follows')
+      .select('follower_id, profiles!follows_follower_id_fkey(id, handle, emoji)')
+      .eq('following_id', uid);
+    if (!followers) return [];
+    // 내가 팔로우하는 사람 집합(맞팔 판정)
+    const { data: following } = await supabase
+      .from('follows')
+      .select('following_id')
+      .eq('follower_id', uid);
+    const followingSet = new Set((following ?? []).map((r: any) => r.following_id));
+    return (followers as any[]).map((row) => {
+      const p = row.profiles ?? {};
+      return {
+        id: row.follower_id as string,
+        handle: p.handle ?? null,
+        emoji: p.emoji ?? null,
+        isMutual: followingSet.has(row.follower_id),
+      };
+    });
+  } catch {
+    return null;
+  }
+}
+
 // 특정 사용자의 팔로워 수
 export async function fetchFollowerCount(userId: string): Promise<number> {
   if (!supabase || !userId) return 0;

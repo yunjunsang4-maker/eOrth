@@ -931,6 +931,8 @@ const en = {
     unblockShort: 'Unblock',
     followingTitle: 'Following',
     noFollowing: "You don't follow any friends yet",
+    followersTitle: 'Followers',
+    noFollowers: 'No followers yet',
     atHome: 'At their home country',
     saveFailToast: 'Failed to save. Please check that you are logged in.',
     phoneOffToast: 'Turned off contact friend-finding',
