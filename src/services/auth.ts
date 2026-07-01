@@ -165,6 +165,23 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
   }
 }
 
+/**
+ * 현재 인증된 사용자의 원래 가입 수단(provider) 반환.
+ * 연동(linked) 계정이면 최초 가입 provider가 나온다(app_metadata.provider).
+ * → 소셜 로그인이 기존 이메일 계정의 signUpMethod를 잘못 덮어쓰지 않도록 판별용.
+ */
+export async function getAuthProvider(): Promise<'email' | 'google' | 'apple' | null> {
+  if (!supabase) return null;
+  try {
+    const { data } = await supabase.auth.getUser();
+    const p = data.user?.app_metadata?.provider;
+    if (p === 'email' || p === 'google' || p === 'apple') return p;
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function signOut(): Promise<void> {
   if (!supabase) return;
   try {

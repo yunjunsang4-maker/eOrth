@@ -29,7 +29,7 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider } from '../services/auth';
 import { getMyProfile } from '../services/profile';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -100,17 +100,22 @@ export default function LoginScreen({ navigation }: Props) {
     //    → 닉네임이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
+    // 계정의 원래 가입 수단을 반영한다. 연동 계정이면 최초 provider가 우선(예: 이메일 계정에 구글 연동 시 email 유지).
+    // 조회 실패 시 방금 사용한 provider로 폴백.
+    let accountProvider: 'email' | 'google' | 'apple' = provider;
     try {
       const myProfile = await getMyProfile();
       if (myProfile && myProfile.nickname && myProfile.nickname.trim()) dest = 'Main';
+      const original = await getAuthProvider();
+      if (original) accountProvider = original;
     } catch {
-      // 조회 실패 → 온보딩으로 폴백
+      // 조회 실패 → 온보딩으로 폴백 (accountProvider는 방금 provider)
     }
     setTimeout(() => {
       setSocialLoading(false);
       setSocialModal(null);
       // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      proceedAfterAuth(() => { setSignUpMethod(provider); }, dest);
+      proceedAfterAuth(() => { setSignUpMethod(accountProvider); }, dest);
     }, 600);
   };
 
