@@ -40,7 +40,7 @@ import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
-import { exchangeRecoveryCode } from '../services/auth';
+import { exchangeAuthCode } from '../services/auth';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -75,11 +75,25 @@ export default function AppNavigator() {
         const cm = /[?&]code=([^&]+)/.exec(trimmed);
         const code = cm ? decodeURIComponent(cm[1]) : null;
         if (!code) return;
-        const result = await exchangeRecoveryCode(code);
+        const result = await exchangeAuthCode(code);
         if (!result.ok) return;
         const goReset = () => navigationRef.current?.navigate('ResetPassword');
         if (navigationRef.current?.isReady()) goReset();
         else setTimeout(goReset, 1000);
+        return;
+      }
+
+      // 이메일 가입 인증 딥링크: code 를 세션으로 교환 후 Splash로 → 온보딩/메인 자동 분기
+      if (/eorth:\/\/email-confirm/i.test(trimmed)) {
+        const cm = /[?&]code=([^&]+)/.exec(trimmed);
+        const code = cm ? decodeURIComponent(cm[1]) : null;
+        if (!code) return;
+        const result = await exchangeAuthCode(code);
+        if (!result.ok) return;
+        // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.
+        const goSplash = () => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        if (navigationRef.current?.isReady()) goSplash();
+        else setTimeout(goSplash, 1000);
         return;
       }
 

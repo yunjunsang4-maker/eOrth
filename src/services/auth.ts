@@ -39,7 +39,12 @@ function toKoMessage(raw: string): string {
 export async function signUpWithEmail(email: string, password: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
-    const { data, error } = await supabase.auth.signUp({ email, password });
+    // emailRedirectTo: 인증 메일 링크 클릭 시 앱으로 복귀(eorth://email-confirm)해 자동 로그인/온보딩으로 이어진다.
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: { emailRedirectTo: emailConfirmRedirect },
+    });
     if (error) return { ok: false, error: toKoMessage(error.message) };
     // 이메일 인증이 켜져 있으면 session 없이 user만 반환된다
     if (data.user && !data.session) return { ok: true, needsEmailConfirm: true };
@@ -75,6 +80,9 @@ export async function resendEmailConfirmation(email: string): Promise<AuthResult
 // 비밀번호 재설정 메일 링크가 돌아올 딥링크 (app.json scheme: "eorth" → eorth://reset-password)
 const resetPasswordRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'reset-password' });
 
+// 이메일 가입 인증 메일 링크가 돌아올 딥링크 (eorth://email-confirm)
+const emailConfirmRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'email-confirm' });
+
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
@@ -87,8 +95,8 @@ export async function sendPasswordReset(email: string): Promise<AuthResult> {
   }
 }
 
-/** 재설정 메일 링크의 code 를 세션으로 교환 (성공 시 복구 세션 → 새 비밀번호 설정 가능) */
-export async function exchangeRecoveryCode(code: string): Promise<AuthResult> {
+/** 메일 링크의 code 를 세션으로 교환 (비밀번호 재설정·이메일 인증 공용) */
+export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
