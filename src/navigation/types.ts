@@ -81,6 +81,7 @@ export type RootStackParamList = {
   Splash: undefined;
   AppIntro: undefined;
   Login: undefined;
+  ResetPassword: undefined;
   BasicInfo: undefined;
   TravelImport: undefined;
   ImportPhotoSelect: { trips: ImportTrip[] };

@@ -72,10 +72,38 @@ export async function resendEmailConfirmation(email: string): Promise<AuthResult
   }
 }
 
+// 비밀번호 재설정 메일 링크가 돌아올 딥링크 (app.json scheme: "eorth" → eorth://reset-password)
+const resetPasswordRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'reset-password' });
+
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    // redirectTo 를 앱 딥링크로 지정 → 메일 링크 클릭 시 앱으로 복귀해 새 비밀번호를 설정할 수 있다.
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetPasswordRedirect });
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
+/** 재설정 메일 링크의 code 를 세션으로 교환 (성공 시 복구 세션 → 새 비밀번호 설정 가능) */
+export async function exchangeRecoveryCode(code: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
+/** 새 비밀번호로 변경 (복구 세션 또는 로그인 상태에서 호출) */
+export async function updatePassword(newPassword: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { ok: false, error: toKoMessage(error.message) };
     return { ok: true };
   } catch (e) {

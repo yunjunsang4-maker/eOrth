@@ -5,6 +5,7 @@ import { createStackNavigator } from '@react-navigation/stack';
 import SplashScreen from '../screens/SplashScreen';
 import AppIntroScreen from '../screens/AppIntroScreen';
 import LoginScreen from '../screens/LoginScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
 import TravelImportScreen from '../screens/TravelImportScreen';
 import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
@@ -39,6 +40,7 @@ import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
+import { exchangeRecoveryCode } from '../services/auth';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -64,9 +66,25 @@ const darkTheme = {
 export default function AppNavigator() {
   // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
   useEffect(() => {
-    const handleUrl = (url: string | null) => {
+    const handleUrl = async (url: string | null) => {
       if (!url) return;
-      const m = /eorth:\/\/user\/(.+)$/i.exec(url.trim());
+      const trimmed = url.trim();
+
+      // 비밀번호 재설정 딥링크: code 를 세션으로 교환한 뒤 새 비밀번호 설정 화면으로 이동
+      if (/eorth:\/\/reset-password/i.test(trimmed)) {
+        const cm = /[?&]code=([^&]+)/.exec(trimmed);
+        const code = cm ? decodeURIComponent(cm[1]) : null;
+        if (!code) return;
+        const result = await exchangeRecoveryCode(code);
+        if (!result.ok) return;
+        const goReset = () => navigationRef.current?.navigate('ResetPassword');
+        if (navigationRef.current?.isReady()) goReset();
+        else setTimeout(goReset, 1000);
+        return;
+      }
+
+      // eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
+      const m = /eorth:\/\/user\/(.+)$/i.exec(trimmed);
       if (!m) return;
       const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
       if (!handle || handle === 'unknown') return;
@@ -131,6 +149,7 @@ export default function AppNavigator() {
         <Stack.Screen name="Splash" component={SplashScreen} />
         <Stack.Screen name="AppIntro" component={AppIntroScreen} />
         <Stack.Screen name="Login" component={LoginScreen} />
+        <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         <Stack.Screen name="BasicInfo" component={BasicInfoScreen} />
         <Stack.Screen name="TravelImport" component={TravelImportScreen} />
         <Stack.Screen name="ImportPhotoSelect" component={ImportPhotoSelectScreen} />
