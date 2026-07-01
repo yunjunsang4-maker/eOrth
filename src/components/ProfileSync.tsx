@@ -14,6 +14,9 @@ export default function ProfileSync() {
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
+    // 닉네임이 비어 있으면(온보딩 전 또는 새 기기에서 아직 서버 복원 전) 서버 프로필을 덮어쓰지 않는다.
+    // → 기존 사용자의 서버 프로필(닉네임·handle)이 빈 값으로 초기화되는 것을 방지.
+    if (!nickname || !nickname.trim()) return;
     (async () => {
       // 로컬 file:// 사진은 업로드해 공개 URL로 바꾼다(한 번 올리면 http라 재업로드 안 함)
       let photoUrl: string | null = profilePhoto && /^https?:\/\//.test(profilePhoto) ? profilePhoto : null;

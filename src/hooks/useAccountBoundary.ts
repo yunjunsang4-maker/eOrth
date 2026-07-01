@@ -20,9 +20,10 @@ const LAST_UID_KEY = '@eorth/lastUserId';
  */
 export function useAccountBoundary(): () => Promise<void> {
   const {
+    nickname,
     setNickname, setHandle, setBio, setBirthday, setGender, setProfilePhoto, resetSettings,
   } = useSettings();
-  const { resetRecords, hydrateMyRecords } = useRecords();
+  const { records, resetRecords, hydrateMyRecords } = useRecords();
   const { resetConversations } = useDM();
 
   const applyServerProfile = (p: ProfileRow) => {
@@ -41,12 +42,12 @@ export function useAccountBoundary(): () => Promise<void> {
       if (!uid) return;
       const last = await AsyncStorage.getItem(LAST_UID_KEY);
       if (last && last !== uid) {
-        // 이전 계정 로컬 제거 (오염·오발행·프로필 덮어쓰기 방지)
+        // 계정 전환(다른 계정): 이전 계정 로컬 제거 후 새 계정 데이터를 서버에서 복원.
         resetRecords();
         resetSettings();
         resetConversations();
         await clearPersistedStores().catch(() => {});
-        // 새 계정 데이터를 서버에서 복원 (프로필 먼저 → ProfileSync 빈값 덮어쓰기 방지)
+        // 프로필 먼저 복원 → ProfileSync가 빈값으로 서버를 덮어쓰지 않도록.
         try {
           const p = await getMyProfile();
           if (p) applyServerProfile(p);
@@ -54,6 +55,22 @@ export function useAccountBoundary(): () => Promise<void> {
           // 프로필 복원 실패해도 진행 (다음 편집 시 동기화됨)
         }
         await hydrateMyRecords();
+      } else if (last !== uid) {
+        // 새 기기/이 설치 최초 진입(last=null): 로컬을 지우지 않는다(이 사용자의 로컬 초안 보존).
+        // 기존 사용자가 새 기기에서 로그인할 때 빈 로컬이 서버 프로필을 덮어쓰는 것을 막기 위해,
+        // 로컬 프로필이 비어 있으면 서버에서 복원한다(닉네임·handle 유실 방지).
+        if (!nickname || !nickname.trim()) {
+          try {
+            const p = await getMyProfile();
+            if (p) applyServerProfile(p);
+          } catch {
+            // 복원 실패해도 진행
+          }
+        }
+        // 로컬 기록이 비어 있을 때만(초안 손실 위험 없음) 서버에서 내 기록을 가져온다.
+        if (records.length === 0) {
+          await hydrateMyRecords();
+        }
       }
       await AsyncStorage.setItem(LAST_UID_KEY, uid);
     } catch {
