@@ -33,6 +33,7 @@ import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
+import * as Network from 'expo-network';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -87,6 +88,16 @@ export default function LoginScreen({ navigation }: Props) {
   // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     if (socialLoading) return; // 중복 탭 방지
+    // 네트워크 사전 점검 — 끊긴 상태면 명확히 안내(브라우저가 '취소'로 오표기되는 것 방지)
+    try {
+      const net = await Network.getNetworkStateAsync();
+      if (net.isConnected === false) {
+        Alert.alert(t('login.loginFailed'), t('login.networkError'));
+        return;
+      }
+    } catch {
+      // 점검 실패 시 그냥 진행
+    }
     setSocialModal(provider);
     setSocialLoading(true);
     setAuthSuccess(false);
@@ -94,7 +105,10 @@ export default function LoginScreen({ navigation }: Props) {
     if (!result.ok) {
       setSocialModal(null);
       setSocialLoading(false);
-      Alert.alert(t('login.loginFailed'), result.error || t('login.tryAgain'));
+      // 사용자가 인증창을 닫아 취소한 경우엔 오류 알림을 띄우지 않는다.
+      if (!result.cancelled) {
+        Alert.alert(t('login.loginFailed'), result.error || t('login.tryAgain'));
+      }
       return;
     }
     setAuthSuccess(true);

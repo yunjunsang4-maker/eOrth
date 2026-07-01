@@ -141,6 +141,7 @@ const ko = {
     loginSuccess: '로그인 성공',
     signingIn: '로그인 중...',
     sessionExpired: '세션이 만료되었어요. 다시 로그인해주세요.',
+    networkError: '네트워크 연결을 확인해주세요.',
     newPassword: '새 비밀번호',
     setNewPasswordTitle: '새 비밀번호 설정',
     setNewPasswordDesc: '계정에 사용할 새 비밀번호를 입력해주세요.',

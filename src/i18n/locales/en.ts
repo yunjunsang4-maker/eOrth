@@ -140,6 +140,7 @@ const en = {
     loginSuccess: 'Login successful',
     signingIn: 'Signing in...',
     sessionExpired: 'Your session expired. Please sign in again.',
+    networkError: 'Please check your network connection.',
     newPassword: 'New password',
     setNewPasswordTitle: 'Set a new password',
     setNewPasswordDesc: 'Enter a new password for your account.',

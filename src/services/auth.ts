@@ -21,6 +21,8 @@ export interface AuthResult {
   ok: boolean;
   /** 가입 후 이메일 인증 대기 상태 (Supabase "Confirm email" 활성화 시) */
   needsEmailConfirm?: boolean;
+  /** 사용자가 인증창을 닫아 취소함 (실패 아님 → 오류 알림 생략) */
+  cancelled?: boolean;
   error?: string;
 }
 
@@ -152,7 +154,8 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirect);
     if (result.type !== 'success' || !result.url) {
-      return { ok: false, error: '로그인이 취소되었어요.' };
+      // 사용자가 브라우저를 닫음(취소/dismiss) — 실패가 아니라 취소로 구분한다.
+      return { ok: false, cancelled: true };
     }
     const cbUrl = new URL(result.url);
     // state 불일치(콜백 가로채기 의심)면 코드 교환을 중단한다
