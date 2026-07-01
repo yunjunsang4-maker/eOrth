@@ -150,6 +150,25 @@ export async function fetchFeed(): Promise<TravelRecord[]> {
   }
 }
 
+// 내 글 전체(공개·비공개 포함) — 계정 전환 시 로컬 복원(pull)용. isMyPost=true로 표시.
+export async function fetchMyPosts(): Promise<TravelRecord[]> {
+  if (!supabase) return [];
+  const uid = await getMyUserId();
+  if (!uid) return [];
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(POST_SELECT)
+      .eq('author_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(200);
+    if (error || !data) return [];
+    return (data as any[]).map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
+  } catch {
+    return [];
+  }
+}
+
 // 특정 사용자의 공개 글 (친구 프로필용)
 export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
   if (!supabase || !userId) return [];

@@ -31,6 +31,7 @@ import {
 import { isSupabaseConfigured } from '../services/supabase';
 import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider } from '../services/auth';
 import { getMyProfile } from '../services/profile';
+import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -51,6 +52,7 @@ export default function LoginScreen({ navigation }: Props) {
   const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
+  const runAccountBoundary = useAccountBoundary();
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -141,6 +143,9 @@ export default function LoginScreen({ navigation }: Props) {
 
   // destination: 신규 가입은 온보딩(BasicInfo), 기존 사용자 로그인은 Main
   const proceedAfterAuth = async (applySignup: () => void, destination: 'BasicInfo' | 'Main' = 'BasicInfo') => {
+    // 계정 전환이면 로컬을 비우고 새 계정 데이터를 복원한 뒤 진행
+    await runAccountBoundary();
+
     // 탈퇴 신청 조회 실패 시에도 인증 자체는 성공했으므로 정상 진입시킨다
     let pending: Awaited<ReturnType<typeof getPendingDeletion>> = null;
     try {

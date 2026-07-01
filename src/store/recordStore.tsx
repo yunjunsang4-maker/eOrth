@@ -5,7 +5,7 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
-import { publishPost, updatePost, deletePost, fetchFeed } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
@@ -222,6 +222,8 @@ interface RecordContextType {
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
+  // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
+  hydrateMyRecords: () => Promise<void>;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -741,6 +743,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 내 기록 서버→로컬 복원 (계정 전환 후 pull). 로컬 records를 서버의 내 글로 교체한다.
+  // ⚠️ 로컬-우선 초안까지 대체하므로 계정 전환 직후(로컬을 이미 비운 상태)에만 호출할 것.
+  const hydrateMyRecords = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const mine = await fetchMyPosts();
+      setRecords(mine);
+    } catch {
+      // 실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
+    }
+  }, []);
+
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
   const refreshFollowing = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -818,7 +832,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );
