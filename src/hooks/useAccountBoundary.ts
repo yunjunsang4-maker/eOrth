@@ -21,7 +21,7 @@ const LAST_UID_KEY = '@eorth/lastUserId';
 export function useAccountBoundary(): () => Promise<void> {
   const {
     nickname,
-    setNickname, setHandle, setBio, setBirthday, setGender, setProfilePhoto, resetSettings,
+    setNickname, setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode, resetSettings,
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords } = useRecords();
   const { resetConversations } = useDM();
@@ -32,6 +32,7 @@ export function useAccountBoundary(): () => Promise<void> {
     if (p.bio) setBio(p.bio);
     if (p.birthday) setBirthday(p.birthday);
     if (p.gender === 'male' || p.gender === 'female') setGender(p.gender);
+    if (p.country) setHomeCountryCode(p.country);
     setProfilePhoto(p.profile_photo ?? null);
   };
 

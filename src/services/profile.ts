@@ -16,6 +16,7 @@ export interface ProfileRow {
   bio: string | null;
   birthday: string | null; // YYYY-MM-DD
   gender: string | null;
+  country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
 }
 

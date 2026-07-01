@@ -10,7 +10,7 @@ import { uploadImage } from '../services/media';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { nickname, handle, bio, birthday, gender, profilePhoto, setProfilePhoto, setHandle } = useSettings();
+  const { nickname, handle, bio, birthday, gender, profilePhoto, homeCountryCode, setProfilePhoto, setHandle } = useSettings();
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
@@ -33,6 +33,7 @@ export default function ProfileSync() {
         bio: bio || null,
         birthday: birthday || null,
         gender: gender || null,
+        country: homeCountryCode || null,
         profile_photo: photoUrl,
       });
       const res = await doUpsert(handle || null);
@@ -43,7 +44,7 @@ export default function ProfileSync() {
         if (retry.ok) setHandle(fresh);
       }
     })();
-  }, [entered, nickname, handle, bio, birthday, gender, profilePhoto]);
+  }, [entered, nickname, handle, bio, birthday, gender, profilePhoto, homeCountryCode]);
 
   return null;
 }

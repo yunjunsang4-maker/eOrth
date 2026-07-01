@@ -35,6 +35,9 @@ create table if not exists public.profiles (
   updated_at    timestamptz not null default now()
 );
 
+-- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
+alter table public.profiles add column if not exists country text;
+
 drop trigger if exists trg_profiles_updated on public.profiles;
 create trigger trg_profiles_updated before update on public.profiles
   for each row execute function public.set_updated_at();
