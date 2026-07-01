@@ -30,7 +30,7 @@ import {
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
 import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
-import { getMyProfile } from '../services/profile';
+import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
 import { GoogleIcon, AppleIcon } from '../components/icons';
@@ -103,30 +103,39 @@ export default function LoginScreen({ navigation }: Props) {
     //    → 닉네임이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
+    let reached = false; // 프로필 조회가 서버에 도달했는가(신규/기존 판정 신뢰 가능 여부)
     // 계정의 원래 가입 수단을 반영한다. 연동 계정이면 최초 provider가 우선(예: 이메일 계정에 구글 연동 시 email 유지).
     // 조회 실패 시 방금 사용한 provider로 폴백.
     let accountProvider: 'email' | 'google' | 'apple' = provider;
     let accountEmail: string | null = null;
     try {
       // 병렬 조회 + 타임아웃 (느린/끊긴 네트워크에서 무한 대기 방지)
-      const [myProfile, original, email] = await withTimeout(
-        Promise.all([getMyProfile(), getAuthProvider(), getAuthEmail()]),
+      const [status, original, email] = await withTimeout(
+        Promise.all([getMyProfileStatus(), getAuthProvider(), getAuthEmail()]),
         12000,
       );
-      if (myProfile && myProfile.nickname && myProfile.nickname.trim()) dest = 'Main';
+      reached = status.reached;
+      if (status.profile && status.profile.nickname && status.profile.nickname.trim()) dest = 'Main';
       if (original) accountProvider = original;
       accountEmail = email;
     } catch {
-      // 타임아웃/조회 실패 → 온보딩으로 폴백 (accountProvider는 방금 provider)
+      // 타임아웃/조회 실패 → reached=false 로 처리(아래에서 Splash 재평가)
     }
+    const applyInfo = () => {
+      setSignUpMethod(accountProvider);
+      if (accountEmail) setSignUpEmail(accountEmail);
+    };
     // 성공 표시를 잠깐 보여준 뒤 진행. 네비게이션 완료까지 로딩 인디케이터를 유지한다.
     await new Promise((r) => setTimeout(r, 600));
     try {
+      if (!reached) {
+        // 프로필 판정 불가(일시적 오류) → 온보딩/메인으로 잘못 보내지 않고 Splash에서 재평가한다.
+        applyInfo();
+        navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        return;
+      }
       // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      await proceedAfterAuth(() => {
-        setSignUpMethod(accountProvider);
-        if (accountEmail) setSignUpEmail(accountEmail);
-      }, dest);
+      await proceedAfterAuth(applyInfo, dest);
     } finally {
       setSocialLoading(false);
       setSocialModal(null);

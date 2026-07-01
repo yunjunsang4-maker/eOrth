@@ -80,6 +80,26 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   }
 }
 
+/**
+ * 내 프로필 조회 + 서버 도달 여부.
+ * reached=false 면 네트워크/타임아웃으로 "신규인지 기존인지" 판정 불가 → 호출부가 오라우팅을 피할 수 있다.
+ */
+export async function getMyProfileStatus(): Promise<{ reached: boolean; profile: ProfileRow | null }> {
+  if (!supabase) return { reached: false, profile: null };
+  const uid = await getMyUserId();
+  if (!uid) return { reached: false, profile: null };
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
+    if (error) return { reached: false, profile: null };
+    return { reached: true, profile: (data as ProfileRow) ?? null };
+  } catch {
+    return { reached: false, profile: null };
+  }
+}
+
 /** 핸들/닉네임으로 사용자 검색 (친구 찾기용) */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
