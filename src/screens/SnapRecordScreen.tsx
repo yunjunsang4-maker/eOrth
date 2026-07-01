@@ -12,6 +12,7 @@ import {
   Alert,
   Animated,
   Linking,
+  KeyboardAvoidingView,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
@@ -29,6 +30,9 @@ import { COUNTRIES } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW } = Dimensions.get('window');
+// PIP(작은 전면 사진) 크기 — pipWrapContainer 스타일과 동일
+const PIP_W = SW * 0.28;
+const PIP_H = SW * 0.37;
 
 const C = {
   bg: '#0A0A0F',
@@ -160,6 +164,8 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   const [shooting, setShooting] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
   const [guidePillSize, setGuidePillSize] = useState({ w: 0, h: 0 }); // 안내 알약 SVG 배경 크기
+  const [retakeSize, setRetakeSize] = useState({ w: 0, h: 0 }); // 재촬영 버튼 그라데이션 테두리 SVG 크기
+  const [sendSize, setSendSize] = useState({ w: 0, h: 0 }); // 공유 버튼 그라데이션 테두리 SVG 크기
   const secondShotRef = useRef(false); // 전환 후 2차 촬영 중복 방지
   const savedRef = useRef(false);      // 저장 후 나가기는 확인 건너뜀
 
@@ -511,18 +517,16 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   // ─── 프리뷰 + 캡션 화면 ───
   return (
     <SafeAreaView style={st.previewSafe}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
       {/* 사진 프리뷰 */}
       <View style={st.previewContainer}>
         {/* 후면 사진 (메인) */}
         {backPhoto && (
           <Image source={{ uri: backPhoto }} style={st.previewMain} resizeMode="cover" />
         )}
-
-        {/* 닫기 */}
-        <TouchableOpacity style={st.previewClose} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('snap.closeA11y')}>
-          <GlassFill intensity={22} tint="dark" />
-          <Text style={st.previewCloseText}>✕</Text>
-        </TouchableOpacity>
 
         {/* 전면 사진 (오버레이 PIP) — 탭하면 메인과 전환 */}
         {frontPhoto && backPhoto && (
@@ -546,6 +550,26 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                 <Text style={st.pipSwapIcon}>⇄</Text>
               </View>
             </View>
+            {/* 테두리 글래스 하이라이트 (버튼과 동일) */}
+            <Svg width={PIP_W} height={PIP_H} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <SvgLinearGradient id="pipGlass" x1="0" y1="0" x2="0" y2={String(PIP_H)} gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect
+                x={1}
+                y={1}
+                width={PIP_W - 2}
+                height={PIP_H - 2}
+                rx={15}
+                fill="none"
+                stroke="url(#pipGlass)"
+                strokeWidth={2}
+              />
+            </Svg>
           </TouchableOpacity>
         )}
 
@@ -589,32 +613,114 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
       {/* 하단 버튼 */}
       <View style={st.actionRow}>
-        <TouchableOpacity style={st.retakeBtn} onPress={retake}>
-          <GlassFill intensity={18} tint="dark" />
+        <TouchableOpacity
+          style={st.retakeBtn}
+          onPress={retake}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            if (width !== retakeSize.w || height !== retakeSize.h) setRetakeSize({ w: width, h: height });
+          }}
+        >
+          {retakeSize.w > 0 && (
+            <Svg width={retakeSize.w} height={retakeSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                {/* 흰색 유리 광택 — 밝은 흰색 → 옅은 흰색 */}
+                <SvgLinearGradient id="retakeBorder" x1="0" y1="0" x2={String(retakeSize.w)} y2={String(retakeSize.h)} gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.75" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.15" />
+                </SvgLinearGradient>
+                {/* 유리 하이라이트 — 위(빛) → 아래(사라짐) */}
+                <SvgLinearGradient id="retakeGlass" x1="0" y1="0" x2="0" y2={String(retakeSize.h)} gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.85" />
+                  <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                </SvgLinearGradient>
+              </Defs>
+              <Rect
+                x={0.75}
+                y={0.75}
+                width={retakeSize.w - 1.5}
+                height={retakeSize.h - 1.5}
+                rx={17.25}
+                fill="none"
+                stroke="url(#retakeBorder)"
+                strokeWidth={1.5}
+              />
+              {/* 테두리 글래스 하이라이트 */}
+              <Rect
+                x={0.75}
+                y={0.75}
+                width={retakeSize.w - 1.5}
+                height={retakeSize.h - 1.5}
+                rx={17.25}
+                fill="none"
+                stroke="url(#retakeGlass)"
+                strokeWidth={1.5}
+              />
+            </Svg>
+          )}
           <Text style={st.retakeBtnText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={st.sendBtnWrap} onPress={handleSave} activeOpacity={0.8}>
-          <LinearGradient
-            colors={['#22D3EE', '#A855F7', '#D946EF']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={st.sendBtnGrad}
-          >
-            {/* 유리 스페큘러 하이라이트 (상단) */}
-            <LinearGradient
-              colors={['rgba(255,255,255,0.35)', 'rgba(255,255,255,0)']}
-              start={{ x: 0.5, y: 0 }}
-              end={{ x: 0.5, y: 1 }}
-              style={st.sendSpecular}
-              pointerEvents="none"
-            />
-            <Text style={st.sendBtnText}>⚡ {t('comp2.snapShare')}</Text>
-          </LinearGradient>
+        <TouchableOpacity
+          style={st.sendBtnWrap}
+          onPress={handleSave}
+          activeOpacity={0.8}
+          onLayout={(e) => {
+            const { width, height } = e.nativeEvent.layout;
+            if (width !== sendSize.w || height !== sendSize.h) setSendSize({ w: width, h: height });
+          }}
+        >
+          {/* 배경 #D9D9D9 20% + 마젠타→시안 이중 그라데이션 테두리 (iPhone 17-59) */}
+          {sendSize.w > 0 && (
+            <Svg width={sendSize.w} height={sendSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <SvgLinearGradient id="sendBorder" x1="0" y1="0" x2={String(sendSize.w)} y2={String(sendSize.h)} gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FF14E4" />
+                  <Stop offset="1" stopColor="#00D8F3" />
+                </SvgLinearGradient>
+                {/* 유리 하이라이트 — 위(빛) → 아래(사라짐) */}
+                <SvgLinearGradient id="sendGlass" x1="0" y1="0" x2="0" y2={String(sendSize.h)} gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.8" />
+                  <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                </SvgLinearGradient>
+              </Defs>
+              {/* 바깥 테두리 */}
+              <Rect
+                x={1} y={1}
+                width={sendSize.w - 2} height={sendSize.h - 2}
+                rx={17}
+                fill="none"
+                stroke="url(#sendBorder)"
+                strokeWidth={1.3}
+              />
+              {/* 안쪽 테두리 (간격을 두어 두 겹으로) */}
+              <Rect
+                x={5} y={5}
+                width={sendSize.w - 10} height={sendSize.h - 10}
+                rx={13}
+                fill="none"
+                stroke="url(#sendBorder)"
+                strokeWidth={1.3}
+              />
+              {/* 테두리 글래스 하이라이트 (바깥 테두리) */}
+              <Rect
+                x={1} y={1}
+                width={sendSize.w - 2} height={sendSize.h - 2}
+                rx={17}
+                fill="none"
+                stroke="url(#sendGlass)"
+                strokeWidth={1.3}
+              />
+            </Svg>
+          )}
+          <Text style={st.sendBtnText}>{t('comp2.snapShare')}</Text>
         </TouchableOpacity>
       </View>
 
       {/* 스냅은 영구 보존 (인스타 스토리와 달리 사라지지 않음) */}
       <Text style={st.expireNote}>{t('snap.expireNote')}</Text>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -791,13 +897,12 @@ const st = StyleSheet.create({
   },
   previewBadgeText: { color: '#fff', fontSize: 12, fontWeight: '600' },
 
-  // 캡션
+  // 캡션 — 구분선 없이 심리스 (iPhone 17-59)
   captionArea: {
-    paddingHorizontal: 20, paddingVertical: 12,
-    borderTopWidth: 1, borderTopColor: '#1A1A26',
+    paddingHorizontal: 20, paddingTop: 16, paddingBottom: 12,
   },
   captionInput: {
-    color: C.white, fontSize: 15, lineHeight: 22,
+    color: C.white, fontSize: 16, lineHeight: 22,
     minHeight: 36,
   },
   captionCount: {
@@ -810,26 +915,19 @@ const st = StyleSheet.create({
     paddingBottom: 8,
   },
   retakeBtn: {
-    flex: 1, paddingVertical: 14, borderRadius: 16,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
+    flex: 1, paddingVertical: 14, borderRadius: 18, // Figma 4.723px를 앱 스케일로 반영
+    backgroundColor: 'rgba(217,217,217,0.20)', // #D9D9D933 (20%) — 배경(그라데이션 X)
     alignItems: 'center', justifyContent: 'center',
     overflow: 'hidden',
   },
   retakeBtnText: { color: C.dim, fontSize: 15, fontWeight: '600' },
   sendBtnWrap: {
     flex: 2,
-    borderRadius: 16,
+    borderRadius: 18,
     overflow: 'hidden',
-  },
-  sendBtnGrad: {
-    width: '100%',
     paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  sendSpecular: {
-    position: 'absolute', top: 0, left: 0, right: 0, height: '55%',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(217,217,217,0.20)', // #D9D9D933 (20%) — 배경(그라데이션은 테두리에만)
   },
   sendBtnText: { color: '#fff', fontSize: 16, fontWeight: '800' },
 
