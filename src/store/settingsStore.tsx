@@ -13,6 +13,13 @@ export type GlobeVariant = 'aurora' | 'classic';
 export type Gender = 'male' | 'female' | '';
 // 앱 언어: 한국어 / 영어
 export type AppLanguage = 'ko' | 'en';
+
+// 기본 아이디(handle) 생성. 충돌 확률을 낮추기 위해 엔트로피를 늘린다(랜덤 2회 결합).
+// DB엔 handle UNIQUE 제약이 있어, 드문 충돌 시 ProfileSync가 재생성·재시도한다.
+export function genHandle(): string {
+  const r = () => Math.random().toString(36).slice(2, 8);
+  return `user_${r()}${r()}`;
+}
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
   | 'master' | 'friendTrip' | 'likes' | 'newFollower'
@@ -154,7 +161,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [gender, setGender] = useState<Gender>('');
   const [language, setLanguage] = useState<AppLanguage>('ko'); // 기본 언어: 한국어
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
-  const [handle, setHandle] = useState(() => `user_${Math.random().toString(36).slice(2, 8)}`);
+  const [handle, setHandle] = useState(() => genHandle());
   const [bio, setBio] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [handleLastChanged, setHandleLastChanged] = useState<number | null>(null);
@@ -355,7 +362,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setBirthday('');
     setGender('');
     setLanguage('ko');
-    setHandle(`user_${Math.random().toString(36).slice(2, 8)}`);
+    setHandle(genHandle());
     setBio('');
     setProfilePhoto(null);
     setHandleLastChanged(null);

@@ -30,20 +30,33 @@ export async function getMyUserId(): Promise<string | null> {
   }
 }
 
-/** 내 프로필 생성/갱신 (빈 문자열은 null로 저장) */
-export async function upsertMyProfile(p: Partial<Omit<ProfileRow, 'id'>>): Promise<void> {
-  if (!supabase) return;
+/**
+ * 내 프로필 생성/갱신 (빈 문자열은 null로 저장).
+ * 반환: { ok, handleConflict } — handle UNIQUE 충돌 시 handleConflict=true (호출부가 재생성·재시도).
+ */
+export async function upsertMyProfile(
+  p: Partial<Omit<ProfileRow, 'id'>>
+): Promise<{ ok: boolean; handleConflict: boolean }> {
+  if (!supabase) return { ok: false, handleConflict: false };
   const uid = await getMyUserId();
-  if (!uid) return;
+  if (!uid) return { ok: false, handleConflict: false };
   const row: Record<string, unknown> = { id: uid };
   for (const [k, v] of Object.entries(p)) {
     if (v === undefined) continue;
     row[k] = v === '' ? null : v;
   }
   try {
-    await supabase.from('profiles').upsert(row);
+    const { error } = await supabase.from('profiles').upsert(row);
+    if (error) {
+      // 23505 = unique_violation. handle UNIQUE 충돌이면 호출부가 새 handle로 재시도할 수 있게 알린다.
+      const handleConflict =
+        error.code === '23505' && /handle/i.test(`${error.message} ${error.details ?? ''}`);
+      return { ok: false, handleConflict };
+    }
+    return { ok: true, handleConflict: false };
   } catch {
-    // 네트워크 실패는 무시 (다음 변경 시 재시도)
+    // 네트워크 실패 등은 다음 변경 시 재시도
+    return { ok: false, handleConflict: false };
   }
 }
 

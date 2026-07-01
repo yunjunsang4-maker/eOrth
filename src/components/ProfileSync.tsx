@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useSettings } from '../store/settingsStore';
+import { useSettings, genHandle } from '../store/settingsStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { isSupabaseConfigured } from '../services/supabase';
 import { upsertMyProfile } from '../services/profile';
@@ -10,7 +10,7 @@ import { uploadImage } from '../services/media';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { nickname, handle, bio, birthday, gender, profilePhoto, setProfilePhoto } = useSettings();
+  const { nickname, handle, bio, birthday, gender, profilePhoto, setProfilePhoto, setHandle } = useSettings();
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
@@ -27,14 +27,21 @@ export default function ProfileSync() {
           setProfilePhoto(uploaded); // 로컬도 원격 URL로 교체 → 다음 동기화 때 재업로드 방지
         }
       }
-      upsertMyProfile({
+      const doUpsert = (h: string | null) => upsertMyProfile({
         nickname: nickname || null,
-        handle: handle || null,
+        handle: h,
         bio: bio || null,
         birthday: birthday || null,
         gender: gender || null,
         profile_photo: photoUrl,
-      }).catch(() => {});
+      });
+      const res = await doUpsert(handle || null);
+      if (res.handleConflict) {
+        // 드문 handle 충돌 → 새 handle 재생성 후 1회 재시도. 성공 시 로컬 handle도 갱신.
+        const fresh = genHandle();
+        const retry = await doUpsert(fresh);
+        if (retry.ok) setHandle(fresh);
+      }
     })();
   }, [entered, nickname, handle, bio, birthday, gender, profilePhoto]);
 
