@@ -83,6 +83,26 @@ drop trigger if exists trg_auth_user_created on auth.users;
 create trigger trg_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
 
+-- (선택·수동) 가입 도중 이탈로 남은 '반쪽 계정' 정리.
+-- 이메일 인증을 끝내지 않고 방치된 계정만 대상(OAuth 계정은 인증 완료라 제외), 게시물 있으면 제외.
+-- 관리자/서비스롤이 필요 시 실행하거나 pg_cron으로 스케줄:  select public.cleanup_unconfirmed_accounts();
+-- (auth.users 삭제 → profiles 등 on delete cascade로 함께 정리)
+create or replace function public.cleanup_unconfirmed_accounts(older_than interval default interval '7 days')
+returns integer language plpgsql security definer set search_path = public, auth as $$
+declare
+  n integer := 0;
+begin
+  delete from auth.users u
+  where u.email_confirmed_at is null
+    and u.created_at < now() - older_than
+    and not exists (select 1 from public.posts p where p.author_id = u.id);
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+
+-- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
+revoke all on function public.cleanup_unconfirmed_accounts(interval) from public, anon, authenticated;
+
 -- ============================================================
 -- 2) posts — 여행 기록(게시물). 본문은 JSONB(TravelRecord)로 저장.
 --    사진은 Storage 업로드 후 공개 URL로 치환되어 data 안에 들어간다.
