@@ -15,6 +15,8 @@ import {
   Modal,
   Share,
   RefreshControl,
+  Platform,
+  Linking,
 } from 'react-native';
 
 import QRCode from 'react-native-qrcode-svg';
@@ -24,7 +26,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
-import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, findUsersByPhones, getProfileByHandle } from '../services/profile';
+import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, findUsersByPhones, getProfileByHandle, phoneHash } from '../services/profile';
 import { fetchFriendSuggestions } from '../services/social';
 import { computeTravelStats } from '../utils/badgeRules';
 import { buzz } from '../utils/haptics';
@@ -52,6 +54,10 @@ const C = {
 const userLink = (code: string) => `eorth://user/${code}`;
 const USER_LINK_RE = /eorth:\/\/user\/(.+)$/i; // 대소문자 무관(이전 eOrth 링크 호환)
 
+// 미가입 연락처 초대 링크 — 플레이스홀더. 스토어 출시(또는 Play 내부테스트/TestFlight 배포) 시
+// 실제 URL로 교체하면 초대 메시지에 자동으로 붙는다. 비어 있으면 핸들 안내만 전송.
+const INVITE_URL = '';
+
 // ─────────────────────────────────────────────
 // 연락처 기반 추천 친구 타입
 // ─────────────────────────────────────────────
@@ -67,6 +73,41 @@ interface ContactFriend {
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
 }
 
+
+// ─────────────────────────────────────────────
+// 미가입 연락처(초대 대상) — 기기 로컬에서만 사용, 서버 전송 없음
+// ─────────────────────────────────────────────
+interface InviteContact {
+  key: string;     // 전화번호 해시 (중복 제거용)
+  name: string;
+  phone: string;
+  initial: string;
+}
+
+// 미가입 연락처 초대 행 — 이름·번호 + 초대 버튼(시스템 공유 시트)
+function InviteItem({ item, onInvite }: { item: InviteContact; onInvite: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <View style={s.friendItem}>
+      <View style={[s.avatar, s.inviteAvatar]}>
+        <Text style={s.avatarText}>{item.initial}</Text>
+      </View>
+      <View style={s.friendInfo}>
+        <Text style={s.friendName}>{item.name}</Text>
+        <Text style={s.invitePhone}>{item.phone}</Text>
+      </View>
+      <TouchableOpacity
+        style={s.inviteBtn}
+        onPress={onInvite}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityLabel={t('friends.inviteNameA11y', { name: item.name })}
+      >
+        <Text style={s.inviteBtnText}>{t('friends.inviteBtn')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 // ─────────────────────────────────────────────
 // 가입된 연락처 친구 아이템
@@ -138,6 +179,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
+  // 미가입 연락처(초대 대상) — 로컬 표시 전용. 처음 10명 + 더보기로 렌더 부담 제한
+  const [inviteContacts, setInviteContacts] = useState<InviteContact[]>([]);
+  const [inviteShown, setInviteShown] = useState(10);
   // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
   const { records, followingUsers, followUser, unfollowUser, isBlocked } = useRecords();
   // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
@@ -202,6 +246,19 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       });
       const all = await findUsersByPhones(rawContacts);
       const matches = all.filter((m) => m.id !== uid); // 내 번호가 연락처에 있어도 나 자신은 제외
+
+      // 미가입 연락처 분리 — 가입자로 매칭되지 않은 번호(해시 기준 중복 제거, 유효 번호만)
+      const matchedHashes = new Set(all.map((m) => m.phoneHash));
+      const seen = new Set<string>();
+      const invites: InviteContact[] = [];
+      rawContacts.forEach((c) => {
+        const h = phoneHash(c.phone);
+        if (!h || matchedHashes.has(h) || seen.has(h)) return;
+        seen.add(h);
+        invites.push({ key: h, name: c.name, phone: c.phone, initial: (c.name || '?').slice(0, 1) });
+      });
+      setInviteContacts(invites);
+
       const ids = matches.map((m) => m.id);
       const [counts, fcounts] = await Promise.all([getCountryCounts(ids), getFollowerCounts(ids)]);
       setContactFriends(
@@ -219,6 +276,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       );
     } catch {
       setContactFriends([]);
+      setInviteContacts([]);
     }
   }, []);
 
@@ -359,6 +417,18 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
+  // ── 미가입 연락처 초대 — 해당 번호가 수신인으로 채워진 SMS 작성 화면을 연다.
+  //    전송은 사용자가 직접(번호를 서버·외부로 보내지 않음). 실패 시 공유 시트 폴백.
+  const handleInvite = (c: InviteContact) => {
+    if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
+    const link = INVITE_URL ? `\n${INVITE_URL}` : '';
+    const message = t('friends.inviteMessage', { handle: myCode, link });
+    const sep = Platform.OS === 'ios' ? '&' : '?'; // iOS는 &body=, Android는 ?body=
+    Linking.openURL(`sms:${c.phone}${sep}body=${encodeURIComponent(message)}`).catch(() => {
+      Share.share({ message }).catch(() => {});
+    });
+  };
+
   // 추천 친구 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
   const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
   useEffect(() => {
@@ -460,6 +530,20 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         (f.name.toLowerCase().includes(query.toLowerCase()) ||
          f.username.toLowerCase().includes(query.toLowerCase())))
     : [];
+
+  // 검색 중에는 미가입 연락처도 이름으로 필터해 초대 섹션으로 노출 (최대 5명)
+  const inviteMatches = isSearching
+    ? inviteContacts.filter((c) => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 5)
+    : [];
+
+  // 초대 행 렌더 (기본 목록·검색 필터 공통)
+  const renderInviteRows = (list: InviteContact[]) =>
+    list.map((c, idx) => (
+      <React.Fragment key={c.key}>
+        <InviteItem item={c} onInvite={() => handleInvite(c)} />
+        {idx < list.length - 1 && <View style={s.divider} />}
+      </React.Fragment>
+    ));
 
   // 친구 행 렌더(검색결과·내 연락처·검색 중 연락처 공통) — 중복 제거
   const renderRows = (list: ContactFriend[]) =>
@@ -603,6 +687,14 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                 {renderRows(contactMatches)}
               </>
             )}
+
+            {/* 검색어와 이름이 맞는 미가입 연락처 → 초대 */}
+            {inviteMatches.length > 0 && (
+              <>
+                <Text style={[s.sectionLabel, { marginTop: 24 }]}>{t('friends.inviteSectionTitle')}</Text>
+                {renderInviteRows(inviteMatches)}
+              </>
+            )}
           </>
         ) : loading ? (
           <Text style={s.emptyText}>{t('friends.findingContacts')}</Text>
@@ -648,6 +740,25 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               <Text style={s.emptyText}>{t('friends.noContactFriends')}</Text>
             ) : (
               renderRows(displayList)
+            )}
+
+            {/* 미가입 연락처 초대 — 처음 10명 + 더보기 */}
+            {inviteContacts.length > 0 && (
+              <>
+                <Text style={[s.sectionLabel, { marginTop: 24 }]}>{t('friends.inviteSectionTitle')}</Text>
+                {renderInviteRows(inviteContacts.slice(0, inviteShown))}
+                {inviteContacts.length > inviteShown && (
+                  <TouchableOpacity
+                    style={s.inviteMoreBtn}
+                    onPress={() => setInviteShown((n) => n + 20)}
+                    activeOpacity={0.7}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('friends.inviteMore', { count: inviteContacts.length - inviteShown })}
+                  >
+                    <Text style={s.inviteMoreText}>{t('friends.inviteMore', { count: inviteContacts.length - inviteShown })}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </>
         )}
@@ -986,6 +1097,39 @@ const s = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: C.white,
+  },
+
+  // 미가입 연락처 초대
+  inviteAvatar: {
+    backgroundColor: C.gray,
+  },
+  invitePhone: {
+    fontSize: 12,
+    color: C.dim,
+    marginTop: 2,
+  },
+  inviteBtn: {
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.3)',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  inviteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.accent,
+  },
+  inviteMoreBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    marginTop: 4,
+  },
+  inviteMoreText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: C.accent,
   },
 
   // 팔로우 버튼

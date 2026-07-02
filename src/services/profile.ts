@@ -211,6 +211,7 @@ export interface PhoneMatch {
   emoji: string | null;
   profile_photo: string | null;
   contactName: string; // 매칭된 연락처의 표시 이름
+  phoneHash: string;   // 매칭에 쓰인 해시 — 미가입 연락처(초대 대상) 분리용
 }
 
 /** 연락처(이름+전화) 목록을 해시해 가입자 매칭 (본인 제외) */
@@ -234,6 +235,7 @@ export async function findUsersByPhones(
       emoji: r.emoji,
       profile_photo: r.profile_photo,
       contactName: hashToName.get(r.phone_hash) || r.handle || '여행자',
+      phoneHash: r.phone_hash,
     }));
   } catch {
     return [];
