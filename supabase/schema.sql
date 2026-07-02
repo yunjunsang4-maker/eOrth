@@ -37,6 +37,10 @@ create table if not exists public.profiles (
 -- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
 alter table public.profiles add column if not exists country text;
 
+-- 비공개 계정 — true면 게시물(공개범위 무관)이 승인된 팔로워에게만 보이고,
+-- 팔로우는 요청(follow_requests)→수락을 거쳐야 한다. 정책·요청 테이블은 4-e) 참조.
+alter table public.profiles add column if not exists is_private boolean not null default false;
+
 -- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
 -- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
 drop view if exists public.public_profiles;
@@ -70,7 +74,7 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, emoji, bio, profile_photo, created_at
+  select id, handle, emoji, bio, profile_photo, created_at, is_private
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
@@ -449,38 +453,49 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.is_blocked_between(uuid, uuid) to authenticated;
 
+-- 비공개 계정 여부 (4-e 팔로우 요청과 함께 사용). SECURITY DEFINER로 정책 안에서 일관 조회.
+create or replace function public.is_private_account(uid uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select coalesce((select is_private from public.profiles where id = uid), false);
+$$;
+grant execute on function public.is_private_account(uuid) to authenticated;
+
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
+-- + 비공개 계정의 글은 공개범위와 무관하게 승인된 팔로워(또는 본인)만 볼 수 있다.
 drop policy if exists "posts_select" on public.posts;
 create policy "posts_select" on public.posts
   for select to authenticated using (
     not public.is_blocked_between(auth.uid(), posts.author_id)
     and (
-      visibility = 'public'
-      or author_id = auth.uid()
-      or (visibility = 'friends' and exists (
-        select 1 from public.follows f
-        where f.follower_id = auth.uid() and f.following_id = posts.author_id
-      ))
+      author_id = auth.uid()
+      or (
+        (
+          not public.is_private_account(posts.author_id)
+          or exists (
+            select 1 from public.follows f
+            where f.follower_id = auth.uid() and f.following_id = posts.author_id
+          )
+        )
+        and (
+          visibility = 'public'
+          or (visibility = 'friends' and exists (
+            select 1 from public.follows f
+            where f.follower_id = auth.uid() and f.following_id = posts.author_id
+          ))
+        )
+      )
     )
   );
 
--- comments: 차단한/당한 사용자의 댓글은 숨김 (+ 기존 글 가시성 유지)
+-- comments: 차단한/당한 사용자의 댓글은 숨김. 글 가시성은 posts RLS에 위임 —
+-- 정책 서브쿼리도 posts의 RLS를 그대로 적용받으므로 (비공개 계정·friends·차단 로직 포함)
+-- "내게 보이는 글"의 댓글만 보인다.
 drop policy if exists "comments_select_visible" on public.comments;
 create policy "comments_select_visible" on public.comments
   for select to authenticated using (
     not public.is_blocked_between(auth.uid(), comments.author_id)
-    and exists (
-      select 1 from public.posts p
-      where p.id = comments.post_id
-        and (
-          p.visibility = 'public'
-          or p.author_id = auth.uid()
-          or (p.visibility = 'friends' and exists (
-            select 1 from public.follows f
-            where f.follower_id = auth.uid() and f.following_id = p.author_id
-          ))
-        )
-    )
+    and exists (select 1 from public.posts p where p.id = comments.post_id)
   );
 
 -- DM: 차단 관계면 스레드 생성·메시지 전송·조회를 모두 차단
@@ -507,12 +522,14 @@ create policy "messages_select_participant" on public.dm_messages
       and not public.is_blocked_between(t.user_a, t.user_b)
   ));
 
--- follows: 차단 관계면 팔로우 생성 불가 — 2)의 기존 정책을 차단 검사 포함으로 교체
+-- follows: 차단 관계면 팔로우 생성 불가 — 2)의 기존 정책을 차단 검사 포함으로 교체.
+-- 비공개 계정은 직접 팔로우 불가 — 팔로우 요청 수락(accept_follow_request, SECURITY DEFINER)으로만 생성된다.
 drop policy if exists "follows_insert_own" on public.follows;
 create policy "follows_insert_own" on public.follows
   for insert to authenticated with check (
     follower_id = auth.uid()
     and not public.is_blocked_between(auth.uid(), following_id)
+    and not public.is_private_account(following_id)
   );
 
 -- follows 조회는 본인이 당사자인 행으로 제한 — 임의 사용자의 팔로워/팔로잉 전수 조회 방지.
@@ -544,7 +561,7 @@ create trigger trg_cleanup_follows_on_block after insert on public.blocks
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, emoji, bio, profile_photo, created_at
+  select id, handle, emoji, bio, profile_photo, created_at, is_private
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 
@@ -554,11 +571,15 @@ create or replace view public.public_profiles
 create table if not exists public.notifications (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles(id) on delete cascade,  -- 수신자
-  type text not null check (type in ('follow')),
+  type text not null check (type in ('follow', 'follow_request', 'follow_accept')),
   actor_id uuid not null references public.profiles(id) on delete cascade, -- 행위자
   read boolean not null default false,
   created_at timestamptz not null default now()
 );
+-- 기존 DB의 타입 제약을 확장 (follow_request/follow_accept 추가 — 4-e 팔로우 요청용)
+alter table public.notifications drop constraint if exists notifications_type_check;
+alter table public.notifications add constraint notifications_type_check
+  check (type in ('follow', 'follow_request', 'follow_accept'));
 create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
 -- 같은 (수신자·행위자·타입)당 알림 1건 유지 — 언팔/재팔 반복 스팸 방지
 create unique index if not exists uq_notifications_actor_type on public.notifications (user_id, actor_id, type);
@@ -597,10 +618,12 @@ create trigger trg_notify_on_follow after insert on public.follows
 --   follows 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
 --   SECURITY DEFINER RPC로 집계한다. 이미 팔로우/본인/차단 관계는 제외.
 -- ============================================================
+-- 반환 컬럼 변경(is_private 추가) 시 create or replace가 불가하므로 먼저 drop
+drop function if exists public.friend_suggestions(int);
 create or replace function public.friend_suggestions(max_count int default 10)
-returns table (id uuid, handle text, emoji text, profile_photo text, mutual_count int)
+returns table (id uuid, handle text, emoji text, profile_photo text, is_private boolean, mutual_count int)
 language sql stable security definer set search_path = public as $$
-  select p.id, p.handle, p.emoji, p.profile_photo, count(*)::int as mutual_count
+  select p.id, p.handle, p.emoji, p.profile_photo, p.is_private, count(*)::int as mutual_count
   from public.follows f1
   join public.follows f2 on f2.follower_id = f1.following_id
   join public.profiles p on p.id = f2.following_id
@@ -611,12 +634,92 @@ language sql stable security definer set search_path = public as $$
       where mine.follower_id = auth.uid() and mine.following_id = f2.following_id
     )
     and not public.is_blocked_between(auth.uid(), f2.following_id)
-  group by p.id, p.handle, p.emoji, p.profile_photo
+  group by p.id, p.handle, p.emoji, p.profile_photo, p.is_private
   order by mutual_count desc, max(f2.created_at) desc
   limit greatest(1, least(max_count, 30));
 $$;
 
 grant execute on function public.friend_suggestions(int) to authenticated;
+
+-- ============================================================
+-- 4-e) 비공개 계정 — 팔로우 요청 (요청 → 수락/거절)
+--   비공개 계정(profiles.is_private)은 follows 직접 insert가 정책으로 막히며,
+--   follow_requests에 요청을 남기고 대상이 수락(accept_follow_request)해야 팔로우된다.
+-- ============================================================
+create table if not exists public.follow_requests (
+  requester_id uuid not null references public.profiles(id) on delete cascade,
+  target_id    uuid not null references public.profiles(id) on delete cascade,
+  created_at   timestamptz not null default now(),
+  primary key (requester_id, target_id),
+  check (requester_id <> target_id)
+);
+create index if not exists idx_follow_requests_target on public.follow_requests (target_id, created_at desc);
+
+alter table public.follow_requests enable row level security;
+
+-- 조회: 당사자(요청자=보낸 요청, 대상=받은 요청)만
+drop policy if exists "follow_requests_select_own" on public.follow_requests;
+create policy "follow_requests_select_own" on public.follow_requests
+  for select to authenticated using (requester_id = auth.uid() or target_id = auth.uid());
+
+-- 생성: 요청자 본인 + 차단 관계 아님
+drop policy if exists "follow_requests_insert_own" on public.follow_requests;
+create policy "follow_requests_insert_own" on public.follow_requests
+  for insert to authenticated with check (
+    requester_id = auth.uid()
+    and not public.is_blocked_between(auth.uid(), target_id)
+  );
+
+-- 삭제: 요청자(요청 취소) 또는 대상(거절)
+drop policy if exists "follow_requests_delete_own" on public.follow_requests;
+create policy "follow_requests_delete_own" on public.follow_requests
+  for delete to authenticated using (requester_id = auth.uid() or target_id = auth.uid());
+
+-- 요청 수락 — follows insert는 요청자 명의라 대상이 직접 넣을 수 없으므로(RLS)
+-- SECURITY DEFINER RPC로 처리: 요청 검증 → follows 생성 → 요청 삭제 → 요청자에게 수락 알림.
+create or replace function public.accept_follow_request(requester uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  if not exists (
+    select 1 from public.follow_requests
+    where requester_id = requester and target_id = auth.uid()
+  ) then
+    return; -- 요청 없음(이미 처리됨 등) — 조용히 무시
+  end if;
+  insert into public.follows (follower_id, following_id)
+  values (requester, auth.uid())
+  on conflict do nothing;
+  delete from public.follow_requests
+  where requester_id = requester and target_id = auth.uid(); -- 삭제 트리거가 요청 알림도 정리
+  insert into public.notifications (user_id, type, actor_id)
+  values (requester, 'follow_accept', auth.uid())
+  on conflict (user_id, actor_id, type) do update set created_at = now(), read = false;
+end; $$;
+
+grant execute on function public.accept_follow_request(uuid) to authenticated;
+
+-- 요청 생성 → 대상에게 알림 / 요청 삭제(취소·거절·수락) → 해당 요청 알림 제거
+create or replace function public.notify_on_follow_request()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if (tg_op = 'INSERT') then
+    insert into public.notifications (user_id, type, actor_id)
+    values (new.target_id, 'follow_request', new.requester_id)
+    on conflict (user_id, actor_id, type) do update set created_at = now(), read = false;
+    return new;
+  elsif (tg_op = 'DELETE') then
+    delete from public.notifications
+    where user_id = old.target_id and actor_id = old.requester_id and type = 'follow_request';
+    return old;
+  end if;
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_on_follow_request on public.follow_requests;
+create trigger trg_notify_on_follow_request after insert or delete on public.follow_requests
+  for each row execute function public.notify_on_follow_request();
 
 drop policy if exists "messages_insert_sender" on public.dm_messages;
 create policy "messages_insert_sender" on public.dm_messages
@@ -663,9 +766,9 @@ create policy "user_phones_delete_own" on public.user_phones
 
 -- 연락처 전화 해시 목록으로 가입자 매칭 (caller가 가진 해시만 비교 → 추가 정보 노출 없음)
 create or replace function public.find_users_by_phone_hashes(hashes text[])
-returns table (id uuid, handle text, emoji text, profile_photo text, phone_hash text)
+returns table (id uuid, handle text, emoji text, profile_photo text, is_private boolean, phone_hash text)
 language sql security definer set search_path = public as $$
-  select pr.id, pr.handle, pr.emoji, pr.profile_photo, up.phone_hash
+  select pr.id, pr.handle, pr.emoji, pr.profile_photo, pr.is_private, up.phone_hash
   from public.user_phones up
   join public.profiles pr on pr.id = up.user_id
   where up.phone_hash = any(hashes)

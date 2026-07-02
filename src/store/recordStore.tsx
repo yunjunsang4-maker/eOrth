@@ -13,6 +13,9 @@ import {
   unfollowUser as apiUnfollow,
   blockUser as apiBlock,
   unblockUser as apiUnblock,
+  requestFollow as apiRequestFollow,
+  cancelFollowRequest as apiCancelRequest,
+  fetchMyPendingRequestTargets,
   fetchFollowing,
   likePost,
   unlikePost,
@@ -198,6 +201,11 @@ interface RecordContextType {
   followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
   unfollowUser: (idOrUsername: string) => void;
   setFollowMutual: (idOrUsername: string, isMutual: boolean) => void;
+  // 비공개 계정 팔로우 요청 — 내가 보낸 대기 중 요청의 대상 id (서버 상태, 비영속)
+  pendingFollowRequests: string[];
+  requestFollow: (targetId: string) => void;
+  cancelFollowRequest: (targetId: string) => void;
+  isFollowRequested: (targetId: string) => boolean;
   commentsByPost: Record<string, PostComment[]>;
   addComment: (postId: string, text: string, replyToId?: string) => void;
   toggleCommentLike: (postId: string, commentId: string) => void;
@@ -255,6 +263,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
+  // 비공개 계정에 보낸 대기 중 팔로우 요청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
+  const [pendingFollowRequests, setPendingFollowRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
@@ -582,6 +592,36 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFollowingUsers((prev) => prev.map((f) => (sameFollowed(f, idOrUsername) ? { ...f, isMutual } : f)));
   };
 
+  // ─── 비공개 계정 팔로우 요청 (낙관적 반영 + 서버 동기화, 실패 시 되돌림) ───
+  const requestFollow = (targetId: string) => {
+    if (!targetId) return;
+    setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+    if (isSupabaseConfigured) {
+      apiRequestFollow(targetId).catch((e) => {
+        setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+        notifySyncError(e);
+      });
+    }
+  };
+
+  const cancelFollowRequest = (targetId: string) => {
+    if (!targetId) return;
+    setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+    if (isSupabaseConfigured) {
+      apiCancelRequest(targetId).catch((e) => {
+        setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+        notifySyncError(e);
+      });
+    }
+  };
+
+  // '요청됨' 판정 — 이미 팔로우 중이면(수락됨) 요청 상태로 보지 않는다
+  const isFollowRequested = useCallback(
+    (targetId: string) =>
+      pendingFollowRequests.includes(targetId) && !followingUsers.some((f) => f.id === targetId),
+    [pendingFollowRequests, followingUsers]
+  );
+
   const addComment = (postId: string, text: string, replyToId?: string) => {
     const nc: PostComment = {
       id: `c-${Date.now()}`,
@@ -774,6 +814,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
   const refreshFollowing = useCallback(async () => {
     if (!isSupabaseConfigured) return;
+    // 대기 중 팔로우 요청도 함께 갱신 (오류 시 null → 로컬 유지)
+    fetchMyPendingRequestTargets().then((pending) => {
+      if (pending) setPendingFollowRequests(pending);
+    });
     const list = await fetchFollowing();
     if (!list) return; // 오류 시 로컬 유지(덮어쓰지 않음)
     // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
@@ -875,7 +919,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );

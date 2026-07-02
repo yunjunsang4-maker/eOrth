@@ -47,6 +47,7 @@ interface Noti {
   postId?: string;     // 댓글·좋아요·추억 리마인드 → 게시물 이동용
   userId?: string;     // 팔로우·기록 시작 → 프로필 이동용
   userName?: string;
+  goRequests?: boolean; // 팔로우 요청 알림 → 수락/거절 가능한 팔로워 화면으로 이동
 }
 
 // 게시물로 이동하는 카테고리
@@ -86,17 +87,24 @@ export default function NotificationScreen({ navigation }: Props) {
     (async () => {
       const rows = await fetchFollowNotifications();
       if (!alive) return;
+      // 팔로우/요청/수락별 문구 키 — 모두 '팔로우' 카테고리로 묶어 표시
+      const textKey: Record<string, string> = {
+        follow: 'misc.followText',
+        follow_request: 'misc.followRequestText',
+        follow_accept: 'misc.followAcceptText',
+      };
       setFollowNotis(
         rows.map((n) => ({
           id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
           category: 'follow' as CatKey,
           emoji: n.actorEmoji || '👤',
           avbg: 'rgba(107,33,168,0.35)',
-          text: t('misc.followText', { name: n.actorHandle || t('friends.travelerDefault') }),
+          text: t(textKey[n.type] ?? 'misc.followText', { name: n.actorHandle || t('friends.travelerDefault') }),
           read: n.read,
           createdAt: n.createdAt,
           userId: n.actorId,
           userName: n.actorHandle || '',
+          goRequests: n.type === 'follow_request',
         }))
       );
     })();
@@ -119,6 +127,9 @@ export default function NotificationScreen({ navigation }: Props) {
       } else {
         Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
+    } else if (n.goRequests) {
+      // 팔로우 요청 → 수락/거절할 수 있는 팔로워 화면으로
+      navigation.navigate('FollowerList');
     } else {
       navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '', handle: n.userName || undefined });
     }

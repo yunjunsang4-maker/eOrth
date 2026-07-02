@@ -137,10 +137,93 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
+// ─── 팔로우 요청 (비공개 계정) ───
+// 비공개 계정은 follows 직접 insert가 RLS로 막히므로 요청 → 대상 수락(RPC)을 거친다.
+
+export async function requestFollow(targetId: string): Promise<void> {
+  if (!supabase || !targetId) return;
+  const uid = await getMyUserId();
+  if (!uid || uid === targetId) return;
+  const { error } = await supabase.from('follow_requests').insert({ requester_id: uid, target_id: targetId });
+  if (error && error.code !== '23505') throw error; // 이미 요청(중복)만 정상 취급
+}
+
+export async function cancelFollowRequest(targetId: string): Promise<void> {
+  if (!supabase || !targetId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('follow_requests').delete().eq('requester_id', uid).eq('target_id', targetId);
+  if (error) throw error;
+}
+
+export async function declineFollowRequest(requesterId: string): Promise<void> {
+  if (!supabase || !requesterId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('follow_requests').delete().eq('requester_id', requesterId).eq('target_id', uid);
+  if (error) throw error;
+}
+
+// 수락 — SECURITY DEFINER RPC (요청 검증 → follows 생성 → 요청 삭제 → 수락 알림)
+export async function acceptFollowRequest(requesterId: string): Promise<void> {
+  if (!supabase || !requesterId) return;
+  const { error } = await supabase.rpc('accept_follow_request', { requester: requesterId });
+  if (error) throw error;
+}
+
+// 내가 보낸(대기 중) 요청의 대상 id 목록 — 버튼 '요청됨' 상태 표시용. 오류 시 null(로컬 유지)
+export async function fetchMyPendingRequestTargets(): Promise<string[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase.from('follow_requests').select('target_id').eq('requester_id', uid);
+    if (error) return null;
+    return (data ?? []).map((r: any) => r.target_id as string);
+  } catch {
+    return null;
+  }
+}
+
+// 내가 받은 요청 목록 (요청자 프로필 조인) — 팔로워 화면 상단 표시용
+export interface IncomingFollowRequest {
+  requesterId: string;
+  handle: string | null;
+  emoji: string | null;
+  createdAt: number;
+}
+
+export async function fetchIncomingFollowRequests(): Promise<IncomingFollowRequest[]> {
+  if (!supabase) return [];
+  const uid = await getMyUserId();
+  if (!uid) return [];
+  try {
+    const { data, error } = await supabase
+      .from('follow_requests')
+      .select('requester_id, created_at, profiles!follow_requests_requester_id_fkey(handle, emoji)')
+      .eq('target_id', uid)
+      .order('created_at', { ascending: false });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => {
+      const p = r.profiles ?? {};
+      return {
+        requesterId: r.requester_id as string,
+        handle: p.handle ?? null,
+        emoji: p.emoji ?? null,
+        createdAt: new Date(r.created_at).getTime(),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
 // ─── 알림 (팔로우) ───
 // notifications 테이블은 follows insert 트리거(notify_on_follow)로 채워진다.
+export type FollowNotificationType = 'follow' | 'follow_request' | 'follow_accept';
 export interface FollowNotification {
   id: string;
+  type: FollowNotificationType;
   actorId: string;
   actorHandle: string | null;
   actorEmoji: string | null;
@@ -155,9 +238,9 @@ export async function fetchFollowNotifications(): Promise<FollowNotification[]> 
   try {
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, actor_id, read, created_at, profiles!notifications_actor_id_fkey(handle, emoji)')
+      .select('id, type, actor_id, read, created_at, profiles!notifications_actor_id_fkey(handle, emoji)')
       .eq('user_id', uid)
-      .eq('type', 'follow')
+      .in('type', ['follow', 'follow_request', 'follow_accept'])
       .order('created_at', { ascending: false })
       .limit(50);
     if (error || !data) return [];
@@ -165,6 +248,7 @@ export async function fetchFollowNotifications(): Promise<FollowNotification[]> 
       const p = r.profiles ?? {};
       return {
         id: r.id as string,
+        type: r.type as FollowNotificationType,
         actorId: r.actor_id as string,
         actorHandle: p.handle ?? null,
         actorEmoji: p.emoji ?? null,
@@ -196,6 +280,7 @@ export interface FriendSuggestion {
   handle: string | null;
   emoji: string | null;
   profilePhoto: string | null;
+  isPrivate: boolean;  // 비공개 계정 — 팔로우 대신 요청 흐름
   mutualCount: number; // 나와 함께 아는(내 팔로잉 중 이 사람을 팔로우하는) 수
 }
 
@@ -209,6 +294,7 @@ export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSugge
       handle: r.handle ?? null,
       emoji: r.emoji ?? null,
       profilePhoto: r.profile_photo ?? null,
+      isPrivate: !!r.is_private,
       mutualCount: r.mutual_count ?? 0,
     }));
   } catch {

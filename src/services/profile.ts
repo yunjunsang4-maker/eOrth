@@ -20,6 +20,7 @@ export interface ProfileRow {
   gender: string | null;
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
+  is_private?: boolean | null; // 비공개 계정 — true면 글은 승인된 팔로워만, 팔로우는 요청→수락
 }
 
 /** 현재 로그인 사용자 id (없으면 null) */
@@ -210,6 +211,7 @@ export interface PhoneMatch {
   handle: string | null;
   emoji: string | null;
   profile_photo: string | null;
+  isPrivate: boolean;  // 비공개 계정 — 팔로우 대신 요청 버튼 표시용
   contactName: string; // 매칭된 연락처의 표시 이름
   phoneHash: string;   // 매칭에 쓰인 해시 — 미가입 연락처(초대 대상) 분리용
 }
@@ -229,11 +231,12 @@ export async function findUsersByPhones(
   if (hashes.length === 0) return [];
   try {
     const { data } = await supabase.rpc('find_users_by_phone_hashes', { hashes });
-    return (data as { id: string; handle: string | null; emoji: string | null; profile_photo: string | null; phone_hash: string }[] | null ?? []).map((r) => ({
+    return (data as { id: string; handle: string | null; emoji: string | null; profile_photo: string | null; is_private?: boolean | null; phone_hash: string }[] | null ?? []).map((r) => ({
       id: r.id,
       handle: r.handle,
       emoji: r.emoji,
       profile_photo: r.profile_photo,
+      isPrivate: !!r.is_private,
       contactName: hashToName.get(r.phone_hash) || r.handle || '여행자',
       phoneHash: r.phone_hash,
     }));

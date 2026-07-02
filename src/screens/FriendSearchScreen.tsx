@@ -71,6 +71,7 @@ interface ContactFriend {
   followers?: number;     // 팔로워 수
   photo?: string | null; // 프로필 사진 URL (있으면 아바타로 표시)
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
+  isPrivate?: boolean;    // 비공개 계정 — 팔로우 대신 요청 흐름
 }
 
 
@@ -115,11 +116,13 @@ function InviteItem({ item, onInvite }: { item: InviteContact; onInvite: () => v
 function FriendItem({
   item,
   following,
+  requested,
   onToggle,
   onPress,
 }: {
   item: ContactFriend;
   following: boolean;
+  requested: boolean; // 비공개 계정에 팔로우 요청을 보낸 상태
   onToggle: () => void;
   onPress?: () => void;
 }) {
@@ -147,14 +150,18 @@ function FriendItem({
         </View>
       </View>
       <TouchableOpacity
-        style={[s.followBtn, following && s.followingBtn]}
+        style={[s.followBtn, (following || requested) && s.followingBtn]}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         activeOpacity={0.8}
         accessibilityRole="button"
         accessibilityLabel={following ? t('friends.unfollowNameA11y', { name: item.name }) : t('friends.followNameA11y', { name: item.name })}
       >
-        <Text style={[s.followBtnText, following && s.followingBtnText]}>
-          {following ? t('friends.followingTitle') : t('friends.follow')}
+        <Text style={[s.followBtnText, (following || requested) && s.followingBtnText]}>
+          {following
+            ? t('friends.followingTitle')
+            : requested
+              ? t('friends.requested')
+              : t('friends.follow')}
         </Text>
       </TouchableOpacity>
     </TouchableOpacity>
@@ -183,7 +190,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const [inviteContacts, setInviteContacts] = useState<InviteContact[]>([]);
   const [inviteShown, setInviteShown] = useState(10);
   // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
-  const { records, followingUsers, followUser, unfollowUser, isBlocked } = useRecords();
+  const { records, followingUsers, followUser, unfollowUser, isBlocked, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
   // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
   const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
@@ -272,6 +279,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           followers: fcounts[m.id] ?? 0,
           photo: m.profile_photo,
           emoji: m.emoji,
+          isPrivate: m.isPrivate,
         }))
       );
     } catch {
@@ -344,6 +352,15 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       unfollowUser(followed.id || followed.username);
       bumpFollowerCount(friend.id, -1);
       showToast(t('comp2.toastUnfollowed', { name: friend.name }));
+    } else if (friend.isPrivate) {
+      // 비공개 계정: 팔로우 요청 보내기 ↔ 요청 취소
+      if (isFollowRequested(friend.id)) {
+        cancelFollowRequest(friend.id);
+        showToast(t('friends.requestCanceledToast'));
+      } else {
+        requestFollow(friend.id);
+        showToast(t('friends.requestSentToast', { name: friend.name }));
+      }
     } else {
       followUser({
         id: friend.id,
@@ -460,6 +477,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             followers: fcounts[r.id] ?? 0,
             photo: r.profilePhoto,
             emoji: r.emoji,
+            isPrivate: r.isPrivate,
           }))
         );
       } catch {
@@ -499,6 +517,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             followers: fcounts[p.id] ?? 0,
             photo: p.profile_photo,
             emoji: p.emoji,
+            isPrivate: !!p.is_private,
           }))
         );
       } catch {
@@ -560,6 +579,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         <FriendItem
           item={item}
           following={followingUsers.some((f) => (f.id ? f.id === item.id : f.username === item.username))}
+          requested={isFollowRequested(item.id)}
           onToggle={() => toggleFollow(item)}
           onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
         />

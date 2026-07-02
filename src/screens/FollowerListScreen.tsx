@@ -10,7 +10,14 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { fetchFollowers, type FollowedProfile } from '../services/social';
+import {
+  fetchFollowers,
+  fetchIncomingFollowRequests,
+  acceptFollowRequest,
+  declineFollowRequest,
+  type FollowedProfile,
+  type IncomingFollowRequest,
+} from '../services/social';
 import { useRecords } from '../store/recordStore';
 import { buzz } from '../utils/haptics';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -46,6 +53,9 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   const [followers, setFollowers] = useState<FollowedProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false); // 오류 ↔ "팔로워 없음" 구분
+  // 받은 팔로우 요청 (비공개 계정일 때 쌓임) — 수락/거절
+  const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
+  const [processingId, setProcessingId] = useState<string | null>(null); // 중복 탭 방지
 
   // 팔로워는 로컬 스토어에 없으므로 진입 시 백엔드에서 조회한다.
   useFocusEffect(
@@ -53,15 +63,53 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
       let alive = true;
       (async () => {
         setLoading(true);
-        const list = await fetchFollowers(); // 오류 시 null
+        const [list, reqs] = await Promise.all([
+          fetchFollowers(), // 오류 시 null
+          fetchIncomingFollowRequests(),
+        ]);
         if (!alive) return;
         setLoadError(list === null);
         setFollowers(list ?? []);
+        setRequests(reqs);
         setLoading(false);
       })();
       return () => { alive = false; };
     }, [])
   );
+
+  // 요청 수락 → 요청자가 팔로워가 되므로 팔로워 목록에 즉시 반영
+  const handleAccept = async (req: IncomingFollowRequest) => {
+    if (processingId) return;
+    buzz('light');
+    setProcessingId(req.requesterId);
+    try {
+      await acceptFollowRequest(req.requesterId);
+      setRequests((prev) => prev.filter((r) => r.requesterId !== req.requesterId));
+      setFollowers((prev) =>
+        prev.some((f) => f.id === req.requesterId)
+          ? prev
+          : [{ id: req.requesterId, handle: req.handle, emoji: req.emoji, isMutual: false }, ...prev]
+      );
+    } catch {
+      // 실패 시 목록 유지 — 다시 시도 가능
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDecline = async (req: IncomingFollowRequest) => {
+    if (processingId) return;
+    buzz('light');
+    setProcessingId(req.requesterId);
+    try {
+      await declineFollowRequest(req.requesterId);
+      setRequests((prev) => prev.filter((r) => r.requesterId !== req.requesterId));
+    } catch {
+      // 실패 시 목록 유지
+    } finally {
+      setProcessingId(null);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -83,6 +131,49 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
+          {/* ── 받은 팔로우 요청 (비공개 계정) — 수락/거절 ── */}
+          {requests.length > 0 && (
+            <>
+              <Text style={styles.sectionLabel}>{t('friends.followRequestsN', { count: requests.length })}</Text>
+              {requests.map((req) => {
+                const reqName = req.handle || '여행자';
+                return (
+                  <View key={req.requesterId} style={styles.friendRow}>
+                    <TouchableOpacity
+                      style={styles.requestInfoTap}
+                      activeOpacity={0.75}
+                      onPress={() => navigation.navigate('FriendProfile', { userId: req.requesterId, username: reqName, handle: req.handle ?? undefined })}
+                    >
+                      <View style={styles.avatar}>
+                        <Text style={styles.avatarText}>{req.emoji || reqName[0].toUpperCase()}</Text>
+                      </View>
+                      <Text style={styles.username}>@{reqName}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.acceptBtn, processingId === req.requesterId && styles.btnBusy]}
+                      onPress={() => handleAccept(req)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('friends.acceptRequestA11y', { name: reqName })}
+                    >
+                      <Text style={styles.acceptBtnText}>{t('friends.accept')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.declineBtn, processingId === req.requesterId && styles.btnBusy]}
+                      onPress={() => handleDecline(req)}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('friends.declineRequestA11y', { name: reqName })}
+                    >
+                      <Text style={styles.declineBtnText}>{t('friends.decline')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+              <Text style={styles.sectionLabel}>{t('friends.followersTitle')}</Text>
+            </>
+          )}
+
           {followers.length === 0 && (
             <Text style={styles.emptyText}>
               {loadError ? t('friends.followersLoadError') : t('friends.noFollowers')}
@@ -218,6 +309,48 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: COLORS.white,
+  },
+
+  // ── 받은 팔로우 요청 ──
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.purpleNeon,
+    marginTop: 8,
+    marginBottom: 4,
+  },
+  requestInfoTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  acceptBtn: {
+    backgroundColor: COLORS.purpleDeep,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginLeft: 8,
+  },
+  acceptBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.white,
+  },
+  declineBtn: {
+    backgroundColor: COLORS.card,
+    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    marginLeft: 6,
+  },
+  declineBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textDim,
+  },
+  btnBusy: {
+    opacity: 0.5,
   },
   chevron: {
     fontSize: 22,
