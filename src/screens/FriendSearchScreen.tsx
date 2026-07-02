@@ -751,19 +751,20 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               </>
             )}
 
-            {/* 내 번호 등록(선택) — 등록해야 내 번호를 저장한 친구가 나를 찾을 수 있다 */}
-            {!phoneMatchConsent && (
-              <TouchableOpacity
-                style={s.registerPhoneRow}
-                onPress={() => navigation.navigate('PhoneConsent')}
-                activeOpacity={0.7}
-                accessibilityRole="button"
-                accessibilityLabel={t('friends.registerMyPhoneA11y')}
-              >
-                <Text style={s.registerPhoneText}>📞 {t('friends.registerMyPhone')}</Text>
-                <Text style={s.registerPhoneArrow}>›</Text>
-              </TouchableOpacity>
-            )}
+            {/* 내 번호 등록(선택) — 등록해야 내 번호를 저장한 친구가 나를 찾을 수 있다.
+                등록 후에도 이 행으로 PhoneConsent에 들어가 등록 해제(해시 삭제)가 가능해야 한다 */}
+            <TouchableOpacity
+              style={s.registerPhoneRow}
+              onPress={() => navigation.navigate('PhoneConsent')}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('friends.registerMyPhoneA11y')}
+            >
+              <Text style={s.registerPhoneText}>
+                📞 {phoneMatchConsent ? t('friends.managePhoneReg') : t('friends.registerMyPhone')}
+              </Text>
+              <Text style={s.registerPhoneArrow}>›</Text>
+            </TouchableOpacity>
           </>
         )}
 
