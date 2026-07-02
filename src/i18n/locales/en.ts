@@ -974,6 +974,8 @@ const en = {
     inviteMore: 'Show more ({{count}})',
     inviteNameA11y: 'Invite {{name}}',
     inviteMessage: 'Join me on eOrth, a travel journal app! Sign up and search @{{handle}} to add me 🌍{{link}}',
+    registerMyPhone: 'Register your number so friends can find you',
+    registerMyPhoneA11y: 'Register my number',
     mutualYes: '🤝 Mutual',
     mutualMark: 'Mark as mutual',
     travelRecords: 'Travel records',

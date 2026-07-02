@@ -280,17 +280,25 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }
   }, []);
 
-  // 진입 시: 동의했을 때만 연락처 권한 상태 확인(설명 없는 자동 팝업 방지)
+  // 진입 시: 연락처 권한 확인 — 미결정이면 즉시 OS 권한 요청(BeReal식), 허용되면 바로 매칭.
+  // 번호는 기기에서 해시로만 전송되고 원본은 서버로 보내지 않는다(권한 팝업 외 별도 동의 화면 없음).
   useEffect(() => {
     (async () => {
       try {
-        if (!phoneMatchConsent) { setContactFriends([]); return; }
         const { status } = await Contacts.getPermissionsAsync();
         if (status === 'granted') {
           setContactsPermission('granted');
           await fetchContactsData();
+        } else if (status === 'undetermined') {
+          const res = await Contacts.requestPermissionsAsync();
+          if (res.status === 'granted') {
+            setContactsPermission('granted');
+            await fetchContactsData();
+          } else {
+            setContactsPermission('denied');
+          }
         } else {
-          setContactsPermission(status === 'denied' ? 'denied' : 'pending');
+          setContactsPermission('denied');
         }
       } catch {
         setContactsPermission('denied');
@@ -298,15 +306,15 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         setLoading(false);
       }
     })();
-  }, [fetchContactsData, phoneMatchConsent]);
+  }, [fetchContactsData]);
 
-  // 당겨서 새로고침 — 연락처 매칭 결과 다시 불러오기 (권한 granted + 동의 시에만 의미)
+  // 당겨서 새로고침 — 연락처 매칭 결과 다시 불러오기 (권한 granted 시에만 의미)
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
-    if (!phoneMatchConsent || contactsPermission !== 'granted') return;
+    if (contactsPermission !== 'granted') return;
     setRefreshing(true);
     try { await fetchContactsData(); } finally { setRefreshing(false); }
-  }, [phoneMatchConsent, contactsPermission, fetchContactsData]);
+  }, [contactsPermission, fetchContactsData]);
 
   // 사용자가 직접 버튼을 눌렀을 때만 권한 요청
   const requestContacts = useCallback(async () => {
@@ -504,7 +512,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
   const isSearching = query.trim().length > 0;
   // 연락처 목록을 보는 상태에서만 당겨서 새로고침 활성화(검색·권한/동의 화면에선 비활성)
-  const canPullRefresh = !isSearching && phoneMatchConsent && contactsPermission === 'granted';
+  const canPullRefresh = !isSearching && contactsPermission === 'granted';
   // 차단한 사용자는 검색·연락처 결과에서 제외 (노출·재팔로우 방지)
   const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
   const displayList = (isSearching
@@ -698,24 +706,6 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           </>
         ) : loading ? (
           <Text style={s.emptyText}>{t('friends.findingContacts')}</Text>
-        ) : !phoneMatchConsent ? (
-          /* 전화번호 수집 동의 전 — 동의 화면으로 유도 */
-          <View style={s.permissionCard}>
-            <Text style={s.permissionEmoji}>📇</Text>
-            <Text style={s.permissionTitle}>{t('friends.contactFindTitle')}</Text>
-            <Text style={s.permissionDesc}>
-              {t('friends.contactFindDesc')}
-            </Text>
-            <TouchableOpacity
-              style={s.permissionBtn}
-              activeOpacity={0.85}
-              onPress={() => navigation.navigate('PhoneConsent')}
-              accessibilityRole="button"
-              accessibilityLabel={t('friends.phoneFindSettingA11y')}
-            >
-              <Text style={s.permissionBtnText}>{t('friends.phoneFindBtn')}</Text>
-            </TouchableOpacity>
-          </View>
         ) : contactsPermission !== 'granted' ? (
           <View style={s.permissionCard}>
             <Text style={s.permissionEmoji}>📱</Text>
@@ -759,6 +749,20 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                   </TouchableOpacity>
                 )}
               </>
+            )}
+
+            {/* 내 번호 등록(선택) — 등록해야 내 번호를 저장한 친구가 나를 찾을 수 있다 */}
+            {!phoneMatchConsent && (
+              <TouchableOpacity
+                style={s.registerPhoneRow}
+                onPress={() => navigation.navigate('PhoneConsent')}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('friends.registerMyPhoneA11y')}
+              >
+                <Text style={s.registerPhoneText}>📞 {t('friends.registerMyPhone')}</Text>
+                <Text style={s.registerPhoneArrow}>›</Text>
+              </TouchableOpacity>
             )}
           </>
         )}
@@ -1130,6 +1134,26 @@ const s = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: C.accent,
+  },
+  registerPhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: C.qrCard,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 24,
+  },
+  registerPhoneText: {
+    flex: 1,
+    fontSize: 13,
+    color: C.dim,
+  },
+  registerPhoneArrow: {
+    fontSize: 18,
+    color: C.dim,
+    marginLeft: 8,
   },
 
   // 팔로우 버튼
