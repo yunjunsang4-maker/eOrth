@@ -353,7 +353,7 @@ function FeedCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -558,7 +558,7 @@ function FeedCard({
                   onPress={() => {
                     onOpenMenu(null);
                     confirmBlock(item.user.name, () => {
-                      onBlock(item.user);
+                      onBlock({ ...item.user, id: item.authorId });
                       showMenuToast(t('social.blockedToast'));
                     }, t);
                   }}
@@ -872,7 +872,7 @@ function BlogCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -1015,7 +1015,7 @@ function BlogCard({
                     onPress={() => {
                       onOpenMenu(null);
                       confirmBlock(item.user.name, () => {
-                        onBlock(item.user);
+                        onBlock({ ...item.user, id: item.authorId });
                         showMenuToast(t('social.blockedToast'));
                       }, t);
                     }}
@@ -1168,7 +1168,7 @@ function AlbumCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -1325,7 +1325,7 @@ function AlbumCard({
                   onPress={() => {
                     onOpenMenu(null);
                     confirmBlock(item.user.name, () => {
-                      onBlock(item.user);
+                      onBlock({ ...item.user, id: item.authorId });
                       showMenuToast(t('social.blockedToast'));
                     }, t);
                   }}
@@ -1684,7 +1684,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       ]
     : [
         { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle }) },
+        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
         { key: 'report', icon: '🚨', label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
@@ -2045,7 +2045,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   };
 
   // 차단(확인 다이얼로그 경유)
-  const handleBlock = (user: { name: string; emoji: string; handle?: string }) => {
+  const handleBlock = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
     confirmBlock(user.name, () => { blockUser(user); showToast(t('social.blockedToast')); }, t);
   };
 
@@ -2057,7 +2057,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
   const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
-  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string }) => fnRef.current.handleBlock(user), []);
+  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string; id?: string }) => fnRef.current.handleBlock(user), []);
   const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
   const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
   const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);

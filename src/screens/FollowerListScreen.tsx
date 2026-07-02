@@ -29,6 +29,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
   const insets = useSafeAreaInsets();
   const [followers, setFollowers] = useState<FollowedProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false); // 오류 ↔ "팔로워 없음" 구분
 
   // 팔로워는 로컬 스토어에 없으므로 진입 시 백엔드에서 조회한다.
   useFocusEffect(
@@ -36,8 +37,9 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
       let alive = true;
       (async () => {
         setLoading(true);
-        const list = await fetchFollowers();
+        const list = await fetchFollowers(); // 오류 시 null
         if (!alive) return;
+        setLoadError(list === null);
         setFollowers(list ?? []);
         setLoading(false);
       })();
@@ -66,7 +68,9 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
           showsVerticalScrollIndicator={false}
         >
           {followers.length === 0 && (
-            <Text style={styles.emptyText}>{t('friends.noFollowers')}</Text>
+            <Text style={styles.emptyText}>
+              {loadError ? t('friends.followersLoadError') : t('friends.noFollowers')}
+            </Text>
           )}
           {followers.map((follower, index) => {
             const name = follower.handle || '여행자';
@@ -77,9 +81,9 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                   activeOpacity={0.75}
                   onPress={() => navigation.navigate('FriendProfile', { userId: follower.id, username: name, handle: follower.handle ?? undefined })}
                 >
-                  {/* 아바타 */}
+                  {/* 아바타 — 프로필 이모지 우선, 없으면 이니셜 */}
                   <View style={styles.avatar}>
-                    <Text style={styles.avatarText}>{name[0].toUpperCase()}</Text>
+                    <Text style={styles.avatarText}>{follower.emoji || name[0].toUpperCase()}</Text>
                   </View>
 
                   {/* 정보 */}

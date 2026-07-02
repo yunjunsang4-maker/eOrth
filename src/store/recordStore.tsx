@@ -6,10 +6,13 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
+import { getProfileByHandle } from '../services/profile';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
   unfollowUser as apiUnfollow,
+  blockUser as apiBlock,
+  unblockUser as apiUnblock,
   fetchFollowing,
   likePost,
   unlikePost,
@@ -126,12 +129,14 @@ export interface BlockedUser {
   name: string;
   emoji: string;
   handle?: string; // 차단 신원 키(표시이름 충돌 방지). 과거 저장본엔 없을 수 있어 optional
+  id?: string; // profile uuid — 있으면 서버 blocks 테이블에도 반영(RLS 차단 필터 동작)
   blockedAt: number;
 }
 
 export interface FollowedFriend {
   id: string;
   username: string;
+  emoji?: string; // 프로필 이모지 (목록 아바타 표시용, 서버 프로필에서 채움)
   isAbroad: boolean;
   currentCountry: string | null;
   currentCountryFlag: string | null;
@@ -179,7 +184,7 @@ interface RecordContextType {
   archiveRecord: (id: string) => void;
   unarchiveRecord: (id: string) => void;
   blockedUsers: BlockedUser[];
-  blockUser: (user: { name: string; emoji: string; handle?: string }) => void;
+  blockUser: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   unblockUser: (nameOrHandle: string) => void;
   isBlocked: (user: { name?: string; handle?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
@@ -501,7 +506,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const blockUser = (user: { name: string; emoji: string; handle?: string }) => {
+  const blockUser = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
     setBlockedUsers((prev) => {
       // 신원은 handle(양쪽에 있으면) 우선, 없으면 표시이름으로 중복 판정
       const dup = prev.some((b) =>
@@ -510,10 +515,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
+    // 차단하면 팔로잉에서도 제거 — 화면별 처리 불일치 방지 (팔로우 안 했으면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (팔로잉 항목의 username은 handle과 동일 값)
+    const followed = followingUsers.find((f) =>
+      (!!user.id && f.id === user.id) ||
+      (!!f.username && (f.username === user.handle || f.username === user.name))
+    );
+    if (followed) unfollowUser(followed.id || followed.username);
+    // uuid를 알 때만 서버 blocks에 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함
+    if (isSupabaseConfigured && user.id) apiBlock(user.id).catch(notifySyncError);
   };
 
   const unblockUser = (nameOrHandle: string) => {
+    const target = blockedUsers.find((b) => b.name === nameOrHandle || b.handle === nameOrHandle);
     setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
+    if (isSupabaseConfigured && target?.id) apiUnblock(target.id).catch(notifySyncError);
   };
 
   // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
@@ -760,17 +776,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured) return;
     const list = await fetchFollowing();
     if (!list) return; // 오류 시 로컬 유지(덮어쓰지 않음)
-    setFollowingUsers(
-      list.map((p) => ({
-        id: p.id,
-        username: p.handle || p.id,
-        isAbroad: false,
-        currentCountry: null,
-        currentCountryFlag: null,
-        followedAt: 0,
-        isMutual: p.isMutual,
-      }))
-    );
+    // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
+    // isMutual은 서버(양방향 follows)가 정확하므로 항상 서버 값을 쓴다.
+    setFollowingUsers((prev) => {
+      const byId = new Map(prev.map((f) => [f.id, f]));
+      return list.map((p) => {
+        const ex = byId.get(p.id);
+        return {
+          id: p.id,
+          username: p.handle || p.id,
+          emoji: p.emoji ?? ex?.emoji ?? undefined,
+          isAbroad: ex?.isAbroad ?? false,
+          currentCountry: ex?.currentCountry ?? null,
+          currentCountryFlag: ex?.currentCountryFlag ?? null,
+          followedAt: ex?.followedAt ?? 0,
+          isMutual: p.isMutual,
+        };
+      });
+    });
   }, []);
 
   // 앱 시작/복원 후 피드·팔로잉 1회 로드
@@ -780,6 +803,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       refreshFollowing();
     }
   }, [hydrated, refreshFeed, refreshFollowing]);
+
+  // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
+  // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
+  const blockBackfillRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured || blockBackfillRef.current) return;
+    blockBackfillRef.current = true;
+    const targets = blockedUsers.filter((b) => !b.id && b.handle);
+    if (targets.length === 0) return;
+    (async () => {
+      for (const b of targets) {
+        const p = await getProfileByHandle(b.handle!);
+        if (!p?.id) continue; // 탈퇴/핸들 변경 등 — 로컬 차단만 유지
+        setBlockedUsers((prev) =>
+          prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+        );
+        apiBlock(p.id).catch(() => {}); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+      }
+    })();
+  }, [hydrated, blockedUsers]);
 
   // 예약 발행: 예약 시각이 지났는데 아직 백엔드에 안 올라간 글을 발행
   useEffect(() => {

@@ -507,6 +507,47 @@ create policy "messages_select_participant" on public.dm_messages
       and not public.is_blocked_between(t.user_a, t.user_b)
   ));
 
+-- follows: 차단 관계면 팔로우 생성 불가 — 2)의 기존 정책을 차단 검사 포함으로 교체
+drop policy if exists "follows_insert_own" on public.follows;
+create policy "follows_insert_own" on public.follows
+  for insert to authenticated with check (
+    follower_id = auth.uid()
+    and not public.is_blocked_between(auth.uid(), following_id)
+  );
+
+-- follows 조회는 본인이 당사자인 행으로 제한 — 임의 사용자의 팔로워/팔로잉 전수 조회 방지.
+-- (팔로워 '수'는 follower_counts RPC(SECURITY DEFINER)가 제공하고, posts/comments/DM 정책의
+--  follows 서브쿼리는 모두 f.follower_id = auth.uid() 행만 참조하므로 이 제한과 호환된다.)
+drop policy if exists "follows_select_all" on public.follows;
+drop policy if exists "follows_select_own" on public.follows;
+create policy "follows_select_own" on public.follows
+  for select to authenticated using (
+    follower_id = auth.uid() or following_id = auth.uid()
+  );
+
+-- 차단 시 양방향 팔로우 관계를 서버에서 정리 — 클라이언트는 '내 팔로우'만 지울 수 있고
+-- '상대→나' 방향은 RLS 때문에 못 지우므로 트리거(SECURITY DEFINER)로 함께 삭제한다.
+create or replace function public.cleanup_follows_on_block()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.follows
+   where (follower_id = new.blocker_id and following_id = new.blocked_id)
+      or (follower_id = new.blocked_id and following_id = new.blocker_id);
+  return new;
+end; $$;
+
+drop trigger if exists trg_cleanup_follows_on_block on public.blocks;
+create trigger trg_cleanup_follows_on_block after insert on public.blocks
+  for each row execute function public.cleanup_follows_on_block();
+
+-- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
+-- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
+create or replace view public.public_profiles
+  with (security_invoker = true) as
+  select id, handle, emoji, bio, profile_photo, created_at
+  from public.profiles
+  where not public.is_blocked_between(auth.uid(), id);
+
 drop policy if exists "messages_insert_sender" on public.dm_messages;
 create policy "messages_insert_sender" on public.dm_messages
   for insert to authenticated with check (

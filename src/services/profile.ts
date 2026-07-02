@@ -99,22 +99,22 @@ export async function getMyProfileStatus(): Promise<{ reached: boolean; profile:
   }
 }
 
-/** 핸들(아이디)로 사용자 검색 (친구 찾기용) */
+/** 핸들(아이디)로 사용자 검색 (친구 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
-  const q = query.trim();
+  // '@아이디' 형태 입력 허용 (QR 스캔과 동일하게 앞의 @ 제거)
+  const q = query.trim().replace(/^@/, '');
   if (!q) return [];
-  try {
-    // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
-    const { data } = await supabase
-      .from('public_profiles')
-      .select('*')
-      .ilike('handle', `%${q}%`)
-      .limit(20);
-    return (data as ProfileRow[]) ?? [];
-  } catch {
-    return [];
-  }
+  // ilike 와일드카드(%·_)·이스케이프 문자를 리터럴로 취급 (검색어 오작동 방지)
+  const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
+  const { data, error } = await supabase
+    .from('public_profiles')
+    .select('*')
+    .ilike('handle', `%${escaped}%`)
+    .limit(20);
+  if (error) throw error;
+  return (data as ProfileRow[]) ?? [];
 }
 
 /**
@@ -258,6 +258,19 @@ export async function getProfileById(id: string): Promise<ProfileRow | null> {
   if (!supabase) return null;
   try {
     const { data } = await supabase.from('public_profiles').select('*').eq('id', id).maybeSingle();
+    return (data as ProfileRow) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 핸들 정확 일치로 프로필 조회 (차단 항목 uuid 백필 등) — 없음/실패 시 null */
+export async function getProfileByHandle(handle: string): Promise<ProfileRow | null> {
+  if (!supabase) return null;
+  const h = handle.trim();
+  if (!h) return null;
+  try {
+    const { data } = await supabase.from('public_profiles').select('*').eq('handle', h).maybeSingle();
     return (data as ProfileRow) ?? null;
   } catch {
     return null;

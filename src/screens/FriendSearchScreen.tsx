@@ -138,13 +138,14 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   }, [route.params?.initialQuery, route.params?.ts]);
   const [contactFriends, setContactFriends] = useState<ContactFriend[]>([]);
   // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
-  const { records, followingUsers, followUser, unfollowUser } = useRecords();
+  const { records, followingUsers, followUser, unfollowUser, isBlocked } = useRecords();
   // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
   const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
   const [contactsPermission, setContactsPermission] = useState<'granted' | 'denied' | 'pending'>('pending');
   const [loading, setLoading] = useState(true);
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
-  // 본인 제외용 (연락처·검색 결과 공통) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
+  // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
+  // (연락처 매칭은 fetchContactsData 안에서 getMyUserId를 직접 조회)
   const [myId, setMyId] = useState<string | null>(null);
 
   // 팔로우/검색 피드백 토스트
@@ -183,6 +184,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 실제 연락처를 읽어 전화번호 해시로 가입자 매칭 (권한 granted + 동의 상태에서만 호출)
   const fetchContactsData = useCallback(async () => {
     try {
+      // myId state를 기다리지 않고 직접 조회 — state 로드 전 실행돼 본인이 결과에 섞이거나
+      // myId 도착 후 연락처 읽기+RPC가 통째로 재실행되던 문제 방지
+      const uid = await getMyUserId();
       const { data } = await Contacts.getContactsAsync({
         fields: [Contacts.Fields.PhoneNumbers, Contacts.Fields.Name],
         sort: Contacts.SortTypes.LastName,
@@ -196,7 +200,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         });
       });
       const all = await findUsersByPhones(rawContacts);
-      const matches = all.filter((m) => m.id !== myId); // 내 번호가 연락처에 있어도 나 자신은 제외
+      const matches = all.filter((m) => m.id !== uid); // 내 번호가 연락처에 있어도 나 자신은 제외
       const ids = matches.map((m) => m.id);
       const [counts, fcounts] = await Promise.all([getCountryCounts(ids), getFollowerCounts(ids)]);
       setContactFriends(
@@ -215,7 +219,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     } catch {
       setContactFriends([]);
     }
-  }, [myId]);
+  }, []);
 
   // 진입 시: 동의했을 때만 연락처 권한 상태 확인(설명 없는 자동 팝업 방지)
   useEffect(() => {
@@ -255,7 +259,15 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       setContactsPermission('denied');
       showPermissionDeniedAlert(t('permission.contacts'));
     }
-  }, [fetchContactsData]);
+  }, [fetchContactsData, t]);
+
+  // 팔로우/언팔 시 목록에 표시된 팔로워 수 낙관적 반영 (서버 재조회 없이 ±1)
+  const bumpFollowerCount = (id: string, delta: number) => {
+    const adjust = (list: ContactFriend[]) =>
+      list.map((f) => (f.id === id ? { ...f, followers: Math.max(0, (f.followers ?? 0) + delta) } : f));
+    setContactFriends(adjust);
+    setRemoteResults(adjust);
+  };
 
   const toggleFollow = (friend: ContactFriend) => {
     buzz('light');
@@ -263,6 +275,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     const followed = followingUsers.find((f) => (f.id ? f.id === friend.id : f.username === friend.username));
     if (followed) {
       unfollowUser(followed.id || followed.username);
+      bumpFollowerCount(friend.id, -1);
       showToast(t('comp2.toastUnfollowed', { name: friend.name }));
     } else {
       followUser({
@@ -272,6 +285,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         currentCountry: null,
         currentCountryFlag: null,
       });
+      bumpFollowerCount(friend.id, +1);
       showToast(t('comp2.toastFollowed', { name: friend.name }));
     }
   };
@@ -374,19 +388,23 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const isSearching = query.trim().length > 0;
   // 연락처 목록을 보는 상태에서만 당겨서 새로고침 활성화(검색·권한/동의 화면에선 비활성)
   const canPullRefresh = !isSearching && phoneMatchConsent && contactsPermission === 'granted';
-  const displayList = isSearching
+  // 차단한 사용자는 검색·연락처 결과에서 제외 (노출·재팔로우 방지)
+  const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
+  const displayList = (isSearching
     ? (isSupabaseConfigured
         ? remoteResults
         : contactFriends.filter(f =>
             f.name.toLowerCase().includes(query.toLowerCase()) ||
             f.username.toLowerCase().includes(query.toLowerCase())
           ))
-    : contactFriends;
+    : contactFriends
+  ).filter(notBlocked);
 
   // 검색 중에도 내 연락처 매칭을 함께 노출 (Supabase 모드에서만 — 미설정 모드는 검색결과 자체가 연락처라 중복)
   const remoteIds = new Set(remoteResults.map((r) => r.id));
   const contactMatches = isSearching && isSupabaseConfigured
     ? contactFriends.filter(f =>
+        notBlocked(f) &&
         !remoteIds.has(f.id) &&
         (f.name.toLowerCase().includes(query.toLowerCase()) ||
          f.username.toLowerCase().includes(query.toLowerCase())))
@@ -574,7 +592,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           </View>
         ) : (
           <>
-            <Text style={s.sectionLabel}>{t('friends.eorthUsersN', { count: contactFriends.length })}</Text>
+            <Text style={s.sectionLabel}>{t('friends.eorthUsersN', { count: displayList.length })}</Text>
             {displayList.length === 0 ? (
               <Text style={s.emptyText}>{t('friends.noContactFriends')}</Text>
             ) : (

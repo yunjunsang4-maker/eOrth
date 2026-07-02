@@ -933,6 +933,7 @@ const en = {
     noFollowing: "You don't follow any friends yet",
     followersTitle: 'Followers',
     noFollowers: 'No followers yet',
+    followersLoadError: 'Could not load followers.\nPlease check your network',
     atHome: 'At their home country',
     saveFailToast: 'Failed to save. Please check that you are logged in.',
     phoneOffToast: 'Turned off contact friend-finding',
