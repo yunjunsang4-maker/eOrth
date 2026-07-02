@@ -63,9 +63,6 @@ interface SettingsContextType {
   setArrivalDetect: (v: boolean) => void;
   currentVisitedCountryCode: string;
   setCurrentVisitedCountryCode: (v: string) => void;
-  // 연락처 기반 친구 찾기(전화번호 해시 매칭) 동의 여부 — 영속
-  phoneMatchConsent: boolean;
-  setPhoneMatchConsent: (v: boolean) => void;
   // 소유권이 인증된 네이버 블로그 ID 목록(소문자) — 인증된 블로그 글만 가져오기 허용
   verifiedNaverBlogIds: string[];
   addVerifiedNaverBlogId: (blogId: string) => void;
@@ -129,7 +126,6 @@ interface SettingsPersistPayload {
   signUpEmail: string;
   arrivalDetect: boolean;
   currentVisitedCountryCode: string;
-  phoneMatchConsent?: boolean; // 과거 저장본엔 없을 수 있어 optional
   verifiedNaverBlogIds?: string[]; // 과거 저장본엔 없을 수 있어 optional
   // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
   globeVariant?: GlobeVariant;
@@ -170,7 +166,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
   const [currentVisitedCountryCode, setCurrentVisitedCountryCode] = useState('KR'); // 여행국가: 기본값은 거주국가(KR)와 동일 → 실제 여행 감지 전엔 거주국가 표시
-  const [phoneMatchConsent, setPhoneMatchConsent] = useState(false); // 연락처 친구 찾기 동의
   const [verifiedNaverBlogIds, setVerifiedNaverBlogIds] = useState<string[]>([]); // 소유권 인증된 네이버 블로그 ID
   const addVerifiedNaverBlogId = useCallback((blogId: string) => {
     const id = blogId.trim().toLowerCase();
@@ -246,7 +241,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
-      setPhoneMatchConsent(p.phoneMatchConsent ?? false);
       setVerifiedNaverBlogIds(p.verifiedNaverBlogIds ?? []);
       setGlobeVariant(p.globeVariant ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
@@ -282,7 +276,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
-      phoneMatchConsent,
       verifiedNaverBlogIds,
       globeVariant,
       globeDisplayMode,
@@ -318,7 +311,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       signUpEmail,
       arrivalDetect,
       currentVisitedCountryCode,
-      phoneMatchConsent,
       verifiedNaverBlogIds,
       globeVariant,
       globeDisplayMode,
@@ -371,7 +363,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
     setCurrentVisitedCountryCode('KR');
-    setPhoneMatchConsent(false);
     setVerifiedNaverBlogIds([]);
     setGlobeVariant('aurora');
     setGlobeDisplayMode('flag');
@@ -433,8 +424,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setArrivalDetect,
         currentVisitedCountryCode,
         setCurrentVisitedCountryCode,
-        phoneMatchConsent,
-        setPhoneMatchConsent,
         verifiedNaverBlogIds,
         addVerifiedNaverBlogId,
         globeVariant,

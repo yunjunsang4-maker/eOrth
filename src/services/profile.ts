@@ -5,7 +5,6 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
-import { sha256 } from 'js-sha256';
 import { supabase } from './supabase';
 import { withTimeout } from '../utils/withTimeout';
 
@@ -153,95 +152,6 @@ export async function getFollowerCounts(ids: string[]): Promise<Record<string, n
     return map;
   } catch {
     return {};
-  }
-}
-
-// ─────────────────────────────────────────────
-// 연락처 기반 친구 찾기 (전화번호 해시 매칭)
-// ─────────────────────────────────────────────
-
-/**
- * 전화번호 정규화 — 숫자만 남기고, 국제전화 접두(00)와 한국 +82를 보정.
- * 외국 번호는 '+국가번호' 형태끼리는 매칭되지만, 로컬 표기(국가번호 없이 저장)와
- * 국제 표기가 섞이면 국가 정보 없이는 동일인 판별이 불가해 매칭되지 않을 수 있다(알려진 한계).
- */
-function normalizePhone(raw: string): string {
-  let d = (raw || '').replace(/\D/g, '');
-  if (d.startsWith('00') && d.length >= 11) d = d.slice(2); // 0082/0033… → 82/33…(+표기와 통일)
-  if (d.startsWith('82') && d.length >= 11) d = '0' + d.slice(2); // +82 10... → 010...
-  return d;
-}
-
-/** 정규화 후 sha256 해시 (너무 짧으면 빈 문자열) */
-export function phoneHash(raw: string): string {
-  const n = normalizePhone(raw);
-  if (n.length < 9) return '';
-  return sha256(n);
-}
-
-/** 내 전화 해시 저장(연락처로 나를 찾을 수 있게). 성공 여부 반환 */
-export async function saveMyPhoneHash(phone: string): Promise<boolean> {
-  if (!supabase) return false;
-  const h = phoneHash(phone);
-  if (!h) return false;
-  const uid = await getMyUserId();
-  if (!uid) return false;
-  try {
-    const { error } = await supabase.from('user_phones').upsert({ user_id: uid, phone_hash: h });
-    return !error;
-  } catch {
-    return false;
-  }
-}
-
-/** 내 전화 해시 삭제(연락처 매칭 해제) */
-export async function deleteMyPhoneHash(): Promise<void> {
-  if (!supabase) return;
-  const uid = await getMyUserId();
-  if (!uid) return;
-  try {
-    await supabase.from('user_phones').delete().eq('user_id', uid);
-  } catch {
-    // 무시
-  }
-}
-
-export interface PhoneMatch {
-  id: string;
-  handle: string | null;
-  emoji: string | null;
-  profile_photo: string | null;
-  isPrivate: boolean;  // 비공개 계정 — 팔로우 대신 요청 버튼 표시용
-  contactName: string; // 매칭된 연락처의 표시 이름
-  phoneHash: string;   // 매칭에 쓰인 해시 — 미가입 연락처(초대 대상) 분리용
-}
-
-/** 연락처(이름+전화) 목록을 해시해 가입자 매칭 (본인 제외) */
-export async function findUsersByPhones(
-  contacts: { name: string; phone: string }[]
-): Promise<PhoneMatch[]> {
-  if (!supabase || contacts.length === 0) return [];
-  const hashToName = new Map<string, string>();
-  const hashes: string[] = [];
-  for (const c of contacts) {
-    const h = phoneHash(c.phone);
-    if (!h) continue;
-    if (!hashToName.has(h)) { hashToName.set(h, c.name); hashes.push(h); }
-  }
-  if (hashes.length === 0) return [];
-  try {
-    const { data } = await supabase.rpc('find_users_by_phone_hashes', { hashes });
-    return (data as { id: string; handle: string | null; emoji: string | null; profile_photo: string | null; is_private?: boolean | null; phone_hash: string }[] | null ?? []).map((r) => ({
-      id: r.id,
-      handle: r.handle,
-      emoji: r.emoji,
-      profile_photo: r.profile_photo,
-      isPrivate: !!r.is_private,
-      contactName: hashToName.get(r.phone_hash) || r.handle || '여행자',
-      phoneHash: r.phone_hash,
-    }));
-  } catch {
-    return [];
   }
 }
 

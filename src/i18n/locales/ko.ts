@@ -969,6 +969,7 @@ const ko = {
     followingCheck: '팔로잉 ✓',
     follow: '팔로우',
     followBack: '맞팔로우',
+    findByIdHint: '아이디로 친구를 검색하거나\nQR 코드로 추가해보세요',
     requested: '요청됨',
     requestSentToast: '{{name}}님에게 팔로우를 요청했어요',
     requestCanceledToast: '팔로우 요청을 취소했어요',

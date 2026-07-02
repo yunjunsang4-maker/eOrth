@@ -35,8 +35,7 @@
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.READ_CONTACTS"
+        "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
     "web": {
@@ -59,12 +58,6 @@
           "photosPermission": "여행 사진과 영상을 불러오고 선택하기 위해 갤러리 접근이 필요해요.",
           "cameraPermission": "사진 및 영상 촬영을 위해 카메라 접근이 필요해요.",
           "microphonePermission": "영상 녹화 시 오디오를 위해 마이크 접근이 필요해요."
-        }
-      ],
-      [
-        "expo-contacts",
-        {
-          "contactsPermission": "아는 사람을 찾기 위해 연락처 접근이 필요해요."
         }
       ],
       "expo-background-task",

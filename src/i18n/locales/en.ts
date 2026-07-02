@@ -968,6 +968,7 @@ const en = {
     followingCheck: 'Following ✓',
     follow: 'Follow',
     followBack: 'Follow back',
+    findByIdHint: 'Search friends by ID\nor add them via QR code',
     requested: 'Requested',
     requestSentToast: 'Follow request sent to {{name}}',
     requestCanceledToast: 'Follow request canceled',

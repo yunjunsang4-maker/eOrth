@@ -733,49 +733,12 @@ create policy "messages_insert_sender" on public.dm_messages
   );
 
 -- ============================================================
--- 5) user_phones — 연락처 기반 친구 찾기용 전화번호 해시
---    개인정보(전화 해시)는 profiles(전체 조회 허용)와 분리해 별도 테이블에 둔다.
---    SELECT 정책을 두지 않아 직접 조회 불가 → 매칭은 SECURITY DEFINER RPC로만.
+-- 5) (제거됨 2026-07-03) 연락처 전화번호 매칭 — 친구 추가는 아이디 검색·QR·추천 친구로만.
+--    기존 개인정보(전화 해시)와 관련 객체를 정리하기 위해 drop한다.
 -- ============================================================
-create table if not exists public.user_phones (
-  user_id    uuid primary key references public.profiles(id) on delete cascade,
-  phone_hash text not null,             -- sha256(정규화 전화번호), 클라이언트에서 해시
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-create index if not exists idx_user_phones_hash on public.user_phones (phone_hash);
-
 drop trigger if exists trg_user_phones_updated on public.user_phones;
-create trigger trg_user_phones_updated before update on public.user_phones
-  for each row execute function public.set_updated_at();
-
-alter table public.user_phones enable row level security;
-
--- 본인 행만 등록/수정 (SELECT 정책 없음 → 일반 조회 차단)
-drop policy if exists "user_phones_insert_own" on public.user_phones;
-create policy "user_phones_insert_own" on public.user_phones
-  for insert to authenticated with check (user_id = auth.uid());
-
-drop policy if exists "user_phones_update_own" on public.user_phones;
-create policy "user_phones_update_own" on public.user_phones
-  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-
-drop policy if exists "user_phones_delete_own" on public.user_phones;
-create policy "user_phones_delete_own" on public.user_phones
-  for delete to authenticated using (user_id = auth.uid());
-
--- 연락처 전화 해시 목록으로 가입자 매칭 (caller가 가진 해시만 비교 → 추가 정보 노출 없음)
-create or replace function public.find_users_by_phone_hashes(hashes text[])
-returns table (id uuid, handle text, emoji text, profile_photo text, is_private boolean, phone_hash text)
-language sql security definer set search_path = public as $$
-  select pr.id, pr.handle, pr.emoji, pr.profile_photo, pr.is_private, up.phone_hash
-  from public.user_phones up
-  join public.profiles pr on pr.id = up.user_id
-  where up.phone_hash = any(hashes)
-    and up.user_id <> auth.uid();
-$$;
-
-grant execute on function public.find_users_by_phone_hashes(text[]) to authenticated;
+drop function if exists public.find_users_by_phone_hashes(text[]);
+drop table if exists public.user_phones;
 
 -- ============================================================
 -- Storage — 게시물/프로필 사진 (public 버킷 'media')
