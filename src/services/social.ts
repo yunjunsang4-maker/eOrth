@@ -137,6 +137,85 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
+// ─── 알림 (팔로우) ───
+// notifications 테이블은 follows insert 트리거(notify_on_follow)로 채워진다.
+export interface FollowNotification {
+  id: string;
+  actorId: string;
+  actorHandle: string | null;
+  actorEmoji: string | null;
+  read: boolean;
+  createdAt: number; // ms
+}
+
+export async function fetchFollowNotifications(): Promise<FollowNotification[]> {
+  if (!supabase) return [];
+  const uid = await getMyUserId();
+  if (!uid) return [];
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('id, actor_id, read, created_at, profiles!notifications_actor_id_fkey(handle, emoji)')
+      .eq('user_id', uid)
+      .eq('type', 'follow')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (error || !data) return [];
+    return (data as any[]).map((r) => {
+      const p = r.profiles ?? {};
+      return {
+        id: r.id as string,
+        actorId: r.actor_id as string,
+        actorHandle: p.handle ?? null,
+        actorEmoji: p.emoji ?? null,
+        read: !!r.read,
+        createdAt: new Date(r.created_at).getTime(),
+      };
+    });
+  } catch {
+    return [];
+  }
+}
+
+// 알림 읽음 처리 — 표시용이라 실패해도 조용히 넘어간다(다음 진입 시 다시 시도됨)
+export async function markNotificationsRead(ids: string[]): Promise<void> {
+  if (!supabase || ids.length === 0) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('notifications').update({ read: true }).in('id', ids).eq('user_id', uid);
+  } catch {
+    /* 무시 */
+  }
+}
+
+// ─── 추천 친구 ───
+// friend_suggestions RPC(SECURITY DEFINER) — 내가 팔로우한 사람들이 팔로우하는 사용자.
+export interface FriendSuggestion {
+  id: string;
+  handle: string | null;
+  emoji: string | null;
+  profilePhoto: string | null;
+  mutualCount: number; // 나와 함께 아는(내 팔로잉 중 이 사람을 팔로우하는) 수
+}
+
+export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSuggestion[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.rpc('friend_suggestions', { max_count: maxCount });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      id: r.id as string,
+      handle: r.handle ?? null,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      mutualCount: r.mutual_count ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ─── 좋아요 ───
 export async function likePost(postId: string): Promise<void> {
   if (!supabase || !postId) return;

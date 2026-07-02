@@ -548,6 +548,76 @@ create or replace view public.public_profiles
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 
+-- ============================================================
+-- 4-c) 알림 — 팔로우 알림 (follows insert 트리거로 수신자에게 쌓임)
+-- ============================================================
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,  -- 수신자
+  type text not null check (type in ('follow')),
+  actor_id uuid not null references public.profiles(id) on delete cascade, -- 행위자
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
+-- 같은 (수신자·행위자·타입)당 알림 1건 유지 — 언팔/재팔 반복 스팸 방지
+create unique index if not exists uq_notifications_actor_type on public.notifications (user_id, actor_id, type);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "notifications_select_own" on public.notifications;
+create policy "notifications_select_own" on public.notifications
+  for select to authenticated using (user_id = auth.uid());
+
+drop policy if exists "notifications_update_own" on public.notifications;
+create policy "notifications_update_own" on public.notifications
+  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "notifications_delete_own" on public.notifications;
+create policy "notifications_delete_own" on public.notifications
+  for delete to authenticated using (user_id = auth.uid());
+
+-- 팔로우 발생 → 수신자 알림 (재팔로우면 시각 갱신 + 미읽음으로)
+create or replace function public.notify_on_follow()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.notifications (user_id, type, actor_id)
+  values (new.following_id, 'follow', new.follower_id)
+  on conflict (user_id, actor_id, type)
+  do update set created_at = now(), read = false;
+  return new;
+end; $$;
+
+drop trigger if exists trg_notify_on_follow on public.follows;
+create trigger trg_notify_on_follow after insert on public.follows
+  for each row execute function public.notify_on_follow();
+
+-- ============================================================
+-- 4-d) RPC: 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자(2단계)
+--   follows 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
+--   SECURITY DEFINER RPC로 집계한다. 이미 팔로우/본인/차단 관계는 제외.
+-- ============================================================
+create or replace function public.friend_suggestions(max_count int default 10)
+returns table (id uuid, handle text, emoji text, profile_photo text, mutual_count int)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.handle, p.emoji, p.profile_photo, count(*)::int as mutual_count
+  from public.follows f1
+  join public.follows f2 on f2.follower_id = f1.following_id
+  join public.profiles p on p.id = f2.following_id
+  where f1.follower_id = auth.uid()
+    and f2.following_id <> auth.uid()
+    and not exists (
+      select 1 from public.follows mine
+      where mine.follower_id = auth.uid() and mine.following_id = f2.following_id
+    )
+    and not public.is_blocked_between(auth.uid(), f2.following_id)
+  group by p.id, p.handle, p.emoji, p.profile_photo
+  order by mutual_count desc, max(f2.created_at) desc
+  limit greatest(1, least(max_count, 30));
+$$;
+
+grant execute on function public.friend_suggestions(int) to authenticated;
+
 drop policy if exists "messages_insert_sender" on public.dm_messages;
 create policy "messages_insert_sender" on public.dm_messages
   for insert to authenticated with check (

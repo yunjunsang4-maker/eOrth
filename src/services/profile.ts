@@ -159,9 +159,14 @@ export async function getFollowerCounts(ids: string[]): Promise<Record<string, n
 // 연락처 기반 친구 찾기 (전화번호 해시 매칭)
 // ─────────────────────────────────────────────
 
-/** 전화번호 정규화 — 숫자만, 한국 +82 → 0 보정 */
+/**
+ * 전화번호 정규화 — 숫자만 남기고, 국제전화 접두(00)와 한국 +82를 보정.
+ * 외국 번호는 '+국가번호' 형태끼리는 매칭되지만, 로컬 표기(국가번호 없이 저장)와
+ * 국제 표기가 섞이면 국가 정보 없이는 동일인 판별이 불가해 매칭되지 않을 수 있다(알려진 한계).
+ */
 function normalizePhone(raw: string): string {
   let d = (raw || '').replace(/\D/g, '');
+  if (d.startsWith('00') && d.length >= 11) d = d.slice(2); // 0082/0033… → 82/33…(+표기와 통일)
   if (d.startsWith('82') && d.length >= 11) d = '0' + d.slice(2); // +82 10... → 010...
   return d;
 }

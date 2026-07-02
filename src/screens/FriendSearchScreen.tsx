@@ -24,7 +24,8 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
-import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, findUsersByPhones } from '../services/profile';
+import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, findUsersByPhones, getProfileByHandle } from '../services/profile';
+import { fetchFriendSuggestions } from '../services/social';
 import { computeTravelStats } from '../utils/badgeRules';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
@@ -332,8 +333,22 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }
     scannedRef.current = true;
     setScannerVisible(false);
-    setQuery(scanned);          // 스캔한 핸들로 검색 실행 → 실제 유저(실 id) 결과 표시
-    showToast(t('comp2.toastSearching', { handle: scanned }));
+    // 정확 일치 프로필이 있으면 프로필로 직행, 없으면(미설정 포함) 검색으로 폴백
+    if (isSupabaseConfigured) {
+      showToast(t('comp2.toastSearching', { handle: scanned }));
+      getProfileByHandle(scanned)
+        .then((p) => {
+          if (p) {
+            navigation.navigate('FriendProfile', { userId: p.id, username: p.handle || scanned, handle: p.handle ?? undefined });
+          } else {
+            setQuery(scanned); // 정확 일치 없음 → 부분 일치 검색 결과 표시
+          }
+        })
+        .catch(() => setQuery(scanned));
+    } else {
+      setQuery(scanned);
+      showToast(t('comp2.toastSearching', { handle: scanned }));
+    }
   };
 
   // ── 내 코드 공유 ──
@@ -343,6 +358,38 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       message: t('comp2.shareMeMessage', { link: userLink(myCode) }),
     }).catch(() => {});
   };
+
+  // 추천 친구 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
+  const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      try {
+        const rows = await fetchFriendSuggestions(10);
+        if (!alive || rows.length === 0) return;
+        const ids = rows.map((r) => r.id);
+        const [counts, fcounts] = await Promise.all([getCountryCounts(ids), getFollowerCounts(ids)]);
+        if (!alive) return;
+        setSuggestions(
+          rows.map((r) => ({
+            id: r.id,
+            name: r.handle || t('friends.travelerDefault'),
+            phone: '',
+            initial: (r.handle || '?').slice(0, 1),
+            username: r.handle || '',
+            countries: counts[r.id] ?? 0,
+            followers: fcounts[r.id] ?? 0,
+            photo: r.profilePhoto,
+            emoji: r.emoji,
+          }))
+        );
+      } catch {
+        /* 추천은 부가 기능 — 실패 시 섹션 미표시 */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   // 백엔드 사용자 검색 (아이디/핸들) — 실제 테스터 찾기
   const [remoteResults, setRemoteResults] = useState<ContactFriend[]>([]);
@@ -399,6 +446,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           ))
     : contactFriends
   ).filter(notBlocked);
+
+  // 추천 친구 — 차단·연락처 매칭과 중복 제외 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
+  const contactIds = new Set(contactFriends.map((c) => c.id));
+  const visibleSuggestions = suggestions.filter((f) => notBlocked(f) && !contactIds.has(f.id));
 
   // 검색 중에도 내 연락처 매칭을 함께 노출 (Supabase 모드에서만 — 미설정 모드는 검색결과 자체가 연락처라 중복)
   const remoteIds = new Set(remoteResults.map((r) => r.id));
@@ -598,6 +649,14 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             ) : (
               renderRows(displayList)
             )}
+          </>
+        )}
+
+        {/* 추천 친구 — 검색 중이 아닐 때, 연락처 권한/동의 상태와 무관하게 표시 */}
+        {!isSearching && !loading && visibleSuggestions.length > 0 && (
+          <>
+            <Text style={[s.sectionLabel, { marginTop: 24 }]}>{t('friends.suggestedFriends')}</Text>
+            {renderRows(visibleSuggestions)}
           </>
         )}
         <View style={{ height: 40 }} />

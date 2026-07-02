@@ -11,6 +11,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { fetchFollowers, type FollowedProfile } from '../services/social';
+import { useRecords } from '../store/recordStore';
+import { buzz } from '../utils/haptics';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -27,6 +29,20 @@ const COLORS = {
 export default function FollowerListScreen({ navigation }: RootStackScreenProps<'FollowerList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  // 맞팔로우 버튼 — 팔로우 상태는 store 공유(팔로잉 목록·프로필 카운트와 동기화)
+  const { followingUsers, followUser } = useRecords();
+  const isFollowing = (id: string) => followingUsers.some((f) => f.id === id);
+  const followBack = (follower: FollowedProfile) => {
+    buzz('light');
+    followUser({
+      id: follower.id,
+      username: follower.handle || follower.id,
+      emoji: follower.emoji ?? undefined,
+      isAbroad: false,
+      currentCountry: null,
+      currentCountryFlag: null,
+    });
+  };
   const [followers, setFollowers] = useState<FollowedProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false); // 오류 ↔ "팔로워 없음" 구분
@@ -89,13 +105,25 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                   {/* 정보 */}
                   <View style={styles.infoWrap}>
                     <Text style={styles.username}>@{name}</Text>
-                    {follower.isMutual && (
+                    {(follower.isMutual || isFollowing(follower.id)) && (
                       <Text style={styles.mutualText}>{t('friends.mutualYes')}</Text>
                     )}
                   </View>
 
-                  {/* 화살표 */}
-                  <Text style={styles.chevron}>›</Text>
+                  {/* 맞팔로우 버튼 (아직 안 팔로우한 팔로워만) / 이미 팔로우 중이면 화살표 */}
+                  {!follower.isMutual && !isFollowing(follower.id) ? (
+                    <TouchableOpacity
+                      style={styles.followBackBtn}
+                      onPress={(e) => { e.stopPropagation?.(); followBack(follower); }}
+                      activeOpacity={0.8}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('friends.followNameA11y', { name })}
+                    >
+                      <Text style={styles.followBackBtnText}>{t('friends.followBack')}</Text>
+                    </TouchableOpacity>
+                  ) : (
+                    <Text style={styles.chevron}>›</Text>
+                  )}
                 </TouchableOpacity>
 
                 {index < followers.length - 1 && (
@@ -179,6 +207,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.textDim,
     marginTop: 2,
+  },
+  followBackBtn: {
+    backgroundColor: COLORS.purpleDeep,
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 7,
+  },
+  followBackBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.white,
   },
   chevron: {
     fontSize: 22,
