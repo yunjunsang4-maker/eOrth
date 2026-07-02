@@ -61,7 +61,7 @@ export default function FriendProfileScreen({
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { nickname: myNick, handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
   const isSelf = !!myHandle && route.params?.handle === myHandle;
   const { records: myRecords } = useRecords();
 
@@ -96,7 +96,7 @@ export default function FriendProfileScreen({
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {
-    name: isSelf ? (myNick || displayUsername) : (profileRow?.nickname || profileRow?.handle || displayUsername),
+    name: isSelf ? (myHandle || displayUsername) : (profileRow?.handle || displayUsername),
     emoji: profileRow?.emoji || '🧳',
     photo: isSelf ? (myPhoto || null) : (profileRow?.profile_photo || null),
     bio: isSelf ? (myBio || '') : (profileRow?.bio || ''),
@@ -117,16 +117,19 @@ export default function FriendProfileScreen({
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
   const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
-  const followId = userId ?? profileRow?.id ?? displayUsername;
+  // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 follows insert(uuid 컬럼)가 실패한다
+  const realId = userId ?? profileRow?.id ?? null;
+  const followId = realId ?? displayUsername;
   const followEntry = followingUsers.find((f) => f.id === followId || (!!f.username && f.username === displayUsername));
   const following = !!followEntry;
   const isMutual = !!followEntry?.isMutual;
   const toggleFollow = () => {
     if (following) {
-      unfollowUser(followEntry?.id ?? followId);
+      // 빈 id('')로 찾으면 id가 빈 다른 항목과 오매칭될 수 있어 || 로 username 폴백
+      unfollowUser(followEntry?.id || followId);
     } else {
       followUser({
-        id: followId,
+        id: realId ?? '', // uuid 없으면 빈 값 → 로컬 전용(서버 동기화 생략), 매칭은 username으로
         username: displayUsername,
         isAbroad: false,
         currentCountry: null,
@@ -205,8 +208,8 @@ export default function FriendProfileScreen({
       onPress: () => {
         setMenuVisible(false);
         confirmBlock(displayUsername, () => {
-          blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle });
-          unfollowUser(followEntry?.id ?? followId); // 차단하면 팔로잉에서도 제거
+          // 언팔로우는 store의 blockUser가 함께 처리한다 (화면별 불일치 방지)
+          blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle, id: realId ?? undefined });
           showToast(t('social.blockedToast'));
           setTimeout(() => navigation.goBack(), 600);
         }, t);
@@ -260,11 +263,18 @@ export default function FriendProfileScreen({
               </Text>
             </TouchableOpacity>
 
-            {/* ── 맞팔 토글 (팔로잉 중일 때만) — 친구 수 배지(78·81·82·83) 판정용 ── */}
-            {following && (
+            {/* ── 맞팔 표시 — 친구 수 배지(78·81·82·83) 판정용 ──
+                백엔드 사용 시 서버(follows 양방향)가 판정하므로 읽기 전용 배지,
+                미설정(로컬 데모) 모드에서만 수동 토글 허용 (refreshFollowing이 서버 값으로 덮어쓰므로 토글이 유지되지 않음) */}
+            {following && isSupabaseConfigured && isMutual && (
+              <View style={[s.mutualBtn, s.mutualBtnOn]}>
+                <Text style={[s.mutualBtnText, s.mutualBtnTextOn]}>{t('friends.mutualYes')}</Text>
+              </View>
+            )}
+            {following && !isSupabaseConfigured && (
               <TouchableOpacity
                 style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
-                onPress={() => setFollowMutual(followEntry?.id ?? followId, !isMutual)}
+                onPress={() => setFollowMutual(followEntry?.id || followId, !isMutual)}
                 activeOpacity={0.85}
               >
                 <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>

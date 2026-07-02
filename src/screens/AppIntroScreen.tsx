@@ -54,8 +54,7 @@ export default function AppIntroScreen({ navigation }: Props) {
       setActiveIdx(nextIdx);
       flatListRef.current?.scrollToIndex({ index: nextIdx, animated: true });
     } else {
-      // ⚠️ 임시: 로그인 화면 건너뛰고 온보딩 다음 단계로 직행. 작업 끝나면 'Login'으로 되돌릴 것!
-      navigation.replace('BasicInfo');
+      navigation.replace('Login');
     }
   };
 

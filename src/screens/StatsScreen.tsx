@@ -18,6 +18,7 @@ import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
@@ -412,6 +413,8 @@ export default function StatsScreen() {
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+      {/* 별 배경 (Star Field.svg) — 콘텐츠 뒤에 깔린다 */}
+      <StarFieldBackground />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 17 }]}>
         <AnalysisWordmark height={36} />

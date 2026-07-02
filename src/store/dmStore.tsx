@@ -256,7 +256,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         let handle = handleByPeer.current[row.sender_id];
         if (!handle) {
           const prof = await getProfileById(row.sender_id);
-          handle = prof?.handle || prof?.nickname || row.sender_id;
+          handle = prof?.handle || row.sender_id;
           handleByPeer.current[row.sender_id] = handle;
           peerByHandle.current[handle] = row.sender_id;
         }

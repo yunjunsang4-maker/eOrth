@@ -79,7 +79,7 @@ export default function FriendsScreen({ navigation }: Props) {
   // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
   const [friends, setFriends] = useState<Friend[]>(() =>
     followingUsers.map((f) => ({
-      id: f.id, name: f.username, handle: f.username, emoji: '🧳',
+      id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳',
       lastMessage: '', lastMessageAt: 0, unread: 0, online: false,
     }))
   );
@@ -92,8 +92,8 @@ export default function FriendsScreen({ navigation }: Props) {
       return followingUsers.map((u) => {
         const ex = byId.get(u.id);
         return ex
-          ? { ...ex, name: u.username, handle: u.username }
-          : { id: u.id, name: u.username, handle: u.username, emoji: '🧳', lastMessage: '', lastMessageAt: 0, unread: 0, online: false };
+          ? { ...ex, name: u.username, handle: u.username, emoji: u.emoji || ex.emoji }
+          : { id: u.id, name: u.username, handle: u.username, emoji: u.emoji || '🧳', lastMessage: '', lastMessageAt: 0, unread: 0, online: false };
       });
     });
   }, [followingUsers]);
@@ -143,7 +143,7 @@ export default function FriendsScreen({ navigation }: Props) {
     const friend = friends.find(f => f.id === selectedFriendId);
     if (!friend) return;
     confirmBlock(friend.name, () => {
-      blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle });
+      blockUser({ name: friend.name, emoji: friend.emoji, handle: friend.handle, id: friend.id });
       showToast(t('friends.blockedNameToast', { name: friend.name }));
       setSelectedFriendId(null);
     }, t);

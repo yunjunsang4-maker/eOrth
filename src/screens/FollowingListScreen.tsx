@@ -7,7 +7,6 @@ import {
   StyleSheet,
   TouchableOpacity,
 } from 'react-native';
-import { PlaneIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -52,18 +51,16 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
               activeOpacity={0.75}
               onPress={() => navigation.navigate('FriendProfile', { userId: friend.id, username: friend.username })}
             >
-              {/* 아바타 */}
+              {/* 아바타 — 프로필 이모지 우선, 없으면 이니셜 */}
               <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{friend.username[0].toUpperCase()}</Text>
+                <Text style={styles.avatarText}>{friend.emoji || friend.username[0]?.toUpperCase() || '?'}</Text>
               </View>
 
-              {/* 정보 */}
+              {/* 정보 — isAbroad는 항상 false인 더미 필드였어서 맞팔 여부 표시로 교체 (팔로워 목록과 동일) */}
               <View style={styles.infoWrap}>
                 <Text style={styles.username}>@{friend.username}</Text>
-                {friend.isAbroad ? (
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><PlaneIcon size={13} color="#BF85FC" /><Text style={styles.abroadText}>{friend.currentCountryFlag} {friend.currentCountry} 여행중</Text></View>
-                ) : (
-                  <Text style={styles.homeText}>{t('friends.atHome')}</Text>
+                {friend.isMutual && (
+                  <Text style={styles.mutualText}>{t('friends.mutualYes')}</Text>
                 )}
               </View>
 
@@ -141,12 +138,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.purpleNeon,
   },
-  abroadText: {
-    fontSize: 13,
-    color: COLORS.purpleNeon,
-    marginTop: 2,
-  },
-  homeText: {
+  mutualText: {
     fontSize: 13,
     color: COLORS.textDim,
     marginTop: 2,

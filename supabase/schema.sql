@@ -25,7 +25,6 @@ end; $$;
 create table if not exists public.profiles (
   id            uuid primary key references auth.users(id) on delete cascade,
   handle        text unique,
-  nickname      text,
   emoji         text default '🧳',
   bio           text default '',
   birthday      date,
@@ -34,6 +33,15 @@ create table if not exists public.profiles (
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now()
 );
+
+-- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
+alter table public.profiles add column if not exists country text;
+
+-- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
+-- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
+drop view if exists public.public_profiles;
+drop function if exists public.find_users_by_phone_hashes(text[]);
+alter table public.profiles drop column if exists nickname;
 
 drop trigger if exists trg_profiles_updated on public.profiles;
 create trigger trg_profiles_updated before update on public.profiles
@@ -62,10 +70,39 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, nickname, emoji, bio, profile_photo, created_at
+  select id, handle, emoji, bio, profile_photo, created_at
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
+
+-- 아이디(handle) 사용 가능 여부 — 본인(auth.uid()) 제외 중복이 없으면 true.
+-- 온보딩·프로필 편집에서 실시간 중복 검사에 사용(최종 방어는 handle UNIQUE 제약).
+create or replace function public.is_handle_available(h text)
+returns boolean
+language sql security definer set search_path = public as $$
+  select not exists (
+    select 1 from public.profiles
+    where lower(handle) = lower(h) and id <> auth.uid()
+  );
+$$;
+grant execute on function public.is_handle_available(text) to authenticated;
+
+-- 아이디(handle) → 이메일 조회. 아이디 로그인 시 Edge Function(login-with-identifier)이
+-- service_role 로만 호출한다. anon/authenticated 에는 권한을 주지 않아 이메일이 클라이언트에
+-- 노출되지 않는다(공개된 아이디로 타인 이메일 수집 방지).
+create or replace function public.email_for_handle(h text)
+returns text
+language sql security definer set search_path = public as $$
+  select u.email
+  from public.profiles p
+  join auth.users u on u.id = p.id
+  where lower(p.handle) = lower(h)
+  limit 1;
+$$;
+revoke all on function public.email_for_handle(text) from public;
+revoke all on function public.email_for_handle(text) from anon;
+revoke all on function public.email_for_handle(text) from authenticated;
+grant execute on function public.email_for_handle(text) to service_role;
 
 -- 가입 시 빈 프로필 자동 생성 (클라이언트 upsert와 병행, 어느 쪽이든 안전)
 create or replace function public.handle_new_user()
@@ -79,6 +116,26 @@ end; $$;
 drop trigger if exists trg_auth_user_created on auth.users;
 create trigger trg_auth_user_created after insert on auth.users
   for each row execute function public.handle_new_user();
+
+-- (선택·수동) 가입 도중 이탈로 남은 '반쪽 계정' 정리.
+-- 이메일 인증을 끝내지 않고 방치된 계정만 대상(OAuth 계정은 인증 완료라 제외), 게시물 있으면 제외.
+-- 관리자/서비스롤이 필요 시 실행하거나 pg_cron으로 스케줄:  select public.cleanup_unconfirmed_accounts();
+-- (auth.users 삭제 → profiles 등 on delete cascade로 함께 정리)
+create or replace function public.cleanup_unconfirmed_accounts(older_than interval default interval '7 days')
+returns integer language plpgsql security definer set search_path = public, auth as $$
+declare
+  n integer := 0;
+begin
+  delete from auth.users u
+  where u.email_confirmed_at is null
+    and u.created_at < now() - older_than
+    and not exists (select 1 from public.posts p where p.author_id = u.id);
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+
+-- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
+revoke all on function public.cleanup_unconfirmed_accounts(interval) from public, anon, authenticated;
 
 -- ============================================================
 -- 2) posts — 여행 기록(게시물). 본문은 JSONB(TravelRecord)로 저장.
@@ -450,6 +507,117 @@ create policy "messages_select_participant" on public.dm_messages
       and not public.is_blocked_between(t.user_a, t.user_b)
   ));
 
+-- follows: 차단 관계면 팔로우 생성 불가 — 2)의 기존 정책을 차단 검사 포함으로 교체
+drop policy if exists "follows_insert_own" on public.follows;
+create policy "follows_insert_own" on public.follows
+  for insert to authenticated with check (
+    follower_id = auth.uid()
+    and not public.is_blocked_between(auth.uid(), following_id)
+  );
+
+-- follows 조회는 본인이 당사자인 행으로 제한 — 임의 사용자의 팔로워/팔로잉 전수 조회 방지.
+-- (팔로워 '수'는 follower_counts RPC(SECURITY DEFINER)가 제공하고, posts/comments/DM 정책의
+--  follows 서브쿼리는 모두 f.follower_id = auth.uid() 행만 참조하므로 이 제한과 호환된다.)
+drop policy if exists "follows_select_all" on public.follows;
+drop policy if exists "follows_select_own" on public.follows;
+create policy "follows_select_own" on public.follows
+  for select to authenticated using (
+    follower_id = auth.uid() or following_id = auth.uid()
+  );
+
+-- 차단 시 양방향 팔로우 관계를 서버에서 정리 — 클라이언트는 '내 팔로우'만 지울 수 있고
+-- '상대→나' 방향은 RLS 때문에 못 지우므로 트리거(SECURITY DEFINER)로 함께 삭제한다.
+create or replace function public.cleanup_follows_on_block()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  delete from public.follows
+   where (follower_id = new.blocker_id and following_id = new.blocked_id)
+      or (follower_id = new.blocked_id and following_id = new.blocker_id);
+  return new;
+end; $$;
+
+drop trigger if exists trg_cleanup_follows_on_block on public.blocks;
+create trigger trg_cleanup_follows_on_block after insert on public.blocks
+  for each row execute function public.cleanup_follows_on_block();
+
+-- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
+-- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
+create or replace view public.public_profiles
+  with (security_invoker = true) as
+  select id, handle, emoji, bio, profile_photo, created_at
+  from public.profiles
+  where not public.is_blocked_between(auth.uid(), id);
+
+-- ============================================================
+-- 4-c) 알림 — 팔로우 알림 (follows insert 트리거로 수신자에게 쌓임)
+-- ============================================================
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,  -- 수신자
+  type text not null check (type in ('follow')),
+  actor_id uuid not null references public.profiles(id) on delete cascade, -- 행위자
+  read boolean not null default false,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
+-- 같은 (수신자·행위자·타입)당 알림 1건 유지 — 언팔/재팔 반복 스팸 방지
+create unique index if not exists uq_notifications_actor_type on public.notifications (user_id, actor_id, type);
+
+alter table public.notifications enable row level security;
+
+drop policy if exists "notifications_select_own" on public.notifications;
+create policy "notifications_select_own" on public.notifications
+  for select to authenticated using (user_id = auth.uid());
+
+drop policy if exists "notifications_update_own" on public.notifications;
+create policy "notifications_update_own" on public.notifications
+  for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+drop policy if exists "notifications_delete_own" on public.notifications;
+create policy "notifications_delete_own" on public.notifications
+  for delete to authenticated using (user_id = auth.uid());
+
+-- 팔로우 발생 → 수신자 알림 (재팔로우면 시각 갱신 + 미읽음으로)
+create or replace function public.notify_on_follow()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  insert into public.notifications (user_id, type, actor_id)
+  values (new.following_id, 'follow', new.follower_id)
+  on conflict (user_id, actor_id, type)
+  do update set created_at = now(), read = false;
+  return new;
+end; $$;
+
+drop trigger if exists trg_notify_on_follow on public.follows;
+create trigger trg_notify_on_follow after insert on public.follows
+  for each row execute function public.notify_on_follow();
+
+-- ============================================================
+-- 4-d) RPC: 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자(2단계)
+--   follows 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
+--   SECURITY DEFINER RPC로 집계한다. 이미 팔로우/본인/차단 관계는 제외.
+-- ============================================================
+create or replace function public.friend_suggestions(max_count int default 10)
+returns table (id uuid, handle text, emoji text, profile_photo text, mutual_count int)
+language sql stable security definer set search_path = public as $$
+  select p.id, p.handle, p.emoji, p.profile_photo, count(*)::int as mutual_count
+  from public.follows f1
+  join public.follows f2 on f2.follower_id = f1.following_id
+  join public.profiles p on p.id = f2.following_id
+  where f1.follower_id = auth.uid()
+    and f2.following_id <> auth.uid()
+    and not exists (
+      select 1 from public.follows mine
+      where mine.follower_id = auth.uid() and mine.following_id = f2.following_id
+    )
+    and not public.is_blocked_between(auth.uid(), f2.following_id)
+  group by p.id, p.handle, p.emoji, p.profile_photo
+  order by mutual_count desc, max(f2.created_at) desc
+  limit greatest(1, least(max_count, 30));
+$$;
+
+grant execute on function public.friend_suggestions(int) to authenticated;
+
 drop policy if exists "messages_insert_sender" on public.dm_messages;
 create policy "messages_insert_sender" on public.dm_messages
   for insert to authenticated with check (
@@ -495,9 +663,9 @@ create policy "user_phones_delete_own" on public.user_phones
 
 -- 연락처 전화 해시 목록으로 가입자 매칭 (caller가 가진 해시만 비교 → 추가 정보 노출 없음)
 create or replace function public.find_users_by_phone_hashes(hashes text[])
-returns table (id uuid, handle text, nickname text, emoji text, profile_photo text, phone_hash text)
+returns table (id uuid, handle text, emoji text, profile_photo text, phone_hash text)
 language sql security definer set search_path = public as $$
-  select pr.id, pr.handle, pr.nickname, pr.emoji, pr.profile_photo, up.phone_hash
+  select pr.id, pr.handle, pr.emoji, pr.profile_photo, up.phone_hash
   from public.user_phones up
   join public.profiles pr on pr.id = up.user_id
   where up.phone_hash = any(hashes)

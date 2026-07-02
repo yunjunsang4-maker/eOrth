@@ -5,11 +5,14 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
-import { publishPost, updatePost, deletePost, fetchFeed } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
+import { getProfileByHandle } from '../services/profile';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
   unfollowUser as apiUnfollow,
+  blockUser as apiBlock,
+  unblockUser as apiUnblock,
   fetchFollowing,
   likePost,
   unlikePost,
@@ -126,12 +129,14 @@ export interface BlockedUser {
   name: string;
   emoji: string;
   handle?: string; // 차단 신원 키(표시이름 충돌 방지). 과거 저장본엔 없을 수 있어 optional
+  id?: string; // profile uuid — 있으면 서버 blocks 테이블에도 반영(RLS 차단 필터 동작)
   blockedAt: number;
 }
 
 export interface FollowedFriend {
   id: string;
   username: string;
+  emoji?: string; // 프로필 이모지 (목록 아바타 표시용, 서버 프로필에서 채움)
   isAbroad: boolean;
   currentCountry: string | null;
   currentCountryFlag: string | null;
@@ -179,7 +184,7 @@ interface RecordContextType {
   archiveRecord: (id: string) => void;
   unarchiveRecord: (id: string) => void;
   blockedUsers: BlockedUser[];
-  blockUser: (user: { name: string; emoji: string; handle?: string }) => void;
+  blockUser: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   unblockUser: (nameOrHandle: string) => void;
   isBlocked: (user: { name?: string; handle?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
@@ -222,6 +227,8 @@ interface RecordContextType {
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
+  // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
+  hydrateMyRecords: () => Promise<void>;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -241,7 +248,7 @@ interface RecordPersistPayload {
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { nickname, handle, profilePhoto } = useSettings();
+  const { handle, profilePhoto } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -327,7 +334,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
@@ -416,7 +423,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
@@ -484,7 +491,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const markSnapViewed = (id: string) => {
     // 호출 시점 = 현재 사용자가 (자기 것이 아닌) 스냅을 열람 → 열람 표시 + 조회자 기록(중복 방지)
-    const me = { handle, name: nickname || handle, time: Date.now() };
+    const me = { handle, name: handle, time: Date.now() };
     setRecords((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -499,7 +506,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const blockUser = (user: { name: string; emoji: string; handle?: string }) => {
+  const blockUser = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
     setBlockedUsers((prev) => {
       // 신원은 handle(양쪽에 있으면) 우선, 없으면 표시이름으로 중복 판정
       const dup = prev.some((b) =>
@@ -508,10 +515,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
+    // 차단하면 팔로잉에서도 제거 — 화면별 처리 불일치 방지 (팔로우 안 했으면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (팔로잉 항목의 username은 handle과 동일 값)
+    const followed = followingUsers.find((f) =>
+      (!!user.id && f.id === user.id) ||
+      (!!f.username && (f.username === user.handle || f.username === user.name))
+    );
+    if (followed) unfollowUser(followed.id || followed.username);
+    // uuid를 알 때만 서버 blocks에 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함
+    if (isSupabaseConfigured && user.id) apiBlock(user.id).catch(notifySyncError);
   };
 
   const unblockUser = (nameOrHandle: string) => {
+    const target = blockedUsers.find((b) => b.name === nameOrHandle || b.handle === nameOrHandle);
     setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
+    if (isSupabaseConfigured && target?.id) apiUnblock(target.id).catch(notifySyncError);
   };
 
   // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
@@ -568,7 +586,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const nc: PostComment = {
       id: `c-${Date.now()}`,
       emoji: '🙂',
-      name: nickname || '나',
+      name: handle || '나',
       photo: profilePhoto || undefined,
       text,
       createdAt: Date.now(),
@@ -741,22 +759,41 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 내 기록 서버→로컬 복원 (계정 전환 후 pull). 로컬 records를 서버의 내 글로 교체한다.
+  // ⚠️ 로컬-우선 초안까지 대체하므로 계정 전환 직후(로컬을 이미 비운 상태)에만 호출할 것.
+  const hydrateMyRecords = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const mine = await withTimeout(fetchMyPosts(), 12000);
+      setRecords(mine);
+    } catch {
+      // 타임아웃/실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
+    }
+  }, []);
+
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
   const refreshFollowing = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     const list = await fetchFollowing();
     if (!list) return; // 오류 시 로컬 유지(덮어쓰지 않음)
-    setFollowingUsers(
-      list.map((p) => ({
-        id: p.id,
-        username: p.handle || p.nickname || p.id,
-        isAbroad: false,
-        currentCountry: null,
-        currentCountryFlag: null,
-        followedAt: 0,
-        isMutual: p.isMutual,
-      }))
-    );
+    // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
+    // isMutual은 서버(양방향 follows)가 정확하므로 항상 서버 값을 쓴다.
+    setFollowingUsers((prev) => {
+      const byId = new Map(prev.map((f) => [f.id, f]));
+      return list.map((p) => {
+        const ex = byId.get(p.id);
+        return {
+          id: p.id,
+          username: p.handle || p.id,
+          emoji: p.emoji ?? ex?.emoji ?? undefined,
+          isAbroad: ex?.isAbroad ?? false,
+          currentCountry: ex?.currentCountry ?? null,
+          currentCountryFlag: ex?.currentCountryFlag ?? null,
+          followedAt: ex?.followedAt ?? 0,
+          isMutual: p.isMutual,
+        };
+      });
+    });
   }, []);
 
   // 앱 시작/복원 후 피드·팔로잉 1회 로드
@@ -766,6 +803,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       refreshFollowing();
     }
   }, [hydrated, refreshFeed, refreshFollowing]);
+
+  // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
+  // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
+  const blockBackfillRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured || blockBackfillRef.current) return;
+    blockBackfillRef.current = true;
+    const targets = blockedUsers.filter((b) => !b.id && b.handle);
+    if (targets.length === 0) return;
+    (async () => {
+      for (const b of targets) {
+        const p = await getProfileByHandle(b.handle!);
+        if (!p?.id) continue; // 탈퇴/핸들 변경 등 — 로컬 차단만 유지
+        setBlockedUsers((prev) =>
+          prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+        );
+        apiBlock(p.id).catch(() => {}); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+      }
+    })();
+  }, [hydrated, blockedUsers]);
 
   // 예약 발행: 예약 시각이 지났는데 아직 백엔드에 안 올라간 글을 발행
   useEffect(() => {
@@ -796,7 +853,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFeedPosts((prev) => sync(prev));
   }, [commentsByPost]);
 
-  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 닉네임/사진 변경 시 과거 글도 최신값으로.
+  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 아이디/사진 변경 시 과거 글도 최신값으로.
   useEffect(() => {
     if (!hydrated) return;
     const photo = profilePhoto || undefined;
@@ -804,13 +861,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       let changed = false;
       const next = prev.map((r) => {
         if (!r.isMyPost) return r;
-        if (r.user.name === nickname && r.user.handle === handle && r.user.photo === photo) return r;
+        if (r.user.name === handle && r.user.handle === handle && r.user.photo === photo) return r;
         changed = true;
-        return { ...r, user: { ...r.user, name: nickname, handle, photo } };
+        return { ...r, user: { ...r.user, name: handle, handle, photo } };
       });
       return changed ? next : prev;
     });
-  }, [hydrated, nickname, handle, profilePhoto]);
+  }, [hydrated, handle, profilePhoto]);
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
@@ -818,7 +875,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );

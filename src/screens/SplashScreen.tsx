@@ -9,6 +9,8 @@ import { clearPersistedStores } from '../store/persist';
 import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getCurrentSession } from '../services/auth';
+import { getMyProfile } from '../services/profile';
+import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import type { RootStackScreenProps } from '../navigation/types';
 
 type Props = RootStackScreenProps<'Splash'>;
@@ -21,6 +23,7 @@ export default function SplashScreen({ navigation }: Props) {
   const { resetRecords } = useRecords();
   const { resetSettings } = useSettings();
   const { resetConversations } = useDM();
+  const runAccountBoundary = useAccountBoundary();
 
   // 탈퇴 유예(30일) 만료 시 영구 파기
   useEffect(() => {
@@ -76,7 +79,20 @@ export default function SplashScreen({ navigation }: Props) {
         const session = await getCurrentSession();
         // 탈퇴 유예 중이면 자동 로그인하지 않고 로그인 화면에서 복구 여부를 묻는다
         if (session && !pending) {
-          navigation.replace('Main');
+          // 계정 경계 처리: 세션이 이전과 다른 계정이면(예: 이메일 인증 딥링크로 진입)
+          // 이전 계정 로컬을 비우고 새 계정 데이터를 복원한다. 같은 계정이면 no-op.
+          await runAccountBoundary();
+          // 온보딩 완료(생일 채움) 여부를 확인해, 미완이면 온보딩으로 재진입시킨다.
+          // (인증만 하고 온보딩 중 이탈한 사용자가 재실행 시 프로필 없이 메인에 들어가는 것 방지)
+          let onboarded = false;
+          try {
+            const myProfile = await getMyProfile();
+            onboarded = !!(myProfile && myProfile.birthday && myProfile.birthday.trim());
+          } catch {
+            // 조회 실패 시 세션이 있으니 기존 사용자로 간주(Main) — 재온보딩 강제 방지
+            onboarded = true;
+          }
+          navigation.replace(onboarded ? 'Main' : 'BasicInfo');
           return;
         }
       }

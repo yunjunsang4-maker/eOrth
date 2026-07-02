@@ -13,6 +13,13 @@ export type GlobeVariant = 'aurora' | 'classic';
 export type Gender = 'male' | 'female' | '';
 // 앱 언어: 한국어 / 영어
 export type AppLanguage = 'ko' | 'en';
+
+// 기본 아이디(handle) 생성. 충돌 확률을 낮추기 위해 엔트로피를 늘린다(랜덤 2회 결합).
+// DB엔 handle UNIQUE 제약이 있어, 드문 충돌 시 ProfileSync가 재생성·재시도한다.
+export function genHandle(): string {
+  const r = () => Math.random().toString(36).slice(2, 8);
+  return `user_${r()}${r()}`;
+}
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
   | 'master' | 'friendTrip' | 'likes' | 'newFollower'
@@ -31,8 +38,6 @@ interface SettingsContextType {
   setSnapEnabled: (v: boolean) => void;
   diaryCardMode: DiaryCardMode;
   setDiaryCardMode: (v: DiaryCardMode) => void;
-  nickname: string;
-  setNickname: (v: string) => void;
   birthday: string; // YYYY-MM-DD
   setBirthday: (v: string) => void;
   gender: Gender;
@@ -47,6 +52,9 @@ interface SettingsContextType {
   setProfilePhoto: (v: string | null) => void;
   handleLastChanged: number | null;
   setHandleLastChanged: (v: number | null) => void;
+  // 사용자가 아이디(handle)를 직접 확정했는지 여부. true면 충돌 시에도 임의 값으로 재생성하지 않는다.
+  handleChosen: boolean;
+  setHandleChosen: (v: boolean) => void;
   signUpMethod: SignUpMethod;
   setSignUpMethod: (v: SignUpMethod) => void;
   signUpEmail: string;
@@ -109,7 +117,6 @@ interface SettingsPersistPayload {
   homeCountryCode: string;
   snapEnabled: boolean;
   diaryCardMode: DiaryCardMode;
-  nickname: string;
   birthday?: string; // 과거 저장본엔 없을 수 있어 optional
   gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
   language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
@@ -117,6 +124,7 @@ interface SettingsPersistPayload {
   bio: string;
   profilePhoto: string | null;
   handleLastChanged: number | null;
+  handleChosen?: boolean; // 과거 저장본엔 없을 수 있어 optional
   signUpMethod: SignUpMethod;
   signUpEmail: string;
   arrivalDetect: boolean;
@@ -149,15 +157,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
-  const [nickname, setNickname] = useState(''); // 온보딩(BasicInfo)에서 입력
   const [birthday, setBirthday] = useState('');
   const [gender, setGender] = useState<Gender>('');
   const [language, setLanguage] = useState<AppLanguage>('ko'); // 기본 언어: 한국어
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
-  const [handle, setHandle] = useState(() => `user_${Math.random().toString(36).slice(2, 8)}`);
+  const [handle, setHandle] = useState(() => genHandle());
   const [bio, setBio] = useState('');
   const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
   const [handleLastChanged, setHandleLastChanged] = useState<number | null>(null);
+  const [handleChosen, setHandleChosen] = useState(false);
   const [signUpMethod, setSignUpMethod] = useState<SignUpMethod>('email');
   const [signUpEmail, setSignUpEmail] = useState('user@eorth.app');
   const [arrivalDetect, setArrivalDetect] = useState(true);
@@ -226,7 +234,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setHomeCountryCode(p.homeCountryCode);
       setSnapEnabled(p.snapEnabled);
       setDiaryCardMode(p.diaryCardMode);
-      setNickname(p.nickname);
       setBirthday(p.birthday ?? '');
       setGender(p.gender ?? '');
       setLanguage(p.language ?? 'ko');
@@ -234,6 +241,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setBio(p.bio);
       setProfilePhoto(p.profilePhoto);
       setHandleLastChanged(p.handleLastChanged);
+      setHandleChosen(p.handleChosen ?? false);
       setSignUpMethod(p.signUpMethod);
       setSignUpEmail(p.signUpEmail);
       setArrivalDetect(p.arrivalDetect);
@@ -262,7 +270,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      nickname,
       birthday,
       gender,
       language,
@@ -270,6 +277,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       bio,
       profilePhoto,
       handleLastChanged,
+      handleChosen,
       signUpMethod,
       signUpEmail,
       arrivalDetect,
@@ -298,7 +306,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      nickname,
       birthday,
       gender,
       language,
@@ -306,6 +313,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       bio,
       profilePhoto,
       handleLastChanged,
+      handleChosen,
       signUpMethod,
       signUpEmail,
       arrivalDetect,
@@ -351,14 +359,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setHomeCountryCode('KR');
     setSnapEnabled(true);
     setDiaryCardMode('full');
-    setNickname('');
     setBirthday('');
     setGender('');
     setLanguage('ko');
-    setHandle(`user_${Math.random().toString(36).slice(2, 8)}`);
+    setHandle(genHandle());
     setBio('');
     setProfilePhoto(null);
     setHandleLastChanged(null);
+    setHandleChosen(false);
     setSignUpMethod('email');
     setSignUpEmail('user@eorth.app');
     setArrivalDetect(true);
@@ -401,8 +409,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSnapEnabled,
         diaryCardMode,
         setDiaryCardMode,
-        nickname,
-        setNickname,
         birthday,
         setBirthday,
         gender,
@@ -417,6 +423,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setProfilePhoto,
         handleLastChanged,
         setHandleLastChanged,
+        handleChosen,
+        setHandleChosen,
         signUpMethod,
         setSignUpMethod,
         signUpEmail,

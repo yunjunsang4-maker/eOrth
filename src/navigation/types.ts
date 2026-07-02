@@ -81,6 +81,7 @@ export type RootStackParamList = {
   Splash: undefined;
   AppIntro: undefined;
   Login: undefined;
+  ResetPassword: undefined;
   BasicInfo: undefined;
   TravelImport: undefined;
   ImportPhotoSelect: { trips: ImportTrip[] };
@@ -110,6 +111,7 @@ export type RootStackParamList = {
     handle?: string;
   } | undefined;
   FollowingList: undefined;
+  FollowerList: undefined;
   EditProfile: undefined;
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };
