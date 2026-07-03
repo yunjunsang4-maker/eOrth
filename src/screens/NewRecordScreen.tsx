@@ -515,16 +515,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     })).filter(g => g.countries.length > 0);
   }, [countrySearch]);
 
-  // Step 2 - 미디어
-  const [medias,            setMedias]           = useState<string[]>(
-    editFirstCountryData?.medias ?? editRecord?.medias ?? []
-  );
+  // Step 2 - 미디어 (다국가여도 사진은 여행 전체 공용 — 국가 구분 없이 한 번에 입력)
+  const [medias,            setMedias]           = useState<string[]>(editRecord?.medias ?? []);
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
-    editFirstCountryData?.mediaPrivacy ?? editRecord?.mediaPrivacy ?? {}
+    editRecord?.mediaPrivacy ?? {}
   );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
-    editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
+    editRecord?.representativePhoto ?? null
   );
 
   // 압축본 uri → 원본 uri 매핑. "지도 대표" 사진은 저장 시 이 원본에서 고해상도로 다시 생성한다.
@@ -700,29 +698,21 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
+  // 국가별로 구분해 받는 건 날짜·별점뿐 — 사진은 여행 전체 공용(전역 medias)
   const perCountryStore = useRef<Record<string, {
-    medias: string[];
-    mediaPrivacy: Record<number, string[]>;
     startDate: Date;
     endDate: Date;
     rating: number;
-    representativePhoto?: string;
   }>>(
     // 편집 모드: 기존 국가별 데이터를 시딩해서 국가 전환 시 그대로 표시
     (() => {
-      const store: Record<string, {
-        medias: string[]; mediaPrivacy: Record<number, string[]>;
-        startDate: Date; endDate: Date; rating: number; representativePhoto?: string;
-      }> = {};
+      const store: Record<string, { startDate: Date; endDate: Date; rating: number }> = {};
       if (editRecord?.perCountryData) {
         for (const [name, d] of Object.entries(editRecord.perCountryData)) {
           store[name] = {
-            medias: d.medias ?? [],
-            mediaPrivacy: d.mediaPrivacy ?? {},
             startDate: parseDotDate(d.startDate),
             endDate: parseDotDate(d.endDate),
             rating: d.rating ?? 0,
-            representativePhoto: d.representativePhoto,
           };
         }
       }
@@ -735,36 +725,27 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const name = selectedCountries[activeCountryIdx]?.name;
     if (name) {
       perCountryStore.current[name] = {
-        medias: [...medias],
-        mediaPrivacy: { ...mediaPrivacy },
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         rating,
-        representativePhoto: representativePhoto || undefined,
       };
     }
   };
 
-  // 국가 전환
+  // 국가 전환 (날짜·별점만 국가별로 스왑 — 사진은 공용이라 그대로 둔다)
   const switchCountry = (newIdx: number) => {
     if (newIdx === activeCountryIdx) return;
     saveCurrentCountryData();
     const newName = selectedCountries[newIdx]?.name;
     const data = newName ? perCountryStore.current[newName] : null;
     if (data) {
-      setMedias(data.medias);
-      setMediaPrivacy(data.mediaPrivacy);
       setStartDate(data.startDate);
       setEndDate(data.endDate);
       setRating(data.rating);
-      setRepresentativePhoto(data.representativePhoto || null);
     } else {
-      setMedias([]);
-      setMediaPrivacy({});
       setStartDate(todayInit);
       setEndDate(todayInit);
       setRating(0);
-      setRepresentativePhoto(null);
     }
     setActiveCountryIdx(newIdx);
   };
@@ -1049,12 +1030,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
-    if (step === 2) {
-      // 사진 최소 1장 필수 — 다국가면 모든 국가에 1장 이상 (활성은 전역 medias, 나머지는 국가별 저장값)
-      return selectedCountries.every((c, idx) =>
-        idx === activeCountryIdx ? medias.length > 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) > 0
-      );
-    }
+    if (step === 2) return medias.length > 0; // 사진 최소 1장 필수 (여행 전체 공용)
     if (step === TOTAL_STEPS) {
       if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
       // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
@@ -1067,14 +1043,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   const goNext = () => {
     if (step < TOTAL_STEPS) {
-      if (isMultiCountry && step === 2) saveCurrentCountryData();
       setStep(s => s + 1);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
   };
   const goPrev = () => {
     if (step > 1) {
-      if (isMultiCountry && step === 2) saveCurrentCountryData();
       setStep(s => s - 1);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
@@ -1109,11 +1083,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       const first = selectedCountries[0];
 
-      // 국가별 데이터 수집
-      const pcd: Record<string, { medias?: string[]; mediaPrivacy?: Record<number, string[]>; startDate?: string; endDate?: string; rating?: number; representativePhoto?: string }> = {};
-      let allMedias: string[] = [];
-      // 합본 medias(allMedias) 기준으로 국가별 비공개 인덱스를 오프셋 보정해 하나로 합친다
-      const mergedPrivacy: Record<number, string[]> = {};
+      // 국가별 데이터 수집 — 날짜·별점만 (사진은 여행 전체 공용 medias)
+      const pcd: Record<string, { startDate?: string; endDate?: string; rating?: number }> = {};
       let firstRating = 0;
       let firstStart = formatDate(todayInit);
       let firstEnd = formatDate(todayInit);
@@ -1121,21 +1092,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       selectedCountries.forEach((c, i) => {
         const d = perCountryStore.current[c.name];
         if (d) {
-          const hasPrivacy = Object.values(d.mediaPrivacy).some(v => v && v.length > 0);
           pcd[c.name] = {
-            medias: d.medias,
-            mediaPrivacy: hasPrivacy ? d.mediaPrivacy : undefined,
             startDate: formatDate(d.startDate),
             endDate: formatDate(d.endDate),
             rating: d.rating,
-            representativePhoto: d.representativePhoto,
           };
-          // 이 국가 medias가 합본에서 시작하는 위치(offset)만큼 비공개 인덱스를 밀어 매핑
-          const offset = allMedias.length;
-          Object.entries(d.mediaPrivacy).forEach(([k, v]) => {
-            if (v && v.length > 0) mergedPrivacy[offset + Number(k)] = v;
-          });
-          allMedias = [...allMedias, ...d.medias];
           if (i === 0) {
             firstRating = d.rating;
             firstStart = formatDate(d.startDate);
@@ -1144,13 +1105,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         }
       });
 
-      const firstRepPhoto = perCountryStore.current[first.name]?.representativePhoto || representativePhoto || undefined;
-
       // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지)
-      const firstRepHiRes = await toRepHiRes(firstRepPhoto);
-      for (const name of Object.keys(pcd)) {
-        pcd[name].representativePhoto = await toRepHiRes(pcd[name].representativePhoto);
-      }
+      const firstRepHiRes = await toRepHiRes(representativePhoto || undefined);
 
       const payload = {
         country: `${first.flag} ${first.name}`,
@@ -1173,8 +1129,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         companions: selectedCompanions,
         companionFriends,
         visibility,
-        medias: allMedias,
-        mediaPrivacy: mergedPrivacy,
+        medias,
+        mediaPrivacy,
         startDate: firstStart,
         endDate: firstEnd,
         budget:     budget ? { amount: Number(budget), currency } : undefined,
@@ -1197,7 +1153,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           { linkTrip: !splitByCountry }
         );
         if (splitByCountry) {
-          // 같은 기록 하나를 국가별 여행 카드로 — 커버·날짜는 국가별 데이터로 오버라이드
+          // 같은 기록 하나를 국가별 여행 카드로 — 날짜는 국가별, 커버는 공용 대표사진
           selectedCountries.forEach((c) => {
             const d = pcd[c.name];
             addTripGroup({
@@ -1206,7 +1162,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               coverRecordId: recId,
               countryName: c.name,
               countryFlag: c.flag,
-              coverUri: d?.representativePhoto || d?.medias?.[0],
               date: d?.startDate,
             });
           });
@@ -1244,9 +1199,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const m: string[] = [];
     if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
     else if (step === 2) {
-      const noPhoto = selectedCountries.some((c, idx) =>
-        idx === activeCountryIdx ? medias.length === 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) === 0);
-      if (noPhoto) m.push(isMultiCountry ? t('newRecord.missAllCountryPhotos') : t('newRecord.missPhoto'));
+      if (medias.length === 0) m.push(t('newRecord.missPhoto'));
     }
     else if (step === TOTAL_STEPS) {
       if (memo.trim().length === 0) m.push(t('newRecord.missText'));
@@ -1444,21 +1397,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           {/* ══════════════════ STEP 2 ══════════════════ */}
           {step === 2 && (
             <View>
-              {/* 국가별 탭 (2개국 이상) */}
-              {isMultiCountry && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.countryTabScroll} contentContainerStyle={s.countryTabContent}>
-                  {selectedCountries.map((c, idx) => (
-                    <TouchableOpacity
-                      key={c.name}
-                      style={[s.countryTab, idx === activeCountryIdx && s.countryTabActive]}
-                      onPress={() => switchCountry(idx)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[s.countryTabText, idx === activeCountryIdx && s.countryTabTextActive]}>{c.flag} {c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+              {/* 사진은 여행 전체 공용 — 다국가여도 국가 탭 없이 한 번에 담는다 */}
               {/* 기간으로 자동 불러오기 버튼 */}
               <TouchableOpacity
                 style={s.autoLoadBtn}
