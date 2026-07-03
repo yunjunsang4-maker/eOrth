@@ -615,6 +615,7 @@ const ko = {
     missCountry: '국가',
     missAllCountryPhotos: '모든 국가 사진',
     missPhoto: '사진',
+    missRepPhoto: '대표 사진 지정',
     missText: '글',
     missAllCountryRatings: '모든 국가 평점',
     missRating: '평점',

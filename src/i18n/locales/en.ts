@@ -614,6 +614,7 @@ const en = {
     missCountry: 'Country',
     missAllCountryPhotos: 'Photos for all countries',
     missPhoto: 'Photo',
+    missRepPhoto: 'Cover photo',
     missText: 'Text',
     missAllCountryRatings: 'Ratings for all countries',
     missRating: 'Rating',

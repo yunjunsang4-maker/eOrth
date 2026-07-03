@@ -1030,7 +1030,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
-    if (step === 2) return medias.length > 0; // 사진 최소 1장 필수 (여행 전체 공용)
+    if (step === 2) return medias.length > 0 && !!representativePhoto; // 사진 1장 이상 + 대표 사진 지정 필수
     if (step === TOTAL_STEPS) {
       if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
       // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
@@ -1200,6 +1200,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
     else if (step === 2) {
       if (medias.length === 0) m.push(t('newRecord.missPhoto'));
+      else if (!representativePhoto) m.push(t('newRecord.missRepPhoto'));
     }
     else if (step === TOTAL_STEPS) {
       if (memo.trim().length === 0) m.push(t('newRecord.missText'));
