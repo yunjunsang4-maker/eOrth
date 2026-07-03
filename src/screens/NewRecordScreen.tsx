@@ -879,6 +879,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [mediaPickerMax,      setMediaPickerMax]      = useState(30);
   // 모달 열기 전 iCloud 사유로 제외된 장수 — 완료 메시지 안내에 사용
   const cloudSkippedRef = useRef(0);
+  // 기간 내 사진이 검색 상한(500장)을 넘어 일부만 확인했는지 — 완료 메시지 안내에 사용
+  const truncatedRef = useRef(false);
 
   const toggleMediaPickerItem = (id: string) => {
     setMediaPickerSelected(prev => {
@@ -921,6 +923,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const cloudNote = (skipped: number) =>
     skipped > 0 ? t('newRecord.cloudNote', { count: skipped }) : '';
 
+  // 500장 상한으로 일부만 확인했을 때의 안내 문구 (없으면 빈 문자열)
+  const truncatedNote = () => (truncatedRef.current ? t('newRecord.truncatedNote') : '');
+
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
     setMediaPickerVisible(false);
@@ -933,7 +938,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
-      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudSkippedRef.current));
+      if (resolvedUris.length === 0) {
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudSkippedRef.current));
+      } else {
+        Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudSkippedRef.current));
+      }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
@@ -952,8 +961,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
     setLoadingMedia(true);
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (perm.status !== 'granted') {
         Alert.alert(
           t('newRecord.galleryPermTitle'),
           t('newRecord.galleryPermMsg'),
@@ -977,10 +986,26 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         sortBy: MediaLibrary.SortBy.creationTime,
         first: 500,
       });
+      // 기간 내 사진이 상한(500장)보다 많으면 최신순으로 잘림 — 완료 안내에 표시
+      truncatedRef.current = !!result?.hasNextPage;
 
       const allAssets = result?.assets ?? [];
       if (allAssets.length === 0) {
-        Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
+        // '일부 사진만 허용' 상태면 허용된 사진만 검색되므로, "기간 내 사진 없음"과 구분해 안내
+        if (perm.accessPrivileges === 'limited') {
+          Alert.alert(
+            t('newRecord.limitedAccessTitle'),
+            t('newRecord.limitedAccessMsg'),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              Platform.OS === 'ios'
+                ? { text: t('newRecord.limitedAddPhotos'), onPress: () => { MediaLibrary.presentPermissionsPickerAsync().catch(() => {}); } }
+                : { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
+        }
         return;
       }
 
@@ -1019,7 +1044,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
 
-      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudCount));
+      // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
+      if (resolvedUris.length === 0) {
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudCount));
+      } else {
+        Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudCount));
+      }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
