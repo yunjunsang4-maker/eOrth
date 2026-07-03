@@ -371,11 +371,13 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;
 
-    const finalCountry = selectedCountry
+    const resolvedCountry = selectedCountry
       || (detectedCountry
         ? COUNTRIES.find(c => c.name === detectedCountry || c.term.toLowerCase() === detectedCountry.toLowerCase())
-        : null)
-      || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
+        : null);
+    const finalCountry = resolvedCountry || homeCountry; // 위치 거부/실패 시 홈 국가로 기록(빈 국가 방지)
+    // 폴백으로 채운 국가는 추정값 — 여행 세션 종료(귀국) 신호로 쓰이지 않게 store에 알린다
+    const countryGuessed = !resolvedCountry;
 
     const today = new Date();
     const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
@@ -399,7 +401,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       snapDetectedCountry: detectedCountry || undefined,
       snapLateSeconds: lateSeconds > 0 ? lateSeconds : undefined,
       snapHour: today.getHours(), // 촬영 시점 현지 시각의 시 (89·90 시간대 배지용)
-    });
+    }, { countryGuessed });
 
     savedRef.current = true;
     navigation.goBack();

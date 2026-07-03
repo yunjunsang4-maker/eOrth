@@ -189,9 +189,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 interface RecordContextType {
   records: TravelRecord[];
-  // 반환: 생성된 레코드 id. linkTrip=false면 국가별 자동 여행 묶음 생성을 건너뜀
-  // (다국가 분할 저장처럼 호출부가 직접 묶음을 만들 때 중복 그룹 방지용)
-  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>, opts?: { linkTrip?: boolean }) => string;
+  // 반환: 생성된 레코드 id.
+  // linkTrip=false: 국가별 자동 여행 묶음 생성을 건너뜀 (다국가 분할 저장처럼 호출부가 직접 묶음을 만들 때)
+  // countryGuessed=true: 위치 감지 실패로 국가가 추정값(거주국가 폴백)임 — 여행 세션 종료 신호로 쓰지 않음
+  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>, opts?: { linkTrip?: boolean; countryGuessed?: boolean }) => string;
   updateRecord: (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => void;
   deleteRecord: (id: string) => void;
   toggleLike: (id: string) => void;
@@ -223,7 +224,9 @@ interface RecordContextType {
   toggleCommentLike: (postId: string, commentId: string) => void;
   deleteComment: (postId: string, commentId: string) => void;
   tripGroups: TripGroup[];
-  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>) => void;
+  // session: 다국가 분할 저장 카드용 — 기록 기간(실시간 여부 판단)을 넘기면 해외 카드를
+  // 여행 세션에 등록해, 이후 그 국가의 실시간 기록(스냅 등)이 이 카드에 합류한다
+  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>, opts?: { session?: { startDate?: string; endDate?: string; date?: string } }) => void;
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   markSnapViewed: (id: string) => void;
@@ -337,7 +340,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 세션은 실시간 기록에만 적용한다: 집에서 지난 여행을 작성해도 세션이 열리거나(오합류),
   // 여행 중 과거 국내 기록을 작성해도 세션이 닫히지(오종료) 않게 한다. 여유 ±2일.
   const REALTIME_MARGIN_MS = 2 * 24 * 60 * 60 * 1000;
-  const coversNow = (rec: TravelRecord): boolean => {
+  const coversNow = (rec: Pick<TravelRecord, 'startDate' | 'endDate'> & { date?: string }): boolean => {
     const start = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
     const end = parseRecDate(rec.endDate) ?? start;
     if (start == null || end == null) return true; // 날짜 없으면 방금 생성(스냅 등)으로 간주
@@ -357,7 +360,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         const members = g.records
           .map((id) => records.find((r) => r.id === id))
           .filter(Boolean) as TravelRecord[];
-        if (members.length === 0 || members[0].countryName !== country) return false;
+        if (members.length === 0) return false;
+        // 카드의 실제 국가는 오버라이드(다국가 분할 카드) 우선 — 포르투갈 카드에
+        // 스페인(대표국가) 기록이 붙는 오매칭 방지
+        const groupCountry = g.countryName ?? members[0].countryName;
+        if (groupCountry !== country) return false;
         let gStart = Infinity;
         let gEnd = -Infinity;
         for (const m of members) {
@@ -378,7 +385,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
-  const linkRecordToTrip = (rec: TravelRecord) => {
+  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }) => {
     const country = rec.countryName;
     if (!country) return;
 
@@ -388,9 +395,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료
+    // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료.
+    // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
+    // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
     if (!homeCountryName || country === homeCountryName) {
-      if (tripSessionGroups) setTripSessionGroups(null);
+      if (tripSessionGroups && !opts?.countryGuessed) setTripSessionGroups(null);
       linkByDate(rec);
       return;
     }
@@ -426,7 +435,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const addRecord = (
     data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>,
-    opts?: { linkTrip?: boolean }
+    opts?: { linkTrip?: boolean; countryGuessed?: boolean }
   ): string => {
     const newRecord: TravelRecord = {
       ...data,
@@ -446,7 +455,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       isDraft: false,
     };
     setRecords((prev) => [newRecord, ...prev]);
-    if (opts?.linkTrip !== false) linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
+    if (opts?.linkTrip !== false) linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed }); // 프로필 여행 카드 자동 생성/연결
     publishToBackend(newRecord); // Supabase 발행(설정 시)
     // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
     // 로컬 URI만 교체하며 백엔드 동기화는 건드리지 않는다(백엔드엔 publishToBackend가 이미 업로드).
@@ -486,11 +495,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
+    const cur = records.find((r) => r.id === id);
+    const updated = cur ? { ...cur, ...changes } : undefined;
     setRecords((prev) =>
       prev.map((r) => (r.id === id ? { ...r, ...changes } : r))
     );
+    // 국가가 바뀐 수정 → 기존 여행 카드에서 빼고 새 국가 기준으로 재연결
+    // (카드 표지와 내용 불일치 방지). 분할 카드 기록은 수동 관리 카드라 제외.
+    if (cur && updated && changes.countryName && changes.countryName !== cur.countryName && !updated.splitByCountry) {
+      setTripGroups((prev) =>
+        prev
+          .map((g) => {
+            if (!g.records.includes(id)) return g;
+            const rest = g.records.filter((rid) => rid !== id);
+            return {
+              ...g,
+              records: rest,
+              coverRecordId: g.coverRecordId === id ? (rest[0] ?? g.coverRecordId) : g.coverRecordId,
+            };
+          })
+          .filter((g) => g.records.length > 0)
+      );
+      linkRecordToTrip(updated);
+    }
     if (isSupabaseConfigured) {
-      const cur = records.find((r) => r.id === id);
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(notifySyncError);
     }
   };
@@ -842,13 +870,29 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return id;
   };
 
-  const addTripGroup = (data: Omit<TripGroup, 'id' | 'createdAt'>) => {
+  const addTripGroup = (
+    data: Omit<TripGroup, 'id' | 'createdAt'>,
+    opts?: { session?: { startDate?: string; endDate?: string; date?: string } }
+  ) => {
     const newGroup: TripGroup = {
       ...data,
-      id: `grp-${Date.now()}`,
+      // 다국가 분할처럼 같은 ms에 연속 생성돼도 충돌하지 않도록 난수 접미사
+      id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: new Date(),
     };
     setTripGroups((prev) => [newGroup, ...prev]);
+    // 해외 카드 + 실시간 기록(기간이 오늘 포함)이면 여행 세션에 등록 —
+    // 이후 같은 국가의 스냅/기록이 별도 카드로 갈라지지 않고 이 카드에 합류
+    if (
+      opts?.session &&
+      data.countryName &&
+      homeCountryName &&
+      data.countryName !== homeCountryName &&
+      coversNow(opts.session)
+    ) {
+      const cn = data.countryName;
+      setTripSessionGroups((prev) => ({ ...(prev ?? {}), [cn]: newGroup.id }));
+    }
   };
 
   const deleteTripGroup = (id: string) => {

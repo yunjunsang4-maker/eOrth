@@ -556,15 +556,19 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       cutPhoto,
     }, { linkTrip: !splitByCountry }); // 나누기 모드는 아래에서 국가별 카드를 직접 만든다
     if (splitByCountry) {
-      // 같은 기록 하나를 국가별 여행 카드로 (피드 기록과 동일한 패턴)
+      // 같은 기록 하나를 국가별 여행 카드로 (피드 기록과 동일한 패턴).
+      // session: 여행 중 작성(실시간)이면 카드가 세션에 등록돼 이후 그 국가의 스냅이 합류한다
       selectedCountries.forEach((c) => {
-        addTripGroup({
-          title: `${c.name} 여행`,
-          records: [recId],
-          coverRecordId: recId,
-          countryName: c.name,
-          countryFlag: c.flag,
-        });
+        addTripGroup(
+          {
+            title: `${c.name} 여행`,
+            records: [recId],
+            coverRecordId: recId,
+            countryName: c.name,
+            countryFlag: c.flag,
+          },
+          { session: { startDate: sStr, endDate: eStr, date: sStr } }
+        );
       });
     }
     navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀

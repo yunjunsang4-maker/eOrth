@@ -1230,17 +1230,21 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           { linkTrip: !splitByCountry }
         );
         if (splitByCountry) {
-          // 같은 기록 하나를 국가별 여행 카드로 — 날짜는 국가별, 커버는 공용 대표사진
+          // 같은 기록 하나를 국가별 여행 카드로 — 날짜는 국가별, 커버는 공용 대표사진.
+          // session: 여행 중 작성(실시간)이면 카드가 세션에 등록돼 이후 그 국가의 스냅이 합류한다
           selectedCountries.forEach((c) => {
             const d = pcd[c.name];
-            addTripGroup({
-              title: `${c.name} 여행`, // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
-              records: [recId],
-              coverRecordId: recId,
-              countryName: c.name,
-              countryFlag: c.flag,
-              date: d?.startDate,
-            });
+            addTripGroup(
+              {
+                title: `${c.name} 여행`, // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
+                records: [recId],
+                coverRecordId: recId,
+                countryName: c.name,
+                countryFlag: c.flag,
+                date: d?.startDate,
+              },
+              { session: { startDate: d?.startDate, endDate: d?.endDate, date: d?.startDate } }
+            );
           });
         }
       }
