@@ -289,7 +289,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
-  const { addRecord, updateRecord, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -342,12 +342,29 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
   const tripPeriod = route?.params?.tripPeriod;
 
-  // 국가
+  // 국가 (복수 가능 — 첫 번째가 대표 국가)
+  const MAX_COUNTRIES = 10;
   const preselected = route?.params?.selectedCountry;
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(() => {
-    if (editRecord) return COUNTRIES.find(c => c.name === editRecord.countryName) ?? null;
-    return preselected ? COUNTRIES.find(c => c.name === preselected.name.split(' - ')[0]) ?? null : null;
+  const [selectedCountries, setSelectedCountries] = useState<Country[]>(() => {
+    if (editRecord) {
+      // 다국가 기록 편집이면 전체 목록 복원, 아니면 대표 국가만
+      const list = (editRecord.countries ?? [])
+        .map(cc => COUNTRIES.find(c => c.name === cc.name))
+        .filter((c): c is Country => !!c);
+      if (list.length > 0) return list;
+      const single = COUNTRIES.find(c => c.name === editRecord.countryName);
+      return single ? [single] : [];
+    }
+    const pre = preselected ? COUNTRIES.find(c => c.name === preselected.name.split(' - ')[0]) : null;
+    return pre ? [pre] : [];
   });
+  const selectedCountry = selectedCountries[0] ?? null; // 대표 국가 — 기존 로직(유효성·표시) 호환
+  const toggleCountry = (c: Country) =>
+    setSelectedCountries(prev =>
+      prev.some(p => p.name === c.name)
+        ? prev.filter(p => p.name !== c.name)
+        : prev.length >= MAX_COUNTRIES ? prev : [...prev, c]
+    );
   const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(() => {
     if (editRecord?.regionName) return { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' };
     return preselected?.region ? { name: preselected.region, nameEn: preselected.regionEn || '' } : null;
@@ -464,7 +481,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         (countryName && COUNTRIES.find(c => c.name === countryName || c.term.toLowerCase().includes(countryName.toLowerCase()))) ||
         null;
       if (!found) return;
-      setSelectedCountry(prev => prev ?? found);
+      setSelectedCountries(prev => (prev.length ? prev : [found]));
       if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
     })();
     return () => { cancelled = true; };
@@ -483,9 +500,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       if (imported.weather) setWeather(prev => prev || imported.weather!);
       if (imported.keywords) setKeywords(prev => prev.length > 0 ? prev : imported.keywords!);
       if (imported.countryName) {
-        setSelectedCountry(prev => {
-          if (prev) return prev;
-          return COUNTRIES.find(c => c.name === imported.countryName) ?? null;
+        setSelectedCountries(prev => {
+          if (prev.length) return prev;
+          const found = COUNTRIES.find(c => c.name === imported.countryName);
+          return found ? [found] : prev;
         });
       }
 
@@ -573,12 +591,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // ─── 임시저장 불러오기 ───
   const loadDraft = (draft: typeof drafts[number]) => {
     setDraftId(draft.id);
-    // 국가
-    if (draft.countryName) {
+    // 국가 — 다국가 임시저장이면 전체 목록 복원
+    const draftList = (draft.countries ?? [])
+      .map(cc => COUNTRIES.find(c => c.name === cc.name))
+      .filter((c): c is Country => !!c);
+    if (draftList.length > 0) {
+      setSelectedCountries(draftList);
+    } else if (draft.countryName) {
       const found = COUNTRIES.find(c => c.name === draft.countryName);
-      if (found) setSelectedCountry(found);
+      setSelectedCountries(found ? [found] : []);
     } else {
-      setSelectedCountry(null);
+      setSelectedCountries([]);
     }
     // 지역
     if (draft.regionName) {
@@ -954,7 +977,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       country: selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : '',
       countryName: selectedCountry?.name || '',
       countryFlag: selectedCountry?.flag || '',
-      countries: selectedCountry ? [{ flag: selectedCountry.flag, name: selectedCountry.name }] : [],
+      countries: selectedCountries.map(c => ({ flag: c.flag, name: c.name })),
       regionName: selectedRegion?.name || undefined,
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: startDate || dateStr,
@@ -994,10 +1017,33 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const publishingRef = useRef(false);
   const publish = async (finalBlocks: BlogBlock[]) => {
     if (publishingRef.current) return; // 중복 발행(이중 저장) 방지
+    // 다국가 신규 발행: 게시물은 하나, 프로필 여행 카드를 하나로 할지 국가별로 나눌지 선택 (피드와 동일)
+    // 수정 모드는 기존 설정 유지(다이얼로그 없음)
+    if (!isEdit && selectedCountries.length > 1) {
+      Alert.alert(
+        t('newRecord.splitAskTitle'),
+        t('newRecord.splitAskMsg', { count: selectedCountries.length }),
+        [
+          { text: t('newRecord.splitAskCancel'), style: 'cancel' },
+          { text: t('newRecord.splitAskSplit'), onPress: () => { doPublish(finalBlocks, true); } },
+          { text: t('newRecord.splitAskMerge'), onPress: () => { doPublish(finalBlocks, false); } },
+        ]
+      );
+      return;
+    }
+    await doPublish(finalBlocks, false);
+  };
+
+  const doPublish = async (finalBlocks: BlogBlock[], splitByCountry: boolean) => {
+    if (publishingRef.current) return;
     publishingRef.current = true;
     setPublishing(true);
     try {
-      const data = buildRecordData(finalBlocks);
+      const data = {
+        ...buildRecordData(finalBlocks),
+        // 수정 모드에선 다이얼로그가 없으므로 기존 기록의 분할 설정을 보존
+        splitByCountry: (isEdit ? editRecord?.splitByCountry : splitByCountry) || undefined,
+      };
       // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 사진은 1600 유지)
       data.representativePhoto = await toRepHiRes(data.representativePhoto);
       if (isEdit && editRecord) {
@@ -1005,7 +1051,19 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         const { user, ...changes } = data;
         updateRecord(editRecord.id, changes);
       } else {
-        addRecord(data);
+        const recId = addRecord(data, { linkTrip: !splitByCountry });
+        if (splitByCountry) {
+          // 같은 기록 하나를 국가별 여행 카드로 (피드 기록과 동일한 패턴)
+          selectedCountries.forEach((c) => {
+            addTripGroup({
+              title: `${c.name} 여행`,
+              records: [recId],
+              coverRecordId: recId,
+              countryName: c.name,
+              countryFlag: c.flag,
+            });
+          });
+        }
       }
       navigation.goBack();
     } catch {
@@ -1117,7 +1175,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
             <TouchableOpacity style={[st.countryChip, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? st.countryChipText : st.countryChipPlaceholder}>
-                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : t('blog.selectDestination')}
+                {selectedCountries.length > 0
+                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
             {countryRequired && <View style={st.requiredDot} />}
@@ -1615,9 +1675,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <Text style={st.continentLabel}>{g.continent}</Text>
                 {g.countries.map(country => (
                   <TouchableOpacity key={country.name}
-                    style={[st.countryItem, selectedCountry?.name === country.name && st.countryItemActive]}
-                    onPress={() => { setSelectedCountry(country); setCountryModalVisible(false); setCountrySearch(''); }}>
-                    <Text style={st.countryItemText}>{country.flag} {country.name}</Text>
+                    style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && st.countryItemActive]}
+                    onPress={() => toggleCountry(country)}>
+                    <Text style={st.countryItemText}>
+                      {country.flag} {country.name}
+                      {selectedCountries.some(p => p.name === country.name) ? '  ✓' : ''}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </View>

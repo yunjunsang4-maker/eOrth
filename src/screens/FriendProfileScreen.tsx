@@ -106,7 +106,8 @@ export default function FriendProfileScreen({
     trips: sourcePosts.flatMap((p) => {
       // 다국가 분할 기록: 게시물은 하나지만 카드는 국가별로 나눠 그린다
       // (id는 카드 key용 합성값 — 게시물 이동은 records[0].id 사용)
-      if (p.splitByCountry && p.countries && p.countries.length > 1 && p.perCountryData) {
+      // perCountryData는 피드 기록에만 있음(블로그·컷은 없음) — 없으면 기록 공통 값으로 폴백
+      if (p.splitByCountry && p.countries && p.countries.length > 1) {
         return p.countries.map((c) => {
           const d = p.perCountryData?.[c.name];
           return {
