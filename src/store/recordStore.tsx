@@ -8,6 +8,8 @@ import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
 import { getProfileByHandle } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
+import { normalizeKoreaRegion } from '../constants/koreaRegions';
+import { saveTripState, fetchTripState } from '../services/tripState';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
@@ -127,6 +129,8 @@ export interface TripGroup {
   countryFlag?: string;
   coverUri?: string;
   date?: string;           // YYYY.MM.DD
+  // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
+  regionName?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -350,12 +354,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const homeCountryName =
     COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
 
-  const makeTripGroup = (country: string, rec: TravelRecord): TripGroup => ({
+  const makeTripGroup = (country: string, rec: TravelRecord, regionName?: string): TripGroup => ({
     id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-    title: `${country} 여행`,
+    // 국내 지역 카드는 "제주 여행"처럼 지역명으로 (국가 단위와 구분)
+    title: `${regionName ?? country} 여행`,
     records: [rec.id],
     coverRecordId: rec.id,
     createdAt: new Date(),
+    regionName,
   });
 
   // 기록 기간이 '지금'을 포함하는가 — 실시간(여행 중) 기록과 회고(과거 여행 작성) 기록 구분.
@@ -370,12 +376,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return start - REALTIME_MARGIN_MS <= now && now <= end + REALTIME_MARGIN_MS;
   };
 
-  // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우)
+  // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우).
+  // 국내(거주국가) 기록은 지역(시/도)까지 같아야 같은 카드 — "제주 여행"과
+  // 서울 일상 기록이 시기가 가깝다고 한 카드로 묶이는 것 방지.
   const linkByDate = (rec: TravelRecord) => {
     const country = rec.countryName;
     const recStart = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
     const recEnd = parseRecDate(rec.endDate) ?? recStart;
     if (!country || recStart == null || recEnd == null) return; // 국가/날짜 없으면 매칭 불가
+    const isDomestic = !!homeCountryName && country === homeCountryName;
+    // 지역은 프리셋으로 정규화(수원시→경기 등). 정규화 실패 시 원본 유지, 미입력은 null
+    const recRegion = isDomestic
+      ? (normalizeKoreaRegion(rec.regionName)?.name ?? rec.regionName ?? null)
+      : null;
 
     setTripGroups((prev) => {
       const match = prev.find((g) => {
@@ -387,6 +400,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         // 스페인(대표국가) 기록이 붙는 오매칭 방지
         const groupCountry = g.countryName ?? members[0].countryName;
         if (groupCountry !== country) return false;
+        if (isDomestic) {
+          const gRegion =
+            g.regionName ??
+            normalizeKoreaRegion(members[0].regionName)?.name ??
+            members[0].regionName ??
+            null;
+          if (gRegion !== recRegion) return false; // 지역이 다르면(미입력 포함) 다른 카드
+        }
         let gStart = Infinity;
         let gEnd = -Infinity;
         for (const m of members) {
@@ -403,7 +424,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         if (match.records.includes(rec.id)) return prev;
         return prev.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
       }
-      return [makeTripGroup(country, rec), ...prev];
+      return [makeTripGroup(country, rec, recRegion ?? undefined), ...prev];
     });
   };
 
@@ -479,7 +500,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       isDraft: false,
     };
     setRecords((prev) => [newRecord, ...prev]);
-    if (opts?.linkTrip !== false) linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed }); // 프로필 여행 카드 자동 생성/연결
+    // 프로필 여행 카드 자동 생성/연결 — 예약 글은 발행 시점(아래 예약 발행 effect)에 연결한다
+    const isFutureScheduled = !!newRecord.scheduledAt && newRecord.scheduledAt > Date.now();
+    if (opts?.linkTrip !== false && !isFutureScheduled) {
+      linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed });
+    }
     publishToBackend(newRecord); // Supabase 발행(설정 시)
     // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
     // 로컬 URI만 교체하며 백엔드 동기화는 건드리지 않는다(백엔드엔 publishToBackend가 이미 업로드).
@@ -612,7 +637,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     };
     setRecords((prev) => [published, ...prev]);
     setDrafts((prev) => prev.filter((d) => d.id !== id));
-    linkRecordToTrip(published); // 프로필 여행 카드 자동 생성/연결
+    // 프로필 여행 카드 자동 생성/연결 — 예약 글은 발행 시점(예약 발행 effect)에 연결
+    if (!(published.scheduledAt && published.scheduledAt > Date.now())) {
+      linkRecordToTrip(published);
+    }
     publishToBackend(published); // Supabase 발행(설정 시)
   };
 
@@ -1045,6 +1073,73 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
     });
   }, [hydrated, records]);
+
+  // ─── 여행 카드·세션 서버 백업 (재설치/기기 변경 복원용) ───
+  // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.
+  // 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다 (실패는 조용히 — 다음 변경 때 재시도).
+  const backupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured) return;
+    if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
+    backupTimerRef.current = setTimeout(() => {
+      const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
+      saveTripState({
+        groups: tripGroups.map((g) => ({
+          id: g.id,
+          title: g.title,
+          records: g.records.map(toRemote),
+          coverRecordId: toRemote(g.coverRecordId),
+          createdAt: g.createdAt.toISOString(),
+          countryName: g.countryName,
+          countryFlag: g.countryFlag,
+          coverUri: g.coverUri,
+          date: g.date,
+          regionName: g.regionName,
+        })),
+        session: tripSession,
+      });
+    }, 4000);
+    return () => { if (backupTimerRef.current) clearTimeout(backupTimerRef.current); };
+  }, [hydrated, tripGroups, tripSession, records]);
+
+  // 재설치/새 기기 복원 — 로컬에 카드가 전혀 없고 서버 백업이 있으면 1회 복원.
+  // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
+  const tripRestoreTriedRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
+    tripRestoreTriedRef.current = true;
+    if (tripGroups.length > 0) return;
+    fetchTripState().then((backup) => {
+      if (!backup || backup.groups.length === 0) return;
+      setTripGroups((prev) =>
+        prev.length > 0
+          ? prev
+          : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+      );
+      setTripSession((prev) => {
+        if (prev) return prev;
+        const s = backup.session;
+        return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
+  // 백엔드 설정과 무관(카드는 로컬 기능). 이미 카드에 속한 글(과거 빌드 작성분)은 건너뜀.
+  const linkedScheduledRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hydrated) return;
+    const now = Date.now();
+    records.forEach((r) => {
+      if (r.isDraft || !r.scheduledAt || r.scheduledAt > now) return;
+      if (linkedScheduledRef.current.has(r.id)) return;
+      linkedScheduledRef.current.add(r.id);
+      if (tripGroups.some((g) => g.records.includes(r.id))) return;
+      linkRecordToTrip(r);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, records, tripGroups]);
 
   // record.comments(표시용 숫자)를 commentsByPost(실제 댓글)와 동기화 — 단일 출처 유지.
   // 로드되지 않은 글(백엔드 카운트만 있는 경우)은 건드리지 않는다.

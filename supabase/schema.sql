@@ -614,6 +614,27 @@ create trigger trg_notify_on_follow after insert on public.follows
   for each row execute function public.notify_on_follow();
 
 -- ============================================================
+-- 4-c-2) user_trip_state — 여행 카드(그룹)·세션 백업 (재설치/기기 변경 복원용)
+--   여행 카드와 세션은 로컬이 원본이고 이 테이블은 백업본(사용자당 1행 jsonb).
+--   기록 참조는 posts.id(remoteId)로 저장해 재설치 후 서버에서 받은 기록과 이어진다.
+-- ============================================================
+create table if not exists public.user_trip_state (
+  user_id    uuid primary key references public.profiles(id) on delete cascade,
+  data       jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_user_trip_state_updated on public.user_trip_state;
+create trigger trg_user_trip_state_updated before update on public.user_trip_state
+  for each row execute function public.set_updated_at();
+
+alter table public.user_trip_state enable row level security;
+
+drop policy if exists "user_trip_state_all_own" on public.user_trip_state;
+create policy "user_trip_state_all_own" on public.user_trip_state
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ============================================================
 -- 4-d) RPC: 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자(2단계)
 --   follows 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
 --   SECURITY DEFINER RPC로 집계한다. 이미 팔로우/본인/차단 관계는 제외.

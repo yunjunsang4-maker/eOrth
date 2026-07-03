@@ -30,6 +30,8 @@ import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
 import { MAX_RECORD_PHOTOS } from '../constants/limits';
+import { KOREA_REGIONS, normalizeKoreaRegion } from '../constants/koreaRegions';
+import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -472,6 +474,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
   );
 
+  // 거주국가(국내) 여부 — 국내 기록은 지역(시/도) 선택으로 여행 카드를 구분한다
+  const { homeCountryCode } = useSettings();
+  const homeCountryName = useMemo(
+    () => COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
+    [homeCountryCode]
+  );
+  const isDomesticSelected = !!homeCountryName && selectedCountries.some(c => c.name === homeCountryName);
+
   useEffect(() => {
     const params = route?.params;
     if (params?.selectedCountry) {
@@ -502,7 +512,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const mapped = geoJsonToCountry(countryName ?? '', countryCode ?? undefined);
       if (!mapped) return;
       setSelectedCountries(prev => (prev.length === 0 ? [mapped] : prev)); // 비어있을 때만
-      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+      if (city) {
+        // 국내면 GPS 도시명을 시/도 프리셋으로 정규화(수원시→경기) — 카드 파편화 방지
+        const kr = mapped.name === homeCountryName ? normalizeKoreaRegion(city) : null;
+        setSelectedRegion(prev => prev ?? (kr ? { name: kr.name, nameEn: kr.nameEn } : { name: city, nameEn: city }));
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1396,6 +1410,30 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   <Text style={s.draggableHelperText}>
                     드래그하여 국가 순서를 변경할 수 있습니다. (첫 번째 국가가 대표 국가가 됩니다)
                   </Text>
+                </View>
+              )}
+
+              {/* 국내 지역 선택 — 국내 기록은 지역(시/도) 단위로 여행 카드가 구분된다 */}
+              {isDomesticSelected && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {KOREA_REGIONS.map((r) => {
+                        const active = selectedRegion?.name === r.name;
+                        return (
+                          <TouchableOpacity
+                            key={r.name}
+                            style={[s.regionPickChip, active && s.regionPickChipActive]}
+                            onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[s.regionPickChipText, active && s.regionPickChipTextActive]}>{r.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
                 </View>
               )}
 
@@ -2575,6 +2613,33 @@ const s = StyleSheet.create({
   cloudProgressText: {
     fontSize: 12,
     color: COLORS.textDim,
+  },
+  // 국내 지역 선택 칩
+  regionPickLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textDim,
+    marginBottom: 8,
+  },
+  regionPickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  regionPickChipActive: {
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderColor: COLORS.purpleNeon,
+  },
+  regionPickChipText: {
+    fontSize: 13,
+    color: COLORS.textDim,
+    fontWeight: '600',
+  },
+  regionPickChipTextActive: {
+    color: COLORS.purpleNeon,
   },
   cloudCancelBtn: {
     marginTop: 2,

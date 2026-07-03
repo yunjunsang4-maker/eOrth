@@ -575,6 +575,7 @@ const en = {
   newRecord: {
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
+    domesticRegionLabel: 'Region — trip cards are grouped by region',
     splitAskTitle: 'Trip cards',
     splitAskMsg: 'You selected {{count}} countries.\nHow should the trip cards on your profile look?\n(Your feed will show a single post)',
     splitAskMerge: 'One card',
