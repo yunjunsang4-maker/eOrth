@@ -599,6 +599,7 @@ const ko = {
     cloudNote: '\n\niCloud에 보관된 {{count}}장은 자동 불러오기로 가져올 수 없어, 아래 ‘갤러리에서 선택’으로 받아주세요.',
     truncatedNote: '\n\n기간 내 사진이 많아 최근 500장까지만 확인했어요. 빠진 사진은 ‘갤러리에서 선택’으로 추가해 주세요.',
     cloudDownloading: 'iCloud에서 받는 중 {{done}}/{{total}}…',
+    cloudCancelA11y: 'iCloud 다운로드 취소',
     allDuplicateMsg: '선택한 기간의 사진이 이미 모두 추가되어 있어요.',
     limitedAccessTitle: '일부 사진만 접근 허용됨',
     limitedAccessMsg: '지금은 허용된 일부 사진만 검색할 수 있어요.\n여행 사진이 보이지 않으면 접근 가능한 사진을 늘려주세요.',

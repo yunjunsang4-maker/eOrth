@@ -926,29 +926,31 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // iCloud 오프로드 사진 2차 시도 — 네트워크 다운로드 허용 + 장당 타임아웃.
   // 순차 처리(동시 다운로드로 인한 실패·메모리 급증 방지)하며 진행률을 표시한다.
-  // 한 번에 추가 가능한 최대치(30장)까지만 시도하고, 실패·초과분은 기존처럼 제외 안내.
+  // 장수 제한 없음: 기간 내 전부 시도해 선택 모달에 올리고, 30장 선택은 모달에서 한다.
+  // 오래 걸릴 수 있어 취소 버튼 제공 — 취소 시 그때까지 받은 것만 반영.
   const ICLOUD_DL_TIMEOUT_MS = 15000;
-  const ICLOUD_DL_MAX = 30;
   const [cloudProgress, setCloudProgress] = useState<{ done: number; total: number } | null>(null);
+  const cloudCancelRef = useRef(false);
   const downloadCloudAssets = async (
     assets: MediaLibrary.Asset[]
   ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
-    const targets = assets.slice(0, ICLOUD_DL_MAX);
-    if (targets.length === 0) return [];
+    if (assets.length === 0) return [];
     const oks: { asset: MediaLibrary.Asset; uri: string }[] = [];
-    setCloudProgress({ done: 0, total: targets.length });
+    cloudCancelRef.current = false;
+    setCloudProgress({ done: 0, total: assets.length });
     try {
-      for (let i = 0; i < targets.length; i++) {
+      for (let i = 0; i < assets.length; i++) {
+        if (cloudCancelRef.current) break; // 사용자 취소 → 받은 것까지만 사용
         try {
           const info = await withTimeout(
-            MediaLibrary.getAssetInfoAsync(targets[i], { shouldDownloadFromNetwork: true }),
+            MediaLibrary.getAssetInfoAsync(assets[i], { shouldDownloadFromNetwork: true }),
             ICLOUD_DL_TIMEOUT_MS
           );
-          if (info?.localUri) oks.push({ asset: targets[i], uri: info.localUri });
+          if (info?.localUri) oks.push({ asset: assets[i], uri: info.localUri });
         } catch {
           // 다운로드 실패/타임아웃 → 제외 유지 (완료 알림의 iCloud 안내에 집계됨)
         }
-        setCloudProgress({ done: i + 1, total: targets.length });
+        setCloudProgress({ done: i + 1, total: assets.length });
       }
     } finally {
       setCloudProgress(null);
@@ -1492,9 +1494,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
                   <ActivityIndicator color="#BF85FC" size="large" />
                   {cloudProgress && (
-                    <Text style={s.cloudProgressText}>
-                      {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
-                    </Text>
+                    <>
+                      <Text style={s.cloudProgressText}>
+                        {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                      </Text>
+                      <TouchableOpacity
+                        style={s.cloudCancelBtn}
+                        onPress={() => { cloudCancelRef.current = true; }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('newRecord.cloudCancelA11y')}
+                      >
+                        <Text style={s.cloudCancelText}>{t('common.cancel')}</Text>
+                      </TouchableOpacity>
+                    </>
                   )}
                 </View>
               )}
@@ -2557,6 +2570,20 @@ const s = StyleSheet.create({
   cloudProgressText: {
     fontSize: 12,
     color: COLORS.textDim,
+  },
+  cloudCancelBtn: {
+    marginTop: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(191,133,252,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.3)',
+  },
+  cloudCancelText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.purpleNeon,
   },
 
   // 모달 전체 배경
