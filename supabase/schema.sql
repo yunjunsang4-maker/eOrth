@@ -756,8 +756,9 @@ create policy "messages_insert_sender" on public.dm_messages
 -- ============================================================
 -- 5) (제거됨 2026-07-03) 연락처 전화번호 매칭 — 친구 추가는 아이디 검색·QR·추천 친구로만.
 --    기존 개인정보(전화 해시)와 관련 객체를 정리하기 위해 drop한다.
+--    주의: drop trigger는 '테이블'이 없으면 IF EXISTS여도 에러(42P01)라 쓰지 않는다 —
+--    테이블 drop이 소속 트리거를 함께 제거하므로 아래 두 줄로 충분(재실행 안전).
 -- ============================================================
-drop trigger if exists trg_user_phones_updated on public.user_phones;
 drop function if exists public.find_users_by_phone_hashes(text[]);
 drop table if exists public.user_phones;
 
