@@ -268,8 +268,16 @@ interface RecordPersistPayload {
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
   mutedHandles?: string[];
-  // 해외 여행 세션(국가명→여행카드 id) — 출국~귀국 사이 유지. 과거 저장본엔 없음
-  tripSessionGroups?: Record<string, string> | null;
+  // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
+  // 구형(국가명→카드 id 맵만)일 수 있어 복원 시 정규화한다
+  tripSessionGroups?: TripSession | Record<string, string> | null;
+}
+
+// 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
+// lastActiveAt은 30일 안전판(장기 무활동 시 자동 만료) 판정용.
+export interface TripSession {
+  groups: Record<string, string>;
+  lastActiveAt: number;
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
@@ -279,8 +287,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
   // 해외 여행 세션 — 위치(기록 국가)가 거주국가와 달라지는 순간 열리고 귀국까지 유지.
-  // 값: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
-  const [tripSessionGroups, setTripSessionGroups] = useState<Record<string, string> | null>(null);
+  // groups: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
+  // 안전판: 마지막 활동(lastActiveAt) 후 30일 지나면 만료 — 귀국 신호를 못 받은 채
+  // 방치된 세션에 다음 여행이 합쳐지는 것을 막는다.
+  const TRIP_SESSION_MAX_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+  const [tripSession, setTripSession] = useState<TripSession | null>(null);
+  const sessionAlive = (s: TripSession | null): s is TripSession =>
+    !!s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS;
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
   // 비공개 계정에 보낸 대기 중 팔로우 요청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
@@ -303,10 +316,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
-      setTripSessionGroups(p.tripSessionGroups ?? null);
+      // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
+      const rawSession = p.tripSessionGroups ?? null;
+      const normalized: TripSession | null = !rawSession
+        ? null
+        : typeof (rawSession as TripSession).lastActiveAt === 'number'
+          ? (rawSession as TripSession)
+          : { groups: rawSession as Record<string, string>, lastActiveAt: Date.now() };
+      setTripSession(
+        normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
+      );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups: tripSession }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSession],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -399,13 +421,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
     // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
     if (!homeCountryName || country === homeCountryName) {
-      if (tripSessionGroups && !opts?.countryGuessed) setTripSessionGroups(null);
+      if (tripSession && !opts?.countryGuessed) setTripSession(null);
       linkByDate(rec);
       return;
     }
 
-    // 해외 실시간 기록 — 현재 세션에 이 국가의 카드가 있으면 무조건 그 카드에 추가
-    const sessionGid = tripSessionGroups?.[country];
+    // 해외 실시간 기록 — 살아 있는(30일 무활동 만료 전) 세션에 이 국가의 카드가 있으면 추가
+    const session = sessionAlive(tripSession) ? tripSession : null;
+    const sessionGid = session?.groups[country];
     const target = sessionGid ? tripGroups.find((g) => g.id === sessionGid) : undefined;
     if (target) {
       if (!target.records.includes(rec.id)) {
@@ -413,12 +436,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           prev.map((g) => (g.id === target.id ? { ...g, records: [...g.records, rec.id] } : g))
         );
       }
+      setTripSession({ groups: session!.groups, lastActiveAt: Date.now() }); // 활동 갱신
       return;
     }
-    // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제됨) → 새 카드 + 세션 등록
+    // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제·세션 만료) → 새 카드 + 세션 등록
     const ng = makeTripGroup(country, rec);
     setTripGroups((prev) => [ng, ...prev]);
-    setTripSessionGroups((prev) => ({ ...(prev ?? {}), [country]: ng.id }));
+    setTripSession({ groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() });
   };
 
   // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
@@ -429,7 +453,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     prevVisitedRef.current = currentVisitedCountryCode;
     if (prev === currentVisitedCountryCode) return;
     if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {
-      setTripSessionGroups(null);
+      setTripSession(null);
     }
   }, [currentVisitedCountryCode, homeCountryCode]);
 
@@ -891,17 +915,20 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       coversNow(opts.session)
     ) {
       const cn = data.countryName;
-      setTripSessionGroups((prev) => ({ ...(prev ?? {}), [cn]: newGroup.id }));
+      setTripSession((prev) => ({
+        groups: { ...(sessionAlive(prev) ? prev.groups : {}), [cn]: newGroup.id },
+        lastActiveAt: Date.now(),
+      }));
     }
   };
 
   const deleteTripGroup = (id: string) => {
     setTripGroups((prev) => prev.filter((g) => g.id !== id));
     // 여행 세션이 가리키던 카드면 매핑도 정리 (다음 기록 때 새 카드가 자연스럽게 생성됨)
-    setTripSessionGroups((prev) => {
+    setTripSession((prev) => {
       if (!prev) return prev;
-      const rest = Object.entries(prev).filter(([, gid]) => gid !== id);
-      return rest.length > 0 ? Object.fromEntries(rest) : null;
+      const rest = Object.entries(prev.groups).filter(([, gid]) => gid !== id);
+      return rest.length > 0 ? { groups: Object.fromEntries(rest), lastActiveAt: prev.lastActiveAt } : null;
     });
   };
 
