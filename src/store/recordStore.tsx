@@ -179,7 +179,9 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 interface RecordContextType {
   records: TravelRecord[];
-  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => void;
+  // 반환: 생성된 레코드 id. linkTrip=false면 국가별 자동 여행 묶음 생성을 건너뜀
+  // (다국가 분할 저장처럼 호출부가 직접 묶음을 만들 때 중복 그룹 방지용)
+  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>, opts?: { linkTrip?: boolean }) => string;
   updateRecord: (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => void;
   deleteRecord: (id: string) => void;
   toggleLike: (id: string) => void;
@@ -338,8 +340,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const addRecord = (
-    data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>
-  ) => {
+    data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>,
+    opts?: { linkTrip?: boolean }
+  ): string => {
     const newRecord: TravelRecord = {
       ...data,
       user: {
@@ -348,7 +351,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         handle: handle,
         photo: profilePhoto || undefined,
       },
-      id: `rec-${Date.now()}`,
+      // 같은 ms에 연속 생성(다국가 분할 저장 등)돼도 충돌하지 않도록 난수 접미사
+      id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       likes: 0,
       comments: 0,
       liked: false,
@@ -357,7 +361,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       isDraft: false,
     };
     setRecords((prev) => [newRecord, ...prev]);
-    linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
+    if (opts?.linkTrip !== false) linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
     publishToBackend(newRecord); // Supabase 발행(설정 시)
     // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
     // 로컬 URI만 교체하며 백엔드 동기화는 건드리지 않는다(백엔드엔 publishToBackend가 이미 업로드).
@@ -367,6 +371,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         setRecords((prev) => prev.map((r) => (r.id === newRecord.id ? { ...r, ...changes } : r)));
       })
       .catch(() => {});
+    return newRecord.id;
   };
 
   // 백엔드 동기화 실패 알림 — 로컬은 이미 반영됐고 서버 반영만 실패한 경우.

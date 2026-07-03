@@ -575,6 +575,11 @@ const en = {
   newRecord: {
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
+    splitAskTitle: 'How to record',
+    splitAskMsg: 'You selected {{count}} countries.\nHow would you like to record them?',
+    splitAskMerge: 'As one trip',
+    splitAskSplit: 'Split by country',
+    splitAskCancel: 'Cancel',
     countrySelectedDone: '{{count}} countries selected',
     countryCanAdd: ' · can add more',
     countryMax: ' · max',

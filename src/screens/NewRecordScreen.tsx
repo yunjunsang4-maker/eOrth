@@ -409,7 +409,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
-  const { addRecord, updateRecord, followingUsers } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, followingUsers } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -1085,9 +1085,81 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       Alert.alert(t('newRecord.selectCountryTitle'), t('newRecord.selectCountryMsg'));
       return;
     }
+    // 다국가 신규 작성: 하나의 여행으로 합칠지, 국가별로 나눌지 선택
+    // (수정 모드는 기존 합본 구조 유지 — 분할하면 기존 게시물·댓글과의 연결이 깨짐)
+    if (!isEdit && selectedCountries.length > 1) {
+      Alert.alert(
+        t('newRecord.splitAskTitle'),
+        t('newRecord.splitAskMsg', { count: selectedCountries.length }),
+        [
+          { text: t('newRecord.splitAskCancel'), style: 'cancel' },
+          { text: t('newRecord.splitAskSplit'), onPress: () => { doSave(true); } },
+          { text: t('newRecord.splitAskMerge'), onPress: () => { doSave(false); } },
+        ]
+      );
+      return;
+    }
+    await doSave(false);
+  };
+
+  const doSave = async (splitByCountry: boolean) => {
     {
       // 현재 활성 국가 데이터 저장
       saveCurrentCountryData();
+
+      // 국가별로 나눠서 저장 — 국가마다 기록 1개 + 전체를 여행 묶음으로 자동 그룹화
+      if (splitByCountry) {
+        const createdIds: string[] = [];
+        for (let i = 0; i < selectedCountries.length; i++) {
+          const c = selectedCountries[i];
+          const d = perCountryStore.current[c.name];
+          if (!d || d.medias.length === 0) continue; // canGoNext가 보장 — 방어
+          const rep = await toRepHiRes(d.representativePhoto || representativePhoto || undefined);
+          const hasPrivacy = Object.values(d.mediaPrivacy).some(v => v && v.length > 0);
+          const id = addRecord(
+            {
+              user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
+              viewType: 'feed',
+              country: `${c.flag} ${c.name}`,
+              countryName: c.name,
+              countryFlag: c.flag,
+              countries: [c],
+              // 지역은 첫 국가 기준 선택값이므로 첫 기록에만
+              regionName: i === 0 ? selectedRegion?.name || undefined : undefined,
+              regionNameEn: i === 0 ? selectedRegion?.nameEn || undefined : undefined,
+              representativePhoto: rep,
+              date: formatDate(d.startDate),
+              content: title || t('newRecord.defaultTitleOne', { country: c.name }),
+              memo,
+              rating: d.rating,
+              companions: selectedCompanions,
+              companionFriends,
+              visibility,
+              medias: d.medias,
+              mediaPrivacy: hasPrivacy ? d.mediaPrivacy : undefined, // 단일 국가라 오프셋 보정 불필요
+              startDate: formatDate(d.startDate),
+              endDate: formatDate(d.endDate),
+              // 예산은 여행 전체 총액이라 첫 기록에만 담아 통계 중복 합산 방지
+              budget: i === 0 && budget ? { amount: Number(budget), currency } : undefined,
+              weather: weather || undefined,
+              flightType: flightType || undefined,
+              keywords: keywords.length > 0 ? keywords : undefined,
+            },
+            { linkTrip: false } // 국가별 자동 그룹 대신 아래에서 하나의 묶음으로 생성
+          );
+          createdIds.push(id);
+        }
+        if (createdIds.length > 0) {
+          addTripGroup({
+            title: title || t('newRecord.defaultTitleMany', { country: selectedCountries[0].name, count: selectedCountries.length - 1 }),
+            records: createdIds,
+            coverRecordId: createdIds[0],
+          });
+        }
+        savedRef.current = true;
+        navigation.goBack();
+        return;
+      }
 
       const first = selectedCountries[0];
 

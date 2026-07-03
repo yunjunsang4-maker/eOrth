@@ -576,6 +576,11 @@ const ko = {
   newRecord: {
     defaultTitleOne: '{{country}} 여행 기록',
     defaultTitleMany: '{{country}} 외 {{count}}개국 여행 기록',
+    splitAskTitle: '기록 방식 선택',
+    splitAskMsg: '{{count}}개 국가를 선택했어요.\n어떻게 기록할까요?',
+    splitAskMerge: '하나의 여행으로',
+    splitAskSplit: '국가별로 나누기',
+    splitAskCancel: '취소',
     countrySelectedDone: '{{count}}개 국가 선택 완료',
     countryCanAdd: ' · 추가 가능',
     countryMax: ' · 최대',
