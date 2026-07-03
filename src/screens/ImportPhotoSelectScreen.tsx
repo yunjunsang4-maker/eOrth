@@ -10,8 +10,9 @@ import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
+import { MAX_RECORD_PHOTOS } from '../constants/limits';
 
-export const MAX_PHOTOS_PER_TRIP = 30; // 프리미엄 seam: 나중에 이 한도만 상향
+export const MAX_PHOTOS_PER_TRIP = MAX_RECORD_PHOTOS; // 기록당 사진 상한 공유 (프리미엄 seam은 limits.ts)
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
