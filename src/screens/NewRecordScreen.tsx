@@ -28,6 +28,7 @@ import { MediaPickerModal } from '../components/record/MediaPickerModal';
 import { FriendPickerModal } from '../components/record/FriendPickerModal';
 import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
+import { withTimeout } from '../utils/withTimeout';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -895,28 +896,64 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
-  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환해 {asset, uri} 쌍을 돌려준다.
-  // iCloud로 오프로드된(원본이 기기에 없는) 사진은 Expo 관리형 API로 materialize가
-  // 불가능하다 — getAssetInfoAsync/ImageManipulator/FileSystem.copyAsync 모두 실패하며
-  // ph:// 그대로 두면 새 아키텍처에서 검은 타일로 뜬다. 따라서 가져올 수 없는 것으로
-  // 보고 제외한다(검은 타일/조용한 실패 방지). 변환은 Promise.all로 병렬 처리.
+  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환한다 (ph:// 그대로 두면
+  // 새 아키텍처에서 검은 타일로 뜸). 원본이 기기에 없는(iCloud 오프로드) 사진은
+  // cloud로 분리해 돌려주고, 호출부가 2차 다운로드(downloadCloudAssets)를 시도한다.
   const resolveImportable = async (
     assets: MediaLibrary.Asset[]
-  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+  ): Promise<{ ok: { asset: MediaLibrary.Asset; uri: string }[]; cloud: MediaLibrary.Asset[] }> => {
     const probed = await Promise.all(
       assets.map(async (asset) => {
         try {
           if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
             const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
-            return info.localUri ? { asset, uri: info.localUri } : null; // localUri 없으면 iCloud → 제외
+            return info.localUri
+              ? { kind: 'ok' as const, asset, uri: info.localUri }
+              : { kind: 'cloud' as const, asset }; // localUri 없음 = iCloud 오프로드 → 2차 시도 대상
           }
-          return { asset, uri: asset.uri };
+          return { kind: 'ok' as const, asset, uri: asset.uri };
         } catch {
-          return null;
+          return { kind: 'cloud' as const, asset }; // 판정 실패도 2차 시도에 넘겨본다
         }
       })
     );
-    return probed.filter((p): p is { asset: MediaLibrary.Asset; uri: string } => p !== null);
+    return {
+      ok: probed.filter((p): p is { kind: 'ok'; asset: MediaLibrary.Asset; uri: string } => p.kind === 'ok')
+        .map(({ asset, uri }) => ({ asset, uri })),
+      cloud: probed.filter((p) => p.kind === 'cloud').map((p) => p.asset),
+    };
+  };
+
+  // iCloud 오프로드 사진 2차 시도 — 네트워크 다운로드 허용 + 장당 타임아웃.
+  // 순차 처리(동시 다운로드로 인한 실패·메모리 급증 방지)하며 진행률을 표시한다.
+  // 한 번에 추가 가능한 최대치(30장)까지만 시도하고, 실패·초과분은 기존처럼 제외 안내.
+  const ICLOUD_DL_TIMEOUT_MS = 15000;
+  const ICLOUD_DL_MAX = 30;
+  const [cloudProgress, setCloudProgress] = useState<{ done: number; total: number } | null>(null);
+  const downloadCloudAssets = async (
+    assets: MediaLibrary.Asset[]
+  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+    const targets = assets.slice(0, ICLOUD_DL_MAX);
+    if (targets.length === 0) return [];
+    const oks: { asset: MediaLibrary.Asset; uri: string }[] = [];
+    setCloudProgress({ done: 0, total: targets.length });
+    try {
+      for (let i = 0; i < targets.length; i++) {
+        try {
+          const info = await withTimeout(
+            MediaLibrary.getAssetInfoAsync(targets[i], { shouldDownloadFromNetwork: true }),
+            ICLOUD_DL_TIMEOUT_MS
+          );
+          if (info?.localUri) oks.push({ asset: targets[i], uri: info.localUri });
+        } catch {
+          // 다운로드 실패/타임아웃 → 제외 유지 (완료 알림의 iCloud 안내에 집계됨)
+        }
+        setCloudProgress({ done: i + 1, total: targets.length });
+      }
+    } finally {
+      setCloudProgress(null);
+    }
+    return oks;
   };
 
   // iCloud 제외분 안내 문구 (없으면 빈 문자열)
@@ -932,7 +969,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     setLoadingMedia(true);
 
     try {
-      const ok = await resolveImportable(selectedAssets);
+      // 모달의 사진은 대부분 이미 확보된 로컬본이지만, iCloud분이 섞였을 수 있어 2차 시도 포함
+      const { ok: localOk, cloud } = await resolveImportable(selectedAssets);
+      const cloudOk = await downloadCloudAssets(cloud);
+      const ok = [...localOk, ...cloudOk];
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
@@ -1009,9 +1049,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         return;
       }
 
-      // 가져올 수 있는(로컬) 사진만 추린다. iCloud 오프로드 사진은 materialize가 불가능하므로
-      // 여기서 미리 걸러내 검은 타일/조용한 실패를 막고, 몇 장이 iCloud인지 안내한다.
-      const ok = await resolveImportable(allAssets);
+      // 1차: 로컬 사진 즉시 확보 → 2차: iCloud 오프로드분은 네트워크 다운로드 시도(타임아웃 포함).
+      // 그래도 실패한 장수만 안내하고 제외한다 (검은 타일/조용한 실패 방지).
+      const { ok: localOk, cloud } = await resolveImportable(allAssets);
+      const cloudOk = await downloadCloudAssets(cloud);
+      // 원래 검색 순서(최신순)를 유지해 병합
+      const resolvedById = new Map([...localOk, ...cloudOk].map((p) => [p.asset.id, p]));
+      const ok = allAssets.filter((a) => resolvedById.has(a.id)).map((a) => resolvedById.get(a.id)!);
       const cloudCount = allAssets.length - ok.length;
       cloudSkippedRef.current = cloudCount;
 
@@ -1444,7 +1488,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   <Text style={s.autoLoadBtnText}>{t('newRecord.autoLoadByPeriod')}</Text>
                 </View>
               </TouchableOpacity>
-              {loadingMedia && <ActivityIndicator color="#BF85FC" size="large" style={{ marginVertical: 12 }} />}
+              {loadingMedia && (
+                <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
+                  <ActivityIndicator color="#BF85FC" size="large" />
+                  {cloudProgress && (
+                    <Text style={s.cloudProgressText}>
+                      {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                    </Text>
+                  )}
+                </View>
+              )}
 
               {/* 갤러리 선택 버튼 */}
               <TouchableOpacity
@@ -2500,6 +2553,10 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.purpleNeon,
+  },
+  cloudProgressText: {
+    fontSize: 12,
+    color: COLORS.textDim,
   },
 
   // 모달 전체 배경
