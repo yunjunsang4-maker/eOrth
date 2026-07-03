@@ -103,15 +103,33 @@ export default function FriendProfileScreen({
     recordCount: sourcePosts.length,
     followers: followerCount,
     visitedCountries: new Set(sourcePosts.map((p) => p.countryName).filter(Boolean)).size,
-    trips: sourcePosts.map((p) => ({
-      id: p.id,
-      emoji: p.countryFlag || '🌍',
-      countryFlag: p.countryFlag || '',
-      title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
-      date: p.date || '',
-      coverUri: p.representativePhoto || p.medias?.[0],
-      records: [{ id: p.id, viewType: p.viewType || 'feed' }],
-    })),
+    trips: sourcePosts.flatMap((p) => {
+      // 다국가 분할 기록: 게시물은 하나지만 카드는 국가별로 나눠 그린다
+      // (id는 카드 key용 합성값 — 게시물 이동은 records[0].id 사용)
+      if (p.splitByCountry && p.countries && p.countries.length > 1 && p.perCountryData) {
+        return p.countries.map((c) => {
+          const d = p.perCountryData?.[c.name];
+          return {
+            id: `${p.id}::${c.name}`,
+            emoji: c.flag || '🌍',
+            countryFlag: c.flag || '',
+            title: c.name,
+            date: d?.startDate || p.date || '',
+            coverUri: d?.representativePhoto || d?.medias?.[0] || p.representativePhoto,
+            records: [{ id: p.id, viewType: p.viewType || 'feed' }],
+          };
+        });
+      }
+      return [{
+        id: p.id,
+        emoji: p.countryFlag || '🌍',
+        countryFlag: p.countryFlag || '',
+        title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
+        date: p.date || '',
+        coverUri: p.representativePhoto || p.medias?.[0],
+        records: [{ id: p.id, viewType: p.viewType || 'feed' }],
+      }];
+    }),
   };
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
@@ -338,11 +356,11 @@ export default function FriendProfileScreen({
               </Text>
             ) : (
               <>
-                {/* 메인 카드 (첫 여행) */}
+                {/* 메인 카드 (첫 여행) — 분할 카드는 id가 합성값이라 게시물 이동은 records[0].id */}
                 <TripCard
                   trip={display.trips[0]}
                   main
-                  onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].id })}
+                  onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].records[0].id })}
                 />
                 {/* 나머지 2열 그리드 */}
                 <View style={pv.tripGrid}>
@@ -350,7 +368,7 @@ export default function FriendProfileScreen({
                     <TripCard
                       key={trip.id}
                       trip={trip}
-                      onPress={() => navigation.navigate('PostDetail', { postId: trip.id })}
+                      onPress={() => navigation.navigate('PostDetail', { postId: trip.records[0].id })}
                     />
                   ))}
                 </View>

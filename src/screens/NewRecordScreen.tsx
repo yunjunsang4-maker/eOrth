@@ -1107,60 +1107,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       // 현재 활성 국가 데이터 저장
       saveCurrentCountryData();
 
-      // 국가별로 나눠서 저장 — 국가마다 기록 1개 + 전체를 여행 묶음으로 자동 그룹화
-      if (splitByCountry) {
-        const createdIds: string[] = [];
-        for (let i = 0; i < selectedCountries.length; i++) {
-          const c = selectedCountries[i];
-          const d = perCountryStore.current[c.name];
-          if (!d || d.medias.length === 0) continue; // canGoNext가 보장 — 방어
-          const rep = await toRepHiRes(d.representativePhoto || representativePhoto || undefined);
-          const hasPrivacy = Object.values(d.mediaPrivacy).some(v => v && v.length > 0);
-          const id = addRecord(
-            {
-              user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
-              viewType: 'feed',
-              country: `${c.flag} ${c.name}`,
-              countryName: c.name,
-              countryFlag: c.flag,
-              countries: [c],
-              // 지역은 첫 국가 기준 선택값이므로 첫 기록에만
-              regionName: i === 0 ? selectedRegion?.name || undefined : undefined,
-              regionNameEn: i === 0 ? selectedRegion?.nameEn || undefined : undefined,
-              representativePhoto: rep,
-              date: formatDate(d.startDate),
-              content: title || t('newRecord.defaultTitleOne', { country: c.name }),
-              memo,
-              rating: d.rating,
-              companions: selectedCompanions,
-              companionFriends,
-              visibility,
-              medias: d.medias,
-              mediaPrivacy: hasPrivacy ? d.mediaPrivacy : undefined, // 단일 국가라 오프셋 보정 불필요
-              startDate: formatDate(d.startDate),
-              endDate: formatDate(d.endDate),
-              // 예산은 여행 전체 총액이라 첫 기록에만 담아 통계 중복 합산 방지
-              budget: i === 0 && budget ? { amount: Number(budget), currency } : undefined,
-              weather: weather || undefined,
-              flightType: flightType || undefined,
-              keywords: keywords.length > 0 ? keywords : undefined,
-            },
-            { linkTrip: false } // 국가별 자동 그룹 대신 아래에서 하나의 묶음으로 생성
-          );
-          createdIds.push(id);
-        }
-        if (createdIds.length > 0) {
-          addTripGroup({
-            title: title || t('newRecord.defaultTitleMany', { country: selectedCountries[0].name, count: selectedCountries.length - 1 }),
-            records: createdIds,
-            coverRecordId: createdIds[0],
-          });
-        }
-        savedRef.current = true;
-        navigation.goBack();
-        return;
-      }
-
       const first = selectedCountries[0];
 
       // 국가별 데이터 수집
@@ -1211,6 +1157,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         countryName: first.name,
         countryFlag: first.flag,
         countries: selectedCountries,
+        // "국가별로 나누기" 선택 시 — 게시물은 하나지만 프로필 카드는 국가별로 그려진다.
+        // 수정 모드에선 선택 다이얼로그가 없으므로 기존 기록의 값을 보존한다.
+        splitByCountry: (isEdit ? editRecord?.splitByCountry : splitByCountry) || undefined,
         regionName: selectedRegion?.name || undefined,
         regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
@@ -1238,11 +1187,30 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         // 작성자·형식은 유지하고 내용(공개 범위 포함)만 갱신
         updateRecord(editRecord.id, payload);
       } else {
-        addRecord({
-          user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
-          viewType: 'feed',
-          ...payload,
-        });
+        const recId = addRecord(
+          {
+            user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
+            viewType: 'feed',
+            ...payload,
+          },
+          // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다
+          { linkTrip: !splitByCountry }
+        );
+        if (splitByCountry) {
+          // 같은 기록 하나를 국가별 여행 카드로 — 커버·날짜는 국가별 데이터로 오버라이드
+          selectedCountries.forEach((c) => {
+            const d = pcd[c.name];
+            addTripGroup({
+              title: `${c.name} 여행`, // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
+              records: [recId],
+              coverRecordId: recId,
+              countryName: c.name,
+              countryFlag: c.flag,
+              coverUri: d?.representativePhoto || d?.medias?.[0],
+              date: d?.startDate,
+            });
+          });
+        }
       }
     }
     savedRef.current = true;

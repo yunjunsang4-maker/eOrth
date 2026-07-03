@@ -1636,22 +1636,24 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
       // 카드가 `${countryFlag} ${title}`로 그리므로, 제목에 이미 국기가 박혀 있으면 떼어낸다
       // (과거에 "🇺🇸 미국 여행" 형식으로 저장된 그룹 대비 방어)
-      const flag = firstRec?.countryFlag || '';
+      const flag = group.countryFlag || firstRec?.countryFlag || '';
       const title = flag && group.title.startsWith(flag)
         ? group.title.slice(flag.length).trim()
         : group.title;
 
+      // 다국가 분할 카드: 그룹에 표시 오버라이드(국가·커버·날짜)가 있으면 기록 값 대신 사용
+      const groupDate = group.date ?? firstRec?.date;
       return {
         id: group.id,
         emoji: firstRec?.user.emoji || '🗼',
         title,
-        country: firstRec?.countryName || '',
-        countryFlag: firstRec?.countryFlag || '',
-        date: firstRec?.date ? firstRec.date.slice(0, 7) : '',
+        country: group.countryName || firstRec?.countryName || '',
+        countryFlag: flag,
+        date: groupDate ? groupDate.slice(0, 7) : '',
         color: TRIP_GRADIENT_COLORS[group.id] ? group.id : 'trip-japan',
         records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
         uniqueViewTypes,
-        coverUri: coverRec?.representativePhoto ?? coverRec?.medias?.[0], // 위치 조정 크롭본 우선, 없으면 선택 썸네일(medias[0])
+        coverUri: group.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0], // 오버라이드 → 크롭본 → 썸네일 순
       };
     }).filter(t => t.records.length > 0);
   }, [tripGroups, records, archivedIds]);

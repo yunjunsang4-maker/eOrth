@@ -575,9 +575,9 @@ const en = {
   newRecord: {
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
-    splitAskTitle: 'How to record',
-    splitAskMsg: 'You selected {{count}} countries.\nHow would you like to record them?',
-    splitAskMerge: 'As one trip',
+    splitAskTitle: 'Trip cards',
+    splitAskMsg: 'You selected {{count}} countries.\nHow should the trip cards on your profile look?\n(Your feed will show a single post)',
+    splitAskMerge: 'One card',
     splitAskSplit: 'Split by country',
     splitAskCancel: 'Cancel',
     countrySelectedDone: '{{count}} countries selected',

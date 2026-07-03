@@ -47,6 +47,9 @@ export interface TravelRecord {
   countryName: string;      // 예: "일본"
   countryFlag: string;      // 예: "🇯🇵"
   countries?: { flag: string; name: string }[];  // 복수 국가 지원
+  // 다국가 기록의 표시 방식 — true면 게시물(레코드)은 하나지만 프로필 여행 카드는
+  // perCountryData 기준으로 국가별로 나눠 그린다 (작성 시 "국가별로 나누기" 선택)
+  splitByCountry?: boolean;
   perCountryData?: Record<string, {              // 국가별 데이터
     medias?: string[];
     mediaPrivacy?: Record<number, string[]>;     // 국가별 사진 비공개 대상 (인덱스: 해당 국가 medias 기준)
@@ -117,6 +120,12 @@ export interface TripGroup {
   records: string[];       // 포함된 TravelRecord id 배열
   createdAt: Date;
   coverRecordId: string;   // 대표 기록 id
+  // 다국가 분할 카드용 표시 오버라이드 — 있으면 카드가 기록 값 대신 이 값으로 그린다
+  // (같은 기록 하나를 여러 국가 카드로 나눠 보여줄 때 국가·커버·날짜를 구분)
+  countryName?: string;
+  countryFlag?: string;
+  coverUri?: string;
+  date?: string;           // YYYY.MM.DD
 }
 
 // ─────────────────────────────────────────────
