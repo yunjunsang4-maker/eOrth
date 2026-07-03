@@ -7,6 +7,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
 import { getProfileByHandle } from '../services/profile';
+import { COUNTRIES } from '../constants/countries';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
@@ -264,14 +265,19 @@ interface RecordPersistPayload {
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
   mutedHandles?: string[];
+  // 해외 여행 세션(국가명→여행카드 id) — 출국~귀국 사이 유지. 과거 저장본엔 없음
+  tripSessionGroups?: Record<string, string> | null;
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { handle, profilePhoto } = useSettings();
+  const { handle, profilePhoto, homeCountryCode, currentVisitedCountryCode } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
+  // 해외 여행 세션 — 위치(기록 국가)가 거주국가와 달라지는 순간 열리고 귀국까지 유지.
+  // 값: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
+  const [tripSessionGroups, setTripSessionGroups] = useState<Record<string, string> | null>(null);
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
   // 비공개 계정에 보낸 대기 중 팔로우 요청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
@@ -294,22 +300,53 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
+      setTripSessionGroups(p.tripSessionGroups ?? null);
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
-  // 같은 국가 + 기간이 겹치거나 7일 이내로 가까운 그룹이 있으면 그 그룹에 추가,
-  // 없으면 새 그룹(프로필 여행 카드)을 생성한다.
+  // 해외 기록은 날짜가 아니라 '여행 세션'으로 판단한다:
+  //  - 위치(기록 국가)가 거주국가와 달라지는 순간 세션이 열리고, 귀국(거주국가 기록
+  //    또는 도착 감지가 거주국가로 복귀)까지 유지된다.
+  //  - 같은 세션 + 같은 국가 → 기존 카드에 추가 (며칠이 지나도 같은 여행)
+  //  - 같은 세션 + 새 국가(예: 스페인→포르투갈) → 새 카드
+  //  - 귀국 후 다시 출국 → 새 세션 → 같은 국가라도 새 카드
+  // 거주국가(국내) 기록은 '귀국' 신호가 없어 세션 판단이 불가하므로 기존
+  // 날짜 근접(7일) 규칙을 유지한다.
   const GROUP_GAP_MS = 7 * 24 * 60 * 60 * 1000;
   const parseRecDate = (s?: string): number | null => {
     if (!s) return null;
     const t = new Date(s.replace(/\./g, '-')).getTime();
     return Number.isFinite(t) ? t : null;
   };
+  // 거주국가 코드(예: KR) → 기록에 저장되는 국가명(예: 대한민국)
+  const homeCountryName =
+    COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
 
-  const linkRecordToTrip = (rec: TravelRecord) => {
+  const makeTripGroup = (country: string, rec: TravelRecord): TripGroup => ({
+    id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    title: `${country} 여행`,
+    records: [rec.id],
+    coverRecordId: rec.id,
+    createdAt: new Date(),
+  });
+
+  // 기록 기간이 '지금'을 포함하는가 — 실시간(여행 중) 기록과 회고(과거 여행 작성) 기록 구분.
+  // 세션은 실시간 기록에만 적용한다: 집에서 지난 여행을 작성해도 세션이 열리거나(오합류),
+  // 여행 중 과거 국내 기록을 작성해도 세션이 닫히지(오종료) 않게 한다. 여유 ±2일.
+  const REALTIME_MARGIN_MS = 2 * 24 * 60 * 60 * 1000;
+  const coversNow = (rec: TravelRecord): boolean => {
+    const start = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
+    const end = parseRecDate(rec.endDate) ?? start;
+    if (start == null || end == null) return true; // 날짜 없으면 방금 생성(스냅 등)으로 간주
+    const now = Date.now();
+    return start - REALTIME_MARGIN_MS <= now && now <= end + REALTIME_MARGIN_MS;
+  };
+
+  // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우)
+  const linkByDate = (rec: TravelRecord) => {
     const country = rec.countryName;
     const recStart = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
     const recEnd = parseRecDate(rec.endDate) ?? recStart;
@@ -337,16 +374,55 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         if (match.records.includes(rec.id)) return prev;
         return prev.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
       }
-      const newGroup: TripGroup = {
-        id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        title: `${country} 여행`,
-        records: [rec.id],
-        coverRecordId: rec.id,
-        createdAt: new Date(),
-      };
-      return [newGroup, ...prev];
+      return [makeTripGroup(country, rec), ...prev];
     });
   };
+
+  const linkRecordToTrip = (rec: TravelRecord) => {
+    const country = rec.countryName;
+    if (!country) return;
+
+    // 회고(과거 여행 작성) 기록 — 현재 위치와 무관하므로 세션을 건드리지 않고 날짜 규칙으로
+    if (!coversNow(rec)) {
+      linkByDate(rec);
+      return;
+    }
+
+    // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료
+    if (!homeCountryName || country === homeCountryName) {
+      if (tripSessionGroups) setTripSessionGroups(null);
+      linkByDate(rec);
+      return;
+    }
+
+    // 해외 실시간 기록 — 현재 세션에 이 국가의 카드가 있으면 무조건 그 카드에 추가
+    const sessionGid = tripSessionGroups?.[country];
+    const target = sessionGid ? tripGroups.find((g) => g.id === sessionGid) : undefined;
+    if (target) {
+      if (!target.records.includes(rec.id)) {
+        setTripGroups((prev) =>
+          prev.map((g) => (g.id === target.id ? { ...g, records: [...g.records, rec.id] } : g))
+        );
+      }
+      return;
+    }
+    // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제됨) → 새 카드 + 세션 등록
+    const ng = makeTripGroup(country, rec);
+    setTripGroups((prev) => [ng, ...prev]);
+    setTripSessionGroups((prev) => ({ ...(prev ?? {}), [country]: ng.id }));
+  };
+
+  // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
+  // 값 '전환'만 신호로 쓴다 — 감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐.
+  const prevVisitedRef = useRef(currentVisitedCountryCode);
+  useEffect(() => {
+    const prev = prevVisitedRef.current;
+    prevVisitedRef.current = currentVisitedCountryCode;
+    if (prev === currentVisitedCountryCode) return;
+    if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {
+      setTripSessionGroups(null);
+    }
+  }, [currentVisitedCountryCode, homeCountryCode]);
 
   const addRecord = (
     data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>,
@@ -777,6 +853,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const deleteTripGroup = (id: string) => {
     setTripGroups((prev) => prev.filter((g) => g.id !== id));
+    // 여행 세션이 가리키던 카드면 매핑도 정리 (다음 기록 때 새 카드가 자연스럽게 생성됨)
+    setTripSessionGroups((prev) => {
+      if (!prev) return prev;
+      const rest = Object.entries(prev).filter(([, gid]) => gid !== id);
+      return rest.length > 0 ? Object.fromEntries(rest) : null;
+    });
   };
 
   const updateTripGroup = (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => {
