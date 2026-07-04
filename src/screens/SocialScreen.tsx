@@ -2117,17 +2117,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
     [allVisible]
   );
 
-  // 광고 슬롯 삽입 — 게시물 AD_FREQ개마다 1개, 폴라로이드/피드형 교차.
+  // 광고 슬롯 삽입 — 첫 광고는 게시물 2개 이상일 때 1번째 게시물 뒤에,
+  // 이후로는 AD_FREQ개마다 1개(6·11·16번째 뒤 …). 폴라로이드/피드형 교차.
   // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
   const AD_FREQ = 5;
   const timelineWithAds = useMemo(() => {
-    if (!FEED_ADS_ENABLED || timelineItems.length < AD_FREQ) return timelineItems;
+    if (!FEED_ADS_ENABLED || timelineItems.length < 2) return timelineItems;
     const out: any[] = [];
     let slot = 0;
     timelineItems.forEach((item, i) => {
       out.push(item);
       // 마지막 게시물 뒤에는 삽입하지 않음 — 피드 끝이 광고로 끝나는 것 방지
-      if ((i + 1) % AD_FREQ === 0 && i < timelineItems.length - 1) {
+      if (i % AD_FREQ === 0 && i < timelineItems.length - 1) {
         out.push({
           _adSlot: true,
           id: `ad-slot-${slot}`,
