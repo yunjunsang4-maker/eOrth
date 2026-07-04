@@ -2119,7 +2119,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   // 광고 슬롯 삽입 — 게시물 AD_FREQ개마다 1개, 폴라로이드/피드형 교차.
   // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
-  const AD_FREQ = 7;
+  const AD_FREQ = 5;
   const timelineWithAds = useMemo(() => {
     if (!FEED_ADS_ENABLED || timelineItems.length < AD_FREQ) return timelineItems;
     const out: any[] = [];
