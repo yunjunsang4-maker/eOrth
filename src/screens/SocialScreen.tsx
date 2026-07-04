@@ -33,7 +33,9 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
-import { SNS_SHARE_ENABLED } from '../constants/featureFlags';
+import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
+import { getHouseAd, type HouseAd } from '../constants/houseAds';
+import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -2115,17 +2117,43 @@ function FriendsTab({ navigation }: { navigation: any }) {
     [allVisible]
   );
 
-  // 높이 추정 기반 2단 균형 분배
+  // 광고 슬롯 삽입 — 게시물 AD_FREQ개마다 1개, 폴라로이드/피드형 교차.
+  // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
+  const AD_FREQ = 7;
+  const timelineWithAds = useMemo(() => {
+    if (!FEED_ADS_ENABLED || timelineItems.length < AD_FREQ) return timelineItems;
+    const out: any[] = [];
+    let slot = 0;
+    timelineItems.forEach((item, i) => {
+      out.push(item);
+      if ((i + 1) % AD_FREQ === 0) {
+        out.push({
+          _adSlot: true,
+          id: `ad-slot-${slot}`,
+          ad: getHouseAd(slot),
+          adVariant: (slot % 2 === 0 ? 'polaroid' : 'feed') as FeedAdVariant,
+          // 폴라로이드 기울기를 슬롯마다 살짝 다르게 (±3도 교차)
+          adTilt: slot % 4 < 2 ? -3 : 3,
+        });
+        slot += 1;
+      }
+    });
+    return out;
+  }, [timelineItems]);
+
+  // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
     const cols: any[][] = [[], []];
     const h = [0, 0];
-    timelineItems.forEach((item) => {
+    timelineWithAds.forEach((item) => {
       const c = h[0] <= h[1] ? 0 : 1;
       cols[c].push(item);
-      h[c] += estDiaryHeight(item, diaryCardMode);
+      h[c] += item._adSlot
+        ? (item.adVariant === 'polaroid' ? 190 : 240)
+        : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [timelineItems, diaryCardMode]);
+  }, [timelineWithAds, diaryCardMode]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -2199,25 +2227,35 @@ function FriendsTab({ navigation }: { navigation: any }) {
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
-                {columns[ci].map((item: any) => (
-                  <DiaryCardMemo
-                    key={item.id}
-                    item={item}
-                    mode={diaryCardMode}
-                    navigation={navigation}
-                    toggleLike={cbToggleLike}
-                    showCounts={showCounts}
-                    onArchive={cbArchive}
-                    onDelete={cbDelete}
-                    onBlock={cbBlock}
-                    onReport={cbReport}
-                    onQuickStart={cbQuickStart}
-                    onQuickMove={cbQuickMove}
-                    onQuickEnd={cbQuickEnd}
-                    dragPos={dragPos}
-                    columnIndex={ci}
-                  />
-                ))}
+                {columns[ci].map((item: any) =>
+                  item._adSlot ? (
+                    <FeedAdCard
+                      key={item.id}
+                      ad={item.ad as HouseAd}
+                      variant={item.adVariant}
+                      tilt={item.adTilt}
+                      onPress={() => navigation.navigate(item.ad.route)}
+                    />
+                  ) : (
+                    <DiaryCardMemo
+                      key={item.id}
+                      item={item}
+                      mode={diaryCardMode}
+                      navigation={navigation}
+                      toggleLike={cbToggleLike}
+                      showCounts={showCounts}
+                      onArchive={cbArchive}
+                      onDelete={cbDelete}
+                      onBlock={cbBlock}
+                      onReport={cbReport}
+                      onQuickStart={cbQuickStart}
+                      onQuickMove={cbQuickMove}
+                      onQuickEnd={cbQuickEnd}
+                      dragPos={dragPos}
+                      columnIndex={ci}
+                    />
+                  )
+                )}
               </View>
             ))}
           </View>

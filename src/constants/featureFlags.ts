@@ -22,3 +22,10 @@ const channel = getChannel();
  * 프로덕션에서 막고 싶거나 베타에서 열고 싶을 때 이 조건만 바꾸면 된다.
  */
 export const SNS_SHARE_ENABLED = channel === 'production';
+
+/**
+ * 소셜 피드 광고 슬롯(게시물 7개당 1개) 활성화 여부.
+ * 현재는 하우스 광고(앱 기능 홍보)만 표시하므로 전 채널 활성.
+ * AdMob 등 외부 네트워크 연결 시 채널 조건(production)과 ATT/동의 처리를 함께 붙일 것.
+ */
+export const FEED_ADS_ENABLED = true;
