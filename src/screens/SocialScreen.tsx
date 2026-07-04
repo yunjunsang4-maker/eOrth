@@ -2126,7 +2126,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
     let slot = 0;
     timelineItems.forEach((item, i) => {
       out.push(item);
-      if ((i + 1) % AD_FREQ === 0) {
+      // 마지막 게시물 뒤에는 삽입하지 않음 — 피드 끝이 광고로 끝나는 것 방지
+      if ((i + 1) % AD_FREQ === 0 && i < timelineItems.length - 1) {
         out.push({
           _adSlot: true,
           id: `ad-slot-${slot}`,
