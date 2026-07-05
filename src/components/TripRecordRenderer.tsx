@@ -311,6 +311,7 @@ function CutView({ record }: { record: TravelRecord }) {
             width={SCREEN_W - 32}
             bgOverride={record.cutPhoto.frameColor}
             capture
+            showLogo={!record.cutPhoto.noLogo}
           />
         </View>
       ) : (

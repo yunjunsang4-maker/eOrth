@@ -109,6 +109,7 @@ export interface TravelRecord {
     frameColor?: string;              // 기본 프레임의 사용자 지정 색 (RGB)
     photos: string[];                 // 슬롯 순서대로 사진 URI
     previewUri: string;               // 합성 미리보기 이미지
+    noLogo?: boolean;                 // true면 eOrth 로고 미표시 — 프리미엄 작성 시 생성 시점에 박제
   };
   regionName?: string;                // 예: "도쿄" (대륙 기록 시 사용)
   regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)

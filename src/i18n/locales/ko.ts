@@ -83,6 +83,7 @@ const ko = {
     globeSkinDesc: '색으로 활성화되는 지구본(1형태)에 적용돼요',
     qrDesign: '개별 QR 디자인',
     stripLogoRemove: '스트립 로고 제거',
+    stripLogoRemoveMsg: '무료로 만든 네컷 스트립에는 eOrth 로고가 표시돼요.\n프리미엄 구독 중에 만든 스트립에는 로고가 붙지 않아요.',
     stripFrameCustom: '스트립 프레임 커스텀',
     languageChange: '언어 변경',
     languageSelectMsg: '사용할 언어를 선택하세요',

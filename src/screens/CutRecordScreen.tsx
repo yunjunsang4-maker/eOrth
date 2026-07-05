@@ -11,6 +11,7 @@ import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -30,6 +31,9 @@ const BASIC_COLORS = [
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
   const { t } = useTranslation();
   const selectedCountry = route.params?.selectedCountry ?? null;
+  // 스트립 로고 제거(프리미엄) — 프리미엄이고 설정 토글이 켜져 있을 때만 로고 미포함
+  const { isPremium, stripLogoRemoval } = useSettings();
+  const hideLogo = isPremium && stripLogoRemoval;
 
   const [tab, setTab] = useState<'기본' | '테마'>('기본');
   const tabLabel = (cat: '기본' | '테마') => (cat === '기본' ? t('cut.tabBasic') : t('cut.tabTheme'));
@@ -151,7 +155,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       return;
     }
     navigation.navigate('CutTravelInfo', {
-      cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri },
+      cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri, noLogo: hideLogo || undefined },
       selectedCountry: selectedCountry ?? undefined,
       tripPeriod: route.params?.tripPeriod, // 여행 카드에서 추가 시 기간 자동 적용을 위해 전달
     });
@@ -180,6 +184,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           width={canvasW}
           onSlotPress={handleSlotPress}
           bgOverride={isBasic ? frameColor : undefined}
+          showLogo={!hideLogo}
         />
         <Text style={st.hint}>{t('cut.hint', { filled: photos.filter(Boolean).length, total: slotN })}</Text>
       </View>

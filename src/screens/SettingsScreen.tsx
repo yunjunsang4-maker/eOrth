@@ -110,6 +110,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     language, setLanguage,
     isPremium, setIsPremium,
     handleFont, setHandleFont,
+    stripLogoRemoval, setStripLogoRemoval,
     handle,
     globeSkin, setGlobeSkin,
     resetSettings,
@@ -265,13 +266,20 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               badge: isPremium ? undefined : t('settings.premiumBadge'),
               onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
             },
-            {
-              // 스트립(네컷) 로고 제거 — 미구현(준비 중). 무료 스트립에 로고 워터마크 도입 후 프리미엄은 제거
-              icon: <StickerIcon size={22} />,
-              label: t('settings.stripLogoRemove'),
-              badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
-            },
+            // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
+            isPremium
+              ? {
+                  icon: <StickerIcon size={22} />,
+                  label: t('settings.stripLogoRemove'),
+                  toggle: stripLogoRemoval,
+                  onToggle: setStripLogoRemoval,
+                }
+              : {
+                  icon: <StickerIcon size={22} />,
+                  label: t('settings.stripLogoRemove'),
+                  badge: t('settings.premiumBadge'),
+                  onPress: () => Alert.alert(t('settings.stripLogoRemove'), t('settings.stripLogoRemoveMsg')),
+                },
             {
               // 스트립 프레임 커스텀 — 미구현(준비 중). cutFrames 테마 프레임 확장 예정
               icon: <PaletteIcon size={22} />,

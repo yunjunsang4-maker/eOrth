@@ -114,6 +114,9 @@ interface SettingsContextType {
   // 아이디 표시 폰트(프리미엄) — HANDLE_FONTS의 id. 서버(profiles.handle_font)로 동기화돼 타인에게도 보임
   handleFont: string | null;
   setHandleFont: (v: string | null) => void;
+  // 스트립 로고 제거(프리미엄) — 프리미엄 중에도 로고를 남기고 싶으면 끌 수 있는 선택 토글
+  stripLogoRemoval: boolean;
+  setStripLogoRemoval: (v: boolean) => void;
   setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
 }
@@ -157,6 +160,7 @@ interface SettingsPersistPayload {
   accountPublic?: boolean; // 계정 공개 여부
   isPremium?: boolean;     // 프리미엄 구독 (베타: 로컬 토글)
   handleFont?: string | null; // 아이디 표시 폰트 id
+  stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -209,6 +213,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [accountPublic, setAccountPublic] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
   const [handleFont, setHandleFont] = useState<string | null>(null);
+  const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -277,6 +282,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setAccountPublic(p.accountPublic ?? true);
       setIsPremium(p.isPremium ?? false);
       setHandleFont(p.handleFont ?? null);
+      setStripLogoRemoval(p.stripLogoRemoval ?? true);
     },
     () => ({
       showCounts,
@@ -315,6 +321,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       accountPublic,
       isPremium,
       handleFont,
+      stripLogoRemoval,
     }),
     [
       showCounts,
@@ -353,6 +360,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       accountPublic,
       isPremium,
       handleFont,
+      stripLogoRemoval,
     ],
   );
 
@@ -407,6 +415,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setInstalledAt(null);
     setNotifPrefs(DEFAULT_NOTIF_PREFS);
     setAccountPublic(true);
+    setIsPremium(false);
+    setHandleFont(null);
+    setStripLogoRemoval(true);
     visitRecordedRef.current = false;
   };
 
@@ -488,6 +499,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setIsPremium,
         handleFont,
         setHandleFont,
+        stripLogoRemoval,
+        setStripLogoRemoval,
         resetSettings,
       }}
     >

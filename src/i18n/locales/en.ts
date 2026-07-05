@@ -82,6 +82,7 @@ const en = {
     globeSkinDesc: 'Applied to the color-activated globe (form 1)',
     qrDesign: 'Custom QR design',
     stripLogoRemove: 'Remove strip logo',
+    stripLogoRemoveMsg: 'Photo strips made on the free plan show the eOrth logo.\nStrips created while subscribed to Premium have no logo.',
     stripFrameCustom: 'Custom strip frames',
     languageChange: 'Language',
     languageSelectMsg: 'Choose your language',

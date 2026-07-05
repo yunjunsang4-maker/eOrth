@@ -1,6 +1,6 @@
 import React, { forwardRef } from 'react';
 import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { CUT_LAYOUTS, getCutFrame, CutFrame } from '../constants/cutFrames';
+import { CUT_LAYOUTS, getCutFrame, CutFrame, CutLayout } from '../constants/cutFrames';
 import { AdjustedCoverImage, type CutTransform } from './CutPhotoAdjustModal';
 
 interface Props {
@@ -11,7 +11,26 @@ interface Props {
   capture?: boolean;           // true면 placeholder/터치 숨김(캡처·미리보기용)
   bgOverride?: string;         // 프레임 배경색 오버라이드 (기본 프레임의 사용자 RGB 색)
   transforms?: (CutTransform | null)[]; // 슬롯별 사진 조정값(이동/확대)
+  showLogo?: boolean;          // eOrth 브랜드 로고 표시 — 프리미엄(스트립 로고 제거)이면 false
 }
+
+// 하단 여백 로고 크기 — 캔버스 '폭' 대비 비율. 레이아웃별 임시값(보고 조정).
+// 이 맵에 있는 레이아웃(하단 여백 있는 5종)에만 로고를 넣는다 — 나머지는 로고 없음.
+const LOGO_SCALE: Partial<Record<CutLayout, number>> = {
+  'two-v': 0.11,   // 2컷 세로 — 하단 여백이 가장 큼 (28%)
+  'three-v': 0.09, // 3컷 세로
+  'four': 0.085,   // 4컷 (2x2 정사각)
+  'six-v': 0.09,   // 6컷 세로
+  'nine': 0.08,    // 9컷
+};
+
+// 배경 밝기 판정 — 로고 색을 배경에 맞춰 어둡게/밝게 (판정 불가 시 밝은 배경 취급)
+const isLightHex = (hex?: string): boolean => {
+  if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return true;
+  const n = parseInt(hex.slice(1), 16);
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b > 150;
+};
 
 // 어두운 필름 베이스 (항상 고정 — 색은 천공에만 적용)
 const FILM_BASE = '#1A1512';
@@ -67,7 +86,7 @@ function renderFilmHoles(dir: 'v' | 'h', width: number, height: number, holeColo
  * forwardRef로 부모(react-native-view-shot)가 캡처할 수 있다.
  */
 const CutPhotoCanvas = forwardRef<View, Props>(
-  ({ frameId, photos, width, onSlotPress, capture, bgOverride, transforms }, ref) => {
+  ({ frameId, photos, width, onSlotPress, capture, bgOverride, transforms, showLogo }, ref) => {
     const frame: CutFrame | undefined = getCutFrame(frameId);
     if (!frame) return null;
 
@@ -78,6 +97,14 @@ const CutPhotoCanvas = forwardRef<View, Props>(
     // 필름: 베이스는 항상 어두운 필름색 고정, 사용자 색(bgOverride)은 천공에만 적용
     const containerBg = isFilm ? FILM_BASE : bgColor;
     const holeColor = bgOverride ?? FILM_HOLE_DEFAULT;
+
+    // 브랜드 로고(무료 스트립) — 하단 여백이 있는 레이아웃(LOGO_SCALE)에만, 여백 정중앙에 배치
+    const logoScale = LOGO_SCALE[frame.layout];
+    const renderLogo = !!showLogo && logoScale != null;
+    const slotBottom = Math.max(...spec.slots.map((s) => s.y + s.h));
+    const logoSize = Math.max(8, width * (logoScale ?? 0));
+    const logoTop = (slotBottom + (1 - slotBottom) / 2) * height - logoSize * 0.6;
+    const logoLight = frame.background.type === 'image' ? false : isLightHex(containerBg);
 
     return (
       <View
@@ -139,6 +166,25 @@ const CutPhotoCanvas = forwardRef<View, Props>(
             </View>
           );
         })}
+
+        {renderLogo && (
+          <Text
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: logoTop,
+              left: 0,
+              right: 0,
+              textAlign: 'center',
+              fontFamily: 'Gilroy-Black',
+              fontSize: logoSize,
+              letterSpacing: logoSize * 0.06,
+              color: logoLight ? 'rgba(30,28,40,0.40)' : 'rgba(255,255,255,0.60)',
+            }}
+          >
+            eOrth
+          </Text>
+        )}
       </View>
     );
   }

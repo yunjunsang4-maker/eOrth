@@ -44,6 +44,7 @@ export interface CutPhotoParam {
   frameColor?: string;
   photos: string[];
   previewUri: string;
+  noLogo?: boolean; // 프리미엄(스트립 로고 제거) 작성 — 생성 시점에 박제
 }
 
 /** 프로필 여행 카드 → 여행 상세로 전달되는 썸네일 */
