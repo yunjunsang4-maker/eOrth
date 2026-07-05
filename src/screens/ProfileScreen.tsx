@@ -1578,9 +1578,11 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     setRepresentativeBadgeIds: setSelectedBadgeIds,
     badgeEarnedAt,
     handleFont,
+    isPremium,
   } = useSettings();
   const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
-  const nameFontStyle = handleFontStyle(handleFont); // 아이디 표시 폰트(프리미엄)
+  // 아이디 표시 폰트(프리미엄) — 해지 시 기본 폰트로(잠금), 선택값은 보존돼 재구독 시 복원
+  const nameFontStyle = handleFontStyle(isPremium ? handleFont : null);
 
   // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
   useEffect(() => {

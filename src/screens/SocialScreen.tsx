@@ -1534,13 +1534,13 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { t } = useTranslation();
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
     ? globalHandle
     : (item.user.name ? item.user.name : item.user.handle);
-  // 아이디 표시 폰트(프리미엄) — 내 글은 현재 설정값, 타인 글은 프로필 조인 값
-  const nameFontStyle = handleFontStyle(isMyPost ? myHandleFont : item.user.font);
+  // 아이디 표시 폰트(프리미엄) — 내 글은 현재 설정값(구독 중일 때만), 타인 글은 프로필 조인 값
+  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
 
   return (
     <View style={d.meta}>

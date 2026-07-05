@@ -288,7 +288,7 @@ export interface TripSession {
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { handle, profilePhoto, handleFont, homeCountryCode, currentVisitedCountryCode } = useSettings();
+  const { handle, profilePhoto, handleFont, isPremium, homeCountryCode, currentVisitedCountryCode } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -1166,7 +1166,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     const photo = profilePhoto || undefined;
-    const font = handleFont || undefined;
+    // 아이디 폰트 — 해지 시 내 글에서도 기본 폰트(잠금+값 보존 정책)
+    const font = (isPremium && handleFont) || undefined;
     setRecords((prev) => {
       let changed = false;
       const next = prev.map((r) => {
@@ -1177,7 +1178,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       });
       return changed ? next : prev;
     });
-  }, [hydrated, handle, profilePhoto, handleFont]);
+  }, [hydrated, handle, profilePhoto, handleFont, isPremium]);
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {

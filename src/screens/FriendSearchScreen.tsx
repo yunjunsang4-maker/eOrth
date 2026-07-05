@@ -138,7 +138,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
   // 개별 QR 디자인(프리미엄) — 프리셋 선택 모달
   const [qrDesignVisible, setQrDesignVisible] = useState(false);
-  const myQrDesign = getQrDesign(qrDesign);
+  // 해지 시 기본 디자인으로(잠금), 선택값은 보존 → 재구독 시 복원
+  const myQrDesign = getQrDesign(isPremium ? qrDesign : null);
   const openQrDesign = () => {
     if (!isPremium) {
       navigation.navigate('Premium'); // 잠금 → 페이월로 유도

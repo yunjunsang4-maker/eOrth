@@ -134,9 +134,9 @@ export default function FriendProfileScreen({
     }),
   };
 
-  // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값, 타인이면 프로필의 handle_font
-  const { handleFont: myHandleFont } = useSettings();
-  const nameFontStyle = handleFontStyle(isSelf ? myHandleFont : profileRow?.handle_font);
+  // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값(구독 중일 때만), 타인이면 프로필의 handle_font
+  const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
   const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
