@@ -9,6 +9,7 @@ import {
   Switch,
   Modal,
   TextInput,
+  Pressable,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
@@ -217,6 +218,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
             { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
+              // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
+              icon: <GlobeSkinIcon size={22} />,
+              label: t('settings.globeSkin'),
+              value: t(currentSkin.labelKey),
+              onPress: () => setSkinModalVisible(true),
+            },
+            {
               icon: <LanguageIcon size={22} />,
               label: t('settings.languageChange'),
               value: language === 'en' ? t('settings.langEn') : t('settings.langKo'),
@@ -249,13 +257,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               value: t(currentFont.labelKey),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
               onPress: openFontPicker,
-            },
-            {
-              // 지구본 스킨 — 무료 2종 + 기본. aurora(색 활성화) 폼에만 적용
-              icon: <GlobeSkinIcon size={22} />,
-              label: t('settings.globeSkin'),
-              value: t(currentSkin.labelKey),
-              onPress: () => setSkinModalVisible(true),
             },
             {
               // 개별 QR 디자인 — 미구현(준비 중). 친구찾기 QR 카드의 색·스타일 커스텀 예정
@@ -385,8 +386,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={() => setFontModalVisible(false)}
       >
-        <View style={st.modalOverlay} accessibilityViewIsModal>
-          <View style={st.modalCard}>
+        {/* 배경 탭으로도 닫힘 — 카드(내부 Pressable)는 탭을 삼켜 오닫힘 방지 */}
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setFontModalVisible(false)}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('settings.handleFont')}</Text>
             <Text style={st.modalDesc}>{t('settings.handleFontDesc')}</Text>
             <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
@@ -417,8 +419,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setFontModalVisible(false)}>
               <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
 
       {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
@@ -428,8 +430,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={() => setSkinModalVisible(false)}
       >
-        <View style={st.modalOverlay} accessibilityViewIsModal>
-          <View style={st.modalCard}>
+        {/* 배경 탭으로도 닫힘 */}
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setSkinModalVisible(false)}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('settings.globeSkin')}</Text>
             <Text style={st.modalDesc}>{t('settings.globeSkinDesc')}</Text>
             {GLOBE_SKINS.map((s) => {
@@ -462,8 +465,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setSkinModalVisible(false)}>
               <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -623,6 +626,7 @@ const st = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '85%', // 목록이 길어도 하단 취소 버튼이 화면 안에 남도록
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 24,
@@ -650,7 +654,7 @@ const st = StyleSheet.create({
   modalBtnSubmitText: { color: COLORS.bg, fontSize: 14, fontWeight: '600' },
 
   // 아이디 폰트 선택 모달
-  fontList: { maxHeight: 400 },
+  fontList: { flexGrow: 0, flexShrink: 1 }, // 카드 maxHeight 안에서만 스크롤 — 취소 버튼 밀어내지 않음
   fontRow: {
     flexDirection: 'row',
     alignItems: 'center',
