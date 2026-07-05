@@ -260,11 +260,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               onPress: openFontPicker,
             },
             {
-              // 개별 QR 디자인 — 미구현(준비 중). 친구찾기 QR 카드의 색·스타일 커스텀 예정
+              // 개별 QR 디자인 — 구현됨. 친구찾기 QR 카드의 🎨 버튼에서 프리셋 선택(프리미엄)
               icon: <TargetIcon size={22} />,
               label: t('settings.qrDesign'),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
+              onPress: () => Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg')),
             },
             // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
             isPremium

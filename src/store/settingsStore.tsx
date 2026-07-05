@@ -117,6 +117,9 @@ interface SettingsContextType {
   // 스트립 로고 제거(프리미엄) — 프리미엄 중에도 로고를 남기고 싶으면 끌 수 있는 선택 토글
   stripLogoRemoval: boolean;
   setStripLogoRemoval: (v: boolean) => void;
+  // 개별 QR 디자인(프리미엄) — QR_DESIGNS의 id (constants/qrDesigns.ts)
+  qrDesign: string;
+  setQrDesign: (v: string) => void;
   setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
 }
@@ -161,6 +164,7 @@ interface SettingsPersistPayload {
   isPremium?: boolean;     // 프리미엄 구독 (베타: 로컬 토글)
   handleFont?: string | null; // 아이디 표시 폰트 id
   stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
+  qrDesign?: string; // 개별 QR 디자인 id (프리미엄)
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -214,6 +218,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [isPremium, setIsPremium] = useState(false);
   const [handleFont, setHandleFont] = useState<string | null>(null);
   const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
+  const [qrDesign, setQrDesign] = useState('default'); // 개별 QR 디자인 — 기본(보라)
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -283,6 +288,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setIsPremium(p.isPremium ?? false);
       setHandleFont(p.handleFont ?? null);
       setStripLogoRemoval(p.stripLogoRemoval ?? true);
+      setQrDesign(p.qrDesign ?? 'default');
     },
     () => ({
       showCounts,
@@ -322,6 +328,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       isPremium,
       handleFont,
       stripLogoRemoval,
+      qrDesign,
     }),
     [
       showCounts,
@@ -361,6 +368,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       isPremium,
       handleFont,
       stripLogoRemoval,
+      qrDesign,
     ],
   );
 
@@ -418,6 +426,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setIsPremium(false);
     setHandleFont(null);
     setStripLogoRemoval(true);
+    setQrDesign('default');
     visitRecordedRef.current = false;
   };
 
@@ -501,6 +510,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setHandleFont,
         stripLogoRemoval,
         setStripLogoRemoval,
+        qrDesign,
+        setQrDesign,
         resetSettings,
       }}
     >

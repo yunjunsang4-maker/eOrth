@@ -13,12 +13,15 @@ import {
   ActivityIndicator,
   Modal,
   Share,
+  Pressable,
+  Alert,
 } from 'react-native';
 
 import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
+import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -131,8 +134,19 @@ type Props = RootStackScreenProps<'FriendSearch'>;
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { handle } = useSettings();
+  const { handle, isPremium, qrDesign, setQrDesign } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
+
+  // 개별 QR 디자인(프리미엄) — 프리셋 선택 모달
+  const [qrDesignVisible, setQrDesignVisible] = useState(false);
+  const myQrDesign = getQrDesign(qrDesign);
+  const openQrDesign = () => {
+    if (!isPremium) {
+      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      return;
+    }
+    setQrDesignVisible(true);
+  };
 
   // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움
   // ts를 의존성에 포함해 같은 핸들로 다시 들어와도(파라미터 값 동일) 재채움되게 함
@@ -405,13 +419,25 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                 <QRCode
                   value={userLink(myCode)}
                   size={120}
-                  color="#BF85FC"
-                  backgroundColor="#0A0A0F"
+                  color={myQrDesign.fg}
+                  backgroundColor={myQrDesign.bg}
+                  enableLinearGradient={!!myQrDesign.gradient}
+                  linearGradient={myQrDesign.gradient}
                   logo={undefined}
                 />
-                <View style={s.qrLogoWrap}>
-                  <Text style={s.qrLogoText}>eOrth</Text>
+                <View style={[s.qrLogoWrap, { backgroundColor: myQrDesign.bg }]}>
+                  <Text style={[s.qrLogoText, myQrDesign.light && s.qrLogoTextDark]}>eOrth</Text>
                 </View>
+                {/* 개별 QR 디자인(프리미엄) — 프리셋 선택 */}
+                <TouchableOpacity
+                  style={s.qrDesignBtn}
+                  activeOpacity={0.8}
+                  onPress={openQrDesign}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('friends.qrDesignA11y')}
+                >
+                  <Text style={s.qrDesignBtnTxt}>{isPremium ? '🎨' : '🔒'}</Text>
+                </TouchableOpacity>
               </>
             ) : (
               <View style={s.qrPlaceholder}>
@@ -533,6 +559,48 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         </View>
       </Modal>
 
+      {/* 개별 QR 디자인 선택 모달 (프리미엄) — 프리셋별 실제 QR 미리보기 */}
+      <Modal
+        visible={qrDesignVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setQrDesignVisible(false)}
+      >
+        <Pressable style={s.qdOverlay} onPress={() => setQrDesignVisible(false)}>
+          <Pressable style={s.qdCard} onPress={() => {}}>
+            <Text style={s.qdTitle}>{t('friends.qrDesignTitle')}</Text>
+            <View style={s.qdGrid}>
+              {QR_DESIGNS.map((d) => {
+                const selected = qrDesign === d.id;
+                return (
+                  <TouchableOpacity
+                    key={d.id}
+                    style={[s.qdItem, selected && s.qdItemOn]}
+                    activeOpacity={0.8}
+                    onPress={() => { setQrDesign(d.id); setQrDesignVisible(false); }}
+                  >
+                    <View style={[s.qdPreview, { backgroundColor: d.bg }]}>
+                      <QRCode
+                        value={myCode ? userLink(myCode) : 'eorth'}
+                        size={52}
+                        color={d.fg}
+                        backgroundColor={d.bg}
+                        enableLinearGradient={!!d.gradient}
+                        linearGradient={d.gradient}
+                      />
+                    </View>
+                    <Text style={[s.qdLabel, selected && s.qdLabelOn]} numberOfLines={1}>{t(d.labelKey)}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity style={s.qdClose} activeOpacity={0.7} onPress={() => setQrDesignVisible(false)}>
+              <Text style={s.qdCloseTxt}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* 팔로우/검색 피드백 토스트 */}
       <Toast visible={toastVisible} message={toastMessage} />
     </View>
@@ -620,6 +688,71 @@ const s = StyleSheet.create({
     fontWeight: '700',
     color: C.white,
   },
+  qrLogoTextDark: { color: '#0A0A0F' }, // 밝은 배경(클래식) 디자인용
+  qrDesignBtn: {
+    position: 'absolute',
+    right: -10,
+    bottom: -10,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  qrDesignBtnTxt: { fontSize: 14 },
+
+  // 개별 QR 디자인 선택 모달
+  qdOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(10,10,15,0.85)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  qdCard: {
+    width: '100%',
+    maxWidth: 360,
+    backgroundColor: '#2E2E3B',
+    borderRadius: 16,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.3)',
+  },
+  qdTitle: { fontSize: 16, fontWeight: '700', color: C.white, marginBottom: 14 },
+  qdGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  qdItem: {
+    width: 90,
+    alignItems: 'center',
+    gap: 6,
+    padding: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  qdItemOn: { borderColor: C.accent, backgroundColor: 'rgba(191,133,252,0.12)' },
+  qdPreview: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  qdLabel: { fontSize: 10, color: C.dim },
+  qdLabelOn: { color: C.accent, fontWeight: '700' },
+  qdClose: {
+    marginTop: 14,
+    height: 44,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.15)',
+  },
+  qdCloseTxt: { fontSize: 14, fontWeight: '600', color: C.dim },
   profileInfo: {
     flex: 1,
     gap: 4,
