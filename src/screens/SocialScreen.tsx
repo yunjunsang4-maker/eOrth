@@ -33,6 +33,10 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
+import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
+import { getHouseAd, type HouseAd } from '../constants/houseAds';
+import { handleFontStyle } from '../constants/handleFonts';
+import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -89,7 +93,14 @@ function ShareBottomSheet({
   }));
 
   const handleSNS = () => {
-    setPrepareVisible(true);
+    // 테스트/베타 빌드에서는 외부 SNS 공유를 막고 '준비 중'만 안내한다.
+    if (!SNS_SHARE_ENABLED) {
+      setPrepareVisible(true);
+      return;
+    }
+    // 프로덕션: OS 공유 시트로 인스타그램·틱톡 등 외부 앱 공유
+    Share.share({ message: 'https://eorth.app/post/share' }).catch(() => {});
+    onClose();
   };
 
   const handleCopyLink = async () => {
@@ -345,7 +356,7 @@ function FeedCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -550,7 +561,7 @@ function FeedCard({
                   onPress={() => {
                     onOpenMenu(null);
                     confirmBlock(item.user.name, () => {
-                      onBlock(item.user);
+                      onBlock({ ...item.user, id: item.authorId });
                       showMenuToast(t('social.blockedToast'));
                     }, t);
                   }}
@@ -864,7 +875,7 @@ function BlogCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -1007,7 +1018,7 @@ function BlogCard({
                     onPress={() => {
                       onOpenMenu(null);
                       confirmBlock(item.user.name, () => {
-                        onBlock(item.user);
+                        onBlock({ ...item.user, id: item.authorId });
                         showMenuToast(t('social.blockedToast'));
                       }, t);
                     }}
@@ -1160,7 +1171,7 @@ function AlbumCard({
 }: {
   item: any;
   toggleLike: (id: string) => void;
-  onBlock: (user: { name: string; emoji: string }) => void;
+  onBlock: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   onArchive: (id: string) => void;
   onDelete: (id: string) => void;
   navigation: any;
@@ -1317,7 +1328,7 @@ function AlbumCard({
                   onPress={() => {
                     onOpenMenu(null);
                     confirmBlock(item.user.name, () => {
-                      onBlock(item.user);
+                      onBlock({ ...item.user, id: item.authorId });
                       showMenuToast(t('social.blockedToast'));
                     }, t);
                   }}
@@ -1523,11 +1534,13 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { t } = useTranslation();
-  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
-    ? (globalNickname ? globalNickname : globalHandle)
+    ? globalHandle
     : (item.user.name ? item.user.name : item.user.handle);
+  // 아이디 표시 폰트(프리미엄) — 내 글은 현재 설정값, 타인 글은 프로필 조인 값
+  const nameFontStyle = handleFontStyle(isMyPost ? myHandleFont : item.user.font);
 
   return (
     <View style={d.meta}>
@@ -1545,7 +1558,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
             <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
           )}
         </View>
-        <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{displayName}</Text>
+        <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
@@ -1630,7 +1643,10 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
           photos={item.cutPhoto.photos}
           width={w - 12}
           bgOverride={item.cutPhoto.frameColor}
+          bgImageOverride={item.cutPhoto.frameImage}
           capture
+          showLogo={!item.cutPhoto.noLogo}
+          stamp={item.cutPhoto.stamp}
         />
       )}
       {meta}
@@ -1676,7 +1692,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       ]
     : [
         { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle }) },
+        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
         { key: 'report', icon: '🚨', label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
@@ -1945,11 +1961,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
     setRefreshing(true);
     try { await refreshFeed(); } finally { setRefreshing(false); }
   };
-  const { diaryCardMode, showCounts, nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
-  
+  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium } = useSettings();
+
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
-      return globalNickname ? globalNickname : globalHandle;
+      return globalHandle;
     }
     return postUser.name ? postUser.name : postUser.handle;
   };
@@ -2037,7 +2053,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   };
 
   // 차단(확인 다이얼로그 경유)
-  const handleBlock = (user: { name: string; emoji: string; handle?: string }) => {
+  const handleBlock = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
     confirmBlock(user.name, () => { blockUser(user); showToast(t('social.blockedToast')); }, t);
   };
 
@@ -2049,7 +2065,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
   const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
-  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string }) => fnRef.current.handleBlock(user), []);
+  const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string; id?: string }) => fnRef.current.handleBlock(user), []);
   const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
   const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
   const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
@@ -2107,17 +2123,46 @@ function FriendsTab({ navigation }: { navigation: any }) {
     [allVisible]
   );
 
-  // 높이 추정 기반 2단 균형 분배
+  // 광고 슬롯 삽입 — 첫 광고는 게시물 2개 이상일 때 1번째 게시물 뒤에,
+  // 이후로는 AD_FREQ개마다 1개(6·11·16번째 뒤 …). 폴라로이드/피드형 교차.
+  // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
+  const AD_FREQ = 5;
+  const timelineWithAds = useMemo(() => {
+    // 프리미엄 구독자는 광고 제거
+    if (!FEED_ADS_ENABLED || isPremium || timelineItems.length < 2) return timelineItems;
+    const out: any[] = [];
+    let slot = 0;
+    timelineItems.forEach((item, i) => {
+      out.push(item);
+      // 마지막 게시물 뒤에는 삽입하지 않음 — 피드 끝이 광고로 끝나는 것 방지
+      if (i % AD_FREQ === 0 && i < timelineItems.length - 1) {
+        out.push({
+          _adSlot: true,
+          id: `ad-slot-${slot}`,
+          ad: getHouseAd(slot),
+          adVariant: (slot % 2 === 0 ? 'polaroid' : 'feed') as FeedAdVariant,
+          // 폴라로이드 기울기를 슬롯마다 살짝 다르게 (±3도 교차)
+          adTilt: slot % 4 < 2 ? -3 : 3,
+        });
+        slot += 1;
+      }
+    });
+    return out;
+  }, [timelineItems, isPremium]);
+
+  // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
     const cols: any[][] = [[], []];
     const h = [0, 0];
-    timelineItems.forEach((item) => {
+    timelineWithAds.forEach((item) => {
       const c = h[0] <= h[1] ? 0 : 1;
       cols[c].push(item);
-      h[c] += estDiaryHeight(item, diaryCardMode);
+      h[c] += item._adSlot
+        ? (item.adVariant === 'polaroid' ? 190 : 240)
+        : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [timelineItems, diaryCardMode]);
+  }, [timelineWithAds, diaryCardMode]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -2191,25 +2236,35 @@ function FriendsTab({ navigation }: { navigation: any }) {
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
-                {columns[ci].map((item: any) => (
-                  <DiaryCardMemo
-                    key={item.id}
-                    item={item}
-                    mode={diaryCardMode}
-                    navigation={navigation}
-                    toggleLike={cbToggleLike}
-                    showCounts={showCounts}
-                    onArchive={cbArchive}
-                    onDelete={cbDelete}
-                    onBlock={cbBlock}
-                    onReport={cbReport}
-                    onQuickStart={cbQuickStart}
-                    onQuickMove={cbQuickMove}
-                    onQuickEnd={cbQuickEnd}
-                    dragPos={dragPos}
-                    columnIndex={ci}
-                  />
-                ))}
+                {columns[ci].map((item: any) =>
+                  item._adSlot ? (
+                    <FeedAdCard
+                      key={item.id}
+                      ad={item.ad as HouseAd}
+                      variant={item.adVariant}
+                      tilt={item.adTilt}
+                      onPress={() => navigation.navigate(item.ad.route)}
+                    />
+                  ) : (
+                    <DiaryCardMemo
+                      key={item.id}
+                      item={item}
+                      mode={diaryCardMode}
+                      navigation={navigation}
+                      toggleLike={cbToggleLike}
+                      showCounts={showCounts}
+                      onArchive={cbArchive}
+                      onDelete={cbDelete}
+                      onBlock={cbBlock}
+                      onReport={cbReport}
+                      onQuickStart={cbQuickStart}
+                      onQuickMove={cbQuickMove}
+                      onQuickEnd={cbQuickEnd}
+                      dragPos={dragPos}
+                      columnIndex={ci}
+                    />
+                  )
+                )}
               </View>
             ))}
           </View>

@@ -5,45 +5,62 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
-import { sha256 } from 'js-sha256';
 import { supabase } from './supabase';
+import { withTimeout } from '../utils/withTimeout';
+
+const READ_TIMEOUT_MS = 12000;
 
 export interface ProfileRow {
   id: string;
   handle: string | null;
-  nickname: string | null;
   emoji: string | null;
   bio: string | null;
   birthday: string | null; // YYYY-MM-DD
   gender: string | null;
+  country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
+  is_private?: boolean | null; // 비공개 계정 — true면 글은 승인된 팔로워만, 팔로우는 요청→수락
+  handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
 }
 
 /** 현재 로그인 사용자 id (없으면 null) */
 export async function getMyUserId(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await supabase.auth.getUser();
+    const { data } = await withTimeout(supabase.auth.getUser(), READ_TIMEOUT_MS);
     return data.user?.id ?? null;
   } catch {
     return null;
   }
 }
 
-/** 내 프로필 생성/갱신 (빈 문자열은 null로 저장) */
-export async function upsertMyProfile(p: Partial<Omit<ProfileRow, 'id'>>): Promise<void> {
-  if (!supabase) return;
+/**
+ * 내 프로필 생성/갱신 (빈 문자열은 null로 저장).
+ * 반환: { ok, handleConflict } — handle UNIQUE 충돌 시 handleConflict=true (호출부가 재생성·재시도).
+ */
+export async function upsertMyProfile(
+  p: Partial<Omit<ProfileRow, 'id'>>
+): Promise<{ ok: boolean; handleConflict: boolean }> {
+  if (!supabase) return { ok: false, handleConflict: false };
   const uid = await getMyUserId();
-  if (!uid) return;
+  if (!uid) return { ok: false, handleConflict: false };
   const row: Record<string, unknown> = { id: uid };
   for (const [k, v] of Object.entries(p)) {
     if (v === undefined) continue;
     row[k] = v === '' ? null : v;
   }
   try {
-    await supabase.from('profiles').upsert(row);
+    const { error } = await supabase.from('profiles').upsert(row);
+    if (error) {
+      // 23505 = unique_violation. handle UNIQUE 충돌이면 호출부가 새 handle로 재시도할 수 있게 알린다.
+      const handleConflict =
+        error.code === '23505' && /handle/i.test(`${error.message} ${error.details ?? ''}`);
+      return { ok: false, handleConflict };
+    }
+    return { ok: true, handleConflict: false };
   } catch {
-    // 네트워크 실패는 무시 (다음 변경 시 재시도)
+    // 네트워크 실패 등은 다음 변경 시 재시도
+    return { ok: false, handleConflict: false };
   }
 }
 
@@ -53,29 +70,52 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   const uid = await getMyUserId();
   if (!uid) return null;
   try {
-    const { data } = await supabase.from('profiles').select('*').eq('id', uid).maybeSingle();
+    const { data } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
     return (data as ProfileRow) ?? null;
   } catch {
     return null;
   }
 }
 
-/** 핸들/닉네임으로 사용자 검색 (친구 찾기용) */
+/**
+ * 내 프로필 조회 + 서버 도달 여부.
+ * reached=false 면 네트워크/타임아웃으로 "신규인지 기존인지" 판정 불가 → 호출부가 오라우팅을 피할 수 있다.
+ */
+export async function getMyProfileStatus(): Promise<{ reached: boolean; profile: ProfileRow | null }> {
+  if (!supabase) return { reached: false, profile: null };
+  const uid = await getMyUserId();
+  if (!uid) return { reached: false, profile: null };
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
+    if (error) return { reached: false, profile: null };
+    return { reached: true, profile: (data as ProfileRow) ?? null };
+  } catch {
+    return { reached: false, profile: null };
+  }
+}
+
+/** 핸들(아이디)로 사용자 검색 (친구 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
-  const q = query.trim();
+  // '@아이디' 형태 입력 허용 (QR 스캔과 동일하게 앞의 @ 제거)
+  const q = query.trim().replace(/^@/, '');
   if (!q) return [];
-  try {
-    // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
-    const { data } = await supabase
-      .from('public_profiles')
-      .select('*')
-      .or(`handle.ilike.%${q}%,nickname.ilike.%${q}%`)
-      .limit(20);
-    return (data as ProfileRow[]) ?? [];
-  } catch {
-    return [];
-  }
+  // ilike 와일드카드(%·_)·이스케이프 문자를 리터럴로 취급 (검색어 오작동 방지)
+  const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+  // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
+  const { data, error } = await supabase
+    .from('public_profiles')
+    .select('*')
+    .ilike('handle', `%${escaped}%`)
+    .limit(20);
+  if (error) throw error;
+  return (data as ProfileRow[]) ?? [];
 }
 
 /**
@@ -116,85 +156,21 @@ export async function getFollowerCounts(ids: string[]): Promise<Record<string, n
   }
 }
 
-// ─────────────────────────────────────────────
-// 연락처 기반 친구 찾기 (전화번호 해시 매칭)
-// ─────────────────────────────────────────────
-
-/** 전화번호 정규화 — 숫자만, 한국 +82 → 0 보정 */
-function normalizePhone(raw: string): string {
-  let d = (raw || '').replace(/\D/g, '');
-  if (d.startsWith('82') && d.length >= 11) d = '0' + d.slice(2); // +82 10... → 010...
-  return d;
-}
-
-/** 정규화 후 sha256 해시 (너무 짧으면 빈 문자열) */
-export function phoneHash(raw: string): string {
-  const n = normalizePhone(raw);
-  if (n.length < 9) return '';
-  return sha256(n);
-}
-
-/** 내 전화 해시 저장(연락처로 나를 찾을 수 있게). 성공 여부 반환 */
-export async function saveMyPhoneHash(phone: string): Promise<boolean> {
-  if (!supabase) return false;
-  const h = phoneHash(phone);
+/**
+ * 아이디(handle) 사용 가능 여부 검사 (온보딩·프로필 편집 중복 방지용).
+ * 반환: true=사용 가능, false=이미 사용 중, null=검사 불가(미설정/오류) → 호출부는 null이면 통과 처리.
+ * (최종 방어는 profiles.handle UNIQUE 제약)
+ */
+export async function isHandleAvailable(handle: string): Promise<boolean | null> {
+  if (!supabase) return null;
+  const h = handle.trim();
   if (!h) return false;
-  const uid = await getMyUserId();
-  if (!uid) return false;
   try {
-    const { error } = await supabase.from('user_phones').upsert({ user_id: uid, phone_hash: h });
-    return !error;
+    const { data, error } = await withTimeout(supabase.rpc('is_handle_available', { h }), READ_TIMEOUT_MS);
+    if (error) return null;
+    return !!data;
   } catch {
-    return false;
-  }
-}
-
-/** 내 전화 해시 삭제(연락처 매칭 해제) */
-export async function deleteMyPhoneHash(): Promise<void> {
-  if (!supabase) return;
-  const uid = await getMyUserId();
-  if (!uid) return;
-  try {
-    await supabase.from('user_phones').delete().eq('user_id', uid);
-  } catch {
-    // 무시
-  }
-}
-
-export interface PhoneMatch {
-  id: string;
-  handle: string | null;
-  nickname: string | null;
-  emoji: string | null;
-  profile_photo: string | null;
-  contactName: string; // 매칭된 연락처의 표시 이름
-}
-
-/** 연락처(이름+전화) 목록을 해시해 가입자 매칭 (본인 제외) */
-export async function findUsersByPhones(
-  contacts: { name: string; phone: string }[]
-): Promise<PhoneMatch[]> {
-  if (!supabase || contacts.length === 0) return [];
-  const hashToName = new Map<string, string>();
-  const hashes: string[] = [];
-  for (const c of contacts) {
-    const h = phoneHash(c.phone);
-    if (!h) continue;
-    if (!hashToName.has(h)) { hashToName.set(h, c.name); hashes.push(h); }
-  }
-  if (hashes.length === 0) return [];
-  try {
-    const { data } = await supabase.rpc('find_users_by_phone_hashes', { hashes });
-    return (data as { id: string; handle: string | null; nickname: string | null; emoji: string | null; profile_photo: string | null; phone_hash: string }[] | null ?? []).map((r) => ({
-      id: r.id,
-      handle: r.handle,
-      nickname: r.nickname,
-      emoji: r.emoji,
-      profile_photo: r.profile_photo,
-      contactName: hashToName.get(r.phone_hash) || r.nickname || r.handle || '여행자',
-    }));
-  } catch {
-    return [];
+    return null;
   }
 }
 
@@ -203,6 +179,19 @@ export async function getProfileById(id: string): Promise<ProfileRow | null> {
   if (!supabase) return null;
   try {
     const { data } = await supabase.from('public_profiles').select('*').eq('id', id).maybeSingle();
+    return (data as ProfileRow) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 핸들 정확 일치로 프로필 조회 (차단 항목 uuid 백필 등) — 없음/실패 시 null */
+export async function getProfileByHandle(handle: string): Promise<ProfileRow | null> {
+  if (!supabase) return null;
+  const h = handle.trim();
+  if (!h) return null;
+  try {
+    const { data } = await supabase.from('public_profiles').select('*').eq('handle', h).maybeSingle();
     return (data as ProfileRow) ?? null;
   } catch {
     return null;

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
@@ -7,6 +7,8 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
+import { isSupabaseConfigured } from '../services/supabase';
+import { fetchFollowNotifications, markNotificationsRead } from '../services/social';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -45,6 +47,7 @@ interface Noti {
   postId?: string;     // 댓글·좋아요·추억 리마인드 → 게시물 이동용
   userId?: string;     // 팔로우·기록 시작 → 프로필 이동용
   userName?: string;
+  goRequests?: boolean; // 팔로우 요청 알림 → 수락/거절 가능한 팔로워 화면으로 이동
 }
 
 // 게시물로 이동하는 카테고리
@@ -76,19 +79,59 @@ export default function NotificationScreen({ navigation }: Props) {
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
+  // 팔로우 알림 — 서버 notifications 테이블(follows insert 트리거로 쌓임)에서 로드
+  const [followNotis, setFollowNotis] = useState<Noti[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const rows = await fetchFollowNotifications();
+      if (!alive) return;
+      // 팔로우/요청/수락별 문구 키 — 모두 '팔로우' 카테고리로 묶어 표시
+      const textKey: Record<string, string> = {
+        follow: 'misc.followText',
+        follow_request: 'misc.followRequestText',
+        follow_accept: 'misc.followAcceptText',
+      };
+      setFollowNotis(
+        rows.map((n) => ({
+          id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
+          category: 'follow' as CatKey,
+          emoji: n.actorEmoji || '👤',
+          avbg: 'rgba(107,33,168,0.35)',
+          text: t(textKey[n.type] ?? 'misc.followText', { name: n.actorHandle || t('friends.travelerDefault') }),
+          read: n.read,
+          createdAt: n.createdAt,
+          userId: n.actorId,
+          userName: n.actorHandle || '',
+          goRequests: n.type === 'follow_request',
+        }))
+      );
+    })();
+    return () => { alive = false; };
+  }, [t]);
+
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 팔로우·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
   const openNoti = (n: Noti) => {
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
+    // 팔로우 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
+    if (n.category === 'follow' && !n.read && n.id.startsWith('fol-')) {
+      markNotificationsRead([n.id.slice(4)]);
+      setFollowNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+    }
     if (POST_CATEGORIES.includes(n.category)) {
       if (n.postId && records.some((r) => r.id === n.postId)) {
         navigation.navigate('PostDetail', { postId: n.postId });
       } else {
         Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
+    } else if (n.goRequests) {
+      // 팔로우 요청 → 수락/거절할 수 있는 팔로워 화면으로
+      navigation.navigate('FollowerList');
     } else {
-      navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '' });
+      navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '', handle: n.userName || undefined });
     }
   };
 
@@ -133,7 +176,7 @@ export default function NotificationScreen({ navigation }: Props) {
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
-    const fresh = memoryNotis.filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
+    const fresh = [...memoryNotis, ...followNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
     fresh.forEach((n) => {
       if (!map.has(n.category)) map.set(n.category, []);
@@ -145,7 +188,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, [memoryNotis]);
+  }, [memoryNotis, followNotis]);
 
   const Avatar = ({ emoji, bg, size = 28 }: { emoji: string; bg: string; size?: number }) => (
     <View style={[st.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>

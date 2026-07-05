@@ -9,7 +9,9 @@ import {
   Switch,
   Modal,
   TextInput,
+  Pressable,
 } from 'react-native';
+import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -21,8 +23,15 @@ import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
-  TrashIcon,
+  TrashIcon, StarIcon, TargetIcon, StickerIcon, PaletteIcon,
 } from '../components/icons';
+import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
+import { GLOBE_SKINS } from '../constants/globeSkins';
+import { LinearGradient } from 'expo-linear-gradient';
+
+// 개인정보처리방침·이용약관 게시 URL (GitHub Pages)
+const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
+const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -100,10 +109,30 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     homeCountryCode, setHomeCountryCode,
     diaryCardMode, setDiaryCardMode,
     language, setLanguage,
+    isPremium, setIsPremium,
+    handleFont, setHandleFont,
+    stripLogoRemoval, setStripLogoRemoval,
+    handle,
+    globeSkin, setGlobeSkin,
     resetSettings,
   } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
+
+  // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
+  const [fontModalVisible, setFontModalVisible] = useState(false);
+  const openFontPicker = () => {
+    if (!isPremium) {
+      navigation.navigate('Premium'); // 잠금 → 페이월로 유도
+      return;
+    }
+    setFontModalVisible(true);
+  };
+  const currentFont = HANDLE_FONTS.find((f) => f.id === (handleFont ?? 'default')) ?? HANDLE_FONTS[0];
+
+  // 지구본 스킨 선택 모달 — 무료 2종 + 기본. 유료 스킨 추가 시 premium 플래그로 게이트
+  const [skinModalVisible, setSkinModalVisible] = useState(false);
+  const currentSkin = GLOBE_SKINS.find((s) => s.id === globeSkin) ?? GLOBE_SKINS[0];
 
   // 거주 국가 코드 입력 모달 — Alert.prompt는 iOS 전용이라 양 플랫폼 공용 모달로 처리
   const [countryModalVisible, setCountryModalVisible] = useState(false);
@@ -134,6 +163,20 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         },
       ],
     );
+  };
+
+  // 개인정보처리방침 — 게시된 웹 페이지를 인앱 브라우저로 열기
+  const handleOpenPrivacyPolicy = () => {
+    WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch(() => {
+      Alert.alert(t('settings.privacyPolicy'), PRIVACY_POLICY_URL);
+    });
+  };
+
+  // 이용약관 — 방침과 동일하게 게시 페이지를 인앱 브라우저로 열기
+  const handleOpenTerms = () => {
+    WebBrowser.openBrowserAsync(TERMS_URL).catch(() => {
+      Alert.alert(t('settings.terms'), TERMS_URL);
+    });
   };
 
   // 언어 전환 — 한국어/English 선택 (앱 전체 즉시 반영)
@@ -184,10 +227,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
             { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
+              // 지구본 스킨 — 무료 제공 (유료 스킨 추가 시 모달 내 개별 잠금으로 처리)
               icon: <GlobeSkinIcon size={22} />,
               label: t('settings.globeSkin'),
-              badge: t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
+              value: t(currentSkin.labelKey),
+              onPress: () => setSkinModalVisible(true),
             },
             {
               icon: <LanguageIcon size={22} />,
@@ -210,6 +254,56 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           ]}
         />
 
+        {/* 프리미엄 */}
+        <Text style={st.groupLabel}>{t('settings.groupPremium')}</Text>
+        <SettingGroup
+          items={[
+            // 베타 체험 토글 — 결제(RevenueCat) 연동 시 구매 화면 진입으로 교체
+            { icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium },
+            {
+              icon: <LanguageIcon size={22} />,
+              label: t('settings.handleFont'),
+              value: t(currentFont.labelKey),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: openFontPicker,
+            },
+            {
+              // 개별 QR 디자인 — 구현됨. 친구찾기 QR 카드의 🎨 버튼에서 프리셋 선택(프리미엄)
+              icon: <TargetIcon size={22} />,
+              label: t('settings.qrDesign'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () =>
+                isPremium
+                  ? Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg'))
+                  : navigation.navigate('Premium'),
+            },
+            // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
+            isPremium
+              ? {
+                  icon: <StickerIcon size={22} />,
+                  label: t('settings.stripLogoRemove'),
+                  toggle: stripLogoRemoval,
+                  onToggle: setStripLogoRemoval,
+                }
+              : {
+                  icon: <StickerIcon size={22} />,
+                  label: t('settings.stripLogoRemove'),
+                  badge: t('settings.premiumBadge'),
+                  onPress: () => navigation.navigate('Premium'),
+                },
+            {
+              // 스트립 프레임 커스텀 — 구현됨. 네컷 만들기 팔레트의 + 버튼에서 자유 색 선택(프리미엄)
+              icon: <PaletteIcon size={22} />,
+              label: t('settings.stripFrameCustom'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () =>
+                isPremium
+                  ? Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg'))
+                  : navigation.navigate('Premium'),
+            },
+          ]}
+        />
+
         {/* 지원 */}
         <Text style={st.groupLabel}>{t('settings.groupSupport')}</Text>
         <SettingGroup
@@ -217,17 +311,22 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <QuestionIcon size={22} />,
               label: t('settings.faq'),
-              onPress: () => Alert.alert(t('settings.faq'), t('settings.faqMsg')),
+              onPress: () => navigation.navigate('FAQ'),
             },
             {
               icon: <ChatIcon size={22} />,
               label: t('settings.feedback'),
-              onPress: () => Alert.alert(t('settings.feedbackTitle'), t('settings.feedbackMsg')),
+              onPress: () => navigation.navigate('Feedback'),
             },
             {
               icon: <DocumentIcon size={22} />,
               label: t('settings.terms'),
-              onPress: () => Alert.alert(t('settings.termsTitle'), t('settings.termsMsg')),
+              onPress: handleOpenTerms,
+            },
+            {
+              icon: <LockIcon size={22} />,
+              label: t('settings.privacyPolicy'),
+              onPress: handleOpenPrivacyPolicy,
             },
             { icon: <InfoIcon size={22} />,      label: t('settings.appVersion'), value: 'v1.0.0' },
           ]}
@@ -251,8 +350,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               {
                 text: t('settings.logout'),
                 style: 'destructive',
-                onPress: () => {
-                  signOut(); // Supabase 세션 종료 (미설정 시 no-op)
+                onPress: async () => {
+                  // 세션 종료를 기다린 뒤 이동한다. 먼저 이동하면 Splash가 남은 세션으로 자동 재로그인할 수 있음.
+                  await signOut(); // Supabase 세션 종료 (미설정 시 no-op)
                   navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
                 },
               },
@@ -299,6 +399,97 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
+      <Modal
+        visible={fontModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFontModalVisible(false)}
+      >
+        {/* 배경 탭으로도 닫힘 — 카드(내부 Pressable)는 탭을 삼켜 오닫힘 방지 */}
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setFontModalVisible(false)}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('settings.handleFont')}</Text>
+            <Text style={st.modalDesc}>{t('settings.handleFontDesc')}</Text>
+            <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
+            {HANDLE_FONTS.map((f) => {
+              const selected = (handleFont ?? 'default') === f.id;
+              return (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[st.fontRow, selected && st.fontRowSelected]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // 'default'는 null로 저장 → 서버에서도 폰트 미지정으로 동기화
+                    setHandleFont(f.id === 'default' ? null : f.id);
+                    setFontModalVisible(false);
+                  }}
+                >
+                  <View style={st.fontRowInfo}>
+                    <Text style={st.fontRowLabel}>{t(f.labelKey)}</Text>
+                    <Text style={[st.fontRowPreview, handleFontStyle(f.id)]} numberOfLines={1}>
+                      {handle ? `@${handle}` : '@eorth'}
+                    </Text>
+                  </View>
+                  {selected && <Text style={st.fontRowCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            </ScrollView>
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setFontModalVisible(false)}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
+      <Modal
+        visible={skinModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSkinModalVisible(false)}
+      >
+        {/* 배경 탭으로도 닫힘 */}
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setSkinModalVisible(false)}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('settings.globeSkin')}</Text>
+            <Text style={st.modalDesc}>{t('settings.globeSkinDesc')}</Text>
+            {GLOBE_SKINS.map((s) => {
+              const selected = globeSkin === s.id;
+              const locked = s.premium && !isPremium;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[st.fontRow, selected && st.fontRowSelected]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (locked) {
+                      setSkinModalVisible(false);
+                      navigation.navigate('Premium');
+                      return;
+                    }
+                    setGlobeSkin(s.id);
+                    setSkinModalVisible(false);
+                  }}
+                >
+                  <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />
+                  <Text style={st.skinRowLabel}>{t(s.labelKey)}</Text>
+                  {locked ? (
+                    <Text style={st.skinLock}>🔒</Text>
+                  ) : selected ? (
+                    <Text style={st.fontRowCheck}>✓</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setSkinModalVisible(false)}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
       </Modal>
     </SafeAreaView>
   );
@@ -458,6 +649,7 @@ const st = StyleSheet.create({
   modalCard: {
     width: '100%',
     maxWidth: 360,
+    maxHeight: '85%', // 목록이 길어도 하단 취소 버튼이 화면 안에 남도록
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 24,
@@ -483,4 +675,32 @@ const st = StyleSheet.create({
   modalBtnSubmit: { backgroundColor: COLORS.purpleNeon },
   modalBtnCancelText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },
   modalBtnSubmitText: { color: COLORS.bg, fontSize: 14, fontWeight: '600' },
+
+  // 아이디 폰트 선택 모달
+  fontList: { flexGrow: 0, flexShrink: 1 }, // 카드 maxHeight 안에서만 스크롤 — 취소 버튼 밀어내지 않음
+  fontRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  fontRowSelected: {
+    borderColor: COLORS.purpleBorder,
+    backgroundColor: COLORS.purpleBg,
+  },
+  fontRowInfo: { flex: 1 },
+  fontRowLabel: { fontSize: 11, color: COLORS.textDim, marginBottom: 2 },
+  fontRowPreview: { fontSize: 18, color: COLORS.white },
+  fontRowCheck: { fontSize: 16, color: COLORS.purpleNeon, marginLeft: 10 },
+  fontModalClose: { marginTop: 8 },
+
+  // 지구본 스킨 선택 모달
+  skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
+  skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
+  skinLock: { fontSize: 14, marginLeft: 10 },
 });

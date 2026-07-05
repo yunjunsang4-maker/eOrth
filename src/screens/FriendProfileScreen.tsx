@@ -24,6 +24,7 @@ import { fetchFollowerCount } from '../services/social';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
+import { handleFontStyle } from '../constants/handleFonts';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -61,7 +62,7 @@ export default function FriendProfileScreen({
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { nickname: myNick, handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
   const isSelf = !!myHandle && route.params?.handle === myHandle;
   const { records: myRecords } = useRecords();
 
@@ -96,37 +97,71 @@ export default function FriendProfileScreen({
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {
-    name: isSelf ? (myNick || displayUsername) : (profileRow?.nickname || profileRow?.handle || displayUsername),
+    name: isSelf ? (myHandle || displayUsername) : (profileRow?.handle || displayUsername),
     emoji: profileRow?.emoji || '🧳',
     photo: isSelf ? (myPhoto || null) : (profileRow?.profile_photo || null),
     bio: isSelf ? (myBio || '') : (profileRow?.bio || ''),
     recordCount: sourcePosts.length,
     followers: followerCount,
     visitedCountries: new Set(sourcePosts.map((p) => p.countryName).filter(Boolean)).size,
-    trips: sourcePosts.map((p) => ({
-      id: p.id,
-      emoji: p.countryFlag || '🌍',
-      countryFlag: p.countryFlag || '',
-      title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
-      date: p.date || '',
-      coverUri: p.representativePhoto || p.medias?.[0],
-      records: [{ id: p.id, viewType: p.viewType || 'feed' }],
-    })),
+    trips: sourcePosts.flatMap((p) => {
+      // 다국가 분할 기록: 게시물은 하나지만 카드는 국가별로 나눠 그린다
+      // (id는 카드 key용 합성값 — 게시물 이동은 records[0].id 사용)
+      // perCountryData는 피드 기록에만 있음(블로그·컷은 없음) — 없으면 기록 공통 값으로 폴백
+      if (p.splitByCountry && p.countries && p.countries.length > 1) {
+        return p.countries.map((c) => {
+          const d = p.perCountryData?.[c.name];
+          return {
+            id: `${p.id}::${c.name}`,
+            emoji: c.flag || '🌍',
+            countryFlag: c.flag || '',
+            title: c.name,
+            date: d?.startDate || p.date || '',
+            coverUri: d?.representativePhoto || d?.medias?.[0] || p.representativePhoto,
+            records: [{ id: p.id, viewType: p.viewType || 'feed' }],
+          };
+        });
+      }
+      return [{
+        id: p.id,
+        emoji: p.countryFlag || '🌍',
+        countryFlag: p.countryFlag || '',
+        title: p.countryName || (p.content ? p.content.slice(0, 16) : t('friends.travelDefault')),
+        date: p.date || '',
+        coverUri: p.representativePhoto || p.medias?.[0],
+        records: [{ id: p.id, viewType: p.viewType || 'feed' }],
+      }];
+    }),
   };
 
+  // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값, 타인이면 프로필의 handle_font
+  const { handleFont: myHandleFont } = useSettings();
+  const nameFontStyle = handleFontStyle(isSelf ? myHandleFont : profileRow?.handle_font);
+
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
-  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted } = useRecords();
+  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
-  const followId = userId ?? profileRow?.id ?? displayUsername;
+  // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 follows insert(uuid 컬럼)가 실패한다
+  const realId = userId ?? profileRow?.id ?? null;
+  const followId = realId ?? displayUsername;
   const followEntry = followingUsers.find((f) => f.id === followId || (!!f.username && f.username === displayUsername));
   const following = !!followEntry;
   const isMutual = !!followEntry?.isMutual;
+  // 비공개 계정 — 팔로우 대신 요청 흐름, 팔로워가 아니면 기록·배지 잠금
+  const isPrivate = !!profileRow?.is_private;
+  const requested = !!realId && isFollowRequested(realId);
+  const privateLocked = isPrivate && !following && !isSelf;
   const toggleFollow = () => {
     if (following) {
-      unfollowUser(followEntry?.id ?? followId);
+      // 빈 id('')로 찾으면 id가 빈 다른 항목과 오매칭될 수 있어 || 로 username 폴백
+      unfollowUser(followEntry?.id || followId);
+    } else if (isPrivate && realId) {
+      // 비공개 계정: 요청 보내기 ↔ 요청 취소 토글
+      if (requested) cancelFollowRequest(realId);
+      else requestFollow(realId);
     } else {
       followUser({
-        id: followId,
+        id: realId ?? '', // uuid 없으면 빈 값 → 로컬 전용(서버 동기화 생략), 매칭은 username으로
         username: displayUsername,
         isAbroad: false,
         currentCountry: null,
@@ -205,8 +240,8 @@ export default function FriendProfileScreen({
       onPress: () => {
         setMenuVisible(false);
         confirmBlock(displayUsername, () => {
-          blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle });
-          unfollowUser(followEntry?.id ?? followId); // 차단하면 팔로잉에서도 제거
+          // 언팔로우는 store의 blockUser가 함께 처리한다 (화면별 불일치 방지)
+          blockUser({ name: display.name, emoji: '👤', handle: profileRow?.handle ?? route.params?.handle, id: realId ?? undefined });
           showToast(t('social.blockedToast'));
           setTimeout(() => navigation.goBack(), 600);
         }, t);
@@ -236,13 +271,14 @@ export default function FriendProfileScreen({
         <View style={pv.profileRow}>
           <ProfileAvatar photo={display.photo} initial={displayUsername[0] ?? '?'} />
           <View style={pv.profileInfo}>
-            <Text style={pv.userName}>{display.name}</Text>
-            <Text style={pv.userHandle}>@{displayUsername}</Text>
+            <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>
+            <Text style={[pv.userHandle, nameFontStyle]}>@{displayUsername}</Text>
             {!!display.bio && <Text style={pv.userBio}>{display.bio}</Text>}
             <View style={pv.statsRow}>
-              <StatCard value={String(display.recordCount)} label={t('friends.recordCount')} />
+              {/* 비공개 잠금 시 기록 통계는 '–' (0으로 오해 방지). 팔로워 수는 공개 통계라 그대로 */}
+              <StatCard value={privateLocked ? '–' : String(display.recordCount)} label={t('friends.recordCount')} />
               <StatCard value={String(display.followers)} label={t('friends.followers')} />
-              <StatCard value={String(display.visitedCountries)} label={t('friends.visitedCountries')} />
+              <StatCard value={privateLocked ? '–' : String(display.visitedCountries)} label={t('friends.visitedCountries')} />
             </View>
           </View>
         </View>
@@ -251,20 +287,31 @@ export default function FriendProfileScreen({
         {!isSelf && (
           <>
             <TouchableOpacity
-              style={[s.followBtn, following && s.followingBtn]}
+              style={[s.followBtn, (following || requested) && s.followingBtn]}
               onPress={toggleFollow}
               activeOpacity={0.85}
             >
-              <Text style={[s.followBtnText, following && s.followingBtnText]}>
-                {following ? t('friends.followingCheck') : t('friends.follow')}
+              <Text style={[s.followBtnText, (following || requested) && s.followingBtnText]}>
+                {following
+                  ? t('friends.followingCheck')
+                  : requested
+                    ? t('friends.requested')
+                    : t('friends.follow')}
               </Text>
             </TouchableOpacity>
 
-            {/* ── 맞팔 토글 (팔로잉 중일 때만) — 친구 수 배지(78·81·82·83) 판정용 ── */}
-            {following && (
+            {/* ── 맞팔 표시 — 친구 수 배지(78·81·82·83) 판정용 ──
+                백엔드 사용 시 서버(follows 양방향)가 판정하므로 읽기 전용 배지,
+                미설정(로컬 데모) 모드에서만 수동 토글 허용 (refreshFollowing이 서버 값으로 덮어쓰므로 토글이 유지되지 않음) */}
+            {following && isSupabaseConfigured && isMutual && (
+              <View style={[s.mutualBtn, s.mutualBtnOn]}>
+                <Text style={[s.mutualBtnText, s.mutualBtnTextOn]}>{t('friends.mutualYes')}</Text>
+              </View>
+            )}
+            {following && !isSupabaseConfigured && (
               <TouchableOpacity
                 style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
-                onPress={() => setFollowMutual(followEntry?.id ?? followId, !isMutual)}
+                onPress={() => setFollowMutual(followEntry?.id || followId, !isMutual)}
                 activeOpacity={0.85}
               >
                 <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
@@ -275,50 +322,64 @@ export default function FriendProfileScreen({
           </>
         )}
 
-        {/* ── 배지 하이라이트 (친구 공개 글로 계산) — 내 프로필과 동일 ── */}
-        {friendBadges.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={pv.badgeScroll}
-            contentContainerStyle={pv.badgeScrollContent}
-          >
-            {friendBadges.map((badge) => (
-              <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
-            ))}
-          </ScrollView>
-        )}
-
-        <View style={pv.divider} />
-
-        {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
-        <View style={pv.gridHeaderRow}>
-          <Text style={pv.gridHeaderTitle}>{t('friends.travelRecords')}</Text>
-          <Text style={pv.tripCount}>{t('friends.tripCountN', { count: display.trips.length })}</Text>
-        </View>
-
-        {display.trips.length === 0 ? (
-          <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-            {t('friends.noPublicTrips')}
-          </Text>
+        {privateLocked ? (
+          /* ── 비공개 계정 잠금 — 팔로워가 아니면 배지·기록을 숨기고 안내만 표시 ── */
+          <>
+            <View style={pv.divider} />
+            <View style={s.privateBox}>
+              <Text style={s.privateEmoji}>🔒</Text>
+              <Text style={s.privateTitle}>{t('friends.privateTitle')}</Text>
+              <Text style={s.privateDesc}>{t('friends.privateDesc')}</Text>
+            </View>
+          </>
         ) : (
           <>
-            {/* 메인 카드 (첫 여행) */}
-            <TripCard
-              trip={display.trips[0]}
-              main
-              onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].id })}
-            />
-            {/* 나머지 2열 그리드 */}
-            <View style={pv.tripGrid}>
-              {display.trips.slice(1).map((trip) => (
-                <TripCard
-                  key={trip.id}
-                  trip={trip}
-                  onPress={() => navigation.navigate('PostDetail', { postId: trip.id })}
-                />
-              ))}
+            {/* ── 배지 하이라이트 (친구 공개 글로 계산) — 내 프로필과 동일 ── */}
+            {friendBadges.length > 0 && (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={pv.badgeScroll}
+                contentContainerStyle={pv.badgeScrollContent}
+              >
+                {friendBadges.map((badge) => (
+                  <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
+                ))}
+              </ScrollView>
+            )}
+
+            <View style={pv.divider} />
+
+            {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
+            <View style={pv.gridHeaderRow}>
+              <Text style={pv.gridHeaderTitle}>{t('friends.travelRecords')}</Text>
+              <Text style={pv.tripCount}>{t('friends.tripCountN', { count: display.trips.length })}</Text>
             </View>
+
+            {display.trips.length === 0 ? (
+              <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                {t('friends.noPublicTrips')}
+              </Text>
+            ) : (
+              <>
+                {/* 메인 카드 (첫 여행) — 분할 카드는 id가 합성값이라 게시물 이동은 records[0].id */}
+                <TripCard
+                  trip={display.trips[0]}
+                  main
+                  onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].records[0].id })}
+                />
+                {/* 나머지 2열 그리드 */}
+                <View style={pv.tripGrid}>
+                  {display.trips.slice(1).map((trip) => (
+                    <TripCard
+                      key={trip.id}
+                      trip={trip}
+                      onPress={() => navigation.navigate('PostDetail', { postId: trip.records[0].id })}
+                    />
+                  ))}
+                </View>
+              </>
+            )}
           </>
         )}
 
@@ -483,6 +544,16 @@ const s = StyleSheet.create({
   mutualBtnOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
   mutualBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
   mutualBtnTextOn: { color: COLORS.white },
+
+  // ── 비공개 계정 잠금 안내 ──
+  privateBox: {
+    alignItems: 'center',
+    paddingVertical: 36,
+    paddingHorizontal: 24,
+  },
+  privateEmoji: { fontSize: 36, marginBottom: 12 },
+  privateTitle: { fontSize: 16, fontWeight: '700', color: COLORS.white, marginBottom: 6 },
+  privateDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', lineHeight: 19 },
 
   // ── 구분선 ──
   divider: {

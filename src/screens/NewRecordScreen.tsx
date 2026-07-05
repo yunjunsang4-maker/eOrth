@@ -28,6 +28,10 @@ import { MediaPickerModal } from '../components/record/MediaPickerModal';
 import { FriendPickerModal } from '../components/record/FriendPickerModal';
 import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
+import { withTimeout } from '../utils/withTimeout';
+import { getMaxRecordPhotos } from '../constants/limits';
+import { KOREA_REGIONS, normalizeKoreaRegion } from '../constants/koreaRegions';
+import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -409,7 +413,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
-  const { addRecord, updateRecord, followingUsers } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, followingUsers } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -470,6 +474,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
   );
 
+  // 거주국가(국내) 여부 — 국내 기록은 지역(시/도) 선택으로 여행 카드를 구분한다
+  const { homeCountryCode, isPremium } = useSettings();
+  const maxRecordPhotos = getMaxRecordPhotos(isPremium); // 기록당 사진 상한 (프리미엄 100장)
+  const homeCountryName = useMemo(
+    () => COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
+    [homeCountryCode]
+  );
+  const isDomesticSelected = !!homeCountryName && selectedCountries.some(c => c.name === homeCountryName);
+
   useEffect(() => {
     const params = route?.params;
     if (params?.selectedCountry) {
@@ -500,7 +513,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const mapped = geoJsonToCountry(countryName ?? '', countryCode ?? undefined);
       if (!mapped) return;
       setSelectedCountries(prev => (prev.length === 0 ? [mapped] : prev)); // 비어있을 때만
-      if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
+      if (city) {
+        // 국내면 GPS 도시명을 시/도 프리셋으로 정규화(수원시→경기) — 카드 파편화 방지
+        const kr = mapped.name === homeCountryName ? normalizeKoreaRegion(city) : null;
+        setSelectedRegion(prev => prev ?? (kr ? { name: kr.name, nameEn: kr.nameEn } : { name: city, nameEn: city }));
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -515,16 +532,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     })).filter(g => g.countries.length > 0);
   }, [countrySearch]);
 
-  // Step 2 - 미디어
-  const [medias,            setMedias]           = useState<string[]>(
-    editFirstCountryData?.medias ?? editRecord?.medias ?? []
-  );
+  // Step 2 - 미디어 (다국가여도 사진은 여행 전체 공용 — 국가 구분 없이 한 번에 입력)
+  const [medias,            setMedias]           = useState<string[]>(editRecord?.medias ?? []);
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
-    editFirstCountryData?.mediaPrivacy ?? editRecord?.mediaPrivacy ?? {}
+    editRecord?.mediaPrivacy ?? {}
   );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
-    editFirstCountryData?.representativePhoto ?? editRecord?.representativePhoto ?? null
+    editRecord?.representativePhoto ?? null
   );
 
   // 압축본 uri → 원본 uri 매핑. "지도 대표" 사진은 저장 시 이 원본에서 고해상도로 다시 생성한다.
@@ -549,29 +564,29 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const addNewOriginals = async (originals: string[], currentMedias: string[]): Promise<string[]> => {
     const addedOriginals = new Set(currentMedias.map(u => originalUriMapRef.current[u] ?? u));
     const uniqueFresh = Array.from(new Set(originals.filter(o => !addedOriginals.has(o))))
-      .slice(0, 30 - currentMedias.length);
+      .slice(0, maxRecordPhotos - currentMedias.length);
     const compressed = await compressImages(uniqueFresh);
     compressed.forEach((u, i) => { if (u !== uniqueFresh[i]) originalUriMapRef.current[u] = uniqueFresh[i]; });
     return compressed;
   };
 
   const selectMedia = async () => {
-    const slots = 30 - medias.length;
+    const slots = maxRecordPhotos - medias.length;
     if (slots <= 0) {
-      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
+      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
       return;
     }
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        selectionLimit: slots, // slots>=1 보장 (0이면 무제한이 되어 30장 초과 위험)
+        selectionLimit: slots, // slots>=1 보장 (0이면 무제한이 되어 상한 초과 위험)
         quality: 0.8,
       });
       if (!result.canceled && result.assets) {
         setLoadingMedia(true);
         const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
-        setMedias(prev => [...prev, ...compressed].slice(0, 30));
+        setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
       }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
@@ -700,29 +715,21 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
+  // 국가별로 구분해 받는 건 날짜·별점뿐 — 사진은 여행 전체 공용(전역 medias)
   const perCountryStore = useRef<Record<string, {
-    medias: string[];
-    mediaPrivacy: Record<number, string[]>;
     startDate: Date;
     endDate: Date;
     rating: number;
-    representativePhoto?: string;
   }>>(
     // 편집 모드: 기존 국가별 데이터를 시딩해서 국가 전환 시 그대로 표시
     (() => {
-      const store: Record<string, {
-        medias: string[]; mediaPrivacy: Record<number, string[]>;
-        startDate: Date; endDate: Date; rating: number; representativePhoto?: string;
-      }> = {};
+      const store: Record<string, { startDate: Date; endDate: Date; rating: number }> = {};
       if (editRecord?.perCountryData) {
         for (const [name, d] of Object.entries(editRecord.perCountryData)) {
           store[name] = {
-            medias: d.medias ?? [],
-            mediaPrivacy: d.mediaPrivacy ?? {},
             startDate: parseDotDate(d.startDate),
             endDate: parseDotDate(d.endDate),
             rating: d.rating ?? 0,
-            representativePhoto: d.representativePhoto,
           };
         }
       }
@@ -735,36 +742,27 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const name = selectedCountries[activeCountryIdx]?.name;
     if (name) {
       perCountryStore.current[name] = {
-        medias: [...medias],
-        mediaPrivacy: { ...mediaPrivacy },
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         rating,
-        representativePhoto: representativePhoto || undefined,
       };
     }
   };
 
-  // 국가 전환
+  // 국가 전환 (날짜·별점만 국가별로 스왑 — 사진은 공용이라 그대로 둔다)
   const switchCountry = (newIdx: number) => {
     if (newIdx === activeCountryIdx) return;
     saveCurrentCountryData();
     const newName = selectedCountries[newIdx]?.name;
     const data = newName ? perCountryStore.current[newName] : null;
     if (data) {
-      setMedias(data.medias);
-      setMediaPrivacy(data.mediaPrivacy);
       setStartDate(data.startDate);
       setEndDate(data.endDate);
       setRating(data.rating);
-      setRepresentativePhoto(data.representativePhoto || null);
     } else {
-      setMedias([]);
-      setMediaPrivacy({});
       setStartDate(todayInit);
       setEndDate(todayInit);
       setRating(0);
-      setRepresentativePhoto(null);
     }
     setActiveCountryIdx(newIdx);
   };
@@ -891,13 +889,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [loadingMedia,            setLoadingMedia]            = useState(false);
   const [autoLoadCalendarVisible, setAutoLoadCalendarVisible] = useState(false);
 
-  // ── 미디어 선택 모달 (30개 초과 시) ──
+  // ── 미디어 선택 모달 (상한 초과 시) ──
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
   const [mediaPickerAssets,   setMediaPickerAssets]   = useState<MediaLibrary.Asset[]>([]);
   const [mediaPickerSelected, setMediaPickerSelected] = useState<Set<string>>(new Set());
-  const [mediaPickerMax,      setMediaPickerMax]      = useState(30);
+  const [mediaPickerMax,      setMediaPickerMax]      = useState(maxRecordPhotos);
   // 모달 열기 전 iCloud 사유로 제외된 장수 — 완료 메시지 안내에 사용
   const cloudSkippedRef = useRef(0);
+  // 기간 내 사진이 검색 상한(500장)을 넘어 일부만 확인했는지 — 완료 메시지 안내에 사용
+  const truncatedRef = useRef(false);
 
   const toggleMediaPickerItem = (id: string) => {
     setMediaPickerSelected(prev => {
@@ -912,33 +912,74 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
-  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환해 {asset, uri} 쌍을 돌려준다.
-  // iCloud로 오프로드된(원본이 기기에 없는) 사진은 Expo 관리형 API로 materialize가
-  // 불가능하다 — getAssetInfoAsync/ImageManipulator/FileSystem.copyAsync 모두 실패하며
-  // ph:// 그대로 두면 새 아키텍처에서 검은 타일로 뜬다. 따라서 가져올 수 없는 것으로
-  // 보고 제외한다(검은 타일/조용한 실패 방지). 변환은 Promise.all로 병렬 처리.
+  // ph:// 에셋을 표시·복사 가능한 로컬 file:// 로 변환한다 (ph:// 그대로 두면
+  // 새 아키텍처에서 검은 타일로 뜸). 원본이 기기에 없는(iCloud 오프로드) 사진은
+  // cloud로 분리해 돌려주고, 호출부가 2차 다운로드(downloadCloudAssets)를 시도한다.
   const resolveImportable = async (
     assets: MediaLibrary.Asset[]
-  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+  ): Promise<{ ok: { asset: MediaLibrary.Asset; uri: string }[]; cloud: MediaLibrary.Asset[] }> => {
     const probed = await Promise.all(
       assets.map(async (asset) => {
         try {
           if (Platform.OS === 'ios' && asset.uri.startsWith('ph://')) {
             const info = await MediaLibrary.getAssetInfoAsync(asset, { shouldDownloadFromNetwork: false });
-            return info.localUri ? { asset, uri: info.localUri } : null; // localUri 없으면 iCloud → 제외
+            return info.localUri
+              ? { kind: 'ok' as const, asset, uri: info.localUri }
+              : { kind: 'cloud' as const, asset }; // localUri 없음 = iCloud 오프로드 → 2차 시도 대상
           }
-          return { asset, uri: asset.uri };
+          return { kind: 'ok' as const, asset, uri: asset.uri };
         } catch {
-          return null;
+          return { kind: 'cloud' as const, asset }; // 판정 실패도 2차 시도에 넘겨본다
         }
       })
     );
-    return probed.filter((p): p is { asset: MediaLibrary.Asset; uri: string } => p !== null);
+    return {
+      ok: probed.filter((p): p is { kind: 'ok'; asset: MediaLibrary.Asset; uri: string } => p.kind === 'ok')
+        .map(({ asset, uri }) => ({ asset, uri })),
+      cloud: probed.filter((p) => p.kind === 'cloud').map((p) => p.asset),
+    };
+  };
+
+  // iCloud 오프로드 사진 2차 시도 — 네트워크 다운로드 허용 + 장당 타임아웃.
+  // 순차 처리(동시 다운로드로 인한 실패·메모리 급증 방지)하며 진행률을 표시한다.
+  // 장수 제한 없음: 기간 내 전부 시도해 선택 모달에 올리고, 기록에 담을 장수는 모달에서 고른다.
+  // 오래 걸릴 수 있어 취소 버튼 제공 — 취소 시 그때까지 받은 것만 반영.
+  const ICLOUD_DL_TIMEOUT_MS = 15000;
+  const [cloudProgress, setCloudProgress] = useState<{ done: number; total: number } | null>(null);
+  const cloudCancelRef = useRef(false);
+  const downloadCloudAssets = async (
+    assets: MediaLibrary.Asset[]
+  ): Promise<{ asset: MediaLibrary.Asset; uri: string }[]> => {
+    if (assets.length === 0) return [];
+    const oks: { asset: MediaLibrary.Asset; uri: string }[] = [];
+    cloudCancelRef.current = false;
+    setCloudProgress({ done: 0, total: assets.length });
+    try {
+      for (let i = 0; i < assets.length; i++) {
+        if (cloudCancelRef.current) break; // 사용자 취소 → 받은 것까지만 사용
+        try {
+          const info = await withTimeout(
+            MediaLibrary.getAssetInfoAsync(assets[i], { shouldDownloadFromNetwork: true }),
+            ICLOUD_DL_TIMEOUT_MS
+          );
+          if (info?.localUri) oks.push({ asset: assets[i], uri: info.localUri });
+        } catch {
+          // 다운로드 실패/타임아웃 → 제외 유지 (완료 알림의 iCloud 안내에 집계됨)
+        }
+        setCloudProgress({ done: i + 1, total: assets.length });
+      }
+    } finally {
+      setCloudProgress(null);
+    }
+    return oks;
   };
 
   // iCloud 제외분 안내 문구 (없으면 빈 문자열)
   const cloudNote = (skipped: number) =>
     skipped > 0 ? t('newRecord.cloudNote', { count: skipped }) : '';
+
+  // 500장 상한으로 일부만 확인했을 때의 안내 문구 (없으면 빈 문자열)
+  const truncatedNote = () => (truncatedRef.current ? t('newRecord.truncatedNote') : '');
 
   const confirmMediaPickerSelection = async () => {
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
@@ -946,13 +987,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     setLoadingMedia(true);
 
     try {
-      const ok = await resolveImportable(selectedAssets);
+      // 모달의 사진은 대부분 이미 확보된 로컬본이지만, iCloud분이 섞였을 수 있어 2차 시도 포함
+      const { ok: localOk, cloud } = await resolveImportable(selectedAssets);
+      const cloudOk = await downloadCloudAssets(cloud);
+      const ok = [...localOk, ...cloudOk];
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
-      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudSkippedRef.current));
+      if (resolvedUris.length === 0) {
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudSkippedRef.current));
+      } else {
+        Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudSkippedRef.current));
+      }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
@@ -971,8 +1019,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
     setLoadingMedia(true);
     try {
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      if (status !== 'granted') {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (perm.status !== 'granted') {
         Alert.alert(
           t('newRecord.galleryPermTitle'),
           t('newRecord.galleryPermMsg'),
@@ -996,16 +1044,36 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         sortBy: MediaLibrary.SortBy.creationTime,
         first: 500,
       });
+      // 기간 내 사진이 상한(500장)보다 많으면 최신순으로 잘림 — 완료 안내에 표시
+      truncatedRef.current = !!result?.hasNextPage;
 
       const allAssets = result?.assets ?? [];
       if (allAssets.length === 0) {
-        Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
+        // '일부 사진만 허용' 상태면 허용된 사진만 검색되므로, "기간 내 사진 없음"과 구분해 안내
+        if (perm.accessPrivileges === 'limited') {
+          Alert.alert(
+            t('newRecord.limitedAccessTitle'),
+            t('newRecord.limitedAccessMsg'),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              Platform.OS === 'ios'
+                ? { text: t('newRecord.limitedAddPhotos'), onPress: () => { MediaLibrary.presentPermissionsPickerAsync().catch(() => {}); } }
+                : { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
+            ]
+          );
+        } else {
+          Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
+        }
         return;
       }
 
-      // 가져올 수 있는(로컬) 사진만 추린다. iCloud 오프로드 사진은 materialize가 불가능하므로
-      // 여기서 미리 걸러내 검은 타일/조용한 실패를 막고, 몇 장이 iCloud인지 안내한다.
-      const ok = await resolveImportable(allAssets);
+      // 1차: 로컬 사진 즉시 확보 → 2차: iCloud 오프로드분은 네트워크 다운로드 시도(타임아웃 포함).
+      // 그래도 실패한 장수만 안내하고 제외한다 (검은 타일/조용한 실패 방지).
+      const { ok: localOk, cloud } = await resolveImportable(allAssets);
+      const cloudOk = await downloadCloudAssets(cloud);
+      // 원래 검색 순서(최신순)를 유지해 병합
+      const resolvedById = new Map([...localOk, ...cloudOk].map((p) => [p.asset.id, p]));
+      const ok = allAssets.filter((a) => resolvedById.has(a.id)).map((a) => resolvedById.get(a.id)!);
       const cloudCount = allAssets.length - ok.length;
       cloudSkippedRef.current = cloudCount;
 
@@ -1018,13 +1086,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       }
 
       const total = ok.length;
-      const slotsAvailable = 30 - medias.length;
+      const slotsAvailable = maxRecordPhotos - medias.length;
       if (slotsAvailable <= 0) {
-        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotos30'));
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
         return;
       }
 
-      // 30개 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
+      // 상한 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
       if (total > slotsAvailable) {
         setMediaPickerAssets(ok.map((p) => p.asset));
         setMediaPickerMax(slotsAvailable);
@@ -1033,12 +1101,17 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         return;
       }
 
-      // 30개 이하 → 전체 추가 (이미 변환된 localUri 사용)
+      // 상한 이하 → 전체 추가 (이미 변환된 localUri 사용)
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => [...prev, ...resolvedUris].slice(0, 30));
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
 
-      Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + cloudNote(cloudCount));
+      // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
+      if (resolvedUris.length === 0) {
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudCount));
+      } else {
+        Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudCount));
+      }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
@@ -1049,12 +1122,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // ── 내비 ──
   const canGoNext = () => {
     if (step === 1) return selectedCountries.length > 0;
-    if (step === 2) {
-      // 사진 최소 1장 필수 — 다국가면 모든 국가에 1장 이상 (활성은 전역 medias, 나머지는 국가별 저장값)
-      return selectedCountries.every((c, idx) =>
-        idx === activeCountryIdx ? medias.length > 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) > 0
-      );
-    }
+    if (step === 2) return medias.length > 0 && !!representativePhoto; // 사진 1장 이상 + 대표 사진 지정 필수
     if (step === TOTAL_STEPS) {
       if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
       // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
@@ -1067,14 +1135,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   const goNext = () => {
     if (step < TOTAL_STEPS) {
-      if (isMultiCountry && step === 2) saveCurrentCountryData();
       setStep(s => s + 1);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
   };
   const goPrev = () => {
     if (step > 1) {
-      if (isMultiCountry && step === 2) saveCurrentCountryData();
       setStep(s => s - 1);
       scrollRef.current?.scrollTo({ y: 0, animated: false });
     }
@@ -1085,17 +1151,32 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       Alert.alert(t('newRecord.selectCountryTitle'), t('newRecord.selectCountryMsg'));
       return;
     }
+    // 다국가 신규 작성: 하나의 여행으로 합칠지, 국가별로 나눌지 선택
+    // (수정 모드는 기존 합본 구조 유지 — 분할하면 기존 게시물·댓글과의 연결이 깨짐)
+    if (!isEdit && selectedCountries.length > 1) {
+      Alert.alert(
+        t('newRecord.splitAskTitle'),
+        t('newRecord.splitAskMsg', { count: selectedCountries.length }),
+        [
+          { text: t('newRecord.splitAskCancel'), style: 'cancel' },
+          { text: t('newRecord.splitAskSplit'), onPress: () => { doSave(true); } },
+          { text: t('newRecord.splitAskMerge'), onPress: () => { doSave(false); } },
+        ]
+      );
+      return;
+    }
+    await doSave(false);
+  };
+
+  const doSave = async (splitByCountry: boolean) => {
     {
       // 현재 활성 국가 데이터 저장
       saveCurrentCountryData();
 
       const first = selectedCountries[0];
 
-      // 국가별 데이터 수집
-      const pcd: Record<string, { medias?: string[]; mediaPrivacy?: Record<number, string[]>; startDate?: string; endDate?: string; rating?: number; representativePhoto?: string }> = {};
-      let allMedias: string[] = [];
-      // 합본 medias(allMedias) 기준으로 국가별 비공개 인덱스를 오프셋 보정해 하나로 합친다
-      const mergedPrivacy: Record<number, string[]> = {};
+      // 국가별 데이터 수집 — 날짜·별점만 (사진은 여행 전체 공용 medias)
+      const pcd: Record<string, { startDate?: string; endDate?: string; rating?: number }> = {};
       let firstRating = 0;
       let firstStart = formatDate(todayInit);
       let firstEnd = formatDate(todayInit);
@@ -1103,21 +1184,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       selectedCountries.forEach((c, i) => {
         const d = perCountryStore.current[c.name];
         if (d) {
-          const hasPrivacy = Object.values(d.mediaPrivacy).some(v => v && v.length > 0);
           pcd[c.name] = {
-            medias: d.medias,
-            mediaPrivacy: hasPrivacy ? d.mediaPrivacy : undefined,
             startDate: formatDate(d.startDate),
             endDate: formatDate(d.endDate),
             rating: d.rating,
-            representativePhoto: d.representativePhoto,
           };
-          // 이 국가 medias가 합본에서 시작하는 위치(offset)만큼 비공개 인덱스를 밀어 매핑
-          const offset = allMedias.length;
-          Object.entries(d.mediaPrivacy).forEach(([k, v]) => {
-            if (v && v.length > 0) mergedPrivacy[offset + Number(k)] = v;
-          });
-          allMedias = [...allMedias, ...d.medias];
           if (i === 0) {
             firstRating = d.rating;
             firstStart = formatDate(d.startDate);
@@ -1126,19 +1197,17 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         }
       });
 
-      const firstRepPhoto = perCountryStore.current[first.name]?.representativePhoto || representativePhoto || undefined;
-
       // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지)
-      const firstRepHiRes = await toRepHiRes(firstRepPhoto);
-      for (const name of Object.keys(pcd)) {
-        pcd[name].representativePhoto = await toRepHiRes(pcd[name].representativePhoto);
-      }
+      const firstRepHiRes = await toRepHiRes(representativePhoto || undefined);
 
       const payload = {
         country: `${first.flag} ${first.name}`,
         countryName: first.name,
         countryFlag: first.flag,
         countries: selectedCountries,
+        // "국가별로 나누기" 선택 시 — 게시물은 하나지만 프로필 카드는 국가별로 그려진다.
+        // 수정 모드에선 선택 다이얼로그가 없으므로 기존 기록의 값을 보존한다.
+        splitByCountry: (isEdit ? editRecord?.splitByCountry : splitByCountry) || undefined,
         regionName: selectedRegion?.name || undefined,
         regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
@@ -1152,8 +1221,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         companions: selectedCompanions,
         companionFriends,
         visibility,
-        medias: allMedias,
-        mediaPrivacy: mergedPrivacy,
+        medias,
+        mediaPrivacy,
         startDate: firstStart,
         endDate: firstEnd,
         budget:     budget ? { amount: Number(budget), currency } : undefined,
@@ -1166,11 +1235,33 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         // 작성자·형식은 유지하고 내용(공개 범위 포함)만 갱신
         updateRecord(editRecord.id, payload);
       } else {
-        addRecord({
-          user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
-          viewType: 'feed',
-          ...payload,
-        });
+        const recId = addRecord(
+          {
+            user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
+            viewType: 'feed',
+            ...payload,
+          },
+          // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다
+          { linkTrip: !splitByCountry }
+        );
+        if (splitByCountry) {
+          // 같은 기록 하나를 국가별 여행 카드로 — 날짜는 국가별, 커버는 공용 대표사진.
+          // session: 여행 중 작성(실시간)이면 카드가 세션에 등록돼 이후 그 국가의 스냅이 합류한다
+          selectedCountries.forEach((c) => {
+            const d = pcd[c.name];
+            addTripGroup(
+              {
+                title: `${c.name} 여행`, // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
+                records: [recId],
+                coverRecordId: recId,
+                countryName: c.name,
+                countryFlag: c.flag,
+                date: d?.startDate,
+              },
+              { session: { startDate: d?.startDate, endDate: d?.endDate, date: d?.startDate } }
+            );
+          });
+        }
       }
     }
     savedRef.current = true;
@@ -1204,9 +1295,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const m: string[] = [];
     if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
     else if (step === 2) {
-      const noPhoto = selectedCountries.some((c, idx) =>
-        idx === activeCountryIdx ? medias.length === 0 : (perCountryStore.current[c.name]?.medias?.length ?? 0) === 0);
-      if (noPhoto) m.push(isMultiCountry ? t('newRecord.missAllCountryPhotos') : t('newRecord.missPhoto'));
+      if (medias.length === 0) m.push(t('newRecord.missPhoto'));
+      else if (!representativePhoto) m.push(t('newRecord.missRepPhoto'));
     }
     else if (step === TOTAL_STEPS) {
       if (memo.trim().length === 0) m.push(t('newRecord.missText'));
@@ -1324,6 +1414,30 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
               )}
 
+              {/* 국내 지역 선택 — 국내 기록은 지역(시/도) 단위로 여행 카드가 구분된다 */}
+              {isDomesticSelected && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {KOREA_REGIONS.map((r) => {
+                        const active = selectedRegion?.name === r.name;
+                        return (
+                          <TouchableOpacity
+                            key={r.name}
+                            style={[s.regionPickChip, active && s.regionPickChipActive]}
+                            onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[s.regionPickChipText, active && s.regionPickChipTextActive]}>{r.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
               {/* 검색창 — 항상 표시 */}
               <View style={[s.searchCard, selectedCountries.length > 0 ? s.searchCardSelected : null]}>
                 <View style={s.searchRow}>
@@ -1404,21 +1518,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           {/* ══════════════════ STEP 2 ══════════════════ */}
           {step === 2 && (
             <View>
-              {/* 국가별 탭 (2개국 이상) */}
-              {isMultiCountry && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.countryTabScroll} contentContainerStyle={s.countryTabContent}>
-                  {selectedCountries.map((c, idx) => (
-                    <TouchableOpacity
-                      key={c.name}
-                      style={[s.countryTab, idx === activeCountryIdx && s.countryTabActive]}
-                      onPress={() => switchCountry(idx)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[s.countryTabText, idx === activeCountryIdx && s.countryTabTextActive]}>{c.flag} {c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+              {/* 사진은 여행 전체 공용 — 다국가여도 국가 탭 없이 한 번에 담는다 */}
               {/* 기간으로 자동 불러오기 버튼 */}
               <TouchableOpacity
                 style={s.autoLoadBtn}
@@ -1434,24 +1534,44 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   <Text style={s.autoLoadBtnText}>{t('newRecord.autoLoadByPeriod')}</Text>
                 </View>
               </TouchableOpacity>
-              {loadingMedia && <ActivityIndicator color="#BF85FC" size="large" style={{ marginVertical: 12 }} />}
+              {loadingMedia && (
+                <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
+                  <ActivityIndicator color="#BF85FC" size="large" />
+                  {cloudProgress && (
+                    <>
+                      <Text style={s.cloudProgressText}>
+                        {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                      </Text>
+                      <TouchableOpacity
+                        style={s.cloudCancelBtn}
+                        onPress={() => { cloudCancelRef.current = true; }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('newRecord.cloudCancelA11y')}
+                      >
+                        <Text style={s.cloudCancelText}>{t('common.cancel')}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
 
               {/* 갤러리 선택 버튼 */}
               <TouchableOpacity
-                style={[s.addMediaBtn, medias.length >= 30 && s.addMediaBtnDisabled]}
+                style={[s.addMediaBtn, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
                 onPress={selectMedia}
                 activeOpacity={0.8}
-                disabled={medias.length >= 30}
+                disabled={medias.length >= maxRecordPhotos}
               >
                 <View style={s.addMediaLeft}>
                   <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
                   <View>
                     <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
-                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub')}</Text>
+                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
                   </View>
                 </View>
                 <View style={s.addMediaCountBadge}>
-                  <Text style={s.addMediaCountTxt}>{medias.length}/30</Text>
+                  <Text style={s.addMediaCountTxt}>{medias.length}/{maxRecordPhotos}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -1867,7 +1987,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onClose={() => setAutoLoadCalendarVisible(false)}
       />
 
-      {/* ── 미디어 선택 모달 (30개 초과 시) ── */}
+      {/* ── 미디어 선택 모달 (상한 초과 시) ── */}
       <MediaPickerModal
         visible={mediaPickerVisible}
         assets={mediaPickerAssets}
@@ -2488,6 +2608,51 @@ const s = StyleSheet.create({
   },
   autoLoadBtnText: {
     fontSize: 14,
+    fontWeight: '600',
+    color: COLORS.purpleNeon,
+  },
+  cloudProgressText: {
+    fontSize: 12,
+    color: COLORS.textDim,
+  },
+  // 국내 지역 선택 칩
+  regionPickLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: COLORS.textDim,
+    marginBottom: 8,
+  },
+  regionPickChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 16,
+    backgroundColor: COLORS.card,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  regionPickChipActive: {
+    backgroundColor: 'rgba(191,133,252,0.15)',
+    borderColor: COLORS.purpleNeon,
+  },
+  regionPickChipText: {
+    fontSize: 13,
+    color: COLORS.textDim,
+    fontWeight: '600',
+  },
+  regionPickChipTextActive: {
+    color: COLORS.purpleNeon,
+  },
+  cloudCancelBtn: {
+    marginTop: 2,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: 'rgba(191,133,252,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.3)',
+  },
+  cloudCancelText: {
+    fontSize: 12,
     fontWeight: '600',
     color: COLORS.purpleNeon,
   },

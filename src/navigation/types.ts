@@ -44,6 +44,9 @@ export interface CutPhotoParam {
   frameColor?: string;
   photos: string[];
   previewUri: string;
+  noLogo?: boolean; // 프리미엄(스트립 로고 제거) 작성 — 생성 시점에 박제
+  stamp?: { date?: string; text?: string; fontId?: string }; // 하단 여백 날짜·문구 스탬프
+  frameImage?: string; // 프레임 배경 사진 uri (프리미엄)
 }
 
 /** 프로필 여행 카드 → 여행 상세로 전달되는 썸네일 */
@@ -81,6 +84,7 @@ export type RootStackParamList = {
   Splash: undefined;
   AppIntro: undefined;
   Login: undefined;
+  ResetPassword: undefined;
   BasicInfo: undefined;
   TravelImport: undefined;
   ImportPhotoSelect: { trips: ImportTrip[] };
@@ -97,11 +101,13 @@ export type RootStackParamList = {
     tripPeriod?: TripPeriodParam;
   } | undefined;
   Settings: undefined;
+  Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입
+  FAQ: undefined; // 설정 > FAQ
+  Feedback: undefined; // 설정 > 피드백 보내기 (인앱 폼)
   Friends: undefined;
   DM: { friend: DMFriendParam; sharePostId?: string };
   BestCut: undefined;
   FriendSearch: { initialQuery?: string; ts?: number } | undefined;
-  PhoneConsent: undefined;
   BlockedUsers: undefined;
   ArchivedPosts: undefined;
   FriendProfile: {
@@ -110,6 +116,7 @@ export type RootStackParamList = {
     handle?: string;
   } | undefined;
   FollowingList: undefined;
+  FollowerList: undefined;
   EditProfile: undefined;
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };

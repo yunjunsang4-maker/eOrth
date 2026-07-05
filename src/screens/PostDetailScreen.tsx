@@ -1069,7 +1069,7 @@ export default function PostDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
   const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost } = useRecords();
-  const { nickname: globalNickname, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
   const [commentText, setCommentText] = useState('');
@@ -1410,7 +1410,7 @@ export default function PostDetailScreen() {
               {(() => {
                 const isMyPost = record.isMyPost === true || record.user.handle === globalHandle;
                 const postDisplayName = isMyPost
-                  ? (globalNickname ? globalNickname : `@${globalHandle}`)
+                  ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
                 const authorUsername = record.user.name || record.user.handle;
                 const followedEntry = followingUsers.find(
@@ -1430,7 +1430,7 @@ export default function PostDetailScreen() {
                       accessibilityLabel={isMyPost ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
                       onPress={() => {
                         navigation.navigate('FriendProfile', isMyPost
-                          ? { userId: record.authorId ?? record.id, username: globalNickname || record.user.name, handle: globalHandle }
+                          ? { userId: record.authorId ?? record.id, username: globalHandle || record.user.name, handle: globalHandle }
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >

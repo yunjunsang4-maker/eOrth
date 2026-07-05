@@ -10,8 +10,8 @@ import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
-
-export const MAX_PHOTOS_PER_TRIP = 30; // 프리미엄 seam: 나중에 이 한도만 상향
+import { getMaxRecordPhotos } from '../constants/limits';
+import { useSettings } from '../store/settingsStore';
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
@@ -47,6 +47,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup } = useRecords();
   const insets = useSafeAreaInsets();
+  const { isPremium } = useSettings();
+  const maxPhotosPerTrip = getMaxRecordPhotos(isPremium); // 기록당 사진 상한 공유 (프리미엄 100장)
 
   const [index, setIndex] = useState(0);
   // 여행별 선택된 사진 uri 집합
@@ -82,8 +84,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       setSelected((prev) => ({ ...prev, [trip.id]: (prev[trip.id] ?? []).filter((u) => u !== uri) }));
       return;
     }
-    if (cur.length >= MAX_PHOTOS_PER_TRIP) {
-      Alert.alert(t('imports.noticeTitle'), t('imports.maxPhotosAlert', { max: MAX_PHOTOS_PER_TRIP }));
+    if (cur.length >= maxPhotosPerTrip) {
+      Alert.alert(t('imports.noticeTitle'), t('imports.maxPhotosAlert', { max: maxPhotosPerTrip }));
       return;
     }
     setSelected((prev) => ({ ...prev, [trip.id]: [...(prev[trip.id] ?? []), uri] }));
@@ -175,8 +177,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       <View style={[st.header, { paddingTop: insets.top + 24 }]}>
         <Text style={st.step}>{index + 1} / {trips.length}</Text>
         <Text style={st.title}>{trip.countryFlag} {trip.title}</Text>
-        <Text style={st.sub}>{t('imports.selectPhotosMax', { max: MAX_PHOTOS_PER_TRIP })}</Text>
-        <Text style={st.counter}>{sel.length} / {MAX_PHOTOS_PER_TRIP}</Text>
+        <Text style={st.sub}>{t('imports.selectPhotosMax', { max: maxPhotosPerTrip })}</Text>
+        <Text style={st.counter}>{sel.length} / {maxPhotosPerTrip}</Text>
       </View>
 
       {/* 일별 보기 필터 */}

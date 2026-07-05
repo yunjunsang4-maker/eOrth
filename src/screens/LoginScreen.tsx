@@ -29,8 +29,11 @@ import {
   daysUntilPurge,
 } from '../store/pendingDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, sendPasswordReset, signInWithProvider, resendEmailConfirmation } from '../services/auth';
-import { getMyUserId, getProfileById } from '../services/profile';
+import { signUpWithEmail, signInWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
+import { getMyProfileStatus } from '../services/profile';
+import { useAccountBoundary } from '../hooks/useAccountBoundary';
+import { withTimeout } from '../utils/withTimeout';
+import * as Network from 'expo-network';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -39,6 +42,9 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const isValidEmail = (v: string) => EMAIL_RE.test(v.trim());
 // 전송 전 정규화: 공백 제거 + 소문자 (대소문자 차이로 인한 별도 계정/로그인 실패 방지)
 const normalizeEmail = (v: string) => v.trim().toLowerCase();
+// 아이디(handle) 형식: 영문/숫자/_ 4~30자 (로그인 입력이 아이디인지 판별)
+const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
+const isValidHandle = (v: string) => HANDLE_RE.test(v.trim());
 
 // 인증 메일 재전송 최소 간격(초)
 const RESEND_COOLDOWN_SEC = 30;
@@ -48,9 +54,10 @@ type Props = RootStackScreenProps<'Login'>;
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { setSignUpMethod, setSignUpEmail, setNickname, resetSettings } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, resetSettings } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
+  const runAccountBoundary = useAccountBoundary();
   const [mode, setMode] = useState<'login' | 'signup'>('signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -84,6 +91,16 @@ export default function LoginScreen({ navigation }: Props) {
   // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
     if (socialLoading) return; // 중복 탭 방지
+    // 네트워크 사전 점검 — 끊긴 상태면 명확히 안내(브라우저가 '취소'로 오표기되는 것 방지)
+    try {
+      const net = await Network.getNetworkStateAsync();
+      if (net.isConnected === false) {
+        Alert.alert(t('login.loginFailed'), t('login.networkError'));
+        return;
+      }
+    } catch {
+      // 점검 실패 시 그냥 진행
+    }
     setSocialModal(provider);
     setSocialLoading(true);
     setAuthSuccess(false);
@@ -91,26 +108,55 @@ export default function LoginScreen({ navigation }: Props) {
     if (!result.ok) {
       setSocialModal(null);
       setSocialLoading(false);
-      Alert.alert(t('login.loginFailed'), result.error || t('login.tryAgain'));
+      // 사용자가 인증창을 닫아 취소한 경우엔 오류 알림을 띄우지 않는다.
+      if (!result.cancelled) {
+        Alert.alert(t('login.loginFailed'), result.error || t('login.tryAgain'));
+      }
       return;
     }
     setAuthSuccess(true);
-    // 기존 프로필이 있으면 로그인(Main), 없으면 온보딩(BasicInfo) — 소셜 재온보딩 방지
+    // 온보딩을 마친 사용자면 로그인(Main), 아니면 온보딩(BasicInfo).
+    // ⚠️ DB 트리거가 가입 즉시 빈 프로필 행을 생성하므로 "행 존재"로 판정하면 신규도 기존으로 오판된다.
+    //    → 생일이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
+    let reached = false; // 프로필 조회가 서버에 도달했는가(신규/기존 판정 신뢰 가능 여부)
+    // 계정의 원래 가입 수단을 반영한다. 연동 계정이면 최초 provider가 우선(예: 이메일 계정에 구글 연동 시 email 유지).
+    // 조회 실패 시 방금 사용한 provider로 폴백.
+    let accountProvider: 'email' | 'google' | 'apple' = provider;
+    let accountEmail: string | null = null;
     try {
-      const myUid = await getMyUserId();
-      const existingProfile = myUid ? await getProfileById(myUid) : null;
-      if (existingProfile) dest = 'Main';
+      // 병렬 조회 + 타임아웃 (느린/끊긴 네트워크에서 무한 대기 방지)
+      const [status, original, email] = await withTimeout(
+        Promise.all([getMyProfileStatus(), getAuthProvider(), getAuthEmail()]),
+        12000,
+      );
+      reached = status.reached;
+      if (status.profile && status.profile.birthday && status.profile.birthday.trim()) dest = 'Main';
+      if (original) accountProvider = original;
+      accountEmail = email;
     } catch {
-      // 조회 실패 → 온보딩으로 폴백
+      // 타임아웃/조회 실패 → reached=false 로 처리(아래에서 Splash 재평가)
     }
-    setTimeout(() => {
+    const applyInfo = () => {
+      setSignUpMethod(accountProvider);
+      if (accountEmail) setSignUpEmail(accountEmail);
+    };
+    // 성공 표시를 잠깐 보여준 뒤 진행. 네비게이션 완료까지 로딩 인디케이터를 유지한다.
+    await new Promise((r) => setTimeout(r, 600));
+    try {
+      if (!reached) {
+        // 프로필 판정 불가(일시적 오류) → 온보딩/메인으로 잘못 보내지 않고 Splash에서 재평가한다.
+        applyInfo();
+        navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        return;
+      }
+      // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
+      await proceedAfterAuth(applyInfo, dest);
+    } finally {
       setSocialLoading(false);
       setSocialModal(null);
-      // OAuth는 이미 Supabase 세션 생성됨 → 가입정보 적용 후 분기
-      proceedAfterAuth(() => { setSignUpMethod(provider); }, dest);
-    }, 600);
+    }
   };
 
   const handleGooglePress = () => handleSocialLogin('google');
@@ -120,7 +166,7 @@ export default function LoginScreen({ navigation }: Props) {
   // 로그인 성공 시 탈퇴 신청 여부를 확인한다.
   //  - 유예 기간(30일) 내 → 복구 여부를 묻고, 복구하면 데이터 그대로 Main 진입
   //  - 만료 → 영구 파기 후 새 계정 온보딩 진행
-  // applySignup: 가입 정보(이메일·닉네임 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
+  // applySignup: 가입 정보(이메일·가입 수단 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
   const purgeAllData = () => {
     resetRecords();
     resetSettings();
@@ -135,6 +181,9 @@ export default function LoginScreen({ navigation }: Props) {
 
   // destination: 신규 가입은 온보딩(BasicInfo), 기존 사용자 로그인은 Main
   const proceedAfterAuth = async (applySignup: () => void, destination: 'BasicInfo' | 'Main' = 'BasicInfo') => {
+    // 계정 전환이면 로컬을 비우고 새 계정 데이터를 복원한 뒤 진행
+    await runAccountBoundary();
+
     // 탈퇴 신청 조회 실패 시에도 인증 자체는 성공했으므로 정상 진입시킨다
     let pending: Awaited<ReturnType<typeof getPendingDeletion>> = null;
     try {
@@ -219,9 +268,11 @@ export default function LoginScreen({ navigation }: Props) {
     setConfirmFocused(false);
   };
 
+  // 로그인은 이메일 또는 아이디(handle) 허용, 회원가입은 이메일만
+  const identifierValid = isSignup ? isValidEmail(email) : (isValidEmail(email) || isValidHandle(email));
   const canSubmit =
     !submitting &&
-    isValidEmail(email) &&
+    identifierValid &&
     password.length >= 6 &&
     (isSignup ? confirmPassword === password : true);
 
@@ -244,23 +295,25 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    const identifier = email.trim();
     const normEmail = normalizeEmail(email);
-    const applySignup = () => {
-      setSignUpMethod('email');
-      setSignUpEmail(normEmail || 'user@eorth.app');
-    };
+    const usedEmail = isValidEmail(identifier); // 로그인 입력이 이메일인지(아니면 아이디)
     const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
 
     // Supabase 미설정: 기존 모의 로그인 유지
     if (!isSupabaseConfigured) {
-      proceedAfterAuth(applySignup, destination);
+      const applyMock = () => {
+        setSignUpMethod('email');
+        setSignUpEmail(normEmail || 'user@eorth.app');
+      };
+      proceedAfterAuth(applyMock, destination);
       return;
     }
 
     setSubmitting(true);
     const result = isSignup
       ? await signUpWithEmail(normEmail, password)
-      : await signInWithEmail(normEmail, password);
+      : await signInWithIdentifier(identifier, password); // 이메일 또는 아이디로 로그인
     setSubmitting(false);
 
     if (!result.ok) {
@@ -279,6 +332,16 @@ export default function LoginScreen({ navigation }: Props) {
       );
       return;
     }
+    // 아이디로 로그인했으면 실제 이메일을 서버에서 조회해 저장(아이디를 이메일로 저장하지 않도록).
+    let storedEmail: string | null = usedEmail ? normEmail : null;
+    if (!isSignup && !usedEmail) {
+      storedEmail = await getAuthEmail();
+    }
+    const applySignup = () => {
+      setSignUpMethod('email');
+      if (storedEmail) setSignUpEmail(storedEmail);
+      else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
+    };
     proceedAfterAuth(applySignup, destination);
   };
 
@@ -334,26 +397,26 @@ export default function LoginScreen({ navigation }: Props) {
 
           {/* Email / Password form */}
           <View style={styles.form}>
-            {/* Email */}
+            {/* Email (로그인 시엔 이메일 또는 아이디) */}
             <View style={styles.fieldWrap}>
-              <Text style={styles.fieldLabel}>{t('login.email')}</Text>
+              <Text style={styles.fieldLabel}>{isSignup ? t('login.email') : t('login.emailOrId')}</Text>
               <View style={[styles.inputBox, emailFocused && styles.inputBoxFocused]}>
                 <Text style={styles.inputIcon}>✉️</Text>
                 <TextInput
                   style={styles.input}
-                  placeholder="example@email.com"
+                  placeholder={isSignup ? 'example@email.com' : t('login.emailOrIdPlaceholder')}
                   placeholderTextColor={Colors.textMuted}
                   value={email}
                   onChangeText={setEmail}
-                  keyboardType="email-address"
+                  keyboardType={isSignup ? 'email-address' : 'default'}
                   autoCapitalize="none"
                   autoCorrect={false}
-                  textContentType="emailAddress"
-                  autoComplete="email"
+                  textContentType={isSignup ? 'emailAddress' : 'username'}
+                  autoComplete={isSignup ? 'email' : 'username'}
                   returnKeyType="next"
                   blurOnSubmit={false}
                   onSubmitEditing={() => passwordRef.current?.focus()}
-                  accessibilityLabel={t('login.emailA11y')}
+                  accessibilityLabel={isSignup ? t('login.emailA11y') : t('login.emailOrIdA11y')}
                   onFocus={() => setEmailFocused(true)}
                   onBlur={() => setEmailFocused(false)}
                 />
@@ -591,87 +654,26 @@ export default function LoginScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      {/* Google Sign-In Mock Modal */}
+      {/* 소셜 로그인 로딩 오버레이 (실제 인증은 인앱 브라우저에서 진행 — 가짜 인증 UI 없음) */}
       <Modal
-        visible={socialModal === 'google'}
+        visible={socialModal !== null}
         transparent
         animationType="fade"
         onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
       >
         <View style={styles.socialModalOverlay}>
-          <View style={styles.googleContainer}>
-            {/* Logo */}
-            <View style={styles.googleLogoRow}>
-              <GoogleIcon size={20} />
-              <Text style={styles.googleBrandText}>Google</Text>
-            </View>
-
-            <Text style={styles.googleTitle}>{t('login.googleSelectAccount')}</Text>
-            <Text style={styles.googleSubtitle}>{t('login.moveToApp')}</Text>
-
-            {socialLoading ? (
-              <View style={styles.socialLoadingWrap}>
-                {authSuccess ? (
-                  <View style={styles.socialSuccessBadge}>
-                    <Text style={{ fontSize: 24, marginBottom: 8 }}>✅</Text>
-                    <Text style={styles.socialSuccessText}>{t('login.loginSuccess')}</Text>
-                  </View>
-                ) : (
-                  <>
-                    <ActivityIndicator size="large" color="#4285F4" />
-                    <Text style={styles.socialLoadingText}>{t('login.googleLinking')}</Text>
-                  </>
-                )}
-              </View>
-            ) : null}
-
-            {!socialLoading && (
-              <TouchableOpacity
-                onPress={() => setSocialModal(null)}
-                style={styles.googleCancelBtn}
-              >
-                <Text style={styles.googleCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
+          <View style={styles.loaderCard}>
+            {authSuccess ? (
+              <>
+                <Text style={styles.loaderEmoji}>✅</Text>
+                <Text style={styles.loaderText}>{t('login.loginSuccess')}</Text>
+              </>
+            ) : (
+              <>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loaderText}>{t('login.signingIn')}</Text>
+              </>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* Apple Sign-In Mock Modal */}
-      <Modal
-        visible={socialModal === 'apple'}
-        transparent
-        animationType="slide"
-        onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
-      >
-        <View style={styles.appleModalOverlay}>
-          <View style={styles.appleSheet}>
-            {/* Handle bar */}
-            <View style={styles.appleHandle} />
-
-            <View style={styles.appleHeader}>
-              <AppleIcon size={32} color="#FFFFFF" />
-              <Text style={styles.appleTitle}>Apple ID</Text>
-              <Text style={styles.appleSubtitle}>{t('login.appleSignIn')}</Text>
-            </View>
-
-            {socialLoading ? (
-              <View style={styles.appleLoadingWrap}>
-                {authSuccess ? (
-                  <View style={styles.appleSuccessGlow}>
-                    <Text style={{ fontSize: 40, color: '#FFFFFF' }}>✓</Text>
-                    <Text style={styles.appleSuccessText}>{t('login.authComplete')}</Text>
-                  </View>
-                ) : (
-                  <View style={styles.appleFaceIdScan}>
-                    <View style={styles.faceIdRing}>
-                      <Text style={{ fontSize: 32, color: '#00D2FF' }}>👤</Text>
-                    </View>
-                    <Text style={styles.appleFaceIdText}>{t('login.faceIdScanning')}</Text>
-                  </View>
-                )}
-              </View>
-            ) : null}
           </View>
         </View>
       </Modal>
@@ -984,143 +986,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: Spacing[6],
   },
-  googleContainer: {
-    width: '100%',
-    backgroundColor: '#1E222D',
+  loaderCard: {
+    minWidth: 200,
+    backgroundColor: '#160B2C',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.06)',
-    padding: 24,
-    alignItems: 'center',
-  },
-  googleLogoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 16,
-  },
-  googleBrandText: {
-    fontSize: 18,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-  },
-  googleTitle: {
-    fontSize: 22,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    marginBottom: 4,
-  },
-  googleSubtitle: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginBottom: 24,
-  },
-  googleCancelBtn: {
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignSelf: 'stretch',
-    alignItems: 'center',
-  },
-  googleCancelText: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textSecondary,
-  },
-  socialLoadingWrap: {
-    height: 180,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 16,
-  },
-  socialLoadingText: {
-    fontSize: 14,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textSecondary,
-  },
-  socialSuccessBadge: {
-    alignItems: 'center',
-    gap: 8,
-  },
-  socialSuccessText: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#00E676',
-  },
-
-  // Apple Sheet
-  appleModalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(5, 1, 15, 0.75)',
-    justifyContent: 'flex-end',
-  },
-  appleSheet: {
-    backgroundColor: '#1C1C1E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-    paddingBottom: 40,
-    alignItems: 'center',
-    width: '100%',
-  },
-  appleHandle: {
-    width: 36,
-    height: 5,
-    borderRadius: 2.5,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    marginBottom: 20,
-  },
-  appleHeader: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  appleTitle: {
-    fontSize: 20,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
-    marginTop: 8,
-  },
-  appleSubtitle: {
-    fontSize: 13,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textMuted,
-    marginTop: 2,
-  },
-  appleLoadingWrap: {
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleFaceIdScan: {
+    borderColor: 'rgba(191,133,252,0.15)',
+    paddingVertical: 32,
+    paddingHorizontal: 40,
     alignItems: 'center',
     gap: 16,
   },
-  faceIdRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    borderWidth: 2,
-    borderColor: '#00D2FF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#00D2FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
+  loaderEmoji: {
+    fontSize: 40,
   },
-  appleFaceIdText: {
-    fontSize: 14,
+  loaderText: {
+    fontSize: 15,
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-  },
-  appleSuccessGlow: {
-    alignItems: 'center',
-    gap: 12,
-  },
-  appleSuccessText: {
-    fontSize: 16,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.white,
   },
 });

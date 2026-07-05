@@ -8,11 +8,11 @@ import { computeEarnedBadgeIds, BadgeCatalogEntry } from '../utils/badgeRules';
 // enabled=false(인증 전 등)면 판정·저장을 하지 않는다.
 export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = true): void {
   const { records, commentsByPost, followingUsers } = useRecords();
-  const { nickname, birthday, badgeEarnedAt, markBadgesEarned, shareSentCount, loginStreak, installedAt } = useSettings();
+  const { handle, birthday, badgeEarnedAt, markBadgesEarned, shareSentCount, loginStreak, installedAt } = useSettings();
 
   // 내가 작성한 댓글 수 (대댓글 포함) — 75 댓글 요정용
   const myCommentCount = useMemo(() => {
-    const me = nickname || '나';
+    const me = handle || '나';
     let n = 0;
     for (const list of Object.values(commentsByPost)) {
       for (const c of list) {
@@ -21,7 +21,7 @@ export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = 
       }
     }
     return n;
-  }, [commentsByPost, nickname]);
+  }, [commentsByPost, handle]);
 
   // 데이터 자동 판정 (외부 옵션: 생일·맞팔·댓글·공유·접속·설치 등)
   // 보관(archived) 기록도 포함 — 보관해도 배지 진행 유지.

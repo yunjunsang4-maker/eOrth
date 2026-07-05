@@ -32,7 +32,6 @@
     "expo-blur": "~15.0.8",
     "expo-camera": "~17.0.10",
     "expo-clipboard": "~8.0.8",
-    "expo-contacts": "~15.0.11",
     "expo-dev-client": "~6.0.21",
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.23",
@@ -74,6 +73,7 @@
     "@types/react": "~19.1.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~10.0.0",
+    "supabase": "^2.109.0",
     "tsx": "^4.19.2",
     "typescript": "~5.9.2"
   },

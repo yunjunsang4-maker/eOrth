@@ -5,11 +5,20 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
-import { publishPost, updatePost, deletePost, fetchFeed } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
+import { getProfileByHandle } from '../services/profile';
+import { COUNTRIES } from '../constants/countries';
+import { normalizeKoreaRegion } from '../constants/koreaRegions';
+import { saveTripState, fetchTripState } from '../services/tripState';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
   unfollowUser as apiUnfollow,
+  blockUser as apiBlock,
+  unblockUser as apiUnblock,
+  requestFollow as apiRequestFollow,
+  cancelFollowRequest as apiCancelRequest,
+  fetchMyPendingRequestTargets,
   fetchFollowing,
   likePost,
   unlikePost,
@@ -35,12 +44,15 @@ export type RecordViewType =
 
 export interface TravelRecord {
   id: string;
-  user: { name: string; emoji: string; handle: string; photo?: string };
+  user: { name: string; emoji: string; handle: string; photo?: string; font?: string };
   authorId?: string; // 작성자 profile uuid (백엔드 글) — 작성자 프로필 이동용
   country: string;          // 예: "🇯🇵 일본" (대표 국가, 하위 호환)
   countryName: string;      // 예: "일본"
   countryFlag: string;      // 예: "🇯🇵"
   countries?: { flag: string; name: string }[];  // 복수 국가 지원
+  // 다국가 기록의 표시 방식 — true면 게시물(레코드)은 하나지만 프로필 여행 카드는
+  // perCountryData 기준으로 국가별로 나눠 그린다 (작성 시 "국가별로 나누기" 선택)
+  splitByCountry?: boolean;
   perCountryData?: Record<string, {              // 국가별 데이터
     medias?: string[];
     mediaPrivacy?: Record<number, string[]>;     // 국가별 사진 비공개 대상 (인덱스: 해당 국가 medias 기준)
@@ -97,6 +109,9 @@ export interface TravelRecord {
     frameColor?: string;              // 기본 프레임의 사용자 지정 색 (RGB)
     photos: string[];                 // 슬롯 순서대로 사진 URI
     previewUri: string;               // 합성 미리보기 이미지
+    noLogo?: boolean;                 // true면 eOrth 로고 미표시 — 프리미엄 작성 시 생성 시점에 박제
+    stamp?: { date?: string; text?: string; fontId?: string }; // 하단 여백 날짜·문구 스탬프 (생성 시점 박제)
+    frameImage?: string;              // 프레임 배경 사진 uri (프리미엄) — 영구 저장·업로드 대상
   };
   regionName?: string;                // 예: "도쿄" (대륙 기록 시 사용)
   regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)
@@ -111,6 +126,14 @@ export interface TripGroup {
   records: string[];       // 포함된 TravelRecord id 배열
   createdAt: Date;
   coverRecordId: string;   // 대표 기록 id
+  // 다국가 분할 카드용 표시 오버라이드 — 있으면 카드가 기록 값 대신 이 값으로 그린다
+  // (같은 기록 하나를 여러 국가 카드로 나눠 보여줄 때 국가·커버·날짜를 구분)
+  countryName?: string;
+  countryFlag?: string;
+  coverUri?: string;
+  date?: string;           // YYYY.MM.DD
+  // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
+  regionName?: string;
 }
 
 // ─────────────────────────────────────────────
@@ -126,12 +149,14 @@ export interface BlockedUser {
   name: string;
   emoji: string;
   handle?: string; // 차단 신원 키(표시이름 충돌 방지). 과거 저장본엔 없을 수 있어 optional
+  id?: string; // profile uuid — 있으면 서버 blocks 테이블에도 반영(RLS 차단 필터 동작)
   blockedAt: number;
 }
 
 export interface FollowedFriend {
   id: string;
   username: string;
+  emoji?: string; // 프로필 이모지 (목록 아바타 표시용, 서버 프로필에서 채움)
   isAbroad: boolean;
   currentCountry: string | null;
   currentCountryFlag: string | null;
@@ -171,7 +196,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 interface RecordContextType {
   records: TravelRecord[];
-  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => void;
+  // 반환: 생성된 레코드 id.
+  // linkTrip=false: 국가별 자동 여행 묶음 생성을 건너뜀 (다국가 분할 저장처럼 호출부가 직접 묶음을 만들 때)
+  // countryGuessed=true: 위치 감지 실패로 국가가 추정값(거주국가 폴백)임 — 여행 세션 종료 신호로 쓰지 않음
+  addRecord: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>, opts?: { linkTrip?: boolean; countryGuessed?: boolean }) => string;
   updateRecord: (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => void;
   deleteRecord: (id: string) => void;
   toggleLike: (id: string) => void;
@@ -179,7 +207,7 @@ interface RecordContextType {
   archiveRecord: (id: string) => void;
   unarchiveRecord: (id: string) => void;
   blockedUsers: BlockedUser[];
-  blockUser: (user: { name: string; emoji: string; handle?: string }) => void;
+  blockUser: (user: { name: string; emoji: string; handle?: string; id?: string }) => void;
   unblockUser: (nameOrHandle: string) => void;
   isBlocked: (user: { name?: string; handle?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
@@ -193,12 +221,19 @@ interface RecordContextType {
   followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
   unfollowUser: (idOrUsername: string) => void;
   setFollowMutual: (idOrUsername: string, isMutual: boolean) => void;
+  // 비공개 계정 팔로우 요청 — 내가 보낸 대기 중 요청의 대상 id (서버 상태, 비영속)
+  pendingFollowRequests: string[];
+  requestFollow: (targetId: string) => void;
+  cancelFollowRequest: (targetId: string) => void;
+  isFollowRequested: (targetId: string) => boolean;
   commentsByPost: Record<string, PostComment[]>;
   addComment: (postId: string, text: string, replyToId?: string) => void;
   toggleCommentLike: (postId: string, commentId: string) => void;
   deleteComment: (postId: string, commentId: string) => void;
   tripGroups: TripGroup[];
-  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>) => void;
+  // session: 다국가 분할 저장 카드용 — 기록 기간(실시간 여부 판단)을 넘기면 해외 카드를
+  // 여행 세션에 등록해, 이후 그 국가의 실시간 기록(스냅 등)이 이 카드에 합류한다
+  addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>, opts?: { session?: { startDate?: string; endDate?: string; date?: string } }) => void;
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   markSnapViewed: (id: string) => void;
@@ -222,6 +257,8 @@ interface RecordContextType {
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
+  // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
+  hydrateMyRecords: () => Promise<void>;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -238,16 +275,36 @@ interface RecordPersistPayload {
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
   mutedHandles?: string[];
+  // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
+  // 구형(국가명→카드 id 맵만)일 수 있어 복원 시 정규화한다
+  tripSessionGroups?: TripSession | Record<string, string> | null;
+}
+
+// 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
+// lastActiveAt은 30일 안전판(장기 무활동 시 자동 만료) 판정용.
+export interface TripSession {
+  groups: Record<string, string>;
+  lastActiveAt: number;
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { nickname, handle, profilePhoto } = useSettings();
+  const { handle, profilePhoto, handleFont, homeCountryCode, currentVisitedCountryCode } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
+  // 해외 여행 세션 — 위치(기록 국가)가 거주국가와 달라지는 순간 열리고 귀국까지 유지.
+  // groups: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
+  // 안전판: 마지막 활동(lastActiveAt) 후 30일 지나면 만료 — 귀국 신호를 못 받은 채
+  // 방치된 세션에 다음 여행이 합쳐지는 것을 막는다.
+  const TRIP_SESSION_MAX_IDLE_MS = 30 * 24 * 60 * 60 * 1000;
+  const [tripSession, setTripSession] = useState<TripSession | null>(null);
+  const sessionAlive = (s: TripSession | null): s is TripSession =>
+    !!s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS;
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
+  // 비공개 계정에 보낸 대기 중 팔로우 요청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
+  const [pendingFollowRequests, setPendingFollowRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
@@ -266,33 +323,94 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
+      // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
+      const rawSession = p.tripSessionGroups ?? null;
+      const normalized: TripSession | null = !rawSession
+        ? null
+        : typeof (rawSession as TripSession).lastActiveAt === 'number'
+          ? (rawSession as TripSession)
+          : { groups: rawSession as Record<string, string>, lastActiveAt: Date.now() };
+      setTripSession(
+        normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
+      );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups: tripSession }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSession],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
-  // 같은 국가 + 기간이 겹치거나 7일 이내로 가까운 그룹이 있으면 그 그룹에 추가,
-  // 없으면 새 그룹(프로필 여행 카드)을 생성한다.
+  // 해외 기록은 날짜가 아니라 '여행 세션'으로 판단한다:
+  //  - 위치(기록 국가)가 거주국가와 달라지는 순간 세션이 열리고, 귀국(거주국가 기록
+  //    또는 도착 감지가 거주국가로 복귀)까지 유지된다.
+  //  - 같은 세션 + 같은 국가 → 기존 카드에 추가 (며칠이 지나도 같은 여행)
+  //  - 같은 세션 + 새 국가(예: 스페인→포르투갈) → 새 카드
+  //  - 귀국 후 다시 출국 → 새 세션 → 같은 국가라도 새 카드
+  // 거주국가(국내) 기록은 '귀국' 신호가 없어 세션 판단이 불가하므로 기존
+  // 날짜 근접(7일) 규칙을 유지한다.
   const GROUP_GAP_MS = 7 * 24 * 60 * 60 * 1000;
   const parseRecDate = (s?: string): number | null => {
     if (!s) return null;
     const t = new Date(s.replace(/\./g, '-')).getTime();
     return Number.isFinite(t) ? t : null;
   };
+  // 거주국가 코드(예: KR) → 기록에 저장되는 국가명(예: 대한민국)
+  const homeCountryName =
+    COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
 
-  const linkRecordToTrip = (rec: TravelRecord) => {
+  const makeTripGroup = (country: string, rec: TravelRecord, regionName?: string): TripGroup => ({
+    id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    // 국내 지역 카드는 "제주 여행"처럼 지역명으로 (국가 단위와 구분)
+    title: `${regionName ?? country} 여행`,
+    records: [rec.id],
+    coverRecordId: rec.id,
+    createdAt: new Date(),
+    regionName,
+  });
+
+  // 기록 기간이 '지금'을 포함하는가 — 실시간(여행 중) 기록과 회고(과거 여행 작성) 기록 구분.
+  // 세션은 실시간 기록에만 적용한다: 집에서 지난 여행을 작성해도 세션이 열리거나(오합류),
+  // 여행 중 과거 국내 기록을 작성해도 세션이 닫히지(오종료) 않게 한다. 여유 ±2일.
+  const REALTIME_MARGIN_MS = 2 * 24 * 60 * 60 * 1000;
+  const coversNow = (rec: Pick<TravelRecord, 'startDate' | 'endDate'> & { date?: string }): boolean => {
+    const start = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
+    const end = parseRecDate(rec.endDate) ?? start;
+    if (start == null || end == null) return true; // 날짜 없으면 방금 생성(스냅 등)으로 간주
+    const now = Date.now();
+    return start - REALTIME_MARGIN_MS <= now && now <= end + REALTIME_MARGIN_MS;
+  };
+
+  // 날짜 근접(7일) 규칙 — 국내 기록·회고 기록용 (세션 판단이 불가한 경우).
+  // 국내(거주국가) 기록은 지역(시/도)까지 같아야 같은 카드 — "제주 여행"과
+  // 서울 일상 기록이 시기가 가깝다고 한 카드로 묶이는 것 방지.
+  const linkByDate = (rec: TravelRecord) => {
     const country = rec.countryName;
     const recStart = parseRecDate(rec.startDate) ?? parseRecDate(rec.date);
     const recEnd = parseRecDate(rec.endDate) ?? recStart;
     if (!country || recStart == null || recEnd == null) return; // 국가/날짜 없으면 매칭 불가
+    const isDomestic = !!homeCountryName && country === homeCountryName;
+    // 지역은 프리셋으로 정규화(수원시→경기 등). 정규화 실패 시 원본 유지, 미입력은 null
+    const recRegion = isDomestic
+      ? (normalizeKoreaRegion(rec.regionName)?.name ?? rec.regionName ?? null)
+      : null;
 
     setTripGroups((prev) => {
       const match = prev.find((g) => {
         const members = g.records
           .map((id) => records.find((r) => r.id === id))
           .filter(Boolean) as TravelRecord[];
-        if (members.length === 0 || members[0].countryName !== country) return false;
+        if (members.length === 0) return false;
+        // 카드의 실제 국가는 오버라이드(다국가 분할 카드) 우선 — 포르투갈 카드에
+        // 스페인(대표국가) 기록이 붙는 오매칭 방지
+        const groupCountry = g.countryName ?? members[0].countryName;
+        if (groupCountry !== country) return false;
+        if (isDomestic) {
+          const gRegion =
+            g.regionName ??
+            normalizeKoreaRegion(members[0].regionName)?.name ??
+            members[0].regionName ??
+            null;
+          if (gRegion !== recRegion) return false; // 지역이 다르면(미입력 포함) 다른 카드
+        }
         let gStart = Infinity;
         let gEnd = -Infinity;
         for (const m of members) {
@@ -309,29 +427,74 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         if (match.records.includes(rec.id)) return prev;
         return prev.map((g) => (g.id === match.id ? { ...g, records: [...g.records, rec.id] } : g));
       }
-      const newGroup: TripGroup = {
-        id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        title: `${country} 여행`,
-        records: [rec.id],
-        coverRecordId: rec.id,
-        createdAt: new Date(),
-      };
-      return [newGroup, ...prev];
+      return [makeTripGroup(country, rec, recRegion ?? undefined), ...prev];
     });
   };
 
+  const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }) => {
+    const country = rec.countryName;
+    if (!country) return;
+
+    // 회고(과거 여행 작성) 기록 — 현재 위치와 무관하므로 세션을 건드리지 않고 날짜 규칙으로
+    if (!coversNow(rec)) {
+      linkByDate(rec);
+      return;
+    }
+
+    // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료.
+    // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
+    // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
+    if (!homeCountryName || country === homeCountryName) {
+      if (tripSession && !opts?.countryGuessed) setTripSession(null);
+      linkByDate(rec);
+      return;
+    }
+
+    // 해외 실시간 기록 — 살아 있는(30일 무활동 만료 전) 세션에 이 국가의 카드가 있으면 추가
+    const session = sessionAlive(tripSession) ? tripSession : null;
+    const sessionGid = session?.groups[country];
+    const target = sessionGid ? tripGroups.find((g) => g.id === sessionGid) : undefined;
+    if (target) {
+      if (!target.records.includes(rec.id)) {
+        setTripGroups((prev) =>
+          prev.map((g) => (g.id === target.id ? { ...g, records: [...g.records, rec.id] } : g))
+        );
+      }
+      setTripSession({ groups: session!.groups, lastActiveAt: Date.now() }); // 활동 갱신
+      return;
+    }
+    // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제·세션 만료) → 새 카드 + 세션 등록
+    const ng = makeTripGroup(country, rec);
+    setTripGroups((prev) => [ng, ...prev]);
+    setTripSession({ groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() });
+  };
+
+  // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
+  // 값 '전환'만 신호로 쓴다 — 감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐.
+  const prevVisitedRef = useRef(currentVisitedCountryCode);
+  useEffect(() => {
+    const prev = prevVisitedRef.current;
+    prevVisitedRef.current = currentVisitedCountryCode;
+    if (prev === currentVisitedCountryCode) return;
+    if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {
+      setTripSession(null);
+    }
+  }, [currentVisitedCountryCode, homeCountryCode]);
+
   const addRecord = (
-    data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>
-  ) => {
+    data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>,
+    opts?: { linkTrip?: boolean; countryGuessed?: boolean }
+  ): string => {
     const newRecord: TravelRecord = {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
-      id: `rec-${Date.now()}`,
+      // 같은 ms에 연속 생성(다국가 분할 저장 등)돼도 충돌하지 않도록 난수 접미사
+      id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       likes: 0,
       comments: 0,
       liked: false,
@@ -340,7 +503,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       isDraft: false,
     };
     setRecords((prev) => [newRecord, ...prev]);
-    linkRecordToTrip(newRecord); // 프로필 여행 카드 자동 생성/연결
+    // 프로필 여행 카드 자동 생성/연결 — 예약 글은 발행 시점(아래 예약 발행 effect)에 연결한다
+    const isFutureScheduled = !!newRecord.scheduledAt && newRecord.scheduledAt > Date.now();
+    if (opts?.linkTrip !== false && !isFutureScheduled) {
+      linkRecordToTrip(newRecord, { countryGuessed: opts?.countryGuessed });
+    }
     publishToBackend(newRecord); // Supabase 발행(설정 시)
     // 사진을 영속 저장소(documentDirectory)로 복사 → 캐시 정리 후에도 사진 유지.
     // 로컬 URI만 교체하며 백엔드 동기화는 건드리지 않는다(백엔드엔 publishToBackend가 이미 업로드).
@@ -350,6 +517,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         setRecords((prev) => prev.map((r) => (r.id === newRecord.id ? { ...r, ...changes } : r)));
       })
       .catch(() => {});
+    return newRecord.id;
   };
 
   // 백엔드 동기화 실패 알림 — 로컬은 이미 반영됐고 서버 반영만 실패한 경우.
@@ -379,11 +547,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
+    const cur = records.find((r) => r.id === id);
+    const updated = cur ? { ...cur, ...changes } : undefined;
     setRecords((prev) =>
       prev.map((r) => (r.id === id ? { ...r, ...changes } : r))
     );
+    // 국가가 바뀐 수정 → 기존 여행 카드에서 빼고 새 국가 기준으로 재연결
+    // (카드 표지와 내용 불일치 방지). 분할 카드 기록은 수동 관리 카드라 제외.
+    if (cur && updated && changes.countryName && changes.countryName !== cur.countryName && !updated.splitByCountry) {
+      setTripGroups((prev) =>
+        prev
+          .map((g) => {
+            if (!g.records.includes(id)) return g;
+            const rest = g.records.filter((rid) => rid !== id);
+            return {
+              ...g,
+              records: rest,
+              coverRecordId: g.coverRecordId === id ? (rest[0] ?? g.coverRecordId) : g.coverRecordId,
+            };
+          })
+          .filter((g) => g.records.length > 0)
+      );
+      linkRecordToTrip(updated);
+    }
     if (isSupabaseConfigured) {
-      const cur = records.find((r) => r.id === id);
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(notifySyncError);
     }
   };
@@ -416,7 +603,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       ...data,
       user: {
         ...data.user,
-        name: nickname,
+        name: handle,
         handle: handle,
         photo: profilePhoto || undefined,
       },
@@ -453,7 +640,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     };
     setRecords((prev) => [published, ...prev]);
     setDrafts((prev) => prev.filter((d) => d.id !== id));
-    linkRecordToTrip(published); // 프로필 여행 카드 자동 생성/연결
+    // 프로필 여행 카드 자동 생성/연결 — 예약 글은 발행 시점(예약 발행 effect)에 연결
+    if (!(published.scheduledAt && published.scheduledAt > Date.now())) {
+      linkRecordToTrip(published);
+    }
     publishToBackend(published); // Supabase 발행(설정 시)
   };
 
@@ -484,7 +674,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const markSnapViewed = (id: string) => {
     // 호출 시점 = 현재 사용자가 (자기 것이 아닌) 스냅을 열람 → 열람 표시 + 조회자 기록(중복 방지)
-    const me = { handle, name: nickname || handle, time: Date.now() };
+    const me = { handle, name: handle, time: Date.now() };
     setRecords((prev) =>
       prev.map((r) => {
         if (r.id !== id) return r;
@@ -499,7 +689,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
-  const blockUser = (user: { name: string; emoji: string; handle?: string }) => {
+  const blockUser = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
     setBlockedUsers((prev) => {
       // 신원은 handle(양쪽에 있으면) 우선, 없으면 표시이름으로 중복 판정
       const dup = prev.some((b) =>
@@ -508,10 +698,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
+    // 차단하면 팔로잉에서도 제거 — 화면별 처리 불일치 방지 (팔로우 안 했으면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (팔로잉 항목의 username은 handle과 동일 값)
+    const followed = followingUsers.find((f) =>
+      (!!user.id && f.id === user.id) ||
+      (!!f.username && (f.username === user.handle || f.username === user.name))
+    );
+    if (followed) unfollowUser(followed.id || followed.username);
+    // uuid를 알 때만 서버 blocks에 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함
+    if (isSupabaseConfigured && user.id) apiBlock(user.id).catch(notifySyncError);
   };
 
   const unblockUser = (nameOrHandle: string) => {
+    const target = blockedUsers.find((b) => b.name === nameOrHandle || b.handle === nameOrHandle);
     setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
+    if (isSupabaseConfigured && target?.id) apiUnblock(target.id).catch(notifySyncError);
   };
 
   // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
@@ -564,11 +765,41 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFollowingUsers((prev) => prev.map((f) => (sameFollowed(f, idOrUsername) ? { ...f, isMutual } : f)));
   };
 
+  // ─── 비공개 계정 팔로우 요청 (낙관적 반영 + 서버 동기화, 실패 시 되돌림) ───
+  const requestFollow = (targetId: string) => {
+    if (!targetId) return;
+    setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+    if (isSupabaseConfigured) {
+      apiRequestFollow(targetId).catch((e) => {
+        setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+        notifySyncError(e);
+      });
+    }
+  };
+
+  const cancelFollowRequest = (targetId: string) => {
+    if (!targetId) return;
+    setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+    if (isSupabaseConfigured) {
+      apiCancelRequest(targetId).catch((e) => {
+        setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+        notifySyncError(e);
+      });
+    }
+  };
+
+  // '요청됨' 판정 — 이미 팔로우 중이면(수락됨) 요청 상태로 보지 않는다
+  const isFollowRequested = useCallback(
+    (targetId: string) =>
+      pendingFollowRequests.includes(targetId) && !followingUsers.some((f) => f.id === targetId),
+    [pendingFollowRequests, followingUsers]
+  );
+
   const addComment = (postId: string, text: string, replyToId?: string) => {
     const nc: PostComment = {
       id: `c-${Date.now()}`,
       emoji: '🙂',
-      name: nickname || '나',
+      name: handle || '나',
       photo: profilePhoto || undefined,
       text,
       createdAt: Date.now(),
@@ -694,17 +925,42 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     return id;
   };
 
-  const addTripGroup = (data: Omit<TripGroup, 'id' | 'createdAt'>) => {
+  const addTripGroup = (
+    data: Omit<TripGroup, 'id' | 'createdAt'>,
+    opts?: { session?: { startDate?: string; endDate?: string; date?: string } }
+  ) => {
     const newGroup: TripGroup = {
       ...data,
-      id: `grp-${Date.now()}`,
+      // 다국가 분할처럼 같은 ms에 연속 생성돼도 충돌하지 않도록 난수 접미사
+      id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       createdAt: new Date(),
     };
     setTripGroups((prev) => [newGroup, ...prev]);
+    // 해외 카드 + 실시간 기록(기간이 오늘 포함)이면 여행 세션에 등록 —
+    // 이후 같은 국가의 스냅/기록이 별도 카드로 갈라지지 않고 이 카드에 합류
+    if (
+      opts?.session &&
+      data.countryName &&
+      homeCountryName &&
+      data.countryName !== homeCountryName &&
+      coversNow(opts.session)
+    ) {
+      const cn = data.countryName;
+      setTripSession((prev) => ({
+        groups: { ...(sessionAlive(prev) ? prev.groups : {}), [cn]: newGroup.id },
+        lastActiveAt: Date.now(),
+      }));
+    }
   };
 
   const deleteTripGroup = (id: string) => {
     setTripGroups((prev) => prev.filter((g) => g.id !== id));
+    // 여행 세션이 가리키던 카드면 매핑도 정리 (다음 기록 때 새 카드가 자연스럽게 생성됨)
+    setTripSession((prev) => {
+      if (!prev) return prev;
+      const rest = Object.entries(prev.groups).filter(([, gid]) => gid !== id);
+      return rest.length > 0 ? { groups: Object.fromEntries(rest), lastActiveAt: prev.lastActiveAt } : null;
+    });
   };
 
   const updateTripGroup = (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => {
@@ -741,22 +997,45 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // 내 기록 서버→로컬 복원 (계정 전환 후 pull). 로컬 records를 서버의 내 글로 교체한다.
+  // ⚠️ 로컬-우선 초안까지 대체하므로 계정 전환 직후(로컬을 이미 비운 상태)에만 호출할 것.
+  const hydrateMyRecords = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    try {
+      const mine = await withTimeout(fetchMyPosts(), 12000);
+      setRecords(mine);
+    } catch {
+      // 타임아웃/실패 시 현재(비운) 상태 유지 — 서버 데이터는 안전
+    }
+  }, []);
+
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
   const refreshFollowing = useCallback(async () => {
     if (!isSupabaseConfigured) return;
+    // 대기 중 팔로우 요청도 함께 갱신 (오류 시 null → 로컬 유지)
+    fetchMyPendingRequestTargets().then((pending) => {
+      if (pending) setPendingFollowRequests(pending);
+    });
     const list = await fetchFollowing();
     if (!list) return; // 오류 시 로컬 유지(덮어쓰지 않음)
-    setFollowingUsers(
-      list.map((p) => ({
-        id: p.id,
-        username: p.handle || p.nickname || p.id,
-        isAbroad: false,
-        currentCountry: null,
-        currentCountryFlag: null,
-        followedAt: 0,
-        isMutual: p.isMutual,
-      }))
-    );
+    // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
+    // isMutual은 서버(양방향 follows)가 정확하므로 항상 서버 값을 쓴다.
+    setFollowingUsers((prev) => {
+      const byId = new Map(prev.map((f) => [f.id, f]));
+      return list.map((p) => {
+        const ex = byId.get(p.id);
+        return {
+          id: p.id,
+          username: p.handle || p.id,
+          emoji: p.emoji ?? ex?.emoji ?? undefined,
+          isAbroad: ex?.isAbroad ?? false,
+          currentCountry: ex?.currentCountry ?? null,
+          currentCountryFlag: ex?.currentCountryFlag ?? null,
+          followedAt: ex?.followedAt ?? 0,
+          isMutual: p.isMutual,
+        };
+      });
+    });
   }, []);
 
   // 앱 시작/복원 후 피드·팔로잉 1회 로드
@@ -766,6 +1045,26 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       refreshFollowing();
     }
   }, [hydrated, refreshFeed, refreshFollowing]);
+
+  // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
+  // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
+  const blockBackfillRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured || blockBackfillRef.current) return;
+    blockBackfillRef.current = true;
+    const targets = blockedUsers.filter((b) => !b.id && b.handle);
+    if (targets.length === 0) return;
+    (async () => {
+      for (const b of targets) {
+        const p = await getProfileByHandle(b.handle!);
+        if (!p?.id) continue; // 탈퇴/핸들 변경 등 — 로컬 차단만 유지
+        setBlockedUsers((prev) =>
+          prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+        );
+        apiBlock(p.id).catch(() => {}); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+      }
+    })();
+  }, [hydrated, blockedUsers]);
 
   // 예약 발행: 예약 시각이 지났는데 아직 백엔드에 안 올라간 글을 발행
   useEffect(() => {
@@ -777,6 +1076,73 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
     });
   }, [hydrated, records]);
+
+  // ─── 여행 카드·세션 서버 백업 (재설치/기기 변경 복원용) ───
+  // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.
+  // 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다 (실패는 조용히 — 다음 변경 때 재시도).
+  const backupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured) return;
+    if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
+    backupTimerRef.current = setTimeout(() => {
+      const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
+      saveTripState({
+        groups: tripGroups.map((g) => ({
+          id: g.id,
+          title: g.title,
+          records: g.records.map(toRemote),
+          coverRecordId: toRemote(g.coverRecordId),
+          createdAt: g.createdAt.toISOString(),
+          countryName: g.countryName,
+          countryFlag: g.countryFlag,
+          coverUri: g.coverUri,
+          date: g.date,
+          regionName: g.regionName,
+        })),
+        session: tripSession,
+      });
+    }, 4000);
+    return () => { if (backupTimerRef.current) clearTimeout(backupTimerRef.current); };
+  }, [hydrated, tripGroups, tripSession, records]);
+
+  // 재설치/새 기기 복원 — 로컬에 카드가 전혀 없고 서버 백업이 있으면 1회 복원.
+  // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
+  const tripRestoreTriedRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
+    tripRestoreTriedRef.current = true;
+    if (tripGroups.length > 0) return;
+    fetchTripState().then((backup) => {
+      if (!backup || backup.groups.length === 0) return;
+      setTripGroups((prev) =>
+        prev.length > 0
+          ? prev
+          : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+      );
+      setTripSession((prev) => {
+        if (prev) return prev;
+        const s = backup.session;
+        return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
+
+  // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
+  // 백엔드 설정과 무관(카드는 로컬 기능). 이미 카드에 속한 글(과거 빌드 작성분)은 건너뜀.
+  const linkedScheduledRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!hydrated) return;
+    const now = Date.now();
+    records.forEach((r) => {
+      if (r.isDraft || !r.scheduledAt || r.scheduledAt > now) return;
+      if (linkedScheduledRef.current.has(r.id)) return;
+      linkedScheduledRef.current.add(r.id);
+      if (tripGroups.some((g) => g.records.includes(r.id))) return;
+      linkRecordToTrip(r);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, records, tripGroups]);
 
   // record.comments(표시용 숫자)를 commentsByPost(실제 댓글)와 동기화 — 단일 출처 유지.
   // 로드되지 않은 글(백엔드 카운트만 있는 경우)은 건드리지 않는다.
@@ -796,21 +1162,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setFeedPosts((prev) => sync(prev));
   }, [commentsByPost]);
 
-  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 닉네임/사진 변경 시 과거 글도 최신값으로.
+  // 내 글의 작성자 표시정보(이름/핸들/사진)를 현재 설정과 동기화 — 아이디/사진 변경 시 과거 글도 최신값으로.
   useEffect(() => {
     if (!hydrated) return;
     const photo = profilePhoto || undefined;
+    const font = handleFont || undefined;
     setRecords((prev) => {
       let changed = false;
       const next = prev.map((r) => {
         if (!r.isMyPost) return r;
-        if (r.user.name === nickname && r.user.handle === handle && r.user.photo === photo) return r;
+        if (r.user.name === handle && r.user.handle === handle && r.user.photo === photo && r.user.font === font) return r;
         changed = true;
-        return { ...r, user: { ...r.user, name: nickname, handle, photo } };
+        return { ...r, user: { ...r.user, name: handle, handle, photo, font } };
       });
       return changed ? next : prev;
     });
-  }, [hydrated, nickname, handle, profilePhoto]);
+  }, [hydrated, handle, profilePhoto, handleFont]);
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
@@ -818,7 +1185,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );

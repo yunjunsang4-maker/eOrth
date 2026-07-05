@@ -331,7 +331,7 @@ function PrivacyModal({
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t } = useTranslation();
-  const { addRecord, followingUsers } = useRecords();
+  const { addRecord, addTripGroup, followingUsers } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
@@ -344,10 +344,19 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     return Number.isFinite(t.getTime()) ? t : null;
   };
 
-  // ─── 국가 선택 ───
-  const [selectedCountry, setSelectedCountry] = useState<Country | null>(
-    initialCountry?.name ? (COUNTRIES.find(c => c.name === initialCountry.name!.split(' - ')[0]) ?? null) : null
-  );
+  // ─── 국가 선택 (복수 가능 — 첫 번째가 대표 국가) ───
+  const MAX_COUNTRIES = 10;
+  const [selectedCountries, setSelectedCountries] = useState<Country[]>(() => {
+    const found = initialCountry?.name ? COUNTRIES.find(c => c.name === initialCountry.name!.split(' - ')[0]) : null;
+    return found ? [found] : [];
+  });
+  const selectedCountry = selectedCountries[0] ?? null; // 대표 국가 — 통화 추천·유효성 등 기존 로직 호환
+  const toggleCountry = (c: Country) =>
+    setSelectedCountries(prev =>
+      prev.some(p => p.name === c.name)
+        ? prev.filter(p => p.name !== c.name)
+        : prev.length >= MAX_COUNTRIES ? prev : [...prev, c]
+    );
   const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
     initialCountry?.region ? { name: initialCountry.region, nameEn: initialCountry.regionEn || '' } : null
   );
@@ -400,7 +409,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         (countryName && COUNTRIES.find(c => c.name === countryName || c.term.toLowerCase().includes(countryName.toLowerCase()))) ||
         null;
       if (!found) return;
-      setSelectedCountry(prev => prev ?? found);
+      setSelectedCountries(prev => (prev.length ? prev : [found]));
       if (city) setSelectedRegion(prev => prev ?? { name: city, nameEn: city });
     })();
     return () => { cancelled = true; };
@@ -497,17 +506,35 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     if (rating <= 0) { Alert.alert(t('cutInfo.ratingTitle'), t('cutInfo.ratingMsg')); return; }
     if (!cutPhoto) { Alert.alert(t('cutInfo.errorTitle'), t('cutInfo.noCutInfo')); return; }
 
+    // 다국가 선택: 게시물은 하나, 프로필 여행 카드를 하나로 할지 국가별로 나눌지 선택 (피드와 동일)
+    if (selectedCountries.length > 1) {
+      Alert.alert(
+        t('newRecord.splitAskTitle'),
+        t('newRecord.splitAskMsg', { count: selectedCountries.length }),
+        [
+          { text: t('newRecord.splitAskCancel'), style: 'cancel' },
+          { text: t('newRecord.splitAskSplit'), onPress: () => doSave(true) },
+          { text: t('newRecord.splitAskMerge'), onPress: () => doSave(false) },
+        ]
+      );
+      return;
+    }
+    doSave(false);
+  };
+
+  const doSave = (splitByCountry: boolean) => {
+    if (savingRef.current || !selectedCountry || !startDate || !cutPhoto) return;
     savingRef.current = true;
     setSaving(true);
     const sStr = fmtDate(startDate, t);
     const eStr = fmtDate(endDate ?? startDate, t);
-    addRecord({
+    const recId = addRecord({
       user: { name: '', emoji: '✈️', handle: '' }, // 작성자 정보는 addRecord가 로그인 사용자로 채움
-      country: selectedCountry ? `${selectedCountry.flag ?? ''} ${selectedCountry.name ?? ''}`.trim() : '',
-      countryName: selectedCountry?.name || '',
-      countryFlag: selectedCountry?.flag || '',
-      countries: selectedCountry?.flag && selectedCountry?.name
-        ? [{ flag: selectedCountry.flag, name: selectedCountry.name }] : [],
+      country: `${selectedCountry.flag ?? ''} ${selectedCountry.name ?? ''}`.trim(),
+      countryName: selectedCountry.name || '',
+      countryFlag: selectedCountry.flag || '',
+      countries: selectedCountries.map(c => ({ flag: c.flag, name: c.name })),
+      splitByCountry: splitByCountry || undefined,
       regionName: selectedRegion?.name || undefined,
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: sStr,
@@ -527,7 +554,23 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       keywords: keywords.length > 0 ? keywords : undefined,
       viewType: 'cut',
       cutPhoto,
-    });
+    }, { linkTrip: !splitByCountry }); // 나누기 모드는 아래에서 국가별 카드를 직접 만든다
+    if (splitByCountry) {
+      // 같은 기록 하나를 국가별 여행 카드로 (피드 기록과 동일한 패턴).
+      // session: 여행 중 작성(실시간)이면 카드가 세션에 등록돼 이후 그 국가의 스냅이 합류한다
+      selectedCountries.forEach((c) => {
+        addTripGroup(
+          {
+            title: `${c.name} 여행`,
+            records: [recId],
+            coverRecordId: recId,
+            countryName: c.name,
+            countryFlag: c.flag,
+          },
+          { session: { startDate: sStr, endDate: eStr, date: sStr } }
+        );
+      });
+    }
     navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀
   };
 
@@ -578,7 +621,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={st.req}>✱</Text></View>
             <TouchableOpacity style={st.countryChip} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
-                {selectedCountry ? `${selectedCountry.flag} ${selectedCountry.name}` : t('blog.selectDestination')}
+                {selectedCountries.length > 0
+                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
           </View>
@@ -917,12 +962,12 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     <TouchableOpacity
                       key={c.name}
                       style={ct.item}
-                      onPress={() => { setSelectedCountry(c); setCountryModalVisible(false); setCountrySearch(''); }}
+                      onPress={() => toggleCountry(c)} // 복수 선택 — 모달은 배경 탭으로 닫는다
                       activeOpacity={0.75}
                     >
                       <Text style={ct.flag}>{c.flag}</Text>
                       <Text style={ct.name}>{c.name}</Text>
-                      {selectedCountry?.name === c.name && <Text style={ct.check}>✓</Text>}
+                      {selectedCountries.some(p => p.name === c.name) && <Text style={ct.check}>✓</Text>}
                     </TouchableOpacity>
                   ))}
                 </View>

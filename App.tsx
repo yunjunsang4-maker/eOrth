@@ -53,6 +53,17 @@ export default function App() {
     NanumBarunGothic: require('./assets/fonts/NanumBarunGothic.ttf'),
     NanumBarunpen: require('./assets/fonts/NanumBarunpen.ttf'),
     MaruBuri: require('./assets/fonts/MaruBuri-Regular.ttf'),
+    // 아이디 표시 폰트(프리미엄) — 영어 전용, constants/handleFonts.ts에서 사용
+    Pacifico: require('./assets/fonts/Pacifico-Regular.ttf'),
+    Caveat: require('./assets/fonts/Caveat-VariableFont_wght.ttf'),
+    BebasNeue: require('./assets/fonts/BebasNeue-Regular.ttf'),
+    CourierPrime: require('./assets/fonts/CourierPrime-Regular.ttf'),
+    Righteous: require('./assets/fonts/Righteous-Regular.ttf'),
+    AmaticSC: require('./assets/fonts/AmaticSC-Regular.ttf'),
+    PermanentMarker: require('./assets/fonts/PermanentMarker-Regular.ttf'),
+    PlayfairDisplay: require('./assets/fonts/PlayfairDisplay-VariableFont_wght.ttf'),
+    Orbitron: require('./assets/fonts/Orbitron-VariableFont_wght.ttf'),
+    Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
   });
 
   if (!fontsLoaded) {
