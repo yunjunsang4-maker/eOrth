@@ -15,6 +15,9 @@ const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
 export type GlobeVariant = 'aurora' | 'classic';
 
+// 네온(aurora) 지구본 본체 스킨 — SVG 시안 구조 그대로: 베이스색 + 상→하 그라데이션 오버레이(불투명도)
+export interface NeonSkinTheme { base: string; gradFrom: string; gradTo: string; gradAlpha: number }
+
 // 형태별 색상 테마 (WebView cfg로 주입).
 // aurora = 첨부 디자인의 보라 발광 행성 팔레트, classic = 현재(기존) 지구본
 export const GLOBE_THEMES: Record<GlobeVariant, {
@@ -40,6 +43,7 @@ interface GlobeViewProps {
   displayMode?: GlobeDisplayMode;
   defaultColor?: string;
   variant?: GlobeVariant; // 지구본 형태(색상 테마). 기본 aurora
+  themeOverride?: NeonSkinTheme; // 네온(aurora) 본체 스킨 — 지정 시 셰이더 기본 팔레트 대신 사용 (constants/globeSkins.ts)
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
@@ -1232,17 +1236,19 @@ var NEON_FS =
   'precision highp float;' +
   'varying vec3 vN; varying vec2 vUv;' +
   'uniform sampler2D uLand; uniform float uLandOpacity; uniform float uGlow;' +
+  // 본체 색 유니폼 — 스킨(setTheme의 neon)으로 교체 가능. 기본값 = 보라 발광 행성
+  'uniform vec3 uBase; uniform vec3 uG1A; uniform vec3 uG1B; uniform float uG1W; uniform float uG2W;' +
   'void main(){' +
   ' vec3 N = normalize(vN);' +                                  // 뷰공간 법선 → 화면고정 조명/림
   ' vec3 cyan  = vec3(0.0,0.847,0.953);' +
   ' vec3 L = normalize(vec3(-0.55,-0.5,0.78));' +               // 좌하단 광원
   ' float diff = clamp(dot(N,L),0.0,1.0);' +
-  // 배경(본체) 사양: #FF14E4 베이스 + 수직(상→하) 선형그라데이션 3겹(불투명도 70/40/20%)
+  // 배경(본체) 사양: 베이스 + 수직(상→하) 선형그라데이션 3겹 (기본: #FF14E4 / #1D0930→#7519AE @70% / @20%)
   ' float ty = clamp(0.5 - 0.5 * N.y, 0.0, 1.0);' +             // 0=상단, 1=하단
-  ' vec3 bg = vec3(1.0,0.078,0.894);' +                          // #FF14E4
-  ' bg = mix(bg, mix(vec3(0.114,0.035,0.188), vec3(0.459,0.098,0.682), ty), 0.70);' + // #1D0930→#7519AE @70%
-  ' bg = mix(bg, vec3(ty), 0.40 * mix(1.0,0.2,ty));' +           // #000000→흰색(α20%) @40%
-  ' bg = mix(bg, mix(vec3(0.0), vec3(0.463,0.102,0.678), ty), 0.20);' + // #000000→#761AAD @20%
+  ' vec3 bg = uBase;' +
+  ' bg = mix(bg, mix(uG1A, uG1B, ty), uG1W);' +                  // 컬러 그라데이션 오버레이
+  ' bg = mix(bg, vec3(ty), 0.40 * mix(1.0,0.2,ty));' +           // #000000→흰색(α20%) @40% (전 스킨 공통 음영)
+  ' bg = mix(bg, mix(vec3(0.0), vec3(0.463,0.102,0.678), ty), uG2W);' + // #000000→#761AAD (기본 스킨만 20%)
   ' vec3 col = bg * mix(0.96,1.0,diff);' +                       // 아주 옅은 입체 음영
   ' float spec = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),7.0);' +
   ' col += vec3(1.0)*spec*0.08;' +
@@ -1259,6 +1265,21 @@ var NEON_FS =
   ' gl_FragColor = vec4(col, alpha);' +
   '}';
 
+// 본체 스킨 — 기본(보라 발광 행성) 값. setTheme의 theme.neon으로 교체된다 (constants/globeSkins.ts).
+var NEON_DEFAULT_SKIN = { base:'#FF14E4', gradFrom:'#1D0930', gradTo:'#7519AE', gradAlpha:0.70 };
+var pendingNeonSkin = null; // init 전에 setTheme이 도착할 수 있어 보관
+function hex3(h){ var n=parseInt(String(h).replace('#',''),16); return new THREE.Vector3(((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255); }
+function applyNeonSkin(s){
+  pendingNeonSkin = s || null;
+  if(!material) return;
+  var d = NEON_DEFAULT_SKIN, t = s || d;
+  material.uniforms.uBase.value = hex3(t.base || d.base);
+  material.uniforms.uG1A.value = hex3(t.gradFrom || d.gradFrom);
+  material.uniforms.uG1B.value = hex3(t.gradTo || d.gradTo);
+  material.uniforms.uG1W.value = (t.gradAlpha != null ? t.gradAlpha : d.gradAlpha);
+  material.uniforms.uG2W.value = s ? 0.0 : 0.20; // 커스텀 스킨은 2겹(시안 SVG 구조), 기본은 3겹
+}
+
 async function init(){
   worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO)
     ? WORLD_GEO
@@ -1266,11 +1287,19 @@ async function init(){
 
   var tex = buildNeonTexture();
   material = new THREE.ShaderMaterial({
-    uniforms: { uLand:{value:tex}, uLandOpacity:{value:1.0}, uGlow:{value:1.0} },
+    uniforms: {
+      uLand:{value:tex}, uLandOpacity:{value:1.0}, uGlow:{value:1.0},
+      uBase:{value:hex3(NEON_DEFAULT_SKIN.base)},
+      uG1A:{value:hex3(NEON_DEFAULT_SKIN.gradFrom)},
+      uG1B:{value:hex3(NEON_DEFAULT_SKIN.gradTo)},
+      uG1W:{value:NEON_DEFAULT_SKIN.gradAlpha},
+      uG2W:{value:0.20},
+    },
     vertexShader: NEON_VS, fragmentShader: NEON_FS, transparent: true,
   });
   globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,128,128), material);
   globe.add(globeMesh);
+  if (pendingNeonSkin) applyNeonSkin(pendingNeonSkin);
 
   resize();
   if (pendingSponsored) buildAdMarkers(pendingSponsored);
@@ -1398,7 +1427,7 @@ function animate(){
   updateAdMarkers();
 }
 
-// RN → WebView 메시지 (setTheme은 네온 룩 고정이라 무시)
+// RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
 function handleMsg(msg){
   if(msg.type==='setVisitedCountries' && msg.countries){
     visitedMap={};
@@ -1409,6 +1438,8 @@ function handleMsg(msg){
       material.uniforms.uLand.value=tex;
       if(old && old.dispose) old.dispose();
     }
+  } else if(msg.type==='setTheme'){
+    applyNeonSkin(msg.theme && msg.theme.neon ? msg.theme.neon : null);
   } else if(msg.type==='setSponsored'){
     pendingSponsored=msg.items||[];
     if(worldData) buildAdMarkers(pendingSponsored);
@@ -1425,7 +1456,7 @@ init();
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
-  variant = 'aurora', sponsoredItems = [],
+  variant = 'aurora', themeOverride, sponsoredItems = [],
 }: GlobeViewProps) {
   const webViewRef = useRef<WebView>(null);
 
@@ -1443,8 +1474,9 @@ export default function GlobeView({
 
   const themePayload = useMemo(() => JSON.stringify({
     type: 'setTheme',
-    theme: GLOBE_THEMES[variant] || GLOBE_THEMES.aurora,
-  }), [variant]);
+    // classic은 팔레트 필드(oceanBase 등)를, 네온(aurora)은 neon 필드만 읽는다
+    theme: { ...(GLOBE_THEMES[variant] || GLOBE_THEMES.aurora), neon: themeOverride || null },
+  }), [variant, themeOverride]);
 
   useEffect(() => {
     if (webViewRef.current && visitedCountries.length > 0) {

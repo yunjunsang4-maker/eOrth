@@ -21,6 +21,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
+import { getGlobeSkinTheme } from '../constants/globeSkins';
 import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
@@ -411,6 +412,7 @@ export default function MainScreen({ navigation, route }: Props) {
   // 지구본/대륙 표시 설정 — settingsStore에서 영속 관리
   const {
     globeVariant, setGlobeVariant,
+    globeSkin,
     globeDisplayMode, setGlobeDisplayMode,
     regionGlobalMode, setRegionGlobalMode,
     globeColor, setGlobeColor,
@@ -562,6 +564,8 @@ export default function MainScreen({ navigation, route }: Props) {
 
   // 지구본 형태별 강제 표시 모드: aurora = 색상(color), classic = 사진(photo)
   const globeForcedMode: GlobeDisplayMode = globeVariant === 'aurora' ? 'color' : 'photo';
+  // 지구본 스킨 — 색 활성화(aurora) 폼에만 적용, classic은 기본 테마 유지
+  const globeSkinTheme = globeVariant === 'aurora' ? getGlobeSkinTheme(globeSkin) : undefined;
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
     () => visitedCountries.map(c => ({
@@ -866,7 +870,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
       {viewMode === 'globe' && (
         <View ref={globeRef} collapsable={false} style={StyleSheet.absoluteFill}>
-          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} sponsoredItems={sponsoredMarkerItems} />
+          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} themeOverride={globeSkinTheme} sponsoredItems={sponsoredMarkerItems} />
         </View>
       )}
 
