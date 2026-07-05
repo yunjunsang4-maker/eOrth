@@ -281,11 +281,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   onPress: () => Alert.alert(t('settings.stripLogoRemove'), t('settings.stripLogoRemoveMsg')),
                 },
             {
-              // 스트립 프레임 커스텀 — 미구현(준비 중). cutFrames 테마 프레임 확장 예정
+              // 스트립 프레임 커스텀 — 구현됨. 네컷 만들기 팔레트의 + 버튼에서 자유 색 선택(프리미엄)
               icon: <PaletteIcon size={22} />,
               label: t('settings.stripFrameCustom'),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
+              onPress: () => Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg')),
             },
           ]}
         />

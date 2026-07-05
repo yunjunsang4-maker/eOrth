@@ -1643,8 +1643,10 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
           photos={item.cutPhoto.photos}
           width={w - 12}
           bgOverride={item.cutPhoto.frameColor}
+          bgImageOverride={item.cutPhoto.frameImage}
           capture
           showLogo={!item.cutPhoto.noLogo}
+          stamp={item.cutPhoto.stamp}
         />
       )}
       {meta}

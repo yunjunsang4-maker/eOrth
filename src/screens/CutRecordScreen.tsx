@@ -2,12 +2,15 @@ import React, { useState, useRef, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
+  Modal, Pressable, TextInput,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { compressImage } from '../utils/imageCompress';
 import { captureRef } from 'react-native-view-shot';
-import CutPhotoCanvas from '../components/CutPhotoCanvas';
+import CutPhotoCanvas, { cutHasBottomBand, type CutStamp } from '../components/CutPhotoCanvas';
+import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -26,6 +29,23 @@ const C = {
 const BASIC_COLORS = [
   '#D4E6F1', '#F5EBE0', '#2C3E50', '#CD7F7D', '#D0D7CE',
   '#F9F6F0', '#A3B19B', '#E6DFD3', '#F3DCD4', '#E1D5E7',
+];
+
+// ── 커스텀 프레임 색 (프리미엄: 스트립 프레임 커스텀) ──
+// 색조 12단 × 명도 5단 + 무채색 12단 그리드에서 자유 선택
+const hslHex = (h: number, s: number, l: number): string => {
+  const a = s * Math.min(l, 1 - l);
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12;
+    const c = l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)));
+    return Math.round(255 * c).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+};
+const CUSTOM_HUES = [0, 30, 60, 90, 120, 160, 190, 210, 240, 270, 300, 330];
+const CUSTOM_ROWS: string[][] = [
+  Array.from({ length: 12 }, (_, i) => hslHex(0, 0, 1 - i / 11)), // 무채색 (흰→검)
+  ...[0.86, 0.72, 0.58, 0.44, 0.3].map((l) => CUSTOM_HUES.map((h) => hslHex(h, 0.55, l))),
 ];
 
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
@@ -56,6 +76,82 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   // 기본 프레임 색 — 팔레트에서 선택 (기본 프레임일 때만 적용, 프레임 여백에만)
   const isBasic = frame.category === '기본';
   const [frameColor, setFrameColor] = useState<string>(BASIC_COLORS[0]);
+
+  // ── 하단 여백 스탬프: 날짜(무료) + 문구·폰트(프리미엄) ──
+  const bandLayout = cutHasBottomBand(frame.layout); // 하단 여백 있는 레이아웃에서만 노출
+  const [stampDateOn, setStampDateOn] = useState(false);
+  const [captionText, setCaptionText] = useState('');
+  const [captionFont, setCaptionFont] = useState<string | null>(null);
+  const [captionModalVisible, setCaptionModalVisible] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState('');
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  }, []);
+  const stamp: CutStamp | undefined =
+    bandLayout && (stampDateOn || captionText)
+      ? { date: stampDateOn ? todayStr : undefined, text: captionText || undefined, fontId: captionFont || undefined }
+      : undefined;
+  const openCaption = () => {
+    if (!isPremium) {
+      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      return;
+    }
+    setCaptionDraft(captionText);
+    setCaptionModalVisible(true);
+  };
+  const confirmCaption = () => {
+    setCaptionText(captionDraft.trim());
+    setCaptionModalVisible(false);
+  };
+
+  // 커스텀 프레임 색(프리미엄) — '+' 스와치로 그리드 모달 열기
+  const [customColorVisible, setCustomColorVisible] = useState(false);
+  const isCustomColor = !BASIC_COLORS.includes(frameColor);
+  const openCustomColor = () => {
+    if (!isPremium) {
+      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      return;
+    }
+    setCustomColorVisible(true);
+  };
+
+  // 프레임 배경 사진(프리미엄) — 🖼️ 스와치로 갤러리에서 선택, 색 위에 cover로 깔림
+  const [frameImage, setFrameImage] = useState<string | null>(null);
+  const pickFrameImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showPermissionDeniedAlert(t('permission.gallery'));
+        return;
+      }
+      setPickingPhoto(true);
+      const r = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'] });
+      if (!r.canceled && r.assets[0]) {
+        setFrameImage(await compressImage(r.assets[0].uri));
+      }
+    } catch {
+      Alert.alert(t('cut.errorTitle'), t('cut.loadPhotoError'));
+    } finally {
+      setPickingPhoto(false);
+    }
+  };
+  const openFrameImage = () => {
+    if (!isPremium) {
+      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      return;
+    }
+    if (frameImage) {
+      // 이미 적용됨 → 변경/제거 선택
+      Alert.alert(t('cut.framePhotoTitle'), '', [
+        { text: t('cut.framePhotoChange'), onPress: pickFrameImage },
+        { text: t('cut.framePhotoRemove'), style: 'destructive', onPress: () => setFrameImage(null) },
+        { text: t('common.cancel'), style: 'cancel' },
+      ]);
+      return;
+    }
+    pickFrameImage();
+  };
 
   // 캔버스 크기 — 가로/세로 모두 화면에 맞게 fit (필름 같은 세로 스트립 대응)
   const canvasW = useMemo(() => {
@@ -155,7 +251,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       return;
     }
     navigation.navigate('CutTravelInfo', {
-      cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, photos: photos as string[], previewUri, noLogo: hideLogo || undefined },
+      cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, frameImage: (isBasic && frameImage) || undefined, photos: photos as string[], previewUri, noLogo: hideLogo || undefined, stamp },
       selectedCountry: selectedCountry ?? undefined,
       tripPeriod: route.params?.tripPeriod, // 여행 카드에서 추가 시 기간 자동 적용을 위해 전달
     });
@@ -184,13 +280,38 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           width={canvasW}
           onSlotPress={handleSlotPress}
           bgOverride={isBasic ? frameColor : undefined}
+          bgImageOverride={isBasic ? frameImage ?? undefined : undefined}
           showLogo={!hideLogo}
+          stamp={stamp}
         />
         <Text style={st.hint}>{t('cut.hint', { filled: photos.filter(Boolean).length, total: slotN })}</Text>
       </View>
 
       {/* 하단: 기본/테마 탭 + 프레임 카탈로그 */}
       <View style={st.bottomBar}>
+        {/* 하단 여백 스탬프 — 날짜(무료)·문구(프리미엄). 여백 있는 레이아웃에서만 */}
+        {bandLayout && (
+          <View style={st.stampRow}>
+            <TouchableOpacity
+              style={[st.stampChip, stampDateOn && st.stampChipOn]}
+              activeOpacity={0.8}
+              onPress={() => setStampDateOn((v) => !v)}
+            >
+              <Text style={[st.stampChipTxt, stampDateOn && st.stampChipTxtOn]}>
+                📅 {t('cut.stampDate')}{stampDateOn ? ` · ${todayStr}` : ''}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[st.stampChip, !!captionText && st.stampChipOn]}
+              activeOpacity={0.8}
+              onPress={openCaption}
+            >
+              <Text style={[st.stampChipTxt, !!captionText && st.stampChipTxtOn]} numberOfLines={1}>
+                ✏️ {captionText || t('cut.stampCaption')}{!isPremium ? ' 🔒' : ''}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
         <View style={st.tabs}>
           {(['기본', '테마'] as const).map((cat) => (
             <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && st.tabOn]}>
@@ -215,6 +336,35 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                 activeOpacity={0.8}
               />
             ))}
+            {/* 커스텀 색(프리미엄) — 선택된 커스텀 색이 있으면 그 색으로, 없으면 무지개 그라데이션 */}
+            <TouchableOpacity onPress={openCustomColor} activeOpacity={0.8}>
+              {isCustomColor ? (
+                <View style={[st.swatch, { backgroundColor: frameColor }, st.swatchOn]}>
+                  <Text style={st.customPlus}>＋</Text>
+                </View>
+              ) : (
+                <LinearGradient
+                  colors={['#FF5F6D', '#BF85FC', '#00D7F3']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={[st.swatch, st.customSwatch]}
+                >
+                  <Text style={st.customPlus}>{isPremium ? '＋' : '🔒'}</Text>
+                </LinearGradient>
+              )}
+            </TouchableOpacity>
+            {/* 사진 프레임(프리미엄) — 선택된 사진이 있으면 썸네일로, 없으면 아이콘 */}
+            <TouchableOpacity onPress={openFrameImage} activeOpacity={0.8}>
+              {frameImage ? (
+                <View style={[st.swatch, st.customSwatch, st.frameImgSwatch, st.swatchOn]}>
+                  <Image source={{ uri: frameImage }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                </View>
+              ) : (
+                <View style={[st.swatch, st.customSwatch, st.frameImgSwatch]}>
+                  <Text style={st.customPlus}>{isPremium ? '🖼️' : '🔒'}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
           </ScrollView>
         )}
 
@@ -271,6 +421,85 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           }
         }}
       />
+
+      {/* 커스텀 프레임 색 모달 (프리미엄) — 색조×명도 그리드에서 자유 선택 */}
+      <Modal
+        visible={customColorVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCustomColorVisible(false)}
+      >
+        <Pressable style={st.ccOverlay} onPress={() => setCustomColorVisible(false)}>
+          <Pressable style={st.ccCard} onPress={() => {}}>
+            <Text style={st.ccTitle}>{t('cut.customColorTitle')}</Text>
+            {CUSTOM_ROWS.map((row, ri) => (
+              <View key={ri} style={st.ccRow}>
+                {row.map((c) => (
+                  <TouchableOpacity
+                    key={c}
+                    activeOpacity={0.8}
+                    onPress={() => { setFrameColor(c); setCustomColorVisible(false); }}
+                    style={[st.ccSwatch, { backgroundColor: c }, frameColor === c && st.ccSwatchOn]}
+                  />
+                ))}
+              </View>
+            ))}
+            <TouchableOpacity style={st.ccClose} activeOpacity={0.7} onPress={() => setCustomColorVisible(false)}>
+              <Text style={st.ccCloseText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 문구 스탬프 모달 (프리미엄) — 문구 입력 + 폰트 선택 */}
+      <Modal
+        visible={captionModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCaptionModalVisible(false)}
+      >
+        <Pressable style={st.ccOverlay} onPress={() => setCaptionModalVisible(false)}>
+          <Pressable style={st.ccCard} onPress={() => {}}>
+            <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
+            <TextInput
+              style={[st.capInput, handleFontStyle(captionFont)]}
+              value={captionDraft}
+              onChangeText={setCaptionDraft}
+              placeholder={t('cut.captionPlaceholder')}
+              placeholderTextColor="rgba(255,255,255,0.3)"
+              maxLength={24}
+              autoFocus
+            />
+            {/* 폰트 선택 — 아이디 폰트 16종 재사용, 입력한 문구로 미리보기 */}
+            <Text style={st.capFontLabel}>{t('cut.captionFontLabel')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.capFontRow}>
+              {HANDLE_FONTS.map((f) => {
+                const selected = (captionFont ?? 'default') === f.id;
+                return (
+                  <TouchableOpacity
+                    key={f.id}
+                    style={[st.capFontChip, selected && st.capFontChipOn]}
+                    activeOpacity={0.8}
+                    onPress={() => setCaptionFont(f.id === 'default' ? null : f.id)}
+                  >
+                    <Text style={[st.capFontChipTxt, handleFontStyle(f.id)]} numberOfLines={1}>
+                      {captionDraft.trim() || t(f.labelKey)}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <View style={st.capBtnRow}>
+              <TouchableOpacity style={[st.capBtn, st.capBtnCancel]} activeOpacity={0.7} onPress={() => setCaptionModalVisible(false)}>
+                <Text style={st.ccCloseText}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[st.capBtn, st.capBtnOk]} activeOpacity={0.7} onPress={confirmCaption}>
+                <Text style={st.capBtnOkTxt}>{t('common.confirm')}</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       {/* 사진 불러오는 중 (특히 iCloud 다운로드) */}
       {pickingPhoto && (
@@ -330,4 +559,55 @@ const st = StyleSheet.create({
   },
   swatch: { width: 34, height: 34, borderRadius: 17, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
   swatchOn: { borderWidth: 3, borderColor: C.purple },
+  customSwatch: { alignItems: 'center', justifyContent: 'center' },
+  customPlus: { fontSize: 14, color: C.white, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 2, textAlign: 'center' },
+  frameImgSwatch: { backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
+
+  // 커스텀 프레임 색 모달
+  ccOverlay: {
+    flex: 1, backgroundColor: 'rgba(10,10,15,0.85)',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20,
+  },
+  ccCard: {
+    width: '100%', maxWidth: 360, backgroundColor: C.card,
+    borderRadius: 16, padding: 20, borderWidth: 1, borderColor: 'rgba(191,133,252,0.3)',
+  },
+  ccTitle: { fontSize: 16, fontWeight: '700', color: C.white, marginBottom: 14 },
+  ccRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 },
+  ccSwatch: { width: 22, height: 22, borderRadius: 11, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  ccSwatchOn: { borderWidth: 3, borderColor: C.purple },
+  ccClose: {
+    marginTop: 10, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+  },
+  ccCloseText: { fontSize: 14, fontWeight: '600', color: C.dim },
+
+  // 하단 여백 스탬프 (날짜·문구)
+  stampRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10, justifyContent: 'center' },
+  stampChip: {
+    maxWidth: '60%', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  stampChipOn: { backgroundColor: 'rgba(191,133,252,0.18)', borderColor: C.purple },
+  stampChipTxt: { fontSize: 12, color: C.dim, fontWeight: '600' },
+  stampChipTxtOn: { color: C.purple },
+
+  // 문구 스탬프 모달
+  capInput: {
+    backgroundColor: C.bg, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
+    paddingHorizontal: 12, paddingVertical: 10, color: C.white, fontSize: 16, marginBottom: 14,
+  },
+  capFontLabel: { fontSize: 11, color: C.dim, marginBottom: 8 },
+  capFontRow: { gap: 8, paddingBottom: 4 },
+  capFontChip: {
+    paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, maxWidth: 140,
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  capFontChipOn: { borderColor: C.purple, backgroundColor: 'rgba(191,133,252,0.15)' },
+  capFontChipTxt: { fontSize: 14, color: C.white },
+  capBtnRow: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  capBtn: { flex: 1, height: 44, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
+  capBtnCancel: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)' },
+  capBtnOk: { backgroundColor: C.purple },
+  capBtnOkTxt: { fontSize: 14, fontWeight: '700', color: C.bg },
 });

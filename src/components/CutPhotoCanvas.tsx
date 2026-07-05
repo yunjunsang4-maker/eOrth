@@ -2,6 +2,14 @@ import React, { forwardRef } from 'react';
 import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { CUT_LAYOUTS, getCutFrame, CutFrame, CutLayout } from '../constants/cutFrames';
 import { AdjustedCoverImage, type CutTransform } from './CutPhotoAdjustModal';
+import { handleFontStyle } from '../constants/handleFonts';
+
+/** 하단 여백 스탬프 — 날짜(무료)·문구+폰트(프리미엄). 생성 시점 값이 cutPhoto.stamp로 박제된다 */
+export interface CutStamp {
+  date?: string;   // 표시할 날짜 문자열 (예: 2026.07.06)
+  text?: string;   // 문구
+  fontId?: string; // 문구 폰트 — HANDLE_FONTS id
+}
 
 interface Props {
   frameId: string;
@@ -10,8 +18,10 @@ interface Props {
   onSlotPress?: (index: number) => void;
   capture?: boolean;           // true면 placeholder/터치 숨김(캡처·미리보기용)
   bgOverride?: string;         // 프레임 배경색 오버라이드 (기본 프레임의 사용자 RGB 색)
+  bgImageOverride?: string;    // 프레임 배경 사진 uri (프리미엄: 사진 프레임) — 색 위에 cover로 깔림
   transforms?: (CutTransform | null)[]; // 슬롯별 사진 조정값(이동/확대)
   showLogo?: boolean;          // eOrth 브랜드 로고 표시 — 프리미엄(스트립 로고 제거)이면 false
+  stamp?: CutStamp;            // 하단 여백 날짜·문구 스탬프 (여백 있는 레이아웃에서만 렌더)
 }
 
 // 하단 여백 로고 크기 — 캔버스 '폭' 대비 비율. 레이아웃별 임시값(보고 조정).
@@ -23,6 +33,9 @@ const LOGO_SCALE: Partial<Record<CutLayout, number>> = {
   'six-v': 0.09,   // 6컷 세로
   'nine': 0.08,    // 9컷
 };
+
+/** 하단 여백(로고·스탬프 영역)이 있는 레이아웃인지 — CutRecordScreen이 스탬프 UI 노출 여부에 사용 */
+export const cutHasBottomBand = (layout: CutLayout): boolean => LOGO_SCALE[layout] != null;
 
 // 배경 밝기 판정 — 로고 색을 배경에 맞춰 어둡게/밝게 (판정 불가 시 밝은 배경 취급)
 const isLightHex = (hex?: string): boolean => {
@@ -86,7 +99,7 @@ function renderFilmHoles(dir: 'v' | 'h', width: number, height: number, holeColo
  * forwardRef로 부모(react-native-view-shot)가 캡처할 수 있다.
  */
 const CutPhotoCanvas = forwardRef<View, Props>(
-  ({ frameId, photos, width, onSlotPress, capture, bgOverride, transforms, showLogo }, ref) => {
+  ({ frameId, photos, width, onSlotPress, capture, bgOverride, bgImageOverride, transforms, showLogo, stamp }, ref) => {
     const frame: CutFrame | undefined = getCutFrame(frameId);
     if (!frame) return null;
 
@@ -98,13 +111,20 @@ const CutPhotoCanvas = forwardRef<View, Props>(
     const containerBg = isFilm ? FILM_BASE : bgColor;
     const holeColor = bgOverride ?? FILM_HOLE_DEFAULT;
 
-    // 브랜드 로고(무료 스트립) — 하단 여백이 있는 레이아웃(LOGO_SCALE)에만, 여백 정중앙에 배치
+    // 하단 여백 스택 — 여백 있는 레이아웃(LOGO_SCALE)에만: [문구 → 날짜 → 로고] 세로 중앙 정렬
     const logoScale = LOGO_SCALE[frame.layout];
-    const renderLogo = !!showLogo && logoScale != null;
+    const hasBand = logoScale != null;
+    const renderLogo = !!showLogo && hasBand;
+    const renderStamp = hasBand && !!(stamp?.text || stamp?.date);
     const slotBottom = Math.max(...spec.slots.map((s) => s.y + s.h));
     const logoSize = Math.max(8, width * (logoScale ?? 0));
-    const logoTop = (slotBottom + (1 - slotBottom) / 2) * height - logoSize * 0.6;
-    const logoLight = frame.background.type === 'image' ? false : isLightHex(containerBg);
+    const captionSize = Math.max(9, width * 0.06);
+    const dateSize = Math.max(7, width * 0.034);
+    // 이미지 배경(테마·사용자 사진)은 밝기를 알 수 없어 밝은 글자로 고정
+    const logoLight = frame.background.type === 'image' || bgImageOverride ? false : isLightHex(containerBg);
+    // 문구는 또렷하게, 날짜는 중간, 로고는 은은하게 — 배경 밝기에 맞춰 반전
+    const capColor = logoLight ? 'rgba(30,28,40,0.62)' : 'rgba(255,255,255,0.85)';
+    const dateColor = logoLight ? 'rgba(30,28,40,0.48)' : 'rgba(255,255,255,0.70)';
 
     return (
       <View
@@ -124,6 +144,11 @@ const CutPhotoCanvas = forwardRef<View, Props>(
       >
         {frame.background.type === 'image' && (
           <Image source={frame.background.source} style={[StyleSheet.absoluteFill, frame.backgroundStyle]} resizeMode="cover" />
+        )}
+
+        {/* 사용자 사진 프레임(프리미엄) — 색/테마 배경 위에 cover로 깔림 */}
+        {!!bgImageOverride && (
+          <Image source={{ uri: bgImageOverride }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
 
         {spec.film && renderFilmHoles(spec.film, width, height, holeColor)}
@@ -167,23 +192,49 @@ const CutPhotoCanvas = forwardRef<View, Props>(
           );
         })}
 
-        {renderLogo && (
-          <Text
+        {(renderLogo || renderStamp) && (
+          <View
             pointerEvents="none"
             style={{
               position: 'absolute',
-              top: logoTop,
               left: 0,
               right: 0,
-              textAlign: 'center',
-              fontFamily: 'Gilroy-Black',
-              fontSize: logoSize,
-              letterSpacing: logoSize * 0.06,
-              color: logoLight ? 'rgba(30,28,40,0.40)' : 'rgba(255,255,255,0.60)',
+              top: slotBottom * height,
+              height: (1 - slotBottom) * height,
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: Math.max(2, width * 0.014),
             }}
           >
-            eOrth
-          </Text>
+            {renderStamp && !!stamp?.text && (
+              <Text
+                numberOfLines={1}
+                style={[
+                  { fontSize: captionSize, color: capColor, maxWidth: width * 0.9, textAlign: 'center' },
+                  handleFontStyle(stamp.fontId),
+                ]}
+              >
+                {stamp.text}
+              </Text>
+            )}
+            {renderStamp && !!stamp?.date && (
+              <Text style={{ fontSize: dateSize, color: dateColor, letterSpacing: dateSize * 0.12 }}>
+                {stamp.date}
+              </Text>
+            )}
+            {renderLogo && (
+              <Text
+                style={{
+                  fontFamily: 'Gilroy-Black',
+                  fontSize: logoSize,
+                  letterSpacing: logoSize * 0.06,
+                  color: logoLight ? 'rgba(30,28,40,0.40)' : 'rgba(255,255,255,0.60)',
+                }}
+              >
+                eOrth
+              </Text>
+            )}
+          </View>
         )}
       </View>
     );

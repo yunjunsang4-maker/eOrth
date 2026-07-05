@@ -67,6 +67,7 @@ export async function persistRecordPhotos(rec: TravelRecord): Promise<Partial<Tr
       ...rec.cutPhoto,
       previewUri: (await persist(rec.cutPhoto.previewUri)) ?? rec.cutPhoto.previewUri,
       photos: (await persistArr(rec.cutPhoto.photos)) ?? rec.cutPhoto.photos,
+      frameImage: (await persist(rec.cutPhoto.frameImage)) ?? rec.cutPhoto.frameImage,
     };
   }
 

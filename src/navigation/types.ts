@@ -45,6 +45,8 @@ export interface CutPhotoParam {
   photos: string[];
   previewUri: string;
   noLogo?: boolean; // 프리미엄(스트립 로고 제거) 작성 — 생성 시점에 박제
+  stamp?: { date?: string; text?: string; fontId?: string }; // 하단 여백 날짜·문구 스탬프
+  frameImage?: string; // 프레임 배경 사진 uri (프리미엄)
 }
 
 /** 프로필 여행 카드 → 여행 상세로 전달되는 썸네일 */

@@ -24,6 +24,8 @@ async function withUploadedMedia(rec: TravelRecord): Promise<TravelRecord> {
       ...copy.cutPhoto,
       previewUri: await uploadImage(copy.cutPhoto.previewUri),
       photos: await uploadImages(copy.cutPhoto.photos),
+      // 프레임 배경 사진(프리미엄) — 타인 피드 라이브 렌더에도 보여야 하므로 업로드
+      frameImage: copy.cutPhoto.frameImage ? await uploadImage(copy.cutPhoto.frameImage) : undefined,
     };
   }
   if (copy.perCountryData) {

@@ -310,8 +310,10 @@ function CutView({ record }: { record: TravelRecord }) {
             photos={photos}
             width={SCREEN_W - 32}
             bgOverride={record.cutPhoto.frameColor}
+            bgImageOverride={record.cutPhoto.frameImage}
             capture
             showLogo={!record.cutPhoto.noLogo}
+            stamp={record.cutPhoto.stamp}
           />
         </View>
       ) : (
