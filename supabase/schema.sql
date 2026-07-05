@@ -811,3 +811,24 @@ create policy "media_delete_own" on storage.objects
 
 -- 실시간 DM을 쓰려면 (대시보드 > Database > Replication 에서 dm_messages 추가하거나):
 -- alter publication supabase_realtime add table public.dm_messages;
+
+-- ============================================================
+-- 8) 피드백 — 설정 > 피드백 보내기 (인앱 폼)
+--   로그인 사용자만 본인 명의로 제출(insert). 조회 정책은 의도적으로 없음 —
+--   앱에서는 읽지 않고 Supabase 대시보드(service_role)에서만 확인한다.
+-- ============================================================
+create table if not exists public.feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references public.profiles(id) on delete set null,
+  content text not null check (char_length(content) between 1 and 1000),
+  app_version text,
+  platform text,
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_feedback_created on public.feedback (created_at desc);
+
+alter table public.feedback enable row level security;
+
+drop policy if exists "feedback_insert_own" on public.feedback;
+create policy "feedback_insert_own" on public.feedback
+  for insert to authenticated with check (user_id = auth.uid());

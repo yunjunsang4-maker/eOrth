@@ -308,7 +308,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <ChatIcon size={22} />,
               label: t('settings.feedback'),
-              onPress: () => Alert.alert(t('settings.feedbackTitle'), t('settings.feedbackMsg')),
+              onPress: () => navigation.navigate('Feedback'),
             },
             {
               icon: <DocumentIcon size={22} />,

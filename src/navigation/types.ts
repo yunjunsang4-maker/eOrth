@@ -103,6 +103,7 @@ export type RootStackParamList = {
   Settings: undefined;
   Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입
   FAQ: undefined; // 설정 > FAQ
+  Feedback: undefined; // 설정 > 피드백 보내기 (인앱 폼)
   Friends: undefined;
   DM: { friend: DMFriendParam; sharePostId?: string };
   BestCut: undefined;

@@ -166,6 +166,18 @@ const en = {
     qrSunset: 'Sunset',
     qrClassic: 'Classic',
   },
+  feedback: {
+    title: 'Send feedback',
+    desc: 'Anything goes — pain points, feature requests, bugs you found. Your feedback helps us improve.',
+    placeholder: 'Write your feedback',
+    send: 'Send',
+    sendA11y: 'Send feedback',
+    doneTitle: 'Sent',
+    doneMsg: 'Thank you for your feedback!\nWe read every message carefully.',
+    failTitle: 'Failed to send',
+    failMsg: 'Could not send your feedback. Please check your login status and network, then try again.',
+    note: 'Feedback is stored with your account info. We may reply to your sign-up email if needed.',
+  },
   faq: {
     title: 'FAQ',
     footer: 'Have more questions? Reach us via Settings > Send feedback.',
