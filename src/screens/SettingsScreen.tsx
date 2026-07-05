@@ -122,7 +122,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const [fontModalVisible, setFontModalVisible] = useState(false);
   const openFontPicker = () => {
     if (!isPremium) {
-      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      navigation.navigate('Premium'); // 잠금 → 페이월로 유도
       return;
     }
     setFontModalVisible(true);
@@ -264,7 +264,10 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               icon: <TargetIcon size={22} />,
               label: t('settings.qrDesign'),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg')),
+              onPress: () =>
+                isPremium
+                  ? Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg'))
+                  : navigation.navigate('Premium'),
             },
             // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
             isPremium
@@ -278,14 +281,17 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   icon: <StickerIcon size={22} />,
                   label: t('settings.stripLogoRemove'),
                   badge: t('settings.premiumBadge'),
-                  onPress: () => Alert.alert(t('settings.stripLogoRemove'), t('settings.stripLogoRemoveMsg')),
+                  onPress: () => navigation.navigate('Premium'),
                 },
             {
               // 스트립 프레임 커스텀 — 구현됨. 네컷 만들기 팔레트의 + 버튼에서 자유 색 선택(프리미엄)
               icon: <PaletteIcon size={22} />,
               label: t('settings.stripFrameCustom'),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg')),
+              onPress: () =>
+                isPremium
+                  ? Alert.alert(t('settings.stripFrameCustom'), t('settings.stripFrameCustomMsg'))
+                  : navigation.navigate('Premium'),
             },
           ]}
         />
@@ -453,7 +459,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   activeOpacity={0.7}
                   onPress={() => {
                     if (locked) {
-                      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+                      setSkinModalVisible(false);
+                      navigation.navigate('Premium');
                       return;
                     }
                     setGlobeSkin(s.id);

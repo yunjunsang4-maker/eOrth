@@ -14,7 +14,6 @@ import {
   Modal,
   Share,
   Pressable,
-  Alert,
 } from 'react-native';
 
 import QRCode from 'react-native-qrcode-svg';
@@ -142,7 +141,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const myQrDesign = getQrDesign(qrDesign);
   const openQrDesign = () => {
     if (!isPremium) {
-      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      navigation.navigate('Premium'); // 잠금 → 페이월로 유도
       return;
     }
     setQrDesignVisible(true);

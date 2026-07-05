@@ -101,6 +101,7 @@ export type RootStackParamList = {
     tripPeriod?: TripPeriodParam;
   } | undefined;
   Settings: undefined;
+  Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입
   Friends: undefined;
   DM: { friend: DMFriendParam; sharePostId?: string };
   BestCut: undefined;

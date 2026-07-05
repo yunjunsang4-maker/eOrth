@@ -17,6 +17,7 @@ import NotificationSettingsScreen from '../screens/NotificationSettingsScreen';
 import NotificationScreen from '../screens/NotificationScreen';
 import NewRecordScreen from '../screens/NewRecordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import PremiumScreen from '../screens/PremiumScreen';
 import FriendSearchScreen from '../screens/FriendSearchScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
 import ArchivedPostsScreen from '../screens/ArchivedPostsScreen';
@@ -201,6 +202,7 @@ export default function AppNavigator() {
           options={{ presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen name="Settings" component={SettingsScreen} />
+        <Stack.Screen name="Premium" component={PremiumScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="Friends" component={FriendsScreen} />
         <Stack.Screen name="DM" component={DMScreen} />
         <Stack.Screen name="BestCut" component={BestCutScreen} />

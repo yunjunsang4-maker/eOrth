@@ -94,7 +94,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       : undefined;
   const openCaption = () => {
     if (!isPremium) {
-      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      navigation.navigate('Premium'); // 잠금 → 페이월로 유도
       return;
     }
     setCaptionDraft(captionText);
@@ -110,7 +110,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   const isCustomColor = !BASIC_COLORS.includes(frameColor);
   const openCustomColor = () => {
     if (!isPremium) {
-      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      navigation.navigate('Premium');
       return;
     }
     setCustomColorVisible(true);
@@ -138,7 +138,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
   };
   const openFrameImage = () => {
     if (!isPremium) {
-      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      navigation.navigate('Premium');
       return;
     }
     if (frameImage) {
