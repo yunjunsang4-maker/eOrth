@@ -303,7 +303,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <QuestionIcon size={22} />,
               label: t('settings.faq'),
-              onPress: () => Alert.alert(t('settings.faq'), t('settings.faqMsg')),
+              onPress: () => navigation.navigate('FAQ'),
             },
             {
               icon: <ChatIcon size={22} />,
