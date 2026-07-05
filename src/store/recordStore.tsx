@@ -44,7 +44,7 @@ export type RecordViewType =
 
 export interface TravelRecord {
   id: string;
-  user: { name: string; emoji: string; handle: string; photo?: string };
+  user: { name: string; emoji: string; handle: string; photo?: string; font?: string };
   authorId?: string; // 작성자 profile uuid (백엔드 글) — 작성자 프로필 이동용
   country: string;          // 예: "🇯🇵 일본" (대표 국가, 하위 호환)
   countryName: string;      // 예: "일본"
@@ -285,7 +285,7 @@ export interface TripSession {
 }
 
 export function RecordProvider({ children }: { children: React.ReactNode }) {
-  const { handle, profilePhoto, homeCountryCode, currentVisitedCountryCode } = useSettings();
+  const { handle, profilePhoto, handleFont, homeCountryCode, currentVisitedCountryCode } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
@@ -1163,17 +1163,18 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated) return;
     const photo = profilePhoto || undefined;
+    const font = handleFont || undefined;
     setRecords((prev) => {
       let changed = false;
       const next = prev.map((r) => {
         if (!r.isMyPost) return r;
-        if (r.user.name === handle && r.user.handle === handle && r.user.photo === photo) return r;
+        if (r.user.name === handle && r.user.handle === handle && r.user.photo === photo && r.user.font === font) return r;
         changed = true;
-        return { ...r, user: { ...r.user, name: handle, handle, photo } };
+        return { ...r, user: { ...r.user, name: handle, handle, photo, font } };
       });
       return changed ? next : prev;
     });
-  }, [hydrated, handle, profilePhoto]);
+  }, [hydrated, handle, profilePhoto, handleFont]);
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {

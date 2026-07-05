@@ -38,6 +38,7 @@ import { useRecords } from '../store/recordStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
+import { handleFontStyle } from '../constants/handleFonts';
 import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { getMyUserId } from '../services/profile';
@@ -1576,8 +1577,10 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     representativeBadgeIds: selectedBadgeIds,
     setRepresentativeBadgeIds: setSelectedBadgeIds,
     badgeEarnedAt,
+    handleFont,
   } = useSettings();
   const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
+  const nameFontStyle = handleFontStyle(handleFont); // 아이디 표시 폰트(프리미엄)
 
   // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
   useEffect(() => {
@@ -1837,7 +1840,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
           {/* 이름 · 위치 · 소개 · 통계 */}
           <View style={styles.profileInfo}>
-            <Text style={styles.userName}>{profileName}</Text>
+            <Text style={[styles.userName, nameFontStyle]}>{profileName}</Text>
             <View style={styles.statusRow}>
               <Text style={styles.userLocation}>
                 {(() => {

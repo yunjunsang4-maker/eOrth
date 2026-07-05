@@ -29,7 +29,7 @@ import { FriendPickerModal } from '../components/record/FriendPickerModal';
 import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
-import { MAX_RECORD_PHOTOS } from '../constants/limits';
+import { getMaxRecordPhotos } from '../constants/limits';
 import { KOREA_REGIONS, normalizeKoreaRegion } from '../constants/koreaRegions';
 import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
@@ -475,7 +475,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   );
 
   // 거주국가(국내) 여부 — 국내 기록은 지역(시/도) 선택으로 여행 카드를 구분한다
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode, isPremium } = useSettings();
+  const maxRecordPhotos = getMaxRecordPhotos(isPremium); // 기록당 사진 상한 (프리미엄 100장)
   const homeCountryName = useMemo(
     () => COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
     [homeCountryCode]
@@ -563,16 +564,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const addNewOriginals = async (originals: string[], currentMedias: string[]): Promise<string[]> => {
     const addedOriginals = new Set(currentMedias.map(u => originalUriMapRef.current[u] ?? u));
     const uniqueFresh = Array.from(new Set(originals.filter(o => !addedOriginals.has(o))))
-      .slice(0, MAX_RECORD_PHOTOS - currentMedias.length);
+      .slice(0, maxRecordPhotos - currentMedias.length);
     const compressed = await compressImages(uniqueFresh);
     compressed.forEach((u, i) => { if (u !== uniqueFresh[i]) originalUriMapRef.current[u] = uniqueFresh[i]; });
     return compressed;
   };
 
   const selectMedia = async () => {
-    const slots = MAX_RECORD_PHOTOS - medias.length;
+    const slots = maxRecordPhotos - medias.length;
     if (slots <= 0) {
-      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: MAX_RECORD_PHOTOS }));
+      Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
       return;
     }
     try {
@@ -585,7 +586,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (!result.canceled && result.assets) {
         setLoadingMedia(true);
         const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
-        setMedias(prev => [...prev, ...compressed].slice(0, MAX_RECORD_PHOTOS));
+        setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
       }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
@@ -892,7 +893,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
   const [mediaPickerAssets,   setMediaPickerAssets]   = useState<MediaLibrary.Asset[]>([]);
   const [mediaPickerSelected, setMediaPickerSelected] = useState<Set<string>>(new Set());
-  const [mediaPickerMax,      setMediaPickerMax]      = useState(MAX_RECORD_PHOTOS);
+  const [mediaPickerMax,      setMediaPickerMax]      = useState(maxRecordPhotos);
   // 모달 열기 전 iCloud 사유로 제외된 장수 — 완료 메시지 안내에 사용
   const cloudSkippedRef = useRef(0);
   // 기간 내 사진이 검색 상한(500장)을 넘어 일부만 확인했는지 — 완료 메시지 안내에 사용
@@ -992,7 +993,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const ok = [...localOk, ...cloudOk];
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => [...prev, ...resolvedUris].slice(0, MAX_RECORD_PHOTOS));
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
       if (resolvedUris.length === 0) {
@@ -1085,9 +1086,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       }
 
       const total = ok.length;
-      const slotsAvailable = MAX_RECORD_PHOTOS - medias.length;
+      const slotsAvailable = maxRecordPhotos - medias.length;
       if (slotsAvailable <= 0) {
-        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: MAX_RECORD_PHOTOS }));
+        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
         return;
       }
 
@@ -1103,7 +1104,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       // 상한 이하 → 전체 추가 (이미 변환된 localUri 사용)
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
-      setMedias((prev) => [...prev, ...resolvedUris].slice(0, MAX_RECORD_PHOTOS));
+      setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
 
       // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
       if (resolvedUris.length === 0) {
@@ -1557,20 +1558,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 갤러리 선택 버튼 */}
               <TouchableOpacity
-                style={[s.addMediaBtn, medias.length >= MAX_RECORD_PHOTOS && s.addMediaBtnDisabled]}
+                style={[s.addMediaBtn, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
                 onPress={selectMedia}
                 activeOpacity={0.8}
-                disabled={medias.length >= MAX_RECORD_PHOTOS}
+                disabled={medias.length >= maxRecordPhotos}
               >
                 <View style={s.addMediaLeft}>
                   <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
                   <View>
                     <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
-                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: MAX_RECORD_PHOTOS })}</Text>
+                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
                   </View>
                 </View>
                 <View style={s.addMediaCountBadge}>
-                  <Text style={s.addMediaCountTxt}>{medias.length}/{MAX_RECORD_PHOTOS}</Text>
+                  <Text style={s.addMediaCountTxt}>{medias.length}/{maxRecordPhotos}</Text>
                 </View>
               </TouchableOpacity>
 

@@ -69,6 +69,9 @@ interface SettingsContextType {
   // ── 영토 표시 설정 (지구본/대륙) — 영속 저장 ──
   globeVariant: GlobeVariant;
   setGlobeVariant: React.Dispatch<React.SetStateAction<GlobeVariant>>;
+  // 지구본 스킨 id (constants/globeSkins.ts) — aurora(색 활성화) 폼에만 적용
+  globeSkin: string;
+  setGlobeSkin: (v: string) => void;
   globeDisplayMode: MapDisplayMode;
   setGlobeDisplayMode: React.Dispatch<React.SetStateAction<MapDisplayMode>>;
   globeColor: string;
@@ -104,6 +107,13 @@ interface SettingsContextType {
   setNotifPref: (key: NotifPrefKey, value: boolean) => void;
   // 계정 공개 여부 — 영속(현재는 UI 상태 저장; 실제 공개범위 강제는 백엔드 도입 후)
   accountPublic: boolean;
+  // ── 프리미엄 구독 ──
+  // 현재는 로컬 상태(베타 체험 토글). 결제(RevenueCat) 연동 시 구매 검증 결과로 갱신하도록 교체.
+  isPremium: boolean;
+  setIsPremium: (v: boolean) => void;
+  // 아이디 표시 폰트(프리미엄) — HANDLE_FONTS의 id. 서버(profiles.handle_font)로 동기화돼 타인에게도 보임
+  handleFont: string | null;
+  setHandleFont: (v: string | null) => void;
   setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
 }
@@ -129,6 +139,7 @@ interface SettingsPersistPayload {
   verifiedNaverBlogIds?: string[]; // 과거 저장본엔 없을 수 있어 optional
   // 영토 표시 설정 (과거 저장본엔 없을 수 있어 optional)
   globeVariant?: GlobeVariant;
+  globeSkin?: string; // 지구본 스킨 id
   globeDisplayMode?: MapDisplayMode;
   globeColor?: string;
   countryColors?: Record<string, string>;
@@ -144,6 +155,8 @@ interface SettingsPersistPayload {
   installedAt?: number | null;  // 앱 첫 실행 시각
   notifPrefs?: Partial<Record<NotifPrefKey, boolean>>; // 알림 설정 토글
   accountPublic?: boolean; // 계정 공개 여부
+  isPremium?: boolean;     // 프리미엄 구독 (베타: 로컬 토글)
+  handleFont?: string | null; // 아이디 표시 폰트 id
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -174,6 +187,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, []);
   // ── 영토 표시 설정 (영속) ──
   const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
+  const [globeSkin, setGlobeSkin] = useState('aurora'); // 지구본 스킨 — 기본(오로라)
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
   const [globeColor, setGlobeColor] = useState('#BF85FC');
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
@@ -193,6 +207,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setNotifPrefs((prev) => ({ ...prev, [key]: value }));
   }, []);
   const [accountPublic, setAccountPublic] = useState(true);
+  const [isPremium, setIsPremium] = useState(false);
+  const [handleFont, setHandleFont] = useState<string | null>(null);
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -243,6 +259,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
       setVerifiedNaverBlogIds(p.verifiedNaverBlogIds ?? []);
       setGlobeVariant(p.globeVariant ?? 'aurora');
+      setGlobeSkin(p.globeSkin ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
       setGlobeColor(p.globeColor ?? '#BF85FC');
       setCountryColors(p.countryColors ?? {});
@@ -258,6 +275,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setInstalledAt(p.installedAt ?? null);
       setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...(p.notifPrefs ?? {}) });
       setAccountPublic(p.accountPublic ?? true);
+      setIsPremium(p.isPremium ?? false);
+      setHandleFont(p.handleFont ?? null);
     },
     () => ({
       showCounts,
@@ -278,6 +297,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       currentVisitedCountryCode,
       verifiedNaverBlogIds,
       globeVariant,
+      globeSkin,
       globeDisplayMode,
       globeColor,
       countryColors,
@@ -293,6 +313,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       installedAt,
       notifPrefs,
       accountPublic,
+      isPremium,
+      handleFont,
     }),
     [
       showCounts,
@@ -313,6 +335,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       currentVisitedCountryCode,
       verifiedNaverBlogIds,
       globeVariant,
+      globeSkin,
       globeDisplayMode,
       globeColor,
       countryColors,
@@ -328,6 +351,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       installedAt,
       notifPrefs,
       accountPublic,
+      isPremium,
+      handleFont,
     ],
   );
 
@@ -365,6 +390,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setCurrentVisitedCountryCode('KR');
     setVerifiedNaverBlogIds([]);
     setGlobeVariant('aurora');
+    setGlobeSkin('aurora');
     setGlobeDisplayMode('flag');
     setGlobeColor('#BF85FC');
     setCountryColors({});
@@ -428,6 +454,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         addVerifiedNaverBlogId,
         globeVariant,
         setGlobeVariant,
+        globeSkin,
+        setGlobeSkin,
         globeDisplayMode,
         setGlobeDisplayMode,
         globeColor,
@@ -456,6 +484,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setNotifPref,
         accountPublic,
         setAccountPublic,
+        isPremium,
+        setIsPremium,
+        handleFont,
+        setHandleFont,
         resetSettings,
       }}
     >

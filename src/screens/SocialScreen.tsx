@@ -35,6 +35,7 @@ import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
+import { handleFontStyle } from '../constants/handleFonts';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -1533,11 +1534,13 @@ const tiltFor = (id: string): number => {
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
   const { t } = useTranslation();
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
     ? globalHandle
     : (item.user.name ? item.user.name : item.user.handle);
+  // 아이디 표시 폰트(프리미엄) — 내 글은 현재 설정값, 타인 글은 프로필 조인 값
+  const nameFontStyle = handleFontStyle(isMyPost ? myHandleFont : item.user.font);
 
   return (
     <View style={d.meta}>
@@ -1555,7 +1558,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
             <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
           )}
         </View>
-        <Text style={[d.metaHandle, onLight && d.metaTextLight]} numberOfLines={1}>{displayName}</Text>
+        <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
@@ -1955,7 +1958,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     setRefreshing(true);
     try { await refreshFeed(); } finally { setRefreshing(false); }
   };
-  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium } = useSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
@@ -2122,7 +2125,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
   const AD_FREQ = 5;
   const timelineWithAds = useMemo(() => {
-    if (!FEED_ADS_ENABLED || timelineItems.length < 2) return timelineItems;
+    // 프리미엄 구독자는 광고 제거
+    if (!FEED_ADS_ENABLED || isPremium || timelineItems.length < 2) return timelineItems;
     const out: any[] = [];
     let slot = 0;
     timelineItems.forEach((item, i) => {
@@ -2141,7 +2145,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       }
     });
     return out;
-  }, [timelineItems]);
+  }, [timelineItems, isPremium]);
 
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {

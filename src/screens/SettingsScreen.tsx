@@ -22,8 +22,11 @@ import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
-  TrashIcon,
+  TrashIcon, StarIcon, TargetIcon, StickerIcon, PaletteIcon,
 } from '../components/icons';
+import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
+import { GLOBE_SKINS } from '../constants/globeSkins';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // 개인정보처리방침 게시 URL (GitHub Pages)
 const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
@@ -104,10 +107,29 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     homeCountryCode, setHomeCountryCode,
     diaryCardMode, setDiaryCardMode,
     language, setLanguage,
+    isPremium, setIsPremium,
+    handleFont, setHandleFont,
+    handle,
+    globeSkin, setGlobeSkin,
     resetSettings,
   } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
+
+  // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
+  const [fontModalVisible, setFontModalVisible] = useState(false);
+  const openFontPicker = () => {
+    if (!isPremium) {
+      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+      return;
+    }
+    setFontModalVisible(true);
+  };
+  const currentFont = HANDLE_FONTS.find((f) => f.id === (handleFont ?? 'default')) ?? HANDLE_FONTS[0];
+
+  // 지구본 스킨 선택 모달 — 무료 2종 + 기본. 유료 스킨 추가 시 premium 플래그로 게이트
+  const [skinModalVisible, setSkinModalVisible] = useState(false);
+  const currentSkin = GLOBE_SKINS.find((s) => s.id === globeSkin) ?? GLOBE_SKINS[0];
 
   // 거주 국가 코드 입력 모달 — Alert.prompt는 iOS 전용이라 양 플랫폼 공용 모달로 처리
   const [countryModalVisible, setCountryModalVisible] = useState(false);
@@ -195,12 +217,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             { icon: <EyeIcon size={22} />, label: t('settings.showCounts'), toggle: showCounts, onToggle: setShowCounts },
             { icon: <GalleryIcon size={22} />, label: t('settings.diaryInteraction'), toggle: diaryCardMode === 'full', onToggle: (v: boolean) => setDiaryCardMode(v ? 'full' : 'minimal') },
             {
-              icon: <GlobeSkinIcon size={22} />,
-              label: t('settings.globeSkin'),
-              badge: t('settings.premiumBadge'),
-              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
-            },
-            {
               icon: <LanguageIcon size={22} />,
               label: t('settings.languageChange'),
               value: language === 'en' ? t('settings.langEn') : t('settings.langKo'),
@@ -217,6 +233,50 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               label: t('settings.residence'),
               value: homeCountryCode,
               onPress: openCountryModal,
+            },
+          ]}
+        />
+
+        {/* 프리미엄 */}
+        <Text style={st.groupLabel}>{t('settings.groupPremium')}</Text>
+        <SettingGroup
+          items={[
+            // 베타 체험 토글 — 결제(RevenueCat) 연동 시 구매 화면 진입으로 교체
+            { icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium },
+            {
+              icon: <LanguageIcon size={22} />,
+              label: t('settings.handleFont'),
+              value: t(currentFont.labelKey),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: openFontPicker,
+            },
+            {
+              // 지구본 스킨 — 무료 2종 + 기본. aurora(색 활성화) 폼에만 적용
+              icon: <GlobeSkinIcon size={22} />,
+              label: t('settings.globeSkin'),
+              value: t(currentSkin.labelKey),
+              onPress: () => setSkinModalVisible(true),
+            },
+            {
+              // 개별 QR 디자인 — 미구현(준비 중). 친구찾기 QR 카드의 색·스타일 커스텀 예정
+              icon: <TargetIcon size={22} />,
+              label: t('settings.qrDesign'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
+            },
+            {
+              // 스트립(네컷) 로고 제거 — 미구현(준비 중). 무료 스트립에 로고 워터마크 도입 후 프리미엄은 제거
+              icon: <StickerIcon size={22} />,
+              label: t('settings.stripLogoRemove'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
+            },
+            {
+              // 스트립 프레임 커스텀 — 미구현(준비 중). cutFrames 테마 프레임 확장 예정
+              icon: <PaletteIcon size={22} />,
+              label: t('settings.stripFrameCustom'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () => Alert.alert(t('settings.premiumTitle'), t('settings.premiumMsg')),
             },
           ]}
         />
@@ -314,6 +374,94 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                 <Text style={st.modalBtnSubmitText}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
+      <Modal
+        visible={fontModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setFontModalVisible(false)}
+      >
+        <View style={st.modalOverlay} accessibilityViewIsModal>
+          <View style={st.modalCard}>
+            <Text style={st.modalTitle}>{t('settings.handleFont')}</Text>
+            <Text style={st.modalDesc}>{t('settings.handleFontDesc')}</Text>
+            <ScrollView style={st.fontList} showsVerticalScrollIndicator={false}>
+            {HANDLE_FONTS.map((f) => {
+              const selected = (handleFont ?? 'default') === f.id;
+              return (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[st.fontRow, selected && st.fontRowSelected]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    // 'default'는 null로 저장 → 서버에서도 폰트 미지정으로 동기화
+                    setHandleFont(f.id === 'default' ? null : f.id);
+                    setFontModalVisible(false);
+                  }}
+                >
+                  <View style={st.fontRowInfo}>
+                    <Text style={st.fontRowLabel}>{t(f.labelKey)}</Text>
+                    <Text style={[st.fontRowPreview, handleFontStyle(f.id)]} numberOfLines={1}>
+                      {handle ? `@${handle}` : '@eorth'}
+                    </Text>
+                  </View>
+                  {selected && <Text style={st.fontRowCheck}>✓</Text>}
+                </TouchableOpacity>
+              );
+            })}
+            </ScrollView>
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setFontModalVisible(false)}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
+      <Modal
+        visible={skinModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSkinModalVisible(false)}
+      >
+        <View style={st.modalOverlay} accessibilityViewIsModal>
+          <View style={st.modalCard}>
+            <Text style={st.modalTitle}>{t('settings.globeSkin')}</Text>
+            <Text style={st.modalDesc}>{t('settings.globeSkinDesc')}</Text>
+            {GLOBE_SKINS.map((s) => {
+              const selected = globeSkin === s.id;
+              const locked = s.premium && !isPremium;
+              return (
+                <TouchableOpacity
+                  key={s.id}
+                  style={[st.fontRow, selected && st.fontRowSelected]}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    if (locked) {
+                      Alert.alert(t('settings.premiumTitle'), t('settings.premiumOnlyMsg'));
+                      return;
+                    }
+                    setGlobeSkin(s.id);
+                    setSkinModalVisible(false);
+                  }}
+                >
+                  <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />
+                  <Text style={st.skinRowLabel}>{t(s.labelKey)}</Text>
+                  {locked ? (
+                    <Text style={st.skinLock}>🔒</Text>
+                  ) : selected ? (
+                    <Text style={st.fontRowCheck}>✓</Text>
+                  ) : null}
+                </TouchableOpacity>
+              );
+            })}
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setSkinModalVisible(false)}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -500,4 +648,32 @@ const st = StyleSheet.create({
   modalBtnSubmit: { backgroundColor: COLORS.purpleNeon },
   modalBtnCancelText: { color: COLORS.textDim, fontSize: 14, fontWeight: '600' },
   modalBtnSubmitText: { color: COLORS.bg, fontSize: 14, fontWeight: '600' },
+
+  // 아이디 폰트 선택 모달
+  fontList: { maxHeight: 400 },
+  fontRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: COLORS.divider,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  fontRowSelected: {
+    borderColor: COLORS.purpleBorder,
+    backgroundColor: COLORS.purpleBg,
+  },
+  fontRowInfo: { flex: 1 },
+  fontRowLabel: { fontSize: 11, color: COLORS.textDim, marginBottom: 2 },
+  fontRowPreview: { fontSize: 18, color: COLORS.white },
+  fontRowCheck: { fontSize: 16, color: COLORS.purpleNeon, marginLeft: 10 },
+  fontModalClose: { marginTop: 8 },
+
+  // 지구본 스킨 선택 모달
+  skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
+  skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
+  skinLock: { fontSize: 14, marginLeft: 10 },
 });

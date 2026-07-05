@@ -125,11 +125,12 @@ function mapRowToRecord(row: any): TravelRecord {
       emoji: prof.emoji || rec.user?.emoji || '🧳',
       handle: prof.handle || rec.user?.handle || '',
       photo: prof.profile_photo || rec.user?.photo || undefined,
+      font: prof.handle_font || rec.user?.font || undefined, // 아이디 표시 폰트(프리미엄) — 프로필이 최신
     },
   } as TravelRecord;
 }
 
-const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles(handle, emoji, profile_photo)';
+const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles(handle, emoji, profile_photo, handle_font)';
 
 // 피드: 남들의 공개/친구 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
 export async function fetchFeed(): Promise<TravelRecord[]> {

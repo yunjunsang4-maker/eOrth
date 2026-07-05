@@ -20,6 +20,7 @@ export interface ProfileRow {
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
   is_private?: boolean | null; // 비공개 계정 — true면 글은 승인된 팔로워만, 팔로우는 요청→수락
+  handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
 }
 
 /** 현재 로그인 사용자 id (없으면 null) */

@@ -12,7 +12,7 @@ import i18n from '../i18n';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic, setProfilePhoto, setHandle } = useSettings();
+  const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic, handleFont, setProfilePhoto, setHandle } = useSettings();
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
@@ -36,6 +36,7 @@ export default function ProfileSync() {
         country: homeCountryCode || null,
         profile_photo: photoUrl,
         is_private: !accountPublic, // 계정 공개 설정(온보딩·계정설정 토글) → 서버 RLS가 비공개 잠금에 사용
+        handle_font: handleFont, // 아이디 표시 폰트(프리미엄) — 타인 화면 렌더용
       };
       // handle을 undefined로 넘기면 upsert에서 제외 → 서버 handle을 건드리지 않고 나머지만 동기화.
       const doUpsert = (h: string | null | undefined) =>
@@ -56,7 +57,7 @@ export default function ProfileSync() {
         }
       }
     })();
-  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic]);
+  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic, handleFont]);
 
   return null;
 }

@@ -41,6 +41,9 @@ alter table public.profiles add column if not exists country text;
 -- 팔로우는 요청(follow_requests)→수락을 거쳐야 한다. 정책·요청 테이블은 4-e) 참조.
 alter table public.profiles add column if not exists is_private boolean not null default false;
 
+-- 아이디 표시 폰트(프리미엄 기능) — 타인 화면(프로필·피드)에서도 렌더돼야 하므로 공개 컬럼
+alter table public.profiles add column if not exists handle_font text;
+
 -- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
 -- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
 drop view if exists public.public_profiles;
@@ -74,7 +77,7 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, emoji, bio, profile_photo, created_at, is_private
+  select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
@@ -561,7 +564,7 @@ create trigger trg_cleanup_follows_on_block after insert on public.blocks
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
 create or replace view public.public_profiles
   with (security_invoker = true) as
-  select id, handle, emoji, bio, profile_photo, created_at, is_private
+  select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 

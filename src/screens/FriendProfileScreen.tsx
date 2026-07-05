@@ -24,6 +24,7 @@ import { fetchFollowerCount } from '../services/social';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
+import { handleFontStyle } from '../constants/handleFonts';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -132,6 +133,10 @@ export default function FriendProfileScreen({
       }];
     }),
   };
+
+  // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값, 타인이면 프로필의 handle_font
+  const { handleFont: myHandleFont } = useSettings();
+  const nameFontStyle = handleFontStyle(isSelf ? myHandleFont : profileRow?.handle_font);
 
   // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
   const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
@@ -266,8 +271,8 @@ export default function FriendProfileScreen({
         <View style={pv.profileRow}>
           <ProfileAvatar photo={display.photo} initial={displayUsername[0] ?? '?'} />
           <View style={pv.profileInfo}>
-            <Text style={pv.userName}>{display.name}</Text>
-            <Text style={pv.userHandle}>@{displayUsername}</Text>
+            <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>
+            <Text style={[pv.userHandle, nameFontStyle]}>@{displayUsername}</Text>
             {!!display.bio && <Text style={pv.userBio}>{display.bio}</Text>}
             <View style={pv.statsRow}>
               {/* 비공개 잠금 시 기록 통계는 '–' (0으로 오해 방지). 팔로워 수는 공개 통계라 그대로 */}
