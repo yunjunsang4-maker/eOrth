@@ -29,8 +29,9 @@ import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { GLOBE_SKINS } from '../constants/globeSkins';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// 개인정보처리방침 게시 URL (GitHub Pages)
+// 개인정보처리방침·이용약관 게시 URL (GitHub Pages)
 const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
+const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -168,6 +169,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const handleOpenPrivacyPolicy = () => {
     WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL).catch(() => {
       Alert.alert(t('settings.privacyPolicy'), PRIVACY_POLICY_URL);
+    });
+  };
+
+  // 이용약관 — 방침과 동일하게 게시 페이지를 인앱 브라우저로 열기
+  const handleOpenTerms = () => {
+    WebBrowser.openBrowserAsync(TERMS_URL).catch(() => {
+      Alert.alert(t('settings.terms'), TERMS_URL);
     });
   };
 
@@ -313,7 +321,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <DocumentIcon size={22} />,
               label: t('settings.terms'),
-              onPress: () => Alert.alert(t('settings.termsTitle'), t('settings.termsMsg')),
+              onPress: handleOpenTerms,
             },
             {
               icon: <LockIcon size={22} />,
