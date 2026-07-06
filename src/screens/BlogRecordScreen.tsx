@@ -410,10 +410,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordInput, setKeywordInput] = useState('');
 
-  // 날짜 캘린더
+  // 날짜 캘린더 — "YYYY.MM.DD"를 직접 파싱한다.
+  // new Date('YYYY-MM-DD')는 UTC 자정으로 해석돼 UTC 음수 시간대(미주 등)에서 하루 밀리고,
+  // Hermes는 비패딩 날짜(2025-4-5)에 Invalid Date를 줄 수 있다 (NewRecordScreen과 동일 파서).
   const parseDotDate = (s?: string): Date => {
-    const t = s ? new Date(s.replace(/\./g, '-')) : new Date(NaN);
-    return isNaN(t.getTime()) ? new Date() : t;
+    if (s) {
+      const [y, m, d] = s.split(/[.\-/]/).map(p => parseInt(p, 10));
+      if (
+        Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) &&
+        m >= 1 && m <= 12 && d >= 1 && d <= 31
+      ) {
+        const dt = new Date(y, m - 1, d);
+        dt.setHours(0, 0, 0, 0);
+        if (dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d) return dt;
+      }
+    }
+    const today = new Date(); today.setHours(0, 0, 0, 0); return today;
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPeriod?.startDate));
@@ -617,8 +629,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     } else {
       setBlocks([createTextBlock()]);
     }
-    // 제목: content 필드에 저장되어 있음
-    setTitle(draft.content || '');
+    // 제목: content 필드에 저장되어 있음 — 단, 제목 없이 저장한 초안은 content에
+    // 본문 평문 폴백(목록 표시용)이 들어 있으므로, 본문과 같으면 제목으로 복원하지 않는다.
+    // (그대로 넣으면 본문 전문이 제목칸(100자)에 주입되고 블록 본문과 이중이 된다)
+    const draftBody = draft.blogBlocks && draft.blogBlocks.length > 0 ? blocksToPlainText(draft.blogBlocks) : '';
+    setTitle(draft.content && draft.content !== draftBody ? draft.content : '');
     // 메타
     setMemo(draft.memo || '');
     setStartDate(draft.startDate || '');
@@ -695,22 +710,39 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }));
   };
 
-  const deleteBlock = (id: string) => {
-    if (blocks.length <= 1) { updateBlock(id, { value: '' } as any); return; }
-    const idx = blocks.findIndex(b => b.id === id);
-    const target = blocks[idx];
-    if (target) {
-      if (target.type === 'image' && (target as ImageBlock).uri === representativePhoto) {
-        setRepresentativePhoto(null);
-      } else if (target.type === 'images') {
-        const uris = (target as ImagesBlock).items.map(it => it.uri);
-        if (representativePhoto && uris.includes(representativePhoto)) {
-          setRepresentativePhoto(null);
-        }
-      } else if (target.type === 'video' && (target as VideoBlock).thumbnail === representativePhoto) {
+  // 삭제되는 블록이 대표사진을 담고 있으면 대표 지정도 해제
+  const clearRepresentativeIfInBlock = (target: BlogBlock | undefined) => {
+    if (!target) return;
+    if (target.type === 'image' && (target as ImageBlock).uri === representativePhoto) {
+      setRepresentativePhoto(null);
+    } else if (target.type === 'images') {
+      const uris = (target as ImagesBlock).items.map(it => it.uri);
+      if (representativePhoto && uris.includes(representativePhoto)) {
         setRepresentativePhoto(null);
       }
+    } else if (target.type === 'video' && (target as VideoBlock).thumbnail === representativePhoto) {
+      setRepresentativePhoto(null);
     }
+  };
+
+  const deleteBlock = (id: string) => {
+    if (blocks.length <= 1) {
+      const only = blocks[0];
+      // 마지막 남은 블록이 사진/영상이면 value:'' 클리어는 무의미(✕가 고장난 것처럼 보이고
+      // 발행 시 그대로 포함됨) — 빈 텍스트 블록으로 교체해 실제로 지운다.
+      if (only && only.id === id && only.type !== 'text' && only.type !== 'heading' && only.type !== 'quote') {
+        clearRepresentativeIfInBlock(only);
+        const tb = createTextBlock();
+        setBlocks([tb]);
+        setActiveBlockId(tb.id);
+        setTimeout(() => blockRefs.current[tb.id]?.focus(), 50);
+        return;
+      }
+      updateBlock(id, { value: '' } as any);
+      return;
+    }
+    const idx = blocks.findIndex(b => b.id === id);
+    clearRepresentativeIfInBlock(blocks[idx]);
     setBlocks(prev => prev.filter(b => b.id !== id));
     if (idx > 0) {
       const prev = blocks[idx - 1];

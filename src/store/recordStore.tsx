@@ -61,7 +61,8 @@ export interface TravelRecord {
     rating?: number;
     representativePhoto?: string;
   }>;
-  representativePhoto?: string; // 대표 사진 (지구본/대륙 활성화용)
+  representativePhoto?: string; // 대표 사진 (지구본/대륙 활성화용) — 저장 시 원본 기반 고해상도로 재생성됨
+  representativePhotoSource?: string; // 대표로 지정된 medias 항목의 URI — 편집 재진입 시 '지도대표' 표시·해제 매칭용
   date: string;             // 예: "2025.04.13"
   content: string;
   likes: number;
@@ -443,6 +444,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // linkRecordToTrip은 예약 발행처럼 '한 pass에서 연속 호출'될 수 있다. 렌더 클로저의
+  // tripSession/tripGroups는 그 사이 갱신되지 않아(스테일) 같은 국가 2건이 카드를 중복 생성하거나
+  // 두 번째 setTripSession이 첫 번째 국가의 세션 매핑을 지워버린다 — ref 미러로 읽고,
+  // 상태를 바꿀 때 ref도 동기 갱신해 다음 호출이 즉시 최신 값을 보게 한다.
+  const tripSessionRef = useRef(tripSession);
+  tripSessionRef.current = tripSession;
+  const tripGroupsRef = useRef(tripGroups);
+  tripGroupsRef.current = tripGroups;
+
   const linkRecordToTrip = (rec: TravelRecord, opts?: { countryGuessed?: boolean }) => {
     const country = rec.countryName;
     if (!country) return;
@@ -457,28 +467,37 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
     // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
     if (!homeCountryName || country === homeCountryName) {
-      if (tripSession && !opts?.countryGuessed) setTripSession(null);
+      if (tripSessionRef.current && !opts?.countryGuessed) {
+        setTripSession(null);
+        tripSessionRef.current = null;
+      }
       linkByDate(rec);
       return;
     }
 
     // 해외 실시간 기록 — 살아 있는(30일 무활동 만료 전) 세션에 이 국가의 카드가 있으면 추가
-    const session = sessionAlive(tripSession) ? tripSession : null;
+    const session = sessionAlive(tripSessionRef.current) ? tripSessionRef.current : null;
     const sessionGid = session?.groups[country];
-    const target = sessionGid ? tripGroups.find((g) => g.id === sessionGid) : undefined;
+    const target = sessionGid ? tripGroupsRef.current.find((g) => g.id === sessionGid) : undefined;
     if (target) {
       if (!target.records.includes(rec.id)) {
-        setTripGroups((prev) =>
-          prev.map((g) => (g.id === target.id ? { ...g, records: [...g.records, rec.id] } : g))
-        );
+        const grow = (list: TripGroup[]) =>
+          list.map((g) => (g.id === target.id ? { ...g, records: [...g.records, rec.id] } : g));
+        setTripGroups((prev) => grow(prev));
+        tripGroupsRef.current = grow(tripGroupsRef.current);
       }
-      setTripSession({ groups: session!.groups, lastActiveAt: Date.now() }); // 활동 갱신
+      const refreshed: TripSession = { groups: session!.groups, lastActiveAt: Date.now() }; // 활동 갱신
+      setTripSession(refreshed);
+      tripSessionRef.current = refreshed;
       return;
     }
     // 세션에 이 국가 카드가 없음(첫 출국·국가 이동·카드 삭제·세션 만료) → 새 카드 + 세션 등록
     const ng = makeTripGroup(country, rec);
     setTripGroups((prev) => [ng, ...prev]);
-    setTripSession({ groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() });
+    tripGroupsRef.current = [ng, ...tripGroupsRef.current];
+    const opened: TripSession = { groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() };
+    setTripSession(opened);
+    tripSessionRef.current = opened;
   };
 
   // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
@@ -564,6 +583,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setRecords((prev) =>
       prev.map((r) => (r.id === id ? { ...r, ...changes } : r))
     );
+    // 수정으로 새로 추가된 사진도 캐시(tmp) URI다 — addRecord와 동일하게 영속 저장소로 복사
+    if (updated) {
+      persistRecordPhotos(updated)
+        .then((pc) => {
+          if (Object.keys(pc).length === 0) return;
+          setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...pc } : r)));
+        })
+        .catch(() => {});
+    }
     // 국가가 바뀐 수정 → 기존 여행 카드에서 빼고 새 국가 기준으로 재연결
     // (카드 표지와 내용 불일치 방지). 분할 카드 기록은 수동 관리 카드라 제외.
     if (cur && updated && changes.countryName && changes.countryName !== cur.countryName && !updated.splitByCountry) {
@@ -646,7 +674,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!draft) return;
     const published: TravelRecord = {
       ...draft,
-      id: `rec-${Date.now()}`,
+      id: `rec-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, // addRecord와 동일한 충돌 방지 규칙
       isDraft: false,
       timestamp: draft.scheduledAt || Date.now(),
     };
@@ -657,6 +685,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       linkRecordToTrip(published);
     }
     publishToBackend(published); // Supabase 발행(설정 시)
+    // 임시저장 사진은 ImagePicker 캐시(tmp) URI 그대로다 — 발행 시 영속 저장소로 복사.
+    // (임시저장은 '나중에 발행'이라 OS 캐시 정리와 만날 확률이 가장 높은 경로)
+    persistRecordPhotos(published)
+      .then((changes) => {
+        if (Object.keys(changes).length === 0) return;
+        setRecords((prev) => prev.map((r) => (r.id === published.id ? { ...r, ...changes } : r)));
+      })
+      .catch(() => {});
   };
 
   const archiveRecord = (id: string) => {

@@ -367,6 +367,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
   // ─── 저장 ───
   const handleSave = () => {
+    // 더블탭 가드 — 없으면 addRecord가 두 번 호출돼 동일 스냅이 중복 게시되고
+    // goBack()도 두 번 실행돼 스냅 화면 아래의 화면까지 pop된다.
+    if (savedRef.current) return;
     const lateSeconds = notifTimestamp
       ? Math.round((shotStartTime - notifTimestamp) / 1000)
       : 0;

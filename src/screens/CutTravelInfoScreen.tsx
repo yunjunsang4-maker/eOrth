@@ -338,10 +338,20 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
   // 여행 카드에서 추가 시 받은 기간을 기본 날짜로 적용 ('YYYY.MM.DD' → Date)
   const tripPeriod = route?.params?.tripPeriod;
+  // "YYYY.MM.DD"를 로컬 자정으로 직접 파싱 — new Date('YYYY-MM-DD')는 UTC 자정 해석이라
+  // 미주 등 UTC 음수 시간대에서 표시·저장 날짜가 하루 밀린다 (NewRecordScreen과 동일 파서).
   const parseTripDate = (s?: string): Date | null => {
     if (!s) return null;
-    const t = new Date(s.replace(/\./g, '-'));
-    return Number.isFinite(t.getTime()) ? t : null;
+    const [y, m, d] = s.split(/[.\-/]/).map(p => parseInt(p, 10));
+    if (
+      Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d) &&
+      m >= 1 && m <= 12 && d >= 1 && d <= 31
+    ) {
+      const dt = new Date(y, m - 1, d);
+      dt.setHours(0, 0, 0, 0);
+      if (dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d) return dt;
+    }
+    return null;
   };
 
   // ─── 국가 선택 (복수 가능 — 첫 번째가 대표 국가) ───

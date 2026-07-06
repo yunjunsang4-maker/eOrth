@@ -538,8 +538,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     editRecord?.mediaPrivacy ?? {}
   );
   const [privacyModalIndex, setPrivacyModalIndex] = useState<number | null>(null);
+  // 편집 재진입 시엔 저장된 고해상도 URI가 아니라 '원본(medias 항목)' URI로 복원해야
+  // 그리드의 '지도대표' 표시(uri === representativePhoto)와 삭제 시 해제 비교가 동작한다.
   const [representativePhoto, setRepresentativePhoto] = useState<string | null>(
-    editRecord?.representativePhoto ?? null
+    editRecord?.representativePhotoSource ?? editRecord?.representativePhoto ?? null
   );
 
   // 압축본 uri → 원본 uri 매핑. "지도 대표" 사진은 저장 시 이 원본에서 고해상도로 다시 생성한다.
@@ -1093,8 +1095,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       }
 
       // 상한 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
+      // ⚠️ 원본 asset의 uri는 iOS에서 ph:// 라 모달 <Image>가 검은 타일로 뜬다 —
+      //    위에서 확보한 localUri(file://)로 교체해 전달한다.
       if (total > slotsAvailable) {
-        setMediaPickerAssets(ok.map((p) => p.asset));
+        setMediaPickerAssets(ok.map((p) => ({ ...p.asset, uri: p.uri })));
         setMediaPickerMax(slotsAvailable);
         setMediaPickerSelected(new Set());
         setMediaPickerVisible(true);
@@ -1200,8 +1204,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         }
       });
 
-      // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지)
-      const firstRepHiRes = await toRepHiRes(representativePhoto || undefined);
+      // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지).
+      // 편집에서 대표가 안 바뀌었으면 기존 고해상도를 유지한다 — 이번 세션엔 원본 매핑이 없어
+      // toRepHiRes가 압축본(1600)을 그대로 돌려줘 지도 커버 화질이 떨어지기 때문.
+      const repUnchanged =
+        isEdit && editRecord && !!representativePhoto &&
+        representativePhoto === editRecord.representativePhotoSource;
+      const firstRepHiRes = repUnchanged
+        ? editRecord!.representativePhoto
+        : await toRepHiRes(representativePhoto || undefined);
 
       const payload = {
         country: `${first.flag} ${first.name}`,
@@ -1215,6 +1226,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
         representativePhoto: firstRepHiRes,
+        representativePhotoSource: representativePhoto || undefined, // 편집 재진입 매칭용 (medias 항목 URI)
         date: firstStart,
         content: title || (selectedCountries.length === 1
           ? t('newRecord.defaultTitleOne', { country: first.name })
