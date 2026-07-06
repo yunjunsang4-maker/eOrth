@@ -88,6 +88,9 @@ create or replace view public.public_profiles
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
+-- Supabase 기본 권한(default privileges)이 새 뷰에 anon select를 자동 부여한다 —
+-- definer 뷰라 RLS 우회가 '비로그인'까지 적용되므로 반드시 회수한다(실서버 확인됨).
+revoke select on public.public_profiles from anon;
 
 -- 아이디(handle) 사용 가능 여부 — 본인(auth.uid()) 제외 중복이 없으면 true.
 -- 온보딩·프로필 편집에서 실시간 중복 검사에 사용(최종 방어는 handle UNIQUE 제약).
@@ -595,6 +598,8 @@ create or replace view public.public_profiles
   select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
+-- 재정의 이후에도 anon 회수 보장 (definer 뷰 — 비로그인 노출 방지, 1) 섹션 주석 참조)
+revoke select on public.public_profiles from anon;
 
 -- ============================================================
 -- 4-c) 알림 — 팔로우 알림 (follows insert 트리거로 수신자에게 쌓임)
