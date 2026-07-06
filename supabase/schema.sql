@@ -175,6 +175,13 @@ drop trigger if exists trg_posts_updated on public.posts;
 create trigger trg_posts_updated before update on public.posts
   for each row execute function public.set_updated_at();
 
+-- 발행 멱등성: 오프라인 재동기화·불안정 네트워크 재시도가 같은 기록을 다시 발행해도
+-- 중복 게시물이 생기지 않도록, 클라이언트 기록 id를 저장하고 작성자별 유일성을 강제한다.
+-- (충돌(23505) 시 클라이언트는 기존 게시물 id를 회수해 remoteId로 연결)
+alter table public.posts add column if not exists client_id text;
+create unique index if not exists uq_posts_author_client
+  on public.posts (author_id, client_id) where client_id is not null;
+
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);

@@ -6,6 +6,7 @@ import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
+import { onReconnect } from '../utils/connectivity';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage } from '../services/media';
 import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage } from '../services/dm';
@@ -195,6 +196,27 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     }));
     pushToBackend(handle, messageId, { type: m.type, text: m.text, imageUri: m.imageUri, record: m.record });
   }, [conversations, pushToBackend]);
+
+  // 오프라인 → 온라인 복귀 시 전송 실패 메시지 자동 재시도 (오지/기내 대응 —
+  // 수동 '재시도' 버튼을 몰라도 연결이 돌아오면 밀린 메시지가 알아서 나간다)
+  const conversationsRef = useRef(conversations);
+  conversationsRef.current = conversations;
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    return onReconnect(() => {
+      const conv = conversationsRef.current;
+      for (const handle of Object.keys(conv)) {
+        for (const m of conv[handle]) {
+          if (!m.isMine || !m.failed || m.remoteId) continue;
+          setConversations((prev) => ({
+            ...prev,
+            [handle]: (prev[handle] ?? []).map((x) => (x.id === m.id ? { ...x, failed: undefined } : x)),
+          }));
+          pushToBackend(handle, m.id, { type: m.type, text: m.text, imageUri: m.imageUri, record: m.record });
+        }
+      }
+    });
+  }, [pushToBackend]);
 
   // 실시간/히스토리로 받은 메시지를 대화에 합침 (remoteId 중복 제거)
   const ingestRemoteMessage = useCallback((handle: string, m: Message) => {

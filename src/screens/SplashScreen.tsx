@@ -10,6 +10,7 @@ import { getPendingDeletion, isDeletionExpired, clearLocalDeletionFlag } from '.
 import { purgeAccountOnServer } from '../services/accountDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getCurrentSession, signOut } from '../services/auth';
+import { isOnline } from '../utils/connectivity';
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -63,6 +64,14 @@ export default function SplashScreen({ navigation }: Props) {
     const timer = setTimeout(async () => {
       if (isSupabaseConfigured && !FORCE_ONBOARDING) {
         const session = await getCurrentSession();
+        // 확실히 오프라인이면 서버 확인(탈퇴 유예·온보딩 판정)을 건너뛰고 즉시 Main 진입 —
+        // 오지/기내에서 타임아웃(12초×2)을 기다리며 스플래시에 갇히지 않게 한다.
+        // (세션이 있다 = 이 기기에서 온보딩까지 마친 사용자. 유예 검사는 다음 온라인 실행이 처리)
+        if (session && (await isOnline()) === false) {
+          await runAccountBoundary(); // 내부 서버 호출은 로컬 폴백으로 즉시 종료됨
+          navigation.replace('Main');
+          return;
+        }
         const pending = session ? await getPendingDeletion() : null;
         // 탈퇴 유예(30일) 만료 → 서버(게시물·Storage·auth 계정)까지 영구 파기 후 초기 화면으로.
         // 파기 실패(오프라인 등) 시에도 자동 로그인은 막고, 다음 로그인에서 이어서 처리한다.

@@ -23,12 +23,17 @@ export interface ProfileRow {
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
 }
 
-/** 현재 로그인 사용자 id (없으면 null) */
+/**
+ * 현재 로그인 사용자 id (없으면 null) — 로컬 세션에서 읽는다.
+ * auth.getUser()는 서버 왕복이라 오프라인/오지에서는 이 함수를 쓰는 '모든 서비스 호출'이
+ * 타임아웃(12초)까지 지연됐다. uid는 저장된 세션의 클레임으로 충분하다(만료돼도 id는 동일,
+ * 이후 실제 API 호출이 인증을 최종 검증한다).
+ */
 export async function getMyUserId(): Promise<string | null> {
   if (!supabase) return null;
   try {
-    const { data } = await withTimeout(supabase.auth.getUser(), READ_TIMEOUT_MS);
-    return data.user?.id ?? null;
+    const { data } = await supabase.auth.getSession();
+    return data.session?.user?.id ?? null;
   } catch {
     return null;
   }

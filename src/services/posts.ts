@@ -75,17 +75,34 @@ export async function publishPost(rec: TravelRecord): Promise<string | null> {
   // 사용자에게 동기화 실패를 알린다. (깨진 로컬 경로로 발행하는 것보다 발행 중단이 옳다)
   const uploaded = await withUploadedMedia(rec);
   try {
-    const { data, error } = await supabase
-      .from('posts')
-      .insert({
-        author_id: uid,
-        visibility: rec.visibility ?? 'public',
-        view_type: rec.viewType ?? 'feed',
-        country_name: rec.countryName ?? null,
-        data: uploaded,
-      })
-      .select('id')
-      .single();
+    const row = {
+      author_id: uid,
+      visibility: rec.visibility ?? 'public',
+      view_type: rec.viewType ?? 'feed',
+      country_name: rec.countryName ?? null,
+      data: uploaded,
+      // 멱등성 키 — 오프라인 재동기화·응답 유실 재시도가 중복 게시물을 만들지 않게
+      client_id: rec.id,
+    };
+    let { data, error } = await supabase.from('posts').insert(row).select('id').single();
+    if (error?.code === '23505') {
+      // 이미 발행된 기록의 재시도(이전 응답 유실 등) → 기존 게시물 id를 회수해 연결
+      const { data: existing } = await supabase
+        .from('posts')
+        .select('id')
+        .eq('author_id', uid)
+        .eq('client_id', rec.id)
+        .maybeSingle();
+      return (existing?.id as string) ?? null;
+    }
+    if (error && /client_id/.test(`${error.message} ${error.details ?? ''}`)) {
+      // 서버 스키마에 client_id 컬럼이 아직 없음(마이그레이션 전) → 키 없이 재시도(구 동작)
+      ({ data, error } = await supabase
+        .from('posts')
+        .insert({ ...row, client_id: undefined })
+        .select('id')
+        .single());
+    }
     if (error || !data) return null;
     return data.id as string;
   } catch {

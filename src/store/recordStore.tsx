@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { View } from 'react-native';
+import { AppState, View } from 'react-native';
+import { isOnline, onReconnect } from '../utils/connectivity';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
@@ -1180,6 +1181,58 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
     });
   }, [hydrated, records]);
+
+  // ─── 오프라인 재동기화: 미발행 기록 자동 재시도 ───
+  // 오지/기내 등 오프라인에서 작성한 기록은 발행이 실패한 채 로컬에만 남는다(remoteId 없음).
+  // 발행 시도는 세션당 1회(publishAttemptRef)로 막혀 있으므로, 네트워크 복귀·앱 포그라운드·
+  // 앱 시작 시점에 시도 기록을 지우고 다시 발행한다. 성공하면 remoteId가 붙어 다음 대상에서 빠진다.
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
+  const hydratedRef = useRef(hydrated);
+  hydratedRef.current = hydrated;
+  const resyncInFlightRef = useRef(false);
+  const lastResyncAtRef = useRef(0);
+  // publishToBackend는 렌더마다 재생성되므로 안정 콜백에서 ref로 참조
+  const publishToBackendRef = useRef(publishToBackend);
+  publishToBackendRef.current = publishToBackend;
+  const resyncUnpublished = useCallback(async () => {
+    if (!isSupabaseConfigured || !hydratedRef.current) return;
+    const now = Date.now();
+    if (resyncInFlightRef.current || now - lastResyncAtRef.current < 30000) return; // 과호출 방지
+    const targets = recordsRef.current.filter(
+      (r) =>
+        r.isMyPost !== false &&
+        !r.remoteId &&
+        !r.isDraft &&
+        !(r.scheduledAt && r.scheduledAt > now)
+    );
+    if (targets.length === 0) return;
+    // 확실히 오프라인이면 시도하지 않는다 (실패 토스트 도배 방지). 판정 불가(null)면 시도.
+    if ((await isOnline()) === false) return;
+    resyncInFlightRef.current = true;
+    lastResyncAtRef.current = now;
+    try {
+      for (const r of targets) {
+        publishAttemptRef.current.delete(r.id); // 세션 내 재시도 허용
+        publishToBackendRef.current(r);
+      }
+    } finally {
+      resyncInFlightRef.current = false;
+    }
+  }, []);
+
+  // 트리거: 앱 시작(복원 직후) · 오프라인→온라인 전환 · 백그라운드→포그라운드 복귀
+  useEffect(() => {
+    if (hydrated) resyncUnpublished();
+  }, [hydrated, resyncUnpublished]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    const offReconnect = onReconnect(() => { resyncUnpublished(); });
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') resyncUnpublished();
+    });
+    return () => { offReconnect(); sub.remove(); };
+  }, [resyncUnpublished]);
 
   // ─── 여행 카드·세션 서버 백업 (재설치/기기 변경 복원용) ───
   // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.
