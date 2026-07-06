@@ -1249,6 +1249,7 @@ const en = {
     tiTitle: 'Import past trips',
     analyzePeriod: 'Analysis period',
     grantGalleryFind: 'Allow gallery access and find',
+    galleryPermTarget: 'Gallery',
     skipManual: 'Skip (record manually)',
     analyzingMetadata: 'Analyzing gallery metadata...',
     noTripsFound: "Couldn't find any overseas trip photos",

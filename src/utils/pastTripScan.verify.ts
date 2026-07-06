@@ -18,7 +18,8 @@ function p(uri: string, code: string | null, t: number): ScannedPhoto {
   const jp = countryInfoFromCode('JP');
   assert(jp.countryName === '일본' && jp.countryFlag === '🇯🇵' && jp.country === '🇯🇵 일본', '알려진 코드 매핑');
   const kr = countryInfoFromCode('KR');
-  assert(kr.countryName === '한국', 'KR 매핑 추가됨');
+  // 표준 표기('대한민국')로 통일 — 구 '한국' 짧은 표기는 지구본/통계의 이름 비교를 빗나가게 했다
+  assert(kr.countryName === '대한민국', 'KR은 COUNTRIES 표준 표기(대한민국)');
   const unknown = countryInfoFromCode('ZZ', 'Zedland');
   assert(unknown.countryFlag === '✈️' && unknown.countryName === 'Zedland', '미등록 코드 폴백');
 }
@@ -71,7 +72,7 @@ function p(uri: string, code: string | null, t: number): ScannedPhoto {
 {
   const photos = [p('a', 'KR', 0), p('b', 'JP', 10)];
   const trips = clusterForeignTrips(photos, 'JP');
-  assert(trips.length === 1 && trips[0].countryName === '한국', '홈=JP일 때 KR은 해외');
+  assert(trips.length === 1 && trips[0].countryName === '대한민국', '홈=JP일 때 KR은 해외');
 }
 
 // 날짜 포맷/필드

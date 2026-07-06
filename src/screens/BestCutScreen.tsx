@@ -8,7 +8,8 @@
  * 표시는 thumbnailUri(file://) 우선 → 없으면 원본 uri.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import * as TaskManager from 'expo-task-manager';
 import {
   ActivityIndicator,
   FlatList,
@@ -24,6 +25,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors } from '../constants/colors';
 import { usePhotoAI } from '../hooks/usePhotoAI';
+import { PHOTO_AI_TASK } from '../services/photoAI/backgroundScheduler';
 import type { PhotoMeta, SpotGroup } from '../services/photoAI/types';
 
 function formatSpan(start: number, end: number, tr: TFunction): string {
@@ -86,6 +88,14 @@ export default function BestCutScreen() {
   } = usePhotoAI();
 
   const [bgOn, setBgOn] = useState(false);
+
+  // 스위치를 실제 태스크 등록 상태로 초기화 — 화면 재진입 시 항상 OFF로 표시되는데
+  // 배치는 계속 등록·실행 중이던 표시 불일치(발열/배터리 기능의 거짓 표시)를 막는다.
+  useEffect(() => {
+    TaskManager.isTaskRegisteredAsync(PHOTO_AI_TASK)
+      .then((on) => setBgOn(on))
+      .catch(() => {});
+  }, []);
 
   const toggleBackground = async (next: boolean) => {
     setBgOn(next);

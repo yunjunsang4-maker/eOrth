@@ -357,12 +357,22 @@ export default function StatsDetailScreen() {
 
     const worldCoveragePct = ((countryCount / 195) * 100).toFixed(1) + '%';
 
-    // First Travel year
+    // First Travel year — '기록 작성 순서(timestamp)'가 아니라 '여행 날짜'가 가장 이른 기록 기준.
+    // (최근 여행을 먼저 기록하고 과거 여행을 나중에 가져와도 첫 여행 연도가 틀리지 않게)
     let firstTravelYear = '-';
     let firstTravelLoc = '';
     if (myRecords.length > 0) {
-      const sortedByTime = [...myRecords].sort((a, b) => a.timestamp - b.timestamp);
-      const firstRecord = sortedByTime[0];
+      const travelTime = (r: (typeof myRecords)[number]): number => {
+        const s = r.startDate || r.date;
+        if (s) {
+          const [y, m, d] = s.split(/[.\-/]/).map((p) => parseInt(p, 10));
+          if (Number.isFinite(y) && Number.isFinite(m) && Number.isFinite(d)) {
+            return new Date(y, m - 1, d).getTime();
+          }
+        }
+        return r.timestamp; // 날짜 없는 기록은 작성 시각으로 폴백
+      };
+      const firstRecord = [...myRecords].sort((a, b) => travelTime(a) - travelTime(b))[0];
       const yearStr = firstRecord.date ? firstRecord.date.split('.')[0] : (firstRecord.startDate ? firstRecord.startDate.split('.')[0] : '');
       if (yearStr && yearStr.length === 4) {
         firstTravelYear = t('statsDetail.yearN', { n: yearStr });

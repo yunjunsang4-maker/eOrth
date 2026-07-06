@@ -222,6 +222,20 @@ const KO_TO_EN: Record<string, string> = {
   '한국':'South Korea',
 };
 
+// '한국'(과거여행 가져오기 구버전 표기) ↔ '대한민국'(COUNTRIES 표준) 별칭.
+// 기록에 두 표기가 섞여 있어(badgeRules도 동일 보정) 이름 비교는 반드시 별칭 집합으로 한다 —
+// 아니면 국내 기록의 대표 사진이 지구본에 안 뜨고, '한국' 기록만 있는 사용자는 지구본을
+// 탭해도 기존 기록 시트 대신 "새 기록 추가"가 뜬다.
+const koAliases = (name?: string | null): string[] =>
+  name === '대한민국' || name === '한국' ? ['대한민국', '한국'] : name ? [name] : [];
+const matchesCountry = (
+  r: { countryName?: string; countries?: { name: string }[] },
+  name: string
+): boolean => {
+  const set = koAliases(name);
+  return set.includes(r.countryName ?? '') || !!r.countries?.some((c) => set.includes(c.name));
+};
+
 const CITY_TO_EN: Record<string, string> = {
   '도쿄': 'Tokyo', '오사카': 'Osaka', '교토': 'Kyoto',
   '후쿠오카': 'Fukuoka', '홋카이도': 'Hokkaido', '오키나와': 'Okinawa',
@@ -480,10 +494,12 @@ export default function MainScreen({ navigation, route }: Props) {
   const [regionSearch, setRegionSearch] = useState('');
   const [popularActive, setPopularActive] = useState(false); // "인기명소 모아보기" — 눌러야 도시 선/강조 표시
 
-  // 영→한 역매핑
+  // 영→한 역매핑 — 별칭이 있는 영문명은 '먼저 정의된 표준 표기'가 이긴다.
+  // (마지막 항목이 덮어쓰면 'South Korea'→'한국'이 되어, '대한민국'으로 저장된
+  //  국내 기록의 대표 사진 조회가 전부 빗나갔다)
   const EN_TO_KO: Record<string, string> = useMemo(() => {
     const m: Record<string, string> = {};
-    Object.entries(KO_TO_EN).forEach(([ko, en]) => { m[en] = ko; });
+    Object.entries(KO_TO_EN).forEach(([ko, en]) => { if (!m[en]) m[en] = ko; });
     return m;
   }, []);
 
@@ -506,12 +522,15 @@ export default function MainScreen({ navigation, route }: Props) {
 
   // 특정 국가의 대표 사진 찾기 (records만 읽으므로 useCallback으로 안정화 → visitedCountries memo가 매 렌더 재계산되지 않음)
   const getCountryPhoto = useCallback((countryName: string) => {
-    const matchingRecords = records.filter(r => r.countryName === countryName || r.countries?.some(c => c.name === countryName));
+    const aliases = koAliases(countryName); // '한국'/'대한민국' 혼재 기록 모두 매칭
+    const matchingRecords = records.filter(r => matchesCountry(r, countryName));
     for (const r of matchingRecords) {
-      if (r.perCountryData?.[countryName]?.representativePhoto) {
-        return r.perCountryData[countryName].representativePhoto;
+      for (const a of aliases) {
+        if (r.perCountryData?.[a]?.representativePhoto) {
+          return r.perCountryData[a].representativePhoto;
+        }
       }
-      if (r.countryName === countryName && r.representativePhoto) {
+      if (aliases.includes(r.countryName ?? '') && r.representativePhoto) {
         return r.representativePhoto;
       }
       if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
@@ -786,7 +805,7 @@ export default function MainScreen({ navigation, route }: Props) {
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
         // 스냅만 있는 국가는 활성화되지 않으므로 '기록 없음'으로 취급(탭 시 새 기록 추가)
-        const hasRecord = records.some(r => r.viewType !== 'snap' && (r.countryName === koreanName || r.countries?.some(c => c.name === koreanName)));
+        const hasRecord = records.some(r => r.viewType !== 'snap' && matchesCountry(r, koreanName));
 
         if (hasRecord && koreanName) {
           openCountrySheet(koreanName);
@@ -1179,7 +1198,7 @@ export default function MainScreen({ navigation, route }: Props) {
         <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
           <View style={styles.countryRecordList}>
             {(selectedCountry
-              ? records.filter(r => r.countryName === selectedCountry || r.countries?.some(c => c.name === selectedCountry))
+              ? records.filter(r => matchesCountry(r, selectedCountry))
               : []
             ).map((rec) => (
               <TouchableOpacity

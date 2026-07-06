@@ -9,6 +9,7 @@ import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import { withTimeout } from '../utils/withTimeout';
+import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
 
 // 인증 네트워크 호출 타임아웃(ms) — 응답이 없을 때 무한 대기를 막는다.
 const AUTH_TIMEOUT_MS = 15000;
@@ -272,6 +273,9 @@ export function wasIntentionalSignOut(withinMs = 5000): boolean {
 
 export async function signOut(): Promise<void> {
   intentionalSignOutAt = Date.now();
+  // photoAI 백그라운드 배치 해제 — 해제하지 않으면 로그아웃 후에도 계정과 무관하게
+  // 12시간 주기 사진 분석(발열/배터리)이 계속 돈다. (내부에서 예외를 삼키므로 안전)
+  unregisterPhotoAITask();
   if (!supabase) return;
   try {
     const { error } = await supabase.auth.signOut();

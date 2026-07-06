@@ -194,7 +194,9 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
 
         // WebView에서 직접 추출한 데이터로 보완
         if (data.title && !parsed.title) parsed.title = data.title;
-        if (data.images && data.images.length > 0 && parsed.photos.length === 0) {
+        // 사진은 WebView 정밀 추출(스티커·placeholder 필터링됨)이 있으면 항상 우선 —
+        // 정규식 폴백이 비어있지 않다는 이유로 정제본을 무시하면 오염된 URL이 기록에 남는다
+        if (data.images && data.images.length > 0) {
           parsed.photos = data.images;
         }
         if (data.tags && data.tags.length > 0 && (!parsed.keywords || parsed.keywords.length === 0)) {
@@ -337,8 +339,14 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
                 setStep(webviewMode.current === 'verify' ? 'verify' : 'input');
               }}
               onHttpError={(syntheticEvent) => {
-                const { statusCode } = syntheticEvent.nativeEvent;
-                if (statusCode >= 400) {
+                const { statusCode, url } = syntheticEvent.nativeEvent;
+                // Android에선 이미지·트래킹 픽셀 등 '모든 리소스'의 HTTP 오류에도 발화한다 —
+                // 블로그 문서 자체의 오류일 때만 실패 처리 (정상 로딩 중 가짜 실패 Alert 방지)
+                const isDocError =
+                  !!url &&
+                  /(m\.)?blog\.naver\.com\//i.test(url) &&
+                  !/\.(js|css|png|jpe?g|gif|webp|svg|ico|woff2?|ttf|json)([?#]|$)/i.test(url.split('?')[0]);
+                if (statusCode >= 400 && isDocError) {
                   Alert.alert(t('imports.nvLoadFailTitle'), t('imports.nvLoadFailStatus', { code: statusCode }));
                   setStep(webviewMode.current === 'verify' ? 'verify' : 'input');
                 }

@@ -119,7 +119,12 @@ export async function fetchRecentPhotoMeta(
   try {
     const page = await MediaLibrary.getAssetsAsync({
       mediaType: MediaLibrary.MediaType.photo,
-      sortBy: [[MediaLibrary.SortBy.creationTime, false]], // 최신순
+      // 증분 스캔(createdAfter 있음)은 '과거→최신(오름차순)'으로 읽는다 — 상한(limit)에 걸려도
+      // 오래된 것부터 처리되므로 스캔 경계(lastPhotoCreationTime)가 실제 처리한 최신 시각이 되고,
+      // 초과분은 다음 회차가 이어서 가져간다. (최신순으로 자르면 잘린 사진의 촬영 시각이
+      // 저장된 경계보다 과거가 되어 영구 누락됐다 — 여행 중 사진 폭증 시 재현되던 버그)
+      // 첫 스캔(createdAfter 없음)은 최신 사진이 우선이므로 기존대로 최신순.
+      sortBy: [[MediaLibrary.SortBy.creationTime, !!createdAfter]],
       first: limit,
       ...(createdAfter ? { createdAfter } : {}),
     });

@@ -59,7 +59,9 @@ export function usePhotoAI() {
   // ─── 지금 분석 ───
   const analyzeNow = useCallback(async () => {
     setState((s) => ({ ...s, analyzing: true, error: null }));
-    const result = await runNow();
+    // 사용자가 직접 누른 명시적 실행 — 배터리/Wi-Fi 게이트를 건너뛴다.
+    // (온디바이스 분석이라 네트워크가 필요 없는데도 셀룰러 사용자는 버튼이 항상 거절됐다)
+    const result = await runNow(true);
     if (!result.ok) {
       setState((s) => ({
         ...s,

@@ -1250,6 +1250,7 @@ const ko = {
     tiTitle: '과거 여행 불러오기',
     analyzePeriod: '분석 기간',
     grantGalleryFind: '갤러리 접근 허용하고 찾기',
+    galleryPermTarget: '갤러리',
     skipManual: '건너뛰기 (수동으로 기록하기)',
     analyzingMetadata: '갤러리 메타데이터 분석 중...',
     noTripsFound: '해외 여행 사진을 찾지 못했어요',

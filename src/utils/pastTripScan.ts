@@ -35,7 +35,9 @@ for (const c of COUNTRIES) {
   const code = c.term.split(' ')[0].toUpperCase();
   if (!_COUNTRY_FLAGS[code]) _COUNTRY_FLAGS[code] = { name: c.name, flag: c.flag };
 }
-_COUNTRY_FLAGS.KR = { name: '한국', flag: '🇰🇷' }; // 짧은 표기로 통일
+// KR은 COUNTRIES 표준 표기('대한민국')를 그대로 쓴다 — 과거 '한국' 짧은 표기는
+// 지구본 탭·대표 사진·통계의 이름 비교를 전부 빗나가게 했다(기존 '한국' 기록은
+// MainScreen·badgeRules의 별칭 보정이 흡수).
 export const COUNTRY_FLAGS: Record<string, { name: string; flag: string }> = _COUNTRY_FLAGS;
 
 export function countryInfoFromCode(

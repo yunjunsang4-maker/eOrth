@@ -1479,7 +1479,10 @@ export default function GlobeView({
   }), [variant, themeOverride]);
 
   useEffect(() => {
-    if (webViewRef.current && visitedCountries.length > 0) {
+    // 빈 목록도 반드시 전송 — 마지막 방문국 기록을 삭제(1→0)했을 때 보내지 않으면
+    // WebView의 visitedMap이 이전 상태로 박제돼 지구본 활성 표시가 지워지지 않는다.
+    // (WebView 쪽 핸들러는 빈 배열을 정상 처리: visitedMap={} 후 재텍스처링)
+    if (webViewRef.current) {
       webViewRef.current.postMessage(payload);
     }
   }, [payload]);
@@ -1505,9 +1508,9 @@ export default function GlobeView({
     const wv = webViewRef.current;
     if (!wv) return;
     wv.postMessage(themePayload);
-    if (visitedCountries.length > 0) wv.postMessage(payload);
+    wv.postMessage(payload); // 빈 목록도 전송 (위 effect와 동일 이유)
     wv.postMessage(sponsoredPayload);
-  }, [themePayload, payload, sponsoredPayload, visitedCountries.length]);
+  }, [themePayload, payload, sponsoredPayload]);
 
   // WebView → RN 메시지: globeReady면 그 시점에 페이로드 전송, 나머지는 부모로 전달
   const handleMessage = useCallback((e: any) => {

@@ -20,6 +20,7 @@ import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
+import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -146,16 +147,21 @@ export default function TravelImportScreen({ navigation }: Props) {
     try {
       // 사진(MediaLibrary) 권한만 요청한다. 위치 권한은 불필요:
       // info.location은 사진 EXIF의 GPS이고, reverseGeocodeAsync는 좌표를 직접 받는다.
-      const { status: mediaStatus } = await MediaLibrary.requestPermissionsAsync(false);
+      const perm = await MediaLibrary.requestPermissionsAsync(false);
 
-      if (mediaStatus === 'granted' || (mediaStatus as string) === 'limited') {
+      if (perm.status === 'granted') {
         setPermissionStatus('granted');
-        setIsLimited((mediaStatus as string) === 'limited');
+        // '선택한 사진만'은 status가 아니라 accessPrivileges로 온다 —
+        // status==='limited' 비교는 절대 참이 되지 않아 제한 접근 안내가 전부 빗나갔다.
+        setIsLimited(perm.accessPrivileges === 'limited');
         startScan();
       } else {
         setPermissionStatus('denied');
         setScanFinished(true);
         setScannedTrips([]);
+        // OS는 한 번 거부하면 다이얼로그를 다시 안 띄운다 — 설정 이동 동선을 제공해
+        // "여행 못 찾음" 화면에서 재허용 경로 없이 데드엔드가 되는 것을 막는다.
+        showPermissionDeniedAlert(t('imports.galleryPermTarget'));
       }
     } catch (err) {
       console.error('Permission request failed:', err);

@@ -87,7 +87,17 @@ export async function runPhotoAIPipeline(
   const withBest = attachBestCuts(groups, allPhotos, options.selection);
 
   // ─── 5) 저장 ───
-  await savePhotoMetaCache(cache);
+  // 캐시 무한 성장 방지 — Android AsyncStorage는 행이 약 2MB(CursorWindow)를 넘으면 읽기가
+  // 실패해 캐시·그룹·증분 기준이 통째로 조용히 사라진다. 최신 촬영순 상한을 두고 잘라낸다.
+  const MAX_CACHE_ENTRIES = 2000;
+  let cacheToSave = cache;
+  const entries = Object.values(cache);
+  if (entries.length > MAX_CACHE_ENTRIES) {
+    const keep = [...entries].sort((a, b) => b.creationTime - a.creationTime).slice(0, MAX_CACHE_ENTRIES);
+    cacheToSave = {};
+    for (const p of keep) cacheToSave[p.id] = p;
+  }
+  await savePhotoMetaCache(cacheToSave);
   await saveSpotGroups(withBest);
   await saveScanState({
     lastScanAt: Date.now(),

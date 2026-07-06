@@ -271,21 +271,24 @@ export function parseNaverHtml(html: string): BlogData {
     }
   }
 
-  // 3) 이미지 URL 추출
+  // 3) 이미지 URL 추출 (WebView 정밀 추출이 실패했을 때의 폴백 경로)
+  // 스티커(storep-phinf)·lazy-load placeholder(data:)·프로필/광고성 이미지를 거른다 —
+  // 기존의 "static/icon/logo만 아니면 전부 포함" 조건은 오염된 URL을 대량으로 통과시켰다.
   const imgRegex = /<img[^>]+src="([^"]+)"[^>]*>/gi;
   let imgMatch;
   while ((imgMatch = imgRegex.exec(html)) !== null) {
     const src = imgMatch[1];
-    // 아이콘/로고 등 작은 이미지 제외
-    if (
+    if (src.startsWith('data:')) continue; // lazy-load placeholder
+    if (src.includes('storep-phinf')) continue; // 네이버 스티커
+    const isNaverAttachment =
       src.includes('postfiles') || // 네이버 블로그 첨부 이미지
       src.includes('blogfiles') ||
-      src.includes('phinf.pstatic') ||
-      src.includes('se-image-resource') ||
-      src.startsWith('file://') || // 로컬 이미지
-      src.startsWith('content://') ||
-      (!src.includes('static') && !src.includes('icon') && !src.includes('logo'))
-    ) {
+      src.includes('phinf.pstatic');
+    const isGenericPhoto =
+      /^https?:\/\//.test(src) &&
+      !src.includes('static') && !src.includes('icon') && !src.includes('logo') &&
+      !src.includes('profile') && !src.includes('adcr') && !src.includes('banner');
+    if (isNaverAttachment || isGenericPhoto) {
       result.photos.push(decodeHtmlEntities(src));
     }
   }
@@ -710,13 +713,22 @@ export function makeNaverVerifyCode(): string {
 
 // ─── 인증 코드 존재 여부를 페이지에서 확인하는 주입 JS ───
 // 로드된 페이지(블로그 소개/프로필 등) 전체 텍스트에서 코드를 찾아 결과를 postMessage.
+// m.blog는 SPA라 onLoadEnd 후에도 소개글이 늦게 렌더될 수 있다 — 찾으면 즉시 true를 보내되,
+// '못 찾음(false)'은 몇 차례 재주입(1초 간격 폴링)을 관찰한 뒤에만 보고해 오탐을 막는다.
+// (첫 메시지가 오면 화면이 폴링을 끝내므로, 섣부른 false 한 방이 곧 인증 실패였다)
 export function buildNaverVerifyJs(code: string): string {
   const safe = code.replace(/[^a-zA-Z0-9-]/g, ''); // 인젝션 방지: 코드 문자만 허용
   return `(function(){
     try {
+      window.__eorthVerifyTries = (window.__eorthVerifyTries || 0) + 1;
       var txt = (document.body && document.body.innerText) || '';
       var found = txt.toUpperCase().indexOf('${safe.toUpperCase()}') !== -1;
-      window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: found }));
+      if (found) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: true }));
+      } else if (window.__eorthVerifyTries >= 6) {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: false }));
+      }
+      // 그 외(아직 렌더 중일 수 있음): 침묵 → 화면 폴링이 1초 뒤 재주입
     } catch (e) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'naverBlogVerify', found: false }));
     }
