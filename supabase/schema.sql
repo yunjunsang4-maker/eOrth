@@ -908,25 +908,32 @@ begin
 end; $$;
 grant execute on function public.cancel_account_deletion() to authenticated;
 
--- 유예가 지나도 재로그인하지 않는 계정의 안전망 파기 (관리자/서비스롤·pg_cron 전용).
--- auth.users 삭제 → profiles 이하 전 테이블 on delete cascade 로 함께 정리된다.
--- storage.objects 행도 함께 지운다 — 실체 파일은 스토리지 백엔드에 고아로 남을 수 있으므로
--- 정석 경로는 Edge Function(delete-account, Storage API 사용)이고 이 함수는 안전망이다.
--- pg_cron 스케줄 예시(대시보드 SQL Editor에서 1회 실행):
---   select cron.schedule('purge-deleted-accounts', '0 3 * * *',
---     $cron$ select public.purge_expired_deletion_requests(); $cron$);
+-- 유예가 지나도 재로그인하지 않는 계정의 안전망 파기.
+-- ⚠️ Supabase는 storage.objects의 SQL 직접 삭제를 트리거(protect_delete)로 금지한다 —
+--    Storage 파일까지 지우는 정식 안전망은 Edge Function(delete-account, scope='sweep')이며
+--    pg_cron + pg_net 이 매일 호출한다(아래 등록 절차). 이 SQL 함수는 DB 행만 지우는
+--    수동 폴백(Storage 파일은 남음)으로만 남겨둔다.
+--
+-- [pg_cron 등록 절차 — 대시보드 SQL Editor에서 1회 실행]
+--  1) Extensions에서 pg_cron, pg_net 활성화
+--  2) service_role 키를 Vault에 저장:
+--     select vault.create_secret('<SERVICE_ROLE_KEY>', 'service_role_key');
+--  3) 스케줄 등록(매일 18:00 UTC = KST 새벽 3시):
+--     select cron.schedule('purge-deleted-accounts', '0 18 * * *', $cron$
+--       select net.http_post(
+--         url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/delete-account',
+--         headers := jsonb_build_object(
+--           'Content-Type', 'application/json',
+--           'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')
+--         ),
+--         body := '{"scope":"sweep"}'::jsonb
+--       );
+--     $cron$);
 create or replace function public.purge_expired_deletion_requests(grace_days int default 30)
 returns integer
-language plpgsql security definer set search_path = public, auth, storage as $$
+language plpgsql security definer set search_path = public, auth as $$
 declare n integer := 0;
 begin
-  delete from storage.objects o
-   using public.profiles p
-   where p.deletion_requested_at is not null
-     and p.deletion_requested_at < now() - make_interval(days => grace_days)
-     and o.bucket_id = 'media'
-     and (storage.foldername(o.name))[1] = p.id::text;
-
   delete from auth.users u
    using public.profiles p
    where u.id = p.id

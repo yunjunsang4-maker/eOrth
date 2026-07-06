@@ -2,20 +2,25 @@
 // -----------------------------------------------------------------------------
 // 계정 파기 — 탈퇴 유예(30일) 흐름의 서버측 실행부.
 //
-// 요청: POST { scope: 'content' | 'full' }  (호출자 JWT 필수)
-//   - scope='content' : 유예 중 "새로 시작" — 게시물·팔로우·DM·알림·Storage 파일 등
+// 요청: POST { scope: 'content' | 'full' | 'sweep' }
+//   - scope='content' : (본인 JWT) 유예 중 "새로 시작" — 게시물·팔로우·DM·알림·Storage 파일 등
 //                       모든 콘텐츠를 지우고 계정(auth)과 빈 프로필은 유지한다.
 //                       (profiles 행 삭제 → on delete cascade 로 전 테이블 정리 → 빈 행 재생성)
-//   - scope='full'    : 유예 만료 — Storage 파일 정리 후 auth.users 삭제(→ cascade 전체 파기).
+//   - scope='full'    : (본인 JWT) 유예 만료 — Storage 파일 정리 후 auth.users 삭제(→ cascade 전체 파기).
 //                       서버가 만료 여부를 직접 검증하므로 클라이언트 시계 조작으로
 //                       유예를 건너뛸 수 없다.
+//   - scope='sweep'   : (service_role 전용) 유예가 만료됐는데 재로그인하지 않은 계정을
+//                       일괄 파기하는 안전망 — pg_cron + pg_net 이 매일 호출한다.
+//                       ⚠️ storage.objects 는 SQL 직접 삭제가 트리거로 금지되어 있어
+//                       (protect_delete) SQL 함수로는 파일 정리가 불가 → 반드시 이 경로 사용.
 //
 // 안전장치:
-//   - 두 scope 모두 profiles.deletion_requested_at 이 기록된 계정만 파기 가능
+//   - content/full 은 profiles.deletion_requested_at 이 기록된 계정만 파기 가능
 //     (탈퇴 신청 없이 토큰만으로 계정을 파기하는 것을 방지)
-//   - 'full' 은 신청 후 30일이 지나야 실행된다.
+//   - 'full'/'sweep' 은 신청 후 30일이 지나야 실행된다.
+//   - 'sweep' 은 Authorization 토큰이 service_role 키와 일치할 때만 동작.
 //
-// 배포: supabase functions deploy delete-account
+// 배포: supabase functions deploy delete-account --project-ref <ref>
 //   (SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY 는 런타임 자동 주입)
 // -----------------------------------------------------------------------------
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -82,10 +87,47 @@ Deno.serve(async (req: Request) => {
   } catch {
     return json({ error: 'bad_request' }, 400);
   }
-  if (scope !== 'content' && scope !== 'full') return json({ error: 'bad_request' }, 400);
+  if (scope !== 'content' && scope !== 'full' && scope !== 'sweep') {
+    return json({ error: 'bad_request' }, 400);
+  }
+
+  const authHeader = req.headers.get('Authorization') ?? '';
+
+  // ── sweep: 유예 만료 미복귀 계정 일괄 파기 (pg_cron 안전망, service_role 전용) ──
+  if (scope === 'sweep') {
+    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+    if (!token || token !== serviceKey) return json({ error: 'unauthorized' }, 401);
+    const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+    const cutoff = new Date(Date.now() - GRACE_DAYS * DAY_MS).toISOString();
+    const { data: expired, error: listErr } = await admin
+      .from('profiles')
+      .select('id')
+      .not('deletion_requested_at', 'is', null)
+      .lt('deletion_requested_at', cutoff)
+      .limit(200); // 1회 호출당 상한 — 초과분은 다음 날 실행이 이어서 처리
+    if (listErr) return json({ error: 'server_error' }, 500);
+    let purged = 0;
+    let failed = 0;
+    for (const row of (expired ?? []) as { id: string }[]) {
+      try {
+        const files = await listAllFiles(admin, row.id);
+        for (let i = 0; i < files.length; i += 200) {
+          const { error: rmErr } = await admin.storage
+            .from(MEDIA_BUCKET)
+            .remove(files.slice(i, i + 200));
+          if (rmErr) throw rmErr;
+        }
+        const { error: delErr } = await admin.auth.admin.deleteUser(row.id);
+        if (delErr) throw delErr;
+        purged++;
+      } catch {
+        failed++; // 한 계정 실패가 나머지 파기를 막지 않게 계속 진행
+      }
+    }
+    return json({ ok: true, purged, failed }, 200);
+  }
 
   // 호출자 JWT 검증 → 파기 대상은 항상 '본인' 계정
-  const authHeader = req.headers.get('Authorization') ?? '';
   const asCaller = createClient(url, anonKey, {
     global: { headers: { Authorization: authHeader } },
     auth: { persistSession: false },
