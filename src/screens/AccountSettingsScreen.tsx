@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -14,7 +14,8 @@ import {
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
-import { signOut } from '../services/auth';
+import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
+import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, CalendarIcon, PersonIcon } from '../components/icons';
 import type { Gender } from '../store/settingsStore';
@@ -51,6 +52,9 @@ const formatBirthday = (raw: string) => {
 };
 
 // YYYY-MM-DD 유효성 검사 (실제 존재하는 날짜 + 합리적 연도 범위)
+// 이메일 형식 간이 검증 (변경 요청 전 오입력 차단)
+const EMAIL_INPUT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 const isValidBirthday = (v: string) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
   if (!match) return false;
@@ -115,7 +119,19 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender, accountPublic, setAccountPublic } = useSettings();
   const genderLabel = (g: Gender) =>
     g === 'male' ? t('basicInfo.genderMale') : g === 'female' ? t('basicInfo.genderFemale') : t('accountSettings.genderUnset');
-  const [googleLinked, setGoogleLinked] = useState(signUpMethod === 'google');
+  // 실제 identity 연동 API 미연동 — 연동 상태는 가입 수단에서 파생(가짜 토글 상태 금지, H2)
+  const googleLinked = signUpMethod === 'google';
+
+  // 화면의 이메일 표시를 auth 실제 값과 동기화 (이메일 변경 인증 완료 후 재진입 시 최신화)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    getAuthEmail()
+      .then((e) => {
+        if (e && e !== signUpEmail) setSignUpEmail(e);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 생일 편집 모달 상태
   const [isBirthdayModalVisible, setIsBirthdayModalVisible] = useState(false);
@@ -149,7 +165,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setGender(genderDraft);
     setIsGenderModalVisible(false);
   };
-  const [appleLinked, setAppleLinked] = useState(signUpMethod === 'apple');
+  const appleLinked = signUpMethod === 'apple';
   // 계정 공개 여부는 settingsStore에 영속 저장 (화면 재진입 시 유지)
   const isPublic = accountPublic;
 
@@ -174,6 +190,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false); // 서버 처리 중 중복 제출 방지
 
   // 계정 삭제 모달 상태
   const [isDeleteAccountModalVisible, setIsDeleteAccountModalVisible] = useState(false);
@@ -183,6 +200,31 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [deleteReasonDetail, setDeleteReasonDetail] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteSocialConfirm, setDeleteSocialConfirm] = useState('');
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false); // 서버 신청 중 중복 제출 방지
+
+  // 실제 이메일 변경: auth에 변경을 요청하면 새 주소로 인증 메일이 가고, 링크 확인 후 변경이 완료된다.
+  // (즉시 로컬 표시만 바꾸면 로그인 이메일과 어긋난다 — 인증 완료 후 위 useEffect가 표시를 동기화)
+  const submitEmailChange = async (newEmail: string) => {
+    if (!EMAIL_INPUT_RE.test(newEmail)) {
+      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.emailInvalidMsg'));
+      return;
+    }
+    if (!isSupabaseConfigured) {
+      // 서버 미설정(로컬 모드): 기존 로컬 표시 변경 유지
+      setSignUpEmail(newEmail);
+      Alert.alert(t('accountSettings.emailChangedTitle'), t('accountSettings.emailChangedMsg', { email: newEmail }));
+      return;
+    }
+    const result = await requestEmailChange(newEmail);
+    if (!result.ok) {
+      Alert.alert(t('accountSettings.errorTitle'), result.error ?? t('login.genericError'));
+      return;
+    }
+    Alert.alert(
+      t('accountSettings.emailChangeSentTitle'),
+      t('accountSettings.emailChangeSentMsg', { email: newEmail })
+    );
+  };
 
   const handleEmailChange = () => {
     if (signUpMethod !== 'email') {
@@ -204,8 +246,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.emailEmpty'));
                 return;
               }
-              setSignUpEmail(trimmed);
-              Alert.alert(t('accountSettings.emailChangedTitle'), t('accountSettings.emailChangedMsg', { email: trimmed }));
+              void submitEmailChange(trimmed);
             },
           },
         ],
@@ -231,7 +272,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setIsPasswordModalVisible(true);
   };
 
-  const submitPasswordChange = () => {
+  const submitPasswordChange = async () => {
+    if (passwordSubmitting) return;
     const trimmedCurrent = currentPassword.trim();
     const trimmedNew = newPassword.trim();
     const trimmedConfirm = confirmPassword.trim();
@@ -249,15 +291,39 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       return;
     }
 
-    // 변경 성공 처리 (Mock)
-    Alert.alert(t('accountSettings.successTitle'), t('accountSettings.passwordChangedMsg'), [
-      {
-        text: t('common.confirm'),
-        onPress: () => {
-          closePasswordModal();
-        },
-      },
-    ]);
+    if (!isSupabaseConfigured) {
+      // 서버 미설정(로컬 모드): 실제 계정이 없으므로 기존 동작 유지
+      Alert.alert(t('accountSettings.successTitle'), t('accountSettings.passwordChangedMsg'), [
+        { text: t('common.confirm'), onPress: () => closePasswordModal() },
+      ]);
+      return;
+    }
+
+    setPasswordSubmitting(true);
+    try {
+      // 현재 비밀번호 검증 — Supabase updateUser는 기존 비밀번호를 확인하지 않으므로
+      // 현재 이메일+현재 비밀번호로 재로그인해 본인 확인을 대신한다(같은 계정이라 세션 영향 없음).
+      const email = (await getAuthEmail()) ?? signUpEmail;
+      if (!email) {
+        Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
+        return;
+      }
+      const verify = await signInWithEmail(email.toLowerCase(), trimmedCurrent);
+      if (!verify.ok) {
+        Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+        return;
+      }
+      const result = await updatePassword(trimmedNew);
+      if (!result.ok) {
+        Alert.alert(t('accountSettings.errorTitle'), result.error ?? t('login.genericError'));
+        return;
+      }
+      Alert.alert(t('accountSettings.successTitle'), t('accountSettings.passwordChangedMsg'), [
+        { text: t('common.confirm'), onPress: () => closePasswordModal() },
+      ]);
+    } finally {
+      setPasswordSubmitting(false);
+    }
   };
 
   const closePasswordModal = () => {
@@ -272,7 +338,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setDeleteStep(1);
   };
 
-  const submitDeleteAccount = () => {
+  const submitDeleteAccount = async () => {
+    if (deleteSubmitting) return;
     // 보안 검증
     if (signUpMethod === 'email') {
       if (!deletePassword.trim()) {
@@ -286,6 +353,18 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       }
     }
 
+    // 즉시 파기하지 않고 서버 유예 플래그만 기록 (30일 내 재로그인 시 복구).
+    // 서버 기록에 실패하면 신청을 중단한다 — 로컬만 기록되면 영구 삭제가 이행되지 않는다.
+    setDeleteSubmitting(true);
+    try {
+      await requestAccountDeletion();
+    } catch {
+      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.deleteRequestFailMsg'));
+      return;
+    } finally {
+      setDeleteSubmitting(false);
+    }
+
     Alert.alert(
       t('accountSettings.deleteRequestedTitle'),
       t('accountSettings.deleteRequestedMsg', { days: DELETION_GRACE_DAYS }),
@@ -293,12 +372,12 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         {
           text: t('common.confirm'),
           onPress: () => {
-            closeDeleteAccountModal();
-            // 즉시 파기하지 않고 유예 플래그만 기록 (30일 내 재로그인 시 복구)
-            requestAccountDeletion().catch(() => {});
-            signOut(); // 세션 종료 → 재로그인 시 복구 여부를 묻는다
-            // Splash로 앱 초기화
-            navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+            void (async () => {
+              closeDeleteAccountModal();
+              // 세션 종료를 기다린 뒤 이동 — 먼저 이동하면 Splash가 남은 세션으로 자동 재로그인한다
+              await signOut();
+              navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+            })();
           },
         },
       ]
@@ -315,26 +394,16 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setDeleteSocialConfirm('');
   };
 
-  const toggleSocial = (provider: string, current: boolean, setter: (v: boolean) => void) => {
+  // 소셜 계정 연동/해제 — 실제 identity linking API(콘솔 설정 포함)가 아직 연동되지 않았다.
+  // 로컬 상태만 바꾸고 성공한 척하던 목업을 제거하고, 준비 중임을 정직하게 안내한다.
+  const toggleSocial = (provider: string) => {
     const isSignupProvider = (provider === 'Google' && signUpMethod === 'google') ||
                              (provider === 'Apple' && signUpMethod === 'apple');
     if (isSignupProvider) {
       Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.socialUnlinkSignupError', { provider }));
       return;
     }
-
-    if (current) {
-      Alert.alert(
-        t('accountSettings.socialUnlinkTitle', { provider }),
-        t('accountSettings.socialUnlinkMsg', { provider }),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('accountSettings.unlink'), style: 'destructive', onPress: () => setter(false) },
-        ]
-      );
-    } else {
-      setter(true);
-    }
+    Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.socialLinkComingSoon'));
   };
 
   return (
@@ -410,7 +479,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             rightElement={
               <Switch
                 value={googleLinked}
-                onValueChange={(v) => toggleSocial('Google', googleLinked, setGoogleLinked)}
+                onValueChange={() => toggleSocial('Google')}
                 trackColor={{ false: COLORS.divider, true: '#4285F4' }}
                 thumbColor={COLORS.white}
               />
@@ -425,7 +494,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             rightElement={
               <Switch
                 value={appleLinked}
-                onValueChange={(v) => toggleSocial('Apple', appleLinked, setAppleLinked)}
+                onValueChange={() => toggleSocial('Apple')}
                 trackColor={{ false: COLORS.divider, true: '#555' }}
                 thumbColor={COLORS.white}
               />
@@ -642,10 +711,10 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 style={[
                   styles.modalBtn,
                   styles.modalBtnSubmit,
-                  (!currentPassword || newPassword.length < 6 || newPassword !== confirmPassword) && styles.modalBtnDisabled
+                  (passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword) && styles.modalBtnDisabled
                 ]}
                 activeOpacity={0.7}
-                disabled={!currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
+                disabled={passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
                 onPress={submitPasswordChange}
               >
                 <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
@@ -798,9 +867,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                       styles.modalBtn,
                       styles.modalBtnSubmit,
                       { backgroundColor: COLORS.red },
-                      ((signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))) && styles.modalBtnDisabled
+                      (deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))) && styles.modalBtnDisabled
                     ]}
-                    disabled={(signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
+                    disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
                     onPress={submitDeleteAccount}
                   >
                     <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.permanentDelete')}</Text>

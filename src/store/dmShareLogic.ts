@@ -19,7 +19,9 @@ export function buildSharedRecord(r: TravelRecord): SharedRecord {
     blogPreview = textBlock && 'value' in textBlock ? (textBlock as any).value : '';
   }
   return {
-    id: r.id,
+    // 발신자의 로컬 id(rec-...)는 수신자 기기에 존재하지 않는다 — 서버 id(remoteId)를 우선 담아
+    // 수신자가 자기 피드(feedPosts)에서 게시물을 찾아 열 수 있게 한다.
+    id: r.remoteId ?? r.id,
     country: r.country,
     content: r.content,
     viewType: vt,

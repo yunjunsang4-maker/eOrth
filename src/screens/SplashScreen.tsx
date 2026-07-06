@@ -6,10 +6,11 @@ import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
-import { getPendingDeletion, isDeletionExpired, cancelAccountDeletion } from '../store/pendingDeletion';
+import { getPendingDeletion, isDeletionExpired, clearLocalDeletionFlag } from '../store/pendingDeletion';
+import { purgeAccountOnServer } from '../services/accountDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { getCurrentSession } from '../services/auth';
-import { getMyProfile } from '../services/profile';
+import { getCurrentSession, signOut } from '../services/auth';
+import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -24,20 +25,6 @@ export default function SplashScreen({ navigation }: Props) {
   const { resetSettings } = useSettings();
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
-
-  // 탈퇴 유예(30일) 만료 시 영구 파기
-  useEffect(() => {
-    (async () => {
-      const pending = await getPendingDeletion();
-      if (pending && isDeletionExpired(pending)) {
-        resetRecords();
-        resetSettings();
-        resetConversations();
-        await clearPersistedStores().catch(() => {});
-        await cancelAccountDeletion().catch(() => {});
-      }
-    })();
-  }, []);
 
   useEffect(() => {
     // Entrance animations
@@ -75,8 +62,23 @@ export default function SplashScreen({ navigation }: Props) {
     const FORCE_ONBOARDING = false;
     const timer = setTimeout(async () => {
       if (isSupabaseConfigured && !FORCE_ONBOARDING) {
-        const pending = await getPendingDeletion();
         const session = await getCurrentSession();
+        const pending = session ? await getPendingDeletion() : null;
+        // 탈퇴 유예(30일) 만료 → 서버(게시물·Storage·auth 계정)까지 영구 파기 후 초기 화면으로.
+        // 파기 실패(오프라인 등) 시에도 자동 로그인은 막고, 다음 로그인에서 이어서 처리한다.
+        if (session && pending && isDeletionExpired(pending)) {
+          const purged = await purgeAccountOnServer('full');
+          if (purged) {
+            resetRecords();
+            resetSettings();
+            resetConversations();
+            await clearPersistedStores().catch(() => {});
+            await clearLocalDeletionFlag().catch(() => {});
+          }
+          await signOut(); // 파기된(또는 유예 만료된) 계정의 토큰 제거
+          navigation.replace('AppIntro');
+          return;
+        }
         // 탈퇴 유예 중이면 자동 로그인하지 않고 로그인 화면에서 복구 여부를 묻는다
         if (session && !pending) {
           // 계정 경계 처리: 세션이 이전과 다른 계정이면(예: 이메일 인증 딥링크로 진입)
@@ -84,13 +86,15 @@ export default function SplashScreen({ navigation }: Props) {
           await runAccountBoundary();
           // 온보딩 완료(생일 채움) 여부를 확인해, 미완이면 온보딩으로 재진입시킨다.
           // (인증만 하고 온보딩 중 이탈한 사용자가 재실행 시 프로필 없이 메인에 들어가는 것 방지)
+          // ⚠️ getMyProfile은 실패 시 throw가 아니라 null을 반환해 "오프라인=신규"로 오판됐다 —
+          //    reached 플래그(getMyProfileStatus)로 서버 도달 여부를 구분한다.
           let onboarded = false;
-          try {
-            const myProfile = await getMyProfile();
-            onboarded = !!(myProfile && myProfile.birthday && myProfile.birthday.trim());
-          } catch {
-            // 조회 실패 시 세션이 있으니 기존 사용자로 간주(Main) — 재온보딩 강제 방지
+          const { reached, profile } = await getMyProfileStatus();
+          if (!reached) {
+            // 서버 도달 실패(오프라인/타임아웃): 세션이 있으니 기존 사용자로 간주(Main) — 재온보딩 강제 방지
             onboarded = true;
+          } else {
+            onboarded = !!(profile && profile.birthday && profile.birthday.trim());
           }
           navigation.replace(onboarded ? 'Main' : 'BasicInfo');
           return;

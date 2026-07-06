@@ -278,7 +278,7 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const { t } = useTranslation();
-  const { records } = useRecords();
+  const { records, feedPosts } = useRecords();
   const { markBadgesEarned } = useSettings();
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
   const messages = conversations[friend.handle] ?? [];
@@ -566,9 +566,14 @@ export default function DMScreen({ navigation, route }: Props) {
             rec={item.record}
             isMine={item.isMine}
             onPress={() => {
-              const exists = records.some(r => r.id === item.record!.id);
-              if (exists) {
-                navigation.navigate('PostDetail', { postId: item.record!.id });
+              // 공유 id는 서버 id(remoteId) 또는 발신자 로컬 id일 수 있다 —
+              // 내 기록(id·remoteId)과 피드(feedPosts, id=서버 id) 양쪽에서 찾는다.
+              const sharedId = item.record!.id;
+              const found =
+                records.find(r => r.id === sharedId || r.remoteId === sharedId) ??
+                feedPosts.find(r => r.id === sharedId || r.remoteId === sharedId);
+              if (found) {
+                navigation.navigate('PostDetail', { postId: found.id });
               } else {
                 Alert.alert(t('dm.postNotFoundTitle'), t('dm.postNotFoundMsg'));
               }

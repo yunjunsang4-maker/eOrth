@@ -58,10 +58,14 @@ create index if not exists idx_profiles_handle on public.profiles (lower(handle)
 
 alter table public.profiles enable row level security;
 
--- 모든 로그인 사용자는 프로필을 조회 가능(친구 검색·피드 표시용)
+-- 테이블 직접 조회는 '본인 행'만 — 타인 프로필은 public_profiles 뷰(PII 제외)로만 조회한다.
+-- (기존 profiles_select_all using(true)는 임의 인증 사용자가 REST로 전 사용자의
+--  birthday/gender/country 를 수집할 수 있는 구멍이었다. 피드·검색의 타인 표시는
+--  아래 public_profiles(definer 뷰) 임베드로 대체 — 클라이언트 select 문자열 참조.)
 drop policy if exists "profiles_select_all" on public.profiles;
-create policy "profiles_select_all" on public.profiles
-  for select to authenticated using (true);
+drop policy if exists "profiles_select_own" on public.profiles;
+create policy "profiles_select_own" on public.profiles
+  for select to authenticated using (auth.uid() = id);
 
 -- 본인 프로필만 생성/수정
 drop policy if exists "profiles_insert_own" on public.profiles;
@@ -73,10 +77,13 @@ create policy "profiles_update_own" on public.profiles
   for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
 -- 타인에게 노출할 '공개 컬럼만' 담은 뷰. RLS는 컬럼 단위 제한이 안 되므로
--- birthday·gender 같은 PII를 빼고 이 뷰로 조회하도록 클라이언트 read 경로를 전환할 것.
--- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회. security_invoker로 호출자 RLS 적용.)
+-- birthday·gender 같은 PII를 빼고 이 뷰로 타인 프로필을 조회한다.
+-- profiles 테이블 자체는 본인 행만 select 가능해졌으므로, 이 뷰는 definer
+-- (security_invoker=false, 소유자 권한으로 RLS 우회)여야 타인 행이 보인다 —
+-- 노출 컬럼이 여기 나열된 공개 컬럼으로 한정되므로 안전하다.
+-- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회.)
 create or replace view public.public_profiles
-  with (security_invoker = true) as
+  with (security_invoker = false) as
   select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
   from public.profiles;
 
@@ -562,8 +569,11 @@ create trigger trg_cleanup_follows_on_block after insert on public.blocks
 
 -- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
+-- definer(security_invoker=false) 유지 — profiles 테이블은 본인 행만 select 가능하므로
+-- 타인 공개 컬럼은 이 뷰가 유일한 통로다. auth.uid()는 definer 뷰 안에서도 호출자 기준이라
+-- 차단 필터는 그대로 동작한다.
 create or replace view public.public_profiles
-  with (security_invoker = true) as
+  with (security_invoker = false) as
   select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
@@ -832,3 +842,76 @@ alter table public.feedback enable row level security;
 drop policy if exists "feedback_insert_own" on public.feedback;
 create policy "feedback_insert_own" on public.feedback
   for insert to authenticated with check (user_id = auth.uid());
+
+-- ============================================================
+-- 9) 계정 삭제 — 탈퇴 유예(30일) 서버 권위 플래그 + 만료 파기
+--   흐름:
+--     탈퇴 신청  → request_account_deletion() 이 profiles.deletion_requested_at 기록
+--     유예 내 복구 → cancel_account_deletion() 이 플래그 해제
+--     유예 만료  → 클라이언트가 Edge Function(delete-account)을 호출해
+--                  Storage 파일 + auth.users(→ cascade로 전체 데이터) 파기
+--     미복귀 계정 → purge_expired_deletion_requests() 를 pg_cron 으로 주기 실행(아래 주석)
+--   배포: supabase functions deploy delete-account  (Edge Function도 함께 배포할 것)
+-- ============================================================
+alter table public.profiles add column if not exists deletion_requested_at timestamptz;
+
+-- 탈퇴 신청 — 이미 신청돼 있으면 최초 신청 시각 유지(중복 신청으로 유예가 연장되지 않게).
+-- 신청 시각을 반환해 클라이언트가 로컬 캐시와 동기화한다.
+create or replace function public.request_account_deletion()
+returns timestamptz
+language plpgsql security definer set search_path = public as $$
+declare ts timestamptz;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+  update public.profiles
+     set deletion_requested_at = coalesce(deletion_requested_at, now())
+   where id = auth.uid()
+   returning deletion_requested_at into ts;
+  return ts;
+end; $$;
+grant execute on function public.request_account_deletion() to authenticated;
+
+-- 탈퇴 신청 취소(계정 복구)
+create or replace function public.cancel_account_deletion()
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+  update public.profiles set deletion_requested_at = null where id = auth.uid();
+end; $$;
+grant execute on function public.cancel_account_deletion() to authenticated;
+
+-- 유예가 지나도 재로그인하지 않는 계정의 안전망 파기 (관리자/서비스롤·pg_cron 전용).
+-- auth.users 삭제 → profiles 이하 전 테이블 on delete cascade 로 함께 정리된다.
+-- storage.objects 행도 함께 지운다 — 실체 파일은 스토리지 백엔드에 고아로 남을 수 있으므로
+-- 정석 경로는 Edge Function(delete-account, Storage API 사용)이고 이 함수는 안전망이다.
+-- pg_cron 스케줄 예시(대시보드 SQL Editor에서 1회 실행):
+--   select cron.schedule('purge-deleted-accounts', '0 3 * * *',
+--     $cron$ select public.purge_expired_deletion_requests(); $cron$);
+create or replace function public.purge_expired_deletion_requests(grace_days int default 30)
+returns integer
+language plpgsql security definer set search_path = public, auth, storage as $$
+declare n integer := 0;
+begin
+  delete from storage.objects o
+   using public.profiles p
+   where p.deletion_requested_at is not null
+     and p.deletion_requested_at < now() - make_interval(days => grace_days)
+     and o.bucket_id = 'media'
+     and (storage.foldername(o.name))[1] = p.id::text;
+
+  delete from auth.users u
+   using public.profiles p
+   where u.id = p.id
+     and p.deletion_requested_at is not null
+     and p.deletion_requested_at < now() - make_interval(days => grace_days);
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+
+-- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
+revoke all on function public.purge_expired_deletion_requests(int) from public, anon, authenticated;

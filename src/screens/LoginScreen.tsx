@@ -26,10 +26,12 @@ import {
   getPendingDeletion,
   isDeletionExpired,
   cancelAccountDeletion,
+  clearLocalDeletionFlag,
   daysUntilPurge,
 } from '../store/pendingDeletion';
+import { purgeAccountOnServer } from '../services/accountDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail } from '../services/auth';
+import { signUpWithEmail, signInWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail, signOut } from '../services/auth';
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
@@ -163,16 +165,15 @@ export default function LoginScreen({ navigation }: Props) {
   const handleApplePress = () => handleSocialLogin('apple');
 
   // ─── 탈퇴 유예 계정 처리 ───
-  // 로그인 성공 시 탈퇴 신청 여부를 확인한다.
-  //  - 유예 기간(30일) 내 → 복구 여부를 묻고, 복구하면 데이터 그대로 Main 진입
-  //  - 만료 → 영구 파기 후 새 계정 온보딩 진행
+  // 로그인 성공 시 탈퇴 신청 여부(서버 플래그)를 확인한다.
+  //  - 유예 기간(30일) 내 → 복구 여부를 묻고, 복구하면 서버 플래그 해제 후 Main 진입
+  //  - 만료 → 서버(게시물·Storage·auth 계정)까지 영구 파기 후 새 가입 안내
   // applySignup: 가입 정보(이메일·가입 수단 등) 적용 콜백. 파기 후에도 다시 적용되도록 콜백으로 받는다.
-  const purgeAllData = () => {
+  const purgeLocalData = () => {
     resetRecords();
     resetSettings();
     resetConversations();
     clearPersistedStores().catch(() => {});
-    cancelAccountDeletion().catch(() => {});
   };
 
   // 인증 후엔 로그인/온보딩 화면을 스택에서 제거(뒤로가기로 복귀 방지)
@@ -184,15 +185,8 @@ export default function LoginScreen({ navigation }: Props) {
     // 계정 전환이면 로컬을 비우고 새 계정 데이터를 복원한 뒤 진행
     await runAccountBoundary();
 
-    // 탈퇴 신청 조회 실패 시에도 인증 자체는 성공했으므로 정상 진입시킨다
-    let pending: Awaited<ReturnType<typeof getPendingDeletion>> = null;
-    try {
-      pending = await getPendingDeletion();
-    } catch {
-      applySignup();
-      goTo(destination);
-      return;
-    }
+    // 서버 플래그 우선 조회(도달 실패 시 로컬 캐시 폴백) — 조회 자체는 throw하지 않는다
+    const pending = await getPendingDeletion();
 
     if (!pending) {
       applySignup();
@@ -201,9 +195,16 @@ export default function LoginScreen({ navigation }: Props) {
     }
 
     if (isDeletionExpired(pending)) {
-      purgeAllData();
-      applySignup();
-      goTo('BasicInfo');
+      // 유예 만료 — 서버까지 영구 파기. 실패 시 로컬도 지우지 않고 다음 로그인에서 재시도한다.
+      const purged = await purgeAccountOnServer('full');
+      await signOut(); // 파기 성공 여부와 무관하게 만료 계정으로는 진입시키지 않는다
+      if (!purged) {
+        Alert.alert(t('login.purgeFailTitle'), t('login.purgeFailMsg'));
+        return;
+      }
+      purgeLocalData();
+      await clearLocalDeletionFlag().catch(() => {});
+      Alert.alert(t('login.purgedTitle'), t('login.purgedMsg'));
       return;
     }
 
@@ -215,16 +216,34 @@ export default function LoginScreen({ navigation }: Props) {
           text: t('login.recoverFresh'),
           style: 'destructive',
           onPress: () => {
-            purgeAllData();
-            applySignup();
-            goTo('BasicInfo');
+            void (async () => {
+              // 콘텐츠만 서버 파기(계정·로그인 수단은 유지) 후 재온보딩
+              const purged = await purgeAccountOnServer('content');
+              if (!purged) {
+                Alert.alert(t('login.purgeFailTitle'), t('login.purgeFailMsg'));
+                return;
+              }
+              purgeLocalData();
+              await clearLocalDeletionFlag().catch(() => {});
+              applySignup();
+              goTo('BasicInfo');
+            })();
           },
         },
         {
           text: t('login.recoverRestore'),
           onPress: () => {
-            cancelAccountDeletion().catch(() => {});
-            goTo('Main');
+            void (async () => {
+              // 서버 플래그 해제가 확인돼야 복구 완료 — 실패 시 진입시키면
+              // 30일 후 안전망 파기가 복구된 줄 아는 계정을 지워버린다.
+              try {
+                await cancelAccountDeletion();
+              } catch {
+                Alert.alert(t('login.recoverFailTitle'), t('login.recoverFailMsg'));
+                return;
+              }
+              goTo('Main');
+            })();
           },
         },
       ],
@@ -298,7 +317,6 @@ export default function LoginScreen({ navigation }: Props) {
     const identifier = email.trim();
     const normEmail = normalizeEmail(email);
     const usedEmail = isValidEmail(identifier); // 로그인 입력이 이메일인지(아니면 아이디)
-    const destination = isSignup ? 'BasicInfo' as const : 'Main' as const;
 
     // Supabase 미설정: 기존 모의 로그인 유지
     if (!isSupabaseConfigured) {
@@ -306,7 +324,7 @@ export default function LoginScreen({ navigation }: Props) {
         setSignUpMethod('email');
         setSignUpEmail(normEmail || 'user@eorth.app');
       };
-      proceedAfterAuth(applyMock, destination);
+      proceedAfterAuth(applyMock, isSignup ? 'BasicInfo' : 'Main');
       return;
     }
 
@@ -342,6 +360,20 @@ export default function LoginScreen({ navigation }: Props) {
       if (storedEmail) setSignUpEmail(storedEmail);
       else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
     };
+
+    // 로그인도 소셜·Splash와 동일하게 온보딩 완료(생일 채움) 여부로 목적지를 판정한다.
+    // 무조건 Main으로 보내면 온보딩 중 이탈한 사용자가 프로필(아이디·생일) 없이 메인에 진입한다.
+    let destination: 'BasicInfo' | 'Main' = 'BasicInfo';
+    if (!isSignup) {
+      const status = await getMyProfileStatus();
+      if (!status.reached) {
+        // 신규/기존 판정 불가(일시적 네트워크 오류) → 오라우팅 대신 Splash에서 재평가
+        applySignup();
+        navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+        return;
+      }
+      destination = status.profile?.birthday && status.profile.birthday.trim() ? 'Main' : 'BasicInfo';
+    }
     proceedAfterAuth(applySignup, destination);
   };
 

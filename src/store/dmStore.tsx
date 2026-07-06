@@ -6,7 +6,7 @@ import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
-import { getMyUserId, getProfileById } from '../services/profile';
+import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage, uploadMaybe } from '../services/media';
 import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage } from '../services/dm';
 
@@ -75,7 +75,8 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const hydrated = usePersistence<{ conversations: Record<string, Message[]>; readMarks?: Record<string, number>; hiddenIds?: Record<string, true> }>(
     STORE_KEYS.dm,
     (p) => {
-      setConversations(p.conversations);
+      // payload 필드 가드 — 손상/구버전 payload로 throw하면 부분 복원 상태가 저장으로 덮어써진다
+      if (p.conversations && typeof p.conversations === 'object') setConversations(p.conversations);
       if (p.readMarks) setReadMarks(p.readMarks);
       if (p.hiddenIds) { setHiddenIds(p.hiddenIds); hiddenIdsRef.current = p.hiddenIds; }
     },
@@ -90,9 +91,18 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     payload: { type: MsgType; text: string; imageUri?: string; record?: SharedRecord },
   ) => {
     if (!isSupabaseConfigured) return;
-    const peer = peerByHandle.current[handle];
-    if (!peer) return; // 상대 uuid 모르면 로컬만 유지(실패 아님)
     try {
+      // 상대 uuid 미등록(앱 재시작 직후 피드에서 바로 빠른공유 등)이면 handle로 조회해 등록한다.
+      // 그래도 못 찾으면 throw → 실패 표시(재시도 가능). 조용히 성공한 척하면 상대는 영영 못 받는다.
+      let peer = peerByHandle.current[handle];
+      if (!peer) {
+        const prof = await getProfileByHandle(handle);
+        if (prof?.id) {
+          registerPeer(handle, prof.id);
+          peer = prof.id;
+        }
+      }
+      if (!peer) throw new Error('상대 정보를 찾을 수 없음');
       let imageUrl: string | undefined;
       if (payload.type === 'image' && payload.imageUri) {
         imageUrl = await uploadImage(payload.imageUri);
@@ -113,12 +123,20 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       if (!threadId) throw new Error('대화 생성 실패');
       const rid = await sendMessage(threadId, { type: payload.type, text: payload.text, imageUrl, record });
       if (!rid) throw new Error('메시지 전송 실패');
-      setConversations((prev) => ({
-        ...prev,
-        [handle]: (prev[handle] ?? []).map((x) =>
-          x.id === localId ? { ...x, remoteId: rid, imageUri: imageUrl ?? x.imageUri, failed: undefined } : x
-        ),
-      }));
+      setConversations((prev) => {
+        // remoteId 부착. loadHistory 병합이 전송 완료보다 먼저 서버 사본을 넣었을 수 있으므로
+        // 같은 remoteId 중복은 첫 항목만 남긴다.
+        const seen = new Set<string>();
+        const next = (prev[handle] ?? [])
+          .map((x) => (x.id === localId ? { ...x, remoteId: rid, imageUri: imageUrl ?? x.imageUri, failed: undefined } : x))
+          .filter((x) => {
+            if (!x.remoteId) return true;
+            if (seen.has(x.remoteId)) return false;
+            seen.add(x.remoteId);
+            return true;
+          });
+        return { ...prev, [handle]: next };
+      });
     } catch {
       // 전송 실패 → 메시지에 실패 표시(사용자가 재시도 가능)
       setConversations((prev) => ({
@@ -126,7 +144,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         [handle]: (prev[handle] ?? []).map((x) => (x.id === localId ? { ...x, failed: true } : x)),
       }));
     }
-  }, []);
+  }, [registerPeer]);
 
   const addMessage = useCallback((handle: string, msg: NewMessage) => {
     const localId = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -170,6 +188,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 서버 히스토리 로드 (대화 열 때). 비어있으면 로컬 유지.
+  // ⚠️ 서버 목록으로 '통째 교체'하면 아직 서버에 없는 로컬 메시지 — 전송 실패(재시도 대기),
+  //    전송 진행 중(remoteId 미부착), 상대 uuid 미등록으로 로컬에만 남은 메시지 — 가 증발한다.
+  //    서버본을 기준으로 하되 로컬 전용 메시지는 보존해 시간순으로 병합한다.
   const loadHistory = useCallback(async (handle: string, userId?: string) => {
     if (!isSupabaseConfigured || !userId) return;
     registerPeer(handle, userId);
@@ -178,7 +199,14 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     const msgs = await fetchMessages(threadId);
     const visible = msgs.filter((m) => !m.remoteId || !hiddenIdsRef.current[m.remoteId]); // 숨긴 메시지 제외
     if (visible.length === 0) return;
-    setConversations((prev) => ({ ...prev, [handle]: visible }));
+    setConversations((prev) => {
+      const local = prev[handle] ?? [];
+      const serverIds = new Set(visible.map((m) => m.remoteId).filter(Boolean) as string[]);
+      // remoteId가 서버 목록에 있는 로컬 사본은 서버본으로 대체, 나머지(미전송·실패·조회 범위 밖)는 보존
+      const keepLocal = local.filter((m) => !m.remoteId || !serverIds.has(m.remoteId));
+      const merged = [...visible, ...keepLocal].sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+      return { ...prev, [handle]: merged };
+    });
   }, [registerPeer]);
 
   const sendRecord = useCallback((handle: string, record: TravelRecord) => {

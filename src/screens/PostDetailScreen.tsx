@@ -1330,7 +1330,9 @@ export default function PostDetailScreen() {
     return (
       <SnapStoryViewer
         initialPostId={postId}
-        records={records}
+        // 친구 스냅은 feedPosts에 있다 — records만 넘기면 친구 스냅을 열 때 내 스토리가
+        // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스로 병합.
+        records={[...records, ...feedPosts]}
         navigation={navigation}
         toggleLike={toggleLike}
         deleteRecord={deleteRecord}

@@ -1095,6 +1095,46 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     publish(blocks);
   };
 
+  // ─── 이탈 확인 ───
+  // 헤더 '취소'뿐 아니라 Android 하드웨어 뒤로가기·iOS 스와이프백까지 beforeRemove 한 경로로 방어.
+  // (기존엔 취소 버튼에만 확인이 있어 제스처/뒤로가기로 나가면 글 전체가 무경고 소실됐다)
+  // 내용 판정은 텍스트뿐 아니라 소제목·인용구·사진·영상 블록까지 포함한다.
+  const exitGuardRef = useRef({ hasContent: false, isEdit: false });
+  exitGuardRef.current = {
+    hasContent: !!(
+      title.trim() ||
+      blocksToPlainText(blocks).trim() ||
+      blocks.some((b) => b.type === 'image' || b.type === 'images' || b.type === 'video')
+    ),
+    isEdit,
+  };
+  // 임시저장 함수는 위 자동저장용 draftSaveRef(항상 최신 handleDraftSave)를 재사용한다
+
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (publishingRef.current) return; // 발행 완료로 인한 정상 이탈은 통과
+      const { hasContent, isEdit: editing } = exitGuardRef.current;
+      if (!hasContent) return;
+      e.preventDefault();
+      const leave = () => navigation.dispatch(e.data.action);
+      if (editing) {
+        Alert.alert(t('blog.editExitTitle'), t('blog.editExitMsg'), [
+          { text: t('blog.exit'), style: 'destructive', onPress: leave },
+          { text: t('blog.continueEdit'), style: 'cancel' },
+        ]);
+        return;
+      }
+      Alert.alert(t('blog.draftExitTitle'), t('blog.draftExitMsg'), [
+        { text: t('blog.dontSave'), style: 'destructive', onPress: leave },
+        { text: t('blog.saveDraft'), onPress: () => { draftSaveRef.current?.(false); leave(); } },
+        { text: t('blog.continueWrite'), style: 'cancel' },
+      ]);
+    });
+    return sub;
+    // t는 언어 전환 시에만 바뀌므로 리스너 재등록 대상에서 제외 (NewRecordScreen과 동일 패턴)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
+
   // ─── 국가 필터 ───
   const filteredCountries = countrySearch.trim()
     ? COUNTRIES.filter(c => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()))
@@ -1115,22 +1155,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}
       <View style={st.header}>
-        <TouchableOpacity onPress={() => {
-          const hasContent = title.trim() || blocks.some(b => b.type === 'text' && (b as TextBlock).value.trim());
-          if (!hasContent) { navigation.goBack(); return; }
-          if (isEdit) {
-            Alert.alert(t('blog.editExitTitle'), t('blog.editExitMsg'), [
-              { text: t('blog.exit'), style: 'destructive', onPress: () => navigation.goBack() },
-              { text: t('blog.continueEdit'), style: 'cancel' },
-            ]);
-            return;
-          }
-          Alert.alert(t('blog.draftExitTitle'), t('blog.draftExitMsg'), [
-            { text: t('blog.dontSave'), style: 'destructive', onPress: () => navigation.goBack() },
-            { text: t('blog.saveDraft'), onPress: () => { handleDraftSave(false); navigation.goBack(); } },
-            { text: t('blog.continueWrite'), style: 'cancel' },
-          ]);
-        }} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+        {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
+        <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={st.headerBtnText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>

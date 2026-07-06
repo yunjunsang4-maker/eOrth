@@ -308,6 +308,7 @@ function CutView({ record }: { record: TravelRecord }) {
           <CutPhotoCanvas
             frameId={record.cutPhoto.frameId}
             photos={photos}
+            transforms={record.cutPhoto.transforms}
             width={SCREEN_W - 32}
             bgOverride={record.cutPhoto.frameColor}
             bgImageOverride={record.cutPhoto.frameImage}

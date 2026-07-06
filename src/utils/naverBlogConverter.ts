@@ -679,17 +679,21 @@ export function toMobileNaverUrl(url: string): string {
 // 미지원: naver.me 단축 URL, in.naver.com(인플루언서) — null 반환(상위에서 안내)
 export function extractNaverBlogId(url: string): string | null {
   try {
-    // 쿼리 파라미터 형태 (PostView.naver?blogId=xxx)
-    const q = url.match(/[?&]blogId=([^&#]+)/i);
-    if (q) return decodeURIComponent(q[1]).trim().toLowerCase() || null;
+    // ⚠️ 경로 형태를 쿼리보다 먼저 판정해야 한다. 쿼리를 우선하면
+    // blog.naver.com/{남의블로그}/{글번호}?blogId={내인증ID} 처럼 잉여 쿼리로
+    // 실제 로드되는 블로그와 다른 id를 추출시켜 소유권 인증을 우회할 수 있다
+    // (네이버는 경로 형태에서 잉여 blogId 쿼리를 무시하고 경로의 블로그를 로드한다).
     // 경로 형태: (m.)blog.naver.com/{blogId}/...
     const m = url.match(/blog\.naver\.com\/([^/?#]+)/i);
     if (m) {
       const seg = decodeURIComponent(m[1]).trim();
-      // 예약 경로(PostView.naver, PostList.naver 등)는 blogId가 아님
-      if (/\.naver$/i.test(seg) || /^post/i.test(seg)) return null;
-      return seg.toLowerCase() || null;
+      // 예약 경로(PostView.naver, 구형 PostView.nhn 등)가 아니면 경로 세그먼트가 곧 blogId.
+      // (기존 /^post/i 필터는 posting_life 같은 정상 아이디까지 차단해 확장자 판정으로 교체)
+      if (!/\.(naver|nhn)$/i.test(seg) && seg) return seg.toLowerCase();
     }
+    // 쿼리 파라미터 형태 (PostView.naver?blogId=xxx) — 예약 경로일 때만 여기로 온다
+    const q = url.match(/[?&]blogId=([^&#]+)/i);
+    if (q) return decodeURIComponent(q[1]).trim().toLowerCase() || null;
     return null;
   } catch {
     return null;

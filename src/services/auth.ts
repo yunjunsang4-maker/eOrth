@@ -30,6 +30,7 @@ export interface AuthResult {
 const ERROR_KO: { match: string; message: string }[] = [
   { match: 'Invalid login credentials', message: '이메일 또는 비밀번호가 올바르지 않아요.' },
   { match: 'User already registered', message: '이미 가입된 이메일이에요. 로그인해주세요.' },
+  { match: 'already been registered', message: '이미 사용 중인 이메일이에요.' },
   { match: 'Email not confirmed', message: '이메일 인증이 완료되지 않았어요.\n받은 편지함을 확인해주세요.' },
   { match: 'Password should be at least', message: '비밀번호는 6자 이상이어야 해요.' },
   { match: 'Unable to validate email address', message: '올바른 이메일 형식이 아니에요.' },
@@ -152,6 +153,27 @@ export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   }
 }
 
+/**
+ * 이메일 주소 변경 요청 — 즉시 바뀌지 않고 인증 메일 링크를 확인해야 변경이 완료된다.
+ * (Supabase 기본 설정은 기존·새 주소 양쪽 확인(Secure email change)일 수 있음 — 안내 문구는 일반형 유지)
+ */
+export async function requestEmailChange(newEmail: string): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    const { error } = await withTimeout(
+      supabase.auth.updateUser(
+        { email: newEmail.trim().toLowerCase() },
+        { emailRedirectTo: emailConfirmRedirect },
+      ),
+      AUTH_TIMEOUT_MS,
+    );
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
 /** 새 비밀번호로 변경 (복구 세션 또는 로그인 상태에서 호출) */
 export async function updatePassword(newPassword: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
@@ -239,7 +261,15 @@ export async function getAuthEmail(): Promise<string | null> {
   }
 }
 
+// 의도적 로그아웃(사용자 액션: 로그아웃·탈퇴·비밀번호 재설정) 표시 —
+// 전역 SIGNED_OUT 핸들러(AppNavigator)가 "세션 만료" 오탐 안내·강제 이동을 하지 않도록 한다.
+let intentionalSignOutAt = 0;
+export function wasIntentionalSignOut(withinMs = 5000): boolean {
+  return Date.now() - intentionalSignOutAt < withinMs;
+}
+
 export async function signOut(): Promise<void> {
+  intentionalSignOutAt = Date.now();
   if (!supabase) return;
   try {
     const { error } = await supabase.auth.signOut();

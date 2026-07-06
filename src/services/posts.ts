@@ -132,7 +132,9 @@ function mapRowToRecord(row: any): TravelRecord {
   } as TravelRecord;
 }
 
-const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles(handle, emoji, profile_photo, handle_font)';
+// 작성자 표시는 public_profiles 뷰로 임베드 — profiles 테이블은 본인 행만 select 가능(RLS)해
+// 직접 임베드하면 타인 작성자 정보가 null이 된다. 별칭 'profiles'로 응답 키를 유지한다.
+const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles:public_profiles(handle, emoji, profile_photo, handle_font)';
 
 // 피드: 남들의 공개/친구 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
 export async function fetchFeed(): Promise<TravelRecord[]> {

@@ -1169,7 +1169,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   const doSave = async (splitByCountry: boolean) => {
-    {
+    if (savingRef.current) return; // 중복 실행 방지 (다이얼로그 이중 탭 등)
+    savingRef.current = true;
+    setSaving(true);
+    try {
       // 현재 활성 국가 데이터 저장
       saveCurrentCountryData();
 
@@ -1263,9 +1266,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           });
         }
       }
+      savedRef.current = true;
+      navigation.goBack();
+    } catch {
+      // 저장 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
+      savingRef.current = false;
+      setSaving(false);
     }
-    savedRef.current = true;
-    navigation.goBack();
   };
 
   // 입력 중 이탈 방지 (취소/뒤로가기/제스처) — 저장 시엔 건너뜀
@@ -1319,15 +1326,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
       return;
     }
-    savingRef.current = true;
-    setSaving(true);
-    try {
-      await handleSave();
-    } catch {
-      // 저장 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)
-      savingRef.current = false;
-      setSaving(false);
-    }
+    // 저장 플래그는 doSave가 직접 관리한다 (BlogRecordScreen.publish와 동일 구조).
+    // 여기서 미리 잠그면 다국가 다이얼로그에서 '취소'했을 때(저장 시작 안 됨) 플래그가
+    // 리셋되지 않아 저장 버튼이 화면을 나가기 전까지 영구 비활성화된다.
+    await handleSave();
   };
 
   // 키워드 추가 (선행 # 정규화 + 중복 방지 + 빈값 무시 + 개수/길이 제한)

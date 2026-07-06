@@ -46,7 +46,9 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
     // error 시 반드시 null을 반환해 로컬 캐시를 유지한다.
     const { data: following, error } = await supabase
       .from('follows')
-      .select('following_id, profiles!follows_following_id_fkey(id, handle, emoji)')
+      // profiles 테이블은 본인 행만 select 가능(RLS) — 타인 표시는 public_profiles 뷰로 임베드
+      // (별칭 'profiles'로 응답 키 유지, 힌트는 기반 테이블 FK 이름 사용)
+      .select('following_id, profiles:public_profiles!follows_following_id_fkey(id, handle, emoji)')
       .eq('follower_id', uid);
     if (error) return null;
     if (!following) return [];
@@ -79,7 +81,7 @@ export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
     // 오류와 "팔로워 없음"을 구분해야 하므로 error 시 null 반환 (빈 목록 오표시 방지)
     const { data: followers, error } = await supabase
       .from('follows')
-      .select('follower_id, profiles!follows_follower_id_fkey(id, handle, emoji)')
+      .select('follower_id, profiles:public_profiles!follows_follower_id_fkey(id, handle, emoji)')
       .eq('following_id', uid);
     if (error) return null;
     if (!followers) return [];
@@ -200,7 +202,7 @@ export async function fetchIncomingFollowRequests(): Promise<IncomingFollowReque
   try {
     const { data, error } = await supabase
       .from('follow_requests')
-      .select('requester_id, created_at, profiles!follow_requests_requester_id_fkey(handle, emoji)')
+      .select('requester_id, created_at, profiles:public_profiles!follow_requests_requester_id_fkey(handle, emoji)')
       .eq('target_id', uid)
       .order('created_at', { ascending: false });
     if (error || !data) return [];
@@ -238,7 +240,7 @@ export async function fetchFollowNotifications(): Promise<FollowNotification[]> 
   try {
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, actor_id, read, created_at, profiles!notifications_actor_id_fkey(handle, emoji)')
+      .select('id, type, actor_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji)')
       .eq('user_id', uid)
       .in('type', ['follow', 'follow_request', 'follow_accept'])
       .order('created_at', { ascending: false })
@@ -345,7 +347,7 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
   try {
     const { data } = await supabase
       .from('post_likes')
-      .select('user_id, created_at, profiles!post_likes_user_id_fkey(handle, emoji, profile_photo)')
+      .select('user_id, created_at, profiles:public_profiles!post_likes_user_id_fkey(handle, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: false });
     if (!data) return [];
@@ -372,7 +374,7 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
     const uid = await getMyUserId();
     const { data } = await supabase
       .from('comments')
-      .select('id, author_id, parent_id, text, created_at, profiles!comments_author_id_fkey(handle, emoji, profile_photo)')
+      .select('id, author_id, parent_id, text, created_at, profiles:public_profiles!comments_author_id_fkey(handle, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
     if (!data) return [];

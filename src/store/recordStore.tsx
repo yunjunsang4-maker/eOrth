@@ -108,6 +108,7 @@ export interface TravelRecord {
     frameId: string;
     frameColor?: string;              // 기본 프레임의 사용자 지정 색 (RGB)
     photos: string[];                 // 슬롯 순서대로 사진 URI
+    transforms?: ({ scale: number; tx: number; ty: number } | null)[]; // 슬롯별 사진 조정값 — 라이브 재합성 구도 재현용
     previewUri: string;               // 합성 미리보기 이미지
     noLogo?: boolean;                 // true면 eOrth 로고 미표시 — 프리미엄 작성 시 생성 시점에 박제
     stamp?: { date?: string; text?: string; fontId?: string }; // 하단 여백 날짜·문구 스탬프 (생성 시점 박제)
@@ -237,6 +238,7 @@ interface RecordContextType {
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   markSnapViewed: (id: string) => void;
+  viewedSnapIds: string[]; // 내가 본 타인 스냅(remoteId) — 안 본 링 판정용(영속)
   // 임시저장
   drafts: TravelRecord[];
   saveDraft: (record: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>) => string;
@@ -275,6 +277,7 @@ interface RecordPersistPayload {
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
   mutedHandles?: string[];
+  viewedSnapIds?: string[];
   // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
   // 구형(국가명→카드 id 맵만)일 수 있어 복원 시 정규화한다
   tripSessionGroups?: TripSession | Record<string, string> | null;
@@ -307,6 +310,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [pendingFollowRequests, setPendingFollowRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
+  // 내가 본 타인 스냅(remoteId) — feedPosts는 재조회 시 초기화되므로 '안 본 링' 상태를 영속 유지
+  const [viewedSnapIds, setViewedSnapIds] = useState<string[]>([]);
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
@@ -314,15 +319,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
     (p) => {
-      setRecords(p.records);
-      setArchivedIds(p.archivedIds);
-      setBlockedUsers(p.blockedUsers);
-      setTripGroups(p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) })));
-      setDrafts(p.drafts);
+      // 모든 필드에 배열/폴백 가드 — 한 필드라도 throw하면 부분 복원 상태가
+      // hydrated=true 이후 디바운스 저장으로 원본을 덮어써 영구 데이터 파괴가 된다.
+      setRecords(Array.isArray(p.records) ? p.records : []);
+      setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
+      setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
+      setTripGroups(
+        Array.isArray(p.tripGroups)
+          ? p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+          : []
+      );
+      setDrafts(Array.isArray(p.drafts) ? p.drafts : []);
       setFollowingUsers(p.followingUsers ?? INITIAL_FOLLOWING);
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
+      setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
       // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
       const rawSession = p.tripSessionGroups ?? null;
       const normalized: TripSession | null = !rawSession
@@ -334,8 +346,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSessionGroups: tripSession }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, tripSession],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -675,18 +687,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const markSnapViewed = (id: string) => {
     // 호출 시점 = 현재 사용자가 (자기 것이 아닌) 스냅을 열람 → 열람 표시 + 조회자 기록(중복 방지)
     const me = { handle, name: handle, time: Date.now() };
-    setRecords((prev) =>
-      prev.map((r) => {
-        if (r.id !== id) return r;
-        const viewers = r.snapViewers ?? [];
-        const already = viewers.some((v) => v.handle === me.handle);
-        return {
-          ...r,
-          snapViewed: true,
-          snapViewers: already ? viewers : [...viewers, me],
-        };
-      })
-    );
+    const apply = (r: TravelRecord): TravelRecord => {
+      if (r.id !== id) return r;
+      const viewers = r.snapViewers ?? [];
+      const already = viewers.some((v) => v.handle === me.handle);
+      return {
+        ...r,
+        snapViewed: true,
+        snapViewers: already ? viewers : [...viewers, me],
+      };
+    };
+    // 타인 스냅은 records가 아니라 feedPosts에 있다 — 양쪽 모두 갱신해야 '안 본 링'이 꺼진다
+    setRecords((prev) => prev.map(apply));
+    setFeedPosts((prev) => prev.map(apply));
+    // feedPosts는 세션 한정(재조회 시 초기화)이라, 본 스냅 id를 영속 목록에도 기록해
+    // 앱 재시작·피드 새로고침 후에도 링이 다시 켜지지 않게 한다 (remoteId 기준, 최근 500개 유지)
+    const target = feedPosts.find((r) => r.id === id) ?? records.find((r) => r.id === id);
+    const rid = target?.remoteId ?? id;
+    setViewedSnapIds((ids) => (ids.includes(rid) ? ids : [...ids, rid].slice(-500)));
   };
 
   const blockUser = (user: { name: string; emoji: string; handle?: string; id?: string }) => {
@@ -1186,7 +1204,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );

@@ -1641,6 +1641,7 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
         <CutPhotoCanvas
           frameId={item.cutPhoto.frameId}
           photos={item.cutPhoto.photos}
+          transforms={item.cutPhoto.transforms}
           width={w - 12}
           bgOverride={item.cutPhoto.frameColor}
           bgImageOverride={item.cutPhoto.frameImage}
@@ -1954,7 +1955,7 @@ const DiaryCardMemo = React.memo(DiaryCard);
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -2093,7 +2094,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const snapItems = useMemo(() => {
     // 내 스냅 판정 (isMyPost 누락 대비 핸들 비교 병행). 내 스냅은 '본 것'으로 취급 → 안 본 링 안 뜸
     const isMine = (s: any) => s.isMyPost || s.user.handle === globalHandle;
-    const isUnviewed = (s: any) => !isMine(s) && !s.snapViewed;
+    // snapViewed는 세션 한정(feedPosts 재조회 시 초기화) → 영속 viewedSnapIds(remoteId)도 함께 판정
+    const isUnviewed = (s: any) =>
+      !isMine(s) && !s.snapViewed && !viewedSnapIds.includes(s.remoteId ?? s.id);
     const snaps = allVisible.filter(r => r.viewType === 'snap');
     const seen = new Set<string>();
     const reps = snaps.reduce<any[]>((acc, snap) => {
@@ -2116,7 +2119,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     const allViewed = reps.every((s: any) => !s._hasUnviewed);
     if (allViewed) reps.sort((a: any, b: any) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
     return reps;
-  }, [allVisible, globalHandle]);
+  }, [allVisible, globalHandle, viewedSnapIds]);
   // 피드·블로그·앨범·네컷(스냅 제외)을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
   const timelineItems = useMemo(
     () => allVisible.filter((r) => r.viewType !== 'snap').sort((a, b) => b.timestamp - a.timestamp),

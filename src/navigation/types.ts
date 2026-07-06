@@ -43,6 +43,8 @@ export interface CutPhotoParam {
   frameId: string;
   frameColor?: string;
   photos: string[];
+  // 슬롯별 사진 조정값(이동/확대) — 피드·상세의 라이브 재합성(CutPhotoCanvas)이 구도를 재현하는 데 필요
+  transforms?: ({ scale: number; tx: number; ty: number } | null)[];
   previewUri: string;
   noLogo?: boolean; // 프리미엄(스트립 로고 제거) 작성 — 생성 시점에 박제
   stamp?: { date?: string; text?: string; fontId?: string }; // 하단 여백 날짜·문구 스탬프

@@ -49,13 +49,20 @@ export function usePersistence<T>(
       try {
         const raw = await AsyncStorage.getItem(key);
         if (raw && !cancelled) {
-          const env = JSON.parse(raw) as Envelope<T>;
-          if (env.version === SCHEMA_VERSION) {
-            hydrateRef.current(env.payload);
+          try {
+            const env = JSON.parse(raw) as Envelope<T>;
+            if (env.version === SCHEMA_VERSION) {
+              hydrateRef.current(env.payload);
+            }
+          } catch {
+            // 파싱/복원 실패: 시드(또는 부분 복원) 상태로 시작하되, 원본을 백업 키로 보존한다.
+            // hydrated=true가 되는 순간 디바운스 저장이 현재 상태로 원본을 '덮어쓰기' 때문에,
+            // 백업 없이는 복원 실패 한 번이 곧 영구 데이터 파괴가 된다.
+            await AsyncStorage.setItem(`${key}.corrupt`, raw).catch(() => {});
           }
         }
       } catch {
-        // 손상된 데이터는 무시하고 시드로 시작
+        // 읽기 자체가 실패(스토리지 오류) — 시드로 시작
       }
       if (!cancelled) setHydrated(true);
     })();

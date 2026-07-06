@@ -44,7 +44,7 @@ import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
-import { exchangeAuthCode } from '../services/auth';
+import { exchangeAuthCode, wasIntentionalSignOut } from '../services/auth';
 import { emitToast } from '../store/toastStore';
 import type { RootStackParamList } from './types';
 
@@ -139,6 +139,8 @@ export default function AppNavigator() {
     if (!supabase) return;
     const { data } = supabase.auth.onAuthStateChange((event) => {
       if (event !== 'SIGNED_OUT') return;
+      // 사용자가 직접 실행한 로그아웃/탈퇴/재설정이면 해당 화면이 흐름을 책임진다 — 오탐 안내 방지
+      if (wasIntentionalSignOut()) return;
       const current = navigationRef.current?.getCurrentRoute()?.name;
       if (current && ['Splash', 'AppIntro', 'Login'].includes(current)) return;
       // 인증 화면이 아닌 곳에서 SIGNED_OUT = 강제 로그아웃(세션 만료 등) → 이유를 안내한다.
