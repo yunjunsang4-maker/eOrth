@@ -37,6 +37,18 @@ export async function saveTripState(data: TripStateBackup): Promise<void> {
   }
 }
 
+// 백업 삭제 — 설정 > 데이터 초기화용 (남겨두면 재설치/재로그인 복원이 지운 카드를 되살린다)
+export async function clearTripState(): Promise<void> {
+  if (!supabase) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('user_trip_state').delete().eq('user_id', uid);
+  } catch {
+    /* 무시 — best-effort */
+  }
+}
+
 // 백업 조회 — 없음/실패 시 null
 export async function fetchTripState(): Promise<TripStateBackup | null> {
   if (!supabase) return null;

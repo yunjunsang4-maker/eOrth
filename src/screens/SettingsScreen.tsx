@@ -18,6 +18,8 @@ import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
 import { signOut } from '../services/auth';
+import { deleteAllMyPosts } from '../services/posts';
+import { clearTripState } from '../services/tripState';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
@@ -154,11 +156,21 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           text: t('settings.resetConfirm'),
           style: 'destructive',
           onPress: () => {
-            resetRecords();
-            resetSettings();
-            resetConversations();
-            clearPersistedStores().catch(() => {});
-            Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
+            void (async () => {
+              // 서버 게시물을 먼저 삭제 — 로컬만 지우면 "되돌릴 수 없이 삭제" 안내와 달리
+              // 타인 피드에 글이 계속 노출되고, 다음 복원(pull)이 서버 사본을 되살린다.
+              const ok = await deleteAllMyPosts();
+              if (!ok) {
+                Alert.alert(t('settings.resetTitle'), t('settings.resetFailMsg'));
+                return;
+              }
+              await clearTripState(); // 여행 카드 백업도 제거 (실패는 내부에서 무시)
+              resetRecords();
+              resetSettings();
+              resetConversations();
+              clearPersistedStores().catch(() => {});
+              Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
+            })();
           },
         },
       ],

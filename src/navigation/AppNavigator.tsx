@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Linking } from 'react-native';
+import { Alert, Linking } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -80,16 +80,30 @@ export default function AppNavigator() {
       if (!url) return;
       const trimmed = url.trim();
 
+      // 내비게이션 준비를 기다렸다 이동 — 콜드 스타트에서 1회 재시도로는 컨테이너 마운트를
+      // 놓쳐 화면 이동이 영영 안 될 수 있어(세션은 이미 교환됨) 최대 ~5초 재시도한다.
+      const navigateWhenReady = (fn: () => void, attempts = 10) => {
+        if (navigationRef.current?.isReady()) { fn(); return; }
+        if (attempts <= 0) return;
+        setTimeout(() => navigateWhenReady(fn, attempts - 1), 500);
+      };
+
       // 비밀번호 재설정 딥링크: code 를 세션으로 교환한 뒤 새 비밀번호 설정 화면으로 이동
       if (/eorth:\/\/reset-password/i.test(trimmed)) {
         const cm = /[?&]code=([^&]+)/.exec(trimmed);
         const code = cm ? decodeURIComponent(cm[1]) : null;
-        if (!code) return;
+        if (!code) {
+          // 만료/사용된 링크는 Supabase가 code 없이 error_code=otp_expired 로 리다이렉트한다 —
+          // 무음 방치하면 "링크를 눌렀는데 아무 일도 없음"이 되므로 반드시 안내한다.
+          Alert.alert(tRef.current('login.linkErrorTitle'), tRef.current('login.linkExpiredMsg'));
+          return;
+        }
         const result = await exchangeAuthCode(code);
-        if (!result.ok) return;
-        const goReset = () => navigationRef.current?.navigate('ResetPassword');
-        if (navigationRef.current?.isReady()) goReset();
-        else setTimeout(goReset, 1000);
+        if (!result.ok) {
+          Alert.alert(tRef.current('login.linkErrorTitle'), result.error ?? tRef.current('login.linkExpiredMsg'));
+          return;
+        }
+        navigateWhenReady(() => navigationRef.current?.navigate('ResetPassword'));
         return;
       }
 
@@ -97,13 +111,17 @@ export default function AppNavigator() {
       if (/eorth:\/\/email-confirm/i.test(trimmed)) {
         const cm = /[?&]code=([^&]+)/.exec(trimmed);
         const code = cm ? decodeURIComponent(cm[1]) : null;
-        if (!code) return;
+        if (!code) {
+          Alert.alert(tRef.current('login.linkErrorTitle'), tRef.current('login.linkExpiredMsg'));
+          return;
+        }
         const result = await exchangeAuthCode(code);
-        if (!result.ok) return;
+        if (!result.ok) {
+          Alert.alert(tRef.current('login.linkErrorTitle'), result.error ?? tRef.current('login.linkExpiredMsg'));
+          return;
+        }
         // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.
-        const goSplash = () => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] });
-        if (navigationRef.current?.isReady()) goSplash();
-        else setTimeout(goSplash, 1000);
+        navigateWhenReady(() => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] }));
         return;
       }
 

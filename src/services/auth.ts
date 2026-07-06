@@ -35,6 +35,8 @@ const ERROR_KO: { match: string; message: string }[] = [
   { match: 'Password should be at least', message: '비밀번호는 6자 이상이어야 해요.' },
   { match: 'Unable to validate email address', message: '올바른 이메일 형식이 아니에요.' },
   { match: 'For security purposes', message: '잠시 후 다시 시도해주세요.' },
+  // PKCE: 메일 링크를 요청한 기기가 아닌 곳(재설치 포함)에서 열면 code verifier가 없어 실패한다
+  { match: 'code verifier', message: '메일을 요청했던 기기·앱에서 링크를 열어주세요.\n(다른 기기라면 메일을 다시 요청해주세요.)' },
   { match: 'Network request failed', message: '네트워크 연결을 확인해주세요.' },
   { match: 'timeout', message: '응답이 지연되고 있어요.\n네트워크를 확인한 뒤 다시 시도해주세요.' },
 ];

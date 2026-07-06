@@ -1579,14 +1579,20 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     badgeEarnedAt,
     handleFont,
     isPremium,
+    notifPrefs,
   } = useSettings();
   const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
   // 아이디 표시 폰트(프리미엄) — 해지 시 기본 폰트로(잠금), 선택값은 보존돼 재구독 시 복원
   const nameFontStyle = handleFontStyle(isPremium ? handleFont : null);
 
   // 현재 위치(국가)를 실제로 감지해 '여행 중' 상태를 갱신 — 감지 안 되면 거주국으로(허위 여행 표시 방지)
+  // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 도착 감지를 꺼진 것으로 표시하므로
+  // 실제 동작도 일치시키고, 꺼질 때는 '여행 중' 표시를 거주국으로 되돌린다.
   useEffect(() => {
-    if (!arrivalDetect) return;
+    if (!arrivalDetect || !notifPrefs.master) {
+      setCurrentVisitedCountryCode(homeCountryCode);
+      return;
+    }
     let cancelled = false;
     (async () => {
       const { countryCode } = await detectCurrentCountry();
@@ -1595,7 +1601,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [arrivalDetect, homeCountryCode]);
+  }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
   const { records, tripGroups, archivedIds, followingUsers } = useRecords();
 

@@ -155,6 +155,21 @@ export async function fetchFeed(): Promise<TravelRecord[]> {
   }
 }
 
+// 내 게시물 전체 삭제 — 설정 > 데이터 초기화용. 성공 여부 반환(실패 시 호출부가 초기화를 중단).
+// 서버를 안 지우면 타인 피드에 글이 계속 노출되고, 다음 복원(hydrateMyPosts)이 서버 사본을
+// 다시 내려받아 로컬 초기화가 무효가 된다. (post_likes·comments는 FK cascade로 함께 정리)
+export async function deleteAllMyPosts(): Promise<boolean> {
+  if (!supabase) return true; // 로컬 모드: 지울 서버 게시물 없음
+  const uid = await getMyUserId();
+  if (!uid) return true; // 비로그인: 서버 게시물 없음
+  try {
+    const { error } = await supabase.from('posts').delete().eq('author_id', uid);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
 // 내 글 전체(공개·비공개 포함) — 계정 전환 시 로컬 복원(pull)용. isMyPost=true로 표시.
 export async function fetchMyPosts(): Promise<TravelRecord[]> {
   if (!supabase) return [];

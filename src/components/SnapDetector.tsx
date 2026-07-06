@@ -12,17 +12,23 @@ import {
   scheduleRandomSnapNotification,
   sendSnapNotification,
   requestNotificationPermission,
+  cancelScheduledSnapNotifications,
 } from '../services/snapService';
 
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4시간마다 체크
 
 export default function SnapDetector() {
-  const { homeCountryCode, snapEnabled } = useSettings();
+  const { homeCountryCode, snapEnabled, notifPrefs } = useSettings();
   const lastCheckRef = useRef(0);
   const hasSentRef = useRef(false);
 
   useEffect(() => {
-    if (!snapEnabled) return;
+    // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 스냅 토글을 꺼진 것으로
+    // 표시하므로, 실제 발송도 일치해야 한다. 꺼질 때는 이미 예약된 랜덤 알림까지 취소.
+    if (!snapEnabled || !notifPrefs.master) {
+      cancelScheduledSnapNotifications();
+      return;
+    }
 
     const check = async () => {
       const now = Date.now();
@@ -59,7 +65,7 @@ export default function SnapDetector() {
     check();
 
     return () => subscription.remove();
-  }, [snapEnabled, homeCountryCode]);
+  }, [snapEnabled, notifPrefs.master, homeCountryCode]);
 
   return null; // UI 없음
 }

@@ -138,6 +138,17 @@ export async function scheduleRandomSnapNotification(
   return id;
 }
 
+// ─── 예약 알림 취소 ───
+// 스냅 토글/알림 마스터를 끄면 이미 예약된 랜덤 알림(최대 3시간 후)도 취소해야
+// "껐는데 알림이 온다"는 불일치가 없다. 이 앱의 예약 알림은 스냅뿐이라 전체 취소로 충분.
+export async function cancelScheduledSnapNotifications(): Promise<void> {
+  try {
+    await Notifications.cancelAllScheduledNotificationsAsync();
+  } catch {
+    // 취소 실패는 무시 (권한 회수 등) — 다음 토글 변경 때 재시도됨
+  }
+}
+
 // ─── 촬영 지연시간 포맷 ───
 export function formatLateSeconds(seconds?: number): string {
   if (!seconds || seconds <= 0) return '즉시 촬영';
