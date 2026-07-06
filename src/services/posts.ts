@@ -12,41 +12,52 @@ import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
 import type { TravelRecord } from '../store/recordStore';
 
-// 레코드 안의 모든 로컬 이미지 URI를 업로드해 공개 URL로 치환한 사본 반환
+// 업로드 실패(uploadImage가 원본 로컬 URI를 그대로 반환) 감지 — 로컬 file:// 경로가
+// 서버에 발행되면 다른 사용자 기기에서 그 사진이 영구히 깨져 보인다(재업로드 경로 없음).
+// 실패는 throw로 전파해 발행 자체를 중단시킨다 (호출부 catch → 동기화 실패 토스트).
+const requireRemote = (u: string): string => {
+  if (/^https?:\/\//.test(u)) return u;
+  throw new Error('media_upload_failed');
+};
+const up = async (u: string): Promise<string> => requireRemote(await uploadImage(u));
+const ups = async (arr: string[]): Promise<string[]> => (await uploadImages(arr)).map(requireRemote);
+
+// 레코드 안의 모든 로컬 이미지 URI를 업로드해 공개 URL로 치환한 사본 반환.
+// 한 장이라도 업로드 실패하면 throw (부분 성공 상태로 발행하지 않음).
 async function withUploadedMedia(rec: TravelRecord): Promise<TravelRecord> {
   const copy: TravelRecord = { ...rec };
-  if (copy.medias?.length) copy.medias = await uploadImages(copy.medias);
-  if (copy.representativePhoto) copy.representativePhoto = await uploadImage(copy.representativePhoto);
-  if (copy.snapFrontUri) copy.snapFrontUri = await uploadImage(copy.snapFrontUri);
-  if (copy.snapBackUri) copy.snapBackUri = await uploadImage(copy.snapBackUri);
+  if (copy.medias?.length) copy.medias = await ups(copy.medias);
+  if (copy.representativePhoto) copy.representativePhoto = await up(copy.representativePhoto);
+  if (copy.snapFrontUri) copy.snapFrontUri = await up(copy.snapFrontUri);
+  if (copy.snapBackUri) copy.snapBackUri = await up(copy.snapBackUri);
   if (copy.cutPhoto) {
     copy.cutPhoto = {
       ...copy.cutPhoto,
-      previewUri: await uploadImage(copy.cutPhoto.previewUri),
-      photos: await uploadImages(copy.cutPhoto.photos),
+      previewUri: await up(copy.cutPhoto.previewUri),
+      photos: await ups(copy.cutPhoto.photos),
       // 프레임 배경 사진(프리미엄) — 타인 피드 라이브 렌더에도 보여야 하므로 업로드
-      frameImage: copy.cutPhoto.frameImage ? await uploadImage(copy.cutPhoto.frameImage) : undefined,
+      frameImage: copy.cutPhoto.frameImage ? await up(copy.cutPhoto.frameImage) : undefined,
     };
   }
   if (copy.perCountryData) {
     const pcd: NonNullable<TravelRecord['perCountryData']> = {};
     for (const [k, v] of Object.entries(copy.perCountryData)) {
       pcd[k] = { ...v };
-      if (v.medias?.length) pcd[k].medias = await uploadImages(v.medias);
-      if (v.representativePhoto) pcd[k].representativePhoto = await uploadImage(v.representativePhoto);
+      if (v.medias?.length) pcd[k].medias = await ups(v.medias);
+      if (v.representativePhoto) pcd[k].representativePhoto = await up(v.representativePhoto);
     }
     copy.perCountryData = pcd;
   }
   if (copy.blogBlocks?.length) {
     copy.blogBlocks = await Promise.all(
       copy.blogBlocks.map(async (b): Promise<typeof b> => {
-        if (b.type === 'image' && b.uri) return { ...b, uri: await uploadImage(b.uri) };
+        if (b.type === 'image' && b.uri) return { ...b, uri: await up(b.uri) };
         if (b.type === 'images' && b.items?.length) {
-          const items = await Promise.all(b.items.map(async (it) => ({ ...it, uri: await uploadImage(it.uri) })));
+          const items = await Promise.all(b.items.map(async (it) => ({ ...it, uri: await up(it.uri) })));
           return { ...b, items };
         }
         if (b.type === 'video' && b.uri) {
-          return { ...b, uri: await uploadImage(b.uri), thumbnail: b.thumbnail ? await uploadImage(b.thumbnail) : b.thumbnail };
+          return { ...b, uri: await up(b.uri), thumbnail: b.thumbnail ? await up(b.thumbnail) : b.thumbnail };
         }
         return b;
       })
@@ -60,8 +71,10 @@ export async function publishPost(rec: TravelRecord): Promise<string | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
   if (!uid) return null;
+  // 업로드 실패는 try 밖에서 throw로 전파 — 호출부(publishToBackend)의 catch가
+  // 사용자에게 동기화 실패를 알린다. (깨진 로컬 경로로 발행하는 것보다 발행 중단이 옳다)
+  const uploaded = await withUploadedMedia(rec);
   try {
-    const uploaded = await withUploadedMedia(rec);
     const { data, error } = await supabase
       .from('posts')
       .insert({
@@ -83,8 +96,9 @@ export async function publishPost(rec: TravelRecord): Promise<string | null> {
 // 게시물 수정
 export async function updatePost(remoteId: string, rec: TravelRecord): Promise<void> {
   if (!supabase || !remoteId) return;
+  // 업로드 실패는 throw로 전파 (publishPost와 동일 — 깨진 로컬 경로로 갱신 방지)
+  const uploaded = await withUploadedMedia(rec);
   try {
-    const uploaded = await withUploadedMedia(rec);
     await supabase
       .from('posts')
       .update({

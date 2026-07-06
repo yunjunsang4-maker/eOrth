@@ -7,8 +7,19 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
-import { uploadImage, uploadMaybe } from '../services/media';
+import { uploadImage } from '../services/media';
 import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage } from '../services/dm';
+
+// 업로드 실패 감지 — uploadImage는 실패 시 '원본 로컬 URI'를 그대로 돌려주므로 falsy 검사로는
+// 잡히지 않는다. file:// 경로가 서버에 저장되면 상대 기기에서 그 사진이 영구히 깨져 보이므로,
+// 원격 URL이 아니면 throw해 전송 실패(재시도 가능)로 처리한다.
+const isRemoteUrl = (u?: string) => !!u && /^https?:\/\//.test(u);
+const mustUpload = async (u: string): Promise<string> => {
+  const r = await uploadImage(u);
+  if (!isRemoteUrl(r)) throw new Error('이미지 업로드 실패');
+  return r;
+};
+const mustUploadMaybe = async (u?: string): Promise<string | undefined> => (u ? mustUpload(u) : u);
 
 // 신규 사용자는 빈 상태로 시작 — 실제 친구를 추가/대화하면서 채워진다 (데모 시드 제거)
 const INITIAL_FRIENDS: Friend[] = [];
@@ -105,18 +116,17 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       if (!peer) throw new Error('상대 정보를 찾을 수 없음');
       let imageUrl: string | undefined;
       if (payload.type === 'image' && payload.imageUri) {
-        imageUrl = await uploadImage(payload.imageUri);
-        if (!imageUrl) throw new Error('이미지 업로드 실패');
+        imageUrl = await mustUpload(payload.imageUri);
       }
-      // 공유 기록 안의 사진도 업로드해야 상대가 볼 수 있다
+      // 공유 기록 안의 사진도 업로드해야 상대가 볼 수 있다 (실패 시 throw → 재시도 표시)
       let record = payload.record;
       if (payload.type === 'record' && record) {
         record = {
           ...record,
-          mediaUri: await uploadMaybe(record.mediaUri),
-          albumUris: record.albumUris ? await Promise.all(record.albumUris.map((u) => uploadImage(u))) : record.albumUris,
-          snapFrontUri: await uploadMaybe(record.snapFrontUri),
-          snapBackUri: await uploadMaybe(record.snapBackUri),
+          mediaUri: await mustUploadMaybe(record.mediaUri),
+          albumUris: record.albumUris ? await Promise.all(record.albumUris.map((u) => mustUpload(u))) : record.albumUris,
+          snapFrontUri: await mustUploadMaybe(record.snapFrontUri),
+          snapBackUri: await mustUploadMaybe(record.snapBackUri),
         };
       }
       const threadId = await getOrCreateThread(peer);
@@ -192,9 +202,19 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   //    전송 진행 중(remoteId 미부착), 상대 uuid 미등록으로 로컬에만 남은 메시지 — 가 증발한다.
   //    서버본을 기준으로 하되 로컬 전용 메시지는 보존해 시간순으로 병합한다.
   const loadHistory = useCallback(async (handle: string, userId?: string) => {
-    if (!isSupabaseConfigured || !userId) return;
-    registerPeer(handle, userId);
-    const threadId = await getOrCreateThread(userId);
+    if (!isSupabaseConfigured || !handle) return;
+    // userId가 없거나(팔로우하지 않은 상대의 대화 등) uuid가 아니면 handle로 해석한다 —
+    // 이 폴백이 없으면 목록·토스트에서 진입한 대화의 서버 히스토리를 영영 못 불러온다.
+    const UUID_RE = /^[0-9a-f-]{36}$/i;
+    let peer: string | undefined =
+      userId && UUID_RE.test(userId) ? userId : peerByHandle.current[handle];
+    if (!peer) {
+      const prof = await getProfileByHandle(handle).catch(() => null);
+      peer = prof?.id ?? undefined;
+    }
+    if (!peer) return;
+    registerPeer(handle, peer);
+    const threadId = await getOrCreateThread(peer);
     if (!threadId) return;
     const msgs = await fetchMessages(threadId);
     const visible = msgs.filter((m) => !m.remoteId || !hiddenIdsRef.current[m.remoteId]); // 숨긴 메시지 제외

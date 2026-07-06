@@ -45,15 +45,17 @@ export default function DMToastHost() {
           for (let i = prev; i < msgs.length; i++) {
             const m = msgs[i];
             if (m.isMine) continue;
+            // friends는 시드 제거 후 항상 빈 배열 — handle만으로도 토스트 표시·대화 이동이
+            // 되도록 폴백한다 (기존엔 friend가 없으면 탭해도 아무 동작이 없었다).
             const friend = friends.find((f) => f.handle === h);
             const name = friend?.name ?? h;
             const emoji = friend?.emoji ?? '💬';
             pushToast(`${emoji} ${name}: ${previewOf(m, t)}`, () => {
-              if (friend) {
-                navigationRef.current?.navigate('DM', {
-                  friend: { name: friend.name, handle: friend.handle, emoji: friend.emoji, online: friend.online },
-                });
-              }
+              navigationRef.current?.navigate('DM', {
+                friend: friend
+                  ? { name: friend.name, handle: friend.handle, emoji: friend.emoji, online: friend.online }
+                  : { name: h, handle: h, emoji: '💬' },
+              });
             });
           }
         }

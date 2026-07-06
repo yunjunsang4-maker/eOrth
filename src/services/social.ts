@@ -351,16 +351,20 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
       .eq('post_id', postId)
       .order('created_at', { ascending: false });
     if (!data) return [];
-    return (data as any[]).map((r) => {
-      const p = r.profiles ?? {};
-      return {
-        id: r.user_id,
-        name: p.handle || '여행자',
-        handle: p.handle || '',
-        emoji: p.emoji || '🙂',
-        photo: p.profile_photo || undefined,
-      };
-    });
+    return (data as any[])
+      // public_profiles 임베드가 null = 차단 관계(뷰가 서버단에서 숨김) 또는 탈퇴 사용자 —
+      // '좋아요한 사람' 시트에 노출하지 않는다 (post_likes 자체는 RLS가 열려 있어 여기서 거른다)
+      .filter((r) => r.profiles)
+      .map((r) => {
+        const p = r.profiles ?? {};
+        return {
+          id: r.user_id,
+          name: p.handle || '여행자',
+          handle: p.handle || '',
+          emoji: p.emoji || '🙂',
+          photo: p.profile_photo || undefined,
+        };
+      });
   } catch {
     return [];
   }

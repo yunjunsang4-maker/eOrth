@@ -6,7 +6,7 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
-import { getProfileByHandle } from '../services/profile';
+import { getProfileByHandle, getProfileById } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeKoreaRegion } from '../constants/koreaRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
@@ -703,20 +703,37 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setArchivedIds((prev) => prev.filter((i) => i !== id));
   };
 
+  // 좋아요 최신 상태의 ref 미러 — 리렌더 전에 연타하면 렌더 클로저의 target.liked가 스테일이라
+  // 두 탭 모두 '좋아요'로 계산돼 카운트가 이중 증가하던 문제를 막는다.
+  const likeStateRef = useRef<Record<string, boolean>>({});
   const toggleLike = (id: string) => {
     const inRecords = records.find((r) => r.id === id);
     const inFeed = inRecords ? undefined : feedPosts.find((r) => r.id === id);
     const target = inRecords ?? inFeed;
     if (!target) return;
-    const nowLiked = !target.liked;
+    const nowLiked = !(likeStateRef.current[id] ?? target.liked);
+    likeStateRef.current[id] = nowLiked;
+    // 이미 원하는 상태면 no-op — 같은 방향으로 두 번 적용돼 카운트가 어긋나는 것 방지
     const flip = (r: TravelRecord): TravelRecord =>
-      r.id === id ? { ...r, liked: nowLiked, likes: nowLiked ? r.likes + 1 : Math.max(0, r.likes - 1) } : r;
+      r.id !== id || r.liked === nowLiked
+        ? r
+        : { ...r, liked: nowLiked, likes: nowLiked ? r.likes + 1 : Math.max(0, r.likes - 1) };
     if (inRecords) setRecords((prev) => prev.map(flip));
     else setFeedPosts((prev) => prev.map(flip));
     // 백엔드 동기화 (feed 글은 id가 곧 remoteId)
     const remoteId = target.remoteId ?? (inFeed ? target.id : undefined);
     if (isSupabaseConfigured && remoteId) {
-      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch(notifySyncError);
+      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch((e) => {
+        // 서버 반영 실패 → 낙관 반영을 되돌린다 (안 되돌리면 다음 새로고침까지 서버와 어긋남)
+        notifySyncError(e);
+        likeStateRef.current[id] = !nowLiked;
+        const revert = (r: TravelRecord): TravelRecord =>
+          r.id !== id || r.liked !== nowLiked
+            ? r
+            : { ...r, liked: !nowLiked, likes: !nowLiked ? r.likes + 1 : Math.max(0, r.likes - 1) };
+        if (inRecords) setRecords((prev) => prev.map(revert));
+        else setFeedPosts((prev) => prev.map(revert));
+      });
     }
   };
 
@@ -802,7 +819,23 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return [...prev, { ...user, followedAt: Date.now() }];
     });
     if (isSupabaseConfigured && user.id) {
-      apiFollow(user.id).then(() => refreshFollowing()).catch(notifySyncError);
+      apiFollow(user.id)
+        .then(() => refreshFollowing())
+        .catch(async (e) => {
+          // 서버 거부 시 낙관 반영 롤백 — 버튼이 '팔로잉'으로 남는데 서버엔 팔로우가 없어
+          // 다음 새로고침 때 말없이 원복되던 불일치를 막는다.
+          setFollowingUsers((prev) => prev.filter((f) => f.id !== user.id));
+          // 비공개 계정은 RLS(follows_insert_own)가 직접 팔로우를 거부한다 —
+          // is_private 분기가 없는 화면(팔로워 목록 맞팔로우·게시물 상세)에서도
+          // 요청 흐름으로 자동 전환해 준다.
+          const prof = await getProfileById(user.id!).catch(() => null);
+          if (prof?.is_private) {
+            requestFollow(user.id!);
+            emitToast('비공개 계정이에요. 팔로우 요청을 보냈어요.');
+          } else {
+            notifySyncError(e);
+          }
+        });
     }
   };
 
@@ -851,7 +884,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   const addComment = (postId: string, text: string, replyToId?: string) => {
     const nc: PostComment = {
-      id: `c-${Date.now()}`,
+      id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, // 같은 ms 충돌 방지 (addRecord와 동일 규칙)
       emoji: '🙂',
       name: handle || '나',
       photo: profilePhoto || undefined,
@@ -889,7 +922,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           const top = list.find((c) => c.id === replyToId || c.replies?.some((r) => r.id === replyToId));
           parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
         }
-        apiAddComment(remoteId, text, parent).catch(notifySyncError);
+        apiAddComment(remoteId, text, parent)
+          .then((sid) => {
+            if (!sid) return;
+            // 서버 uuid를 로컬 댓글 id로 교체 — 방금 단 댓글의 삭제·좋아요가 서버에 반영되고
+            // (isRemoteId 게이트 통과), 상세 재진입 refreshComments 때 지운 댓글이 '부활'하지
+            // 않으며, 이 댓글에 다는 답글도 올바른 부모로 저장된다.
+            setCommentsByPost((prev) => {
+              const list = prev[postId];
+              if (!list) return prev;
+              const swap = (c: PostComment): PostComment => {
+                if (c.id === nc.id) return { ...c, id: sid };
+                if (c.replies?.length) return { ...c, replies: c.replies.map(swap) };
+                return c;
+              };
+              return { ...prev, [postId]: list.map(swap) };
+            });
+          })
+          .catch(notifySyncError);
       }
     }
   };
