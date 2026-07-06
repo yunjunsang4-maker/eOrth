@@ -33,6 +33,7 @@ import SponsoredPackageCard from '../components/SponsoredPackageCard';
 import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage } from '../constants/sponsoredPackages';
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
+import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode } from '../store/settingsStore';
 import type { TabScreenProps } from '../navigation/types';
 
@@ -166,6 +167,13 @@ const COUNTRY_FLAGS: Record<string, string> = {
   '프랑스': '🇫🇷',
   '태국': '🇹🇭',
 };
+
+// 국가 시트 헤더 국기 — 로컬 4개국 외에는 전체 국가 목록(COUNTRIES)에서 찾는다.
+// (기존엔 4개국 외 모든 방문국이 🌍 폴백으로 표시됐다)
+const flagForCountry = (name: string): string =>
+  COUNTRY_FLAGS[name] ??
+  COUNTRIES.find((c) => c.name === (name === '한국' ? '대한민국' : name))?.flag ??
+  '🌍';
 
 
 // 한국어 국가명 → GeoJSON 영문 이름 매핑 (GlobeView의 KO_NAMES 역방향)
@@ -1189,7 +1197,7 @@ export default function MainScreen({ navigation, route }: Props) {
         {/* 헤더 */}
         <View style={styles.countrySheetHeader}>
           <Text style={styles.countrySheetFlag}>
-            {selectedCountry ? COUNTRY_FLAGS[selectedCountry] ?? '🌍' : ''}
+            {selectedCountry ? flagForCountry(selectedCountry) : ''}
           </Text>
           <Text style={styles.countrySheetName}>{selectedCountry}</Text>
         </View>

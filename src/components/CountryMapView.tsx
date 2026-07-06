@@ -455,7 +455,9 @@ function render(geo){
   insetFeatures=[];
   if(CODE==='USA'){
     mainFeatures=geo.features.filter(function(f){return insets.indexOf(f.properties.NAME_1)<0;});
-    insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii'||f.properties.NAME_1==='Guam';});
+    // Honolulu는 별도 NAME_1 피처 — 본토에서 빼고 인셋에도 안 넣으면 지도에서 완전히 사라진다.
+    // 하와이 인셋 박스에 함께 그린다(아래 box 필터 참조).
+    insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii'||f.properties.NAME_1==='Honolulu'||f.properties.NAME_1==='Guam';});
   }
   var mainGeo={type:'FeatureCollection',features:mainFeatures};
   // 하단 탭 바가 가리는 만큼 빼서, 지도가 '보이는 영역' 중앙에 오도록 한다
@@ -491,7 +493,9 @@ function render(geo){
       {name:'Guam',x:PAD+W*0.41,y:VH*0.75,w:W*0.08,h:VH*0.15}
     ];
     insetBoxes.forEach(function(box){
-      var feat=insetFeatures.filter(function(f){return f.properties.NAME_1===box.name;});
+      var feat=insetFeatures.filter(function(f){
+        return f.properties.NAME_1===box.name || (box.name==='Hawaii' && f.properties.NAME_1==='Honolulu');
+      });
       if(feat.length===0)return;
       var fc={type:'FeatureCollection',features:feat};
       var ip=d3.geoMercator().fitExtent([[box.x+4,box.y+4],[box.x+box.w-4,box.y+box.h-4]],fc);

@@ -130,12 +130,13 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           ...picked.filter((p) => p.uri === coverUri),
           ...picked.filter((p) => p.uri !== coverUri),
         ];
-        const copied = await copyTripOriginals(t.id, items);
+        const { uris: copied, firstItemCopied } = await copyTripOriginals(t.id, items);
         if (copied.length === 0) continue;
-        // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장
+        // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
+        // 커버(0번) 복사가 실패했으면 copied[0]은 '다른 사진'이므로 크롭을 굽지 않는다.
         const adj = coverAdjusts[t.id];
         let repUri: string | undefined;
-        if (adj && adj.uri === coverUri) {
+        if (adj && adj.uri === coverUri && firstItemCopied) {
           repUri = (await bakeCoverCrop(copied[0], adj.t, CARD_ASPECT, t.id)) ?? undefined;
         }
         const recId = addImportedAlbum({

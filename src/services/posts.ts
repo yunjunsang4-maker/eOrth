@@ -159,7 +159,9 @@ export async function fetchFeed(): Promise<TravelRecord[]> {
       .from('posts')
       .select(POST_SELECT)
       .order('created_at', { ascending: false })
-      .limit(100);
+      // 커서 페이지네이션 도입 전 임시 상한 — 네트워크 게시물이 이 수를 넘으면
+      // 오래된 글이 피드에서 잘린다(베타 규모 기준). 초과 시 무한 스크롤 도입 필요.
+      .limit(300);
     if (uid) query = query.neq('author_id', uid);
     const { data, error } = await query;
     if (error || !data) return [];

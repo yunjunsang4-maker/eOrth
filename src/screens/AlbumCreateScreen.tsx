@@ -193,12 +193,12 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         ...picked.filter((p) => p.uri === cover),
         ...picked.filter((p) => p.uri !== cover),
       ];
-      const copied = await copyTripOriginals(albumId, items);
+      const { uris: copied, firstItemCopied } = await copyTripOriginals(albumId, items);
       if (copied.length === 0) throw new Error('copy failed');
-      // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장
-      // (copied[0] = 커버 복사본, 실패 시 원본 커버를 그대로 사용)
+      // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
+      // 커버(0번) 복사가 실패했으면 copied[0]은 다른 사진이므로 크롭을 굽지 않는다.
       let repUri: string | undefined;
-      if (activeAdjust) {
+      if (activeAdjust && firstItemCopied) {
         repUri = (await bakeCoverCrop(copied[0], activeAdjust, CARD_ASPECT, albumId)) ?? undefined;
       }
       const albumTitle = title.trim() || defaultTitle;

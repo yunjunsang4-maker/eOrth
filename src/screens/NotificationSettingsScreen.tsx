@@ -123,11 +123,9 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   };
 
   const openSettings = () => {
-    if (Platform.OS === 'ios') {
-      Linking.openURL('app-settings:');
-    } else {
-      Linking.openSettings();
-    }
+    // Linking.openSettings()는 iOS/Android 모두 동작 — 'app-settings:' openURL 분기는
+    // 실패 시 미처리 promise rejection을 냈다(catch 없음)
+    Linking.openSettings();
   };
 
   return (

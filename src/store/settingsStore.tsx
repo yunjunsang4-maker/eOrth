@@ -229,6 +229,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const badgeEarnedAtRef = useRef(badgeEarnedAt);
   badgeEarnedAtRef.current = badgeEarnedAt;
 
+  const providerMountedAtRef = useRef(Date.now());
   const markBadgesEarned = useCallback((ids: number[]) => {
     const prev = badgeEarnedAtRef.current;
     const newly = ids.filter((id) => prev[id] == null);
@@ -238,8 +239,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     for (const id of newly) next[id] = now;
     badgeEarnedAtRef.current = next;
     setBadgeEarnedAt(next);
-    // 첫 시드(prev 비어있음)는 토스트 억제 — 실제 '신규 획득'만 알린다(앱 시작 시 시드 폭주 방지)
-    if (Object.keys(prev).length > 0) {
+    // 시드 폭주(과거 데이터 백필로 앱 시작 직후 일괄 수여) 억제는 '시작 직후'로 한정한다.
+    // "prev 비어있으면 무조건 억제"는 badgeEarnedAt이 빈 진짜 신규 사용자가 세션 중
+    // 첫 기록으로 배지를 따는 순간(가장 중요한 첫 획득 배치)의 토스트까지 전부 삼켰다.
+    const isStartupSeed =
+      Object.keys(prev).length === 0 && now - providerMountedAtRef.current < 15000;
+    if (!isStartupSeed) {
       setPendingBadgeToasts((q) => [...q, ...newly]);
     }
   }, []);

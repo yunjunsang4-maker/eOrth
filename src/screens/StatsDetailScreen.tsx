@@ -452,7 +452,9 @@ export default function StatsDetailScreen() {
       }
 
       countryNames.forEach((name) => {
-        const cMeta = COUNTRIES.find((c) => c.name === name);
+        // '한국' 별칭(가져오기 구버전 표기)은 표준 표기로 보정해 조회
+        const lookupName = name === '한국' ? '대한민국' : name;
+        const cMeta = COUNTRIES.find((c) => c.name === lookupName);
         if (cMeta) {
           let cont = cMeta.continent;
           if (cont === '북아메리카' || cont === '남아메리카') {
@@ -460,12 +462,10 @@ export default function StatsDetailScreen() {
           }
           if (cont in continentCounts) {
             continentCounts[cont]++;
-            continentCountries[cont].add(name);
+            continentCountries[cont].add(lookupName);
           }
-        } else {
-          continentCounts['아시아']++;
-          continentCountries['아시아'].add(name);
         }
+        // 미등록 국가명(지오코딩 폴백 등)은 대륙 통계에서 제외 — 무조건 아시아로 오집계하지 않는다
       });
     });
 

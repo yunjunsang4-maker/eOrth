@@ -586,12 +586,12 @@ export default function DMScreen({ navigation, route }: Props) {
             {item.time}
           </Text>
         )}
+        {/* '읽음' 표시는 제거 — 상대 열람과 무관하게 무조건 렌더되는 허위 정보였다.
+            (서버 read_at 기록·조회 인프라가 없어 실제 읽음 확인은 별도 작업) */}
         {item.isMine && item.failed ? (
           <TouchableOpacity onPress={() => retrySend(friend.handle, item.id)} hitSlop={6}>
             <Text style={st.sendFailed}>⚠ {t('comp2.sendFailedRetry')}</Text>
           </TouchableOpacity>
-        ) : item.isMine && index === messages.length - 1 ? (
-          <Text style={st.readReceipt}>{t('dm.read')}</Text>
         ) : null}
       </View>
     </View>

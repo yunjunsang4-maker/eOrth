@@ -738,13 +738,16 @@ var rotX = 0, rotY = 0;
 var raycaster = new THREE.Raycaster();
 var tapStartPos = { x: 0, y: 0 };
 function detectCountry(clientX, clientY) {
+  // init(텍스처 빌드) 완료 전 탭 방어 — globeMesh가 undefined면 intersectObject에서
+  // TypeError가 나 touchend 핸들러가 죽는다 (neon 버전과 동일 가드)
+  if (!globeMesh || !worldData) return null;
   var mouse = new THREE.Vector2(
     (clientX / window.innerWidth) * 2 - 1,
     -(clientY / window.innerHeight) * 2 + 1
   );
   raycaster.setFromCamera(mouse, camera);
   var hits = raycaster.intersectObject(globeMesh);
-  if (!hits.length || !worldData) return null;
+  if (!hits.length) return null;
 
   var pt = hits[0].point.clone();
   var inv = new THREE.Matrix4().copy(globe.matrixWorld).invert();

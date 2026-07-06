@@ -310,7 +310,9 @@ export default function StatsScreen() {
     }
 
     countryNames.forEach((name) => {
-      const cMeta = COUNTRIES.find((c) => c.name === name);
+      // '한국' 별칭(가져오기 구버전 표기)은 표준 표기로 보정해 조회
+      const lookupName = name === '한국' ? '대한민국' : name;
+      const cMeta = COUNTRIES.find((c) => c.name === lookupName);
       if (cMeta) {
         let cont = cMeta.continent;
         if (cont === '북아메리카' || cont === '남아메리카') {
@@ -321,9 +323,8 @@ export default function StatsScreen() {
         } else {
           continentCounts[cont] = (continentCounts[cont] || 0) + 1;
         }
-      } else {
-        continentCounts['아시아']++;
       }
+      // 미등록 국가명(지오코딩 폴백 등)은 대륙 통계에서 제외 — 무조건 아시아로 오집계하지 않는다
     });
   });
 
@@ -549,7 +550,8 @@ export default function StatsScreen() {
                   </Text>
                 ))}
               </View>
-              <Text style={styles.ratingCount}>{t('stats.ratingBasis', { count: myRecords.length })}</Text>
+              {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
+              <Text style={styles.ratingCount}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
             </View>
             <View style={styles.ratingBars}>
               {RATING_STATS.map((r) => (

@@ -131,9 +131,13 @@ export default function CountryScreen({ navigation, route }: Props) {
         <View style={{ height: 100 }} />
       </ScrollView>
 
-      {/* Add record button */}
+      {/* Add record button — 이 국가가 미리 선택된 새 기록 작성으로 이동 */}
       <View style={styles.bottomBtn}>
-        <TouchableOpacity style={styles.addRecordBtn} activeOpacity={0.85}>
+        <TouchableOpacity
+          style={styles.addRecordBtn}
+          activeOpacity={0.85}
+          onPress={() => navigation.navigate('NewRecord', { selectedCountry: { name: country.name, flag: country.flag } })}
+        >
           <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.addRecordGrad}>
             <Text style={styles.addRecordText}>+ {t('comp2.addNewRecord')}</Text>
           </LinearGradient>

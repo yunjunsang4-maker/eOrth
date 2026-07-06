@@ -91,13 +91,18 @@ async function writeChunked(mod: SecureStoreModule, key: string, value: string):
 
 async function removeChunked(mod: SecureStoreModule, key: string): Promise<void> {
   const meta = await mod.getItemAsync(key);
+  let count = 0;
   if (meta != null) {
-    const count = parseInt(meta, 10);
-    if (Number.isInteger(count) && count >= 0) {
-      for (let i = 0; i < count; i++) {
-        await mod.deleteItemAsync(chunkKey(key, i)).catch(() => {});
-      }
-    }
+    const parsed = parseInt(meta, 10);
+    if (Number.isInteger(parsed) && parsed >= 0) count = parsed;
+  }
+  for (let i = 0; i < count; i++) {
+    await mod.deleteItemAsync(chunkKey(key, i)).catch(() => {});
+  }
+  // 고아 청크 정리 — 이전 쓰기가 메타 기록 전에 중단됐으면 메타보다 큰 인덱스의
+  // 청크가 남는다(메타 기준 삭제로는 영영 안 지워짐). 메타 이후 몇 칸을 추가로 지운다.
+  for (let i = count; i < count + 4; i++) {
+    await mod.deleteItemAsync(chunkKey(key, i)).catch(() => {});
   }
   await mod.deleteItemAsync(key).catch(() => {});
 }

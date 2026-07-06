@@ -133,7 +133,12 @@ export function mergeScannedTrips(trips: ScannedTrip[]): ScannedTrip {
   const photos = trips
     .flatMap((t) => t.photos)
     .sort((a, b) => (a.creationTime ?? 0) - (b.creationTime ?? 0));
-  const parse = (s: string) => new Date(s.replace(/\./g, '-')).getTime();
+  // 로컬 자정 기준 파싱 — new Date('YYYY-MM-DD')는 UTC 해석이라 formatDate(로컬)와의
+  // 왕복 변환에서 미주 등 UTC 음수 시간대는 합친 여행 날짜가 하루 앞당겨졌다.
+  const parse = (s: string) => {
+    const [y, m, d] = s.split(/[.\-/]/).map((p) => parseInt(p, 10));
+    return new Date(y, m - 1, d).getTime();
+  };
   const startDate = formatDate(Math.min(...trips.map((t) => parse(t.startDate))));
   const endDate = formatDate(Math.max(...trips.map((t) => parse(t.endDate))));
   return {

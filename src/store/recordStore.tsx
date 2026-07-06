@@ -638,7 +638,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const saveDraft = (
     data: Omit<TravelRecord, 'id' | 'likes' | 'comments' | 'liked' | 'timestamp'>
   ): string => {
-    const draftId = `draft-${Date.now()}`;
+    const draftId = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`; // 같은 ms 충돌 방지
     const draft: TravelRecord = {
       ...data,
       user: {

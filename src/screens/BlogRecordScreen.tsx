@@ -566,15 +566,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // ─── 자동 임시저장 (30초) ───
   const draftSaveRef = useRef<((silent?: boolean) => void) | null>(null);
+  // 최신 내용은 ref로 참조 — deps에 title/blocks를 넣으면 '키 입력마다' interval이
+  // 파괴·재생성돼, 연속 타이핑 중에는 30초 저장이 영영 실행되지 않았다
+  // (실제 동작이 "마지막 입력 후 30초"가 되어 강제 종료 시 세션 전체가 유실).
+  const autosaveContentRef = useRef({ title: '', blocks: [] as BlogBlock[] });
+  autosaveContentRef.current = { title, blocks };
   useEffect(() => {
     // 편집 모드(기존 게시물 수정)에서는 임시저장을 만들지 않는다
     if (isEdit) return;
     const timer = setInterval(() => {
-      if (!title.trim() && blocks.every(b => b.type === 'text' && !(b as TextBlock).value.trim())) return;
+      const { title: curTitle, blocks: curBlocks } = autosaveContentRef.current;
+      if (!curTitle.trim() && curBlocks.every(b => b.type === 'text' && !(b as TextBlock).value.trim())) return;
       draftSaveRef.current?.(true);
     }, 30000);
     return () => clearInterval(timer);
-  }, [title, blocks, isEdit]);
+  }, [isEdit]);
 
   const showToast = (msg: string) => { setToastMsg(msg); setTimeout(() => setToastMsg(''), 2500); };
 
@@ -1605,9 +1611,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   <TextInput style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
                     value={keywordInput} onChangeText={v => {
                       if (v.endsWith(' ')) {
-                        const tag = v.trim();
+                        // 중복 검사도 '#' 제거 후 값으로 — 제거 전 값(#seoul)로 검사하고 제거 후
+                        // 값(seoul)을 저장하면 같은 태그가 중복 저장돼 key 충돌·이중 삭제가 났다.
+                        // (엔터 경로 addKeyword와 동일 규칙)
+                        const raw = v.trim();
+                        const tag = raw.startsWith('#') ? raw.slice(1).trim() : raw;
                         if (tag && !keywords.includes(tag) && keywords.length < 10) {
-                          setKeywords(prev => [...prev, tag.startsWith('#') ? tag.slice(1) : tag]);
+                          setKeywords(prev => [...prev, tag]);
                         }
                         setKeywordInput('');
                       } else {

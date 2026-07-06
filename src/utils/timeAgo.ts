@@ -1,6 +1,8 @@
 export function timeAgo(timestamp: number): string {
+  if (!Number.isFinite(timestamp)) return ''; // NaN 방어 ("NaN초 전" 방지)
   const now = Date.now();
-  const diff = Math.floor((now - timestamp) / 1000); // 초 단위
+  // 서버 시각이 기기 시계보다 조금 앞설 수 있다(방금 단 댓글 등) — 음수는 0으로 클램프
+  const diff = Math.max(0, Math.floor((now - timestamp) / 1000)); // 초 단위
 
   if (diff < 60) return `${diff}초 전`;
   const minutes = Math.floor(diff / 60);

@@ -532,6 +532,24 @@ create policy "messages_select_participant" on public.dm_messages
       and not public.is_blocked_between(t.user_a, t.user_b)
   ));
 
+-- 좋아요 조회를 '해당 게시물/댓글을 볼 수 있는 사용자'로 제한 — 3)의 select_all(true)은
+-- private/friends 글의 좋아요(user_id·post_id 쌍)를 글을 못 보는 사용자도 전수 조회할 수
+-- 있게 했다(게시물 존재·상호작용 관계 추론 가능). 서브쿼리에 posts/comments RLS가 그대로
+-- 적용되므로 "내게 보이는 글"의 좋아요만 보인다. (여기서 교체 — posts 최종 정책 정의 이후)
+drop policy if exists "likes_select_all" on public.post_likes;
+drop policy if exists "likes_select_visible" on public.post_likes;
+create policy "likes_select_visible" on public.post_likes
+  for select to authenticated using (
+    exists (select 1 from public.posts p where p.id = post_likes.post_id)
+  );
+
+drop policy if exists "comment_likes_select_all" on public.comment_likes;
+drop policy if exists "comment_likes_select_visible" on public.comment_likes;
+create policy "comment_likes_select_visible" on public.comment_likes
+  for select to authenticated using (
+    exists (select 1 from public.comments c where c.id = comment_likes.comment_id)
+  );
+
 -- follows: 차단 관계면 팔로우 생성 불가 — 2)의 기존 정책을 차단 검사 포함으로 교체.
 -- 비공개 계정은 직접 팔로우 불가 — 팔로우 요청 수락(accept_follow_request, SECURITY DEFINER)으로만 생성된다.
 drop policy if exists "follows_insert_own" on public.follows;

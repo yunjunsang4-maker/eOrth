@@ -65,8 +65,17 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const hideRemoteIds = useCallback((ids: string[]) => {
     if (!ids.length) return;
     setHiddenIds((prev) => {
-      const next = { ...prev };
+      let next: Record<string, true> = { ...prev };
       ids.forEach((id) => { next[id] = true; });
+      // 무한 누적 방지 — 서버 히스토리 조회 범위를 훌쩍 넘는 오래된 항목은 잘라낸다
+      // (객체 삽입 순서 유지 특성상 앞쪽이 가장 오래된 항목)
+      const keys = Object.keys(next);
+      const MAX_HIDDEN = 2000;
+      if (keys.length > MAX_HIDDEN) {
+        const trimmed: Record<string, true> = {};
+        for (const k of keys.slice(keys.length - MAX_HIDDEN)) trimmed[k] = true;
+        next = trimmed;
+      }
       hiddenIdsRef.current = next;
       return next;
     });
