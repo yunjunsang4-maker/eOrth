@@ -31,6 +31,7 @@ import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
+import { andFitText } from '../utils/fitText';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
@@ -443,13 +444,13 @@ function FeedCard({
             {item.countries && item.countries.length > 0
               ? item.countries.length <= 3
                 ? item.countries.map((c: { flag: string; name: string }, idx: number) => (
-                    <Text key={idx} style={s.countryTag}>{c.flag} {c.name}</Text>
+                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
                   ))
                 : <>
-                    <Text style={s.countryTag}>{item.countries[0].flag} {item.countries[0].name}</Text>
-                    <Text style={s.countryTag}>+{item.countries.length - 1}</Text>
+                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                    <Text style={s.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                   </>
-              : <Text style={s.countryTag}>{item.country}</Text>
+              : <Text style={s.countryTag} {...andFitText}>{item.country}</Text>
             }
             <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>
           </View>
@@ -1050,17 +1051,17 @@ function BlogCard({
           {item.countries ? (
             item.countries.slice(0, 3).map((c: any, i: number) => (
               <View key={i} style={bc.countryTag}>
-                <Text style={bc.countryTagText}>{c.flag} {c.name}</Text>
+                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {c.name}</Text>
               </View>
             ))
           ) : (
             <View style={bc.countryTag}>
-              <Text style={bc.countryTagText}>{item.countryFlag} {item.countryName}</Text>
+              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {item.countryName}</Text>
             </View>
           )}
           {item.countries && item.countries.length > 3 && (
             <View style={bc.countryTag}>
-              <Text style={bc.countryTagText}>+{item.countries.length - 3}</Text>
+              <Text style={bc.countryTagText} {...andFitText}>+{item.countries.length - 3}</Text>
             </View>
           )}
         </View>
@@ -1244,11 +1245,11 @@ function AlbumCard({
               {item.countries && (
                 item.countries.length <= 3
                   ? item.countries.map((c: any, i: number) => (
-                      <Text key={i} style={ab.countryTag}>{c.flag} {c.name}</Text>
+                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
                     ))
                   : <>
-                      <Text style={ab.countryTag}>{item.countries[0].flag} {item.countries[0].name}</Text>
-                      <Text style={ab.countryTag}>+{item.countries.length - 1}</Text>
+                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                      <Text style={ab.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                     </>
               )}
               <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>

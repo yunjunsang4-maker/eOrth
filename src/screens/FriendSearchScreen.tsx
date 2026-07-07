@@ -23,6 +23,7 @@ import { useSettings } from '../store/settingsStore';
 import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';
 import { useRecords } from '../store/recordStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { andFitText } from '../utils/fitText';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, getProfileByHandle } from '../services/profile';
 import { fetchFriendSuggestions } from '../services/social';
@@ -100,7 +101,7 @@ function FriendItem({
         <Text style={s.friendUsername}>@{item.username}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
-          <Text style={s.friendCountries}>
+          <Text style={s.friendCountries} {...andFitText}>
             {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
             {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
           </Text>

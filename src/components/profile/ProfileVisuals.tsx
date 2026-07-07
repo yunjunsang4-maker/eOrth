@@ -10,6 +10,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Path } from 'react-native-svg';
 import { LiquidPressable, GooeyCircle, LiquidCardGlow } from '../LiquidEffects';
 import { PersonIcon } from '../icons';
+import { andFitText } from '../../utils/fitText';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 export const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
@@ -132,7 +133,7 @@ export const StatCard = ({ value, label, onPress, grad = STAT_GRADS[0] }: {
   <LiquidPressable onPress={onPress} intensity={0.08}>
     <NeonGlass colors={grad} glowColor={grad[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={pv.statCardContent}>
       <Text style={pv.statValue}>{value}</Text>
-      <Text style={pv.statLabel}>{label}</Text>
+      <Text style={pv.statLabel} {...andFitText}>{label}</Text>
     </NeonGlass>
   </LiquidPressable>
 );
@@ -190,7 +191,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
           </>
         ) : (
           <>
-            <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
+            <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
             <Text style={thumbSt.gridDate}>{trip.date}</Text>
             <View style={thumbSt.gridBadges}>
               {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => <View key={vt} style={thumbSt.gridBadge}>{VIEW_TYPE_BADGE[vt] || null}</View>)}

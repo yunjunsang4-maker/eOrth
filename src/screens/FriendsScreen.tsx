@@ -20,6 +20,7 @@ import { getProfileByHandle } from '../services/profile';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
+import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
@@ -424,7 +425,7 @@ function FriendRow({
         {/* 정보 */}
         <View style={st.rowInfo}>
           <View style={st.rowTop}>
-            <Text style={st.rowName}>
+            <Text style={st.rowName} {...andFitText}>
               {friend.name}
               {friend.isMuted && <Text style={st.rowMuteIcon}> 🔕</Text>}
             </Text>

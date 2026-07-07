@@ -12,6 +12,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';
+import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const C = {
@@ -204,7 +205,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
               onPress={() => setActiveTab(tab)}
               activeOpacity={0.7}
             >
-              <Text style={[s.tabText, isActive && s.tabTextActive]}>
+              <Text style={[s.tabText, isActive && s.tabTextActive]} {...andFitText}>
                 {TAB_LABELS[tab]} <Text style={[s.tabCount, isActive && s.tabCountActive]}>{counts[tab]}</Text>
               </Text>
             </TouchableOpacity>

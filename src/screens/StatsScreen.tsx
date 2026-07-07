@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Platform,
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,19 +20,10 @@ import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, { Path as SvgPath } from 'react-native-svg';
+import { andFitText } from '../utils/fitText';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
 const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
-
-// ─── 안드로이드 전용 텍스트 보정 (iOS 렌더링은 절대 변경하지 않는다) ───
-// 앱 글꼴(Inter)에 한글이 없어 한글은 시스템 폰트로 폴백되는데, 안드로이드(Noto Sans KR)는
-// iOS(Apple SD 고딕)보다 글리프가 넓고 시스템 글꼴 배율(fontScale)도 그대로 곱해진다.
-// 그 결과 iOS 폭 기준의 고정폭 칸(50/22px 등)에서 "아메리카"·"0개"·연도 축 라벨이
-// 줄바꿈돼 카드 배치가 밀렸다 → android에서만 한 줄 고정·자동 축소·배율 상한을 적용.
-const IS_ANDROID = Platform.OS === 'android';
-const andFitText = IS_ANDROID
-  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, maxFontSizeMultiplier: 1.2 } as const)
-  : ({} as const);
 
 // 헤더 'analysis' 워드마크 (analysis.svg) — 소셜 글자 본체(x-height ≈18.9, 자연 1:1)와 동일 크기로
 // analysis x-height(≈27.5/52)를 소셜과 같게: 52 × 18.9/27.5 ≈ 36

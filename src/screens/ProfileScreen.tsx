@@ -41,6 +41,7 @@ import { COUNTRIES } from '../constants/countries';
 import { handleFontStyle } from '../constants/handleFonts';
 import { detectCurrentCountry } from '../services/snapService';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { andFitText } from '../utils/fitText';
 import { getMyUserId } from '../services/profile';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { setCoachActive } from '../components/coachOverlayState';
@@ -215,7 +216,7 @@ const StatCard = ({
 }) => (
   <LiquidPressable onPress={onPress} intensity={0.06} style={styles.statCol}>
     <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+    <Text style={styles.statLabel} {...andFitText}>{label}</Text>
   </LiquidPressable>
 );
 
@@ -2033,7 +2034,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                   experimentalBlurMethod="dimezisBlurView"
                   style={thumbSt.gridInfoBar}
                 >
-                  <Text style={thumbSt.gridTitle}>{trip.countryFlag} {trip.title}</Text>
+                  <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
                   <Text style={thumbSt.gridDate}>{trip.date}</Text>
                   <View style={thumbSt.gridBadges}>
                     {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (

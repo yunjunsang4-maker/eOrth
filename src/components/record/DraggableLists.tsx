@@ -15,6 +15,7 @@ import {
   LockClosedIcon as SvgLockClosedIcon,
   LockOpenIcon as SvgLockOpenIcon,
 } from '../icons';
+import { andFitText } from '../../utils/fitText';
 
 /**
  * NewRecordScreen(피드 기록)에서 분리한 드래그 앤 드롭 리스트 컴포넌트.
@@ -417,7 +418,7 @@ function DraggablePhotoThumb({
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           activeOpacity={0.8}
         >
-          <Text style={[ds.mediaRepTxt, uri === representativePhoto && ds.mediaRepTxtActive]}>
+          <Text style={[ds.mediaRepTxt, uri === representativePhoto && ds.mediaRepTxtActive]} {...andFitText}>
             {uri === representativePhoto ? t('comp.mapRep') : t('comp.setRep')}
           </Text>
         </TouchableOpacity>
@@ -425,7 +426,7 @@ function DraggablePhotoThumb({
 
       {!isDragging && isLocked && (
         <View style={ds.privacyCountBadge}>
-          <Text style={ds.privacyCountTxt}>{t('comp.peopleCount', { count: mediaPrivacy[idx].length })}</Text>
+          <Text style={ds.privacyCountTxt} {...andFitText}>{t('comp.peopleCount', { count: mediaPrivacy[idx].length })}</Text>
         </View>
       )}
     </Animated.View>

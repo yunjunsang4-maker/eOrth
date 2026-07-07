@@ -38,6 +38,7 @@ import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
+import { andFitText } from '../utils/fitText';
 import type { BlogBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
@@ -1298,24 +1299,24 @@ export default function PostDetailScreen() {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
         <View style={s.countryTag}>
-          <Text style={s.countryTagText}>{record.country}</Text>
+          <Text style={s.countryTagText} {...andFitText}>{record.country}</Text>
         </View>
       ) : null;
     }
     if (record.countries.length <= 3) {
       return record.countries.map((c, i) => (
         <View key={i} style={s.countryTag}>
-          <Text style={s.countryTagText}>{c.flag} {c.name}</Text>
+          <Text style={s.countryTagText} {...andFitText}>{c.flag} {c.name}</Text>
         </View>
       ));
     }
     return (
       <>
         <View style={s.countryTag}>
-          <Text style={s.countryTagText}>{record.countries[0].flag} {record.countries[0].name}</Text>
+          <Text style={s.countryTagText} {...andFitText}>{record.countries[0].flag} {record.countries[0].name}</Text>
         </View>
         <View style={s.countryTag}>
-          <Text style={s.countryTagText}>+{record.countries.length - 1}</Text>
+          <Text style={s.countryTagText} {...andFitText}>+{record.countries.length - 1}</Text>
         </View>
       </>
     );

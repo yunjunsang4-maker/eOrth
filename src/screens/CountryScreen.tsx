@@ -12,6 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
+import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
 type Props = RootStackScreenProps<'Country'>;
@@ -65,15 +66,15 @@ export default function CountryScreen({ navigation, route }: Props) {
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{visitCount}</Text>
-            <Text style={styles.statLabel}>{t('misc.countryVisitCount')}</Text>
+            <Text style={styles.statLabel} {...andFitText}>{t('misc.countryVisitCount')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statValue}>{totalDays}</Text>
-            <Text style={styles.statLabel}>{t('misc.countryTotalDays')}</Text>
+            <Text style={styles.statLabel} {...andFitText}>{t('misc.countryTotalDays')}</Text>
           </View>
           <View style={styles.statCard}>
             <Text style={[styles.statValue, { color: Colors.gold }]}>{avgRating}</Text>
-            <Text style={styles.statLabel}>{t('misc.countryAvgRating')}</Text>
+            <Text style={styles.statLabel} {...andFitText}>{t('misc.countryAvgRating')}</Text>
           </View>
         </View>
 

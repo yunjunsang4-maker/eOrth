@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import { andFitText } from '../utils/fitText';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -1167,7 +1168,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 <Text style={styles.countryFlag}>{c.flag}</Text>
                 <View style={styles.countryInfo}>
                   <Text style={styles.countryName}>{c.name}</Text>
-                  <Text style={styles.countryVisits}>{c.visits}회 방문</Text>
+                  <Text style={styles.countryVisits} {...andFitText}>{c.visits}회 방문</Text>
                 </View>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
