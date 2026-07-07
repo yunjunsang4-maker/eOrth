@@ -10,6 +10,7 @@ import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import * as AppleAuthentication from 'expo-apple-authentication';
+import { GoogleSignin, isSuccessResponse, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
 import * as Crypto from 'expo-crypto';
 import { withTimeout } from '../utils/withTimeout';
 import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
@@ -228,14 +229,77 @@ async function signInWithAppleNative(): Promise<AuthResult> {
   }
 }
 
+// ─── Google 네이티브 로그인 클라이언트 ID (Google Cloud 콘솔 > API 및 서비스 > 사용자 인증 정보) ───
+// webClientId: Supabase Google provider에 등록된 "웹 애플리케이션" 클라이언트 — idToken의 audience로 쓰인다.
+// iosClientId: iOS용 클라이언트 — 발급 후 여기와 app.json의 iosUrlScheme(역방향 표기) 두 곳을 채운다.
+//              비어 있으면 iOS는 자동으로 기존 웹 OAuth로 폴백한다.
+// Android는 별도 값이 코드에 들어가지 않는 대신, 같은 Google Cloud 프로젝트에
+// Android 클라이언트(패키지명 + EAS 키스토어 SHA-1)가 등록돼 있어야 한다(없으면 웹 폴백).
+const GOOGLE_WEB_CLIENT_ID = '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com';
+const GOOGLE_IOS_CLIENT_ID = ''; // TODO: iOS 클라이언트 ID 발급 후 입력
+
+let googleConfigured = false;
+function ensureGoogleConfigured() {
+  if (googleConfigured) return;
+  GoogleSignin.configure({
+    webClientId: GOOGLE_WEB_CLIENT_ID,
+    ...(GOOGLE_IOS_CLIENT_ID ? { iosClientId: GOOGLE_IOS_CLIENT_ID } : {}),
+  });
+  googleConfigured = true;
+}
+
 /**
- * 소셜 로그인 (Google / Apple) — Apple은 iOS에서 네이티브 시트, 그 외는 Supabase OAuth(PKCE) + 인앱 브라우저.
- * 웹 OAuth가 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
- * Redirect URL에 위 딥링크를 등록해야 한다.
+ * 네이티브 Google 로그인 — OS 계정 선택 시트로 인증 후 idToken을 Supabase에 전달.
+ * 인앱 브라우저("supabase.co를 사용하려고 합니다" 시스템 창)가 뜨지 않는다.
+ * 콘솔 구성이 아직 없거나(iOS 클라이언트 미발급, Android SHA-1 미등록=DEVELOPER_ERROR)
+ * Play 서비스가 없는 기기면 기존 웹 OAuth로 자동 폴백해 로그인이 막히지 않게 한다.
+ */
+async function signInWithGoogleNative(): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) return signInWithProviderWeb('google');
+  try {
+    ensureGoogleConfigured();
+    if (Platform.OS === 'android') await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    // 웹 방식의 prompt=select_account와 같은 의도 — 항상 계정 선택창을 띄운다
+    await GoogleSignin.signOut().catch(() => {});
+    const response = await GoogleSignin.signIn();
+    if (!isSuccessResponse(response)) return { ok: false, cancelled: true };
+    const idToken = response.data.idToken;
+    if (!idToken) return { ok: false, error: 'Google 인증 토큰을 받지 못했어요.' };
+    const { error } = await withTimeout(
+      supabase.auth.signInWithIdToken({ provider: 'google', token: idToken }),
+      AUTH_TIMEOUT_MS,
+    );
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    if (isErrorWithCode(e)) {
+      if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) {
+        return { ok: false, cancelled: true };
+      }
+    }
+    // 구성 오류(DEVELOPER_ERROR)·Play 서비스 없음 등 — 웹 OAuth로 폴백
+    return signInWithProviderWeb('google');
+  }
+}
+
+/**
+ * 소셜 로그인 (Google / Apple) — 네이티브 우선: Apple은 iOS 네이티브 시트, Google은 네이티브 계정 선택.
+ * 그 외/폴백은 Supabase OAuth(PKCE) + 인앱 브라우저.
  */
 export async function signInWithProvider(provider: 'google' | 'apple'): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   if (provider === 'apple' && Platform.OS === 'ios') return signInWithAppleNative();
+  if (provider === 'google') return signInWithGoogleNative();
+  return signInWithProviderWeb(provider);
+}
+
+/**
+ * 웹 OAuth 폴백 — 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
+ * Redirect URL에 위 딥링크를 등록해야 한다.
+ */
+async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,

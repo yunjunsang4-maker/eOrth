@@ -66,7 +66,13 @@
       "expo-web-browser",
       "expo-secure-store",
       "expo-localization",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.REPLACE-WITH-IOS-CLIENT-ID"
+        }
+      ]
     ],
     "extra": {
       "eas": {
