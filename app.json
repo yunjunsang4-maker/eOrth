@@ -65,7 +65,8 @@
       "expo-video",
       "expo-web-browser",
       "expo-secure-store",
-      "expo-localization"
+      "expo-localization",
+      "expo-apple-authentication"
     ],
     "extra": {
       "eas": {

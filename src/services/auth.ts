@@ -5,9 +5,12 @@
  * 기존 모의 로그인 흐름을 유지한다.
  */
 
+import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import * as Crypto from 'expo-crypto';
 import { withTimeout } from '../utils/withTimeout';
 import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
 
@@ -193,12 +196,46 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
 const oauthRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'auth-callback' });
 
 /**
- * 소셜 로그인 (Google / Apple) — Supabase OAuth(PKCE) + 인앱 브라우저.
- * 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
+ * 네이티브 Apple 로그인 (iOS 전용) — OS 시트(Face ID)로 인증 후 identityToken을 Supabase에 전달.
+ * 웹 OAuth와 달리 Services ID·클라이언트 시크릿(6개월 만료 JWT)이 필요 없어 만료로 깨지지 않는다.
+ * 필요 설정: ① Apple App ID에 Sign In with Apple capability
+ *           ② Supabase > Providers > Apple 활성 + Client IDs에 번들 ID(com.yunjunsang.eorth) 등록
+ */
+async function signInWithAppleNative(): Promise<AuthResult> {
+  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  try {
+    // 리플레이 방지 nonce — Apple 요청에는 SHA256 해시를 싣고, Supabase 검증에는 원문을 넘긴다
+    const rawNonce = Crypto.randomUUID();
+    const hashedNonce = await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, rawNonce);
+    const credential = await AppleAuthentication.signInAsync({
+      requestedScopes: [
+        AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+        AppleAuthentication.AppleAuthenticationScope.EMAIL,
+      ],
+      nonce: hashedNonce,
+    });
+    if (!credential.identityToken) return { ok: false, error: 'Apple 인증 토큰을 받지 못했어요.' };
+    const { error } = await withTimeout(
+      supabase.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken, nonce: rawNonce }),
+      AUTH_TIMEOUT_MS,
+    );
+    if (error) return { ok: false, error: toKoMessage(error.message) };
+    return { ok: true };
+  } catch (e) {
+    // 사용자가 Apple 시트를 닫음 — 실패가 아니라 취소로 구분한다
+    if ((e as { code?: string })?.code === 'ERR_REQUEST_CANCELED') return { ok: false, cancelled: true };
+    return { ok: false, error: toKoMessage(e instanceof Error ? e.message : String(e)) };
+  }
+}
+
+/**
+ * 소셜 로그인 (Google / Apple) — Apple은 iOS에서 네이티브 시트, 그 외는 Supabase OAuth(PKCE) + 인앱 브라우저.
+ * 웹 OAuth가 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
  * Redirect URL에 위 딥링크를 등록해야 한다.
  */
 export async function signInWithProvider(provider: 'google' | 'apple'): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (provider === 'apple' && Platform.OS === 'ios') return signInWithAppleNative();
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -225,6 +262,9 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
     if (expectedState && cbUrl.searchParams.get('state') !== expectedState) {
       return { ok: false, error: '인증 상태 검증에 실패했어요. 다시 시도해주세요.' };
     }
+    // 공급자/Supabase 구간에서 실패하면 code 대신 error 파라미터가 담겨 돌아온다 — 실제 원인을 그대로 보여준다
+    const cbErr = cbUrl.searchParams.get('error_description') || cbUrl.searchParams.get('error');
+    if (cbErr) return { ok: false, error: toKoMessage(cbErr) };
     // PKCE: 콜백 URL의 code 를 세션으로 교환
     const code = cbUrl.searchParams.get('code');
     if (!code) return { ok: false, error: '인증 코드를 받지 못했어요.' };
