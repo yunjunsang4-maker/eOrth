@@ -236,7 +236,7 @@ async function signInWithAppleNative(): Promise<AuthResult> {
 // Android는 별도 값이 코드에 들어가지 않는 대신, 같은 Google Cloud 프로젝트에
 // Android 클라이언트(패키지명 + EAS 키스토어 SHA-1)가 등록돼 있어야 한다(없으면 웹 폴백).
 const GOOGLE_WEB_CLIENT_ID = '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com';
-const GOOGLE_IOS_CLIENT_ID = ''; // TODO: iOS 클라이언트 ID 발급 후 입력
+const GOOGLE_IOS_CLIENT_ID = '589120466593-ak8p39reoek66ksrrqrg2790kohju0a4.apps.googleusercontent.com';
 
 let googleConfigured = false;
 function ensureGoogleConfigured() {
