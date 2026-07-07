@@ -12,13 +12,17 @@ import { GlassView, isGlassEffectAPIAvailable } from 'expo-glass-effect';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 
 /**
- * 리퀴드 글래스 표면 (iOS 26) — 3단 폴백.
- *  1) iOS 26 + API 가용  → expo-glass-effect <GlassView> (네이티브 backdrop blur + tintColor)
- *  2) 구형 iOS           → <BlurView> + 보라 틴트 오버레이 + 상단 엣지 하이라이트
- *  3) Android            → 반투명 보라 View(Material 톤) + 상단 엣지 하이라이트
+ * 리퀴드 글래스 표면 (iOS 26) — 플랫폼별 폴백.
+ *  1) iOS 26 + API 가용        → expo-glass-effect <GlassView> (네이티브 backdrop blur + tintColor)
+ *  2) 구형 iOS                 → <BlurView> + 보라 틴트 오버레이 + 상단 엣지 하이라이트
+ *  3) Android + androidBlur    → <BlurView experimentalBlurMethod> 실제 블러 + 틴트 (탭 바 등 소면적 전용)
+ *  4) Android (기본)           → '매트' 고불투명 보라 View — 반투명(0.3)이었을 땐 블러 없이
+ *     뒤 콘텐츠가 선명하게 뚫고 비쳐 iOS와 완전히 다르게(깨진 것처럼) 보였다.
  *  + "투명도 줄이기"(Reduce Transparency) 켜지면 반투명 단색으로 폴백.
  *
  * ⚠️ opacity<1 을 주지 말 것(유리가 안 보임). 보라색은 tintColor 로만 표현.
+ * ⚠️ androidBlur 는 소면적(탭 바·버튼)에만 — dimezisBlurView 는 실험 기능이라
+ *    대면적/스크롤 위에서는 성능 저하 가능(대면적은 기본 매트 폴백 사용).
  * 배경 재질 전용이라 보통 자식 없이 absoluteFill 로 깔고, 그 위에 콘텐츠를 형제로 올린다.
  */
 
@@ -27,10 +31,12 @@ interface GlassSurfaceProps {
   borderRadius?: number;
   /** 네이티브 GlassView tintColor (8자리 hex 권장, 예: #751AAD4D) */
   tintColor?: string;
-  /** 구형 iOS BlurView 위 보라 틴트 */
+  /** 구형 iOS·Android 블러 경로의 BlurView 위 보라 틴트 */
   fallbackTint?: string;
-  /** Android 반투명 보라 */
+  /** Android 매트 폴백(블러 미사용 시) 배경색 — 뒤가 비치지 않게 고불투명 권장 */
   androidTint?: string;
+  /** Android에서 실제 블러 사용 (소면적 전용 — 탭 바·버튼) */
+  androidBlur?: boolean;
   /** 폴백 경로 상단 엣지 하이라이트(specular) */
   edgeHighlight?: boolean;
   children?: React.ReactNode;
@@ -81,7 +87,8 @@ export const GlassSurface: React.FC<GlassSurfaceProps> = ({
   borderRadius = 0,
   tintColor = '#751AAD4D',
   fallbackTint = 'rgba(117,26,173,0.18)',
-  androidTint = 'rgba(117,26,173,0.3)',
+  androidTint = 'rgba(40,18,60,0.92)',
+  androidBlur = false,
   edgeHighlight = false,
   children,
 }) => {
@@ -110,16 +117,23 @@ export const GlassSurface: React.FC<GlassSurfaceProps> = ({
     );
   }
 
-  // 2) 구형 iOS: 블러 + 보라 틴트 / 3) Android: 반투명 보라
+  // 2) 구형 iOS: 블러 + 보라 틴트 / 3) Android+androidBlur: 실제 블러 / 4) Android: 매트 보라
+  const blurred = Platform.OS === 'ios' || (Platform.OS === 'android' && androidBlur);
   return (
     <View style={[style, { borderRadius, overflow: 'hidden' }]}>
-      {Platform.OS === 'ios' && (
-        <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+      {blurred && (
+        <BlurView
+          intensity={40}
+          tint="dark"
+          // Android BlurView는 이 옵션 없이는 아무것도 그리지 않는다(no-op)
+          experimentalBlurMethod={Platform.OS === 'android' ? 'dimezisBlurView' : 'none'}
+          style={StyleSheet.absoluteFill}
+        />
       )}
       <View
         style={[
           StyleSheet.absoluteFill,
-          { backgroundColor: Platform.OS === 'ios' ? fallbackTint : androidTint },
+          { backgroundColor: blurred ? fallbackTint : androidTint },
         ]}
       />
       {edgeHighlight && <EdgeHighlight radius={borderRadius} gradId={gradId} />}

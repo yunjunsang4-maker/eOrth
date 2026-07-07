@@ -340,13 +340,15 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents="box-none"
     >
-      {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 틴트 (방법 B) */}
+      {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 실제 블러.
+          androidBlur: 블러 없는 반투명 틴트는 뒤 콘텐츠가 선명하게 뚫고 비쳐(통계 화면 등)
+          iOS와 완전히 다르게 보였다 — 탭 바는 소면적이라 실제 블러 비용이 감당된다. */}
       <GlassSurface
         style={StyleSheet.absoluteFill}
         borderRadius={BAR_R}
         tintColor="#0A0A0F80"
         fallbackTint="rgba(10,10,15,0.38)"
-        androidTint="rgba(10,10,15,0.62)"
+        androidBlur
         edgeHighlight
       />
 

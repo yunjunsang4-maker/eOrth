@@ -192,7 +192,8 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
                 navigation.navigate(fmt.screen);
               }}
             >
-              <BlurView intensity={40} tint="dark" style={StyleSheet.absoluteFill} />
+              {/* Android는 experimentalBlurMethod 없이는 BlurView가 no-op — 버튼이 투명하게 뚫려 보였다 */}
+              <BlurView intensity={40} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
               {fmt.icon}
             </TouchableOpacity>
           </Animated.View>

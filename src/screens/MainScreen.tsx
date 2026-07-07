@@ -11,10 +11,24 @@ import {
   Animated,
   Modal,
   PanResponder,
+  Platform,
   Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+
+// 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
+// Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
+// 대면적 블러는 실험 옵션을 켜도 성능 부담이 있어 매트 폴백을 쓴다 (탭 바 등 소면적만 실제 블러).
+const SheetBackdrop = ({ pointerEvents }: { pointerEvents?: 'none' }) =>
+  Platform.OS === 'ios' ? (
+    <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents={pointerEvents} />
+  ) : (
+    <View
+      style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(16,10,30,0.94)' }]}
+      pointerEvents={pointerEvents}
+    />
+  );
 import { useTranslation } from 'react-i18next';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
@@ -951,7 +965,7 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.globeFormA11y')}
             >
-              <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
+              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon />
               </BlurView>
             </TouchableOpacity>
@@ -1062,7 +1076,7 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.territoryDisplayA11y')}
             >
-              <BlurView intensity={50} tint="dark" style={styles.globeSettingsBtnBlur}>
+              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon />
               </BlurView>
             </TouchableOpacity>
@@ -1123,7 +1137,7 @@ export default function MainScreen({ navigation, route }: Props) {
           ]}
           pointerEvents={sheetOpen ? 'auto' : 'none'}
         >
-          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+          <SheetBackdrop />
           {/* 시트 핸들 */}
           <View style={styles.sheetHandleArea} {...sheetPan.panHandlers}>
             <View style={styles.sheetHandle} />
@@ -1188,7 +1202,7 @@ export default function MainScreen({ navigation, route }: Props) {
           pointerEvents="auto"
           accessibilityViewIsModal
         >
-          <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+          <SheetBackdrop />
         {/* 핸들 */}
         <TouchableOpacity style={styles.sheetHandleArea} onPress={closeCountrySheet} activeOpacity={0.8}>
           <View style={styles.sheetHandle} />
@@ -1257,7 +1271,7 @@ export default function MainScreen({ navigation, route }: Props) {
           onPress={() => setFormatModalVisible(false)}
         >
           <View style={styles.fmCard} onStartShouldSetResponder={() => true}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+            <SheetBackdrop />
             <Text style={styles.fmTitle}>{t('main.recordFormatTitle')}</Text>
             <Text style={styles.fmSub}>
               {pendingCountry?.name ? t('main.recordFormatPromptCountry', { country: pendingCountry.name }) : t('main.recordFormatPrompt')}
@@ -1298,7 +1312,7 @@ export default function MainScreen({ navigation, route }: Props) {
           onPress={() => setRegionRecordsVisible(false)}
         >
           <View style={styles.rrCard} onStartShouldSetResponder={() => true}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} />
+            <SheetBackdrop />
             <Text style={styles.fmTitle}>{regionRecordsTitle}</Text>
             <Text style={styles.fmSub}>{regionRecords.length}개의 기록</Text>
 
@@ -1365,7 +1379,7 @@ export default function MainScreen({ navigation, route }: Props) {
           onPress={cancelDisplaySettings}
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
-            <BlurView intensity={60} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />
+            <SheetBackdrop pointerEvents="none" />
             {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬 */}
             <Svg
               width={DS_CARD_W}
