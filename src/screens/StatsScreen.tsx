@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
+  Platform,
   Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -23,6 +24,16 @@ import Svg, { Path as SvgPath } from 'react-native-svg';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
 const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
+
+// ─── 안드로이드 전용 텍스트 보정 (iOS 렌더링은 절대 변경하지 않는다) ───
+// 앱 글꼴(Inter)에 한글이 없어 한글은 시스템 폰트로 폴백되는데, 안드로이드(Noto Sans KR)는
+// iOS(Apple SD 고딕)보다 글리프가 넓고 시스템 글꼴 배율(fontScale)도 그대로 곱해진다.
+// 그 결과 iOS 폭 기준의 고정폭 칸(50/22px 등)에서 "아메리카"·"0개"·연도 축 라벨이
+// 줄바꿈돼 카드 배치가 밀렸다 → android에서만 한 줄 고정·자동 축소·배율 상한을 적용.
+const IS_ANDROID = Platform.OS === 'android';
+const andFitText = IS_ANDROID
+  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, maxFontSizeMultiplier: 1.2 } as const)
+  : ({} as const);
 
 // 헤더 'analysis' 워드마크 (analysis.svg) — 소셜 글자 본체(x-height ≈18.9, 자연 1:1)와 동일 크기로
 // analysis x-height(≈27.5/52)를 소셜과 같게: 52 × 18.9/27.5 ≈ 36
@@ -473,7 +484,7 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 1번 - Yearly bar chart */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('yearly')}>
-            <Text style={styles.cardTitle}>{t('stats.cardYearlyTrips')}</Text>
+            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardYearlyTrips')}</Text>
             <View style={styles.barChart}>
               {VISIT_HISTORY.map((v, i) => (
                 <View key={i} style={styles.barGroup}>
@@ -488,7 +499,7 @@ export default function StatsScreen() {
                       />
                     )}
                   </View>
-                  <Text style={styles.barLabel}>{v.year.slice(2)}</Text>
+                  <Text style={styles.barLabel} {...andFitText}>{v.year.slice(2)}</Text>
                 </View>
               ))}
             </View>
@@ -496,12 +507,12 @@ export default function StatsScreen() {
 
           {/* 2번 - Region breakdown */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('region')}>
-            <Text style={styles.cardTitle}>{t('stats.cardContinents')}</Text>
+            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardContinents')}</Text>
             {REGION_STATS.map((r, i) => (
               <View key={i} style={styles.regionRow}>
                 <View style={styles.regionLeft}>
                   <View style={[styles.regionDot, { backgroundColor: r.color }]} />
-                  <Text style={styles.regionLabel}>{continentName(r.label)}</Text>
+                  <Text style={styles.regionLabel} {...andFitText}>{continentName(r.label)}</Text>
                 </View>
                 <View style={styles.regionBarBg}>
                   <LinearGradient
@@ -511,7 +522,7 @@ export default function StatsScreen() {
                     style={[styles.regionBar, { width: `${r.pct * 100}%` }]}
                   />
                 </View>
-                <Text style={styles.regionCount}>{t('stats.countUnit', { count: r.count })}</Text>
+                <Text style={styles.regionCount} {...andFitText}>{t('stats.countUnit', { count: r.count })}</Text>
               </View>
             ))}
           </PressCard>
@@ -521,16 +532,16 @@ export default function StatsScreen() {
         <View style={styles.statsRow}>
           {/* 3번 - Top countries */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('countries')}>
-            <Text style={styles.cardTitle}>{t('stats.cardTopCountries')}</Text>
+            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardTopCountries')}</Text>
             {TOP_COUNTRIES.length > 0 ? (
               TOP_COUNTRIES.map((c) => (
                 <View key={c.rank} style={styles.topRow}>
-                  <Text style={[styles.rankNum, c.gold && { color: Colors.gold }]}>
+                  <Text style={[styles.rankNum, c.gold && { color: Colors.gold }]} {...andFitText}>
                     #{c.rank}
                   </Text>
                   <Text style={styles.topFlag}>{c.flag}</Text>
-                  <Text style={styles.topName}>{c.name}</Text>
-                  <Text style={styles.topVisits}>{t('stats.visitsUnit', { count: c.visits })}</Text>
+                  <Text style={styles.topName} {...andFitText}>{c.name}</Text>
+                  <Text style={styles.topVisits} {...andFitText}>{t('stats.visitsUnit', { count: c.visits })}</Text>
                 </View>
               ))
             ) : (
@@ -540,7 +551,7 @@ export default function StatsScreen() {
 
           {/* 4번 - Travel rating stats */}
           <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('rating')}>
-            <Text style={styles.cardTitle}>{t('stats.cardRating')}</Text>
+            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardRating')}</Text>
             <View style={styles.ratingOverview}>
               <Text style={styles.ratingBig}>{avgRating}</Text>
               <View style={styles.ratingStars}>
@@ -556,7 +567,7 @@ export default function StatsScreen() {
             <View style={styles.ratingBars}>
               {RATING_STATS.map((r) => (
                 <View key={r.star} style={styles.ratingBarRow}>
-                  <Text style={styles.ratingBarLabel}>{r.star}★</Text>
+                  <Text style={styles.ratingBarLabel} {...andFitText}>{r.star}★</Text>
                   <View style={styles.ratingBarBg}>
                     <LinearGradient
                       colors={['#7B61FF', '#C084FC']}
@@ -565,7 +576,7 @@ export default function StatsScreen() {
                       style={[styles.ratingBarFill, { width: `${r.pct * 100}%` }]}
                     />
                   </View>
-                  <Text style={styles.ratingBarCount}>{r.count}</Text>
+                  <Text style={styles.ratingBarCount} {...andFitText}>{r.count}</Text>
                 </View>
               ))}
             </View>
