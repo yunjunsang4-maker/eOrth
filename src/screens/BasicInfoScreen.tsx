@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
 import { isHandleAvailable } from '../services/profile';
+import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -112,6 +113,25 @@ export default function BasicInfoScreen({ navigation }: Props) {
     }
   };
 
+  // 로그인 화면으로 복귀 — 세션을 정리하지 않고 이동하면 Splash가 남은 세션으로
+  // 자동 재로그인하므로, 확인 후 signOut을 기다렸다가 Login으로 리셋한다.
+  // (로그아웃은 local-first 원칙대로 로컬 데이터를 지우지 않는다)
+  const handleBackToLogin = () => {
+    Alert.alert(t('basicInfo.backToLoginTitle'), t('basicInfo.backToLoginMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('basicInfo.backToLoginConfirm'),
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await signOut();
+            navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+          })();
+        },
+      },
+    ]);
+  };
+
   const handleFinish = async () => {
     if (checkingHandle) return;
     const h = handle.trim();
@@ -150,6 +170,17 @@ export default function BasicInfoScreen({ navigation }: Props) {
           contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 32 }]}
           showsVerticalScrollIndicator={false}
         >
+          {/* 로그인 화면으로 돌아가기 */}
+          <TouchableOpacity
+            style={styles.backBtn}
+            onPress={handleBackToLogin}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            accessibilityRole="button"
+            accessibilityLabel={t('basicInfo.backToLogin')}
+          >
+            <Text style={styles.backTxt}>‹</Text>
+          </TouchableOpacity>
+
           {/* Header */}
           <View style={styles.header}>
             <Text style={styles.stepText}>{t('basicInfo.step')}</Text>
@@ -368,6 +399,23 @@ const styles = StyleSheet.create({
   },
   header: {
     marginBottom: Spacing[8],
+  },
+  backBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    backgroundColor: Colors.bgCard,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing[4],
+  },
+  backTxt: {
+    color: Colors.textPrimary,
+    fontSize: 22,
+    lineHeight: 24,
+    marginTop: -2,
   },
   stepText: {
     fontSize: Typography.fontSize.xs,

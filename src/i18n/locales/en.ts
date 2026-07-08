@@ -55,6 +55,10 @@ const en = {
     visibilityPrivate: 'Private',
     visibilityPublicHint: 'Anyone can see your profile and records',
     visibilityPrivateHint: 'Only approved followers can see your records',
+    backToLogin: 'Back to login',
+    backToLoginTitle: 'Go back to the login screen?',
+    backToLoginMsg: "You'll be signed out and what you've entered won't be saved.",
+    backToLoginConfirm: 'Go back',
   },
   settings: {
     title: 'Settings',

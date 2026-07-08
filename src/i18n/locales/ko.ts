@@ -56,6 +56,10 @@ const ko = {
     visibilityPrivate: '비공개',
     visibilityPublicHint: '누구나 내 프로필과 기록을 볼 수 있어요',
     visibilityPrivateHint: '승인한 팔로워만 내 기록을 볼 수 있어요',
+    backToLogin: '로그인 화면으로 돌아가기',
+    backToLoginTitle: '로그인 화면으로 돌아갈까요?',
+    backToLoginMsg: '지금 계정에서 로그아웃되고, 입력 중인 내용은 저장되지 않아요.',
+    backToLoginConfirm: '돌아가기',
   },
   settings: {
     title: '설정',
