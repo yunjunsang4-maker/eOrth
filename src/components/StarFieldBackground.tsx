@@ -2,7 +2,7 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 
-// Star Field.svg (839x839, 흰 별 714개, opacity 0.8)를 그대로 담은 별 배경.
+// Stars.svg (839x839, 흰 별 714개, fill-opacity 0.4)를 그대로 담은 별 배경.
 // [cx, cy, r] 3개씩 나열(원본 viewBox 좌표계). 화면을 덮도록 slice로 스케일한다.
 const STARS: number[] = [
   745,712,0.57, 663,447,0.85, 116,689,0.52, 644,78,0.89, 344,292,0.72, 458,517,0.8, 403,507,0.75, 434,764,0.86, 549,718,0.52, 519,268,0.69, 20,829,0.74, 678,729,0.79,
@@ -69,7 +69,9 @@ const STARS: number[] = [
 
 // 화면 전체를 채우는 정적 별 배경. 콘텐츠 뒤에 절대배치로 깔고 터치는 통과시킨다.
 // 배경색은 각 화면의 기존 배경을 살리도록 투명(transparent)이 기본.
-function StarFieldBackground({ opacity = 0.8 }: { opacity?: number }) {
+// density: 렌더할 별 비율(0~1). 배열이 공간적으로 무작위 순서라 인덱스로 균등하게 솎으면
+//          별들이 골고루 성기게 퍼져 보인다(뭉침 완화). 기본 0.5 = 절반만 표시.
+function StarFieldBackground({ opacity = 0.4, density = 0.5 }: { opacity?: number; density?: number }) {
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       <Svg
@@ -80,7 +82,9 @@ function StarFieldBackground({ opacity = 0.8 }: { opacity?: number }) {
       >
         {(() => {
           const dots = [] as React.ReactNode[];
-          for (let i = 0; i < STARS.length; i += 3) {
+          for (let i = 0, n = 0; i < STARS.length; i += 3, n += 1) {
+            // n번째 별을 density 비율로 균등 샘플링 (floor 증가 시점에만 유지)
+            if (Math.floor(n * density) === Math.floor((n + 1) * density)) continue;
             dots.push(
               <Circle key={i} cx={STARS[i]} cy={STARS[i + 1]} r={STARS[i + 2]} fill="#FFFFFF" fillOpacity={opacity} />,
             );

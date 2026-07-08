@@ -414,8 +414,9 @@ export default function StatsScreen() {
   });
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
-      {/* 별 배경 (Star Field.svg) — 콘텐츠 뒤에 깔린다 */}
+    <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
+      {/* 소셜·프로필탭과 동일한 검정 배경(#0A0A0F) — 보라끼 나던 그라데이션 제거 */}
+      {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
       <StarFieldBackground />
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 17 }]}>

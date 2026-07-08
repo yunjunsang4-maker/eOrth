@@ -30,7 +30,6 @@ import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
-  FloatingBlobs,
   LiquidPressable,
   LiquidCardGlow,
 } from '../components/LiquidEffects';
@@ -1825,19 +1824,8 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
   return (
     <View style={styles.safeArea}>
-      {/* 별 배경 (Star Field.svg) — 콘텐츠 뒤에 깔린다 */}
+      {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다. 다른 배경 요소(블롭·오로라 그라데이션)는 제거됨 */}
       <StarFieldBackground />
-      {/* 배경 떠다니는 블롭들 */}
-      <FloatingBlobs />
-
-      {/* 상단 오로라 글로우 — 유리에 색이 비치도록(리퀴드 글래스 굴절감 강화) */}
-      <LinearGradient
-        colors={['rgba(168,85,247,0.24)', 'rgba(34,211,238,0.10)', 'transparent']}
-        start={{ x: 0.15, y: 0 }}
-        end={{ x: 0.85, y: 1 }}
-        style={styles.auroraTop}
-        pointerEvents="none"
-      />
 
       <ScrollView
         style={[styles.container, { backgroundColor: 'transparent' }]}
