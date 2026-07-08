@@ -35,6 +35,7 @@ import {
   LiquidCardGlow,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
+import { emitToast } from '../store/toastStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
@@ -1224,6 +1225,25 @@ function DraggableCardWrapper({
   );
 }
 
+// ─── 병합 모드 카드 오버레이 — 선택 시 네온 테두리 + 우상단 뱃지(대표/순번), 미선택 시 빈 원 ───
+function MergeSelectOverlay({ order, radius, primaryLabel }: { order: number; radius: number; primaryLabel: string }) {
+  const selected = order >= 0;
+  return (
+    <View
+      pointerEvents="none"
+      style={[
+        StyleSheet.absoluteFill,
+        { borderRadius: radius },
+        selected && { borderWidth: 2.5, borderColor: '#BF85FC' },
+      ]}
+    >
+      <View style={[mergeSt.badge, !selected && mergeSt.badgeIdle]}>
+        {selected && <Text style={mergeSt.badgeTxt}>{order === 0 ? primaryLabel : String(order + 1)}</Text>}
+      </View>
+    </View>
+  );
+}
+
 // ─── 묶음 설정 모달 ───
 function GroupMergeModal({
   visible,
@@ -1469,6 +1489,9 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   // 카드 표시 순서(id 배열) — 드래그 재정렬은 이 순서만 갱신한다
   const [cardOrder, setCardOrder] = useState<string[]>(() => [...CARD_ORDER]);
+  // ─── 여행 카드 합치기(병합 모드) — 탭 순서 유지, 첫 번째로 선택한 카드가 대표 ───
+  const [mergeMode, setMergeMode] = useState(false);
+  const [mergeSelected, setMergeSelected] = useState<string[]>([]);
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragScale = useRef(new Animated.Value(1)).current;
   // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응)
@@ -1510,6 +1533,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   };
 
   const handleDragStart = (idx: number) => {
+    if (mergeMode) return; // 병합 모드 중엔 순서 변경 드래그 비활성
     // 진행 중인 정착 애니메이션이 있으면 멈추고 새 드래그 시작
     dragOffset.stopAnimation();
     dragScale.stopAnimation();
@@ -1528,6 +1552,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   };
 
   const handleDragMove = (idx: number, dx: number, dy: number) => {
+    if (mergeMode) return;
     dragOffset.setValue({ x: dx, y: dy });
     // 현재 올라가 있는 대상 카드를 갱신 (경계를 넘을 때만 setState → 매 프레임 리렌더 방지)
     const target = findTargetIdx(idx, dx, dy);
@@ -1539,6 +1564,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
   };
 
   const handleDragEnd = (idx: number, dx: number, dy: number) => {
+    if (mergeMode) return;
     setIsDragging(false);
     hoverIdxRef.current = null;
     setHoverIdx(null);
@@ -1604,7 +1630,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, followingUsers } = useRecords();
+  const { records, tripGroups, archivedIds, followingUsers, mergeTripGroups } = useRecords();
 
   // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   const [followerCount, setFollowerCount] = useState(0);
@@ -1688,6 +1714,49 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
       return ia - ib;
     });
   }, [baseTrips, cardOrder]);
+
+  // ─── 여행 카드 합치기 (병합 모드) ───
+  // tripGroups 기반 카드만 합칠 수 있다 (legacy 더미 카드는 그룹 데이터가 없음)
+  const mergeableIds = useMemo(() => new Set(tripGroups.map((g) => g.id)), [tripGroups]);
+
+  const toggleMergeSelect = (id: string) => {
+    if (!mergeableIds.has(id)) return;
+    setMergeSelected((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  };
+
+  const exitMergeMode = () => {
+    setMergeMode(false);
+    setMergeSelected([]);
+  };
+
+  const confirmMerge = () => {
+    const [targetId, ...sourceIds] = mergeSelected;
+    const target = displayTrips.find((tr) => tr.id === targetId);
+    if (!target || sourceIds.length === 0) return;
+    Alert.alert(
+      t('profile.mergeConfirmTitle'),
+      t('profile.mergeConfirmMsg', { count: mergeSelected.length, title: `${target.countryFlag} ${target.title}`.trim() }),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('profile.mergeAction'),
+          style: 'destructive',
+          onPress: () => {
+            LayoutAnimation.configureNext(LIQUID_LAYOUT);
+            mergeTripGroups(targetId, sourceIds);
+            // 드래그 순서 목록에서 사라진 카드 id 정리
+            if (cardOrder.length > 0) {
+              const ids = cardOrder.filter((id) => !sourceIds.includes(id));
+              CARD_ORDER = ids;
+              setCardOrder(ids);
+            }
+            exitMergeMode();
+            emitToast(t('profile.mergeDone'));
+          },
+        },
+      ]
+    );
+  };
 
   const handleChangePhoto = async () => {
     setActionSheetVisible(false);
@@ -1906,8 +1975,19 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         <View ref={archiveRef} collapsable={false}>
           <View style={gridSt.gridHeaderRow}>
             <Text style={styles.sectionTitle}>Travel archive</Text>
+            {/* 카드 합치기 — 합칠 수 있는 카드(tripGroups)가 2장 이상일 때만 노출 */}
+            {(mergeMode || mergeableIds.size >= 2) && (
+              <TouchableOpacity
+                onPress={() => (mergeMode ? exitMergeMode() : setMergeMode(true))}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Text style={styles.sectionLink}>{mergeMode ? t('profile.mergeCancel') : t('profile.mergeCards')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
-          <Text style={styles.archiveSubtitle}>{t('profile.archiveCount', { count: displayTrips.length })}</Text>
+          <Text style={styles.archiveSubtitle}>
+            {mergeMode ? t('profile.mergeGuide') : t('profile.archiveCount', { count: displayTrips.length })}
+          </Text>
         </View>
 
         {displayTrips.length === 0 && (
@@ -1928,7 +2008,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
             onDragStart={handleDragStart}
             onDragMove={handleDragMove}
             onDragEnd={handleDragEnd}
-            onPress={() => openTripDetail(displayTrips[0])}
+            onPress={() => (mergeMode ? toggleMergeSelect(displayTrips[0].id) : openTripDetail(displayTrips[0]))}
             style={thumbSt.mainCard}
           >
             {/* 출렁이는 글로우 배경 */}
@@ -1978,6 +2058,13 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                 ))}
               </View>
             </BlurView>
+            {mergeMode && mergeableIds.has(displayTrips[0].id) && (
+              <MergeSelectOverlay
+                order={mergeSelected.indexOf(displayTrips[0].id)}
+                radius={20}
+                primaryLabel={t('profile.mergePrimary')}
+              />
+            )}
           </DraggableCardWrapper>
         )}
 
@@ -1996,7 +2083,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                 onDragStart={handleDragStart}
                 onDragMove={handleDragMove}
                 onDragEnd={handleDragEnd}
-                onPress={() => openTripDetail(trip)}
+                onPress={() => (mergeMode ? toggleMergeSelect(trip.id) : openTripDetail(trip))}
                 style={thumbSt.gridCard}
               >
                 {/* 출렁이는 글로우 */}
@@ -2044,6 +2131,13 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                     ))}
                   </View>
                 </BlurView>
+                {mergeMode && mergeableIds.has(trip.id) && (
+                  <MergeSelectOverlay
+                    order={mergeSelected.indexOf(trip.id)}
+                    radius={30}
+                    primaryLabel={t('profile.mergePrimary')}
+                  />
+                )}
               </DraggableCardWrapper>
             );
           })}
@@ -2051,6 +2145,21 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
 
       </ScrollView>
 
+      {/* 병합 모드 하단 고정 바 — 2장 이상 선택 시 활성화 */}
+      {mergeMode && (
+        <View style={[mergeSt.bar, { bottom: insets.bottom + 96 }]} pointerEvents="box-none">
+          <TouchableOpacity
+            style={[mergeSt.barBtn, mergeSelected.length < 2 && mergeSt.barBtnDisabled]}
+            disabled={mergeSelected.length < 2}
+            onPress={confirmMerge}
+            activeOpacity={0.85}
+          >
+            <Text style={[mergeSt.barBtnTxt, mergeSelected.length < 2 && mergeSt.barBtnTxtDisabled]}>
+              {t('profile.mergeBtn', { count: mergeSelected.length })}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {/* 아바타 액션 시트 */}
       <AvatarActionSheet
@@ -3647,5 +3756,55 @@ const asStyles = StyleSheet.create({
     fontSize: 16,
     color: '#A1A1B0',
     fontWeight: '500',
+  },
+});
+
+// ─── 병합 모드 (카드 합치기) 스타일 ───
+const mergeSt = StyleSheet.create({
+  badge: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
+    paddingHorizontal: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#BF85FC',
+  },
+  badgeIdle: {
+    backgroundColor: 'rgba(10,10,15,0.45)',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.6)',
+  },
+  badgeTxt: {
+    color: '#0A0A0F',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  bar: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
+    alignItems: 'center',
+  },
+  barBtn: {
+    width: '100%',
+    borderRadius: 26,
+    paddingVertical: 15,
+    alignItems: 'center',
+    backgroundColor: '#BF85FC',
+  },
+  barBtnDisabled: {
+    backgroundColor: '#2E2E3B',
+  },
+  barBtnTxt: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#0A0A0F',
+  },
+  barBtnTxtDisabled: {
+    color: '#A1A1B0',
   },
 });

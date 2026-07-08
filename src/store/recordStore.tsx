@@ -239,6 +239,7 @@ interface RecordContextType {
   addTripGroup: (group: Omit<TripGroup, 'id' | 'createdAt'>, opts?: { session?: { startDate?: string; endDate?: string; date?: string } }) => void;
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
+  mergeTripGroups: (targetId: string, sourceIds: string[]) => void;
   markSnapViewed: (id: string) => void;
   viewedSnapIds: string[]; // 내가 본 타인 스냅(remoteId) — 안 본 링 판정용(영속)
   // 임시저장
@@ -1074,6 +1075,38 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     );
   };
 
+  // 여행 카드 병합 — 대표(target) 그룹이 나머지(source) 그룹들의 기록을 흡수하고 source는 삭제한다.
+  // 제목·커버·국기 등 표시 값은 target 것을 유지한다 (프로필 카드 합치기).
+  const mergeTripGroups = (targetId: string, sourceIds: string[]) => {
+    const ids = sourceIds.filter((id) => id !== targetId);
+    if (ids.length === 0) return;
+    setTripGroups((prev) => {
+      const target = prev.find((g) => g.id === targetId);
+      if (!target) return prev;
+      // 다국가 분할 카드는 같은 기록을 공유할 수 있어 중복 제거하며 이어붙인다
+      const seen = new Set(target.records);
+      const added: string[] = [];
+      for (const sid of ids) {
+        const source = prev.find((g) => g.id === sid);
+        if (!source) continue;
+        for (const rid of source.records) {
+          if (!seen.has(rid)) { seen.add(rid); added.push(rid); }
+        }
+      }
+      return prev
+        .filter((g) => !ids.includes(g.id))
+        .map((g) => (g.id === targetId ? { ...g, records: [...g.records, ...added] } : g));
+    });
+    // 여행 세션이 source 카드를 가리키고 있었으면 병합된 카드로 넘겨 다음 기록이 합류하게 한다
+    setTripSession((prev) => {
+      if (!prev) return prev;
+      const groups = Object.fromEntries(
+        Object.entries(prev.groups).map(([cn, gid]) => [cn, ids.includes(gid) ? targetId : gid])
+      );
+      return { groups, lastActiveAt: prev.lastActiveAt };
+    });
+  };
+
   const resetRecords = () => {
     setRecords(INITIAL_RECORDS);
     setArchivedIds([]);
@@ -1343,7 +1376,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );
