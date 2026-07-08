@@ -72,7 +72,8 @@
         {
           "iosUrlScheme": "com.googleusercontent.apps.589120466593-ak8p39reoek66ksrrqrg2790kohju0a4"
         }
-      ]
+      ],
+      "./modules/withGoogleSigninModularHeaders"
     ],
     "extra": {
       "eas": {
