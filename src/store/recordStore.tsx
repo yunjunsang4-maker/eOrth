@@ -66,6 +66,7 @@ export interface TravelRecord {
   representativePhotoSource?: string; // 대표로 지정된 medias 항목의 URI — 편집 재진입 시 '지도대표' 표시·해제 매칭용
   date: string;             // 예: "2025.04.13"
   content: string;
+  subtitle?: string;        // 블로그 부제목(선택) — 카드/상세에서 제목 아래 보라색으로 표시
   likes: number;
   comments: number;
   liked: boolean;

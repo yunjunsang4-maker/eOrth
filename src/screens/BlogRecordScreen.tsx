@@ -374,6 +374,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // 콘텐츠
   const [title, setTitle] = useState(editRecord?.content ?? '');
+  const [subtitle, setSubtitle] = useState(editRecord?.subtitle ?? ''); // 부제목(선택)
+  const [subtitleModalVisible, setSubtitleModalVisible] = useState(false);
+  const [subtitleDraft, setSubtitleDraft] = useState('');
   const [blocks, setBlocks] = useState<BlogBlock[]>(
     editRecord?.blogBlocks?.length ? editRecord.blogBlocks : [createTextBlock()]
   );
@@ -1020,6 +1023,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: startDate || dateStr,
       content: title.trim() || bodyText,
+      subtitle: subtitle.trim() || undefined,
       visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
@@ -1255,6 +1259,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
             value={title} onChangeText={setTitle} maxLength={100}
             onSubmitEditing={() => { const f = blocks[0]; if (f) { setActiveBlockId(f.id); blockRefs.current[f.id]?.focus(); } }} />
+          {/* 부제목(선택) — 있으면 제목 아래 보라색으로 표시, 탭하면 수정 */}
+          {!!subtitle.trim() && (
+            <TouchableOpacity activeOpacity={0.7} onPress={() => { setSubtitleDraft(subtitle); setSubtitleModalVisible(true); }}>
+              <Text style={st.subtitleText}>{subtitle}</Text>
+            </TouchableOpacity>
+          )}
           <View style={st.titleDivider} />
 
           {/* 블록 렌더 */}
@@ -1334,6 +1344,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         {moreMenuVisible && (
           <View style={st.subPanel}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.toolRow}>
+              <ToolBtn icon="T" label={t('blog.subtitle')} onPress={() => { setMoreMenuVisible(false); setSubtitleDraft(subtitle); setSubtitleModalVisible(true); }} />
+              <ToolSep />
               <ToolBtn icon="H" label={t('blog.heading')} onPress={() => { setMoreMenuVisible(false); handleAddHeading(2); }} />
               <ToolSep />
               <ToolBtn icon={<LinkIcon size={22} color="#A1A1B0" />} label={t('blog.link')} onPress={() => { setMoreMenuVisible(false); setLinkModalVisible(true); }} />
@@ -1439,6 +1451,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <TouchableOpacity style={st.schedConfirmBtn} onPress={handleAddLink}>
           <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
         </TouchableOpacity>
+      </PickerModal>
+
+      {/* 부제목 입력 */}
+      <PickerModal visible={subtitleModalVisible} onClose={() => setSubtitleModalVisible(false)} title={t('blog.subtitle')}>
+        <TextInput style={st.schedInput} placeholder={t('blog.subtitlePlaceholder')} placeholderTextColor={C.muted}
+          value={subtitleDraft} onChangeText={setSubtitleDraft} maxLength={60} autoFocus />
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {!!subtitle.trim() && (
+            <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: '#2E2E3B' }]} onPress={() => { setSubtitle(''); setSubtitleModalVisible(false); }}>
+              <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]}>{t('blog.subtitleRemove')}</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1 }]} onPress={() => { setSubtitle(subtitleDraft.trim()); setSubtitleModalVisible(false); }}>
+            <Text style={st.schedConfirmText}>{t('common.confirm')}</Text>
+          </TouchableOpacity>
+        </View>
       </PickerModal>
 
       {/* 여행정보 패널 */}
@@ -2419,6 +2447,7 @@ const st = StyleSheet.create({
   requiredDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF3B30', marginLeft: 6 },
 
   titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
+  subtitleText: { color: '#AA54C1', fontSize: 15, fontWeight: '600', marginTop: 4 },
   titleDivider: { height: 2, backgroundColor: C.purpleDeep, marginTop: 6, marginBottom: 14, width: 36, borderRadius: 1 },
 
   // 블록
