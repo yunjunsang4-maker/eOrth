@@ -342,6 +342,14 @@ const ShareIcon = ({ active }: { active: boolean }) => (
   <ShareSvgIcon size={22} color={active ? C.accent : C.dim} />
 );
 
+// 게시물 작성자 아이디 폰트(프리미엄) — 내 글은 내 설정값(구독 중일 때만),
+// 타인 글은 서버(profiles.handle_font)에서 온 item.user.font 로 렌더한다.
+function usePostNameFont(item: any) {
+  const { handle, handleFont, isPremium } = useSettings();
+  const isMine = item?.isMyPost || item?.user?.handle === handle;
+  return handleFontStyle(isMine ? (isPremium ? handleFont : null) : item?.user?.font);
+}
+
 // ─────────────────────────────────────────────
 // 피드 카드 (아이콘 active 상태 개별 관리)
 // ─────────────────────────────────────────────
@@ -366,6 +374,7 @@ function FeedCard({
 }) {
   const { t } = useTranslation();
   const { showCounts } = useSettings();
+  const nameFontStyle = usePostNameFont(item);
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
 
@@ -438,7 +447,7 @@ function FeedCard({
             onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
             activeOpacity={0.7}
           >
-            <Text style={s.userName}>{item.user.handle}</Text>
+            <Text style={[s.userName, nameFontStyle]}>{item.user.handle}</Text>
           </TouchableOpacity>
           <View style={s.metaRow}>
             {item.countries && item.countries.length > 0
@@ -674,6 +683,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   const { commentsByPost, addComment } = useRecords();
   const comments = commentsByPost[item.id] ?? [];
   const [commentText, setCommentText] = useState('');
+  const nameFontStyle = usePostNameFont(item);
 
   // 촬영 지연
   const lateText = (() => {
@@ -696,7 +706,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
               <Text style={{ fontSize: 14 }}>⚡</Text>
             </View>
             <View>
-              <Text style={sc.userName}>{item.user.handle}</Text>
+              <Text style={[sc.userName, nameFontStyle]}>{item.user.handle}</Text>
               <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>
             </View>
           </TouchableOpacity>
@@ -885,6 +895,7 @@ function BlogCard({
 }) {
   const { t } = useTranslation();
   const { showCounts } = useSettings();
+  const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
   const { records, commentsByPost, addComment } = useRecords();
@@ -942,7 +953,7 @@ function BlogCard({
               <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} />
             </View>
             <View>
-              <Text style={bc.userName}>{item.user.handle}</Text>
+              <Text style={[bc.userName, nameFontStyle]}>{item.user.handle}</Text>
               <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>
             </View>
           </TouchableOpacity>
@@ -1181,6 +1192,7 @@ function AlbumCard({
 }) {
   const { t } = useTranslation();
   const { showCounts } = useSettings();
+  const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
   const { records, commentsByPost, addComment } = useRecords();
@@ -1240,7 +1252,7 @@ function AlbumCard({
             <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} />
           </View>
           <View>
-            <Text style={ab.userName}>{item.user.handle}</Text>
+            <Text style={[ab.userName, nameFontStyle]}>{item.user.handle}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 }}>
               {item.countries && (
                 item.countries.length <= 3
@@ -1963,7 +1975,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     setRefreshing(true);
     try { await refreshFeed(); } finally { setRefreshing(false); }
   };
-  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium } = useSettings();
+  const { diaryCardMode, showCounts, handle: globalHandle, profilePhoto: globalProfilePhoto, isPremium, handleFont: myHandleFont } = useSettings();
 
   const getPostDisplayName = (postUser: any, isMy: boolean) => {
     if (isMy) {
@@ -2222,7 +2234,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       </View>
                     </View>
                   </LinearGradient>
-                  <Text style={s.storyName} numberOfLines={1}>
+                  <Text
+                    style={[
+                      s.storyName,
+                      // 아이디 폰트(프리미엄) — 내 스냅은 내 설정값, 타인은 서버 handle_font
+                      handleFontStyle(
+                        snap.isMyPost || snap.user.handle === globalHandle
+                          ? (isPremium ? myHandleFont : null)
+                          : snap.user.font
+                      ),
+                    ]}
+                    numberOfLines={1}
+                  >
                     {snap.countryFlag ? `${snap.countryFlag} ` : ''}
                     {getPostDisplayName(snap.user, snap.isMyPost || snap.user.handle === globalHandle)}
                   </Text>
