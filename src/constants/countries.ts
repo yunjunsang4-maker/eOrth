@@ -201,3 +201,29 @@ export const COUNTRIES: Country[] = [
   { term: 'tv 투발루 tuvalu', flag: '🇹🇻', name: '투발루', continent: '오세아니아' },
   { term: 'nr 나우루 nauru', flag: '🇳🇷', name: '나우루', continent: '오세아니아' },
 ];
+
+// ─── 국가 한글명 → 영어 표기 (블로그 카드 등 영문 라벨용) ───
+// term은 "코드 한글명 영문명 [검색 별칭...]" 형태 — 별칭이 섞인 국가는 예외 표로 정확한 표기를 지정
+const EN_NAME_OVERRIDES: Record<string, string> = {
+  mm: 'Myanmar',
+  tl: 'East Timor',
+  ae: 'United Arab Emirates',
+  tr: 'Turkey',
+  gb: 'United Kingdom',
+  cz: 'Czech Republic',
+  us: 'United States',
+  ci: 'Ivory Coast',
+  cd: 'DR Congo',
+  sz: 'Eswatini',
+};
+export const countryEnglishName = (koreanName?: string): string => {
+  if (!koreanName) return '';
+  const c = COUNTRIES.find((x) => x.name === koreanName);
+  if (!c) return koreanName;
+  const tokens = c.term.split(' ');
+  const override = EN_NAME_OVERRIDES[tokens[0]];
+  if (override) return override;
+  const ascii = tokens.slice(1).filter((w) => /^[a-z()\-']+$/i.test(w));
+  const en = ascii.join(' ').replace(/(^|\s)[a-z]/g, (m) => m.toUpperCase());
+  return en || koreanName;
+};

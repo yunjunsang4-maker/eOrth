@@ -37,6 +37,8 @@ import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
 import { handleFontStyle } from '../constants/handleFonts';
+import { countryEnglishName } from '../constants/countries';
+import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -1536,6 +1538,11 @@ const countryLabel = (item: any): string => {
   if (item.countries?.length) return `${item.countries[0].flag} ${item.countries[0].name}`;
   return item.country || '';
 };
+// 시안(Group 2085664520) 블로그 카드 상단 라벨 — 국기·지역 없이 국가 영어명(단어마다 첫 글자 대문자)
+const jourPlaceLabel = (item: any): string => {
+  const name = item.countries?.length ? item.countries[0].name : (item.countryName || (item.country || '').replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '').trim());
+  return countryEnglishName(name);
+};
 
 // 카드별 자연스러운 기울기 (id 기반 고정값 → 리렌더에도 흔들리지 않음)
 const TILTS = [-2.4, 1.8, -1.2, 2.2, -1.8, 1.2, -2.0, 1.5, -0.8, 2.0, -1.5, 0.9];
@@ -1671,12 +1678,16 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
   const { t } = useTranslation();
   const { records } = useRecords();
+  const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
   const like = () => { if (!item.liked) toggleLike(item.id); };
   const tilt = tiltFor(item.id);
   const isMy = item.isMyPost ?? false;
+  // 게시자 아이디 + 프리미엄 폰트 (내 글=내 설정값, 타인=프로필 조인 값)
+  const postHandle = isMy ? (globalHandle || item.user.handle) : item.user.handle;
+  const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font);
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -1774,7 +1785,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     const photo = firstPhoto(item);
     const title = (item.content || '').trim();
     const excerpt = blogExcerpt(item);
-    if (photo) {
+    // 블로그는 사진이 있어도 시안처럼 글로만(저널 레이아웃). 사진 스크랩은 앨범만.
+    if (photo && vt === 'album') {
       return (
         <DiaryTappable style={d.scrap} tilt={tilt} onSingle={open} onDouble={like}>
           <View style={d.tape} />
@@ -1787,11 +1799,44 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     }
     return (
       <DiaryTappable style={d.jour} tilt={tilt} onSingle={open} onDouble={like}>
-        {!!countryLabel(item) && <Text style={d.jourLoc}>📍 {countryLabel(item)}</Text>}
+        {/* 그라데이션 테두리 — 밝은 좌상단 → 어두운 우하단으로 빛/그림자 대비를 줘 입체감 */}
+        <LinearGradient
+          colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.06)', 'rgba(0,0,0,0.25)']}
+          locations={[0, 0.5, 1]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={d.jourBorderGrad}
+        >
+        <View style={d.jourInner}>
+        {/* 시안(Group 2085664520): 국가·지역 라벨 → 제목 → 소제목(memo) → 본문 → 구분선 → 푸터 */}
+        {!!jourPlaceLabel(item) && <Text style={d.jourCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>}
         {!!title && <Text style={[d.jourTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
-        {!!excerpt && <Text style={d.jourBody} numberOfLines={7}>{excerpt}</Text>}
-        <Text style={d.jourDate}>{timeAgo(item.timestamp)}</Text>
-        {meta}
+        {!!item.subtitle && <Text style={d.jourSubtitle} numberOfLines={1}>{item.subtitle}</Text>}
+        {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
+        <View style={d.jourFooter}>
+          {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
+          <Text style={d.jourTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          <View style={d.jourFooterRow}>
+            <TouchableOpacity
+              style={d.jourHandleBtn}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+            >
+              <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+            </TouchableOpacity>
+            <View style={d.jourFooterRight}>
+              <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+                <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
+                {showCounts && item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+                <Text style={d.jourMore}>⋯</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+        </View>
+        </LinearGradient>
       </DiaryTappable>
     );
   }
@@ -1887,30 +1932,43 @@ const d = StyleSheet.create({
   polaCap: { color: '#FFFFFF', fontSize: 12, textAlign: 'center', paddingTop: 8, paddingBottom: 2 },
 
   // 스크랩 카드 (블로그/앨범 + 사진)
-  scrap: { 
-    backgroundColor: 'rgba(26,10,46,0.5)', 
-    borderWidth: 1, 
-    borderColor: 'rgba(191,133,252,0.15)', 
-    borderRadius: 8, 
-    padding: 10 
+  scrap: {
+    backgroundColor: 'rgba(217,217,217,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 8,
+    padding: 10
   },
   tape: { position: 'absolute', top: -8, left: 18, width: 42, height: 16, backgroundColor: 'rgba(191,133,252,0.30)', transform: [{ rotate: '-6deg' }], borderRadius: 1 },
   scrapImg: { width: '100%', aspectRatio: 1.3, borderRadius: 4, backgroundColor: '#2A2735', marginBottom: 8 },
   scrapTitle: { color: '#FFFFFF', fontSize: 14, lineHeight: 17 },
   scrapExcerpt: { color: '#9A95A5', fontSize: 11, lineHeight: 16, marginTop: 5 },
 
-  // 저널 (텍스트 블로그)
-  jour: { 
-    backgroundColor: 'rgba(26,10,46,0.5)', 
-    borderWidth: 1, 
-    borderColor: 'rgba(191,133,252,0.15)', 
-    borderRadius: 8, 
-    padding: 12 
-  },
-  jourLoc: { color: '#BF85FC', fontSize: 9, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  jourTitle: { color: '#BF85FC', fontSize: 15, marginBottom: 6 },
-  jourBody: { color: '#B8B3C2', fontSize: 11, lineHeight: 17 },
-  jourDate: { color: '#5A5A6A', fontSize: 9, marginTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(191,133,252,0.15)', paddingTop: 6 },
+  // 저널 (텍스트 블로그) — 시안(Group 2085664520): 반투명 회색 유리 카드
+  // 저널 카드 = 그라데이션 테두리 래퍼(투명) + 안쪽 불투명 카드
+  jour: { borderRadius: 0 },
+  // 그라데이션 테두리 레이어 — padding이 테두리 두께가 된다(안쪽 카드가 그만큼 작아짐)
+  jourBorderGrad: { padding: 1.5, borderRadius: 0 },
+  // 안쪽 카드 — 불투명 합성색(#0A0A0F 위에 rgba(217,217,217,0.2)를 얹은 값)이라 별이 투과되지 않고 유리 룩 유지
+  jourInner: { backgroundColor: '#333337', padding: 12 },
+  // 시안 구조: 국가·지역 라벨 → 제목 → 소제목 → 본문 → 구분선 → 푸터
+  // 시안 스펙: Gilroy-Black 10px, line-height 130%, letter-spacing 3% (앞글자만 대문자는 라벨에서 처리)
+  jourCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 10, lineHeight: 13, letterSpacing: 0.3, marginBottom: 6 },
+  jourTitle: { color: '#FFFFFF', fontSize: 15, marginBottom: 4 },
+  jourSubtitle: { color: '#AA54C1', fontSize: 12, fontWeight: '600', marginBottom: 6 },
+  jourBody: { color: 'rgba(255,255,255,0.6)', fontSize: 11, lineHeight: 17 },
+  // 구분선 아래 푸터 — 보라색 올린 시간 → @아이디(좌) + 좋아요·더보기(우)
+  jourFooter: { marginTop: 10, paddingTop: 8, borderTopWidth: 1, borderTopColor: 'rgba(170,170,170,0.2)' },
+  jourTime: { color: '#AA54C1', fontSize: 11, fontWeight: '500', marginBottom: 4 },
+  jourFooterRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  jourHandleBtn: { flexShrink: 1 },
+  jourHandle: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  jourFooterRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  jourLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  jourHeart: { color: '#99999B', fontSize: 15 },
+  jourHeartOn: { color: '#FF6B9D' },
+  jourLikeCount: { color: '#99999B', fontSize: 11, fontWeight: '500' },
+  jourMore: { color: '#99999B', fontSize: 16, fontWeight: '700' },
 
   // 네컷
   cutCard: { 
@@ -2353,6 +2411,8 @@ export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>
   const { t } = useTranslation();
   return (
     <View style={s.container}>
+      {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
+      <StarFieldBackground />
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 17 }]}>
         <Svg width={101} height={27} viewBox="0 0 101 27" fill="none">
