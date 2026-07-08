@@ -238,6 +238,18 @@ async function signInWithAppleNative(): Promise<AuthResult> {
 const GOOGLE_WEB_CLIENT_ID = '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com';
 const GOOGLE_IOS_CLIENT_ID = '589120466593-ak8p39reoek66ksrrqrg2790kohju0a4.apps.googleusercontent.com';
 
+// iOS Google SDK는 id_token에 nonce를 자동 포함시키는데 라이브러리(무료판)가 그 값을 지정할 수 없다.
+// Supabase는 토큰에 nonce가 있으면 호출 시 같은 값을 요구하므로, 토큰에서 꺼내 그대로 되돌려준다.
+function extractNonceFromIdToken(idToken: string): string | undefined {
+  try {
+    const base64 = idToken.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64 + '='.repeat((4 - (base64.length % 4)) % 4);
+    return JSON.parse(atob(padded)).nonce;
+  } catch {
+    return undefined;
+  }
+}
+
 let googleConfigured = false;
 function ensureGoogleConfigured() {
   if (googleConfigured) return;
@@ -266,8 +278,9 @@ async function signInWithGoogleNative(): Promise<AuthResult> {
     if (!isSuccessResponse(response)) return { ok: false, cancelled: true };
     const idToken = response.data.idToken;
     if (!idToken) return { ok: false, error: 'Google 인증 토큰을 받지 못했어요.' };
+    const nonce = extractNonceFromIdToken(idToken);
     const { error } = await withTimeout(
-      supabase.auth.signInWithIdToken({ provider: 'google', token: idToken }),
+      supabase.auth.signInWithIdToken({ provider: 'google', token: idToken, ...(nonce ? { nonce } : {}) }),
       AUTH_TIMEOUT_MS,
     );
     if (error) return { ok: false, error: toKoMessage(error.message) };
