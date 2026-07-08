@@ -32,7 +32,8 @@ import Reanimated, {
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon } from '../components/icons';
+import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
+import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -841,12 +842,17 @@ function SnapStoryViewer({
           </View>
         </LinearGradient>
         {s.snapBackUri && s.snapFrontUri && (
-          <View style={storyS.pipWrap}><Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" /></View>
+          <LinearGradient colors={['#00D8F3', '#7B61FF', '#FF14E4']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={storyS.pipWrap}>
+            <Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" />
+          </LinearGradient>
         )}
         {/* 스냅 및 촬영지연 뱃지 비활성화 */}
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={storyS.bottomGradient} pointerEvents="box-none">
           {s.snapDetectedCountry && (
-            <View style={storyS.locationBadge}><Text style={storyS.locationText}>📍 {s.countryFlag} {s.snapDetectedCountry}</Text></View>
+            <View style={storyS.locationBadge}>
+              <PinIcon size={13} color="#FFFFFF" />
+              <Text style={storyS.locationText}>{s.snapDetectedCountry}{s.regionName ? ` · ${s.regionName}` : ''}</Text>
+            </View>
           )}
           {s.snapCaption ? <Text style={storyS.caption}>{s.snapCaption}</Text> : null}
           <View style={storyS.actionRow}>
@@ -854,8 +860,8 @@ function SnapStoryViewer({
               /* 내가 올린 스냅 */
               <>
                 <TouchableOpacity style={storyS.actionBtnWithLabel} onPress={() => setViewerListOpen(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.viewersA11y')}>
-                  <Text style={storyS.actionIcon}>👁</Text>
-                  <Text style={storyS.actionLabel}>{t('postDetail.viewCountN', { count: s.snapViewers?.length ?? 0 })}</Text>
+                  <EyesSvg size={20} />
+                  <Text style={storyS.actionLabel}>{s.snapViewers?.length ?? 0}</Text>
                 </TouchableOpacity>
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
@@ -863,7 +869,7 @@ function SnapStoryViewer({
                   {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
-                  <Text style={storyS.actionIcon}>↗</Text>
+                  <SendPlaneSvg size={22} />
                 </TouchableOpacity>
               </>
             ) : (
@@ -879,7 +885,7 @@ function SnapStoryViewer({
                   <CommentSvg size={22} color="#fff" />
                   {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><Text style={storyS.actionIcon}>↗</Text></TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
               </>
             )}
           </View>
@@ -910,6 +916,20 @@ function SnapStoryViewer({
 
   const CommentSvg = ({ size = 20, color = '#fff' }: { size?: number; color?: string }) => (
     <CommentSvgIcon size={size} color={color} />
+  );
+  // 디자인 시안(iPhone 17 - 63) 화이트 아웃라인 아이콘 — 조회(👀)·공유(종이비행기)
+  const EyesSvg = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+    <Svg width={size * 1.5} height={size} viewBox="0 0 36 24" fill="none">
+      <SvgEllipse cx={10} cy={12} rx={7.5} ry={9.5} stroke={color} strokeWidth={2.4} />
+      <SvgEllipse cx={26} cy={12} rx={7.5} ry={9.5} stroke={color} strokeWidth={2.4} />
+      <SvgCircle cx={11.5} cy={14.5} r={3} fill={color} />
+      <SvgCircle cx={27.5} cy={14.5} r={3} fill={color} />
+    </Svg>
+  );
+  const SendPlaneSvg = ({ size = 22, color = '#FFFFFF' }: { size?: number; color?: string }) => (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgPath d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
   );
 
   return (
@@ -2490,51 +2510,54 @@ const storyS = StyleSheet.create({
   },
   progressSeg: {
     flex: 1,
-    height: 2,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 1,
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    borderRadius: 2,
     overflow: 'hidden',
   },
   progressFill: {
     height: '100%',
     backgroundColor: 'rgba(255,255,255,0.95)',
-    borderRadius: 1,
+    borderRadius: 2,
   },
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // 시안(iPhone 17 - 63): 링 없는 40pt 아바타 + 아이디·시간 한 줄 배치
   avatarRing: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 2,
-    borderColor: '#BF85FC',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: 'rgba(191,133,252,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   avatarEmoji: {
-    fontSize: 16,
+    fontSize: 18,
   },
   avatarImg: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
   },
   userInfo: {
     flex: 1,
-    marginLeft: 10,
+    marginLeft: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   handle: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '700',
     color: '#FFFFFF',
     textShadowColor: 'rgba(0,0,0,0.8)',
@@ -2542,59 +2565,57 @@ const storyS = StyleSheet.create({
     textShadowRadius: 3,
   },
   timeText: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
     textShadowColor: 'rgba(0,0,0,0.8)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  // 시안: 배경 원 없이 글리프만
   moreBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
   moreBtnText: {
-    fontSize: 14,
+    fontSize: 18,
     color: '#FFFFFF',
     fontWeight: '700',
     letterSpacing: 1,
-    marginTop: -2,
+    marginTop: -4,
   },
   closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    marginLeft: 8,
+    marginLeft: 4,
   },
   closeBtnText: {
-    fontSize: 15,
+    fontSize: 20,
     color: '#FFFFFF',
-    fontWeight: '600',
+    fontWeight: '400',
   },
 
-  // PIP (전면 사진)
+  // PIP (전면 사진) — 시안: 좌상단, 시안→보라→마젠타 네온 그라데이션 테두리
   pipWrap: {
     position: 'absolute',
-    top: 110,
+    top: 150,
     left: 16,
-    width: SCREEN_W * 0.26,
-    height: SCREEN_W * 0.35,
-    borderRadius: 18,
-    overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#FFD60A',
+    width: SCREEN_W * 0.32,
+    height: SCREEN_W * 0.416,
+    borderRadius: 22,
+    padding: 3,
     zIndex: 8,
   },
   pipImg: {
     width: '100%',
     height: '100%',
+    borderRadius: 19,
   },
 
   // SNAP 뱃지
@@ -2643,13 +2664,17 @@ const storyS = StyleSheet.create({
     paddingTop: 100,
     zIndex: 10,
   },
+  // 시안: 하단 중앙 알약형 위치 배지 (핀 아이콘 + "국가 · 지역")
   locationBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 14,
-    marginBottom: 10,
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(20,20,28,0.72)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 999,
+    marginBottom: 18,
   },
   locationText: {
     color: '#FFFFFF',
@@ -2716,7 +2741,7 @@ const storyS = StyleSheet.create({
   },
   actionLabel: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '700',
   },
   actionIcon: {
