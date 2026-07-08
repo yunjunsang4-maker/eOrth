@@ -441,14 +441,14 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           </View>
           <TouchableOpacity onPress={cycleFlash} style={st.topBtn} accessibilityRole="button" accessibilityLabel={t('snap.flashA11y')}>
             <GlassFill intensity={24} tint="dark" />
-            <Text style={[st.topBtnText, { fontSize: 17, color: flash === 'on' ? C.snapYellow : flash === 'auto' ? '#22D3EE' : 'rgba(255,255,255,0.5)' }]}>
+            <Text style={[st.topBtnText, { fontSize: 15, color: flash === 'on' ? C.snapYellow : flash === 'auto' ? '#22D3EE' : 'rgba(255,255,255,0.5)' }]}>
               {flash === 'auto' ? '⚡A' : '⚡'}
             </Text>
           </TouchableOpacity>
         </SafeAreaView>
 
         {/* 안내 문구 — 상단 바 아래. 배경 #751AAD 30% + 테두리 시안→마젠타 그라데이션 (Rectangle 240652656.svg) */}
-        <View style={[st.guideWrap, { top: insets.top + 70 }]}>
+        <View style={[st.guideWrap, { top: insets.top + 90 }]}>
           <View
             style={st.guidePill}
             onLayout={(e) => {
@@ -744,30 +744,32 @@ const st = StyleSheet.create({
   topBar: {
     position: 'absolute', top: 0, left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    // SafeAreaView가 상단 노치/상태바 인셋을 자동 패딩으로 추가하므로 여기선 작은 여백만.
-    paddingHorizontal: 16, paddingTop: 8, paddingBottom: 12,
+    // SafeAreaView가 상단 노치/상태바 인셋을 자동 패딩으로 추가. 상단 UI를 조금 더 내리려 여백 상향.
+    paddingHorizontal: 16, paddingTop: 24, paddingBottom: 12,
     zIndex: 10,
   },
   topBtn: {
-    width: 44, height: 44, borderRadius: 22,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)',
     overflow: 'hidden',
   },
-  topBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
+  topBtnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   // 이전(닫기) 버튼 — 보라 틴트 글래스 (디자인 iPhone 17-58)
   backBtn: {
-    width: 48, height: 48, borderRadius: 24,
+    width: 36, height: 36, borderRadius: 18,
     backgroundColor: 'rgba(123,97,255,0.30)',
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
     overflow: 'hidden',
   },
-  backBtnText: { color: '#fff', fontSize: 20, fontWeight: '600' },
+  backBtnText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   topCenter: { alignItems: 'center', gap: 4 },
   snapBadge: {
     color: '#22D3EE', fontSize: 24, fontWeight: '900', letterSpacing: 3,
+    // letterSpacing은 마지막 글자 뒤에도 여백을 남겨 글자가 왼쪽으로 치우쳐 보인다 → 같은 값만큼 왼쪽 패딩으로 상쇄해 정중앙 정렬
+    paddingLeft: 3,
     textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
   },
   locationText: {
