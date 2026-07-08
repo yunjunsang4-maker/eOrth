@@ -121,6 +121,21 @@ export async function fetchFollowerCount(userId: string): Promise<number> {
   }
 }
 
+// 특정 사용자의 팔로잉 수 (내가 팔로우 중인 수가 아니라, 대상이 팔로우 중인 수)
+// follows 는 RLS로 당사자 행만 보이므로 타인 팔로잉은 직접 count 불가.
+// following_counts RPC(SECURITY DEFINER, 공개 통계)로 조회한다. (schema.sql 재실행 필요)
+export async function fetchFollowingCount(userId: string): Promise<number> {
+  if (!supabase || !userId) return 0;
+  try {
+    const { data, error } = await supabase.rpc('following_counts', { ids: [userId] });
+    if (error) return 0;
+    const row = (data as { user_id: string; following_count: number }[] | null)?.[0];
+    return row?.following_count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 // ─── 차단 ───
 // blocks 테이블에 넣어야 서버 RLS(게시물·댓글·DM 차단 필터)가 실제로 동작한다.
 export async function blockUser(targetId: string): Promise<void> {

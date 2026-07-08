@@ -1374,7 +1374,9 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.r
 );
 
 // ─── 메인 프로필 화면 ───
-export default function ProfileScreen({ navigation, route }: TabScreenProps<'ProfileTab'>) {
+// pushed: 소셜에서 내 아이디를 눌러 스택으로 푸시된 경우 — 좌상단을 뒤로가기로, 우상단 설정은 비운다.
+type ProfileScreenProps = TabScreenProps<'ProfileTab'> & { pushed?: boolean; onBack?: () => void };
+export default function ProfileScreen({ navigation, route, pushed, onBack }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
@@ -1833,7 +1835,23 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
       >
-        {/* 상단 헤더 */}
+        {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정 */}
+        {pushed ? (
+          <View style={[styles.headerRow, { paddingTop: insets.top + 11, paddingLeft: 12 }]}>
+            <TouchableOpacity
+              onPress={() => (onBack ? onBack() : navigation.goBack())}
+              style={styles.settingBtn}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={t('friends.back')}
+            >
+              <Text style={styles.backIcon}>‹</Text>
+            </TouchableOpacity>
+            {/* 우상단 설정 자리 — 비워둠(레이아웃 유지용 플레이스홀더) */}
+            <View style={styles.settingBtn} />
+          </View>
+        ) : (
         <View style={[styles.headerRow, { paddingTop: insets.top + 11 }]}>
           <Svg width={116} height={47} viewBox="0 0 116 47" fill="none">
             <Path
@@ -1864,6 +1882,7 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
             </Svg>
           </LiquidPressable>
         </View>
+        )}
 
         {/* 프로필 헤더 (아바타 + 정보) */}
         <View style={styles.profileRow}>
@@ -1920,6 +1939,8 @@ export default function ProfileScreen({ navigation, route }: TabScreenProps<'Pro
                 })()}
               </Text>
             </View>
+            {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
+            {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
@@ -2231,6 +2252,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: 28 },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {
@@ -2286,6 +2308,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: COLORS.white,
+  },
+  userBio: {
+    fontSize: 12,
+    color: COLORS.textDim,
+    marginTop: 6,
+    // 통계(statsRow marginTop:23)와의 간격을 좁힘 — 소개 있을 때만 적용(조건부 렌더). 유효 간격 ≈8
+    marginBottom: -15,
+    lineHeight: 16,
   },
   statusDot: {
     width: 4,

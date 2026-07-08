@@ -236,12 +236,12 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                 onChangeText={setBio}
                 placeholder={t('editProfile.bioPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
-                maxLength={100}
+                maxLength={50}
                 multiline
                 textAlignVertical="top"
               />
             </View>
-            <Text style={s.charCountBelow}>{bio.length}/100</Text>
+            <Text style={s.charCountBelow}>{bio.length}/50</Text>
           </View>
 
           {/* 저장 버튼 (하단 대형) */}

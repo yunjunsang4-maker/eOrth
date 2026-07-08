@@ -1845,10 +1845,33 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const photo = firstPhoto(item);
   const caption = (item.content || item.memo || '').trim();
   return (
-    <DiaryTappable style={d.pola} tilt={tilt} onSingle={open} onDouble={like}>
-      {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
-      {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={2}>{caption}</Text>}
-      {meta}
+    <DiaryTappable style={d.polaWrap} tilt={tilt} onSingle={open} onDouble={like}>
+      {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
+      <View style={d.polaBack} pointerEvents="none" />
+      <View style={d.polaFront}>
+        {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
+        {/* 시안(Group 2085664521): 사진 밑에 캡션 한 줄 */}
+        {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1}>{caption}</Text>}
+        {/* 그 아래: @아이디(좌) + 좋아요·더보기(우) */}
+        <View style={d.polaMetaRow}>
+          <TouchableOpacity
+            style={d.polaHandleBtn}
+            activeOpacity={0.7}
+            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+          >
+            <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+          </TouchableOpacity>
+          <View style={d.polaMetaRight}>
+            <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+              <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
+              {showCounts && item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+              <Text style={d.polaMore}>⋯</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
     </DiaryTappable>
   );
   })();
@@ -1918,18 +1941,41 @@ const d = StyleSheet.create({
   heartIcon: { fontSize: 68, color: 'rgba(255,255,255,0.95)', textShadowColor: 'rgba(0,0,0,0.45)', textShadowOffset: { width: 0, height: 2 }, textShadowRadius: 8 },
 
   // 폴라로이드 (피드)
-  pola: { 
-    backgroundColor: 'rgba(26,10,46,0.5)', 
-    borderRadius: 8, 
-    padding: 10, 
-    paddingBottom: 8, 
-    borderWidth: 1, 
-    borderColor: 'rgba(191,133,252,0.15)',
-    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5 
+  // 시안(Group 2085664521): 두 장 겹친 각진 폴라로이드
+  polaWrap: {},
+  // 뒷장 — 앞장과 같은 크기를 살짝 더 회전시켜 모서리가 뒤로 삐져나와 겹쳐 보인다
+  polaBack: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#2B2B30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 0,
+    transform: [{ rotate: '-5deg' }],
   },
-  polaImg: { width: '100%', aspectRatio: 1, borderRadius: 4, backgroundColor: '#2A2735' },
+  // 앞장 — 불투명 회색 유리 룩(별 차단), 각진 모서리(블로그 카드처럼)
+  polaFront: {
+    backgroundColor: '#333337',
+    borderRadius: 0,
+    padding: 10,
+    paddingBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
+  },
+  polaImg: { width: '100%', aspectRatio: 1, borderRadius: 6, backgroundColor: '#2A2735' },
   polaEmpty: { backgroundColor: '#1A0A2E' },
-  polaCap: { color: '#FFFFFF', fontSize: 12, textAlign: 'center', paddingTop: 8, paddingBottom: 2 },
+  // 사진 밑 캡션 — 한 줄
+  polaCap: { color: '#FFFFFF', fontSize: 12, paddingTop: 8 },
+  // 캡션 아래 메타 행 — 좌: @아이디, 우: 좋아요·더보기
+  polaMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 6, paddingBottom: 2 },
+  polaHandleBtn: { flexShrink: 1 },
+  polaHandle: { color: '#FFFFFF', fontSize: 12, fontWeight: '600' },
+  polaMetaRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  polaLikeBtn: { flexDirection: 'row', alignItems: 'center', gap: 3 },
+  polaHeart: { color: '#99999B', fontSize: 15 },
+  polaHeartOn: { color: '#FF6B9D' },
+  polaLikeCount: { color: '#99999B', fontSize: 11, fontWeight: '500' },
+  polaMore: { color: '#99999B', fontSize: 16, fontWeight: '700' },
 
   // 스크랩 카드 (블로그/앨범 + 사진)
   scrap: {
@@ -2207,19 +2253,23 @@ function FriendsTab({ navigation }: { navigation: any }) {
     const out: any[] = [];
     let slot = 0;
     timelineItems.forEach((item, i) => {
-      out.push(item);
       // 마지막 게시물 뒤에는 삽입하지 않음 — 피드 끝이 광고로 끝나는 것 방지
-      if (i % AD_FREQ === 0 && i < timelineItems.length - 1) {
+      const adHere = i % AD_FREQ === 0 && i < timelineItems.length - 1;
+      // 슬롯 교차: 짝수=폴라로이드(피드 흐름에 별도 카드), 홀수=스티커(게시물 위 오버레이)
+      const useSticker = adHere && slot % 2 === 1;
+      // 스티커는 별도 카드가 아니라 이 게시물에 부착해 위로 겹친다 (시안 iPhone 17 - 54)
+      out.push(useSticker ? { ...item, _overlayAd: getHouseAd(slot), _overlayTilt: slot % 4 < 2 ? -8 : 9 } : item);
+      if (adHere && !useSticker) {
         out.push({
           _adSlot: true,
           id: `ad-slot-${slot}`,
           ad: getHouseAd(slot),
-          adVariant: (slot % 2 === 0 ? 'polaroid' : 'feed') as FeedAdVariant,
+          adVariant: 'polaroid' as FeedAdVariant,
           // 폴라로이드 기울기를 슬롯마다 살짝 다르게 (±3도 교차)
           adTilt: slot % 4 < 2 ? -3 : 3,
         });
-        slot += 1;
       }
+      if (adHere) slot += 1;
     });
     return out;
   }, [timelineItems, isPremium]);
@@ -2232,7 +2282,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       const c = h[0] <= h[1] ? 0 : 1;
       cols[c].push(item);
       h[c] += item._adSlot
-        ? (item.adVariant === 'polaroid' ? 190 : 240)
+        ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
         : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
@@ -2321,18 +2371,20 @@ function FriendsTab({ navigation }: { navigation: any }) {
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
-                {columns[ci].map((item: any) =>
-                  item._adSlot ? (
-                    <FeedAdCard
-                      key={item.id}
-                      ad={item.ad as HouseAd}
-                      variant={item.adVariant}
-                      tilt={item.adTilt}
-                      onPress={() => navigation.navigate(item.ad.route)}
-                    />
-                  ) : (
+                {columns[ci].map((item: any) => {
+                  if (item._adSlot) {
+                    return (
+                      <FeedAdCard
+                        key={item.id}
+                        ad={item.ad as HouseAd}
+                        variant={item.adVariant}
+                        tilt={item.adTilt}
+                        onPress={() => navigation.navigate(item.ad.route)}
+                      />
+                    );
+                  }
+                  const card = (
                     <DiaryCardMemo
-                      key={item.id}
                       item={item}
                       mode={diaryCardMode}
                       navigation={navigation}
@@ -2348,8 +2400,25 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       dragPos={dragPos}
                       columnIndex={ci}
                     />
-                  )
-                )}
+                  );
+                  // 스티커 광고: 게시물 위에 겹쳐 붙임 (시안 iPhone 17 - 54)
+                  if (item._overlayAd) {
+                    return (
+                      <View key={item.id} style={{ position: 'relative' }}>
+                        {card}
+                        <FeedAdCard
+                          ad={item._overlayAd as HouseAd}
+                          variant="sticker"
+                          overlay
+                          overlaySide={ci === 0 ? 'right' : 'left'}
+                          tilt={item._overlayTilt}
+                          onPress={() => navigation.navigate((item._overlayAd as HouseAd).route)}
+                        />
+                      </View>
+                    );
+                  }
+                  return <React.Fragment key={item.id}>{card}</React.Fragment>;
+                })}
               </View>
             ))}
           </View>

@@ -20,10 +20,12 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchFollowerCount } from '../services/social';
+import { fetchFollowerCount, fetchFollowingCount } from '../services/social';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
+import StarFieldBackground from '../components/StarFieldBackground';
+import ProfileScreen from './ProfileScreen';
 import { handleFontStyle } from '../constants/handleFonts';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -70,19 +72,22 @@ export default function FriendProfileScreen({
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
+  const [followingCount, setFollowingCount] = useState(0);
   useEffect(() => {
     if (!isSupabaseConfigured || !userId) return;
     let alive = true;
     (async () => {
-      const [p, posts, fc] = await Promise.all([
+      const [p, posts, fc, fgc] = await Promise.all([
         getProfileById(userId),
         fetchUserPosts(userId),
         fetchFollowerCount(userId),
+        fetchFollowingCount(userId),
       ]);
       if (!alive) return;
       setProfileRow(p);
       setUserPosts(posts);
       setFollowerCount(fc);
+      setFollowingCount(fgc);
     })();
     return () => { alive = false; };
   }, [userId]);
@@ -93,6 +98,13 @@ export default function FriendProfileScreen({
   const friendBadges = useMemo(() => {
     const earned = computeEarnedBadgeIds(sourcePosts, BADGES);
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
+  }, [sourcePosts]);
+
+  // 이름 아래 위치 — 내 프로필과 동일한 위치 줄. 타인은 거주국(country)이 public_profiles 뷰에서
+  // 제외되므로, 최근 공개 글(created_at desc)의 국가를 현재 위치로 표시한다.
+  const friendLocation = useMemo(() => {
+    const recent = sourcePosts.find((p) => p.countryName);
+    return recent?.countryName ? `${recent.countryFlag || '📍'} ${recent.countryName}` : '';
   }, [sourcePosts]);
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
@@ -250,8 +262,16 @@ export default function FriendProfileScreen({
     { icon: '🚨', label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
+  // 내 프로필(내 게시물의 아이디 탭)이면 실제 프로필 탭 컴포넌트를 그대로 렌더한다 —
+  // 룩앤필을 흉내 내지 않고 같은 컴포넌트를 써서 화면·기능이 프로필 탭과 100% 동일하다.
+  // 스택 라우트로 푸시되므로 뒤로가기로 원래 화면(소셜)으로 돌아온다.
+  if (isSelf) return <ProfileScreen navigation={navigation as any} route={route as any} pushed onBack={() => navigation.goBack()} />;
+
   return (
     <View style={s.container}>
+      {/* 별 배경 (Stars.svg) — 프로필 탭과 동일하게 콘텐츠 뒤에 깔린다 */}
+      <StarFieldBackground />
+
       {/* ── 헤더 ── */}
       <View style={[s.header, { marginTop: insets.top + 12 }]}>
         <TouchableOpacity style={s.headerBtn} onPress={() => navigation.goBack()} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
@@ -271,14 +291,18 @@ export default function FriendProfileScreen({
         <View style={pv.profileRow}>
           <ProfileAvatar photo={display.photo} initial={displayUsername[0] ?? '?'} />
           <View style={pv.profileInfo}>
+            {/* 닉네임 폐지 — 아이디(handle)만 표시. 프로필 탭과 동일하게 이름 한 줄 */}
             <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>
-            <Text style={[pv.userHandle, nameFontStyle]}>@{displayUsername}</Text>
-            {!!display.bio && <Text style={pv.userBio}>{display.bio}</Text>}
+            {/* 이름 아래 위치 줄 — 내 프로필과 동일 */}
+            {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
+            {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
+            {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
+            {/* 통계 — 프로필 탭과 동일한 3개(기록수·팔로잉·팔로워) */}
             <View style={pv.statsRow}>
-              {/* 비공개 잠금 시 기록 통계는 '–' (0으로 오해 방지). 팔로워 수는 공개 통계라 그대로 */}
+              {/* 비공개 잠금 시 기록·팔로잉은 '–' (0으로 오해 방지). 팔로워 수는 공개 통계라 그대로 */}
               <StatCard value={privateLocked ? '–' : String(display.recordCount)} label={t('friends.recordCount')} />
+              <StatCard value={privateLocked ? '–' : String(isSelf ? followingUsers.length : followingCount)} label={t('profile.following')} />
               <StatCard value={String(display.followers)} label={t('friends.followers')} />
-              <StatCard value={privateLocked ? '–' : String(display.visitedCountries)} label={t('friends.visitedCountries')} />
             </View>
           </View>
         </View>
@@ -334,27 +358,33 @@ export default function FriendProfileScreen({
           </>
         ) : (
           <>
-            {/* ── 배지 하이라이트 (친구 공개 글로 계산) — 내 프로필과 동일 ── */}
+            {/* ── Travel badge — 프로필 탭과 동일한 섹션 헤더 + 구이 서클 배지 ── */}
             {friendBadges.length > 0 && (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={pv.badgeScroll}
-                contentContainerStyle={pv.badgeScrollContent}
-              >
-                {friendBadges.map((badge) => (
-                  <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
-                ))}
-              </ScrollView>
+              <>
+                <View style={s.divider} />
+                <View style={s.sectionHeaderRow}>
+                  <Text style={s.sectionTitle}>Travel badge</Text>
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  style={pv.badgeScroll}
+                  contentContainerStyle={pv.badgeScrollContent}
+                >
+                  {friendBadges.map((badge) => (
+                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
+                  ))}
+                </ScrollView>
+              </>
             )}
 
-            <View style={pv.divider} />
+            <View style={s.divider} />
 
-            {/* ── 여행 기록 — 내 프로필과 동일한 카드 ── */}
-            <View style={pv.gridHeaderRow}>
-              <Text style={pv.gridHeaderTitle}>{t('friends.travelRecords')}</Text>
-              <Text style={pv.tripCount}>{t('friends.tripCountN', { count: display.trips.length })}</Text>
+            {/* ── Travel archive — 프로필 탭과 동일한 헤더·부제 + 여행 카드 ── */}
+            <View style={s.sectionHeaderRow}>
+              <Text style={s.sectionTitle}>Travel archive</Text>
             </View>
+            <Text style={s.archiveSubtitle}>{t('friends.tripCountN', { count: display.trips.length })}</Text>
 
             {display.trips.length === 0 ? (
               <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
@@ -568,6 +598,14 @@ const s = StyleSheet.create({
   },
   gridHeaderTitle: { fontSize: 16, fontWeight: '700', color: COLORS.white },
   tripCount: { fontSize: 12, color: COLORS.dim },
+
+  // ── 섹션 헤더 (프로필 탭 Travel badge / Travel archive와 동일) ──
+  sectionHeaderRow: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  sectionTitle: { fontSize: 23, fontFamily: 'Inter_800ExtraBold', color: COLORS.white },
+  archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
 
   // ── 여행 썸네일 2열 그리드 ──
   thumbGrid: {

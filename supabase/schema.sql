@@ -388,6 +388,19 @@ $$;
 
 grant execute on function public.follower_counts(uuid[]) to authenticated;
 
+-- 팔로잉 '수'(대상이 팔로우 중인 사람 수)도 동일하게 공개 통계로 제공.
+-- follows RLS가 당사자 행만 노출하므로 타인 팔로잉은 SECURITY DEFINER RPC로만 집계 가능.
+create or replace function public.following_counts(ids uuid[])
+returns table (user_id uuid, following_count int)
+language sql security definer set search_path = public as $$
+  select f.follower_id as user_id, count(*)::int as following_count
+  from public.follows f
+  where f.follower_id = any(ids)
+  group by f.follower_id;
+$$;
+
+grant execute on function public.following_counts(uuid[]) to authenticated;
+
 -- ============================================================
 -- 4) DM — 1:1 대화 + 메시지 (실시간은 dm_messages를 Realtime publication에 추가)
 -- ============================================================

@@ -1,122 +1,168 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import type { HouseAd } from '../../constants/houseAds';
 
 // 소셜 피드 광고 카드 — 마소너리 그리드에 게시물처럼 끼어드는 광고 슬롯 렌더러.
-//  - polaroid: 목업(살짝 기울어진 폴라로이드) 스타일 — 밝은 프레임 + 하단 캡션(헤드라인)
-//  - feed:     일반 피드 카드와 같은 골격의 다크 카드
+// 두 가지 형태를 번갈아 렌더한다:
+//  - polaroid: 피드 기록 카드(Group 2085664521)와 같은 다크 폴라로이드 + 사진 + 캡션 한 줄
+//              (기록 카드의 메타 행 아이디·좋아요·⋯ 은 없음)
+//  - sticker:  Group 2085664520 시안 — 살짝 기울어진 라이트 폴라로이드 스티커
+//              (반투명 라이트 프레임 + 밝은 사진 영역 + 중앙 헤드라인)
 // AdMob 네이티브 전환 시에도 이 렌더러를 재사용한다 — '광고' 배지와 헤드라인(title)
 // 상시 노출은 AdMob 필수 요소 규정을 함께 충족한다.
-export type FeedAdVariant = 'polaroid' | 'feed';
+export type FeedAdVariant = 'polaroid' | 'sticker';
+
+const SERIF = Platform.select({ ios: 'Georgia', android: 'serif', default: 'serif' });
 
 interface Props {
   ad: HouseAd;
   variant: FeedAdVariant;
-  /** 폴라로이드 기울기(도) — 슬롯마다 살짝 다르게 주면 자연스럽다 */
+  /** 폴라로이드/스티커 기울기(도) — 슬롯마다 살짝 다르게 주면 자연스럽다 */
   tilt?: number;
+  /** 스티커를 게시물 위에 겹쳐 붙이는 오버레이 모드 (시안 iPhone 17 - 54) */
+  overlay?: boolean;
+  /** 오버레이가 바깥으로 삐져나오는 방향 — 좌측 컬럼 게시물은 오른쪽(gutter)으로 */
+  overlaySide?: 'left' | 'right';
   onPress: () => void;
 }
 
-export default function FeedAdCard({ ad, variant, tilt = -3, onPress }: Props) {
+export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySide = 'right', onPress }: Props) {
   const { t } = useTranslation();
 
-  if (variant === 'polaroid') {
+  // ── 스티커 (Group 2085664520): 살짝 기울어진 라이트 폴라로이드 ──
+  if (variant === 'sticker') {
     return (
       <TouchableOpacity
-        style={[s.polaroid, { transform: [{ rotate: `${tilt}deg` }] }]}
+        style={[
+          s.stickerFrame,
+          overlay && s.stickerOverlay,
+          overlay && (overlaySide === 'left' ? s.stickerOverlayLeft : s.stickerOverlayRight),
+          { transform: [{ rotate: `${tilt}deg` }] },
+        ]}
         onPress={onPress}
         activeOpacity={0.85}
         accessibilityRole="button"
         accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
       >
-        <LinearGradient colors={[...ad.gradient]} style={s.polaroidMedia}>
-          <Text style={s.mediaEmoji}>{ad.emoji}</Text>
-        </LinearGradient>
-        <Text style={s.polaroidCaption} numberOfLines={1}>{t(ad.titleKey)}</Text>
-        <View style={s.polaroidBadge}>
-          <Text style={s.badgeText}>{t('social.adBadge')}</Text>
+        {/* 밝은 사진 영역 + 중앙 헤드라인 (시안: 중앙 정렬 다크 텍스트) */}
+        <View style={s.stickerPhoto}>
+          <Text style={s.stickerEmoji}>{ad.emoji}</Text>
+          <Text style={[s.stickerTitle, { fontFamily: SERIF }]} numberOfLines={2}>{t(ad.titleKey)}</Text>
+          <View style={s.badge}>
+            <Text style={s.badgeText}>{t('social.adBadge')}</Text>
+          </View>
         </View>
       </TouchableOpacity>
     );
   }
 
+  // ── 폴라로이드: 피드 기록 카드와 동일한 골격 (아이디·좋아요·⋯ 메타 행만 제거) ──
   return (
     <TouchableOpacity
-      style={s.feedCard}
+      style={[s.wrap, { transform: [{ rotate: `${tilt}deg` }] }]}
       onPress={onPress}
       activeOpacity={0.85}
       accessibilityRole="button"
       accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
     >
-      <LinearGradient colors={[...ad.gradient]} style={s.feedMedia}>
-        <Text style={s.mediaEmoji}>{ad.emoji}</Text>
-        <View style={s.feedBadge}>
-          <Text style={s.badgeText}>{t('social.adBadge')}</Text>
-        </View>
-      </LinearGradient>
-      <View style={s.feedBody}>
-        <Text style={s.feedTitle} numberOfLines={1}>{t(ad.titleKey)}</Text>
-        <Text style={s.feedDesc} numberOfLines={2}>{t(ad.bodyKey)}</Text>
-        <View style={s.ctaBtn}>
-          <Text style={s.ctaText}>{t(ad.ctaKey)}</Text>
-        </View>
+      {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
+      <View style={s.back} pointerEvents="none" />
+      <View style={s.front}>
+        <LinearGradient colors={[...ad.gradient]} style={s.media}>
+          <Text style={s.mediaEmoji}>{ad.emoji}</Text>
+          <View style={s.badge}>
+            <Text style={s.badgeText}>{t('social.adBadge')}</Text>
+          </View>
+        </LinearGradient>
+        {/* 사진 밑 캡션 한 줄 — 기록 카드와 동일 */}
+        <Text style={[s.caption, { fontFamily: SERIF }]} numberOfLines={1}>{t(ad.titleKey)}</Text>
       </View>
     </TouchableOpacity>
   );
 }
 
 const s = StyleSheet.create({
-  // ── 폴라로이드 ──
-  polaroid: {
-    backgroundColor: '#ECECF1',
+  // ── 폴라로이드: 피드 기록 카드(d.polaWrap/polaBack/polaFront/polaImg/polaCap)와 동일 ──
+  wrap: {},
+  back: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#2B2B30',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 0,
+    transform: [{ rotate: '-5deg' }],
+  },
+  front: {
+    backgroundColor: '#333337',
+    borderRadius: 0,
+    padding: 10,
+    paddingBottom: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    shadowColor: '#000',
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
+  },
+  media: {
+    width: '100%',
+    aspectRatio: 1,
     borderRadius: 6,
-    padding: 8,
-    paddingBottom: 10,
-    marginVertical: 10,
+    backgroundColor: '#2A2735',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  caption: { color: '#FFFFFF', fontSize: 12, paddingTop: 8 },
+
+  // ── 스티커 (Group 2085664520): 반투명 라이트 프레임 + 밝은 사진 + 큰 하단 여백(폴라로이드 턱) ──
+  // 시안 비율: 프레임 82×95, 사진 70×66, 좌우 여백 ~7 / 하단 턱 ~20
+  stickerFrame: {
+    width: 84,
+    backgroundColor: 'rgba(217,217,217,0.2)',
+    padding: 7,
+    paddingBottom: 20,
+    marginVertical: 12,
     shadowColor: '#000',
     shadowOpacity: 0.35,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
-    elevation: 5,
+    elevation: 4,
   },
-  polaroidMedia: {
-    height: 120,
-    borderRadius: 3,
+  // 게시물 위에 겹쳐 붙는 오버레이 — 시안 iPhone 17 - 54처럼 하단 코너에서 gutter로 삐져나옴
+  stickerOverlay: {
+    position: 'absolute',
+    bottom: 28,
+    marginVertical: 0,
+    zIndex: 20,
+    elevation: 8,
+  },
+  stickerOverlayRight: { right: -16 },
+  stickerOverlayLeft: { left: -16 },
+  stickerPhoto: {
+    width: '100%',
+    aspectRatio: 1.05,
+    backgroundColor: '#D9D9D9',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
+    gap: 3,
   },
-  polaroidCaption: {
-    marginTop: 8,
-    fontSize: 12,
+  stickerEmoji: {
+    fontSize: 24,
+  },
+  stickerTitle: {
+    color: '#16121F',
+    fontSize: 9,
+    lineHeight: 12,
     fontWeight: '600',
-    color: '#3A3A46',
     textAlign: 'center',
   },
-  polaroidBadge: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    backgroundColor: 'rgba(10,10,15,0.55)',
-    borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
-  },
 
-  // ── 피드 카드형 ──
-  feedCard: {
-    backgroundColor: '#2E2E3B',
-    borderRadius: 18,
-    overflow: 'hidden',
-    marginVertical: 6,
-  },
-  feedMedia: {
-    height: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  feedBadge: {
+  // ── 공통 ──
+  badge: {
     position: 'absolute',
     top: 8,
     right: 8,
@@ -125,36 +171,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 5,
     paddingVertical: 2,
   },
-  feedBody: {
-    padding: 12,
-    gap: 4,
-  },
-  feedTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  feedDesc: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    lineHeight: 17,
-  },
-  ctaBtn: {
-    marginTop: 8,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.35)',
-    borderRadius: 10,
-    paddingVertical: 8,
-    alignItems: 'center',
-  },
-  ctaText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#BF85FC',
-  },
-
-  // 공통
   mediaEmoji: {
     fontSize: 44,
   },

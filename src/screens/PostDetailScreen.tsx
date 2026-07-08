@@ -876,17 +876,30 @@ function SnapStoryViewer({
             })}
           </View>
           <View style={storyS.topRow}>
-            <View style={storyS.avatarRing}><View style={storyS.avatar}>
-              {s.isMyPost === true && myPhoto ? (
-                <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
-              ) : (
-                <Text style={storyS.avatarEmoji}>{s.user.emoji}</Text>
-              )}
-            </View></View>
-            <View style={storyS.userInfo}>
-              <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
-              <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
-            </View>
+            {/* 프로필 사진·아이디 탭 → 프로필 화면 (내 스냅이면 내 프로필로) */}
+            <TouchableOpacity
+              style={storyS.authorTap}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel={s.isMyPost === true ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
+              onPress={() => {
+                navigation.navigate('FriendProfile', s.isMyPost === true
+                  ? { userId: s.authorId ?? s.id, username: myHandle || s.user.name, handle: myHandle }
+                  : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
+              }}
+            >
+              <View style={storyS.avatarRing}><View style={storyS.avatar}>
+                {s.isMyPost === true && myPhoto ? (
+                  <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
+                ) : (
+                  <Text style={storyS.avatarEmoji}>{s.user.emoji}</Text>
+                )}
+              </View></View>
+              <View style={storyS.userInfo}>
+                <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
+              </View>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn} accessibilityRole="button" accessibilityLabel={t('common.close')}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
           </View>
@@ -2623,6 +2636,12 @@ const storyS = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginTop: 8, // 아이디·올린 시간 줄을 진행 바에서 조금 내림
+  },
+  // 아바타+아이디를 감싸는 탭 영역 — flex:1로 더보기·닫기 버튼을 우측에 유지
+  authorTap: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   // 시안(iPhone 17 - 63): 링 없는 40pt 아바타 + 아이디·시간 한 줄 배치
   avatarRing: {
