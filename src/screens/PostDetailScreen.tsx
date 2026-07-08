@@ -10,6 +10,7 @@ import {
   Dimensions,
   TextInput,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Modal,
   Alert,
@@ -36,6 +37,7 @@ import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
+import { handleFontStyle } from '../constants/handleFonts';
 import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
@@ -585,7 +587,7 @@ function SnapStoryViewer({
 }) {
   const { t } = useTranslation();
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
-  const { handle: myHandle, profilePhoto: myPhoto } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   // 작성자별로 그룹화된 전체 스냅 목록 (같은 작성자끼리 연속 배치)
   const allSnaps = useMemo(() => records.filter((r: any) => r.viewType === 'snap'), [records]);
   // 작성자 + 국가별로 그룹화 (같은 사용자라도 다른 나라면 별도 스토리)
@@ -658,6 +660,30 @@ function SnapStoryViewer({
 
   const commentSheetAnim = useRef(new Animated.Value(SCREEN_H * 0.6)).current;
   const commentOverlayAnim = useRef(new Animated.Value(0)).current;
+  // 댓글 시트는 화면 하단 고정(absolute)이라 내부 KeyboardAvoidingView만으로는 입력창이 키보드에
+  // 가린다. 키보드 높이만큼 시트 전체를 위로 들어올려 입력창이 항상 키보드 위에 보이게 한다.
+  const keyboardLift = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = (e: any) => {
+      Animated.timing(keyboardLift, {
+        toValue: e.endCoordinates?.height ?? 0,
+        duration: e.duration || 220,
+        useNativeDriver: true,
+      }).start();
+    };
+    const onHide = (e: any) => {
+      Animated.timing(keyboardLift, {
+        toValue: 0,
+        duration: e?.duration || 200,
+        useNativeDriver: true,
+      }).start();
+    };
+    const s1 = Keyboard.addListener(showEvt, onShow);
+    const s2 = Keyboard.addListener(hideEvt, onHide);
+    return () => { s1.remove(); s2.remove(); };
+  }, [keyboardLift]);
 
   // ── Reanimated 큐브 캐러셀 (스토리 단위 페이지) ──
   const scrollRef = useRef<any>(null);
@@ -858,7 +884,7 @@ function SnapStoryViewer({
               )}
             </View></View>
             <View style={storyS.userInfo}>
-              <Text style={storyS.handle}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+              <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
               <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
             </View>
             <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
@@ -887,6 +913,9 @@ function SnapStoryViewer({
                   <CommentSvg size={22} color="#fff" />
                   {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
                   <SendPlaneSvg size={22} />
                 </TouchableOpacity>
@@ -897,12 +926,12 @@ function SnapStoryViewer({
                 <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
                   <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
                 </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
-                </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
                   <CommentSvg size={22} color="#fff" />
                   {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                </TouchableOpacity>
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
               </>
@@ -949,8 +978,12 @@ function SnapStoryViewer({
   const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
+  // 시안(Group.svg): 두 줄 텍스트가 든 말풍선 아웃라인 — 스냅 스토리 전용 댓글 아이콘
   const CommentSvg = ({ size = 20, color = '#fff' }: { size?: number; color?: string }) => (
-    <CommentSvgIcon size={size} color={color} />
+    <Svg width={size * (25 / 23)} height={size} viewBox="0 0 25 23" fill="none">
+      <SvgPath d="M2.77778 7.68154C2.77778 6.54653 2.77778 5.77572 2.83056 5.17974C2.87917 4.59965 2.96944 4.30166 3.08055 4.09506L0.605556 2.8925C0.2625 3.53483 0.125 4.21955 0.061111 4.96387C-1.24176e-07 5.69229 0 6.59023 0 7.68154H2.77778ZM2.77778 10.5952V7.68154H0V10.5952H2.77778ZM0 10.5952V17.2172H2.77778V10.5952H0ZM0 17.2172V21.0766H2.77778V17.2172H0ZM0 21.0766C0 22.7864 2.16944 23.6433 3.4375 22.4341L1.47361 20.5614C1.58044 20.4594 1.71658 20.39 1.86479 20.3619C2.013 20.3338 2.16664 20.3482 2.30625 20.4034C2.44586 20.4585 2.56519 20.5519 2.64912 20.6717C2.73305 20.7916 2.77783 20.9325 2.77778 21.0766H0ZM3.4375 22.4341L7.52083 18.5417L5.55555 16.6689L1.47361 20.5614L3.4375 22.4341ZM16.9444 15.8928H7.51944V18.5417H16.9444V15.8928ZM20.7056 15.6041C20.4889 15.7101 20.1778 15.7962 19.5681 15.8425C18.9431 15.8915 18.1347 15.8928 16.9444 15.8928V18.5417C18.0889 18.5417 19.0292 18.5417 19.7944 18.4834C20.575 18.4225 21.2931 18.2913 21.9667 17.9642L20.7056 15.6041ZM21.9194 14.4466C21.6531 14.945 21.2282 15.3502 20.7056 15.6041L21.9667 17.9642C23.012 17.4563 23.8618 16.6459 24.3944 15.6492L21.9194 14.4466ZM22.2222 10.8601C22.2222 11.9951 22.2222 12.7659 22.1694 13.3619C22.1208 13.942 22.0306 14.24 21.9194 14.4466L24.3944 15.6492C24.7375 15.0068 24.875 14.3221 24.9389 13.5778C25.0014 12.8494 25 11.9514 25 10.8601H22.2222ZM22.2222 7.68154V10.8601H25V7.68154H22.2222ZM21.9194 4.09506C22.0306 4.30166 22.1208 4.59833 22.1694 5.17974C22.2222 5.77572 22.2222 6.54653 22.2222 7.68154H25C25 6.59023 25 5.69361 24.9389 4.96387C24.875 4.21955 24.7375 3.53483 24.3944 2.8925L21.9194 4.09506ZM20.7056 2.93753C21.2282 3.19147 21.6531 3.59667 21.9194 4.09506L24.3944 2.8925C23.8618 1.89573 23.012 1.08533 21.9667 0.57744L20.7056 2.93753ZM16.9444 2.64881C18.1347 2.64881 18.9431 2.64881 19.5681 2.69914C20.1764 2.74549 20.4889 2.83158 20.7056 2.93753L21.9667 0.57744C21.2931 0.250312 20.575 0.119197 19.7944 0.058274C19.0306 1.95844e-07 18.0889 0 16.9444 0V2.64881ZM8.05555 2.64881H16.9444V0H8.05555V2.64881ZM4.29444 2.93753C4.51111 2.83158 4.82222 2.74549 5.43194 2.69914C6.05694 2.64881 6.86528 2.64881 8.05555 2.64881V0C6.91111 0 5.97083 1.95844e-07 5.20555 0.058274C4.425 0.119197 3.70694 0.250312 3.03333 0.57744L4.29444 2.93753ZM3.08055 4.09506C3.34687 3.59667 3.77179 3.19147 4.29444 2.93753L3.03333 0.57744C1.98803 1.08533 1.13818 1.89573 0.605556 2.8925L3.08055 4.09506ZM7.51944 18.5417V15.8928C6.78279 15.893 6.07637 16.1722 5.55555 16.6689L7.51944 18.5417Z" fill={color} />
+      <SvgPath d="M7.66699 6.6665H18.3337M7.66699 11.9998H14.3337" stroke={color} strokeWidth={1.98} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
   );
   // 디자인 시안(iPhone 17 - 63) 화이트 아웃라인 아이콘 — 조회(👀)·공유(종이비행기)
   const EyesSvg = ({ size = 20, color = '#FFFFFF' }: { size?: number; color?: string }) => (
@@ -961,9 +994,10 @@ function SnapStoryViewer({
       <SvgCircle cx={27.5} cy={14.5} r={3} fill={color} />
     </Svg>
   );
+  // 시안(akar-icons_paper-airplane.svg): 종이비행기 아웃라인 — 스냅 스토리 전용 공유 아이콘
   const SendPlaneSvg = ({ size = 22, color = '#FFFFFF' }: { size?: number; color?: string }) => (
-    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
-      <SvgPath d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    <Svg width={size} height={size} viewBox="0 0 28 28" fill="none">
+      <SvgPath d="M11.0531 18.6664L21.7643 22.4978C21.9442 22.5625 22.1364 22.5861 22.3266 22.567C22.5169 22.5479 22.7005 22.4865 22.864 22.3873C23.0275 22.2881 23.1667 22.1536 23.2716 21.9937C23.3764 21.8338 23.4442 21.6524 23.4699 21.4629L25.6551 4.94528C25.7881 3.93962 24.7463 3.18945 23.8269 3.62695L3.06145 13.5389C2.03478 14.0289 2.11178 15.5106 3.18511 15.8921L6.03178 16.9048L7.58345 17.4496M15.1668 20.1364L12.8451 24.0168C12.0868 24.9595 10.5596 24.4263 10.5596 23.2199V20.1131C10.5597 19.5268 10.7804 18.962 11.1779 18.5311L20.5624 9.62473" stroke={color} strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 
@@ -1027,8 +1061,8 @@ function SnapStoryViewer({
         </Animated.View>
       )}
 
-      {/* 댓글 바텀시트 */}
-      <Animated.View style={[storyS.commentSheet, { transform: [{ translateY: commentSheetAnim }] }]} pointerEvents={commentSheetOpen ? 'auto' : 'none'}>
+      {/* 댓글 바텀시트 — 키보드 높이만큼 시트 전체를 위로 들어올린다(입력창이 키보드에 안 가리게) */}
+      <Animated.View style={[storyS.commentSheet, { transform: [{ translateY: Animated.subtract(commentSheetAnim, keyboardLift) }] }]} pointerEvents={commentSheetOpen ? 'auto' : 'none'}>
         <View style={storyS.csHandleArea} {...commentSheetPan.panHandlers}>
           <View style={storyS.csHandle} />
         </View>
@@ -1036,8 +1070,8 @@ function SnapStoryViewer({
           <Text style={storyS.csTitle}>{t('social.comments')}</Text>
           <Text style={storyS.csCount}>{totalComments}</Text>
         </View>
-        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined} keyboardVerticalOffset={0}>
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+        <View style={{ flex: 1 }}>
+          <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 8 }}>
             {comments.map((c: any) => (
               <View key={c.id}>
                 <View style={storyS.csCommentItem}>
@@ -1073,7 +1107,7 @@ function SnapStoryViewer({
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Animated.View>
 
       {/* 메뉴 모달 */}
@@ -1153,7 +1187,7 @@ export default function PostDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
   const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost } = useRecords();
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto } = useSettings();
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
   const [commentText, setCommentText] = useState('');
@@ -1530,7 +1564,8 @@ export default function PostDetailScreen() {
                         )}
                       </View>
                       <View style={s.userInfo}>
-                        <Text style={s.userName}>{postDisplayName}</Text>
+                        {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
+                        <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
                         <View style={s.userMeta}>
                           {renderCountries()}
                           <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
@@ -2670,7 +2705,7 @@ const storyS = StyleSheet.create({
   pipWrap: {
     position: 'absolute',
     top: 150,
-    left: 16,
+    left: 24, // 사이드에서 조금 더 안쪽으로 (기존 16)
     width: SCREEN_W * 0.32,
     height: SCREEN_W * 0.48, // 세로를 늘려 1:1.5 비율 (기존 0.416 ≈ 1:1.3)
     borderRadius: 22,
@@ -2802,6 +2837,7 @@ const storyS = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     height: 40,
+    marginLeft: 8, // 조회 아이콘을 사이드에서 조금 더 떨어뜨림 (액션 줄 여백 24 + 8)
     paddingRight: 12,
     gap: 6,
   },
