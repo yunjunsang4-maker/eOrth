@@ -914,7 +914,16 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
           <View style={cur.sheet}>
             <View style={cur.handle} />
-            <Text style={cur.title}>{t('cutInfo.currencySelect')}</Text>
+            <View style={cur.titleRow}>
+              <Text style={cur.title}>{t('cutInfo.currencySelect')}</Text>
+              <TouchableOpacity
+                onPress={() => setCurrencyModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={cur.doneBtn}>{t('common.done')}</Text>
+              </TouchableOpacity>
+            </View>
             <View style={cur.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
               <TextInput
@@ -924,7 +933,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 autoFocus
               />
             </View>
-            <ScrollView style={{ maxHeight: 320 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: 320, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
               {OTHER_CURRENCIES
                 .filter(c => {
                   const q = currencySearch.trim().toLowerCase();
@@ -954,7 +963,16 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCountryModalVisible(false)} />
           <View style={ct.sheet}>
             <View style={ct.handle} />
-            <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>
+            <View style={ct.titleRow}>
+              <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>
+              <TouchableOpacity
+                onPress={() => setCountryModalVisible(false)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                activeOpacity={0.7}
+              >
+                <Text style={ct.doneBtn}>{t('common.done')}</Text>
+              </TouchableOpacity>
+            </View>
             <View style={ct.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
               <TextInput
@@ -964,7 +982,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 autoFocus
               />
             </View>
-            <ScrollView style={{ maxHeight: 420 }} keyboardShouldPersistTaps="handled">
+            <ScrollView style={{ maxHeight: 420, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
               {groupedCountries.map(g => (
                 <View key={g.continent}>
                   <Text style={ct.continent}>{g.continent}</Text>
@@ -1142,9 +1160,12 @@ const fp = StyleSheet.create({
 });
 
 const cur = StyleSheet.create({
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10 },
+  // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1 },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
-  title: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  title: { color: C.white, fontSize: 16, fontWeight: '700' },
+  doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
   item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 4 },
@@ -1155,9 +1176,12 @@ const cur = StyleSheet.create({
 });
 
 const ct = StyleSheet.create({
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10 },
+  // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1 },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
-  title: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 12 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  title: { color: C.white, fontSize: 16, fontWeight: '700' },
+  doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
   continent: { color: C.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingTop: 14, paddingBottom: 6 },
