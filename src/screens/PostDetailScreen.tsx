@@ -35,6 +35,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
 import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
+import { useDM } from '../store/dmStore';
 import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
@@ -636,7 +637,17 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, followingUsers } = useRecords();
+  // ── 공유 시트 (인스타식: 친구 DM으로 보내기 + 외부 공유) ──
+  const { sendRecord, conversations } = useDM();
+  const [shareSheetOpen, setShareSheetOpen] = useState(false);
+  // 대화량 많은 친구 순 — 소셜 피드 빠른공유와 동일 기준
+  const shareFriends = useMemo(
+    () => followingUsers
+      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' }))
+      .sort((a, b) => (conversations[b.handle]?.length ?? 0) - (conversations[a.handle]?.length ?? 0)),
+    [followingUsers, conversations]
+  );
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -697,11 +708,16 @@ function SnapStoryViewer({
   const progressWidth = progressAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'] });
   const [paused, setPaused] = useState(false);
   const [dragPaused, setDragPaused] = useState(false); // 아래로 끌어 닫기 드래그 중 일시정지
+  // 꾹 누르는 동안 UI 전체 페이드 아웃 — 사진만 보기 (인스타 스토리 패턴)
+  const uiOpacity = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    Animated.timing(uiOpacity, { toValue: paused ? 0 : 1, duration: 150, useNativeDriver: true }).start();
+  }, [paused, uiOpacity]);
   const advanceRef = useRef<(dir: 'next' | 'prev') => void>(() => {});
 
   // 어떤 오버레이도 안 떠 있고 일시정지/드래그 아니면 재생
   const storyPlaying =
-    !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen;
+    !paused && !dragPaused && !commentSheetOpen && !replyBarOpen && !menuVisible && !reportVisible && !viewerListOpen && !shareSheetOpen;
 
   // 스냅이 바뀌면 진행도 리셋
   useEffect(() => { progressAnim.setValue(0); }, [storyIdx, localIdx]);
@@ -808,6 +824,14 @@ function SnapStoryViewer({
           delayLongPress={200}
           onPressOut={() => setPaused(false)}
         />
+        {/* PiP(다른 방향 사진)는 꾹 눌러도 사진과 함께 계속 보인다 — 페이드 래퍼 밖 */}
+        {s.snapBackUri && s.snapFrontUri && (
+          <LinearGradient colors={['#00D8F3', '#7B61FF', '#FF14E4']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={storyS.pipWrap}>
+            <Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" />
+          </LinearGradient>
+        )}
+        {/* 꾹 누르는 동안(paused) 오버레이 UI 전체가 페이드 아웃되고 사진만 남는다 (인스타 스토리 패턴) */}
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: uiOpacity }]} pointerEvents={paused ? 'none' : 'box-none'}>
         <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={storyS.topGradient} pointerEvents="box-none">
           <View style={storyS.progressRow}>
             {story.snaps.map((_: any, k: number) => {
@@ -841,11 +865,6 @@ function SnapStoryViewer({
             <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn} accessibilityRole="button" accessibilityLabel={t('common.close')}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
           </View>
         </LinearGradient>
-        {s.snapBackUri && s.snapFrontUri && (
-          <LinearGradient colors={['#00D8F3', '#7B61FF', '#FF14E4']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={storyS.pipWrap}>
-            <Image source={{ uri: s.snapFrontUri }} style={storyS.pipImg} resizeMode="cover" />
-          </LinearGradient>
-        )}
         {/* 스냅 및 촬영지연 뱃지 비활성화 */}
         <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={storyS.bottomGradient} pointerEvents="box-none">
           {s.snapDetectedCountry && (
@@ -890,6 +909,7 @@ function SnapStoryViewer({
             )}
           </View>
         </LinearGradient>
+        </Animated.View>
       </>
     );
   };
@@ -910,7 +930,22 @@ function SnapStoryViewer({
   };
 
   const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
-  const handleSharePost = () => { setMenuVisible(false); Share.share({ message: t('comp2.sharePostMsg', { id: currentSnap.id }) }); };
+  // 공유 아이콘 → 인스타처럼 시트에서 친구 DM 전송 또는 외부 공유를 고른다
+  const handleSharePost = () => { setMenuVisible(false); setShareSheetOpen(true); };
+  const handleShareExternal = () => {
+    setShareSheetOpen(false);
+    // 공유 시트 모달이 닫히는 중에 시스템 공유 시트를 띄우면 iOS가 무시한다 — 닫힘 완료 후 호출
+    const id = currentSnap.id;
+    setTimeout(() => { Share.share({ message: t('comp2.sharePostMsg', { id }) }); }, 400);
+  };
+  const handleSendToFriend = (f: { name: string; handle: string }) => {
+    setShareSheetOpen(false);
+    const rec = records.find((r) => r.id === currentSnap.id);
+    if (!rec) return;
+    sendRecord(f.handle, rec);
+    setToastMsg(t('comp2.toastSentTo', { name: f.name }));
+    setTimeout(() => setToastMsg(''), 2000);
+  };
   const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
@@ -1061,6 +1096,34 @@ function SnapStoryViewer({
             )}
           </View>
         </TouchableOpacity>
+      </Modal>
+
+      {/* 공유 시트 — 친구 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
+      <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
+          <View style={shareS.sheet}>
+            <View style={shareS.handle} />
+            <Text style={shareS.title}>{t('social.friendPickerTitle')}</Text>
+            <ScrollView style={{ maxHeight: 320, flexShrink: 1 }}>
+              {shareFriends.map((f) => (
+                <TouchableOpacity key={f.handle} style={shareS.friendRow} activeOpacity={0.7} onPress={() => handleSendToFriend(f)}>
+                  <View style={shareS.friendAvatar}><Text style={{ fontSize: 18 }}>{f.emoji}</Text></View>
+                  <Text style={shareS.friendName}>{f.name}</Text>
+                  <Text style={shareS.friendSend}>{t('postDetail.send')}</Text>
+                </TouchableOpacity>
+              ))}
+              {shareFriends.length === 0 && (
+                <Text style={shareS.empty}>{t('postDetail.shareNoFriends')}</Text>
+              )}
+            </ScrollView>
+            <TouchableOpacity style={shareS.externalBtn} activeOpacity={0.8} onPress={handleShareExternal}>
+              <ShareIcon size={16} color="#FFFFFF" />
+              <Text style={shareS.externalTxt}>{t('postDetail.shareExternal')}</Text>
+            </TouchableOpacity>
+            <View style={{ height: 24 }} />
+          </View>
+        </View>
       </Modal>
 
       <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); reportPost(currentSnap.id); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
@@ -2506,6 +2569,7 @@ const storyS = StyleSheet.create({
   progressRow: {
     flexDirection: 'row',
     gap: 4,
+    marginTop: 10, // 진행 바를 상단에서 조금 내림
     marginBottom: 12,
   },
   progressSeg: {
@@ -2523,6 +2587,7 @@ const storyS = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginTop: 8, // 아이디·올린 시간 줄을 진행 바에서 조금 내림
   },
   // 시안(iPhone 17 - 63): 링 없는 40pt 아바타 + 아이디·시간 한 줄 배치
   avatarRing: {
@@ -2607,7 +2672,7 @@ const storyS = StyleSheet.create({
     top: 150,
     left: 16,
     width: SCREEN_W * 0.32,
-    height: SCREEN_W * 0.416,
+    height: SCREEN_W * 0.48, // 세로를 늘려 1:1.5 비율 (기존 0.416 ≈ 1:1.3)
     borderRadius: 22,
     padding: 3,
     zIndex: 8,
@@ -2664,15 +2729,15 @@ const storyS = StyleSheet.create({
     paddingTop: 100,
     zIndex: 10,
   },
-  // 시안: 하단 중앙 알약형 위치 배지 (핀 아이콘 + "국가 · 지역")
+  // 시안(Group 2085664529): 하단 중앙 알약형 위치 배지 — #1C1C1C 20% 투명 유리 느낌, 높이 28
   locationBadge: {
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    backgroundColor: 'rgba(20,20,28,0.72)',
+    backgroundColor: 'rgba(28,28,28,0.2)',
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 6,
     borderRadius: 999,
     marginBottom: 18,
   },
@@ -2709,6 +2774,7 @@ const storyS = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    paddingHorizontal: 8, // 조회·댓글·공유 아이콘을 사이드에서 조금 떨어뜨림 (기본 여백 16 + 8)
   },
   replyWrap: {
     flex: 1,
@@ -3031,4 +3097,35 @@ const viewerS = StyleSheet.create({
     fontWeight: 'bold',
     color: '#FFFFFF',
   },
+});
+
+// ─── 스냅 공유 시트 (친구 DM 전송 + 외부 공유) 스타일 ───
+const shareS = StyleSheet.create({
+  sheet: {
+    backgroundColor: '#1A1A28',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    maxHeight: '75%',
+    flexShrink: 1,
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 16 },
+  title: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 8 },
+  friendRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
+  friendAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
+  friendName: { flex: 1, color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
+  friendSend: { color: '#BF85FC', fontSize: 13, fontWeight: '700' },
+  empty: { color: '#8B8B9E', fontSize: 13, textAlign: 'center', paddingVertical: 28 },
+  externalBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    borderRadius: 22,
+    paddingVertical: 13,
+    backgroundColor: '#2E2E3B',
+  },
+  externalTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
