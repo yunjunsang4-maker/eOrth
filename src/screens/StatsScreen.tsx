@@ -435,7 +435,7 @@ export default function StatsScreen() {
           >
               <View style={styles.heroTop}>
                 <View>
-                  <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
+                  <Text style={[styles.heroPercentage, { color: skinAccent.accent }]}>{worldCoveragePct}</Text>
                   <Text style={styles.heroLabel}>🌏 {t('comp2.worldTraveled')}</Text>
                 </View>
                 <View style={styles.globeMini}>
@@ -534,7 +534,7 @@ export default function StatsScreen() {
                   </Text>
                   <Text style={styles.topFlag}>{c.flag}</Text>
                   <Text style={styles.topName} {...andFitText}>{c.name}</Text>
-                  <Text style={styles.topVisits} {...andFitText}>{t('stats.visitsUnit', { count: c.visits })}</Text>
+                  <Text style={[styles.topVisits, { color: skinAccent.accent }]} {...andFitText}>{t('stats.visitsUnit', { count: c.visits })}</Text>
                 </View>
               ))
             ) : (
