@@ -32,6 +32,8 @@ const LOGO_SCALE: Partial<Record<CutLayout, number>> = {
   'four': 0.085,   // 4컷 (2x2 정사각)
   'six-v': 0.09,   // 6컷 세로
   'nine': 0.08,    // 9컷
+  'film': 0.12,    // 필름 세로(모노 필름) — 하단 빈 공간(~높이 24%)에 로고·날짜·문구
+  'four-stagger': 0.075, // 4컷 엇갈림(나이트 콘택트) — 하단 ~12% 밴드
 };
 
 /** 하단 여백(로고·스탬프 영역)이 있는 레이아웃인지 — CutRecordScreen이 스탬프 UI 노출 여부에 사용 */

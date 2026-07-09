@@ -1,6 +1,6 @@
 // 네컷/컷사진 — 레이아웃 사양 + 프레임 카탈로그 (정적 데이터)
 
-export type CutLayout = 'two-h' | 'two-v' | 'three-v' | 'four' | 'nine' | 'four-v' | 'four-h' | 'six-v' | 'film' | 'film-h' | 'four-compact';
+export type CutLayout = 'two-h' | 'two-v' | 'three-v' | 'four' | 'nine' | 'four-v' | 'four-h' | 'six-v' | 'film' | 'film-h' | 'four-compact' | 'four-stagger';
 
 export interface CutSlot { x: number; y: number; w: number; h: number } // 0~1 비율
 
@@ -87,6 +87,24 @@ function fourSlotsCompact(): CutSlot[] {
     { x: mx + w + gx, y: my,          w, h },
     { x: mx,          y: my + h + gy, w, h },
     { x: mx + w + gx, y: my + h + gy, w, h },
+  ];
+}
+
+// 콘택트시트(photoism류) 참고 4컷 엇갈림 — 좌 컬럼은 위에서, 우 컬럼은 한 칸 아래로 밀려 시작.
+// aspect 2:3(세로), 사진 ≈4:5 세로 비율. 우측 상단 빈 칸은 여백(무드), 하단 ~12%는 로고·스탬프 밴드.
+function fourSlotsStagger(): CutSlot[] {
+  const mx = 0.045;          // 좌우 마진
+  const w = (1 - mx * 2 - 0.04) / 2; // 컬럼 폭(~0.435), 컬럼 간격 0.04
+  const h = 0.36;            // 사진 높이(H 기준) → 실제 비율 (w*2)/(h*3) ≈ 4:5
+  const gy = 0.025;          // 사진 세로 간격
+  const topL = 0.03;         // 좌 컬럼 시작
+  const topR = topL + 0.105; // 우 컬럼은 아래로 엇갈림
+  const xR = mx + w + 0.04;
+  return [
+    { x: mx, y: topL,          w, h },
+    { x: xR, y: topR,          w, h },
+    { x: mx, y: topL + h + gy, w, h },
+    { x: xR, y: topR + h + gy, w, h },
   ];
 }
 
@@ -203,6 +221,8 @@ export const CUT_LAYOUTS: Record<CutLayout, CutLayoutSpec> = {
   'film':    { label: '필름 세로', aspect: 1 / 3,  slots: filmSlotsV(4), film: 'v' },
   'film-h':  { label: '필름 가로', aspect: 3 / 1,  slots: filmSlotsH(4), film: 'h' },
   'four-compact': { label: '4컷 콤팩트', aspect: 1 / 0.785, slots: fourSlotsCompact() },
+  // 콘택트시트(photoism류) 참고 — 좌우 컬럼이 엇갈리는 4컷. 하단 12%는 로고·스탬프 밴드
+  'four-stagger': { label: '4컷 엇갈림', aspect: 2 / 3, slots: fourSlotsStagger() },
 };
 
 export const cutSlotCount = (l: CutLayout): number => CUT_LAYOUTS[l].slots.length;
@@ -241,24 +261,17 @@ const BASIC: CutFrame[] = BASIC_LAYOUT_ORDER.map((l): CutFrame => ({
 }));
 
 // 테마 프레임: 초기 소수(색 기반). 배경 이미지 테마는 assets 추가 후 확장.
+// (브루클린 벽돌·스카이·선셋은 2026-07-10 제거 — 기존 기록의 해당 frameId는 getCutFrame이 undefined를 반환하고
+//  렌더러들이 폴백 처리한다: CutPhotoCanvas는 미렌더, 피드 카드는 기본 레이아웃/색으로)
 const THEME: CutFrame[] = [
-  {
-    id: 'theme-brick-four', name: '브루클린 벽돌', category: '테마', layout: 'four-compact',
-    background: { type: 'image', source: require('../../assets/brooklyn_brick.jpg') }, border: { color: '#32251D', width: 2, radius: 10 },
-  },
-  {
-    id: 'theme-nyc-three-v', name: '스카이', category: '테마', layout: 'three-v',
-    background: { type: 'image', source: require('../../assets/nyc_skyline.jpg') },
-    backgroundStyle: { left: '12%', right: '-12%' },
-    border: { color: '#3A4454', width: 2, radius: 10 },
-  },
   {
     id: 'theme-film-mono', name: '모노 필름 (세로)', category: '테마', layout: 'film',
     background: { type: 'color', value: '#0A0A0F' }, border: { color: '#2E2E3B', width: 1, radius: 4 },
   },
+  // eOrth 오리지널 테마 — 나이트 콘택트: 새까만 시트 + 엇갈린 4컷 (photoism류 콘택트시트 '참고'만, 자체 디자인)
   {
-    id: 'theme-sunset-two-v', name: '선셋', category: '테마', layout: 'two-v',
-    background: { type: 'color', value: '#2E0A1A' }, border: { color: '#FF6B9D', width: 2, radius: 12 },
+    id: 'theme-contact-night', name: '나이트 콘택트', category: '테마', layout: 'four-stagger',
+    background: { type: 'color', value: '#101014' }, border: { color: '#26262E', width: 1.5, radius: 6 },
   },
 ];
 
