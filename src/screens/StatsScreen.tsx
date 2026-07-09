@@ -13,6 +13,7 @@ import { BlurView } from 'expo-blur';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
@@ -141,6 +142,7 @@ function PressCard({
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
 export default function StatsScreen() {
+  const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const navigation = useNavigation();
@@ -443,7 +445,7 @@ export default function StatsScreen() {
               {/* Progress bar */}
               <View style={styles.progressBarBg}>
                 <LinearGradient
-                  colors={['#7B61FF', '#C084FC']}
+                  colors={skinAccent.barGradient}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 0 }}
                   style={[styles.progressBarFill, { width: worldCoveragePct }]}
@@ -482,7 +484,7 @@ export default function StatsScreen() {
                   <View style={styles.barBg}>
                     {v.visits > 0 && (
                       <LinearGradient
-                        colors={['#7B61FF', '#C084FC']}
+                        colors={skinAccent.barGradient}
                         style={[
                           styles.bar,
                           { height: `${(v.visits / MAX_VISITS) * 100}%` },
@@ -561,7 +563,7 @@ export default function StatsScreen() {
                   <Text style={styles.ratingBarLabel} {...andFitText}>{r.star}★</Text>
                   <View style={styles.ratingBarBg}>
                     <LinearGradient
-                      colors={['#7B61FF', '#C084FC']}
+                      colors={skinAccent.barGradient}
                       start={{ x: 0, y: 0 }}
                       end={{ x: 1, y: 0 }}
                       style={[styles.ratingBarFill, { width: `${r.pct * 100}%` }]}
