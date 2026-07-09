@@ -7,6 +7,7 @@
  * - GooeyCircle: 구이 이펙트가 적용된 원형 (배지, 아바타용)
  */
 import React, { useEffect, useRef, useCallback } from 'react';
+import { useAnimationsActive } from '../hooks/useAnimationsActive';
 import {
   Animated,
   StyleSheet,
@@ -275,8 +276,11 @@ export function GooeyCircle({
 }: GooeyCircleProps) {
   const wobble = useRef(new Animated.Value(0)).current;
   const pulse = useRef(new Animated.Value(1)).current;
+  // 화면 밖/백그라운드에서는 무한 루프를 멈춰 발열을 줄인다 (보이는 화면은 동일)
+  const active = useAnimationsActive();
 
   useEffect(() => {
+    if (!active) return;
     const wobbleAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(wobble, {
@@ -320,7 +324,7 @@ export function GooeyCircle({
       wobbleAnim.stop();
       pulseAnim?.stop();
     };
-  }, []);
+  }, [active, pulseEnabled]);
 
   const glowScaleX = wobble.interpolate({
     inputRange: [0, 0.25, 0.5, 0.75, 1],
@@ -381,8 +385,11 @@ interface LiquidCardGlowProps {
 
 export function LiquidCardGlow({ width, height, color, opacity = 0.15, style }: LiquidCardGlowProps) {
   const progress = useRef(new Animated.Value(0)).current;
+  // 화면 밖/백그라운드에서는 무한 루프를 멈춰 발열을 줄인다 (보이는 화면은 동일)
+  const active = useAnimationsActive();
 
   useEffect(() => {
+    if (!active) return;
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(progress, {
@@ -401,7 +408,7 @@ export function LiquidCardGlow({ width, height, color, opacity = 0.15, style }: 
     );
     anim.start();
     return () => anim.stop();
-  }, []);
+  }, [active]);
 
   const sx = progress.interpolate({
     inputRange: [0, 0.5, 1],

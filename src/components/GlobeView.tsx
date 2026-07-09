@@ -1,6 +1,7 @@
 import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
+import { useAnimationsActive } from '../hooks/useAnimationsActive';
 import { THREE_SRC } from '../data/vendorThree';
 import { D3_SRC } from '../data/vendorD3';
 import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
@@ -934,6 +935,7 @@ function updateAdMarkers() {
 // Animation loop
 function animate() {
   requestAnimationFrame(animate);
+  if (window.__globePaused) return; // RN이 화면 밖(다른 탭/백그라운드)일 때 렌더 작업 스킵 → 발열 감소
 
   if (!isDragging && cfg.autoRotate) {
     velocity.x *= 0.95;
@@ -1420,6 +1422,7 @@ function updateAdMarkers(){
 
 function animate(){
   requestAnimationFrame(animate);
+  if(window.__globePaused) return; // RN이 화면 밖(다른 탭/백그라운드)일 때 렌더 작업 스킵 → 발열 감소
   var now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
   if(!isDragging){ velocity.x*=0.95; velocity.y*=0.95; rotX+=velocity.x; rotY+=velocity.y; rotY-=dt*(Math.PI*2/45); } // 우→좌 자동회전 ~45s
   rotX=Math.max(-0.6,Math.min(0.6,rotX));
@@ -1462,6 +1465,12 @@ export default function GlobeView({
   variant = 'aurora', themeOverride, sponsoredItems = [],
 }: GlobeViewProps) {
   const webViewRef = useRef<WebView>(null);
+
+  // 화면 밖(다른 탭)·백그라운드에선 WebGL 렌더 루프를 멈춰 발열을 줄인다 (보이는 화면은 동일)
+  const animationsActive = useAnimationsActive();
+  useEffect(() => {
+    webViewRef.current?.injectJavaScript(`window.__globePaused = ${animationsActive ? 'false' : 'true'}; true;`);
+  }, [animationsActive]);
 
   const payload = useMemo(() => JSON.stringify({
     type: 'setVisitedCountries',
