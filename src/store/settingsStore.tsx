@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { usePersistence, STORE_KEYS } from './persist';
+import { setPalette } from '../components/icons';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -196,6 +197,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // ── 영토 표시 설정 (영속) ──
   const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
   const [globeSkin, setGlobeSkin] = useState('aurora'); // 지구본 스킨 — 기본(오로라)
+  // 아이콘 팔레트를 스킨에 동기화 — setState '전에' 모듈 COLORS를 갈아끼워 재렌더 시 새 색이 반영되게 한다
+  const applyIconPalette = (skin: string) => setPalette(skin === 'cyan' ? 'cyan' : skin === 'mint' ? 'mint' : 'purple');
+  const setGlobeSkinThemed = useCallback((s: string) => { applyIconPalette(s); setGlobeSkin(s); }, []);
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
   const [globeColor, setGlobeColor] = useState('#C982FF'); // 보라 활성화색 기본 (팔레트 4종 중)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
@@ -274,6 +278,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCurrentVisitedCountryCode(p.currentVisitedCountryCode);
       setVerifiedNaverBlogIds(p.verifiedNaverBlogIds ?? []);
       setGlobeVariant(p.globeVariant ?? 'aurora');
+      applyIconPalette(p.globeSkin ?? 'aurora');
       setGlobeSkin(p.globeSkin ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
       setGlobeColor(p.globeColor ?? '#C982FF');
@@ -480,7 +485,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         globeVariant,
         setGlobeVariant,
         globeSkin,
-        setGlobeSkin,
+        setGlobeSkin: setGlobeSkinThemed,
         globeDisplayMode,
         setGlobeDisplayMode,
         globeColor,

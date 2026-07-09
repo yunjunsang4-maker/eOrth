@@ -10,6 +10,7 @@ import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
 import { fetchFollowNotifications, markNotificationsRead } from '../services/social';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -75,6 +76,7 @@ function fmtAgo(ts: number, tr: TFunction): string {
 
 export default function NotificationScreen({ navigation }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
   const { records } = useRecords();
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
@@ -198,8 +200,8 @@ export default function NotificationScreen({ navigation }: Props) {
 
   // 신규·본 알림 공용 가로 막대 (본 알림은 미읽음 점만 비움)
   const renderBar = (n: Noti) => (
-    <TouchableOpacity key={n.id} style={st.bar} activeOpacity={0.75} onPress={() => openNoti(n)}>
-      <View style={[st.barDot, n.read && st.barDotRead]} />
+    <TouchableOpacity key={n.id} style={[st.bar, { borderColor: skinAccent.tint(0.20) }]} activeOpacity={0.75} onPress={() => openNoti(n)}>
+      <View style={[st.barDot, { backgroundColor: skinAccent.accent }, n.read && st.barDotRead]} />
       <Avatar emoji={n.emoji} bg={n.avbg} />
       <Text style={st.barText} numberOfLines={1}>{n.text}</Text>
       <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
@@ -220,7 +222,7 @@ export default function NotificationScreen({ navigation }: Props) {
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {/* 매거진 표지 */}
         <View style={st.cover}>
-          <Text style={st.vol}>{`eOrth Weekly · ${vol}`}</Text>
+          <Text style={[st.vol, { color: skinAccent.accent }]}>{`eOrth Weekly · ${vol}`}</Text>
           <Text style={[st.mast, { fontFamily: SERIF }]}>{t('misc.recentNews')}</Text>
           <Text style={st.date}>{dateStr}</Text>
         </View>
@@ -245,10 +247,10 @@ export default function NotificationScreen({ navigation }: Props) {
                 activeOpacity={hasRead ? 0.6 : 1}
                 onPress={() => { if (hasRead) setExpanded(open ? null : cat.key); }}
               >
-                <Text style={[st.idxNum, { fontFamily: SERIF }]}>{String(i + 1).padStart(2, '0')}</Text>
+                <Text style={[st.idxNum, { fontFamily: SERIF, color: skinAccent.accent }]}>{String(i + 1).padStart(2, '0')}</Text>
                 <Text style={[st.idxName, { fontFamily: SERIF }]}>{t(CATEGORY_LABEL_KEY[cat.key])}</Text>
                 <View style={st.leader} />
-                <Text style={[st.badge, open && st.badgeOpen]}>
+                <Text style={[st.badge, open && [st.badgeOpen, { color: skinAccent.accent }]]}>
                   {cat.items.length}{hasRead ? (open ? ' ▾' : ' ›') : ''}
                 </Text>
               </TouchableOpacity>

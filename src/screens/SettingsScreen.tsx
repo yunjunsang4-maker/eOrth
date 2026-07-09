@@ -86,11 +86,11 @@ const SettingGroup = ({
               value={item.toggle}
               onValueChange={item.onToggle}
               trackColor={{ false: '#3A3A4A', true: skinAccent.tint(0.4) }}
-              thumbColor={COLORS.purpleNeon}
+              thumbColor={skinAccent.accent}
             />
           ) : item.badge ? (
-            <View style={st.premiumBadge}>
-              <Text style={st.premiumBadgeText}>{item.badge}</Text>
+            <View style={[st.premiumBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+              <Text style={[st.premiumBadgeText, { color: skinAccent.accent }]}>{item.badge}</Text>
             </View>
           ) : item.value ? (
             <View style={st.settingRight}>

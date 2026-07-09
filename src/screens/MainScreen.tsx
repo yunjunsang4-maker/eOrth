@@ -88,8 +88,9 @@ const REGION_COUNTRIES = [
   { code: 'ITA', flag: '🇮🇹', name: '이탈리아' },
 ];
 
-// ─── 영토 표시 설정 버튼 아이콘 (보라 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
-const GlobeDisplayIcon = () => (
+// ─── 영토 표시 설정 버튼 아이콘 (스킨색 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
+// tint: 원 배경색(알파 포함) — 스킨 pill과 동일 규격(aurora 기본값 = 기존 #751AAD 30%)
+const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) => (
   <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
     <SvgDefs>
       {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (검은색 투명 → 흰색) */}
@@ -98,7 +99,7 @@ const GlobeDisplayIcon = () => (
         <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
       </SvgLinearGradient>
     </SvgDefs>
-    <Circle cx={14.5} cy={14.5} r={14.5} fill="#751AAD" fillOpacity={0.3} />
+    <Circle cx={14.5} cy={14.5} r={14.5} fill={tint} />
     <Circle cx={14.5} cy={14.5} r={13.8} fill="none" stroke="url(#globeBtnRim)" strokeOpacity={0.6} strokeWidth={1.3} />
     <SvgPath
       d="M23.7851 14.4998C23.7851 11.9165 22.8876 9.74402 21.0926 7.98266C19.37 6.2601 17.2696 5.37175 14.7913 5.31795L14.5504 5.31531C11.9671 5.31531 9.77802 6.20458 7.9831 7.98266L7.81884 8.14913C6.15012 9.88032 5.31578 11.9972 5.31575 14.4998L5.31839 14.7411C5.37226 17.2193 6.26057 19.3195 7.9831 21.042C9.72199 22.7484 11.8307 23.6283 14.3095 23.6816L14.5504 23.6842C17.1338 23.6842 19.3145 22.8034 21.0926 21.042C22.8875 19.2638 23.7851 17.0831 23.7851 14.4998ZM24.0982 14.7486C24.0419 17.3063 23.1133 19.4851 21.315 21.2666C19.4757 23.0886 17.214 24 14.5504 24C11.9701 24 9.75963 23.1448 7.93686 21.4357L7.76203 21.2675L7.75983 21.2653C5.9207 19.4261 5 17.1643 5 14.4998C5.00003 11.8353 5.92064 9.58125 7.76071 7.75851C9.61623 5.92033 11.8859 5 14.5504 5C17.2149 5 19.4768 5.92031 21.3159 7.75939C23.1719 9.58159 24.1008 11.8352 24.1008 14.4998L24.0982 14.7486Z"
@@ -982,7 +983,7 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityLabel={t('main.globeFormA11y')}
             >
               <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
-                <GlobeDisplayIcon />
+                <GlobeDisplayIcon tint={skinAccent.pill} />
               </BlurView>
             </TouchableOpacity>
             {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림 */}
@@ -1107,7 +1108,7 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityLabel={t('main.territoryDisplayA11y')}
             >
               <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
-                <GlobeDisplayIcon />
+                <GlobeDisplayIcon tint={skinAccent.pill} />
               </BlurView>
             </TouchableOpacity>
           </>
