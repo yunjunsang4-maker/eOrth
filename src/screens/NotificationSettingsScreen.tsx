@@ -12,6 +12,7 @@ import {
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -51,6 +52,7 @@ const ToggleRow = ({
   isLast?: boolean;
   disabled?: boolean;
 }) => {
+  const skinAccent = useSkinAccent();
   const displayValue = disabled ? false : value;
   return (
     <>
@@ -68,8 +70,8 @@ const ToggleRow = ({
           value={displayValue}
           onValueChange={onValueChange}
           disabled={disabled}
-          trackColor={{ false: COLORS.divider, true: COLORS.purpleDeep }}
-          thumbColor={COLORS.purpleNeon}
+          trackColor={{ false: COLORS.divider, true: skinAccent.accentDeep }}
+          thumbColor={skinAccent.accent}
           ios_backgroundColor={COLORS.divider}
         />
       </View>

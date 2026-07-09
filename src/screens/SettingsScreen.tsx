@@ -29,6 +29,7 @@ import {
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { GLOBE_SKINS } from '../constants/globeSkins';
+import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // 개인정보처리방침·이용약관 게시 URL (GitHub Pages)
@@ -64,7 +65,9 @@ const SettingGroup = ({
     onToggle?: (v: boolean) => void;
     onPress?: () => void;
   }[];
-}) => (
+}) => {
+  const skinAccent = useSkinAccent();
+  return (
   <View style={st.settingGroup}>
     {items.map((item, index) => (
       <React.Fragment key={item.label}>
@@ -82,7 +85,7 @@ const SettingGroup = ({
             <Switch
               value={item.toggle}
               onValueChange={item.onToggle}
-              trackColor={{ false: '#3A3A4A', true: 'rgba(191,133,252,0.4)' }}
+              trackColor={{ false: '#3A3A4A', true: skinAccent.tint(0.4) }}
               thumbColor={COLORS.purpleNeon}
             />
           ) : item.badge ? (
@@ -102,7 +105,8 @@ const SettingGroup = ({
       </React.Fragment>
     ))}
   </View>
-);
+  );
+};
 
 export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
   const { t } = useTranslation();

@@ -23,6 +23,7 @@ import * as Clipboard from 'expo-clipboard';
 import { buzz } from '../utils/haptics';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon } from '../components/icons';
@@ -278,6 +279,7 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
   const { records, feedPosts } = useRecords();
   const { markBadgesEarned } = useSettings();
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
@@ -538,7 +540,7 @@ export default function DMScreen({ navigation, route }: Props) {
         )}
 
         {item.type === 'text' && (
-          <View style={[st.bubble, item.isMine ? st.bubbleMine : st.bubbleTheirs]}>
+          <View style={[st.bubble, item.isMine ? [st.bubbleMine, { backgroundColor: skinAccent.accentDeep }] : st.bubbleTheirs]}>
             <Text style={st.bubbleText}>
               {searchQuery.trim()
                 ? splitByQuery(item.text, searchQuery).map((p, i) =>
