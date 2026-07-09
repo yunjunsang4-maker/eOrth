@@ -2,6 +2,7 @@ import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
@@ -23,6 +24,7 @@ function TargetCircle({
   onReport: (key: string, rect: { x: number; y: number; w: number; h: number }) => void;
 }) {
   const wrapRef = useRef<View>(null);
+  const skinAccent = useSkinAccent();
   const hoverScale = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
@@ -44,7 +46,8 @@ function TargetCircle({
       <Animated.View
         style={[
           st.target,
-          hovered && st.targetHover,
+          { borderColor: skinAccent.tint(0.4) },
+          hovered && [st.targetHover, { borderColor: skinAccent.accent }],
           {
             opacity: appear,
             transform: [
@@ -83,6 +86,7 @@ export default function QuickShareOverlay({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;
@@ -194,6 +198,7 @@ export default function QuickShareOverlay({
         pointerEvents="none"
         style={[
           st.ghost,
+          { borderColor: skinAccent.tint(0.5) },
           {
             opacity: ghostAnim,
             transform: [

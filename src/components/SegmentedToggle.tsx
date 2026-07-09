@@ -8,6 +8,7 @@ import Animated, {
   Easing,
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -49,6 +50,7 @@ export function SegmentedToggle<T extends string>({
   value,
   onChange,
 }: SegmentedToggleProps<T>) {
+  const skinAccent = useSkinAccent(); // 트랙·thumb 색을 스킨 강조색(pill)으로
   const selectedIndex = Math.max(0, options.findIndex((o) => o.value === value));
   const [layouts, setLayouts] = useState<({ x: number; w: number } | undefined)[]>([]);
   const [trackW, setTrackW] = useState(0);
@@ -97,12 +99,12 @@ export function SegmentedToggle<T extends string>({
   return (
     // 트랙(전체 배경 알약) = 반투명 보라 한 겹 + #CECFCD 그라데이션 테두리
     <View
-      style={styles.track}
+      style={[styles.track, { backgroundColor: skinAccent.pill }]}
       onLayout={(e) => setTrackW(e.nativeEvent.layout.width)}
     >
       {/* 선택 인디케이터 thumb = 같은 반투명 보라 한 겹 더 + 동일한 #CECFCD 그라데이션 테두리 */}
       {ready && (
-        <Animated.View style={[styles.thumb, thumbStyle]} pointerEvents="none">
+        <Animated.View style={[styles.thumb, { backgroundColor: skinAccent.pill }, thumbStyle]} pointerEvents="none">
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <Defs>
               <SvgLinearGradient id={thumbBorderId} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">

@@ -8,6 +8,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Svg, { Circle, Line, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSkinAccent } from '../constants/skinTheme';
 
 /**
  * 네온 FAB("+") 버튼 — Group 2085664476.svg 100% 재현.
@@ -38,6 +39,7 @@ export const NeonFab: React.FC<NeonFabProps> = ({
   style,
   accessibilityLabel = '추가',
 }) => {
+  const skinAccent = useSkinAccent(); // 유리 질감 틴트를 스킨 강조색으로
   return (
     <Pressable
       onPress={onPress}
@@ -53,7 +55,7 @@ export const NeonFab: React.FC<NeonFabProps> = ({
       <View style={styles.glowBase} pointerEvents="none" />
 
       {/* 유리 질감 보라 틴트 */}
-      <View style={styles.tint} pointerEvents="none" />
+      <View style={[styles.tint, { backgroundColor: skinAccent.tint(0.1) }]} pointerEvents="none" />
 
       {/* 링 + 플러스 */}
       <Svg width={FAB_SIZE} height={FAB_SIZE} viewBox={VIEWBOX} style={StyleSheet.absoluteFill}>

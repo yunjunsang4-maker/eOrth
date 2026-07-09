@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, BorderRadius, Typography, Spacing } from '../constants';
+import { useSkinAccent } from '../constants/skinTheme';
 
 // ─── Primary Button ────────────────────────────────────────────────────────────
 interface PrimaryButtonProps {
@@ -24,7 +25,9 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
   disabled = false,
   loading = false,
   style,
-}) => (
+}) => {
+  const skinAccent = useSkinAccent(); // 기본 버튼 그라데이션을 스킨 강조색으로 (aurora=기존값)
+  return (
   <TouchableOpacity
     onPress={onPress}
     disabled={disabled || loading}
@@ -32,7 +35,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
     style={[styles.primaryBtn, disabled && styles.primaryBtnDisabled, style]}
   >
     <LinearGradient
-      colors={disabled ? ['#3D3D55', '#2D2D45'] : ['#7B61FF', '#5A42DD']}
+      colors={disabled ? ['#3D3D55', '#2D2D45'] : skinAccent.btnGradient}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
       style={styles.primaryBtnGradient}
@@ -44,7 +47,8 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       )}
     </LinearGradient>
   </TouchableOpacity>
-);
+  );
+};
 
 // ─── Social Login Button ────────────────────────────────────────────────────────
 interface SocialButtonProps {
