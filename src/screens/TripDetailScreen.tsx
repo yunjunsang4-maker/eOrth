@@ -23,6 +23,7 @@ import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAd
 import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -59,17 +60,17 @@ const COLORS = {
   white: '#FFFFFF',
   textDim: '#A1A1B0',
   textMuted: '#5A5A6E',
-  // 형식별 컬러
-  feedAccent: '#58A6FF',
-  feedBg: 'rgba(88,166,255,0.06)',
-  blogAccent: '#A78BFA',
-  blogBg: 'rgba(167,139,250,0.06)',
+  // 형식별 컬러 — 피드=보라, 블로그=시안, 스트립=민트, 스냅=노랑(유지)
+  feedAccent: '#BF85FC',
+  feedBg: 'rgba(191,133,252,0.06)',
+  blogAccent: '#00D8F3',
+  blogBg: 'rgba(0,216,243,0.06)',
   albumAccent: '#FFA657',
   albumBg: 'rgba(255,166,87,0.06)',
   snapAccent: '#FFD60A',
   snapBg: 'rgba(255,214,10,0.06)',
-  cutAccent: '#BF85FC',
-  cutBg: 'rgba(191,133,252,0.06)',
+  cutAccent: '#86FFBC',
+  cutBg: 'rgba(134,255,188,0.06)',
 };
 
 const VIEW_CONFIG: Record<string, {
@@ -82,13 +83,13 @@ const VIEW_CONFIG: Record<string, {
     icon: '📸',
     name: '피드',
     accent: COLORS.feedAccent,
-    gradient: ['rgba(88,166,255,0.12)', 'rgba(88,166,255,0.02)'],
+    gradient: ['rgba(191,133,252,0.12)', 'rgba(191,133,252,0.02)'],
   },
   blog: {
     icon: '📝',
     name: '블로그',
     accent: COLORS.blogAccent,
-    gradient: ['rgba(167,139,250,0.12)', 'rgba(167,139,250,0.02)'],
+    gradient: ['rgba(0,216,243,0.12)', 'rgba(0,216,243,0.02)'],
   },
   album: {
     icon: '📷',
@@ -106,7 +107,7 @@ const VIEW_CONFIG: Record<string, {
     icon: '🎞️',
     name: '스트립',
     accent: COLORS.cutAccent,
-    gradient: ['rgba(191,133,252,0.12)', 'rgba(191,133,252,0.02)'],
+    gradient: ['rgba(134,255,188,0.12)', 'rgba(134,255,188,0.02)'],
   },
 };
 
@@ -221,6 +222,7 @@ type RouteParams = {
 
 export default function TripDetailScreen() {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
@@ -362,7 +364,7 @@ export default function TripDetailScreen() {
   };
 
   // ── 포맷 콘솔: 기록이 있는 형식만 모듈 목록으로 표시, 탭하면 펼쳐짐 ──
-  const FORMAT_ORDER = ['feed', 'blog', 'album', 'snap', 'cut'];
+  const FORMAT_ORDER = ['feed', 'blog', 'cut', 'snap', 'album'];
   const modules = FORMAT_ORDER
     .map((vt) => ({ vt, config: VIEW_CONFIG[vt], items: getRecordsByType(vt) }))
     .filter((m) => !!m.config && m.items.length > 0);
@@ -586,9 +588,9 @@ export default function TripDetailScreen() {
             <Text style={s.heroEmoji}>{trip.emoji}</Text>
           )}
           <Text style={s.heroDate}>{tripDateRange}</Text>
-          <View style={s.heroPill}>
+          <View style={[s.heroPill, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}>
             {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
-            <Text style={s.heroPillText} {...andFitText}>{matchedRecords.length}개의 기록</Text>
+            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{matchedRecords.length}개의 기록</Text>
           </View>
         </Animated.View>
 
@@ -722,7 +724,7 @@ export default function TripDetailScreen() {
                           key={record.id}
                           activeOpacity={0.75}
                           onPress={() => handleRecordPress(record)}
-                          style={{ width: cardW, alignSelf: 'center' }}
+                          style={{ width: cardW, alignSelf: 'flex-start' }}
                         >
                           {m.vt === 'feed' && <FeedCard record={record} accent={m.config.accent} />}
                           {m.vt === 'blog' && <BlogCard record={record} accent={m.config.accent} />}
@@ -765,7 +767,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={['rgba(88,166,255,0.08)', 'transparent']}
+        colors={['rgba(191,133,252,0.08)', 'transparent']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -1209,7 +1211,7 @@ const card = StyleSheet.create({
   },
   feedAvatar: {
     width: 36, height: 36, borderRadius: 12,
-    backgroundColor: 'rgba(88,166,255,0.12)',
+    backgroundColor: 'rgba(191,133,252,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
   feedAvatarEmoji: { fontSize: 18 },
