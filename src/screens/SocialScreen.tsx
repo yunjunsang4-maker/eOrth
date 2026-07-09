@@ -2521,7 +2521,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                         ad={item.ad as HouseAd}
                         variant={item.adVariant}
                         tilt={item.adTilt}
-                        onPress={() => navigation.navigate(item.ad.route)}
+                        onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
                       />
                     );
                   }
@@ -2554,7 +2554,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                           overlay
                           overlaySide={ci === 0 ? 'right' : 'left'}
                           tilt={item._overlayTilt}
-                          onPress={() => navigation.navigate((item._overlayAd as HouseAd).route)}
+                          onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
                         />
                       </View>
                     );

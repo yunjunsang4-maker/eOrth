@@ -42,7 +42,7 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
           { transform: [{ rotate: `${tilt}deg` }] },
         ]}
         onPress={onPress}
-        activeOpacity={0.85}
+        activeOpacity={1}
         accessibilityRole="button"
         accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
       >
@@ -63,7 +63,7 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
     <TouchableOpacity
       style={[s.wrap, { transform: [{ rotate: `${tilt}deg` }] }]}
       onPress={onPress}
-      activeOpacity={0.85}
+      activeOpacity={1}
       accessibilityRole="button"
       accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
     >
