@@ -25,6 +25,8 @@ import Svg, { Path } from 'react-native-svg';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
 import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
+import * as Haptics from 'expo-haptics';
+import { setTabBarHidden } from '../components/tabBarVisibility';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
@@ -1778,7 +1780,7 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t } = useTranslation();
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
@@ -1865,6 +1867,11 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     })
     .onEnd((e) => {
       onQuickEnd(e.absoluteX, e.absoluteY);
+    })
+    // onEnd가 안 불리는 취소 케이스(스크롤 개입·시스템 제스처 등)에도 오버레이가 남지 않게 정리.
+    // 정상 드롭 후에는 handleQuickEnd가 active를 내려 no-op.
+    .onFinalize(() => {
+      onQuickCancel?.();
     });
 
   const card = (() => {
@@ -2248,7 +2255,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 빠른공유 친구는 실제 팔로우 친구(followingUsers)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
-    () => followingUsers.map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' })),
+    () => followingUsers.map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳' })),
     [followingUsers]
   );
   const top3 = useMemo(
@@ -2264,31 +2271,63 @@ function FriendsTab({ navigation }: { navigation: any }) {
     quickToastTimer.current = setTimeout(() => setQuickToastVisible(false), 1800);
   };
 
+  // 드롭 판정 여유(px) — 원을 정확히 덮지 않아도 근처면 인정 (자연스러운 드롭감)
+  const QUICK_HIT_MARGIN = 12;
+  // 호버는 '바뀔 때만' setState — 드래그 매 프레임 리렌더 방지 + 진입 시 햅틱 틱
+  const quickHoverRef = useRef<string | null>(null);
+  const quickActiveRef = useRef(false);
+
   const handleQuickStart = (item: any, cardRect: CardRect) => {
     const side: 'left' | 'right' = cardRect.x < SCREEN_W_SOCIAL / 2 ? 'right' : 'left';
     quickTargets.current = [];
+    quickHoverRef.current = null;
+    quickActiveRef.current = true;
     setQuick({ active: true, item, cardRect, side });
     setQuickHover(null);
+    // 드래그 동안 하단 탭 바 잠시 숨김 — 드롭 영역·딤을 가리지 않게
+    setTabBarHidden(true);
+    // 카드가 '집힌' 순간의 촉각 피드백
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
   };
   const handleQuickMove = (px: number, py: number) => {
-    setQuickHover(hitTestTarget(px, py, quickTargets.current));
+    const key = hitTestTarget(px, py, quickTargets.current, QUICK_HIT_MARGIN);
+    if (key === quickHoverRef.current) return;
+    quickHoverRef.current = key;
+    if (key) Haptics.selectionAsync().catch(() => {});
+    setQuickHover(key);
   };
   const handleQuickEnd = (px: number, py: number) => {
-    const key = hitTestTarget(px, py, quickTargets.current);
+    const key = hitTestTarget(px, py, quickTargets.current, QUICK_HIT_MARGIN);
     const item = quick.item;
+    quickHoverRef.current = null;
+    quickActiveRef.current = false;
     setQuick({ active: false, item: null, cardRect: null, side: 'right' });
     setQuickHover(null);
+    setTabBarHidden(false);
     if (!key || !item) return;
     if (key === 'other') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setOtherPickerItem(item);
       return;
     }
     const friend = top3.find((f) => f.handle === key);
     if (friend) {
       sendRecord(friend.handle, item);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       showQuickToast(t('comp2.toastSentTo', { name: friend.name }));
     }
   };
+  // 제스처가 취소(스크롤 개입·터치 이탈 등)돼 onEnd가 안 불려도 오버레이가 남지 않게 정리
+  const handleQuickCancel = () => {
+    if (!quickActiveRef.current) return;
+    quickHoverRef.current = null;
+    quickActiveRef.current = false;
+    setQuick({ active: false, item: null, cardRect: null, side: 'right' });
+    setQuickHover(null);
+    setTabBarHidden(false);
+  };
+  // 화면 이탈 시 탭 바 숨김이 남지 않게 안전 복원
+  useEffect(() => () => setTabBarHidden(false), []);
   const onQuickTargetLayout = (key: string, rect: { x: number; y: number; w: number; h: number }) => {
     const others = quickTargets.current.filter((t) => t.key !== key);
     quickTargets.current = [...others, { key, ...rect }];
@@ -2319,8 +2358,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   // 메모이즈된 카드(DiaryCardMemo)에 넘길 콜백을 안정적인 ref로 박제 — 매 렌더 최신 함수를 가리키되
   // 콜백 ref 자체는 불변 → 카드 props가 안정되어 React.memo가 불필요 리렌더를 건너뛴다.
-  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd });
-  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd };
+  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
+  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
   const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
   const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
@@ -2329,6 +2368,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
   const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
   const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
+  const cbQuickCancel = useCallback(() => fnRef.current.handleQuickCancel(), []);
 
   // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드.
   // 정렬+다중 필터+applyViewer 비용이 커서 입력이 바뀔 때만 재계산하도록 memo화.
@@ -2539,6 +2579,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       onQuickStart={cbQuickStart}
                       onQuickMove={cbQuickMove}
                       onQuickEnd={cbQuickEnd}
+                      onQuickCancel={cbQuickCancel}
                       dragPos={dragPos}
                       columnIndex={ci}
                     />
@@ -2577,7 +2618,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
         friends={top3}
         hoveredKey={quickHover}
         onTargetLayout={onQuickTargetLayout}
-        onCancel={() => { setQuick({ active: false, item: null, cardRect: null, side: 'right' }); setQuickHover(null); }}
+        onCancel={handleQuickCancel}
       />
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}

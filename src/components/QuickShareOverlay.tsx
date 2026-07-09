@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
@@ -6,8 +6,60 @@ import type { Friend, SharedRecord } from '../store/dmTypes';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
 const GAP = 14;
+const MAX_TARGETS = 4; // 친구 3 + 기타
 
 export interface CardRect { x: number; y: number; w: number; h: number }
+
+// 타깃 원 하나 — 바깥 래퍼(무변형, measure용)와 안쪽 Animated(등장·호버)를 분리해
+// 애니메이션 중에도 드롭 판정 좌표가 흔들리지 않게 한다.
+function TargetCircle({
+  tg, x, y, hovered, appear, fromDir, onReport,
+}: {
+  tg: { key: string; emoji: string; label: string };
+  x: number; y: number;
+  hovered: boolean;
+  appear: Animated.Value;
+  fromDir: 1 | -1;
+  onReport: (key: string, rect: { x: number; y: number; w: number; h: number }) => void;
+}) {
+  const wrapRef = useRef<View>(null);
+  const hoverScale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.spring(hoverScale, { toValue: hovered ? 1.15 : 1, useNativeDriver: true, speed: 40, bounciness: 7 }).start();
+  }, [hovered]);
+
+  return (
+    <View
+      ref={wrapRef}
+      style={{ position: 'absolute', left: x, top: y, width: CIRCLE, height: CIRCLE }}
+      onLayout={() => {
+        // window 절대 좌표로 보고 (드롭 판정은 gesture absoluteX/Y 좌표계와 일치)
+        wrapRef.current?.measureInWindow((mx, my, mw, mh) => {
+          onReport(tg.key, { x: mx, y: my, w: mw, h: mh });
+        });
+      }}
+      pointerEvents="none"
+    >
+      <Animated.View
+        style={[
+          st.target,
+          hovered && st.targetHover,
+          {
+            opacity: appear,
+            transform: [
+              { translateX: appear.interpolate({ inputRange: [0, 1], outputRange: [fromDir * -20, 0] }) },
+              { scale: Animated.multiply(appear, hoverScale) },
+            ],
+          },
+        ]}
+      >
+        <Text style={st.targetEmoji}>{tg.emoji}</Text>
+        <Text style={[st.targetLabel, hovered && st.targetLabelHover]} numberOfLines={1}>{tg.label}</Text>
+      </Animated.View>
+    </View>
+  );
+}
 
 export default function QuickShareOverlay({
   visible,
@@ -31,12 +83,32 @@ export default function QuickShareOverlay({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const targetRefs = useRef<Record<string, View | null>>({});
+
+  // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
+  const dimAnim = useRef(new Animated.Value(0)).current;
+  const ghostAnim = useRef(new Animated.Value(0)).current;
+  const appearAnims = useRef(Array.from({ length: MAX_TARGETS }, () => new Animated.Value(0))).current;
+
+  useEffect(() => {
+    if (!visible) return;
+    dimAnim.setValue(0);
+    ghostAnim.setValue(0);
+    appearAnims.forEach((a) => a.setValue(0));
+    Animated.parallel([
+      Animated.timing(dimAnim, { toValue: 1, duration: 140, useNativeDriver: true }),
+      Animated.spring(ghostAnim, { toValue: 1, useNativeDriver: true, speed: 26, bounciness: 9 }),
+      Animated.stagger(
+        45,
+        appearAnims.map((a) => Animated.spring(a, { toValue: 1, useNativeDriver: true, speed: 22, bounciness: 8 })),
+      ),
+    ]).start();
+  }, [visible]);
+
   if (!visible || !cardRect) return null;
 
   // 타깃 키 목록: 친구 handle + 'other'
   const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name })),
-                   { key: 'other', emoji: '⊙', label: t('comp.other') }];
+                   { key: 'other', emoji: '👥', label: t('comp.other') }];
 
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
@@ -47,7 +119,7 @@ export default function QuickShareOverlay({
   const BOTTOM_SAFE = 130;
   const DY = CIRCLE + GAP;
   const DX = CIRCLE + GAP;
-  const horizDir = side === 'right' ? 1 : -1;
+  const horizDir: 1 | -1 = side === 'right' ? 1 : -1;
   const cardCenterY = cardRect.y + cardRect.h / 2;
 
   let coords: { x: number; y: number }[] = [];
@@ -98,38 +170,39 @@ export default function QuickShareOverlay({
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-      {/* 어두운 배경 (탭/취소) */}
-      <TouchableOpacity style={[StyleSheet.absoluteFill, st.dim]} activeOpacity={1} onPress={onCancel} />
+      {/* 어두운 배경 (탭/취소) — 페이드 인 */}
+      <Animated.View style={[StyleSheet.absoluteFill, st.dim, { opacity: dimAnim }]}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onCancel} />
+      </Animated.View>
 
-      {/* 원형 타깃 */}
-      {targets.map((tg, i) => {
-        const { x: cx, y: cy } = coords[i];
-        const hovered = hoveredKey === tg.key;
-        return (
-          <View
-            key={tg.key}
-            ref={(node) => { targetRefs.current[tg.key] = node; }}
-            style={[st.target, { left: cx, top: cy, width: CIRCLE, height: CIRCLE }, hovered && st.targetHover]}
-            onLayout={() => {
-              // window 절대 좌표로 보고 (드롭 판정은 gesture absoluteX/Y를 사용하므로 좌표계 일치)
-              targetRefs.current[tg.key]?.measureInWindow((x, y, width, height) => {
-                onTargetLayout(tg.key, { x, y, w: width, h: height });
-              });
-            }}
-            pointerEvents="none"
-          >
-            <Text style={st.targetEmoji}>{tg.emoji}</Text>
-            <Text style={st.targetLabel} numberOfLines={1}>{tg.label}</Text>
-          </View>
-        );
-      })}
+      {/* 원형 타깃 — 카드 쪽에서 스태거로 튀어나옴 */}
+      {targets.map((tg, i) => (
+        <TargetCircle
+          key={tg.key}
+          tg={tg}
+          x={coords[i].x}
+          y={coords[i].y}
+          hovered={hoveredKey === tg.key}
+          appear={appearAnims[i]}
+          fromDir={horizDir}
+          onReport={onTargetLayout}
+        />
+      ))}
 
-      {/* 드래그 고스트 (카드 미리보기) */}
+      {/* 드래그 고스트 (카드 미리보기) — 살짝 기울어진 채 팝 등장 */}
       <Animated.View
         pointerEvents="none"
         style={[
           st.ghost,
-          { transform: [{ translateX: Animated.subtract(pos.x, CIRCLE) }, { translateY: Animated.subtract(pos.y, CIRCLE) }] },
+          {
+            opacity: ghostAnim,
+            transform: [
+              { translateX: Animated.subtract(pos.x, CIRCLE) },
+              { translateY: Animated.subtract(pos.y, CIRCLE) },
+              { scale: ghostAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
+              { rotate: '-3deg' },
+            ],
+          },
         ]}
       >
         {record?.mediaUri ? (
@@ -148,17 +221,20 @@ export default function QuickShareOverlay({
 const st = StyleSheet.create({
   dim: { backgroundColor: 'rgba(0,0,0,0.55)' },
   target: {
-    position: 'absolute',
+    width: CIRCLE,
+    height: CIRCLE,
     borderRadius: CIRCLE / 2,
     backgroundColor: '#2E2E3B',
     borderWidth: 2,
     borderColor: 'rgba(191,133,252,0.4)',
     alignItems: 'center',
     justifyContent: 'center',
+    shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 8, shadowOffset: { width: 0, height: 3 }, elevation: 6,
   },
-  targetHover: { borderColor: '#BF85FC', backgroundColor: '#3A2A55', transform: [{ scale: 1.12 }] },
+  targetHover: { borderColor: '#BF85FC', backgroundColor: '#3A2A55' },
   targetEmoji: { fontSize: 20 },
-  targetLabel: { position: 'absolute', bottom: -16, fontSize: 9, color: '#A1A1B0', width: 64, textAlign: 'center' },
+  targetLabel: { position: 'absolute', bottom: -17, fontSize: 10, color: '#A1A1B0', width: 68, textAlign: 'center' },
+  targetLabelHover: { color: '#E9DDFF', fontWeight: '700' },
   ghost: {
     position: 'absolute',
     width: 112,

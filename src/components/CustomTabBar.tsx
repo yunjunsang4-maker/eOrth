@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
 import { useCoachActive } from './coachOverlayState';
+import { useTabBarHidden } from './tabBarVisibility';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -252,6 +253,13 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const { width: SCREEN_W } = useWindowDimensions();
   // 튜토리얼(코치마크) 중에는 탭 바도 다른 구역처럼 어둡게.
   const coachActive = useCoachActive();
+  // 빠른공유(카드 꾹 눌러 드래그) 동안 잠시 숨김 — 페이드 + 아래로 슬라이드
+  const tabBarHidden = useTabBarHidden();
+  const hideProgress = useSharedValue(0);
+  useEffect(() => {
+    hideProgress.value = withTiming(tabBarHidden ? 1 : 0, { duration: 180, easing: Easing.out(Easing.cubic) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabBarHidden]);
 
   const isGlobeActive = state.routes[state.index]?.name === 'MainTab';
 
@@ -273,10 +281,12 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.index]);
 
-  // 컨테이너 폭/좌표 (폭 변화에 따라 가운데 정렬 유지)
+  // 컨테이너 폭/좌표 (폭 변화에 따라 가운데 정렬 유지) + 숨김 페이드·슬라이드
   const containerStyle = useAnimatedStyle(() => ({
     width: barW.value,
     left: Math.max(16, (SCREEN_W - barW.value) / 2),
+    opacity: 1 - hideProgress.value,
+    transform: [{ translateY: hideProgress.value * 24 }],
   }));
   // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋)
   const borderRectProps = useAnimatedProps(() => ({
@@ -338,7 +348,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     <>
     <Animated.View
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
-      pointerEvents="box-none"
+      pointerEvents={tabBarHidden ? 'none' : 'box-none'}
     >
       {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 실제 블러.
           androidBlur: 블러 없는 반투명 틴트는 뒤 콘텐츠가 선명하게 뚫고 비쳐(통계 화면 등)

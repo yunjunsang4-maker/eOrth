@@ -64,6 +64,9 @@ function assert(cond: boolean, msg: string) {
   assert(hitTestTarget(200, 200, targets) === null, '바깥은 null');
   assert(hitTestTarget(0, 0, targets) === 'f1', '경계(좌상단) 포함');
   assert(hitTestTarget(50, 50, targets) === 'f1', '경계(우하단) 포함');
+  assert(hitTestTarget(58, 25, targets, 10) === 'f1', 'margin 10이면 8px 바깥도 명중');
+  assert(hitTestTarget(58, 25, targets) === null, 'margin 없으면 바깥은 null');
+  assert(hitTestTarget(25, 55, targets, 10) === 'f1', 'margin 겹침 구간은 먼저 오는 타깃 우선');
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

@@ -48,9 +48,10 @@ export function pickTopFriends(
 
 export interface TargetRect { key: string; x: number; y: number; w: number; h: number }
 
-export function hitTestTarget(px: number, py: number, targets: TargetRect[]): string | null {
+// margin: 타깃 주변 판정 여유(px) — 손가락이 원을 정확히 덮지 않아도 근처 드롭을 인정해 자연스럽게
+export function hitTestTarget(px: number, py: number, targets: TargetRect[], margin = 0): string | null {
   for (const t of targets) {
-    if (px >= t.x && px <= t.x + t.w && py >= t.y && py <= t.y + t.h) return t.key;
+    if (px >= t.x - margin && px <= t.x + t.w + margin && py >= t.y - margin && py <= t.y + t.h + margin) return t.key;
   }
   return null;
 }
