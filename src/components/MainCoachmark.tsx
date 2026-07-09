@@ -10,6 +10,7 @@ import {
   Easing,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -59,6 +60,7 @@ const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
 
 export default function MainCoachmark({ visible, steps, onClose, onStepChange }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 스포트라이트 링·툴팁 강조를 스킨색으로
   const [idx, setIdx] = useState(0);
 
   // 강조 링 맥동(pulse) 애니메이션 — 설명 중인 UI를 시선이 가도록 강조
@@ -209,6 +211,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
               pointerEvents="none"
               style={[
                 styles.halo,
+                { borderColor: skinAccent.tint(0.45), shadowColor: skinAccent.accent },
                 {
                   top: hole.y,
                   left: hole.x,
@@ -225,6 +228,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
               pointerEvents="none"
               style={[
                 styles.ring,
+                { borderColor: skinAccent.accent, shadowColor: skinAccent.accent },
                 { top: hole.y, left: hole.x, width: hole.w, height: hole.h, borderRadius: holeRadius },
               ]}
             />
@@ -263,8 +267,8 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
                 height: circle.r * 2,
                 borderRadius: circle.r,
                 borderWidth: 4,
-                borderColor: 'rgba(191,133,252,0.45)',
-                shadowColor: '#BF85FC',
+                borderColor: skinAccent.tint(0.45),
+                shadowColor: skinAccent.accent,
                 shadowOffset: { width: 0, height: 0 },
                 shadowOpacity: 1,
                 shadowRadius: 18,
@@ -284,8 +288,8 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
                 height: circle.r * 2,
                 borderRadius: circle.r,
                 borderWidth: 2.5,
-                borderColor: '#BF85FC',
-                shadowColor: '#BF85FC',
+                borderColor: skinAccent.accent,
+                shadowColor: skinAccent.accent,
                 shadowOffset: { width: 0, height: 0 },
                 shadowOpacity: 0.95,
                 shadowRadius: 12,
@@ -299,7 +303,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
         )}
 
         {/* 설명 말풍선 */}
-        <View style={[styles.tooltip, tipStyle]}>
+        <View style={[styles.tooltip, { borderColor: skinAccent.tint(0.45) }, tipStyle]}>
           <Text style={styles.title}>{step.title}</Text>
           <Text style={styles.desc}>{step.desc}</Text>
 
@@ -307,7 +311,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
             {/* 단계 표시 점 */}
             <View style={styles.dots}>
               {steps.map((_, i) => (
-                <View key={i} style={[styles.dot, i === idx && styles.dotActive]} />
+                <View key={i} style={[styles.dot, i === idx && [styles.dotActive, { backgroundColor: skinAccent.accent }]]} />
               ))}
             </View>
 
@@ -317,7 +321,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
                   <Text style={styles.skipTxt}>{t('comp.coachSkip')}</Text>
                 </TouchableOpacity>
               )}
-              <TouchableOpacity onPress={next} activeOpacity={0.85} style={styles.nextBtn}>
+              <TouchableOpacity onPress={next} activeOpacity={0.85} style={[styles.nextBtn, { backgroundColor: skinAccent.accent }]}>
                 <Text style={styles.nextTxt}>{isLast ? t('comp.coachStart') : t('comp.coachNext')}</Text>
               </TouchableOpacity>
             </View>

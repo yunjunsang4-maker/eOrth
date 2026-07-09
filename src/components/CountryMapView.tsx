@@ -397,8 +397,8 @@ function emphStroke(d){
   if(n===searchedRegion) return '#00D8F3';
   var a=activeRecordFor(n);
   if(a) return '#7856B0';
-  if(city) return '#BF85FC';                // 인기명소 ON: 도시 강조(보라 네온)
-  if(showPopular && highlight.indexOf(n)>=0) return '#BF85FC'; // 인기명소 현(예: 오키나와 전체)도 동일 강조
+  if(city) return defaultColor;                // 인기명소 ON: 도시 강조(스킨 활성화색)
+  if(showPopular && highlight.indexOf(n)>=0) return defaultColor; // 인기명소 현(예: 오키나와 전체)도 동일 강조
   return '#3E3155';
 }
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
