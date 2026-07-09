@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { NeonFab, FAB_SIZE } from './NeonFab';
 import { SnapButton, SNAP_SIZE } from './SnapButton';
 import { useCoachOverlay } from './coachOverlayState';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const FORMAT_LABEL_KEY: Record<string, string> = {
   feed: 'main.formatFeed', blog: 'main.formatBlog', cut: 'main.formatCut', album: 'main.formatAlbum',
@@ -91,6 +92,7 @@ interface RecordFabProps {
 export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
+  const skinAccent = useSkinAccent(); // 포맷 버튼 테두리·글로우를 스킨 강조색으로
   // 튜토리얼 중에는 강조 중인 버튼만 밝게, 나머지는 어둡게.
   const { active: coachActive, bright: coachBright } = useCoachOverlay();
   const dimSnap = coachActive && coachBright !== 'snap';
@@ -185,7 +187,7 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
           >
             <Text style={styles.fabFormatLabel}>{t(FORMAT_LABEL_KEY[fmt.type] ?? fmt.name)}</Text>
             <TouchableOpacity
-              style={styles.fabFormatBtn}
+              style={[styles.fabFormatBtn, { borderColor: skinAccent.tint(0.4), shadowColor: skinAccent.accent }]}
               activeOpacity={0.85}
               onPress={() => {
                 closeFab();

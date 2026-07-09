@@ -37,6 +37,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { getGlobeSkinTheme, GLOBE_SKINS } from '../constants/globeSkins';
+import { getSkinAccent } from '../constants/skinTheme';
 import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
@@ -289,7 +290,7 @@ type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord
 
 // 전체화면 우주배경 — 메인탭 모든 콘텐츠 뒤에 깔리는 별·무드글로우(비상호작용).
 // 별은 글로브 WebView(75% 영역) 밖(헤더·탭 영역)까지 화면 전체로 확장된다(첨부 SVG처럼).
-function SpaceBackdrop() {
+function SpaceBackdrop({ glow = '#CA82FF' }: { glow?: string }) {
   const { width: W, height: H } = Dimensions.get('window');
   const stars = useMemo(() => {
     let s = 20260629;
@@ -305,8 +306,8 @@ function SpaceBackdrop() {
     <Svg width={W} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
       <SvgDefs>
         <SvgRadialGradient id="sbGlowP" cx="50%" cy="50%" r="50%">
-          <SvgStop offset="0%" stopColor="#CA82FF" stopOpacity={0.18} />
-          <SvgStop offset="70%" stopColor="#CA82FF" stopOpacity={0} />
+          <SvgStop offset="0%" stopColor={glow} stopOpacity={0.18} />
+          <SvgStop offset="70%" stopColor={glow} stopOpacity={0} />
         </SvgRadialGradient>
         <SvgRadialGradient id="sbGlowB" cx="50%" cy="50%" r="50%">
           <SvgStop offset="0%" stopColor="#1E3AFF" stopOpacity={0.1} />
@@ -620,6 +621,8 @@ export default function MainScreen({ navigation, route }: Props) {
   const globeForcedMode: GlobeDisplayMode = globeVariant === 'aurora' ? 'color' : 'photo';
   // 지구본 스킨 — 색 활성화(aurora) 폼에만 적용, classic은 기본 테마 유지
   const globeSkinTheme = globeVariant === 'aurora' ? getGlobeSkinTheme(globeSkin) : undefined;
+  // 앱 강조색 — 지구본 스킨에 맞춘 통일 색(단계적 마이그레이션). aurora는 기존값과 동일.
+  const skinAccent = getSkinAccent(globeSkin);
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
     () => visitedCountries.map(c => ({
@@ -910,7 +913,7 @@ export default function MainScreen({ navigation, route }: Props) {
     <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
 
       {/* ── 전체화면 우주배경 (별·글로우) — 모든 콘텐츠 뒤, 터치 통과 ── */}
-      <SpaceBackdrop />
+      <SpaceBackdrop glow={skinAccent.accent} />
 
       {/* 튜토리얼용 숨김 앵커 — 탭 바 오버레이의 스냅 버튼(RecordFab)과 동일한 절대 제약.
           코치마크가 이 위치를 측정해 스냅 버튼을 정확히 강조한다(보이지 않음·터치 통과). */}
@@ -1270,7 +1273,7 @@ export default function MainScreen({ navigation, route }: Props) {
         {/* 새 기록 추가 버튼 */}
         <View style={styles.countrySheetBottom}>
           <TouchableOpacity
-            style={styles.countryAddBtn}
+            style={[styles.countryAddBtn, { backgroundColor: skinAccent.accent }]}
             activeOpacity={0.85}
             onPress={() => {
               closeCountrySheet();
@@ -1379,7 +1382,7 @@ export default function MainScreen({ navigation, route }: Props) {
             </ScrollView>
 
             <TouchableOpacity
-              style={[styles.countryAddBtn, { width: '100%', marginTop: 16 }]}
+              style={[styles.countryAddBtn, { width: '100%', marginTop: 16, backgroundColor: skinAccent.accent }]}
               activeOpacity={0.85}
               onPress={() => {
                 setRegionRecordsVisible(false);
@@ -1545,22 +1548,22 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.dsColorLabel}>{t('main.globalDefault')}</Text>
                   <View style={styles.dsSection}>
                     <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode !== 'photo' && styles.dsOptionActive]}
+                      style={[styles.dsOption, regionGlobalMode !== 'photo' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
                       activeOpacity={0.7}
                       onPress={() => setRegionGlobalMode('color')}
                     >
                       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
                       <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>{t('main.color')}</Text>
-                      {regionGlobalMode !== 'photo' && <View style={styles.dsCheck} />}
+                      {regionGlobalMode !== 'photo' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
                     </TouchableOpacity>
                     <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode === 'photo' && styles.dsOptionActive]}
+                      style={[styles.dsOption, regionGlobalMode === 'photo' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
                       activeOpacity={0.7}
                       onPress={() => setRegionGlobalMode('photo')}
                     >
                       <Text style={{ fontSize: 24 }}>🖼️</Text>
                       <Text style={[styles.dsOptionText, regionGlobalMode === 'photo' && styles.dsOptionTextActive]}>{t('main.photo')}</Text>
-                      {regionGlobalMode === 'photo' && <View style={styles.dsCheck} />}
+                      {regionGlobalMode === 'photo' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -1602,7 +1605,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                   return (
                                     <TouchableOpacity
                                       key={m}
-                                      style={[styles.dsSegmentBtn, active && styles.dsSegmentBtnActive]}
+                                      style={[styles.dsSegmentBtn, active && [styles.dsSegmentBtnActive, { backgroundColor: skinAccent.accent }]]}
                                       onPress={() => {
                                         setRegionDisplayModes(prev => {
                                           const next = { ...prev };
@@ -1653,7 +1656,7 @@ export default function MainScreen({ navigation, route }: Props) {
             )}
 
             <TouchableOpacity
-              style={dsm.confirmBtn}
+              style={[dsm.confirmBtn, { backgroundColor: skinAccent.accentDeep }]}
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >

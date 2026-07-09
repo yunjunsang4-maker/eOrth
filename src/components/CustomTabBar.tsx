@@ -12,6 +12,7 @@ import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
 import { useCoachActive } from './coachOverlayState';
 import { useTabBarHidden } from './tabBarVisibility';
+import { useSkinAccent } from '../constants/skinTheme';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -150,7 +151,8 @@ const TabItem: React.FC<{
   IconComponent: React.FC<{ active: boolean }>;
   isFocused: boolean;
   onPress: () => void;
-}> = ({ progress, isGlobe, uid, label, IconComponent, isFocused, onPress }) => {
+  pillColor: string; // 활성 알약 채움색 (스킨 강조색)
+}> = ({ progress, isGlobe, uid, label, IconComponent, isFocused, onPress, pillColor }) => {
   const H = isGlobe ? G_PILL_H : PILL_H; // 알약 높이
   const R = H / 2;                       // 알약 모서리 반경
 
@@ -197,7 +199,7 @@ const TabItem: React.FC<{
       <Animated.View style={[isGlobe ? styles.pillGlobe : styles.pillH, pillStyle]}>
         {/* 활성 알약: 보라 면 + #CECFCD 그라데이션 '테두리만'(stroke) + 검정 드롭섀도 */}
         <Animated.View style={[StyleSheet.absoluteFill, depthStyle]} pointerEvents="none">
-          <View style={[styles.bodyFill, { borderRadius: R }]} />
+          <View style={[styles.bodyFill, { borderRadius: R, backgroundColor: pillColor }]} />
           <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
             <SvgDefs>
               {/* 배경 테두리와 동일한 #CECFCD → 투명 그라데이션 */}
@@ -253,6 +255,8 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const { width: SCREEN_W } = useWindowDimensions();
   // 튜토리얼(코치마크) 중에는 탭 바도 다른 구역처럼 어둡게.
   const coachActive = useCoachActive();
+  // 지구본 스킨 강조색 — 활성 알약 채움색에 적용 (스킨 바뀌면 자동 갱신)
+  const skinAccent = useSkinAccent();
   // 빠른공유(카드 꾹 눌러 드래그) 동안 잠시 숨김 — 페이드 + 아래로 슬라이드
   const tabBarHidden = useTabBarHidden();
   const hideProgress = useSharedValue(0);
@@ -340,6 +344,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         IconComponent={IconComponent}
         isFocused={isFocused}
         onPress={onPress}
+        pillColor={skinAccent.pill}
       />
     );
   });
