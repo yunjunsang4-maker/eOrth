@@ -38,6 +38,7 @@ import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, Ca
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
+import { useSkinAccent } from '../constants/skinTheme';
 import ReportModal from '../components/ReportModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
@@ -208,6 +209,7 @@ const companionIcon = (name: string): React.ReactNode => {
 
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
 const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void }) => {
+  const skinAccent = useSkinAccent();
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
   const slideW = SCREEN_W - 40; // 본문 좌우 패딩(20+20)과 일치
@@ -254,7 +256,7 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
           {items.map((_, i) => (
             <View key={i} style={{
               width: i === activeIdx ? 16 : 6, height: 6, borderRadius: 3,
-              backgroundColor: i === activeIdx ? '#BF85FC' : '#4A4A59',
+              backgroundColor: i === activeIdx ? skinAccent.accent : '#4A4A59',
             }} />
           ))}
         </View>
@@ -323,6 +325,7 @@ const BlogBlockRenderer = ({
   fontScale: number;
   onImagePress?: (uris: string[], index: number) => void;
 }) => {
+  const skinAccent = useSkinAccent(); // 인용구 등 강조를 스킨색으로
   switch (block.type) {
     case 'text': {
       const fs = (block.fontSize || 15) * fontScale;
@@ -402,7 +405,7 @@ const BlogBlockRenderer = ({
     }
     case 'quote':
       return (
-        <View style={blogS.quote}>
+        <View style={[blogS.quote, { borderLeftColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.06) }]}>
           <Text style={[blogS.quoteText, { fontSize: 15 * fontScale }]}>{block.value}</Text>
         </View>
       );
@@ -457,12 +460,13 @@ const TableOfContents = ({
   onPress: (id: string) => void;
 }) => {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const [open, setOpen] = useState(false);
   if (headings.length === 0) return null;
   return (
-    <View style={blogS.tocWrap}>
+    <View style={[blogS.tocWrap, { backgroundColor: skinAccent.tint(0.06), borderColor: skinAccent.tint(0.12) }]}>
       <TouchableOpacity style={blogS.tocToggle} onPress={() => setOpen(!open)} activeOpacity={0.7}>
-        <Text style={blogS.tocToggleText}>📋 {t('comp2.toc')}</Text>
+        <Text style={[blogS.tocToggleText, { color: skinAccent.accent }]}>📋 {t('comp2.toc')}</Text>
         <Text style={blogS.tocArrow}>{open ? '▲' : '▼'}</Text>
       </TouchableOpacity>
       {open &&
@@ -543,17 +547,18 @@ function SnapViewerModal({
   viewers?: { handle: string; name: string; time: number; emoji?: string }[];
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={viewerS.root} accessibilityViewIsModal>
         {/* 드래그바 */}
         <View style={viewerS.handle} />
         <Text style={viewerS.title}>{t('postDetail.snapViewersTitle')}</Text>
-        <Text style={viewerS.subtitle}>{t('postDetail.totalReadN', { count: viewers.length })}</Text>
+        <Text style={[viewerS.subtitle, { color: skinAccent.accent }]}>{t('postDetail.totalReadN', { count: viewers.length })}</Text>
 
         <ScrollView contentContainerStyle={viewerS.list} showsVerticalScrollIndicator={false}>
           {viewers.length === 0 && (
-            <Text style={viewerS.subtitle}>{t('postDetail.noSnapViewers')}</Text>
+            <Text style={[viewerS.subtitle, { color: skinAccent.accent }]}>{t('postDetail.noSnapViewers')}</Text>
           )}
           {viewers.map((v, i) => (
             <View key={i} style={viewerS.row}>
@@ -588,6 +593,7 @@ function SnapStoryViewer({
   markSnapViewed: (id: string) => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   // 작성자별로 그룹화된 전체 스냅 목록 (같은 작성자끼리 연속 배치)
@@ -894,7 +900,7 @@ function SnapStoryViewer({
                 {s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
-                  <Text style={storyS.avatarEmoji}>{s.user.emoji}</Text>
+                  <PersonIcon size={22} color="#A0A0B0" />
                 )}
               </View></View>
               <View style={storyS.userInfo}>
@@ -926,7 +932,7 @@ function SnapStoryViewer({
                 <View style={{ flex: 1 }} />
                 <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
                   <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                   <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
@@ -943,7 +949,7 @@ function SnapStoryViewer({
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
                   <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={storyS.commentCountBadge}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                   <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
@@ -1058,7 +1064,7 @@ function SnapStoryViewer({
                 onBlur={() => { if (!commentText.trim()) setReplyBarOpen(false); }}
               />
               <TouchableOpacity
-                style={[storyS.inlineSendBtn, !commentText.trim() && { opacity: 0.35 }]}
+                style={[storyS.inlineSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { opacity: 0.35 }]}
                 onPress={() => { addComment(); setReplyBarOpen(false); }}
                 disabled={!commentText.trim()}
               >
@@ -1112,13 +1118,13 @@ function SnapStoryViewer({
           </ScrollView>
           {replyTo && (
             <View style={storyS.csReplyBar}>
-              <Text style={storyS.csReplyBarText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
+              <Text style={[storyS.csReplyBarText, { color: skinAccent.accent }]}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
               <TouchableOpacity onPress={cancelReply}><Text style={storyS.csReplyBarCancel}>✕</Text></TouchableOpacity>
             </View>
           )}
           <View style={storyS.csInputBar}>
             <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" />
-            <TouchableOpacity style={[storyS.csSendBtn, !commentText.trim() && { backgroundColor: '#2A2A3A' }]} onPress={addComment} disabled={!commentText.trim()}>
+            <TouchableOpacity style={[storyS.csSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { backgroundColor: "#2A2A3A" }]} onPress={addComment} disabled={!commentText.trim()}>
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
           </View>
@@ -1159,7 +1165,7 @@ function SnapStoryViewer({
                 <TouchableOpacity key={f.handle} style={shareS.friendRow} activeOpacity={0.7} onPress={() => handleSendToFriend(f)}>
                   <View style={shareS.friendAvatar}><Text style={{ fontSize: 18 }}>{f.emoji}</Text></View>
                   <Text style={shareS.friendName}>{f.name}</Text>
-                  <Text style={shareS.friendSend}>{t('postDetail.send')}</Text>
+                  <Text style={[shareS.friendSend, { color: skinAccent.accent }]}>{t('postDetail.send')}</Text>
                 </TouchableOpacity>
               ))}
               {shareFriends.length === 0 && (
@@ -1197,6 +1203,7 @@ type RouteParams = {
 
 export default function PostDetailScreen() {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
@@ -1430,25 +1437,25 @@ export default function PostDetailScreen() {
   const renderCountries = () => {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
-        <View style={s.countryTag}>
-          <Text style={s.countryTagText} {...andFitText}>{record.country}</Text>
+        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.country}</Text>
         </View>
       ) : null;
     }
     if (record.countries.length <= 3) {
       return record.countries.map((c, i) => (
-        <View key={i} style={s.countryTag}>
-          <Text style={s.countryTagText} {...andFitText}>{c.flag} {c.name}</Text>
+        <View key={i} style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {c.name}</Text>
         </View>
       ));
     }
     return (
       <>
-        <View style={s.countryTag}>
-          <Text style={s.countryTagText} {...andFitText}>{record.countries[0].flag} {record.countries[0].name}</Text>
+        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {record.countries[0].name}</Text>
         </View>
-        <View style={s.countryTag}>
-          <Text style={s.countryTagText} {...andFitText}>+{record.countries.length - 1}</Text>
+        <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>+{record.countries.length - 1}</Text>
         </View>
       </>
     );
@@ -1520,7 +1527,7 @@ export default function PostDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('postDetail.fontSizeA11y')}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? C.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
@@ -1575,7 +1582,7 @@ export default function PostDetailScreen() {
                         ) : record.user.photo ? (
                           <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : (
-                          <Text style={s.avatarEmoji}>{record.user.emoji}</Text>
+                          <PersonIcon size={24} color="#A0A0B0" />
                         )}
                       </View>
                       <View style={s.userInfo}>
@@ -1588,11 +1595,11 @@ export default function PostDetailScreen() {
                       </View>
                     </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
-                      <Text style={s.ratingStars}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
+                      <Text style={[s.ratingStars, { color: skinAccent.accent }]}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
                     )}
                     {!isMyPost && (
                       <TouchableOpacity
-                        style={[s.followBtn, followedEntry && s.followingBtn]}
+                        style={[s.followBtn, { backgroundColor: skinAccent.accent }, followedEntry && s.followingBtn]}
                         onPress={toggleFollow}
                         accessibilityRole="button"
                         accessibilityLabel={followedEntry ? t('postDetail.unfollowA11y') : t('postDetail.followA11y')}
@@ -1611,8 +1618,8 @@ export default function PostDetailScreen() {
                 <>
                   {/* 카테고리 뱃지 */}
                   {record.blogCategory && (
-                    <View style={blogS.categoryBadge}>
-                      <Text style={blogS.categoryBadgeText}>{record.blogCategory}</Text>
+                    <View style={[blogS.categoryBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.25) }]}>
+                      <Text style={[blogS.categoryBadgeText, { color: skinAccent.accent }]}>{record.blogCategory}</Text>
                     </View>
                   )}
 
@@ -1676,8 +1683,8 @@ export default function PostDetailScreen() {
                       <View style={{ opacity: 0.4 }}>
                         {viewType === 'album' ? <CameraIcon size={48} color="#fff" /> : <LandscapeIcon size={48} color="#fff" />}
                       </View>
-                      <View style={s.viewTypeBadge}>
-                        <Text style={s.viewTypeText}>
+                      <View style={[s.viewTypeBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
+                        <Text style={[s.viewTypeText, { color: skinAccent.accent }]}>
                           {viewType === 'feed' ? t('postDetail.typeFeed') : viewType === 'cut' ? t('postDetail.typeCut') : t('postDetail.typeAlbum')}
                         </Text>
                       </View>
@@ -1696,7 +1703,7 @@ export default function PostDetailScreen() {
                   </Text>
                   {bodyLong && !bodyExpanded && (
                     <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
-                      <Text style={s.moreBtn}>{t('postDetail.more')}</Text>
+                      <Text style={[s.moreBtn, { color: skinAccent.accent }]}>{t('postDetail.more')}</Text>
                     </TouchableOpacity>
                   )}
                 </>
@@ -1709,8 +1716,8 @@ export default function PostDetailScreen() {
           {record.keywords && record.keywords.length > 0 && (
             <View style={s.keywords}>
               {record.keywords.map((k) => (
-                <View key={k} style={s.keyword}>
-                  <Text style={s.keywordText}>#{k}</Text>
+                <View key={k} style={[s.keyword, { backgroundColor: skinAccent.tint(0.12) }]}>
+                  <Text style={[s.keywordText, { color: skinAccent.accent }]}>#{k}</Text>
                 </View>
               ))}
             </View>
@@ -1719,13 +1726,13 @@ export default function PostDetailScreen() {
           {/* ── 여행정보 토글 버튼 ── */}
           {(record.startDate || record.weather || record.budget || record.flightType) && (
             <TouchableOpacity
-              style={s.travelInfoBtn}
+              style={[s.travelInfoBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}
               activeOpacity={0.8}
               onPress={() => setShowTravelInfo((v) => !v)}
             >
-              <CalendarIcon size={14} color={C.accent} />
-              <Text style={s.travelInfoBtnText}>{t('postDetail.travelInfo')}</Text>
-              <Text style={s.travelInfoArrow}>{showTravelInfo ? '▲' : '▼'}</Text>
+              <CalendarIcon size={14} color={skinAccent.accent} />
+              <Text style={[s.travelInfoBtnText, { color: skinAccent.accent }]}>{t('postDetail.travelInfo')}</Text>
+              <Text style={[s.travelInfoArrow, { color: skinAccent.accent }]}>{showTravelInfo ? '▲' : '▼'}</Text>
             </TouchableOpacity>
           )}
 
@@ -1761,7 +1768,7 @@ export default function PostDetailScreen() {
 
           {/* ── 메모 (본문에 글이 나오는 피드·앨범·스트립은 중복 방지, 블로그만 표시) ── */}
           {record.memo && viewType === 'blog' && (
-            <View style={s.memoBox}>
+            <View style={[s.memoBox, { backgroundColor: skinAccent.tint(0.06), borderLeftColor: skinAccent.accent }]}>
               <Text style={s.memoText}>{record.memo}</Text>
             </View>
           )}
@@ -1849,7 +1856,7 @@ export default function PostDetailScreen() {
             </View>
           ))}
           {commentsLoading && comments.length === 0 ? (
-            <ActivityIndicator color={C.accent} style={{ marginTop: 20 }} />
+            <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 20 }} />
           ) : comments.length === 0 ? (
             <Text style={s.commentEmpty}>{t('trip.noComments')}</Text>
           ) : null}
@@ -1860,7 +1867,7 @@ export default function PostDetailScreen() {
         {/* ── 답글 표시 바 ── */}
         {replyTo && (
           <View style={s.replyBar}>
-            <Text style={s.replyBarText}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
+            <Text style={[s.replyBarText, { color: skinAccent.accent }]}>{t('postDetail.replyingTo', { name: replyTo.name })}</Text>
             <TouchableOpacity onPress={cancelReply}>
               <Text style={s.replyBarCancel}>✕</Text>
             </TouchableOpacity>
@@ -1879,7 +1886,7 @@ export default function PostDetailScreen() {
             returnKeyType="send"
           />
           <TouchableOpacity
-            style={[s.sendBtn, !commentText.trim() && s.sendBtnDisabled]}
+            style={[s.sendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && s.sendBtnDisabled]}
             onPress={addComment}
             disabled={!commentText.trim()}
           >
@@ -1993,7 +2000,7 @@ export default function PostDetailScreen() {
             <View style={s.likersHandle} />
             <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
             {likersLoading ? (
-              <ActivityIndicator color={C.accent} style={{ marginTop: 24 }} />
+              <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 24 }} />
             ) : likers.length === 0 ? (
               <Text style={s.commentEmpty}>{t('postDetail.noLikers')}</Text>
             ) : (

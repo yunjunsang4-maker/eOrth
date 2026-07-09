@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import * as VideoThumbnails from 'expo-video-thumbnails';
@@ -289,6 +290,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
@@ -1232,7 +1234,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={st.headerRight}>
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}
-            style={[st.mapBtn, representativePhoto && st.mapBtnActive]}
+            style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
             activeOpacity={0.7}
           >
             {representativePhoto ? (
@@ -1243,7 +1245,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPrivacyModalVisible(true)}
-            style={[st.lockBtn, privateFriends.length > 0 && st.lockBtnActive]}
+            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
             activeOpacity={0.7}
           >
             {privateFriends.length > 0 ? (
@@ -1260,7 +1262,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <TouchableOpacity onPress={() => navigation.navigate('NaverBlogImport')} style={st.naverBtn}>
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
+          <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
             <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
           </TouchableOpacity>
         </View>
@@ -1273,7 +1275,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           {/* 국가 */}
           <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
             <TouchableOpacity style={[st.countryChip, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
-              <Text style={selectedCountry ? st.countryChipText : st.countryChipPlaceholder}>
+              <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
                   : t('blog.selectDestination')}
@@ -1308,7 +1310,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <View style={st.tagList}>
                 {keywords.map(kw => (
                   <TouchableOpacity key={kw} style={st.tag} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}>
-                    <Text style={st.tagText}>#{kw}</Text>
+                    <Text style={[st.tagText, { color: skinAccent.accent }]}>#{kw}</Text>
                     <Text style={st.tagRemove}>✕</Text>
                   </TouchableOpacity>
                 ))}
@@ -1421,7 +1423,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <PickerModal visible={colorPickerVisible} onClose={() => setColorPickerVisible(false)} title={t('blog.textColor')}>
         <View style={st.colorGrid}>
           {TEXT_COLORS.map(c => (
-            <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, atb?.color === c && st.colorDotActive]}
+            <TouchableOpacity key={c} style={[st.colorDot, { backgroundColor: c }, atb?.color === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockColor(c)} />
           ))}
         </View>
@@ -1432,7 +1434,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={st.colorGrid}>
           {BG_COLORS.map((c, i) => (
             <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
-              atb?.bgColor === c && st.colorDotActive]}
+              atb?.bgColor === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockBgColor(c)}>
               {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>{t('blog.none')}</Text>}
             </TouchableOpacity>
@@ -1443,9 +1445,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 글꼴 크기 */}
       <PickerModal visible={fontSizePickerVisible} onClose={() => setFontSizePickerVisible(false)} title={t('blog.fontSize')}>
         {FONT_SIZE_OPTIONS.map(opt => (
-          <TouchableOpacity key={opt.size} style={[st.pickerOption, atb?.fontSize === opt.size && st.pickerOptionActive]}
+          <TouchableOpacity key={opt.size} style={[st.pickerOption, atb?.fontSize === opt.size && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
             onPress={() => setBlockFontSize(opt.size)}>
-            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && st.pickerOptionTextActive]}>{t((FONT_SIZE_KEY[opt.size] ?? opt.label) as any)}</Text>
+            <Text style={[st.pickerOptionText, { fontSize: opt.size }, atb?.fontSize === opt.size && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{t((FONT_SIZE_KEY[opt.size] ?? opt.label) as any)}</Text>
             {atb?.fontSize === opt.size && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
@@ -1454,9 +1456,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 글꼴 종류 */}
       <PickerModal visible={fontPickerVisible} onClose={() => setFontPickerVisible(false)} title={t('blog.fontFamily')}>
         {FONT_OPTIONS.map(opt => (
-          <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && st.pickerOptionActive]}
+          <TouchableOpacity key={opt.value} style={[st.pickerOption, atb?.fontFamily === opt.value && [st.pickerOptionActive, { backgroundColor: skinAccent.tint(0.12) }]]}
             onPress={() => setBlockFontFamily(opt.value)}>
-            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && st.pickerOptionTextActive]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
+            <Text style={[st.pickerOptionText, opt.value !== 'System' && { fontFamily: opt.value }, atb?.fontFamily === opt.value && [st.pickerOptionTextActive, { color: skinAccent.accent }]]}>{opt.value === 'System' ? t('comp2.fontDefault') : opt.label}</Text>
             {atb?.fontFamily === opt.value && <Text style={st.checkMark}>✓</Text>}
           </TouchableOpacity>
         ))}
@@ -1475,7 +1477,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title={t('blog.insertLink')}>
         <TextInput style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
-        <TouchableOpacity style={st.schedConfirmBtn} onPress={handleAddLink}>
+        <TouchableOpacity style={[st.schedConfirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleAddLink}>
           <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
         </TouchableOpacity>
       </PickerModal>
@@ -1490,7 +1492,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]}>{t('blog.subtitleRemove')}</Text>
             </TouchableOpacity>
           )}
-          <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1 }]} onPress={() => { setSubtitle(subtitleDraft.trim()); setSubtitleModalVisible(false); }}>
+          <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: skinAccent.accentDeep }]} onPress={() => { setSubtitle(subtitleDraft.trim()); setSubtitleModalVisible(false); }}>
             <Text style={st.schedConfirmText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </View>
@@ -1521,7 +1523,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     <Text style={st.dateBtnLabel}>{t('blog.arriveDate')}</Text>
                     <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
                   </View>
-                  <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={C.purpleNeon} /></View>
+                  <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={skinAccent.accent} /></View>
                 </TouchableOpacity>
               </PanelRow>
 
@@ -1530,12 +1532,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <View style={st.chipRow}>
                   {COMPANIONS.map(comp => {
                     const isActive = companions.includes(comp);
-                    const iconColor = isActive ? C.purpleNeon : C.dim;
+                    const iconColor = isActive ? skinAccent.accent : C.dim;
                     return (
                       <TouchableOpacity key={comp} style={[st.chip, isActive && st.chipActive]} onPress={() => toggleCompanion(comp)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {COMPANION_ICON_MAP[comp]?.(iconColor)}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{companionLabel(comp)}</Text>
+                          <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{companionLabel(comp)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1544,8 +1546,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 {companionFriends.length > 0 && (
                   <View style={[st.chipRow, { marginTop: 8 }]}>
                     {companionFriends.map(friend => (
-                      <View key={friend} style={st.friendChip}>
-                        <View style={st.friendChipAvatar}>
+                      <View key={friend} style={[st.friendChip, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]}>
+                        <View style={[st.friendChipAvatar, { backgroundColor: skinAccent.tint(0.3) }]}>
                           <Text style={st.friendChipAvatarTxt}>{friend[0]}</Text>
                         </View>
                         <Text style={st.friendChipName}>{friend}</Text>
@@ -1557,7 +1559,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   </View>
                 )}
                 <TouchableOpacity style={st.addFriendBtn} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
-                  <SvgFriendIcon size={16} color={C.purpleNeon} />
+                  <SvgFriendIcon size={16} color={skinAccent.accent} />
                   <Text style={st.addFriendTxt}>{t('blog.addAppFriend')}</Text>
                   {companionFriends.length > 0 && (
                     <View style={st.addFriendBadge}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
@@ -1570,7 +1572,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <View style={st.ratingWrap}>
                   {renderStars()}
                   {rating > 0
-                    ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
+                    ? <Text style={[st.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)} / 5.0</Text>
                     : <Text style={st.ratingScoreEmpty}>{t('blog.ratingEmpty')}</Text>}
                 </View>
               </PanelRow>
@@ -1582,7 +1584,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     const isActive = visibility === opt.value;
                     return (
                       <TouchableOpacity key={opt.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setVisibility(opt.value)}>
-                        <Text style={[st.chipText, isActive && st.chipTextActive]}>{visibilityLabel(opt.value)}</Text>
+                        <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value)}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -1597,15 +1599,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <PanelRow label="" icon={<SvgCoinIcon size={18} color={IC} />} labelText={t('blog.budget')}>
                 <View style={st.budgetRow}>
                   {CURRENCIES.map(c => (
-                    <TouchableOpacity key={c} style={[st.currencyChip, currency === c && st.currencyChipActive]} onPress={() => chooseCurrency(c)}>
-                      <Text style={[st.currencyTxt, currency === c && st.currencyTxtActive]}>{c}</Text>
+                    <TouchableOpacity key={c} style={[st.currencyChip, currency === c && [st.currencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]} onPress={() => chooseCurrency(c)}>
+                      <Text style={[st.currencyTxt, currency === c && [st.currencyTxtActive, { color: skinAccent.accent }]]}>{c}</Text>
                     </TouchableOpacity>
                   ))}
                   <TouchableOpacity
-                    style={[st.currencyChip, !CURRENCIES.includes(currency) && st.currencyChipActive]}
+                    style={[st.currencyChip, !CURRENCIES.includes(currency) && [st.currencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                     onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
                   >
-                    <Text style={[st.currencyTxt, !CURRENCIES.includes(currency) && st.currencyTxtActive]}>
+                    <Text style={[st.currencyTxt, !CURRENCIES.includes(currency) && [st.currencyTxtActive, { color: skinAccent.accent }]]}>
                       {CURRENCIES.includes(currency) ? t('blog.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
@@ -1623,7 +1625,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       <TouchableOpacity key={w.value} style={[st.chip, isActive && st.chipActive]} onPress={() => setWeather(isActive ? '' : w.value)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {WEATHER_ICON_MAP[w.value]}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{weatherLabel(w.value)}</Text>
+                          <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{weatherLabel(w.value)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1640,9 +1642,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       <TouchableOpacity key={f} style={[st.chip, isActive && st.chipActive]} onPress={() => setFlightType(isActive ? '' : f)}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                           {f === '직항'
-                            ? <SvgTakeoffIcon size={14} color={isActive ? C.purpleNeon : C.dim} />
-                            : <SvgTransferIcon size={14} color={isActive ? C.purpleNeon : C.dim} />}
-                          <Text style={[st.chipText, isActive && st.chipTextActive]}>{flightLabel(f)}</Text>
+                            ? <SvgTakeoffIcon size={14} color={isActive ? skinAccent.accent : C.dim} />
+                            : <SvgTransferIcon size={14} color={isActive ? skinAccent.accent : C.dim} />}
+                          <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{flightLabel(f)}</Text>
                         </View>
                       </TouchableOpacity>
                     );
@@ -1656,8 +1658,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   {keywords.length > 0 && (
                     <View style={st.kwTagRow}>
                       {keywords.map(kw => (
-                        <TouchableOpacity key={kw} style={st.kwTag} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}>
-                          <Text style={st.kwTagText}>#{kw}</Text>
+                        <TouchableOpacity key={kw} style={[st.kwTag, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.35) }]} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}>
+                          <Text style={[st.kwTagText, { color: skinAccent.accent }]}>#{kw}</Text>
                           <Text style={st.kwTagDel}> ✕</Text>
                         </TouchableOpacity>
                       ))}
@@ -1693,7 +1695,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               <View style={{ height: 120 }} />
             </ScrollView>
-            <TouchableOpacity style={st.panelDoneBtn} onPress={() => setTravelInfoVisible(false)}>
+            <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setTravelInfoVisible(false)}>
               <Text style={st.panelDoneText}>{t('common.done')}</Text>
             </TouchableOpacity>
 
@@ -1728,14 +1730,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                         <TouchableOpacity key={friend} style={st.friendPickerItem} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.75}>
                           <View style={st.friendPickerAvatar}><Text style={st.friendPickerAvatarTxt}>{friend[0]}</Text></View>
                           <Text style={st.friendPickerName}>{friend}</Text>
-                          <View style={[st.friendPickerCheck, isSelected && st.friendPickerCheckActive]}>
+                          <View style={[st.friendPickerCheck, isSelected && [st.friendPickerCheckActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                             {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
                           </View>
                         </TouchableOpacity>
                       );
                     })}
                   </ScrollView>
-                  <TouchableOpacity style={st.panelDoneBtn} onPress={() => setFriendPickerVisible(false)}>
+                  <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setFriendPickerVisible(false)}>
                     <Text style={st.panelDoneText}>{t('common.done')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -1771,7 +1773,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                         >
                           <Text style={st.currModalCode}>{c.code}</Text>
                           <Text style={st.currModalName}>{c.name}</Text>
-                          {currency === c.code && <Text style={{ color: C.purpleNeon, fontSize: 16, fontWeight: '700' }}>✓</Text>}
+                          {currency === c.code && <Text style={{ color: skinAccent.accent, fontSize: 16, fontWeight: "700" }}>✓</Text>}
                         </TouchableOpacity>
                       ))}
                   </ScrollView>
@@ -1802,7 +1804,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <Text style={st.continentLabel}>{g.continent}</Text>
                 {g.countries.map(country => (
                   <TouchableOpacity key={country.name}
-                    style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && st.countryItemActive]}
+                    style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && [st.countryItemActive, { backgroundColor: skinAccent.tint(0.1) }]]}
                     onPress={() => toggleCountry(country)}>
                     <Text style={st.countryItemText}>
                       {country.flag} {country.name}
@@ -1855,7 +1857,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 })}
               </ScrollView>
             )}
-            <TouchableOpacity style={st.panelDoneBtn} onPress={() => setDraftListVisible(false)}>
+            <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setDraftListVisible(false)}>
               <Text style={st.panelDoneText}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
@@ -1983,9 +1985,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             )}
             <View style={st.layoutBtnRow}>
               {(['grid2', 'grid3', 'slide'] as ImageLayout[]).map(l => (
-                <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && st.layoutBtnActive]}
+                <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && [st.layoutBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
                   onPress={() => updateBlock(block.id, { layout: l } as any)}>
-                  <Text style={[st.layoutBtnText, imb.layout === l && st.layoutBtnTextActive]}>
+                  <Text style={[st.layoutBtnText, imb.layout === l && [st.layoutBtnTextActive, { color: skinAccent.accent }]]}>
                     {l === 'grid2' ? t('blog.grid2') : l === 'grid3' ? t('blog.grid3') : t('blog.slide')}
                   </Text>
                 </TouchableOpacity>
@@ -2163,8 +2165,9 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
   label: string; active?: boolean; onPress: () => void;
   bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; colorDot?: string;
 }) {
+  const skinAccent = useSkinAccent();
   return (
-    <TouchableOpacity style={[st.fmtBtn, active && st.fmtBtnActive]} onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity style={[st.fmtBtn, active && [st.fmtBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]} onPress={onPress} activeOpacity={0.6}>
       <Text style={[st.fmtBtnText,
         bold && { fontWeight: '900' }, italic && { fontStyle: 'italic' },
         underline && { textDecorationLine: 'underline' }, strike && { textDecorationLine: 'line-through' },
@@ -2191,13 +2194,14 @@ function PickerModal({ visible, onClose, title, children }: { visible: boolean; 
 function PanelRow({ label, icon, labelText, required, children }: {
   label: string; icon?: React.ReactNode | null; labelText?: string; required?: boolean; children: React.ReactNode;
 }) {
+  const skinAccentReq = useSkinAccent();
   const displayLabel = labelText || label;
   return (
     <View style={st.panelRow}>
       <View style={st.panelLabelRow}>
         {icon && <View style={{ marginRight: 6 }}>{icon}</View>}
         <Text style={st.panelLabel}>{displayLabel}</Text>
-        {required && <Text style={st.reqTag}>✱</Text>}
+        {required && <Text style={[st.reqTag, { color: skinAccentReq.accent }]}>✱</Text>}
       </View>
       {children}
     </View>

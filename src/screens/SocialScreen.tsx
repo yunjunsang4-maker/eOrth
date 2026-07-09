@@ -28,7 +28,7 @@ import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmSh
 import * as Haptics from 'expo-haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
@@ -1579,7 +1579,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
           ) : item.user.photo ? (
             <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : (
-            <Text style={{ fontSize: 11 }}>{item.user.emoji}</Text>
+            <PersonIcon size={12} color="#A0A0B0" />
           )}
         </View>
         <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
@@ -1767,8 +1767,8 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
     return (
       <ImageBackground
         source={bg.image}
-        style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', borderRadius: 8 }}
-        imageStyle={{ borderRadius: 8 }}
+        style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', borderRadius: 5 }}
+        imageStyle={{ borderRadius: 5 }}
         resizeMode="cover"
       >
         {slots}
@@ -1776,7 +1776,7 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
     );
   }
   return (
-    <View style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', backgroundColor: bg.color || '#FFFFFF', borderRadius: 8 }}>
+    <View style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', backgroundColor: bg.color || '#FFFFFF', borderRadius: 5 }}>
       {slots}
     </View>
   );
@@ -2224,6 +2224,7 @@ const DiaryCardMemo = React.memo(DiaryCard);
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
@@ -2512,7 +2513,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   onPress={() => navigation.navigate('PostDetail', { postId: snap.id })}
                 >
                   <LinearGradient
-                    colors={snap._hasUnviewed ? ['#22D3EE', '#A855F7', '#D946EF'] : ['#3A3A4A', '#3A3A4A']}
+                    colors={snap._hasUnviewed ? (skinAccent.ringGradient ?? ['#22D3EE', '#A855F7', '#D946EF']) : ['#3A3A4A', '#3A3A4A']}
                     style={s.storyRing}
                   >
                     <View style={s.storyAvatarWrap}>
@@ -2522,7 +2523,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                         ) : snap.user.photo ? (
                           <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : (
-                          <Text style={s.storyAvatarEmoji}>{snap.user.emoji}</Text>
+                          <PersonIcon size={30} color="#A0A0B0" />
                         )}
                       </View>
                     </View>

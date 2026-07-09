@@ -7,6 +7,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { compressImage } from '../utils/imageCompress';
 import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas, { cutHasBottomBand, type CutStamp } from '../components/CutPhotoCanvas';
@@ -50,6 +51,7 @@ const CUSTOM_ROWS: string[][] = [
 
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 활성 탭·칩 강조를 스킨색으로
   const selectedCountry = route.params?.selectedCountry ?? null;
   // 스트립 로고 제거(프리미엄) — 프리미엄이고 설정 토글이 켜져 있을 때만 로고 미포함
   const { isPremium, stripLogoRemoval } = useSettings();
@@ -294,7 +296,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         {bandLayout && (
           <View style={st.stampRow}>
             <TouchableOpacity
-              style={[st.stampChip, stampDateOn && st.stampChipOn]}
+              style={[st.stampChip, stampDateOn && [st.stampChipOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}
               activeOpacity={0.8}
               onPress={() => setStampDateOn((v) => !v)}
             >
@@ -303,7 +305,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={[st.stampChip, !!captionText && st.stampChipOn]}
+              style={[st.stampChip, !!captionText && [st.stampChipOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}
               activeOpacity={0.8}
               onPress={openCaption}
             >
@@ -315,7 +317,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         )}
         <View style={st.tabs}>
           {(['기본', '테마'] as const).map((cat) => (
-            <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && st.tabOn]}>
+            <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && [st.tabOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}>
               <Text style={[st.tabTxt, tab === cat && st.tabTxtOn]}>{tabLabel(cat)}</Text>
             </TouchableOpacity>
           ))}
@@ -381,7 +383,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               <TouchableOpacity
                 key={f.id}
                 onPress={() => pickFrame(f.id)}
-                style={[st.catItem, frameId === f.id && st.catItemOn]}
+                style={[st.catItem, frameId === f.id && [st.catItemOn, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.accent }]]}
                 activeOpacity={0.8}
               >
                 <CutPhotoCanvas
@@ -431,7 +433,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         onRequestClose={() => setCustomColorVisible(false)}
       >
         <Pressable style={st.ccOverlay} onPress={() => setCustomColorVisible(false)}>
-          <Pressable style={st.ccCard} onPress={() => {}}>
+          <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.customColorTitle')}</Text>
             {CUSTOM_ROWS.map((row, ri) => (
               <View key={ri} style={st.ccRow}>
@@ -460,7 +462,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         onRequestClose={() => setCaptionModalVisible(false)}
       >
         <Pressable style={st.ccOverlay} onPress={() => setCaptionModalVisible(false)}>
-          <Pressable style={st.ccCard} onPress={() => {}}>
+          <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
             <TextInput
               style={[st.capInput, handleFontStyle(captionFont)]}
@@ -479,7 +481,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                 return (
                   <TouchableOpacity
                     key={f.id}
-                    style={[st.capFontChip, selected && st.capFontChipOn]}
+                    style={[st.capFontChip, selected && [st.capFontChipOn, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.accent }]]}
                     activeOpacity={0.8}
                     onPress={() => setCaptionFont(f.id === 'default' ? null : f.id)}
                   >
@@ -505,7 +507,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 사진 불러오는 중 (특히 iCloud 다운로드) */}
       {pickingPhoto && (
         <View style={st.loadingOverlay}>
-          <ActivityIndicator size="large" color={C.purple} />
+          <ActivityIndicator size="large" color={skinAccent.accent} />
           <Text style={st.loadingText}>{t('cut.loading')}</Text>
         </View>
       )}

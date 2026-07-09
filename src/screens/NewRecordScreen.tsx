@@ -19,6 +19,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
@@ -202,6 +203,7 @@ const WEATHER_ICON_MAP: Record<string, React.ReactNode> = {
 
 // ─── 진행 바 ───
 function StepProgressBar({ current, total }: { current: number; total: number }) {
+  const skinAccent = useSkinAccent(); // 활성 점·라인을 스킨색으로
   return (
     <View style={pb.wrap}>
       {Array.from({ length: total }, (_, i) => {
@@ -209,13 +211,13 @@ function StepProgressBar({ current, total }: { current: number; total: number })
         const active  = stepNum <= current;
         return (
           <React.Fragment key={stepNum}>
-            <View style={[pb.circle, active ? pb.circleActive : pb.circleInactive]}>
+            <View style={[pb.circle, active ? [pb.circleActive, { backgroundColor: skinAccent.accent }] : pb.circleInactive]}>
               {active
                 ? <View style={pb.dot} />
                 : <View style={pb.dotEmpty} />}
             </View>
             {i < total - 1 && (
-              <View style={[pb.line, stepNum < current ? pb.lineActive : pb.lineInactive]} />
+              <View style={[pb.line, stepNum < current ? [pb.lineActive, { backgroundColor: skinAccent.accent }] : pb.lineInactive]} />
             )}
           </React.Fragment>
         );
@@ -291,6 +293,7 @@ function StepNavBar({
   saving?: boolean;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   return (
     <View style={nav.wrap}>
       {step > 1 ? (
@@ -302,7 +305,7 @@ function StepNavBar({
       )}
       {step < totalSteps ? (
         <TouchableOpacity
-          style={[nav.nextBtn, !canNext && nav.nextBtnDisabled]}
+          style={[nav.nextBtn, { backgroundColor: skinAccent.accentDeep }, !canNext && nav.nextBtnDisabled]}
           onPress={onNext}
           activeOpacity={0.85}
         >
@@ -310,7 +313,7 @@ function StepNavBar({
         </TouchableOpacity>
       ) : (
         <TouchableOpacity
-          style={[nav.saveBtn, (!canNext || saving) && nav.nextBtnDisabled]}
+          style={[nav.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canNext || saving) && nav.nextBtnDisabled]}
           onPress={onSave}
           activeOpacity={0.85}
           disabled={saving}
@@ -413,6 +416,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, followingUsers } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
@@ -1401,8 +1405,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {selectedCountries.length === 1 && (
                 <View style={s.selectedChipsWrap}>
                   {selectedCountries.map((c) => (
-                    <View key={c.name} style={s.countryChip}>
-                      <Text style={s.countryChipText}>{c.flag} {c.name}</Text>
+                    <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+                      <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
                       <TouchableOpacity
                         onPress={() => handleRemoveCountry(c.name)}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1439,7 +1443,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                         return (
                           <TouchableOpacity
                             key={r.name}
-                            style={[s.regionPickChip, active && s.regionPickChipActive]}
+                            style={[s.regionPickChip, active && [s.regionPickChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
                             onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
                             activeOpacity={0.75}
                           >
@@ -1453,7 +1457,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               )}
 
               {/* 검색창 — 항상 표시 */}
-              <View style={[s.searchCard, selectedCountries.length > 0 ? s.searchCardSelected : null]}>
+              <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
                 <View style={s.searchRow}>
                   <SearchIcon size={16} color={COLORS.textDim} />
                   <TextInput
@@ -1486,13 +1490,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     ) : (
                       groupedCountries.map(({ continent, countries }) => (
                         <View key={continent}>
-                          <Text style={s.continentHeader}>{continent}</Text>
+                          <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
                           {countries.map(c => {
                             const isSelected = selectedCountries.some(sc => sc.name === c.name);
                             return (
                               <TouchableOpacity
                                 key={c.name}
-                                style={[s.countryItem, isSelected && s.countryItemSelected]}
+                                style={[s.countryItem, isSelected && [s.countryItemSelected, { backgroundColor: skinAccent.tint(0.08) }]]}
                                 onPress={() => {
                                   if (isSelected) {
                                     handleRemoveCountry(c.name);
@@ -1503,8 +1507,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                                 }}
                               >
                                 <Text style={s.countryIcon}>{c.flag}</Text>
-                                <Text style={[s.countryName, isSelected && s.countryNameSelected]}>{c.name}</Text>
-                                {isSelected && <Text style={s.countryCheckMark}>✓</Text>}
+                                <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                                {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
                               </TouchableOpacity>
                             );
                           })}
@@ -1522,8 +1526,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 선택 완료 확인 */}
               {selectedCountries.length > 0 && countrySearch.length === 0 && (
-                <View style={s.selectedBadge}>
-                  <Text style={s.selectedBadgeTxt}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
+                <View style={[s.selectedBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
+                  <Text style={[s.selectedBadgeTxt, { color: skinAccent.accent }]}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
                 </View>
               )}
             </View>
@@ -1544,26 +1548,26 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 activeOpacity={0.8}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <CalendarIcon size={16} color={COLORS.purpleNeon} />
-                  <Text style={s.autoLoadBtnText}>{t('newRecord.autoLoadByPeriod')}</Text>
+                  <CalendarIcon size={16} color={skinAccent.accent} />
+                  <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
                 </View>
               </TouchableOpacity>
               {loadingMedia && (
                 <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
-                  <ActivityIndicator color="#BF85FC" size="large" />
+                  <ActivityIndicator color={skinAccent.accent} size="large" />
                   {cloudProgress && (
                     <>
                       <Text style={s.cloudProgressText}>
                         {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
                       </Text>
                       <TouchableOpacity
-                        style={s.cloudCancelBtn}
+                        style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
                         onPress={() => { cloudCancelRef.current = true; }}
                         activeOpacity={0.7}
                         accessibilityRole="button"
                         accessibilityLabel={t('newRecord.cloudCancelA11y')}
                       >
-                        <Text style={s.cloudCancelText}>{t('common.cancel')}</Text>
+                        <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
                       </TouchableOpacity>
                     </>
                   )}
@@ -1572,20 +1576,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 갤러리 선택 버튼 */}
               <TouchableOpacity
-                style={[s.addMediaBtn, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
+                style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
                 onPress={selectMedia}
                 activeOpacity={0.8}
                 disabled={medias.length >= maxRecordPhotos}
               >
                 <View style={s.addMediaLeft}>
-                  <DesignerCameraIcon size={20} color={COLORS.purpleNeon} />
+                  <DesignerCameraIcon size={20} color={skinAccent.accent} />
                   <View>
                     <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
                     <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
                   </View>
                 </View>
-                <View style={s.addMediaCountBadge}>
-                  <Text style={s.addMediaCountTxt}>{medias.length}/{maxRecordPhotos}</Text>
+                <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                  <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
                 </View>
               </TouchableOpacity>
 
@@ -1626,11 +1630,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   {selectedCountries.map((c, idx) => (
                     <TouchableOpacity
                       key={c.name}
-                      style={[s.countryTab, idx === activeCountryIdx && s.countryTabActive]}
+                      style={[s.countryTab, idx === activeCountryIdx && [s.countryTabActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
                       onPress={() => switchCountry(idx)}
                       activeOpacity={0.75}
                     >
-                      <Text style={[s.countryTabText, idx === activeCountryIdx && s.countryTabTextActive]}>{c.flag} {c.name}</Text>
+                      <Text style={[s.countryTabText, idx === activeCountryIdx && [s.countryTabTextActive, { color: skinAccent.accent }]]}>{c.flag} {c.name}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
@@ -1640,9 +1644,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.fieldBlock}>
                 <View style={s.perCountryLabelRow}>
                   <Text style={s.fieldLabelReq}>{t('newRecord.date')}</Text>
-                  <Text style={s.reqTag}>✱</Text>
+                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                   {isMultiCountry && (
-                    <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
+                    <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
                   )}
                 </View>
                 <TouchableOpacity
@@ -1659,7 +1663,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
                     <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
                   </View>
-                  <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={COLORS.purpleNeon} /></View>
+                  <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
                 </TouchableOpacity>
               </View>
 
@@ -1667,7 +1671,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
                   <Text style={s.fieldLabelReq}>{t('newRecord.textLabel')}</Text>
-                  <Text style={s.reqTag}>✱</Text>
+                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                 </View>
                 <TextInput
                   style={[s.fieldInput, s.memoInput]}
@@ -1686,13 +1690,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={s.companionSection}>
                 <View style={s.fieldLabelRow}>
                   <Text style={s.companionSectionLabel}>{t('newRecord.companionSelect')}</Text>
-                  <Text style={s.reqTag}>✱</Text>
+                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                 </View>
                 {/* 컴팩트 칩 */}
                 <View style={s.companionChipWrap}>
                   {DEFAULT_COMPANIONS.map(comp => {
                     const isActive = selectedCompanions.includes(comp);
-                    const iconColor = isActive ? COLORS.purpleNeon : COLORS.textDim;
+                    const iconColor = isActive ? skinAccent.accent : COLORS.textDim;
                     const COMP_ICONS: Record<string, React.ReactNode> = {
                       '혼자': <SoloIcon color={iconColor} />,
                       '친구': <FriendIcon color={iconColor} />,
@@ -1704,7 +1708,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     return (
                       <TouchableOpacity
                         key={comp}
-                        style={[s.companionChip, isActive && s.companionChipActive]}
+                        style={[s.companionChip, isActive && [s.companionChipActive, { backgroundColor: skinAccent.pill, borderColor: skinAccent.accent }]]}
                         onPress={() => toggleCompanion(comp)}
                         activeOpacity={0.75}
                       >
@@ -1718,9 +1722,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 {companionFriends.length > 0 && (
                   <View style={s.customChipRow}>
                     {companionFriends.map(friend => (
-                      <View key={friend} style={s.friendChip}>
-                        <View style={s.friendChipAvatar}>
-                          <Text style={s.friendChipAvatarTxt}>{friend[0]}</Text>
+                      <View key={friend} style={[s.friendChip, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]}>
+                        <View style={[s.friendChipAvatar, { backgroundColor: skinAccent.tint(0.3) }]}>
+                          <Text style={[s.friendChipAvatarTxt, { color: skinAccent.accent }]}>{friend[0]}</Text>
                         </View>
                         <Text style={s.friendChipName}>{friend}</Text>
                         <TouchableOpacity
@@ -1739,11 +1743,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   onPress={() => setFriendPickerVisible(true)}
                   activeOpacity={0.75}
                 >
-                  <FriendIcon color={COLORS.purpleNeon} />
+                  <FriendIcon color={skinAccent.accent} />
                   <Text style={s.addFriendTxt}>{t('newRecord.addAppFriend')}</Text>
                   {companionFriends.length > 0 && (
-                    <View style={s.addFriendBadge}>
-                      <Text style={s.addFriendBadgeTxt}>{companionFriends.length}</Text>
+                    <View style={[s.addFriendBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                      <Text style={[s.addFriendBadgeTxt, { color: skinAccent.accent }]}>{companionFriends.length}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -1754,13 +1758,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.ratingLabelRow}>
                   <View style={s.perCountryLabelRow}>
                     <Text style={s.fieldLabelReq}>{t('newRecord.ratingLabel')}</Text>
-                    <Text style={s.reqTag}>✱</Text>
+                    <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                     {isMultiCountry && (
-                      <Text style={s.perCountryHint}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
+                      <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
                     )}
                   </View>
                   {rating > 0
-                    ? <Text style={s.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
+                    ? <Text style={[s.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)} / 5.0</Text>
                     : <Text style={s.ratingScoreEmpty}>{t('newRecord.ratingEmpty')}</Text>}
                 </View>
                 <View style={s.ratingCard}>
@@ -1779,7 +1783,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     return (
                       <TouchableOpacity
                         key={opt.value}
-                        style={[s.companionChip, isActive && s.companionChipActive]}
+                        style={[s.companionChip, isActive && [s.companionChipActive, { backgroundColor: skinAccent.pill, borderColor: skinAccent.accent }]]}
                         onPress={() => setVisibility(opt.value)}
                         activeOpacity={0.75}
                       >
@@ -1801,13 +1805,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.optRowHeader}>
                   <CoinIcon size={18} color={IC} />
                   <Text style={s.optRowTitle}>{t('newRecord.budget')}</Text>
-                  {budget ? <Text style={s.optCardValue}>{Number(budget).toLocaleString()} {currency}</Text> : null}
+                  {budget ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{Number(budget).toLocaleString()} {currency}</Text> : null}
                 </View>
                 <View style={s.optBudgetRow}>
                   {CURRENCIES.map(c => (
                     <TouchableOpacity
                       key={c}
-                      style={[s.optCurrencyChip, currency === c && s.optCurrencyChipActive]}
+                      style={[s.optCurrencyChip, currency === c && [s.optCurrencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                       onPress={() => chooseCurrency(c)}
                       activeOpacity={0.75}
                     >
@@ -1816,7 +1820,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   ))}
                   {/* 기타 통화 버튼 */}
                   <TouchableOpacity
-                    style={[s.optCurrencyChip, !CURRENCIES.includes(currency) && s.optCurrencyChipActive]}
+                    style={[s.optCurrencyChip, !CURRENCIES.includes(currency) && [s.optCurrencyChipActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                     onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
                     activeOpacity={0.75}
                   >
@@ -1840,13 +1844,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.optRowHeader}>
                   <WeatherIcon size={18} color={IC} />
                   <Text style={s.optRowTitle}>{t('newRecord.weather')}</Text>
-                  {weather ? <Text style={s.optCardValue}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
+                  {weather ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
                   {WEATHER_OPTIONS.map(w => (
                     <TouchableOpacity
                       key={w.value}
-                      style={[s.optSmallBtn, weather === w.value && s.optSmallBtnActive]}
+                      style={[s.optSmallBtn, weather === w.value && [s.optSmallBtnActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                       onPress={() => setWeather(weather === w.value ? '' : w.value)}
                       activeOpacity={0.75}
                     >
@@ -1864,18 +1868,18 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.optRowHeader}>
                   <DesignerPlaneIcon size={18} color={IC} />
                   <Text style={s.optRowTitle}>{t('newRecord.flightTitle')}</Text>
-                  {flightType ? <Text style={s.optCardValue}>{flightLabel(flightType)}</Text> : null}
+                  {flightType ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{flightLabel(flightType)}</Text> : null}
                 </View>
                 <View style={s.optChipRow}>
                   {FLIGHT_OPTIONS.map(f => (
                     <TouchableOpacity
                       key={f}
-                      style={[s.optFlightBtn, flightType === f && s.optFlightBtnActive]}
+                      style={[s.optFlightBtn, flightType === f && [s.optFlightBtnActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
                       onPress={() => setFlightType(flightType === f ? '' : f)}
                       activeOpacity={0.75}
                     >
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                        {f === '직항' ? <TakeoffIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} /> : <TransferIcon size={14} color={flightType === f ? COLORS.purpleNeon : COLORS.textDim} />}
+                        {f === '직항' ? <TakeoffIcon size={14} color={flightType === f ? skinAccent.accent : COLORS.textDim} /> : <TransferIcon size={14} color={flightType === f ? skinAccent.accent : COLORS.textDim} />}
                         <Text style={[s.optFlightTxt, flightType === f && s.optFlightTxtActive]}>
                           {flightLabel(f)}
                         </Text>
@@ -1890,19 +1894,19 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.optRowHeader}>
                   <TagIcon size={18} color={IC} />
                   <Text style={s.optRowTitle}>{t('newRecord.keyword')}</Text>
-                  {keywords.length > 0 && <Text style={s.optCardValue}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
+                  {keywords.length > 0 && <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
                 </View>
                 {/* 태그 + 입력창 인라인 */}
                 <View style={s.kwInputBox}>
                   {keywords.map(kw => (
                     <TouchableOpacity
                       key={kw}
-                      style={s.kwTag}
+                      style={[s.kwTag, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.35) }]}
                       onPress={() => setKeywords(prev => prev.filter(k => k !== kw))}
                       activeOpacity={0.75}
                     >
-                      <Text style={s.kwTagTxt}>{kw}</Text>
-                      <Text style={s.kwTagDel}> ✕</Text>
+                      <Text style={[s.kwTagTxt, { color: skinAccent.accent }]}>{kw}</Text>
+                      <Text style={[s.kwTagDel, { color: skinAccent.tint(0.6) }]}> ✕</Text>
                     </TouchableOpacity>
                   ))}
                   <TextInput
@@ -1931,8 +1935,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
       {/* 필수 미충족 안내 토스트 */}
       {hintMsg !== '' && (
-        <View style={s.hintToast} pointerEvents="none">
-          <Text style={s.hintToastText}>{hintMsg}</Text>
+        <View style={[s.hintToast, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.35) }]} pointerEvents="none">
+          <Text style={[s.hintToastText, { color: skinAccent.accent }]}>{hintMsg}</Text>
         </View>
       )}
 

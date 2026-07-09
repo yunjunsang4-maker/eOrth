@@ -9,6 +9,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
+import { useSkinAccent } from '../constants/skinTheme';
 
 /**
  * 네온 SNAP 버튼 — Group 2085664493.svg 100% 재현.
@@ -36,6 +37,7 @@ export const SnapButton: React.FC<SnapButtonProps> = ({
   style,
   accessibilityLabel = '스냅 기록',
 }) => {
+  const skinAccent = useSkinAccent(); // 네온 링 그라데이션을 스킨색으로 (aurora=기존 유지)
   return (
     <Pressable
       onPress={onPress}
@@ -77,8 +79,8 @@ export const SnapButton: React.FC<SnapButtonProps> = ({
             y2="67.4876"
             gradientUnits="userSpaceOnUse"
           >
-            <Stop offset="0" stopColor="#FF14E4" />
-            <Stop offset="1" stopColor="#00D8F3" />
+            <Stop offset="0" stopColor={skinAccent.ringGradient?.[0] ?? '#FF14E4'} />
+            <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#00D8F3'} />
           </LinearGradient>
         </Defs>
 

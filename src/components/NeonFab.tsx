@@ -81,8 +81,8 @@ export const NeonFab: React.FC<NeonFabProps> = ({
             y2="61.5704"
             gradientUnits="userSpaceOnUse"
           >
-            <Stop offset="0" stopColor="#00D8F3" />
-            <Stop offset="1" stopColor="#FF14E4" />
+            <Stop offset="0" stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+            <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#FF14E4'} />
           </LinearGradient>
         </Defs>
 

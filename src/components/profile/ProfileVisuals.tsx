@@ -117,7 +117,7 @@ export const ProfileAvatar = ({ photo, initial }: { photo?: string | null; initi
   const skinAccent = useSkinAccent(); // 아바타 글로우색을 스킨 강조색으로 (링 무지개는 유지)
   return (
   <GooeyCircle size={104} color={skinAccent.accent} glowOpacity={0.6}>
-    <LinearGradient colors={[NEON.cyan, NEON.purple, NEON.magenta]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pv.avatarRing}>
+    <LinearGradient colors={skinAccent.ringGradient ?? [NEON.cyan, NEON.purple, NEON.magenta]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pv.avatarRing}>
       {photo ? (
         <Image source={{ uri: photo }} style={pv.avatarImg} />
       ) : (
@@ -152,7 +152,7 @@ export const BadgeHighlightItem = ({ emoji, glow, earned = true }: { emoji: stri
   return (
   <LiquidPressable style={[pv.badgeItem, !earned && { opacity: 0.6 }]} intensity={0.1}>
     <GooeyCircle size={64} color={glow || skinAccent.accent} glowOpacity={earned ? 0.5 : 0.12}>
-      <NeonRing size={58} borderWidth={1.6} intensity={20} colors={earned ? [NEON.cyan, NEON.purple, NEON.magenta] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}>
+      <NeonRing size={58} borderWidth={1.6} intensity={20} colors={earned ? (skinAccent.ringGradient ?? [NEON.cyan, NEON.purple, NEON.magenta]) : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}>
         {earned ? <Text style={pv.badgeEmoji}>{emoji}</Text> : <Text style={pv.badgeLock}>🔒</Text>}
       </NeonRing>
     </GooeyCircle>

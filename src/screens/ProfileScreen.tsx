@@ -1919,8 +1919,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
                     <Defs>
                       <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                        <Stop stopColor="#00D8F3" />
-                        <Stop offset="1" stopColor="#EC34F7" />
+                        <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                        <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
                       </SvgLinearGradient>
                     </Defs>
                     <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />

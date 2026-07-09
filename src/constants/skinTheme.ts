@@ -10,15 +10,17 @@ export interface SkinAccent {
   pill: string;                   // 30% 틴트 (탭 알약·토글 등) — 스킨별 지정값
   btnGradient: [string, string];  // 기본 버튼 그라데이션 (aurora는 기존값 보존)
   barGradient: [string, string];  // 진행/스탯 바 그라데이션 (밝은→더 밝은)
+  // 그라데이션 테두리(네온 링) — null이면 각 사이트의 기존(aurora) 그라데이션 유지
+  ringGradient: [string, string] | null;
   rgb: [number, number, number];  // 밝은 강조색 RGB (틴트 파생용)
   tint: (alpha: number) => string; // 밝은 강조색의 알파 틴트
 }
 
 // aurora는 기존 앱 보라값을 그대로 매핑(현행 유지), cyan/mint는 지정 색.
-const SKIN_THEMES: Record<string, { accent: string; accentDeep: string; rgb: [number, number, number]; pill: string; btnGradient: [string, string]; barGradient: [string, string] }> = {
-  aurora: { accent: '#BF85FC', accentDeep: '#6B21A8', rgb: [191, 133, 252], pill: 'rgba(117, 26, 173, 0.3)', btnGradient: ['#7B61FF', '#5A42DD'], barGradient: ['#7B61FF', '#C084FC'] },
-  cyan:   { accent: '#2F83FF', accentDeep: '#1E5FBF', rgb: [47, 131, 255], pill: 'rgba(47, 131, 255, 0.3)', btnGradient: ['#2F83FF', '#1E5FBF'], barGradient: ['#2F83FF', '#7FB5FF'] }, // #2F83FF4D
-  mint:   { accent: '#86FFBC', accentDeep: '#188A4A', rgb: [134, 255, 188], pill: 'rgba(134, 255, 188, 0.3)', btnGradient: ['#3FD98A', '#188A4A'], barGradient: ['#00F37A', '#86FFBC'] },
+const SKIN_THEMES: Record<string, { accent: string; accentDeep: string; rgb: [number, number, number]; pill: string; btnGradient: [string, string]; barGradient: [string, string]; ringGradient: [string, string] | null }> = {
+  aurora: { accent: '#BF85FC', accentDeep: '#6B21A8', rgb: [191, 133, 252], pill: 'rgba(117, 26, 173, 0.3)', btnGradient: ['#7B61FF', '#5A42DD'], barGradient: ['#7B61FF', '#C084FC'], ringGradient: null },
+  cyan:   { accent: '#2F83FF', accentDeep: '#1E5FBF', rgb: [47, 131, 255], pill: 'rgba(47, 131, 255, 0.3)', btnGradient: ['#2F83FF', '#1E5FBF'], barGradient: ['#2F83FF', '#7FB5FF'], ringGradient: ['#00D8F3', '#28FF88'] }, // #2F83FF4D
+  mint:   { accent: '#86FFBC', accentDeep: '#188A4A', rgb: [134, 255, 188], pill: 'rgba(134, 255, 188, 0.3)', btnGradient: ['#3FD98A', '#188A4A'], barGradient: ['#00F37A', '#86FFBC'], ringGradient: ['#00D8F3', '#28FF88'] },
 };
 
 export function getSkinAccent(skin: string): SkinAccent {
@@ -30,6 +32,7 @@ export function getSkinAccent(skin: string): SkinAccent {
     pill: th.pill,
     btnGradient: th.btnGradient,
     barGradient: th.barGradient,
+    ringGradient: th.ringGradient,
     rgb: th.rgb,
     tint: (alpha: number) => `rgba(${r},${g},${b},${alpha})`,
   };

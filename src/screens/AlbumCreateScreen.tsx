@@ -8,6 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -48,6 +49,7 @@ const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup } = useRecords();
 
@@ -292,21 +294,21 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 ) : (
                   groupedCountries.map(({ continent, countries }) => (
                     <View key={continent}>
-                      <Text style={st.continentHeader}>{continent}</Text>
+                      <Text style={[st.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
                       {countries.map(c => {
                         const isSelected = selectedCountry?.name === c.name;
                         return (
                           <TouchableOpacity
                             key={c.name}
-                            style={[st.countryItem, isSelected && st.countryItemSelected]}
+                            style={[st.countryItem, isSelected && [st.countryItemSelected, { backgroundColor: skinAccent.tint(0.12) }]]}
                             onPress={() => {
                               setSelectedCountry(isSelected ? null : c);
                               setCountrySearch('');
                             }}
                           >
                             <Text style={st.countryIcon}>{c.flag}</Text>
-                            <Text style={[st.countryName, isSelected && st.countryNameSelected]}>{c.name}</Text>
-                            {isSelected && <Text style={st.countryCheckMark}>✓</Text>}
+                            <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                            {isSelected && <Text style={[st.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
                           </TouchableOpacity>
                         );
                       })}
@@ -320,7 +322,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <Text style={[st.fieldLabel, { marginTop: 20 }]}>{t('album.period')}</Text>
           <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
             <Text style={st.dateTxt}>{fmtDate(startDate)}</Text>
-            <Text style={st.dateArrow}>→</Text>
+            <Text style={[st.dateArrow, { color: skinAccent.accent }]}>→</Text>
             <Text style={st.dateTxt}>{fmtDate(endDate)}</Text>
           </TouchableOpacity>
 
@@ -332,8 +334,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             </LinearGradient>
           </TouchableOpacity>
 
-          <View style={st.noteBox}>
-            <Text style={st.noteTxt}>
+          <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2) }]}>
+            <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
               🔒 사진첩은 소셜과 지구본·대륙에 나타나지 않아요.{'\n'}오직 내 프로필의 여행기록카드로만 보관돼요.
             </Text>
           </View>
@@ -362,9 +364,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
-        <Text style={st.counter}>{selected.length} / {MAX_ALBUM_PHOTOS}</Text>
+        <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {MAX_ALBUM_PHOTOS}</Text>
         {isLimited && (
-          <Text style={st.limitedTxt}>{t('album.limitedTxt')}</Text>
+          <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>
         )}
       </View>
 
@@ -466,7 +468,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             </TouchableOpacity>
 
             {/* 제목 입력 */}
-            <Text style={st.pvPickLabel}>{t('album.albumName')}</Text>
+            <Text style={[st.pvPickLabel, { color: skinAccent.accent }]}>{t('album.albumName')}</Text>
             <TextInput
               style={st.pvInput}
               value={title}
@@ -477,7 +479,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             />
 
             {/* 썸네일 선택 — 선택된 썸네일을 한 번 더 누르면 노출 영역 조정 */}
-            <Text style={st.pvPickLabel}>{t('album.pickThumb')}</Text>
+            <Text style={[st.pvPickLabel, { color: skinAccent.accent }]}>{t('album.pickThumb')}</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.pvStrip}>
               {selected.map((uri) => {
                 const on = uri === cover;
