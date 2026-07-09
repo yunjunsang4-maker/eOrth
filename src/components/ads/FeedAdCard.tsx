@@ -32,9 +32,14 @@ interface Props {
 export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySide = 'right', onPress }: Props) {
   const { t } = useTranslation();
 
-  // 스티커 오버레이는 게시물을 가리므로 상시 노출 대신 '생겼다 → 사라졌다'를 반복한다.
+  // 스티커 오버레이는 게시물을 가리므로 상시 노출 대신 '붙였다 → 떼었다'를 반복한다.
+  //  · 붙일 때: 손으로 눌러 붙이듯 크게 떠 있다 스프링으로 착 정착(+기울기 살짝 흔들림)
+  //  · 뗄 때: 모서리가 들리듯 더 기울며 위로 떠오르면서 사라짐
   // 숨김 동안엔 터치도 통과시켜(기록 카드 조작 방해 없음), 화면 밖/백그라운드에선 사이클 정지.
-  const fade = useRef(new Animated.Value(0)).current;
+  const fade = useRef(new Animated.Value(0)).current;      // 불투명도
+  const press = useRef(new Animated.Value(0)).current;     // 스케일: 1.35(떠있음) → 1(붙음) → 1.12(떼어짐)
+  const rotOff = useRef(new Animated.Value(0)).current;    // 기울기 오프셋(도): +10(집어옴) → 0(정착) → -14(떼며 들림)
+  const lift = useRef(new Animated.Value(0)).current;      // 떼어낼 때 위로 떠오름(px)
   const [shown, setShown] = useState(false);
   const animationsActive = useAnimationsActive();
   const isStickerOverlay = variant === 'sticker' && !!overlay;
@@ -45,10 +50,22 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
     const cycle = () => {
       if (!alive) return;
       setShown(true);
-      Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start(() => {
+      // 붙이기: 살짝 큰 채로 나타나 → 착(스프링) + 기울기 정착
+      fade.setValue(0); press.setValue(1.35); rotOff.setValue(10); lift.setValue(0);
+      Animated.parallel([
+        Animated.timing(fade, { toValue: 1, duration: 160, useNativeDriver: true }),
+        Animated.spring(press, { toValue: 1, useNativeDriver: true, speed: 16, bounciness: 11 }),
+        Animated.spring(rotOff, { toValue: 0, useNativeDriver: true, speed: 14, bounciness: 9 }),
+      ]).start(() => {
         setTimeout(() => {
           if (!alive) return;
-          Animated.timing(fade, { toValue: 0, duration: 480, useNativeDriver: true }).start(() => {
+          // 떼기: 모서리 들리듯 반대로 기울며 위로 떠올라 사라짐
+          Animated.parallel([
+            Animated.timing(fade, { toValue: 0, duration: 430, useNativeDriver: true }),
+            Animated.timing(press, { toValue: 1.12, duration: 430, useNativeDriver: true }),
+            Animated.timing(rotOff, { toValue: -14, duration: 430, useNativeDriver: true }),
+            Animated.timing(lift, { toValue: -18, duration: 430, useNativeDriver: true }),
+          ]).start(() => {
             if (!alive) return;
             setShown(false);
             setTimeout(cycle, 2800); // 숨김 유지 후 재등장
@@ -57,9 +74,11 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
       });
     };
     cycle();
-    return () => { alive = false; fade.stopAnimation(); };
+    return () => { alive = false; fade.stopAnimation(); press.stopAnimation(); rotOff.stopAnimation(); lift.stopAnimation(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isStickerOverlay, animationsActive]);
+  // 기본 기울기(tilt)에 애니메이션 오프셋을 더한 회전
+  const stickerRotate = rotOff.interpolate({ inputRange: [-20, 20], outputRange: [`${tilt - 20}deg`, `${tilt + 20}deg`] });
 
   // ── 스티커 (Group 2085664520): 살짝 기울어진 라이트 폴라로이드 ──
   if (variant === 'sticker') {
@@ -70,8 +89,9 @@ export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySid
           s.stickerFrame,
           overlay && s.stickerOverlay,
           overlay && (overlaySide === 'left' ? s.stickerOverlayLeft : s.stickerOverlayRight),
-          { transform: [{ rotate: `${tilt}deg` }] },
-          isStickerOverlay && { opacity: fade },
+          isStickerOverlay
+            ? { opacity: fade, transform: [{ translateY: lift }, { rotate: stickerRotate }, { scale: press }] }
+            : { transform: [{ rotate: `${tilt}deg` }] },
         ]}
       >
         <TouchableOpacity

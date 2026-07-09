@@ -30,6 +30,7 @@ import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { useSkinAccent } from '../constants/skinTheme';
+import { setTabBarHidden } from '../components/tabBarVisibility';
 import {
   LiquidPressable,
   LiquidCardGlow,
@@ -1494,6 +1495,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   });
   const [isDragging, setIsDragging] = useState(false);
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
+  // 화면 이탈 시 드래그로 숨긴 탭 바가 남지 않게 안전 복원
+  useEffect(() => () => setTabBarHidden(false), []);
   // 카드 표시 순서(id 배열) — 드래그 재정렬은 이 순서만 갱신한다
   const [cardOrder, setCardOrder] = useState<string[]>(() => [...CARD_ORDER]);
   // ─── 여행 카드 합치기(병합 모드) — 탭 순서 유지, 첫 번째로 선택한 카드가 대표 ───
@@ -1556,6 +1559,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       tension: 140,
     }).start();
     setIsDragging(true);
+    // 드래그(순서 변경) 동안 하단 탭 바 잠시 숨김 — 하단 카드 이동 시 가리지 않게
+    setTabBarHidden(true);
   };
 
   const handleDragMove = (idx: number, dx: number, dy: number) => {
@@ -1573,6 +1578,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const handleDragEnd = (idx: number, dx: number, dy: number) => {
     if (mergeMode) return;
     setIsDragging(false);
+    setTabBarHidden(false);
     hoverIdxRef.current = null;
     setHoverIdx(null);
 
