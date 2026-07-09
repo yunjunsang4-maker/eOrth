@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import type { HouseAd } from '../../constants/houseAds';
+import { useAnimationsActive } from '../../hooks/useAnimationsActive';
 
 // 소셜 피드 광고 카드 — 마소너리 그리드에 게시물처럼 끼어드는 광고 슬롯 렌더러.
 // 두 가지 형태를 번갈아 렌더한다:
@@ -31,30 +32,64 @@ interface Props {
 export default function FeedAdCard({ ad, variant, tilt = -3, overlay, overlaySide = 'right', onPress }: Props) {
   const { t } = useTranslation();
 
+  // 스티커 오버레이는 게시물을 가리므로 상시 노출 대신 '생겼다 → 사라졌다'를 반복한다.
+  // 숨김 동안엔 터치도 통과시켜(기록 카드 조작 방해 없음), 화면 밖/백그라운드에선 사이클 정지.
+  const fade = useRef(new Animated.Value(0)).current;
+  const [shown, setShown] = useState(false);
+  const animationsActive = useAnimationsActive();
+  const isStickerOverlay = variant === 'sticker' && !!overlay;
+  useEffect(() => {
+    if (!isStickerOverlay) return;
+    if (!animationsActive) { fade.setValue(0); setShown(false); return; }
+    let alive = true;
+    const cycle = () => {
+      if (!alive) return;
+      setShown(true);
+      Animated.timing(fade, { toValue: 1, duration: 380, useNativeDriver: true }).start(() => {
+        setTimeout(() => {
+          if (!alive) return;
+          Animated.timing(fade, { toValue: 0, duration: 480, useNativeDriver: true }).start(() => {
+            if (!alive) return;
+            setShown(false);
+            setTimeout(cycle, 2800); // 숨김 유지 후 재등장
+          });
+        }, 4200); // 표시 유지
+      });
+    };
+    cycle();
+    return () => { alive = false; fade.stopAnimation(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStickerOverlay, animationsActive]);
+
   // ── 스티커 (Group 2085664520): 살짝 기울어진 라이트 폴라로이드 ──
   if (variant === 'sticker') {
     return (
-      <TouchableOpacity
+      <Animated.View
+        pointerEvents={isStickerOverlay && !shown ? 'none' : 'box-none'}
         style={[
           s.stickerFrame,
           overlay && s.stickerOverlay,
           overlay && (overlaySide === 'left' ? s.stickerOverlayLeft : s.stickerOverlayRight),
           { transform: [{ rotate: `${tilt}deg` }] },
+          isStickerOverlay && { opacity: fade },
         ]}
-        onPress={onPress}
-        activeOpacity={1}
-        accessibilityRole="button"
-        accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
       >
-        {/* 밝은 사진 영역 + 중앙 헤드라인 (시안: 중앙 정렬 다크 텍스트) */}
-        <View style={s.stickerPhoto}>
-          <Text style={s.stickerEmoji}>{ad.emoji}</Text>
-          <Text style={[s.stickerTitle, { fontFamily: SERIF }]} numberOfLines={2}>{t(ad.titleKey)}</Text>
-          <View style={s.badge}>
-            <Text style={s.badgeText}>{t('social.adBadge')}</Text>
+        <TouchableOpacity
+          onPress={onPress}
+          activeOpacity={1}
+          accessibilityRole="button"
+          accessibilityLabel={`${t('social.adBadge')} · ${t(ad.titleKey)}`}
+        >
+          {/* 밝은 사진 영역 + 중앙 헤드라인 (시안: 중앙 정렬 다크 텍스트) */}
+          <View style={s.stickerPhoto}>
+            <Text style={s.stickerEmoji}>{ad.emoji}</Text>
+            <Text style={[s.stickerTitle, { fontFamily: SERIF }]} numberOfLines={2}>{t(ad.titleKey)}</Text>
+            <View style={s.badge}>
+              <Text style={s.badgeText}>{t('social.adBadge')}</Text>
+            </View>
           </View>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+      </Animated.View>
     );
   }
 

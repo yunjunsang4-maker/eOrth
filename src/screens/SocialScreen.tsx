@@ -2429,33 +2429,38 @@ function FriendsTab({ navigation }: { navigation: any }) {
     [allVisible]
   );
 
-  // 광고 슬롯 삽입 — 첫 광고는 게시물 2개 이상일 때 1번째 게시물 뒤에,
-  // 이후로는 AD_FREQ개마다 1개(6·11·16번째 뒤 …). 폴라로이드/피드형 교차.
+  // 광고 슬롯 삽입 — 폴라로이드/스티커 주기를 독립 운용.
+  //  · 폴라로이드(독립 카드): 1번째 게시물 뒤 시작, 5개 주기(1·6·11번째 뒤 …)
+  //  · 스티커(게시물 위 오버레이): 4번째 게시물부터 시작, 5개 주기(4·9·14번째 …)
   // 소스는 현재 하우스 광고(getHouseAd) — 직판/AdMob으로 교체 시 이 지점만 갈아끼운다.
   const AD_FREQ = 5;
+  const STICKER_OFFSET = 3; // i=3 → 4번째 게시물부터
   const timelineWithAds = useMemo(() => {
     // 프리미엄 구독자는 광고 제거
     if (!FEED_ADS_ENABLED || isPremium || timelineItems.length < 2) return timelineItems;
     const out: any[] = [];
-    let slot = 0;
+    let polaroidSlot = 0;
+    let stickerSlot = 0;
     timelineItems.forEach((item, i) => {
-      // 마지막 게시물 뒤에는 삽입하지 않음 — 피드 끝이 광고로 끝나는 것 방지
-      const adHere = i % AD_FREQ === 0 && i < timelineItems.length - 1;
-      // 슬롯 교차: 짝수=폴라로이드(피드 흐름에 별도 카드), 홀수=스티커(게시물 위 오버레이)
-      const useSticker = adHere && slot % 2 === 1;
-      // 스티커는 별도 카드가 아니라 이 게시물에 부착해 위로 겹친다 (시안 iPhone 17 - 54)
-      out.push(useSticker ? { ...item, _overlayAd: getHouseAd(slot), _overlayTilt: slot % 4 < 2 ? -8 : 9 } : item);
-      if (adHere && !useSticker) {
+      // 마지막 게시물에는 광고를 붙이지/뒤에 넣지 않음 — 피드 끝이 광고로 끝나는 것 방지
+      const isLast = i === timelineItems.length - 1;
+      // 스티커: 별도 카드가 아니라 이 게시물에 부착해 위로 겹친다 (시안 iPhone 17 - 54)
+      const stickerHere = i % AD_FREQ === STICKER_OFFSET && !isLast;
+      out.push(stickerHere ? { ...item, _overlayAd: getHouseAd(stickerSlot), _overlayTilt: stickerSlot % 2 === 0 ? -8 : 9 } : item);
+      if (stickerHere) stickerSlot += 1;
+      // 폴라로이드: 피드 흐름에 독립 카드로 삽입
+      const polaroidHere = i % AD_FREQ === 0 && !isLast;
+      if (polaroidHere) {
         out.push({
           _adSlot: true,
-          id: `ad-slot-${slot}`,
-          ad: getHouseAd(slot),
+          id: `ad-slot-${polaroidSlot}`,
+          ad: getHouseAd(polaroidSlot),
           adVariant: 'polaroid' as FeedAdVariant,
           // 폴라로이드 기울기를 슬롯마다 살짝 다르게 (±3도 교차)
-          adTilt: slot % 4 < 2 ? -3 : 3,
+          adTilt: polaroidSlot % 2 === 0 ? -3 : 3,
         });
+        polaroidSlot += 1;
       }
-      if (adHere) slot += 1;
     });
     return out;
   }, [timelineItems, isPremium]);
