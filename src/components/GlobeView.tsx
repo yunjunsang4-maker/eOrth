@@ -154,6 +154,63 @@ starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions,
 var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.6 });
 scene.add(new THREE.Points(starGeo, starMat));
 
+// 별똥별 (3D) — 지구본 뒤(깊이 Z<0)에서 좌상단→우상단으로 살짝 떨어지며 지나감.
+// 그라데이션 꼬리 플레인. 깊이 테스트로 지구본 구체 뒤로 자연스럽게 가려진다. animate 루프에서 갱신.
+var SHOOT = (function(){
+  var cv = document.createElement('canvas'); cv.width = 128; cv.height = 8;
+  var cx = cv.getContext('2d');
+  var grd = cx.createLinearGradient(0, 0, 128, 0);
+  grd.addColorStop(0.0, 'rgba(255,255,255,0)');
+  grd.addColorStop(0.62, 'rgba(202,130,255,0.55)');
+  grd.addColorStop(1.0, 'rgba(255,255,255,1)');
+  cx.fillStyle = grd; cx.fillRect(0, 0, 128, 8);
+  var tex = new THREE.CanvasTexture(cv); tex.minFilter = THREE.LinearFilter;
+
+  var Z = -22; // 지구본(원점) 뒤 깊이
+  var geo = new THREE.PlaneGeometry(1, 1);
+  var pool = [];
+  for (var i = 0; i < 3; i++) {
+    var mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, opacity: 0 });
+    var m = new THREE.Mesh(geo, mat); m.visible = false; m.position.z = Z; scene.add(m);
+    pool.push({ mesh: m, active: false, t: 0, dur: 1, sx: 0, sy: 0, ex: 0, ey: 0 });
+  }
+  function bounds() {
+    var dist = camera.position.z - Z;
+    var halfH = Math.tan((45 * Math.PI / 180) / 2) * dist / camera.zoom;
+    return { halfW: halfH * (window.innerWidth / window.innerHeight), halfH: halfH };
+  }
+  function fire(s) {
+    var b = bounds();
+    var len = b.halfW * (0.16 + Math.random() * 0.12);
+    var startY = b.halfH * (0.35 + Math.random() * 0.55);
+    var drop = b.halfH * (0.06 + Math.random() * 0.10);
+    s.sx = -b.halfW - len; s.sy = startY; s.ex = b.halfW + len; s.ey = startY - drop;
+    s.dur = 720 + Math.random() * 520; s.t = 0; s.active = true;
+    s.mesh.visible = true; s.mesh.scale.set(len, len * 0.05, 1);
+    s.mesh.rotation.z = Math.atan2(s.ey - s.sy, s.ex - s.sx);
+  }
+  var nextAt = performance.now() + 1500 + Math.random() * 2200;
+  function update(now, dtMs) {
+    if (now >= nextAt) {
+      var n = 2 + (Math.random() < 0.5 ? 1 : 0);
+      var idle = pool.filter(function(s){ return !s.active; });
+      for (var k = 0; k < Math.min(n, idle.length); k++) {
+        (function(s, delay){ setTimeout(function(){ if (!window.__globePaused) fire(s); }, delay); })(idle[k], k * (150 + Math.random() * 300));
+      }
+      nextAt = now + 4200 + Math.random() * 5200;
+    }
+    for (var i = 0; i < pool.length; i++) {
+      var s = pool[i]; if (!s.active) continue;
+      s.t += dtMs / s.dur;
+      if (s.t >= 1) { s.active = false; s.mesh.visible = false; s.mesh.material.opacity = 0; continue; }
+      s.mesh.position.set(s.sx + (s.ex - s.sx) * s.t, s.sy + (s.ey - s.sy) * s.t, Z);
+      var o = s.t < 0.12 ? (s.t / 0.12) : (s.t > 0.82 ? (1 - (s.t - 0.82) / 0.18) : 1);
+      s.mesh.material.opacity = Math.max(0, o);
+    }
+  }
+  return { update: update };
+})();
+
 // Globe group
 var globe = new THREE.Group();
 scene.add(globe);
@@ -933,9 +990,13 @@ function updateAdMarkers() {
 }
 
 // Animation loop
+var _shootLastT = performance.now();
 function animate() {
   requestAnimationFrame(animate);
-  if (window.__globePaused) return; // RN이 화면 밖(다른 탭/백그라운드)일 때 렌더 작업 스킵 → 발열 감소
+  if (window.__globePaused) { _shootLastT = performance.now(); return; } // 화면 밖일 때 스킵 → 발열 감소
+  var _now = performance.now();
+  var _dt = Math.min(50, _now - _shootLastT); _shootLastT = _now;
+  SHOOT.update(_now, _dt); // 별똥별 갱신
 
   if (!isDragging && cfg.autoRotate) {
     velocity.x *= 0.95;
@@ -1254,6 +1315,26 @@ function buildNeonTexture(){
     ctx.fillStyle = v ? (v.color || globeDefaultColor) : NEON_LAND;
     ctx.beginPath(); path(f); ctx.fill();
   });
+  // 모노톤 노이즈(0.5px, #00000040 25%) — 지정 활성화 색(#E0C9FF/#FD07E0)으로 칠한 국가에만 입힘.
+  // MainScreen의 NOISE_ACTIVE_COLORS와 값 일치 필요.
+  (function(){
+    var NOISE_COLORS = ['#E0C9FF','#FD07E0'];
+    var isNoise = function(col){ col=(col||'').toUpperCase(); return NOISE_COLORS.indexOf(col)!==-1; };
+    var hasAny = worldData.features.some(function(f){ var v=visitedMap[f.properties.name||'']; return v && isNoise(v.color||globeDefaultColor); });
+    if(!hasAny) return;
+    var nc=document.createElement('canvas'); nc.width=96; nc.height=96;
+    var nx=nc.getContext('2d'); var img=nx.createImageData(96,96);
+    for(var i=0;i<img.data.length;i+=4){
+      if(Math.random()<0.25){ img.data[i]=0; img.data[i+1]=0; img.data[i+2]=0; img.data[i+3]=64; } else { img.data[i+3]=0; }
+    }
+    nx.putImageData(img,0,0);
+    var pat=ctx.createPattern(nc,'repeat');
+    worldData.features.forEach(function(f){
+      var v=visitedMap[f.properties.name||'']; if(!v || !isNoise(v.color||globeDefaultColor)) return;
+      ctx.save(); ctx.beginPath(); path(f); ctx.clip();
+      ctx.fillStyle=pat; ctx.beginPath(); path(f); ctx.fill(); ctx.restore();
+    });
+  })();
   // 방문국 내부 발광(가산)
   ctx.globalCompositeOperation='lighter';
   worldData.features.forEach(function(f){

@@ -11,9 +11,10 @@ const srand = (seed: number) => {
 interface Props {
   opacity?: number;
   dotCount?: number;
+  color?: string; // 점 색 (기본 흰색; 다크 노이즈엔 '#000000')
 }
 
-export default function GrainOverlay({ opacity = 0.06, dotCount = 120 }: Props) {
+export default function GrainOverlay({ opacity = 0.06, dotCount = 120, color = '#FFFFFF' }: Props) {
   const dots = useMemo(() => {
     const arr = [];
     for (let i = 0; i < dotCount; i++) {
@@ -42,7 +43,7 @@ export default function GrainOverlay({ opacity = 0.06, dotCount = 120 }: Props) 
           cx={d.cx}
           cy={d.cy}
           r={d.r}
-          fill="#FFFFFF"
+          fill={color}
           opacity={d.o * opacity}
         />
       ))}

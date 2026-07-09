@@ -36,10 +36,11 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
-import { getGlobeSkinTheme } from '../constants/globeSkins';
+import { getGlobeSkinTheme, GLOBE_SKINS } from '../constants/globeSkins';
 import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
+import GrainOverlay from '../components/GrainOverlay';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { setCoachActive, setCoachBright } from '../components/coachOverlayState';
 import { EorthLogo } from '../components/EorthLogo';
@@ -58,8 +59,19 @@ const DS_CARD_W = Math.min(325, width - 24);
 const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
 const DS_PAD = DS_CARD_W * (29 / 325); // 좌우 패딩 29 (버튼폭 268)
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
-const DS_PALETTE = ['#BF85FC', '#7B61FF', '#FF6B6B', '#4ECDC4', '#FFD93D'];
-const DS_PALETTE_MORE = ['#6BCB77', '#FF8C42', '#4D96FF', '#FF69B4', '#00D2FF', '#E040FB'];
+// 스킨별 활성화색 팔레트(각 4색). aurora=보라(뒤 2색 노이즈), cyan=시안. 미지정 스킨(mint 등)은 aurora 폴백.
+const DS_PALETTES: Record<string, string[]> = {
+  aurora: ['#EC34F7', '#C982FF', '#E0C9FF', '#FD07E0'],
+  cyan:   ['#02E2FF', '#00D8F3', '#C3F8FF', '#86FFF3'],
+  mint:   ['#86FFBC', '#00F37A', '#C3FFCD', '#86FF9A'],
+};
+const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;
+// 스킨 전환 시 기본 활성화색 (현재 색이 새 팔레트에 없을 때 적용)
+const SKIN_DEFAULT_COLOR: Record<string, string> = { aurora: '#C982FF', cyan: '#00D8F3', mint: '#86FFBC' };
+const getSkinDefaultColor = (skin: string): string => SKIN_DEFAULT_COLOR[skin] || getSkinPalette(skin)[0];
+// 모노톤 노이즈(0.5px, #00000040 25%) 적용 색(aurora 2색) — GlobeView와 값 일치 필요
+const NOISE_ACTIVE_COLORS = ['#E0C9FF', '#FD07E0'];
+const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
 const SHEET_HEIGHT = height * 0.6;
 const COUNTRY_SHEET_HEIGHT = height * 0.65;
 
@@ -449,7 +461,8 @@ export default function MainScreen({ navigation, route }: Props) {
   // 지구본/대륙 표시 설정 — settingsStore에서 영속 관리
   const {
     globeVariant, setGlobeVariant,
-    globeSkin,
+    globeSkin, setGlobeSkin,
+    isPremium,
     globeDisplayMode, setGlobeDisplayMode,
     regionGlobalMode, setRegionGlobalMode,
     globeColor, setGlobeColor,
@@ -460,7 +473,6 @@ export default function MainScreen({ navigation, route }: Props) {
   } = useSettings();
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
-  const [dsShowMoreColors, setDsShowMoreColors] = useState(false); // 기본 색상 팔레트 '+' 확장
 
   // 표시 설정 모달은 라이브로 적용되므로, 열 때 스냅샷을 떠두고 "취소(바깥 탭)" 시 원복한다
   const dsSnapshot = useRef<{
@@ -970,6 +982,20 @@ export default function MainScreen({ navigation, route }: Props) {
                 <GlobeDisplayIcon />
               </BlurView>
             </TouchableOpacity>
+            {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림 */}
+            <TouchableOpacity
+              style={styles.globeColorBtn}
+              activeOpacity={0.7}
+              onPress={openDisplaySettings}
+              accessibilityRole="button"
+              accessibilityLabel={t('main.activeColorA11y')}
+            >
+              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+                <View style={[styles.globeColorDot, { backgroundColor: globeColor }, isNoiseColor(globeColor) && { overflow: 'hidden' }]}>
+                  {isNoiseColor(globeColor) && <GrainOverlay color="#000000" opacity={0.5} dotCount={40} />}
+                </View>
+              </BlurView>
+            </TouchableOpacity>
           </>
         ) : regionCountry ? (
           <>
@@ -1409,54 +1435,48 @@ export default function MainScreen({ navigation, route }: Props) {
                 <Text style={styles.dsTitle}>{t('main.territoryDisplayTitle')}</Text>
                 <Text style={styles.dsSub}>{t('main.territoryDisplaySub')}</Text>
 
-                {/* 국기 / 색상 세그먼트 토글 (솔리드 보라 + 라벤더 글로우) */}
-                <View style={dsm.toggleRow}>
-                  <TouchableOpacity
-                    style={[dsm.toggleBtn, globeDisplayMode !== 'color' ? dsm.toggleBtnActive : dsm.toggleBtnIdle]}
-                    activeOpacity={0.85}
-                    onPress={() => { setGlobeDisplayMode('flag'); setEditingCountryColor(null); }}
-                  >
-                    <Text style={dsm.toggleText}>{t('main.flag')}</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[dsm.toggleBtn, globeDisplayMode === 'color' ? dsm.toggleBtnActive : dsm.toggleBtnIdle]}
-                    activeOpacity={0.85}
-                    onPress={() => setGlobeDisplayMode('color')}
-                  >
-                    <Text style={dsm.toggleText}>{t('main.color')}</Text>
-                  </TouchableOpacity>
+                {/* 지구본 스킨 (본체 색) — aurora(색 활성화) 폼에만 적용되므로 그때만 노출 */}
+                {globeVariant === 'aurora' && (<>
+                <Text style={[dsm.sectionLabel, { marginTop: 6 }]}>{t('settings.globeSkin')}</Text>
+                <View style={dsm.skinRow}>
+                  {GLOBE_SKINS.map(s => {
+                    const selected = globeSkin === s.id;
+                    const locked = s.premium && !isPremium;
+                    return (
+                      <TouchableOpacity
+                        key={s.id}
+                        style={dsm.skinItem}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          if (locked) { setDisplaySettingsVisible(false); navigation.navigate('Premium'); return; }
+                          setGlobeSkin(s.id);
+                          // 활성화색이 새 스킨 팔레트에 없으면 그 스킨 기본색으로 맞춤
+                          if (getSkinPalette(s.id).indexOf(globeColor) === -1) setGlobeColor(getSkinDefaultColor(s.id));
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel={t(s.labelKey)}
+                      >
+                        <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[dsm.skinCircle, selected && dsm.skinCircleActive]}>
+                          {locked && <Text style={dsm.skinLock}>🔒</Text>}
+                        </LinearGradient>
+                        <Text style={[dsm.skinLabel, selected && dsm.skinLabelActive]} numberOfLines={1}>{t(s.labelKey)}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
+                </>)}
 
-                {/* 갤러리에서 가져오기 */}
-                <TouchableOpacity style={dsm.galleryBtn} activeOpacity={0.85} onPress={handlePickGlobePhoto}>
-                  <Text style={dsm.galleryText}>{t('main.importFromGallery')}</Text>
-                </TouchableOpacity>
-
-                {/* 기본 색상 팔레트 */}
-                <Text style={dsm.sectionLabel}>{t('main.defaultColor')}</Text>
+                {/* 활성화 색상 팔레트 (국기/갤러리 옵션 제거 — 색상만) */}
+                <Text style={[dsm.sectionLabel, { marginTop: 16 }]}>{t('main.defaultColor')}</Text>
                 <View style={dsm.paletteRow}>
-                  {DS_PALETTE.map(c => (
+                  {getSkinPalette(globeSkin).map(c => (
                     <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
-                      <View style={[dsm.swatch, { backgroundColor: c }, globeColor === c && dsm.swatchActive]} />
+                      <View style={[dsm.swatch, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, globeColor === c && dsm.swatchActive]}>
+                        {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={100} />}
+                      </View>
                     </TouchableOpacity>
                   ))}
-                  <TouchableOpacity activeOpacity={0.8} onPress={() => setDsShowMoreColors(v => !v)}>
-                    <View style={dsm.addSwatch}>
-                      <Svg width={18} height={18} viewBox="0 0 14 14">
-                        <SvgPath d="M7 1.5a1 1 0 0 1 1 1V6h3.5a1 1 0 1 1 0 2H8v3.5a1 1 0 1 1-2 0V8H2.5a1 1 0 1 1 0-2H6V2.5a1 1 0 0 1 1-1z" fill="#E7E7E7" fillOpacity={0.7} />
-                      </Svg>
-                    </View>
-                  </TouchableOpacity>
                 </View>
-                {dsShowMoreColors && (
-                  <View style={[dsm.paletteRow, { marginTop: 10, flexWrap: 'wrap' }]}>
-                    {DS_PALETTE_MORE.map(c => (
-                      <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => { setGlobeColor(c); setGlobeDisplayMode('color'); }}>
-                        <View style={[dsm.swatch, { backgroundColor: c }, globeColor === c && dsm.swatchActive]} />
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                )}
 
                 {/* 국가별 색상 리스트 (하단 페이드) */}
                 <Text style={[dsm.sectionLabel, { marginTop: 18 }]}>{t('main.countryColors')}</Text>
@@ -1485,9 +1505,11 @@ export default function MainScreen({ navigation, route }: Props) {
                           </TouchableOpacity>
                           {isEditing && (
                             <View style={dsm.countryPalette}>
-                              {[...DS_PALETTE, ...DS_PALETTE_MORE].map(c => (
+                              {getSkinPalette(globeSkin).map(c => (
                                 <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setCountryColors(prev => ({ ...prev, [nameEn]: c }))}>
-                                  <View style={[dsm.swatchSm, { backgroundColor: c }, (countryColors[nameEn] || globeColor) === c && dsm.swatchSmActive]} />
+                                  <View style={[dsm.swatchSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, (countryColors[nameEn] || globeColor) === c && dsm.swatchSmActive]}>
+                                    {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
+                                  </View>
                                 </TouchableOpacity>
                               ))}
                               {countryColors[nameEn] && (
@@ -1604,9 +1626,11 @@ export default function MainScreen({ navigation, route }: Props) {
                             {/* 지역별 색상 선택 (색상 모드일 때 점 탭으로 펼침) */}
                             {isEditing && effectiveMode === 'color' && (
                               <View style={styles.dsCountryPalette}>
-                                {[...DS_PALETTE, ...DS_PALETTE_MORE].map(c => (
+                                {getSkinPalette(globeSkin).map(c => (
                                   <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setRegionColors(prev => ({ ...prev, [r.key]: c }))}>
-                                    <View style={[styles.dsColorItemSm, { backgroundColor: c }, (regionColors[r.key] || globeColor) === c && styles.dsColorItemSmActive]} />
+                                    <View style={[styles.dsColorItemSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, (regionColors[r.key] || globeColor) === c && styles.dsColorItemSmActive]}>
+                                      {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
+                                    </View>
                                   </TouchableOpacity>
                                 ))}
                                 {regionColors[r.key] && (
@@ -1675,7 +1699,15 @@ const dsm = StyleSheet.create({
   galleryBtn: { height: 49, borderRadius: 15, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   galleryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   sectionLabel: { color: '#9A9A9A', fontSize: 13, fontWeight: '600', marginBottom: 14 },
-  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  // 지구본 스킨 선택 행
+  skinRow: { flexDirection: 'row', gap: 18, marginBottom: 4 },
+  skinItem: { alignItems: 'center', gap: 6, width: 60 },
+  skinCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
+  skinCircleActive: { borderColor: '#FFFFFF' },
+  skinLock: { fontSize: 16 },
+  skinLabel: { color: '#9A9A9A', fontSize: 11 },
+  skinLabelActive: { color: '#FFFFFF', fontWeight: '600' },
+  paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
   swatch: { width: 34, height: 34, borderRadius: 17 },
   swatchActive: { borderWidth: 2, borderColor: '#fff' },
   addSwatch: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
@@ -2243,6 +2275,29 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     overflow: 'hidden',
+  },
+  // 활성화 색 변경 버튼 — 형태 전환 버튼(right:16) 왼쪽에 나란히 (36 + 10 gap)
+  globeColorBtn: {
+    position: 'absolute',
+    top: 12,
+    right: 62,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+    overflow: 'hidden',
+  },
+  globeColorDot: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.55)',
   },
   globeSettingsIcon: {
     width: 18,

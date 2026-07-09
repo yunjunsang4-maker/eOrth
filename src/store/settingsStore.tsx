@@ -197,7 +197,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [globeVariant, setGlobeVariant] = useState<GlobeVariant>('aurora'); // 디폴트: 보라 발광 행성
   const [globeSkin, setGlobeSkin] = useState('aurora'); // 지구본 스킨 — 기본(오로라)
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
-  const [globeColor, setGlobeColor] = useState('#BF85FC');
+  const [globeColor, setGlobeColor] = useState('#C982FF'); // 보라 활성화색 기본 (팔레트 4종 중)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
@@ -276,7 +276,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setGlobeVariant(p.globeVariant ?? 'aurora');
       setGlobeSkin(p.globeSkin ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
-      setGlobeColor(p.globeColor ?? '#BF85FC');
+      setGlobeColor(p.globeColor ?? '#C982FF');
       setCountryColors(p.countryColors ?? {});
       setCountryDisplayModes(p.countryDisplayModes ?? {});
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
