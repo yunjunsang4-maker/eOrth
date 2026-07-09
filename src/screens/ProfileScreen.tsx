@@ -29,6 +29,7 @@ import { useTranslation } from 'react-i18next';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
+import { useSkinAccent } from '../constants/skinTheme';
 import {
   LiquidPressable,
   LiquidCardGlow,
@@ -1227,13 +1228,14 @@ function DraggableCardWrapper({
 // ─── 병합 모드 카드 오버레이 — 선택 시 네온 테두리 + 우상단 뱃지(대표/순번), 미선택 시 빈 원 ───
 function MergeSelectOverlay({ order, radius, primaryLabel }: { order: number; radius: number; primaryLabel: string }) {
   const selected = order >= 0;
+  const skinAccent = useSkinAccent();
   return (
     <View
       pointerEvents="none"
       style={[
         StyleSheet.absoluteFill,
         { borderRadius: radius },
-        selected && { borderWidth: 2.5, borderColor: '#BF85FC' },
+        selected && { borderWidth: 2.5, borderColor: skinAccent.accent },
       ]}
     >
       <View style={[mergeSt.badge, !selected && mergeSt.badgeIdle]}>
@@ -1379,6 +1381,7 @@ type ProfileScreenProps = TabScreenProps<'ProfileTab'> & { pushed?: boolean; onB
 export default function ProfileScreen({ navigation, route, pushed, onBack }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 섹션 링크·부제 등 강조를 스킨색으로
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
@@ -1957,7 +1960,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           <View style={styles.sectionHeaderRow}>
             <Text style={styles.sectionTitle}>Travel badge</Text>
             <TouchableOpacity onPress={() => setBadgeListVisible(true)}>
-              <Text style={styles.sectionLink}>{t('profile.seeAll')}</Text>
+              <Text style={[styles.sectionLink, { color: skinAccent.accent }]}>{t('profile.seeAll')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -1990,11 +1993,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 onPress={() => (mergeMode ? exitMergeMode() : setMergeMode(true))}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
               >
-                <Text style={styles.sectionLink}>{mergeMode ? t('profile.mergeCancel') : t('profile.mergeCards')}</Text>
+                <Text style={[styles.sectionLink, { color: skinAccent.accent }]}>{mergeMode ? t('profile.mergeCancel') : t('profile.mergeCards')}</Text>
               </TouchableOpacity>
             )}
           </View>
-          <Text style={styles.archiveSubtitle}>
+          <Text style={[styles.archiveSubtitle, { color: skinAccent.accent }]}>
             {mergeMode ? t('profile.mergeGuide') : t('profile.archiveCount', { count: displayTrips.length })}
           </Text>
         </View>

@@ -26,6 +26,7 @@ import { BADGES } from '../constants/badges';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
 import StarFieldBackground from '../components/StarFieldBackground';
 import ProfileScreen from './ProfileScreen';
+import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -65,6 +66,7 @@ export default function FriendProfileScreen({
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
   const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
   const isSelf = !!myHandle && route.params?.handle === myHandle;
   const { records: myRecords } = useRecords();
 
@@ -311,11 +313,11 @@ export default function FriendProfileScreen({
         {!isSelf && (
           <>
             <TouchableOpacity
-              style={[s.followBtn, (following || requested) && s.followingBtn]}
+              style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
               onPress={toggleFollow}
               activeOpacity={0.85}
             >
-              <Text style={[s.followBtnText, (following || requested) && s.followingBtnText]}>
+              <Text style={[s.followBtnText, (following || requested) && [s.followingBtnText, { color: skinAccent.accent }]]}>
                 {following
                   ? t('friends.followingCheck')
                   : requested
@@ -328,17 +330,17 @@ export default function FriendProfileScreen({
                 백엔드 사용 시 서버(follows 양방향)가 판정하므로 읽기 전용 배지,
                 미설정(로컬 데모) 모드에서만 수동 토글 허용 (refreshFollowing이 서버 값으로 덮어쓰므로 토글이 유지되지 않음) */}
             {following && isSupabaseConfigured && isMutual && (
-              <View style={[s.mutualBtn, s.mutualBtnOn]}>
+              <View style={[s.mutualBtn, { borderColor: skinAccent.accent }, s.mutualBtnOn, { backgroundColor: skinAccent.accent }]}>
                 <Text style={[s.mutualBtnText, s.mutualBtnTextOn]}>{t('friends.mutualYes')}</Text>
               </View>
             )}
             {following && !isSupabaseConfigured && (
               <TouchableOpacity
-                style={[s.mutualBtn, isMutual && s.mutualBtnOn]}
+                style={[s.mutualBtn, { borderColor: skinAccent.accent }, isMutual && [s.mutualBtnOn, { backgroundColor: skinAccent.accent }]]}
                 onPress={() => setFollowMutual(followEntry?.id || followId, !isMutual)}
                 activeOpacity={0.85}
               >
-                <Text style={[s.mutualBtnText, isMutual && s.mutualBtnTextOn]}>
+                <Text style={[s.mutualBtnText, { color: skinAccent.accent }, isMutual && s.mutualBtnTextOn]}>
                   {isMutual ? t('friends.mutualYes') : t('friends.mutualMark')}
                 </Text>
               </TouchableOpacity>
