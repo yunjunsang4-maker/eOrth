@@ -1064,6 +1064,17 @@ const neonGlobeHTML = `<!DOCTYPE html>
   @keyframes ng-glowdrift { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(2%,-2%) scale(1.06);} }
   #stars { position:absolute; inset:0; pointer-events:none; }
   #stars i { position:absolute; border-radius:50%; background:#ffffff; display:block; }
+  /* 별똥별(shooting star) — 지구본 뒤 #bg 레이어. 좌상단→우상단으로 살짝 떨어지며 지나감 */
+  #shooting { position:absolute; inset:0; pointer-events:none; overflow:hidden; }
+  #shooting .sh { position:absolute; height:2px; border-radius:2px; opacity:0;
+    background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(202,130,255,0.55) 62%, #ffffff 100%);
+    filter:drop-shadow(0 0 4px rgba(255,255,255,0.55)); will-change:transform,opacity; }
+  @keyframes ng-shoot {
+    0%   { opacity:0; transform:translate(0,0) rotate(var(--a)); }
+    9%   { opacity:1; }
+    82%  { opacity:1; }
+    100% { opacity:0; transform:translate(var(--dx), var(--dy)) rotate(var(--a)); }
+  }
   /* 광고(스폰서) 마커 — classic과 동일 */
   #ad-layer { position:fixed; inset:0; pointer-events:none; z-index:5; }
   .ad-pin { position:absolute; width:0; height:0; display:none; }
@@ -1094,6 +1105,7 @@ const neonGlobeHTML = `<!DOCTYPE html>
   <div style="position:absolute; left:14%; top:22%; width:80%; height:54%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(48,64,255,0.07), rgba(48,64,255,0) 68%); filter:blur(100px); animation:ng-glowdrift 20s ease-in-out infinite;"></div>
   <div style="position:absolute; left:15%; top:29%; width:18%; height:11%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.07), rgba(255,255,255,0) 70%); filter:blur(34px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
   <div id="stars"></div>
+  <div id="shooting"></div>
 </div>
 <div id="canvas-container"></div>
 <div id="ad-layer"></div>
@@ -1190,6 +1202,40 @@ var worldData = null, globeMesh = null, material = null;
     html += '<i style="left:'+x+'%;top:'+y+'%;width:'+d+'px;height:'+d+'px;--o:'+o+';opacity:'+o+';animation:ng-twinkle '+t+'s ease-in-out infinite;"></i>';
   }
   el.innerHTML = html;
+})();
+
+// 별똥별: 일정 간격으로 2~3개가 좌상단→우상단으로 살짝 떨어지며 지나감 (지구본 뒤 #shooting).
+// __globePaused(화면 밖/백그라운드)면 스폰 생략 → 발열/전력 절약.
+(function(){
+  var host = document.getElementById('shooting'); if (!host) return;
+  function fire(){
+    var len = 90 + Math.random()*95;                 // 꼬리 길이
+    var startY = window.innerHeight * (0.04 + Math.random()*0.24); // 상단 랜덤
+    var startX = -len - 20 - Math.random()*window.innerWidth*0.15; // 화면 왼쪽 바깥
+    var angDeg = 8 + Math.random()*13;               // 진행 각도(우하향, 살짝 떨어짐)
+    var dist = window.innerWidth + len + 60;         // 오른쪽 끝까지
+    var dx = dist;
+    var dy = dist * Math.tan(angDeg * Math.PI/180);
+    var dur = 720 + Math.random()*520;
+    var el = document.createElement('div');
+    el.className = 'sh';
+    el.style.left = startX + 'px';
+    el.style.top = startY + 'px';
+    el.style.width = len + 'px';
+    el.style.setProperty('--a', angDeg + 'deg');
+    el.style.setProperty('--dx', dx + 'px');
+    el.style.setProperty('--dy', dy + 'px');
+    el.style.animation = 'ng-shoot ' + dur + 'ms linear forwards';
+    host.appendChild(el);
+    setTimeout(function(){ if (el.parentNode) el.parentNode.removeChild(el); }, dur + 120);
+  }
+  function burst(){
+    if (window.__globePaused) { setTimeout(burst, 1500); return; } // 안 보이면 대기
+    var n = 2 + Math.floor(Math.random()*2);         // 2~3개
+    for (var k=0;k<n;k++) setTimeout(fire, k * (150 + Math.random()*300)); // 살짝 시차
+    setTimeout(burst, 4200 + Math.random()*5200);    // 다음 간격 4~9초
+  }
+  setTimeout(burst, 1500 + Math.random()*2200);
 })();
 
 // 적도원통(equirectangular) 텍스처: 바다는 투명(셰이더가 절차적으로 칠함),
