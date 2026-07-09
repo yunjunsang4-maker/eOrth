@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import {
   StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, TargetIcon, MegaphoneIcon,
@@ -23,6 +24,7 @@ const COLORS = {
 
 export default function PremiumScreen({ navigation }: RootStackScreenProps<'Premium'>) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 구독 버튼·테두리 강조를 스킨색으로
   const { isPremium, setIsPremium } = useSettings();
 
   // 혜택 목록 — 설정 프리미엄 그룹과 동일한 아이콘 사용
@@ -54,7 +56,7 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {/* 히어로 */}
         <View style={st.hero}>
-          <View style={st.heroIconWrap}>
+          <View style={[st.heroIconWrap, { borderColor: skinAccent.tint(0.35) }]}>
             <StarIcon size={40} />
           </View>
           <Text style={st.heroTitle}>{t('premium.paywallTitle')}</Text>
@@ -76,13 +78,13 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
 
         {/* CTA */}
         {isPremium ? (
-          <View style={[st.ctaBtn, st.ctaActive]}>
+          <View style={[st.ctaBtn, st.ctaActive, { borderColor: skinAccent.tint(0.35) }]}>
             <Text style={st.ctaActiveText}>✓ {t('premium.paywallActive')}</Text>
           </View>
         ) : (
           <TouchableOpacity activeOpacity={0.85} onPress={handleSubscribe}>
             <LinearGradient
-              colors={['#BF85FC', '#6B21A8']}
+              colors={[skinAccent.accent, skinAccent.accentDeep]}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={st.ctaBtn}
