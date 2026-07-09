@@ -428,6 +428,8 @@ const BlogBlockRenderer = ({
         </TouchableOpacity>
       );
     case 'video':
+      // 가져오기 자리 표시(채워지지 않은 placeholder)는 읽기 화면에서 숨긴다
+      if ((block as any).placeholder || !block.uri) return null;
       return <BlogVideoBlock uri={block.uri} caption={block.caption} />;
     case 'file': {
       const sizeStr = block.fileSize ? (block.fileSize < 1024 * 1024 ? `${(block.fileSize / 1024).toFixed(0)}KB` : `${(block.fileSize / (1024 * 1024)).toFixed(1)}MB`) : '';

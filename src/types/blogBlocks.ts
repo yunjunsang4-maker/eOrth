@@ -93,6 +93,10 @@ export interface VideoBlock {
   uri: string;
   caption?: string;
   thumbnail?: string;
+  // 가져오기 자리 표시: 네이버 영상은 앱에서 재생 불가라 위치만 표시하고
+  // 사용자가 탭해 자기 영상을 넣게 한다. placeholder=true면 uri는 비어있음.
+  placeholder?: boolean;
+  sourceUrl?: string; // 원본 네이버 영상 링크 (원본에서 보기)
 }
 
 export interface FileBlock {
@@ -211,6 +215,15 @@ export const createVideoBlock = (uri: string, caption?: string, thumbnail?: stri
   uri,
   caption,
   thumbnail,
+});
+
+// 가져오기 자리 표시 블록 — 위치만 표시하고 사용자가 탭해 자기 영상으로 채운다.
+export const createVideoPlaceholderBlock = (sourceUrl?: string): VideoBlock => ({
+  id: genBlockId(),
+  type: 'video',
+  uri: '',
+  placeholder: true,
+  sourceUrl,
 });
 
 export const createSeparatorBlock = (style: SeparatorStyle = 'dots'): SeparatorBlock => ({

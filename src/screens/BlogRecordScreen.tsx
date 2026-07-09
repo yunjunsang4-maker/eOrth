@@ -69,7 +69,7 @@ import {
   FONT_OPTIONS, FONT_SIZE_OPTIONS, TextAlign, SeparatorStyle,
   ImageLayout, HeadingLevel,
   createTextBlock, createHeadingBlock, createImageBlock,
-  createImagesBlock, createVideoBlock, createSeparatorBlock, createQuoteBlock,
+  createImagesBlock, createVideoBlock, createVideoPlaceholderBlock, createSeparatorBlock, createQuoteBlock,
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
@@ -536,7 +536,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           } else if (ob.type === 'image' && typeof ob.value === 'string' && ob.value) {
             importedBlocks.push(createImageBlock(ob.value));
           } else if (ob.type === 'video' && typeof ob.value === 'string' && ob.value) {
-            importedBlocks.push(createVideoBlock(ob.value));
+            // 네이버 영상은 앱에서 재생 불가라 그대로 심지 않고, 위치만 표시하는
+            // 자리 블록으로 넣는다. 사용자가 탭해 자기 영상으로 채운다.(원본 링크는 보관)
+            importedBlocks.push(createVideoPlaceholderBlock(ob.value));
           }
         });
       } else {
@@ -866,6 +868,31 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         t('blog.videoLoadFailTitle'),
         t('blog.videoLoadFailMsg')
       );
+    }
+  };
+
+  // 가져오기 자리 표시(placeholder) 블록을 사용자의 로컬 영상으로 채운다 — 위치는 그대로 두고 in-place 대체.
+  const handleFillVideoPlaceholder = async (blockId: string) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'] as MediaType[],
+        allowsMultipleSelection: false,
+        videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const videoUri = result.assets[0].uri;
+      let thumb: string | undefined;
+      try {
+        const th = await VideoThumbnails.getThumbnailAsync(videoUri, { time: 1000, quality: 0.7 });
+        thumb = th.uri;
+      } catch (thumbErr) {
+        console.warn('[handleFillVideoPlaceholder] 썸네일 추출 실패:', thumbErr);
+      }
+      // 자리 블록 → 실제 로컬 영상으로 대체(placeholder 해제, 원본 링크 제거)
+      updateBlock(blockId, { uri: videoUri, thumbnail: thumb, placeholder: false, sourceUrl: undefined } as any);
+    } catch (err: any) {
+      console.warn('[handleFillVideoPlaceholder] error:', err);
+      Alert.alert(t('blog.videoLoadFailTitle'), t('blog.videoLoadFailMsg'));
     }
   };
 
@@ -1972,6 +1999,29 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       }
       case 'video': {
         const vb = block as VideoBlock;
+        // 가져오기 자리 표시 — 위치만 알려주고 사용자가 자기 영상으로 채운다 (네이버 영상은 앱에서 재생 불가)
+        if (vb.placeholder) {
+          return (
+            <View key={block.id} style={st.imageBlock}>
+              <View style={[st.videoBlockPlayer, st.videoPlaceholder]}>
+                <Text style={{ fontSize: 34 }}>📹</Text>
+                <Text style={st.videoPlaceholderTitle}>{t('blog.videoPlaceholderTitle')}</Text>
+                <TouchableOpacity style={st.videoPlaceholderBtn} activeOpacity={0.8} onPress={() => handleFillVideoPlaceholder(block.id)}>
+                  <Text style={st.videoPlaceholderBtnText}>{t('blog.videoPlaceholderHint')}</Text>
+                </TouchableOpacity>
+                {!!vb.sourceUrl && (
+                  <TouchableOpacity onPress={() => Linking.openURL(vb.sourceUrl!)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={st.videoPlaceholderLink}>{t('blog.videoPlaceholderOriginal')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={st.videoLabel}><Text style={st.videoLabelText}>▶ {t('blog.video')}</Text></View>
+              <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
+                <Text style={st.imageRemoveText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          );
+        }
         const isLocalVideo = vb.uri && (vb.uri.startsWith('file://') || vb.uri.startsWith('content://') || vb.uri.startsWith('/'));
         const isEmbedVideo = vb.uri && vb.uri.startsWith('http');
         // 네이버TV embed → 모바일 시청 페이지로 변환
@@ -2459,6 +2509,12 @@ const st = StyleSheet.create({
   videoBlockPlayer: { width: '100%', height: 200, backgroundColor: '#000', borderRadius: 8 },
   videoLabel: { position: 'absolute' as const, top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   videoLabelText: { color: '#fff', fontSize: 11, fontWeight: '600' as const },
+  // 가져오기 동영상 자리 표시
+  videoPlaceholder: { backgroundColor: '#15131F', borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)', borderStyle: 'dashed' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8 },
+  videoPlaceholderTitle: { color: C.white, fontSize: 14, fontWeight: '700' as const },
+  videoPlaceholderBtn: { backgroundColor: 'rgba(191,133,252,0.15)', borderWidth: 1, borderColor: 'rgba(191,133,252,0.4)', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
+  videoPlaceholderBtnText: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
+  videoPlaceholderLink: { color: C.dim, fontSize: 12, textDecorationLine: 'underline' as const, marginTop: 2 },
   captionInput: { color: C.dim, fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' },
   imageRemoveBtn: { position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
   imageRemoveText: { color: '#fff', fontSize: 13, fontWeight: '600' },

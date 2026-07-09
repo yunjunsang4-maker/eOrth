@@ -13,6 +13,7 @@ import {
   Platform,
   Dimensions,
   Image,
+  ImageBackground,
   Animated,
   Pressable,
   Share,
@@ -33,7 +34,7 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
-import { CUT_LAYOUTS } from '../constants/cutFrames';
+import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -1591,6 +1592,43 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
   );
 }
 
+// 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
+// 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
+function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
+  const { t } = useTranslation();
+  const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const isMyPost = item.isMyPost || item.user.handle === globalHandle;
+  const displayHandle = isMyPost ? (globalHandle || item.user.handle) : item.user.handle;
+  const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
+  // 방문국가 — 블로그 기록 카드와 동일한 라벨(영문 국가명) + 폰트(jourCountry: Gilroy-Black)
+  const placeLabel = jourPlaceLabel(item);
+  return (
+    <View style={d.cutMeta}>
+      {/* 프레임과 아이디 사이: 방문국가(좌) + 올린시간(우, 보라) — 시안처럼 같은 행 */}
+      <View style={d.cutMetaTopRow}>
+        <Text style={d.cutMetaCountry} numberOfLines={1}>{placeLabel}</Text>
+        <Text style={d.cutMetaTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+      </View>
+      <View style={d.cutMetaRow}>
+        <TouchableOpacity
+          style={d.cutMetaIdBtn}
+          activeOpacity={0.7}
+          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+        >
+          <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+          <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
+          {showCounts && item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
+        </TouchableOpacity>
+        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+          <Text style={d.more}>⋯</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 // 한 번 탭 → 상세, 두 번 연속 탭 → 좋아요
 function useDoubleTap(onSingle: () => void, onDouble: () => void) {
   const last = useRef(0);
@@ -1675,6 +1713,71 @@ function CutDiaryCard({ item, meta, tilt, onSingle, onDouble }: any) {
   );
 }
 
+// 색이 밝은지 판정 (푸터 글자색 결정용)
+function isLightColor(hex?: string): boolean {
+  if (!hex) return true;
+  const h = hex.replace('#', '');
+  if (h.length < 6) return true;
+  const r = parseInt(h.slice(0, 2), 16), g = parseInt(h.slice(2, 4), 16), b = parseInt(h.slice(4, 6), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6;
+}
+
+// 스트립 프레임 배경 해석 — 사용자 override(색/이미지) → 프레임 기본 배경(색/이미지). isLight로 푸터 글자색 결정.
+function resolveCutBg(cutPhoto: any): { color?: string; image?: any; isLight: boolean } {
+  const frame = cutPhoto?.frameId ? getCutFrame(cutPhoto.frameId) : undefined;
+  const bg = frame?.background;
+  const color = cutPhoto?.frameColor || (bg?.type === 'color' ? bg.value : undefined);
+  const image = cutPhoto?.frameImage ? { uri: cutPhoto.frameImage } : (bg?.type === 'image' ? bg.source : undefined);
+  return { color, image, isLight: image ? false : isLightColor(color) };
+}
+
+// 스트립(네컷) 기록 카드의 사진 영역 — 시안(Group 2085664520)처럼 각 프레임 슬롯대로 사진을 격자 배치.
+// 프레임 색/이미지는 이 '사진 영역'의 배경으로 살린다(가폭 사이로 프레임이 비침 = 스트립 사진 프레임).
+// 바깥 카드 배경은 시안대로 라이트 톤 유지. 슬롯(x/y/w/h 0~1)·aspect를 써서 모든 스트립 포맷에 자동 대응.
+function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
+  const frame = cutPhoto?.frameId ? getCutFrame(cutPhoto.frameId) : undefined;
+  const lay = frame?.layout || cutPhoto?.layout || 'four';
+  const spec = (CUT_LAYOUTS as any)[lay] || CUT_LAYOUTS['four'];
+  const bg = resolveCutBg(cutPhoto);
+  const photos: string[] = cutPhoto?.photos || [];
+  const slots = spec.slots.map((s: any, i: number) => (
+    <View
+      key={i}
+      style={{
+        position: 'absolute',
+        left: `${s.x * 100}%`, top: `${s.y * 100}%`,
+        width: `${s.w * 100}%`, height: `${s.h * 100}%`,
+        borderRadius: 2, overflow: 'hidden',
+        backgroundColor: 'rgba(0,0,0,0.10)', // 빈 슬롯 살짝 음영 (프레임 위)
+      }}
+    >
+      {photos[i] ? (
+        <Image source={{ uri: photos[i] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+      ) : null}
+    </View>
+  ));
+  // 프레임 이미지 테마면 사진 영역 배경을 이미지로, 아니면 프레임 색으로. 프레임 모서리는 둥글게.
+  // overflow:hidden은 카드 회전(tilt)과 겹치면 라운드 코너가 깨져(계단현상) 보이므로 쓰지 않고,
+  // borderRadius로 배경/이미지 자체를 둥글게 한다(슬롯 사진은 여백만큼 안쪽이라 코너를 침범하지 않음).
+  if (bg.image) {
+    return (
+      <ImageBackground
+        source={bg.image}
+        style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', borderRadius: 8 }}
+        imageStyle={{ borderRadius: 8 }}
+        resizeMode="cover"
+      >
+        {slots}
+      </ImageBackground>
+    );
+  }
+  return (
+    <View style={{ width: '100%', aspectRatio: spec.aspect, position: 'relative', backgroundColor: bg.color || '#FFFFFF', borderRadius: 8 }}>
+      {slots}
+    </View>
+  );
+}
+
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, dragPos, columnIndex }: any) {
   const { t } = useTranslation();
   const { records } = useRecords();
@@ -1724,6 +1827,10 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const meta = mode === 'full'
     ? <DiaryMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} showCounts={showCounts} onLight={vt === 'feed'} />
     : null;
+  // 스트립(네컷) 전용 푸터 — 프로필사진 없이 @아이디 + 방문국가
+  const cutMeta = mode === 'full'
+    ? <CutMeta item={item} navigation={navigation} toggleLike={toggleLike} onMore={onMore} showCounts={showCounts} />
+    : null;
 
   const cardRef = useRef<View>(null);
 
@@ -1761,23 +1868,30 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     });
 
   const card = (() => {
-  // 네컷 → 저장된 합성본(previewUri)을 정적으로 렌더 (프로필과 동일·안정적, 카드마다 라이브 합성보다 가벼움)
+  // 스트립(네컷) → 시안(Group 2085664520): 라이트 각짐 카드 + 프레임 살린 사진 격자 + 메타 푸터.
   if (vt === 'cut') {
-    const uri = firstPhoto(item); // cutPhoto.previewUri || medias[0]
-    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
-    if (uri) {
+    const photos: string[] = item.cutPhoto?.photos || [];
+    const hasGrid = photos.some(Boolean) && (item.cutPhoto?.frameId || item.cutPhoto?.layout);
+    if (hasGrid) {
       return (
-        <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>
-          <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" />
-          {meta}
+        <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
+          <CutGridPreview cutPhoto={item.cutPhoto} />
+          {cutMeta}
         </DiaryTappable>
       );
     }
-    // previewUri/medias 없는 옛 기록만 슬롯 사진으로 라이브 합성 폴백
-    if (item.cutPhoto?.photos) {
-      return <CutDiaryCard item={item} meta={meta} tilt={tilt} onSingle={open} onDouble={like} />;
+    // 폴백: 사진/프레임 정보가 없는 옛 기록만 저장된 합성본(previewUri)으로
+    const uri = firstPhoto(item);
+    const aspect = (item.cutPhoto?.layout && (CUT_LAYOUTS as any)[item.cutPhoto.layout]?.aspect) || 0.7;
+    if (uri) {
+      return (
+        <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
+          <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" />
+          {cutMeta}
+        </DiaryTappable>
+      );
     }
-    return <DiaryTappable style={d.cutCard} tilt={tilt} onSingle={open} onDouble={like}>{meta}</DiaryTappable>;
+    return <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>{cutMeta}</DiaryTappable>;
   }
 
   // 블로그 / 앨범
@@ -1843,15 +1957,21 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
 
   // 피드 → 폴라로이드
   const photo = firstPhoto(item);
-  const caption = (item.content || item.memo || '').trim();
+  // 사진 밑 캡션은 게시물의 글(memo) 우선. content는 제목(미입력 시 "{국가} 여행 기록" 기본값)이라 폴백으로만.
+  const caption = (item.memo || item.content || '').trim();
   return (
     <DiaryTappable style={d.polaWrap} tilt={tilt} onSingle={open} onDouble={like}>
       {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
       <View style={d.polaBack} pointerEvents="none" />
       <View style={d.polaFront}>
         {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
-        {/* 시안(Group 2085664521): 사진 밑에 캡션 한 줄 */}
-        {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1}>{caption}</Text>}
+        {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
+        <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
+          <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
+          <Text style={d.cutMetaTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+        </View>
+        {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
+        {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
         {/* 그 아래: @아이디(좌) + 좋아요·더보기(우) */}
         <View style={d.polaMetaRow}>
           <TouchableOpacity
@@ -1965,7 +2085,7 @@ const d = StyleSheet.create({
   polaImg: { width: '100%', aspectRatio: 1, borderRadius: 6, backgroundColor: '#2A2735' },
   polaEmpty: { backgroundColor: '#1A0A2E' },
   // 사진 밑 캡션 — 한 줄
-  polaCap: { color: '#FFFFFF', fontSize: 12, paddingTop: 8 },
+  polaCap: { color: '#FFFFFF', fontSize: 12, paddingTop: 4 },
   // 캡션 아래 메타 행 — 좌: @아이디, 우: 좋아요·더보기
   polaMetaRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, paddingTop: 6, paddingBottom: 2 },
   polaHandleBtn: { flexShrink: 1 },
@@ -1999,7 +2119,7 @@ const d = StyleSheet.create({
   jourInner: { backgroundColor: '#333337', padding: 12 },
   // 시안 구조: 국가·지역 라벨 → 제목 → 소제목 → 본문 → 구분선 → 푸터
   // 시안 스펙: Gilroy-Black 10px, line-height 130%, letter-spacing 3% (앞글자만 대문자는 라벨에서 처리)
-  jourCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 10, lineHeight: 13, letterSpacing: 0.3, marginBottom: 6 },
+  jourCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, marginBottom: 6 },
   jourTitle: { color: '#FFFFFF', fontSize: 15, marginBottom: 4 },
   jourSubtitle: { color: '#AA54C1', fontSize: 12, fontWeight: '600', marginBottom: 6 },
   jourBody: { color: 'rgba(255,255,255,0.6)', fontSize: 11, lineHeight: 17 },
@@ -2017,13 +2137,35 @@ const d = StyleSheet.create({
   jourMore: { color: '#99999B', fontSize: 16, fontWeight: '700' },
 
   // 네컷
-  cutCard: { 
-    backgroundColor: 'rgba(26,10,46,0.55)', 
-    borderRadius: 8, 
-    padding: 6, 
-    borderWidth: 1, 
-    borderColor: 'rgba(191,133,252,0.15)' 
+  cutCard: {
+    backgroundColor: 'rgba(26,10,46,0.55)',
+    borderRadius: 8,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.15)'
   },
+  // 스트립 기록 카드 — 시안(Group 2085664520): 각진 모서리.
+  // 배경은 rgba(217,217,217,0.2)를 #0A0A0F 위에 얹은 불투명 합성색(#333337) — 룩은 시안과 동일하되
+  // 별 배경이 투과되지 않는다(피드 폴라로이드/저널 카드와 동일 방식).
+  // 프레임 색/이미지는 카드가 아니라 사진 영역(CutGridPreview)에서 살린다.
+  cutCardLight: {
+    backgroundColor: '#333337',
+    borderRadius: 0,
+    padding: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  // 스트립 카드 푸터 (시안): 방문국가 줄 → @아이디 + 하트·⋯ 행
+  cutMeta: { paddingTop: 8, paddingBottom: 2, gap: 5 },
+  // 국가(좌) + 올린시간(우) 같은 행 — 시안처럼 시간을 카드 오른쪽에 정렬
+  cutMetaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  // 블로그 기록 카드의 국가 라벨(jourCountry)과 동일한 글자 — Gilroy-Black 10px (위치/여백은 cutMeta가 유지)
+  cutMetaCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, flexShrink: 1 },
+  // 올린시간 — 블로그 카드 jourTime과 동일 톤(보라)
+  cutMetaTime: { color: '#AA54C1', fontSize: 11, fontWeight: '500' },
+  cutMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  cutMetaIdBtn: { flex: 1, minWidth: 0 },
+  cutMetaHandle: { color: '#FFFFFF', fontSize: 13, fontWeight: '600' },
 
   // 상호작용 푸터
   meta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
