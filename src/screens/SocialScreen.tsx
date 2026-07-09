@@ -45,6 +45,8 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import { useSkinAccent } from '../constants/skinTheme';
+import BlogPin from '../components/BlogPin';
+import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
@@ -1923,6 +1925,10 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     }
     return (
       <DiaryTappable style={d.jour} tilt={tilt} onSingle={open} onDouble={like}>
+        {/* 데코 핀(Group 2085664575) — 카드가 기운 쪽 위 모서리에 꽂음. 좌측이면 좌우 반전 */}
+        <View pointerEvents="none" style={[d.jourPin, tilt < 0 ? d.jourPinLeft : d.jourPinRight]}>
+          <BlogPin flip={tilt < 0} />
+        </View>
         {/* 그라데이션 테두리 — 밝은 좌상단 → 어두운 우하단으로 빛/그림자 대비를 줘 입체감 */}
         <LinearGradient
           colors={['rgba(255,255,255,0.45)', 'rgba(255,255,255,0.06)', 'rgba(0,0,0,0.25)']}
@@ -1969,11 +1975,17 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const photo = firstPhoto(item);
   // 사진 밑 캡션은 게시물의 글(memo) 우선. content는 제목(미입력 시 "{국가} 여행 기록" 기본값)이라 폴백으로만.
   const caption = (item.memo || item.content || '').trim();
+  // 데코 테이프 2종 랜덤 — id 해시라 카드마다 고정(리렌더에도 안 바뀜)
+  const tapeVariant = (Math.abs(String(item.id).split('').reduce((a: number, c: string) => ((a * 31 + c.charCodeAt(0)) | 0), 7)) % 2) as 0 | 1;
   return (
     <DiaryTappable style={d.polaWrap} tilt={tilt} onSingle={open} onDouble={like}>
       {/* 시안(Group 2085664521): 뒷장이 살짝 어긋나게 겹쳐 두 장이 포개진 입체감 */}
       <View style={d.polaBack} pointerEvents="none" />
       <View style={d.polaFront}>
+        {/* 데코 테이프 — 위 모서리에 붙임 (2종 중 카드별 랜덤) */}
+        <View pointerEvents="none" style={[d.polaTape, tapeVariant === 1 && { top: -13 }]}>
+          <FeedTape variant={tapeVariant} />
+        </View>
         {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
@@ -2092,6 +2104,8 @@ const d = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
     shadowColor: '#000', shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 4 }, elevation: 5,
   },
+  // 폴라로이드 데코 테이프 — 상단 중앙, 카드 위로 살짝 걸침
+  polaTape: { position: 'absolute', top: -8, alignSelf: 'center', zIndex: 5, elevation: 5 },
   polaImg: { width: '100%', aspectRatio: 1, borderRadius: 6, backgroundColor: '#2A2735' },
   polaEmpty: { backgroundColor: '#1A0A2E' },
   // 사진 밑 캡션 — 한 줄
@@ -2123,6 +2137,10 @@ const d = StyleSheet.create({
   // 저널 (텍스트 블로그) — 시안(Group 2085664520): 반투명 회색 유리 카드
   // 저널 카드 = 그라데이션 테두리 래퍼(투명) + 안쪽 불투명 카드
   jour: { borderRadius: 0 },
+  // 저널 카드 데코 핀 — 위 모서리에 살짝 걸치게(카드 밖으로 머리가 나옴), 콘텐츠 위 레이어
+  jourPin: { position: 'absolute', top: -10, zIndex: 5, elevation: 5 },
+  jourPinRight: { right: 8 },
+  jourPinLeft: { left: 8 },
   // 그라데이션 테두리 레이어 — padding이 테두리 두께가 된다(안쪽 카드가 그만큼 작아짐)
   jourBorderGrad: { padding: 1.5, borderRadius: 0 },
   // 안쪽 카드 — 불투명 합성색(#0A0A0F 위에 rgba(217,217,217,0.2)를 얹은 값)이라 별이 투과되지 않고 유리 룩 유지
