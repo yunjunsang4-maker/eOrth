@@ -44,6 +44,7 @@ import { countryEnglishName } from '../constants/countries';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
+import { useSkinAccent } from '../constants/skinTheme';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
@@ -1599,6 +1600,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
   const { t } = useTranslation();
   const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  const skinAccent = useSkinAccent();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayHandle = isMyPost ? (globalHandle || item.user.handle) : item.user.handle;
   const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
@@ -1609,7 +1611,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
       {/* 프레임과 아이디 사이: 방문국가(좌) + 올린시간(우, 보라) — 시안처럼 같은 행 */}
       <View style={d.cutMetaTopRow}>
         <Text style={d.cutMetaCountry} numberOfLines={1}>{placeLabel}</Text>
-        <Text style={d.cutMetaTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+        <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
       </View>
       <View style={d.cutMetaRow}>
         <TouchableOpacity
@@ -1784,6 +1786,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const { t } = useTranslation();
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
+  const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
@@ -1932,11 +1935,11 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 시안(Group 2085664520): 국가·지역 라벨 → 제목 → 소제목(memo) → 본문 → 구분선 → 푸터 */}
         {!!jourPlaceLabel(item) && <Text style={d.jourCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>}
         {!!title && <Text style={[d.jourTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
-        {!!item.subtitle && <Text style={d.jourSubtitle} numberOfLines={1}>{item.subtitle}</Text>}
+        {!!item.subtitle && <Text style={[d.jourSubtitle, { color: skinAccent.accent }]} numberOfLines={1}>{item.subtitle}</Text>}
         {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
         <View style={d.jourFooter}>
           {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
-          <Text style={d.jourTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
           <View style={d.jourFooterRow}>
             <TouchableOpacity
               style={d.jourHandleBtn}
@@ -1975,7 +1978,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
-          <Text style={d.cutMetaTime} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
         </View>
         {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
         {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}

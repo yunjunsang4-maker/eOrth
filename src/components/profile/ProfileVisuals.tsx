@@ -11,6 +11,7 @@ import Svg, { Path } from 'react-native-svg';
 import { LiquidPressable, GooeyCircle, LiquidCardGlow } from '../LiquidEffects';
 import { PersonIcon } from '../icons';
 import { andFitText } from '../../utils/fitText';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 export const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
@@ -112,8 +113,10 @@ export const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
 };
 
 // ─── 아바타 (구이 그라디언트 링) ───
-export const ProfileAvatar = ({ photo, initial }: { photo?: string | null; initial?: string }) => (
-  <GooeyCircle size={104} color={NEON.purple} glowOpacity={0.6}>
+export const ProfileAvatar = ({ photo, initial }: { photo?: string | null; initial?: string }) => {
+  const skinAccent = useSkinAccent(); // 아바타 글로우색을 스킨 강조색으로 (링 무지개는 유지)
+  return (
+  <GooeyCircle size={104} color={skinAccent.accent} glowOpacity={0.6}>
     <LinearGradient colors={[NEON.cyan, NEON.purple, NEON.magenta]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pv.avatarRing}>
       {photo ? (
         <Image source={{ uri: photo }} style={pv.avatarImg} />
@@ -124,30 +127,38 @@ export const ProfileAvatar = ({ photo, initial }: { photo?: string | null; initi
       )}
     </LinearGradient>
   </GooeyCircle>
-);
+  );
+};
 
 // ─── 통계 카드 ───
-export const StatCard = ({ value, label, onPress, grad = STAT_GRADS[0] }: {
+export const StatCard = ({ value, label, onPress, grad }: {
   value: string; label: string; onPress?: () => void; grad?: readonly [string, string, ...string[]];
-}) => (
+}) => {
+  const skinAccent = useSkinAccent(); // 통계 카드 유리 그라데이션을 스킨 강조색으로 (aurora=기존값)
+  const g = grad || ([skinAccent.accent, skinAccent.accentDeep] as const);
+  return (
   <LiquidPressable onPress={onPress} intensity={0.08}>
-    <NeonGlass colors={grad} glowColor={grad[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={pv.statCardContent}>
+    <NeonGlass colors={g} glowColor={g[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={pv.statCardContent}>
       <Text style={pv.statValue}>{value}</Text>
       <Text style={pv.statLabel} {...andFitText}>{label}</Text>
     </NeonGlass>
   </LiquidPressable>
-);
+  );
+};
 
 // ─── 배지 하이라이트 ───
-export const BadgeHighlightItem = ({ emoji, glow, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => (
+export const BadgeHighlightItem = ({ emoji, glow, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => {
+  const skinAccent = useSkinAccent(); // 배지 글로우색을 스킨 강조색으로 (링 무지개는 유지)
+  return (
   <LiquidPressable style={[pv.badgeItem, !earned && { opacity: 0.6 }]} intensity={0.1}>
-    <GooeyCircle size={64} color={glow || NEON.purple} glowOpacity={earned ? 0.5 : 0.12}>
+    <GooeyCircle size={64} color={glow || skinAccent.accent} glowOpacity={earned ? 0.5 : 0.12}>
       <NeonRing size={58} borderWidth={1.6} intensity={20} colors={earned ? [NEON.cyan, NEON.purple, NEON.magenta] : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}>
         {earned ? <Text style={pv.badgeEmoji}>{emoji}</Text> : <Text style={pv.badgeLock}>🔒</Text>}
       </NeonRing>
     </GooeyCircle>
   </LiquidPressable>
-);
+  );
+};
 
 export interface TripCardData {
   id: string;
