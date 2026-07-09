@@ -385,6 +385,7 @@ function BadgeListModal({
   earnedBadgeIds: Set<number>;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
 
   // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
@@ -436,17 +437,17 @@ function BadgeListModal({
         
         <View style={blStyles.header}>
           <Text style={blStyles.title}>{t('profile.badgeCollection')}</Text>
-          <Text style={blStyles.subtitle}>
+          <Text style={[blStyles.subtitle, { color: skinAccent.accent }]}>
             {selectMode
               ? t('profile.badgeSelectCount', { count: selectedBadgeIds.length })
               : t('profile.badgeEarnedCount', { earned: earnedCount, total: BADGES.length })}
           </Text>
           <TouchableOpacity
-            style={[blStyles.selectBtn, selectMode && blStyles.selectBtnOn]}
+            style={[blStyles.selectBtn, selectMode && [blStyles.selectBtnOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}
             onPress={() => setSelectMode((v) => !v)}
             activeOpacity={0.8}
           >
-            <Text style={[blStyles.selectBtnText, selectMode && blStyles.selectBtnTextOn]}>
+            <Text style={[blStyles.selectBtnText, { color: skinAccent.accent }, selectMode && blStyles.selectBtnTextOn]}>
               {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
@@ -471,7 +472,7 @@ function BadgeListModal({
 
               return (
                 <View key={cat.name} style={blStyles.categorySection}>
-                  <Text style={blStyles.categoryTitle}>{cat.name}</Text>
+                  <Text style={[blStyles.categoryTitle, { color: skinAccent.accent }]}>{cat.name}</Text>
                   {rows.map((row, rowIndex) => (
                     <View key={rowIndex} style={blStyles.row}>
                       {row.map((badge, index) => {
@@ -514,7 +515,7 @@ function BadgeListModal({
                                 />
                                 {/* 선택 체크 뱃지 */}
                                 {isSelected && (
-                                  <View style={blStyles.checkBadge}>
+                                  <View style={[blStyles.checkBadge, { backgroundColor: skinAccent.accent }]}>
                                     <Text style={blStyles.checkText}>✓</Text>
                                   </View>
                                 )}
@@ -612,8 +613,8 @@ function BadgeListModal({
                   <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : t('profile.unearnedBadge')}</Text>
                   <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : t('profile.unearnedBadgeDesc')}</Text>
                   {selectedBadgeIds.includes(enlargedBadge.id) && (
-                    <View style={blStyles.zoomSelectedTag}>
-                      <Text style={blStyles.zoomSelectedTagText}>{t('profile.shownOnProfile')}</Text>
+                    <View style={[blStyles.zoomSelectedTag, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.5) }]}>
+                      <Text style={[blStyles.zoomSelectedTagText, { color: skinAccent.accent }]}>{t('profile.shownOnProfile')}</Text>
                     </View>
                   )}
                 </TouchableOpacity>
@@ -641,6 +642,7 @@ function EditProfileModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const [name, setName] = useState(currentName);
   const [photo, setPhoto] = useState<string | null>(currentPhoto);
 
@@ -709,9 +711,9 @@ function EditProfileModal({
           <View style={styles.modalAvatarSection}>
             <TouchableOpacity onPress={pickImage} activeOpacity={0.8} style={styles.modalAvatarWrap}>
               {photo ? (
-                <Image source={{ uri: photo }} style={styles.modalAvatarImg} />
+                <Image source={{ uri: photo }} style={[styles.modalAvatarImg, { borderColor: skinAccent.tint(0.5) }]} />
               ) : (
-                <View style={styles.modalAvatarPlaceholder}>
+                <View style={[styles.modalAvatarPlaceholder, { borderColor: skinAccent.tint(0.5) }]}>
                   <PersonIcon size={50} color="#A0A0B0" />
                 </View>
               )}
@@ -726,7 +728,7 @@ function EditProfileModal({
           {/* 닉네임 입력 */}
           <View style={styles.modalField}>
             <Text style={styles.modalFieldLabel}>{t('profile.nickname')}</Text>
-            <View style={styles.modalInputWrap}>
+            <View style={[styles.modalInputWrap, { borderColor: skinAccent.tint(0.3) }]}>
               <TextInput
                 style={styles.modalInput}
                 value={name}
@@ -1258,6 +1260,7 @@ function GroupMergeModal({
   onSave: (title: string, coverRecordId: string, ordered: TripItem[]) => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const [title, setTitle] = useState('');
   const [cover, setCover] = useState(selectedRecords[0]?.id ?? '');
   const [ordered, setOrdered] = useState<TripItem[]>([...selectedRecords]);
@@ -1297,7 +1300,7 @@ function GroupMergeModal({
             keyboardShouldPersistTaps="handled"
           >
             {/* 묶음 제목 */}
-            <Text style={gmSt.sectionLabel}>{t('profile.groupTitle')}</Text>
+            <Text style={[gmSt.sectionLabel, { color: skinAccent.accent }]}>{t('profile.groupTitle')}</Text>
             <View style={gmSt.inputWrap}>
               <TextInput
                 style={gmSt.input}
@@ -1311,7 +1314,7 @@ function GroupMergeModal({
             <Text style={gmSt.inputHint}>{t('profile.groupTitleHint')}</Text>
 
             {/* 대표 기록 선택 */}
-            <Text style={gmSt.sectionLabel}>{t('profile.groupCover')}</Text>
+            <Text style={[gmSt.sectionLabel, { color: skinAccent.accent }]}>{t('profile.groupCover')}</Text>
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
@@ -1330,12 +1333,12 @@ function GroupMergeModal({
                     style={[
                       gmSt.thumbBg,
                       { backgroundColor: record.color },
-                      cover === record.id && { borderColor: '#BF85FC' },
+                      cover === record.id && { borderColor: skinAccent.accent },
                     ]}
                   >
                     <Text style={gmSt.thumbEmoji}>{record.emoji}</Text>
                     {cover === record.id && (
-                      <View style={gmSt.coverCheckBadge}>
+                      <View style={[gmSt.coverCheckBadge, { backgroundColor: skinAccent.accent }]}>
                         <Text style={gmSt.coverCheckText}>✓</Text>
                       </View>
                     )}
@@ -1344,14 +1347,14 @@ function GroupMergeModal({
                     {record.country.split(' ').slice(1).join(' ')}
                   </Text>
                   {cover !== record.id && (
-                    <Text style={gmSt.setAsLabel}>{t('profile.setAsCover')}</Text>
+                    <Text style={[gmSt.setAsLabel, { color: skinAccent.accent }]}>{t('profile.setAsCover')}</Text>
                   )}
                 </TouchableOpacity>
               ))}
             </ScrollView>
 
             {/* 기록 순서 조정 */}
-            <Text style={gmSt.sectionLabel}>{t('profile.recordOrder')}</Text>
+            <Text style={[gmSt.sectionLabel, { color: skinAccent.accent }]}>{t('profile.recordOrder')}</Text>
             <OrderableList records={ordered} onReorder={setOrdered} />
 
             {/* 저장 */}
@@ -2161,7 +2164,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       {mergeMode && (
         <View style={[mergeSt.bar, { bottom: insets.bottom + 96 }]} pointerEvents="box-none">
           <TouchableOpacity
-            style={[mergeSt.barBtn, mergeSelected.length < 2 && mergeSt.barBtnDisabled]}
+            style={[mergeSt.barBtn, { backgroundColor: skinAccent.accent }, mergeSelected.length < 2 && mergeSt.barBtnDisabled]}
             disabled={mergeSelected.length < 2}
             onPress={confirmMerge}
             activeOpacity={0.85}
