@@ -96,117 +96,6 @@ const GLASS = {
   specular:    'rgba(255,255,255,0.55)',
 };
 
-// 부모(overflow:hidden + 라운드) 안에 깔아 유리 질감을 만드는 absolute-fill 레이어
-// 1) 실제 블러  2) 유리 안쪽 그라디언트  3) 상단 스페큘러(반사) 하이라이트
-const GlassFill = ({
-  intensity = 30,
-  tint = 'dark',
-  specular = true,
-}: {
-  intensity?: number;
-  tint?: 'dark' | 'light' | 'default';
-  specular?: boolean;
-}) => (
-  <>
-    <BlurView
-      intensity={intensity}
-      tint={tint}
-      experimentalBlurMethod="dimezisBlurView"
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
-    <LinearGradient
-      colors={[GLASS.innerTop, GLASS.innerBottom]}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 0, y: 1 }}
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
-    {specular ? (
-      <LinearGradient
-        colors={[GLASS.specular, 'rgba(255,255,255,0)']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 0, y: 1 }}
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%', opacity: 0.4 }}
-        pointerEvents="none"
-      />
-    ) : null}
-  </>
-);
-
-// ─── 네온 리퀴드 글래스 (다크모드 — Liquid Glass UI Kit 레퍼런스) ───
-const NEON = {
-  cyan:    '#22D3EE',
-  blue:    '#3B82F6',
-  purple:  '#A855F7',
-  magenta: '#D946EF',
-  pink:    '#F472B6',
-};
-
-// 통계 칩 — 앱 메인 보라색 (보라 네온 → 보라 딥) 통일
-const STAT_GRADS = [
-  ['#BF85FC', '#6B21A8'],
-  ['#BF85FC', '#6B21A8'],
-  ['#BF85FC', '#6B21A8'],
-] as const;
-
-// 네온 그라디언트 보더 + 글래스 (칩/버튼/카드)
-const NeonGlass = ({
-  children,
-  style,
-  contentStyle,
-  colors = [NEON.cyan, NEON.purple],
-  radius = 18,
-  borderWidth = 1.5,
-  intensity = 24,
-  glow = true,
-  glowColor,
-  specular = true,
-}: {
-  children?: React.ReactNode;
-  style?: any;
-  contentStyle?: any;
-  colors?: readonly [string, string, ...string[]];
-  radius?: number;
-  borderWidth?: number;
-  intensity?: number;
-  glow?: boolean;
-  glowColor?: string;
-  specular?: boolean;
-}) => (
-  <View
-    style={[
-      glow
-        ? {
-            shadowColor: glowColor || colors[0],
-            shadowOpacity: 0.9,
-            shadowRadius: 16,
-            shadowOffset: { width: 0, height: 0 },
-            elevation: 12,
-          }
-        : null,
-      style,
-    ]}
-  >
-    <LinearGradient
-      colors={colors}
-      start={{ x: 0, y: 0 }}
-      end={{ x: 1, y: 1 }}
-      style={{ borderRadius: radius, padding: borderWidth }}
-    >
-      <View
-        style={[
-          { borderRadius: radius - borderWidth, overflow: 'hidden', backgroundColor: 'rgba(10,10,15,0.5)' },
-          contentStyle,
-        ]}
-      >
-        <GlassFill intensity={intensity} specular={specular} />
-        {children}
-      </View>
-    </LinearGradient>
-  </View>
-);
-
 // ─── 팔로워 카드 (네온 글래스 칩) ───
 const StatCard = ({
   value,
@@ -225,7 +114,6 @@ const StatCard = ({
 
 // ─── 여행 기록 썸네일 데이터 ───
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const CELL_SIZE = Math.floor((SCREEN_WIDTH - 4) / 3);
 const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2; // 2열 그리드
 
 // ─── 기록 형식 아이콘 (FAB과 동일한 View 기반) ───
@@ -286,10 +174,6 @@ const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
   album: <AlbumBadgeIcon />,
   snap: <SnapBadgeIcon />,
   cut: <CutBadgeIcon />,
-};
-
-const VIEW_TYPE_NAMES: Record<string, string> = {
-  feed: '피드', blog: '블로그', album: '앨범', snap: '스냅', cut: '스트립',
 };
 
 // 하나의 여행 = 하나의 썸네일 (여러 형식 기록 포함)
@@ -1494,7 +1378,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const didSeedBadgesRef = useRef(false);
 
   // ─── 여행 기록 순서 편집 상태 ───
-  const [trips, setTrips] = useState<TripThumbnail[]>(() => {
+  const [trips] = useState<TripThumbnail[]>(() => {
     return [...CURRENT_TRIP_THUMBNAILS];
   });
   const [isDragging, setIsDragging] = useState(false);
@@ -2235,13 +2119,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
-  auroraTop: {
-    position: 'absolute',
-    top: -60,
-    left: -40,
-    right: -40,
-    height: 380,
-  },
 
   // 헤더
   headerRow: {
@@ -2254,11 +2131,6 @@ const styles = StyleSheet.create({
     paddingLeft: 36,
     paddingRight: 24,
     marginBottom: 24,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    color: COLORS.white,
   },
   settingBtn: {
     width: 40,
@@ -2291,11 +2163,6 @@ const styles = StyleSheet.create({
     height: 120,
     borderRadius: 60,
   },
-  avatarText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
   profileInfo: {
     flex: 1,
     justifyContent: 'flex-start',
@@ -2307,12 +2174,6 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     letterSpacing: 0.4,
     marginBottom: 8,
-  },
-  userHandle: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: '#AA54C1',
-    marginBottom: 6,
   },
   statusRow: {
     flexDirection: 'row',
@@ -2330,14 +2191,6 @@ const styles = StyleSheet.create({
     // 통계(statsRow marginTop:23)와의 간격을 좁힘 — 소개 있을 때만 적용(조건부 렌더). 유효 간격 ≈8
     marginBottom: -15,
     lineHeight: 16,
-  },
-  statusDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: COLORS.white,
-    marginLeft: 5,
-    marginTop: 7,
   },
 
   // 통계 행 — 상태 텍스트 아래, 3개 묶음 가로 정렬
@@ -2377,13 +2230,6 @@ const styles = StyleSheet.create({
     marginTop: 4, // 숫자~라벨 ≈10px
     lineHeight: 16,
   },
-  followingExpandedWrap: {
-    marginTop: 8,
-    backgroundColor: '#1A1A26',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
 
   // 구분선
   divider: {
@@ -2416,251 +2262,20 @@ const styles = StyleSheet.create({
     marginTop: -4,
     marginBottom: 16,
   },
-  friendsSectionLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.purpleNeon,
-    marginBottom: 8,
-    marginTop: 8,
-  },
-  friendBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 10,
-  },
-  friendBarAvatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.purpleDeep,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  friendBarInitial: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  friendBarUsername: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: COLORS.purpleNeon,
-  },
-  friendBarAbroad: {
-    fontSize: 12,
-    color: COLORS.purpleNeon,
-    marginTop: 2,
-  },
-  friendBarHome: {
-    fontSize: 12,
-    color: COLORS.textDim,
-    marginTop: 2,
-  },
-  itemDivider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginLeft: 48,
-  },
-  itemDividerFull: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginLeft: 80,
-  },
 
   // 섹션 라벨
-  sectionLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: COLORS.purpleNeon,
-    marginBottom: 10,
-  },
-  groupLabel: {
-    fontSize: 10,
-    color: COLORS.textDim,
-    marginTop: 20,
-    marginBottom: 8,
-    marginLeft: 4,
-  },
 
   // 여행 아이템
-  tripItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 12,
-  },
-  tripThumb: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    backgroundColor: COLORS.purpleThumb,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tripEmoji: {
-    fontSize: 20,
-  },
-  tripInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  tripCountry: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-  tripDate: {
-    fontSize: 10,
-    color: COLORS.textDim,
-  },
-  tripStars: {
-    fontSize: 10,
-    color: COLORS.purpleNeon,
-  },
 
   // 획득 배지
-  badgesScroll: {
-    marginBottom: 4,
-  },
-  badgesContent: {
-    gap: 10,
-    paddingVertical: 4,
-  },
-  badgeCard: {
-    width: 72,
-    alignItems: 'center',
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 8,
-    gap: 6,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
-  },
-  badgeCardLocked: {
-    borderColor: 'rgba(255,255,255,0.05)',
-    backgroundColor: '#1A1A24',
-  },
-  badgeEmoji: {
-    fontSize: 26,
-  },
-  badgeName: {
-    fontSize: 9,
-    fontWeight: '600',
-    color: COLORS.textDim,
-    textAlign: 'center',
-  },
-  badgeLock: {
-    fontSize: 10,
-  },
 
   // 프리미엄 배너
-  premiumBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.purpleBg,
-    borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 20,
-    gap: 12,
-  },
-  premiumIcon: {
-    fontSize: 24,
-  },
-  premiumInfo: {
-    flex: 1,
-  },
-  premiumTitle: {
-    fontSize: 14,
-    fontWeight: 'bold',
-    color: COLORS.purpleNeon,
-    marginBottom: 2,
-  },
-  premiumSub: {
-    fontSize: 11,
-    color: COLORS.textDim,
-  },
 
   // 설정 그룹
-  settingGroup: {
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    overflow: 'hidden',
-  },
-  settingItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-  },
-  settingLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  settingIcon: {
-    fontSize: 16,
-    width: 24,
-  },
-  settingLabel: {
-    fontSize: 13,
-    color: COLORS.white,
-  },
-  settingRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  settingValue: {
-    fontSize: 11,
-    color: COLORS.textDim,
-  },
-  chevron: {
-    fontSize: 18,
-    color: COLORS.textMuted,
-  },
-  premiumBadge: {
-    backgroundColor: 'rgba(107,33,168,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-  },
-  premiumBadgeText: {
-    fontSize: 9,
-    color: COLORS.purpleNeon,
-  },
 
   // 로그아웃
-  logoutBtn: {
-    backgroundColor: COLORS.redBg,
-    borderWidth: 1,
-    borderColor: COLORS.redBorder,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 24,
-  },
-  logoutText: {
-    fontSize: 14,
-    color: COLORS.red,
-  },
 
   // 버전
-  versionText: {
-    fontSize: 10,
-    color: COLORS.textMuted,
-    textAlign: 'center',
-    marginTop: 20,
-  },
 
   // ─── 편집 모달 스타일 ───
   modalRoot: {
@@ -2730,11 +2345,6 @@ const styles = StyleSheet.create({
     borderRadius: 55,
     borderWidth: 2,
     borderColor: 'rgba(191,133,252,0.5)',
-  },
-  modalAvatarText: {
-    fontSize: 38,
-    fontWeight: 'bold',
-    color: COLORS.white,
   },
   editBadge: {
     position: 'absolute',
@@ -2840,148 +2450,16 @@ const pvStyles = StyleSheet.create({
 
 // ─── 여행 기록 3열 그리드 스타일 ───
 const gridSt = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 2,
-    marginHorizontal: -16,
-    marginBottom: 20,
-  },
-  cell: {
-    width: CELL_SIZE,
-    height: Math.floor(CELL_SIZE * 1.4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    position: 'relative',
-  },
-  cellEmoji: {
-    fontSize: 36,
-  },
-  cellCountry: {
-    fontSize: 11,
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  typeBadge: {
-    position: 'absolute',
-    bottom: 6,
-    right: 6,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 4,
-  },
-  typeBadgeIcon: {
-    fontSize: 12,
-  },
   gridHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 10,
   },
-  gridHeaderTitle: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  editBtnText: {
-    fontSize: 14,
-    color: '#BF85FC',
-    fontWeight: '500',
-  },
-  tripCount: {
-    fontSize: 12,
-    color: '#A1A1B0',
-  },
-  checkbox: {
-    position: 'absolute',
-    top: 6,
-    left: 6,
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#2E2E3B',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxSelected: {
-    backgroundColor: '#BF85FC',
-    borderColor: '#BF85FC',
-  },
-  checkmark: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
-    lineHeight: 16,
-  },
-  selectedOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(191,133,252,0.18)',
-  },
 
   // ── 행 기반 그리드 ──
-  rowContainer: {
-    marginHorizontal: -16,
-    marginBottom: 20,
-    gap: 2,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: 2,
-  },
 
   // ── 묶음 셀 ──
-  groupCell: {
-    width: CELL_SIZE * 2 + 2,
-    height: Math.floor(CELL_SIZE * 1.4),
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  groupCoverEmoji: {
-    fontSize: 44,
-  },
-  groupOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    paddingRight: 34,
-    gap: 2,
-  },
-  groupFlags: {
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  groupTitle: {
-    fontSize: 12,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  groupBadge: {
-    position: 'absolute',
-    bottom: 8,
-    right: 8,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 4,
-    paddingVertical: 2,
-    paddingHorizontal: 5,
-  },
-  groupBadgeIcon: {
-    fontSize: 13,
-  },
 });
 
 // ─── 배지 하이라이트 스타일 ───
@@ -3012,50 +2490,11 @@ const badgeHL = StyleSheet.create({
     alignItems: 'center',
     width: 64,
   },
-  glassCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    marginBottom: 8,
-    elevation: 10,
-  },
-  glassCircleGradient: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
   emoji: {
     fontSize: 24,
   },
   lockIcon: {
     fontSize: 22,
-  },
-  name: {
-    fontSize: 12,
-    color: '#CFC2D6',
-    textAlign: 'center',
-  },
-  moreCircle: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.3)',
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    marginBottom: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  moreText: {
-    fontSize: 11,
-    color: '#BF85FC',
-    textAlign: 'center',
-    lineHeight: 15,
   },
 });
 
@@ -3103,11 +2542,6 @@ const blStyles = StyleSheet.create({
     shadowOpacity: 0.5,
     shadowRadius: 12,
     elevation: 8,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'flex-start',
   },
   row: {
     flexDirection: 'row',
@@ -3494,86 +2928,6 @@ const thumbSt = StyleSheet.create({
 });
 
 // ─── 여행 상세 모달 스타일 ───
-const detailSt = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#1E1E2E',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingTop: 12,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(191,133,252,0.2)',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: '#3A3A55',
-    alignSelf: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 13,
-    color: '#A1A1B0',
-    textAlign: 'center',
-    marginTop: 4,
-    marginBottom: 20,
-  },
-  list: {
-    gap: 8,
-  },
-  item: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#2A2A3A',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 14,
-  },
-  itemIcon: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  itemEmoji: {
-    fontSize: 22,
-  },
-  itemInfo: {
-    flex: 1,
-    gap: 2,
-  },
-  itemType: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  itemDesc: {
-    fontSize: 12,
-    color: '#A1A1B0',
-  },
-  itemArrow: {
-    fontSize: 22,
-    color: '#BF85FC',
-    fontWeight: '300',
-  },
-});
-
 // ─── 묶음 설정 모달 스타일 ───
 const gmSt = StyleSheet.create({
   sheet: {

@@ -224,18 +224,6 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     lineHeight: 22,
   },
-  skipBtn: {
-    position: 'absolute',
-    top: 56,
-    right: Spacing[6],
-    zIndex: 10,
-    padding: Spacing[2],
-  },
-  skipText: {
-    color: Colors.textSecondary,
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.medium,
-  },
   bottomArea: {
     paddingHorizontal: Spacing[6],
     paddingBottom: 48,

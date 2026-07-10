@@ -248,7 +248,6 @@ CutPhotoCanvas.displayName = 'CutPhotoCanvas';
 export default CutPhotoCanvas;
 
 const st = StyleSheet.create({
-  fill: { width: '100%', height: '100%' },
   ph: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   phTxt: { fontSize: 28, color: '#9AA0A8' },
 });

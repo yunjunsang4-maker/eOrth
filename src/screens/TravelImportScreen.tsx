@@ -85,13 +85,13 @@ export default function TravelImportScreen({ navigation }: Props) {
       index: 0,
       routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
     });
-  const [permissionStatus, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
+  const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
   const [scanFinished, setScanFinished] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [scannedTrips, setScannedTrips] = useState<ScannedTrip[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
+  const [isImporting] = useState(false);
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
   const [period, setPeriod] = useState<ScanPeriodOption>(SCAN_PERIODS[0]); // 분석 기간 (기본: 최근 1년)
 
@@ -1001,13 +1001,6 @@ const styles = StyleSheet.create({
     color: Colors.textMuted,
     marginBottom: Spacing[3],
   },
-  cardContent: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    lineHeight: 20,
-    marginBottom: Spacing[4],
-  },
   cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -1020,11 +1013,6 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
-  },
-  ratingText: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.gold,
   },
 
   /* Bottom Bar */

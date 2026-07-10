@@ -31,7 +31,7 @@ import {
 } from '../store/pendingDeletion';
 import { purgeAccountOnServer } from '../services/accountDeletion';
 import { isSupabaseConfigured } from '../services/supabase';
-import { signUpWithEmail, signInWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail, signOut } from '../services/auth';
+import { signUpWithEmail, signInWithIdentifier, sendPasswordReset, signInWithProvider, resendEmailConfirmation, getAuthProvider, getAuthEmail, signOut } from '../services/auth';
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';

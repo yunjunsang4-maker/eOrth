@@ -1032,7 +1032,6 @@ const s = StyleSheet.create({
   },
   backIcon: { fontSize: 17, color: COLORS.white },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerFlag: { fontSize: 18 },
   headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3 },
   headerInput: {
     fontSize: 15,
@@ -1081,13 +1080,6 @@ const s = StyleSheet.create({
   },
   heroPillText: { fontSize: 12, color: COLORS.purpleNeon, fontWeight: '600' },
   // 섹션
-  section: { paddingHorizontal: 20, marginBottom: 24 },
-  sectionHeader: {
-    flexDirection: 'row', alignItems: 'center', marginBottom: 12, gap: 8,
-  },
-  sectionDot: { width: 6, height: 6, borderRadius: 3 },
-  sectionName: { fontSize: 14, fontWeight: '700', letterSpacing: -0.2 },
-  sectionLine: { flex: 1, height: 1, borderRadius: 1 },
   // 빈 상태
   emptyCard: {
     alignItems: 'center', paddingVertical: 28,
@@ -1206,16 +1198,6 @@ const card = StyleSheet.create({
     backgroundColor: COLORS.card, borderRadius: 18,
     borderWidth: 1, padding: 16, marginBottom: 10, overflow: 'hidden',
   },
-  feedHeader: {
-    flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12,
-  },
-  feedAvatar: {
-    width: 36, height: 36, borderRadius: 12,
-    backgroundColor: 'rgba(191,133,252,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  feedAvatarEmoji: { fontSize: 18 },
-  feedUserName: { fontSize: 14, fontWeight: '700', color: COLORS.white },
   feedDate: { fontSize: 11, color: COLORS.textMuted, marginTop: 1 },
   feedTypeBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 8 },
   feedTypeText: { fontSize: 10, fontWeight: '700' },
@@ -1224,8 +1206,6 @@ const card = StyleSheet.create({
   feedFooter: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   feedStatRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   feedStat: { fontSize: 12, color: COLORS.textDim },
-  feedTags: { flexDirection: 'row', gap: 6, marginLeft: 'auto' },
-  feedTag: { fontSize: 11, fontWeight: '600' },
 
   // Snap (세로 포트레이트) — 카드 폭을 사진 폭에 맞춤
   snapHeader: {

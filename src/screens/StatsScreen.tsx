@@ -600,11 +600,6 @@ const styles = StyleSheet.create({
     paddingRight: Spacing[6],
     paddingBottom: Spacing[3],
   },
-  headerTitle: {
-    fontSize: Typography.fontSize['2xl'],
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.textPrimary,
-  },
   scroll: { paddingHorizontal: Spacing[6], paddingBottom: 20 },
 
   statsRow: {

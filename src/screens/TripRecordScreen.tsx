@@ -375,9 +375,4 @@ const styles = StyleSheet.create({
   menuItemDelete: {
     color: '#FF3B30',
   },
-  menuDivider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    marginHorizontal: 16,
-  },
 });

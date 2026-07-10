@@ -355,9 +355,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cameraIconText: {
-    fontSize: 14,
-  },
   avatarHint: {
     marginTop: 8,
     fontSize: 12,
@@ -419,25 +416,6 @@ const s = StyleSheet.create({
   },
 
   // 선택 버튼
-  selectBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: COLORS.cardLight,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-  },
-  selectBtnText: {
-    fontSize: 14,
-    color: COLORS.white,
-  },
-  chevron: {
-    fontSize: 18,
-    color: COLORS.textMuted,
-  },
 
   // 하단 저장 버튼
   saveLargeBtn: {

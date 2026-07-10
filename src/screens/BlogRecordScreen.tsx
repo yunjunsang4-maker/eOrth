@@ -2698,7 +2698,6 @@ const st = StyleSheet.create({
   addFriendTxt: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
   addFriendBadge: { backgroundColor: C.purpleDeep, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendPickerPanel: { position: 'absolute' as const, bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
   friendPickerSheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
   friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
   friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
@@ -2719,7 +2718,6 @@ const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
 const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
 
 // ─── 캘린더 바텀시트 ───
-const CAL_WEEK_DAYS = ['일', '월', '화', '수', '목', '금', '토'];
 const CAL_CELL = Math.floor((SCREEN_W - 32 - 12) / 7);
 
 function BlogCalendarSheet({
@@ -2916,7 +2914,6 @@ const pm = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  headerIcon: { fontSize: 24 },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',

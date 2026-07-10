@@ -194,8 +194,6 @@ export default function FriendsScreen({ navigation }: Props) {
     }, t);
   };
 
-  const selectedFriend = friends.find(f => f.id === selectedFriendId);
-
   // 실제 대화(dmStore)의 마지막 메시지/시각을 합쳐 목록을 구성
   const mergedFriends = friends.map(f => {
     const msgs = conversations[f.handle];
@@ -687,7 +685,6 @@ const st = StyleSheet.create({
     alignItems: 'center',
     marginTop: 60,
   },
-  emptyEmoji: { fontSize: 40, marginBottom: 12 },
   emptyText: {
     fontSize: 14,
     color: C.dim,

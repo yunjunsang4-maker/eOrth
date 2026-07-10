@@ -274,17 +274,6 @@ const matchesCountry = (
   return set.includes(r.countryName ?? '') || !!r.countries?.some((c) => set.includes(c.name));
 };
 
-const CITY_TO_EN: Record<string, string> = {
-  '도쿄': 'Tokyo', '오사카': 'Osaka', '교토': 'Kyoto',
-  '후쿠오카': 'Fukuoka', '홋카이도': 'Hokkaido', '오키나와': 'Okinawa',
-  '파리': 'Paris', '니스': 'Nice', '리옹': 'Lyon',
-  '로마': 'Rome', '밀라노': 'Milan', '피렌체': 'Florence', '베네치아': 'Venice',
-  '베를린': 'Berlin', '함부르크': 'Hamburg', '뮌헨': 'Munich', '프랑크푸르트': 'Frankfurt',
-  '런던': 'London',
-  '서울': 'Seoul', '부산': 'Busan',
-  '방콕': 'Bangkok',
-};
-
 type Props = TabScreenProps<'MainTab'>;
 
 // 기록 형식 선택 → 이동할 수 있는 작성 화면들
@@ -1690,20 +1679,6 @@ export default function MainScreen({ navigation, route }: Props) {
 
 // ── 영토 표시 설정 모달 (Figma Frame_2147230197 100% 구현) ──
 const dsm = StyleSheet.create({
-  toggleRow: { flexDirection: 'row', gap: 11, height: 53, marginBottom: 13 },
-  toggleBtn: { flex: 1, borderRadius: 15, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  toggleBtnIdle: { backgroundColor: '#2E2E3B' },
-  toggleBtnActive: {
-    backgroundColor: '#6B21A8',
-    borderWidth: 1.5,
-    borderColor: '#CA83FF',
-    shadowColor: '#CA83FF',
-    shadowOpacity: 0.7,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 6,
-  },
-  toggleText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   galleryBtn: { height: 49, borderRadius: 15, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   galleryText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   sectionLabel: { color: '#9A9A9A', fontSize: 13, fontWeight: '600', marginBottom: 14 },
@@ -1718,7 +1693,6 @@ const dsm = StyleSheet.create({
   paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },
   swatch: { width: 34, height: 34, borderRadius: 17 },
   swatchActive: { borderWidth: 2, borderColor: '#fff' },
-  addSwatch: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   listWrap: { flex: 1, marginTop: 4, position: 'relative' },
   emptyHint: { color: '#6F6F7A', fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 24 },
   listFade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 48 },
@@ -1745,24 +1719,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[6],
     paddingBottom: Spacing[3],
   },
-  headerLogoImage: {
-    width: 95,
-    height: 26,
-  },
   headerIcon: {
     padding: Spacing[1],
     position: 'relative',
     // 로고가 translateY -8 로 올라가 있어, 종 아이콘도 로고 시각 중심에 맞춰 올림
     transform: [{ translateY: -11 }],
-  },
-  redDot: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#FF3B30',
   },
 
   // ── 지구본 영역
@@ -1841,10 +1802,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  regionChipActive: {
-    borderWidth: 1,
-    borderColor: '#00D8F3',
   },
   // ── 인기명소 칩 그라데이션 테두리 (시안→마젠타). LinearGradient 래퍼 + 1px 패딩으로 구현
   popularChipBorder: {
@@ -2203,16 +2160,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
     padding: 8,
   },
-  regionBackArrow: {
-    color: '#BF85FC',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  regionBackText: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '600',
-  },
 
   // ── 대륙 모드 - 국가 선택 그리드
   countryGrid: {
@@ -2307,12 +2254,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.55)',
   },
-  globeSettingsIcon: {
-    width: 18,
-    height: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
 
   // ── 표시 설정 모달
   dsCard: {
@@ -2384,22 +2325,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginBottom: 10,
   },
-  dsColorGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  dsColorItem: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  dsColorItemActive: {
-    borderColor: '#fff',
-    borderWidth: 3,
-  },
   dsCountryRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2428,10 +2353,6 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     fontSize: 11,
   },
-  dsCountryArrow: {
-    color: '#A1A1B0',
-    fontSize: 10,
-  },
   dsCountryPalette: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -2449,18 +2370,6 @@ const styles = StyleSheet.create({
   dsColorItemSmActive: {
     borderColor: '#fff',
     borderWidth: 2.5,
-  },
-  dsConfirmBtn: {
-    backgroundColor: '#BF85FC',
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: 'center',
-    marginTop: 4,
-  },
-  dsConfirmText: {
-    color: '#fff',
-    fontSize: 15,
-    fontWeight: '700',
   },
   dsSegmentWrap: {
     flexDirection: 'row',

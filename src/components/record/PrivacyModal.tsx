@@ -179,7 +179,6 @@ const pm = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  headerIcon: { fontSize: 24 },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',

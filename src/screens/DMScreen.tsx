@@ -197,8 +197,6 @@ function toReplyInfo(m: Message, tr: TFunction): ReplyInfo {
 }
 
 // ─── 날짜 구분 라벨 (오늘 / 어제 / 2026년 6월 16일 (월)) ───
-const WEEKDAYS = ['일', '월', '화', '수', '목', '금', '토'];
-
 function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
@@ -918,11 +916,6 @@ const st = StyleSheet.create({
     backgroundColor: C.card, alignItems: 'center', justifyContent: 'center',
   },
   headerAvatarEmoji: { fontSize: 18 },
-  headerOnline: {
-    position: 'absolute', bottom: 0, right: 0,
-    width: 10, height: 10, borderRadius: 5,
-    backgroundColor: C.online, borderWidth: 2, borderColor: C.bg,
-  },
   headerName: { fontSize: 15, fontWeight: '700', color: C.white },
   headerStatus: { fontSize: 11, color: C.dim, marginTop: 1 },
 
@@ -951,9 +944,6 @@ const st = StyleSheet.create({
   bubbleText: { fontSize: 14, color: C.white, lineHeight: 20 },
 
   // 입력 중 버블
-  typingBubble: { paddingVertical: 14 },
-  typingDots: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  typingDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: C.dim },
 
   // 이미지 버블
   imgBubble: { borderRadius: 16, overflow: 'hidden' },
@@ -967,7 +957,6 @@ const st = StyleSheet.create({
   sendFailed: { fontSize: 10, color: '#FF453A', textAlign: 'right', marginRight: 4, marginTop: 2, fontWeight: '600' },
 
   // 읽음 표시
-  readReceipt: { fontSize: 10, color: C.accent, textAlign: 'right', marginRight: 4, marginTop: 2 },
 
   // 헤더 메뉴 버튼
   headerMenuBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center' },
@@ -1068,7 +1057,6 @@ const st = StyleSheet.create({
     backgroundColor: C.card, borderRadius: 14,
     paddingHorizontal: 20, paddingVertical: 12,
   },
-  attachIcon: { fontSize: 24 },
   attachLabel: { fontSize: 11, color: C.dim, fontWeight: '500' },
 
   // 입력 바

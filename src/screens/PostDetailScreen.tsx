@@ -2109,91 +2109,11 @@ const s = StyleSheet.create({
 
   scroll: { flex: 1 },
   scrollContent: { paddingHorizontal: 20, paddingTop: 18, paddingBottom: 8 },
-  scrollContentV2: { paddingBottom: 8 },
-  belowMediaPad: { paddingHorizontal: 20, paddingTop: 14 },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   emptyText: { color: C.muted, fontSize: 14 },
 
   // ── 미디어 전체 영역 (여백 없이, 위까지) ──
-  mediaFullWrap: {
-    width: SCREEN_W,
-    aspectRatio: 3 / 4,
-    backgroundColor: '#1A0A2E',
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  mediaFullImage: {
-    width: '100%',
-    height: '100%',
-  },
-  mediaFullPlaceholder: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   // 인스타 스토리식 상단 오버레이
-  storyTopOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 54,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    zIndex: 10,
-  },
-  storyHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  storyAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(191,133,252,0.45)',
-    borderWidth: 2,
-    borderColor: 'rgba(191,133,252,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  storyAvatarEmoji: {
-    fontSize: 17,
-  },
-  storyUserInfo: {
-    flex: 1,
-    marginLeft: 10,
-    gap: 1,
-  },
-  storyHandle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  storyTime: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  storyCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  storyCloseBtnText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
 
   // ── 유저 정보 ──
   userRow: {
@@ -2209,7 +2129,6 @@ const s = StyleSheet.create({
     backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: C.accentBorder,
   },
-  avatarEmoji: { fontSize: 22 },
   userInfo: { flex: 1 },
   userName: { fontSize: 15, fontWeight: '700', color: C.white },
   userMeta: {
@@ -2248,7 +2167,6 @@ const s = StyleSheet.create({
     color: C.muted, fontSize: 14, textAlign: 'center',
     marginTop: 20, marginBottom: 8,
   },
-  imageEmoji: { fontSize: 48, opacity: 0.4 },
   viewTypeBadge: {
     position: 'absolute', top: 12, right: 12,
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
@@ -2286,7 +2204,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
     backgroundColor: C.card, borderWidth: 1, borderColor: C.cardBorder,
   },
-  infoChipIcon: { fontSize: 13 },
   companionIconWrap: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
   infoChipText: { fontSize: 12, color: C.dim },
   weatherChip: {
@@ -2411,7 +2328,6 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     height: 48, paddingHorizontal: 16, gap: 10,
   },
-  menuItemIcon: { fontSize: 16 },
   menuItemText: { fontSize: 14, color: C.white, fontWeight: '500' },
   menuDivider: { height: 1, backgroundColor: '#3A3A4A' },
   menuSectionDivider: { height: 6, backgroundColor: '#1A1A26' },
@@ -2475,7 +2391,6 @@ const blogS = StyleSheet.create({
   linkDesc: { fontSize: 11, color: '#A1A1B0', lineHeight: 16 },
   linkUrl: { fontSize: 10, color: '#5A5A6E' },
   fileBlock: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1C1C28', borderRadius: 10, padding: 12, borderWidth: 1, borderColor: '#2A2A3A', gap: 10, marginBottom: 12 },
-  fileIcon: { fontSize: 20 },
   fileName: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },
   fileSize: { color: '#5A5A6E', fontSize: 11, marginTop: 2 },
   tocWrap: {
@@ -2494,126 +2409,6 @@ const blogS = StyleSheet.create({
 });
 
 // ── 모먼트 스토리 스타일 ──
-const sm = StyleSheet.create({
-  wrap: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  bgImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: SCREEN_W,
-    height: SCREEN_H,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  topOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    paddingTop: 54,
-    paddingHorizontal: 16,
-    paddingBottom: 24,
-    zIndex: 10,
-  },
-  storyHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  avatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(191,133,252,0.5)',
-    borderWidth: 2,
-    borderColor: 'rgba(191,133,252,0.7)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 17,
-  },
-  userInfo: {
-    flex: 1,
-    marginLeft: 10,
-    gap: 1,
-  },
-  handle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  time: {
-    fontSize: 12,
-    color: 'rgba(255,255,255,0.7)',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 12,
-  },
-  closeBtnText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  bottomOverlay: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingBottom: 48,
-    paddingTop: 80,
-    gap: 6,
-    alignItems: 'center',
-  },
-  country: {
-    fontSize: 13,
-    color: '#BF85FC',
-    fontWeight: '600',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  content: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    textAlign: 'center',
-    lineHeight: 30,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 5,
-  },
-  memo: {
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.75)',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-  rating: {
-    fontSize: 14,
-    color: '#FBBF24',
-    letterSpacing: 2,
-    textShadowColor: 'rgba(0,0,0,0.7)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 4,
-  },
-});
-
 // ── 스냅 스토리 전체화면 스타일 ──
 const storyS = StyleSheet.create({
   container: {
@@ -2688,9 +2483,6 @@ const storyS = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-  },
-  avatarEmoji: {
-    fontSize: 18,
   },
   avatarImg: {
     width: 40,

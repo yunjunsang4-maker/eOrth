@@ -822,18 +822,8 @@ const st = StyleSheet.create({
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)',
     overflow: 'hidden',
   },
-  flipIcon: { fontSize: 24 },
 
   // 미니 프리뷰
-  miniPreview: {
-    position: 'absolute', bottom: Platform.OS === 'ios' ? 140 : 120,
-    left: 20, alignItems: 'center', gap: 4,
-  },
-  miniImg: {
-    width: 60, height: 80, borderRadius: 10,
-    borderWidth: 2, borderColor: '#A855F7',
-  },
-  miniLabel: { color: '#BF85FC', fontSize: 10, fontWeight: '700' },
 
   // 권한 화면
   permScreen: {
@@ -862,15 +852,6 @@ const st = StyleSheet.create({
     backgroundColor: '#111',
   },
   previewMain: { width: '100%', height: '100%' },
-  previewClose: {
-    position: 'absolute', top: 12, right: 12, zIndex: 10,
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.35)',
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)',
-    overflow: 'hidden',
-  },
-  previewCloseText: { color: '#fff', fontSize: 18, fontWeight: '600' },
   pipWrapContainer: {
     position: 'absolute', top: 16, left: 16,
     width: SW * 0.28, height: SW * 0.37,

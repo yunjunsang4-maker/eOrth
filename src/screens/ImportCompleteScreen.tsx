@@ -108,6 +108,4 @@ const st = StyleSheet.create({
   primaryBtn: { width: '100%', borderRadius: 999, overflow: 'hidden', marginBottom: 8 },
   primaryGrad: { paddingVertical: 18, alignItems: 'center' },
   primaryTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
-  secondaryBtn: { paddingVertical: 14, alignItems: 'center' },
-  secondaryTxt: { color: '#A1A1B0', fontSize: 15, fontWeight: '600' },
 });

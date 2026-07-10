@@ -6,7 +6,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
   Alert,
   Share,
 } from 'react-native';
@@ -49,8 +48,6 @@ const COLORS = {
   menuDivider:  '#3A3A4A',
 };
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
 
 // 라우트 파라미터 누락 시 username 기본값으로만 사용 (실제 데이터는 백엔드에서 로드)
 const friendProfile = { username: '' };
@@ -467,23 +464,6 @@ export default function FriendProfileScreen({
 }
 
 // ─── 배지 하이라이트 스타일 ───
-const badgeHL = StyleSheet.create({
-  scroll: { marginTop: 20 },
-  scrollContent: { paddingHorizontal: 16, gap: 16 },
-  item: { alignItems: 'center', gap: 6 },
-  gradientRing: {
-    width: 68, height: 68, borderRadius: 34,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  circle: {
-    width: 62, height: 62, borderRadius: 31,
-    backgroundColor: COLORS.bg,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  emoji: { fontSize: 26 },
-  name: { fontSize: 10, color: COLORS.dim, fontWeight: '600' },
-});
-
 // ─── 스타일 ───
 const s = StyleSheet.create({
   container: {
@@ -514,47 +494,8 @@ const s = StyleSheet.create({
   moreIcon: { fontSize: 18, color: COLORS.dim, letterSpacing: 2 },
 
   // ── 프로필 ──
-  profileRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 16,
-    marginTop: 24,
-    marginBottom: 16,
-  },
-  avatarWrap: { position: 'relative' },
-  avatar: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: COLORS.accentDark,
-    borderWidth: 2, borderColor: 'rgba(191,133,252,0.4)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  avatarText: { fontSize: 28, fontWeight: 'bold', color: COLORS.white },
-  avatarImg: { width: 80, height: 80, borderRadius: 40 },
-  onlineDot: {
-    position: 'absolute', bottom: 2, right: 2,
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: COLORS.green, borderWidth: 2, borderColor: COLORS.bg,
-  },
-  profileInfo: { flex: 1 },
-  userName: { fontSize: 20, fontWeight: 'bold', color: COLORS.white, marginBottom: 2 },
-  userHandle: { fontSize: 13, color: COLORS.accent, marginBottom: 2 },
-  userLocation: { fontSize: 13, color: COLORS.dim, marginBottom: 8 },
-  statsRow: { flexDirection: 'row', gap: 8 },
-  statCard: {
-    backgroundColor: COLORS.card, borderRadius: 10,
-    paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center',
-  },
-  statValue: { fontSize: 14, fontWeight: 'bold', color: COLORS.white, marginBottom: 2 },
-  statLabel: { fontSize: 11, color: COLORS.dim },
 
   // ── 여행 중 배너 ──
-  abroadBanner: {
-    backgroundColor: 'rgba(191,133,252,0.08)',
-    borderWidth: 1, borderColor: COLORS.accent,
-    borderRadius: 12, paddingHorizontal: 16, paddingVertical: 12,
-    marginBottom: 12,
-  },
-  abroadText: { fontSize: 14, color: COLORS.accent, fontWeight: '500' },
 
   // ── 팔로우 버튼 ──
   followBtn: {
@@ -594,12 +535,6 @@ const s = StyleSheet.create({
   },
 
   // ── 여행 기록 헤더 ──
-  gridHeaderRow: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 12,
-  },
-  gridHeaderTitle: { fontSize: 16, fontWeight: '700', color: COLORS.white },
-  tripCount: { fontSize: 12, color: COLORS.dim },
 
   // ── 섹션 헤더 (프로필 탭 Travel badge / Travel archive와 동일) ──
   sectionHeaderRow: {
@@ -610,27 +545,6 @@ const s = StyleSheet.create({
   archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
 
   // ── 여행 썸네일 2열 그리드 ──
-  thumbGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 12,
-  },
-  thumbCard: {
-    width: THUMB_WIDTH, borderRadius: 16, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(191,133,252,0.15)',
-  },
-  thumbEmojiWrap: {
-    height: THUMB_WIDTH * 0.7,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  thumbEmoji: { fontSize: 40 },
-  thumbInfo: { paddingHorizontal: 10, paddingBottom: 10, gap: 2 },
-  thumbCountry: { fontSize: 12, fontWeight: '600', color: COLORS.white },
-  thumbDate: { fontSize: 10, color: COLORS.dim },
-  thumbBadges: { flexDirection: 'row', gap: 4, marginTop: 4 },
-  thumbBadge: {
-    width: 22, height: 22, borderRadius: 6,
-    backgroundColor: 'rgba(191,133,252,0.12)',
-    alignItems: 'center', justifyContent: 'center',
-  },
 
   // ── 팝업 오버레이 ──
   menuOverlay: {

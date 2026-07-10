@@ -7,7 +7,6 @@ import { analyzeForToc, applyTocSuggestions } from './autoToc';
 import {
   BlogBlock,
   createTextBlock,
-  createImageBlock,
   createHeadingBlock,
 } from '../types/blogBlocks';
 

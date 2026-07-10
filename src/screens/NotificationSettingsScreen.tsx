@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,  Linking,
-  Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';

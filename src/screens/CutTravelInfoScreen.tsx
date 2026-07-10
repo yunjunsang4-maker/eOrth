@@ -1034,7 +1034,6 @@ const st = StyleSheet.create({
 
   previewWrap: { alignItems: 'center', marginBottom: 22 },
   previewImg: { width: '70%', height: 150, borderRadius: 10 },
-  previewCountry: { color: C.textDim, fontSize: 13, marginTop: 8 },
 
   fieldBlock: { marginBottom: 20 },
   labelRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },

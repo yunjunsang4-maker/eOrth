@@ -672,7 +672,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 신규 작성이면 여행 카드에서 넘어온 기간(tripPeriod)을 기본 날짜로, 없으면 오늘
   const newStartInit = tripPeriod?.startDate ? parseDotDate(tripPeriod.startDate) : todayInit;
   const newEndInit = tripPeriod?.endDate ? parseDotDate(tripPeriod.endDate) : newStartInit;
-  const [title,           setTitle]           = useState(editRecord?.content ?? '');
+  const [title]                               = useState(editRecord?.content ?? '');
   const [startDate,       setStartDate]       = useState(
     editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : newStartInit
   );

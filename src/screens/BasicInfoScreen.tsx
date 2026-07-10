@@ -455,7 +455,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarIcon: { fontSize: 36 },
   avatarEditBadge: {
     position: 'absolute',
     bottom: 0,

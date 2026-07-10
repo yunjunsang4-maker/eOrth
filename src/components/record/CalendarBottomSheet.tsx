@@ -111,7 +111,6 @@ export function CalendarBottomSheet({
   const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
-  const MONTH_NAMES  = ['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월'];
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
