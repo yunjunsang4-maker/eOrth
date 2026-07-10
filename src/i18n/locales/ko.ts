@@ -66,6 +66,7 @@ const ko = {
     back: '뒤로 가기',
     groupAccount: '계정',
     groupApp: '앱 설정',
+    viewTutorial: '튜토리얼 보기',
     groupSupport: '지원',
     groupData: '데이터',
     editProfile: '프로필 편집',

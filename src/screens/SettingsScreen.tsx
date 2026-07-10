@@ -23,7 +23,7 @@ import { clearTripState } from '../services/tripState';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
-  EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon,
+  EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon, CompassIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
   TrashIcon, StarIcon, TargetIcon, StickerIcon, PaletteIcon,
 } from '../components/icons';
@@ -266,6 +266,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               label: t('settings.residence'),
               value: homeCountryCode,
               onPress: openCountryModal,
+            },
+            {
+              // 튜토리얼 다시 보기 — 'replay'는 tutorialSeen(1회 게이트)을 무시하고 강제 재생
+              icon: <CompassIcon size={22} />,
+              label: t('settings.viewTutorial'),
+              onPress: () => navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } }),
             },
           ]}
         />

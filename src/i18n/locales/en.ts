@@ -65,6 +65,7 @@ const en = {
     back: 'Back',
     groupAccount: 'Account',
     groupApp: 'App',
+    viewTutorial: 'View tutorial',
     groupSupport: 'Support',
     groupData: 'Data',
     editProfile: 'Edit profile',

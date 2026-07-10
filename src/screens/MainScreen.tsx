@@ -354,8 +354,13 @@ export default function MainScreen({ navigation, route }: Props) {
     });
 
   // 기록 완성 화면에서 "튜토리얼 진행하기"로 들어온 경우 자동 시작
+  // 유저당 1회 — 이미 봤으면 자동 시작은 스킵하고, 설정의 '튜토리얼 보기'(replay)만 통과
   useEffect(() => {
     if (!route.params?.startTutorial) return;
+    if (tutorialSeen && route.params.startTutorial !== 'replay') {
+      navigation.setParams({ startTutorial: undefined });
+      return;
+    }
     let cancelled = false;
     const timer = setTimeout(async () => {
       const [globe, toggle, settings, snapMeasured] = await Promise.all([
@@ -414,6 +419,7 @@ export default function MainScreen({ navigation, route }: Props) {
         { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
       ]);
       setCoachVisible(true);
+      setTutorialSeen(true); // 유저당 1회 — 표시된 순간 본 것으로 기록(서버 백업 포함)
       // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
       navigation.setParams({ startTutorial: undefined });
     }, 450);
@@ -460,6 +466,7 @@ export default function MainScreen({ navigation, route }: Props) {
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
     skinColorStore, setSkinColorStore,
+    tutorialSeen, setTutorialSeen,
   } = useSettings();
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
