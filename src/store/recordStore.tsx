@@ -568,6 +568,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 백엔드 발행: 사진 업로드 후 posts insert → 받은 remoteId를 로컬 레코드에 연결.
   // 임시저장/미래 예약글은 제외(발행 시점에 처리). 레코드별 1회만 시도(중복 발행 방지).
   const publishAttemptRef = useRef<Set<string>>(new Set());
+  // 발행(업로드) 진행 중 삭제/수정 경합 대응 — remoteId 부착 전 삭제는 여기 기록해 완료 시점에 서버에서도 지운다.
+  const pendingDeleteRef = useRef<Set<string>>(new Set());
+  const recordsLiveRef = useRef(records);
+  recordsLiveRef.current = records;
   const publishToBackend = (rec: TravelRecord) => {
     if (!isSupabaseConfigured || rec.isDraft) return;
     if (rec.scheduledAt && rec.scheduledAt > Date.now()) return;
@@ -575,7 +579,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     publishAttemptRef.current.add(rec.id);
     publishPost(rec)
       .then((rid) => {
-        if (rid) setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, remoteId: rid } : r)));
+        if (!rid) return;
+        // 업로드 중 삭제된 글 → 서버에 유령 게시물로 남지 않게 즉시 삭제
+        const live = recordsLiveRef.current.find((r) => r.id === rec.id);
+        if (pendingDeleteRef.current.has(rec.id) || !live) {
+          pendingDeleteRef.current.delete(rec.id);
+          deletePost(rid).catch(() => {});
+          return;
+        }
+        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, remoteId: rid } : r)));
+        // 업로드 중 수정된 글 → 캡처본(구버전)이 insert됐으므로 최신 내용으로 서버 갱신
+        if (live !== rec) updatePost(rid, { ...live, remoteId: rid }).catch(notifySyncError);
       })
       .catch(notifySyncError);
   };
@@ -634,7 +648,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         })
         .filter((g) => g.records.length > 0)
     );
-    if (isSupabaseConfigured && target?.remoteId) deletePost(target.remoteId).catch(notifySyncError);
+    if (isSupabaseConfigured && target) {
+      if (target.remoteId) deletePost(target.remoteId).catch(notifySyncError);
+      // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약
+      else if (publishAttemptRef.current.has(id)) pendingDeleteRef.current.add(id);
+    }
   };
 
   // ─── 임시저장 ───
@@ -999,7 +1017,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const refreshComments = useCallback(async (postId: string, remoteId?: string) => {
     if (!isSupabaseConfigured || !remoteId) return;
     const list = await fetchComments(remoteId);
-    setCommentsByPost((prev) => ({ ...prev, [postId]: list }));
+    if (list === null) return; // 네트워크/서버 오류 — 로컬 댓글을 지우지 않고 유지
+    setCommentsByPost((prev) => {
+      const local = prev[postId] ?? [];
+      // 아직 서버 반영 전인 로컬 댓글(임시 id, uuid 아님)은 서버 목록 뒤에 보존 — 방금 단 댓글이 사라지지 않게
+      const isTemp = (id: string) => !/^[0-9a-f-]{36}$/i.test(id);
+      const pendingRoots = local.filter((c) => isTemp(c.id));
+      return { ...prev, [postId]: pendingRoots.length > 0 ? [...list, ...pendingRoots] : list };
+    });
   }, []);
 
   const addImportedAlbum = (data: {

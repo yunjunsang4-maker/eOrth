@@ -386,17 +386,18 @@ export async function fetchPostLikers(postId: string): Promise<PostLiker[]> {
 }
 
 // ─── 댓글 ───
-// 평면(parent_id) 행을 중첩 PostComment[]로 변환
-export async function fetchComments(postId: string): Promise<PostComment[]> {
-  if (!supabase || !postId) return [];
+// 평면(parent_id) 행을 중첩 PostComment[]로 변환.
+// 실패(네트워크/RLS 오류)는 null 반환 — 빈 배열([])과 구분해 호출부가 로컬 댓글을 지우지 않게 한다.
+export async function fetchComments(postId: string): Promise<PostComment[] | null> {
+  if (!supabase || !postId) return null;
   try {
     const uid = await getMyUserId();
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('comments')
       .select('id, author_id, parent_id, text, created_at, profiles:public_profiles!comments_author_id_fkey(handle, emoji, profile_photo)')
       .eq('post_id', postId)
       .order('created_at', { ascending: true });
-    if (!data) return [];
+    if (error || !data) return null;
     // 댓글 좋아요 집계 (좋아요 수 + 내가 누른 댓글)
     const ids = (data as any[]).map((r) => r.id);
     const likeCount = new Map<string, number>();
@@ -439,7 +440,7 @@ export async function fetchComments(postId: string): Promise<PostComment[]> {
     }
     return roots;
   } catch {
-    return [];
+    return null;
   }
 }
 

@@ -481,6 +481,7 @@ export default function MainScreen({ navigation, route }: Props) {
   const dsSnapshot = useRef<{
     globeDisplayMode: MapDisplayMode;
     globeColor: string;
+    globeSkin: string;
     countryColors: Record<string, string>;
     countryDisplayModes: Record<string, MapDisplayMode>;
     regionGlobalMode: 'color' | 'photo';
@@ -488,7 +489,7 @@ export default function MainScreen({ navigation, route }: Props) {
     regionColors: Record<string, string>;
   } | null>(null);
   const openDisplaySettings = () => {
-    dsSnapshot.current = { globeDisplayMode, globeColor, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors };
+    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors };
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
@@ -496,6 +497,8 @@ export default function MainScreen({ navigation, route }: Props) {
     if (s) {
       setGlobeDisplayMode(s.globeDisplayMode);
       setGlobeColor(s.globeColor);
+      // 스킨도 스냅샷으로 복원 — setGlobeSkin(테마드 세터)이 아이콘 팔레트까지 함께 되돌린다
+      if (s.globeSkin !== globeSkin) setGlobeSkin(s.globeSkin);
       setCountryColors(s.countryColors);
       setCountryDisplayModes(s.countryDisplayModes);
       setRegionGlobalMode(s.regionGlobalMode);

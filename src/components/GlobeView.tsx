@@ -1045,8 +1045,10 @@ function applyTheme(t) {
   loadAllImages().then(function() {
     return buildTexture();
   }).then(function(tex) {
+    var old = globeMesh.material.map; // 4096x2048 CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
     globeMesh.material.map = tex;
     globeMesh.material.needsUpdate = true;
+    if (old && old.dispose) old.dispose();
   });
   if (atmosphere) {
     globe.remove(atmosphere);
@@ -1081,8 +1083,10 @@ function handleVisitedMessage(msg) {
       loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
+        var old = globeMesh.material.map;
         globeMesh.material.map = tex;
         globeMesh.material.needsUpdate = true;
+        if (old && old.dispose) old.dispose();
       });
     }
   } else if (msg.type === 'setSponsored') {
