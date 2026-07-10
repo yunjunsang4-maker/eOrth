@@ -296,11 +296,10 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 통계 — 프로필 탭과 동일한 3개(기록수·팔로잉·팔로워) */}
+            {/* 통계 — 프로필 탭과 동일한 3개(여행수·팔로잉·팔로워). 비공개 계정도 수치는 공개(콘텐츠만 잠금) */}
             <View style={pv.statsRow}>
-              {/* 비공개 잠금 시 기록·팔로잉은 '–' (0으로 오해 방지). 팔로워 수는 공개 통계라 그대로 */}
-              <StatCard value={privateLocked ? '–' : String(display.recordCount)} label={t('friends.recordCount')} />
-              <StatCard value={privateLocked ? '–' : String(isSelf ? followingUsers.length : followingCount)} label={t('profile.following')} />
+              <StatCard value={String(display.trips.length)} label={t('profile.tripCount')} />
+              <StatCard value={String(isSelf ? followingUsers.length : followingCount)} label={t('profile.following')} />
               <StatCard value={String(display.followers)} label={t('friends.followers')} />
             </View>
           </View>

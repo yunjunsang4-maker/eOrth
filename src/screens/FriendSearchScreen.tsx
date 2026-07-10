@@ -18,7 +18,7 @@ import {
 
 import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
-import { GlobeIcon, SearchIcon } from '../components/icons';
+import { GlobeIcon, SearchIcon, PersonIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
 import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';
 import { useRecords } from '../store/recordStore';
@@ -93,11 +93,11 @@ function FriendItem({
         {item.photo && !imgError ? (
           <Image source={{ uri: item.photo }} style={s.avatarImg} onError={() => setImgError(true)} />
         ) : (
-          <Text style={s.avatarText}>{item.emoji || item.initial}</Text>
+          <PersonIcon size={24} color="#A0A0B0" />
         )}
       </View>
       <View style={s.friendInfo}>
-        <Text style={s.friendName}>{item.name}</Text>
+        {/* 닉네임 폐지 — 아이디(@handle) 한 줄만 표시 */}
         <Text style={s.friendUsername}>@{item.username}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
@@ -893,14 +893,9 @@ const s = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
-    backgroundColor: C.accentDark,
+    backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarText: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.white,
   },
   avatarImg: {
     width: 46,
@@ -915,11 +910,6 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: C.accent,
-  },
-  friendName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.white,
   },
   friendCountries: {
     fontSize: 12,
