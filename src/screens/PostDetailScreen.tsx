@@ -47,7 +47,7 @@ import { andFitText } from '../utils/fitText';
 import type { BlogBlock } from '../types/blogBlocks';
 import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blogBlocks';
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
-import { applyViewer } from '../utils/mediaPrivacy';
+import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker } from '../services/social';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
@@ -1208,7 +1208,23 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
+  // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
+  // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
+  const snapViewerRecords = useMemo(
+    () =>
+      [...records, ...feedPosts]
+        .filter(
+          (r) =>
+            (r.visibility === 'friends' || r.visibility === 'public') &&
+            !isBlocked(r.user) &&
+            !archivedIds.includes(r.id) &&
+            !reportedPostIds.includes(r.id)
+        )
+        .filter((r) => !isPostHiddenForViewer(r, currentViewer))
+        .map((r) => applyViewer(r, currentViewer)),
+    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked]
+  );
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
@@ -1471,8 +1487,8 @@ export default function PostDetailScreen() {
       <SnapStoryViewer
         initialPostId={postId}
         // 친구 스냅은 feedPosts에 있다 — records만 넘기면 친구 스냅을 열 때 내 스토리가
-        // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스로 병합.
-        records={[...records, ...feedPosts]}
+        // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스+동일 필터.
+        records={snapViewerRecords}
         navigation={navigation}
         toggleLike={toggleLike}
         deleteRecord={deleteRecord}

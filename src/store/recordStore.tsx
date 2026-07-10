@@ -1120,6 +1120,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setMutedHandles([]);
     setCurrentViewer(null);
     setFeedPosts([]);
+    // 계정 경계 잔존물 정리 — 이전 계정의 세션·열람 이력·요청이 새 계정 저장본/서버 행으로 이월되지 않게
+    setTripSession(null);
+    setViewedSnapIds([]);
+    setPendingFollowRequests([]);
+    // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
+    tripBackupReadyRef.current = false;
+    tripRestoreTriedRef.current = false;
+    setTripRestoreNonce((n) => n + 1);
   };
 
   // 백엔드 피드 새로고침 (남들의 공개/친구 글 + 내 좋아요 표시)
@@ -1272,8 +1280,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.
   // 변경이 잦으므로 4초 디바운스로 마지막 상태만 올린다 (실패는 조용히 — 다음 변경 때 재시도).
   const backupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 복원 시도가 끝나기 전에는 백업하지 않는다 — 재설치 직후/계정 전환 직후의 빈 상태가
+  // 서버 백업을 덮어써 파괴하는 경합 방지. 복원 effect가 끝나면 true.
+  const tripBackupReadyRef = useRef(false);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured) return;
+    if (!tripBackupReadyRef.current) return;
     if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
     backupTimerRef.current = setTimeout(() => {
       const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
@@ -1298,26 +1310,34 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 재설치/새 기기 복원 — 로컬에 카드가 전혀 없고 서버 백업이 있으면 1회 복원.
   // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
+  // 계정 전환(resetRecords) 시 nonce 증가로 새 계정에 대해 재시도한다.
   const tripRestoreTriedRef = useRef(false);
+  const [tripRestoreNonce, setTripRestoreNonce] = useState(0);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
     tripRestoreTriedRef.current = true;
-    if (tripGroups.length > 0) return;
+    if (tripGroups.length > 0) {
+      tripBackupReadyRef.current = true; // 로컬이 원본 — 백업 즉시 허용
+      return;
+    }
     fetchTripState().then((backup) => {
-      if (!backup || backup.groups.length === 0) return;
-      setTripGroups((prev) =>
-        prev.length > 0
-          ? prev
-          : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
-      );
-      setTripSession((prev) => {
-        if (prev) return prev;
-        const s = backup.session;
-        return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
-      });
+      if (backup && backup.groups.length > 0) {
+        setTripGroups((prev) =>
+          prev.length > 0
+            ? prev
+            : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+        );
+        setTripSession((prev) => {
+          if (prev) return prev;
+          const s = backup.session;
+          return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
+        });
+      }
+    }).finally(() => {
+      tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hydrated]);
+  }, [hydrated, tripRestoreNonce]);
 
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
   // 백엔드 설정과 무관(카드는 로컬 기능). 이미 카드에 속한 글(과거 빌드 작성분)은 건너뜀.

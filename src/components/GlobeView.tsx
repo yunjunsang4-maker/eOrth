@@ -222,6 +222,7 @@ var globeDefaultColor = '#BF85FC';
 
 // GeoJSON name → ISO 2-letter code
 var EN_TO_ISO = {
+  "Belize":"bz","Benin":"bj","Burkina Faso":"bf","Burundi":"bi","Central African Republic":"cf","Djibouti":"dj","East Timor":"tl","Equatorial Guinea":"gq","Eritrea":"er","Fiji":"fj","Gabon":"ga","Gambia":"gm","Lesotho":"ls","Liberia":"lr","Malawi":"mw","Mauritania":"mr","Rwanda":"rw","Sierra Leone":"sl","Solomon Islands":"sb","Suriname":"sr","The Bahamas":"bs","Trinidad and Tobago":"tt","Vanuatu":"vu","Ivory Coast":"ci","Guinea Bissau":"gw",
   "Afghanistan":"af","Albania":"al","Algeria":"dz","Angola":"ao",
   "Argentina":"ar","Armenia":"am","Australia":"au","Austria":"at",
   "Azerbaijan":"az","Bangladesh":"bd","Belarus":"by","Belgium":"be",
@@ -685,6 +686,7 @@ function buildBorders(world, hexColor) {
 }
 
 var KO_NAMES = {
+  "Belize":"벨리즈","Benin":"베냉","Burkina Faso":"부르키나파소","Burundi":"부룬디","Central African Republic":"중앙아프리카공화국","Djibouti":"지부티","East Timor":"동티모르","Equatorial Guinea":"적도기니","Eritrea":"에리트레아","Fiji":"피지","Gabon":"가봉","Gambia":"감비아","Lesotho":"레소토","Liberia":"라이베리아","Malawi":"말라위","Mauritania":"모리타니","Rwanda":"르완다","Sierra Leone":"시에라리온","Solomon Islands":"솔로몬제도","Suriname":"수리남","The Bahamas":"바하마","Trinidad and Tobago":"트리니다드 토바고","Vanuatu":"바누아투","Ivory Coast":"코트디부아르","Guinea Bissau":"기니비사우",
   "Afghanistan":"아프가니스탄","Albania":"알바니아","Algeria":"알제리",
   "Angola":"앙골라","Argentina":"아르헨티나","Armenia":"아르메니아",
   "Australia":"호주","Austria":"오스트리아","Azerbaijan":"아제르바이잔",
@@ -743,6 +745,9 @@ var worldData = null;
 async function init() {
   // 오프라인 번들된 지형 데이터 우선, 없으면 원격 폴백
   worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO) ? WORLD_GEO : await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+  // 번들 GeoJSON 국가명 정규화 — 매핑 테이블(정식 명칭) 기준으로 통일 (미국·영국 등 활성화/탭 매칭 복구)
+  var GEO_NAME_FIX = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
+  worldData.features.forEach(function(f){ var fx = GEO_NAME_FIX[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
   var texture = await buildTexture();
 
   var geo = new THREE.SphereGeometry(1, 128, 128);
@@ -1182,6 +1187,7 @@ var visitedMap = {};                   // nameEn -> { color }
 
 // GeoJSON 영문명 → 한글명 (탭 시 RN이 한글명으로 기록을 찾으므로 필요)
 var KO_NAMES = {
+  "Belize":"벨리즈","Benin":"베냉","Burkina Faso":"부르키나파소","Burundi":"부룬디","Central African Republic":"중앙아프리카공화국","Djibouti":"지부티","East Timor":"동티모르","Equatorial Guinea":"적도기니","Eritrea":"에리트레아","Fiji":"피지","Gabon":"가봉","Gambia":"감비아","Lesotho":"레소토","Liberia":"라이베리아","Malawi":"말라위","Mauritania":"모리타니","Rwanda":"르완다","Sierra Leone":"시에라리온","Solomon Islands":"솔로몬제도","Suriname":"수리남","The Bahamas":"바하마","Trinidad and Tobago":"트리니다드 토바고","Vanuatu":"바누아투","Ivory Coast":"코트디부아르","Guinea Bissau":"기니비사우",
   "Afghanistan":"아프가니스탄","Albania":"알바니아","Algeria":"알제리",
   "Angola":"앙골라","Argentina":"아르헨티나","Armenia":"아르메니아",
   "Australia":"호주","Austria":"오스트리아","Azerbaijan":"아제르바이잔",
@@ -1416,6 +1422,9 @@ async function init(){
   worldData = (typeof WORLD_GEO !== 'undefined' && WORLD_GEO)
     ? WORLD_GEO
     : await d3.json('https://raw.githubusercontent.com/holtzy/D3-graph-gallery/master/DATA/world.geojson');
+  // 번들 GeoJSON 국가명 정규화 — classic과 동일 (매핑 테이블 정식 명칭 기준)
+  var GEO_NAME_FIX = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
+  worldData.features.forEach(function(f){ var fx = GEO_NAME_FIX[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
 
   var tex = buildNeonTexture();
   material = new THREE.ShaderMaterial({

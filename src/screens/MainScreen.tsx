@@ -207,6 +207,7 @@ const flagForCountry = (name: string): string =>
 
 // 한국어 국가명 → GeoJSON 영문 이름 매핑 (GlobeView의 KO_NAMES 역방향)
 const KO_TO_EN: Record<string, string> = {
+  '벨리즈': 'Belize', '베냉': 'Benin', '부르키나파소': 'Burkina Faso', '부룬디': 'Burundi', '중앙아프리카공화국': 'Central African Republic', '지부티': 'Djibouti', '동티모르': 'East Timor', '적도기니': 'Equatorial Guinea', '에리트레아': 'Eritrea', '피지': 'Fiji', '가봉': 'Gabon', '감비아': 'Gambia', '레소토': 'Lesotho', '라이베리아': 'Liberia', '말라위': 'Malawi', '모리타니': 'Mauritania', '르완다': 'Rwanda', '시에라리온': 'Sierra Leone', '솔로몬제도': 'Solomon Islands', '수리남': 'Suriname', '바하마': 'The Bahamas', '트리니다드 토바고': 'Trinidad and Tobago', '바누아투': 'Vanuatu', '코트디부아르': 'Ivory Coast', '기니비사우': 'Guinea Bissau',
   '아프가니스탄':'Afghanistan','알바니아':'Albania','알제리':'Algeria',
   '앙골라':'Angola','아르헨티나':'Argentina','아르메니아':'Armenia',
   '호주':'Australia','오스트리아':'Austria','아제르바이잔':'Azerbaijan',
