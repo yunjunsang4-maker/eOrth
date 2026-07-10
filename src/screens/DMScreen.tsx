@@ -324,14 +324,14 @@ export default function DMScreen({ navigation, route }: Props) {
   // 내 기록만 필터
   const myRecords = records.filter(r => r.isMyPost !== false);
 
-  // 공유로 진입한 경우 자동 전송
+  // 공유로 진입한 경우 자동 전송 — 타인 게시물은 feedPosts에 있으므로 둘 다 검색
   useEffect(() => {
     if (!sharePostId || sharedRef.current) return;
-    const r = records.find(rec => rec.id === sharePostId);
+    const r = records.find(rec => rec.id === sharePostId) ?? feedPosts.find(rec => rec.id === sharePostId);
     if (!r) return;
     sharedRef.current = true;
     sendRecord(friend.handle, r);
-  }, [sharePostId, records, friend.handle, sendRecord]);
+  }, [sharePostId, records, feedPosts, friend.handle, sendRecord]);
 
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
     const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;

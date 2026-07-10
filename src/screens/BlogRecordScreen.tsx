@@ -648,9 +648,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const draftBody = draft.blogBlocks && draft.blogBlocks.length > 0 ? blocksToPlainText(draft.blogBlocks) : '';
     setTitle(draft.content && draft.content !== draftBody ? draft.content : '');
     // 메타
+    setSubtitle(draft.subtitle || ''); // 미복원 시 초안 부제목 유실 + 편집기 잔존 부제목이 초안에 눌어붙는 오염
     setMemo(draft.memo || '');
     setStartDate(draft.startDate || '');
     setEndDate(draft.endDate || '');
+    // 캘린더 Date 객체도 함께 복원 — 아니면 캘린더를 열고 '확인'만 눌러도 초안 날짜가 오늘로 덮인다
+    if (draft.startDate) setStartDateObj(parseDotDate(draft.startDate));
+    if (draft.endDate) setEndDateObj(parseDotDate(draft.endDate));
     setRating(draft.rating || 0);
     setCompanions(draft.companions || []);
     setCompanionFriends(draft.companionFriends || []);
@@ -1140,6 +1144,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           });
         }
       }
+      // 발행 성공 — 이 글의 임시저장본은 제거 (남겨두면 초안 목록에서 재발행 → 중복 게시)
+      if (draftId) deleteDraft(draftId);
       navigation.goBack();
     } catch {
       // 실패 시에만 재시도 허용 (성공 시 goBack 으로 화면 이탈)

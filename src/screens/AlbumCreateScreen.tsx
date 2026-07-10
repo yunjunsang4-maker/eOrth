@@ -109,7 +109,20 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     });
     cursorRef.current = page.endCursor;
     hasNextRef.current = page.hasNextPage;
-    return page.assets.map((a) => ({ id: a.id, uri: a.uri, creationTime: a.creationTime || undefined }));
+    // iOS: ph:// 그대로 <Image>에 넣으면 새 아키텍처에서 검은 타일로 뜸(NewRecordScreen과 동일 이슈)
+    // → 표시 가능한 localUri(file://)로 변환. iCloud 오프로드(localUri 없음)는 원본 유지.
+    return Promise.all(
+      page.assets.map(async (a) => {
+        let uri = a.uri;
+        if (Platform.OS === 'ios' && uri.startsWith('ph://')) {
+          try {
+            const info = await MediaLibrary.getAssetInfoAsync(a, { shouldDownloadFromNetwork: false });
+            if (info.localUri) uri = info.localUri;
+          } catch {}
+        }
+        return { id: a.id, uri, creationTime: a.creationTime || undefined };
+      })
+    );
   };
 
   const startLoad = async () => {

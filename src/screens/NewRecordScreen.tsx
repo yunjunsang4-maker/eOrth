@@ -709,8 +709,23 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     setSelectedCountries(prev => {
       const filtered = prev.filter(p => p.name !== name);
       const activeCountryName = selectedCountries[activeCountryIdx]?.name;
+      // 제거된 국가의 국가별 데이터도 폐기 — 저장 시 잔존 데이터가 섞이지 않게
+      delete perCountryStore.current[name];
       if (activeCountryName === name) {
         setActiveCountryIdx(0);
+        // 활성 국가를 제거하면 전역 날짜·별점에 그 국가 값이 남아, 이후 저장 시
+        // 새 활성 국가(0번) 이름으로 기록되는 이월 오염이 생긴다 — switchCountry와 동일하게 로드/초기화
+        const nextName = filtered[0]?.name;
+        const data = nextName ? perCountryStore.current[nextName] : null;
+        if (data) {
+          setStartDate(data.startDate);
+          setEndDate(data.endDate);
+          setRating(data.rating);
+        } else {
+          setStartDate(todayInit);
+          setEndDate(todayInit);
+          setRating(0);
+        }
       } else if (activeCountryName) {
         const newIdx = filtered.findIndex(c => c.name === activeCountryName);
         setActiveCountryIdx(newIdx !== -1 ? newIdx : 0);

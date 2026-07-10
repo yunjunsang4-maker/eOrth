@@ -31,6 +31,7 @@ import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { useSkinAccent } from '../constants/skinTheme';
 import { setTabBarHidden } from '../components/tabBarVisibility';
+import { useCardOrder, setCardOrder } from '../store/cardOrderStore';
 import {
   LiquidPressable,
   LiquidCardGlow,
@@ -312,7 +313,7 @@ let CURRENT_TRIP_THUMBNAILS = [...TRIP_THUMBNAILS];
 // 사용자가 드래그로 지정한 카드 표시 순서(카드 id 배열) — 화면 재진입 시 유지
 // displayTrips(mappedThumbnails + trips)를 이 순서로 정렬한다.
 // 여기에 없는(새로 만든) 카드는 맨 앞(메인 자리)으로 보낸다.
-let CARD_ORDER: string[] = [];
+// 순서 자체는 cardOrderStore(구독+영속)가 관리 — 탭/푸시 동시 인스턴스 간 동기화·재시작 유지.
 
 
 
@@ -1498,7 +1499,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // 화면 이탈 시 드래그로 숨긴 탭 바가 남지 않게 안전 복원
   useEffect(() => () => setTabBarHidden(false), []);
   // 카드 표시 순서(id 배열) — 드래그 재정렬은 이 순서만 갱신한다
-  const [cardOrder, setCardOrder] = useState<string[]>(() => [...CARD_ORDER]);
+  const cardOrder = useCardOrder(); // 공유 스토어 — 다른 인스턴스의 재정렬도 즉시 반영
   // ─── 여행 카드 합치기(병합 모드) — 탭 순서 유지, 첫 번째로 선택한 카드가 대표 ───
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelected, setMergeSelected] = useState<string[]>([]);
@@ -1591,7 +1592,6 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       const [removed] = newOrder.splice(idx, 1);
       newOrder.splice(targetIdx, 0, removed);
       const ids = newOrder.map((t) => t.id);
-      CARD_ORDER = ids;
 
       // 이웃 카드들은 LayoutAnimation으로 새 위치까지 출렁이며 이동,
       // 끌던 카드는 새 자리(targetIdx)에서 손가락 위치 → 슬롯으로 스프링 정착
@@ -1760,8 +1760,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             // 드래그 순서 목록에서 사라진 카드 id 정리
             if (cardOrder.length > 0) {
               const ids = cardOrder.filter((id) => !sourceIds.includes(id));
-              CARD_ORDER = ids;
-              setCardOrder(ids);
+                      setCardOrder(ids);
             }
             exitMergeMode();
             emitToast(t('profile.mergeDone'));

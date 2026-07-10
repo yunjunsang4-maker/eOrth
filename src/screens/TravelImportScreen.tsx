@@ -238,7 +238,8 @@ export default function TravelImportScreen({ navigation }: Props) {
               // 촬영일: EXIF(DateTimeOriginal) 1순위 → 없으면 creationTime(기기 추가 시각) → 그것도 없으면 오늘.
               // EXIF는 로컬 원본이 있을 때만 채워지므로 추가 다운로드 없이 정확도만 끌어올린다.
               const creationTime = parseExifDate(info.exif) ?? (asset.creationTime || Date.now());
-              return { id: asset.id, uri: asset.uri, creationTime, location: info.location };
+              // 표시용 uri는 localUri(file://) 우선 — iOS ph://를 그대로 넘기면 선택 그리드가 검은 타일로 뜸
+              return { id: asset.id, uri: info.localUri || asset.uri, creationTime, location: info.location };
             } catch {
               return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
             }
