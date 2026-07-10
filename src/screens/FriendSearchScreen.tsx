@@ -19,6 +19,7 @@ import {
 import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon, PersonIcon } from '../components/icons';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';
 import { useRecords } from '../store/recordStore';
@@ -85,6 +86,7 @@ function FriendItem({
   onPress?: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
   // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
   return (
@@ -98,7 +100,7 @@ function FriendItem({
       </View>
       <View style={s.friendInfo}>
         {/* 닉네임 폐지 — 아이디(@handle) 한 줄만 표시 */}
-        <Text style={s.friendUsername}>@{item.username}</Text>
+        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>@{item.username}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>
@@ -108,7 +110,7 @@ function FriendItem({
         </View>
       </View>
       <TouchableOpacity
-        style={[s.followBtn, (following || requested) && s.followingBtn]}
+        style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         activeOpacity={0.8}
         accessibilityRole="button"
@@ -133,6 +135,7 @@ type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // QR 카드·검색 결과·스캔 프레임을 스킨 강조색으로
   const insets = useSafeAreaInsets();
   const { handle, isPremium, qrDesign, setQrDesign } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
@@ -450,7 +453,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           {/* 오른쪽: 프로필 정보 */}
           <View style={s.profileInfo}>
             <Text style={s.profileName} numberOfLines={1}>{handle}</Text>
-            <Text style={s.profileUsername} numberOfLines={1}>@{handle}</Text>
+            <Text style={[s.profileUsername, { color: skinAccent.accent }]} numberOfLines={1}>@{handle}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{t('friends.countriesVisitedN', { count: myCountryCount })}</Text></View>
           </View>
         </View>
@@ -458,7 +461,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         {/* 액션 버튼 — 카드 하단 전체 폭 */}
         <View style={s.qrBtnRow}>
           <TouchableOpacity
-            style={s.inlineScanBtn}
+            style={[s.inlineScanBtn, { backgroundColor: skinAccent.accentDeep }]}
             activeOpacity={0.85}
             onPress={openScanner}
             accessibilityRole="button"
@@ -467,14 +470,14 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             <Text style={s.inlineScanBtnText}>📷 {t('comp2.qrScan')}</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[s.inlineShareBtn, !myCode && s.inlineBtnDisabled]}
+            style={[s.inlineShareBtn, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, !myCode && s.inlineBtnDisabled]}
             activeOpacity={0.85}
             onPress={handleShareMe}
             disabled={!myCode}
             accessibilityRole="button"
             accessibilityLabel={t('friends.shareCodeA11y')}
           >
-            <Text style={s.inlineShareBtnText}>↗ {t('comp2.shareShort')}</Text>
+            <Text style={[s.inlineShareBtnText, { color: skinAccent.accent }]}>↗ {t('comp2.shareShort')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -509,9 +512,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         {isSearching ? (
           /* 검색 결과 (아이디/핸들) */
           <>
-            <Text style={s.sectionLabel}>{t('friends.searchResults')}</Text>
+            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.searchResults')}</Text>
             {searching ? (
-              <ActivityIndicator color={C.accent} style={{ marginTop: 40 }} />
+              <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 40 }} />
             ) : searchError ? (
               <Text style={s.emptyText}>{t('friends.searchError')}</Text>
             ) : displayList.length === 0 ? (
@@ -523,7 +526,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         ) : visibleSuggestions.length > 0 ? (
           /* 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자 */
           <>
-            <Text style={s.sectionLabel}>{t('friends.suggestedFriends')}</Text>
+            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
             {renderRows(visibleSuggestions)}
           </>
         ) : (
@@ -546,7 +549,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           />
           {/* 가이드 프레임 */}
           <View style={s.scanOverlay} pointerEvents="none">
-            <View style={s.scanFrame} />
+            <View style={[s.scanFrame, { borderColor: skinAccent.accent }]} />
             <Text style={s.scanHint}>{t('friends.scanHint')}</Text>
           </View>
           <TouchableOpacity
@@ -576,7 +579,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                 return (
                   <TouchableOpacity
                     key={d.id}
-                    style={[s.qdItem, selected && s.qdItemOn]}
+                    style={[s.qdItem, selected && s.qdItemOn, selected && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}
                     activeOpacity={0.8}
                     onPress={() => { setQrDesign(d.id); setQrDesignVisible(false); }}
                   >
@@ -590,7 +593,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                         linearGradient={d.gradient}
                       />
                     </View>
-                    <Text style={[s.qdLabel, selected && s.qdLabelOn]} numberOfLines={1}>{t(d.labelKey)}</Text>
+                    <Text style={[s.qdLabel, selected && s.qdLabelOn, selected && { color: skinAccent.accent }]} numberOfLines={1}>{t(d.labelKey)}</Text>
                   </TouchableOpacity>
                 );
               })}

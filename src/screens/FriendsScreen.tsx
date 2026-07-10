@@ -239,10 +239,10 @@ export default function FriendsScreen({ navigation }: Props) {
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('friends.title')}</Text>
         <TouchableOpacity
-          style={st.addBtn}
+          style={[st.addBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.25) }]}
           onPress={() => navigation.navigate('FriendSearch')}
         >
-          <Text style={st.addBtnText}>+ {t('comp2.addShort')}</Text>
+          <Text style={[st.addBtnText, { color: skinAccent.accent }]}>+ {t('comp2.addShort')}</Text>
         </TouchableOpacity>
       </Pressable>
 
