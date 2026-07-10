@@ -9,6 +9,7 @@ import {
   TextInput,
   Pressable,
   Animated,
+  RefreshControl,
 } from 'react-native';
 import { SearchIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
@@ -75,9 +76,16 @@ type Props = RootStackScreenProps<'Friends'>;
 
 export default function FriendsScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { blockUser, followingUsers, isBlocked, toggleMute, isMuted } = useRecords();
+  const skinAccent = useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  const { blockUser, followingUsers, isBlocked, toggleMute, isMuted, refreshFollowing } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
+
+  // 당겨서 새로고침 — 팔로잉 목록(친구)을 서버 기준으로 재동기화
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = async () => {
+    setRefreshing(true);
+    try { await refreshFollowing(); } finally { setRefreshing(false); }
+  };
 
   const [search, setSearch] = useState('');
   // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
@@ -254,7 +262,11 @@ export default function FriendsScreen({ navigation }: Props) {
         />
       </Pressable>
 
-      <ScrollView style={st.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={st.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+      >
         <Pressable onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}>
           <Text style={st.sectionLabel}>{t('friends.friendsCountN', { count: filtered.length })}</Text>
           {filtered.map((f, idx) => {

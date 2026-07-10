@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, RefreshControl,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -83,35 +83,39 @@ export default function NotificationScreen({ navigation }: Props) {
 
   // 팔로우 알림 — 서버 notifications 테이블(follows insert 트리거로 쌓임)에서 로드
   const [followNotis, setFollowNotis] = useState<Noti[]>([]);
-  useEffect(() => {
+  const [refreshing, setRefreshing] = useState(false);
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  const loadFollowNotis = useCallback(async () => {
     if (!isSupabaseConfigured) return;
-    let alive = true;
-    (async () => {
-      const rows = await fetchFollowNotifications();
-      if (!alive) return;
-      // 팔로우/요청/수락별 문구 키 — 모두 '팔로우' 카테고리로 묶어 표시
-      const textKey: Record<string, string> = {
-        follow: 'misc.followText',
-        follow_request: 'misc.followRequestText',
-        follow_accept: 'misc.followAcceptText',
-      };
-      setFollowNotis(
-        rows.map((n) => ({
-          id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
-          category: 'follow' as CatKey,
-          emoji: n.actorEmoji || '👤',
-          avbg: 'rgba(107,33,168,0.35)',
-          text: t(textKey[n.type] ?? 'misc.followText', { name: n.actorHandle || t('friends.travelerDefault') }),
-          read: n.read,
-          createdAt: n.createdAt,
-          userId: n.actorId,
-          userName: n.actorHandle || '',
-          goRequests: n.type === 'follow_request',
-        }))
-      );
-    })();
-    return () => { alive = false; };
+    const rows = await fetchFollowNotifications();
+    if (!aliveRef.current) return;
+    // 팔로우/요청/수락별 문구 키 — 모두 '팔로우' 카테고리로 묶어 표시
+    const textKey: Record<string, string> = {
+      follow: 'misc.followText',
+      follow_request: 'misc.followRequestText',
+      follow_accept: 'misc.followAcceptText',
+    };
+    setFollowNotis(
+      rows.map((n) => ({
+        id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
+        category: 'follow' as CatKey,
+        emoji: n.actorEmoji || '👤',
+        avbg: 'rgba(107,33,168,0.35)',
+        text: t(textKey[n.type] ?? 'misc.followText', { name: n.actorHandle || t('friends.travelerDefault') }),
+        read: n.read,
+        createdAt: n.createdAt,
+        userId: n.actorId,
+        userName: n.actorHandle || '',
+        goRequests: n.type === 'follow_request',
+      }))
+    );
   }, [t]);
+  useEffect(() => { loadFollowNotis(); }, [loadFollowNotis]);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await loadFollowNotis(); } finally { if (aliveRef.current) setRefreshing(false); }
+  }, [loadFollowNotis]);
 
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 팔로우·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
@@ -219,7 +223,12 @@ export default function NotificationScreen({ navigation }: Props) {
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={st.scroll}
+        contentContainerStyle={st.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+      >
         {/* 매거진 표지 */}
         <View style={st.cover}>
           <Text style={[st.vol, { color: skinAccent.accent }]}>{`eOrth Weekly · ${vol}`}</Text>

@@ -20,6 +20,7 @@ import {
   Linking,
   LayoutAnimation,
   UIManager,
+  RefreshControl,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1530,18 +1531,25 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, followingUsers, mergeTripGroups } = useRecords();
+  const { records, tripGroups, archivedIds, followingUsers, mergeTripGroups, refreshFollowing } = useRecords();
 
   // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   const [followerCount, setFollowerCount] = useState(0);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      const uid = await getMyUserId();
-      if (uid && alive) setFollowerCount(await fetchFollowerCount(uid));
-    })();
-    return () => { alive = false; };
+  const followerAliveRef = useRef(true);
+  useEffect(() => () => { followerAliveRef.current = false; }, []);
+  const loadFollowerCount = useCallback(async () => {
+    const uid = await getMyUserId();
+    if (uid && followerAliveRef.current) setFollowerCount(await fetchFollowerCount(uid));
   }, []);
+  useEffect(() => { loadFollowerCount(); }, [loadFollowerCount]);
+
+  // 당겨서 새로고침 — 팔로워 수 + 팔로잉 목록을 서버 기준으로 재조회
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await Promise.all([loadFollowerCount(), refreshFollowing()]); }
+    finally { if (followerAliveRef.current) setRefreshing(false); }
+  }, [loadFollowerCount, refreshFollowing]);
 
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
   //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽는다(중복 계산 제거).
@@ -1732,6 +1740,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
       >
         {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정 */}
         {pushed ? (

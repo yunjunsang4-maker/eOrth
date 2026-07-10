@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   Share,
+  RefreshControl,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
@@ -72,24 +73,30 @@ export default function FriendProfileScreen({
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
-  useEffect(() => {
+  const aliveRef = useRef(true);
+  useEffect(() => () => { aliveRef.current = false; }, []);
+  const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
-    let alive = true;
-    (async () => {
-      const [p, posts, fc, fgc] = await Promise.all([
-        getProfileById(userId),
-        fetchUserPosts(userId),
-        fetchFollowerCount(userId),
-        fetchFollowingCount(userId),
-      ]);
-      if (!alive) return;
-      setProfileRow(p);
-      setUserPosts(posts);
-      setFollowerCount(fc);
-      setFollowingCount(fgc);
-    })();
-    return () => { alive = false; };
+    const [p, posts, fc, fgc] = await Promise.all([
+      getProfileById(userId),
+      fetchUserPosts(userId),
+      fetchFollowerCount(userId),
+      fetchFollowingCount(userId),
+    ]);
+    if (!aliveRef.current) return;
+    setProfileRow(p);
+    setUserPosts(posts);
+    setFollowerCount(fc);
+    setFollowingCount(fgc);
   }, [userId]);
+  useEffect(() => { loadProfile(); }, [loadProfile]);
+
+  // 당겨서 새로고침 — 프로필·글·팔로워/팔로잉 수 재조회
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try { await loadProfile(); } finally { if (aliveRef.current) setRefreshing(false); }
+  }, [loadProfile]);
 
   // 본인이면 로컬 기록, 타인이면 백엔드 공개 글을 사용
   const sourcePosts = isSelf ? myRecords : userPosts;
@@ -285,6 +292,7 @@ export default function FriendProfileScreen({
       <ScrollView
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
       >
         {/* ── 프로필 헤더 (아바타 + 정보) — 내 프로필과 동일 ── */}
         <View style={pv.profileRow}>

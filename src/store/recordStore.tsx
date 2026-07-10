@@ -262,6 +262,8 @@ interface RecordContextType {
   // 백엔드 피드(남들의 공개/친구 글). Supabase 미설정 시 항상 빈 배열.
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
+  // 팔로잉 목록을 서버 기준으로 재동기화 (당겨서 새로고침 등)
+  refreshFollowing: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
@@ -1422,7 +1424,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords }}>
       {children}
     </RecordContext.Provider>
   );

@@ -14,6 +14,7 @@ import {
   Dimensions,
   Animated,
   Alert,
+  RefreshControl,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
@@ -302,6 +303,13 @@ export default function DMScreen({ navigation, route }: Props) {
   useEffect(() => {
     loadHistory(friend.handle, friend.id);
   }, [friend.handle, friend.id, loadHistory]);
+
+  // 당겨서 새로고침 — 서버 히스토리 재로드 (로컬 전용 메시지는 loadHistory가 병합 보존)
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefreshHistory = async () => {
+    setRefreshing(true);
+    try { await loadHistory(friend.handle, friend.id); } finally { setRefreshing(false); }
+  };
 
   // 받은 공유(상대가 보낸 게시물)가 대화에 있으면 배지 80(첫 공유받기) 획득
   useEffect(() => {
@@ -690,6 +698,7 @@ export default function DMScreen({ navigation, route }: Props) {
           keyExtractor={item => item.id}
           contentContainerStyle={st.msgList}
           showsVerticalScrollIndicator={false}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshHistory} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
           scrollEventThrottle={16}
           onScroll={(e) => {
             const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;
