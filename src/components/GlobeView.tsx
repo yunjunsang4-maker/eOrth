@@ -1703,6 +1703,10 @@ export default function GlobeView({
         mixedContentMode="always"
         onMessage={handleMessage}
         onLoad={handleLoad}
+        // OS가 백그라운드에서 WebView 프로세스를 회수하면(메모리 압박) 탭 복귀 시 빈 화면으로 남는다
+        // → 즉시 리로드. 로드 완료 후 globeReady → sendAll()로 방문국/테마가 자동 재주입된다.
+        onContentProcessDidTerminate={() => { readyRef.current = false; webViewRef.current?.reload(); }}
+        onRenderProcessGone={() => { readyRef.current = false; webViewRef.current?.reload(); }}
       />
     </View>
   );
