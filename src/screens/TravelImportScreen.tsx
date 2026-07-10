@@ -21,6 +21,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { locateCountry } from '../utils/countryLocate';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -285,18 +286,23 @@ export default function TravelImportScreen({ navigation }: Props) {
         const key = bucketKey(p.lat, p.lon);
         let geo = geocodeCache[key];
         if (geo === undefined) {
-          try {
-            geo = await reverseOnce(p.lat, p.lon);
-          } catch {
-            await sleep(500); // 실패 → 잠시 후 1회 재시도
+          // 1순위: 오프라인 point-in-polygon (즉시, 네트워크·레이트리밋 없음)
+          geo = locateCountry(p.lat, p.lon);
+          if (!geo) {
+            // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 폴백 — 전체의 극히 일부라 대기 비용 미미
             try {
               geo = await reverseOnce(p.lat, p.lon);
             } catch {
-              geo = null;
+              await sleep(500); // 실패 → 잠시 후 1회 재시도
+              try {
+                geo = await reverseOnce(p.lat, p.lon);
+              } catch {
+                geo = null;
+              }
             }
+            await sleep(250); // 호출 간격(레이트리밋 회피). 오프라인/캐시 히트 시엔 대기 없음
           }
           geocodeCache[key] = geo;
-          await sleep(250); // 호출 간격(레이트리밋 회피). 캐시 히트 시엔 대기 없음
         }
         if (!geo) continue;
         geocodedOk++;
