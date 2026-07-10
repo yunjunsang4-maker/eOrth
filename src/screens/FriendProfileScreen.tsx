@@ -28,6 +28,7 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
+import { countryInfoFromCode } from '../utils/pastTripScan';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -106,12 +107,17 @@ export default function FriendProfileScreen({
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
   }, [sourcePosts]);
 
-  // 이름 아래 위치 — 내 프로필과 동일한 위치 줄. 타인은 거주국(country)이 public_profiles 뷰에서
-  // 제외되므로, 최근 공개 글(created_at desc)의 국가를 현재 위치로 표시한다.
+  // 이름 아래 위치 — 내 프로필과 동일한 위치 줄.
+  // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,
+  // 없으면 최근 공개 글(created_at desc)의 국가로 폴백.
   const friendLocation = useMemo(() => {
+    if (profileRow?.country) {
+      const info = countryInfoFromCode(profileRow.country.toUpperCase());
+      return `${info.countryFlag} ${info.countryName}`;
+    }
     const recent = sourcePosts.find((p) => p.countryName);
     return recent?.countryName ? `${recent.countryFlag || '📍'} ${recent.countryName}` : '';
-  }, [sourcePosts]);
+  }, [sourcePosts, profileRow?.country]);
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {

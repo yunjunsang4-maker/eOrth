@@ -615,11 +615,29 @@ create trigger trg_cleanup_follows_on_block after insert on public.blocks
 -- 차단 필터는 그대로 동작한다.
 create or replace view public.public_profiles
   with (security_invoker = false) as
-  select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font
+  select id, handle, emoji, bio, profile_photo, created_at, is_private, handle_font,
+         -- 거주국(country): 서로 맞팔인 상대에게만 노출, 그 외 null.
+         -- '소유자 전용' 원칙(PII 제외)의 유일한 예외 — 사용자 결정(2026-07-10).
+         -- definer 뷰 안에서도 auth.uid()는 호출자 기준이라 관계 판정이 그대로 동작한다.
+         case
+           when exists (select 1 from public.follows f1
+                        where f1.follower_id = auth.uid() and f1.following_id = profiles.id)
+            and exists (select 1 from public.follows f2
+                        where f2.follower_id = profiles.id and f2.following_id = auth.uid())
+           then country
+           else null
+         end as country
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 -- 재정의 이후에도 anon 회수 보장 (definer 뷰 — 비로그인 노출 방지, 1) 섹션 주석 참조)
 revoke select on public.public_profiles from anon;
+-- ⚠️ DML 권한 회수 필수 — 이 뷰는 단순 뷰라 자동 업데이트(is_updatable)가 가능하고,
+-- definer 뷰의 DML은 소유자(postgres) 권한으로 실행돼 profiles의 RLS를 우회한다.
+-- Supabase 기본 권한이 anon/authenticated에 INSERT/UPDATE/DELETE를 자동 부여하므로
+-- 반드시 회수해야 타인 프로필 수정 구멍이 막힌다 (실서버 is_updatable=YES 확인, 2026-07-10).
+revoke insert, update, delete, truncate, references, trigger
+  on public.public_profiles from anon, authenticated;
+revoke all on public.public_profiles from public;
 
 -- ============================================================
 -- 4-c) 알림 — 팔로우 알림 (follows insert 트리거로 수신자에게 쌓임)
