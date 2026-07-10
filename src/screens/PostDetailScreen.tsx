@@ -1678,8 +1678,24 @@ export default function PostDetailScreen() {
                       {companionsOverlay}
                       {heartOverlay}
                     </View>
+                  ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
+                    /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음) */
+                    <>
+                      <View style={s.albumGrid}>
+                        {record.medias.map((uri, i) => (
+                          <TouchableOpacity
+                            key={`${uri}-${i}`}
+                            activeOpacity={0.85}
+                            onPress={() => handleMediaTap(() => openFullImage(record.medias!, i))}
+                          >
+                            <Image source={{ uri }} style={s.albumGridImg} />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
+                      <Text style={s.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias.length })}</Text>
+                    </>
                   ) : record.medias && record.medias.length > 0 ? (
-                    /* 피드·앨범: 실제 첨부 사진 캐러셀 */
+                    /* 피드: 실제 첨부 사진 캐러셀 */
                     <View style={s.mediaWrap}>
                       <SlideImageViewerDetail
                         items={record.medias.map((uri) => ({ uri }))}
@@ -1729,8 +1745,8 @@ export default function PostDetailScreen() {
           {/* ── 이하 공통: 정보 칩, 메모, 키워드, 좋아요, 댓글 ── */}
           <View>
 
-          {/* ── 키워드 (여행정보 위, 항상 표시) ── */}
-          {record.keywords && record.keywords.length > 0 && (
+          {/* ── 키워드 (여행정보 위, 항상 표시 — 앨범은 사진 모음이라 제외) ── */}
+          {viewType !== 'album' && record.keywords && record.keywords.length > 0 && (
             <View style={s.keywords}>
               {record.keywords.map((k) => (
                 <View key={k} style={[s.keyword, { backgroundColor: skinAccent.tint(0.12) }]}>
@@ -1740,8 +1756,8 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 여행정보 토글 버튼 ── */}
-          {(record.startDate || record.weather || record.budget || record.flightType) && (
+          {/* ── 여행정보 토글 버튼 (앨범 제외) ── */}
+          {viewType !== 'album' && (record.startDate || record.weather || record.budget || record.flightType) && (
             <TouchableOpacity
               style={[s.travelInfoBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}
               activeOpacity={0.8}
@@ -1754,7 +1770,7 @@ export default function PostDetailScreen() {
           )}
 
           {/* ── 정보 칩들 ── */}
-          {showTravelInfo && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {viewType !== 'album' && showTravelInfo && (record.startDate || record.weather || record.budget || record.flightType) && (
             <View style={s.infoRow}>
               {record.startDate && record.endDate && (
                 <View style={s.infoChip}>
@@ -1790,7 +1806,8 @@ export default function PostDetailScreen() {
             </View>
           )}
 
-          {/* ── 좋아요 · 댓글 수 ── */}
+          {/* ── 좋아요 · 댓글 수 + 댓글 목록 (앨범은 사진 모음이라 소셜 요소 없음) ── */}
+          {viewType !== 'album' && (<>
           <View style={s.statsRow}>
             <View style={s.statBtn}>
               <TouchableOpacity onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
@@ -1877,6 +1894,7 @@ export default function PostDetailScreen() {
           ) : comments.length === 0 ? (
             <Text style={s.commentEmpty}>{t('trip.noComments')}</Text>
           ) : null}
+          </>)}
           <View style={{ height: 16 }} />
           </View>
         </ScrollView>
@@ -1890,7 +1908,8 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {/* ── 댓글 입력 ── */}
+        {/* ── 댓글 입력 (앨범 제외) ── */}
+        {viewType !== 'album' && (
         <View style={s.inputBar}>
           <TextInput
             ref={commentInputRef}
@@ -1910,6 +1929,7 @@ export default function PostDetailScreen() {
             <Text style={[s.sendText, !commentText.trim() && s.sendTextDisabled]}>{t('postDetail.send')}</Text>
           </TouchableOpacity>
         </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* 동행자 팝업 닫기용 오버레이 */}
@@ -2151,6 +2171,15 @@ const s = StyleSheet.create({
 
   // ── 실제 사진/네컷 영역 ──
   mediaWrap: { position: 'relative', marginBottom: 4 },
+  // 사진첩(앨범) 그리드 — 본문 패딩(20+20) 안 3열
+  albumGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginBottom: 10 },
+  albumGridImg: {
+    width: Math.floor((SCREEN_W - 40 - 4) / 3),
+    height: Math.floor((SCREEN_W - 40 - 4) / 3),
+    borderRadius: 4,
+    backgroundColor: '#1F1F22',
+  },
+  albumCount: { color: '#A1A1B0', fontSize: 12, marginBottom: 10 },
   cutImage: {
     width: SCREEN_W - 40, height: SCREEN_H * 0.6, borderRadius: 12,
     marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',

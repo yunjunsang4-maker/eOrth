@@ -1055,6 +1055,7 @@ const en = {
     typeFeed: 'Feed',
     typeBlog: 'Blog',
     typeAlbum: 'Album',
+    albumPhotoCount: '{{count}} photos',
     typeCut: 'Four-cut',
     typeSnap: 'Snap',
     deleteCommentTitle: 'Delete comment',

@@ -1056,6 +1056,7 @@ const ko = {
     typeFeed: '피드',
     typeBlog: '블로그',
     typeAlbum: '앨범',
+    albumPhotoCount: '사진 {{count}}장',
     typeCut: '네컷',
     typeSnap: '스냅',
     deleteCommentTitle: '댓글 삭제',
