@@ -9,6 +9,7 @@ import {
   Alert,
   Share,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
@@ -76,6 +77,9 @@ export default function FriendProfileScreen({
   const [followingCount, setFollowingCount] = useState(0);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
+  // 프로필 로딩 완료 여부 — 완료 전엔 is_private 판정이 불가능하므로 콘텐츠를 그리지 않는다
+  // (로딩 중 잠깐 '공개 상태'로 보였다가 잠금으로 바뀌는 깜빡임 방지)
+  const [profileLoaded, setProfileLoaded] = useState(!isSupabaseConfigured || !userId);
   const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
     const [p, posts, fc, fgc] = await Promise.all([
@@ -89,6 +93,7 @@ export default function FriendProfileScreen({
     setUserPosts(posts);
     setFollowerCount(fc);
     setFollowingCount(fgc);
+    setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
 
@@ -358,7 +363,10 @@ export default function FriendProfileScreen({
           </>
         )}
 
-        {privateLocked ? (
+        {!isSelf && !profileLoaded ? (
+          /* ── 프로필 로딩 중 — is_private 판정 전이라 콘텐츠를 아직 그리지 않는다 ── */
+          <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
+        ) : privateLocked ? (
           /* ── 비공개 계정 잠금 — 팔로워가 아니면 배지·기록을 숨기고 안내만 표시 ── */
           <>
             <View style={pv.divider} />
