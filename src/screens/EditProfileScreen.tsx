@@ -12,7 +12,9 @@ import {
   Platform,
   Linking,
 } from 'react-native';
-import { CameraIcon } from '../components/icons';
+import { CameraIcon, PersonIcon } from '../components/icons';
+import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import Toast from '../components/Toast';
@@ -43,6 +45,7 @@ const COLORS = {
 
 export default function EditProfileScreen({ navigation }: RootStackScreenProps<'EditProfile'>) {
   const { t, i18n } = useTranslation();
+  const skinAccent = useSkinAccent();
   const {
     handle: globalHandle,
     setHandle: setGlobalHandle,
@@ -164,18 +167,38 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
         >
-          {/* 프로필 사진 */}
+          {/* 프로필 사진 — 프로필 탭과 동일한 아바타 디자인(글래스 틴트 + 기본 프사 그라데이션 링) */}
           <View style={s.avatarSection}>
             <TouchableOpacity onPress={pickImage} activeOpacity={0.8} style={s.avatarWrap}>
-              {profilePhoto ? (
-                <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
-              ) : (
-                <View style={s.avatarPlaceholder}>
-                  <Text style={s.avatarText}>
-                    {handle.trim() ? handle.trim().charAt(0) : '?'}
-                  </Text>
-                </View>
-              )}
+              <View style={s.avatarRing}>
+                {profilePhoto ? (
+                  <Image source={{ uri: profilePhoto }} style={s.avatarImg} />
+                ) : (
+                  <View style={s.avatarDefault}>
+                    <PersonIcon size={50} color="#A0A0B0" />
+                  </View>
+                )}
+                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={s.avatarInner} pointerEvents="none">
+                  <Defs>
+                    <SvgLinearGradient id="editAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                      <Stop stopColor="#000000" stopOpacity="0" />
+                      <Stop offset="1" stopColor="#FFFFFF" />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#editAvatarInnerGrad)" strokeWidth="0.5" />
+                </Svg>
+                {!profilePhoto && (
+                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Defs>
+                      <SvgLinearGradient id="editAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                        <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                        <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Circle cx="64" cy="64" r="61" stroke="url(#editAvatarRingGrad)" strokeWidth="6" fill="none" />
+                  </Svg>
+                )}
+              </View>
               <View style={s.cameraIcon}>
                 <CameraIcon size={14} color="#A1A1B0" />
               </View>
@@ -320,32 +343,36 @@ const s = StyleSheet.create({
   avatarWrap: {
     position: 'relative',
   },
-  avatarPlaceholder: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: COLORS.purpleDeep,
-    borderWidth: 2,
-    borderColor: 'rgba(191,133,252,0.4)',
+  // 프로필 탭 아바타와 동일 치수 (링 128 / 아바타 120 / 글래스 오버레이 110)
+  avatarRing: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarDefault: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
   },
   avatarImg: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    borderWidth: 2,
-    borderColor: 'rgba(191,133,252,0.4)',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
   },
-  avatarText: {
-    fontSize: 36,
-    fontWeight: 'bold',
-    color: COLORS.white,
+  avatarInner: {
+    position: 'absolute',
+    top: 9,
+    left: 9,
   },
   cameraIcon: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
+    bottom: 4,
+    right: 4,
     width: 32,
     height: 32,
     borderRadius: 16,
