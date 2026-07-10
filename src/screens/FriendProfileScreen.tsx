@@ -296,7 +296,7 @@ export default function FriendProfileScreen({
       >
         {/* ── 프로필 헤더 (아바타 + 정보) — 내 프로필과 동일 ── */}
         <View style={pv.profileRow}>
-          <ProfileAvatar photo={display.photo} initial={displayUsername[0] ?? '?'} />
+          <ProfileAvatar photo={display.photo} />
           <View style={pv.profileInfo}>
             {/* 닉네임 폐지 — 아이디(handle)만 표시. 프로필 탭과 동일하게 이름 한 줄 */}
             <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>

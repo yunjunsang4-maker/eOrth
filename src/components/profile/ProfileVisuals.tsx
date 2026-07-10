@@ -7,7 +7,7 @@ import React from 'react';
 import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { LiquidPressable, GooeyCircle, LiquidCardGlow } from '../LiquidEffects';
 import { PersonIcon } from '../icons';
 import { andFitText } from '../../utils/fitText';
@@ -44,19 +44,6 @@ const GlassFill = ({ intensity = 30, specular = true }: { intensity?: number; sp
       <LinearGradient colors={[GLASS.specular, 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%', opacity: 0.4 }} pointerEvents="none" />
     ) : null}
   </>
-);
-
-const NeonGlass = ({ children, colors = [NEON.cyan, NEON.purple], radius = 18, borderWidth = 1.5, intensity = 24, glowColor, contentStyle }: {
-  children?: React.ReactNode; colors?: readonly [string, string, ...string[]]; radius?: number; borderWidth?: number; intensity?: number; glowColor?: string; contentStyle?: any;
-}) => (
-  <View style={{ shadowColor: glowColor || colors[0], shadowOpacity: 0.9, shadowRadius: 16, shadowOffset: { width: 0, height: 0 }, elevation: 12 }}>
-    <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ borderRadius: radius, padding: borderWidth }}>
-      <View style={[{ borderRadius: radius - borderWidth, overflow: 'hidden', backgroundColor: 'rgba(10,10,15,0.5)' }, contentStyle]}>
-        <GlassFill intensity={intensity} />
-        {children}
-      </View>
-    </LinearGradient>
-  </View>
 );
 
 const NeonRing = ({ size, colors, borderWidth = 2, intensity = 16, children }: {
@@ -112,39 +99,52 @@ export const VIEW_TYPE_BADGE: Record<string, React.ReactNode> = {
   feed: <FeedBadgeIcon />, blog: <BlogBadgeIcon />, album: <AlbumBadgeIcon />, snap: <SnapBadgeIcon />, cut: <CutBadgeIcon />,
 };
 
-// ─── 아바타 (구이 그라디언트 링) ───
-export const ProfileAvatar = ({ photo, initial }: { photo?: string | null; initial?: string }) => {
-  const skinAccent = useSkinAccent(); // 아바타 글로우색을 스킨 강조색으로 (링 무지개는 유지)
+// ─── 아바타 — 프로필 탭과 동일 (128 링, PersonIcon 기본 프사, 글래스 틴트, 사진 없을 때만 그라데이션 링) ───
+export const ProfileAvatar = ({ photo }: { photo?: string | null }) => {
+  const skinAccent = useSkinAccent(); // 링 그라데이션을 스킨 강조색으로
   return (
-  <GooeyCircle size={104} color={skinAccent.accent} glowOpacity={0.6}>
-    <LinearGradient colors={skinAccent.ringGradient ?? [NEON.cyan, NEON.purple, NEON.magenta]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={pv.avatarRing}>
+    <View style={pv.avatarRing}>
       {photo ? (
         <Image source={{ uri: photo }} style={pv.avatarImg} />
       ) : (
         <View style={pv.avatar}>
-          {initial ? <Text style={pv.avatarText}>{initial.toUpperCase()}</Text> : <PersonIcon size={44} color="#A0A0B0" />}
+          <PersonIcon size={50} color="#A0A0B0" />
         </View>
       )}
-    </LinearGradient>
-  </GooeyCircle>
+      {/* 사진 위 글래스 틴트 + 림 — ProfileScreen과 동일 재현 */}
+      <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={pv.avatarInner} pointerEvents="none">
+        <Defs>
+          <SvgLinearGradient id="pvAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+            <Stop stopColor="#000000" stopOpacity="0" />
+            <Stop offset="1" stopColor="#FFFFFF" />
+          </SvgLinearGradient>
+        </Defs>
+        <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#pvAvatarInnerGrad)" strokeWidth="0.5" />
+      </Svg>
+      {!photo && (
+        <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgLinearGradient id="pvAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+              <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+              <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle cx="64" cy="64" r="61" stroke="url(#pvAvatarRingGrad)" strokeWidth="6" fill="none" />
+        </Svg>
+      )}
+    </View>
   );
 };
 
-// ─── 통계 카드 ───
-export const StatCard = ({ value, label, onPress, grad }: {
-  value: string; label: string; onPress?: () => void; grad?: readonly [string, string, ...string[]];
-}) => {
-  const skinAccent = useSkinAccent(); // 통계 카드 유리 그라데이션을 스킨 강조색으로 (aurora=기존값)
-  const g = grad || ([skinAccent.accent, skinAccent.accentDeep] as const);
-  return (
-  <LiquidPressable onPress={onPress} intensity={0.08}>
-    <NeonGlass colors={g} glowColor={g[0]} radius={16} borderWidth={1.3} intensity={22} contentStyle={pv.statCardContent}>
-      <Text style={pv.statValue}>{value}</Text>
-      <Text style={pv.statLabel} {...andFitText}>{label}</Text>
-    </NeonGlass>
+// ─── 통계 — 프로필 탭과 동일 (박스 없는 숫자+라벨) ───
+export const StatCard = ({ value, label, onPress }: {
+  value: string; label: string; onPress?: () => void;
+}) => (
+  <LiquidPressable onPress={onPress} intensity={0.06} style={pv.statCol}>
+    <Text style={pv.statValue}>{value}</Text>
+    <Text style={pv.statLabel} {...andFitText}>{label}</Text>
   </LiquidPressable>
-  );
-};
+);
 
 // ─── 배지 하이라이트 ───
 export const BadgeHighlightItem = ({ emoji, glow, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => {
@@ -215,20 +215,22 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
 };
 
 export const pv = StyleSheet.create({
-  profileRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 14, paddingVertical: 16, overflow: 'hidden', position: 'relative' },
-  avatarRing: { width: 102, height: 102, borderRadius: 51, padding: 3, alignItems: 'center', justifyContent: 'center' },
-  avatar: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#1F1F22', borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' },
-  avatarImg: { width: 96, height: 96, borderRadius: 48, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)' },
-  avatarText: { fontSize: 28, fontWeight: 'bold', color: '#FFFFFF' },
-  profileInfo: { flex: 1, justifyContent: 'center' },
-  userName: { fontSize: 24, fontWeight: '600', color: '#FFFFFF', marginBottom: 2, textShadowColor: 'rgba(191,133,252,0.4)', textShadowOffset: { width: 0, height: 0 }, textShadowRadius: 10 },
+  profileRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 20, marginBottom: 14, paddingVertical: 12, overflow: 'hidden', position: 'relative' },
+  // 프로필 탭과 동일 치수 (링 128 / 아바타 120 / 글래스 오버레이 110)
+  avatarRing: { width: 128, height: 128, borderRadius: 64, alignItems: 'center', justifyContent: 'center' },
+  avatar: { width: 120, height: 120, borderRadius: 60, backgroundColor: '#1F1F22', alignItems: 'center', justifyContent: 'center' },
+  avatarImg: { width: 120, height: 120, borderRadius: 60 },
+  avatarInner: { position: 'absolute', top: 9, left: 9 },
+  profileInfo: { flex: 1, justifyContent: 'flex-start', paddingTop: 2 },
+  userName: { fontSize: 26, fontWeight: '800', color: '#FFFFFF', letterSpacing: 0.4, marginBottom: 8 },
   userHandle: { fontSize: 13, color: '#BF85FC', marginBottom: 2 },
-  userLocation: { fontSize: 12, color: '#CFC2D6', letterSpacing: 0.6 },
+  userLocation: { fontSize: 14, fontWeight: '600', color: '#FFFFFF' },
   userBio: { fontSize: 12, color: '#A1A1B0', marginTop: 6, lineHeight: 16 },
-  statsRow: { flexDirection: 'row', gap: 6, marginTop: 8 },
-  statCardContent: { paddingVertical: 8, paddingHorizontal: 14, alignItems: 'center' },
-  statValue: { fontSize: 13, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 1 },
-  statLabel: { fontSize: 10, color: '#CFC2D6', letterSpacing: 0.4 },
+  // 통계 — 프로필 탭과 동일 (박스 없는 숫자+라벨)
+  statsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 29, marginTop: 23 },
+  statCol: { alignItems: 'center' },
+  statValue: { fontSize: 22, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', color: '#FFFFFF', lineHeight: 26 },
+  statLabel: { fontSize: 13, color: '#FFFFFF', marginTop: 4, lineHeight: 16 },
   divider: { height: 1, backgroundColor: '#1A1A26', marginHorizontal: -16, marginBottom: 7 },
   badgeScroll: { marginBottom: 7, height: 88 },
   badgeScrollContent: { paddingLeft: 16, paddingRight: 8, gap: 14, flexDirection: 'row', alignItems: 'center' },
