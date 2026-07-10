@@ -1208,6 +1208,9 @@ const ko = {
     unfollowNameA11y: '{{name}} 팔로우 취소',
   },
   time: {
+    am: '오전',
+    pm: '오후',
+    ampm: '{{ampm}} {{h}}:{{m}}', // 언어별 오전/오후 위치 (ko: 앞, en: 뒤)
     justNow: '방금 전',
     minAgo: '{{n}}분 전',
     hourAgo: '{{n}}시간 전',

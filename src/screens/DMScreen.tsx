@@ -162,6 +162,21 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
   return null;
 }
 
+// ─── 메시지 시각 라벨 (렌더 시점 국제화) ───
+// 저장된 time 문자열은 생성 당시 언어('오전 9:05')로 박제되므로, createdAt이 있으면
+// 현재 언어로 다시 포맷한다(언어 전환 시 과거 메시지도 함께 바뀜). 없는 구버전 메시지만 저장값 폴백.
+function msgTimeLabel(m: Message, tr: TFunction): string {
+  if (!m.createdAt) return m.time;
+  const d = new Date(m.createdAt);
+  const hour = d.getHours();
+  const h12 = hour % 12 === 0 ? 12 : hour % 12;
+  return tr('time.ampm', {
+    ampm: tr(hour < 12 ? 'time.am' : 'time.pm'),
+    h: h12,
+    m: String(d.getMinutes()).padStart(2, '0'),
+  });
+}
+
 // ─── 답글 미리보기 텍스트 ───
 function replyPreviewText(m: Message, tr: TFunction): string {
   if (m.type === 'image') return tr('dm.imageMsg');
@@ -590,7 +605,7 @@ export default function DMScreen({ navigation, route }: Props) {
 
         {!groupedWithNext && (
           <Text style={[st.msgTime, item.isMine && st.msgTimeMine]}>
-            {item.time}
+            {msgTimeLabel(item, t)}
           </Text>
         )}
         {/* '읽음' 표시는 제거 — 상대 열람과 무관하게 무조건 렌더되는 허위 정보였다.

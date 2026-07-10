@@ -1207,6 +1207,9 @@ const en = {
     unfollowNameA11y: 'Unfollow {{name}}',
   },
   time: {
+    am: 'AM',
+    pm: 'PM',
+    ampm: '{{h}}:{{m}} {{ampm}}', // 언어별 오전/오후 위치 (ko: 앞, en: 뒤)
     justNow: 'just now',
     minAgo: '{{n}}m ago',
     hourAgo: '{{n}}h ago',
