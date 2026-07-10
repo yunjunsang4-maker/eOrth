@@ -39,6 +39,8 @@ import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
+import { fetchFriendSuggestions, type FriendSuggestion } from '../services/social';
+import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryEnglishName } from '../constants/countries';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -2244,6 +2246,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
+  // 빈 피드 기본 콘텐츠 — 추천 친구 (팔로우할 사람이 생기면 피드가 채워진다)
+  const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    fetchFriendSuggestions(5).then((list) => { if (alive) setSuggested(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
   // 당겨서 새로고침 → 백엔드 피드 갱신
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
@@ -2578,7 +2588,44 @@ function FriendsTab({ navigation }: { navigation: any }) {
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
           {allVisible.length === 0 && (
-            <Text style={s.emptyText}>{t('social.emptyText')}</Text>
+            /* 빈 피드 기본 콘텐츠 — 안내 + 추천 친구 + 친구 찾기 CTA */
+            <View style={s.emptyWrap}>
+              <Text style={s.emptyText}>{t('social.emptyText')}</Text>
+              {suggested.length > 0 && (
+                <>
+                  <Text style={s.emptySuggestTitle}>{t('social.emptySuggestTitle')}</Text>
+                  {suggested.map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={s.suggestRow}
+                      activeOpacity={0.75}
+                      onPress={() => navigation.navigate('FriendProfile', { userId: f.id, username: f.handle || '', handle: f.handle || undefined })}
+                    >
+                      {f.profilePhoto ? (
+                        <Image source={{ uri: f.profilePhoto }} style={s.suggestAvatarImg} />
+                      ) : (
+                        <View style={s.suggestAvatar}>
+                          <PersonIcon size={20} color="#A0A0B0" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.suggestHandle}>@{f.handle || ''}</Text>
+                        {f.mutualCount > 0 && (
+                          <Text style={s.suggestMeta}>{t('social.mutualN', { count: f.mutualCount })}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+              <TouchableOpacity
+                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('FriendSearch')}
+              >
+                <Text style={s.emptyCtaText}>{t('social.emptyCtaFindFriends')}</Text>
+              </TouchableOpacity>
+            </View>
           )}
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
@@ -2998,6 +3045,58 @@ const s = StyleSheet.create({
     color: C.dim,
     textAlign: 'center',
     marginTop: Spacing[8],
+  },
+  // 빈 피드 기본 콘텐츠 (추천 친구 + CTA)
+  emptyWrap: {
+    paddingHorizontal: 20,
+    paddingBottom: 8,
+  },
+  emptySuggestTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginTop: 24,
+    marginBottom: 10,
+  },
+  suggestRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingVertical: 9,
+  },
+  suggestAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1F1F22',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  suggestAvatarImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  suggestHandle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  suggestMeta: {
+    fontSize: 11,
+    color: C.dim,
+    marginTop: 1,
+  },
+  emptyCta: {
+    marginTop: 18,
+    borderRadius: 22,
+    paddingVertical: 13,
+    alignItems: 'center',
+  },
+  emptyCtaText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
 
