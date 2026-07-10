@@ -10,6 +10,7 @@ import {
   Alert,} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, LandscapeIcon } from '../components/icons';
 import { andFitText } from '../utils/fitText';
@@ -128,6 +129,7 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 // ─────────────────────────────────────────────
 export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
   const { t } = useTranslation();
+  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

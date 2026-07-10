@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
 
@@ -72,6 +73,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
   const { t } = useTranslation();
+  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();

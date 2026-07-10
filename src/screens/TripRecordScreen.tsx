@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, CommentIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
@@ -23,6 +24,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t } = useTranslation();
+  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
   const { records, deleteRecord, toggleLike, commentsByPost, addComment } = useRecords();
