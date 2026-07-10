@@ -51,7 +51,7 @@ import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { useSettings, type MapDisplayMode } from '../store/settingsStore';
+import { useSettings, type MapDisplayMode, type SkinColorSet } from '../store/settingsStore';
 import type { TabScreenProps } from '../navigation/types';
 
 const { height, width } = Dimensions.get('window');
@@ -67,9 +67,6 @@ const DS_PALETTES: Record<string, string[]> = {
   mint:   ['#86FFBC', '#00F37A', '#C3FFCD', '#86FF9A'],
 };
 const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;
-// 스킨 전환 시 기본 활성화색 (현재 색이 새 팔레트에 없을 때 적용)
-const SKIN_DEFAULT_COLOR: Record<string, string> = { aurora: '#C982FF', cyan: '#00D8F3', mint: '#86FFBC' };
-const getSkinDefaultColor = (skin: string): string => SKIN_DEFAULT_COLOR[skin] || getSkinPalette(skin)[0];
 // 모노톤 노이즈(0.5px, #00000040 25%) 적용 색(aurora 2색) — GlobeView와 값 일치 필요
 const NOISE_ACTIVE_COLORS = ['#E0C9FF', '#FD07E0'];
 const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
@@ -462,6 +459,7 @@ export default function MainScreen({ navigation, route }: Props) {
     countryDisplayModes, setCountryDisplayModes,
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
+    skinColorStore, setSkinColorStore,
   } = useSettings();
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
@@ -476,23 +474,25 @@ export default function MainScreen({ navigation, route }: Props) {
     regionGlobalMode: 'color' | 'photo';
     regionDisplayModes: Record<string, 'color' | 'photo'>;
     regionColors: Record<string, string>;
+    skinColorStore: Record<string, SkinColorSet>;
   } | null>(null);
   const openDisplaySettings = () => {
-    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors };
+    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore };
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
     const s = dsSnapshot.current;
     if (s) {
+      // 스킨 먼저 복원 — setGlobeSkin(테마드 세터)이 색 스왑+아이콘 팔레트를 수행하므로, 그 뒤에 스냅샷 색으로 덮어써야 한다
+      if (s.globeSkin !== globeSkin) setGlobeSkin(s.globeSkin);
       setGlobeDisplayMode(s.globeDisplayMode);
       setGlobeColor(s.globeColor);
-      // 스킨도 스냅샷으로 복원 — setGlobeSkin(테마드 세터)이 아이콘 팔레트까지 함께 되돌린다
-      if (s.globeSkin !== globeSkin) setGlobeSkin(s.globeSkin);
       setCountryColors(s.countryColors);
       setCountryDisplayModes(s.countryDisplayModes);
       setRegionGlobalMode(s.regionGlobalMode);
       setRegionDisplayModes(s.regionDisplayModes);
       setRegionColors(s.regionColors);
+      setSkinColorStore(s.skinColorStore); // 미리보기 중 스킨 스왑이 저장소에 남긴 값까지 원복
     }
     dsSnapshot.current = null;
     setEditingCountryColor(null);
@@ -1446,9 +1446,7 @@ export default function MainScreen({ navigation, route }: Props) {
                         activeOpacity={0.8}
                         onPress={() => {
                           if (locked) { setDisplaySettingsVisible(false); navigation.navigate('Premium'); return; }
-                          setGlobeSkin(s.id);
-                          // 활성화색이 새 스킨 팔레트에 없으면 그 스킨 기본색으로 맞춤
-                          if (getSkinPalette(s.id).indexOf(globeColor) === -1) setGlobeColor(getSkinDefaultColor(s.id));
+                          setGlobeSkin(s.id); // 테마드 세터가 스킨별 저장 색 복원까지 수행
                         }}
                         accessibilityRole="button"
                         accessibilityLabel={t(s.labelKey)}

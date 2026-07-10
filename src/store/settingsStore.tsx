@@ -30,6 +30,16 @@ const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
   returnDetect: false, memoryRemind: true, marketing: false,
 };
 
+// 스킨별로 저장하는 활성화 색 묶음 — 스킨 전환 시 저장/복원 (스킨마다 개별색 기억)
+export interface SkinColorSet {
+  globeColor: string;
+  countryColors: Record<string, string>;
+  regionColors: Record<string, string>;
+}
+
+// 스킨별 기본 활성화색 (MainScreen DS_PALETTES 기본색과 일치해야 함)
+const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#C982FF', cyan: '#00D8F3', mint: '#86FFBC' };
+
 interface SettingsContextType {
   showCounts: boolean;
   setShowCounts: (v: boolean) => void;
@@ -88,6 +98,9 @@ interface SettingsContextType {
   // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
   regionColors: Record<string, string>;
   setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 스킨별 색 저장소 — 스킨 전환 시 이전 스킨의 색(기본·국가·지역)을 보관하고 대상 스킨의 색을 복원
+  skinColorStore: Record<string, SkinColorSet>;
+  setSkinColorStore: React.Dispatch<React.SetStateAction<Record<string, SkinColorSet>>>;
   // 프로필에 표시할 대표 배지 id (사용자 선택, 영속)
   representativeBadgeIds: number[];
   setRepresentativeBadgeIds: React.Dispatch<React.SetStateAction<number[]>>;
@@ -154,6 +167,7 @@ interface SettingsPersistPayload {
   regionGlobalMode?: 'color' | 'photo';
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
+  skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
   shareSentCount?: number; // 과거 저장본엔 없을 수 있어 optional
@@ -199,7 +213,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [globeSkin, setGlobeSkin] = useState('aurora'); // 지구본 스킨 — 기본(오로라)
   // 아이콘 팔레트를 스킨에 동기화 — setState '전에' 모듈 COLORS를 갈아끼워 재렌더 시 새 색이 반영되게 한다
   const applyIconPalette = (skin: string) => setPalette(skin === 'cyan' ? 'cyan' : skin === 'mint' ? 'mint' : 'purple');
-  const setGlobeSkinThemed = useCallback((s: string) => { applyIconPalette(s); setGlobeSkin(s); }, []);
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
   const [globeColor, setGlobeColor] = useState('#C982FF'); // 보라 활성화색 기본 (팔레트 4종 중)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
@@ -207,6 +220,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
+  const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
+  // 스킨 전환: 아이콘 팔레트 동기화 + 현재 스킨의 색을 저장하고 대상 스킨에 저장된 색(없으면 그 스킨 기본색)을 복원
+  const setGlobeSkinThemed = useCallback((s: string) => {
+    applyIconPalette(s);
+    if (s !== globeSkin) {
+      setSkinColorStore((prev) => ({ ...prev, [globeSkin]: { globeColor, countryColors, regionColors } }));
+      const saved = skinColorStore[s];
+      setGlobeColor(saved?.globeColor ?? SKIN_DEFAULT_GLOBE_COLOR[s] ?? SKIN_DEFAULT_GLOBE_COLOR.aurora);
+      setCountryColors(saved?.countryColors ?? {});
+      setRegionColors(saved?.regionColors ?? {});
+    }
+    setGlobeSkin(s);
+  }, [globeSkin, globeColor, countryColors, regionColors, skinColorStore]);
   const [representativeBadgeIds, setRepresentativeBadgeIds] = useState<number[]>([]);
   const [badgeEarnedAt, setBadgeEarnedAt] = useState<Record<number, number>>({});
   const [pendingBadgeToasts, setPendingBadgeToasts] = useState<number[]>([]); // 신규 획득 토스트 큐(비영속)
@@ -287,6 +313,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
       setRegionDisplayModes(p.regionDisplayModes ?? {});
       setRegionColors(p.regionColors ?? {});
+      setSkinColorStore(p.skinColorStore ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
@@ -327,6 +354,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -367,6 +395,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -425,6 +454,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionGlobalMode('color');
     setRegionDisplayModes({});
     setRegionColors({});
+    setSkinColorStore({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
     setPendingBadgeToasts([]);
@@ -501,6 +531,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionDisplayModes,
         regionColors,
         setRegionColors,
+        skinColorStore,
+        setSkinColorStore,
         representativeBadgeIds,
         setRepresentativeBadgeIds,
         badgeEarnedAt,
