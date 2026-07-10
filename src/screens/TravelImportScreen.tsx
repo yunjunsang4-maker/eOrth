@@ -22,6 +22,7 @@ import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { locateCountry } from '../utils/countryLocate';
+import { requestNotificationPermission } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -81,11 +82,14 @@ export default function TravelImportScreen({ navigation }: Props) {
   const { homeCountryCode } = useSettings();
 
   // 과거 여행 불러오기를 건너뛰고(또는 결과 없이) 메인으로 갈 때도 튜토리얼(코치마크) 자동 실행
-  const goMainWithTutorial = () =>
+  // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
+  const goMainWithTutorial = async () => {
+    await requestNotificationPermission().catch(() => {});
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
     });
+  };
   const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
   // 스캔 취소 플래그 — startScan의 페이지네이션·GPS·지오코딩 루프가 매 반복마다 확인

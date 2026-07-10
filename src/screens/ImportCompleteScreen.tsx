@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { requestNotificationPermission } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
@@ -32,11 +33,14 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
     : t('imports.icTripNone', { count: tripCount });
 
   // "이어스 시작하기" → 메인으로 이동하면서 MainTab에 startTutorial 플래그 전달 → 코치마크 튜토리얼 자동 시작
-  const startEorth = () =>
+  // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
+  const startEorth = async () => {
+    await requestNotificationPermission().catch(() => {});
     navigation.reset({
       index: 0,
       routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
     });
+  };
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
