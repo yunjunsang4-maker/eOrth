@@ -3,8 +3,11 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { clearPersistedStores } from '../store/persist';
+import { setCardOrder } from '../store/cardOrderStore';
+import { setAppStateBackupArmed } from '../components/AppStateSync';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getMyUserId, getMyProfile, type ProfileRow } from '../services/profile';
+import { fetchAppState } from '../services/appState';
 
 // 마지막으로 이 기기에서 로그인한 사용자 id (계정 전환 감지용).
 // clearPersistedStores 대상 키(@eorth/records|settings|dm)가 아니라 별도 키라 초기화에도 유지된다.
@@ -22,9 +25,9 @@ export function useAccountBoundary(): () => Promise<void> {
   const {
     birthday,
     setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode,
-    setAccountPublic, setHandleFont, resetSettings,
+    setAccountPublic, setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
-  const { records, resetRecords, hydrateMyRecords, rearmTripRestore } = useRecords();
+  const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
   const { resetConversations } = useDM();
 
   const applyServerProfile = (p: ProfileRow) => {
@@ -41,8 +44,24 @@ export function useAccountBoundary(): () => Promise<void> {
     setHandleFont(p.handle_font ?? null);
   };
 
+  // 앱 상태 통합 백업(user_app_state) 복원 — 설정·기록 부가상태·카드 순서
+  const restoreAppState = async () => {
+    try {
+      const b = await fetchAppState();
+      if (!b) return;
+      if (b.settings) applySettingsBackup(b.settings);
+      if (b.records) applyLocalStateBackup(b.records);
+      if (Array.isArray(b.cardOrder)) setCardOrder(b.cardOrder);
+    } catch {
+      // 복원 실패해도 진행 (로컬 기본값 유지)
+    }
+  };
+
   return async () => {
     if (!isSupabaseConfigured) return;
+    // 경계 처리 시작 — 복원이 끝나기 전의 로컬 상태(빈/이전 계정)가 서버 백업을
+    // 덮어쓰지 못하게 백업을 잠근다. 처리 끝에서 다시 연다.
+    setAppStateBackupArmed(false);
     try {
       const uid = await getMyUserId();
       if (!uid) return;
@@ -60,6 +79,7 @@ export function useAccountBoundary(): () => Promise<void> {
         } catch {
           // 프로필 복원 실패해도 진행 (다음 편집 시 동기화됨)
         }
+        await restoreAppState(); // 새 계정의 설정·부가상태 복원 (리셋 직후라 로컬이 빈 상태)
         await hydrateMyRecords();
       } else if (last !== uid) {
         // 새 기기/이 설치 최초 진입(last=null): 로컬을 지우지 않는다(이 사용자의 로컬 초안 보존).
@@ -72,6 +92,8 @@ export function useAccountBoundary(): () => Promise<void> {
           } catch {
             // 복원 실패해도 진행
           }
+          // 재설치/새 기기(로컬이 신선) — 설정·부가상태·카드 순서도 서버 백업에서 복원
+          await restoreAppState();
         }
         // 로컬 기록이 비어 있을 때만(초안 손실 위험 없음) 서버에서 내 기록을 가져온다.
         if (records.length === 0) {
@@ -81,6 +103,8 @@ export function useAccountBoundary(): () => Promise<void> {
       // 여행카드 서버 복원 재무장 — 스토어 마운트 시점(로그인 전)에 세션이 없어 복원이
       // 스킵됐을 수 있으므로, 로그인이 확정된 여기서 항상 재시도시킨다(로컬 카드가 있으면 no-op).
       rearmTripRestore();
+      // 복원까지 끝났으니 앱 상태 백업을 연다 (로그인 확정 + 복원 완료 후에만)
+      setAppStateBackupArmed(true);
       await AsyncStorage.setItem(LAST_UID_KEY, uid);
     } catch {
       // 경계 처리 실패해도 로그인/진입 자체는 계속 진행

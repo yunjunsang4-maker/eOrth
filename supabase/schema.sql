@@ -709,6 +709,29 @@ create policy "user_trip_state_all_own" on public.user_trip_state
   for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ============================================================
+-- 4-c-3) user_app_state — 앱 로컬 상태 통합 백업 (재설치/기기 변경 복원용)
+--   설정(스킨·색·알림·배지·통계 등)과 기록 부가상태(보관·신고숨김·음소거·본 스냅·카드순서)는
+--   로컬이 원본이고 이 테이블은 백업본(사용자당 1행 jsonb). PII(프로필 필드)는 profiles가
+--   원본이므로 여기 포함하지 않는다. 복원·백업 게이트는 여행카드(user_trip_state)와 동일 원칙:
+--   로그인 확정 후 복원 → 복원 뒤에만 백업 허용 (빈 로컬이 백업을 덮어쓰는 사고 방지).
+-- ============================================================
+create table if not exists public.user_app_state (
+  user_id    uuid primary key references public.profiles(id) on delete cascade,
+  data       jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists trg_user_app_state_updated on public.user_app_state;
+create trigger trg_user_app_state_updated before update on public.user_app_state
+  for each row execute function public.set_updated_at();
+
+alter table public.user_app_state enable row level security;
+
+drop policy if exists "user_app_state_all_own" on public.user_app_state;
+create policy "user_app_state_all_own" on public.user_app_state
+  for all to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
+
+-- ============================================================
 -- 4-d) RPC: 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자(2단계)
 --   follows 조회가 본인 행으로 제한되어 클라이언트가 직접 계산할 수 없으므로
 --   SECURITY DEFINER RPC로 집계한다. 이미 팔로우/본인/차단 관계는 제외.

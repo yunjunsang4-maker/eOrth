@@ -269,6 +269,9 @@ interface RecordContextType {
   hydrateMyRecords: () => Promise<void>;
   // 로그인 완료 직후 여행카드 복원 재무장 — 로그인 전 마운트 때 스킵된 복원을 재시도시킨다.
   rearmTripRestore: () => void;
+  // 앱 상태 통합 백업(user_app_state) — 기록 부가상태(보관·신고숨김·음소거·차단·본스냅) 내보내기/적용
+  exportLocalStateBackup: () => Record<string, unknown>;
+  applyLocalStateBackup: (b: Record<string, unknown>) => void;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -1390,6 +1393,20 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripRestoreNonce((n) => n + 1);
   }, []);
 
+  // ── 앱 상태 통합 백업(user_app_state) — 기록 부가상태 스냅샷 ──
+  // 기록 본문은 posts, 여행카드는 user_trip_state가 담당하므로 여기선 부가상태만.
+  const exportLocalStateBackup = (): Record<string, unknown> => ({
+    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds,
+  });
+  const applyLocalStateBackup = (b: Record<string, unknown>) => {
+    const v = b as any;
+    if (Array.isArray(v.archivedIds)) setArchivedIds(v.archivedIds);
+    if (Array.isArray(v.blockedUsers)) setBlockedUsers(v.blockedUsers);
+    if (Array.isArray(v.reportedPostIds)) setReportedPostIds(v.reportedPostIds);
+    if (Array.isArray(v.mutedHandles)) setMutedHandles(v.mutedHandles);
+    if (Array.isArray(v.viewedSnapIds)) setViewedSnapIds(v.viewedSnapIds);
+  };
+
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
   // 백엔드 설정과 무관(카드는 로컬 기능). 이미 카드에 속한 글(과거 빌드 작성분)은 건너뜀.
   const linkedScheduledRef = useRef<Set<string>>(new Set());
@@ -1448,7 +1465,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup }}>
       {children}
     </RecordContext.Provider>
   );

@@ -136,6 +136,10 @@ interface SettingsContextType {
   setQrDesign: (v: string) => void;
   setAccountPublic: (v: boolean) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
+  // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
+  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
+  exportSettingsBackup: () => Record<string, unknown>;
+  applySettingsBackup: (b: Record<string, unknown>) => void;
 }
 
 // AsyncStorage에 저장되는 설정 스냅샷
@@ -471,6 +475,47 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     visitRecordedRef.current = false;
   };
 
+  // ── 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 ──
+  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
+  const exportSettingsBackup = (): Record<string, unknown> => ({
+    showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
+    globeVariant, globeSkin, globeDisplayMode, globeColor,
+    countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
+    representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
+    notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
+  });
+  const applySettingsBackup = (b: Record<string, unknown>) => {
+    const v = b as any;
+    if (typeof v.showCounts === 'boolean') setShowCounts(v.showCounts);
+    if (typeof v.snapEnabled === 'boolean') setSnapEnabled(v.snapEnabled);
+    if (typeof v.diaryCardMode === 'string') setDiaryCardMode(v.diaryCardMode);
+    if (v.language === 'ko' || v.language === 'en') setLanguage(v.language);
+    if (typeof v.arrivalDetect === 'boolean') setArrivalDetect(v.arrivalDetect);
+    if (typeof v.globeVariant === 'string') setGlobeVariant(v.globeVariant);
+    if (typeof v.globeSkin === 'string') { applyIconPalette(v.globeSkin); setGlobeSkin(v.globeSkin); }
+    if (typeof v.globeDisplayMode === 'string') setGlobeDisplayMode(v.globeDisplayMode);
+    if (typeof v.globeColor === 'string') setGlobeColor(v.globeColor);
+    if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(v.countryColors);
+    if (v.countryDisplayModes && typeof v.countryDisplayModes === 'object') setCountryDisplayModes(v.countryDisplayModes);
+    if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
+    if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(v.regionDisplayModes);
+    if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(v.regionColors);
+    if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(v.skinColorStore);
+    if (Array.isArray(v.representativeBadgeIds)) setRepresentativeBadgeIds(v.representativeBadgeIds);
+    if (v.badgeEarnedAt && typeof v.badgeEarnedAt === 'object') setBadgeEarnedAt(v.badgeEarnedAt);
+    if (typeof v.shareSentCount === 'number') setShareSentCount(v.shareSentCount);
+    if (typeof v.loginStreak === 'number') setLoginStreak(v.loginStreak);
+    if (typeof v.lastVisitDay === 'number') setLastVisitDay(v.lastVisitDay);
+    if (typeof v.installedAt === 'number') setInstalledAt(v.installedAt);
+    if (v.notifPrefs && typeof v.notifPrefs === 'object') setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...v.notifPrefs });
+    if (typeof v.isPremium === 'boolean') setIsPremium(v.isPremium);
+    if (typeof v.stripLogoRemoval === 'boolean') setStripLogoRemoval(v.stripLogoRemoval);
+    if (typeof v.qrDesign === 'string') setQrDesign(v.qrDesign);
+    if (Array.isArray(v.verifiedNaverBlogIds)) setVerifiedNaverBlogIds(v.verifiedNaverBlogIds);
+    if (typeof v.handleLastChanged === 'number') setHandleLastChanged(v.handleLastChanged);
+    if (typeof v.handleChosen === 'boolean') setHandleChosen(v.handleChosen);
+  };
+
   // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
     return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
@@ -556,6 +601,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         qrDesign,
         setQrDesign,
         resetSettings,
+        exportSettingsBackup,
+        applySettingsBackup,
       }}
     >
       {children}

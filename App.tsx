@@ -21,6 +21,7 @@ import BadgeEvaluator from './src/components/BadgeEvaluator';
 import DMToastHost from './src/components/DMToastHost';
 import ToastHost from './src/components/ToastHost';
 import ProfileSync from './src/components/ProfileSync';
+import AppStateSync from './src/components/AppStateSync';
 
 export default function App() {
   // 알림 탭 → 스냅 화면으로 이동
@@ -86,6 +87,7 @@ export default function App() {
                   <StatusBar style="light" backgroundColor="#0A0118" translucent />
                   <SnapDetector />
                   <ProfileSync />
+                  <AppStateSync />
                   <BadgeEvaluator />
                   <AppNavigator />
                   <BadgeToastHost />
