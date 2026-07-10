@@ -24,7 +24,7 @@ export function useAccountBoundary(): () => Promise<void> {
     setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode,
     setAccountPublic, setHandleFont, resetSettings,
   } = useSettings();
-  const { records, resetRecords, hydrateMyRecords } = useRecords();
+  const { records, resetRecords, hydrateMyRecords, rearmTripRestore } = useRecords();
   const { resetConversations } = useDM();
 
   const applyServerProfile = (p: ProfileRow) => {
@@ -78,6 +78,9 @@ export function useAccountBoundary(): () => Promise<void> {
           await hydrateMyRecords();
         }
       }
+      // 여행카드 서버 복원 재무장 — 스토어 마운트 시점(로그인 전)에 세션이 없어 복원이
+      // 스킵됐을 수 있으므로, 로그인이 확정된 여기서 항상 재시도시킨다(로컬 카드가 있으면 no-op).
+      rearmTripRestore();
       await AsyncStorage.setItem(LAST_UID_KEY, uid);
     } catch {
       // 경계 처리 실패해도 로그인/진입 자체는 계속 진행

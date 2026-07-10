@@ -7,7 +7,7 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
-import { getProfileByHandle, getProfileById } from '../services/profile';
+import { getProfileByHandle, getProfileById, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeKoreaRegion } from '../constants/koreaRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
@@ -267,6 +267,8 @@ interface RecordContextType {
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
+  // 로그인 완료 직후 여행카드 복원 재무장 — 로그인 전 마운트 때 스킵된 복원을 재시도시킨다.
+  rearmTripRestore: () => void;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -1313,8 +1315,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured) return;
     if (!tripBackupReadyRef.current) return;
+    // 완전 빈 상태는 백업하지 않는다 — 재설치/로그인 직후의 빈 로컬이 서버 백업을 파괴하는
+    // 최후 방어선(베타 실사고: 카드 전체 유실, 2026-07-10). 마지막 카드를 지운 경우 서버에
+    // 직전 백업이 남는 트레이드오프는 전체 유실보다 안전하다.
+    if (tripGroups.length === 0 && !tripSession) return;
     if (backupTimerRef.current) clearTimeout(backupTimerRef.current);
     backupTimerRef.current = setTimeout(() => {
+      if (!tripBackupReadyRef.current) return; // 타이머 대기 중 재무장(rearm)된 경우 취소
       const toRemote = (rid: string) => records.find((r) => r.id === rid)?.remoteId ?? rid;
       saveTripState({
         groups: tripGroups.map((g) => ({
@@ -1342,29 +1349,46 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [tripRestoreNonce, setTripRestoreNonce] = useState(0);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
-    tripRestoreTriedRef.current = true;
-    if (tripGroups.length > 0) {
-      tripBackupReadyRef.current = true; // 로컬이 원본 — 백업 즉시 허용
-      return;
-    }
-    fetchTripState().then((backup) => {
-      if (backup && backup.groups.length > 0) {
-        setTripGroups((prev) =>
-          prev.length > 0
-            ? prev
-            : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
-        );
-        setTripSession((prev) => {
-          if (prev) return prev;
-          const s = backup.session;
-          return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
-        });
+    (async () => {
+      // 로그인 전(세션 없음)에는 '시도'로 치지 않는다 — 스토어는 로그인 전에 마운트되므로
+      // 여기서 tried 처리하면 로그인 후 복원이 영영 안 돌고, 백업이 열리면서 빈 tripGroups가
+      // 서버 백업을 덮어써 카드가 전부 사라진다(베타 실사고, 2026-07-10).
+      // 로그인 완료 후에는 useAccountBoundary가 rearmTripRestore()로 재시도시킨다.
+      const uid = await getMyUserId().catch(() => null);
+      if (!uid || tripRestoreTriedRef.current) return;
+      tripRestoreTriedRef.current = true;
+      if (tripGroupsRef.current.length > 0) {
+        tripBackupReadyRef.current = true; // 로컬이 원본 — 백업 즉시 허용
+        return;
       }
-    }).finally(() => {
-      tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
-    });
+      try {
+        const backup = await fetchTripState();
+        if (backup && backup.groups.length > 0) {
+          setTripGroups((prev) =>
+            prev.length > 0
+              ? prev
+              : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+          );
+          setTripSession((prev) => {
+            if (prev) return prev;
+            const s = backup.session;
+            return s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS ? s : null;
+          });
+        }
+      } finally {
+        tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hydrated, tripRestoreNonce]);
+
+  // 로그인 완료 직후 여행카드 복원 재무장 — 앱 마운트 시점(로그인 전)에 복원이 스킵된 경우 회수.
+  // 재시도 전까지 백업도 잠가 빈 상태가 서버 백업을 덮어쓰지 못하게 한다.
+  const rearmTripRestore = useCallback(() => {
+    tripRestoreTriedRef.current = false;
+    tripBackupReadyRef.current = false;
+    setTripRestoreNonce((n) => n + 1);
+  }, []);
 
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
   // 백엔드 설정과 무관(카드는 로컬 기능). 이미 카드에 속한 글(과거 빌드 작성분)은 건너뜀.
@@ -1424,7 +1448,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore }}>
       {children}
     </RecordContext.Provider>
   );
