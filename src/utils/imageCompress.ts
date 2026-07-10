@@ -52,14 +52,15 @@ export async function compressImages(
  */
 export async function imageToDataUri(
   uri: string,
-  maxWidth: number = 512,
-  quality: number = 0.8,
+  maxWidth: number = 1024,
+  quality: number = 0.85,
 ): Promise<string | null> {
   if (!uri) return null;
   if (uri.startsWith('http') || uri.startsWith('data:')) return uri;
   try {
     const ctx = ImageManipulator.manipulate(uri);
-    ctx.resize({ width: maxWidth }); // 지구본 텍스처라 작게 충분 (비율 자동)
+    // 1024px — 지구본 텍스처가 4096x2048이라 넓은 국가(러시아·미국 등)는 512px론 흐릿함 (비율 자동)
+    ctx.resize({ width: maxWidth });
     const ref = await ctx.renderAsync();
     const out = await ref.saveAsync({ compress: quality, format: SaveFormat.JPEG, base64: true });
     return out.base64 ? `data:image/jpeg;base64,${out.base64}` : null;

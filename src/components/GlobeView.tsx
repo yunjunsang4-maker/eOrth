@@ -324,6 +324,9 @@ async function buildTexture() {
   var offscreen = document.createElement('canvas');
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
+  // 사진 활성화 모드에서 확대 그리기 화질 개선 (기본 low 스무딩 → high)
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
 
   ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
