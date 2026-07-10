@@ -416,9 +416,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setCurrentVisitedCountryCode('KR');
     setVerifiedNaverBlogIds([]);
     setGlobeVariant('aurora');
+    applyIconPalette('aurora'); // 아이콘 팔레트도 함께 복원 (원시 setter라 테마드 경로를 안 타므로 직접)
     setGlobeSkin('aurora');
     setGlobeDisplayMode('flag');
-    setGlobeColor('#BF85FC');
+    setGlobeColor('#C982FF'); // 초기 기본값과 동일하게 (팔레트 4종 중 하나 — #BF85FC는 팔레트 밖)
     setCountryColors({});
     setCountryDisplayModes({});
     setRegionGlobalMode('color');

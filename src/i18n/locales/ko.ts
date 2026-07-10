@@ -695,6 +695,7 @@ const ko = {
     createNow: '이대로 만들기',
   },
   snap: {
+    defaultCaption: '⚡ 순간 포착',
     captureFailTitle: '촬영 실패',
     captureFail2nd: '두 번째 사진 촬영에 실패했어요. 다시 시도해주세요.',
     captureFailMsg: '사진 촬영 중 오류가 발생했어요. 다시 시도해주세요.',
@@ -716,6 +717,7 @@ const ko = {
     expireNote: '스냅은 사라지지 않고 기록으로 남아요',
   },
   newRecord: {
+    dragCountryHint: '드래그하여 국가 순서를 변경할 수 있습니다. (첫 번째 국가가 대표 국가가 됩니다)',
     defaultTitleOne: '{{country}} 여행 기록',
     defaultTitleMany: '{{country}} 외 {{count}}개국 여행 기록',
     domesticRegionLabel: '지역 선택 — 여행 카드가 지역별로 구분돼요',
@@ -826,6 +828,7 @@ const ko = {
     visPrivate: '나만 보기',
   },
   blog: {
+    noFollowedFriends: '아직 팔로우한 친구가 없어요',
     title: '블로그',
     editTitle: '블로그 수정',
     saving: '저장 중…',
@@ -1214,6 +1217,7 @@ const ko = {
     monthDay: '{{m}}월 {{d}}일',
   },
   dm: {
+    emptyStart: '{{name}}님과의 대화를 시작해보세요',
     readMore: '읽기 →',
     imageMsg: '사진',
     travelRecord: '여행 기록',

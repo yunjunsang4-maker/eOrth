@@ -95,7 +95,7 @@ function fourSlotsCompact(): CutSlot[] {
 function fourSlotsStagger(): CutSlot[] {
   const mx = 0.045;          // 좌우 마진
   const w = (1 - mx * 2 - 0.04) / 2; // 컬럼 폭(~0.435), 컬럼 간격 0.04
-  const h = 0.36;            // 사진 높이(H 기준) → 실제 비율 (w*2)/(h*3) ≈ 4:5
+  const h = 0.335;           // 사진 높이(H 기준) ≈4:5 — 하단 밴드(~17%)에 문구+날짜+로고 스택이 넘치지 않게 확보
   const gy = 0.025;          // 사진 세로 간격
   const topL = 0.03;         // 좌 컬럼 시작
   const topR = topL + 0.105; // 우 컬럼은 아래로 엇갈림

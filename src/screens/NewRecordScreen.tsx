@@ -1442,7 +1442,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
                   />
                   <Text style={s.draggableHelperText}>
-                    드래그하여 국가 순서를 변경할 수 있습니다. (첫 번째 국가가 대표 국가가 됩니다)
+                    {t('newRecord.dragCountryHint')}
                   </Text>
                 </View>
               )}
@@ -1871,7 +1871,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     >
                       {WEATHER_ICON_MAP[w.value]}
                       <Text style={[s.optSmallTxt, weather === w.value && s.optSmallTxtActive]}>
-                        {w.value}
+                        {w.label}
                       </Text>
                     </TouchableOpacity>
                   ))}

@@ -1080,7 +1080,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const canSave = (() => {
     if (!selectedCountry) return false;
     const bodyText = blocksToPlainText(blocks);
-    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || b.type === 'video');
+    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) return false;
     if (companions.length === 0) return false;
     if (rating <= 0) return false;
@@ -1157,7 +1157,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const handleSave = () => {
     if (!selectedCountry) { Alert.alert(t('blog.countrySelectTitle'), t('blog.selectCountryMsg')); return; }
     const bodyText = blocksToPlainText(blocks);
-    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || b.type === 'video');
+    const hasMedia = blocks.some(b => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri));
     if (!title.trim() && !bodyText && !hasMedia) { Alert.alert(t('blog.contentTitle'), t('blog.contentMsg')); return; }
     if (companions.length === 0) { Alert.alert(t('blog.companionTitle'), t('blog.companionMsg')); return; }
     if (rating <= 0) { Alert.alert(t('blog.ratingTitle'), t('blog.ratingMsg')); return; }
@@ -1181,7 +1181,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     hasContent: !!(
       title.trim() ||
       blocksToPlainText(blocks).trim() ||
-      blocks.some((b) => b.type === 'image' || b.type === 'images' || b.type === 'video')
+      blocks.some((b) => b.type === 'image' || b.type === 'images' || (b.type === 'video' && !(b as any).placeholder && !!b.uri))
     ),
     isEdit,
   };
@@ -1728,7 +1728,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   <ScrollView style={{ maxHeight: 300 }}>
                     {friendNames.length === 0 ? (
                       <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-                        아직 팔로우한 친구가 없어요
+                        {t('blog.noFollowedFriends')}
                       </Text>
                     ) : friendNames.map(friend => {
                       const isSelected = companionFriends.includes(friend);

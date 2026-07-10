@@ -694,6 +694,7 @@ const en = {
     createNow: 'Create as is',
   },
   snap: {
+    defaultCaption: '⚡ Snapped moment',
     captureFailTitle: 'Capture failed',
     captureFail2nd: 'Failed to capture the second photo. Please try again.',
     captureFailMsg: 'An error occurred while taking the photo. Please try again.',
@@ -715,6 +716,7 @@ const en = {
     expireNote: 'Snaps never disappear — they stay as records',
   },
   newRecord: {
+    dragCountryHint: 'Drag to reorder countries. (The first country becomes the main one)',
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
     domesticRegionLabel: 'Region — trip cards are grouped by region',
@@ -825,6 +827,7 @@ const en = {
     visPrivate: 'Only me',
   },
   blog: {
+    noFollowedFriends: "You haven't followed any friends yet",
     title: 'Blog',
     editTitle: 'Edit blog',
     saving: 'Saving…',
@@ -1213,6 +1216,7 @@ const en = {
     monthDay: '{{m}}/{{d}}',
   },
   dm: {
+    emptyStart: 'Start a conversation with {{name}}',
     readMore: 'Read →',
     imageMsg: 'Photo',
     travelRecord: 'Travel record',

@@ -150,6 +150,7 @@ function mapRowToRecord(row: any): TravelRecord {
     remoteId: row.id,
     authorId: row.author_id,
     isMyPost: false,
+    liked: false, // 작성자가 직렬화한 liked 값이 뷰어에게 새어나오지 않게 기본 false — 호출부가 내 좋아요로 덧씌움
     likes: row.likes_count ?? rec.likes ?? 0,
     comments: row.comments_count ?? rec.comments ?? 0,
     timestamp: rec.timestamp ?? new Date(row.created_at).getTime(),
@@ -218,7 +219,11 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
       .order('created_at', { ascending: false })
       .limit(200);
     if (error || !data) return [];
-    return (data as any[]).map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
+    const mine = (data as any[]).map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
+    // 내 좋아요 상태 복원 (mapRowToRecord가 liked:false 기본이라 재다운로드 시 유실 방지)
+    const { fetchMyLikedPostIds } = await import('./social');
+    const likedSet = new Set(await fetchMyLikedPostIds());
+    return mine.map((r) => (r.remoteId && likedSet.has(r.remoteId) ? { ...r, liked: true } : r));
   } catch {
     return [];
   }
@@ -236,7 +241,11 @@ export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
       .order('created_at', { ascending: false })
       .limit(100);
     if (error || !data) return [];
-    return (data as any[]).map(mapRowToRecord);
+    const list = (data as any[]).map(mapRowToRecord);
+    // 뷰어(나)의 좋아요 상태 덧씌움 — 없으면 이미 좋아요한 글이 빈 하트로 보여 카운트 드리프트 유발
+    const { fetchMyLikedPostIds } = await import('./social');
+    const likedSet = new Set(await fetchMyLikedPostIds());
+    return list.map((r) => (r.remoteId && likedSet.has(r.remoteId) ? { ...r, liked: true } : r));
   } catch {
     return [];
   }

@@ -422,11 +422,16 @@ export default function DMScreen({ navigation, route }: Props) {
     setHighlightId(null);
   };
 
-  // 검색어가 바뀌면 가장 최근(마지막) 일치 메시지로 이동
+  // 검색어가 바뀌면 가장 최근(마지막) 일치 메시지로 이동.
+  // searchMatches는 messages에도 의존하므로 새 메시지 수신만으로 identity가 바뀐다 —
+  // 검색어가 실제로 바뀐 경우에만 점프해, 이전 매치를 보던 위치가 튕기지 않게 한다.
+  const lastSearchQueryRef = useRef('');
   useEffect(() => {
+    if (lastSearchQueryRef.current === searchQuery) return;
+    lastSearchQueryRef.current = searchQuery;
     if (searchMatches.length) goToMatch(searchMatches.length - 1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchMatches]);
+  }, [searchMatches, searchQuery]);
 
   // ─── 메시지 롱프레스 메뉴 동작 ───
   const handleCopy = async () => {
@@ -687,7 +692,7 @@ export default function DMScreen({ navigation, route }: Props) {
           ListEmptyComponent={
             <View style={st.emptyWrap}>
               <Text style={st.emptyEmoji}>{friend.emoji}</Text>
-              <Text style={st.emptyText}>{friend.name}님과의 대화를 시작해보세요</Text>
+              <Text style={st.emptyText}>{t('dm.emptyStart', { name: friend.name })}</Text>
             </View>
           }
         />

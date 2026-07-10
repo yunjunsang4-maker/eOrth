@@ -1245,6 +1245,7 @@ export default function PostDetailScreen() {
   const [fullImgVisible, setFullImgVisible] = useState(false);
   const [fullImgList, setFullImgList] = useState<string[]>([]);
   const [fullImgIndex, setFullImgIndex] = useState(0);
+  const fullImgScrollRef = useRef<ScrollView>(null);
   const openFullImage = (uris: string[], index: number) => {
     setFullImgList(uris);
     setFullImgIndex(index);
@@ -2053,10 +2054,13 @@ export default function PostDetailScreen() {
         <Modal visible transparent animationType="fade" onRequestClose={() => setFullImgVisible(false)} statusBarTranslucent>
           <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
             <ScrollView
+              ref={fullImgScrollRef}
               horizontal
               pagingEnabled
               showsHorizontalScrollIndicator={false}
               contentOffset={{ x: fullImgIndex * SCREEN_W, y: 0 }}
+              // Android는 contentOffset 초기 적용이 무시될 수 있어 스냅 뷰어(713행)와 동일한 폴백 스크롤
+              onLayout={() => fullImgScrollRef.current?.scrollTo({ x: fullImgIndex * SCREEN_W, animated: false })}
               onMomentumScrollEnd={(e) => setFullImgIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
             >
               {fullImgList.map((uri, i) => (

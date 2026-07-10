@@ -2361,7 +2361,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
     toastTimer.current = setTimeout(() => setToast({ visible: false, message: '' }), 2500);
   };
 
-  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
+  useEffect(() => () => {
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    if (quickToastTimer.current) clearTimeout(quickToastTimer.current);
+  }, []);
 
   const handleArchive = (id: string) => {
     archiveRecord(id);

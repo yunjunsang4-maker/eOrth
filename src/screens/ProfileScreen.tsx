@@ -1096,6 +1096,9 @@ function DraggableCardWrapper({
 }: DraggableCardWrapperProps) {
   const isDraggingRef = useRef(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  // 언마운트 시 롱프레스 타이머 해제 — 터치 진행 중 카드가 사라지면(병합·보관) 유령 발화로
+  // onDragStart(스크롤 잠금+탭바 숨김)가 대응 release 없이 실행되는 것을 방지
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
   // 최신 idx·콜백을 항상 참조 — 카드 추가/재정렬로 idx가 바뀌어도 stale 클로저 방지
   // (PanResponder는 첫 렌더에 한 번만 생성되므로 직접 캡처하면 옛 값이 박제된다)
   const cbRef = useRef({ idx, onDragStart, onDragMove, onDragEnd, onPress });
