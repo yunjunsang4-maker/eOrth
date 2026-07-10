@@ -13,9 +13,12 @@ import { useSkinAccent } from '../constants/skinTheme';
 export default function AppRefreshControl({
   refreshing,
   onRefresh,
+  progressViewOffset,
 }: {
   refreshing: boolean;
   onRefresh: () => void;
+  // 스크롤이 화면 최상단(노치 뒤)까지 차지하는 화면은 안전영역만큼 내려줘야 스피너가 보인다
+  progressViewOffset?: number;
 }) {
   const skinAccent = useSkinAccent();
   // 첫 프레임은 흰색 → 다음 틱에 스킨색으로 갱신(버그 회피용 강제 prop 업데이트).
@@ -32,6 +35,7 @@ export default function AppRefreshControl({
       tintColor={tint}
       colors={[skinAccent.accent]}
       progressBackgroundColor="#1F1F22"
+      progressViewOffset={progressViewOffset}
     />
   );
 }

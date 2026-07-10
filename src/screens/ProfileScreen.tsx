@@ -1740,7 +1740,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
-        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} progressViewOffset={insets.top} />}
       >
         {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정 */}
         {pushed ? (
