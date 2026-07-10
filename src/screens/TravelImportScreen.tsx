@@ -87,6 +87,9 @@ export default function TravelImportScreen({ navigation }: Props) {
     });
   const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
+  // 스캔 취소 플래그 — startScan의 페이지네이션·GPS·지오코딩 루프가 매 반복마다 확인
+  const scanCancelRef = useRef(false);
+  useEffect(() => () => { scanCancelRef.current = true; }, []); // 화면 이탈 시 진행 중 스캔 중단
   const [scanFinished, setScanFinished] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -183,6 +186,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   //   5) 클러스터: clusterForeignTrips(scanned, homeCountryCode) → 거주국가 밖 + 7일 묶음.
   // ────────────────────────────────────────────────────────────────────────
   const startScan = async () => {
+    scanCancelRef.current = false;
     setScanning(true);
     setProgress(0);
     setScannedTrips([]);
@@ -201,6 +205,7 @@ export default function TravelImportScreen({ navigation }: Props) {
       let after: string | undefined = undefined;
       let hasNext = true;
       while (hasNext && assets.length < MAX_ASSETS) {
+        if (scanCancelRef.current) return;
         const page = await MediaLibrary.getAssetsAsync({
           first: 100,
           after,
@@ -227,6 +232,7 @@ export default function TravelImportScreen({ navigation }: Props) {
       const located: { id: string; uri: string; creationTime: number; lat: number; lon: number }[] = [];
       const chunkSize = 50; // 네트워크 없이 로컬 DB 조회라 크게 잡아도 안전
       for (let i = 0; i < totalAssets; i += chunkSize) {
+        if (scanCancelRef.current) return;
         const chunk = assets.slice(i, i + chunkSize);
         const results = await Promise.all(
           chunk.map(async (asset) => {
@@ -272,6 +278,7 @@ export default function TravelImportScreen({ navigation }: Props) {
       let geocodedOk = 0;
 
       for (let i = 0; i < located.length; i++) {
+        if (scanCancelRef.current) return;
         const p = located[i];
         setProgress(55 + Math.min(40, Math.round((i / Math.max(1, located.length)) * 40)));
 
@@ -318,21 +325,33 @@ export default function TravelImportScreen({ navigation }: Props) {
       console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
       console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
+      if (scanCancelRef.current) return;
       setProgress(100);
       setTimeout(() => {
+        if (scanCancelRef.current) return;
         setScanning(false);
         setScanFinished(true);
         setScannedTrips(trips);
       }, 400);
     } catch (error) {
+      if (scanCancelRef.current) return;
       console.error('Scan failed:', error);
       setProgress(100);
       setTimeout(() => {
+        if (scanCancelRef.current) return;
         setScanning(false);
         setScanFinished(true);
         setScannedTrips([]);
       }, 400);
     }
+  };
+
+  // 스캔 취소 — 진행 중인 루프는 scanCancelRef를 보고 즉시 중단, UI는 시작 화면으로 복귀
+  const cancelScan = () => {
+    scanCancelRef.current = true;
+    setScanning(false);
+    setScanFinished(false);
+    setProgress(0);
   };
 
   const toggleSelect = (id: string) => {
@@ -491,6 +510,10 @@ export default function TravelImportScreen({ navigation }: Props) {
             <View style={styles.progressContainer}>
               <View style={[styles.progressBar, { width: `${progress}%` }]} />
             </View>
+
+            <TouchableOpacity style={styles.scanCancelBtn} onPress={cancelScan} activeOpacity={0.7}>
+              <Text style={styles.scanCancelTxt}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
           </View>
         ) : scannedTrips.length === 0 ? (
           /* 빈 상태 — 해외 사진 못 찾음/권한 거부 */
@@ -851,6 +874,19 @@ const styles = StyleSheet.create({
   progressBar: {
     height: '100%',
     backgroundColor: Colors.primary,
+  },
+  scanCancelBtn: {
+    marginTop: 22,
+    paddingVertical: 10,
+    paddingHorizontal: 28,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+  },
+  scanCancelTxt: {
+    color: '#A1A1B0',
+    fontSize: 14,
+    fontWeight: '600',
   },
 
   /* Results view */
