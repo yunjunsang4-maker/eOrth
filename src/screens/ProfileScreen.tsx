@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -20,7 +21,6 @@ import {
   Linking,
   LayoutAnimation,
   UIManager,
-  RefreshControl,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1740,7 +1740,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 상단 헤더 — 소셜에서 푸시된 내 프로필이면 좌:뒤로가기 / 우:빈칸, 아니면 로고+설정 */}
         {pushed ? (

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -17,7 +18,6 @@ import {
   Animated,
   Pressable,
   Share,
-  RefreshControl,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
@@ -2535,7 +2535,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           }
         )}
         scrollEventThrottle={16}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#BF85FC" colors={['#BF85FC']} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
         {snapItems.length > 0 && (

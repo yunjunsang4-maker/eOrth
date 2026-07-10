@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, RefreshControl,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -227,7 +228,7 @@ export default function NotificationScreen({ navigation }: Props) {
         style={st.scroll}
         contentContainerStyle={st.content}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 매거진 표지 */}
         <View style={st.cover}>

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -9,7 +10,6 @@ import {
   TextInput,
   Pressable,
   Animated,
-  RefreshControl,
 } from 'react-native';
 import { SearchIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
@@ -265,7 +265,7 @@ export default function FriendsScreen({ navigation }: Props) {
       <ScrollView
         style={st.scroll}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         <Pressable onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}>
           <Text style={st.sectionLabel}>{t('friends.friendsCountN', { count: filtered.length })}</Text>

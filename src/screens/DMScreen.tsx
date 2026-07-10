@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -14,7 +15,6 @@ import {
   Dimensions,
   Animated,
   Alert,
-  RefreshControl,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
@@ -698,7 +698,7 @@ export default function DMScreen({ navigation, route }: Props) {
           keyExtractor={item => item.id}
           contentContainerStyle={st.msgList}
           showsVerticalScrollIndicator={false}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefreshHistory} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+          refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefreshHistory} />}
           scrollEventThrottle={16}
           onScroll={(e) => {
             const { contentOffset, contentSize, layoutMeasurement } = e.nativeEvent;

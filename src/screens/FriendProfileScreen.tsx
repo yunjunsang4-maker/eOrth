@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -8,7 +9,6 @@ import {
   TouchableOpacity,
   Alert,
   Share,
-  RefreshControl,
   ActivityIndicator,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
@@ -303,7 +303,7 @@ export default function FriendProfileScreen({
       <ScrollView
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={skinAccent.accent} colors={[skinAccent.accent]} />}
+        refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* ── 프로필 헤더 (아바타 + 정보) — 내 프로필과 동일 ── */}
         <View style={pv.profileRow}>
