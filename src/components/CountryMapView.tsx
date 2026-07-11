@@ -529,7 +529,8 @@ function render(geo){
     var tv=0;
     mainFeatures.forEach(function(f){ (function cnt(c){ if(typeof c[0][0]==='number') tv+=c.length; else c.forEach(cnt); })(f.geometry.coordinates); });
     var density=tv/Math.max(mainFeatures.length,1); // 지역당 평균 정점 수
-    maxZoom=Math.max(8, Math.min(15, Math.round(density/16)));
+    // 정점이 성길수록 낮은 상한. 하한 6(일본 등 최저해상도도 깨지기 전에 멈춤) ~ 상한 15.
+    maxZoom=Math.max(6, Math.min(15, Math.round(density/18)));
   })();
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
     .on('zoom',function(ev){
