@@ -418,9 +418,9 @@ function emphWidth(d){
 // 일정하게(확대할수록 지역 대비 얇게) 유지하려면 stroke-width를 base/k 로 준다.
 // (vector-effect:non-scaling-stroke 와 함께 쓰면 stroke-width 값이 화면 px 기준이 된다)
 function curK(){ try{ return svgElement ? d3.zoomTransform(svgElement.node()).k : 1; }catch(e){ return 1; } }
-// 배율 k에서의 경계선 두께 — √k로 완만하게 얇아지되(직접 /k는 고배율에서 실처럼 사라짐)
-// 원래 두께의 55%를 하한으로 둬 확대해도 선이 또렷하게 보이게 한다.
-function scaledStroke(d,k){ var base=emphWidth(d); if(!base) return 0; return Math.max(base/Math.sqrt(k), base*0.55); }
+// 배율 k에서의 경계선 두께 — k^0.25로 아주 완만하게만 얇아지고(직접 /k는 고배율에서 실처럼 사라짐)
+// 원래 두께의 75%를 하한으로 둬 확대해도 구분선이 또렷하게 보이게 한다.
+function scaledStroke(d,k){ var base=emphWidth(d); if(!base) return 0; return Math.max(base/Math.pow(k,0.25), base*0.75); }
 function curStrokeWidth(d){ return scaledStroke(d, curK()); }
 // ── 구역 탭 ──
 function onRegionClick(ev,d){
