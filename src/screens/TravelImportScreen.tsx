@@ -235,7 +235,10 @@ export default function TravelImportScreen({ navigation }: Props) {
       // asset.id를 끝까지 전달해야 저장 시 copyTripOriginals가 localUri(file://)를 얻어
       // 복사할 수 있다 (iOS asset.uri는 ph:// 형식이라 직접 복사 불가).
       const located: { id: string; uri: string; creationTime: number; lat: number; lon: number }[] = [];
-      const chunkSize = 50; // 네트워크 없이 로컬 DB 조회라 크게 잡아도 안전
+      // 병렬 10 — 로컬 DB 조회라 각 호출은 빠르지만, iCloud 최적화 사진이 많은 기기에서
+      // 50 병렬은 메타데이터 접근 메모리 피크가 커져 스캔 중 앱이 강제 종료(iOS jetsam)됐다.
+      // 10 + 배치 간 yield로 메모리 피크를 낮춘다(로컬 조회라 완주 시간 손실은 미미).
+      const chunkSize = 10;
       for (let i = 0; i < totalAssets; i += chunkSize) {
         if (scanCancelRef.current) return;
         const chunk = assets.slice(i, i + chunkSize);
@@ -264,6 +267,9 @@ export default function TravelImportScreen({ navigation }: Props) {
           }
         }
         setProgress(Math.min(55, Math.round(((i + chunk.length) / totalAssets) * 55)));
+        // 배치 사이 한 틱 양보 — iOS가 이번 배치의 메타데이터 메모리를 회수(GC)할 틈을 주고
+        // 진행바 UI가 멈추지 않게 한다 (시간 비용은 사실상 0).
+        await sleep(0);
       }
 
       // ── 4) 국가 판정 (0.5도 버킷 캐시 + 순차 호출 + 재시도로 레이트리밋 회피) ──
