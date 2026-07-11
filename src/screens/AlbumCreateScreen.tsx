@@ -265,7 +265,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           count: g.uris.length,
         }));
       }
-      const recId = addImportedAlbum({
+      const newRec = addImportedAlbum({
         // countryName/country는 비워둔다 — 채우면 지구본·대륙 활성화와 통계,
         // 다른 국가 카드의 기록 매칭에 잡힌다. 국기는 카드 표시 전용.
         country: '', countryName: '', countryFlag: selectedCountry?.flag || '',
@@ -281,12 +281,13 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       if (tripGroupId) {
         // 여행 상세에서 진입 — 그 여행 카드에 사진첩을 연결(카드당 앨범 1개 정책)
         const g = tripGroups.find((x) => x.id === tripGroupId);
-        if (g && !g.records.includes(recId)) updateTripGroup(tripGroupId, { records: [...g.records, recId] });
-        else if (!g) addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
+        if (g && !g.records.includes(newRec.id)) updateTripGroup(tripGroupId, { records: [...g.records, newRec.id] });
+        else if (!g) addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
       } else {
-        addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
+        addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
       }
-      navigation.goBack();
+      // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
+      navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
       setSaving(false);
       Alert.alert(t('album.saveFailTitle'), t('album.saveFailMsg'));

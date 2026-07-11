@@ -162,7 +162,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
           representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
           albumSections: autoSections,
-        });
+        }).id;
         // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
         addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
         tripCount += 1;

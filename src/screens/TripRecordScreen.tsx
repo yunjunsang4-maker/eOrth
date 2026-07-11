@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -13,6 +14,8 @@ import {
   Platform,
   Image,
   Keyboard,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
@@ -171,12 +174,66 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   // ── 사진 순서 변경 (제자리 드래그 — 프로필 카드와 동일 UX, 렌더러에서 처리) ──
   const [scrollEnabled, setScrollEnabled] = useState(true); // 드래그 중 스크롤 잠금
+
+  // 드래그 중 가장자리 자동 스크롤 — 화면 밖 슬롯으로도 끌고 갈 수 있게 한다.
+  // 스크롤한 만큼(dragScroll)을 렌더러가 타일 위치·목적지 계산에 더해 손가락과 어긋나지 않는다.
+  const albumScrollRef = useRef<ScrollView>(null);
+  const scrollYRef = useRef(0);
+  const contentHRef = useRef(0);
+  const layoutHRef = useRef(0);
+  const dragPageYRef = useRef<number | null>(null);
+  const autoScrollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const dragScroll = useRef({ anim: new Animated.Value(0), value: 0 }).current;
+  useEffect(() => () => { if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current); }, []);
+
+  const handleAlbumDragState = (dragging: boolean) => {
+    setScrollEnabled(!dragging);
+    if (dragging) {
+      dragPageYRef.current = null;
+      if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current);
+      autoScrollTimerRef.current = setInterval(() => {
+        const py = dragPageYRef.current;
+        if (py == null) return;
+        const WIN_H = Dimensions.get('window').height;
+        const EDGE = 130;  // 가장자리 감지 폭
+        const STEP = 14;   // 프레임당 스크롤량
+        const dir = py < EDGE ? -1 : py > WIN_H - EDGE ? 1 : 0;
+        if (!dir) return;
+        const max = Math.max(0, contentHRef.current - layoutHRef.current);
+        const next = Math.max(0, Math.min(max, scrollYRef.current + dir * STEP));
+        if (next === scrollYRef.current) return;
+        dragScroll.value += next - scrollYRef.current;
+        dragScroll.anim.setValue(dragScroll.value);
+        scrollYRef.current = next;
+        albumScrollRef.current?.scrollTo({ y: next, animated: false });
+      }, 16);
+    } else {
+      if (autoScrollTimerRef.current) { clearInterval(autoScrollTimerRef.current); autoScrollTimerRef.current = null; }
+      dragPageYRef.current = null;
+    }
+  };
+
+  // 꾹 눌러 끌기 안내 — 한 번이라도 순서 변경에 성공하면 더 이상 표시하지 않는다 (기기 저장)
+  const ALBUM_HINT_KEY = 'eorth.albumDragHintSeen';
+  const [reorderHintSeen, setReorderHintSeen] = useState(true); // 로드 전 깜빡임 방지: 기본 숨김
+  useEffect(() => {
+    AsyncStorage.getItem(ALBUM_HINT_KEY)
+      .then((v) => { if (!v) setReorderHintSeen(false); })
+      .catch(() => {});
+  }, []);
+
   const handleReorder = (section: number | 'flat', fromIdx: number, toIdx: number) => {
     const start = section === 'flat' || !sections
       ? 0
       : sectionSlices(sections, medias.length)[section]?.start ?? 0;
     const next = reorderWithinRange(medias, start, fromIdx, toIdx);
-    if (next !== medias) updateRecord(record.id, { medias: next });
+    if (next !== medias) {
+      updateRecord(record.id, { medias: next });
+      if (!reorderHintSeen) {
+        setReorderHintSeen(true);
+        AsyncStorage.setItem(ALBUM_HINT_KEY, '1').catch(() => {});
+      }
+    }
   };
   const handleReorderRemove = (globalIndex: number) => {
     Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
@@ -292,7 +349,16 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }} scrollEnabled={scrollEnabled}>
+        <ScrollView
+          ref={albumScrollRef}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 24 }}
+          scrollEnabled={scrollEnabled}
+          scrollEventThrottle={16}
+          onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
+          onContentSizeChange={(_w, h) => { contentHRef.current = h; }}
+          onLayout={(e) => { layoutHRef.current = e.nativeEvent.layout.height; }}
+        >
           <TripRecordRenderer
             record={record}
             viewType={viewType}
@@ -307,15 +373,17 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumToggleSelect={toggleSelect}
             onAlbumReorder={handleReorder}
             onAlbumRemoveAt={handleReorderRemove}
-            onAlbumDragStateChange={(d) => setScrollEnabled(!d)}
+            onAlbumDragStateChange={handleAlbumDragState}
+            onAlbumDragPosition={(y) => { dragPageYRef.current = y; }}
+            albumDragScroll={dragScroll}
           />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
             <>
               <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
-              {/* 순서변경 안내 — 버튼이 없어 발견이 어려운 꾹 누르기 드래그 제스처를 알려준다 */}
-              {(record.medias?.length ?? 0) > 1 && !selecting && (
+              {/* 순서변경 안내 — 버튼이 없어 발견이 어려운 꾹 누르기 드래그 제스처를 알려준다 (첫 성공 후 숨김) */}
+              {(record.medias?.length ?? 0) > 1 && !selecting && !reorderHintSeen && (
                 <Text style={styles.albumHint}>{t('trip.albumReorderHint')}</Text>
               )}
             </>
