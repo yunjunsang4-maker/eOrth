@@ -10,6 +10,8 @@ import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
+import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -52,6 +54,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup } = useRecords();
+  // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
+  const { isPremium } = useSettings();
+  const albumMax = isPremium ? MAX_RECORD_PHOTOS_PREMIUM : MAX_ALBUM_PHOTOS;
 
   // 기간 (기본: 최근 7일)
   const today = new Date();
@@ -169,8 +174,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       setSelected((prev) => prev.filter((u) => u !== uri));
       return;
     }
-    if (selected.length >= MAX_ALBUM_PHOTOS) {
-      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: MAX_ALBUM_PHOTOS }));
+    if (selected.length >= albumMax) {
+      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: albumMax }));
       return;
     }
     setSelected((prev) => [...prev, uri]);
@@ -262,7 +267,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             <Text style={st.closeTxt}>✕</Text>
           </TouchableOpacity>
           <Text style={st.title}>📷 {t('comp2.albumCreateTitle')}</Text>
-          <Text style={st.sub}>{t('album.sub', { max: MAX_ALBUM_PHOTOS })}</Text>
+          <Text style={st.sub}>{t('album.sub', { max: albumMax })}</Text>
         </View>
 
         <ScrollView style={st.setupBody} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
@@ -385,7 +390,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
-        <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {MAX_ALBUM_PHOTOS}</Text>
+        <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
         {isLimited && (
           <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>
         )}

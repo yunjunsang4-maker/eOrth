@@ -2009,7 +2009,8 @@ export default function PostDetailScreen() {
                   if (viewType === 'blog') {
                     navigation.navigate('BlogRecord', { record: rawRecord });
                   } else if (viewType === 'album') {
-                    Alert.alert(t('postDetail.editBlockedTitle'), t('postDetail.editBlockedMsg'));
+                    // 사진첩 편집(추가·삭제·섹션 정리)은 전용 화면(TripRecord)에서 — 차단 알림 대체
+                    if (rawRecord) navigation.navigate('TripRecord', { record: rawRecord, viewType: 'album' });
                   } else {
                     navigation.navigate('NewRecord', { record: rawRecord });
                   }

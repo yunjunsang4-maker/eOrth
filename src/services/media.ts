@@ -66,3 +66,21 @@ export async function uploadImages(uris: string[]): Promise<string[]> {
   for (const u of uris) out.push(await uploadImage(u));
   return out;
 }
+
+/**
+ * 업로드된 공개 URL들의 Storage 원본 삭제 (본인 폴더만 — media_delete_own RLS).
+ * media 버킷 공개 URL이 아닌 항목(로컬 file:// 등)은 무시. 실패는 조용히(고아로 남음).
+ */
+export async function removeMediaUrls(urls: string[]): Promise<void> {
+  if (!supabase) return;
+  const marker = '/storage/v1/object/public/media/';
+  const paths = urls
+    .filter((u) => typeof u === 'string' && u.includes(marker))
+    .map((u) => decodeURIComponent(u.split(marker)[1].split('?')[0]));
+  if (paths.length === 0) return;
+  try {
+    await supabase.storage.from('media').remove(paths);
+  } catch {
+    /* 무시 — 남은 파일은 탈퇴 sweep에서 정리 */
+  }
+}

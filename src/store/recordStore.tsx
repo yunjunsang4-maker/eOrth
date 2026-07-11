@@ -11,6 +11,7 @@ import { getProfileByHandle, getProfileById, getMyUserId } from '../services/pro
 import { COUNTRIES } from '../constants/countries';
 import { normalizeKoreaRegion } from '../constants/koreaRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
+import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
   followUser as apiFollow,
@@ -603,6 +604,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       .catch(notifySyncError);
   };
 
+  // 기록이 참조하는 업로드(원격) 미디어 URL 전부 수집 — 삭제/교체 시 Storage 고아 파일 정리용
+  const collectRemoteMediaUrls = (r: TravelRecord): string[] => {
+    const out: string[] = [];
+    const push = (u?: string | null) => { if (u && u.startsWith('http')) out.push(u); };
+    (r.medias ?? []).forEach(push);
+    push(r.representativePhoto);
+    push(r.cutPhoto?.previewUri);
+    (r.blogBlocks ?? []).forEach((b: any) => { push(b?.uri); push(b?.thumbnail); });
+    Object.values(r.perCountryData ?? {}).forEach((d) => {
+      (d.medias ?? []).forEach(push);
+      push(d.representativePhoto);
+    });
+    return out;
+  };
+
   const updateRecord = (id: string, changes: Partial<Omit<TravelRecord, 'id' | 'timestamp'>>) => {
     const cur = records.find((r) => r.id === id);
     const updated = cur ? { ...cur, ...changes } : undefined;
@@ -638,6 +654,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
     if (isSupabaseConfigured) {
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(notifySyncError);
+      // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
+      if (cur && updated) {
+        const keep = new Set(collectRemoteMediaUrls(updated));
+        const removed = collectRemoteMediaUrls(cur).filter((u) => !keep.has(u));
+        if (removed.length > 0) removeMediaUrls(removed).catch(() => {});
+      }
     }
   };
 
@@ -661,6 +683,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (target.remoteId) deletePost(target.remoteId).catch(notifySyncError);
       // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약
       else if (publishAttemptRef.current.has(id)) pendingDeleteRef.current.add(id);
+      // 게시물이 참조하던 업로드 파일도 Storage에서 정리 (고아 파일 누수 방지)
+      const urls = collectRemoteMediaUrls(target);
+      if (urls.length > 0) removeMediaUrls(urls).catch(() => {});
     }
   };
 

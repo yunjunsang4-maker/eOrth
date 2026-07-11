@@ -17,6 +17,8 @@ import {
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
 import { MAX_ALBUM_PHOTOS } from './AlbumCreateScreen';
+import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
+import { useSettings } from '../store/settingsStore';
 import {
   sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection,
   deleteSection, newSectionId, normalizeSections,
@@ -33,7 +35,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
-  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment } = useRecords();
+  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment, tripGroups, updateTripGroup } = useRecords();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
@@ -67,24 +69,27 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // ── 사진첩(앨범) 사진 추가/삭제/이동 + 섹션 관리 ──
   // updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리한다.
   const medias = record.medias ?? [];
+  // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
+  const { isPremium } = useSettings();
+  const albumMax = isPremium ? MAX_RECORD_PHOTOS_PREMIUM : MAX_ALBUM_PHOTOS;
   const sections = record.albumSections && record.albumSections.length > 0
     ? normalizeSections(record.albumSections, medias.length)
     : null;
 
   const handleAlbumAddPhotos = async (sectionIndex?: number) => {
-    if (medias.length >= MAX_ALBUM_PHOTOS) {
-      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: MAX_ALBUM_PHOTOS }));
+    if (medias.length >= albumMax) {
+      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: albumMax }));
       return;
     }
     try {
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        selectionLimit: MAX_ALBUM_PHOTOS - medias.length,
+        selectionLimit: albumMax - medias.length,
         quality: 0.8,
       });
       if (res.canceled || !res.assets?.length) return;
-      const uris = res.assets.map((a) => a.uri).slice(0, MAX_ALBUM_PHOTOS - medias.length);
+      const uris = res.assets.map((a) => a.uri).slice(0, albumMax - medias.length);
       if (sections && sectionIndex != null) {
         const next = addPhotosToSection(medias, sections, sectionIndex, uris);
         updateRecord(record.id, { medias: next.medias, albumSections: next.sections, representativePhoto: record.representativePhoto ?? next.medias[0] });
@@ -107,12 +112,21 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     if (!target) return;
     const nextMedias = medias.filter((_, i) => i !== index);
     const nextSections = sections ? removePhotoAt(medias, sections, index).sections : record.albumSections;
+    const coverDeleted = record.representativePhoto === target;
+    const nextRep = coverDeleted ? nextMedias[0] : record.representativePhoto;
     updateRecord(record.id, {
       medias: nextMedias,
       albumSections: nextSections,
       // 대표 사진이 삭제됐으면 남은 첫 사진으로 승계
-      representativePhoto: record.representativePhoto === target ? nextMedias[0] : record.representativePhoto,
+      representativePhoto: nextRep,
     });
+    // 여행카드 썸네일은 group.coverUri(크롭본 등 오버라이드)를 최우선으로 쓰므로,
+    // 대표 사진이 바뀌면 이 기록을 커버로 쓰는 카드의 coverUri도 새 대표로 동기화(스테일 방지)
+    if (coverDeleted) {
+      tripGroups
+        .filter((g) => g.coverRecordId === record.id && g.coverUri)
+        .forEach((g) => updateTripGroup(g.id, { coverUri: nextRep }));
+    }
   };
 
   // 사진 길게 누르기 — 삭제 / (섹션 2개 이상이면) 다른 섹션으로 이동
