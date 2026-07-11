@@ -522,7 +522,9 @@ function render(geo){
       insetPathElements[box.name]=grp.fill;
     });
   }
-  maxZoom=(CODE==='USA')?30:15;
+  // 확대 상한 — 미국은 폭이 넓어 크게 확대되지만, 30배는 저해상도 폴리곤이 깨져 보여 18로 낮춤.
+  // 나머지는 15(스무딩된 데이터 기준 각짐이 드러나지 않는 안전 범위).
+  maxZoom=(CODE==='USA')?18:15;
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
     .on('zoom',function(ev){
       g.attr('transform',ev.transform);
