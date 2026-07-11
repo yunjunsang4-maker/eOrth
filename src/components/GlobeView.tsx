@@ -1168,14 +1168,15 @@ const neonGlobeHTML = `<!DOCTYPE html>
 </head>
 <body>
 <div id="bg">
-  <div style="position:absolute; left:9%; top:3%; width:54%; height:80%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(0,0,255,0.13), rgba(0,0,255,0) 65%); filter:blur(95px); animation:ng-glowdrift 18s ease-in-out infinite;"></div>
-  <div style="position:absolute; left:12%; top:27%; width:32%; height:44%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.20), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 22s ease-in-out infinite;"></div>
-  <div style="position:absolute; right:10%; bottom:9%; width:34%; height:46%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.16), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
-  <!-- 우주가스(nebula) 데코 — 첨부 SVG의 흐릿한 보라/파랑/흰 가스 블롭(가장자리에 산포) -->
-  <div style="position:absolute; left:-8%; top:15%; width:44%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.14), rgba(202,130,255,0) 70%); filter:blur(55px); animation:ng-glowdrift 24s ease-in-out infinite;"></div>
-  <div style="position:absolute; left:-6%; bottom:1%; width:38%; height:28%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.13), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 30s ease-in-out infinite;"></div>
-  <div style="position:absolute; right:-8%; top:54%; width:38%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.15), rgba(202,130,255,0) 70%); filter:blur(54px); animation:ng-glowdrift 28s ease-in-out infinite;"></div>
-  <div style="position:absolute; left:14%; top:22%; width:80%; height:54%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(48,64,255,0.07), rgba(48,64,255,0) 68%); filter:blur(100px); animation:ng-glowdrift 20s ease-in-out infinite;"></div>
+  <div class="neb" data-k="b" data-c="#0000FF" data-a="0.13" data-s="65" style="position:absolute; left:9%; top:3%; width:54%; height:80%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(0,0,255,0.13), rgba(0,0,255,0) 65%); filter:blur(95px); animation:ng-glowdrift 18s ease-in-out infinite;"></div>
+  <div class="neb" data-k="p" data-c="#CA82FF" data-a="0.20" data-s="70" style="position:absolute; left:12%; top:27%; width:32%; height:44%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.20), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 22s ease-in-out infinite;"></div>
+  <div class="neb" data-k="p" data-c="#CA82FF" data-a="0.16" data-s="70" style="position:absolute; right:10%; bottom:9%; width:34%; height:46%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.16), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
+  <!-- 우주가스(nebula) 데코 — 흐릿한 가스 블롭(가장자리에 산포). data-k p=본체색(base)/b=보조색(gradTo) 계열,
+       data-c=기본(aurora) 색 — setTheme의 스킨 팔레트가 오면 applyNebula가 재채색, 없으면(aurora) 이 값 유지 -->
+  <div class="neb" data-k="p" data-c="#CA82FF" data-a="0.14" data-s="70" style="position:absolute; left:-8%; top:15%; width:44%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.14), rgba(202,130,255,0) 70%); filter:blur(55px); animation:ng-glowdrift 24s ease-in-out infinite;"></div>
+  <div class="neb" data-k="p" data-c="#CA82FF" data-a="0.13" data-s="70" style="position:absolute; left:-6%; bottom:1%; width:38%; height:28%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.13), rgba(202,130,255,0) 70%); filter:blur(52px); animation:ng-glowdrift 30s ease-in-out infinite;"></div>
+  <div class="neb" data-k="p" data-c="#CA82FF" data-a="0.15" data-s="70" style="position:absolute; right:-8%; top:54%; width:38%; height:32%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(202,130,255,0.15), rgba(202,130,255,0) 70%); filter:blur(54px); animation:ng-glowdrift 28s ease-in-out infinite;"></div>
+  <div class="neb" data-k="b" data-c="#3040FF" data-a="0.07" data-s="68" style="position:absolute; left:14%; top:22%; width:80%; height:54%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(48,64,255,0.07), rgba(48,64,255,0) 68%); filter:blur(100px); animation:ng-glowdrift 20s ease-in-out infinite;"></div>
   <div style="position:absolute; left:15%; top:29%; width:18%; height:11%; border-radius:50%; background:radial-gradient(circle at 50% 50%, rgba(255,255,255,0.07), rgba(255,255,255,0) 70%); filter:blur(34px); animation:ng-glowdrift 26s ease-in-out infinite;"></div>
   <div id="stars"></div>
   <div id="shooting"></div>
@@ -1414,8 +1415,22 @@ var NEON_FS =
 var NEON_DEFAULT_SKIN = { base:'#FF14E4', gradFrom:'#1D0930', gradTo:'#7519AE', gradAlpha:0.70 };
 var pendingNeonSkin = null; // init 전에 setTheme이 도착할 수 있어 보관
 function hex3(h){ var n=parseInt(String(h).replace('#',''),16); return new THREE.Vector3(((n>>16)&255)/255,((n>>8)&255)/255,(n&255)/255); }
+// 우주가스(#bg .neb) 재채색 — 스킨 팔레트가 있으면 p계열=본체색(base)/b계열=보조색(gradTo),
+// 없으면(aurora 기본) 각 블롭의 data-c 기본색으로 복원 (설정 미리보기에서 스킨을 되돌릴 수 있음)
+function applyNebula(s){
+  var els = document.querySelectorAll('#bg .neb');
+  for(var i=0;i<els.length;i++){
+    var el = els[i];
+    var c = s ? (el.getAttribute('data-k')==='b' ? s.gradTo : s.base) : null;
+    c = c || el.getAttribute('data-c');
+    var n = parseInt(String(c).replace('#',''),16);
+    var rgb = ((n>>16)&255)+','+((n>>8)&255)+','+(n&255);
+    el.style.background = 'radial-gradient(circle at 50% 50%, rgba('+rgb+','+el.getAttribute('data-a')+'), rgba('+rgb+',0) '+el.getAttribute('data-s')+'%)';
+  }
+}
 function applyNeonSkin(s){
   pendingNeonSkin = s || null;
+  applyNebula(s || null); // 가스는 DOM만 있으면 즉시 반영 (material 준비 전에도)
   if(!material) return;
   var d = NEON_DEFAULT_SKIN, t = s || d;
   material.uniforms.uBase.value = hex3(t.base || d.base);

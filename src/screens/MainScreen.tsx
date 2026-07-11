@@ -278,7 +278,7 @@ type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord
 
 // 전체화면 우주배경 — 메인탭 모든 콘텐츠 뒤에 깔리는 별·무드글로우(비상호작용).
 // 별은 글로브 WebView(75% 영역) 밖(헤더·탭 영역)까지 화면 전체로 확장된다(첨부 SVG처럼).
-function SpaceBackdrop({ glow = '#CA82FF' }: { glow?: string }) {
+function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string; glow2?: string }) {
   const { width: W, height: H } = Dimensions.get('window');
   const stars = useMemo(() => {
     let s = 20260629;
@@ -298,8 +298,8 @@ function SpaceBackdrop({ glow = '#CA82FF' }: { glow?: string }) {
           <SvgStop offset="70%" stopColor={glow} stopOpacity={0} />
         </SvgRadialGradient>
         <SvgRadialGradient id="sbGlowB" cx="50%" cy="50%" r="50%">
-          <SvgStop offset="0%" stopColor="#1E3AFF" stopOpacity={0.1} />
-          <SvgStop offset="65%" stopColor="#1E3AFF" stopOpacity={0} />
+          <SvgStop offset="0%" stopColor={glow2} stopOpacity={0.1} />
+          <SvgStop offset="65%" stopColor={glow2} stopOpacity={0} />
         </SvgRadialGradient>
       </SvgDefs>
       <SvgRect x={0} y={0} width={W} height={H} fill="#0A0B0F" />
@@ -916,7 +916,8 @@ export default function MainScreen({ navigation, route }: Props) {
     <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
 
       {/* ── 전체화면 우주배경 (별·글로우) — 모든 콘텐츠 뒤, 터치 통과 ── */}
-      <SpaceBackdrop glow={skinAccent.accent} />
+      {/* 우주가스 색을 스킨에 맞춤 — 주 블롭=스킨 강조색, 보조(파랑) 블롭=스킨 그라데이션 보조색(aurora는 기존 파랑 유지) */}
+      <SpaceBackdrop glow={skinAccent.accent} glow2={getGlobeSkinTheme(globeSkin)?.gradTo ?? '#1E3AFF'} />
 
       {/* 튜토리얼용 숨김 앵커 — 탭 바 오버레이의 스냅 버튼(RecordFab)과 동일한 절대 제약.
           코치마크가 이 위치를 측정해 스냅 버튼을 정확히 강조한다(보이지 않음·터치 통과). */}
