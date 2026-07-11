@@ -9,6 +9,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
@@ -43,6 +44,7 @@ export function CalendarBottomSheet({
   endLabel?: string;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const startLbl = startLabel ?? t('newRecord.departDate');
   const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
@@ -120,21 +122,21 @@ export function CalendarBottomSheet({
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
-          <View style={calS.selectedRow}>
+          <View style={[calS.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
             <View style={calS.selectedItem}>
               <Text style={calS.selectedLabel}>{startLbl}</Text>
-              <Text style={[calS.selectedDate, !selectingEnd && calS.selectedDateActive]}>{fmtSel(tempStart)}</Text>
+              <Text style={[calS.selectedDate, !selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
             </View>
             <Text style={calS.selectedArrow}>→</Text>
             <View style={calS.selectedItem}>
               <Text style={calS.selectedLabel}>{endLbl}</Text>
-              <Text style={[calS.selectedDate, selectingEnd && calS.selectedDateActive]}>{fmtSel(tempEnd)}</Text>
+              <Text style={[calS.selectedDate, selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
             </View>
           </View>
           <View style={calS.monthNav}>
-            <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={calS.navArrow}>‹</Text></TouchableOpacity>
+            <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text></TouchableOpacity>
             <Text style={calS.monthTitle}>{t('cutInfo.yearMonth', { y: viewYear, m: viewMonth + 1 })}</Text>
-            <TouchableOpacity onPress={handleNextMonth} style={calS.navBtn}><Text style={calS.navArrow}>›</Text></TouchableOpacity>
+            <TouchableOpacity onPress={handleNextMonth} style={calS.navBtn}><Text style={[calS.navArrow, { color: skinAccent.accent }]}>›</Text></TouchableOpacity>
           </View>
           <View style={calS.weekRow}>
             {WEEK_DAY_KEYS.map((dk, i) => (
@@ -156,14 +158,14 @@ export function CalendarBottomSheet({
                   onPress={() => handleDayPress(date)}
                   activeOpacity={0.7}
                   style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
-                    inRange && !isEdge && calS.inRange,
-                    isStart && calS.rangeStartCell,
-                    isEnd   && calS.rangeEndCell,
+                    inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
+                    isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
+                    isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
                   ]}
                 >
-                  <View style={[calS.dayInner, isEdge && calS.edgeCircle]}>
+                  <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                     <Text style={[calS.dayText,
-                      isToday && !isEdge && calS.todayText,
+                      isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
                       dow===0 && !isEdge && calS.sundayText,
                       dow===6 && !isEdge && calS.saturdayText,
                       isEdge && calS.edgeText,
@@ -173,7 +175,7 @@ export function CalendarBottomSheet({
               );
             })}
           </View>
-          <TouchableOpacity style={calS.confirmBtn} onPress={handleConfirm} activeOpacity={0.85}>
+          <TouchableOpacity style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
             <Text style={calS.confirmText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>

@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { FriendIcon as SvgFriendIcon } from '../icons';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * 함께한 앱 친구 선택 모달 — NewRecordScreen 에서 분리.
@@ -38,6 +39,7 @@ export function FriendPickerModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   return (
     <Modal
       visible={visible}
@@ -51,7 +53,7 @@ export function FriendPickerModal({
         <View style={fp.sheet}>
           <View style={fp.handle} />
           <View style={fp.header}>
-            <SvgFriendIcon size={16} color={COLORS.purpleNeon} />
+            <SvgFriendIcon size={16} color={skinAccent.accent} />
             <Text style={fp.headerTitle}>{t('cutInfo.friendPickerTitle')}</Text>
           </View>
 
@@ -65,15 +67,15 @@ export function FriendPickerModal({
               return (
                 <TouchableOpacity
                   key={friend}
-                  style={[fp.row, isSelected && fp.rowActive]}
+                  style={[fp.row, isSelected && [fp.rowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                   onPress={() => onToggle(friend)}
                   activeOpacity={0.7}
                 >
-                  <View style={[fp.avatar, isSelected && fp.avatarActive]}>
+                  <View style={[fp.avatar, isSelected && [fp.avatarActive, { backgroundColor: skinAccent.accentDeep }]]}>
                     <Text style={fp.avatarTxt}>{friend[0]}</Text>
                   </View>
-                  <Text style={[fp.name, isSelected && fp.nameActive]}>{friend}</Text>
-                  <View style={[fp.check, isSelected && fp.checkActive]}>
+                  <Text style={[fp.name, isSelected && [fp.nameActive, { color: skinAccent.accent }]]}>{friend}</Text>
+                  <View style={[fp.check, isSelected && [fp.checkActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                     {isSelected && <Text style={fp.checkMark}>✓</Text>}
                   </View>
                 </TouchableOpacity>
@@ -81,7 +83,7 @@ export function FriendPickerModal({
             })}
           </ScrollView>
 
-          <TouchableOpacity style={fp.doneBtn} onPress={onClose} activeOpacity={0.85}>
+          <TouchableOpacity style={[fp.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
             <Text style={fp.doneTxt}>
               {selected.length > 0 ? t('cutInfo.friendDoneN', { count: selected.length }) : t('cutInfo.closeWithoutSelect')}
             </Text>

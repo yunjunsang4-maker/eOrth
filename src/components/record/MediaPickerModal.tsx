@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * 30장 초과 시 뜨는 사진 선택 모달 — NewRecordScreen 에서 분리.
@@ -44,6 +45,7 @@ export function MediaPickerModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   return (
     <Modal
       visible={visible}
@@ -63,18 +65,18 @@ export function MediaPickerModal({
             style={{ padding: 4 }}
             disabled={selected.size === 0}
           >
-            <Text style={[mpStyles.confirmText, selected.size === 0 && { opacity: 0.4 }]}>
+            <Text style={[mpStyles.confirmText, { color: skinAccent.accent }, selected.size === 0 && { opacity: 0.4 }]}>
               {t('common.done')}
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* 안내 */}
-        <View style={mpStyles.infoBar}>
+        <View style={[mpStyles.infoBar, { backgroundColor: skinAccent.tint(0.12) }]}>
           <Text style={mpStyles.infoText}>
             {t('comp.pickerInfo', { count: assets.length, max })}
           </Text>
-          <Text style={mpStyles.countText}>
+          <Text style={[mpStyles.countText, { color: skinAccent.accent }]}>
             {selected.size}/{max}
           </Text>
         </View>
@@ -105,9 +107,9 @@ export function MediaPickerModal({
               >
                 <Image source={{ uri: item.uri }} style={mpStyles.cellImage} />
                 {/* 선택 오버레이 */}
-                {isSelected && <View style={mpStyles.selectedOverlay} />}
+                {isSelected && <View style={[mpStyles.selectedOverlay, { backgroundColor: skinAccent.tint(0.3) }]} />}
                 {/* 체크박스 */}
-                <View style={[mpStyles.checkbox, isSelected && mpStyles.checkboxActive]}>
+                <View style={[mpStyles.checkbox, isSelected && [mpStyles.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                   {isSelected && <Text style={mpStyles.checkmark}>✓</Text>}
                 </View>
               </TouchableOpacity>

@@ -192,13 +192,14 @@ const WindIcon = ({ size = 16, color = IC }: { size?: number; color?: string }) 
   <SvgWindIcon size={size} color={color} />
 );
 
-const WEATHER_ICON_MAP: Record<string, React.ReactNode> = {
-  '맑음':     <SunIcon size={16} />,
-  '부분흐림': <PartlyCloudyIcon size={16} />,
-  '흐림':     <CloudyIcon size={16} />,
-  '비':       <RainIcon size={16} />,
-  '눈':       <SnowIcon size={16} />,
-  '바람':     <WindIcon size={16} />,
+// 색을 스킨 강조색으로 주입할 수 있게 함수형으로 둔다 (부분흐림은 다색 디자인 아이콘이라 색 무시)
+const WEATHER_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
+  '맑음':     (c) => <SunIcon size={16} color={c} />,
+  '부분흐림': () => <PartlyCloudyIcon size={16} />,
+  '흐림':     (c) => <CloudyIcon size={16} color={c} />,
+  '비':       (c) => <RainIcon size={16} color={c} />,
+  '눈':       (c) => <SnowIcon size={16} color={c} />,
+  '바람':     (c) => <WindIcon size={16} color={c} />,
 };
 
 // ─── 진행 바 ───
@@ -1462,7 +1463,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                             onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
                             activeOpacity={0.75}
                           >
-                            <Text style={[s.regionPickChipText, active && s.regionPickChipTextActive]}>{r.name}</Text>
+                            <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
                           </TouchableOpacity>
                         );
                       })}
@@ -1818,7 +1819,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 예산 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
-                  <CoinIcon size={18} color={IC} />
+                  <CoinIcon size={18} color={skinAccent.accent} />
                   <Text style={s.optRowTitle}>{t('newRecord.budget')}</Text>
                   {budget ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{Number(budget).toLocaleString()} {currency}</Text> : null}
                 </View>
@@ -1857,7 +1858,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 날씨 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
-                  <WeatherIcon size={18} color={IC} />
+                  <WeatherIcon size={18} color={skinAccent.accent} />
                   <Text style={s.optRowTitle}>{t('newRecord.weather')}</Text>
                   {weather ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
                 </View>
@@ -1869,7 +1870,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       onPress={() => setWeather(weather === w.value ? '' : w.value)}
                       activeOpacity={0.75}
                     >
-                      {WEATHER_ICON_MAP[w.value]}
+                      {WEATHER_ICON_MAP[w.value]?.(skinAccent.accent)}
                       <Text style={[s.optSmallTxt, weather === w.value && s.optSmallTxtActive]}>
                         {w.label}
                       </Text>
@@ -1881,7 +1882,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 직항/경유 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
-                  <DesignerPlaneIcon size={18} color={IC} />
+                  <DesignerPlaneIcon size={18} color={skinAccent.accent} />
                   <Text style={s.optRowTitle}>{t('newRecord.flightTitle')}</Text>
                   {flightType ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{flightLabel(flightType)}</Text> : null}
                 </View>
@@ -1907,7 +1908,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 여행 키워드 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
-                  <TagIcon size={18} color={IC} />
+                  <TagIcon size={18} color={skinAccent.accent} />
                   <Text style={s.optRowTitle}>{t('newRecord.keyword')}</Text>
                   {keywords.length > 0 && <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
                 </View>

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LockClosedIcon as SvgLockClosedIcon } from '../icons';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * 사진별 비공개 대상(친구) 선택 모달 — NewRecordScreen 전용.
@@ -31,6 +32,7 @@ export function PrivacyModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -74,21 +76,21 @@ export function PrivacyModal({
             const allPrivate = selectedFriends.length === allFriends.length;
             return (
               <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                 onPress={() => {
                   // 한 번에 전체 설정/해제 → 개별 친구 체크 상태도 즉시 동기화
                   onSetAll(allPrivate ? [] : [...allFriends]);
                 }}
                 activeOpacity={0.7}
               >
-                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                <View style={[pm.avatar, allPrivate && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
                   <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('blog.allPrivate')}</Text>
                   <Text style={pm.allPrivateDesc}>{t('comp.allPrivateMediaDesc')}</Text>
                 </View>
-                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                <View style={[pm.checkbox, allPrivate && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                   {allPrivate && <Text style={pm.checkMark}>✓</Text>}
                 </View>
               </TouchableOpacity>
@@ -98,11 +100,11 @@ export function PrivacyModal({
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
             <TouchableOpacity
-              style={pm.clearAllBtn}
+              style={[pm.clearAllBtn, { backgroundColor: skinAccent.tint(0.12) }]}
               onPress={() => selectedFriends.forEach(f => onToggle(f))}
               activeOpacity={0.7}
             >
-              <Text style={pm.clearAllTxt}>{t('blog.clearAll')}</Text>
+              <Text style={[pm.clearAllTxt, { color: skinAccent.accent }]}>{t('blog.clearAll')}</Text>
             </TouchableOpacity>
           )}
 
@@ -113,17 +115,17 @@ export function PrivacyModal({
               return (
                 <TouchableOpacity
                   key={friend}
-                  style={[pm.friendRow, isSelected && pm.friendRowActive]}
+                  style={[pm.friendRow, isSelected && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                   onPress={() => onToggle(friend)}
                   activeOpacity={0.7}
                 >
                   {/* 아바타 */}
-                  <View style={[pm.avatar, isSelected && pm.avatarActive]}>
+                  <View style={[pm.avatar, isSelected && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
                     <Text style={pm.avatarTxt}>{friend[0]}</Text>
                   </View>
                   <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
                   {/* 체크박스 */}
-                  <View style={[pm.checkbox, isSelected && pm.checkboxActive]}>
+                  <View style={[pm.checkbox, isSelected && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                     {isSelected && <Text style={pm.checkMark}>✓</Text>}
                   </View>
                 </TouchableOpacity>
@@ -132,7 +134,7 @@ export function PrivacyModal({
           </ScrollView>
 
           {/* 완료 버튼 */}
-          <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
+          <TouchableOpacity style={[pm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
             <Text style={pm.doneTxt}>
               {selectedFriends.length > 0
                 ? t('blog.privacyDoneN', { count: selectedFriends.length })

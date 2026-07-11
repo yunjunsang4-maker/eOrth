@@ -16,6 +16,7 @@ import {
   LockOpenIcon as SvgLockOpenIcon,
 } from '../icons';
 import { andFitText } from '../../utils/fitText';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * NewRecordScreen(피드 기록)에서 분리한 드래그 앤 드롭 리스트 컴포넌트.
@@ -69,6 +70,7 @@ function DraggableRow({
   onRemove: (name: string) => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const latestProps = useRef({ i, onDragStart, onDragMove, onDragEnd });
   useEffect(() => {
     latestProps.current = { i, onDragStart, onDragMove, onDragEnd };
@@ -127,24 +129,24 @@ function DraggableRow({
           height: ITEM_HEIGHT - 8,
           zIndex: zIndex,
         },
-        isDragging && ds.draggableRowActive,
+        isDragging && [ds.draggableRowActive, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.accent, shadowColor: skinAccent.accent }],
       ]}
     >
       {/* Drag Handle */}
       <View {...panResponder.panHandlers} style={ds.dragHandle}>
-        <DragHandleIcon size={20} color={isDragging ? COLORS.purpleNeon : COLORS.textDim} />
+        <DragHandleIcon size={20} color={isDragging ? skinAccent.accent : COLORS.textDim} />
       </View>
 
       {/* Flag and Name with Order Index Number */}
       <View style={ds.draggableRowContent}>
-        <View style={ds.numberBadge}>
-          <Text style={ds.numberBadgeText}>{i + 1}</Text>
+        <View style={[ds.numberBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+          <Text style={[ds.numberBadgeText, { color: skinAccent.accent }]}>{i + 1}</Text>
         </View>
         <Text style={ds.draggableRowFlag}>{c.flag}</Text>
         <Text style={ds.draggableRowName}>{c.name}</Text>
         {i === 0 && (
-          <View style={ds.representativeTag}>
-            <Text style={ds.representativeTagText}>{t('comp.representative')}</Text>
+          <View style={[ds.representativeTag, { backgroundColor: skinAccent.tint(0.15) }]}>
+            <Text style={[ds.representativeTagText, { color: skinAccent.accent }]}>{t('comp.representative')}</Text>
           </View>
         )}
       </View>
@@ -278,6 +280,7 @@ function DraggablePhotoThumb({
   onSetRepresentative?: (uri: string) => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const isDragging = idx === dragIndex;
   const isLocked = (mediaPrivacy[idx]?.length ?? 0) > 0;
 
@@ -384,13 +387,13 @@ function DraggablePhotoThumb({
           height: THUMB_SIZE,
           zIndex: zIndex,
         },
-        isDragging && ds.mediaThumbActive,
+        isDragging && [ds.mediaThumbActive, { borderColor: skinAccent.accent, shadowColor: skinAccent.accent }],
       ]}
       {...panResponder.panHandlers}
     >
       <Image source={{ uri }} style={ds.mediaThumb} />
 
-      {isLocked && <View style={ds.mediaLockedOverlay} />}
+      {isLocked && <View style={[ds.mediaLockedOverlay, { backgroundColor: skinAccent.tint(0.35) }]} />}
 
       {!isDragging && (
         <TouchableOpacity
@@ -404,7 +407,7 @@ function DraggablePhotoThumb({
 
       {!isDragging && onOpenPrivacyModal && (
         <TouchableOpacity
-          style={[ds.mediaLockBtn, isLocked && ds.mediaLockBtnActive]}
+          style={[ds.mediaLockBtn, isLocked && [ds.mediaLockBtnActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
           onPress={() => onOpenPrivacyModal(idx)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         >
@@ -414,12 +417,12 @@ function DraggablePhotoThumb({
 
       {!isDragging && onSetRepresentative && (
         <TouchableOpacity
-          style={[ds.mediaRepBtn, uri === representativePhoto && ds.mediaRepBtnActive]}
+          style={[ds.mediaRepBtn, uri === representativePhoto && [ds.mediaRepBtnActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]]}
           onPress={() => onSetRepresentative(uri)}
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           activeOpacity={0.8}
         >
-          <Text style={[ds.mediaRepTxt, uri === representativePhoto && ds.mediaRepTxtActive]} {...andFitText}>
+          <Text style={[ds.mediaRepTxt, uri === representativePhoto && [ds.mediaRepTxtActive, { color: skinAccent.accent }]]} {...andFitText}>
             {uri === representativePhoto ? t('comp.mapRep') : t('comp.setRep')}
           </Text>
         </TouchableOpacity>
@@ -427,7 +430,7 @@ function DraggablePhotoThumb({
 
       {!isDragging && isLocked && (
         <View style={ds.privacyCountBadge}>
-          <Text style={ds.privacyCountTxt} {...andFitText}>{t('comp.peopleCount', { count: mediaPrivacy[idx].length })}</Text>
+          <Text style={[ds.privacyCountTxt, { backgroundColor: skinAccent.accentDeep }]} {...andFitText}>{t('comp.peopleCount', { count: mediaPrivacy[idx].length })}</Text>
         </View>
       )}
     </Animated.View>

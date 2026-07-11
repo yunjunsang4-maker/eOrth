@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { SearchIcon as SvgSearchIcon } from '../icons';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
  * 기타 통화 선택 모달 — NewRecordScreen 에서 분리.
@@ -70,6 +71,7 @@ export function CurrencyPickerModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   return (
     <Modal
       visible={visible}
@@ -87,7 +89,7 @@ export function CurrencyPickerModal({
           activeOpacity={1}
           onPress={onClose}
         />
-        <View style={cs.currModalSheet}>
+        <View style={[cs.currModalSheet, { borderTopColor: skinAccent.tint(0.2) }]}>
           <View style={cs.currModalHandle} />
           <Text style={cs.currModalTitle}>{t('blog.currencySelect')}</Text>
           <View style={cs.currModalSearchWrap}>
@@ -116,7 +118,7 @@ export function CurrencyPickerModal({
                 >
                   <Text style={cs.currModalCode}>{c.code}</Text>
                   <Text style={cs.currModalName}>{c.name}</Text>
-                  {selected === c.code && <Text style={cs.currModalCheck}>✓</Text>}
+                  {selected === c.code && <Text style={[cs.currModalCheck, { color: skinAccent.accent }]}>✓</Text>}
                 </TouchableOpacity>
               ))}
           </ScrollView>
