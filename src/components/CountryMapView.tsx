@@ -414,6 +414,11 @@ function emphWidth(d){
   if(showPopular && highlight.indexOf(n)>=0) return 0.5;
   return 0.35;
 }
+// 현재 확대 배율(k). zoom 그룹 transform이 stroke도 k배 확대하므로, 화면상 선 두께를
+// 일정하게(확대할수록 지역 대비 얇게) 유지하려면 stroke-width를 base/k 로 준다.
+// (vector-effect:non-scaling-stroke 와 함께 쓰면 stroke-width 값이 화면 px 기준이 된다)
+function curK(){ try{ return svgElement ? d3.zoomTransform(svgElement.node()).k : 1; }catch(e){ return 1; } }
+function curStrokeWidth(d){ return emphWidth(d)/curK(); }
 // ── 구역 탭 ──
 function onRegionClick(ev,d){
   d3.select(this).attr('fill','#4E3D6B');
@@ -438,9 +443,11 @@ function featArea(f){
 function drawGroup(parent, features, pathGen, cls){
   var feats=features.slice().sort(function(a,b){return featArea(b)-featArea(a);});
   var fillSel=parent.selectAll('path.fill-'+cls).data(feats).enter().append('path')
-    .attr('class','fill-'+cls).attr('d',pathGen)
+    .attr('class','fill-'+cls+' region-stroke').attr('d',pathGen)
     .attr('fill',regionFill)
-    .attr('stroke',emphStroke).attr('stroke-width',emphWidth)
+    .attr('stroke',emphStroke).attr('stroke-width',curStrokeWidth)
+    // 확대해도 선이 두꺼워지지 않게 — transform scale과 무관하게 stroke를 화면 px 기준으로 렌더
+    .style('vector-effect','non-scaling-stroke')
     .attr('stroke-linejoin','round').attr('stroke-linecap','round')
     .attr('shape-rendering','geometricPrecision')
     .style('cursor','pointer').style('pointer-events',regionPointer).on('click',onRegionClick);
@@ -510,7 +517,12 @@ function render(geo){
   }
   maxZoom=(CODE==='USA')?30:15;
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
-    .on('zoom',function(ev){g.attr('transform',ev.transform);});
+    .on('zoom',function(ev){
+      g.attr('transform',ev.transform);
+      // 확대 배율에 맞춰 구분선을 얇게 — non-scaling-stroke로 두께 유지 + base/k로 추가로 얇아짐
+      var k=ev.transform.k;
+      g.selectAll('path.region-stroke').attr('stroke-width',function(d){return emphWidth(d)/k;});
+    });
   svg.call(zoomBehavior);
 
   setRegionChip('');
@@ -543,11 +555,12 @@ function updateMap() {
   });
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
-  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', emphWidth).style('pointer-events', regionPointer);
+  // stroke-width는 현재 확대 배율을 반영(curStrokeWidth) — 확대 상태에서 재렌더 시 선이 다시 두꺼워지지 않게
+  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', regionPointer);
 
   Object.keys(insetPathElements).forEach(function(key) {
     var sel = insetPathElements[key];
-    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', emphWidth).style('pointer-events', regionPointer);
+    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', regionPointer);
   });
 }
 
