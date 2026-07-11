@@ -51,7 +51,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
-  const { addImportedAlbum, addTripGroup } = useRecords();
+  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup } = useRecords();
 
   // 기간 (기본: 최근 7일)
   const today = new Date();
@@ -64,6 +64,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   // 소셜·지구본·대륙·통계에 잡히지 않는다는 사진첩 규칙을 유지한다.
   // 지구본/대륙에서 진입하면 선택한 국가가 미리 채워진다 (name: "일본" 또는 "일본 - 도쿄")
   const preselected = route?.params?.selectedCountry as { name?: string } | undefined;
+  const tripGroupId = route?.params?.tripGroupId as string | undefined;
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(
     preselected?.name ? (COUNTRIES.find(c => c.name === preselected.name!.split(' - ')[0]) ?? null) : null
   );
@@ -228,7 +229,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         medias: copied,
         representativePhoto: repUri,
       });
-      addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
+      if (tripGroupId) {
+        // 여행 상세에서 진입 — 그 여행 카드에 사진첩을 연결(카드당 앨범 1개 정책)
+        const g = tripGroups.find((x) => x.id === tripGroupId);
+        if (g && !g.records.includes(recId)) updateTripGroup(tripGroupId, { records: [...g.records, recId] });
+        else if (!g) addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
+      } else {
+        addTripGroup({ title: albumTitle, records: [recId], coverRecordId: recId });
+      }
       navigation.goBack();
     } catch {
       setSaving(false);

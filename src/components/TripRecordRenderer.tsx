@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import PhotoViewerModal from './PhotoViewerModal';
+import { sectionSlices } from '../utils/albumSections';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -22,8 +23,10 @@ interface Props {
   onClose?: () => void;
   // 사진첩(앨범) 편집 — 내 기록 화면(TripRecordScreen)에서만 전달
   albumEditable?: boolean;
-  onAlbumAddPhotos?: () => void;
-  onAlbumDeletePhoto?: (index: number) => void;
+  onAlbumAddPhotos?: (sectionIndex?: number) => void;
+  onAlbumPhotoAction?: (index: number) => void; // 길게 누르기: 이동/삭제
+  onAlbumAddSection?: () => void;
+  onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
 }
 
 // ─────────────────────────────────────────────
@@ -144,15 +147,37 @@ function BlogView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 const ALBUM_CELL = (SCREEN_W - 4) / 3;
 
-function AlbumView({ record, editable, onAddPhotos, onDeletePhoto }: {
+function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu }: {
   record: TravelRecord;
   editable?: boolean;
-  onAddPhotos?: () => void;
-  onDeletePhoto?: (index: number) => void;
+  onAddPhotos?: (sectionIndex?: number) => void;
+  onPhotoAction?: (index: number) => void;
+  onAddSection?: () => void;
+  onSectionMenu?: (sectionIndex: number) => void;
 }) {
   const { t } = useTranslation();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const medias = record.medias ?? [];
+  // 섹션(세분화) — medias의 연속 구간 분할. 없으면 평면 그리드.
+  const slices = record.albumSections && record.albumSections.length > 0
+    ? sectionSlices(record.albumSections, medias.length)
+    : null;
+
+  const photoTile = (uri: string, globalIdx: number) => (
+    <TouchableOpacity
+      key={`${uri}-${globalIdx}`}
+      onPress={() => setLightboxIdx(globalIdx)}
+      onLongPress={editable && onPhotoAction ? () => onPhotoAction(globalIdx) : undefined}
+      delayLongPress={350}
+      activeOpacity={0.85}
+    >
+      <Image
+        source={{ uri }}
+        style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
+        resizeMode="cover"
+      />
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.albumWrap}>
@@ -168,36 +193,65 @@ function AlbumView({ record, editable, onAddPhotos, onDeletePhoto }: {
         <StarRow rating={record.rating} size={14} />
       </View>
 
-      {/* 3열 그리드 — 탭: 전체화면 뷰어 / (편집) 길게 누르기: 삭제, 마지막 + 타일: 사진 추가 */}
-      <View style={styles.albumGrid}>
-        {medias.map((uri, i) => (
-          <TouchableOpacity
-            key={`${uri}-${i}`}
-            onPress={() => setLightboxIdx(i)}
-            onLongPress={editable && onDeletePhoto ? () => onDeletePhoto(i) : undefined}
-            delayLongPress={350}
-            activeOpacity={0.85}
-          >
-            <Image
-              source={{ uri }}
-              style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
-              resizeMode="cover"
-            />
-          </TouchableOpacity>
-        ))}
-        {editable && onAddPhotos && (
-          <TouchableOpacity style={styles.albumAddTile} onPress={onAddPhotos} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-            <Text style={styles.albumAddPlus}>＋</Text>
-            <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
-          </TouchableOpacity>
-        )}
-        {medias.length === 0 && !editable && (
-          <View style={styles.albumEmpty}>
-            <CameraIcon size={48} color="#A1A1B0" />
-            <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
+      {slices ? (
+        /* ── 섹션 모드 — 섹션별 헤더 + 그리드 ── */
+        <>
+          {slices.map((sec, si) => (
+            <View key={sec.id}>
+              <View style={styles.albumSectionHeader}>
+                <Text style={styles.albumSectionTitle}>{sec.title}</Text>
+                <Text style={styles.albumSectionCount}>{sec.count}</Text>
+                <View style={{ flex: 1 }} />
+                {editable && onAddPhotos && (
+                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                    <Text style={styles.albumSectionBtnTxt}>＋</Text>
+                  </TouchableOpacity>
+                )}
+                {editable && onSectionMenu && (
+                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
+                    <Text style={styles.albumSectionBtnTxt}>⋯</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              <View style={styles.albumGrid}>
+                {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i))}
+                {sec.count === 0 && (
+                  <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
+                )}
+              </View>
+            </View>
+          ))}
+          {editable && onAddSection && (
+            <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
+              <Text style={styles.albumSectionAddTxt}>＋ {t('comp.albumAddSection')}</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      ) : (
+        /* ── 평면 그리드 ── */
+        <>
+          <View style={styles.albumGrid}>
+            {medias.map((uri, i) => photoTile(uri, i))}
+            {editable && onAddPhotos && (
+              <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                <Text style={styles.albumAddPlus}>＋</Text>
+                <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
+              </TouchableOpacity>
+            )}
+            {medias.length === 0 && !editable && (
+              <View style={styles.albumEmpty}>
+                <CameraIcon size={48} color="#A1A1B0" />
+                <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
+              </View>
+            )}
           </View>
-        )}
-      </View>
+          {editable && onAddSection && medias.length > 0 && (
+            <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
+              <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
+            </TouchableOpacity>
+          )}
+        </>
+      )}
 
       {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m */}
       <PhotoViewerModal
@@ -333,12 +387,21 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumDeletePhoto }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
     case 'album':
-      return <AlbumView record={record} editable={albumEditable} onAddPhotos={onAlbumAddPhotos} onDeletePhoto={onAlbumDeletePhoto} />;
+      return (
+        <AlbumView
+          record={record}
+          editable={albumEditable}
+          onAddPhotos={onAlbumAddPhotos}
+          onPhotoAction={onAlbumPhotoAction}
+          onAddSection={onAlbumAddSection}
+          onSectionMenu={onAlbumSectionMenu}
+        />
+      );
     case 'snap':
       return <SnapView record={record} />;
     case 'cut':
@@ -516,6 +579,57 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 2,
+  },
+  albumSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 8,
+  },
+  albumSectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  albumSectionCount: {
+    fontSize: 12,
+    color: '#A1A1B0',
+  },
+  albumSectionBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+  },
+  albumSectionBtnTxt: {
+    fontSize: 15,
+    color: '#A1A1B0',
+    lineHeight: 18,
+  },
+  albumSectionEmpty: {
+    fontSize: 12,
+    color: '#5A5A6E',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  albumSectionAdd: {
+    marginHorizontal: 16,
+    marginTop: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  albumSectionAddTxt: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#A1A1B0',
   },
   albumAddTile: {
     width: ALBUM_CELL,

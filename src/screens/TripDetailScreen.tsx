@@ -398,7 +398,15 @@ export default function TripDetailScreen() {
       case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPeriod: tp }); break;
       case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPeriod: tp }); break;
       case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
-      case 'album': nav.navigate('AlbumCreate', { selectedCountry }); break;
+      case 'album': {
+        // 여행 카드당 사진첩 1개 — 이미 있으면 생성 대신 안내 (기존 사진첩에서 추가·정리)
+        if (getRecordsByType('album').length > 0) {
+          Alert.alert(t('trip.albumOnlyOneTitle'), t('trip.albumOnlyOneMsg'));
+          break;
+        }
+        nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id });
+        break;
+      }
       default:      nav.navigate('NewRecord', { selectedCountry, tripPeriod: tp });
     }
   };

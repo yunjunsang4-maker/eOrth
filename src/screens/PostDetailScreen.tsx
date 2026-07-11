@@ -41,6 +41,7 @@ import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
 import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
@@ -1679,19 +1680,36 @@ export default function PostDetailScreen() {
                       {heartOverlay}
                     </View>
                   ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
-                    /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음) */
+                    /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음)
+                       섹션(albumSections)이 있으면 섹션 제목별로 나눠 그린다 (보기 전용) */
                     <>
-                      <View style={s.albumGrid}>
-                        {record.medias.map((uri, i) => (
-                          <TouchableOpacity
-                            key={`${uri}-${i}`}
-                            activeOpacity={0.85}
-                            onPress={() => handleMediaTap(() => openFullImage(record.medias!, i))}
-                          >
-                            <Image source={{ uri }} style={s.albumGridImg} />
-                          </TouchableOpacity>
-                        ))}
-                      </View>
+                      {(record.albumSections && record.albumSections.length > 0
+                        ? sectionSlices(record.albumSections, record.medias.length)
+                        : [null]
+                      ).map((sec) => (
+                        <View key={sec?.id ?? 'flat'}>
+                          {sec && (
+                            <View style={s.albumSectionHeader}>
+                              <Text style={s.albumSectionTitle}>{sec.title}</Text>
+                              <Text style={s.albumSectionCount}>{sec.count}</Text>
+                            </View>
+                          )}
+                          <View style={s.albumGrid}>
+                            {(sec ? record.medias!.slice(sec.start, sec.end) : record.medias!).map((uri, i) => {
+                              const globalIdx = sec ? sec.start + i : i;
+                              return (
+                                <TouchableOpacity
+                                  key={`${uri}-${globalIdx}`}
+                                  activeOpacity={0.85}
+                                  onPress={() => handleMediaTap(() => openFullImage(record.medias!, globalIdx))}
+                                >
+                                  <Image source={{ uri }} style={s.albumGridImg} />
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        </View>
+                      ))}
                       <Text style={s.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias.length })}</Text>
                     </>
                   ) : record.medias && record.medias.length > 0 ? (
@@ -2157,6 +2175,9 @@ const s = StyleSheet.create({
     backgroundColor: '#1F1F22',
   },
   albumCount: { color: '#A1A1B0', fontSize: 12, marginBottom: 10 },
+  albumSectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingTop: 10, paddingBottom: 8 },
+  albumSectionTitle: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
+  albumSectionCount: { fontSize: 12, color: '#A1A1B0' },
   cutImage: {
     width: SCREEN_W - 40, height: SCREEN_H * 0.6, borderRadius: 12,
     marginBottom: 14, backgroundColor: '#000', alignSelf: 'center',

@@ -17,6 +17,10 @@ import {
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
 import { MAX_ALBUM_PHOTOS } from './AlbumCreateScreen';
+import {
+  sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection,
+  deleteSection, newSectionId, normalizeSections,
+} from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
@@ -60,10 +64,15 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     setCommentText('');
   };
 
-  // ── 사진첩(앨범) 사진 추가/삭제 — updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리 ──
-  const handleAlbumAddPhotos = async () => {
-    const current = record.medias ?? [];
-    if (current.length >= MAX_ALBUM_PHOTOS) {
+  // ── 사진첩(앨범) 사진 추가/삭제/이동 + 섹션 관리 ──
+  // updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리한다.
+  const medias = record.medias ?? [];
+  const sections = record.albumSections && record.albumSections.length > 0
+    ? normalizeSections(record.albumSections, medias.length)
+    : null;
+
+  const handleAlbumAddPhotos = async (sectionIndex?: number) => {
+    if (medias.length >= MAX_ALBUM_PHOTOS) {
       Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: MAX_ALBUM_PHOTOS }));
       return;
     }
@@ -71,34 +80,123 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       const res = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsMultipleSelection: true,
-        selectionLimit: MAX_ALBUM_PHOTOS - current.length,
+        selectionLimit: MAX_ALBUM_PHOTOS - medias.length,
         quality: 0.8,
       });
       if (res.canceled || !res.assets?.length) return;
-      const next = [...current, ...res.assets.map((a) => a.uri)].slice(0, MAX_ALBUM_PHOTOS);
-      updateRecord(record.id, { medias: next, representativePhoto: record.representativePhoto ?? next[0] });
+      const uris = res.assets.map((a) => a.uri).slice(0, MAX_ALBUM_PHOTOS - medias.length);
+      if (sections && sectionIndex != null) {
+        const next = addPhotosToSection(medias, sections, sectionIndex, uris);
+        updateRecord(record.id, { medias: next.medias, albumSections: next.sections, representativePhoto: record.representativePhoto ?? next.medias[0] });
+      } else {
+        const nextMedias = [...medias, ...uris];
+        updateRecord(record.id, {
+          medias: nextMedias,
+          // 섹션 사용 중이면 평면 추가는 마지막 섹션으로 흡수(normalize 규칙과 일치)
+          albumSections: sections ? normalizeSections(sections, nextMedias.length) : record.albumSections,
+          representativePhoto: record.representativePhoto ?? nextMedias[0],
+        });
+      }
     } catch {
       /* 픽커 취소/실패 — 무시 */
     }
   };
-  const handleAlbumDeletePhoto = (index: number) => {
-    const current = record.medias ?? [];
-    const target = current[index];
+
+  const doDeletePhoto = (index: number) => {
+    const target = medias[index];
     if (!target) return;
-    Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
-      { text: t('common.cancel'), style: 'cancel' },
+    const nextMedias = medias.filter((_, i) => i !== index);
+    const nextSections = sections ? removePhotoAt(medias, sections, index).sections : record.albumSections;
+    updateRecord(record.id, {
+      medias: nextMedias,
+      albumSections: nextSections,
+      // 대표 사진이 삭제됐으면 남은 첫 사진으로 승계
+      representativePhoto: record.representativePhoto === target ? nextMedias[0] : record.representativePhoto,
+    });
+  };
+
+  // 사진 길게 누르기 — 삭제 / (섹션 2개 이상이면) 다른 섹션으로 이동
+  const handleAlbumPhotoAction = (index: number) => {
+    const buttons: any[] = [];
+    if (sections && sections.length > 1) {
+      buttons.push({
+        text: t('trip.albumPhotoMove'),
+        onPress: () => {
+          const owner = sectionSlices(sections, medias.length).findIndex((sl) => index >= sl.start && index < sl.end);
+          Alert.alert(t('trip.albumPhotoMoveTitle'), undefined, [
+            ...sections
+              .map((sec, i) => ({
+                text: sec.title,
+                onPress: () => {
+                  const next = movePhotoToSection(medias, sections, index, i);
+                  updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+                },
+              }))
+              .filter((_, i) => i !== owner),
+            { text: t('common.cancel'), style: 'cancel' as const },
+          ]);
+        },
+      });
+    }
+    buttons.push({
+      text: t('trip.delete'),
+      style: 'destructive',
+      onPress: () => {
+        Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('trip.delete'), style: 'destructive', onPress: () => doDeletePhoto(index) },
+        ]);
+      },
+    });
+    buttons.push({ text: t('common.cancel'), style: 'cancel' });
+    Alert.alert(t('trip.albumPhotoActionTitle'), undefined, buttons);
+  };
+
+  // ── 섹션 추가/이름변경 모달 ──
+  const [sectionModal, setSectionModal] = useState<{ mode: 'add' } | { mode: 'rename'; index: number } | null>(null);
+  const [sectionTitleInput, setSectionTitleInput] = useState('');
+  const openAddSection = () => { setSectionTitleInput(''); setSectionModal({ mode: 'add' }); };
+  const confirmSectionModal = () => {
+    const title = sectionTitleInput.trim();
+    if (!title || !sectionModal) return;
+    if (sectionModal.mode === 'add') {
+      if (!sections) {
+        // 첫 섹션 — 기존 사진 전부가 이 섹션에 담긴다. 이후 섹션을 추가해 이동으로 정리.
+        updateRecord(record.id, { albumSections: [{ id: newSectionId(), title, count: medias.length }] });
+      } else {
+        updateRecord(record.id, { albumSections: [...sections, { id: newSectionId(), title, count: 0 }] });
+      }
+    } else {
+      updateRecord(record.id, {
+        albumSections: (sections ?? []).map((sec, i) => (i === sectionModal.index ? { ...sec, title } : sec)),
+      });
+    }
+    setSectionModal(null);
+  };
+
+  // 섹션 헤더 ⋯ — 이름 변경 / 섹션 삭제(사진은 옆 섹션으로 합쳐짐)
+  const handleSectionMenu = (index: number) => {
+    if (!sections) return;
+    Alert.alert(sections[index]?.title ?? '', undefined, [
       {
-        text: t('trip.delete'),
+        text: t('trip.albumSectionRename'),
+        onPress: () => { setSectionTitleInput(sections[index]?.title ?? ''); setSectionModal({ mode: 'rename', index }); },
+      },
+      {
+        text: t('trip.albumSectionDelete'),
         style: 'destructive',
         onPress: () => {
-          const next = current.filter((_, i) => i !== index);
-          updateRecord(record.id, {
-            medias: next,
-            // 대표 사진이 삭제됐으면 남은 첫 사진으로 승계
-            representativePhoto: record.representativePhoto === target ? next[0] : record.representativePhoto,
-          });
+          Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
+            { text: t('common.cancel'), style: 'cancel' },
+            {
+              text: t('trip.delete'),
+              style: 'destructive',
+              onPress: () => updateRecord(record.id, { albumSections: deleteSection(sections, medias.length, index) ?? undefined }),
+            },
+          ]);
         },
       },
+      { text: t('common.cancel'), style: 'cancel' },
     ]);
   };
 
@@ -142,7 +240,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             viewType={viewType}
             albumEditable={isAlbum}
             onAlbumAddPhotos={handleAlbumAddPhotos}
-            onAlbumDeletePhoto={handleAlbumDeletePhoto}
+            onAlbumPhotoAction={handleAlbumPhotoAction}
+            onAlbumAddSection={openAddSection}
+            onAlbumSectionMenu={handleSectionMenu}
           />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
@@ -219,6 +319,38 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         )}
       </KeyboardAvoidingView>
 
+      {/* 섹션 제목 입력 모달 (추가/이름변경 공용) */}
+      <Modal visible={sectionModal !== null} transparent animationType="fade" onRequestClose={() => setSectionModal(null)}>
+        <View style={styles.sectionModalOverlay} accessibilityViewIsModal>
+          <View style={styles.sectionModalCard}>
+            <Text style={styles.sectionModalTitle}>
+              {sectionModal?.mode === 'rename' ? t('trip.albumSectionRename') : t('trip.albumSectionAddTitle')}
+            </Text>
+            <TextInput
+              style={styles.sectionModalInput}
+              value={sectionTitleInput}
+              onChangeText={setSectionTitleInput}
+              placeholder={t('trip.albumSectionTitlePh')}
+              placeholderTextColor="#5A5A6E"
+              autoFocus
+              maxLength={20}
+            />
+            <View style={styles.sectionModalBtns}>
+              <TouchableOpacity style={styles.sectionModalBtn} onPress={() => setSectionModal(null)}>
+                <Text style={styles.sectionModalBtnTxt}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sectionModalBtn, styles.sectionModalBtnOk, !sectionTitleInput.trim() && { opacity: 0.4 }]}
+                onPress={confirmSectionModal}
+                disabled={!sectionTitleInput.trim()}
+              >
+                <Text style={[styles.sectionModalBtnTxt, { color: '#FFFFFF' }]}>{t('trip.albumSectionOk')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* ⋯ 팝업 메뉴 */}
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
@@ -288,6 +420,54 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#5A5A6E',
     paddingVertical: 12,
+  },
+  // 섹션 제목 입력 모달
+  sectionModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  sectionModalCard: {
+    width: '100%',
+    backgroundColor: '#2E2E3B',
+    borderRadius: 16,
+    padding: 18,
+  },
+  sectionModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 12,
+  },
+  sectionModalInput: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+  sectionModalBtns: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 14,
+  },
+  sectionModalBtn: {
+    paddingHorizontal: 16,
+    paddingVertical: 9,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  sectionModalBtnOk: {
+    backgroundColor: '#6B21A8',
+  },
+  sectionModalBtnTxt: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#A1A1B0',
   },
   // 사진첩(앨범) — 사진 장수 표기
   albumCount: {

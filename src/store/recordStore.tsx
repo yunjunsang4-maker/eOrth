@@ -81,6 +81,8 @@ export interface TravelRecord {
   companions?: string[];
   companionFriends?: string[];
   medias?: string[];
+  // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
+  albumSections?: { id: string; title: string; count: number }[];
   mediaPrivacy?: Record<number, string[]>;
   budget?: { amount: number; currency: string };
   weather?: string;
