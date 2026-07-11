@@ -9,6 +9,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import PhotoViewerModal from './PhotoViewerModal';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -19,6 +20,10 @@ interface Props {
   record: TravelRecord;
   viewType: RecordViewType;
   onClose?: () => void;
+  // 사진첩(앨범) 편집 — 내 기록 화면(TripRecordScreen)에서만 전달
+  albumEditable?: boolean;
+  onAlbumAddPhotos?: () => void;
+  onAlbumDeletePhoto?: (index: number) => void;
 }
 
 // ─────────────────────────────────────────────
@@ -139,7 +144,12 @@ function BlogView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 const ALBUM_CELL = (SCREEN_W - 4) / 3;
 
-function AlbumView({ record }: { record: TravelRecord }) {
+function AlbumView({ record, editable, onAddPhotos, onDeletePhoto }: {
+  record: TravelRecord;
+  editable?: boolean;
+  onAddPhotos?: () => void;
+  onDeletePhoto?: (index: number) => void;
+}) {
   const { t } = useTranslation();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const medias = record.medias ?? [];
@@ -158,23 +168,30 @@ function AlbumView({ record }: { record: TravelRecord }) {
         <StarRow rating={record.rating} size={14} />
       </View>
 
-      {/* 3열 그리드 */}
+      {/* 3열 그리드 — 탭: 전체화면 뷰어 / (편집) 길게 누르기: 삭제, 마지막 + 타일: 사진 추가 */}
       <View style={styles.albumGrid}>
-        {medias.length > 0 ? (
-          medias.map((uri, i) => (
-            <TouchableOpacity
-              key={i}
-              onPress={() => setLightboxIdx(i)}
-              activeOpacity={0.85}
-            >
-              <Image
-                source={{ uri }}
-                style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
-                resizeMode="cover"
-              />
-            </TouchableOpacity>
-          ))
-        ) : (
+        {medias.map((uri, i) => (
+          <TouchableOpacity
+            key={`${uri}-${i}`}
+            onPress={() => setLightboxIdx(i)}
+            onLongPress={editable && onDeletePhoto ? () => onDeletePhoto(i) : undefined}
+            delayLongPress={350}
+            activeOpacity={0.85}
+          >
+            <Image
+              source={{ uri }}
+              style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
+              resizeMode="cover"
+            />
+          </TouchableOpacity>
+        ))}
+        {editable && onAddPhotos && (
+          <TouchableOpacity style={styles.albumAddTile} onPress={onAddPhotos} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+            <Text style={styles.albumAddPlus}>＋</Text>
+            <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
+          </TouchableOpacity>
+        )}
+        {medias.length === 0 && !editable && (
           <View style={styles.albumEmpty}>
             <CameraIcon size={48} color="#A1A1B0" />
             <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
@@ -182,39 +199,13 @@ function AlbumView({ record }: { record: TravelRecord }) {
         )}
       </View>
 
-      {/* 라이트박스 */}
-      <Modal visible={lightboxIdx !== null} transparent animationType="fade">
-        <View style={styles.lightboxOverlay} accessibilityViewIsModal>
-          <TouchableOpacity style={styles.lightboxClose} onPress={() => setLightboxIdx(null)}>
-            <Text style={styles.lightboxCloseText}>✕</Text>
-          </TouchableOpacity>
-          {lightboxIdx !== null && medias[lightboxIdx] && (
-            <Image
-              source={{ uri: medias[lightboxIdx] }}
-              style={styles.lightboxImage}
-              resizeMode="contain"
-            />
-          )}
-          {/* 이전 / 다음 */}
-          <View style={styles.lightboxNav}>
-            <TouchableOpacity
-              onPress={() => setLightboxIdx((p) => (p !== null && p > 0 ? p - 1 : p))}
-              style={styles.lightboxNavBtn}
-            >
-              <Text style={styles.lightboxNavText}>‹</Text>
-            </TouchableOpacity>
-            <Text style={styles.lightboxNavCount}>
-              {(lightboxIdx ?? 0) + 1} / {medias.length}
-            </Text>
-            <TouchableOpacity
-              onPress={() => setLightboxIdx((p) => (p !== null && p < medias.length - 1 ? p + 1 : p))}
-              style={styles.lightboxNavBtn}
-            >
-              <Text style={styles.lightboxNavText}>›</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m */}
+      <PhotoViewerModal
+        visible={lightboxIdx !== null}
+        uris={medias}
+        initialIndex={lightboxIdx ?? 0}
+        onClose={() => setLightboxIdx(null)}
+      />
     </View>
   );
 }
@@ -342,12 +333,12 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumDeletePhoto }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
     case 'album':
-      return <AlbumView record={record} />;
+      return <AlbumView record={record} editable={albumEditable} onAddPhotos={onAlbumAddPhotos} onDeletePhoto={onAlbumDeletePhoto} />;
     case 'snap':
       return <SnapView record={record} />;
     case 'cut':
@@ -526,6 +517,25 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 2,
   },
+  albumAddTile: {
+    width: ALBUM_CELL,
+    height: ALBUM_CELL,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.14)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+  },
+  albumAddPlus: {
+    fontSize: 26,
+    color: '#A1A1B0',
+    lineHeight: 30,
+  },
+  albumAddLabel: {
+    fontSize: 11,
+    color: '#A1A1B0',
+  },
   albumEmpty: {
     width: '100%',
     paddingVertical: 60,
@@ -538,58 +548,6 @@ const styles = StyleSheet.create({
   },
 
   // ── Lightbox ──
-  lightboxOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.95)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lightboxClose: {
-    position: 'absolute',
-    top: 52,
-    right: 20,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 10,
-  },
-  lightboxCloseText: {
-    fontSize: 16,
-    color: '#FFFFFF',
-  },
-  lightboxImage: {
-    width: SCREEN_W,
-    height: SCREEN_H * 0.75,
-  },
-  lightboxNav: {
-    position: 'absolute',
-    bottom: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-  },
-  lightboxNavBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(191,133,252,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lightboxNavText: {
-    fontSize: 28,
-    color: '#BF85FC',
-    lineHeight: 32,
-  },
-  lightboxNavCount: {
-    fontSize: 14,
-    color: '#A1A1B0',
-    minWidth: 60,
-    textAlign: 'center',
-  },
 
   // ── Snap ──
   snapWrap: {

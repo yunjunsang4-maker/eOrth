@@ -40,6 +40,7 @@ import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
 import ReportModal from '../components/ReportModal';
+import PhotoViewerModal from '../components/PhotoViewerModal';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
@@ -1245,7 +1246,6 @@ export default function PostDetailScreen() {
   const [fullImgVisible, setFullImgVisible] = useState(false);
   const [fullImgList, setFullImgList] = useState<string[]>([]);
   const [fullImgIndex, setFullImgIndex] = useState(0);
-  const fullImgScrollRef = useRef<ScrollView>(null);
   const openFullImage = (uris: string[], index: number) => {
     setFullImgList(uris);
     setFullImgIndex(index);
@@ -2070,36 +2070,13 @@ export default function PostDetailScreen() {
       )}
 
       {/* ── 풀스크린 이미지 뷰어 ── */}
-      {fullImgVisible && (
-        <Modal visible transparent animationType="fade" onRequestClose={() => setFullImgVisible(false)} statusBarTranslucent>
-          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
-            <ScrollView
-              ref={fullImgScrollRef}
-              horizontal
-              pagingEnabled
-              showsHorizontalScrollIndicator={false}
-              contentOffset={{ x: fullImgIndex * SCREEN_W, y: 0 }}
-              // Android는 contentOffset 초기 적용이 무시될 수 있어 스냅 뷰어(713행)와 동일한 폴백 스크롤
-              onLayout={() => fullImgScrollRef.current?.scrollTo({ x: fullImgIndex * SCREEN_W, animated: false })}
-              onMomentumScrollEnd={(e) => setFullImgIndex(Math.round(e.nativeEvent.contentOffset.x / SCREEN_W))}
-            >
-              {fullImgList.map((uri, i) => (
-                <View key={i} style={{ width: SCREEN_W, height: SCREEN_H, justifyContent: 'center', alignItems: 'center' }}>
-                  <Image source={{ uri }} style={{ width: SCREEN_W, height: SCREEN_H * 0.8 }} resizeMode="contain" />
-                </View>
-              ))}
-            </ScrollView>
-            {fullImgList.length > 1 && (
-              <View style={{ position: 'absolute', bottom: 60, alignSelf: 'center' }}>
-                <Text style={{ color: '#fff', fontSize: 14 }}>{fullImgIndex + 1} / {fullImgList.length}</Text>
-              </View>
-            )}
-            <TouchableOpacity onPress={() => setFullImgVisible(false)} style={{ position: 'absolute', top: 50, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
-            </TouchableOpacity>
-          </View>
-        </Modal>
-      )}
+      {/* 전체화면 사진 뷰어 — 스와이프 + 핀치 줌 + n/m (공용) */}
+      <PhotoViewerModal
+        visible={fullImgVisible}
+        uris={fullImgList}
+        initialIndex={fullImgIndex}
+        onClose={() => setFullImgVisible(false)}
+      />
     </View>
   );
 }

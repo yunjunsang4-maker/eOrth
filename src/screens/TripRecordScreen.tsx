@@ -15,6 +15,8 @@ import {
   Keyboard,
 } from 'react-native';
 import TripRecordRenderer from '../components/TripRecordRenderer';
+import * as ImagePicker from 'expo-image-picker';
+import { MAX_ALBUM_PHOTOS } from './AlbumCreateScreen';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
@@ -27,7 +29,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
-  const { records, deleteRecord, toggleLike, commentsByPost, addComment } = useRecords();
+  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment } = useRecords();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
@@ -56,6 +58,48 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     if (!t) return;
     addComment(record.id, t);
     setCommentText('');
+  };
+
+  // ── 사진첩(앨범) 사진 추가/삭제 — updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리 ──
+  const handleAlbumAddPhotos = async () => {
+    const current = record.medias ?? [];
+    if (current.length >= MAX_ALBUM_PHOTOS) {
+      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: MAX_ALBUM_PHOTOS }));
+      return;
+    }
+    try {
+      const res = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsMultipleSelection: true,
+        selectionLimit: MAX_ALBUM_PHOTOS - current.length,
+        quality: 0.8,
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const next = [...current, ...res.assets.map((a) => a.uri)].slice(0, MAX_ALBUM_PHOTOS);
+      updateRecord(record.id, { medias: next, representativePhoto: record.representativePhoto ?? next[0] });
+    } catch {
+      /* 픽커 취소/실패 — 무시 */
+    }
+  };
+  const handleAlbumDeletePhoto = (index: number) => {
+    const current = record.medias ?? [];
+    const target = current[index];
+    if (!target) return;
+    Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('trip.delete'),
+        style: 'destructive',
+        onPress: () => {
+          const next = current.filter((_, i) => i !== index);
+          updateRecord(record.id, {
+            medias: next,
+            // 대표 사진이 삭제됐으면 남은 첫 사진으로 승계
+            representativePhoto: record.representativePhoto === target ? next[0] : record.representativePhoto,
+          });
+        },
+      },
+    ]);
   };
 
   const handleDelete = () => {
@@ -93,7 +137,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         keyboardVerticalOffset={0}
       >
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
-          <TripRecordRenderer record={record} viewType={viewType} />
+          <TripRecordRenderer
+            record={record}
+            viewType={viewType}
+            albumEditable={isAlbum}
+            onAlbumAddPhotos={handleAlbumAddPhotos}
+            onAlbumDeletePhoto={handleAlbumDeletePhoto}
+          />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
