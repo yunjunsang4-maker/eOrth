@@ -1520,6 +1520,8 @@ const en = {
     noPhotos: 'No photos',
     albumAddPhotos: 'Add photos',
     albumAddSection: 'Add section',
+    albumReorder: 'Reorder',
+    albumReorderDone: 'Done',
     sectionDayN: 'Day {{n}}',
     sectionEtc: 'Others',
     albumMakeSections: 'Organize into sections',

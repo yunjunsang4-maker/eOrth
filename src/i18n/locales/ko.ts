@@ -1521,6 +1521,8 @@ const ko = {
     noPhotos: '사진이 없어요',
     albumAddPhotos: '사진 추가',
     albumAddSection: '섹션 추가',
+    albumReorder: '순서 변경',
+    albumReorderDone: '완료',
     sectionDayN: '{{n}}일차',
     sectionEtc: '기타',
     albumMakeSections: '섹션으로 정리',

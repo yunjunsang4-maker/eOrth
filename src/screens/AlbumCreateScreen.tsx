@@ -234,7 +234,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         let dayN = 0;
         autoSections = groups.map((g) => ({
           id: newSectionId(),
-          title: g.key ? t('album.sectionDayN', { n: ++dayN }) : t('album.sectionEtc'),
+          title: g.key ? t('comp.sectionDayN', { n: ++dayN }) : t('comp.sectionEtc'),
           count: g.uris.length,
         }));
       }

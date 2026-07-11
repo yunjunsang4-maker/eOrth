@@ -151,7 +151,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           let dayN = 0;
           autoSections = groups.map((g) => ({
             id: newSectionId(),
-            title: g.key ? trFn('album.sectionDayN', { n: ++dayN }) : trFn('album.sectionEtc'),
+            title: g.key ? trFn('comp.sectionDayN', { n: ++dayN }) : trFn('comp.sectionEtc'),
             count: g.uris.length,
           }));
         }

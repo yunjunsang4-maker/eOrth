@@ -3,6 +3,7 @@
  */
 import {
   groupUrisByDay,
+  reorderWithinRange,
   sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection, deleteSection,
   normalizeSections, sectionIndexOf, type AlbumSection,
 } from './albumSections';
@@ -61,6 +62,10 @@ eq('day groups', g.map((x) => [x.key, x.uris]), [
   ['2026.05.07', ['p2']],
   [null, ['px']],
 ]);
+
+// 구간 내 순서 변경 — 2일차(start=2) 안에서 0→2 이동
+eq('reorder in range', reorderWithinRange(M, 2, 0, 2), ['a', 'b', 'd', 'e', 'c']);
+eq('reorder flat', reorderWithinRange(M, 0, 4, 0), ['e', 'a', 'b', 'c', 'd']);
 
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

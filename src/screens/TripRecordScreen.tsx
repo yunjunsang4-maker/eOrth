@@ -21,7 +21,7 @@ import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
 import { useSettings } from '../store/settingsStore';
 import {
   sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection,
-  deleteSection, newSectionId, normalizeSections,
+  deleteSection, newSectionId, normalizeSections, reorderWithinRange,
 } from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -166,6 +166,23 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     Alert.alert(t('trip.albumPhotoActionTitle'), undefined, buttons);
   };
 
+  // ── 사진 순서 편집 모드 ('flat' = 평면 전체, number = 해당 섹션) ──
+  const [reordering, setReordering] = useState<number | 'flat' | null>(null);
+  const [scrollEnabled, setScrollEnabled] = useState(true); // 드래그 중 스크롤 잠금
+  const handleReorder = (section: number | 'flat', fromIdx: number, toIdx: number) => {
+    const start = section === 'flat' || !sections
+      ? 0
+      : sectionSlices(sections, medias.length)[section]?.start ?? 0;
+    const next = reorderWithinRange(medias, start, fromIdx, toIdx);
+    if (next !== medias) updateRecord(record.id, { medias: next });
+  };
+  const handleReorderRemove = (globalIndex: number) => {
+    Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('trip.delete'), style: 'destructive', onPress: () => doDeletePhoto(globalIndex) },
+    ]);
+  };
+
   // ── 섹션 추가/이름변경 모달 ──
   const [sectionModal, setSectionModal] = useState<{ mode: 'add' } | { mode: 'rename'; index: number } | null>(null);
   const [sectionTitleInput, setSectionTitleInput] = useState('');
@@ -195,6 +212,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       {
         text: t('trip.albumSectionRename'),
         onPress: () => { setSectionTitleInput(sections[index]?.title ?? ''); setSectionModal({ mode: 'rename', index }); },
+      },
+      {
+        text: t('comp.albumReorder'),
+        onPress: () => setReordering(index),
       },
       {
         text: t('trip.albumSectionDelete'),
@@ -248,7 +269,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         keyboardVerticalOffset={0}
       >
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }} scrollEnabled={scrollEnabled}>
           <TripRecordRenderer
             record={record}
             viewType={viewType}
@@ -257,6 +278,12 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumPhotoAction={handleAlbumPhotoAction}
             onAlbumAddSection={openAddSection}
             onAlbumSectionMenu={handleSectionMenu}
+            albumReordering={reordering}
+            onAlbumStartReorder={setReordering}
+            onAlbumReorder={handleReorder}
+            onAlbumReorderDone={() => setReordering(null)}
+            onAlbumRemoveAt={handleReorderRemove}
+            onAlbumDragStateChange={(d) => setScrollEnabled(!d)}
           />
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}

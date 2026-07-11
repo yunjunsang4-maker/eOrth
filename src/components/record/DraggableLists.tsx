@@ -231,14 +231,15 @@ export function DraggableCountryList({ countries, onReorder, onRemove, onDragSta
 // ─── 드래그 앤 드롭 사진 그리드 ───
 interface DraggablePhotoGridProps {
   medias: string[];
-  mediaPrivacy: Record<number, string[]>;
+  // 비공개·대표 설정은 피드 작성 전용 — 미전달 시 해당 버튼을 렌더하지 않는다(앨범 순서 편집 재사용)
+  mediaPrivacy?: Record<number, string[]>;
   onReorder: (fromIdx: number, toIdx: number) => void;
   onRemove: (index: number) => void;
-  onOpenPrivacyModal: (index: number) => void;
+  onOpenPrivacyModal?: (index: number) => void;
   onDragStateChange?: (isDragging: boolean) => void;
   THUMB_SIZE: number;
-  representativePhoto: string | null;
-  onSetRepresentative: (uri: string) => void;
+  representativePhoto?: string | null;
+  onSetRepresentative?: (uri: string) => void;
 }
 
 function DraggablePhotoThumb({
@@ -272,9 +273,9 @@ function DraggablePhotoThumb({
   onDragMove: (dx: number, dy: number) => void;
   onDragEnd: (index: number) => void;
   onRemove: (index: number) => void;
-  onOpenPrivacyModal: (index: number) => void;
-  representativePhoto: string | null;
-  onSetRepresentative: (uri: string) => void;
+  onOpenPrivacyModal?: (index: number) => void;
+  representativePhoto?: string | null;
+  onSetRepresentative?: (uri: string) => void;
 }) {
   const { t } = useTranslation();
   const isDragging = idx === dragIndex;
@@ -401,7 +402,7 @@ function DraggablePhotoThumb({
         </TouchableOpacity>
       )}
 
-      {!isDragging && (
+      {!isDragging && onOpenPrivacyModal && (
         <TouchableOpacity
           style={[ds.mediaLockBtn, isLocked && ds.mediaLockBtnActive]}
           onPress={() => onOpenPrivacyModal(idx)}
@@ -411,7 +412,7 @@ function DraggablePhotoThumb({
         </TouchableOpacity>
       )}
 
-      {!isDragging && (
+      {!isDragging && onSetRepresentative && (
         <TouchableOpacity
           style={[ds.mediaRepBtn, uri === representativePhoto && ds.mediaRepBtnActive]}
           onPress={() => onSetRepresentative(uri)}
@@ -435,7 +436,7 @@ function DraggablePhotoThumb({
 
 export function DraggablePhotoGrid({
   medias,
-  mediaPrivacy,
+  mediaPrivacy = {},
   onReorder,
   onRemove,
   onOpenPrivacyModal,

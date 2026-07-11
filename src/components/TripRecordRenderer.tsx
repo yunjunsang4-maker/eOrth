@@ -11,6 +11,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import PhotoViewerModal from './PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
+import { DraggablePhotoGrid } from './record/DraggableLists';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -27,6 +28,13 @@ interface Props {
   onAlbumPhotoAction?: (index: number) => void; // 길게 누르기: 이동/삭제
   onAlbumAddSection?: () => void;
   onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
+  // 순서 편집 모드 — 'flat'(평면 전체) 또는 섹션 인덱스. null이면 일반 모드
+  albumReordering?: number | 'flat' | null;
+  onAlbumStartReorder?: (section: number | 'flat') => void;
+  onAlbumReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
+  onAlbumReorderDone?: () => void;
+  onAlbumRemoveAt?: (globalIndex: number) => void;
+  onAlbumDragStateChange?: (dragging: boolean) => void;
 }
 
 // ─────────────────────────────────────────────
@@ -146,14 +154,22 @@ function BlogView({ record }: { record: TravelRecord }) {
 // 3. Album
 // ─────────────────────────────────────────────
 const ALBUM_CELL = (SCREEN_W - 4) / 3;
+// 순서 편집 그리드(DraggablePhotoGrid, GAP 8·좌우 16 패딩)용 타일 크기
+const REORDER_THUMB = (SCREEN_W - 32 - 16) / 3;
 
-function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu }: {
+function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu, reordering, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
   onPhotoAction?: (index: number) => void;
   onAddSection?: () => void;
   onSectionMenu?: (sectionIndex: number) => void;
+  reordering?: number | 'flat' | null;
+  onStartReorder?: (section: number | 'flat') => void;
+  onReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
+  onReorderDone?: () => void;
+  onRemoveAt?: (globalIndex: number) => void;
+  onDragStateChange?: (dragging: boolean) => void;
 }) {
   const { t } = useTranslation();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
@@ -202,26 +218,47 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
                 <Text style={styles.albumSectionTitle}>{sec.title}</Text>
                 <Text style={styles.albumSectionCount}>{sec.count}</Text>
                 <View style={{ flex: 1 }} />
-                {editable && onAddPhotos && (
-                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-                    <Text style={styles.albumSectionBtnTxt}>＋</Text>
+                {reordering === si ? (
+                  <TouchableOpacity style={[styles.albumSectionBtn, styles.albumReorderDoneBtn]} onPress={onReorderDone} accessibilityRole="button">
+                    <Text style={styles.albumReorderDoneTxt}>{t('comp.albumReorderDone')}</Text>
                   </TouchableOpacity>
-                )}
-                {editable && onSectionMenu && (
-                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
-                    <Text style={styles.albumSectionBtnTxt}>⋯</Text>
-                  </TouchableOpacity>
+                ) : (
+                  <>
+                    {editable && onAddPhotos && reordering == null && (
+                      <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                        <Text style={styles.albumSectionBtnTxt}>＋</Text>
+                      </TouchableOpacity>
+                    )}
+                    {editable && onSectionMenu && reordering == null && (
+                      <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
+                        <Text style={styles.albumSectionBtnTxt}>⋯</Text>
+                      </TouchableOpacity>
+                    )}
+                  </>
                 )}
               </View>
-              <View style={styles.albumGrid}>
-                {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i))}
-                {sec.count === 0 && (
-                  <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
-                )}
-              </View>
+              {reordering === si ? (
+                /* 순서 편집 — 길게 눌러 드래그로 재배치, × 는 삭제 */
+                <View style={styles.albumReorderWrap}>
+                  <DraggablePhotoGrid
+                    medias={medias.slice(sec.start, sec.end)}
+                    onReorder={(from, to) => onReorder?.(si, from, to)}
+                    onRemove={(i) => onRemoveAt?.(sec.start + i)}
+                    onDragStateChange={onDragStateChange}
+                    THUMB_SIZE={REORDER_THUMB}
+                  />
+                </View>
+              ) : (
+                <View style={styles.albumGrid}>
+                  {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i))}
+                  {sec.count === 0 && (
+                    <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
+                  )}
+                </View>
+              )}
             </View>
           ))}
-          {editable && onAddSection && (
+          {editable && onAddSection && reordering == null && (
             <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
               <Text style={styles.albumSectionAddTxt}>＋ {t('comp.albumAddSection')}</Text>
             </TouchableOpacity>
@@ -230,25 +267,53 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
       ) : (
         /* ── 평면 그리드 ── */
         <>
-          <View style={styles.albumGrid}>
-            {medias.map((uri, i) => photoTile(uri, i))}
-            {editable && onAddPhotos && (
-              <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-                <Text style={styles.albumAddPlus}>＋</Text>
-                <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
-              </TouchableOpacity>
-            )}
-            {medias.length === 0 && !editable && (
-              <View style={styles.albumEmpty}>
-                <CameraIcon size={48} color="#A1A1B0" />
-                <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
+          {reordering === 'flat' ? (
+            <>
+              <View style={styles.albumReorderWrap}>
+                <DraggablePhotoGrid
+                  medias={medias}
+                  onReorder={(from, to) => onReorder?.('flat', from, to)}
+                  onRemove={(i) => onRemoveAt?.(i)}
+                  onDragStateChange={onDragStateChange}
+                  THUMB_SIZE={REORDER_THUMB}
+                />
               </View>
-            )}
-          </View>
-          {editable && onAddSection && medias.length > 0 && (
-            <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
-              <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
-            </TouchableOpacity>
+              <TouchableOpacity style={[styles.albumSectionAdd, styles.albumReorderDoneWide]} onPress={onReorderDone} activeOpacity={0.8}>
+                <Text style={styles.albumReorderDoneTxt}>{t('comp.albumReorderDone')}</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={styles.albumGrid}>
+                {medias.map((uri, i) => photoTile(uri, i))}
+                {editable && onAddPhotos && (
+                  <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                    <Text style={styles.albumAddPlus}>＋</Text>
+                    <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
+                  </TouchableOpacity>
+                )}
+                {medias.length === 0 && !editable && (
+                  <View style={styles.albumEmpty}>
+                    <CameraIcon size={48} color="#A1A1B0" />
+                    <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
+                  </View>
+                )}
+              </View>
+              {editable && medias.length > 0 && (
+                <View style={styles.albumFooterRow}>
+                  {onAddSection && (
+                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onAddSection} activeOpacity={0.8}>
+                      <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
+                    </TouchableOpacity>
+                  )}
+                  {onStartReorder && medias.length > 1 && (
+                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={() => onStartReorder('flat')} activeOpacity={0.8}>
+                      <Text style={styles.albumSectionAddTxt}>↕ {t('comp.albumReorder')}</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </>
           )}
         </>
       )}
@@ -387,7 +452,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu, albumReordering, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -400,6 +465,12 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           onPhotoAction={onAlbumPhotoAction}
           onAddSection={onAlbumAddSection}
           onSectionMenu={onAlbumSectionMenu}
+          reordering={albumReordering}
+          onStartReorder={onAlbumStartReorder}
+          onReorder={onAlbumReorder}
+          onReorderDone={onAlbumReorderDone}
+          onRemoveAt={onAlbumRemoveAt}
+          onDragStateChange={onAlbumDragStateChange}
         />
       );
     case 'snap':
@@ -616,6 +687,29 @@ const styles = StyleSheet.create({
     color: '#5A5A6E',
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  albumReorderWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 4,
+  },
+  albumReorderDoneBtn: {
+    width: undefined,
+    paddingHorizontal: 12,
+    backgroundColor: '#6B21A8',
+  },
+  albumReorderDoneWide: {
+    borderColor: 'transparent',
+    backgroundColor: '#6B21A8',
+  },
+  albumReorderDoneTxt: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  albumFooterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginHorizontal: 16,
   },
   albumSectionAdd: {
     marginHorizontal: 16,

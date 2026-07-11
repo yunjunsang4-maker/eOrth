@@ -134,3 +134,19 @@ export function groupUrisByDay(
   if (undated.length > 0) out.push({ key: null, uris: undated.map((p) => p.uri) });
   return out;
 }
+
+/** 한 섹션(또는 평면 전체) 안에서 사진 순서 변경 — 섹션 counts는 변하지 않는다 */
+export function reorderWithinRange(
+  medias: string[],
+  start: number,
+  localFrom: number,
+  localTo: number,
+): string[] {
+  const from = start + localFrom;
+  const to = start + localTo;
+  if (from === to || from < 0 || from >= medias.length || to < 0 || to >= medias.length) return medias;
+  const next = [...medias];
+  const [item] = next.splice(from, 1);
+  next.splice(to, 0, item);
+  return next;
+}
