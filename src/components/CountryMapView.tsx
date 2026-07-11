@@ -179,8 +179,12 @@ function buildHTML(code: string, countryName: string = '', chipBottom: number = 
 <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no">
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
+/* touch-action:none — iOS WebView가 첫 제스처를 스크롤/줌으로 판정하며 한 번 씹는 것을 막아
+   첫 확대(핀치)부터 d3.zoom이 바로 받게 한다. user-select/callout도 첫 터치 지연 방지. */
+html,body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+svg{touch-action:none;display:block}
 body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
-#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1B0;font-size:14px;gap:12px}
+#loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1B0;font-size:14px;gap:12px;pointer-events:none}
 .spinner{width:28px;height:28px;border:3px solid #2E2E3B;border-top-color:#BF85FC;border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 #region-chip{position:fixed;left:7px;bottom:${chipBottom}px;min-width:100px;height:26px;padding:0 12px;border-radius:13px;background:rgba(10,11,15,0.5);display:none;align-items:center;justify-content:center;color:#E8E8F0;font-size:12px;font-weight:600;font-family:-apple-system,'Noto Sans KR',sans-serif;z-index:10;pointer-events:none}
