@@ -269,7 +269,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         </TouchableOpacity>
         <Text style={st.title}>{t('cut.title')}</Text>
         <TouchableOpacity onPress={goNext} hitSlop={8}>
-          <Text style={st.save}>{t('common.next')}</Text>
+          <Text style={[st.save, { color: skinAccent.accent }]}>{t('common.next')}</Text>
         </TouchableOpacity>
       </View>
 
@@ -300,7 +300,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               activeOpacity={0.8}
               onPress={() => setStampDateOn((v) => !v)}
             >
-              <Text style={[st.stampChipTxt, stampDateOn && st.stampChipTxtOn]}>
+              <Text style={[st.stampChipTxt, stampDateOn && [st.stampChipTxtOn, { color: skinAccent.accent }]]}>
                 📅 {t('cut.stampDate')}{stampDateOn ? ` · ${todayStr}` : ''}
               </Text>
             </TouchableOpacity>
@@ -309,7 +309,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               activeOpacity={0.8}
               onPress={openCaption}
             >
-              <Text style={[st.stampChipTxt, !!captionText && st.stampChipTxtOn]} numberOfLines={1}>
+              <Text style={[st.stampChipTxt, !!captionText && [st.stampChipTxtOn, { color: skinAccent.accent }]]} numberOfLines={1}>
                 ✏️ {captionText || t('cut.stampCaption')}{!isPremium ? ' 🔒' : ''}
               </Text>
             </TouchableOpacity>
@@ -318,7 +318,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         <View style={st.tabs}>
           {(['기본', '테마'] as const).map((cat) => (
             <TouchableOpacity key={cat} onPress={() => setTab(cat)} style={[st.tab, tab === cat && [st.tabOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}>
-              <Text style={[st.tabTxt, tab === cat && st.tabTxtOn]}>{tabLabel(cat)}</Text>
+              <Text style={[st.tabTxt, tab === cat && [st.tabTxtOn, { color: skinAccent.accent }]]}>{tabLabel(cat)}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -335,14 +335,14 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               <TouchableOpacity
                 key={c}
                 onPress={() => setFrameColor(c)}
-                style={[st.swatch, { backgroundColor: c }, frameColor === c && st.swatchOn]}
+                style={[st.swatch, { backgroundColor: c }, frameColor === c && [st.swatchOn, { borderColor: skinAccent.accent }]]}
                 activeOpacity={0.8}
               />
             ))}
             {/* 커스텀 색(프리미엄) — 선택된 커스텀 색이 있으면 그 색으로, 없으면 무지개 그라데이션 */}
             <TouchableOpacity onPress={openCustomColor} activeOpacity={0.8}>
               {isCustomColor ? (
-                <View style={[st.swatch, { backgroundColor: frameColor }, st.swatchOn]}>
+                <View style={[st.swatch, { backgroundColor: frameColor }, st.swatchOn, { borderColor: skinAccent.accent }]}>
                   <Text style={st.customPlus}>＋</Text>
                 </View>
               ) : (
@@ -359,7 +359,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
             {/* 사진 프레임(프리미엄) — 선택된 사진이 있으면 썸네일로, 없으면 아이콘 */}
             <TouchableOpacity onPress={openFrameImage} activeOpacity={0.8}>
               {frameImage ? (
-                <View style={[st.swatch, st.customSwatch, st.frameImgSwatch, st.swatchOn]}>
+                <View style={[st.swatch, st.customSwatch, st.frameImgSwatch, st.swatchOn, { borderColor: skinAccent.accent }]}>
                   <Image source={{ uri: frameImage }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 </View>
               ) : (
@@ -442,7 +442,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                     key={c}
                     activeOpacity={0.8}
                     onPress={() => { setFrameColor(c); setCustomColorVisible(false); }}
-                    style={[st.ccSwatch, { backgroundColor: c }, frameColor === c && st.ccSwatchOn]}
+                    style={[st.ccSwatch, { backgroundColor: c }, frameColor === c && [st.ccSwatchOn, { borderColor: skinAccent.accent }]]}
                   />
                 ))}
               </View>
@@ -496,7 +496,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
               <TouchableOpacity style={[st.capBtn, st.capBtnCancel]} activeOpacity={0.7} onPress={() => setCaptionModalVisible(false)}>
                 <Text style={st.ccCloseText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[st.capBtn, st.capBtnOk]} activeOpacity={0.7} onPress={confirmCaption}>
+              <TouchableOpacity style={[st.capBtn, st.capBtnOk, { backgroundColor: skinAccent.accent }]} activeOpacity={0.7} onPress={confirmCaption}>
                 <Text style={st.capBtnOkTxt}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>

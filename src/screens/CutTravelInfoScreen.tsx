@@ -28,7 +28,6 @@ const C = {
   purpleBg: 'rgba(107,33,168,0.25)', purpleBorder: 'rgba(191,133,252,0.3)',
   white: '#FFFFFF', textDim: '#A1A1B0', textMuted: '#4A4A59', gold: '#FFD700',
 };
-const IC = C.purpleNeon;
 
 // ─── 상수 (피드와 동일) ───
 const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
@@ -131,6 +130,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const base = initialStart ?? new Date();
   const [vy, setVy] = useState(base.getFullYear());
   const [vm, setVm] = useState(base.getMonth());
@@ -179,11 +179,11 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
           <View style={cal.handle} />
           <View style={cal.navRow}>
             <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={cal.navArrow}>‹</Text>
+              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>‹</Text>
             </TouchableOpacity>
             <Text style={cal.ymLabel}>{t('cutInfo.yearMonth', { y: vy, m: vm + 1 })}</Text>
             <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={cal.navArrow}>›</Text>
+              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>›</Text>
             </TouchableOpacity>
           </View>
           <View style={cal.dowRow}>
@@ -196,14 +196,14 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
               <View key={`b${idx}`} style={cal.cell} />
             ) : (
               <TouchableOpacity key={day} style={cal.cell} onPress={() => pick(day)} activeOpacity={0.7}>
-                <View style={[cal.dayWrap, inRange(day) && cal.dayInRange, isEdge(day) && cal.dayEdge]}>
+                <View style={[cal.dayWrap, inRange(day) && [cal.dayInRange, { backgroundColor: skinAccent.tint(0.18) }], isEdge(day) && [cal.dayEdge, { backgroundColor: skinAccent.accentDeep }]]}>
                   <Text style={[cal.dayTxt, isEdge(day) && cal.dayEdgeTxt]}>{day}</Text>
                 </View>
               </TouchableOpacity>
             ))}
           </View>
           <TouchableOpacity
-            style={[cal.confirmBtn, !start && cal.confirmBtnDisabled]}
+            style={[cal.confirmBtn, { backgroundColor: skinAccent.accentDeep }, !start && cal.confirmBtnDisabled]}
             disabled={!start}
             onPress={() => { if (start) { onConfirm(start, end ?? start); onClose(); } }}
             activeOpacity={0.85}
@@ -235,6 +235,7 @@ function PrivacyModal({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -268,18 +269,18 @@ function PrivacyModal({
             const allPrivate = selectedFriends.length === allFriends.length;
             return (
               <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && pm.friendRowActive]}
+                style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                 onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
                 activeOpacity={0.7}
               >
-                <View style={[pm.avatar, allPrivate && pm.avatarActive]}>
+                <View style={[pm.avatar, allPrivate && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
                   <LockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('cutInfo.allPrivate')}</Text>
                   <Text style={pm.allPrivateDesc}>{t('cutInfo.allPrivateDesc')}</Text>
                 </View>
-                <View style={[pm.checkbox, allPrivate && pm.checkboxActive]}>
+                <View style={[pm.checkbox, allPrivate && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                   {allPrivate && <Text style={pm.checkMark}>✓</Text>}
                 </View>
               </TouchableOpacity>
@@ -288,8 +289,8 @@ function PrivacyModal({
 
           {/* 전체 해제 버튼 */}
           {selectedFriends.length > 0 && (
-            <TouchableOpacity style={pm.clearAllBtn} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
-              <Text style={pm.clearAllTxt}>{t('cutInfo.clearAll')}</Text>
+            <TouchableOpacity style={[pm.clearAllBtn, { backgroundColor: skinAccent.tint(0.12) }]} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
+              <Text style={[pm.clearAllTxt, { color: skinAccent.accent }]}>{t('cutInfo.clearAll')}</Text>
             </TouchableOpacity>
           )}
 
@@ -300,15 +301,15 @@ function PrivacyModal({
               return (
                 <TouchableOpacity
                   key={friend}
-                  style={[pm.friendRow, isSelected && pm.friendRowActive]}
+                  style={[pm.friendRow, isSelected && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                   onPress={() => onToggle(friend)}
                   activeOpacity={0.7}
                 >
-                  <View style={[pm.avatar, isSelected && pm.avatarActive]}>
+                  <View style={[pm.avatar, isSelected && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
                     <Text style={pm.avatarTxt}>{friend[0]}</Text>
                   </View>
                   <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
-                  <View style={[pm.checkbox, isSelected && pm.checkboxActive]}>
+                  <View style={[pm.checkbox, isSelected && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
                     {isSelected && <Text style={pm.checkMark}>✓</Text>}
                   </View>
                 </TouchableOpacity>
@@ -317,7 +318,7 @@ function PrivacyModal({
           </ScrollView>
 
           {/* 완료 버튼 */}
-          <TouchableOpacity style={pm.doneBtn} onPress={onClose} activeOpacity={0.85}>
+          <TouchableOpacity style={[pm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
             <Text style={pm.doneTxt}>
               {selectedFriends.length > 0
                 ? t('cutInfo.privacyDoneN', { count: selectedFriends.length })
@@ -332,7 +333,7 @@ function PrivacyModal({
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t } = useTranslation();
-  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { addRecord, addTripGroup, followingUsers } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
@@ -597,7 +598,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         <View style={st.headerRight}>
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
-            style={[st.lockBtn, privateFriends.length > 0 && st.lockBtnActive]}
+            style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.35) }]]}
             activeOpacity={0.7}
             hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
           >
@@ -613,7 +614,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             )}
           </TouchableOpacity>
           <TouchableOpacity onPress={handleSave} disabled={saving} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <Text style={[st.save, saving && { opacity: 0.5 }]}>{saving ? t('cutInfo.saving') : t('common.save')}</Text>
+            <Text style={[st.save, { color: skinAccent.accent }, saving && { opacity: 0.5 }]}>{saving ? t('cutInfo.saving') : t('common.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -630,8 +631,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 국가 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={st.req}>✱</Text></View>
-            <TouchableOpacity style={st.countryChip} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
+            <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
                   ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
@@ -642,7 +643,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 날짜 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.date')}</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.date')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
             <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
               <View style={st.dateCol}>
                 <Text style={st.dateColLabel}>{t('cutInfo.departDate')}</Text>
@@ -653,13 +654,13 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 <Text style={st.dateColLabel}>{t('cutInfo.arriveDate')}</Text>
                 <Text style={st.dateColVal}>{fmtDate(endDate ?? startDate, t)}</Text>
               </View>
-              <View style={{ marginLeft: 8 }}><CalendarIcon size={18} color={C.purpleNeon} /></View>
+              <View style={{ marginLeft: 8 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
             </TouchableOpacity>
           </View>
 
           {/* 글 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
             <TextInput
               style={st.memoInput}
               placeholder={t('cutInfo.textPlaceholder')}
@@ -671,19 +672,19 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 동행자 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.companionSelect')}</Text><Text style={st.req}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.companionSelect')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
             <View style={st.chipWrap}>
               {COMPANIONS.map(comp => {
                 const active = companions.includes(comp);
                 return (
                   <TouchableOpacity
                     key={comp}
-                    style={[st.compChip, active && st.compChipActive]}
+                    style={[st.compChip, active && [st.compChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                     onPress={() => toggleCompanion(comp)}
                     activeOpacity={0.75}
                   >
-                    <View style={st.compChipIcon}>{companionIcon(comp, active ? C.purpleNeon : C.textDim)}</View>
-                    <Text style={[st.compChipTxt, active && st.compChipTxtActive]}>{companionLabel(comp, t)}</Text>
+                    <View style={st.compChipIcon}>{companionIcon(comp, active ? skinAccent.accent : C.textDim)}</View>
+                    <Text style={[st.compChipTxt, active && [st.compChipTxtActive, { color: skinAccent.accent }]]}>{companionLabel(comp, t)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -692,7 +693,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               <View style={st.friendChipRow}>
                 {companionFriends.map(friend => (
                   <View key={friend} style={st.friendChip}>
-                    <View style={st.friendChipAvatar}><Text style={st.friendChipAvatarTxt}>{friend[0]}</Text></View>
+                    <View style={[st.friendChipAvatar, { backgroundColor: skinAccent.accentDeep }]}><Text style={st.friendChipAvatarTxt}>{friend[0]}</Text></View>
                     <Text style={st.friendChipName}>{friend}</Text>
                     <TouchableOpacity onPress={() => removeCompanionFriend(friend)} hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}>
                       <Text style={st.friendChipX}>✕</Text>
@@ -701,11 +702,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 ))}
               </View>
             )}
-            <TouchableOpacity style={st.addFriendBtn} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
-              <FriendIcon size={16} color={C.purpleNeon} />
-              <Text style={st.addFriendTxt}>{t('cutInfo.addAppFriend')}</Text>
+            <TouchableOpacity style={[st.addFriendBtn, { borderColor: skinAccent.tint(0.3), backgroundColor: skinAccent.tint(0.06) }]} onPress={() => setFriendPickerVisible(true)} activeOpacity={0.75}>
+              <FriendIcon size={16} color={skinAccent.accent} />
+              <Text style={[st.addFriendTxt, { color: skinAccent.accent }]}>{t('cutInfo.addAppFriend')}</Text>
               {companionFriends.length > 0 && (
-                <View style={st.addFriendBadge}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
+                <View style={[st.addFriendBadge, { backgroundColor: skinAccent.accentDeep }]}><Text style={st.addFriendBadgeTxt}>{companionFriends.length}</Text></View>
               )}
             </TouchableOpacity>
           </View>
@@ -713,7 +714,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 별점 */}
           <View style={st.fieldBlock}>
             <View style={st.ratingLabelRow}>
-              <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.rating')}</Text><Text style={st.req}>✱</Text></View>
+              <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.rating')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
               {rating > 0
                 ? <Text style={st.ratingScore}>{rating.toFixed(1)} / 5.0</Text>
                 : <Text style={st.ratingScoreEmpty}>{t('cutInfo.ratingEmpty')}</Text>}
@@ -730,11 +731,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 return (
                   <TouchableOpacity
                     key={opt.value}
-                    style={[st.smallBtn, isActive && st.smallBtnActive]}
+                    style={[st.smallBtn, isActive && [st.smallBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                     onPress={() => setVisibility(opt.value)}
                     activeOpacity={0.75}
                   >
-                    <Text style={[st.smallTxt, isActive && st.smallTxtActive]}>{visibilityLabel(opt.value, t)}</Text>
+                    <Text style={[st.smallTxt, isActive && [st.smallTxtActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value, t)}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -748,22 +749,22 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 예산 */}
           <View style={st.optRow}>
             <View style={st.optHeader}>
-              <CoinIcon size={18} color={IC} />
+              <CoinIcon size={18} color={skinAccent.accent} />
               <Text style={st.optTitle}>{t('cutInfo.budget')}</Text>
-              {budget ? <Text style={st.optValue}>{Number(budget).toLocaleString()} {currency}</Text> : null}
+              {budget ? <Text style={[st.optValue, { color: skinAccent.accent }]}>{Number(budget).toLocaleString()} {currency}</Text> : null}
             </View>
             <View style={st.budgetRow}>
               {CURRENCIES.map(c => (
-                <TouchableOpacity key={c} style={[st.curChip, currency === c && st.curChipActive]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
-                  <Text style={[st.curTxt, currency === c && st.curTxtActive]}>{c}</Text>
+                <TouchableOpacity key={c} style={[st.curChip, currency === c && [st.curChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]} onPress={() => chooseCurrency(c)} activeOpacity={0.75}>
+                  <Text style={[st.curTxt, currency === c && [st.curTxtActive, { color: skinAccent.accent }]]}>{c}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
-                style={[st.curChip, !CURRENCIES.includes(currency) && st.curChipActive]}
+                style={[st.curChip, !CURRENCIES.includes(currency) && [st.curChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                 onPress={() => { setCurrencySearch(''); setCurrencyModalVisible(true); }}
                 activeOpacity={0.75}
               >
-                <Text style={[st.curTxt, !CURRENCIES.includes(currency) && st.curTxtActive]}>
+                <Text style={[st.curTxt, !CURRENCIES.includes(currency) && [st.curTxtActive, { color: skinAccent.accent }]]}>
                   {CURRENCIES.includes(currency) ? t('cutInfo.otherCurrency') : currency}
                 </Text>
               </TouchableOpacity>
@@ -781,18 +782,18 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <View style={st.optHeader}>
               <PartlyCloudyIcon size={18} />
               <Text style={st.optTitle}>{t('cutInfo.weather')}</Text>
-              {weather ? <Text style={st.optValue}>{weatherLabel(weather, t)}</Text> : null}
+              {weather ? <Text style={[st.optValue, { color: skinAccent.accent }]}>{weatherLabel(weather, t)}</Text> : null}
             </View>
             <View style={st.chipRow}>
               {WEATHER_OPTIONS.map(w => (
                 <TouchableOpacity
                   key={w.value}
-                  style={[st.smallBtn, weather === w.value && st.smallBtnActive]}
+                  style={[st.smallBtn, weather === w.value && [st.smallBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                   onPress={() => setWeather(weather === w.value ? '' : w.value)}
                   activeOpacity={0.75}
                 >
                   {WEATHER_ICON_MAP[w.value]}
-                  <Text style={[st.smallTxt, weather === w.value && st.smallTxtActive]}>{weatherLabel(w.value, t)}</Text>
+                  <Text style={[st.smallTxt, weather === w.value && [st.smallTxtActive, { color: skinAccent.accent }]]}>{weatherLabel(w.value, t)}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -801,23 +802,23 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 직항 / 경유 */}
           <View style={st.optRow}>
             <View style={st.optHeader}>
-              <PlaneIcon size={18} color={IC} />
+              <PlaneIcon size={18} color={skinAccent.accent} />
               <Text style={st.optTitle}>{t('cutInfo.flightTitle')}</Text>
-              {flightType ? <Text style={st.optValue}>{flightLabel(flightType, t)}</Text> : null}
+              {flightType ? <Text style={[st.optValue, { color: skinAccent.accent }]}>{flightLabel(flightType, t)}</Text> : null}
             </View>
             <View style={st.chipRow}>
               {FLIGHT_OPTIONS.map(f => (
                 <TouchableOpacity
                   key={f}
-                  style={[st.flightBtn, flightType === f && st.flightBtnActive]}
+                  style={[st.flightBtn, flightType === f && [st.flightBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]}
                   onPress={() => setFlightType(flightType === f ? '' : f)}
                   activeOpacity={0.75}
                 >
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                     {f === '직항'
-                      ? <TakeoffIcon size={14} color={flightType === f ? C.purpleNeon : C.textDim} />
-                      : <TransferIcon size={14} color={flightType === f ? C.purpleNeon : C.textDim} />}
-                    <Text style={[st.flightTxt, flightType === f && st.flightTxtActive]}>{flightLabel(f, t)}</Text>
+                      ? <TakeoffIcon size={14} color={flightType === f ? skinAccent.accent : C.textDim} />
+                      : <TransferIcon size={14} color={flightType === f ? skinAccent.accent : C.textDim} />}
+                    <Text style={[st.flightTxt, flightType === f && [st.flightTxtActive, { color: skinAccent.accent }]]}>{flightLabel(f, t)}</Text>
                   </View>
                 </TouchableOpacity>
               ))}
@@ -827,15 +828,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 키워드 */}
           <View style={st.optRow}>
             <View style={st.optHeader}>
-              <TagIcon size={18} color={IC} />
+              <TagIcon size={18} color={skinAccent.accent} />
               <Text style={st.optTitle}>{t('cutInfo.keyword')}</Text>
-              {keywords.length > 0 && <Text style={st.optValue}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
+              {keywords.length > 0 && <Text style={[st.optValue, { color: skinAccent.accent }]}>{t('newRecord.keywordCountN', { count: keywords.length })}</Text>}
             </View>
             <View style={st.kwBox}>
               {keywords.map(kw => (
-                <TouchableOpacity key={kw} style={st.kwTag} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))} activeOpacity={0.75}>
-                  <Text style={st.kwTagTxt}>{kw}</Text>
-                  <Text style={st.kwTagDel}> ✕</Text>
+                <TouchableOpacity key={kw} style={[st.kwTag, { backgroundColor: skinAccent.tint(0.15) }]} onPress={() => setKeywords(prev => prev.filter(k => k !== kw))} activeOpacity={0.75}>
+                  <Text style={[st.kwTagTxt, { color: skinAccent.accent }]}>{kw}</Text>
+                  <Text style={[st.kwTagDel, { color: skinAccent.accent }]}> ✕</Text>
                 </TouchableOpacity>
               ))}
               <TextInput
@@ -874,7 +875,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           <View style={fp.sheet}>
             <View style={fp.handle} />
             <View style={fp.header}>
-              <FriendIcon size={16} color={C.purpleNeon} />
+              <FriendIcon size={16} color={skinAccent.accent} />
               <Text style={fp.headerTitle}>{t('cutInfo.friendPickerTitle')}</Text>
             </View>
             <ScrollView style={fp.list} showsVerticalScrollIndicator={false}>
@@ -886,14 +887,14 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 const selected = companionFriends.includes(friend);
                 return (
                   <TouchableOpacity key={friend} style={[fp.row, selected && fp.rowActive]} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.7}>
-                    <View style={[fp.avatar, selected && fp.avatarActive]}><Text style={fp.avatarTxt}>{friend[0]}</Text></View>
+                    <View style={[fp.avatar, selected && [fp.avatarActive, { backgroundColor: skinAccent.accentDeep }]]}><Text style={fp.avatarTxt}>{friend[0]}</Text></View>
                     <Text style={[fp.name, selected && fp.nameActive]}>{friend}</Text>
-                    <View style={[fp.check, selected && fp.checkActive]}>{selected && <Text style={fp.checkMark}>✓</Text>}</View>
+                    <View style={[fp.check, selected && [fp.checkActive, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accentDeep }]]}>{selected && <Text style={fp.checkMark}>✓</Text>}</View>
                   </TouchableOpacity>
                 );
               })}
             </ScrollView>
-            <TouchableOpacity style={fp.doneBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
+            <TouchableOpacity style={[fp.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
               <Text style={fp.doneTxt}>{companionFriends.length > 0 ? t('cutInfo.friendDoneN', { count: companionFriends.length }) : t('cutInfo.closeWithoutSelect')}</Text>
             </TouchableOpacity>
           </View>
@@ -923,7 +924,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 activeOpacity={0.7}
               >
-                <Text style={cur.doneBtn}>{t('common.done')}</Text>
+                <Text style={[cur.doneBtn, { color: skinAccent.accent }]}>{t('common.done')}</Text>
               </TouchableOpacity>
             </View>
             <View style={cur.searchWrap}>
@@ -950,7 +951,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   >
                     <Text style={cur.code}>{c.code}</Text>
                     <Text style={cur.name}>{c.name}</Text>
-                    {currency === c.code && <Text style={cur.check}>✓</Text>}
+                    {currency === c.code && <Text style={[cur.check, { color: skinAccent.accent }]}>✓</Text>}
                   </TouchableOpacity>
                 ))}
             </ScrollView>
@@ -972,7 +973,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 activeOpacity={0.7}
               >
-                <Text style={ct.doneBtn}>{t('common.done')}</Text>
+                <Text style={[ct.doneBtn, { color: skinAccent.accent }]}>{t('common.done')}</Text>
               </TouchableOpacity>
             </View>
             <View style={ct.searchWrap}>
@@ -997,7 +998,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     >
                       <Text style={ct.flag}>{c.flag}</Text>
                       <Text style={ct.name}>{c.name}</Text>
-                      {selectedCountries.some(p => p.name === c.name) && <Text style={ct.check}>✓</Text>}
+                      {selectedCountries.some(p => p.name === c.name) && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
                     </TouchableOpacity>
                   ))}
                 </View>
