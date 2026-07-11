@@ -32,6 +32,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
   const viewType = initialViewType ?? record.viewType ?? 'feed';
+  // 사진첩(앨범)은 사진 모음 — 좋아요·댓글 등 게시물 요소를 표시하지 않는다 (PostDetail과 동일 정책)
+  const isAlbum = viewType === 'album';
   const [menuVisible, setMenuVisible] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [keyboardVisible, setKeyboardVisible] = useState(false);
@@ -93,7 +95,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           <TripRecordRenderer record={record} viewType={viewType} />
 
-          {/* ── 좋아요 · 댓글 ── */}
+          {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
+          {isAlbum ? (
+            <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+          ) : (
           <View style={styles.social}>
             <View style={styles.socialBar}>
               <TouchableOpacity style={styles.socialBtn} onPress={() => toggleLike(record.id)} activeOpacity={0.7}>
@@ -138,9 +143,11 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               ))
             )}
           </View>
+          )}
         </ScrollView>
 
-        {/* 댓글 입력 바 */}
+        {/* 댓글 입력 바 (앨범 제외) */}
+        {!isAlbum && (
         <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
           <TextInput
             style={styles.input}
@@ -159,6 +166,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             <Text style={styles.sendBtnText}>{t('trip.post')}</Text>
           </TouchableOpacity>
         </View>
+        )}
       </KeyboardAvoidingView>
 
       {/* ⋯ 팝업 메뉴 */}
@@ -230,6 +238,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#5A5A6E',
     paddingVertical: 12,
+  },
+  // 사진첩(앨범) — 사진 장수 표기
+  albumCount: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    paddingHorizontal: 20,
+    paddingTop: 10,
   },
   commentItem: {
     flexDirection: 'row',
