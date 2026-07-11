@@ -522,9 +522,15 @@ function render(geo){
       insetPathElements[box.name]=grp.fill;
     });
   }
-  // 확대 상한 — 미국은 폭이 넓어 크게 확대되지만, 30배는 저해상도 폴리곤이 깨져 보여 18로 낮춤.
-  // 나머지는 15(스무딩된 데이터 기준 각짐이 드러나지 않는 안전 범위).
-  maxZoom=(CODE==='USA')?18:15;
+  // 확대 상한 — 지역 경계 데이터 해상도(지역당 정점 수)에 맞춰 자동 설정.
+  // 저해상도 국가(예: 일본)를 고배율로 확대하면 각진 폴리곤이 스파이크로 깨지므로,
+  // 정점이 성긴 국가일수록 상한을 낮춰 깨짐이 드러나기 전까지만 확대되게 한다.
+  (function(){
+    var tv=0;
+    mainFeatures.forEach(function(f){ (function cnt(c){ if(typeof c[0][0]==='number') tv+=c.length; else c.forEach(cnt); })(f.geometry.coordinates); });
+    var density=tv/Math.max(mainFeatures.length,1); // 지역당 평균 정점 수
+    maxZoom=Math.max(8, Math.min(15, Math.round(density/16)));
+  })();
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
     .on('zoom',function(ev){
       g.attr('transform',ev.transform);
