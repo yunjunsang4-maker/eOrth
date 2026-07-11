@@ -20,8 +20,9 @@ import { MAX_ALBUM_PHOTOS } from './AlbumCreateScreen';
 import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
 import { useSettings } from '../store/settingsStore';
 import {
-  sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection,
+  sectionSlices, addPhotosToSection,
   deleteSection, newSectionId, normalizeSections, reorderWithinRange,
+  moveSection, removePhotosAt, movePhotosToSection,
 } from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -107,17 +108,15 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     }
   };
 
-  const doDeletePhoto = (index: number) => {
-    const target = medias[index];
-    if (!target) return;
-    const nextMedias = medias.filter((_, i) => i !== index);
-    const nextSections = sections ? removePhotoAt(medias, sections, index).sections : record.albumSections;
-    const coverDeleted = record.representativePhoto === target;
-    const nextRep = coverDeleted ? nextMedias[0] : record.representativePhoto;
+  // 사진 제거 공용(단일/다중) — 섹션 counts 정합 + 대표 사진 승계 + 여행카드 커버 동기화
+  const doDeletePhotos = (indexes: number[]) => {
+    const next = removePhotosAt(medias, sections, indexes);
+    const rm = new Set(indexes);
+    const coverDeleted = !!record.representativePhoto && medias.some((u, i) => rm.has(i) && u === record.representativePhoto);
+    const nextRep = coverDeleted ? next.medias[0] : record.representativePhoto;
     updateRecord(record.id, {
-      medias: nextMedias,
-      albumSections: nextSections,
-      // 대표 사진이 삭제됐으면 남은 첫 사진으로 승계
+      medias: next.medias,
+      albumSections: sections ? next.sections ?? undefined : record.albumSections,
       representativePhoto: nextRep,
     });
     // 여행카드 썸네일은 group.coverUri(크롭본 등 오버라이드)를 최우선으로 쓰므로,
@@ -128,30 +127,35 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         .forEach((g) => updateTripGroup(g.id, { coverUri: nextRep }));
     }
   };
+  const doDeletePhoto = (index: number) => doDeletePhotos([index]);
 
-  // 사진 길게 누르기 — 삭제 / (섹션 2개 이상이면) 다른 섹션으로 이동
+  // ── 다중 선택 모드 ──
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<number[]>([]);
+  const exitSelecting = () => { setSelecting(false); setSelected([]); };
+  const toggleSelect = (idx: number) =>
+    setSelected((prev) => (prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]));
+
+  // ── 이동 대상 섹션 선택 시트 (단일/다중 공용) ──
+  const [moveSheet, setMoveSheet] = useState<{ indexes: number[] } | null>(null);
+  const handleMoveTo = (targetSection: number) => {
+    if (!moveSheet || !sections) { setMoveSheet(null); return; }
+    const next = movePhotosToSection(medias, sections, moveSheet.indexes, targetSection);
+    updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+    setMoveSheet(null);
+    exitSelecting();
+  };
+
+  // 사진 길게 누르기 — 이동(시트) / 선택(다중) / 삭제
   const handleAlbumPhotoAction = (index: number) => {
     const buttons: any[] = [];
     if (sections && sections.length > 1) {
-      buttons.push({
-        text: t('trip.albumPhotoMove'),
-        onPress: () => {
-          const owner = sectionSlices(sections, medias.length).findIndex((sl) => index >= sl.start && index < sl.end);
-          Alert.alert(t('trip.albumPhotoMoveTitle'), undefined, [
-            ...sections
-              .map((sec, i) => ({
-                text: sec.title,
-                onPress: () => {
-                  const next = movePhotoToSection(medias, sections, index, i);
-                  updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
-                },
-              }))
-              .filter((_, i) => i !== owner),
-            { text: t('common.cancel'), style: 'cancel' as const },
-          ]);
-        },
-      });
+      buttons.push({ text: t('trip.albumPhotoMove'), onPress: () => setMoveSheet({ indexes: [index] }) });
     }
+    buttons.push({
+      text: t('trip.albumSelect'),
+      onPress: () => { setSelecting(true); setSelected([index]); },
+    });
     buttons.push({
       text: t('trip.delete'),
       style: 'destructive',
@@ -164,6 +168,15 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     });
     buttons.push({ text: t('common.cancel'), style: 'cancel' });
     Alert.alert(t('trip.albumPhotoActionTitle'), undefined, buttons);
+  };
+
+  // 다중 삭제 확인
+  const handleDeleteSelected = () => {
+    if (selected.length === 0) return;
+    Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotosMsg', { count: selected.length }), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('trip.delete'), style: 'destructive', onPress: () => { doDeletePhotos(selected); exitSelecting(); } },
+    ]);
   };
 
   // ── 사진 순서 편집 모드 ('flat' = 평면 전체, number = 해당 섹션) ──
@@ -184,13 +197,19 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   };
 
   // ── 섹션 추가/이름변경 모달 ──
-  const [sectionModal, setSectionModal] = useState<{ mode: 'add' } | { mode: 'rename'; index: number } | null>(null);
+  const [sectionModal, setSectionModal] = useState<{ mode: 'add' } | { mode: 'rename'; index: number } | { mode: 'albumTitle' } | null>(null);
   const [sectionTitleInput, setSectionTitleInput] = useState('');
   const openAddSection = () => { setSectionTitleInput(''); setSectionModal({ mode: 'add' }); };
   const confirmSectionModal = () => {
     const title = sectionTitleInput.trim();
     if (!title || !sectionModal) return;
-    if (sectionModal.mode === 'add') {
+    if (sectionModal.mode === 'albumTitle') {
+      // 사진첩 이름 변경 — 이 앨범을 커버로 쓰는 여행카드 제목도 함께 갱신
+      updateRecord(record.id, { content: title });
+      tripGroups
+        .filter((g) => g.coverRecordId === record.id)
+        .forEach((g) => updateTripGroup(g.id, { title }));
+    } else if (sectionModal.mode === 'add') {
       if (!sections) {
         // 첫 섹션 — 기존 사진 전부가 이 섹션에 담긴다. 이후 섹션을 추가해 이동으로 정리.
         updateRecord(record.id, { albumSections: [{ id: newSectionId(), title, count: medias.length }] });
@@ -217,6 +236,20 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         text: t('comp.albumReorder'),
         onPress: () => setReordering(index),
       },
+      ...(index > 0 ? [{
+        text: t('trip.albumMoveUp'),
+        onPress: () => {
+          const next = moveSection(medias, sections, index, index - 1);
+          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+        },
+      }] : []),
+      ...(index < sections.length - 1 ? [{
+        text: t('trip.albumMoveDown'),
+        onPress: () => {
+          const next = moveSection(medias, sections, index, index + 1);
+          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+        },
+      }] : []),
       {
         text: t('trip.albumSectionDelete'),
         style: 'destructive',
@@ -279,6 +312,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumAddSection={openAddSection}
             onAlbumSectionMenu={handleSectionMenu}
             albumReordering={reordering}
+            albumSelecting={selecting}
+            albumSelected={selected}
+            onAlbumToggleSelect={toggleSelect}
             onAlbumStartReorder={setReordering}
             onAlbumReorder={handleReorder}
             onAlbumReorderDone={() => setReordering(null)}
@@ -289,7 +325,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
             <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
-          ) : (
+          ) : null}
+          {!isAlbum && (
           <View style={styles.social}>
             <View style={styles.socialBar}>
               <TouchableOpacity style={styles.socialBtn} onPress={() => toggleLike(record.id)} activeOpacity={0.7}>
@@ -337,6 +374,33 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           )}
         </ScrollView>
 
+        {/* 다중 선택 액션 바 */}
+        {isAlbum && selecting && (
+          <View style={[styles.selectBar, { paddingBottom: insets.bottom + 10 }]}>
+            <Text style={styles.selectBarCount}>{t('trip.albumSelectedN', { count: selected.length })}</Text>
+            <View style={{ flex: 1 }} />
+            {sections && sections.length > 1 && (
+              <TouchableOpacity
+                style={[styles.selectBarBtn, selected.length === 0 && { opacity: 0.4 }]}
+                disabled={selected.length === 0}
+                onPress={() => setMoveSheet({ indexes: selected })}
+              >
+                <Text style={styles.selectBarBtnTxt}>{t('trip.albumPhotoMove')}</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity
+              style={[styles.selectBarBtn, styles.selectBarBtnDanger, selected.length === 0 && { opacity: 0.4 }]}
+              disabled={selected.length === 0}
+              onPress={handleDeleteSelected}
+            >
+              <Text style={[styles.selectBarBtnTxt, { color: '#FFFFFF' }]}>{t('trip.delete')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.selectBarBtn} onPress={exitSelecting}>
+              <Text style={styles.selectBarBtnTxt}>{t('comp.albumReorderDone')}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         {/* 댓글 입력 바 (앨범 제외) */}
         {!isAlbum && (
         <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
@@ -360,12 +424,34 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         )}
       </KeyboardAvoidingView>
 
+      {/* 이동 대상 섹션 선택 시트 (단일/다중 공용) */}
+      <Modal visible={moveSheet !== null} transparent animationType="slide" onRequestClose={() => setMoveSheet(null)}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setMoveSheet(null)} accessibilityViewIsModal>
+          <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
+            <Text style={styles.sheetTitle}>{t('trip.albumPhotoMoveTitle')}</Text>
+            {(sections ?? []).map((sec, i) => (
+              <TouchableOpacity key={sec.id} style={styles.sheetRow} onPress={() => handleMoveTo(i)} activeOpacity={0.7}>
+                <Text style={styles.sheetRowTxt}>{sec.title}</Text>
+                <Text style={styles.sheetRowCount}>{sec.count}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[styles.sheetRow, { justifyContent: 'center' }]} onPress={() => setMoveSheet(null)}>
+              <Text style={[styles.sheetRowTxt, { color: '#A1A1B0' }]}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* 섹션 제목 입력 모달 (추가/이름변경 공용) */}
       <Modal visible={sectionModal !== null} transparent animationType="fade" onRequestClose={() => setSectionModal(null)}>
         <View style={styles.sectionModalOverlay} accessibilityViewIsModal>
           <View style={styles.sectionModalCard}>
             <Text style={styles.sectionModalTitle}>
-              {sectionModal?.mode === 'rename' ? t('trip.albumSectionRename') : t('trip.albumSectionAddTitle')}
+              {sectionModal?.mode === 'albumTitle'
+                ? t('trip.albumRenameAlbum')
+                : sectionModal?.mode === 'rename'
+                  ? t('trip.albumSectionRename')
+                  : t('trip.albumSectionAddTitle')}
             </Text>
             <TextInput
               style={styles.sectionModalInput}
@@ -396,6 +482,18 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={styles.menuSheet}>
+            {isAlbum && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuVisible(false);
+                  setSectionTitleInput(record.content ?? '');
+                  setSectionModal({ mode: 'albumTitle' });
+                }}
+              >
+                <Text style={styles.menuItemText}>{t('trip.albumRenameAlbum')}</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><TrashIcon size={16} color="#FF3B30" /><Text style={[styles.menuItemText, styles.menuItemDelete]}>{t('trip.deleteAction')}</Text></View>
             </TouchableOpacity>
@@ -461,6 +559,73 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#5A5A6E',
     paddingVertical: 12,
+  },
+  // 다중 선택 액션 바
+  selectBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A26',
+    backgroundColor: '#0A0A0F',
+  },
+  selectBarCount: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  selectBarBtn: {
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  selectBarBtnDanger: {
+    backgroundColor: '#FF3B30',
+  },
+  selectBarBtnTxt: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#A1A1B0',
+  },
+  // 이동 대상 섹션 시트
+  sheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  sheetCard: {
+    backgroundColor: '#1E1E2E',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingTop: 16,
+    paddingHorizontal: 16,
+  },
+  sheetTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    marginBottom: 8,
+    paddingHorizontal: 4,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 4,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.06)',
+  },
+  sheetRowTxt: {
+    fontSize: 15,
+    color: '#FFFFFF',
+  },
+  sheetRowCount: {
+    fontSize: 13,
+    color: '#A1A1B0',
   },
   // 섹션 제목 입력 모달
   sectionModalOverlay: {

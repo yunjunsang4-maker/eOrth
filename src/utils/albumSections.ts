@@ -150,3 +150,59 @@ export function reorderWithinRange(
   next.splice(to, 0, item);
   return next;
 }
+
+/** 섹션 자체의 순서 이동 — medias의 해당 구간 블록도 함께 이동한다 */
+export function moveSection(
+  medias: string[],
+  sections: AlbumSection[],
+  from: number,
+  to: number,
+): { medias: string[]; sections: AlbumSection[] } {
+  const slices = sectionSlices(sections, medias.length);
+  if (from === to || from < 0 || from >= slices.length || to < 0 || to >= slices.length) {
+    return { medias, sections: normalizeSections(sections, medias.length) };
+  }
+  const blocks = slices.map((sl) => ({
+    section: { id: sl.id, title: sl.title, count: sl.count },
+    uris: medias.slice(sl.start, sl.end),
+  }));
+  const [moved] = blocks.splice(from, 1);
+  blocks.splice(to, 0, moved);
+  return {
+    medias: blocks.flatMap((b) => b.uris),
+    sections: blocks.map((b) => b.section),
+  };
+}
+
+/** 여러 사진 제거 (전역 인덱스 배열) — 각 소속 섹션 count 감소. sections가 null이면 평면 */
+export function removePhotosAt(
+  medias: string[],
+  sections: AlbumSection[] | null,
+  indexes: number[],
+): { medias: string[]; sections: AlbumSection[] | null } {
+  const rm = new Set(indexes.filter((i) => i >= 0 && i < medias.length));
+  if (rm.size === 0) return { medias, sections };
+  const nextMedias = medias.filter((_, i) => !rm.has(i));
+  if (!sections) return { medias: nextMedias, sections: null };
+  const slices = sectionSlices(sections, medias.length);
+  const nextSections = slices.map((sl) => {
+    let removed = 0;
+    rm.forEach((i) => { if (i >= sl.start && i < sl.end) removed += 1; });
+    return { id: sl.id, title: sl.title, count: sl.count - removed };
+  });
+  return { medias: nextMedias, sections: nextSections };
+}
+
+/** 여러 사진을 대상 섹션 끝으로 이동 (상대 순서 유지) */
+export function movePhotosToSection(
+  medias: string[],
+  sections: AlbumSection[],
+  indexes: number[],
+  targetSection: number,
+): { medias: string[]; sections: AlbumSection[] } {
+  const pick = new Set(indexes.filter((i) => i >= 0 && i < medias.length));
+  if (pick.size === 0) return { medias, sections: normalizeSections(sections, medias.length) };
+  const movedUris = medias.filter((_, i) => pick.has(i)); // 원본 순서 유지
+  const removed = removePhotosAt(medias, sections, [...pick]);
+  return addPhotosToSection(removed.medias, removed.sections as AlbumSection[], targetSection, movedUris);
+}

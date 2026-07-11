@@ -4,6 +4,7 @@
 import {
   groupUrisByDay,
   reorderWithinRange,
+  moveSection, removePhotosAt, movePhotosToSection,
   sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection, deleteSection,
   normalizeSections, sectionIndexOf, type AlbumSection,
 } from './albumSections';
@@ -66,6 +67,23 @@ eq('day groups', g.map((x) => [x.key, x.uris]), [
 // 구간 내 순서 변경 — 2일차(start=2) 안에서 0→2 이동
 eq('reorder in range', reorderWithinRange(M, 2, 0, 2), ['a', 'b', 'd', 'e', 'c']);
 eq('reorder flat', reorderWithinRange(M, 0, 4, 0), ['e', 'a', 'b', 'c', 'd']);
+
+// 섹션 순서 이동 — 2일차를 앞으로 (medias 블록도 함께)
+const ms = moveSection(M, S, 1, 0);
+eq('move section medias', ms.medias, ['c', 'd', 'e', 'a', 'b']);
+eq('move section titles', ms.sections.map((x) => x.title), ['2일차', '1일차']);
+
+// 다중 제거 — a(1일차), d(2일차)
+const rmm = removePhotosAt(M, S, [0, 3]);
+eq('multi rm medias', rmm.medias, ['b', 'c', 'e']);
+eq('multi rm counts', rmm.sections?.map((x) => x.count), [1, 2]);
+// 평면 다중 제거
+eq('multi rm flat', removePhotosAt(M, null, [1, 4]).medias, ['a', 'c', 'd']);
+
+// 다중 이동 — a, b(1일차)를 2일차 끝으로 (순서 유지)
+const mvm = movePhotosToSection(M, S, [1, 0], 1);
+eq('multi mv medias', mvm.medias, ['c', 'd', 'e', 'a', 'b']);
+eq('multi mv counts', mvm.sections.map((x) => x.count), [0, 5]);
 
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

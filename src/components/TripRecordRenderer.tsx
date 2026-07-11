@@ -30,6 +30,10 @@ interface Props {
   onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
   // 순서 편집 모드 — 'flat'(평면 전체) 또는 섹션 인덱스. null이면 일반 모드
   albumReordering?: number | 'flat' | null;
+  // 다중 선택 모드 — 탭이 선택 토글로 바뀌고 체크 오버레이 표시
+  albumSelecting?: boolean;
+  albumSelected?: number[];
+  onAlbumToggleSelect?: (globalIndex: number) => void;
   onAlbumStartReorder?: (section: number | 'flat') => void;
   onAlbumReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
   onAlbumReorderDone?: () => void;
@@ -157,7 +161,7 @@ const ALBUM_CELL = (SCREEN_W - 4) / 3;
 // 순서 편집 그리드(DraggablePhotoGrid, GAP 8·좌우 16 패딩)용 타일 크기
 const REORDER_THUMB = (SCREEN_W - 32 - 16) / 3;
 
-function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu, reordering, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
+function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu, reordering, selecting, selected, onToggleSelect, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
@@ -165,6 +169,9 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
   onAddSection?: () => void;
   onSectionMenu?: (sectionIndex: number) => void;
   reordering?: number | 'flat' | null;
+  selecting?: boolean;
+  selected?: number[];
+  onToggleSelect?: (globalIndex: number) => void;
   onStartReorder?: (section: number | 'flat') => void;
   onReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
   onReorderDone?: () => void;
@@ -179,21 +186,31 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
     ? sectionSlices(record.albumSections, medias.length)
     : null;
 
-  const photoTile = (uri: string, globalIdx: number) => (
-    <TouchableOpacity
-      key={`${uri}-${globalIdx}`}
-      onPress={() => setLightboxIdx(globalIdx)}
-      onLongPress={editable && onPhotoAction ? () => onPhotoAction(globalIdx) : undefined}
-      delayLongPress={350}
-      activeOpacity={0.85}
-    >
-      <Image
-        source={{ uri }}
-        style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
-        resizeMode="cover"
-      />
-    </TouchableOpacity>
-  );
+  const photoTile = (uri: string, globalIdx: number) => {
+    const isSel = selecting && (selected ?? []).includes(globalIdx);
+    return (
+      <TouchableOpacity
+        key={`${uri}-${globalIdx}`}
+        onPress={() => (selecting ? onToggleSelect?.(globalIdx) : setLightboxIdx(globalIdx))}
+        onLongPress={!selecting && editable && onPhotoAction ? () => onPhotoAction(globalIdx) : undefined}
+        delayLongPress={350}
+        activeOpacity={0.85}
+      >
+        <Image
+          source={{ uri }}
+          style={{ width: ALBUM_CELL, height: ALBUM_CELL, backgroundColor: '#1A0A2E' }}
+          resizeMode="cover"
+        />
+        {selecting && (
+          <View style={[styles.albumSelOverlay, isSel && styles.albumSelOverlayOn]}>
+            <View style={[styles.albumSelCheck, isSel && styles.albumSelCheckOn]}>
+              {isSel && <Text style={styles.albumSelCheckTxt}>✓</Text>}
+            </View>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={styles.albumWrap}>
@@ -224,12 +241,12 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
                   </TouchableOpacity>
                 ) : (
                   <>
-                    {editable && onAddPhotos && reordering == null && (
+                    {editable && onAddPhotos && reordering == null && !selecting && (
                       <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
                         <Text style={styles.albumSectionBtnTxt}>＋</Text>
                       </TouchableOpacity>
                     )}
-                    {editable && onSectionMenu && reordering == null && (
+                    {editable && onSectionMenu && reordering == null && !selecting && (
                       <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
                         <Text style={styles.albumSectionBtnTxt}>⋯</Text>
                       </TouchableOpacity>
@@ -258,7 +275,7 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
               )}
             </View>
           ))}
-          {editable && onAddSection && reordering == null && (
+          {editable && onAddSection && reordering == null && !selecting && (
             <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
               <Text style={styles.albumSectionAddTxt}>＋ {t('comp.albumAddSection')}</Text>
             </TouchableOpacity>
@@ -286,7 +303,7 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
             <>
               <View style={styles.albumGrid}>
                 {medias.map((uri, i) => photoTile(uri, i))}
-                {editable && onAddPhotos && (
+                {editable && onAddPhotos && !selecting && (
                   <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
                     <Text style={styles.albumAddPlus}>＋</Text>
                     <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
@@ -299,7 +316,7 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
                   </View>
                 )}
               </View>
-              {editable && medias.length > 0 && (
+              {editable && medias.length > 0 && !selecting && (
                 <View style={styles.albumFooterRow}>
                   {onAddSection && (
                     <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onAddSection} activeOpacity={0.8}>
@@ -452,7 +469,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu, albumReordering, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu, albumReordering, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -466,6 +483,9 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           onAddSection={onAlbumAddSection}
           onSectionMenu={onAlbumSectionMenu}
           reordering={albumReordering}
+          selecting={albumSelecting}
+          selected={albumSelected}
+          onToggleSelect={onAlbumToggleSelect}
           onStartReorder={onAlbumStartReorder}
           onReorder={onAlbumReorder}
           onReorderDone={onAlbumReorderDone}
@@ -687,6 +707,34 @@ const styles = StyleSheet.create({
     color: '#5A5A6E',
     paddingHorizontal: 16,
     paddingVertical: 10,
+  },
+  albumSelOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'flex-end',
+  },
+  albumSelOverlayOn: {
+    backgroundColor: 'rgba(107,33,168,0.35)',
+  },
+  albumSelCheck: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.85)',
+    margin: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  albumSelCheckOn: {
+    backgroundColor: '#BF85FC',
+    borderColor: '#BF85FC',
+  },
+  albumSelCheckTxt: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 15,
   },
   albumReorderWrap: {
     paddingHorizontal: 16,
