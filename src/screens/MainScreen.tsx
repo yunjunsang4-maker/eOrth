@@ -624,6 +624,8 @@ export default function MainScreen({ navigation, route }: Props) {
   const globeSkinTheme = globeVariant === 'aurora' ? getGlobeSkinTheme(globeSkin) : undefined;
   // 앱 강조색 — 지구본 스킨에 맞춘 통일 색(단계적 마이그레이션). aurora는 기존값과 동일.
   const skinAccent = getSkinAccent(globeSkin);
+  // 대륙 칩(국가표시·인기명소) 내부 배경 — 스킨 강조색을 어둡게 깐 불투명색(기존 #2A0F3E 대체)
+  const skinChipBg = `rgb(${Math.round(skinAccent.rgb[0] * 0.22)},${Math.round(skinAccent.rgb[1] * 0.22)},${Math.round(skinAccent.rgb[2] * 0.22)})`;
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
     () => visitedCountries.map(c => ({
@@ -1035,7 +1037,7 @@ export default function MainScreen({ navigation, route }: Props) {
               style={styles.regionChipsRow}
               contentContainerStyle={styles.regionChipsContent}
             >
-              {/* 국가 표시 칩 — 메뉴탭바 배경 테두리(흰색/검은색 베벨) 그라데이션 */}
+              {/* 국가 표시 칩 — 메뉴탭바 배경 테두리(흰색/검은색 베벨) 그라데이션 + 스킨 어두운 배경 */}
               <LinearGradient
                 colors={['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
                 start={{ x: 0, y: 0 }}
@@ -1043,22 +1045,22 @@ export default function MainScreen({ navigation, route }: Props) {
                 style={styles.regionChipBorder}
               >
                 <TouchableOpacity
-                  style={styles.regionChipInner}
+                  style={[styles.regionChipInner, { backgroundColor: skinChipBg }]}
                   activeOpacity={0.8}
                   onPress={() => setRegionSearch('')}
                 >
                   <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
                 </TouchableOpacity>
               </LinearGradient>
-              {/* 인기명소 모아보기 — 활성: 시안→마젠타 / 비활성: 흰색/검은색 베벨 그라데이션 */}
+              {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
               <LinearGradient
-                colors={popularActive ? ['#00D8F3', '#FF14E4'] : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
+                colors={popularActive ? skinAccent.btnGradient : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
                 start={{ x: 0, y: 0 }}
                 end={popularActive ? { x: 1, y: 1 } : { x: 0.15, y: 1 }}
                 style={styles.popularChipBorder}
               >
                 <TouchableOpacity
-                  style={styles.popularChipInner}
+                  style={[styles.popularChipInner, { backgroundColor: skinChipBg }]}
                   activeOpacity={0.8}
                   onPress={() => setPopularActive((v) => !v)}
                 >
