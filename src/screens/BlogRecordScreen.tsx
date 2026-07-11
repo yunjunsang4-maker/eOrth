@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -25,6 +25,7 @@ import { compressImage, compressImages } from '../utils/imageCompress';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
+import { collectRecordedDateKeys } from '../utils/recordedDates';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
@@ -290,7 +291,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, followingUsers } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, followingUsers, records } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -372,6 +373,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   });
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+
+  // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게 (편집 중 기록 제외)
+  const recordedDates = useMemo(
+    () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name), editRecord?.id),
+    [records, selectedCountries, editRecord?.id]
+  );
 
   // 콘텐츠
   const [title, setTitle] = useState(editRecord?.content ?? '');
@@ -1713,6 +1720,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   initialEnd={endDateObj}
                   onConfirm={handleCalendarConfirm}
                   onClose={() => setCalendarVisible(false)}
+                  recordedDates={recordedDates}
                 />
               </View>
             )}
@@ -2722,12 +2730,14 @@ const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
 const CAL_CELL = Math.floor((SCREEN_W - 32 - 12) / 7);
 
 function BlogCalendarSheet({
-  initialStart, initialEnd, onConfirm, onClose,
+  initialStart, initialEnd, onConfirm, onClose, recordedDates,
 }: {
   initialStart: Date;
   initialEnd: Date;
   onConfirm: (start: Date, end: Date) => void;
   onClose: () => void;
+  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
+  recordedDates?: Set<string>;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -2839,11 +2849,20 @@ function BlogCalendarSheet({
                   dow===6 && !isEdge && calSt.saturdayText,
                   isEdge && calSt.edgeText,
                 ]}>{date.getDate()}</Text>
+                {!!recordedDates?.has(toDateKey(date)) && (
+                  <View style={[calSt.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />
+                )}
               </View>
             </TouchableOpacity>
           );
         })}
       </View>
+      {!!recordedDates && recordedDates.size > 0 && (
+        <View style={calSt.legendRow}>
+          <View style={[calSt.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
+          <Text style={calSt.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
+        </View>
+      )}
       <TouchableOpacity style={[calSt.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
         <Text style={calSt.confirmText}>{t('common.confirm')}</Text>
       </TouchableOpacity>
@@ -2878,6 +2897,9 @@ const calSt = StyleSheet.create({
   rangeEndCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopRightRadius: 17, borderBottomRightRadius: 17 },
   edgeCircle: { backgroundColor: '#BF85FC' },
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
+  recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
+  legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
   confirmBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
   confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });

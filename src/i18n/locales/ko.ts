@@ -725,6 +725,7 @@ const ko = {
     defaultTitleOne: '{{country}} 여행 기록',
     defaultTitleMany: '{{country}} 외 {{count}}개국 여행 기록',
     domesticRegionLabel: '지역 선택 — 여행 카드가 지역별로 구분돼요',
+    calRecordedLegend: '이 국가에 이미 기록이 있는 날짜예요',
     splitAskTitle: '여행 카드 만들기',
     splitAskMsg: '{{count}}개 국가를 선택했어요.\n프로필의 여행 카드를 어떻게 만들까요?\n(소셜 게시물은 하나로 올라가요)',
     splitAskMerge: '하나의 카드로',

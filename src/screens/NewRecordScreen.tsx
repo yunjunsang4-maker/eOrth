@@ -32,6 +32,7 @@ import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
 import { getMaxRecordPhotos } from '../constants/limits';
 import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
+import { collectRecordedDateKeys } from '../utils/recordedDates';
 import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -418,7 +419,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, followingUsers } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, followingUsers, records } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -489,6 +490,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const isDomesticSelected = !!homeCountryName && selectedCountries.some(c => c.name === homeCountryName);
   // 거주국가의 지역 프리셋 — 한국은 시/도, countryGeo 수록국(일본·미국 등)은 주/현. 없으면 칩 숨김
   const homeRegions = useMemo(() => getHomeRegions(homeCountryCode), [homeCountryCode]);
+
+  // 선택 국가에 이미 기록된 날짜 — 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게 (편집 중 기록 제외)
+  const recordedDates = useMemo(
+    () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name), editRecord?.id),
+    [records, selectedCountries, editRecord?.id]
+  );
 
   useEffect(() => {
     const params = route?.params;
@@ -1150,7 +1157,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     if (step === 1) return selectedCountries.length > 0;
     if (step === 2) return medias.length > 0 && !!representativePhoto; // 사진 1장 이상 + 대표 사진 지정 필수
     if (step === TOTAL_STEPS) {
-      if (!(memo.trim().length > 0 && selectedCompanions.length > 0)) return false;
+      if (selectedCompanions.length === 0) return false; // 글(memo)은 선택 항목
+
       // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
       return selectedCountries.every((c, idx) =>
         idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
@@ -1340,7 +1348,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       else if (!representativePhoto) m.push(t('newRecord.missRepPhoto'));
     }
     else if (step === TOTAL_STEPS) {
-      if (memo.trim().length === 0) m.push(t('newRecord.missText'));
       const noRating = selectedCountries.some((c, idx) =>
         idx === activeCountryIdx ? rating <= 0 : (perCountryStore.current[c.name]?.rating ?? 0) <= 0);
       if (noRating) m.push(isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating'));
@@ -1686,11 +1693,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </TouchableOpacity>
               </View>
 
-              {/* 글 (공통) */}
+              {/* 글 (공통·선택) */}
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
                   <Text style={s.fieldLabelReq}>{t('newRecord.textLabel')}</Text>
-                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                 </View>
                 <TextInput
                   style={[s.fieldInput, s.memoInput]}
@@ -1977,6 +1983,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         initialEnd={endDate}
         onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
         onClose={() => setCalendarVisible(false)}
+        recordedDates={recordedDates}
       />
 
       {/* 🔒 비공개 친구 선택 모달 */}
@@ -2015,6 +2022,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         initialEnd={autoLoadEnd}
         startLabel={t('newRecord.startLabel')}
         endLabel={t('newRecord.endLabel')}
+        recordedDates={recordedDates}
         onConfirm={(s, e) => {
           setAutoLoadStart(s);
           setAutoLoadEnd(e);

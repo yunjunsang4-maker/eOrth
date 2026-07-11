@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
@@ -20,6 +20,7 @@ import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../c
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
 import { SearchIcon } from '../components/icons';
+import { collectRecordedDateKeys } from '../utils/recordedDates';
 
 // 사진첩 한 권당 최대 장수 (import 흐름과 동일한 프리미엄 seam)
 export const MAX_ALBUM_PHOTOS = 30;
@@ -54,7 +55,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
-  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup } = useRecords();
+  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, records } = useRecords();
   // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
   const { isPremium } = useSettings();
   const albumMax = isPremium ? MAX_RECORD_PHOTOS_PREMIUM : MAX_ALBUM_PHOTOS;
@@ -75,6 +76,12 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     preselected?.name ? (COUNTRIES.find(c => c.name === preselected.name!.split(' - ')[0]) ?? null) : null
   );
   const [countrySearch, setCountrySearch] = useState('');
+
+  // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 기존 여행에 맞춰 기간을 잡기 쉽게
+  const recordedDates = useMemo(
+    () => collectRecordedDateKeys(records, selectedCountry ? [selectedCountry.name] : []),
+    [records, selectedCountry]
+  );
 
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
@@ -393,6 +400,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           endLabel={t('album.endLabel')}
           onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
           onClose={() => setCalendarVisible(false)}
+          recordedDates={recordedDates}
         />
       </LinearGradient>
     );

@@ -724,6 +724,7 @@ const en = {
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
     domesticRegionLabel: 'Region — trip cards are grouped by region',
+    calRecordedLegend: 'Dates you already have records for this country',
     splitAskTitle: 'Trip cards',
     splitAskMsg: 'You selected {{count}} countries.\nHow should the trip cards on your profile look?\n(Your feed will show a single post)',
     splitAskMerge: 'One card',

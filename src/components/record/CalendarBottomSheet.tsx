@@ -34,6 +34,7 @@ export function CalendarBottomSheet({
   onClose,
   startLabel,
   endLabel,
+  recordedDates,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -42,6 +43,8 @@ export function CalendarBottomSheet({
   onClose: () => void;
   startLabel?: string;
   endLabel?: string;
+  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시). utils/recordedDates 참조 */
+  recordedDates?: Set<string>;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -152,6 +155,7 @@ export function CalendarBottomSheet({
               const isEnd   = isRangeEnd(date);
               const inRange = isInRange(date);
               const isEdge  = isStart || isEnd;
+              const hasRecord = !!recordedDates?.has(toDateKey(date));
               return (
                 <TouchableOpacity
                   key={toDateKey(date)}
@@ -170,11 +174,18 @@ export function CalendarBottomSheet({
                       dow===6 && !isEdge && calS.saturdayText,
                       isEdge && calS.edgeText,
                     ]}>{date.getDate()}</Text>
+                    {hasRecord && <View style={[calS.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />}
                   </View>
                 </TouchableOpacity>
               );
             })}
           </View>
+          {!!recordedDates && recordedDates.size > 0 && (
+            <View style={calS.legendRow}>
+              <View style={[calS.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
+              <Text style={calS.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
+            </View>
+          )}
           <TouchableOpacity style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
             <Text style={calS.confirmText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
@@ -275,6 +286,10 @@ const calS = StyleSheet.create({
   },
   edgeCircle: { backgroundColor: '#BF85FC' },
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
+  // 기록 있음 점 — 날짜 숫자 아래 4px 점
+  recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
+  legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
 
   confirmBtn: {
     backgroundColor: '#6B21A8',

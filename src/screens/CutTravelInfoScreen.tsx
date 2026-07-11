@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
+import { collectRecordedDateKeys, toRecordedDateKey } from '../utils/recordedDates';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
@@ -122,12 +123,14 @@ const DOW_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.
 const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
 const firstDow = (y: number, m: number) => new Date(y, m, 1).getDay();
 
-function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }: {
+function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose, recordedDates }: {
   visible: boolean;
   initialStart: Date | null;
   initialEnd: Date | null;
   onConfirm: (start: Date, end: Date) => void;
   onClose: () => void;
+  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
+  recordedDates?: Set<string>;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -198,10 +201,19 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose }
               <TouchableOpacity key={day} style={cal.cell} onPress={() => pick(day)} activeOpacity={0.7}>
                 <View style={[cal.dayWrap, inRange(day) && [cal.dayInRange, { backgroundColor: skinAccent.tint(0.18) }], isEdge(day) && [cal.dayEdge, { backgroundColor: skinAccent.accentDeep }]]}>
                   <Text style={[cal.dayTxt, isEdge(day) && cal.dayEdgeTxt]}>{day}</Text>
+                  {!!recordedDates?.has(toRecordedDateKey(new Date(vy, vm, day))) && (
+                    <View style={[cal.recordDot, { backgroundColor: isEdge(day) ? '#FFFFFF' : skinAccent.accent }]} />
+                  )}
                 </View>
               </TouchableOpacity>
             ))}
           </View>
+          {!!recordedDates && recordedDates.size > 0 && (
+            <View style={cal.legendRow}>
+              <View style={[cal.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
+              <Text style={cal.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
+            </View>
+          )}
           <TouchableOpacity
             style={[cal.confirmBtn, { backgroundColor: skinAccent.accentDeep }, !start && cal.confirmBtnDisabled]}
             disabled={!start}
@@ -334,7 +346,7 @@ function PrivacyModal({
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { addRecord, addTripGroup, followingUsers } = useRecords();
+  const { addRecord, addTripGroup, followingUsers, records } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = followingUsers.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
@@ -375,6 +387,12 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+
+  // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게
+  const recordedDates = useMemo(
+    () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name)),
+    [records, selectedCountries]
+  );
 
   // ─── 메타 상태 (피드와 동일) ───
   const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
@@ -514,7 +532,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     if (savingRef.current) return; // 저장 중복 클릭 방지
     if (!selectedCountry) { Alert.alert(t('cutInfo.selectCountryTitle'), t('cutInfo.selectCountryMsg')); return; }
     if (!startDate) { Alert.alert(t('cutInfo.dateInputTitle'), t('cutInfo.dateInputMsg')); return; }
-    if (!memo.trim()) { Alert.alert(t('cutInfo.contentTitle'), t('cutInfo.contentMsg')); return; }
+    // 글(memo)은 선택 항목
     if (companions.length === 0) { Alert.alert(t('cutInfo.companionTitle'), t('cutInfo.companionMsg')); return; }
     if (rating <= 0) { Alert.alert(t('cutInfo.ratingTitle'), t('cutInfo.ratingMsg')); return; }
     if (!cutPhoto) { Alert.alert(t('cutInfo.errorTitle'), t('cutInfo.noCutInfo')); return; }
@@ -551,7 +569,10 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       regionName: selectedRegion?.name || undefined,
       regionNameEn: selectedRegion?.nameEn || undefined,
       date: sStr,
-      content: memo.trim(),
+      // 글 미입력 시 피드와 동일한 기본 제목 (카드/목록 표시용 텍스트)
+      content: memo.trim() || (selectedCountries.length === 1
+        ? t('newRecord.defaultTitleOne', { country: selectedCountry.name })
+        : t('newRecord.defaultTitleMany', { country: selectedCountry.name, count: selectedCountries.length - 1 })),
       visibility,
       memo: memo.trim() || undefined,
       rating: rating || undefined,
@@ -660,7 +681,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 글 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
+            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text></View>
             <TextInput
               style={st.memoInput}
               placeholder={t('cutInfo.textPlaceholder')}
@@ -866,6 +887,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         initialEnd={endDate}
         onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
         onClose={() => setCalendarVisible(false)}
+        recordedDates={recordedDates}
       />
 
       {/* 앱 친구 선택 모달 */}
@@ -1135,6 +1157,9 @@ const cal = StyleSheet.create({
   dayEdge: { backgroundColor: C.purpleDeep, borderRadius: 18 },
   dayTxt: { color: C.white, fontSize: 14 },
   dayEdgeTxt: { color: C.white, fontWeight: '700' },
+  recordDot: { position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 2 },
+  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 },
+  legendTxt: { fontSize: 11, color: C.textDim },
   confirmBtn: { marginTop: 14, backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
   confirmBtnDisabled: { opacity: 0.4 },
   confirmTxt: { color: C.white, fontSize: 15, fontWeight: '700' },
