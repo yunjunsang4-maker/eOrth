@@ -31,7 +31,7 @@ import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
 import { getMaxRecordPhotos } from '../constants/limits';
-import { KOREA_REGIONS, normalizeKoreaRegion } from '../constants/koreaRegions';
+import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
 import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -487,6 +487,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     [homeCountryCode]
   );
   const isDomesticSelected = !!homeCountryName && selectedCountries.some(c => c.name === homeCountryName);
+  // 거주국가의 지역 프리셋 — 한국은 시/도, countryGeo 수록국(일본·미국 등)은 주/현. 없으면 칩 숨김
+  const homeRegions = useMemo(() => getHomeRegions(homeCountryCode), [homeCountryCode]);
 
   useEffect(() => {
     const params = route?.params;
@@ -519,9 +521,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (!mapped) return;
       setSelectedCountries(prev => (prev.length === 0 ? [mapped] : prev)); // 비어있을 때만
       if (city) {
-        // 국내면 GPS 도시명을 시/도 프리셋으로 정규화(수원시→경기) — 카드 파편화 방지
-        const kr = mapped.name === homeCountryName ? normalizeKoreaRegion(city) : null;
-        setSelectedRegion(prev => prev ?? (kr ? { name: kr.name, nameEn: kr.nameEn } : { name: city, nameEn: city }));
+        // 국내면 GPS 도시명을 거주국가 지역 프리셋으로 정규화(수원시→경기, Kyoto→교토부) — 카드 파편화 방지
+        const reg = mapped.name === homeCountryName ? normalizeHomeRegion(homeCountryCode, city) : null;
+        setSelectedRegion(prev => prev ?? (reg ? { name: reg.name, nameEn: reg.nameEn } : { name: city, nameEn: city }));
       }
     })();
     return () => { cancelled = true; };
@@ -1448,13 +1450,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
               )}
 
-              {/* 국내 지역 선택 — 국내 기록은 지역(시/도) 단위로 여행 카드가 구분된다 */}
-              {isDomesticSelected && (
+              {/* 국내 지역 선택 — 국내 기록은 지역(시/도·주/현) 단위로 여행 카드가 구분된다.
+                  거주국가에 지역 프리셋이 없으면 칩을 숨기고 기존(자유 문자열) 동작 유지 */}
+              {isDomesticSelected && homeRegions.length > 0 && (
                 <View style={{ marginBottom: 12 }}>
                   <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {KOREA_REGIONS.map((r) => {
+                      {homeRegions.map((r) => {
                         const active = selectedRegion?.name === r.name;
                         return (
                           <TouchableOpacity

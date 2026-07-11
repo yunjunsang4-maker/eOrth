@@ -9,7 +9,7 @@ import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
 import { getProfileByHandle, getProfileById, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
-import { normalizeKoreaRegion } from '../constants/koreaRegions';
+import { normalizeHomeRegion } from '../constants/homeRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
@@ -415,9 +415,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const recEnd = parseRecDate(rec.endDate) ?? recStart;
     if (!country || recStart == null || recEnd == null) return; // 국가/날짜 없으면 매칭 불가
     const isDomestic = !!homeCountryName && country === homeCountryName;
-    // 지역은 프리셋으로 정규화(수원시→경기 등). 정규화 실패 시 원본 유지, 미입력은 null
+    // 지역은 거주국가 프리셋으로 정규화(수원시→경기, Kyoto→교토부 등). 정규화 실패 시 원본 유지, 미입력은 null
     const recRegion = isDomestic
-      ? (normalizeKoreaRegion(rec.regionName)?.name ?? rec.regionName ?? null)
+      ? (normalizeHomeRegion(homeCountryCode, rec.regionName)?.name ?? rec.regionName ?? null)
       : null;
 
     setTripGroups((prev) => {
@@ -433,7 +433,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         if (isDomestic) {
           const gRegion =
             g.regionName ??
-            normalizeKoreaRegion(members[0].regionName)?.name ??
+            normalizeHomeRegion(homeCountryCode, members[0].regionName)?.name ??
             members[0].regionName ??
             null;
           if (gRegion !== recRegion) return false; // 지역이 다르면(미입력 포함) 다른 카드
