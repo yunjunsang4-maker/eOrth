@@ -2,6 +2,7 @@
  * albumSections 검증 — npx tsx src/utils/albumSections.verify.ts
  */
 import {
+  groupUrisByDay,
   sectionSlices, addPhotosToSection, removePhotoAt, movePhotoToSection, deleteSection,
   normalizeSections, sectionIndexOf, type AlbumSection,
 } from './albumSections';
@@ -47,6 +48,19 @@ eq('del last-one', deleteSection([{ id: 's', title: 'x', count: 5 }], 5, 0), nul
 
 // 손상 데이터 보정 — counts 합 ≠ medias 길이
 eq('normalize', normalizeSections([{ id: 'a', title: 'A', count: 2 }, { id: 'b', title: 'B', count: 9 }], 5).map((s) => s.count), [2, 3]);
+
+// 날짜 그룹핑 — 정렬 + 같은 날 묶기 + 미상은 맨 뒤
+const D1 = new Date(2026, 4, 6, 10).getTime();
+const D1b = new Date(2026, 4, 6, 20).getTime();
+const D2 = new Date(2026, 4, 7, 9).getTime();
+const g = groupUrisByDay([
+  { uri: 'p2', time: D2 }, { uri: 'p1a', time: D1 }, { uri: 'px' }, { uri: 'p1b', time: D1b },
+]);
+eq('day groups', g.map((x) => [x.key, x.uris]), [
+  ['2026.05.06', ['p1a', 'p1b']],
+  ['2026.05.07', ['p2']],
+  [null, ['px']],
+]);
 
 console.log(fail === 0 ? '\nALL PASS' : `\n${fail} FAILED`);
 if (fail > 0) process.exit(1);

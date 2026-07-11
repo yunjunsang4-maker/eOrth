@@ -1521,6 +1521,8 @@ const ko = {
     noPhotos: '사진이 없어요',
     albumAddPhotos: '사진 추가',
     albumAddSection: '섹션 추가',
+    sectionDayN: '{{n}}일차',
+    sectionEtc: '기타',
     albumMakeSections: '섹션으로 정리',
     albumSectionEmpty: '이 섹션에 사진이 없어요 — 사진을 길게 눌러 옮기거나 ＋로 추가하세요',
     noCut: '네컷 사진이 없습니다',

@@ -108,3 +108,29 @@ export function deleteSection(
     .map((s, i) => (i === absorbInto ? { ...s, count: s.count + norm[sectionIndex].count } : s))
     .filter((_, i) => i !== sectionIndex);
 }
+
+/**
+ * 촬영일 기준 그룹핑 — 날짜순(오름차순) 정렬 후 같은 날(로컬 기준)끼리 묶는다.
+ * time이 없는 사진은 맨 뒤 '기타'(key=null) 그룹 하나로 모은다.
+ * 호출부는 그룹 순서대로 medias를 재배열하고 제목(n일차 등)을 붙여 섹션을 만든다.
+ */
+export function groupUrisByDay(
+  photos: { uri: string; time?: number }[],
+): { key: string | null; uris: string[] }[] {
+  const dayKey = (ts: number) => {
+    const d = new Date(ts);
+    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  };
+  const dated = photos.filter((p) => typeof p.time === 'number' && p.time! > 0)
+    .sort((a, b) => a.time! - b.time!);
+  const undated = photos.filter((p) => !(typeof p.time === 'number' && p.time! > 0));
+  const out: { key: string | null; uris: string[] }[] = [];
+  for (const p of dated) {
+    const key = dayKey(p.time!);
+    const last = out[out.length - 1];
+    if (last && last.key === key) last.uris.push(p.uri);
+    else out.push({ key, uris: [p.uri] });
+  }
+  if (undated.length > 0) out.push({ key: null, uris: undated.map((p) => p.uri) });
+  return out;
+}

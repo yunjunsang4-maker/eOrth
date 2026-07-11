@@ -13,6 +13,7 @@ import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -214,7 +215,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         ...picked.filter((p) => p.uri === cover),
         ...picked.filter((p) => p.uri !== cover),
       ];
-      const { uris: copied, firstItemCopied } = await copyTripOriginals(albumId, items);
+      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items);
       if (copied.length === 0) throw new Error('copy failed');
       // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
       // 커버(0번) 복사가 실패했으면 copied[0]은 다른 사진이므로 크롭을 굽지 않는다.
@@ -223,6 +224,20 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         repUri = (await bakeCoverCrop(copied[0], activeAdjust, CARD_ASPECT, albumId)) ?? undefined;
       }
       const albumTitle = title.trim() || defaultTitle;
+      // 날짜별 자동 섹션 — 촬영일이 2일 이상이면 'n일차' 섹션으로 자동 정리 (미상은 '기타')
+      const pairs = copied.map((uri, k) => ({ uri, time: (items[srcIndexes[k]] as AlbumPhoto | undefined)?.creationTime }));
+      const groups = groupUrisByDay(pairs);
+      let mediasOrdered = copied;
+      let autoSections: { id: string; title: string; count: number }[] | undefined;
+      if (groups.filter((g) => g.key !== null).length >= 2) {
+        mediasOrdered = groups.flatMap((g) => g.uris);
+        let dayN = 0;
+        autoSections = groups.map((g) => ({
+          id: newSectionId(),
+          title: g.key ? t('album.sectionDayN', { n: ++dayN }) : t('album.sectionEtc'),
+          count: g.uris.length,
+        }));
+      }
       const recId = addImportedAlbum({
         // countryName/country는 비워둔다 — 채우면 지구본·대륙 활성화와 통계,
         // 다른 국가 카드의 기록 매칭에 잡힌다. 국기는 카드 표시 전용.
@@ -231,8 +246,10 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         startDate: fmtDate(startDate),
         endDate: fmtDate(endDate),
         title: albumTitle,
-        medias: copied,
-        representativePhoto: repUri,
+        medias: mediasOrdered,
+        // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
+        representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
+        albumSections: autoSections,
       });
       if (tripGroupId) {
         // 여행 상세에서 진입 — 그 여행 카드에 사진첩을 연결(카드당 앨범 1개 정책)

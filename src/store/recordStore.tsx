@@ -257,6 +257,7 @@ interface RecordContextType {
     date: string; startDate: string; endDate: string;
     title: string; medias: string[];
     representativePhoto?: string; // 카드 썸네일용 크롭본 (없으면 medias[0] 사용)
+    albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
   }) => string; // 생성된 record id 반환
   resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
   // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
@@ -1066,6 +1067,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     date: string; startDate: string; endDate: string;
     title: string; medias: string[];
     representativePhoto?: string;
+    albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
   }): string => {
     const id = `rec-import-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const rec: TravelRecord = {
@@ -1085,6 +1087,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       viewType: 'album',
       medias: data.medias,
       representativePhoto: data.representativePhoto,
+      albumSections: data.albumSections,
     };
     setRecords((prev) => [rec, ...prev]);
     publishToBackend(rec); // 가져온 앨범도 백엔드 발행(비공개면 본인만 보임)

@@ -8,6 +8,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
+import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { getMaxRecordPhotos } from '../constants/limits';
@@ -120,6 +121,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       let tripCount = 0;
       let photoCount = 0;
       const countries: { flag: string; name: string }[] = [];
+      const trFn = t; // 아래 루프의 t(여행)가 번역 함수 t를 가리므로 별칭 사용
       for (const t of trips) {
         const uris = selected[t.id] ?? [];
         if (uris.length === 0) continue; // 선택 0장 → 카드 생성 안 함
@@ -130,7 +132,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           ...picked.filter((p) => p.uri === coverUri),
           ...picked.filter((p) => p.uri !== coverUri),
         ];
-        const { uris: copied, firstItemCopied } = await copyTripOriginals(t.id, items);
+        const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(t.id, items);
         if (copied.length === 0) continue;
         // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
         // 커버(0번) 복사가 실패했으면 copied[0]은 '다른 사진'이므로 크롭을 굽지 않는다.
@@ -139,11 +141,27 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         if (adj && adj.uri === coverUri && firstItemCopied) {
           repUri = (await bakeCoverCrop(copied[0], adj.t, CARD_ASPECT, t.id)) ?? undefined;
         }
+        // 날짜별 자동 섹션 — 촬영일이 2일 이상이면 'n일차' 섹션으로 자동 정리 (미상은 '기타')
+        const pairs = copied.map((uri, k) => ({ uri, time: (items[srcIndexes[k]] as TripPhoto | undefined)?.creationTime }));
+        const groups = groupUrisByDay(pairs);
+        let mediasOrdered = copied;
+        let autoSections: { id: string; title: string; count: number }[] | undefined;
+        if (groups.filter((g) => g.key !== null).length >= 2) {
+          mediasOrdered = groups.flatMap((g) => g.uris);
+          let dayN = 0;
+          autoSections = groups.map((g) => ({
+            id: newSectionId(),
+            title: g.key ? trFn('album.sectionDayN', { n: ++dayN }) : trFn('album.sectionEtc'),
+            count: g.uris.length,
+          }));
+        }
         const recId = addImportedAlbum({
           country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
           date: t.date, startDate: t.startDate, endDate: t.endDate,
-          title: t.title, medias: copied,
-          representativePhoto: repUri,
+          title: t.title, medias: mediasOrdered,
+          // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
+          representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
+          albumSections: autoSections,
         });
         // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
         addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });

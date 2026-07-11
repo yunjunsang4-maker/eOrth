@@ -92,14 +92,14 @@ export async function bakeCoverCrop(
 export async function copyTripOriginals(
   tripId: string,
   items: PhotoRef[]
-): Promise<{ uris: string[]; firstItemCopied: boolean }> {
+): Promise<{ uris: string[]; firstItemCopied: boolean; srcIndexes: number[] }> {
    
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
    
   const MediaLibrary = require('expo-media-library') as typeof import('expo-media-library');
 
   const base = FileSystem.documentDirectory;
-  if (!base) return { uris: [], firstItemCopied: false };
+  if (!base) return { uris: [], firstItemCopied: false, srcIndexes: [] };
   const dir = tripDir(base, tripId);
   try {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
@@ -108,6 +108,9 @@ export async function copyTripOriginals(
   }
 
   const out: string[] = [];
+  // 복사 성공한 항목의 원본 인덱스 — 실패 장 스킵으로 배열이 당겨져도 호출부가
+  // 원본 메타(촬영일 등)를 복사본 URI에 정확히 대응시킬 수 있게 한다
+  const srcIndexes: number[] = [];
   // 첫 항목(커버)의 복사 성공 여부 — 실패 장을 건너뛰면 배열이 당겨져서, 호출부가
   // copied[0]을 커버로 간주하고 커버용 크롭을 '다른 사진'에 굽는 사고를 막는 데 쓴다.
   let firstItemCopied = false;
@@ -123,10 +126,11 @@ export async function copyTripOriginals(
       const to = tripPhotoPath(base, tripId, out.length);
       await FileSystem.copyAsync({ from, to });
       out.push(to);
+      srcIndexes.push(i);
       if (i === 0) firstItemCopied = true;
     } catch {
       // 이 장은 건너뜀
     }
   }
-  return { uris: out, firstItemCopied };
+  return { uris: out, firstItemCopied, srcIndexes };
 }

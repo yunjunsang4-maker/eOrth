@@ -1520,6 +1520,8 @@ const en = {
     noPhotos: 'No photos',
     albumAddPhotos: 'Add photos',
     albumAddSection: 'Add section',
+    sectionDayN: 'Day {{n}}',
+    sectionEtc: 'Others',
     albumMakeSections: 'Organize into sections',
     albumSectionEmpty: 'No photos here — long-press a photo to move it, or tap ＋',
     noCut: 'No four-cut photo',
