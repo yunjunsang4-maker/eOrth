@@ -195,6 +195,12 @@ body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
 <div id="region-chip"></div>
 ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 <script>
+// iOS WKWebView는 첫 핀치를 시스템 줌 제스처(gesturestart)로 판정하며 한 번 씹는다.
+// touch-action:none은 이 iOS 전용 이벤트를 못 막으므로 직접 preventDefault해 첫 확대부터
+// d3.zoom이 받게 한다.
+['gesturestart','gesturechange','gestureend'].forEach(function(t){
+  document.addEventListener(t, function(e){ e.preventDefault(); }, {passive:false});
+});
 var CODE='${code}';
 var COUNTRY_NAME=${JSON.stringify(countryName)};
 var recordedRegions = [];
@@ -541,6 +547,8 @@ function render(geo){
       g.selectAll('path.region-stroke').attr('stroke-width',function(d){return scaledStroke(d,k);});
     });
   svg.call(zoomBehavior);
+  // warm-up — zoom 내부 상태를 미리 초기화해 첫 실제 제스처가 씹히지 않게 한다
+  svg.call(zoomBehavior.transform, d3.zoomIdentity);
 
   setRegionChip('');
   updateMap();
