@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent } from '../constants/skinTheme';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -99,6 +100,7 @@ function clampT(tx: number, ty: number, s: number, cfg: Cfg) {
 
 export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto, onRemove }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   // 프레임 크기 — aspect에 맞춰 화면에 fit
   const maxW = SW * 0.82;
   const maxH = SH * 0.52;
@@ -218,7 +220,7 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
             <TouchableOpacity onPress={onCancel} style={s.btnGhost} activeOpacity={0.8}>
               <Text style={s.btnGhostTxt}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={confirm} style={s.btnPrimary} activeOpacity={0.85}>
+            <TouchableOpacity onPress={confirm} style={[s.btnPrimary, { backgroundColor: skinAccent.accentDeep }]} activeOpacity={0.85}>
               <Text style={s.btnPrimaryTxt}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>

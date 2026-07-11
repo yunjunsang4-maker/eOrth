@@ -269,7 +269,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   if (saving) {
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
-        <ActivityIndicator color="#7B61FF" size="large" />
+        <ActivityIndicator color={skinAccent.accent} size="large" />
         <Text style={st.savingText}>{t('album.saving')}</Text>
       </LinearGradient>
     );
@@ -293,7 +293,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           {/* 선택된 국가 칩 */}
           {selectedCountry && (
             <View style={st.selectedChipsWrap}>
-              <View style={st.countryChip}>
+              <View style={[st.countryChip, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]}>
                 <Text style={st.countryChipText}>{selectedCountry.flag} {selectedCountry.name}</Text>
                 <TouchableOpacity
                   onPress={() => setSelectedCountry(null)}
@@ -363,14 +363,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           )}
 
           <Text style={[st.fieldLabel, { marginTop: 20 }]}>{t('album.period')}</Text>
-          <TouchableOpacity style={st.dateBtn} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
+          <TouchableOpacity style={[st.dateBtn, { borderColor: skinAccent.tint(0.4), backgroundColor: skinAccent.tint(0.08) }]} onPress={() => setCalendarVisible(true)} activeOpacity={0.85}>
             <Text style={st.dateTxt}>{fmtDate(startDate)}</Text>
             <Text style={[st.dateArrow, { color: skinAccent.accent }]}>→</Text>
             <Text style={st.dateTxt}>{fmtDate(endDate)}</Text>
           </TouchableOpacity>
 
           <TouchableOpacity style={st.loadBtn} onPress={startLoad} disabled={loading} activeOpacity={0.85}>
-            <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.loadGrad}>
+            <LinearGradient colors={skinAccent.btnGradient} style={st.loadGrad}>
               {loading
                 ? <ActivityIndicator color="#FFFFFF" size="small" />
                 : <Text style={st.loadTxt}>{t('album.loadPhotos')}</Text>}
@@ -418,7 +418,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         <View style={st.dayBar}>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.dayRow}>
             <TouchableOpacity
-              style={[st.dayChip, dayFilter === null && st.dayChipOn]}
+              style={[st.dayChip, dayFilter === null && [st.dayChipOn, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]]}
               onPress={() => setDayFilter(null)}
               activeOpacity={0.8}
             >
@@ -429,7 +429,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               return (
                 <TouchableOpacity
                   key={d}
-                  style={[st.dayChip, on && st.dayChipOn]}
+                  style={[st.dayChip, on && [st.dayChipOn, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.18) }]]}
                   onPress={() => setDayFilter(d)}
                   activeOpacity={0.8}
                 >
@@ -457,13 +457,13 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           onEndReached={loadMore}
           onEndReachedThreshold={0.6}
-          ListFooterComponent={loadingMore ? <ActivityIndicator color="#7B61FF" style={{ marginTop: 16 }} /> : null}
+          ListFooterComponent={loadingMore ? <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 16 }} /> : null}
           renderItem={({ item }) => {
             const on = selected.includes(item.uri);
             return (
               <TouchableOpacity activeOpacity={0.8} onPress={() => toggle(item.uri)} style={{ width: CELL, height: CELL }}>
                 <Image source={{ uri: item.uri }} style={st.cell} />
-                <View style={[st.check, on && st.checkOn]}>{on && <Text style={st.checkTxt}>✓</Text>}</View>
+                <View style={[st.check, on && [st.checkOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>{on && <Text style={st.checkTxt}>✓</Text>}</View>
               </TouchableOpacity>
             );
           }}
@@ -477,7 +477,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           disabled={selected.length === 0}
           activeOpacity={0.85}
         >
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.nextGrad}>
+          <LinearGradient colors={skinAccent.btnGradient} style={st.nextGrad}>
             <Text style={st.nextTxt}>
               {selected.length === 0 ? t('album.selectAtLeastOne') : t('album.createWithN', { count: selected.length })}
             </Text>
@@ -535,7 +535,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                     }}
                     activeOpacity={0.85}
                   >
-                    <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
+                    <Image source={{ uri }} style={[st.pvThumb, on && [st.pvThumbOn, { borderColor: skinAccent.accent }]]} />
                     {on && (
                       <View style={st.pvThumbAdjustBadge}>
                         <Text style={st.pvThumbAdjustTxt}>{t('album.adjust')}</Text>
@@ -551,7 +551,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 <Text style={st.pvBackTxt}>{t('album.reselect')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={st.pvOkBtn} onPress={save} activeOpacity={0.85}>
-                <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.pvOkGrad}>
+                <LinearGradient colors={skinAccent.btnGradient} style={st.pvOkGrad}>
                   <Text style={st.pvOkTxt}>{t('album.createNow')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
