@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,13 @@ import {
   TouchableOpacity,
   Modal,
   Dimensions,
+  Animated,
+  PanResponder,
+  LayoutAnimation,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import PhotoViewerModal from './PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
-import { DraggablePhotoGrid } from './record/DraggableLists';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
@@ -29,15 +31,12 @@ interface Props {
   onAlbumSetCover?: (index: number) => void; // 뷰어에서 커버(여행카드 썸네일)로 지정
   onAlbumAddSection?: () => void;
   onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
-  // 순서 편집 모드 — 'flat'(평면 전체) 또는 섹션 인덱스. null이면 일반 모드
-  albumReordering?: number | 'flat' | null;
   // 다중 선택 모드 — 탭이 선택 토글로 바뀌고 체크 오버레이 표시
   albumSelecting?: boolean;
   albumSelected?: number[];
   onAlbumToggleSelect?: (globalIndex: number) => void;
-  onAlbumStartReorder?: (section: number | 'flat') => void;
+  // 순서 변경 — 사진 꾹 누르기 제자리 드래그(프로필 카드와 동일 UX)의 결과 콜백
   onAlbumReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
-  onAlbumReorderDone?: () => void;
   onAlbumRemoveAt?: (globalIndex: number) => void;
   onAlbumDragStateChange?: (dragging: boolean) => void;
 }
@@ -159,10 +158,102 @@ function BlogView({ record }: { record: TravelRecord }) {
 // 3. Album
 // ─────────────────────────────────────────────
 const ALBUM_CELL = (SCREEN_W - 4) / 3;
-// 순서 편집 그리드(DraggablePhotoGrid, GAP 8·좌우 16 패딩)용 타일 크기
-const REORDER_THUMB = (SCREEN_W - 32 - 16) / 3;
+// 그리드 셀 피치 — albumGrid gap(2) 포함. 드래그 목적지 슬롯 계산용
+const ALBUM_PITCH = ALBUM_CELL + 2;
 
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, reordering, selecting, selected, onToggleSelect, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
+// 사진 타일 드래그 래퍼 — 프로필 여행카드(DraggableCardWrapper)와 동일한 제스처:
+// 꾹(400ms) 누르면 그 자리에서 들어올려 손가락을 따라가고, 놓으면 대상 슬롯에 끼워진다.
+// 짧은 탭은 onPress(뷰어/선택 토글), 10px 이상 움직이면 스크롤로 판단해 드래그를 취소한다.
+function DraggableAlbumTile({
+  localIdx, globalIdx, section, active, hovered, dragOffset, dragScale, draggable,
+  onDragStart, onDragMove, onDragEnd, onPress, children,
+}: {
+  localIdx: number;
+  globalIdx: number;
+  section: number | 'flat';
+  active: boolean;
+  hovered: boolean;
+  dragOffset: Animated.ValueXY;
+  dragScale: Animated.Value;
+  draggable: boolean;
+  onDragStart: (section: number | 'flat', local: number) => void;
+  onDragMove: (local: number, dx: number, dy: number) => void;
+  onDragEnd: (local: number, dx: number, dy: number) => void;
+  onPress: (globalIdx: number) => void;
+  children: React.ReactNode;
+}) {
+  const isDraggingRef = useRef(false);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  // 최신 idx·콜백 참조 — PanResponder는 첫 렌더에 한 번만 생성되므로 직접 캡처하면 옛 값이 박제된다
+  const cbRef = useRef({ localIdx, globalIdx, section, draggable, onDragStart, onDragMove, onDragEnd, onPress });
+  cbRef.current = { localIdx, globalIdx, section, draggable, onDragStart, onDragMove, onDragEnd, onPress };
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: () => isDraggingRef.current,
+      onPanResponderGrant: () => {
+        isDraggingRef.current = false;
+        if (timerRef.current) clearTimeout(timerRef.current);
+        if (!cbRef.current.draggable) return;
+        timerRef.current = setTimeout(() => {
+          isDraggingRef.current = true;
+          cbRef.current.onDragStart(cbRef.current.section, cbRef.current.localIdx);
+        }, 400);
+      },
+      onPanResponderMove: (_evt, g) => {
+        if (isDraggingRef.current) {
+          cbRef.current.onDragMove(cbRef.current.localIdx, g.dx, g.dy);
+        } else if (Math.abs(g.dx) > 10 || Math.abs(g.dy) > 10) {
+          if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        }
+      },
+      onPanResponderRelease: (_evt, g) => {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        if (isDraggingRef.current) {
+          isDraggingRef.current = false;
+          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy);
+        } else {
+          cbRef.current.onPress(cbRef.current.globalIdx);
+        }
+      },
+      onPanResponderTerminate: (_evt, g) => {
+        if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+        if (isDraggingRef.current) {
+          isDraggingRef.current = false;
+          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy);
+        }
+      },
+      onPanResponderTerminationRequest: () => !isDraggingRef.current,
+    })
+  ).current;
+
+  // 드래그 중인 사진이 이 타일 위에 올라오면 살짝 움츠러들며 "여기로 들어간다" 신호
+  const hoverAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(hoverAnim, { toValue: hovered ? 1 : 0, useNativeDriver: false, friction: 7, tension: 130 }).start();
+  }, [hovered]);
+  const hoverScale = hoverAnim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.9] });
+
+  return (
+    <Animated.View
+      {...panResponder.panHandlers}
+      style={[
+        !active && { transform: [{ scale: hoverScale }] },
+        active && {
+          transform: [{ translateX: dragOffset.x }, { translateY: dragOffset.y }, { scale: dragScale }],
+          zIndex: 10,
+          elevation: 8,
+        },
+      ]}
+    >
+      {children}
+    </Animated.View>
+  );
+}
+
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, selecting, selected, onToggleSelect, onReorder, onRemoveAt, onDragStateChange }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
@@ -170,13 +261,10 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   onSetCover?: (index: number) => void;
   onAddSection?: () => void;
   onSectionMenu?: (sectionIndex: number) => void;
-  reordering?: number | 'flat' | null;
   selecting?: boolean;
   selected?: number[];
   onToggleSelect?: (globalIndex: number) => void;
-  onStartReorder?: (section: number | 'flat') => void;
   onReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
-  onReorderDone?: () => void;
   onRemoveAt?: (globalIndex: number) => void;
   onDragStateChange?: (dragging: boolean) => void;
 }) {
@@ -188,16 +276,95 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
     ? sectionSlices(record.albumSections, medias.length)
     : null;
 
-  // 사진 꾹 누르기 — 해당 구역(섹션/전체)의 순서 편집 모드로 바로 진입 (버튼 대신)
-  const photoTile = (uri: string, globalIdx: number, section: number | 'flat') => {
+  // ── 제자리 드래그 순서 변경 (프로필 여행카드와 동일 UX) ──
+  // 드래그는 사진이 속한 구역(섹션/전체) 안에서만 — 섹션 간 이동은 선택 모드의 '이동'으로 처리
+  const [dragCtx, setDragCtx] = useState<{ section: number | 'flat'; local: number; len: number } | null>(null);
+  const [hoverLocal, setHoverLocal] = useState<number | null>(null);
+  const hoverLocalRef = useRef<number | null>(null);
+  const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const dragScale = useRef(new Animated.Value(1)).current;
+
+  const slotPos = (local: number) => ({ x: (local % 3) * ALBUM_PITCH, y: Math.floor(local / 3) * ALBUM_PITCH });
+  // 드래그 중인 타일 중심이 올라가 있는 슬롯 (구역 안으로 클램프)
+  const findTargetLocal = (local: number, dx: number, dy: number, len: number) => {
+    const start = slotPos(local);
+    const cx = start.x + ALBUM_CELL / 2 + dx;
+    const cy = start.y + ALBUM_CELL / 2 + dy;
+    const col = Math.max(0, Math.min(2, Math.floor(cx / ALBUM_PITCH)));
+    const row = Math.max(0, Math.min(Math.ceil(len / 3) - 1, Math.floor(cy / ALBUM_PITCH)));
+    return Math.min(row * 3 + col, len - 1);
+  };
+
+  const settle = (onDone?: () => void) => {
+    Animated.parallel([
+      Animated.spring(dragOffset, { toValue: { x: 0, y: 0 }, useNativeDriver: false, friction: 7, tension: 65 }),
+      Animated.spring(dragScale, { toValue: 1, useNativeDriver: false, friction: 7, tension: 65 }),
+    ]).start(({ finished }) => { if (finished) onDone?.(); });
+  };
+
+  const handleTileDragStart = (section: number | 'flat', local: number) => {
+    const len = section === 'flat' ? medias.length : (slices?.[section]?.count ?? 0);
+    dragOffset.stopAnimation();
+    dragScale.stopAnimation();
+    hoverLocalRef.current = null;
+    setHoverLocal(null);
+    dragOffset.setValue({ x: 0, y: 0 });
+    setDragCtx({ section, local, len });
+    // 톡 튀지 않고 부드럽게 떠오르도록 스케일 스프링
+    Animated.spring(dragScale, { toValue: 1.08, useNativeDriver: false, friction: 6, tension: 140 }).start();
+    onDragStateChange?.(true); // 드래그 동안 화면 스크롤 잠금
+  };
+
+  const handleTileDragMove = (local: number, dx: number, dy: number) => {
+    if (!dragCtx) return;
+    dragOffset.setValue({ x: dx, y: dy });
+    const target = findTargetLocal(local, dx, dy, dragCtx.len);
+    const hv = target !== local ? target : null;
+    if (hoverLocalRef.current !== hv) { hoverLocalRef.current = hv; setHoverLocal(hv); }
+  };
+
+  const handleTileDragEnd = (local: number, dx: number, dy: number) => {
+    onDragStateChange?.(false);
+    hoverLocalRef.current = null;
+    setHoverLocal(null);
+    if (!dragCtx) return;
+    const target = findTargetLocal(local, dx, dy, dragCtx.len);
+    if (target !== local) {
+      // 이웃은 LayoutAnimation으로 새 자리까지 이동, 끌던 사진은 손가락 위치 → 새 슬롯으로 스프링 정착
+      const from = slotPos(local);
+      const to = slotPos(target);
+      dragOffset.setValue({ x: from.x + dx - to.x, y: from.y + dy - to.y });
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      onReorder?.(dragCtx.section, local, target);
+      setDragCtx({ ...dragCtx, local: target });
+      settle(() => setDragCtx(null));
+    } else {
+      settle(() => setDragCtx(null));
+    }
+  };
+
+  // 사진 타일 — 탭: 뷰어/선택 토글, 꾹: 그 자리에서 들어올려 드래그로 순서 변경
+  const photoTile = (uri: string, globalIdx: number, section: number | 'flat', localIdx: number, sectionLen: number) => {
     const isSel = selecting && (selected ?? []).includes(globalIdx);
+    const active = !!dragCtx && dragCtx.section === section && dragCtx.local === localIdx;
+    const hovered = !!dragCtx && dragCtx.section === section && hoverLocal === localIdx && dragCtx.local !== localIdx;
     return (
-      <TouchableOpacity
-        key={`${uri}-${globalIdx}`}
-        onPress={() => (selecting ? onToggleSelect?.(globalIdx) : setLightboxIdx(globalIdx))}
-        onLongPress={!selecting && editable && onStartReorder ? () => onStartReorder(section) : undefined}
-        delayLongPress={350}
-        activeOpacity={0.85}
+      <DraggableAlbumTile
+        // key는 순서와 무관한 uri — 재정렬 시 리마운트 대신 LayoutAnimation으로 이웃이 밀려나게 한다
+        // (uri는 가져오기 시 파일 복사로 고유해 중복 위험이 낮다)
+        key={uri}
+        localIdx={localIdx}
+        globalIdx={globalIdx}
+        section={section}
+        active={active}
+        hovered={hovered}
+        dragOffset={dragOffset}
+        dragScale={dragScale}
+        draggable={!!editable && !selecting && !!onReorder && sectionLen > 1}
+        onDragStart={handleTileDragStart}
+        onDragMove={handleTileDragMove}
+        onDragEnd={handleTileDragEnd}
+        onPress={(gi) => (selecting ? onToggleSelect?.(gi) : setLightboxIdx(gi))}
       >
         <Image
           source={{ uri }}
@@ -211,7 +378,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
             </View>
           </View>
         )}
-      </TouchableOpacity>
+      </DraggableAlbumTile>
     );
   };
 
@@ -238,47 +405,26 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
                 <Text style={styles.albumSectionTitle}>{sec.title}</Text>
                 <Text style={styles.albumSectionCount}>{sec.count}</Text>
                 <View style={{ flex: 1 }} />
-                {reordering === si ? (
-                  <TouchableOpacity style={[styles.albumSectionBtn, styles.albumReorderDoneBtn]} onPress={onReorderDone} accessibilityRole="button">
-                    <Text style={styles.albumReorderDoneTxt}>{t('comp.albumReorderDone')}</Text>
+                {editable && onAddPhotos && !selecting && (
+                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                    <Text style={styles.albumSectionBtnTxt}>＋</Text>
                   </TouchableOpacity>
-                ) : (
-                  <>
-                    {editable && onAddPhotos && reordering == null && !selecting && (
-                      <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onAddPhotos(si)} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-                        <Text style={styles.albumSectionBtnTxt}>＋</Text>
-                      </TouchableOpacity>
-                    )}
-                    {editable && onSectionMenu && reordering == null && !selecting && (
-                      <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
-                        <Text style={styles.albumSectionBtnTxt}>⋯</Text>
-                      </TouchableOpacity>
-                    )}
-                  </>
+                )}
+                {editable && onSectionMenu && !selecting && (
+                  <TouchableOpacity style={styles.albumSectionBtn} onPress={() => onSectionMenu(si)} accessibilityRole="button">
+                    <Text style={styles.albumSectionBtnTxt}>⋯</Text>
+                  </TouchableOpacity>
                 )}
               </View>
-              {reordering === si ? (
-                /* 순서 편집 — 길게 눌러 드래그로 재배치, × 는 삭제 */
-                <View style={styles.albumReorderWrap}>
-                  <DraggablePhotoGrid
-                    medias={medias.slice(sec.start, sec.end)}
-                    onReorder={(from, to) => onReorder?.(si, from, to)}
-                    onRemove={(i) => onRemoveAt?.(sec.start + i)}
-                    onDragStateChange={onDragStateChange}
-                    THUMB_SIZE={REORDER_THUMB}
-                  />
-                </View>
-              ) : (
-                <View style={styles.albumGrid}>
-                  {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i, si))}
-                  {sec.count === 0 && (
-                    <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
-                  )}
-                </View>
-              )}
+              <View style={styles.albumGrid}>
+                {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i, si, i, sec.count))}
+                {sec.count === 0 && (
+                  <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
+                )}
+              </View>
             </View>
           ))}
-          {editable && onAddSection && reordering == null && !selecting && (
+          {editable && onAddSection && !selecting && (
             <TouchableOpacity style={styles.albumSectionAdd} onPress={onAddSection} activeOpacity={0.8}>
               <Text style={styles.albumSectionAddTxt}>＋ {t('comp.albumAddSection')}</Text>
             </TouchableOpacity>
@@ -287,54 +433,35 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
       ) : (
         /* ── 평면 그리드 ── */
         <>
-          {reordering === 'flat' ? (
-            <>
-              <View style={styles.albumReorderWrap}>
-                <DraggablePhotoGrid
-                  medias={medias}
-                  onReorder={(from, to) => onReorder?.('flat', from, to)}
-                  onRemove={(i) => onRemoveAt?.(i)}
-                  onDragStateChange={onDragStateChange}
-                  THUMB_SIZE={REORDER_THUMB}
-                />
-              </View>
-              <TouchableOpacity style={[styles.albumSectionAdd, styles.albumReorderDoneWide]} onPress={onReorderDone} activeOpacity={0.8}>
-                <Text style={styles.albumReorderDoneTxt}>{t('comp.albumReorderDone')}</Text>
+          <View style={styles.albumGrid}>
+            {medias.map((uri, i) => photoTile(uri, i, 'flat', i, medias.length))}
+            {editable && onAddPhotos && !selecting && (
+              <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
+                <Text style={styles.albumAddPlus}>＋</Text>
+                <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
               </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View style={styles.albumGrid}>
-                {medias.map((uri, i) => photoTile(uri, i, 'flat'))}
-                {editable && onAddPhotos && !selecting && (
-                  <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
-                    <Text style={styles.albumAddPlus}>＋</Text>
-                    <Text style={styles.albumAddLabel}>{t('comp.albumAddPhotos')}</Text>
-                  </TouchableOpacity>
-                )}
-                {medias.length === 0 && !editable && (
-                  <View style={styles.albumEmpty}>
-                    <CameraIcon size={48} color="#A1A1B0" />
-                    <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
-                  </View>
-                )}
+            )}
+            {medias.length === 0 && !editable && (
+              <View style={styles.albumEmpty}>
+                <CameraIcon size={48} color="#A1A1B0" />
+                <Text style={styles.albumEmptyText}>{t('comp.noPhotos')}</Text>
               </View>
-              {editable && medias.length > 0 && !selecting && (
-                <View style={styles.albumFooterRow}>
-                  {onAddSection && (
-                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onAddSection} activeOpacity={0.8}>
-                      <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
-                    </TouchableOpacity>
-                  )}
-                  {/* 순서 변경은 사진을 꾹 눌러 진입 — 버튼 자리는 다중 선택(이동/삭제) 진입으로 대체 */}
-                  {onStartSelect && (
-                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onStartSelect} activeOpacity={0.8}>
-                      <Text style={styles.albumSectionAddTxt}>✓ {t('trip.albumSelect')}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+            )}
+          </View>
+          {editable && medias.length > 0 && !selecting && (
+            <View style={styles.albumFooterRow}>
+              {onAddSection && (
+                <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onAddSection} activeOpacity={0.8}>
+                  <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
+                </TouchableOpacity>
               )}
-            </>
+              {/* 순서 변경은 사진을 꾹 눌러 드래그 — 버튼 자리는 다중 선택(이동/삭제) 진입으로 대체 */}
+              {onStartSelect && (
+                <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onStartSelect} activeOpacity={0.8}>
+                  <Text style={styles.albumSectionAddTxt}>✓ {t('trip.albumSelect')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </>
       )}
@@ -476,7 +603,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumReordering, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumReorder, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -490,13 +617,10 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           onSetCover={onAlbumSetCover}
           onAddSection={onAlbumAddSection}
           onSectionMenu={onAlbumSectionMenu}
-          reordering={albumReordering}
           selecting={albumSelecting}
           selected={albumSelected}
           onToggleSelect={onAlbumToggleSelect}
-          onStartReorder={onAlbumStartReorder}
           onReorder={onAlbumReorder}
-          onReorderDone={onAlbumReorderDone}
           onRemoveAt={onAlbumRemoveAt}
           onDragStateChange={onAlbumDragStateChange}
         />

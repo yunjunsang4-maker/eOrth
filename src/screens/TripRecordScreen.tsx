@@ -169,8 +169,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     ]);
   };
 
-  // ── 사진 순서 편집 모드 ('flat' = 평면 전체, number = 해당 섹션) ──
-  const [reordering, setReordering] = useState<number | 'flat' | null>(null);
+  // ── 사진 순서 변경 (제자리 드래그 — 프로필 카드와 동일 UX, 렌더러에서 처리) ──
   const [scrollEnabled, setScrollEnabled] = useState(true); // 드래그 중 스크롤 잠금
   const handleReorder = (section: number | 'flat', fromIdx: number, toIdx: number) => {
     const start = section === 'flat' || !sections
@@ -303,13 +302,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumSetCover={handleSetCover}
             onAlbumAddSection={openAddSection}
             onAlbumSectionMenu={handleSectionMenu}
-            albumReordering={reordering}
             albumSelecting={selecting}
             albumSelected={selected}
             onAlbumToggleSelect={toggleSelect}
-            onAlbumStartReorder={setReordering}
             onAlbumReorder={handleReorder}
-            onAlbumReorderDone={() => setReordering(null)}
             onAlbumRemoveAt={handleReorderRemove}
             onAlbumDragStateChange={(d) => setScrollEnabled(!d)}
           />
@@ -318,8 +314,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           {isAlbum ? (
             <>
               <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
-              {/* 순서변경 진입 안내 — 버튼이 없어져 발견이 어려운 꾹 누르기 제스처를 알려준다 */}
-              {(record.medias?.length ?? 0) > 1 && !selecting && reordering == null && (
+              {/* 순서변경 안내 — 버튼이 없어 발견이 어려운 꾹 누르기 드래그 제스처를 알려준다 */}
+              {(record.medias?.length ?? 0) > 1 && !selecting && (
                 <Text style={styles.albumHint}>{t('trip.albumReorderHint')}</Text>
               )}
             </>

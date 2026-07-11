@@ -1464,7 +1464,7 @@ const ko = {
     albumMoveDown: '아래로 이동',
     albumSelect: '선택',
     albumSelectedN: '{{count}}장 선택됨',
-    albumReorderHint: '사진을 길게 누르면 순서를 바꿀 수 있어요',
+    albumReorderHint: '사진을 길게 눌러 끌면 순서를 바꿀 수 있어요',
     albumSelectAll: '전체 선택',
     albumDeselectAll: '전체 해제',
     albumCoverSet: '커버로 지정했어요',

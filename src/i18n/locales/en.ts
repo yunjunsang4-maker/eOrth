@@ -1463,7 +1463,7 @@ const en = {
     albumMoveDown: 'Move down',
     albumSelect: 'Select',
     albumSelectedN: '{{count}} selected',
-    albumReorderHint: 'Long-press a photo to reorder',
+    albumReorderHint: 'Long-press and drag a photo to reorder',
     albumSelectAll: 'Select all',
     albumDeselectAll: 'Deselect all',
     albumCoverSet: 'Set as cover',
