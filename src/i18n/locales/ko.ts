@@ -520,7 +520,7 @@ const ko = {
     activeColorA11y: '활성화 색 변경',
     regionSearchPlaceholder: '구체적인 지역을 검색해주세요',
     clearSearchA11y: '검색어 지우기',
-    popularSpots: '인기명소 모아보기 👀',
+    popularSpots: '인기 지역 모아보기 👀',
     backToCountryA11y: '국가 선택으로 돌아가기',
     territoryDisplayA11y: '영토 표시 설정',
     selectCountry: '국가를 선택하세요',
