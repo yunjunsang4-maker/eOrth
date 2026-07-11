@@ -25,7 +25,7 @@ import { useSettings } from '../store/settingsStore';
 import {
   sectionSlices, addPhotosToSection,
   deleteSection, newSectionId, normalizeSections, reorderWithinRange,
-  moveSection, removePhotosAt, movePhotosToSection,
+  moveSection, removePhotosAt, movePhotosToSection, groupUrisByDay,
 } from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -93,10 +93,22 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         quality: 0.8,
       });
       if (res.canceled || !res.assets?.length) return;
-      const uris = res.assets.map((a) => a.uri).slice(0, albumMax - medias.length);
+      // 이미 담긴 사진(assetId 기준) 제외 — 복사본 uri는 매번 달라 uri 비교로는 못 잡는다
+      const existingIds = new Set(Object.values(record.mediaAssetIds ?? {}));
+      const fresh = res.assets.filter((a) => !a.assetId || !existingIds.has(a.assetId));
+      const dupCount = res.assets.length - fresh.length;
+      if (fresh.length === 0) {
+        Alert.alert(t('album.noticeTitle'), t('trip.albumDupAll'));
+        return;
+      }
+      const picked = fresh.slice(0, albumMax - medias.length);
+      const uris = picked.map((a) => a.uri);
+      // 새로 담는 사진의 assetId를 함께 기록 — 다음 추가 때 중복 대조용
+      const nextAssetIds = { ...(record.mediaAssetIds ?? {}) };
+      picked.forEach((a) => { if (a.assetId) nextAssetIds[a.uri] = a.assetId; });
       if (sections && sectionIndex != null) {
         const next = addPhotosToSection(medias, sections, sectionIndex, uris);
-        updateRecord(record.id, { medias: next.medias, albumSections: next.sections, representativePhoto: record.representativePhoto ?? next.medias[0] });
+        updateRecord(record.id, { medias: next.medias, albumSections: next.sections, representativePhoto: record.representativePhoto ?? next.medias[0], mediaAssetIds: nextAssetIds });
       } else {
         const nextMedias = [...medias, ...uris];
         updateRecord(record.id, {
@@ -104,7 +116,11 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           // 섹션 사용 중이면 평면 추가는 마지막 섹션으로 흡수(normalize 규칙과 일치)
           albumSections: sections ? normalizeSections(sections, nextMedias.length) : record.albumSections,
           representativePhoto: record.representativePhoto ?? nextMedias[0],
+          mediaAssetIds: nextAssetIds,
         });
+      }
+      if (dupCount > 0) {
+        Alert.alert(t('album.noticeTitle'), t('trip.albumDupSkipped', { count: dupCount }));
       }
     } catch {
       /* 픽커 취소/실패 — 무시 */
@@ -151,6 +167,35 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   // 다중 선택 모드 진입 — 사진 꾹 누르기는 순서 편집에 배정돼, 이동/삭제는 선택 모드(액션 바)로 처리
   const startSelecting = () => { setSelecting(true); setSelected([]); };
+
+  // 일자별로 다시 구성 — 생성 시 저장한 촬영시각(mediaTimes)으로 섹션을 재생성.
+  // 나중에 추가한 사진 등 시각 미상은 '기타'로 모인다.
+  const handleRegroupByDay = () => {
+    const times = record.mediaTimes ?? {};
+    const pairs = medias.map((uri) => ({ uri, time: times[uri] }));
+    const groups = groupUrisByDay(pairs);
+    if (groups.filter((g) => g.key !== null).length < 2) {
+      Alert.alert(t('album.noticeTitle'), t('trip.albumRegroupNoDates'));
+      return;
+    }
+    Alert.alert(t('trip.albumRegroupTitle'), t('trip.albumRegroupMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('common.confirm'),
+        onPress: () => {
+          let dayN = 0;
+          updateRecord(record.id, {
+            medias: groups.flatMap((g) => g.uris),
+            albumSections: groups.map((g) => ({
+              id: newSectionId(),
+              title: g.key ? t('comp.sectionDayN', { n: ++dayN }) : t('comp.sectionEtc'),
+              count: g.uris.length,
+            })),
+          });
+        },
+      },
+    ]);
+  };
 
   // 뷰어에서 커버(대표 사진) 지정 — 이 앨범을 커버로 쓰는 여행카드 썸네일(크롭 오버라이드 포함)도 동기화
   const handleSetCover = (index: number) => {
@@ -222,6 +267,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       .catch(() => {});
   }, []);
 
+  const markReorderHintSeen = () => {
+    if (!reorderHintSeen) {
+      setReorderHintSeen(true);
+      AsyncStorage.setItem(ALBUM_HINT_KEY, '1').catch(() => {});
+    }
+  };
+
   const handleReorder = (section: number | 'flat', fromIdx: number, toIdx: number) => {
     const start = section === 'flat' || !sections
       ? 0
@@ -229,11 +281,24 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     const next = reorderWithinRange(medias, start, fromIdx, toIdx);
     if (next !== medias) {
       updateRecord(record.id, { medias: next });
-      if (!reorderHintSeen) {
-        setReorderHintSeen(true);
-        AsyncStorage.setItem(ALBUM_HINT_KEY, '1').catch(() => {});
-      }
+      markReorderHintSeen();
     }
+  };
+
+  // 드래그로 다른 섹션 그리드에 놓기 — 대상 섹션 끝에 붙인 뒤 놓은 슬롯으로 섹션 내 재배치
+  const handleMoveAcross = (fromSec: number, fromLocal: number, toSec: number, toLocal: number) => {
+    if (!sections) return;
+    const slicesNow = sectionSlices(sections, medias.length);
+    const globalFrom = (slicesNow[fromSec]?.start ?? 0) + fromLocal;
+    const moved = movePhotosToSection(medias, sections, [globalFrom], toSec);
+    const newSlices = sectionSlices(moved.sections, moved.medias.length);
+    const start = newSlices[toSec]?.start ?? 0;
+    const len = newSlices[toSec]?.count ?? 0;
+    const finalMedias = len > 1
+      ? reorderWithinRange(moved.medias, start, len - 1, Math.min(toLocal, len - 1))
+      : moved.medias;
+    updateRecord(record.id, { medias: finalMedias, albumSections: moved.sections });
+    markReorderHintSeen();
   };
   const handleReorderRemove = (globalIndex: number) => {
     Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
@@ -372,6 +437,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             albumSelected={selected}
             onAlbumToggleSelect={toggleSelect}
             onAlbumReorder={handleReorder}
+            onAlbumMoveAcross={handleMoveAcross}
             onAlbumRemoveAt={handleReorderRemove}
             onAlbumDragStateChange={handleAlbumDragState}
             onAlbumDragPosition={(y) => { dragPageYRef.current = y; }}
@@ -562,6 +628,14 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
                 }}
               >
                 <Text style={styles.menuItemText}>{t('trip.albumRenameAlbum')}</Text>
+              </TouchableOpacity>
+            )}
+            {isAlbum && (record.medias?.length ?? 0) > 1 && (
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setMenuVisible(false); handleRegroupByDay(); }}
+              >
+                <Text style={styles.menuItemText}>{t('trip.albumRegroupTitle')}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity style={styles.menuItem} onPress={handleDelete}>

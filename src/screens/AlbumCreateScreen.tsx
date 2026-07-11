@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
@@ -21,6 +21,9 @@ import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
 import { SearchIcon } from '../components/icons';
 import { collectRecordedDateKeys } from '../utils/recordedDates';
+import PhotoViewerModal from '../components/PhotoViewerModal';
+import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
+import { KO_TO_EN } from './MainScreen';
 
 // 사진첩 한 권당 최대 장수 (import 흐름과 동일한 프리미엄 seam)
 export const MAX_ALBUM_PHOTOS = 30;
@@ -95,6 +98,22 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   // 선택
   const [selected, setSelected] = useState<string[]>([]);
   const [dayFilter, setDayFilter] = useState<string | null>(null);
+
+  // 꾹 눌러 크게 미리보기 — 셀이 작아 비슷한 사진 구분이 어려운 문제 보완
+  const [previewIdx, setPreviewIdx] = useState<number | null>(null);
+
+  // ── "이 국가에서 찍은 사진만" GPS 필터 ──
+  // 세계 GeoJSON 오프라인 판정 — GPS 없는 사진(판정 null)은 항상 표시해 놓치지 않게 한다
+  const countryFeature = useMemo(() => {
+    if (!selectedCountry) return null;
+    const en = selectedCountry.name === '대한민국' ? 'South Korea' : KO_TO_EN[selectedCountry.name];
+    return en ? getCountryFeature(en) : null;
+  }, [selectedCountry]);
+  const [gpsOnly, setGpsOnly] = useState(false);
+  const [geoProgress, setGeoProgress] = useState<{ done: number; total: number } | null>(null);
+  const locCacheRef = useRef<Map<string, boolean | null>>(new Map()); // assetId → 국가 안 여부(null=GPS 없음)
+  const geoScanToken = useRef(0);
+  useEffect(() => () => { geoScanToken.current++; }, []); // 언마운트 시 진행 중 스캔 중단
 
   // 미리보기(제목 + 썸네일)
   const [previewVisible, setPreviewVisible] = useState(false);
@@ -205,9 +224,40 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const days = Array.from(
     new Set(photos.map((p) => dayKey(p.creationTime)).filter((k): k is string => k !== null))
   ).sort();
-  const visiblePhotos = dayFilter
+  const byDay = dayFilter
     ? photos.filter((p) => dayKey(p.creationTime) === dayFilter)
     : photos;
+  // GPS 필터 — 국가 밖으로 '판정된' 사진만 제외 (미판정·GPS 없음은 표시)
+  const visiblePhotos = gpsOnly && countryFeature
+    ? byDay.filter((p) => (p.id ? locCacheRef.current.get(p.id) !== false : true))
+    : byDay;
+
+  // GPS 필터 켜짐/사진 추가 로드 시 — 아직 판정 안 된 사진의 위치를 순차 판정 (오프라인, 취소 가능)
+  useEffect(() => {
+    if (!gpsOnly || !countryFeature) return;
+    const targets = photos.filter((p) => p.id && !locCacheRef.current.has(p.id));
+    if (targets.length === 0) return;
+    const token = ++geoScanToken.current;
+    let cancelled = false;
+    (async () => {
+      setGeoProgress({ done: 0, total: targets.length });
+      for (let i = 0; i < targets.length; i++) {
+        if (geoScanToken.current !== token) { cancelled = true; break; }
+        const p = targets[i];
+        try {
+          const info = await MediaLibrary.getAssetInfoAsync(p.id!, { shouldDownloadFromNetwork: false });
+          const loc = (info as { location?: { latitude: number; longitude: number } }).location;
+          locCacheRef.current.set(p.id!, loc ? pointInCountry(countryFeature, loc.latitude, loc.longitude) : null);
+        } catch {
+          locCacheRef.current.set(p.id!, null); // 정보 조회 실패 → 제외하지 않음
+        }
+        if ((i + 1) % 10 === 0) setGeoProgress({ done: i + 1, total: targets.length });
+      }
+      if (!cancelled && geoScanToken.current === token) setGeoProgress(null);
+    })();
+    return () => { geoScanToken.current++; setGeoProgress(null); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gpsOnly, countryFeature, photos.length]);
 
   // 표시된 사진(현재 Day 필터 기준) 전체 선택/해제 — 상한 도달 시 담을 수 있는 만큼만 담고 안내
   const visibleAllSelected = visiblePhotos.length > 0 && visiblePhotos.every((p) => selected.includes(p.uri));
@@ -244,6 +294,16 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       ];
       const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items);
       if (copied.length === 0) throw new Error('copy failed');
+      // iCloud 오프로드 등으로 복사에 실패한 장수 — 조용히 빠지면 "사진이 왜 없지" 혼란이 생긴다
+      const failCount = items.length - copied.length;
+      // 복사본 uri → 원본 assetId/촬영시각 — 중복 추가 방지·'일자별로 다시 구성'에 쓴다
+      const mediaAssetIds: Record<string, string> = {};
+      const mediaTimes: Record<string, number> = {};
+      copied.forEach((uri, k) => {
+        const src = items[srcIndexes[k]] as AlbumPhoto | undefined;
+        if (src?.id) mediaAssetIds[uri] = src.id;
+        if (src?.creationTime) mediaTimes[uri] = src.creationTime;
+      });
       // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
       // 커버(0번) 복사가 실패했으면 copied[0]은 다른 사진이므로 크롭을 굽지 않는다.
       let repUri: string | undefined;
@@ -277,6 +337,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
         representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
         albumSections: autoSections,
+        mediaAssetIds,
+        mediaTimes,
       });
       if (tripGroupId) {
         // 여행 상세에서 진입 — 그 여행 카드에 사진첩을 연결(카드당 앨범 1개 정책)
@@ -285,6 +347,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         else if (!g) addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
       } else {
         addTripGroup({ title: albumTitle, records: [newRec.id], coverRecordId: newRec.id });
+      }
+      if (failCount > 0) {
+        Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
       }
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
@@ -448,6 +513,23 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             </TouchableOpacity>
           )}
         </View>
+        {/* 국가(GPS) 필터 — 여행 전후 일상 사진을 걸러낸다. GPS 없는 사진은 항상 표시 */}
+        {countryFeature && (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <TouchableOpacity
+              style={[st.gpsChip, gpsOnly && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.15) }]}
+              onPress={() => setGpsOnly((v) => !v)}
+              activeOpacity={0.75}
+            >
+              <Text style={[st.gpsChipTxt, gpsOnly && { color: skinAccent.accent }]}>
+                📍 {t('album.gpsOnly', { country: selectedCountry?.name })}
+              </Text>
+            </TouchableOpacity>
+            {geoProgress && (
+              <Text style={st.gpsProgress}>{t('album.gpsChecking', { done: geoProgress.done, total: geoProgress.total })}</Text>
+            )}
+          </View>
+        )}
         {isLimited && (
           <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>
         )}
@@ -498,10 +580,16 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           onEndReached={loadMore}
           onEndReachedThreshold={0.6}
           ListFooterComponent={loadingMore ? <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 16 }} /> : null}
-          renderItem={({ item }) => {
+          renderItem={({ item, index }) => {
             const on = selected.includes(item.uri);
             return (
-              <TouchableOpacity activeOpacity={0.8} onPress={() => toggle(item.uri)} style={{ width: CELL, height: CELL }}>
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => toggle(item.uri)}
+                onLongPress={() => setPreviewIdx(index)} // 꾹 눌러 크게 미리보기
+                delayLongPress={300}
+                style={{ width: CELL, height: CELL }}
+              >
                 <Image source={{ uri: item.uri }} style={st.cell} />
                 <View style={[st.check, on && [st.checkOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>{on && <Text style={st.checkTxt}>✓</Text>}</View>
               </TouchableOpacity>
@@ -524,6 +612,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           </LinearGradient>
         </TouchableOpacity>
       </View>
+
+      {/* 꾹 눌러 크게 미리보기 — 표시 중인 사진들을 스와이프로 넘겨볼 수 있다 */}
+      <PhotoViewerModal
+        visible={previewIdx !== null}
+        uris={visiblePhotos.map((p) => p.uri)}
+        initialIndex={previewIdx ?? 0}
+        onClose={() => setPreviewIdx(null)}
+      />
 
       {/* 기록 카드 미리보기 + 제목 입력 + 썸네일 선택 */}
       <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
@@ -632,6 +728,9 @@ const st = StyleSheet.create({
   sub: { color: '#A1A1B0', fontSize: 13, lineHeight: 19 },
   counter: { color: '#BF85FC', fontSize: 13, fontWeight: '700', marginTop: 6 },
   selectAllTxt: { fontSize: 13, fontWeight: '700', marginTop: 6, textDecorationLine: 'underline' },
+  gpsChip: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  gpsChipTxt: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
+  gpsProgress: { fontSize: 11, color: '#5A5A6E' },
   limitedTxt: { color: '#BF85FC', fontSize: 12, marginTop: 6 },
 
   /* 1단계: 기간 설정 */

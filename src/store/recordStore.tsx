@@ -84,6 +84,9 @@ export interface TravelRecord {
   medias?: string[];
   // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
   albumSections?: { id: string; title: string; count: number }[];
+  // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)
+  mediaAssetIds?: Record<string, string>; // media uri → 기기 사진 assetId (중복 추가 방지)
+  mediaTimes?: Record<string, number>;    // media uri → 촬영시각 ms ('일자별로 다시 구성'용)
   mediaPrivacy?: Record<number, string[]>;
   budget?: { amount: number; currency: string };
   weather?: string;
@@ -258,6 +261,8 @@ interface RecordContextType {
     title: string; medias: string[];
     representativePhoto?: string; // 카드 썸네일용 크롭본 (없으면 medias[0] 사용)
     albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
+    mediaAssetIds?: Record<string, string>;
+    mediaTimes?: Record<string, number>;
   }) => TravelRecord; // 생성된 record 반환 (저장 직후 상세 이동용)
   resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
   // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
@@ -1068,6 +1073,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     title: string; medias: string[];
     representativePhoto?: string;
     albumSections?: { id: string; title: string; count: number }[]; // 날짜별 자동 섹션 등
+    mediaAssetIds?: Record<string, string>;
+    mediaTimes?: Record<string, number>;
   }): TravelRecord => {
     const id = `rec-import-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const rec: TravelRecord = {
@@ -1088,6 +1095,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       medias: data.medias,
       representativePhoto: data.representativePhoto,
       albumSections: data.albumSections,
+      mediaAssetIds: data.mediaAssetIds,
+      mediaTimes: data.mediaTimes,
     };
     setRecords((prev) => [rec, ...prev]);
     publishToBackend(rec); // 가져온 앨범도 백엔드 발행(비공개면 본인만 보임)

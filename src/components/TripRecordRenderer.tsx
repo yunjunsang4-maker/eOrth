@@ -37,6 +37,8 @@ interface Props {
   onAlbumToggleSelect?: (globalIndex: number) => void;
   // 순서 변경 — 사진 꾹 누르기 제자리 드래그(프로필 카드와 동일 UX)의 결과 콜백
   onAlbumReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
+  // 드래그로 다른 섹션 그리드에 놓았을 때 (섹션 모드 전용)
+  onAlbumMoveAcross?: (fromSection: number, fromLocal: number, toSection: number, toLocal: number) => void;
   onAlbumRemoveAt?: (globalIndex: number) => void;
   onAlbumDragStateChange?: (dragging: boolean) => void;
   // 드래그 중 손가락의 화면 Y좌표 (가장자리 자동 스크롤용, 드래그 끝나면 null)
@@ -182,8 +184,8 @@ function DraggableAlbumTile({
   dragScrollAnim?: Animated.Value; // 자동 스크롤 보정 — 손가락이 그대로여도 콘텐츠가 밀린 만큼 따라간다
   draggable: boolean;
   onDragStart: (section: number | 'flat', local: number) => void;
-  onDragMove: (local: number, dx: number, dy: number, pageY: number) => void;
-  onDragEnd: (local: number, dx: number, dy: number) => void;
+  onDragMove: (local: number, dx: number, dy: number, pageX: number, pageY: number) => void;
+  onDragEnd: (local: number, dx: number, dy: number, pageX: number, pageY: number) => void;
   onPress: (globalIdx: number) => void;
   children: React.ReactNode;
 }) {
@@ -209,7 +211,7 @@ function DraggableAlbumTile({
       },
       onPanResponderMove: (_evt, g) => {
         if (isDraggingRef.current) {
-          cbRef.current.onDragMove(cbRef.current.localIdx, g.dx, g.dy, g.moveY);
+          cbRef.current.onDragMove(cbRef.current.localIdx, g.dx, g.dy, g.moveX, g.moveY);
         } else if (Math.abs(g.dx) > 10 || Math.abs(g.dy) > 10) {
           if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
         }
@@ -218,7 +220,7 @@ function DraggableAlbumTile({
         if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
-          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy);
+          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy, g.moveX, g.moveY);
         } else {
           cbRef.current.onPress(cbRef.current.globalIdx);
         }
@@ -227,7 +229,7 @@ function DraggableAlbumTile({
         if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
-          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy);
+          cbRef.current.onDragEnd(cbRef.current.localIdx, g.dx, g.dy, g.moveX, g.moveY);
         }
       },
       onPanResponderTerminationRequest: () => !isDraggingRef.current,
@@ -262,7 +264,7 @@ function DraggableAlbumTile({
   );
 }
 
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, selecting, selected, onToggleSelect, onReorder, onRemoveAt, onDragStateChange, onDragPosition, dragScroll }: {
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, selecting, selected, onToggleSelect, onReorder, onMoveAcross, onRemoveAt, onDragStateChange, onDragPosition, dragScroll }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
@@ -274,6 +276,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   selected?: number[];
   onToggleSelect?: (globalIndex: number) => void;
   onReorder?: (section: number | 'flat', fromIdx: number, toIdx: number) => void;
+  onMoveAcross?: (fromSection: number, fromLocal: number, toSection: number, toLocal: number) => void;
   onRemoveAt?: (globalIndex: number) => void;
   onDragStateChange?: (dragging: boolean) => void;
   onDragPosition?: (pageY: number | null) => void;
@@ -288,15 +291,19 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
     : null;
 
   // ── 제자리 드래그 순서 변경 (프로필 여행카드와 동일 UX) ──
-  // 드래그는 사진이 속한 구역(섹션/전체) 안에서만 — 섹션 간 이동은 선택 모드의 '이동'으로 처리
+  // 같은 구역 안에선 순서 변경, 섹션 모드에선 다른 섹션 그리드 위에 놓으면 그 섹션으로 이동
   const [dragCtx, setDragCtx] = useState<{ section: number | 'flat'; local: number; len: number } | null>(null);
-  const [hoverLocal, setHoverLocal] = useState<number | null>(null);
-  const hoverLocalRef = useRef<number | null>(null);
+  const [hoverSlot, setHoverSlot] = useState<{ section: number | 'flat'; local: number } | null>(null);
+  const hoverSlotRef = useRef<string | null>(null);
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragScale = useRef(new Animated.Value(1)).current;
+  // 섹션 그리드의 화면 좌표 — 드래그 시작 시점에 측정(윈도우 기준). 자동 스크롤 이동분은
+  // dragScroll.value를 손가락 y에 더해 시작 시점 좌표계로 환산해 비교한다.
+  const gridRefs = useRef<Record<string, View | null>>({});
+  const gridRectsRef = useRef<Record<string, { x: number; y: number; len: number }>>({});
 
   const slotPos = (local: number) => ({ x: (local % 3) * ALBUM_PITCH, y: Math.floor(local / 3) * ALBUM_PITCH });
-  // 드래그 중인 타일 중심이 올라가 있는 슬롯 (구역 안으로 클램프)
+  // 드래그 중인 타일 중심이 올라가 있는 슬롯 (같은 구역 안으로 클램프) — 그리드 측정 실패 시 폴백
   const findTargetLocal = (local: number, dx: number, dy: number, len: number) => {
     const start = slotPos(local);
     const cx = start.x + ALBUM_CELL / 2 + dx;
@@ -304,6 +311,21 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
     const col = Math.max(0, Math.min(2, Math.floor(cx / ALBUM_PITCH)));
     const row = Math.max(0, Math.min(Math.ceil(len / 3) - 1, Math.floor(cy / ALBUM_PITCH)));
     return Math.min(row * 3 + col, len - 1);
+  };
+
+  // 손가락 위치(드래그 시작 시점 윈도우 좌표계)가 올라가 있는 섹션 그리드와 슬롯.
+  // local === len(마지막 뒤)은 "끝에 추가" 의미로 허용한다. 어떤 그리드에도 없으면 null.
+  const findSlotAt = (pageX: number, pageYAdj: number): { section: number | 'flat'; local: number } | null => {
+    for (const key of Object.keys(gridRectsRef.current)) {
+      const r = gridRectsRef.current[key];
+      const rows = Math.max(1, Math.ceil(Math.max(r.len, 1) / 3));
+      if (pageX < r.x || pageX > r.x + 3 * ALBUM_PITCH) continue;
+      if (pageYAdj < r.y || pageYAdj > r.y + rows * ALBUM_PITCH) continue;
+      const col = Math.max(0, Math.min(2, Math.floor((pageX - r.x) / ALBUM_PITCH)));
+      const row = Math.max(0, Math.floor((pageYAdj - r.y) / ALBUM_PITCH));
+      return { section: key === 'flat' ? 'flat' : Number(key), local: Math.min(row * 3 + col, r.len) };
+    }
+    return null;
   };
 
   const settle = (onDone?: () => void) => {
@@ -317,44 +339,78 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
     const len = section === 'flat' ? medias.length : (slices?.[section]?.count ?? 0);
     dragOffset.stopAnimation();
     dragScale.stopAnimation();
-    hoverLocalRef.current = null;
-    setHoverLocal(null);
+    hoverSlotRef.current = null;
+    setHoverSlot(null);
     dragOffset.setValue({ x: 0, y: 0 });
     if (dragScroll) { dragScroll.value = 0; dragScroll.anim.setValue(0); } // 이전 드래그의 보정치 잔존 방지
+    // 모든 섹션 그리드의 시작 시점 화면 좌표 측정 — 섹션 간 이동 목적지 판정용
+    gridRectsRef.current = {};
+    const measure = (key: string, len2: number) => {
+      gridRefs.current[key]?.measureInWindow((x, y) => { gridRectsRef.current[key] = { x, y, len: len2 }; });
+    };
+    if (slices) slices.forEach((sec, si) => measure(String(si), sec.count));
+    else measure('flat', medias.length);
     setDragCtx({ section, local, len });
     // 톡 튀지 않고 부드럽게 떠오르도록 스케일 스프링
     Animated.spring(dragScale, { toValue: 1.08, useNativeDriver: false, friction: 6, tension: 140 }).start();
     onDragStateChange?.(true); // 드래그 동안 화면 스크롤 잠금
   };
 
-  const handleTileDragMove = (local: number, dx: number, dy: number, pageY: number) => {
+  // 현재 손가락 위치의 목적지 슬롯 — 섹션 간 이동 허용(onMoveAcross 있을 때), 실패 시 같은 구역 클램프
+  const resolveTarget = (local: number, dx: number, dy: number, pageX: number, pageY: number) => {
+    const delta = dragScroll?.value ?? 0;
+    if (!dragCtx) return null;
+    const hit = findSlotAt(pageX, pageY + delta);
+    if (hit && (hit.section === dragCtx.section || (onMoveAcross && hit.section !== 'flat' && dragCtx.section !== 'flat'))) {
+      // 같은 섹션에선 '끝에 추가'(local===len)를 마지막 슬롯으로 취급
+      if (hit.section === dragCtx.section) hit.local = Math.min(hit.local, dragCtx.len - 1);
+      return hit;
+    }
+    return { section: dragCtx.section, local: findTargetLocal(local, dx, dy + delta, dragCtx.len) };
+  };
+
+  const handleTileDragMove = (local: number, dx: number, dy: number, pageX: number, pageY: number) => {
     if (!dragCtx) return;
     dragOffset.setValue({ x: dx, y: dy });
     onDragPosition?.(pageY); // 가장자리 자동 스크롤 판단은 화면(스크롤 소유자)이 한다
-    // 자동 스크롤로 콘텐츠가 밀린 만큼 더해야 그리드 좌표계 기준의 실제 이동량이 된다
-    const target = findTargetLocal(local, dx, dy + (dragScroll?.value ?? 0), dragCtx.len);
-    const hv = target !== local ? target : null;
-    if (hoverLocalRef.current !== hv) { hoverLocalRef.current = hv; setHoverLocal(hv); }
+    const target = resolveTarget(local, dx, dy, pageX, pageY);
+    const isSame = !target || (target.section === dragCtx.section && target.local === local);
+    const hv = isSame ? null : target;
+    const hvKey = hv ? `${hv.section}|${hv.local}` : null;
+    if (hoverSlotRef.current !== hvKey) { hoverSlotRef.current = hvKey; setHoverSlot(hv); }
   };
 
-  const handleTileDragEnd = (local: number, dx: number, dy: number) => {
+  const handleTileDragEnd = (local: number, dx: number, dy: number, pageX: number, pageY: number) => {
     onDragStateChange?.(false);
     onDragPosition?.(null);
-    hoverLocalRef.current = null;
-    setHoverLocal(null);
+    hoverSlotRef.current = null;
+    setHoverSlot(null);
     if (!dragCtx) return;
+    const target = resolveTarget(local, dx, dy, pageX, pageY);
     // 스크롤 보정을 오프셋에 합치고 보정치는 리셋 — 이후 정착 스프링은 순수 오프셋만 다룬다
     const dyTotal = dy + (dragScroll?.value ?? 0);
     if (dragScroll) { dragScroll.value = 0; dragScroll.anim.setValue(0); }
-    const target = findTargetLocal(local, dx, dyTotal, dragCtx.len);
-    if (target !== local) {
+    if (target && target.section !== dragCtx.section && typeof target.section === 'number' && typeof dragCtx.section === 'number' && onMoveAcross) {
+      // 섹션 간 이동 — 시작 시점 그리드 좌표로 손가락 위치 → 새 슬롯 정착 오프셋 계산
+      const rFrom = gridRectsRef.current[String(dragCtx.section)];
+      const rTo = gridRectsRef.current[String(target.section)];
+      const from = slotPos(local);
+      const to = slotPos(target.local);
+      if (rFrom && rTo) {
+        dragOffset.setValue({ x: rFrom.x + from.x + dx - (rTo.x + to.x), y: rFrom.y + from.y + dyTotal - (rTo.y + to.y) });
+      }
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      onMoveAcross(dragCtx.section, local, target.section, target.local);
+      setDragCtx({ section: target.section, local: target.local, len: 0 });
+      settle(() => setDragCtx(null));
+    } else if (target && target.section === dragCtx.section && target.local !== local) {
       // 이웃은 LayoutAnimation으로 새 자리까지 이동, 끌던 사진은 손가락 위치 → 새 슬롯으로 스프링 정착
       const from = slotPos(local);
-      const to = slotPos(target);
+      const to = slotPos(target.local);
       dragOffset.setValue({ x: from.x + dx - to.x, y: from.y + dyTotal - to.y });
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      onReorder?.(dragCtx.section, local, target);
-      setDragCtx({ ...dragCtx, local: target });
+      onReorder?.(dragCtx.section, local, target.local);
+      setDragCtx({ ...dragCtx, local: target.local });
       settle(() => setDragCtx(null));
     } else {
       dragOffset.setValue({ x: dx, y: dyTotal });
@@ -366,7 +422,9 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   const photoTile = (uri: string, globalIdx: number, section: number | 'flat', localIdx: number, sectionLen: number) => {
     const isSel = selecting && (selected ?? []).includes(globalIdx);
     const active = !!dragCtx && dragCtx.section === section && dragCtx.local === localIdx;
-    const hovered = !!dragCtx && dragCtx.section === section && hoverLocal === localIdx && dragCtx.local !== localIdx;
+    const hovered = !!dragCtx && !active && hoverSlot?.section === section && hoverSlot.local === localIdx;
+    // 섹션 모드에선 1장짜리 섹션도 다른 섹션으로 끌어낼 수 있어야 한다
+    const canDrag = !!editable && !selecting && !!onReorder && (section === 'flat' ? sectionLen > 1 : sectionLen > 1 || !!onMoveAcross);
     return (
       <DraggableAlbumTile
         // key는 순서와 무관한 uri — 재정렬 시 리마운트 대신 LayoutAnimation으로 이웃이 밀려나게 한다
@@ -380,7 +438,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
         dragOffset={dragOffset}
         dragScale={dragScale}
         dragScrollAnim={dragScroll?.anim}
-        draggable={!!editable && !selecting && !!onReorder && sectionLen > 1}
+        draggable={canDrag}
         onDragStart={handleTileDragStart}
         onDragMove={handleTileDragMove}
         onDragEnd={handleTileDragEnd}
@@ -436,7 +494,11 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
                   </TouchableOpacity>
                 )}
               </View>
-              <View style={styles.albumGrid}>
+              <View
+                style={styles.albumGrid}
+                ref={(r) => { gridRefs.current[String(si)] = r; }}
+                collapsable={false}
+              >
                 {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i, si, i, sec.count))}
                 {sec.count === 0 && (
                   <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
@@ -453,7 +515,11 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
       ) : (
         /* ── 평면 그리드 ── */
         <>
-          <View style={styles.albumGrid}>
+          <View
+            style={styles.albumGrid}
+            ref={(r) => { gridRefs.current.flat = r; }}
+            collapsable={false}
+          >
             {medias.map((uri, i) => photoTile(uri, i, 'flat', i, medias.length))}
             {editable && onAddPhotos && !selecting && (
               <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
@@ -623,7 +689,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumReorder, onAlbumRemoveAt, onAlbumDragStateChange, onAlbumDragPosition, albumDragScroll }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumReorder, onAlbumMoveAcross, onAlbumRemoveAt, onAlbumDragStateChange, onAlbumDragPosition, albumDragScroll }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -641,6 +707,7 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           selected={albumSelected}
           onToggleSelect={onAlbumToggleSelect}
           onReorder={onAlbumReorder}
+          onMoveAcross={onAlbumMoveAcross}
           onRemoveAt={onAlbumRemoveAt}
           onDragStateChange={onAlbumDragStateChange}
           onDragPosition={onAlbumDragPosition}
