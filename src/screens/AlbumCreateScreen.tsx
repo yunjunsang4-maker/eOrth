@@ -209,6 +209,26 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     ? photos.filter((p) => dayKey(p.creationTime) === dayFilter)
     : photos;
 
+  // 표시된 사진(현재 Day 필터 기준) 전체 선택/해제 — 상한 도달 시 담을 수 있는 만큼만 담고 안내
+  const visibleAllSelected = visiblePhotos.length > 0 && visiblePhotos.every((p) => selected.includes(p.uri));
+  const toggleSelectVisible = () => {
+    if (visiblePhotos.length === 0) return;
+    if (visibleAllSelected) {
+      const vis = new Set(visiblePhotos.map((p) => p.uri));
+      setSelected((prev) => prev.filter((u) => !vis.has(u)));
+      return;
+    }
+    const next = [...selected];
+    for (const p of visiblePhotos) {
+      if (next.length >= albumMax) break;
+      if (!next.includes(p.uri)) next.push(p.uri);
+    }
+    setSelected(next);
+    if (visiblePhotos.some((p) => !next.includes(p.uri))) {
+      Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: albumMax }));
+    }
+  };
+
   // ── 저장: 사진첩 기록(album, private) + 프로필 여행기록카드만 생성 ──
   // 국가 필드를 비워 소셜·지구본·대륙·통계 국가 카운트에 잡히지 않게 한다.
   const save = async () => {
@@ -415,7 +435,18 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
-        <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
+          {visiblePhotos.length > 0 && (
+            <TouchableOpacity onPress={toggleSelectVisible} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={[st.selectAllTxt, { color: skinAccent.accent }]}>
+                {visibleAllSelected
+                  ? t('album.deselectAll')
+                  : dayFilter ? t('album.selectAllDay') : t('album.selectAll')}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
         {isLimited && (
           <Text style={[st.limitedTxt, { color: skinAccent.accent }]}>{t('album.limitedTxt')}</Text>
         )}
@@ -599,6 +630,7 @@ const st = StyleSheet.create({
 
   sub: { color: '#A1A1B0', fontSize: 13, lineHeight: 19 },
   counter: { color: '#BF85FC', fontSize: 13, fontWeight: '700', marginTop: 6 },
+  selectAllTxt: { fontSize: 13, fontWeight: '700', marginTop: 6, textDecorationLine: 'underline' },
   limitedTxt: { color: '#BF85FC', fontSize: 12, marginTop: 6 },
 
   /* 1단계: 기간 설정 */

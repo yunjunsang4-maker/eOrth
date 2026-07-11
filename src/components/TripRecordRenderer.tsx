@@ -25,7 +25,8 @@ interface Props {
   // 사진첩(앨범) 편집 — 내 기록 화면(TripRecordScreen)에서만 전달
   albumEditable?: boolean;
   onAlbumAddPhotos?: (sectionIndex?: number) => void;
-  onAlbumPhotoAction?: (index: number) => void; // 길게 누르기: 이동/삭제
+  onAlbumStartSelect?: () => void; // 다중 선택 모드 진입 (이동/삭제는 선택 액션 바에서)
+  onAlbumSetCover?: (index: number) => void; // 뷰어에서 커버(여행카드 썸네일)로 지정
   onAlbumAddSection?: () => void;
   onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
   // 순서 편집 모드 — 'flat'(평면 전체) 또는 섹션 인덱스. null이면 일반 모드
@@ -161,11 +162,12 @@ const ALBUM_CELL = (SCREEN_W - 4) / 3;
 // 순서 편집 그리드(DraggablePhotoGrid, GAP 8·좌우 16 패딩)용 타일 크기
 const REORDER_THUMB = (SCREEN_W - 32 - 16) / 3;
 
-function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection, onSectionMenu, reordering, selecting, selected, onToggleSelect, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, reordering, selecting, selected, onToggleSelect, onStartReorder, onReorder, onReorderDone, onRemoveAt, onDragStateChange }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
-  onPhotoAction?: (index: number) => void;
+  onStartSelect?: () => void;
+  onSetCover?: (index: number) => void;
   onAddSection?: () => void;
   onSectionMenu?: (sectionIndex: number) => void;
   reordering?: number | 'flat' | null;
@@ -186,13 +188,14 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
     ? sectionSlices(record.albumSections, medias.length)
     : null;
 
-  const photoTile = (uri: string, globalIdx: number) => {
+  // 사진 꾹 누르기 — 해당 구역(섹션/전체)의 순서 편집 모드로 바로 진입 (버튼 대신)
+  const photoTile = (uri: string, globalIdx: number, section: number | 'flat') => {
     const isSel = selecting && (selected ?? []).includes(globalIdx);
     return (
       <TouchableOpacity
         key={`${uri}-${globalIdx}`}
         onPress={() => (selecting ? onToggleSelect?.(globalIdx) : setLightboxIdx(globalIdx))}
-        onLongPress={!selecting && editable && onPhotoAction ? () => onPhotoAction(globalIdx) : undefined}
+        onLongPress={!selecting && editable && onStartReorder ? () => onStartReorder(section) : undefined}
         delayLongPress={350}
         activeOpacity={0.85}
       >
@@ -267,7 +270,7 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
                 </View>
               ) : (
                 <View style={styles.albumGrid}>
-                  {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i))}
+                  {medias.slice(sec.start, sec.end).map((uri, i) => photoTile(uri, sec.start + i, si))}
                   {sec.count === 0 && (
                     <Text style={styles.albumSectionEmpty}>{t('comp.albumSectionEmpty')}</Text>
                   )}
@@ -302,7 +305,7 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
           ) : (
             <>
               <View style={styles.albumGrid}>
-                {medias.map((uri, i) => photoTile(uri, i))}
+                {medias.map((uri, i) => photoTile(uri, i, 'flat'))}
                 {editable && onAddPhotos && !selecting && (
                   <TouchableOpacity style={styles.albumAddTile} onPress={() => onAddPhotos()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('comp.albumAddPhotos')}>
                     <Text style={styles.albumAddPlus}>＋</Text>
@@ -323,9 +326,10 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
                       <Text style={styles.albumSectionAddTxt}>🗂 {t('comp.albumMakeSections')}</Text>
                     </TouchableOpacity>
                   )}
-                  {onStartReorder && medias.length > 1 && (
-                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={() => onStartReorder('flat')} activeOpacity={0.8}>
-                      <Text style={styles.albumSectionAddTxt}>↕ {t('comp.albumReorder')}</Text>
+                  {/* 순서 변경은 사진을 꾹 눌러 진입 — 버튼 자리는 다중 선택(이동/삭제) 진입으로 대체 */}
+                  {onStartSelect && (
+                    <TouchableOpacity style={[styles.albumSectionAdd, { flex: 1, marginHorizontal: 0 }]} onPress={onStartSelect} activeOpacity={0.8}>
+                      <Text style={styles.albumSectionAddTxt}>✓ {t('trip.albumSelect')}</Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -335,12 +339,15 @@ function AlbumView({ record, editable, onAddPhotos, onPhotoAction, onAddSection,
         </>
       )}
 
-      {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m */}
+      {/* 전체화면 뷰어 — 스와이프 + 핀치 줌 + n/m. 내 사진첩이면 공유/저장/커버/삭제 액션 바 */}
       <PhotoViewerModal
         visible={lightboxIdx !== null}
         uris={medias}
         initialIndex={lightboxIdx ?? 0}
         onClose={() => setLightboxIdx(null)}
+        showActions={editable}
+        onSetCover={editable ? onSetCover : undefined}
+        onDelete={editable && onRemoveAt ? (i) => onRemoveAt(i) : undefined}
       />
     </View>
   );
@@ -469,7 +476,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumPhotoAction, onAlbumAddSection, onAlbumSectionMenu, albumReordering, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumReordering, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumStartReorder, onAlbumReorder, onAlbumReorderDone, onAlbumRemoveAt, onAlbumDragStateChange }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -479,7 +486,8 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           record={record}
           editable={albumEditable}
           onAddPhotos={onAlbumAddPhotos}
-          onPhotoAction={onAlbumPhotoAction}
+          onStartSelect={onAlbumStartSelect}
+          onSetCover={onAlbumSetCover}
           onAddSection={onAlbumAddSection}
           onSectionMenu={onAlbumSectionMenu}
           reordering={albumReordering}

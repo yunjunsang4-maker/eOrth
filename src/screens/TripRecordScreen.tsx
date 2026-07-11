@@ -146,28 +146,18 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
     exitSelecting();
   };
 
-  // 사진 길게 누르기 — 이동(시트) / 선택(다중) / 삭제
-  const handleAlbumPhotoAction = (index: number) => {
-    const buttons: any[] = [];
-    if (sections && sections.length > 1) {
-      buttons.push({ text: t('trip.albumPhotoMove'), onPress: () => setMoveSheet({ indexes: [index] }) });
-    }
-    buttons.push({
-      text: t('trip.albumSelect'),
-      onPress: () => { setSelecting(true); setSelected([index]); },
-    });
-    buttons.push({
-      text: t('trip.delete'),
-      style: 'destructive',
-      onPress: () => {
-        Alert.alert(t('trip.albumDeletePhotoTitle'), t('trip.albumDeletePhotoMsg'), [
-          { text: t('common.cancel'), style: 'cancel' },
-          { text: t('trip.delete'), style: 'destructive', onPress: () => doDeletePhoto(index) },
-        ]);
-      },
-    });
-    buttons.push({ text: t('common.cancel'), style: 'cancel' });
-    Alert.alert(t('trip.albumPhotoActionTitle'), undefined, buttons);
+  // 다중 선택 모드 진입 — 사진 꾹 누르기는 순서 편집에 배정돼, 이동/삭제는 선택 모드(액션 바)로 처리
+  const startSelecting = () => { setSelecting(true); setSelected([]); };
+
+  // 뷰어에서 커버(대표 사진) 지정 — 이 앨범을 커버로 쓰는 여행카드 썸네일(크롭 오버라이드 포함)도 동기화
+  const handleSetCover = (index: number) => {
+    const uri = medias[index];
+    if (!uri) return;
+    updateRecord(record.id, { representativePhoto: uri, representativePhotoSource: uri });
+    tripGroups
+      .filter((g) => g.coverRecordId === record.id && g.coverUri)
+      .forEach((g) => updateTripGroup(g.id, { coverUri: uri }));
+    Alert.alert(t('trip.albumCoverSet'));
   };
 
   // 다중 삭제 확인
@@ -233,8 +223,9 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         onPress: () => { setSectionTitleInput(sections[index]?.title ?? ''); setSectionModal({ mode: 'rename', index }); },
       },
       {
-        text: t('comp.albumReorder'),
-        onPress: () => setReordering(index),
+        // 순서 변경은 사진 꾹 누르기로 진입 — 메뉴에는 다중 선택(이동/삭제)만 남긴다
+        text: t('trip.albumSelect'),
+        onPress: startSelecting,
       },
       ...(index > 0 ? [{
         text: t('trip.albumMoveUp'),
@@ -308,7 +299,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             viewType={viewType}
             albumEditable={isAlbum}
             onAlbumAddPhotos={handleAlbumAddPhotos}
-            onAlbumPhotoAction={handleAlbumPhotoAction}
+            onAlbumStartSelect={startSelecting}
+            onAlbumSetCover={handleSetCover}
             onAlbumAddSection={openAddSection}
             onAlbumSectionMenu={handleSectionMenu}
             albumReordering={reordering}
@@ -324,7 +316,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
-            <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+            <>
+              <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+              {/* 순서변경 진입 안내 — 버튼이 없어져 발견이 어려운 꾹 누르기 제스처를 알려준다 */}
+              {(record.medias?.length ?? 0) > 1 && !selecting && reordering == null && (
+                <Text style={styles.albumHint}>{t('trip.albumReorderHint')}</Text>
+              )}
+            </>
           ) : null}
           {!isAlbum && (
           <View style={styles.social}>
@@ -379,6 +377,14 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           <View style={[styles.selectBar, { paddingBottom: insets.bottom + 10 }]}>
             <Text style={styles.selectBarCount}>{t('trip.albumSelectedN', { count: selected.length })}</Text>
             <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              style={styles.selectBarBtn}
+              onPress={() => setSelected(selected.length === medias.length ? [] : medias.map((_, i) => i))}
+            >
+              <Text style={styles.selectBarBtnTxt}>
+                {selected.length === medias.length ? t('trip.albumDeselectAll') : t('trip.albumSelectAll')}
+              </Text>
+            </TouchableOpacity>
             {sections && sections.length > 1 && (
               <TouchableOpacity
                 style={[styles.selectBarBtn, selected.length === 0 && { opacity: 0.4 }]}
@@ -681,6 +687,12 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     paddingHorizontal: 20,
     paddingTop: 10,
+  },
+  albumHint: {
+    fontSize: 11,
+    color: '#5A5A6E',
+    paddingHorizontal: 20,
+    paddingTop: 3,
   },
   commentItem: {
     flexDirection: 'row',
