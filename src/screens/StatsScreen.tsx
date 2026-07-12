@@ -153,39 +153,6 @@ function PressCard({
   );
 }
 
-// 네온 그라데이션 링 — 시안의 카드/노드 테두리. LinearGradient 래퍼 + 패딩으로 구현
-function NeonRing({
-  colors,
-  locations,
-  start = { x: 0, y: 0 },
-  end = { x: 1, y: 1 },
-  radius,
-  padding = 1.2,
-  style,
-  children,
-}: {
-  colors: readonly [string, string, ...string[]];
-  locations?: readonly [number, number, ...number[]];
-  start?: { x: number; y: number };
-  end?: { x: number; y: number };
-  radius: number;
-  padding?: number;
-  style?: any;
-  children: React.ReactNode;
-}) {
-  return (
-    <LinearGradient
-      colors={colors as [string, string, ...string[]]}
-      locations={locations}
-      start={start}
-      end={end}
-      style={[{ borderRadius: radius, padding }, style]}
-    >
-      {children}
-    </LinearGradient>
-  );
-}
-
 // 메인 통계박스(히어로) 테두리 — 시안 SVG(Rectangle 240652865) 그라데이션 그대로.
 // 내부가 반투명(흰 3%)이라 래퍼 방식이면 배경까지 물든다 → 스트로크 전용 SVG 오버레이로 그린다.
 // 축(359×192 기준 (54,0)→(191.05,182.97))은 비율(%)로 환산해 카드 크기와 무관하게 유지.
@@ -251,32 +218,37 @@ function GradientHalfCard({
 
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 
-// ── TOP 국가 아크(궤도) 기하 — 시안: 반원 궤도 위 1~5위 노드, 배경에 지구본 와이어프레임 ──
+// ── TOP 국가 궤도 + Travel Rating 통합 섹션 — 시안(Group 2085664582, 335×312) ──
+// 궤도와 지구본이 동심원: 중심 (167.5, 196.2), 궤도 R=160.2, 지구본 R≈108.
+// 모든 좌표는 시안(335px 폭) 기준 → 실제 폭으로 배율 환산.
 const WIN_W = Dimensions.get('window').width;
-const ARC_W = WIN_W - Spacing[6] * 2;             // scroll 좌우 패딩과 동일
-const ARC_R = ARC_W * 0.42;                        // 궤도 반지름
-const NODE_SIZES = [78, 60, 60, 46, 46];           // 1위가 가장 크고 바깥으로 갈수록 작게
-const NODE_ANGLES = [0, -0.62, 0.62, -1.13, 1.13]; // 정상(0)에서 좌우로 벌어지는 각도(rad)
-const ARC_CY = ARC_R + NODE_SIZES[0] / 2 + 6;      // 궤도 원 중심 y (1위 노드가 상단에 오도록)
-const ARC_H = Math.ceil(ARC_CY - ARC_R * Math.cos(1.13) + NODE_SIZES[3] / 2 + 14);
-const arcNodePos = (i: number) => ({
-  x: ARC_W / 2 + ARC_R * Math.sin(NODE_ANGLES[i]),
-  y: ARC_CY - ARC_R * Math.cos(NODE_ANGLES[i]),
-});
-// 궤도 곡선 — 노드보다 살짝 바깥 각도까지 그린다
-const ARC_SPAN = 1.32;
-const ARC_PATH = (() => {
-  const x1 = ARC_W / 2 - ARC_R * Math.sin(ARC_SPAN);
-  const y1 = ARC_CY - ARC_R * Math.cos(ARC_SPAN);
-  const x2 = ARC_W / 2 + ARC_R * Math.sin(ARC_SPAN);
-  return `M ${x1} ${y1} A ${ARC_R} ${ARC_R} 0 0 1 ${x2} ${y1}`;
+const ARC_W = WIN_W - Spacing[6] * 2; // scroll 좌우 패딩과 동일
+const OS = ARC_W / 335;               // 시안 배율(orbit scale)
+const ORBIT_H = Math.ceil(312 * OS);
+const ORBIT_CX = ARC_W / 2;
+const ORBIT_CY = 196.2 * OS;
+const ORBIT_R = 160.2 * OS;
+// 노드 — [cx, cy, r] (시안 좌표), 순위 낮을수록 링이 옅어진다
+const NODE_GEO: [number, number, number][] = [
+  [168, 36, 35.5],
+  [73, 58, 30],
+  [271, 58, 30],
+  [23, 127, 23],
+  [312, 127, 23],
+];
+const NODE_RING_OPACITY = [1, 0.5, 0.5, 0.2, 0.2];
+// 궤도 곡선 — 노드 아래(y≈167)까지 이어지는 원호 (±79.5°)
+const ORBIT_SPAN = 1.388;
+const ORBIT_PATH = (() => {
+  const x1 = ORBIT_CX - ORBIT_R * Math.sin(ORBIT_SPAN);
+  const y1 = ORBIT_CY - ORBIT_R * Math.cos(ORBIT_SPAN);
+  const x2 = ORBIT_CX + ORBIT_R * Math.sin(ORBIT_SPAN);
+  return `M ${x1} ${y1} A ${ORBIT_R} ${ORBIT_R} 0 0 1 ${x2} ${y1}`;
 })();
-
-// ── Travel Rating 배경의 지구본 와이어프레임 — 아래로 잘려나가는 큰 구 (시안) ──
-const GLOBE_H = 230;
-const GLOBE_R = ARC_W * 0.5;
-const GLOBE_CY = GLOBE_R + 12; // 원 상단만 화면에 보이고 아래는 잘린다
-const GLOBE_LINE = 'rgba(255,255,255,0.09)';
+// 지구본 (시안: 흐린 흰 3% 원 + 라벤더→보라 격자 + 중앙 흰 3% 원)
+const GLOBE_CY2 = 194.5 * OS;
+const GLOBE_R2 = 108.5 * OS;
+const GLOBE_LINE = 'rgba(224,201,255,0.11)'; // 시안 격자 톤(#E0C9FF 계열)
 
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
@@ -720,107 +692,40 @@ export default function StatsScreen() {
           </GradientHalfCard>
         </View>
 
-        {/* TOP 국가 아크 — 반원 궤도 위 랭킹 노드, ‹ ›로 5개씩 페이지 (시안) */}
-        <View style={styles.arcSection}>
-          {sortedCountries.length === 0 ? (
-            <Text style={styles.arcEmpty}>{t('stats.noRecords')}</Text>
-          ) : (
-            <>
-              <View style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Svg width={ARC_W} height={ARC_H}>
-                  <SvgPath d={ARC_PATH} stroke="rgba(255,255,255,0.14)" strokeWidth={1} fill="none" />
-                </Svg>
-              </View>
-              {ARC_COUNTRIES.map((c, i) => {
-                const size = NODE_SIZES[i];
-                const pos = arcNodePos(i);
-                const inner = (
-                  <>
-                    <Text style={styles.arcRank}>{String(c.rank).padStart(2, '0')}</Text>
-                    <Text style={[styles.arcName, i === 0 && styles.arcNameTop, i >= 3 && styles.arcNameSmall]} numberOfLines={1} {...andFitText}>
-                      {c.name}
-                    </Text>
-                    <Text style={[styles.arcVisits, { color: neonPoint }, i >= 3 && styles.arcVisitsSmall]} {...andFitText}>
-                      {t('stats.visitsUnit', { count: c.visits })}
-                    </Text>
-                  </>
-                );
-                return (
-                  <Pressable
-                    key={`${c.name}-${c.rank}`}
-                    style={{ position: 'absolute', left: pos.x - size / 2, top: pos.y - size / 2 }}
-                    onPress={() => goToDetail('countries')}
-                  >
-                    {i === 0 ? (
-                      // 1위 — 네온 그라데이션 링
-                      <NeonRing colors={neonRing} radius={size / 2} padding={1.5}>
-                        <View style={[styles.arcNodeInner, { width: size - 3, height: size - 3, borderRadius: (size - 3) / 2 }]}>
-                          {inner}
-                        </View>
-                      </NeonRing>
-                    ) : (
-                      <View
-                        style={[
-                          styles.arcNode,
-                          {
-                            width: size,
-                            height: size,
-                            borderRadius: size / 2,
-                            borderColor: i < 3 ? '#7B61FF' : 'rgba(255,255,255,0.28)',
-                          },
-                        ]}
-                      >
-                        {inner}
-                      </View>
-                    )}
-                  </Pressable>
-                );
-              })}
-              {rankTotalPages > 1 && (
-                <>
-                  <Pressable
-                    style={[styles.arcArrow, { left: 0 }]}
-                    disabled={rankPageClamped === 0}
-                    onPress={() => setRankPage((p) => Math.max(0, p - 1))}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Text style={[styles.arcArrowTxt, rankPageClamped === 0 && { opacity: 0.25 }]}>‹</Text>
-                  </Pressable>
-                  <Pressable
-                    style={[styles.arcArrow, { right: 0 }]}
-                    disabled={rankPageClamped >= rankTotalPages - 1}
-                    onPress={() => setRankPage((p) => Math.min(rankTotalPages - 1, p + 1))}
-                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-                  >
-                    <Text style={[styles.arcArrowTxt, rankPageClamped >= rankTotalPages - 1 && { opacity: 0.25 }]}>›</Text>
-                  </Pressable>
-                </>
-              )}
-            </>
-          )}
-        </View>
-
-        {/* Travel Rating — 지구본 와이어프레임 글로우 위에 평균 별점 (시안) */}
-        <Pressable style={styles.globeSection} onPress={() => goToDetail('rating')}>
-          <View pointerEvents="none">
-          <Svg width={ARC_W} height={GLOBE_H}>
-            <SvgDefs>
-              <SvgRadialGradient id="statsGlobeGlow" cx="50%" cy="45%" r="55%">
-                <SvgStop offset="0%" stopColor="#7B61FF" stopOpacity={0.2} />
-                <SvgStop offset="100%" stopColor="#7B61FF" stopOpacity={0} />
-              </SvgRadialGradient>
-            </SvgDefs>
-            <SvgCircle cx={ARC_W / 2} cy={GLOBE_CY} r={GLOBE_R} fill="url(#statsGlobeGlow)" />
-            <SvgCircle cx={ARC_W / 2} cy={GLOBE_CY} r={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-            {/* 경선 */}
-            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R * 0.62} ry={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R * 0.24} ry={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-            {/* 위선 */}
-            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R} ry={GLOBE_R * 0.3} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY - GLOBE_R * 0.45} rx={GLOBE_R * 0.88} ry={GLOBE_R * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-          </Svg>
+        {/* TOP 국가 궤도 + Travel Rating — 시안(Group 2085664582): 궤도·지구본 동심원 통합 섹션 */}
+        <View style={styles.orbitSection}>
+          {/* 장식 레이어 — 지구본(흐린 원 + 라벤더 격자) + 궤도 곡선(위 밝고 아래로 사라짐) */}
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={ARC_W} height={ORBIT_H}>
+              <SvgDefs>
+                <SvgLinearGradient id="statsOrbitLine" x1="0" y1={22 * OS} x2="0" y2={206 * OS} gradientUnits="userSpaceOnUse">
+                  <SvgStop offset="0" stopColor="#FFFFFF" />
+                  <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
+                </SvgLinearGradient>
+                <SvgRadialGradient id="statsGlobeGlow" cx="50%" cy="50%" r="50%">
+                  <SvgStop offset="0%" stopColor="#7C3AED" stopOpacity={0.16} />
+                  <SvgStop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
+                </SvgRadialGradient>
+              </SvgDefs>
+              {/* 지구본 — 흐린 흰 3% 구 + 보라 글로우 */}
+              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} fill="rgba(255,255,255,0.03)" />
+              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} fill="url(#statsGlobeGlow)" />
+              {/* 격자 (라벤더 톤) */}
+              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2 * 0.62} ry={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2 * 0.24} ry={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2} ry={GLOBE_R2 * 0.3} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2 - GLOBE_R2 * 0.45} rx={GLOBE_R2 * 0.88} ry={GLOBE_R2 * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2 + GLOBE_R2 * 0.45} rx={GLOBE_R2 * 0.88} ry={GLOBE_R2 * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+              {/* 중앙 패널 원 (시안: r 77.5 흰 3%) */}
+              <SvgCircle cx={ORBIT_CX} cy={200.5 * OS} r={77.5 * OS} fill="rgba(217,217,217,0.03)" />
+              {/* 궤도 곡선 */}
+              <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.3} strokeWidth={2} fill="none" />
+            </Svg>
           </View>
-          <View style={styles.ratingOverlay} pointerEvents="none">
+
+          {/* Travel Rating — 지구본 중앙 (탭: 평가 상세) */}
+          <Pressable style={styles.ratingOverlay} onPress={() => goToDetail('rating')}>
             <Text style={styles.ratingTitle}>Travel Rating</Text>
             {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
             <Text style={styles.ratingBasis}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
@@ -829,14 +734,91 @@ export default function StatsScreen() {
               {[1, 2, 3, 4, 5].map((star) => (
                 <Text
                   key={star}
-                  style={[styles.ratingStarBig, { color: star <= Math.round(Number(avgRating)) ? '#FBBF24' : '#4A4A59' }]}
+                  style={[
+                    styles.ratingStarBig,
+                    { color: star <= Math.round(Number(avgRating)) ? '#FFBC00' : 'rgba(255,255,255,0.6)' },
+                  ]}
                 >
                   ★
                 </Text>
               ))}
             </View>
-          </View>
-        </Pressable>
+          </Pressable>
+
+          {/* 랭킹 노드 — 유리(흰 3%) 배경 + 그라데이션 링(순위 낮을수록 옅게) */}
+          {ARC_COUNTRIES.map((c, i) => {
+            const [gx, gy, gr] = NODE_GEO[i];
+            const size = gr * 2 * OS;
+            const left = gx * OS - size / 2;
+            const top = gy * OS - size / 2;
+            return (
+              <Pressable
+                key={`${c.name}-${c.rank}`}
+                style={{ position: 'absolute', left, top }}
+                onPress={() => goToDetail('countries')}
+              >
+                <View style={[styles.arcNode, { width: size, height: size, borderRadius: size / 2 }]}>
+                  <Text style={[styles.arcRank, i >= 3 && styles.arcRankSmall]}>{String(c.rank).padStart(2, '0')}</Text>
+                  <Text
+                    style={[styles.arcName, i === 0 && styles.arcNameTop, i >= 3 && styles.arcNameSmall]}
+                    numberOfLines={1}
+                    {...andFitText}
+                  >
+                    {c.name}
+                  </Text>
+                  <Text style={[styles.arcVisits, { color: globePalette[0] }, i >= 3 && styles.arcVisitsSmall]} {...andFitText}>
+                    {t('stats.visitsUnit', { count: c.visits })}
+                  </Text>
+                </View>
+                {/* 노드 링 — 개별 마젠타→시안 그라데이션 스트로크, 순위별 불투명도 1/0.5/0.2 */}
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Svg width={size} height={size}>
+                    <SvgDefs>
+                      <SvgLinearGradient id={`arcNodeRing${i}`} x1="26%" y1="0%" x2="76%" y2="60%">
+                        <SvgStop offset="0" stopColor={halfRing[0]} />
+                        <SvgStop offset="1" stopColor={halfRing[1]} />
+                      </SvgLinearGradient>
+                    </SvgDefs>
+                    <SvgCircle
+                      cx={size / 2}
+                      cy={size / 2}
+                      r={size / 2 - 0.5}
+                      stroke={`url(#arcNodeRing${i})`}
+                      strokeOpacity={NODE_RING_OPACITY[i]}
+                      strokeWidth={1}
+                      fill="none"
+                    />
+                  </Svg>
+                </View>
+              </Pressable>
+            );
+          })}
+          {sortedCountries.length === 0 && (
+            <Text style={styles.arcEmpty}>{t('stats.noRecords')}</Text>
+          )}
+
+          {/* ‹ › — 지구본 중간 높이 가장자리 (시안 위치), 5개씩 페이지 */}
+          {rankTotalPages > 1 && (
+            <>
+              <Pressable
+                style={[styles.arcArrow, { left: 4 }]}
+                disabled={rankPageClamped === 0}
+                onPress={() => setRankPage((p) => Math.max(0, p - 1))}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={[styles.arcArrowTxt, rankPageClamped === 0 && { opacity: 0.25 }]}>‹</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.arcArrow, { right: 4 }]}
+                disabled={rankPageClamped >= rankTotalPages - 1}
+                onPress={() => setRankPage((p) => Math.min(rankTotalPages - 1, p + 1))}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              >
+                <Text style={[styles.arcArrowTxt, rankPageClamped >= rankTotalPages - 1 && { opacity: 0.25 }]}>›</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
       </ScrollView>
 
       {/* 통계 튜토리얼 코치마크 */}
@@ -1060,38 +1042,36 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
   },
 
-  // ── TOP 국가 아크 (시안: 반원 궤도 + 랭킹 노드) ──
-  arcSection: {
+  // ── TOP 국가 궤도 + Travel Rating 통합 섹션 (시안: Group 2085664582) ──
+  orbitSection: {
     width: ARC_W,
-    height: ARC_H,
+    height: ORBIT_H,
     marginTop: Spacing[3],
   },
   arcEmpty: {
+    position: 'absolute',
+    top: 40 * OS,
+    left: 0,
+    right: 0,
     color: Colors.textMuted,
     fontSize: Typography.fontSize.xs,
     textAlign: 'center',
-    marginTop: 40,
     fontFamily: Typography.fontFamily.regular,
   },
-  arcNodeInner: {
-    backgroundColor: '#0C0C14',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 2,
-  },
   arcNode: {
-    backgroundColor: 'rgba(12,12,20,0.92)',
-    borderWidth: 1.2,
+    // 시안: 유리(흰 3%) 원 — 링은 노드별 SVG 스트로크가 담당
+    backgroundColor: 'rgba(217,217,217,0.03)',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 2,
   },
   arcRank: {
     fontSize: 9,
-    color: Colors.textSecondary,
+    color: Colors.textPrimary,
     fontFamily: Typography.fontFamily.semiBold,
     letterSpacing: 1,
   },
+  arcRankSmall: { fontSize: 7 },
   arcName: {
     fontSize: 11,
     color: Colors.textPrimary,
@@ -1101,7 +1081,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   arcNameTop: { fontSize: 15 },
-  arcNameSmall: { fontSize: 9 },
+  arcNameSmall: { fontSize: 8 },
   arcVisits: {
     fontSize: 10,
     fontFamily: Typography.fontFamily.bold,
@@ -1109,54 +1089,52 @@ const styles = StyleSheet.create({
   },
   arcVisitsSmall: { fontSize: 8 },
   arcArrow: {
+    // 시안: 지구본 중간 높이(y≈194)의 좌우 가장자리
     position: 'absolute',
-    top: ARC_H / 2 - 4,
+    top: 194 * OS - 18,
     width: 28,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   arcArrowTxt: {
-    fontSize: 26,
-    lineHeight: 30,
-    color: Colors.textSecondary,
+    fontSize: 22,
+    lineHeight: 26,
+    color: 'rgba(255,255,255,0.4)',
   },
 
-  // ── Travel Rating + 지구본 와이어프레임 (시안) ──
-  globeSection: {
-    width: ARC_W,
-    height: GLOBE_H,
-    marginTop: Spacing[2],
-  },
+  // Travel Rating — 지구본 중앙 오버레이 (시안: 제목 y≈145, 별 y≈235)
   ratingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 132 * OS,
     alignItems: 'center',
-    paddingTop: 26,
   },
   ratingTitle: {
-    fontSize: Typography.fontSize.lg,
-    fontFamily: Typography.fontFamily.extraBold,
+    fontSize: 15,
+    fontWeight: '800', // 한글 EB — heroLabel과 동일한 이유로 시스템 폰트 800
     color: Colors.textPrimary,
   },
   ratingBasis: {
     fontSize: 11,
-    color: Colors.textSecondary,
+    color: 'rgba(255,255,255,0.7)',
     fontFamily: Typography.fontFamily.regular,
-    marginTop: 3,
+    marginTop: 7,
   },
   ratingAvg: {
-    fontSize: 40,
+    fontSize: 32,
     fontFamily: Typography.fontFamily.extraBold,
     color: Colors.textPrimary,
     letterSpacing: -1,
-    marginTop: 8,
+    marginTop: 9,
   },
   ratingStarRow: {
     flexDirection: 'row',
-    gap: 7,
-    marginTop: 4,
+    gap: 5,
+    marginTop: 6,
   },
   ratingStarBig: {
-    fontSize: 24,
+    fontSize: 19,
   },
 });
