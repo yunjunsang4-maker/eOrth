@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback, useId } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -7,6 +7,8 @@ import {
   ScrollView,
   Pressable,
   Animated,
+  Image,
+  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -20,7 +22,19 @@ import { COUNTRIES } from '../constants/countries';
 import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import StarFieldBackground from '../components/StarFieldBackground';
-import Svg, { Path as SvgPath } from 'react-native-svg';
+import Svg, {
+  Path as SvgPath,
+  Circle as SvgCircle,
+  Ellipse as SvgEllipse,
+  Rect as SvgRect,
+  Defs as SvgDefs,
+  RadialGradient as SvgRadialGradient,
+  LinearGradient as SvgLinearGradient,
+  Stop as SvgStop,
+} from 'react-native-svg';
+import { useSettings } from '../store/settingsStore';
+import { PersonIcon } from '../components/icons';
+import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
@@ -139,7 +153,126 @@ function PressCard({
   );
 }
 
+// 네온 그라데이션 링 — 시안의 카드/노드 테두리. LinearGradient 래퍼 + 패딩으로 구현
+function NeonRing({
+  colors,
+  locations,
+  start = { x: 0, y: 0 },
+  end = { x: 1, y: 1 },
+  radius,
+  padding = 1.2,
+  style,
+  children,
+}: {
+  colors: readonly [string, string, ...string[]];
+  locations?: readonly [number, number, ...number[]];
+  start?: { x: number; y: number };
+  end?: { x: number; y: number };
+  radius: number;
+  padding?: number;
+  style?: any;
+  children: React.ReactNode;
+}) {
+  return (
+    <LinearGradient
+      colors={colors as [string, string, ...string[]]}
+      locations={locations}
+      start={start}
+      end={end}
+      style={[{ borderRadius: radius, padding }, style]}
+    >
+      {children}
+    </LinearGradient>
+  );
+}
+
+// 메인 통계박스(히어로) 테두리 — 시안 SVG(Rectangle 240652865) 그라데이션 그대로.
+// 내부가 반투명(흰 3%)이라 래퍼 방식이면 배경까지 물든다 → 스트로크 전용 SVG 오버레이로 그린다.
+// 축(359×192 기준 (54,0)→(191.05,182.97))은 비율(%)로 환산해 카드 크기와 무관하게 유지.
+const HERO_RING_X1 = `${(54 / 359) * 100}%`;
+const HERO_RING_Y1 = '0%';
+const HERO_RING_X2 = `${(191.053 / 359) * 100}%`;
+const HERO_RING_Y2 = `${(182.972 / 192) * 100}%`;
+
+// 반쪽 카드 셸 — 시안(Group 2085664567): 흰 3% 패널 + 1px 그라데이션 스트로크(rx≈29).
+// 내부가 반투명이라 래퍼 방식이면 배경까지 물든다 → 측정 후 스트로크 전용 SVG 오버레이.
+const HALF_CARD_RADIUS = 29;
+function GradientHalfCard({
+  colors,
+  onPress,
+  children,
+  style,
+}: {
+  colors: [string, string];
+  onPress: () => void;
+  children: React.ReactNode;
+  style?: any;
+}) {
+  const gradId = useId().replace(/[^a-zA-Z0-9]/g, '');
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={[{ flex: 1 }, style]}
+      onLayout={(e) => setSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
+    >
+      <PressCard style={[styles.card, { flex: 1 }]} onPress={onPress}>
+        {children}
+      </PressCard>
+      {size.w > 0 && size.h > 0 && (
+        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <SvgDefs>
+            {/* 시안 축: 173×128 기준 (26,0)→(121.2,91.8) — 비율로 환산.
+                히어로와 같은 유리 림 — 시작색이 중간에서 투명해졌다 끝색이 반투명으로 올라온다 */}
+            <SvgLinearGradient id={gradId} x1="15.04%" y1="0%" x2="70.04%" y2="71.74%">
+              <SvgStop offset="0" stopColor={colors[0]} />
+              <SvgStop offset="0.6" stopColor={colors[1]} stopOpacity={0} />
+              <SvgStop offset="1" stopColor={colors[1]} stopOpacity={0.5} />
+            </SvgLinearGradient>
+          </SvgDefs>
+          <SvgRect
+            x={0.5}
+            y={0.5}
+            width={size.w - 1}
+            height={size.h - 1}
+            rx={HALF_CARD_RADIUS}
+            stroke={`url(#${gradId})`}
+            strokeWidth={1}
+            fill="none"
+          />
+        </Svg>
+      )}
+    </View>
+  );
+}
+
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
+
+// ── TOP 국가 아크(궤도) 기하 — 시안: 반원 궤도 위 1~5위 노드, 배경에 지구본 와이어프레임 ──
+const WIN_W = Dimensions.get('window').width;
+const ARC_W = WIN_W - Spacing[6] * 2;             // scroll 좌우 패딩과 동일
+const ARC_R = ARC_W * 0.42;                        // 궤도 반지름
+const NODE_SIZES = [78, 60, 60, 46, 46];           // 1위가 가장 크고 바깥으로 갈수록 작게
+const NODE_ANGLES = [0, -0.62, 0.62, -1.13, 1.13]; // 정상(0)에서 좌우로 벌어지는 각도(rad)
+const ARC_CY = ARC_R + NODE_SIZES[0] / 2 + 6;      // 궤도 원 중심 y (1위 노드가 상단에 오도록)
+const ARC_H = Math.ceil(ARC_CY - ARC_R * Math.cos(1.13) + NODE_SIZES[3] / 2 + 14);
+const arcNodePos = (i: number) => ({
+  x: ARC_W / 2 + ARC_R * Math.sin(NODE_ANGLES[i]),
+  y: ARC_CY - ARC_R * Math.cos(NODE_ANGLES[i]),
+});
+// 궤도 곡선 — 노드보다 살짝 바깥 각도까지 그린다
+const ARC_SPAN = 1.32;
+const ARC_PATH = (() => {
+  const x1 = ARC_W / 2 - ARC_R * Math.sin(ARC_SPAN);
+  const y1 = ARC_CY - ARC_R * Math.cos(ARC_SPAN);
+  const x2 = ARC_W / 2 + ARC_R * Math.sin(ARC_SPAN);
+  return `M ${x1} ${y1} A ${ARC_R} ${ARC_R} 0 0 1 ${x2} ${y1}`;
+})();
+
+// ── Travel Rating 배경의 지구본 와이어프레임 — 아래로 잘려나가는 큰 구 (시안) ──
+const GLOBE_H = 230;
+const GLOBE_R = ARC_W * 0.5;
+const GLOBE_CY = GLOBE_R + 12; // 원 상단만 화면에 보이고 아래는 잘린다
+const GLOBE_LINE = 'rgba(255,255,255,0.09)';
 
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
@@ -147,6 +280,21 @@ export default function StatsScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
+  const { profilePhoto, globeSkin } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
+
+  // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
+  const neonRing = (skinAccent.ringGradient ?? ['#00D7F3', '#FD07E0']) as [string, string];
+  const neonPoint = neonRing[1]; // 회수 텍스트 등 포인트 색
+  // 반쪽 카드 테두리 — 시안: 마젠타→시안 불투명 2-스톱 (커스텀 스킨은 스킨 링)
+  const halfRing: [string, string] = skinAccent.ringGradient ? neonRing : ['#FF14E4', '#00D8F3'];
+  // 연도별·대륙별 막대 색 — 지구본 '색 활성화' 팔레트 4색을 순환 사용 (사용자 확정)
+  const globePalette = getSkinPalette(globeSkin);
+
+  // TOP 국가 아크 페이지(5개씩) — ‹ ›로 6위 이하 탐색
+  const [rankPage, setRankPage] = useState(0);
+
+  // 히어로 카드 실제 높이 — 테두리 스트로크(SVG)를 카드 크기에 맞춰 그리기 위한 측정값
+  const [heroH, setHeroH] = useState(0);
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
@@ -372,13 +520,17 @@ export default function StatsScreen() {
     }))
     .sort((a, b) => b.visits - a.visits);
 
-  const TOP_COUNTRIES = sortedCountries.slice(0, 5).map((c, index) => ({
-    rank: index + 1,
-    flag: c.flag,
-    name: c.name,
-    visits: c.visits,
-    gold: index === 0,
-  }));
+  // 아크 페이지네이션 — 5개씩, ‹ ›로 6위 이하 탐색 (기록 변화로 페이지 수가 줄면 클램프)
+  const rankTotalPages = Math.max(1, Math.ceil(sortedCountries.length / 5));
+  const rankPageClamped = Math.min(rankPage, rankTotalPages - 1);
+  const ARC_COUNTRIES = sortedCountries
+    .slice(rankPageClamped * 5, rankPageClamped * 5 + 5)
+    .map((c, index) => ({
+      rank: rankPageClamped * 5 + index + 1,
+      flag: c.flag,
+      name: c.name,
+      visits: c.visits,
+    }));
 
   // 5. Travel Rating Stats
   const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -405,16 +557,6 @@ export default function StatsScreen() {
 
   const avgRating = ratedRecordsCount > 0 ? (ratingSum / ratedRecordsCount).toFixed(1) : '0.0';
 
-  const RATING_STATS = [5, 4, 3, 2, 1].map((star) => {
-    const count = ratingCounts[star as 5 | 4 | 3 | 2 | 1];
-    const pct = ratedRecordsCount > 0 ? count / ratedRecordsCount : 0;
-    return {
-      star,
-      count,
-      pct,
-    };
-  });
-
   return (
     <LinearGradient colors={['#0A0A0F', '#0A0A0F']} style={styles.container}>
       {/* 소셜·프로필탭과 동일한 검정 배경(#0A0A0F) — 보라끼 나던 그라데이션 제거 */}
@@ -426,29 +568,49 @@ export default function StatsScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: 110 }]}>
-        {/* World coverage hero */}
-        <View ref={heroRef} collapsable={false}>
+        {/* World coverage hero — 흰색 % + 프로필 사진 (시안) */}
+        {/* 테두리: 시안 SVG의 스트로크 그라데이션만 오버레이 — 내부(흰 3% 패널)는 물들지 않는다 */}
+        <View
+          ref={heroRef}
+          collapsable={false}
+          style={{ marginBottom: Spacing[4] }}
+          onLayout={(e) => setHeroH(Math.round(e.nativeEvent.layout.height))}
+        >
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
-          <LinearGradient
-            colors={['rgba(26,26,46,0.3)', 'rgba(22,20,42,0.3)']}
-            style={styles.heroCardGrad}
-          >
+          <View style={styles.heroCardGrad}>
+              {/* 우측 중앙 은은한 흰색 글로우 (시안의 블러 타원) */}
+              <Svg width={86} height={86} style={styles.heroGlow} pointerEvents="none">
+                <SvgDefs>
+                  <SvgRadialGradient id="statsHeroGlow" cx="50%" cy="50%" r="50%">
+                    <SvgStop offset="0%" stopColor="#FFFFFF" stopOpacity={0.12} />
+                    <SvgStop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+                  </SvgRadialGradient>
+                </SvgDefs>
+                <SvgCircle cx={43} cy={43} r={43} fill="url(#statsHeroGlow)" />
+              </Svg>
               <View style={styles.heroTop}>
-                <View>
-                  <Text style={[styles.heroPercentage, { color: skinAccent.accent }]}>{worldCoveragePct}</Text>
-                  <Text style={styles.heroLabel}>🌏 {t('comp2.worldTraveled')}</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
+                  <Text style={styles.heroLabel}>{t('comp2.worldTraveled')}</Text>
                 </View>
                 <View style={styles.globeMini}>
-                  <LinearGradient colors={['#3B1E8E', '#7B61FF']} style={styles.globeMiniGrad} />
+                  {profilePhoto ? (
+                    <Image source={{ uri: profilePhoto }} style={styles.globeMiniGrad} resizeMode="cover" />
+                  ) : (
+                    // 사진 없음 — 프로필 탭과 동일한 기본 아바타(사람 아이콘)
+                    <View style={styles.heroAvatarFallback}>
+                      <PersonIcon size={30} color="#A0A0B0" />
+                    </View>
+                  )}
                 </View>
               </View>
-              {/* Progress bar */}
+              {/* Progress bar — 시안: 흰색 20% 트랙 + 단색 마젠타 채움 (커스텀 스킨은 포인트 색) */}
               <View style={styles.progressBarBg}>
-                <LinearGradient
-                  colors={skinAccent.barGradient}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[styles.progressBarFill, { width: worldCoveragePct }]}
+                <View
+                  style={[
+                    styles.progressBarFill,
+                    { width: worldCoveragePct, backgroundColor: skinAccent.ringGradient ? neonPoint : '#EC34F7' },
+                  ]}
                 />
               </View>
               <View style={styles.heroStats}>
@@ -469,114 +631,200 @@ export default function StatsScreen() {
                   <Text style={styles.miniStatLbl}>{t('stats.miniDays')}</Text>
                 </View>
               </View>
-            </LinearGradient>
+            </View>
         </PressCard>
+        {/* 테두리 전용 그라데이션 스트로크 (시안 Rectangle 240652865) — 커스텀 스킨은 스킨 링 색 2-스톱 */}
+        {heroH > 0 && (
+          <Svg width={ARC_W} height={heroH} style={StyleSheet.absoluteFill} pointerEvents="none">
+            <SvgDefs>
+              <SvgLinearGradient id="statsHeroRing" x1={HERO_RING_X1} y1={HERO_RING_Y1} x2={HERO_RING_X2} y2={HERO_RING_Y2}>
+                {skinAccent.ringGradient
+                  ? [
+                      <SvgStop key="s0" offset="0" stopColor={neonRing[0]} />,
+                      <SvgStop key="s1" offset="1" stopColor={neonRing[1]} />,
+                    ]
+                  : [
+                      <SvgStop key="s0" offset="0" stopColor="#FF14E4" />,
+                      <SvgStop key="s1" offset="0.596154" stopColor="#00D8F3" stopOpacity={0} />,
+                      <SvgStop key="s2" offset="1" stopColor="#00D8F3" stopOpacity={0.5} />,
+                    ]}
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect
+              x={1}
+              y={1}
+              width={ARC_W - 2}
+              height={heroH - 2}
+              rx={BorderRadius['2xl']}
+              stroke="url(#statsHeroRing)"
+              strokeWidth={2}
+              fill="none"
+            />
+          </Svg>
+        )}
         </View>
 
-        {/* Row 2: 연도별 여행 횟수 + 대륙별 방문 현황 */}
+        {/* Row 2: 연도별 방문 현황 + 대륙별 방문 현황 — 흰 3% 패널 + 1px 그라데이션 스트로크 (시안) */}
         <View style={styles.statsRow}>
-          {/* 1번 - Yearly bar chart */}
-          <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('yearly')}>
-            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardYearlyTrips')}</Text>
-            <View style={styles.barChart}>
-              {VISIT_HISTORY.map((v, i) => (
-                <View key={i} style={styles.barGroup}>
-                  <View style={styles.barBg}>
-                    {v.visits > 0 && (
-                      <LinearGradient
-                        colors={skinAccent.barGradient}
-                        style={[
-                          styles.bar,
-                          { height: `${(v.visits / MAX_VISITS) * 100}%` },
-                        ]}
-                      />
-                    )}
-                  </View>
-                  <Text style={styles.barLabel} {...andFitText}>{v.year.slice(2)}</Text>
-                </View>
-              ))}
+          {/* 1번 - Yearly bar chart — 시안: 트랙 없는 막대, 올해만 그라데이션·과거는 단색 */}
+          <GradientHalfCard colors={halfRing} onPress={() => goToDetail('yearly')} style={styles.halfCard}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardYearlyTrips')}</Text>
+              <Text style={styles.cardChevron}>›</Text>
             </View>
-          </PressCard>
+            <View style={styles.barChart}>
+              {VISIT_HISTORY.map((v, i) => {
+                const heightPct = `${(v.visits / MAX_VISITS) * 100}%` as const;
+                return (
+                  <View key={i} style={styles.barGroup}>
+                    <View style={styles.barSlot}>
+                      {v.visits > 0 && (
+                        // 활성색 역순 — 최신 연도(맨 오른쪽)가 팔레트 1번색부터 시작
+                        <View style={[styles.bar, { height: heightPct, backgroundColor: globePalette[(VISIT_HISTORY.length - 1 - i) % globePalette.length] }]} />
+                      )}
+                    </View>
+                    <Text style={styles.barLabel} {...andFitText}>{v.year.slice(2)}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          </GradientHalfCard>
 
-          {/* 2번 - Region breakdown */}
-          <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('region')}>
-            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardContinents')}</Text>
+          {/* 2번 - Region breakdown — 시안: 단색 네온 막대, 점 없음 */}
+          <GradientHalfCard colors={halfRing} onPress={() => goToDetail('region')} style={styles.halfCard}>
+            <View style={styles.cardTitleRow}>
+              <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardContinents')}</Text>
+              <Text style={styles.cardChevron}>›</Text>
+            </View>
             {REGION_STATS.map((r, i) => (
               <View key={i} style={styles.regionRow}>
                 <View style={styles.regionLeft}>
-                  <View style={[styles.regionDot, { backgroundColor: r.color }]} />
                   <Text style={styles.regionLabel} {...andFitText}>{continentName(r.label)}</Text>
                 </View>
                 <View style={styles.regionBarBg}>
-                  <LinearGradient
-                    colors={[r.color, r.color + '88']}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[styles.regionBar, { width: `${r.pct * 100}%` }]}
-                  />
+                  {r.count > 0 && (
+                    <View style={[styles.regionBar, { width: `${r.pct * 100}%`, backgroundColor: globePalette[i % globePalette.length] }]} />
+                  )}
                 </View>
                 <Text style={styles.regionCount} {...andFitText}>{t('stats.countUnit', { count: r.count })}</Text>
               </View>
             ))}
-          </PressCard>
+          </GradientHalfCard>
         </View>
 
-        {/* Row 3: TOP 5 + 여행 평가 */}
-        <View style={styles.statsRow}>
-          {/* 3번 - Top countries */}
-          <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('countries')}>
-            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardTopCountries')}</Text>
-            {TOP_COUNTRIES.length > 0 ? (
-              TOP_COUNTRIES.map((c) => (
-                <View key={c.rank} style={styles.topRow}>
-                  <Text style={[styles.rankNum, c.gold && { color: Colors.gold }]} {...andFitText}>
-                    #{c.rank}
-                  </Text>
-                  <Text style={styles.topFlag}>{c.flag}</Text>
-                  <Text style={styles.topName} {...andFitText}>{c.name}</Text>
-                  <Text style={[styles.topVisits, { color: skinAccent.accent }]} {...andFitText}>{t('stats.visitsUnit', { count: c.visits })}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={{ color: Colors.textMuted, fontSize: Typography.fontSize.xs, textAlign: 'center', marginTop: 24 }}>{t('stats.noRecords')}</Text>
-            )}
-          </PressCard>
+        {/* TOP 국가 아크 — 반원 궤도 위 랭킹 노드, ‹ ›로 5개씩 페이지 (시안) */}
+        <View style={styles.arcSection}>
+          {sortedCountries.length === 0 ? (
+            <Text style={styles.arcEmpty}>{t('stats.noRecords')}</Text>
+          ) : (
+            <>
+              <Svg width={ARC_W} height={ARC_H} style={StyleSheet.absoluteFill} pointerEvents="none">
+                <SvgPath d={ARC_PATH} stroke="rgba(255,255,255,0.14)" strokeWidth={1} fill="none" />
+              </Svg>
+              {ARC_COUNTRIES.map((c, i) => {
+                const size = NODE_SIZES[i];
+                const pos = arcNodePos(i);
+                const inner = (
+                  <>
+                    <Text style={styles.arcRank}>{String(c.rank).padStart(2, '0')}</Text>
+                    <Text style={[styles.arcName, i === 0 && styles.arcNameTop, i >= 3 && styles.arcNameSmall]} numberOfLines={1} {...andFitText}>
+                      {c.name}
+                    </Text>
+                    <Text style={[styles.arcVisits, { color: neonPoint }, i >= 3 && styles.arcVisitsSmall]} {...andFitText}>
+                      {t('stats.visitsUnit', { count: c.visits })}
+                    </Text>
+                  </>
+                );
+                return (
+                  <Pressable
+                    key={`${c.name}-${c.rank}`}
+                    style={{ position: 'absolute', left: pos.x - size / 2, top: pos.y - size / 2 }}
+                    onPress={() => goToDetail('countries')}
+                  >
+                    {i === 0 ? (
+                      // 1위 — 네온 그라데이션 링
+                      <NeonRing colors={neonRing} radius={size / 2} padding={1.5}>
+                        <View style={[styles.arcNodeInner, { width: size - 3, height: size - 3, borderRadius: (size - 3) / 2 }]}>
+                          {inner}
+                        </View>
+                      </NeonRing>
+                    ) : (
+                      <View
+                        style={[
+                          styles.arcNode,
+                          {
+                            width: size,
+                            height: size,
+                            borderRadius: size / 2,
+                            borderColor: i < 3 ? '#7B61FF' : 'rgba(255,255,255,0.28)',
+                          },
+                        ]}
+                      >
+                        {inner}
+                      </View>
+                    )}
+                  </Pressable>
+                );
+              })}
+              {rankTotalPages > 1 && (
+                <>
+                  <Pressable
+                    style={[styles.arcArrow, { left: 0 }]}
+                    disabled={rankPageClamped === 0}
+                    onPress={() => setRankPage((p) => Math.max(0, p - 1))}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={[styles.arcArrowTxt, rankPageClamped === 0 && { opacity: 0.25 }]}>‹</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.arcArrow, { right: 0 }]}
+                    disabled={rankPageClamped >= rankTotalPages - 1}
+                    onPress={() => setRankPage((p) => Math.min(rankTotalPages - 1, p + 1))}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <Text style={[styles.arcArrowTxt, rankPageClamped >= rankTotalPages - 1 && { opacity: 0.25 }]}>›</Text>
+                  </Pressable>
+                </>
+              )}
+            </>
+          )}
+        </View>
 
-          {/* 4번 - Travel rating stats */}
-          <PressCard style={[styles.card, styles.halfCard]} onPress={() => goToDetail('rating')}>
-            <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardRating')}</Text>
-            <View style={styles.ratingOverview}>
-              <Text style={styles.ratingBig}>{avgRating}</Text>
-              <View style={styles.ratingStars}>
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Text key={star} style={styles.ratingStar}>
-                    {star <= Math.round(Number(avgRating)) ? '★' : '☆'}
-                  </Text>
-                ))}
-              </View>
-              {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
-              <Text style={styles.ratingCount}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
-            </View>
-            <View style={styles.ratingBars}>
-              {RATING_STATS.map((r) => (
-                <View key={r.star} style={styles.ratingBarRow}>
-                  <Text style={styles.ratingBarLabel} {...andFitText}>{r.star}★</Text>
-                  <View style={styles.ratingBarBg}>
-                    <LinearGradient
-                      colors={skinAccent.barGradient}
-                      start={{ x: 0, y: 0 }}
-                      end={{ x: 1, y: 0 }}
-                      style={[styles.ratingBarFill, { width: `${r.pct * 100}%` }]}
-                    />
-                  </View>
-                  <Text style={styles.ratingBarCount} {...andFitText}>{r.count}</Text>
-                </View>
+        {/* Travel Rating — 지구본 와이어프레임 글로우 위에 평균 별점 (시안) */}
+        <Pressable style={styles.globeSection} onPress={() => goToDetail('rating')}>
+          <Svg width={ARC_W} height={GLOBE_H} pointerEvents="none">
+            <SvgDefs>
+              <SvgRadialGradient id="statsGlobeGlow" cx="50%" cy="45%" r="55%">
+                <SvgStop offset="0%" stopColor="#7B61FF" stopOpacity={0.2} />
+                <SvgStop offset="100%" stopColor="#7B61FF" stopOpacity={0} />
+              </SvgRadialGradient>
+            </SvgDefs>
+            <SvgCircle cx={ARC_W / 2} cy={GLOBE_CY} r={GLOBE_R} fill="url(#statsGlobeGlow)" />
+            <SvgCircle cx={ARC_W / 2} cy={GLOBE_CY} r={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+            {/* 경선 */}
+            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R * 0.62} ry={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R * 0.24} ry={GLOBE_R} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+            {/* 위선 */}
+            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R} ry={GLOBE_R * 0.3} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+            <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY - GLOBE_R * 0.45} rx={GLOBE_R * 0.88} ry={GLOBE_R * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
+          </Svg>
+          <View style={styles.ratingOverlay} pointerEvents="none">
+            <Text style={styles.ratingTitle}>Travel Rating</Text>
+            {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
+            <Text style={styles.ratingBasis}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
+            <Text style={styles.ratingAvg}>{avgRating}</Text>
+            <View style={styles.ratingStarRow}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Text
+                  key={star}
+                  style={[styles.ratingStarBig, { color: star <= Math.round(Number(avgRating)) ? '#FBBF24' : '#4A4A59' }]}
+                >
+                  ★
+                </Text>
               ))}
             </View>
-          </PressCard>
-        </View>
-
-        <View style={{ height: 100 }} />
+          </View>
+        </Pressable>
       </ScrollView>
 
       {/* 통계 튜토리얼 코치마크 */}
@@ -613,35 +861,47 @@ const styles = StyleSheet.create({
   },
 
   heroCard: {
-    marginBottom: Spacing[4],
+    // 테두리는 NeonRing(그라데이션 래퍼)이 담당 — 내부 면은 시안의 흰색 3% 패널
     borderRadius: BorderRadius['2xl'],
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    backgroundColor: 'rgba(217,217,217,0.03)',
   },
-  heroCardGrad: { padding: Spacing[5] },
+  // 시안(359×192 기준): 콘텐츠 좌우 30, 상단 24, 하단 22
+  heroCardGrad: { paddingTop: 24, paddingBottom: 22, paddingHorizontal: 30 },
+  heroGlow: {
+    // 시안: 우측 중앙(카드 오른쪽 17, 위 74)의 블러 타원
+    position: 'absolute',
+    right: 17,
+    top: 74,
+  },
   heroTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: Spacing[4],
+    marginBottom: 14,
   },
   heroPercentage: {
-    fontSize: Typography.fontSize['4xl'],
+    fontSize: 30, // 시안: 캡 높이 ~28의 큰 흰색 숫자
     fontFamily: Typography.fontFamily.extraBold,
-    color: Colors.primary,
+    color: Colors.textPrimary,
     letterSpacing: -1,
   },
   heroLabel: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    // 시안: AppleSDGothicNeoEB00 15px / 행간 130% / 자간 -0.1
+    // Inter(앱 폰트)는 한글 글리프가 없어 family 지정 시 굵기가 유실됨 —
+    // 한글은 시스템 폰트(iOS=Apple SD Gothic Neo)가 렌더하므로 weight 800으로 EB를 재현한다
+    fontSize: 15,
+    fontWeight: '800',
+    lineHeight: 19.5, // 130%
+    letterSpacing: -0.1,
+    color: Colors.textPrimary,
+    marginTop: 4,
   },
   globeMini: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
+    // 시안: 지름 57.3 원형, 우측 상단
+    width: 57,
+    height: 57,
+    borderRadius: 28.5,
     overflow: 'hidden',
     shadowColor: '#7B61FF',
     shadowOffset: { width: 0, height: 0 },
@@ -650,15 +910,24 @@ const styles = StyleSheet.create({
     elevation: 8,
   },
   globeMiniGrad: { flex: 1 },
+  // 프로필 사진 없을 때 — 프로필 탭 기본 아바타와 동일한 톤(어두운 원 + 사람 아이콘)
+  heroAvatarFallback: {
+    flex: 1,
+    backgroundColor: '#1F1F22',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   progressBarBg: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.bgCardAlt,
-    marginBottom: Spacing[4],
+    // 시안: 높이 8, 흰색 20% 트랙, 라운드 캡
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    marginBottom: 22,
   },
   progressBarFill: {
-    height: 6,
-    borderRadius: 3,
+    height: 8,
+    borderRadius: 4,
+    minWidth: 8,
   },
   heroStats: {
     flexDirection: 'row',
@@ -666,60 +935,73 @@ const styles = StyleSheet.create({
   },
   miniStat: { alignItems: 'center' },
   miniStatVal: {
-    fontSize: Typography.fontSize.xl,
+    // 시안: 흰색 굵은 숫자 ~16
+    fontSize: 16,
     fontFamily: Typography.fontFamily.bold,
     color: Colors.textPrimary,
   },
   miniStatLbl: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.textSecondary,
-    fontFamily: Typography.fontFamily.regular,
-    marginTop: 2,
+    // 시안: 흰색 50% 라벨
+    fontSize: 11,
+    color: 'rgba(255,255,255,0.5)',
+    fontWeight: '600',
+    marginTop: 4,
   },
 
   card: {
-    backgroundColor: 'rgba(26, 26, 38, 0.45)',
-    borderRadius: BorderRadius['2xl'],
-    padding: Spacing[4],
-    marginBottom: Spacing[4],
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
+    // 시안: 흰 3% 패널, rx≈29 — 테두리는 GradientHalfCard의 SVG 스트로크가 담당
+    backgroundColor: 'rgba(217,217,217,0.03)',
+    borderRadius: HALF_CARD_RADIUS,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    paddingBottom: 12,
+  },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing[3],
   },
   cardTitle: {
+    flex: 1,
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.semiBold,
     color: Colors.textPrimary,
-    marginBottom: Spacing[3],
+  },
+  cardChevron: {
+    fontSize: 18,
+    lineHeight: 18,
+    color: Colors.textMuted,
+    marginLeft: 4,
   },
 
-  // Bar chart
+  // Bar chart — 시안: 배경 트랙 없이 값 있는 해만 막대 (폭 13, 라운드 4)
   barChart: {
     flexDirection: 'row',
     alignItems: 'flex-end',
     height: 70,
-    gap: 2,
+    gap: 3,
   },
   barGroup: {
     flex: 1,
     alignItems: 'center',
     height: '100%',
   },
-  barBg: {
+  barSlot: {
     flex: 1,
     width: '100%',
-    backgroundColor: Colors.bgCardAlt,
-    borderRadius: 3,
+    alignItems: 'center',
     justifyContent: 'flex-end',
-    overflow: 'hidden',
   },
   bar: {
-    width: '100%',
-    borderRadius: 3,
+    width: 13,
+    borderRadius: 4,
+    minHeight: 6,
   },
   barLabel: {
-    fontSize: 8,
-    color: Colors.textMuted,
-    marginTop: 3,
+    fontSize: 9,
+    color: 'rgba(255,255,255,0.5)',
+    marginTop: 8,
     fontFamily: Typography.fontFamily.regular,
   },
 
@@ -766,93 +1048,103 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
   },
 
-  // Top
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: Spacing[2],
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
-    gap: Spacing[2],
+  // ── TOP 국가 아크 (시안: 반원 궤도 + 랭킹 노드) ──
+  arcSection: {
+    width: ARC_W,
+    height: ARC_H,
+    marginTop: Spacing[3],
   },
-  rankNum: {
-    width: 22,
-    fontSize: Typography.fontSize.sm,
+  arcEmpty: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    textAlign: 'center',
+    marginTop: 40,
+    fontFamily: Typography.fontFamily.regular,
+  },
+  arcNodeInner: {
+    backgroundColor: '#0C0C14',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  arcNode: {
+    backgroundColor: 'rgba(12,12,20,0.92)',
+    borderWidth: 1.2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  arcRank: {
+    fontSize: 9,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 1,
+  },
+  arcName: {
+    fontSize: 11,
+    color: Colors.textPrimary,
     fontFamily: Typography.fontFamily.bold,
+    marginTop: 1,
+    maxWidth: '92%',
+    textAlign: 'center',
+  },
+  arcNameTop: { fontSize: 15 },
+  arcNameSmall: { fontSize: 9 },
+  arcVisits: {
+    fontSize: 10,
+    fontFamily: Typography.fontFamily.bold,
+    marginTop: 1,
+  },
+  arcVisitsSmall: { fontSize: 8 },
+  arcArrow: {
+    position: 'absolute',
+    top: ARC_H / 2 - 4,
+    width: 28,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arcArrowTxt: {
+    fontSize: 26,
+    lineHeight: 30,
     color: Colors.textSecondary,
   },
-  topFlag: { fontSize: 18 },
-  topName: {
-    flex: 1,
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.semiBold,
+
+  // ── Travel Rating + 지구본 와이어프레임 (시안) ──
+  globeSection: {
+    width: ARC_W,
+    height: GLOBE_H,
+    marginTop: Spacing[2],
+  },
+  ratingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    paddingTop: 26,
+  },
+  ratingTitle: {
+    fontSize: Typography.fontSize.lg,
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.textPrimary,
   },
-  topVisits: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.primary,
+  ratingBasis: {
+    fontSize: 11,
+    color: Colors.textSecondary,
+    fontFamily: Typography.fontFamily.regular,
+    marginTop: 3,
   },
-
-  // Rating
-  ratingOverview: {
-    alignItems: 'center',
-    marginBottom: Spacing[3],
-  },
-  ratingBig: {
-    fontSize: Typography.fontSize['2xl'],
+  ratingAvg: {
+    fontSize: 40,
     fontFamily: Typography.fontFamily.extraBold,
     color: Colors.textPrimary,
     letterSpacing: -1,
+    marginTop: 8,
   },
-  ratingStars: {
+  ratingStarRow: {
     flexDirection: 'row',
-    gap: 2,
-    marginTop: 3,
-  },
-  ratingStar: {
-    fontSize: 14,
-    color: '#FBBF24',
-  },
-  ratingCount: {
-    fontSize: 10,
-    color: Colors.textSecondary,
-    fontFamily: Typography.fontFamily.regular,
+    gap: 7,
     marginTop: 4,
   },
-  ratingBars: {
-    gap: Spacing[2],
+  ratingStarBig: {
+    fontSize: 24,
   },
-  ratingBarRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing[2],
-  },
-  ratingBarLabel: {
-    width: 22,
-    fontSize: 10,
-    color: Colors.textSecondary,
-    fontFamily: Typography.fontFamily.regular,
-    textAlign: 'right',
-  },
-  ratingBarBg: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: Colors.bgCardAlt,
-    overflow: 'hidden',
-  },
-  ratingBarFill: {
-    height: 8,
-    borderRadius: 4,
-    minWidth: 4,
-  },
-  ratingBarCount: {
-    width: 16,
-    fontSize: 10,
-    color: Colors.textMuted,
-    fontFamily: Typography.fontFamily.regular,
-    textAlign: 'right',
-  },
-
 });

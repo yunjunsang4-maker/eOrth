@@ -66,7 +66,8 @@ const DS_PALETTES: Record<string, string[]> = {
   cyan:   ['#02E2FF', '#00D8F3', '#C3F8FF', '#86FFF3'],
   mint:   ['#86FFBC', '#00F37A', '#C3FFCD', '#86FF9A'],
 };
-const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;
+// 통계 화면(연도별·대륙별 막대 색)도 이 팔레트를 사용한다 (StatsScreen)
+export const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;
 // 모노톤 노이즈(0.5px, #00000040 25%) 적용 색(aurora 2색) — GlobeView와 값 일치 필요
 const NOISE_ACTIVE_COLORS = ['#E0C9FF', '#FD07E0'];
 const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
