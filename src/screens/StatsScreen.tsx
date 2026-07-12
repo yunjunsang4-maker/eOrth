@@ -219,27 +219,31 @@ function GradientHalfCard({
         {children}
       </PressCard>
       {size.w > 0 && size.h > 0 && (
-        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            {/* 시안 축: 173×128 기준 (26,0)→(121.2,91.8) — 비율로 환산.
-                히어로와 같은 유리 림 — 시작색이 중간에서 투명해졌다 끝색이 반투명으로 올라온다 */}
-            <SvgLinearGradient id={gradId} x1="15.04%" y1="0%" x2="70.04%" y2="71.74%">
-              <SvgStop offset="0" stopColor={colors[0]} />
-              <SvgStop offset="0.6" stopColor={colors[1]} stopOpacity={0} />
-              <SvgStop offset="1" stopColor={colors[1]} stopOpacity={0.5} />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgRect
-            x={0.5}
-            y={0.5}
-            width={size.w - 1}
-            height={size.h - 1}
-            rx={HALF_CARD_RADIUS}
-            stroke={`url(#${gradId})`}
-            strokeWidth={1}
-            fill="none"
-          />
-        </Svg>
+        // Svg가 아니라 View로 터치 차단 해제 — RNSVG는 새 아키텍처에서 pointerEvents="none"을
+        // 무시하고 터치를 삼켜 카드 탭(상세 이동)이 막힌다
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={size.w} height={size.h}>
+            <SvgDefs>
+              {/* 시안 축: 173×128 기준 (26,0)→(121.2,91.8) — 비율로 환산.
+                  히어로와 같은 유리 림 — 시작색이 중간에서 투명해졌다 끝색이 반투명으로 올라온다 */}
+              <SvgLinearGradient id={gradId} x1="15.04%" y1="0%" x2="70.04%" y2="71.74%">
+                <SvgStop offset="0" stopColor={colors[0]} />
+                <SvgStop offset="0.6" stopColor={colors[1]} stopOpacity={0} />
+                <SvgStop offset="1" stopColor={colors[1]} stopOpacity={0.5} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect
+              x={0.5}
+              y={0.5}
+              width={size.w - 1}
+              height={size.h - 1}
+              rx={HALF_CARD_RADIUS}
+              stroke={`url(#${gradId})`}
+              strokeWidth={1}
+              fill="none"
+            />
+          </Svg>
+        </View>
       )}
     </View>
   );
@@ -579,7 +583,8 @@ export default function StatsScreen() {
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
           <View style={styles.heroCardGrad}>
               {/* 우측 중앙 은은한 흰색 글로우 (시안의 블러 타원) */}
-              <Svg width={86} height={86} style={styles.heroGlow} pointerEvents="none">
+              <View style={styles.heroGlow} pointerEvents="none">
+              <Svg width={86} height={86}>
                 <SvgDefs>
                   <SvgRadialGradient id="statsHeroGlow" cx="50%" cy="50%" r="50%">
                     <SvgStop offset="0%" stopColor="#FFFFFF" stopOpacity={0.12} />
@@ -588,6 +593,7 @@ export default function StatsScreen() {
                 </SvgDefs>
                 <SvgCircle cx={43} cy={43} r={43} fill="url(#statsHeroGlow)" />
               </Svg>
+              </View>
               <View style={styles.heroTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
@@ -635,7 +641,8 @@ export default function StatsScreen() {
         </PressCard>
         {/* 테두리 전용 그라데이션 스트로크 (시안 Rectangle 240652865) — 커스텀 스킨은 스킨 링 색 2-스톱 */}
         {heroH > 0 && (
-          <Svg width={ARC_W} height={heroH} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={ARC_W} height={heroH}>
             <SvgDefs>
               <SvgLinearGradient id="statsHeroRing" x1={HERO_RING_X1} y1={HERO_RING_Y1} x2={HERO_RING_X2} y2={HERO_RING_Y2}>
                 {skinAccent.ringGradient
@@ -661,6 +668,7 @@ export default function StatsScreen() {
               fill="none"
             />
           </Svg>
+          </View>
         )}
         </View>
 
@@ -718,9 +726,11 @@ export default function StatsScreen() {
             <Text style={styles.arcEmpty}>{t('stats.noRecords')}</Text>
           ) : (
             <>
-              <Svg width={ARC_W} height={ARC_H} style={StyleSheet.absoluteFill} pointerEvents="none">
-                <SvgPath d={ARC_PATH} stroke="rgba(255,255,255,0.14)" strokeWidth={1} fill="none" />
-              </Svg>
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={ARC_W} height={ARC_H}>
+                  <SvgPath d={ARC_PATH} stroke="rgba(255,255,255,0.14)" strokeWidth={1} fill="none" />
+                </Svg>
+              </View>
               {ARC_COUNTRIES.map((c, i) => {
                 const size = NODE_SIZES[i];
                 const pos = arcNodePos(i);
@@ -792,7 +802,8 @@ export default function StatsScreen() {
 
         {/* Travel Rating — 지구본 와이어프레임 글로우 위에 평균 별점 (시안) */}
         <Pressable style={styles.globeSection} onPress={() => goToDetail('rating')}>
-          <Svg width={ARC_W} height={GLOBE_H} pointerEvents="none">
+          <View pointerEvents="none">
+          <Svg width={ARC_W} height={GLOBE_H}>
             <SvgDefs>
               <SvgRadialGradient id="statsGlobeGlow" cx="50%" cy="45%" r="55%">
                 <SvgStop offset="0%" stopColor="#7B61FF" stopOpacity={0.2} />
@@ -808,6 +819,7 @@ export default function StatsScreen() {
             <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY} rx={GLOBE_R} ry={GLOBE_R * 0.3} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
             <SvgEllipse cx={ARC_W / 2} cy={GLOBE_CY - GLOBE_R * 0.45} rx={GLOBE_R * 0.88} ry={GLOBE_R * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
           </Svg>
+          </View>
           <View style={styles.ratingOverlay} pointerEvents="none">
             <Text style={styles.ratingTitle}>Travel Rating</Text>
             {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
