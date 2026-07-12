@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
-import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
+import { getMaxAlbumPhotos } from '../constants/limits';
 import { copyTripOriginals, bakeCoverCrop, type PhotoRef } from '../utils/importPhotoStore';
 import { groupUrisByDay, newSectionId } from '../utils/albumSections';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -25,9 +25,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 
-// 사진첩 한 권당 최대 장수 — 서버본이 압축 업로드로 바뀌어(2026-07-12, posts.ts ALBUM_EDGE)
-// 무료도 100장으로 확대. 사진첩의 프리미엄 차별점은 장수가 아니라 '원본 화질 백업'.
-export const MAX_ALBUM_PHOTOS = 100;
+// 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
 
 type AlbumPhoto = PhotoRef & { creationTime?: number };
@@ -62,7 +60,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, records } = useRecords();
   // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
   const { isPremium } = useSettings();
-  const albumMax = isPremium ? MAX_RECORD_PHOTOS_PREMIUM : MAX_ALBUM_PHOTOS;
+  const albumMax = getMaxAlbumPhotos(isPremium);
 
   // 기간 (기본: 최근 7일)
   const today = new Date();

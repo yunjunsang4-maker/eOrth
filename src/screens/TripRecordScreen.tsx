@@ -19,8 +19,7 @@ import {
 } from 'react-native';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
-import { MAX_ALBUM_PHOTOS } from './AlbumCreateScreen';
-import { MAX_RECORD_PHOTOS_PREMIUM } from '../constants/limits';
+import { getMaxAlbumPhotos } from '../constants/limits';
 import { useSettings } from '../store/settingsStore';
 import {
   sectionSlices, addPhotosToSection,
@@ -75,7 +74,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const medias = record.medias ?? [];
   // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
   const { isPremium } = useSettings();
-  const albumMax = isPremium ? MAX_RECORD_PHOTOS_PREMIUM : MAX_ALBUM_PHOTOS;
+  const albumMax = getMaxAlbumPhotos(isPremium);
   const sections = record.albumSections && record.albumSections.length > 0
     ? normalizeSections(record.albumSections, medias.length)
     : null;
