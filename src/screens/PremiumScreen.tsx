@@ -1,10 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
 import {
   StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, TargetIcon, MegaphoneIcon,
 } from '../components/icons';
@@ -26,12 +27,35 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 구독 버튼·테두리 강조를 스킨색으로
   const { isPremium, setIsPremium } = useSettings();
+  const { records, rebackupAlbumOriginals } = useRecords();
+
+  // 압축본으로 백업돼 있는 내 사진첩 수 — 프리미엄이면 원본 재백업 대상
+  const compressedAlbums = records.filter(
+    (r) => r.isMyPost !== false && r.viewType === 'album' && !!r.remoteId && r.albumUploadQuality === 'compressed'
+  ).length;
+  const [backingUp, setBackingUp] = useState(false);
+  const handleRebackup = async () => {
+    if (backingUp) return;
+    setBackingUp(true);
+    try {
+      const { upgraded, failed } = await rebackupAlbumOriginals();
+      Alert.alert(
+        t('premium.backupDoneTitle'),
+        failed > 0
+          ? t('premium.backupDonePartial', { upgraded, failed })
+          : t('premium.backupDoneMsg', { upgraded })
+      );
+    } finally {
+      setBackingUp(false);
+    }
+  };
 
   // 혜택 목록 — 설정 프리미엄 그룹과 동일한 아이콘 사용
   const benefits = [
     { icon: <MegaphoneIcon size={22} />, title: t('premium.benefitAdsTitle'),   desc: t('premium.benefitAdsDesc') },
     { icon: <LanguageIcon size={22} />, title: t('premium.benefitFontTitle'),   desc: t('premium.benefitFontDesc') },
     { icon: <GalleryIcon size={22} />,  title: t('premium.benefitPhotosTitle'), desc: t('premium.benefitPhotosDesc') },
+    { icon: <GalleryIcon size={22} />,  title: t('premium.benefitBackupTitle'), desc: t('premium.benefitBackupDesc') },
     { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),   desc: t('premium.benefitLogoDesc') },
     { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'),  desc: t('premium.benefitFrameDesc') },
     { icon: <TargetIcon size={22} />,   title: t('premium.benefitQrTitle'),     desc: t('premium.benefitQrDesc') },
@@ -75,6 +99,25 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
             </View>
           ))}
         </View>
+
+        {/* 프리미엄 활성 + 압축본 사진첩 존재 → 원본 화질로 재백업 */}
+        {isPremium && compressedAlbums > 0 && (
+          <TouchableOpacity
+            style={[st.backupBtn, { borderColor: skinAccent.tint(0.35) }]}
+            onPress={handleRebackup}
+            disabled={backingUp}
+            activeOpacity={0.8}
+          >
+            {backingUp ? (
+              <ActivityIndicator color={skinAccent.accent} size="small" />
+            ) : (
+              <Text style={[st.backupBtnTxt, { color: skinAccent.accent }]}>
+                {t('premium.backupCta', { count: compressedAlbums })}
+              </Text>
+            )}
+            <Text style={st.backupHint}>{t('premium.backupHint')}</Text>
+          </TouchableOpacity>
+        )}
 
         {/* CTA */}
         {isPremium ? (
@@ -131,6 +174,17 @@ const st = StyleSheet.create({
   },
   heroTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.white, marginBottom: 6 },
   heroSub: { fontSize: 13, color: COLORS.textDim, textAlign: 'center', lineHeight: 19 },
+
+  backupBtn: {
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: COLORS.card,
+  },
+  backupBtnTxt: { fontSize: 14, fontWeight: '700' },
+  backupHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, paddingHorizontal: 16, textAlign: 'center' },
 
   benefitList: {
     backgroundColor: COLORS.card,

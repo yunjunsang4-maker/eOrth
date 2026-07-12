@@ -10,7 +10,21 @@
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
+import { compressImage } from '../utils/imageCompress';
 import type { TravelRecord } from '../store/recordStore';
+
+// 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
+const ALBUM_EDGE = 2048;
+const ALBUM_QUALITY = 0.85;
+
+export interface PublishMediaOptions {
+  /** 사진첩(medias·대표) 업로드 화질 — 'compressed'=장변 2048 압축본, 'original'=원본 그대로 */
+  albumQuality?: 'compressed' | 'original';
+  /** 로컬 uri → 업로드된 공개 URL 캐시 — 있으면 재업로드 생략 (수정 때 전 장 재업로드·고아 파일 방지) */
+  uploadCache?: Record<string, string>;
+  /** 이번 호출에서 새로 업로드된 로컬 uri → URL 매핑 (호출부가 캐시에 병합) */
+  onUploaded?: (map: Record<string, string>) => void;
+}
 
 // 업로드 실패(uploadImage가 원본 로컬 URI를 그대로 반환) 감지 — 로컬 file:// 경로가
 // 서버에 발행되면 다른 사용자 기기에서 그 사진이 영구히 깨져 보인다(재업로드 경로 없음).
@@ -24,8 +38,37 @@ const ups = async (arr: string[]): Promise<string[]> => (await uploadImages(arr)
 
 // 레코드 안의 모든 로컬 이미지 URI를 업로드해 공개 URL로 치환한 사본 반환.
 // 한 장이라도 업로드 실패하면 throw (부분 성공 상태로 발행하지 않음).
-async function withUploadedMedia(rec: TravelRecord): Promise<TravelRecord> {
+async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions): Promise<TravelRecord> {
   const copy: TravelRecord = { ...rec };
+  const isAlbum = rec.viewType === 'album';
+  // 사진첩 전용 업로드 — 캐시 재사용 + (압축 화질이면) 장변 축소 후 업로드
+  const uploadedNow: Record<string, string> = {};
+  const cache = opts?.uploadCache ?? {};
+  const upAlbum = async (u: string): Promise<string> => {
+    if (/^https?:\/\//.test(u)) return u;
+    const hit = cache[u] ?? uploadedNow[u];
+    if (hit) return hit;
+    const src = opts?.albumQuality === 'compressed' ? await compressImage(u, ALBUM_EDGE, ALBUM_QUALITY) : u;
+    const url = requireRemote(await uploadImage(src));
+    uploadedNow[u] = url;
+    return url;
+  };
+  if (isAlbum) {
+    try {
+      if (copy.medias?.length) {
+        const out: string[] = [];
+        for (const u of copy.medias) out.push(await upAlbum(u));
+        copy.medias = out;
+      }
+      if (copy.representativePhoto) copy.representativePhoto = await upAlbum(copy.representativePhoto);
+    } finally {
+      // 중간 실패해도 여기까지 올라간 장은 캐시로 보고 — 재시도가 이어서 진행되게 (100장 업로드 내성)
+      if (Object.keys(uploadedNow).length > 0) opts?.onUploaded?.(uploadedNow);
+    }
+    // 로컬 전용 캐시는 서버 data에 싣지 않는다
+    delete copy.uploadedMediaUrls;
+    return copy;
+  }
   if (copy.medias?.length) copy.medias = await ups(copy.medias);
   if (copy.representativePhoto) copy.representativePhoto = await up(copy.representativePhoto);
   if (copy.snapFrontUri) copy.snapFrontUri = await up(copy.snapFrontUri);
@@ -67,13 +110,13 @@ async function withUploadedMedia(rec: TravelRecord): Promise<TravelRecord> {
 }
 
 // 게시물 발행 → 생성된 서버 id(uuid) 반환 (실패/미설정 시 null)
-export async function publishPost(rec: TravelRecord): Promise<string | null> {
+export async function publishPost(rec: TravelRecord, opts?: PublishMediaOptions): Promise<string | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
   if (!uid) return null;
   // 업로드 실패는 try 밖에서 throw로 전파 — 호출부(publishToBackend)의 catch가
   // 사용자에게 동기화 실패를 알린다. (깨진 로컬 경로로 발행하는 것보다 발행 중단이 옳다)
-  const uploaded = await withUploadedMedia(rec);
+  const uploaded = await withUploadedMedia(rec, opts);
   try {
     const row = {
       author_id: uid,
@@ -110,13 +153,13 @@ export async function publishPost(rec: TravelRecord): Promise<string | null> {
   }
 }
 
-// 게시물 수정
-export async function updatePost(remoteId: string, rec: TravelRecord): Promise<void> {
-  if (!supabase || !remoteId) return;
+// 게시물 수정 — 성공 여부 반환 (원본 재백업 스윕 등에서 사용)
+export async function updatePost(remoteId: string, rec: TravelRecord, opts?: PublishMediaOptions): Promise<boolean> {
+  if (!supabase || !remoteId) return false;
   // 업로드 실패는 throw로 전파 (publishPost와 동일 — 깨진 로컬 경로로 갱신 방지)
-  const uploaded = await withUploadedMedia(rec);
+  const uploaded = await withUploadedMedia(rec, opts);
   try {
-    await supabase
+    const { error } = await supabase
       .from('posts')
       .update({
         visibility: rec.visibility ?? 'public',
@@ -125,8 +168,9 @@ export async function updatePost(remoteId: string, rec: TravelRecord): Promise<v
         data: uploaded,
       })
       .eq('id', remoteId);
+    return !error;
   } catch {
-    // 무시
+    return false;
   }
 }
 

@@ -25,8 +25,9 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 
-// 사진첩 한 권당 최대 장수 (import 흐름과 동일한 프리미엄 seam)
-export const MAX_ALBUM_PHOTOS = 30;
+// 사진첩 한 권당 최대 장수 — 서버본이 압축 업로드로 바뀌어(2026-07-12, posts.ts ALBUM_EDGE)
+// 무료도 100장으로 확대. 사진첩의 프리미엄 차별점은 장수가 아니라 '원본 화질 백업'.
+export const MAX_ALBUM_PHOTOS = 100;
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
 
 type AlbumPhoto = PhotoRef & { creationTime?: number };

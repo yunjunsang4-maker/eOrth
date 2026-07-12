@@ -6,7 +6,7 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
-import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type PublishMediaOptions } from '../services/posts';
 import { getProfileByHandle, getProfileById, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
@@ -87,6 +87,11 @@ export interface TravelRecord {
   // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)
   mediaAssetIds?: Record<string, string>; // media uri → 기기 사진 assetId (중복 추가 방지)
   mediaTimes?: Record<string, number>;    // media uri → 촬영시각 ms ('일자별로 다시 구성'용)
+  // 사진첩 서버 백업 상태 — uploadedMediaUrls는 로컬 uri→업로드 URL 캐시(수정 때 전 장
+  // 재업로드 방지, 서버 data엔 미포함). albumUploadQuality는 서버본 화질(미설정=압축 도입
+  // 이전 발행분, 원본으로 취급). 원본 백업은 프리미엄 혜택 — services/posts.ts 참조.
+  uploadedMediaUrls?: Record<string, string>;
+  albumUploadQuality?: 'compressed' | 'original';
   mediaPrivacy?: Record<number, string[]>;
   budget?: { amount: number; currency: string };
   weather?: string;
@@ -281,6 +286,8 @@ interface RecordContextType {
   // 앱 상태 통합 백업(user_app_state) — 기록 부가상태(보관·신고숨김·음소거·차단·본스냅) 내보내기/적용
   exportLocalStateBackup: () => Record<string, unknown>;
   applyLocalStateBackup: (b: Record<string, unknown>) => void;
+  // 프리미엄: 압축본으로 백업된 사진첩을 원본 화질로 재업로드 (성공/실패 앨범 수 반환)
+  rebackupAlbumOriginals: () => Promise<{ upgraded: number; failed: number }>;
 }
 
 const RecordContext = createContext<RecordContextType | null>(null);
@@ -588,12 +595,28 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const pendingDeleteRef = useRef<Set<string>>(new Set());
   const recordsLiveRef = useRef(records);
   recordsLiveRef.current = records;
+  // 사진첩 발행/수정 공통 옵션 — 화질(비프리미엄=압축) + 업로드 캐시 + 캐시 병합 콜백
+  const albumPublishOpts = (rec: TravelRecord): PublishMediaOptions | undefined => {
+    if (rec.viewType !== 'album') return undefined;
+    return {
+      albumQuality: rec.albumUploadQuality ?? (isPremium ? 'original' : 'compressed'),
+      uploadCache: rec.uploadedMediaUrls,
+      onUploaded: (map) =>
+        setRecords((prev) =>
+          prev.map((r) =>
+            r.id === rec.id ? { ...r, uploadedMediaUrls: { ...(r.uploadedMediaUrls ?? {}), ...map } } : r
+          )
+        ),
+    };
+  };
+
   const publishToBackend = (rec: TravelRecord) => {
     if (!isSupabaseConfigured || rec.isDraft) return;
     if (rec.scheduledAt && rec.scheduledAt > Date.now()) return;
     if (publishAttemptRef.current.has(rec.id)) return;
     publishAttemptRef.current.add(rec.id);
-    publishPost(rec)
+    const opts = albumPublishOpts(rec);
+    publishPost(rec, opts)
       .then((rid) => {
         if (!rid) return;
         // 업로드 중 삭제된 글 → 서버에 유령 게시물로 남지 않게 즉시 삭제
@@ -603,12 +626,59 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           deletePost(rid).catch(() => {});
           return;
         }
-        setRecords((prev) => prev.map((r) => (r.id === rec.id ? { ...r, remoteId: rid } : r)));
+        // 사진첩은 이번 발행에 쓴 화질을 기록 — 프리미엄 원본 재백업 스윕의 대상 판정 기준
+        const quality = opts?.albumQuality;
+        setRecords((prev) =>
+          prev.map((r) =>
+            r.id === rec.id ? { ...r, remoteId: rid, ...(quality ? { albumUploadQuality: quality } : {}) } : r
+          )
+        );
         // 업로드 중 수정된 글 → 캡처본(구버전)이 insert됐으므로 최신 내용으로 서버 갱신
-        if (live !== rec) updatePost(rid, { ...live, remoteId: rid }).catch(notifySyncError);
+        if (live !== rec) updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live)).catch(notifySyncError);
       })
       .catch(notifySyncError);
   };
+
+  // 프리미엄: 압축본으로 백업된 사진첩을 원본 화질로 재업로드.
+  // 기기 로컬 원본(medias)이 진실의 원천이라 같은 기기에서는 언제든 소급 승격이 가능하다.
+  const rebackupAlbumOriginals = useCallback(async (): Promise<{ upgraded: number; failed: number }> => {
+    let upgraded = 0;
+    let failed = 0;
+    const targets = recordsLiveRef.current.filter(
+      (r) =>
+        r.isMyPost !== false &&
+        r.viewType === 'album' &&
+        !!r.remoteId &&
+        r.albumUploadQuality === 'compressed' && // 미설정(압축 도입 전 발행)은 이미 원본
+        (r.medias?.length ?? 0) > 0
+    );
+    for (const rec of targets) {
+      const oldUrls = Object.values(rec.uploadedMediaUrls ?? {});
+      let newMap: Record<string, string> = {};
+      const ok = await updatePost(rec.remoteId!, rec, {
+        albumQuality: 'original',
+        uploadCache: {}, // 압축본 캐시 무시 — 원본으로 전부 새로 업로드
+        onUploaded: (m) => { newMap = m; },
+      }).catch(() => false);
+      if (ok) {
+        upgraded += 1;
+        setRecords((prev) =>
+          prev.map((r) => (r.id === rec.id ? { ...r, albumUploadQuality: 'original', uploadedMediaUrls: newMap } : r))
+        );
+        // 교체된 압축본 파일 정리 (새 업로드에 포함되지 않은 것만)
+        const keep = new Set(Object.values(newMap));
+        const stale = oldUrls.filter((u) => !keep.has(u));
+        if (stale.length > 0) removeMediaUrls(stale).catch(() => {});
+      } else {
+        failed += 1;
+        // 중간까지 올라간 원본은 아직 게시물이 참조하지 않는 고아 — 재시도 전에 정리
+        const partial = Object.values(newMap);
+        if (partial.length > 0) removeMediaUrls(partial).catch(() => {});
+      }
+    }
+    return { upgraded, failed };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // 기록이 참조하는 업로드(원격) 미디어 URL 전부 수집 — 삭제/교체 시 Storage 고아 파일 정리용
   const collectRemoteMediaUrls = (r: TravelRecord): string[] => {
@@ -659,7 +729,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       linkRecordToTrip(updated);
     }
     if (isSupabaseConfigured) {
-      if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }).catch(notifySyncError);
+      if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes })).catch(notifySyncError);
       // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
       if (cur && updated) {
         const keep = new Set(collectRemoteMediaUrls(updated));
@@ -1504,7 +1574,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
       {children}
     </RecordContext.Provider>
   );
