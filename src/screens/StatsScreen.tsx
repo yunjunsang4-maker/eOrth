@@ -25,13 +25,14 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, {
   Path as SvgPath,
   Circle as SvgCircle,
-  Ellipse as SvgEllipse,
   Rect as SvgRect,
+  G as SvgG,
   Defs as SvgDefs,
   RadialGradient as SvgRadialGradient,
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
+import { STATS_GLOBE_PATH } from '../data/statsGlobePath';
 import { useSettings } from '../store/settingsStore';
 import { PersonIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
@@ -245,10 +246,7 @@ const ORBIT_PATH = (() => {
   const x2 = ORBIT_CX + ORBIT_R * Math.sin(ORBIT_SPAN);
   return `M ${x1} ${y1} A ${ORBIT_R} ${ORBIT_R} 0 0 1 ${x2} ${y1}`;
 })();
-// 지구본 (시안: 흐린 흰 3% 원 + 라벤더→보라 격자 + 중앙 흰 3% 원)
-const GLOBE_CY2 = 194.5 * OS;
-const GLOBE_R2 = 108.5 * OS;
-const GLOBE_LINE = 'rgba(224,201,255,0.11)'; // 시안 격자 톤(#E0C9FF 계열)
+// 지구본은 시안 패스 원본(data/statsGlobePath)을 시안 좌표계(335px) 그대로 배율해 그린다
 
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
@@ -694,7 +692,7 @@ export default function StatsScreen() {
 
         {/* TOP 국가 궤도 + Travel Rating — 시안(Group 2085664582): 궤도·지구본 동심원 통합 섹션 */}
         <View style={styles.orbitSection}>
-          {/* 장식 레이어 — 지구본(흐린 원 + 라벤더 격자) + 궤도 곡선(위 밝고 아래로 사라짐) */}
+          {/* 장식 레이어 — 시안 원본 그대로: 흐린 흰3% 구 + 격자 패스(라벤더→보라 그라데이션) + 중앙 원판 */}
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <Svg width={ARC_W} height={ORBIT_H}>
               <SvgDefs>
@@ -702,27 +700,24 @@ export default function StatsScreen() {
                   <SvgStop offset="0" stopColor="#FFFFFF" />
                   <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
                 </SvgLinearGradient>
-                <SvgRadialGradient id="statsGlobeGlow" cx="50%" cy="50%" r="50%">
-                  <SvgStop offset="0%" stopColor="#7C3AED" stopOpacity={0.16} />
-                  <SvgStop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
-                </SvgRadialGradient>
+                {/* 시안 paint1 — 격자 패스의 세로 그라데이션 (userSpace 좌표는 G scale과 함께 배율됨) */}
+                <SvgLinearGradient id="statsGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
+                  <SvgStop offset="0" stopColor="#E0C9FF" />
+                  <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.2} />
+                </SvgLinearGradient>
               </SvgDefs>
-              {/* 지구본 — 흐린 흰 3% 구 + 보라 글로우 */}
-              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} fill="rgba(255,255,255,0.03)" />
-              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} fill="url(#statsGlobeGlow)" />
-              {/* 격자 (라벤더 톤) */}
-              <SvgCircle cx={ORBIT_CX} cy={GLOBE_CY2} r={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2 * 0.62} ry={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2 * 0.24} ry={GLOBE_R2} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2} rx={GLOBE_R2} ry={GLOBE_R2 * 0.3} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2 - GLOBE_R2 * 0.45} rx={GLOBE_R2 * 0.88} ry={GLOBE_R2 * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              <SvgEllipse cx={ORBIT_CX} cy={GLOBE_CY2 + GLOBE_R2 * 0.45} rx={GLOBE_R2 * 0.88} ry={GLOBE_R2 * 0.16} stroke={GLOBE_LINE} strokeWidth={1} fill="none" />
-              {/* 중앙 패널 원 (시안: r 77.5 흰 3%) */}
-              <SvgCircle cx={ORBIT_CX} cy={200.5 * OS} r={77.5 * OS} fill="rgba(217,217,217,0.03)" />
+              {/* 시안(335px) 좌표계 그대로 그리고 화면 폭에 맞춰 배율 */}
+              <SvgG scale={OS}>
+                <SvgCircle cx={167.5} cy={194.5} r={108.5} fill="#FFFFFF" fillOpacity={0.03} />
+                <SvgPath d={STATS_GLOBE_PATH} fill="url(#statsGlobeGrid)" fillOpacity={0.2} />
+              </SvgG>
               {/* 궤도 곡선 */}
               <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.3} strokeWidth={2} fill="none" />
             </Svg>
           </View>
+
+          {/* 투명판 (시안 Ellipse 3062: r 77.5, #D9D9D9 3%) — 지구 격자와 별점 사이 레이어 */}
+          <View style={styles.ratingDisk} pointerEvents="none" />
 
           {/* Travel Rating — 지구본 중앙 (탭: 평가 상세) */}
           <Pressable style={styles.ratingOverlay} onPress={() => goToDetail('rating')}>
@@ -1101,6 +1096,17 @@ const styles = StyleSheet.create({
     fontSize: 22,
     lineHeight: 26,
     color: 'rgba(255,255,255,0.4)',
+  },
+
+  // 별점 뒤 투명판 — 시안 Ellipse 3062 (중심 (168.5, 200.5), r 77.5, #D9D9D9 3%)
+  ratingDisk: {
+    position: 'absolute',
+    left: (168.5 - 77.5) * OS,
+    top: (200.5 - 77.5) * OS,
+    width: 155 * OS,
+    height: 155 * OS,
+    borderRadius: (155 * OS) / 2,
+    backgroundColor: 'rgba(217,217,217,0.03)',
   },
 
   // Travel Rating — 지구본 중앙 오버레이 (시안: 제목 y≈145, 별 y≈235)
