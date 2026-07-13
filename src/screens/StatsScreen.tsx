@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useId } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useId } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -9,9 +9,11 @@ import {
   Animated,
   Image,
   Dimensions,
+  PanResponder,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
+import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
@@ -207,6 +209,59 @@ const NODE_GEO: [number, number, number][] = [
   [312, 127, 23],
 ];
 const NODE_RING_OPACITY = [1, 0.5, 0.5, 0.2, 0.2];
+// ── 궤도 캐러셀(이스터에그) — 별점 원판을 꾹 누른 채 좌우 드래그로 랭킹 노드 회전 ──
+// 슬롯을 좌→우 순서로 정렬하고 각 슬롯의 (궤도 중심 기준) 각도·반지름을 구해 원호를 따라 보간.
+// 맨 오른쪽→맨 왼쪽 랩 구간은 아래쪽 큰 호를 한 바퀴 돌아 넘어간다(행성 궤도 느낌).
+const ORBIT_DCX = 167.5; // 궤도 중심(시안 좌표)
+const ORBIT_DCY = 196.2;
+const SLOT_BY_ORDER = [3, 1, 0, 2, 4];  // 좌→우 슬롯 인덱스
+const NODE_ORDER_POS = [2, 1, 3, 0, 4]; // 슬롯 i → 좌→우 순번
+const SLOT_ANGLE = SLOT_BY_ORDER.map((s) => Math.atan2(NODE_GEO[s][1] - ORBIT_DCY, NODE_GEO[s][0] - ORBIT_DCX));
+const SLOT_RADIUS = SLOT_BY_ORDER.map((s) => Math.hypot(NODE_GEO[s][0] - ORBIT_DCX, NODE_GEO[s][1] - ORBIT_DCY));
+const SLOT_GR = SLOT_BY_ORDER.map((s) => NODE_GEO[s][2]);
+// 좌→우 순번(실수)의 시안 좌표·반지름 — 정수 순번은 원래 슬롯과 정확히 일치
+function orbitNodeAt(orderPos: number): { x: number; y: number; gr: number } {
+  const q = ((orderPos % 5) + 5) % 5;
+  const k = Math.floor(q);
+  const f = q - k;
+  const k2 = (k + 1) % 5;
+  const a1 = SLOT_ANGLE[k];
+  const a2 = k === 4 ? SLOT_ANGLE[0] + Math.PI * 2 : SLOT_ANGLE[k2]; // 랩: 아래로 크게 돌기
+  const ang = a1 + (a2 - a1) * f;
+  const r = SLOT_RADIUS[k] + (SLOT_RADIUS[k2] - SLOT_RADIUS[k]) * f;
+  const gr = SLOT_GR[k] + (SLOT_GR[k2] - SLOT_GR[k]) * f;
+  return { x: ORBIT_DCX + r * Math.cos(ang), y: ORBIT_DCY + r * Math.sin(ang), gr };
+}
+// 6개 이상일 때의 선형 캐러셀 — q∈[0,n): 0~4는 보이는 슬롯, (4,5]는 우하단으로 페이드 퇴장,
+// [n-1,n)은 좌하단에서 페이드 등장, 그 사이는 숨김(가장자리 밖 대기). 드래그로 전체 순위 순환.
+const EXIT_SWEEP = 0.55; // rad — 가장자리 밖으로 사라지는 꼬리 구간
+function orbitCarouselAt(q: number, n: number): { x: number; y: number; gr: number; opacity: number } | null {
+  let ang: number; let r: number; let gr: number; let opacity: number;
+  if (q <= 4) {
+    const k = Math.floor(q);
+    const f = q - k;
+    const k2 = Math.min(k + 1, 4);
+    ang = SLOT_ANGLE[k] + (SLOT_ANGLE[k2] - SLOT_ANGLE[k]) * f;
+    r = SLOT_RADIUS[k] + (SLOT_RADIUS[k2] - SLOT_RADIUS[k]) * f;
+    gr = SLOT_GR[k] + (SLOT_GR[k2] - SLOT_GR[k]) * f;
+    opacity = 1;
+  } else if (q <= 5) {
+    const f = q - 4; // 퇴장 (우하단)
+    ang = SLOT_ANGLE[4] + EXIT_SWEEP * f;
+    r = SLOT_RADIUS[4];
+    gr = SLOT_GR[4];
+    opacity = 1 - f;
+  } else if (q >= n - 1) {
+    const f = q - (n - 1); // 등장 (좌하단)
+    ang = SLOT_ANGLE[0] - EXIT_SWEEP * (1 - f);
+    r = SLOT_RADIUS[0];
+    gr = SLOT_GR[0];
+    opacity = f;
+  } else {
+    return null; // 숨김 — 가장자리 밖 대기
+  }
+  return { x: ORBIT_DCX + r * Math.cos(ang), y: ORBIT_DCY + r * Math.sin(ang), gr, opacity };
+}
 // 궤도 곡선 — 끝원(노드 4·5) 중심(23,127)·(312,127)에서 끝나는 원호 (±64.4°). 끝점이 끝원 안에 들어가 벗어나지 않음
 const ORBIT_SPAN = 1.124;
 const ORBIT_PATH = (() => {
@@ -233,15 +288,127 @@ export default function StatsScreen() {
   // 연도별·대륙별 막대 색 — 지구본 '색 활성화' 팔레트 4색을 순환 사용 (사용자 확정)
   const globePalette = getSkinPalette(globeSkin);
 
-  // TOP 국가 아크 페이지(5개씩) — ‹ ›로 6위 이하 탐색
-  const [rankPage, setRankPage] = useState(0);
-
   // 히어로 카드 실제 높이 — 테두리 스트로크(SVG)를 카드 크기에 맞춰 그리기 위한 측정값
   const [heroH, setHeroH] = useState(0);
 
   const goToDetail = (statType: StatType) => {
     navigation.navigate('StatsDetail', { statType });
   };
+
+  // ── 궤도 캐러셀 드래그 — 별점 원판 꾹(350ms) → 좌우 드래그로 노드 회전, 놓으면 슬롯 스냅 ──
+  // 짧은 탭은 기존대로 평가 상세 이동. PanResponder는 첫 렌더에 박제되므로 ref 경유로 최신값 사용.
+  const [orbitShift, setOrbitShift] = useState(0);
+  // 드래그 모드 동안 ScrollView 스크롤 잠금 — 노드 회전 중 화면이 따라 움직이는 불편 방지
+  const [orbitDragging, setOrbitDragging] = useState(false);
+  const orbitShiftRef = useRef(0);
+  const orbitDragRef = useRef({ dragging: false, start: 0, timer: null as ReturnType<typeof setTimeout> | null, lastUpd: 0 });
+  const goToDetailRef = useRef(goToDetail);
+  goToDetailRef.current = goToDetail;
+  const snapOrbit = () => {
+    const snapped = Math.round(orbitShiftRef.current);
+    orbitShiftRef.current = snapped;
+    setOrbitShift(snapped);
+  };
+  const snapOrbitRef = useRef(snapOrbit);
+  snapOrbitRef.current = snapOrbit;
+  // 플릭 관성 — 손을 놓을 때 속도로 계속 회전하다 감속 후 스냅. 손가락이 화면을 벗어나지
+  // 않아도 휙휙 던져서 끝 순위까지 넘길 수 있다. 회전 중 재터치는 즉시 이어서 드래그.
+  const momentumRef = useRef<{ raf: number | null }>({ raf: null });
+  const stopMomentum = () => {
+    if (momentumRef.current.raf != null) {
+      cancelAnimationFrame(momentumRef.current.raf);
+      momentumRef.current.raf = null;
+    }
+  };
+  const startMomentum = (v0: number) => {
+    stopMomentum();
+    let v = v0; // 슬롯/ms
+    let last = Date.now();
+    const tick = () => {
+      const now = Date.now();
+      const dt = Math.min(now - last, 50);
+      last = now;
+      v *= Math.pow(0.994, dt); // 감쇠
+      const next = orbitShiftRef.current + v * dt;
+      orbitShiftRef.current = next;
+      setOrbitShift(next);
+      if (Math.abs(v) < 0.0004) {
+        momentumRef.current.raf = null;
+        snapOrbitRef.current();
+        Haptics.selectionAsync().catch(() => {});
+        return;
+      }
+      momentumRef.current.raf = requestAnimationFrame(tick);
+    };
+    momentumRef.current.raf = requestAnimationFrame(tick);
+  };
+  const startMomentumRef = useRef(startMomentum);
+  startMomentumRef.current = startMomentum;
+  const stopMomentumRef = useRef(stopMomentum);
+  stopMomentumRef.current = stopMomentum;
+  useEffect(() => () => stopMomentumRef.current(), []); // 언마운트 시 관성 루프 정리
+  const ratingPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      // 드래그 모드 전이면 ScrollView가 스크롤을 가져갈 수 있게 양보
+      onPanResponderTerminationRequest: () => !orbitDragRef.current.dragging,
+      onPanResponderGrant: () => {
+        const d = orbitDragRef.current;
+        const wasSpinning = momentumRef.current.raf != null;
+        stopMomentumRef.current();
+        d.start = orbitShiftRef.current;
+        if (wasSpinning) {
+          // 관성 회전 중 재터치 — 길게 누를 필요 없이 바로 이어서 드래그(연속 플릭)
+          d.dragging = true;
+          setOrbitDragging(true);
+          return;
+        }
+        d.timer = setTimeout(() => {
+          d.dragging = true;
+          d.timer = null;
+          setOrbitDragging(true); // 스크롤 잠금
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        }, 350);
+      },
+      onPanResponderMove: (_e, g) => {
+        const d = orbitDragRef.current;
+        if (!d.dragging) return;
+        const now = Date.now();
+        if (now - d.lastUpd < 16) return; // 프레임 단위 스로틀
+        d.lastUpd = now;
+        const next = d.start + g.dx / (60 * OS); // ≈슬롯 간격만큼 끌면 한 칸
+        orbitShiftRef.current = next;
+        setOrbitShift(next);
+      },
+      onPanResponderRelease: (_e, g) => {
+        const d = orbitDragRef.current;
+        if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+        if (d.dragging) {
+          d.dragging = false;
+          setOrbitDragging(false); // 스크롤 잠금 해제
+          // 놓는 순간 속도(px/ms)를 슬롯/ms로 변환 — 빠르면 관성 회전, 느리면 즉시 스냅
+          const v = Math.max(-0.015, Math.min(0.015, g.vx / (60 * OS)));
+          if (Math.abs(v) > 0.0015) {
+            startMomentumRef.current(v);
+          } else {
+            snapOrbitRef.current();
+            Haptics.selectionAsync().catch(() => {});
+          }
+        } else if (Math.abs(g.dx) < 10 && Math.abs(g.dy) < 10) {
+          goToDetailRef.current('rating'); // 짧은 탭 = 평가 상세(기존 동작)
+        }
+      },
+      onPanResponderTerminate: () => {
+        const d = orbitDragRef.current;
+        if (d.timer) { clearTimeout(d.timer); d.timer = null; }
+        if (d.dragging) {
+          d.dragging = false;
+          setOrbitDragging(false); // 스크롤 잠금 해제
+          snapOrbitRef.current();
+        }
+      },
+    })
+  ).current;
 
   // 대륙 키(한글, COUNTRIES 데이터 기준)를 표시용 라벨로 변환
   const continentName = (cont: string) => {
@@ -463,17 +630,13 @@ export default function StatsScreen() {
     }))
     .sort((a, b) => b.visits - a.visits);
 
-  // 아크 페이지네이션 — 5개씩, ‹ ›로 6위 이하 탐색 (기록 변화로 페이지 수가 줄면 클램프)
-  const rankTotalPages = Math.max(1, Math.ceil(sortedCountries.length / 5));
-  const rankPageClamped = Math.min(rankPage, rankTotalPages - 1);
-  const ARC_COUNTRIES = sortedCountries
-    .slice(rankPageClamped * 5, rankPageClamped * 5 + 5)
-    .map((c, index) => ({
-      rank: rankPageClamped * 5 + index + 1,
-      flag: c.flag,
-      name: c.name,
-      visits: c.visits,
-    }));
+  // 전체 순위 캐러셀 — 페이지 없음. 6위 밖 나라는 궤도 드래그(별점 원판 꾹+좌우)로 순환해 본다
+  const ARC_COUNTRIES = sortedCountries.map((c, index) => ({
+    rank: index + 1,
+    flag: c.flag,
+    name: c.name,
+    visits: c.visits,
+  }));
 
   // 5. Travel Rating Stats
   const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
@@ -514,6 +677,7 @@ export default function StatsScreen() {
         showsVerticalScrollIndicator={false}
         bounces={false}
         overScrollMode="never"
+        scrollEnabled={!orbitDragging}
         contentContainerStyle={[styles.scroll, { paddingBottom: 70 }]}
       >
         {/* World coverage hero — 흰색 % + 프로필 사진 (시안) */}
@@ -772,8 +936,8 @@ export default function StatsScreen() {
             </Svg>
           </View>
 
-          {/* Travel Rating — 지구본 중앙 (탭: 평가 상세) */}
-          <Pressable style={styles.ratingOverlay} onPress={() => goToDetail('rating')}>
+          {/* Travel Rating — 지구본 중앙 (탭: 평가 상세 · 꾹 누른 채 좌우 드래그: 랭킹 노드 궤도 회전) */}
+          <View style={styles.ratingOverlay} {...ratingPan.panHandlers}>
             <Text style={styles.ratingTitle}>Travel Rating</Text>
             {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
             <Text style={styles.ratingBasis}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
@@ -791,32 +955,45 @@ export default function StatsScreen() {
                 </Text>
               ))}
             </View>
-          </Pressable>
+          </View>
 
           {/* 랭킹 노드 — 유리(흰 3%) 배경 + 그라데이션 링(순위 낮을수록 옅게) */}
           {ARC_COUNTRIES.map((c, i) => {
-            const [gx, gy, gr] = NODE_GEO[i];
+            // 궤도 캐러셀 — 6개 이상: 전체 순위 선형 순환(숨은 나라는 가장자리 밖 대기),
+            // 5개 이하: 기존 5슬롯 회전. 정지 상태(오프셋 0)에선 1위가 중앙 상단.
+            const n = ARC_COUNTRIES.length;
+            let pos: { x: number; y: number; gr: number; opacity: number } | null;
+            if (n > 5) {
+              const q = (((i + 2 + orbitShift) % n) + n) % n; // +2: 1위를 중앙 슬롯에
+              pos = orbitCarouselAt(q, n);
+            } else {
+              pos = { ...orbitNodeAt(NODE_ORDER_POS[i] + orbitShift), opacity: 1 };
+            }
+            if (!pos) return null;
+            const { x: gx, y: gy, gr, opacity } = pos;
             const size = gr * 2 * OS;
             const left = gx * OS - size / 2;
             const top = gy * OS - size / 2;
+            const big = gr >= 33;   // 상단 대형 슬롯 부근
+            const small = gr <= 26; // 가장자리 소형 슬롯 부근
             return (
               <Pressable
                 key={`${c.name}-${c.rank}`}
-                style={{ position: 'absolute', left, top }}
+                style={{ position: 'absolute', left, top, opacity }}
                 onPress={() => goToDetail('countries')}
               >
                 <View style={[styles.arcNode, { width: size, height: size, borderRadius: size / 2 }]}>
                   {/* 프로스트 유리 — 뒤로 지나는 궤도선이 원 안에서 번져 보이게(글라스 굴절). 어두움 낮춰 선이 비치게 */}
                   <BlurView intensity={14} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
-                  <Text style={[styles.arcRank, i >= 3 && styles.arcRankSmall]}>{String(c.rank).padStart(2, '0')}</Text>
+                  <Text style={[styles.arcRank, small && styles.arcRankSmall]}>{String(c.rank).padStart(2, '0')}</Text>
                   <Text
-                    style={[styles.arcName, i === 0 && styles.arcNameTop, i >= 3 && styles.arcNameSmall]}
+                    style={[styles.arcName, big && styles.arcNameTop, small && styles.arcNameSmall]}
                     numberOfLines={1}
                     {...andFitText}
                   >
                     {c.name}
                   </Text>
-                  <Text style={[styles.arcVisits, { color: globePalette[0] }, i >= 3 && styles.arcVisitsSmall]} {...andFitText}>
+                  <Text style={[styles.arcVisits, { color: globePalette[0] }, small && styles.arcVisitsSmall]} {...andFitText}>
                     {t('stats.visitsUnit', { count: c.visits })}
                   </Text>
                 </View>
@@ -834,7 +1011,7 @@ export default function StatsScreen() {
                       cy={size / 2}
                       r={size / 2 - 0.5}
                       stroke={`url(#arcNodeRing${i})`}
-                      strokeOpacity={NODE_RING_OPACITY[i]}
+                      strokeOpacity={NODE_RING_OPACITY[Math.min(i, 4)]}
                       strokeWidth={1}
                       fill="none"
                     />
@@ -847,27 +1024,6 @@ export default function StatsScreen() {
             <Text style={styles.arcEmpty}>{t('stats.noRecords')}</Text>
           )}
 
-          {/* ‹ › — 지구본 중간 높이 가장자리 (시안 위치), 5개씩 페이지 */}
-          {rankTotalPages > 1 && (
-            <>
-              <Pressable
-                style={[styles.arcArrow, { left: 4 }]}
-                disabled={rankPageClamped === 0}
-                onPress={() => setRankPage((p) => Math.max(0, p - 1))}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Text style={[styles.arcArrowTxt, rankPageClamped === 0 && { opacity: 0.25 }]}>‹</Text>
-              </Pressable>
-              <Pressable
-                style={[styles.arcArrow, { right: 4 }]}
-                disabled={rankPageClamped >= rankTotalPages - 1}
-                onPress={() => setRankPage((p) => Math.min(rankTotalPages - 1, p + 1))}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              >
-                <Text style={[styles.arcArrowTxt, rankPageClamped >= rankTotalPages - 1 && { opacity: 0.25 }]}>›</Text>
-              </Pressable>
-            </>
-          )}
         </View>
       </ScrollView>
 
@@ -1139,20 +1295,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   arcVisitsSmall: { fontSize: 8 },
-  arcArrow: {
-    // 시안: 지구본 중간 높이(y≈194)의 좌우 가장자리
-    position: 'absolute',
-    top: 194 * OS - 18,
-    width: 28,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arcArrowTxt: {
-    fontSize: 22,
-    lineHeight: 26,
-    color: 'rgba(255,255,255,0.4)',
-  },
 
   // 별점 뒤 유리 원판 — 시안 Ellipse 3062 크기 그대로 (중심 (168.5, 200.5), r 77.5)
   // 블러(유리) + 틴트 + 상단 반사 하이라이트 조합
