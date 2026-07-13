@@ -236,9 +236,10 @@ drop policy if exists "follows_insert_own" on public.follows;
 create policy "follows_insert_own" on public.follows
   for insert to authenticated with check (follower_id = auth.uid());
 
+-- 삭제: 내가 팔로우한 행(언팔로우) + 나를 팔로우하는 행(팔로워 제거) 둘 다 허용
 drop policy if exists "follows_delete_own" on public.follows;
 create policy "follows_delete_own" on public.follows
-  for delete to authenticated using (follower_id = auth.uid());
+  for delete to authenticated using (follower_id = auth.uid() or following_id = auth.uid());
 
 -- 좋아요
 create table if not exists public.post_likes (
@@ -607,6 +608,44 @@ end; $$;
 drop trigger if exists trg_cleanup_follows_on_block on public.blocks;
 create trigger trg_cleanup_follows_on_block after insert on public.blocks
   for each row execute function public.cleanup_follows_on_block();
+
+-- 타인 프로필의 팔로워/팔로잉 목록 — follows select가 당사자 행으로 제한되어(follows_select_own)
+-- 직접 조회하면 빈 결과가 나오므로 SECURITY DEFINER RPC로 제공한다.
+-- 보호: 차단 관계 상호 배제 + 비공개 계정은 본인/팔로워만 열람 가능(그 외 빈 결과).
+create or replace function public.follow_list_of(target uuid, mode text)
+returns table (id uuid, handle text, emoji text, profile_photo text)
+language sql security definer set search_path = public as $$
+  select p.id, p.handle, p.emoji, p.profile_photo
+  from public.follows f
+  join public.profiles p
+    on p.id = (case when mode = 'followers' then f.follower_id else f.following_id end)
+  where (case when mode = 'followers' then f.following_id else f.follower_id end) = target
+    and not public.is_blocked_between(auth.uid(), p.id)
+    and not public.is_blocked_between(auth.uid(), target)
+    and (
+      target = auth.uid()
+      or not public.is_private_account(target)
+      or exists (
+        select 1 from public.follows f2
+        where f2.follower_id = auth.uid() and f2.following_id = target
+      )
+    );
+$$;
+grant execute on function public.follow_list_of(uuid, text) to authenticated;
+
+-- 신고 접수 — 클라이언트 로컬 숨김과 별개로 운영자가 확인할 수 있게 서버에 저장한다.
+create table if not exists public.reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references auth.users(id) on delete cascade,
+  post_id uuid references public.posts(id) on delete set null,
+  reason text,
+  created_at timestamptz not null default now()
+);
+alter table public.reports enable row level security;
+drop policy if exists "reports_insert_own" on public.reports;
+create policy "reports_insert_own" on public.reports
+  for insert to authenticated with check (reporter_id = auth.uid());
+-- 조회는 운영자(service role)만 — 일반 사용자 select 정책 없음
 
 -- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).

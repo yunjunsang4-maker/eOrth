@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useDM } from '../store/dmStore';
+import { useRecords } from '../store/recordStore';
 import { useToast } from '../store/toastStore';
 import { navigationRef } from '../navigation/navigationRef';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
@@ -19,6 +20,7 @@ const previewOf = (m: Message, t: TFunction): string => {
 export default function DMToastHost() {
   const { t } = useTranslation();
   const { conversations, friends } = useDM();
+  const { isMuted, isBlocked } = useRecords();
   const { pushToast } = useToast();
   const entered = useIsAppEntered();
   const seenRef = useRef<Record<string, number> | null>(null);
@@ -40,8 +42,9 @@ export default function DMToastHost() {
       const msgs = conversations[h];
       const prev = seen[h] ?? 0;
       if (msgs.length > prev) {
-        // 새로 추가된 구간의 '받은' 메시지를 발생 순서대로 큐에 넣는다 (지금 보고 있는 대화는 제외)
-        if (entered && h !== viewingHandle) {
+        // 새로 추가된 구간의 '받은' 메시지를 발생 순서대로 큐에 넣는다
+        // (지금 보고 있는 대화·뮤트·차단한 상대는 제외 — 뮤트가 실제로 알림을 끄는 지점)
+        if (entered && h !== viewingHandle && !isMuted(h) && !isBlocked({ handle: h })) {
           for (let i = prev; i < msgs.length; i++) {
             const m = msgs[i];
             if (m.isMine) continue;
@@ -62,7 +65,7 @@ export default function DMToastHost() {
         seen[h] = msgs.length;
       }
     }
-  }, [conversations, friends, entered, pushToast]);
+  }, [conversations, friends, entered, pushToast, isMuted, isBlocked]);
 
   return null;
 }

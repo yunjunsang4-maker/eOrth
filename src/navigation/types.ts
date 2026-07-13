@@ -119,12 +119,15 @@ export type RootStackParamList = {
   } | undefined;
   FollowingList: undefined;
   FollowerList: undefined;
+  // 타인 프로필의 팔로워/팔로잉 목록 (조회 전용)
+  UserFollowList: { userId: string; mode: 'followers' | 'following' };
   EditProfile: undefined;
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };
   TripGroup: { groupId: string };
   TripDetail: { trip: TripThumbnailParam };
-  PostDetail: { postId: string };
+  // record: 스토어에 없는 글(타인 프로필에서 조회한 공개 글)의 폴백 — 있으면 그대로 렌더
+  PostDetail: { postId: string; record?: TravelRecord };
   BlogRecord: {
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;

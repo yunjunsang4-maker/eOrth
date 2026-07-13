@@ -91,11 +91,15 @@ export default function FriendProfileScreen({
     if (!aliveRef.current) return;
     setProfileRow(p);
     setUserPosts(posts);
-    setFollowerCount(fc);
-    setFollowingCount(fgc);
+    if (fc !== null) setFollowerCount(fc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
+    if (fgc !== null) setFollowingCount(fgc);
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
+  // 진입 시 팔로잉·대기 요청을 서버 기준으로 동기화 — 상대가 내 요청을 수락했는데
+  // '요청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 팔로우 상태가 낡아 있는 문제 방지
+  const { refreshFollowing } = useRecords();
+  useEffect(() => { refreshFollowing(); }, [refreshFollowing]);
 
   // 당겨서 새로고침 — 프로필·글·팔로워/팔로잉 수 재조회
   const [refreshing, setRefreshing] = useState(false);
@@ -315,31 +319,59 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 통계 — 프로필 탭과 동일한 3개(여행수·팔로잉·팔로워). 비공개 계정도 수치는 공개(콘텐츠만 잠금) */}
+            {/* 통계 — 프로필 탭과 동일한 3개(여행수·팔로워·팔로잉). 비공개 계정도 수치는 공개(콘텐츠만 잠금).
+                팔로워/팔로잉 탭 → 목록(조회 전용). 비공개 미팔로우면 목록도 잠금 */}
             <View style={pv.statsRow}>
               <StatCard value={String(display.trips.length)} label={t('profile.tripCount')} />
-              <StatCard value={String(isSelf ? followingUsers.length : followingCount)} label={t('profile.following')} />
-              <StatCard value={String(display.followers)} label={t('friends.followers')} />
+              <StatCard
+                value={String(display.followers)}
+                label={t('friends.followers')}
+                onPress={realId && !privateLocked ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'followers' }) : undefined}
+              />
+              <StatCard
+                value={String(isSelf ? followingUsers.length : followingCount)}
+                label={t('profile.following')}
+                onPress={realId && !privateLocked ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'following' }) : undefined}
+              />
             </View>
           </View>
         </View>
 
-        {/* ── 팔로우 버튼 (본인 프로필이면 숨김) ── */}
+        {/* ── 팔로우 + DM 버튼 (본인 프로필이면 숨김) ── */}
         {!isSelf && (
           <>
-            <TouchableOpacity
-              style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
-              onPress={toggleFollow}
-              activeOpacity={0.85}
-            >
-              <Text style={[s.followBtnText, (following || requested) && [s.followingBtnText, { color: skinAccent.accent }]]}>
-                {following
-                  ? t('friends.followingCheck')
-                  : requested
-                    ? t('friends.requested')
-                    : t('friends.follow')}
-              </Text>
-            </TouchableOpacity>
+            <View style={s.actionRow}>
+              <TouchableOpacity
+                style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
+                onPress={toggleFollow}
+                activeOpacity={0.85}
+              >
+                <Text style={[s.followBtnText, (following || requested) && [s.followingBtnText, { color: skinAccent.accent }]]}>
+                  {following
+                    ? t('friends.followingCheck')
+                    : requested
+                      ? t('friends.requested')
+                      : t('friends.follow')}
+                </Text>
+              </TouchableOpacity>
+              {/* DM — 대화 화면으로 이동 (핸들 기준 대화방) */}
+              <TouchableOpacity
+                style={s.dmBtn}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('DM', {
+                  friend: {
+                    name: display.name,
+                    handle: profileRow?.handle || route.params?.handle || displayUsername,
+                    emoji: display.emoji,
+                    id: realId ?? undefined,
+                  },
+                })}
+                accessibilityRole="button"
+                accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
+              >
+                <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
+              </TouchableOpacity>
+            </View>
 
             {/* ── 맞팔 표시 — 친구 수 배지(78·81·82·83) 판정용 ──
                 백엔드 사용 시 서버(follows 양방향)가 판정하므로 읽기 전용 배지,
@@ -412,11 +444,15 @@ export default function FriendProfileScreen({
               </Text>
             ) : (
               <>
-                {/* 메인 카드 (첫 여행) — 분할 카드는 id가 합성값이라 게시물 이동은 records[0].id */}
+                {/* 메인 카드 (첫 여행) — 분할 카드는 id가 합성값이라 게시물 이동은 records[0].id.
+                    타인 글은 로컬/피드 스토어에 없으므로 record 폴백을 함께 넘긴다 (없으면 상세가 빈 화면) */}
                 <TripCard
                   trip={display.trips[0]}
                   main
-                  onPress={() => navigation.navigate('PostDetail', { postId: display.trips[0].records[0].id })}
+                  onPress={() => {
+                    const pid = display.trips[0].records[0].id;
+                    navigation.navigate('PostDetail', { postId: pid, record: sourcePosts.find((sp) => sp.id === pid) });
+                  }}
                 />
                 {/* 나머지 2열 그리드 */}
                 <View style={pv.tripGrid}>
@@ -424,7 +460,10 @@ export default function FriendProfileScreen({
                     <TripCard
                       key={trip.id}
                       trip={trip}
-                      onPress={() => navigation.navigate('PostDetail', { postId: trip.records[0].id })}
+                      onPress={() => {
+                        const pid = trip.records[0].id;
+                        navigation.navigate('PostDetail', { postId: pid, record: sourcePosts.find((sp) => sp.id === pid) });
+                      }}
                     />
                   ))}
                 </View>
@@ -518,13 +557,25 @@ const s = StyleSheet.create({
 
   // ── 여행 중 배너 ──
 
-  // ── 팔로우 버튼 ──
+  // ── 팔로우 + DM 버튼 ──
+  actionRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 4,
+  },
   followBtn: {
+    flex: 1,
     height: 44, borderRadius: 12,
     backgroundColor: COLORS.accentDark,
     alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
   },
+  dmBtn: {
+    paddingHorizontal: 22,
+    height: 44, borderRadius: 12,
+    backgroundColor: COLORS.card,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  dmBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
   followingBtn: { backgroundColor: COLORS.card },
   followBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
   followingBtnText: { color: COLORS.accent },

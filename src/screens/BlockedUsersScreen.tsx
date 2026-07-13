@@ -27,13 +27,15 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
   const { t } = useTranslation();
   const { blockedUsers, unblockUser } = useRecords();
 
-  const handleUnblock = (name: string) => {
-    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name }), [
+  // handle 우선 — 동명(name) 계정이 있어도 어떤 계정을 해제하는지 식별·매칭이 정확하다
+  const handleUnblock = (name: string, handle?: string) => {
+    const label = handle ? `@${handle}` : name;
+    Alert.alert(t('friends.unblockTitle'), t('friends.unblockMsg', { name: label }), [
       { text: t('common.cancel'), style: 'cancel' },
       {
         text: t('friends.unblock'),
         onPress: () => {
-          unblockUser(name);
+          unblockUser(handle || name);
         },
       },
     ]);
@@ -77,7 +79,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
                 <TouchableOpacity
                   style={st.unblockBtn}
                   activeOpacity={0.7}
-                  onPress={() => handleUnblock(user.name)}
+                  onPress={() => handleUnblock(user.name, user.handle)}
                 >
                   <Text style={st.unblockText}>{t('friends.unblockShort')}</Text>
                 </TouchableOpacity>

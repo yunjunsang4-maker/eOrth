@@ -78,7 +78,7 @@ function fmtAgo(ts: number, tr: TFunction): string {
 export default function NotificationScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
-  const { records } = useRecords();
+  const { records, isMuted, isBlocked } = useRecords();
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
@@ -98,7 +98,10 @@ export default function NotificationScreen({ navigation }: Props) {
       follow_accept: 'misc.followAcceptText',
     };
     setFollowNotis(
-      rows.map((n) => ({
+      rows
+        // 뮤트/차단한 사용자의 알림은 표시하지 않는다 (뮤트 = 알림 끔의 실제 적용 지점)
+        .filter((n) => !n.actorHandle || (!isMuted(n.actorHandle) && !isBlocked({ handle: n.actorHandle })))
+        .map((n) => ({
         id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
         category: 'follow' as CatKey,
         emoji: n.actorEmoji || '👤',
@@ -111,7 +114,7 @@ export default function NotificationScreen({ navigation }: Props) {
         goRequests: n.type === 'follow_request',
       }))
     );
-  }, [t]);
+  }, [t, isMuted, isBlocked]);
   useEffect(() => { loadFollowNotis(); }, [loadFollowNotis]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

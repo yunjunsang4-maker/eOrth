@@ -59,6 +59,8 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 // 프로필 튜토리얼 1회 노출 플래그 키 (계정별)
 const PROFILE_TUTORIAL_KEY = '@eorth/profileTutorialSeen';
+// 팔로워 수 마지막 값 — 탭 리마운트 시 0에서 다시 세는 깜빡임 방지(세션 내 유지)
+let lastFollowerCountCache = 0;
 
 // 리퀴드 글래스 카드 재정렬용 부드러운 스프링 레이아웃 전환
 // (이웃 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
@@ -1534,12 +1536,18 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const { records, tripGroups, archivedIds, followingUsers, mergeTripGroups, refreshFollowing } = useRecords();
 
   // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
-  const [followerCount, setFollowerCount] = useState(0);
+  // 리마운트 시 0으로 깜빡이지 않게 마지막 값을 모듈 캐시에서 복원, 오류(null)면 이전 값 유지
+  const [followerCount, setFollowerCount] = useState(lastFollowerCountCache);
   const followerAliveRef = useRef(true);
   useEffect(() => () => { followerAliveRef.current = false; }, []);
   const loadFollowerCount = useCallback(async () => {
     const uid = await getMyUserId();
-    if (uid && followerAliveRef.current) setFollowerCount(await fetchFollowerCount(uid));
+    if (!uid) return;
+    const count = await fetchFollowerCount(uid);
+    if (count !== null && followerAliveRef.current) {
+      lastFollowerCountCache = count;
+      setFollowerCount(count);
+    }
   }, []);
   useEffect(() => { loadFollowerCount(); }, [loadFollowerCount]);
 
@@ -1850,8 +1858,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
-              <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
               <StatCard value={String(followerCount)} label={t('profile.followers')} onPress={() => navigation.navigate('FollowerList')} />
+              <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
             </View>
           </View>
         </View>

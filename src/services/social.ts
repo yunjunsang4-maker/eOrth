@@ -15,6 +15,7 @@ export interface FollowedProfile {
   id: string;
   handle: string | null;
   emoji: string | null;
+  photo: string | null; // 프로필 사진 URL (목록 아바타 표시용)
   isMutual: boolean;
 }
 
@@ -36,6 +37,46 @@ export async function unfollowUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
+// 특정 사용자의 팔로워/팔로잉 목록 — 타인 프로필의 카운트 탭에서 사용.
+// follows select RLS가 '당사자 행'으로 제한(follows_select_own)이라 직접 조회는 빈 결과 —
+// SECURITY DEFINER RPC(follow_list_of)로 조회한다. 비공개 계정은 서버가 본인/팔로워만 허용.
+// (schema.sql 재실행 필요)
+export interface FollowListEntry {
+  id: string;
+  handle: string | null;
+  emoji: string | null;
+  photo: string | null;
+}
+
+async function fetchFollowListOf(userId: string, mode: 'followers' | 'following'): Promise<FollowListEntry[] | null> {
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('follow_list_of', { target: userId, mode });
+    if (error) return null;
+    return ((data ?? []) as any[]).map((row) => ({
+      id: row.id as string,
+      handle: row.handle ?? null,
+      emoji: row.emoji ?? null,
+      photo: row.profile_photo ?? null,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+export const fetchFollowersOf = (userId: string) => fetchFollowListOf(userId, 'followers');
+export const fetchFollowingOf = (userId: string) => fetchFollowListOf(userId, 'following');
+
+// 내 팔로워 제거 — 나를 팔로우하는 행을 삭제.
+// RLS follows_delete_own이 following_id = auth.uid()도 허용한다(스키마 반영됨)
+export async function removeFollower(followerId: string): Promise<void> {
+  if (!supabase || !followerId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('follows').delete().eq('follower_id', followerId).eq('following_id', uid);
+  if (error) throw error;
+}
+
 // 내가 팔로우한 사람 + 맞팔 여부 (오류 시 null → 로컬 캐시 유지용)
 export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
   if (!supabase) return null;
@@ -48,7 +89,7 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
       .from('follows')
       // profiles 테이블은 본인 행만 select 가능(RLS) — 타인 표시는 public_profiles 뷰로 임베드
       // (별칭 'profiles'로 응답 키 유지, 힌트는 기반 테이블 FK 이름 사용)
-      .select('following_id, profiles:public_profiles!follows_following_id_fkey(id, handle, emoji)')
+      .select('following_id, profiles:public_profiles!follows_following_id_fkey(id, handle, emoji, profile_photo)')
       .eq('follower_id', uid);
     if (error) return null;
     if (!following) return [];
@@ -64,6 +105,7 @@ export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
         id: row.following_id as string,
         handle: p.handle ?? null,
         emoji: p.emoji ?? null,
+        photo: p.profile_photo ?? null,
         isMutual: followerSet.has(row.following_id),
       };
     });
@@ -81,7 +123,7 @@ export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
     // 오류와 "팔로워 없음"을 구분해야 하므로 error 시 null 반환 (빈 목록 오표시 방지)
     const { data: followers, error } = await supabase
       .from('follows')
-      .select('follower_id, profiles:public_profiles!follows_follower_id_fkey(id, handle, emoji)')
+      .select('follower_id, profiles:public_profiles!follows_follower_id_fkey(id, handle, emoji, profile_photo)')
       .eq('following_id', uid);
     if (error) return null;
     if (!followers) return [];
@@ -98,6 +140,7 @@ export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
         id: row.follower_id as string,
         handle: p.handle ?? null,
         emoji: p.emoji ?? null,
+        photo: p.profile_photo ?? null,
         isMutual: followingSet.has(row.follower_id),
       };
     });
@@ -109,31 +152,42 @@ export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
 // 특정 사용자의 팔로워 수
 // follows 조회가 '본인 당사자 행'으로 제한(RLS)되어 직접 count는 타인에 대해 틀린 값을 주므로
 // follower_counts RPC(SECURITY DEFINER, 공개 통계)로 조회한다.
-export async function fetchFollowerCount(userId: string): Promise<number> {
-  if (!supabase || !userId) return 0;
+// 오류 시 null — 0으로 덮어쓰면 화면 카운트가 잠깐 0으로 깜빡이므로 호출부가 이전 값을 유지하게 한다
+export async function fetchFollowerCount(userId: string): Promise<number | null> {
+  if (!supabase || !userId) return null;
   try {
     const { data, error } = await supabase.rpc('follower_counts', { ids: [userId] });
-    if (error) return 0;
+    if (error) return null;
     const row = (data as { user_id: string; follower_count: number }[] | null)?.[0];
     return row?.follower_count ?? 0;
   } catch {
-    return 0;
+    return null;
   }
 }
 
 // 특정 사용자의 팔로잉 수 (내가 팔로우 중인 수가 아니라, 대상이 팔로우 중인 수)
 // follows 는 RLS로 당사자 행만 보이므로 타인 팔로잉은 직접 count 불가.
 // following_counts RPC(SECURITY DEFINER, 공개 통계)로 조회한다. (schema.sql 재실행 필요)
-export async function fetchFollowingCount(userId: string): Promise<number> {
-  if (!supabase || !userId) return 0;
+// 오류 시 null — 0으로 덮어쓰면 화면 카운트가 잠깐 0으로 깜빡이므로 호출부가 이전 값을 유지하게 한다
+export async function fetchFollowingCount(userId: string): Promise<number | null> {
+  if (!supabase || !userId) return null;
   try {
     const { data, error } = await supabase.rpc('following_counts', { ids: [userId] });
-    if (error) return 0;
+    if (error) return null;
     const row = (data as { user_id: string; following_count: number }[] | null)?.[0];
     return row?.following_count ?? 0;
   } catch {
-    return 0;
+    return null;
   }
+}
+
+// 게시물 신고 접수 — 서버 reports 테이블에 저장(운영자 확인용). 로컬 숨김과 별개. (schema.sql 재실행 필요)
+export async function reportPostToServer(postRemoteId: string | null, reason: string | null): Promise<void> {
+  if (!supabase) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('reports').insert({ reporter_id: uid, post_id: postRemoteId, reason });
+  if (error) throw error;
 }
 
 // ─── 차단 ───
@@ -207,6 +261,7 @@ export interface IncomingFollowRequest {
   requesterId: string;
   handle: string | null;
   emoji: string | null;
+  photo: string | null; // 프로필 사진 URL
   createdAt: number;
 }
 
@@ -217,7 +272,7 @@ export async function fetchIncomingFollowRequests(): Promise<IncomingFollowReque
   try {
     const { data, error } = await supabase
       .from('follow_requests')
-      .select('requester_id, created_at, profiles:public_profiles!follow_requests_requester_id_fkey(handle, emoji)')
+      .select('requester_id, created_at, profiles:public_profiles!follow_requests_requester_id_fkey(handle, emoji, profile_photo)')
       .eq('target_id', uid)
       .order('created_at', { ascending: false });
     if (error || !data) return [];
@@ -227,6 +282,7 @@ export async function fetchIncomingFollowRequests(): Promise<IncomingFollowReque
         requesterId: r.requester_id as string,
         handle: p.handle ?? null,
         emoji: p.emoji ?? null,
+        photo: p.profile_photo ?? null,
         createdAt: new Date(r.created_at).getTime(),
       };
     });
@@ -427,6 +483,7 @@ export async function fetchComments(postId: string): Promise<PostComment[] | nul
         liked: myLiked.has(row.id),
         likes: likeCount.get(row.id) ?? 0,
         isMine: !!uid && row.author_id === uid,
+        authorId: row.author_id ?? undefined, // 댓글 작성자 프로필 이동용
       };
       byId.set(row.id, c);
     }

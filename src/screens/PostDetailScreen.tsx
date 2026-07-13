@@ -51,7 +51,7 @@ import { extractHeadings, blocksToPlainText, blocksToPhotos } from '../types/blo
 import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
-import { fetchPostLikers, PostLiker } from '../services/social';
+import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/social';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -1183,7 +1183,7 @@ function SnapStoryViewer({
         </View>
       </Modal>
 
-      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={() => { setReportVisible(false); reportPost(currentSnap.id); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
+      <ReportModal visible={reportVisible} onClose={() => setReportVisible(false)} onSubmit={(reason) => { setReportVisible(false); reportPost(currentSnap.id, reason); setToastMsg(t('social.reportReceivedToast')); setTimeout(() => setToastMsg(''), 2000); }} />
       {toastMsg !== '' && <View style={s.toast} pointerEvents="none"><Text style={s.toastText}>{toastMsg}</Text></View>}
       <SnapViewerModal
         visible={viewerListOpen}
@@ -1200,7 +1200,7 @@ function SnapStoryViewer({
 }
 
 type RouteParams = {
-  PostDetail: { postId: string };
+  PostDetail: { postId: string; record?: TravelRecord };
 };
 
 export default function PostDetailScreen() {
@@ -1262,7 +1262,33 @@ export default function PostDetailScreen() {
   // 언마운트 시 더블탭 단일탭 타이머 정리 (unmounted setState 방지)
   useEffect(() => () => { if (singleTapTimer.current) clearTimeout(singleTapTimer.current); }, []);
 
-  const rawRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
+  // 스토어에 없는 글(타인 프로필에서 조회한 공개 글)은 라우트로 넘어온 record 폴백 사용.
+  // 폴백은 로컬 상태로 들고 좋아요를 직접 반영/서버 동기화한다 (store toggleLike는 스토어 글만 처리).
+  const [fallbackRecord, setFallbackRecord] = useState<TravelRecord | null>(route.params.record ?? null);
+  const storeRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
+  const rawRecord = storeRecord ?? fallbackRecord ?? undefined;
+  const handleToggleLike = () => {
+    if (storeRecord) {
+      toggleLike(postId);
+      return;
+    }
+    if (!fallbackRecord) return;
+    const nowLiked = !fallbackRecord.liked;
+    setFallbackRecord({
+      ...fallbackRecord,
+      liked: nowLiked,
+      likes: nowLiked ? fallbackRecord.likes + 1 : Math.max(0, fallbackRecord.likes - 1),
+    });
+    const remoteId = fallbackRecord.remoteId ?? fallbackRecord.id;
+    if (remoteId) {
+      (nowLiked ? likePost(remoteId) : unlikePost(remoteId)).catch(() => {
+        // 서버 실패 → 낙관 반영 롤백
+        setFallbackRecord((p) =>
+          p ? { ...p, liked: !nowLiked, likes: nowLiked ? Math.max(0, p.likes - 1) : p.likes + 1 } : p
+        );
+      });
+    }
+  };
   // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
   useEffect(() => {
     if (!rawRecord?.remoteId) return;
@@ -1307,7 +1333,8 @@ export default function PostDetailScreen() {
 
   const addComment = () => {
     if (!commentText.trim()) return;
-    addCommentToStore(postId, commentText.trim(), replyTo?.id);
+    // remoteId 오버라이드 — 스토어에 없는 폴백 글(타인 프로필)도 댓글이 서버에 저장되게
+    addCommentToStore(postId, commentText.trim(), replyTo?.id, record.remoteId ?? undefined);
     setReplyTo(null);
     setCommentText('');
     // 새 댓글이 렌더된 뒤 맨 아래로 스크롤
@@ -1430,7 +1457,7 @@ export default function PostDetailScreen() {
 
   // 더블탭: 좋아요(이미 좋아요면 유지) + 하트 버스트 애니메이션
   const triggerLikeBurst = () => {
-    if (!record.liked) toggleLike(record.id);
+    if (!record.liked) handleToggleLike();
     buzz('light');
     setHeartBurst(true);
     heartScale.setValue(0);
@@ -1828,7 +1855,7 @@ export default function PostDetailScreen() {
           {viewType !== 'album' && (<>
           <View style={s.statsRow}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { buzz('light'); toggleLike(record.id); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+              <TouchableOpacity onPress={() => { buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                   {record.liked ? '♥' : '♡'}
                 </Text>
@@ -1851,12 +1878,22 @@ export default function PostDetailScreen() {
           {comments.map((c) => (
             <View key={c.id}>
               <View style={s.commentItem}>
-                <View style={s.commentAvatar}>
+                {/* 아바타/이름 탭 → 작성자 프로필 (서버 댓글만 authorId 보유) */}
+                <TouchableOpacity
+                  style={s.commentAvatar}
+                  disabled={!c.authorId}
+                  onPress={() => c.authorId && navigation.navigate('FriendProfile', { userId: c.authorId, username: c.name })}
+                >
                   <AuthorAvatar photo={c.photo} emoji={c.emoji} size={32} emojiSize={15} />
-                </View>
+                </TouchableOpacity>
                 <View style={s.commentBody}>
                   <View style={s.commentTopRow}>
-                    <Text style={s.commentName}>{c.name}</Text>
+                    <Text
+                      style={s.commentName}
+                      onPress={c.authorId ? () => navigation.navigate('FriendProfile', { userId: c.authorId!, username: c.name }) : undefined}
+                    >
+                      {c.name}
+                    </Text>
                     <Text style={s.commentTime}>{commentTime(c)}</Text>
                   </View>
                   <Text style={s.commentText}>{c.text}</Text>
@@ -1879,12 +1916,21 @@ export default function PostDetailScreen() {
               {/* 답글 목록 */}
               {c.replies && c.replies.length > 0 && c.replies.map((r) => (
                 <View key={r.id} style={s.replyItem}>
-                  <View style={s.commentAvatar}>
+                  <TouchableOpacity
+                    style={s.commentAvatar}
+                    disabled={!r.authorId}
+                    onPress={() => r.authorId && navigation.navigate('FriendProfile', { userId: r.authorId, username: r.name })}
+                  >
                     <AuthorAvatar photo={r.photo} emoji={r.emoji} size={32} emojiSize={13} />
-                  </View>
+                  </TouchableOpacity>
                   <View style={s.commentBody}>
                     <View style={s.commentTopRow}>
-                      <Text style={s.commentName}>{r.name}</Text>
+                      <Text
+                        style={s.commentName}
+                        onPress={r.authorId ? () => navigation.navigate('FriendProfile', { userId: r.authorId!, username: r.name }) : undefined}
+                      >
+                        {r.name}
+                      </Text>
                       <Text style={s.commentTime}>{commentTime(r)}</Text>
                     </View>
                     <Text style={s.commentText}>{r.text}</Text>
@@ -2041,9 +2087,9 @@ export default function PostDetailScreen() {
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
-        onSubmit={() => {
+        onSubmit={(reason) => {
           setReportVisible(false);
-          reportPost(record.id);
+          reportPost(record.id, reason);
           setToastMsg(t('social.reportReceivedToast'));
           setTimeout(() => setToastMsg(''), 2000);
         }}

@@ -277,11 +277,14 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
 export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
   if (!supabase || !userId) return [];
   try {
+    // visibility는 RLS(posts_select)가 판정 — public은 누구나, friends는 내가 작성자를
+    // 팔로우 중일 때만 내려온다. 클라이언트에서 public만 걸면 팔로워 공개 글이
+    // 프로필에서 안 보이는 버그가 생긴다 (private은 명시 제외).
     const { data, error } = await supabase
       .from('posts')
       .select(POST_SELECT)
       .eq('author_id', userId)
-      .eq('visibility', 'public')
+      .in('visibility', ['public', 'friends'])
       .order('created_at', { ascending: false })
       .limit(100);
     if (error || !data) return [];

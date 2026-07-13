@@ -18,6 +18,7 @@ import {
   unfollowUser as apiUnfollow,
   blockUser as apiBlock,
   unblockUser as apiUnblock,
+  reportPostToServer as apiReportPost,
   requestFollow as apiRequestFollow,
   cancelFollowRequest as apiCancelRequest,
   fetchMyPendingRequestTargets,
@@ -172,6 +173,7 @@ export interface FollowedFriend {
   id: string;
   username: string;
   emoji?: string; // 프로필 이모지 (목록 아바타 표시용, 서버 프로필에서 채움)
+  photo?: string; // 프로필 사진 URL (목록 아바타 표시용)
   isAbroad: boolean;
   currentCountry: string | null;
   currentCountryFlag: string | null;
@@ -191,6 +193,7 @@ export interface PostComment {
   liked?: boolean;   // 내가 이 댓글에 좋아요했는지
   likes?: number;    // 댓글 좋아요 수
   isMine?: boolean;  // 내가 작성한 댓글(로컬 작성분) — 삭제 가능 여부
+  authorId?: string; // 작성자 profile uuid — 댓글에서 프로필 이동용(서버 댓글만)
 }
 
 // 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
@@ -227,7 +230,7 @@ interface RecordContextType {
   isBlocked: (user: { name?: string; handle?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
   reportedPostIds: string[];
-  reportPost: (id: string) => void;
+  reportPost: (id: string, reason?: string) => void;
   // 음소거한 사용자 handle — 영속(알림 백엔드 도입 시 알림 억제에 사용)
   mutedHandles: string[];
   toggleMute: (handle: string) => void;
@@ -242,7 +245,8 @@ interface RecordContextType {
   cancelFollowRequest: (targetId: string) => void;
   isFollowRequested: (targetId: string) => boolean;
   commentsByPost: Record<string, PostComment[]>;
-  addComment: (postId: string, text: string, replyToId?: string) => void;
+  // remoteIdOverride: 스토어에 없는 글(타인 프로필 폴백)도 댓글이 서버에 저장되게 하는 보조 키
+  addComment: (postId: string, text: string, replyToId?: string, remoteIdOverride?: string) => void;
   toggleCommentLike: (postId: string, commentId: string) => void;
   deleteComment: (postId: string, commentId: string) => void;
   tripGroups: TripGroup[];
@@ -837,6 +841,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 좋아요 최신 상태의 ref 미러 — 리렌더 전에 연타하면 렌더 클로저의 target.liked가 스테일이라
   // 두 탭 모두 '좋아요'로 계산돼 카운트가 이중 증가하던 문제를 막는다.
   const likeStateRef = useRef<Record<string, boolean>>({});
+  // 댓글 좋아요 진행 중 상태 — toggleCommentLike 연타 드리프트 방지용
+  const commentLikeStateRef = useRef<Record<string, boolean>>({});
   const toggleLike = (id: string) => {
     const inRecords = records.find((r) => r.id === id);
     const inFeed = inRecords ? undefined : feedPosts.find((r) => r.id === id);
@@ -907,8 +913,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       (!!f.username && (f.username === user.handle || f.username === user.name))
     );
     if (followed) unfollowUser(followed.id || followed.username);
-    // uuid를 알 때만 서버 blocks에 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함
-    if (isSupabaseConfigured && user.id) apiBlock(user.id).catch(notifySyncError);
+    // 서버 blocks 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함.
+    // id가 uuid가 아니면(로컬 합성 id: 'dm-핸들' 등) 그대로 보내면 uuid 컬럼에서 실패하므로
+    // handle로 profile uuid를 조회(백필)해서 반영한다.
+    if (isSupabaseConfigured) {
+      const isUuid = (v?: string) => !!v && /^[0-9a-f-]{36}$/i.test(v);
+      if (isUuid(user.id)) {
+        apiBlock(user.id!).catch(notifySyncError);
+      } else if (user.handle) {
+        getProfileByHandle(user.handle)
+          .then((p) => {
+            if (!p?.id) return;
+            apiBlock(p.id).catch(notifySyncError);
+            // 백필된 uuid를 차단 항목에도 채워 이후 해제(unblock)가 서버까지 반영되게 함
+            setBlockedUsers((prev) => prev.map((b) => (b.handle === user.handle ? { ...b, id: p.id } : b)));
+          })
+          .catch(() => {});
+      }
+    }
   };
 
   const unblockUser = (nameOrHandle: string) => {
@@ -923,9 +945,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       (b.handle && user.handle && b.handle === user.handle) || (!!user.name && b.name === user.name)
     ), [blockedUsers]);
 
-  // 게시물 신고 → 신고 목록에 추가(피드에서 숨김). 이미 신고했으면 무시.
-  const reportPost = (id: string) => {
+  // 게시물 신고 → 신고 목록에 추가(피드에서 숨김) + 서버 reports에 접수(운영자 확인용).
+  // 이미 신고했으면 무시.
+  const reportPost = (id: string, reason?: string) => {
+    if (reportedPostIds.includes(id)) return;
     setReportedPostIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+    if (isSupabaseConfigured) {
+      // remoteId 우선(백엔드 글), 피드 글은 id가 곧 remoteId. 로컬 전용 글이면 post_id 없이 접수
+      const target = records.find((r) => r.id === id) ?? feedPosts.find((r) => r.id === id);
+      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === id) ? id : null);
+      apiReportPost(remoteId, reason ?? null).catch(() => {
+        // 접수 실패는 조용히 무시 — 로컬 숨김은 이미 적용됨(재신고 시 재시도)
+      });
+    }
   };
 
   // 사용자 알림 음소거 토글/조회 (handle 기준, 영속)
@@ -1013,7 +1045,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     [pendingFollowRequests, followingUsers]
   );
 
-  const addComment = (postId: string, text: string, replyToId?: string) => {
+  const addComment = (postId: string, text: string, replyToId?: string, remoteIdOverride?: string) => {
     const nc: PostComment = {
       id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, // 같은 ms 충돌 방지 (addRecord와 동일 규칙)
       emoji: '🙂',
@@ -1044,7 +1076,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (isSupabaseConfigured) {
       const own = records.find((r) => r.id === postId);
       const feed = feedPosts.find((r) => r.id === postId);
-      const remoteId = own?.remoteId ?? feed?.remoteId ?? feed?.id;
+      const remoteId = own?.remoteId ?? feed?.remoteId ?? feed?.id ?? remoteIdOverride;
       if (remoteId) {
         // 답글 부모는 백엔드 댓글 uuid일 때만 연결. 답글의 답글이면 top-level 부모로 승격(단일 단계 유지).
         let parent: string | undefined;
@@ -1089,14 +1121,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 댓글/답글 좋아요 토글 (로컬 즉시 반영 + 백엔드 동기화)
   const toggleCommentLike = (postId: string, commentId: string) => {
-    const willLike = !findCommentById(commentsByPost[postId], commentId)?.liked;
+    // 연타 시 stale 상태로 같은 방향이 두 번 적용되는 드리프트 방지 — 진행 중 상태를 ref로 추적
+    const cur = commentLikeStateRef.current[commentId] ?? findCommentById(commentsByPost[postId], commentId)?.liked ?? false;
+    const willLike = !cur;
+    commentLikeStateRef.current[commentId] = willLike;
     setCommentsByPost((prev) => {
       const list = prev[postId];
       if (!list) return prev;
       const flip = (c: PostComment): PostComment => {
         if (c.id === commentId) {
-          const nowLiked = !c.liked;
-          return { ...c, liked: nowLiked, likes: Math.max(0, (c.likes ?? 0) + (nowLiked ? 1 : -1)) };
+          if (c.liked === willLike) return c; // 이미 원하는 상태면 no-op (이중 적용 방지)
+          return { ...c, liked: willLike, likes: Math.max(0, (c.likes ?? 0) + (willLike ? 1 : -1)) };
         }
         if (c.replies?.length) return { ...c, replies: c.replies.map(flip) };
         return c;
@@ -1298,6 +1333,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
+  // 서버가 연속으로 빈 팔로잉 목록을 준 횟수 — refreshFollowing의 일시 빈 응답 필터용
+  const emptyFollowingStreakRef = useRef(0);
   const refreshFollowing = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     // 대기 중 팔로우 요청도 함께 갱신 (오류 시 null → 로컬 유지)
@@ -1309,6 +1346,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
     // isMutual은 서버(양방향 follows)가 정확하므로 항상 서버 값을 쓴다.
     setFollowingUsers((prev) => {
+      // 토큰 갱신 직후 등 RLS가 순간적으로 빈 목록을 줄 수 있다(에러 없이) —
+      // 첫 빈 응답은 유지(팔로잉 수 0 깜빡임 방지)하고, 연속 2회 빈 응답이면
+      // 실제 전체 언팔(다른 기기에서)로 보고 수용한다. (유령 팔로잉 영구 잔존 방지)
+      if (list.length === 0 && prev.length > 0) {
+        emptyFollowingStreakRef.current += 1;
+        if (emptyFollowingStreakRef.current < 2) return prev;
+      } else {
+        emptyFollowingStreakRef.current = 0;
+      }
       const byId = new Map(prev.map((f) => [f.id, f]));
       return list.map((p) => {
         const ex = byId.get(p.id);
@@ -1316,6 +1362,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           id: p.id,
           username: p.handle || p.id,
           emoji: p.emoji ?? ex?.emoji ?? undefined,
+          photo: p.photo ?? ex?.photo ?? undefined,
           isAbroad: ex?.isAbroad ?? false,
           currentCountry: ex?.currentCountry ?? null,
           currentCountryFlag: ex?.currentCountryFlag ?? null,

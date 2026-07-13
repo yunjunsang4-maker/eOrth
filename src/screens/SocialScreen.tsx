@@ -98,9 +98,9 @@ function ShareBottomSheet({
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { followingUsers } = useRecords();
-  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지 반영
   const shareFriends = followingUsers.map((f) => ({
-    id: f.id, name: f.username, handle: f.username, emoji: '🧳', online: false,
+    id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', online: false,
   }));
 
   const handleSNS = () => {
@@ -2054,7 +2054,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <ReportModal
         visible={reportVisible}
         onClose={() => setReportVisible(false)}
-        onSubmit={() => { setReportVisible(false); onReport(item.id); }}
+        onSubmit={(reason) => { setReportVisible(false); onReport(item.id, reason); }}
       />
     </>
   );
@@ -2396,7 +2396,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
   fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
   const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
-  const cbReport     = useCallback((id: string) => fnRef.current.reportPost(id), []);
+  const cbReport     = useCallback((id: string, reason?: string) => fnRef.current.reportPost(id, reason), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
   const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
   const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string; id?: string }) => fnRef.current.handleBlock(user), []);
