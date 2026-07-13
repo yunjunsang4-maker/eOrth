@@ -96,7 +96,7 @@ type Item = { label: string; value: string; sub?: string };
 type BoxRow = { label: string; value: string; sub?: string };
 type Box =
   | { kind: 'rows'; title: string; rows: BoxRow[] }
-  | { kind: 'trips'; title: string; trips: { country: string; city: string; period: string }[] };
+  | { kind: 'trips'; title: string; trips: { country: string; city: string; period: string; records: number }[] };
 type Hero = { globe: boolean; label: string; value: string; sub?: string; cycle?: BoxRow[] };
 type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 
@@ -640,12 +640,14 @@ export default function StatsDetailScreen() {
                       <Text style={[s.tripCell, s.tripColCountry, s.tripHeadTxt]}>{t('statsDetail.colCountry')}</Text>
                       <Text style={[s.tripCell, s.tripColCity, s.tripHeadTxt]}>{t('statsDetail.colCity')}</Text>
                       <Text style={[s.tripCell, s.tripColPeriod, s.tripHeadTxt]}>{t('statsDetail.colPeriod')}</Text>
+                      <Text style={[s.tripCell, s.tripColRecords, s.tripHeadTxt]}>{t('statsDetail.colRecords')}</Text>
                     </View>
                     {box.trips.map((tp, i) => (
                       <View key={i} style={s.tripRow}>
                         <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
                         <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
                         <Text style={[s.tripCell, s.tripColPeriod, s.tableValue]} numberOfLines={1}>{tp.period}</Text>
+                        <Text style={[s.tripCell, s.tripColRecords, s.tableValue]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>
                       </View>
                     ))}
                   </>
@@ -747,15 +749,17 @@ const s = StyleSheet.create({
   tripHead: {
     flexDirection: 'row',
     paddingVertical: 8,
+    paddingHorizontal: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(255,255,255,0.08)',
   },
   tripHeadTxt: { color: Colors.textMuted, fontSize: 11 },
   tripCell: { fontSize: 13 },
-  tripRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
-  tripColCountry: { width: '30%' },
-  tripColCity: { width: '34%' },
-  tripColPeriod: { width: '36%', textAlign: 'right' },
+  tripRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 6 },
+  tripColCountry: { width: '22%' },
+  tripColCity: { width: '26%' },
+  tripColPeriod: { width: '34%' },
+  tripColRecords: { width: '18%', textAlign: 'right' },
 
   tableEmpty: {
     color: Colors.textMuted,

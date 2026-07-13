@@ -19,8 +19,25 @@ const recs: TripRecord[] = [
 
 const rt = recentTrips(recs, 3);
 assert(rt[0].country === '대만', 'recentTrips 최신순 첫 항목=대만');
-assert(rt[0].period === '2026.07.12-23', 'recentTrips 기간 병합=2026.07.12-23');
+assert(rt[0].period === '26.07.12-23', 'recentTrips 기간 압축=26.07.12-23');
+assert(rt[0].records === 1, '카드당 기록수: 묶음 없는 기록=1');
 assert(rt.length === 3, 'recentTrips limit 적용');
+
+// 개별 여행카드(사진첩 1개씩, 묶음 없음) → 각 카드 1
+const sepCards: TripRecord[] = [
+  { countryName: '일본', timestamp: 1, viewType: 'album' },
+  { countryName: '일본', timestamp: 2, viewType: 'album' },
+  { countryName: '일본', timestamp: 3, viewType: 'album' },
+];
+assert(recentTrips(sepCards, 5)[0].records === 1, '카드당 기록수: 개별 사진첩 카드=1');
+
+// 한 여행카드(같은 tripGroupId)에 feed+snap+blog → 스냅 제외 2
+const oneCard: TripRecord[] = [
+  { tripGroupId: 'g1', countryName: '일본', timestamp: 1, viewType: 'feed' },
+  { tripGroupId: 'g1', countryName: '일본', timestamp: 2, viewType: 'snap' },
+  { tripGroupId: 'g1', countryName: '일본', timestamp: 3, viewType: 'blog' },
+];
+assert(recentTrips(oneCard, 5)[0].records === 2, '카드당 기록수: 한 카드 feed+blog(스냅제외)=2');
 
 assert(countryVisitCounts(recs)['일본'] === 2, 'countryVisitCounts 일본=2');
 assert(revisitedCountryCount(recs) === 1, 'revisitedCountryCount=1(일본)');

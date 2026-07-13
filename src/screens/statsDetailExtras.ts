@@ -12,6 +12,8 @@ export interface TripRecord {
   date?: string;
   timestamp: number;
   rating?: number;
+  viewType?: string; // 기록 형식(feed/blog/album/snap/cut). 스냅 제외 카운트에 사용
+  tripGroupId?: string | null; // 여행 묶음(카드) ID — 총 기록을 카드당 셀 때 사용
   perCountryData?: Record<string, { rating?: number }>;
 }
 
@@ -48,6 +50,7 @@ export interface RecentTrip {
   country: string;
   city: string;
   period: string;
+  records: number; // 그 나라의 총 기록(레코드) 수
 }
 
 export function recentTrips(records: TripRecord[], limit = 5): RecentTrip[] {
@@ -59,18 +62,27 @@ export function recentTrips(records: TripRecord[], limit = 5): RecentTrip[] {
       const city = r.regionName ?? '';
       const start = (r.startDate || r.date || '').trim();
       const end = (r.endDate || '').trim();
+      // 'YYYY.MM.DD' → [YYYY,MM,DD] (4자리 연도 형식일 때만), 아니면 null
+      const ymd = (s: string): [string, string, string] | null => {
+        const p = s.split(/[.\-/]/);
+        return p.length >= 3 && p[0].length === 4 ? [p[0], p[1], p[2]] : null;
+      };
+      const sp = ymd(start);
       let period = start;
-      if (start && end) {
-        const sp = start.split(/[.\-/]/);
-        const ep = end.split(/[.\-/]/);
-        // 연·월이 같으면 종료 '일'만 꼬리로, 아니면 종료 전체 표시
-        if (sp.length >= 2 && ep.length >= 2 && sp[0] === ep[0] && sp[1] === ep[1]) {
-          period = `${start}-${ep[ep.length - 1]}`;
-        } else {
-          period = `${start} ~ ${end}`;
+      if (sp) {
+        const startC = `${sp[0].slice(2)}.${sp[1]}.${sp[2]}`; // 2자리 연도 압축
+        period = startC;
+        const ep = end ? ymd(end) : null;
+        if (ep) {
+          // 같은 연·월이면 종료 '일'만, 같은 연이면 종료 '월.일', 아니면 종료 '연.월.일'까지
+          if (sp[0] === ep[0] && sp[1] === ep[1]) period = `${startC}-${ep[2]}`;
+          else if (sp[0] === ep[0]) period = `${startC}-${ep[1]}.${ep[2]}`;
+          else period = `${startC}-${ep[0].slice(2)}.${ep[1]}.${ep[2]}`;
         }
+      } else if (start && end) {
+        period = `${start} ~ ${end}`;
       }
-      return { country, city, period };
+      return { country, city, period, records: cardRecordCount(r, records) };
     });
 }
 
@@ -78,6 +90,15 @@ export function countryVisitCounts(records: TripRecord[]): Record<string, number
   const out: Record<string, number> = {};
   records.forEach((r) => recordCountryNames(r).forEach((n) => { out[n] = (out[n] || 0) + 1; }));
   return out;
+}
+
+// 여행 카드당 '총 기록' 수 — 스냅(viewType 'snap') 제외.
+// 같은 여행 묶음(tripGroupId)이면 그 묶음의 비-스냅 기록 수, 묶음이 없으면 그 기록 자체(비-스냅이면 1).
+export function cardRecordCount(record: TripRecord, allRecords: TripRecord[]): number {
+  if (record.tripGroupId) {
+    return allRecords.filter((r) => r.tripGroupId === record.tripGroupId && r.viewType !== 'snap').length;
+  }
+  return record.viewType === 'snap' ? 0 : 1;
 }
 
 export function revisitedCountryCount(records: TripRecord[]): number {
