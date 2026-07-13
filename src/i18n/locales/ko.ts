@@ -1464,6 +1464,8 @@ const ko = {
     boxContinentStatus: '대륙별 방문 현황',
     boxCountryVisits: '국가별 방문 횟수',
     boxRatingDist: '별점 분포',
+    showMore: '더보기',
+    collapse: '접기',
     hlThisYear: '올해 방문',
     hlYearAvg: '연평균',
     hlMostContinent: '최다 방문 대륙',

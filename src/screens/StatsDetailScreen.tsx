@@ -95,7 +95,7 @@ type Item = { label: string; value: string; sub?: string };
 
 type BoxRow = { label: string; value: string; sub?: string };
 type Box =
-  | { kind: 'rows'; title: string; rows: BoxRow[] }
+  | { kind: 'rows'; title: string; rows: BoxRow[]; collapseAt?: number }
   | { kind: 'trips'; title: string; trips: { country: string; city: string; period: string; records: number }[] };
 type Hero = { globe: boolean; label: string; value: string; sub?: string; cycle?: BoxRow[] };
 type DetailContent = { title: string; hero: Hero; boxes: Box[] };
@@ -230,8 +230,6 @@ export default function StatsDetailScreen() {
     });
 
     // Yearly breakdown items
-    const currentYear = new Date().getFullYear();
-    const yearlyItems: Item[] = [];
     const yearlyVisitedCountries: Record<string, Set<string>> = {};
     myRecords.forEach((r) => {
       const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
@@ -247,17 +245,19 @@ export default function StatsDetailScreen() {
       }
     });
 
-    for (let i = 6; i >= 0; i--) {
-      const year = String(currentYear - i);
-      const visits = yearlyCounts[year] || 0;
-      const countriesSet = yearlyVisitedCountries[year] || new Set<string>();
-      const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).join(', ') : (visits === 0 ? t('statsDetail.noRecord') : '');
-      yearlyItems.push({
-        label: t('statsDetail.yearN', { n: year }),
-        value: t('statsDetail.visitsN', { n: visits }),
-        sub: countriesStr,
+    // 기록이 있는 연도만 최근→옛날 순으로(빈 연도 제외). yearlyCounts 키 = 기록 존재 연도.
+    const yearlyItems: Item[] = Object.keys(yearlyCounts)
+      .sort((a, b) => Number(b) - Number(a))
+      .map((year) => {
+        const visits = yearlyCounts[year];
+        const countriesSet = yearlyVisitedCountries[year] || new Set<string>();
+        const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).join(', ') : '';
+        return {
+          label: t('statsDetail.yearN', { n: year }),
+          value: t('statsDetail.visitsN', { n: visits }),
+          sub: countriesStr,
+        };
       });
-    }
 
     // Region breakdown items
     const continentCounts: Record<string, number> = {
@@ -409,7 +409,7 @@ export default function StatsDetailScreen() {
           title: t('statsDetail.yearlyTitle'),
           hero: { globe: false, label: t('statsDetail.heroTotalVisitsLbl'), value: t('statsDetail.visitsN', { n: totalYearlyVisits }) },
           boxes: [
-            { kind: 'rows', title: t('statsDetail.boxYearlyStatus'), rows: yearlyItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
+            { kind: 'rows', title: t('statsDetail.boxYearlyStatus'), rows: yearlyItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })), collapseAt: 7 },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
               { label: t('statsDetail.boxMostActiveYear'), value: mostActiveYear, sub: mostActiveCount > 0 ? t('statsDetail.visitedNTimes', { n: mostActiveCount }) : '' },
               { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: thisYearVisitCount(myRecords) }) },
@@ -469,6 +469,8 @@ export default function StatsDetailScreen() {
   const hero = content.hero;
   const cycleItems = hero.cycle ?? [];
   const [heroIdx, setHeroIdx] = useState(0);
+  // 접이식 rows 박스(연도별) 펼침 상태 — 화면당 접이 박스는 하나라 단일 상태로 충분
+  const [rowsExpanded, setRowsExpanded] = useState(false);
   const safeIdx = cycleItems.length > 0 ? heroIdx % cycleItems.length : 0;
   const featured =
     hero.globe && cycleItems.length > 0
@@ -565,9 +567,8 @@ export default function StatsDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        {/* 히어로 — world는 지구본(‹ ›순환), 나머지는 수치 히어로 */}
-        {hero.globe ? (
-          <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }], marginHorizontal: -20 }}>
+        {/* 히어로 — 모든 카테고리 지구본 문양 동일 (world만 대표 수치 ‹ ›순환) */}
+        <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }], marginHorizontal: -20 }}>
             <View style={{ height: HERO_GLOBE_H }}>
               <View style={StyleSheet.absoluteFill} pointerEvents="none">
                 <Svg width={SW} height={HERO_GLOBE_H}>
@@ -617,15 +618,6 @@ export default function StatsDetailScreen() {
               )}
             </View>
           </Animated.View>
-        ) : (
-          <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }] }}>
-            <View style={s.numHero}>
-              <Text style={s.numHeroLabel}>{hero.label}</Text>
-              <Text style={s.numHeroValue}>{hero.value}</Text>
-              {!!hero.sub && <Text style={s.numHeroSub}>{hero.sub}</Text>}
-            </View>
-          </Animated.View>
-        )}
 
         {/* 카테고리별 상세 박스 */}
         {content.boxes.map((box, bi) => (
@@ -655,17 +647,33 @@ export default function StatsDetailScreen() {
               ) : (
                 box.rows.length === 0 ? (
                   <Text style={s.tableEmpty}>{t('statsDetail.noRecord')}</Text>
-                ) : (
-                  box.rows.map((row, i) => (
-                    <View key={i} style={s.tableRow}>
-                      <View style={s.tableRowLeft}>
-                        <Text style={s.tableLabel} numberOfLines={1}>{row.label}</Text>
-                        {!!row.sub && <Text style={s.tableSub} numberOfLines={1}>{row.sub}</Text>}
-                      </View>
-                      <Text style={s.tableValue} numberOfLines={1}>{row.value}</Text>
-                    </View>
-                  ))
-                )
+                ) : (() => {
+                  // collapseAt이 있고 행이 그보다 많으면 기본 collapseAt개만, '더보기'로 펼침
+                  const hasMore = box.collapseAt != null && box.rows.length > box.collapseAt;
+                  const shown = hasMore && !rowsExpanded ? box.rows.slice(0, box.collapseAt) : box.rows;
+                  return (
+                    <>
+                      {shown.map((row, i) => (
+                        <View key={i} style={[s.tableRow, i === shown.length - 1 && !hasMore && s.tableRowLast]}>
+                          <View style={s.tableRowLeft}>
+                            <Text style={s.tableLabel} numberOfLines={1}>{row.label}</Text>
+                            {!!row.sub && <Text style={s.tableSub} numberOfLines={1}>{row.sub}</Text>}
+                          </View>
+                          <Text style={s.tableValue} numberOfLines={1}>{row.value}</Text>
+                        </View>
+                      ))}
+                      {hasMore && (
+                        <Pressable
+                          style={s.moreBtn}
+                          onPress={() => setRowsExpanded((v) => !v)}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Text style={s.moreBtnTxt}>{rowsExpanded ? t('statsDetail.collapse') : t('statsDetail.showMore')}</Text>
+                        </Pressable>
+                      )}
+                    </>
+                  );
+                })()
               )}
             </DetailBox>
           </FadeSlideView>
@@ -739,12 +747,6 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.5)',
   },
 
-  // ── 수치 히어로 (world 외 카테고리) ──
-  numHero: { alignItems: 'center', paddingVertical: 28 },
-  numHeroLabel: { fontSize: 13, color: Colors.textMuted, marginBottom: 6 },
-  numHeroValue: { fontSize: 40, fontFamily: Typography.fontFamily.extraBold, color: Colors.textPrimary },
-  numHeroSub: { fontSize: 13, color: '#E0C9FF', marginTop: 4 },
-
   // ── 최근 여행 표 (trips 박스) ──
   tripHead: {
     flexDirection: 'row',
@@ -777,7 +779,10 @@ const s = StyleSheet.create({
     borderBottomColor: 'rgba(255,255,255,0.06)',
     gap: 12,
   },
+  tableRowLast: { borderBottomWidth: 0 },
   tableRowLeft: { flex: 1 },
+  moreBtn: { paddingVertical: 13, alignItems: 'center' },
+  moreBtnTxt: { color: '#E0C9FF', fontSize: 13, fontWeight: '600' },
   tableLabel: {
     fontSize: 15,
     fontFamily: Typography.fontFamily.bold,

@@ -1463,6 +1463,8 @@ const en = {
     boxContinentStatus: 'Visits by Continent',
     boxCountryVisits: 'Visits by Country',
     boxRatingDist: 'Rating Distribution',
+    showMore: 'Show more',
+    collapse: 'Collapse',
     hlThisYear: 'This Year',
     hlYearAvg: 'Yearly Avg',
     hlMostContinent: 'Top Continent',
