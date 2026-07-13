@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo } from 'react';
+import React, { useRef, useEffect, useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -6,16 +6,39 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Dimensions,
   Animated,
   Easing,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import Svg, {
+  Path as SvgPath,
+  Circle as SvgCircle,
+  G as SvgG,
+  Defs as SvgDefs,
+  LinearGradient as SvgLinearGradient,
+  RadialGradient as SvgRadialGradient,
+  Stop as SvgStop,
+} from 'react-native-svg';
 import { Colors, Typography } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
+import { STATS_GLOBE_PATH } from '../data/statsGlobePath';
+import StarFieldBackground from '../components/StarFieldBackground';
+import {
+  recentTrips,
+  revisitedCountryCount,
+  mostRecentCountry,
+  thisYearVisitCount,
+  activeYearAverage,
+  mostVisitedContinent,
+  unvisitedContinents,
+  highestRatedTrip,
+  mostRecentRatedTrip,
+} from './statsDetailExtras';
+import DetailBox from '../components/DetailBox';
 
 // ─── 등장 애니메이션 래퍼 ───
 function FadeSlideView({
@@ -68,221 +91,33 @@ const SW = Dimensions.get('window').width;
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 type RouteParams = { StatsDetail: { statType: StatType } };
 
-// 통계 유형별 액센트 색상
-const ACCENTS: Record<StatType, [string, string]> = {
-  world:     ['#7B61FF', '#C084FC'],
-  yearly:    ['#38BDF8', '#6366F1'],
-  region:    ['#34D399', '#0EA5E9'],
-  countries: ['#FBBF24', '#F97316'],
-  rating:    ['#F472B6', '#A855F7'],
-};
-
-const ICONS: Record<StatType, string> = {
-  world:     '🌍',
-  yearly:    '📅',
-  region:    '🗺️',
-  countries: '🏳️',
-  rating:    '⭐',
-};
-
 type Item = { label: string; value: string; sub?: string };
 
-function parseNum(s: string): number {
-  return parseInt(s.replace(/[^0-9]/g, '')) || 0;
-}
+type BoxRow = { label: string; value: string; sub?: string };
+type Box =
+  | { kind: 'rows'; title: string; rows: BoxRow[] }
+  | { kind: 'trips'; title: string; trips: { country: string; city: string; period: string }[] };
+type Hero = { globe: boolean; label: string; value: string; sub?: string; cycle?: BoxRow[] };
+type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 
-// ─── 연도별 바 카드 ───
-function YearlySection({ items, accent }: { items: Item[]; accent: [string, string] }) {
-  const counts = items.map(it => parseNum(it.value));
-  const max = Math.max(...counts, 1);
-  return (
-    <View style={s.section}>
-      {items.map((item, i) => {
-        const count = counts[i];
-        const pct = count / max;
-        const isEmpty = count === 0;
-        return (
-          <FadeSlideView key={i} delay={i * 65}>
-            <View style={s.barCard}>
-              <View style={s.barHeader}>
-                <Text style={s.barYear}>{item.label}</Text>
-                <Text style={[s.barValue, isEmpty && s.dimText]}>{item.value}</Text>
-              </View>
-              <View style={s.barTrack}>
-                {isEmpty ? (
-                  <View style={[s.barFill, { width: '3%', backgroundColor: '#2A2845' }]} />
-                ) : (
-                  <LinearGradient
-                    colors={accent}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[s.barFill, { width: `${Math.max(pct * 100, 4)}%` }]}
-                  />
-                )}
-              </View>
-              {item.sub && <Text style={s.barSub}>{item.sub}</Text>}
-            </View>
-          </FadeSlideView>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 대륙별 카드 ───
-const REGION_ICONS: Record<string, string> = {
-  '아시아': '🌏', '유럽': '🌍', '아메리카': '🌎',
-  '오세아니아': '🏝️', '아프리카': '🌍', '남극': '❄️',
-};
-function RegionSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
-  const counts = items.map(it => parseNum(it.value));
-  const regionMax = Math.max(...counts, 1);
-  return (
-    <View style={s.section}>
-      {items.map((item, i) => {
-        const count = counts[i];
-        const pct = count / regionMax;
-        const isEmpty = count === 0;
-        const icon = REGION_ICONS[item.label] ?? '🌐';
-        return (
-          <FadeSlideView key={i} delay={i * 65}>
-            <View style={[s.regionCard, isEmpty && s.regionCardDim]}>
-              <View style={s.regionTop}>
-                <Text style={s.regionIcon}>{icon}</Text>
-                <View style={s.regionInfo}>
-                  <Text style={[s.regionName, isEmpty && s.dimText]}>{item.label}</Text>
-                  {item.sub && <Text style={s.regionSub}>{item.sub}</Text>}
-                </View>
-                <Text style={[s.regionValue, isEmpty && s.dimText]}>{item.value}</Text>
-              </View>
-              {!isEmpty && (
-                <View style={s.barTrack}>
-                  <LinearGradient
-                    colors={accent}
-                    start={{ x: 0, y: 0 }}
-                    end={{ x: 1, y: 0 }}
-                    style={[s.barFill, { width: `${Math.max(pct * 100, 6)}%` }]}
-                  />
-                </View>
-              )}
-            </View>
-          </FadeSlideView>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 나라별 랭크 카드 ───
-const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
-function CountriesSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
-  return (
-    <View style={s.section}>
-      {items.map((item, i) => {
-        const rankColor = i < 3 ? RANK_COLORS[i] : null;
-        return (
-          <FadeSlideView key={i} delay={i * 65}>
-            <LinearGradient
-              colors={['#1A1730', '#14122A']}
-              style={s.rankCard}
-            >
-              {/* rank badge */}
-              <View style={[s.rankBadge, rankColor ? { backgroundColor: rankColor + '22', borderColor: rankColor + '55' } : { backgroundColor: '#2A2845', borderColor: '#3A3860' }]}>
-                <Text style={[s.rankNum, rankColor ? { color: rankColor } : { color: Colors.textSecondary }]}>
-                  {i + 1}
-                </Text>
-              </View>
-              <View style={s.rankBody}>
-                <Text style={s.rankLabel}>{item.label}</Text>
-                {item.sub && <Text style={s.rankSub}>{item.sub}</Text>}
-              </View>
-              <LinearGradient
-                colors={accent}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={s.rankValuePill}
-              >
-                <Text style={s.rankValueTxt}>{item.value}</Text>
-              </LinearGradient>
-            </LinearGradient>
-          </FadeSlideView>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 별점 분포 ───
-function RatingSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
-  return (
-    <View style={s.section}>
-      {items.map((item, i) => {
-        const pct = parseNum(item.sub ?? '0');
-        const stars = 5 - i;
-        return (
-          <FadeSlideView key={i} delay={i * 65}>
-            <View style={s.ratingRow}>
-              {/* 별 */}
-              <View style={s.ratingStars}>
-                {Array.from({ length: 5 }).map((_, si) => (
-                  <Text key={si} style={[s.ratingStar, si < stars ? { color: '#FBBF24' } : { color: '#2A2845' }]}>★</Text>
-                ))}
-              </View>
-              {/* 바 */}
-              <View style={[s.barTrack, { flex: 1, marginHorizontal: 10 }]}>
-                <LinearGradient
-                  colors={pct > 0 ? accent : ['#2A2845', '#2A2845']}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[s.barFill, { width: pct > 0 ? `${pct}%` : '3%' }]}
-                />
-              </View>
-              {/* 비율 + 개수 */}
-              <View style={s.ratingMeta}>
-                <Text style={[s.ratingPct, { color: accent[0] }]}>{pct}%</Text>
-                <Text style={s.ratingCount}>{item.value}</Text>
-              </View>
-            </View>
-          </FadeSlideView>
-        );
-      })}
-    </View>
-  );
-}
-
-// ─── 세계 통계 그리드 ───
-function WorldSection({ items, accent }: { items: Item[]; accent: [string, string] }) {
-  const highlights = items.slice(0, 4);
-  const extras = items.slice(4);
-  return (
-    <View style={s.section}>
-      {/* 2열 그리드 */}
-      <View style={s.grid}>
-        {highlights.map((item, i) => (
-          <FadeSlideView key={i} delay={i * 65} style={{ width: (SW - 50) / 2 }}>
-            <LinearGradient colors={['#1A1730', '#14122A']} style={s.gridCard}>
-              <Text style={[s.gridValue, { color: accent[i % 2 === 0 ? 0 : 1] }]}>{item.value}</Text>
-              <Text style={s.gridLabel}>{item.label}</Text>
-              {item.sub && <Text style={s.gridSub} numberOfLines={2}>{item.sub}</Text>}
-            </LinearGradient>
-          </FadeSlideView>
-        ))}
-      </View>
-      {/* 나머지 가로형 카드 */}
-      {extras.map((item, i) => (
-        <FadeSlideView key={i} delay={(highlights.length + i) * 65}>
-          <View style={s.extraCard}>
-            <View style={s.extraLeft}>
-              <Text style={s.extraLabel}>{item.label}</Text>
-              {item.sub && <Text style={s.extraSub}>{item.sub}</Text>}
-            </View>
-            <Text style={[s.extraValue, { color: accent[0] }]}>{item.value}</Text>
-          </View>
-        </FadeSlideView>
-      ))}
-    </View>
-  );
-}
+// ── 지구본 히어로 기하 (시안 iPhone 17-86: 화면 중앙 대형 와이어프레임) ──
+// STATS_GLOBE_PATH 원본 좌표계: 중심 (168.46, 193), 지름 ≈ 188.
+const HERO_CX = SW / 2;
+const HERO_R = SW * 0.34;                       // 지구본 반지름
+const HERO_GLOBE_H = Math.round(HERO_R * 2 + 92); // 히어로 섹션 높이(글로우·화살표 여유 포함)
+const HERO_CY = HERO_R + 30;                    // 지구본 중심 y (섹션 내)
+const HERO_SCALE = (HERO_R * 2) / 188;
+const HERO_GLOBE_TRANSFORM = `translate(${HERO_CX} ${HERO_CY}) scale(${HERO_SCALE}) translate(${-168.46} ${-193})`;
+// 하단을 감싸는 발광 궤도 호 (시안의 빛나는 링)
+const HERO_ARC_R = HERO_R + 8;
+const HERO_ARC_SPAN = 1.15; // 정상 기준 ±rad
+const HERO_ARC_PATH = (() => {
+  const x1 = HERO_CX - HERO_ARC_R * Math.sin(HERO_ARC_SPAN);
+  const y1 = HERO_CY + HERO_ARC_R * Math.cos(HERO_ARC_SPAN);
+  const x2 = HERO_CX + HERO_ARC_R * Math.sin(HERO_ARC_SPAN);
+  // 하단을 지나는 호 (좌하 → 우하)
+  return `M ${x1} ${y1} A ${HERO_ARC_R} ${HERO_ARC_R} 0 0 0 ${x2} ${y1}`;
+})();
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
@@ -308,7 +143,7 @@ export default function StatsDetailScreen() {
   const myRecords = records.filter((r) => r.isMyPost !== false);
 
   // Compute stats dynamically based on statType and myRecords
-  const content = useMemo(() => {
+  const content = useMemo<DetailContent>(() => {
     // 1. Common aggregations
     void t; // i18n: 재계산이 언어 변경에도 반영되도록 의존성 포함
     const visitedCountriesSet = new Set<string>();
@@ -552,58 +387,100 @@ export default function StatsDetailScreen() {
     const totalRegionCount = Object.keys(continentCounts).filter((k) => continentCounts[k] > 0).length;
 
     switch (statType) {
-      case 'world':
+      case 'world': {
+        const cycle: BoxRow[] = [
+          { label: t('statsDetail.heroTotalCountries'), value: t('statsDetail.countriesN', { n: countryCount }) },
+          { label: t('statsDetail.labelVisitedCities'), value: t('statsDetail.countN', { n: cityCount }) },
+          { label: t('statsDetail.labelTotalRecords'), value: t('statsDetail.countN', { n: recordsCount }) },
+          { label: t('statsDetail.labelTotalDays'), value: t('statsDetail.daysN', { n: totalDays }) },
+          { label: t('statsDetail.labelWorldCoverage'), value: worldCoveragePct },
+        ];
         return {
           title: t('statsDetail.worldTitle'),
-          subtitle: t('statsDetail.worldSub'),
-          hero: t('statsDetail.countriesN', { n: countryCount }),
-          heroLabel: t('statsDetail.heroTotalCountries'),
-          items: [
-            { label: t('statsDetail.labelVisitedCountries'), value: t('statsDetail.countriesN', { n: countryCount }), sub: visitedCountriesList.map((c) => c.name).slice(0, 6).join(' · ') + (visitedCountriesList.length > 6 ? t('statsDetail.moreN', { n: visitedCountriesList.length - 6 }) : '') },
-            { label: t('statsDetail.labelVisitedCities'), value: t('statsDetail.countN', { n: cityCount }), sub: visitedCitiesSet.size > 0 ? Array.from(visitedCitiesSet).slice(0, 6).join(', ') : t('statsDetail.citiesFromRecords') },
-            { label: t('statsDetail.labelTotalRecords'), value: t('statsDetail.countN', { n: recordsCount }), sub: t('statsDetail.recordsIncludes') },
-            { label: t('statsDetail.labelTotalDays'), value: t('statsDetail.daysN', { n: totalDays }), sub: firstTravelYear !== '-' ? t('statsDetail.yearRange', { from: firstTravelYear.slice(0, 4), to: new Date().getFullYear() }) : '' },
-            { label: t('statsDetail.labelWorldCoverage'), value: worldCoveragePct, sub: t('statsDetail.coverageSub', { count: countryCount }) },
-            { label: t('statsDetail.labelFirstTravel'), value: firstTravelYear, sub: firstTravelLoc },
-            { label: t('statsDetail.labelMostActiveYear'), value: mostActiveYear, sub: mostActiveCount > 0 ? t('statsDetail.visitedNTimes', { n: mostActiveCount }) : t('statsDetail.noRecord') },
+          hero: { globe: true, label: cycle[0].label, value: cycle[0].value, cycle },
+          boxes: [
+            { kind: 'trips', title: t('statsDetail.recentTrips'), trips: recentTrips(myRecords, 5) },
+            { kind: 'rows', title: t('statsDetail.boxMostActiveYear'), rows: [
+              { label: mostActiveYear, value: mostActiveCount > 0 ? t('statsDetail.visitedNTimes', { n: mostActiveCount }) : t('statsDetail.noRecord') },
+              { label: t('statsDetail.labelFirstTravel'), value: firstTravelYear, sub: firstTravelLoc },
+            ] },
           ],
         };
+      }
       case 'yearly':
         return {
           title: t('statsDetail.yearlyTitle'),
-          subtitle: t('statsDetail.yearlySub'),
-          hero: t('statsDetail.visitsN', { n: totalYearlyVisits }),
-          heroLabel: t('statsDetail.heroTotalVisits'),
-          items: yearlyItems,
+          hero: { globe: false, label: t('statsDetail.heroTotalVisitsLbl'), value: t('statsDetail.visitsN', { n: totalYearlyVisits }) },
+          boxes: [
+            { kind: 'rows', title: t('statsDetail.boxYearlyStatus'), rows: yearlyItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
+            { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
+              { label: t('statsDetail.boxMostActiveYear'), value: mostActiveYear, sub: mostActiveCount > 0 ? t('statsDetail.visitedNTimes', { n: mostActiveCount }) : '' },
+              { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: thisYearVisitCount(myRecords) }) },
+              { label: t('statsDetail.hlYearAvg'), value: activeYearAverage(myRecords) },
+            ] },
+          ],
         };
-      case 'region':
+      case 'region': {
+        const mvc = mostVisitedContinent(myRecords);
+        const unv = unvisitedContinents(myRecords);
         return {
           title: t('statsDetail.regionTitle'),
-          subtitle: t('statsDetail.regionSub'),
-          hero: t('statsDetail.continentsN', { n: totalRegionCount }),
-          heroLabel: t('statsDetail.heroVisitedContinents'),
-          items: regionItems,
+          hero: { globe: false, label: t('statsDetail.heroVisitedContinents'), value: t('statsDetail.continentsN', { n: totalRegionCount }) },
+          boxes: [
+            { kind: 'rows', title: t('statsDetail.boxContinentStatus'), rows: regionItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
+            { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
+              { label: t('statsDetail.hlMostContinent'), value: mvc ? continentName(mvc) : t('statsDetail.noRecord') },
+              { label: t('statsDetail.hlUnvisited'), value: t('statsDetail.countN', { n: unv.length }), sub: unv.map(continentName).join(' · ') },
+            ] },
+          ],
         };
-      case 'countries':
+      }
+      case 'countries': {
+        const top = countriesItems[0];
         return {
           title: t('statsDetail.countryTitle'),
-          subtitle: t('statsDetail.countrySub'),
-          hero: t('statsDetail.countriesN', { n: countryCount }),
-          heroLabel: t('statsDetail.heroTotalCountries'),
-          items: countriesItems,
+          hero: { globe: false, label: t('statsDetail.heroTopCountryLbl'), value: top ? top.label : '-', sub: top ? top.value : '' },
+          boxes: [
+            { kind: 'rows', title: t('statsDetail.boxCountryVisits'), rows: countriesItems.slice(0, 8).map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
+            { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
+              { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords) ?? '-' },
+              { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCount(myRecords) }) },
+            ] },
+          ],
         };
-      case 'rating':
+      }
+      case 'rating': {
+        const topRated = highestRatedTrip(myRecords);
+        const recentRated = mostRecentRatedTrip(myRecords);
         return {
           title: t('statsDetail.ratingTitle'),
-          subtitle: t('statsDetail.ratingSub'),
-          hero: t('statsDetail.starN', { n: avgRating }),
-          heroLabel: t('statsDetail.heroAvgRating'),
-          items: ratingItems,
+          hero: { globe: false, label: t('statsDetail.heroAvgRating'), value: t('statsDetail.starN', { n: avgRating }) },
+          boxes: [
+            { kind: 'rows', title: t('statsDetail.boxRatingDist'), rows: ratingItems.map((i) => ({ label: i.label, value: i.value, sub: t('statsDetail.percentN', { n: i.sub }) })) },
+            { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
+              { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+              { label: t('statsDetail.hlRecentRated'), value: recentRated ? recentRated.country : '-', sub: recentRated ? `★ ${recentRated.rating}` : '' },
+              { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
+            ] },
+          ],
         };
+      }
     }
   }, [statType, myRecords, t]);
 
-  const accent = ACCENTS[statType];
+  // 지구본 히어로에 스포트라이트되는 항목 — ‹ ›로 순환
+  const hero = content.hero;
+  const cycleItems = hero.cycle ?? [];
+  const [heroIdx, setHeroIdx] = useState(0);
+  const safeIdx = cycleItems.length > 0 ? heroIdx % cycleItems.length : 0;
+  const featured =
+    hero.globe && cycleItems.length > 0
+      ? cycleItems[safeIdx]
+      : { label: hero.label, value: hero.value, sub: hero.sub };
+  const cycle = (dir: number) => {
+    if (cycleItems.length === 0) return;
+    setHeroIdx((p) => (p + dir + cycleItems.length) % cycleItems.length);
+  };
 
   // 입장 애니메이션
   const headerAnim  = useRef(new Animated.Value(0)).current;
@@ -667,9 +544,10 @@ export default function StatsDetailScreen() {
         },
       ]}
     >
-      <LinearGradient colors={['#0A0118', '#0E0520']} style={StyleSheet.absoluteFill} />
+      {/* 별 배경 — 메인 통계 화면과 동일한 다크 스타필드 (시안) */}
+      <StarFieldBackground />
 
-      {/* 헤더 */}
+      {/* 헤더 — ‹ + 흰색 굵은 제목 (시안: world travel) */}
       <Animated.View
         style={[
           s.header,
@@ -677,64 +555,122 @@ export default function StatsDetailScreen() {
           {
             opacity: headerAnim,
             transform: [
-              {
-                translateY: headerAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [-20, 0],
-                }),
-              },
+              { translateY: headerAnim.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) },
             ],
           },
         ]}
       >
-        <TouchableOpacity onPress={handleBack} style={s.backBtn}>
-          <Text style={s.backIcon}>←</Text>
+        <TouchableOpacity onPress={handleBack} style={s.backBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+          <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
-        <View>
-          <Text style={s.headerTitle}>{content.title}</Text>
-          <Text style={s.headerSub}>{content.subtitle}</Text>
-        </View>
+        <Text style={s.headerTitle}>{content.title}</Text>
       </Animated.View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scroll}>
 
-        {/* 히어로 카드 */}
-        <Animated.View
-          style={{
-            opacity: heroOpacity,
-            transform: [{ scale: heroScale }],
-            marginBottom: 28,
-          }}
-        >
-          <LinearGradient
-            colors={accent}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={[s.heroCard, { marginBottom: 0 }]}
-          >
-            <Text style={s.heroIcon}>{ICONS[statType]}</Text>
-            <Text style={s.heroValue}>{content.hero}</Text>
-            <Text style={s.heroLabel}>{content.heroLabel}</Text>
-            <View style={s.heroDeco1} />
-            <View style={s.heroDeco2} />
-          </LinearGradient>
-        </Animated.View>
+        {/* 히어로 — world는 지구본(‹ ›순환), 나머지는 수치 히어로 */}
+        {hero.globe ? (
+          <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }], marginHorizontal: -20 }}>
+            <View style={{ height: HERO_GLOBE_H }}>
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={SW} height={HERO_GLOBE_H}>
+                  <SvgDefs>
+                    <SvgRadialGradient id="detailGlobeGlow" cx="50%" cy="50%" r="50%">
+                      <SvgStop offset="0%" stopColor="#7C3AED" stopOpacity={0.28} />
+                      <SvgStop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
+                    </SvgRadialGradient>
+                    <SvgLinearGradient id="detailGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
+                      <SvgStop offset="0" stopColor="#E0C9FF" />
+                      <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.3} />
+                    </SvgLinearGradient>
+                    <SvgLinearGradient id="detailArc" x1="0" y1="0" x2="1" y2="0">
+                      <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0} />
+                      <SvgStop offset="0.5" stopColor="#FFFFFF" stopOpacity={0.7} />
+                      <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+                    </SvgLinearGradient>
+                  </SvgDefs>
+                  {/* 뒤 보라 글로우 */}
+                  <SvgCircle cx={HERO_CX} cy={HERO_CY} r={HERO_R * 1.15} fill="url(#detailGlobeGlow)" />
+                  {/* 지구본 격자 (시안 원본 패스) */}
+                  <SvgG transform={HERO_GLOBE_TRANSFORM}>
+                    <SvgPath d={STATS_GLOBE_PATH} fill="url(#detailGlobeGrid)" fillOpacity={0.55} />
+                  </SvgG>
+                  {/* 하단 발광 궤도 호 */}
+                  <SvgPath d={HERO_ARC_PATH} stroke="url(#detailArc)" strokeWidth={2} fill="none" />
+                </Svg>
+              </View>
 
-        {/* 구분선 */}
-        <FadeSlideView delay={300} from={10}>
-          <View style={s.divider}>
-            <View style={s.dividerLine} />
-            <Text style={s.dividerTxt}>{t('statsDetail.detailStats')}</Text>
-            <View style={s.dividerLine} />
-          </View>
-        </FadeSlideView>
+              {/* 스포트라이트 통계 — 지구본 중앙 */}
+              <View style={[s.heroOverlay, { top: HERO_CY - 46 }]} pointerEvents="none">
+                {!!featured?.label && <Text style={s.heroLabel}>{featured.label}</Text>}
+                <Text style={s.heroValue} numberOfLines={1}>{featured?.value ?? '-'}</Text>
+                {!!featured?.sub && <Text style={s.heroSub} numberOfLines={1}>{featured.sub}</Text>}
+              </View>
 
-        {/* 유형별 렌더 */}
-        {statType === 'world'     && <WorldSection     items={content.items} accent={accent} />}
-        {statType === 'yearly'    && <YearlySection    items={content.items} accent={accent} />}
-        {statType === 'region'    && <RegionSection    items={content.items} accent={accent} />}
-        {statType === 'countries' && <CountriesSection items={content.items} accent={accent} />}
-        {statType === 'rating'    && <RatingSection    items={content.items} accent={accent} />}
+              {/* ‹ › 순환 화살표 */}
+              {cycleItems.length > 1 && (
+                <>
+                  <Pressable style={[s.heroArrow, { left: 8, top: HERO_CY - 22 }]} onPress={() => cycle(-1)} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
+                    <Text style={s.heroArrowTxt}>‹</Text>
+                  </Pressable>
+                  <Pressable style={[s.heroArrow, { right: 8, top: HERO_CY - 22 }]} onPress={() => cycle(1)} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
+                    <Text style={s.heroArrowTxt}>›</Text>
+                  </Pressable>
+                </>
+              )}
+            </View>
+          </Animated.View>
+        ) : (
+          <Animated.View style={{ opacity: heroOpacity, transform: [{ scale: heroScale }] }}>
+            <View style={s.numHero}>
+              <Text style={s.numHeroLabel}>{hero.label}</Text>
+              <Text style={s.numHeroValue}>{hero.value}</Text>
+              {!!hero.sub && <Text style={s.numHeroSub}>{hero.sub}</Text>}
+            </View>
+          </Animated.View>
+        )}
+
+        {/* 카테고리별 상세 박스 */}
+        {content.boxes.map((box, bi) => (
+          <FadeSlideView key={bi} delay={200 + bi * 80} from={12}>
+            <DetailBox title={box.title}>
+              {box.kind === 'trips' ? (
+                box.trips.length === 0 ? (
+                  <Text style={s.tableEmpty}>{t('statsDetail.noRecord')}</Text>
+                ) : (
+                  <>
+                    <View style={s.tripHead}>
+                      <Text style={[s.tripCell, s.tripColCountry, s.tripHeadTxt]}>{t('statsDetail.colCountry')}</Text>
+                      <Text style={[s.tripCell, s.tripColCity, s.tripHeadTxt]}>{t('statsDetail.colCity')}</Text>
+                      <Text style={[s.tripCell, s.tripColPeriod, s.tripHeadTxt]}>{t('statsDetail.colPeriod')}</Text>
+                    </View>
+                    {box.trips.map((tp, i) => (
+                      <View key={i} style={s.tableRow}>
+                        <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
+                        <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
+                        <Text style={[s.tripCell, s.tripColPeriod, s.tableValue]} numberOfLines={1}>{tp.period}</Text>
+                      </View>
+                    ))}
+                  </>
+                )
+              ) : (
+                box.rows.length === 0 ? (
+                  <Text style={s.tableEmpty}>{t('statsDetail.noRecord')}</Text>
+                ) : (
+                  box.rows.map((row, i) => (
+                    <View key={i} style={s.tableRow}>
+                      <View style={s.tableRowLeft}>
+                        <Text style={s.tableLabel} numberOfLines={1}>{row.label}</Text>
+                        {!!row.sub && <Text style={s.tableSub} numberOfLines={1}>{row.sub}</Text>}
+                      </View>
+                      <Text style={s.tableValue} numberOfLines={1}>{row.value}</Text>
+                    </View>
+                  ))
+                )
+              )}
+            </DetailBox>
+          </FadeSlideView>
+        ))}
 
         <View style={{ height: 48 }} />
       </ScrollView>
@@ -743,292 +679,117 @@ export default function StatsDetailScreen() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0A0118' },
+  container: { flex: 1, backgroundColor: '#0A0A0F' },
+
+  // 헤더 — ‹ + 흰색 굵은 제목 (시안: world travel)
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingBottom: 16,
-    gap: 14,
+    paddingBottom: 8,
+    gap: 6,
   },
-  backBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1E1B33',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.25)',
-  },
-  backIcon: { fontSize: 18, color: Colors.textPrimary, lineHeight: 22 },
+  backBtn: { width: 30, height: 40, alignItems: 'center', justifyContent: 'center' },
+  backIcon: { fontSize: 30, color: Colors.textPrimary, lineHeight: 34, fontWeight: '400' },
   headerTitle: {
-    fontSize: Typography.fontSize.xl,
-    fontFamily: Typography.fontFamily.bold,
+    fontSize: 26,
+    fontFamily: Typography.fontFamily.extraBold,
     color: Colors.textPrimary,
-    letterSpacing: -0.3,
-  },
-  headerSub: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    letterSpacing: -0.5,
   },
 
   scroll: { paddingHorizontal: 20, paddingBottom: 20 },
 
-  // 히어로 카드
-  heroCard: {
-    borderRadius: 24,
-    padding: 28,
+  // ── 지구본 히어로 ──
+  heroOverlay: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
     alignItems: 'center',
-    marginBottom: 28,
-    overflow: 'hidden',
-    minHeight: 160,
-    justifyContent: 'center',
   },
-  heroIcon: { fontSize: 36, marginBottom: 8 },
+  heroLabel: {
+    fontSize: 18,
+    fontFamily: Typography.fontFamily.extraBold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
+    letterSpacing: -0.3,
+  },
   heroValue: {
-    fontSize: 48,
+    fontSize: 38,
     fontFamily: Typography.fontFamily.extraBold,
     color: '#FFFFFF',
     letterSpacing: -1,
-  },
-  heroLabel: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.medium,
-    color: 'rgba(255,255,255,0.75)',
     marginTop: 4,
   },
-  heroDeco1: {
-    position: 'absolute',
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    top: -30,
-    right: -20,
-  },
-  heroDeco2: {
-    position: 'absolute',
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: 'rgba(255,255,255,0.05)',
-    bottom: -20,
-    left: 10,
-  },
-
-  // 구분선
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 20,
-    gap: 10,
-  },
-  dividerLine: { flex: 1, height: 1, backgroundColor: 'rgba(123,97,255,0.15)' },
-  dividerTxt: {
-    fontSize: 11,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.textMuted,
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-
-  section: { gap: 10 },
-
-  // ── 바 공통 ──
-  barTrack: {
-    height: 6,
-    backgroundColor: '#1E1B33',
-    borderRadius: 3,
-    overflow: 'hidden',
-    marginTop: 8,
-  },
-  barFill: { height: '100%', borderRadius: 3 },
-
-  // ── 연도별 ──
-  barCard: {
-    backgroundColor: '#131128',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.1)',
-  },
-  barHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  barYear: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
-  },
-  barValue: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.textPrimary,
-  },
-  barSub: {
-    fontSize: Typography.fontSize.xs,
+  heroSub: {
+    fontSize: 12,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
+    color: 'rgba(255,255,255,0.55)',
     marginTop: 6,
   },
-
-  // ── 대륙별 ──
-  regionCard: {
-    backgroundColor: '#131128',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.12)',
-  },
-  regionCardDim: { opacity: 0.45 },
-  regionTop: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  regionIcon: { fontSize: 24 },
-  regionInfo: { flex: 1 },
-  regionName: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
-  },
-  regionSub: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  regionValue: {
-    fontSize: Typography.fontSize.md,
-    fontFamily: Typography.fontFamily.bold,
-    color: Colors.textPrimary,
-  },
-
-  // ── 나라별 랭크 ──
-  rankCard: {
-    borderRadius: 16,
-    padding: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.1)',
-    overflow: 'hidden',
-  },
-  rankBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    borderWidth: 1,
+  heroArrow: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  rankNum: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.bold,
-  },
-  rankBody: { flex: 1 },
-  rankLabel: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
-  },
-  rankSub: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 2,
-  },
-  rankValuePill: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  rankValueTxt: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.bold,
-    color: '#FFFFFF',
+  heroArrowTxt: {
+    fontSize: 30,
+    lineHeight: 34,
+    color: 'rgba(255,255,255,0.5)',
   },
 
-  // ── 별점 ──
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 6,
-  },
-  ratingStars: { flexDirection: 'row', gap: 1, width: 72 },
-  ratingStar: { fontSize: 12 },
-  ratingMeta: { alignItems: 'flex-end', width: 52 },
-  ratingPct: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.bold,
-  },
-  ratingCount: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 1,
-  },
+  // ── 수치 히어로 (world 외 카테고리) ──
+  numHero: { alignItems: 'center', paddingVertical: 28 },
+  numHeroLabel: { fontSize: 13, color: Colors.textMuted, marginBottom: 6 },
+  numHeroValue: { fontSize: 40, fontWeight: '800', color: Colors.textPrimary },
+  numHeroSub: { fontSize: 13, color: '#E0C9FF', marginTop: 4 },
 
-  // ── 세계 그리드 ──
-  grid: {
+  // ── 최근 여행 표 (trips 박스) ──
+  tripHead: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginBottom: 10,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.08)',
   },
-  gridCard: {
-    width: (SW - 50) / 2,
-    borderRadius: 16,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.1)',
-    overflow: 'hidden',
-  },
-  gridValue: {
-    fontSize: Typography.fontSize['2xl'],
-    fontFamily: Typography.fontFamily.extraBold,
-    letterSpacing: -0.5,
-    marginBottom: 4,
-  },
-  gridLabel: {
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textPrimary,
-  },
-  gridSub: {
+  tripHeadTxt: { color: Colors.textMuted, fontSize: 11 },
+  tripCell: { fontSize: 13 },
+  tripColCountry: { width: '30%' },
+  tripColCity: { width: '34%' },
+  tripColPeriod: { width: '36%', textAlign: 'right' },
+
+  tableEmpty: {
+    color: Colors.textMuted,
     fontSize: Typography.fontSize.xs,
+    textAlign: 'center',
+    paddingVertical: 32,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 4,
-    lineHeight: 16,
   },
-  extraCard: {
-    backgroundColor: '#131128',
-    borderRadius: 14,
-    padding: 16,
+  tableRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderColor: 'rgba(123,97,255,0.1)',
+    paddingVertical: 13,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    gap: 12,
   },
-  extraLeft: { flex: 1 },
-  extraLabel: {
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
+  tableRowLeft: { flex: 1 },
+  tableLabel: {
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.bold,
     color: Colors.textPrimary,
   },
-  extraSub: {
-    fontSize: Typography.fontSize.xs,
+  tableSub: {
+    fontSize: 11,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.45)',
+    marginTop: 3,
   },
-  extraValue: {
-    fontSize: Typography.fontSize.md,
+  tableValue: {
+    fontSize: 14,
     fontFamily: Typography.fontFamily.bold,
-    marginLeft: 12,
+    color: '#E0C9FF',
   },
-
-  // 공통
-  dimText: { color: Colors.textMuted },
 });
