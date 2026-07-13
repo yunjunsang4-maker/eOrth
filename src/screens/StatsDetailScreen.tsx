@@ -97,7 +97,7 @@ type BoxRow = { label: string; value: string; sub?: string };
 type Box =
   | { kind: 'rows'; title: string; rows: BoxRow[]; collapseAt?: number }
   | { kind: 'trips'; title: string; trips: { country: string; city: string; period: string; records: number }[] };
-type Hero = { globe: boolean; label: string; value: string; sub?: string; cycle?: BoxRow[] };
+type Hero = { cycle: BoxRow[] }; // 지구본 중앙에 자동 순환(페이드)으로 보여줄 간단 통계들
 type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 
 // ── 지구본 히어로 기하 (시안 iPhone 17-86: 화면 중앙 대형 와이어프레임) ──
@@ -394,7 +394,7 @@ export default function StatsDetailScreen() {
         ];
         return {
           title: t('statsDetail.worldTitle'),
-          hero: { globe: true, label: cycle[0].label, value: cycle[0].value, cycle },
+          hero: { cycle },
           boxes: [
             { kind: 'trips', title: t('statsDetail.recentTrips'), trips: recentTrips(myRecords, 5) },
             { kind: 'rows', title: t('statsDetail.boxMostActiveYear'), rows: [
@@ -407,7 +407,12 @@ export default function StatsDetailScreen() {
       case 'yearly':
         return {
           title: t('statsDetail.yearlyTitle'),
-          hero: { globe: false, label: t('statsDetail.heroTotalVisitsLbl'), value: t('statsDetail.visitsN', { n: totalYearlyVisits }) },
+          hero: { cycle: [
+            { label: t('statsDetail.heroTotalVisitsLbl'), value: t('statsDetail.visitsN', { n: totalYearlyVisits }) },
+            { label: t('statsDetail.boxMostActiveYear'), value: mostActiveYear },
+            { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: thisYearVisitCount(myRecords) }) },
+            { label: t('statsDetail.hlYearAvg'), value: activeYearAverage(myRecords) },
+          ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxYearlyStatus'), rows: yearlyItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })), collapseAt: 7 },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
@@ -422,7 +427,11 @@ export default function StatsDetailScreen() {
         const unv = unvisitedContinents(myRecords);
         return {
           title: t('statsDetail.regionTitle'),
-          hero: { globe: false, label: t('statsDetail.heroVisitedContinents'), value: t('statsDetail.continentsN', { n: totalRegionCount }) },
+          hero: { cycle: [
+            { label: t('statsDetail.heroVisitedContinents'), value: t('statsDetail.continentsN', { n: totalRegionCount }) },
+            { label: t('statsDetail.hlMostContinent'), value: mvc ? continentName(mvc) : t('statsDetail.noRecord') },
+            { label: t('statsDetail.hlUnvisited'), value: t('statsDetail.countN', { n: unv.length }) },
+          ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxContinentStatus'), rows: regionItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
@@ -436,7 +445,11 @@ export default function StatsDetailScreen() {
         const top = countriesItems[0];
         return {
           title: t('statsDetail.countryTitle'),
-          hero: { globe: false, label: t('statsDetail.heroTopCountryLbl'), value: top ? top.label : '-', sub: top ? top.value : '' },
+          hero: { cycle: [
+            { label: t('statsDetail.heroTopCountryLbl'), value: top ? top.label : '-', sub: top ? top.value : '' },
+            { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords) ?? '-' },
+            { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCount(myRecords) }) },
+          ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxCountryVisits'), rows: countriesItems.slice(0, 8).map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
@@ -451,7 +464,11 @@ export default function StatsDetailScreen() {
         const recentRated = mostRecentRatedTrip(myRecords);
         return {
           title: t('statsDetail.ratingTitle'),
-          hero: { globe: false, label: t('statsDetail.heroAvgRating'), value: t('statsDetail.starN', { n: avgRating }) },
+          hero: { cycle: [
+            { label: t('statsDetail.heroAvgRating'), value: t('statsDetail.starN', { n: avgRating }) },
+            { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+            { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
+          ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxRatingDist'), rows: ratingItems.map((i) => ({ label: i.label, value: i.value, sub: t('statsDetail.percentN', { n: i.sub }) })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
@@ -465,21 +482,25 @@ export default function StatsDetailScreen() {
     }
   }, [statType, myRecords, t, continentName]);
 
-  // 지구본 히어로에 스포트라이트되는 항목 — ‹ ›로 순환
-  const hero = content.hero;
-  const cycleItems = hero.cycle ?? [];
+  // 지구본 히어로에 스포트라이트되는 항목 — 자동 순환(페이드 아웃→교체→페이드 인)
+  const cycleItems = content.hero.cycle;
   const [heroIdx, setHeroIdx] = useState(0);
   // 접이식 rows 박스(연도별) 펼침 상태 — 화면당 접이 박스는 하나라 단일 상태로 충분
   const [rowsExpanded, setRowsExpanded] = useState(false);
   const safeIdx = cycleItems.length > 0 ? heroIdx % cycleItems.length : 0;
-  const featured =
-    hero.globe && cycleItems.length > 0
-      ? cycleItems[safeIdx]
-      : { label: hero.label, value: hero.value, sub: hero.sub };
-  const cycle = (dir: number) => {
-    if (cycleItems.length === 0) return;
-    setHeroIdx((p) => (p + dir + cycleItems.length) % cycleItems.length);
-  };
+  const featured = cycleItems[safeIdx];
+  const spotFade = useRef(new Animated.Value(1)).current;
+  useEffect(() => {
+    if (cycleItems.length <= 1) return;
+    const iv = setInterval(() => {
+      Animated.timing(spotFade, { toValue: 0, duration: 450, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setHeroIdx((p) => p + 1);
+        Animated.timing(spotFade, { toValue: 1, duration: 500, useNativeDriver: true }).start();
+      });
+    }, 3200);
+    return () => clearInterval(iv);
+  }, [cycleItems.length, spotFade]);
 
   // 입장 애니메이션
   const headerAnim  = useRef(new Animated.Value(0)).current;
@@ -598,24 +619,12 @@ export default function StatsDetailScreen() {
                 </Svg>
               </View>
 
-              {/* 스포트라이트 통계 — 지구본 중앙 */}
-              <View style={[s.heroOverlay, { top: HERO_CY - 46 }]} pointerEvents="none">
+              {/* 스포트라이트 통계 — 지구본 중앙, 자동 순환(깜빡이는 페이드로 교체) */}
+              <Animated.View style={[s.heroOverlay, { top: HERO_CY - 46, opacity: spotFade }]} pointerEvents="none">
                 {!!featured?.label && <Text style={s.heroLabel}>{featured.label}</Text>}
                 <Text style={s.heroValue} numberOfLines={1}>{featured?.value ?? '-'}</Text>
                 {!!featured?.sub && <Text style={s.heroSub} numberOfLines={1}>{featured.sub}</Text>}
-              </View>
-
-              {/* ‹ › 순환 화살표 */}
-              {cycleItems.length > 1 && (
-                <>
-                  <Pressable style={[s.heroArrow, { left: 8, top: HERO_CY - 22 }]} onPress={() => cycle(-1)} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
-                    <Text style={s.heroArrowTxt}>‹</Text>
-                  </Pressable>
-                  <Pressable style={[s.heroArrow, { right: 8, top: HERO_CY - 22 }]} onPress={() => cycle(1)} hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}>
-                    <Text style={s.heroArrowTxt}>›</Text>
-                  </Pressable>
-                </>
-              )}
+              </Animated.View>
             </View>
           </Animated.View>
 
@@ -734,19 +743,6 @@ const s = StyleSheet.create({
     color: 'rgba(255,255,255,0.55)',
     marginTop: 6,
   },
-  heroArrow: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroArrowTxt: {
-    fontSize: 30,
-    lineHeight: 34,
-    color: 'rgba(255,255,255,0.5)',
-  },
-
   // ── 최근 여행 표 (trips 박스) ──
   tripHead: {
     flexDirection: 'row',
@@ -775,6 +771,7 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 13,
+    paddingHorizontal: 8, // 둥근 테두리(rx28)에 글자가 붙지 않게 행 안쪽 여백
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255,255,255,0.06)',
     gap: 12,
