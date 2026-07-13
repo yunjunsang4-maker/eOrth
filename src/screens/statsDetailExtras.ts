@@ -38,7 +38,7 @@ export function recordCountryNames(r: TripRecord): string[] {
 export function recordRating(r: TripRecord): number | undefined {
   if (r.rating !== undefined) return r.rating;
   if (r.perCountryData) {
-    const rs = Object.values(r.perCountryData).map((d) => d.rating).filter(Boolean) as number[];
+    const rs = Object.values(r.perCountryData).map((d) => d.rating).filter((v): v is number => v !== undefined);
     if (rs.length > 0) return Math.round(rs.reduce((a, b) => a + b, 0) / rs.length);
   }
   return undefined;
@@ -48,7 +48,6 @@ export interface RecentTrip {
   country: string;
   city: string;
   period: string;
-  records: number;
 }
 
 export function recentTrips(records: TripRecord[], limit = 5): RecentTrip[] {
@@ -62,10 +61,16 @@ export function recentTrips(records: TripRecord[], limit = 5): RecentTrip[] {
       const end = (r.endDate || '').trim();
       let period = start;
       if (start && end) {
-        const endTail = end.split(/[.\-/]/).slice(-1)[0];
-        period = `${start}-${endTail}`;
+        const sp = start.split(/[.\-/]/);
+        const ep = end.split(/[.\-/]/);
+        // 연·월이 같으면 종료 '일'만 꼬리로, 아니면 종료 전체 표시
+        if (sp.length >= 2 && ep.length >= 2 && sp[0] === ep[0] && sp[1] === ep[1]) {
+          period = `${start}-${ep[ep.length - 1]}`;
+        } else {
+          period = `${start} ~ ${end}`;
+        }
       }
-      return { country, city, period, records: 1 };
+      return { country, city, period };
     });
 }
 
@@ -86,8 +91,12 @@ export function mostRecentCountry(records: TripRecord[]): string | undefined {
   return recordCountryNames(latest)[0];
 }
 
+export function canonicalCountryName(name: string): string {
+  return name === '한국' ? '대한민국' : name;
+}
+
 export function continentOf(name: string): Continent | undefined {
-  const lookup = name === '한국' ? '대한민국' : name;
+  const lookup = canonicalCountryName(name);
   const meta = COUNTRIES.find((c) => c.name === lookup);
   if (!meta) return undefined;
   let cont = meta.continent;
@@ -101,7 +110,7 @@ export function continentCountryCounts(records: TripRecord[]): Record<Continent,
   };
   records.forEach((r) => recordCountryNames(r).forEach((n) => {
     const cont = continentOf(n);
-    if (cont) sets[cont].add(n === '한국' ? '대한민국' : n);
+    if (cont) sets[cont].add(canonicalCountryName(n));
   }));
   return {
     '아시아': sets['아시아'].size, '유럽': sets['유럽'].size, '아메리카': sets['아메리카'].size,
@@ -121,11 +130,17 @@ export function unvisitedContinents(records: TripRecord[]): Continent[] {
   return CONTINENTS.filter((c) => counts[c] === 0);
 }
 
+function extractYear(r: TripRecord): string {
+  const s = r.date || r.startDate || '';
+  const y = s.split(/[.\-/]/)[0];
+  return y && y.length === 4 ? y : '';
+}
+
 export function yearlyVisitCounts(records: TripRecord[]): Record<string, number> {
   const out: Record<string, number> = {};
   records.forEach((r) => {
-    const y = (r.date || r.startDate || '').split('.')[0];
-    if (y && y.length === 4) out[y] = (out[y] || 0) + 1;
+    const y = extractYear(r);
+    if (y) out[y] = (out[y] || 0) + 1;
   });
   return out;
 }

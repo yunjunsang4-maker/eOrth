@@ -4,10 +4,10 @@ import {
   mostRecentRatedTrip, countryVisitCounts, TripRecord,
 } from './statsDetailExtras';
 
-let failed = 0;
-function ok(name: string, cond: boolean) {
-  console.log(`${cond ? '✓' : '✗'} ${name}`);
-  if (!cond) failed++;
+let failures = 0;
+function assert(cond: boolean, msg: string) {
+  if (cond) console.log('  ✓ ' + msg);
+  else { failures++; console.error('  ✗ ' + msg); }
 }
 
 const recs: TripRecord[] = [
@@ -18,22 +18,27 @@ const recs: TripRecord[] = [
 ];
 
 const rt = recentTrips(recs, 3);
-ok('recentTrips 최신순 첫 항목=대만', rt[0].country === '대만');
-ok('recentTrips 기간 병합=2026.07.12-23', rt[0].period === '2026.07.12-23');
-ok('recentTrips limit 적용', rt.length === 3);
+assert(rt[0].country === '대만', 'recentTrips 최신순 첫 항목=대만');
+assert(rt[0].period === '2026.07.12-23', 'recentTrips 기간 병합=2026.07.12-23');
+assert(rt.length === 3, 'recentTrips limit 적용');
 
-ok('countryVisitCounts 일본=2', countryVisitCounts(recs)['일본'] === 2);
-ok('revisitedCountryCount=1(일본)', revisitedCountryCount(recs) === 1);
-ok('mostRecentCountry=대만', mostRecentCountry(recs) === '대만');
+assert(countryVisitCounts(recs)['일본'] === 2, 'countryVisitCounts 일본=2');
+assert(revisitedCountryCount(recs) === 1, 'revisitedCountryCount=1(일본)');
+assert(mostRecentCountry(recs) === '대만', 'mostRecentCountry=대만');
 
-ok('thisYearVisitCount(2026)=1', thisYearVisitCount(recs, 2026) === 1);
-ok('activeYearAverage=1.0', activeYearAverage(recs) === '1.0');
+assert(thisYearVisitCount(recs, 2026) === 1, 'thisYearVisitCount(2026)=1');
+assert(activeYearAverage(recs) === '1.0', 'activeYearAverage=1.0');
 
-ok('mostVisitedContinent=아시아', mostVisitedContinent(recs) === '아시아');
-ok('unvisitedContinents 오세아니아 포함', unvisitedContinents(recs).includes('오세아니아'));
+assert(mostVisitedContinent(recs) === '아시아', 'mostVisitedContinent=아시아');
 
-ok('highestRatedTrip=일본(5)', highestRatedTrip(recs)?.rating === 5 && highestRatedTrip(recs)?.country === '일본');
-ok('mostRecentRatedTrip=대만(4)', mostRecentRatedTrip(recs)?.country === '대만');
+const unvisited = unvisitedContinents(recs);
+assert(unvisited.includes('오세아니아'), 'unvisitedContinents 오세아니아 포함');
+assert(unvisited.includes('아프리카'), 'unvisitedContinents 아프리카 포함');
+assert(!unvisited.includes('아시아'), 'unvisitedContinents 아시아 미포함');
 
-if (failed > 0) { console.error(`\n${failed}개 실패`); process.exit(1); }
+const best = highestRatedTrip(recs);
+assert(best?.rating === 5 && best?.country === '일본', 'highestRatedTrip=일본(5)');
+assert(mostRecentRatedTrip(recs)?.country === '대만', 'mostRecentRatedTrip=대만(4)');
+
+if (failures > 0) { console.error(`\n${failures}개 실패`); process.exit(1); }
 console.log('\n모든 검증 통과');
