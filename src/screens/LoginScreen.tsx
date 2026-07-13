@@ -11,13 +11,19 @@ import {
   ScrollView,
   Modal,
   ActivityIndicator,
-  Image,
   Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import Svg, {
+  Defs as SvgDefs,
+  LinearGradient as SvgLinearGradient,
+  Stop as SvgStop,
+  Rect as SvgRect,
+} from 'react-native-svg';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PrimaryButton } from '../components/ui';
+import { EorthLogo } from '../components/EorthLogo';
+import StarFieldBackground from '../components/StarFieldBackground';
+import { IntroAmbient } from './introVisuals';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
@@ -50,6 +56,56 @@ const isValidHandle = (v: string) => HANDLE_RE.test(v.trim());
 
 // 인증 메일 재전송 최소 간격(초)
 const RESEND_COOLDOWN_SEC = 30;
+
+// 온보딩 '다음' 버튼과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
+function GlassButton({ label, onPress, disabled, loading, style }: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: any;
+}) {
+  const [btnW, setBtnW] = useState(0);
+  return (
+    <TouchableOpacity
+      style={[glassBtn.btn, disabled && { opacity: 0.4 }, style]}
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.85}
+      onLayout={(e) => setBtnW(Math.round(e.nativeEvent.layout.width))}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color="#FFFFFF" />
+      ) : (
+        <Text style={glassBtn.label}>{label}</Text>
+      )}
+      {btnW > 0 && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={btnW} height={56}>
+            <SvgDefs>
+              <SvgLinearGradient id="loginBtnRing" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect x={0.5} y={0.5} width={btnW - 1} height={55} rx={28} stroke="url(#loginBtnRing)" strokeWidth={1} fill="none" />
+          </Svg>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+const glassBtn = StyleSheet.create({
+  btn: {
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  label: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+});
 
 type Props = RootStackScreenProps<'Login'>;
 
@@ -378,7 +434,9 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+    <View style={styles.container}>
+      <StarFieldBackground opacity={0.5} />
+      <IntroAmbient />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -388,22 +446,9 @@ export default function LoginScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Brand */}
+          {/* Brand — 온보딩과 동일한 eorth 워드마크 */}
           <View style={styles.brandSection}>
-            <View style={styles.miniGlobeWrap}>
-              <View style={styles.bgGlow} />
-              <LinearGradient
-                colors={['#4A2FCB', '#7B61FF', '#C084FC']}
-                start={{ x: 0.2, y: 0.1 }}
-                end={{ x: 0.8, y: 0.9 }}
-                style={styles.miniGlobe}
-              />
-            </View>
-            <Image
-              source={require('../../assets/logo.png')}
-              style={styles.brandLogoImage}
-              resizeMode="contain"
-            />
+            <EorthLogo width={150} />
             <Text style={styles.tagline}>{t('login.tagline')}</Text>
           </View>
 
@@ -542,8 +587,8 @@ export default function LoginScreen({ navigation }: Props) {
               </TouchableOpacity>
             )}
 
-            {/* Submit button */}
-            <PrimaryButton
+            {/* Submit button — 온보딩과 동일한 유리 필 */}
+            <GlassButton
               label={isSignup ? t('login.submitSignup') : t('login.submitLogin')}
               onPress={handleSubmit}
               disabled={!canSubmit}
@@ -654,11 +699,11 @@ export default function LoginScreen({ navigation }: Props) {
 
                 {isResetting ? (
                   <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={Colors.primary} />
+                    <ActivityIndicator size="small" color="#EC34F7" />
                     <Text style={styles.loadingText}>{t('login.resetSending')}</Text>
                   </View>
                 ) : (
-                  <PrimaryButton
+                  <GlassButton
                     label={t('login.resetSend')}
                     onPress={handleSendResetLink}
                     disabled={!isValidEmail(forgotEmail)}
@@ -675,7 +720,7 @@ export default function LoginScreen({ navigation }: Props) {
                 <Text style={styles.successDesc}>
                   {t('login.resetSuccessDesc', { email: forgotEmail })}
                 </Text>
-                <PrimaryButton
+                <GlassButton
                   label={t('common.confirm')}
                   onPress={() => setForgotPasswordVisible(false)}
                   style={styles.modalSubmitBtn}
@@ -702,19 +747,19 @@ export default function LoginScreen({ navigation }: Props) {
               </>
             ) : (
               <>
-                <ActivityIndicator size="large" color={Colors.primary} />
+                <ActivityIndicator size="large" color="#EC34F7" />
                 <Text style={styles.loaderText}>{t('login.signingIn')}</Text>
               </>
             )}
           </View>
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#0A0B0F' }, // 온보딩과 동일 배경
   keyboardView: { flex: 1 },
   scroll: {
     flexGrow: 1,
@@ -722,56 +767,28 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[6],
   },
 
-  // Brand
+  // Brand — eorth 워드마크 (온보딩과 동일)
   brandSection: {
     alignItems: 'center',
+    marginTop: Spacing[6],
     marginBottom: Spacing[8],
-    gap: Spacing[2],
-  },
-  miniGlobeWrap: {
-    width: 100,
-    height: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: Spacing[1],
-  },
-  bgGlow: {
-    position: 'absolute',
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: 'rgba(123, 97, 255, 0.18)',
-  },
-  miniGlobe: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    shadowColor: '#7B61FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 20,
-    elevation: 10,
-  },
-  brandLogoImage: {
-    width: 138,
-    height: 38,
-    marginBottom: 6,
+    gap: Spacing[3],
   },
   tagline: {
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
+    color: '#9E9CA1',
     textAlign: 'center',
   },
 
-  // Mode toggle
+  // Mode toggle — 유리 필 + 마젠타 활성 (온보딩 액센트)
   modeToggle: {
     flexDirection: 'row',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: BorderRadius.full,
     padding: 3,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.1)',
     marginBottom: Spacing[6],
   },
   modeBtn: {
@@ -781,7 +798,7 @@ const styles = StyleSheet.create({
     borderRadius: BorderRadius.full,
   },
   modeBtnActive: {
-    backgroundColor: Colors.primary,
+    backgroundColor: '#EC34F7',
   },
   modeBtnText: {
     fontSize: Typography.fontSize.sm,
@@ -804,22 +821,22 @@ const styles = StyleSheet.create({
   fieldLabel: {
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textSecondary,
+    color: '#9E9CA1',
     letterSpacing: 0.3,
   },
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: Spacing[4],
     gap: Spacing[2],
   },
   inputBoxFocused: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(123,97,255,0.06)',
+    borderColor: 'rgba(236,52,247,0.6)', // 온보딩 마젠타 액센트
+    backgroundColor: 'rgba(236,52,247,0.05)',
   },
   inputBoxError: {
     borderColor: '#FF6B6B',
@@ -851,7 +868,7 @@ const styles = StyleSheet.create({
   forgotText: {
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.medium,
-    color: Colors.primary,
+    color: '#EC34F7',
   },
   submitBtn: {
     marginTop: Spacing[2],
@@ -920,14 +937,14 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '100%',
-    backgroundColor: '#160B2C',
+    backgroundColor: '#131018',
     borderRadius: BorderRadius['2xl'],
     borderWidth: 1,
-    borderColor: 'rgba(191, 133, 252, 0.15)',
+    borderColor: 'rgba(255,255,255,0.1)',
     padding: Spacing[6],
-    shadowColor: '#7B61FF',
+    shadowColor: '#000000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.4,
     shadowRadius: 20,
     elevation: 10,
   },
@@ -987,7 +1004,7 @@ const styles = StyleSheet.create({
     width: 64,
     height: 64,
     borderRadius: 32,
-    backgroundColor: 'rgba(123, 97, 255, 0.15)',
+    backgroundColor: 'rgba(236,52,247,0.12)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing[2],
@@ -1020,10 +1037,10 @@ const styles = StyleSheet.create({
   },
   loaderCard: {
     minWidth: 200,
-    backgroundColor: '#160B2C',
+    backgroundColor: '#131018',
     borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.15)',
+    borderColor: 'rgba(255,255,255,0.1)',
     paddingVertical: 32,
     paddingHorizontal: 40,
     alignItems: 'center',

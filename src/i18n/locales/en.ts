@@ -18,16 +18,25 @@ const en = {
     getStarted: 'Get Started',
     slides: {
       '1': {
-        title: 'Spin the globe and\ncreate a world\nthat is yours.',
-        subtitle: "Countries you've visited shine on your globe",
+        // **…** section renders with magenta highlight (parsed in AppIntroScreen)
+        title: 'Turn your travels into\n**your own globe**.',
+        subtitle: 'We analyze photos taken outside your home country\nto automatically find your trips abroad.',
       },
       '2': {
-        title: 'Record and keep\nthe precious memories\nof your journeys.',
-        subtitle: 'Capture moments with photos, dates, and ratings',
+        title: 'The trip ends,\nbut records remain.',
+        subtitle: 'We analyze photos taken outside your home country\nto automatically find your trips abroad.',
       },
       '3': {
-        title: 'Share your travel\nstories with friends.',
-        subtitle: 'Explore and share journeys in the social feed',
+        title: 'Memories build up\ninto achievements.',
+        subtitle: 'We analyze photos taken outside your home country\nto automatically find your trips abroad.',
+      },
+      '4': {
+        title: 'Share with friends,\nmake it more special',
+        subtitle: 'Share favorite travel stories instantly via messages',
+      },
+      '5': {
+        title: "Now it's time to fill\n**your own globe**",
+        subtitle: 'We analyze photos taken outside your home country\nto automatically find your trips abroad.',
       },
     },
   },
