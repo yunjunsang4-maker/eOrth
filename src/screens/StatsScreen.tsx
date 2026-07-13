@@ -66,46 +66,30 @@ function PressCard({
   style,
   onPress,
   children,
-  glowColor = 'rgba(123,97,255,0.15)',
 }: {
   style?: any;
   onPress: () => void;
   children: React.ReactNode;
-  glowColor?: string;
+  glowColor?: string; // 프레스 보라 글로우 제거됨 — 호환용으로 타입만 유지
 }) {
-  const scale       = useRef(new Animated.Value(1)).current;
-  const glowOpacity = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
 
   const handlePressIn = () => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 0.955,
-        useNativeDriver: true,
-        tension: 400,
-        friction: 10,
-      }),
-      Animated.timing(glowOpacity, {
-        toValue: 1,
-        duration: 80,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    Animated.spring(scale, {
+      toValue: 0.955,
+      useNativeDriver: true,
+      tension: 400,
+      friction: 10,
+    }).start();
   };
 
   const handlePressOut = () => {
-    Animated.parallel([
-      Animated.spring(scale, {
-        toValue: 1,
-        useNativeDriver: true,
-        tension: 280,
-        friction: 9,
-      }),
-      Animated.timing(glowOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      }),
-    ]).start();
+    Animated.spring(scale, {
+      toValue: 1,
+      useNativeDriver: true,
+      tension: 280,
+      friction: 9,
+    }).start();
   };
 
   // 배열 스타일을 평탄화한 뒤 레이아웃 관련 키만 추출해 Pressable 에도 적용
@@ -114,8 +98,6 @@ function PressCard({
   for (const key of Object.keys(flat)) {
     if (LAYOUT_KEYS.has(key)) layoutStyle[key] = flat[key];
   }
-
-  const borderRadius = flat.borderRadius ?? 24;
 
   return (
     <Pressable style={layoutStyle} onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
@@ -138,17 +120,6 @@ function PressCard({
         />
 
         {children}
-        <Animated.View
-          pointerEvents="none"
-          style={[
-            StyleSheet.absoluteFill,
-            {
-              borderRadius,
-              backgroundColor: glowColor,
-              opacity: glowOpacity,
-            },
-          ]}
-        />
       </Animated.View>
     </Pressable>
   );
@@ -166,12 +137,10 @@ const HERO_RING_Y2 = `${(182.972 / 192) * 100}%`;
 // 내부가 반투명이라 래퍼 방식이면 배경까지 물든다 → 측정 후 스트로크 전용 SVG 오버레이.
 const HALF_CARD_RADIUS = 29;
 function GradientHalfCard({
-  colors,
   onPress,
   children,
   style,
 }: {
-  colors: [string, string];
   onPress: () => void;
   children: React.ReactNode;
   style?: any;
@@ -192,12 +161,12 @@ function GradientHalfCard({
         <View style={StyleSheet.absoluteFill} pointerEvents="none">
           <Svg width={size.w} height={size.h}>
             <SvgDefs>
-              {/* 시안 축: 173×128 기준 (26,0)→(121.2,91.8) — 비율로 환산.
-                  히어로와 같은 유리 림 — 시작색이 중간에서 투명해졌다 끝색이 반투명으로 올라온다 */}
-              <SvgLinearGradient id={gradId} x1="15.04%" y1="0%" x2="70.04%" y2="71.74%">
-                <SvgStop offset="0" stopColor={colors[0]} />
-                <SvgStop offset="0.6" stopColor={colors[1]} stopOpacity={0} />
-                <SvgStop offset="1" stopColor={colors[1]} stopOpacity={0.5} />
+              {/* 원판 테두리와 동일 그라데이션 — 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
+              <SvgLinearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
+                <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
+                <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
               </SvgLinearGradient>
             </SvgDefs>
             <SvgRect
@@ -238,15 +207,15 @@ const NODE_GEO: [number, number, number][] = [
   [312, 127, 23],
 ];
 const NODE_RING_OPACITY = [1, 0.5, 0.5, 0.2, 0.2];
-// 궤도 곡선 — 노드 아래(y≈167)까지 이어지는 원호 (±79.5°)
-const ORBIT_SPAN = 1.388;
+// 궤도 곡선 — 끝원(노드 4·5) 중심(23,127)·(312,127)에서 끝나는 원호 (±64.4°). 끝점이 끝원 안에 들어가 벗어나지 않음
+const ORBIT_SPAN = 1.124;
 const ORBIT_PATH = (() => {
   const x1 = ORBIT_CX - ORBIT_R * Math.sin(ORBIT_SPAN);
   const y1 = ORBIT_CY - ORBIT_R * Math.cos(ORBIT_SPAN);
   const x2 = ORBIT_CX + ORBIT_R * Math.sin(ORBIT_SPAN);
   return `M ${x1} ${y1} A ${ORBIT_R} ${ORBIT_R} 0 0 1 ${x2} ${y1}`;
 })();
-// 지구본은 시안 패스 원본(data/statsGlobePath)을 시안 좌표계(335px) 그대로 배율해 그린다
+// 지구본 문양(2겹)은 시안 원본 격자 패스(data/statsGlobePath)를 라벤더→보라 그라데이션으로 그린다
 
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
@@ -541,7 +510,12 @@ export default function StatsScreen() {
         <AnalysisWordmark height={36} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: 110 }]}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        bounces={false}
+        overScrollMode="never"
+        contentContainerStyle={[styles.scroll, { paddingBottom: 70 }]}
+      >
         {/* World coverage hero — 흰색 % + 프로필 사진 (시안) */}
         {/* 테두리: 시안 SVG의 스트로크 그라데이션만 오버레이 — 내부(흰 3% 패널)는 물들지 않는다 */}
         <View
@@ -645,7 +619,7 @@ export default function StatsScreen() {
         {/* Row 2: 연도별 방문 현황 + 대륙별 방문 현황 — 흰 3% 패널 + 1px 그라데이션 스트로크 (시안) */}
         <View style={styles.statsRow}>
           {/* 1번 - Yearly bar chart — 시안: 트랙 없는 막대, 올해만 그라데이션·과거는 단색 */}
-          <GradientHalfCard colors={halfRing} onPress={() => goToDetail('yearly')} style={styles.halfCard}>
+          <GradientHalfCard onPress={() => goToDetail('yearly')} style={styles.halfCard}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardYearlyTrips')}</Text>
               <Text style={styles.cardChevron}>›</Text>
@@ -669,7 +643,7 @@ export default function StatsScreen() {
           </GradientHalfCard>
 
           {/* 2번 - Region breakdown — 시안: 단색 네온 막대, 점 없음 */}
-          <GradientHalfCard colors={halfRing} onPress={() => goToDetail('region')} style={styles.halfCard}>
+          <GradientHalfCard onPress={() => goToDetail('region')} style={styles.halfCard}>
             <View style={styles.cardTitleRow}>
               <Text style={styles.cardTitle} {...andFitText}>{t('stats.cardContinents')}</Text>
               <Text style={styles.cardChevron}>›</Text>
@@ -692,32 +666,111 @@ export default function StatsScreen() {
 
         {/* TOP 국가 궤도 + Travel Rating — 시안(Group 2085664582): 궤도·지구본 동심원 통합 섹션 */}
         <View style={styles.orbitSection}>
-          {/* 장식 레이어 — 시안 원본 그대로: 흐린 흰3% 구 + 격자 패스(라벤더→보라 그라데이션) + 중앙 원판 */}
+          {/* 장식 레이어 — 별점 스택(1겹 유리→2겹 지구본→3겹 유리) + 배경 구 + 궤도 곡선 */}
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            <Svg width={ARC_W} height={ORBIT_H}>
+            {/* 맨뒤 유리 원판(배경 구) — 블러 + 흰3% 틴트 + 메뉴탭바와 동일한 #CECFCD 그라데이션 테두리 */}
+            <View style={styles.ratingDiskBack}>
+              <BlurView intensity={16} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <View style={styles.ratingDiskBackTint} />
+              <Svg width={217 * OS} height={217 * OS} style={StyleSheet.absoluteFill}>
+                <SvgDefs>
+                  {/* 프로스트 매트 — 뒤가 비어 블러가 안 보이는 맨뒤 판에 유리 광택을 얹어 흐릿한 느낌을 냄 */}
+                  <SvgRadialGradient id="ratingDiskBackFrost" cx="42%" cy="38%" r="65%">
+                    <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.06} />
+                    <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+                  </SvgRadialGradient>
+                  {/* 좌상단→우하단 대각선. 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
+                  <SvgLinearGradient id="ratingDiskBackBorder" x1="0" y1="0" x2="1" y2="1">
+                    <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                    <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
+                    <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
+                    <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
+                  </SvgLinearGradient>
+                </SvgDefs>
+                {/* 프로스트 광택(테두리보다 뒤) */}
+                <SvgCircle
+                  cx={(217 * OS) / 2}
+                  cy={(217 * OS) / 2}
+                  r={(217 * OS) / 2 - 0.75}
+                  fill="url(#ratingDiskBackFrost)"
+                />
+                <SvgCircle
+                  cx={(217 * OS) / 2}
+                  cy={(217 * OS) / 2}
+                  r={(217 * OS) / 2 - 0.75}
+                  fill="none"
+                  stroke="url(#ratingDiskBackBorder)"
+                  strokeWidth={1.5}
+                />
+              </Svg>
+            </View>
+            {/* 궤도 곡선 — 스펙: border 4px + border-image(180deg 흰0.3 0%→회0 57.93%) + backdrop-filter blur(4px).
+                translateY -6로 살짝 위. backdrop-filter는 SVG 스트로크에 못 걸어 같은 그라데이션의 옅은 소프트 1겹으로 근사 */}
+            <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
               <SvgDefs>
                 <SvgLinearGradient id="statsOrbitLine" x1="0" y1={22 * OS} x2="0" y2={206 * OS} gradientUnits="userSpaceOnUse">
-                  <SvgStop offset="0" stopColor="#FFFFFF" />
-                  <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
+                  <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.3} />
+                  <SvgStop offset="0.5793" stopColor="#999999" stopOpacity={0} />
                 </SvgLinearGradient>
-                {/* 시안 paint1 — 격자 패스의 세로 그라데이션 (userSpace 좌표는 G scale과 함께 배율됨) */}
+              </SvgDefs>
+              <SvgG translateY={-6} opacity={0.3}>
+                {/* backdrop blur(4px) 근사 — 4px 선 양옆으로 ~2px 번짐 */}
+                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.38} strokeWidth={8} strokeLinecap="round" fill="none" />
+                {/* border 4px solid */}
+                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeWidth={4} strokeLinecap="round" fill="none" />
+              </SvgG>
+            </Svg>
+            {/* 1겹 — 지구본 뒤 유리 원판 (스펙: #FFFFFF08(3%) + backdrop blur 4.17px) */}
+            <View style={styles.ratingDisk}>
+              <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <View style={styles.ratingDiskTint} />
+            </View>
+            {/* 3겹 — 유리 원판 (스펙: #D9D9D908(3%) + blur). 지구본 '뒤'에 둬서 문양이 판 위로 또렷이 보이게 함 */}
+            <View style={styles.ratingDisk3}>
+              <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <View style={styles.ratingDisk3Tint} />
+            </View>
+            {/* 2겹 지구본 문양 — 시안 원본 격자 패스(라벤더→보라 그라데이션). 판 위에 그려 문양 유지 */}
+            <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
+              <SvgDefs>
                 <SvgLinearGradient id="statsGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
                   <SvgStop offset="0" stopColor="#E0C9FF" />
                   <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.2} />
                 </SvgLinearGradient>
               </SvgDefs>
-              {/* 시안(335px) 좌표계 그대로 그리고 화면 폭에 맞춰 배율 */}
-              <SvgG scale={OS}>
-                <SvgCircle cx={167.5} cy={194.5} r={108.5} fill="#FFFFFF" fillOpacity={0.03} />
-                <SvgPath d={STATS_GLOBE_PATH} fill="url(#statsGlobeGrid)" fillOpacity={0.2} />
+              <SvgG scale={OS} opacity={0.6}>
+                <SvgPath d={STATS_GLOBE_PATH} fill="url(#statsGlobeGrid)" fillOpacity={0.28} />
               </SvgG>
-              {/* 궤도 곡선 */}
-              <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.3} strokeWidth={2} fill="none" />
+            </Svg>
+            {/* 문양 살짝 번지게 — 새 아키텍처에서 SVG 필터가 안 먹어, 문양 위에 얇은 네이티브 블러를 얹어 격자를 부드럽게 */}
+            <BlurView
+              intensity={16}
+              tint="dark"
+              experimentalBlurMethod="dimezisBlurView"
+              style={styles.globeGridBlur}
+              pointerEvents="none"
+            />
+            {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽) */}
+            <Svg width={170 * OS} height={170 * OS} style={styles.ratingDisk3BorderBox} pointerEvents="none">
+              <SvgDefs>
+                {/* 맨뒤 원판 테두리와 동일 — 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
+                <SvgLinearGradient id="ratingDisk3Border" x1="0" y1="0" x2="1" y2="1">
+                  <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                  <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
+                  <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
+                  <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
+                </SvgLinearGradient>
+              </SvgDefs>
+              <SvgCircle
+                cx={(170 * OS) / 2}
+                cy={(170 * OS) / 2}
+                r={(170 * OS) / 2 - 1}
+                fill="none"
+                stroke="url(#ratingDisk3Border)"
+                strokeWidth={1.5}
+              />
             </Svg>
           </View>
-
-          {/* 투명판 (시안 Ellipse 3062: r 77.5, #D9D9D9 3%) — 지구 격자와 별점 사이 레이어 */}
-          <View style={styles.ratingDisk} pointerEvents="none" />
 
           {/* Travel Rating — 지구본 중앙 (탭: 평가 상세) */}
           <Pressable style={styles.ratingOverlay} onPress={() => goToDetail('rating')}>
@@ -753,6 +806,8 @@ export default function StatsScreen() {
                 onPress={() => goToDetail('countries')}
               >
                 <View style={[styles.arcNode, { width: size, height: size, borderRadius: size / 2 }]}>
+                  {/* 프로스트 유리 — 뒤로 지나는 궤도선이 원 안에서 번져 보이게(글라스 굴절). 어두움 낮춰 선이 비치게 */}
+                  <BlurView intensity={14} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
                   <Text style={[styles.arcRank, i >= 3 && styles.arcRankSmall]}>{String(c.rank).padStart(2, '0')}</Text>
                   <Text
                     style={[styles.arcName, i === 0 && styles.arcNameTop, i >= 3 && styles.arcNameSmall]}
@@ -870,7 +925,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   heroPercentage: {
-    fontSize: 30, // 시안: 캡 높이 ~28의 큰 흰색 숫자
+    fontSize: 37, // 시안: 캡 높이 ~28의 큰 흰색 숫자
     fontFamily: Typography.fontFamily.extraBold,
     color: Colors.textPrimary,
     letterSpacing: -1,
@@ -879,9 +934,9 @@ const styles = StyleSheet.create({
     // 시안: AppleSDGothicNeoEB00 15px / 행간 130% / 자간 -0.1
     // Inter(앱 폰트)는 한글 글리프가 없어 family 지정 시 굵기가 유실됨 —
     // 한글은 시스템 폰트(iOS=Apple SD Gothic Neo)가 렌더하므로 weight 800으로 EB를 재현한다
-    fontSize: 15,
+    fontSize: 16.5,
     fontWeight: '800',
-    lineHeight: 19.5, // 130%
+    lineHeight: 21.5, // 130%
     letterSpacing: -0.1,
     color: Colors.textPrimary,
     marginTop: 4,
@@ -925,13 +980,13 @@ const styles = StyleSheet.create({
   miniStat: { alignItems: 'center' },
   miniStatVal: {
     // 시안: 흰색 굵은 숫자 ~16
-    fontSize: 16,
+    fontSize: 20,
     fontFamily: Typography.fontFamily.bold,
     color: Colors.textPrimary,
   },
   miniStatLbl: {
     // 시안: 흰색 50% 라벨
-    fontSize: 11,
+    fontSize: 12,
     color: 'rgba(255,255,255,0.5)',
     fontWeight: '600',
     marginTop: 4,
@@ -1059,6 +1114,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 2,
+    overflow: 'hidden', // 프로스트 블러를 원형으로 클리핑
   },
   arcRank: {
     fontSize: 9,
@@ -1098,7 +1154,24 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.4)',
   },
 
-  // 별점 뒤 투명판 — 시안 Ellipse 3062 (중심 (168.5, 200.5), r 77.5, #D9D9D9 3%)
+  // 별점 뒤 유리 원판 — 시안 Ellipse 3062 크기 그대로 (중심 (168.5, 200.5), r 77.5)
+  // 블러(유리) + 틴트 + 상단 반사 하이라이트 조합
+  // 맨뒤 유리 원판(배경 구) — 중심 (167.5, 194.5), r 108.5 → 지름 217*OS
+  ratingDiskBack: {
+    position: 'absolute',
+    left: (168.46 - 108.5) * OS, // 문양과 동심 (중심 168.46,193)
+    top: (193 - 108.5) * OS,
+    width: 217 * OS,
+    height: 217 * OS,
+    borderRadius: (217 * OS) / 2,
+    overflow: 'hidden', // 블러·테두리를 원형으로 클리핑
+    opacity: 0.2,
+  },
+  ratingDiskBackTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.03)', // #FFFFFF08 (3%)
+  },
+
   ratingDisk: {
     position: 'absolute',
     left: (168.5 - 77.5) * OS,
@@ -1106,7 +1179,44 @@ const styles = StyleSheet.create({
     width: 155 * OS,
     height: 155 * OS,
     borderRadius: (155 * OS) / 2,
-    backgroundColor: 'rgba(217,217,217,0.03)',
+    overflow: 'hidden', // 블러를 원형으로 클리핑
+  },
+  ratingDiskTint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(255,255,255,0.03)', // #FFFFFF08 (3%)
+  },
+
+  // 3겹 유리 원판 — #D9D9D908(3%) + blur. 지구본 문양(≈185*OS)보다 작고 Travel Rating을 감싸는 크기.
+  // 중심 168.46,201 (문양보다 8 아래로 내림), r 85 → 지름 170*OS
+  ratingDisk3: {
+    position: 'absolute',
+    left: (168.46 - 85) * OS,
+    top: (201 - 85) * OS,
+    width: 170 * OS,
+    height: 170 * OS,
+    borderRadius: (170 * OS) / 2,
+    overflow: 'hidden',
+  },
+  ratingDisk3Tint: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(217,217,217,0.03)', // #D9D9D908 (3%)
+  },
+  // 맨앞 원판 테두리 오버레이 — ratingDisk3와 동일 위치(중심 168.46,201), 문양블러 위에 그림
+  ratingDisk3BorderBox: {
+    position: 'absolute',
+    left: (168.46 - 85) * OS,
+    top: (201 - 85) * OS,
+  },
+
+  // 지구본 문양 위에 얹는 얇은 원형 블러 — 격자 패스(그라데이션 y 98.65~287.4, 중심≈193 r≈95)에 맞춤
+  globeGridBlur: {
+    position: 'absolute',
+    left: (168.46 - 95) * OS, // 문양과 동심 (중심 168.46,193)
+    top: (193 - 95) * OS,
+    width: 190 * OS,
+    height: 190 * OS,
+    borderRadius: (190 * OS) / 2,
+    overflow: 'hidden', // 사각 경계 없이 원형으로 클리핑
   },
 
   // Travel Rating — 지구본 중앙 오버레이 (시안: 제목 y≈145, 별 y≈235)
@@ -1114,7 +1224,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 132 * OS,
+    top: 140 * OS, // 맨앞 원판(중심 201)에 맞춰 +8 내림
     alignItems: 'center',
   },
   ratingTitle: {
