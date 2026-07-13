@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useMemo, useState } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -125,7 +125,7 @@ export default function StatsDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // 대륙 키(한글, COUNTRIES 데이터)를 표시용 라벨로 변환
-  const continentName = (cont: string) => {
+  const continentName = useCallback((cont: string) => {
     switch (cont) {
       case '아시아': return t('stats.continentAsia');
       case '유럽': return t('stats.continentEurope');
@@ -134,7 +134,7 @@ export default function StatsDetailScreen() {
       case '아프리카': return t('stats.continentAfrica');
       default: return cont;
     }
-  };
+  }, [t]);
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
   const { records } = useRecords();
@@ -147,7 +147,6 @@ export default function StatsDetailScreen() {
     // 1. Common aggregations
     void t; // i18n: 재계산이 언어 변경에도 반영되도록 의존성 포함
     const visitedCountriesSet = new Set<string>();
-    const visitedCountriesList: { name: string; flag: string }[] = [];
     const visitedCitiesSet = new Set<string>();
 
     myRecords.forEach((r) => {
@@ -155,13 +154,11 @@ export default function StatsDetailScreen() {
         r.countries.forEach((c) => {
           if (!visitedCountriesSet.has(c.name)) {
             visitedCountriesSet.add(c.name);
-            visitedCountriesList.push({ name: c.name, flag: c.flag });
           }
         });
       } else if (r.countryName) {
         if (!visitedCountriesSet.has(r.countryName)) {
           visitedCountriesSet.add(r.countryName);
-          visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
         }
       }
       if (r.regionName) {
@@ -466,7 +463,7 @@ export default function StatsDetailScreen() {
         };
       }
     }
-  }, [statType, myRecords, t]);
+  }, [statType, myRecords, t, continentName]);
 
   // 지구본 히어로에 스포트라이트되는 항목 — ‹ ›로 순환
   const hero = content.hero;
@@ -645,7 +642,7 @@ export default function StatsDetailScreen() {
                       <Text style={[s.tripCell, s.tripColPeriod, s.tripHeadTxt]}>{t('statsDetail.colPeriod')}</Text>
                     </View>
                     {box.trips.map((tp, i) => (
-                      <View key={i} style={s.tableRow}>
+                      <View key={i} style={s.tripRow}>
                         <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
                         <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
                         <Text style={[s.tripCell, s.tripColPeriod, s.tableValue]} numberOfLines={1}>{tp.period}</Text>
@@ -743,7 +740,7 @@ const s = StyleSheet.create({
   // ── 수치 히어로 (world 외 카테고리) ──
   numHero: { alignItems: 'center', paddingVertical: 28 },
   numHeroLabel: { fontSize: 13, color: Colors.textMuted, marginBottom: 6 },
-  numHeroValue: { fontSize: 40, fontWeight: '800', color: Colors.textPrimary },
+  numHeroValue: { fontSize: 40, fontFamily: Typography.fontFamily.extraBold, color: Colors.textPrimary },
   numHeroSub: { fontSize: 13, color: '#E0C9FF', marginTop: 4 },
 
   // ── 최근 여행 표 (trips 박스) ──
@@ -755,6 +752,7 @@ const s = StyleSheet.create({
   },
   tripHeadTxt: { color: Colors.textMuted, fontSize: 11 },
   tripCell: { fontSize: 13 },
+  tripRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 13 },
   tripColCountry: { width: '30%' },
   tripColCity: { width: '34%' },
   tripColPeriod: { width: '36%', textAlign: 'right' },
