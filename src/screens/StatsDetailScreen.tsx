@@ -167,7 +167,7 @@ export default function StatsDetailScreen() {
     });
 
     const countryCount = visitedCountriesSet.size;
-    const cityCount = visitedCitiesSet.size || countryCount;
+    const cityCount = visitedCitiesSet.size; // 도시(regionName) 기록이 있는 것만 — 없으면 0(항목 미노출)
     const recordsCount = myRecords.length;
 
     let totalDays = 0;
@@ -387,7 +387,8 @@ export default function StatsDetailScreen() {
       case 'world': {
         const cycle: BoxRow[] = [
           { label: t('statsDetail.heroTotalCountries'), value: t('statsDetail.countriesN', { n: countryCount }) },
-          { label: t('statsDetail.labelVisitedCities'), value: t('statsDetail.countN', { n: cityCount }) },
+          // 도시 기록이 하나도 없으면 방문 도시 항목 자체를 순환에서 제외(빈 통계 미노출)
+          ...(cityCount > 0 ? [{ label: t('statsDetail.labelVisitedCities'), value: t('statsDetail.countN', { n: cityCount }) }] : []),
           { label: t('statsDetail.labelTotalRecords'), value: t('statsDetail.countN', { n: recordsCount }) },
           { label: t('statsDetail.labelTotalDays'), value: t('statsDetail.daysN', { n: totalDays }) },
           { label: t('statsDetail.labelWorldCoverage'), value: worldCoveragePct },

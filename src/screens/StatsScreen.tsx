@@ -504,7 +504,7 @@ export default function StatsScreen() {
   });
 
   const countryCount = visitedCountriesSet.size;
-  const cityCount = visitedCitiesSet.size || countryCount;
+  const cityCount = visitedCitiesSet.size; // 도시(regionName) 기록이 있는 것만 — 없으면 빈칸 표시
   const recordsCount = myRecords.length;
 
   let totalDays = 0;
@@ -733,7 +733,7 @@ export default function StatsScreen() {
                   <Text style={styles.miniStatLbl}>{t('stats.miniCountries')}</Text>
                 </View>
                 <View style={styles.miniStat}>
-                  <Text style={styles.miniStatVal}>{cityCount}</Text>
+                  <Text style={styles.miniStatVal}>{cityCount > 0 ? cityCount : ''}</Text>
                   <Text style={styles.miniStatLbl}>{t('stats.miniCities')}</Text>
                 </View>
                 <View style={styles.miniStat}>
