@@ -647,6 +647,45 @@ create policy "reports_insert_own" on public.reports
   for insert to authenticated with check (reporter_id = auth.uid());
 -- 조회는 운영자(service role)만 — 일반 사용자 select 정책 없음
 
+-- 신고 접수 시 운영자 이메일 알림 — insert마다 Edge Function(report-alert)을 호출한다.
+-- pg_net(net.http_post)은 비동기 큐 방식이라 호출·발송이 실패해도 신고 insert는 막히지
+-- 않으며(예외도 흡수), 대시보드 Webhooks 활성화(supabase_functions 스키마)에 의존하지 않는다.
+-- 선행 조건: ① supabase functions deploy report-alert
+--            ② supabase secrets set RESEND_API_KEY=... REPORT_ALERT_EMAIL=...
+-- Authorization의 anon key는 앱 번들에 포함되는 공개 키다(민감정보 아님) —
+-- Edge Function의 기본 JWT 검증을 통과시키는 용도.
+create extension if not exists pg_net;
+create or replace function public.notify_report_alert()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  perform net.http_post(
+    url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/report-alert',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
+    ),
+    -- Edge Function이 기대하는 DB 웹훅 표준 payload 형태를 그대로 만든다
+    body := jsonb_build_object(
+      'type', 'INSERT',
+      'table', 'reports',
+      'schema', 'public',
+      'record', to_jsonb(new),
+      'old_record', null
+    )
+  );
+  return new;
+exception when others then
+  return new; -- 알림 실패가 신고 접수를 막으면 안 된다
+end;
+$$;
+drop trigger if exists reports_email_alert on public.reports;
+create trigger reports_email_alert
+  after insert on public.reports
+  for each row execute function public.notify_report_alert();
+
 -- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
 -- definer(security_invoker=false) 유지 — profiles 테이블은 본인 행만 select 가능하므로
