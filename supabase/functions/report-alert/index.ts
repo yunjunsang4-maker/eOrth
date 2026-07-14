@@ -84,6 +84,12 @@ Deno.serve(async (req: Request) => {
       text: lines.join('\n'),
     }),
   });
-  if (!res.ok) return new Response('email_failed', { status: 500 });
+  if (!res.ok) {
+    // Resend 오류 원문을 로그·응답에 남긴다 — "email_failed"만으로는 원인(수신자 제한,
+    // 키 오류 등) 진단이 불가능했다. 시크릿은 포함되지 않는 안전한 메시지다.
+    const detail = await res.text().catch(() => '');
+    console.error('resend_failed', res.status, detail);
+    return new Response(`email_failed: ${res.status} ${detail}`, { status: 500 });
+  }
   return new Response('ok', { status: 200 });
 });
