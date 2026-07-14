@@ -98,9 +98,9 @@ function ShareBottomSheet({
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { followingUsers } = useRecords();
-  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지 반영
+  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지·사진 반영
   const shareFriends = followingUsers.map((f) => ({
-    id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', online: false,
+    id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
   }));
 
   const handleSNS = () => {

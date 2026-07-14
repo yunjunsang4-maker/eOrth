@@ -56,7 +56,7 @@ export default function DMToastHost() {
             pushToast(`${emoji} ${name}: ${previewOf(m, t)}`, () => {
               navigationRef.current?.navigate('DM', {
                 friend: friend
-                  ? { name: friend.name, handle: friend.handle, emoji: friend.emoji, online: friend.online }
+                  ? { name: friend.name, handle: friend.handle, emoji: friend.emoji, photo: friend.photo, online: friend.online }
                   : { name: h, handle: h, emoji: '💬' },
               });
             });

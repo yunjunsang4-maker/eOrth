@@ -12,7 +12,10 @@ const { withAndroidManifest } = require('expo/config-plugins');
 //
 
 const META_NAME = 'com.google.mlkit.vision.DEPENDENCIES';
-const META_VALUE = 'ocr,face,ica'; // 문서/스크린샷(ocr) · 얼굴(face) · 이미지라벨(ica)
+// 문서/스크린샷(ocr) · 얼굴(face) · 이미지라벨(ica) · QR 스캔(barcode)
+// barcode 누락 주의: 이 값이 최상위 우선순위로 모든 라이브러리 선언을 덮어쓰므로,
+// 여기서 빠지면 expo-camera의 QR 인식(ML Kit barcode 모델)이 조용히 무동작이 된다.
+const META_VALUE = 'ocr,face,ica,barcode';
 
 module.exports = function withMlkitVisionDependencies(config) {
   return withAndroidManifest(config, (cfg) => {

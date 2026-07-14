@@ -27,7 +27,7 @@ import { useSettings } from '../store/settingsStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon } from '../components/icons';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW } = Dimensions.get('window');
@@ -288,7 +288,7 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
 
 export default function DMScreen({ navigation, route }: Props) {
   const { friend, sharePostId } = route.params as {
-    friend: { id?: string; name: string; handle: string; emoji: string; online: boolean };
+    friend: { id?: string; name: string; handle: string; emoji: string; photo?: string; online: boolean };
     sharePostId?: string;
   };
 
@@ -547,9 +547,11 @@ export default function DMScreen({ navigation, route }: Props) {
       {!item.isMine && (
         groupedWithNext
           ? <View style={st.msgAvatarSpacer} />
-          : (
+          : friend.photo ? (
+            <Image source={{ uri: friend.photo }} style={st.msgAvatar} />
+          ) : (
             <View style={st.msgAvatar}>
-              <Text style={st.msgAvatarEmoji}>{friend.emoji}</Text>
+              <PersonIcon size={15} color="#A0A0B0" />
             </View>
           )
       )}
@@ -641,9 +643,13 @@ export default function DMScreen({ navigation, route }: Props) {
           onPress={() => navigation.navigate('FriendProfile', { userId: friend.id ?? null, username: friend.name, handle: friend.handle })}
         >
           <View style={st.headerAvatarWrap}>
-            <View style={st.headerAvatar}>
-              <Text style={st.headerAvatarEmoji}>{friend.emoji}</Text>
-            </View>
+            {friend.photo ? (
+              <Image source={{ uri: friend.photo }} style={st.headerAvatar} />
+            ) : (
+              <View style={st.headerAvatar}>
+                <PersonIcon size={18} color="#A0A0B0" />
+              </View>
+            )}
           </View>
           <View>
             <Text style={st.headerName}>{friend.name}</Text>
@@ -713,7 +719,13 @@ export default function DMScreen({ navigation, route }: Props) {
           }}
           ListEmptyComponent={
             <View style={st.emptyWrap}>
-              <Text style={st.emptyEmoji}>{friend.emoji}</Text>
+              {friend.photo ? (
+                <Image source={{ uri: friend.photo }} style={st.emptyAvatar} />
+              ) : (
+                <View style={st.emptyAvatar}>
+                  <PersonIcon size={34} color="#A0A0B0" />
+                </View>
+              )}
               <Text style={st.emptyText}>{t('dm.emptyStart', { name: friend.name })}</Text>
             </View>
           }
@@ -922,9 +934,9 @@ const st = StyleSheet.create({
   headerAvatarWrap: { position: 'relative' },
   headerAvatar: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: C.card, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#1F1F22', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden', // 사진 원형 클리핑
   },
-  headerAvatarEmoji: { fontSize: 18 },
   headerName: { fontSize: 15, fontWeight: '700', color: C.white },
   headerStatus: { fontSize: 11, color: C.dim, marginTop: 1 },
 
@@ -934,10 +946,10 @@ const st = StyleSheet.create({
   msgRowMine: { flexDirection: 'row-reverse' },
   msgAvatar: {
     width: 30, height: 30, borderRadius: 15,
-    backgroundColor: C.card, alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#1F1F22', alignItems: 'center', justifyContent: 'center',
     marginRight: 8,
+    overflow: 'hidden', // 사진 원형 클리핑
   },
-  msgAvatarEmoji: { fontSize: 14 },
   msgRowGrouped: { marginBottom: 2 },
   msgAvatarSpacer: { width: 30, marginRight: 8 },
   msgContent: { maxWidth: '75%' },
@@ -1142,7 +1154,12 @@ const st = StyleSheet.create({
 
   // 빈 상태
   emptyWrap: { alignItems: 'center', marginTop: 80 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
+  emptyAvatar: {
+    width: 72, height: 72, borderRadius: 36,
+    backgroundColor: '#1F1F22', alignItems: 'center', justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 12,
+  },
   emptyText: { fontSize: 14, color: C.dim },
 });
 

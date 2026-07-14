@@ -30,6 +30,7 @@ export interface DMFriendParam {
   name: string;
   handle: string;
   emoji: string;
+  photo?: string; // 프로필 사진 URL — DM 헤더/버블 아바타용
   id?: string;
   online?: boolean;
   lastMessage?: string;

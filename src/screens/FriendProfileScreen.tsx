@@ -363,6 +363,7 @@ export default function FriendProfileScreen({
                     name: display.name,
                     handle: profileRow?.handle || route.params?.handle || displayUsername,
                     emoji: display.emoji,
+                    photo: display.photo ?? undefined,
                     id: realId ?? undefined,
                   },
                 })}

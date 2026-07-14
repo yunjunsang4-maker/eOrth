@@ -86,7 +86,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     buzz('light');
     const name = follower.handle || '여행자';
     navigation.navigate('DM', {
-      friend: { name, handle: follower.handle || name, emoji: follower.emoji || '👤', id: follower.id },
+      friend: { name, handle: follower.handle || name, emoji: follower.emoji || '👤', photo: follower.photo ?? undefined, id: follower.id },
     });
   };
 

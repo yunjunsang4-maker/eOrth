@@ -10,8 +10,9 @@ import {
   TextInput,
   Pressable,
   Animated,
+  Image,
 } from 'react-native';
-import { SearchIcon } from '../components/icons';
+import { SearchIcon, PersonIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
@@ -43,6 +44,7 @@ interface Friend {
   name: string;
   handle: string;
   emoji: string;
+  photo?: string; // 프로필 사진 URL — 있으면 이모지 대신 사진 아바타 (프로필탭과 통일)
   lastMessage: string;
   lastMessageAt: number; // 마지막 메시지 시각(ms)
   unread: number;
@@ -91,7 +93,7 @@ export default function FriendsScreen({ navigation }: Props) {
   // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
   const [friends, setFriends] = useState<Friend[]>(() =>
     followingUsers.map((f) => ({
-      id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳',
+      id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo,
       lastMessage: '', lastMessageAt: 0, unread: 0, online: false,
     }))
   );
@@ -107,8 +109,8 @@ export default function FriendsScreen({ navigation }: Props) {
       const base = followingUsers.map((u) => {
         const ex = byId.get(u.id);
         return ex
-          ? { ...ex, name: u.username, handle: u.username, emoji: u.emoji || ex.emoji }
-          : { id: u.id, name: u.username, handle: u.username, emoji: u.emoji || '🧳', lastMessage: '', lastMessageAt: 0, unread: 0, online: false };
+          ? { ...ex, name: u.username, handle: u.username, emoji: u.emoji || ex.emoji, photo: u.photo ?? ex.photo }
+          : { id: u.id, name: u.username, handle: u.username, emoji: u.emoji || '🧳', photo: u.photo, lastMessage: '', lastMessageAt: 0, unread: 0, online: false };
       });
       const baseHandles = new Set(base.map((f) => f.handle));
       const extras = prev.filter(
@@ -136,6 +138,7 @@ export default function FriendsScreen({ navigation }: Props) {
         if (prof?.id) registerPeer(h, prof.id);
         rows.push({
           id: prof?.id ?? `dm-${h}`, name: h, handle: h, emoji: prof?.emoji || '💬',
+          photo: prof?.profile_photo ?? undefined,
           lastMessage: '', lastMessageAt: 0, unread: 0, online: false,
         });
       }
@@ -426,11 +429,15 @@ function FriendRow({
         {/* 선택 강조 오버레이 */}
         <Animated.View style={[st.selectedOverlay, { opacity: selectedOverlayOpacity }]} pointerEvents="none" />
 
-        {/* 아바타 */}
+        {/* 아바타 — 프로필 사진 우선, 없으면 기본 아이콘(프로필탭과 통일) */}
         <View style={st.avatarWrap}>
-          <View style={st.avatar}>
-            <Text style={st.avatarEmoji}>{friend.emoji}</Text>
-          </View>
+          {friend.photo ? (
+            <Image source={{ uri: friend.photo }} style={st.avatar} />
+          ) : (
+            <View style={st.avatar}>
+              <PersonIcon size={22} color="#A0A0B0" />
+            </View>
+          )}
           {friend.online && <View style={st.onlineDot} />}
         </View>
 
@@ -634,11 +641,11 @@ const st = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: C.card,
+    backgroundColor: '#1F1F22', // 프로필탭 기본 아바타와 동일
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden', // 사진 원형 클리핑
   },
-  avatarEmoji: { fontSize: 22 },
   onlineDot: {
     position: 'absolute',
     bottom: 1,

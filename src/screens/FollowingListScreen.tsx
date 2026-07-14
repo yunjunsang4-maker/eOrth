@@ -53,7 +53,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
   const openDM = (friend: (typeof followingUsers)[number]) => {
     buzz('light');
     navigation.navigate('DM', {
-      friend: { name: friend.username, handle: friend.username, emoji: friend.emoji || '👤', id: friend.id },
+      friend: { name: friend.username, handle: friend.username, emoji: friend.emoji || '👤', photo: friend.photo, id: friend.id },
     });
   };
 

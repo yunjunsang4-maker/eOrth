@@ -428,6 +428,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                   enableLinearGradient={!!myQrDesign.gradient}
                   linearGradient={myQrDesign.gradient}
                   logo={undefined}
+                  quietZone={8} // 어두운 카드 위 인식용 여백(밝은 테두리) — 스캐너 필수 요건
                 />
                 <View style={[s.qrLogoWrap, { backgroundColor: myQrDesign.bg }]}>
                   <Text style={[s.qrLogoText, myQrDesign.light && s.qrLogoTextDark]}>eOrth</Text>
@@ -591,6 +592,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                         backgroundColor={d.bg}
                         enableLinearGradient={!!d.gradient}
                         linearGradient={d.gradient}
+                        quietZone={4}
                       />
                     </View>
                     <Text style={[s.qdLabel, selected && s.qdLabelOn, selected && { color: skinAccent.accent }]} numberOfLines={1}>{t(d.labelKey)}</Text>

@@ -42,5 +42,6 @@ export interface Friend {
   name: string;
   handle: string;
   emoji: string;
+  photo?: string; // 프로필 사진 URL — 있으면 이모지 대신 사진 아바타 (프로필탭과 통일)
   online?: boolean;
 }
