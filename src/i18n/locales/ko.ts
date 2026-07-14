@@ -1680,7 +1680,7 @@ const ko = {
     toastNotEorthQR: 'eOrth QR 코드가 아니에요',
     toastSearching: '@{{handle}} 검색 중...',
     shareMeMessage: 'eOrth에서 저를 친구로 추가해보세요!\n{{link}}',
-    shareProfileMsg: '@{{username}}의 eOrth 프로필을 확인해보세요!\neOrth://profile/{{username}}',
+    shareProfileMsg: '@{{username}}의 eOrth 프로필을 확인해보세요!\neorth://profile/{{username}}',
     shareProfileTitle: 'eOrth 프로필 공유',
     fontDefault: '기본',
     fontSizeSmall: '작게',
@@ -1689,7 +1689,7 @@ const ko = {
     fontSizeXLarge: '아주 크게',
     fontSizeHeading: '제목급',
     icloudTitle: 'iCloud에 있는 사진이에요',
-    sharePostMsg: 'eOrth에서 게시물을 확인해보세요!\neOrth://post/{{id}}',
+    sharePostMsg: 'eOrth에서 게시물을 확인해보세요!\neorth://post/{{id}}',
   },
 } as const;
 

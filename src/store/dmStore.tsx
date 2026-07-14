@@ -326,10 +326,12 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   // 실시간 수신: 내 스레드의 새 메시지를 받아 대화에 합친다 (내 메시지 echo는 무시)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+    // 언마운트가 uid 조회보다 먼저 끝나면 이후 생성된 구독이 정리를 영영 못 받는다 — 취소 플래그로 방어
+    let cancelled = false;
     let cleanup = () => {};
     (async () => {
       const myUid = await getMyUserId();
-      if (!myUid) return;
+      if (!myUid || cancelled) return;
       cleanup = subscribeInbox(async (row) => {
         if (row.sender_id === myUid) return;
         let handle = handleByPeer.current[row.sender_id];
@@ -341,8 +343,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         }
         ingestRemoteMessage(handle, mapRowToMessage(row, myUid));
       });
+      if (cancelled) cleanup(); // 구독 생성 직전에 언마운트된 경우 즉시 해제
     })();
-    return () => cleanup();
+    return () => { cancelled = true; cleanup(); };
   }, [ingestRemoteMessage]);
 
   // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다

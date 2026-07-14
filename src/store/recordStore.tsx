@@ -1086,8 +1086,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           parent = top && /^[0-9a-f-]{36}$/i.test(top.id) ? top.id : replyToId;
         }
         apiAddComment(remoteId, text, parent)
-          .then((sid) => {
+          .then(async (sid) => {
             if (!sid) return;
+            // 내 profile uuid도 함께 부착 — 없으면 내가 단 댓글에서 작성자 프로필 이동이
+            // 비활성(disabled={!c.authorId})으로 남는다.
+            const myUid = await getMyUserId().catch(() => null);
             // 서버 uuid를 로컬 댓글 id로 교체 — 방금 단 댓글의 삭제·좋아요가 서버에 반영되고
             // (isRemoteId 게이트 통과), 상세 재진입 refreshComments 때 지운 댓글이 '부활'하지
             // 않으며, 이 댓글에 다는 답글도 올바른 부모로 저장된다.
@@ -1095,7 +1098,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
               const list = prev[postId];
               if (!list) return prev;
               const swap = (c: PostComment): PostComment => {
-                if (c.id === nc.id) return { ...c, id: sid };
+                if (c.id === nc.id) return { ...c, id: sid, authorId: myUid ?? c.authorId };
                 if (c.replies?.length) return { ...c, replies: c.replies.map(swap) };
                 return c;
               };
@@ -1145,6 +1148,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 댓글/답글 삭제 (top-level 또는 답글) — 로컬 즉시 반영 + 백엔드 동기화
   const deleteComment = (postId: string, commentId: string) => {
+    const snapshot = commentsByPost[postId]; // 서버 삭제 실패 시 복원용
     setCommentsByPost((prev) => {
       const list = prev[postId];
       if (!list) return prev;
@@ -1154,7 +1158,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return { ...prev, [postId]: next };
     });
     if (isSupabaseConfigured && isRemoteId(commentId)) {
-      apiDeleteComment(commentId).catch(notifySyncError);
+      apiDeleteComment(commentId).catch((e) => {
+        // 서버 삭제 실패 → 로컬 복원. 안 하면 다음 refreshComments 때 서버 사본으로
+        // '부활'해 사용자는 삭제가 됐다 안 됐다 하는 것처럼 보인다.
+        if (snapshot) setCommentsByPost((prev) => ({ ...prev, [postId]: snapshot }));
+        notifySyncError(e);
+      });
     }
   };
 
@@ -1167,8 +1176,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const local = prev[postId] ?? [];
       // 아직 서버 반영 전인 로컬 댓글(임시 id, uuid 아님)은 서버 목록 뒤에 보존 — 방금 단 댓글이 사라지지 않게
       const isTemp = (id: string) => !/^[0-9a-f-]{36}$/i.test(id);
-      const pendingRoots = local.filter((c) => isTemp(c.id));
-      return { ...prev, [postId]: pendingRoots.length > 0 ? [...list, ...pendingRoots] : list };
+      const pendingRoots = local.filter((c) => isTemp(c.id)); // 임시 루트는 replies째로 보존
+      // 서버 댓글(uuid 부모) 밑에 단 '임시 답글'도 보존 — 루트만 남기면 방금 단 답글이 증발한다
+      const pendingRepliesByParent: Record<string, PostComment[]> = {};
+      for (const c of local) {
+        if (isTemp(c.id)) continue;
+        const temps = (c.replies ?? []).filter((r) => isTemp(r.id));
+        if (temps.length) pendingRepliesByParent[c.id] = temps;
+      }
+      const merged = Object.keys(pendingRepliesByParent).length
+        ? list.map((c) => {
+            const temps = pendingRepliesByParent[c.id];
+            if (!temps) return c;
+            const have = new Set((c.replies ?? []).map((r) => r.id));
+            const add = temps.filter((r) => !have.has(r.id));
+            return add.length ? { ...c, replies: [...(c.replies ?? []), ...add] } : c;
+          })
+        : list;
+      return { ...prev, [postId]: pendingRoots.length > 0 ? [...merged, ...pendingRoots] : merged };
     });
   }, []);
 

@@ -2287,8 +2287,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 빠른공유 친구는 실제 팔로우 친구(followingUsers)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
-    () => followingUsers.map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳' })),
-    [followingUsers]
+    () => followingUsers
+      // 차단한 상대는 공유 대상에서 제외 — 차단 시 언팔되지만 로컬 상태가 어긋난 경우의 안전망
+      .filter((f) => !isBlocked({ handle: f.username, name: f.username }))
+      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳' })),
+    [followingUsers, isBlocked]
   );
   const top3 = useMemo(
     () => [...dmFriends]
@@ -2407,23 +2410,25 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   // 내 글(records) + 백엔드 피드의 남들 글(feedPosts)을 합쳐 최신순 정렬 → 실제 소셜 피드.
   // 정렬+다중 필터+applyViewer 비용이 커서 입력이 바뀔 때만 재계산하도록 memo화.
-  const allVisible = useMemo(
-    () =>
-      [...records, ...feedPosts]
-        .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
-        .filter(
-          (r) =>
-            (r.visibility === 'friends' || r.visibility === 'public') &&
-            !isBlocked(r.user) &&
-            !archivedIds.includes(r.id) &&
-            !reportedPostIds.includes(r.id)
-        )
-        // 블로그·스트립은 기록 전체 비공개 — 현재 뷰어가 대상이면 글 전체를 피드에서 숨김
-        .filter((r) => !isPostHiddenForViewer(r, currentViewer))
-        // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
-        .map((r) => applyViewer(r, currentViewer)),
-    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked]
-  );
+  const allVisible = useMemo(() => {
+    // 내 글은 미리보기 뷰어(currentViewer), 타인 글은 '나'(내 핸들)를 뷰어로 —
+    // 서버 data에 전체 사진이 내려오므로 여기서 안 거르면 작성자가 나에게 숨긴 사진이 보인다.
+    const viewerFor = (r: (typeof records)[number]) =>
+      r.isMyPost || r.user?.handle === globalHandle ? currentViewer : (globalHandle || null);
+    return [...records, ...feedPosts]
+      .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+      .filter(
+        (r) =>
+          (r.visibility === 'friends' || r.visibility === 'public') &&
+          !isBlocked(r.user) &&
+          !archivedIds.includes(r.id) &&
+          !reportedPostIds.includes(r.id)
+      )
+      // 블로그·스트립은 기록 전체 비공개 — 뷰어가 대상이면 글 전체를 피드에서 숨김
+      .filter((r) => !isPostHiddenForViewer(r, viewerFor(r)))
+      // 뷰어 시점에서 비공개 사진을 제거한 사본으로 교체 (viewer=null이면 원본 그대로)
+      .map((r) => applyViewer(r, viewerFor(r)));
+  }, [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked, globalHandle]);
 
   const snapItems = useMemo(() => {
     // 내 스냅 판정 (isMyPost 누락 대비 핸들 비교 병행). 내 스냅은 '본 것'으로 취급 → 안 본 링 안 뜸

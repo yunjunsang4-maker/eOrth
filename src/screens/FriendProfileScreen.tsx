@@ -21,7 +21,8 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchFollowerCount, fetchFollowingCount } from '../services/social';
+import { fetchFollowerCount, fetchFollowingCount, reportPostToServer } from '../services/social';
+import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
@@ -30,6 +31,7 @@ import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryInfoFromCode } from '../utils/pastTripScan';
+import { profileLink } from '../utils/appLinks';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -67,11 +69,13 @@ export default function FriendProfileScreen({
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
   const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
-  const isSelf = !!myHandle && route.params?.handle === myHandle;
   const { records: myRecords } = useRecords();
 
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
+  // handle 파라미터 없이 진입해도(댓글·알림 등 userId만 전달) 프로필 로드 후 본인 판정이 되도록
+  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 팔로우 버튼·차단 메뉴가 뜬다
+  const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [followerCount, setFollowerCount] = useState(0);
   const [followingCount, setFollowingCount] = useState(0);
@@ -108,8 +112,16 @@ export default function FriendProfileScreen({
     try { await loadProfile(); } finally { if (aliveRef.current) setRefreshing(false); }
   }, [loadProfile]);
 
-  // 본인이면 로컬 기록, 타인이면 백엔드 공개 글을 사용
-  const sourcePosts = isSelf ? myRecords : userPosts;
+  // 본인이면 로컬 기록, 타인이면 백엔드 공개 글을 사용.
+  // 타인 글은 '나'를 뷰어로 사진 비공개(mediaPrivacy)를 적용해야 한다 — 서버 data에는
+  // 전체 사진이 그대로 내려오므로 여기서 안 거르면 작성자가 나에게 숨긴 사진이 보인다.
+  const sourcePosts = useMemo(() => {
+    if (isSelf) return myRecords;
+    const viewer = myHandle || null;
+    return userPosts
+      .filter((p) => !isPostHiddenForViewer(p, viewer))
+      .map((p) => applyViewer(p, viewer));
+  }, [isSelf, myRecords, userPosts, myHandle]);
   // 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시)
   const friendBadges = useMemo(() => {
     const earned = computeEarnedBadgeIds(sourcePosts, BADGES);
@@ -219,16 +231,19 @@ export default function FriendProfileScreen({
   };
 
   // ── 핸들러 ──
+  // 링크에는 표시 이름이 아니라 실제 핸들을 넣어야 받은 쪽에서 조회가 된다
+  // (username 파라미터는 화면에 따라 표시 이름이 넘어올 수 있음 → profileRow 우선)
+  const linkHandle = isSelf ? myHandle : (profileRow?.handle || route.params?.handle || displayUsername);
   const handleCopyLink = async () => {
     setMenuVisible(false);
-    await Clipboard.setStringAsync(`eOrth://profile/${displayUsername}`);
+    await Clipboard.setStringAsync(profileLink(linkHandle));
     showToast(t('social.linkCopiedToast'));
   };
 
   const handleShare = () => {
     setMenuVisible(false);
     Share.share({
-      message: t('comp2.shareProfileMsg', { username: displayUsername }),
+      message: t('comp2.shareProfileMsg', { username: linkHandle }),
       title: t('comp2.shareProfileTitle'),
     });
   };
@@ -515,6 +530,10 @@ export default function FriendProfileScreen({
         onClose={() => setReportVisible(false)}
         onSubmit={(reason) => {
           setReportVisible(false);
+          // 사용자 신고 — reports 테이블에 접수(post_id 없음). 대상 식별자를 reason에 담아
+          // 운영자가 누구에 대한 신고인지 알 수 있게 한다. (토스트만 띄우고 실제 접수를
+          // 안 하던 버그 수정)
+          reportPostToServer(null, `[user @${linkHandle}${realId ? ` ${realId}` : ''}] ${reason}`).catch(() => {});
           showToast(t('social.reportReceivedToast'));
         }}
       />

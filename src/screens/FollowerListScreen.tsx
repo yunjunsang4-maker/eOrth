@@ -145,10 +145,12 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     try {
       await acceptFollowRequest(req.requesterId);
       setRequests((prev) => prev.filter((r) => r.requesterId !== req.requesterId));
+      // 내가 이미 이 사람을 팔로우 중이면 수락 즉시 맞팔 — false 하드코딩하면 서버 재조회 전까지 표시가 어긋난다
+      const alreadyFollowing = followingUsers.some((f) => f.id === req.requesterId);
       setFollowers((prev) =>
         prev.some((f) => f.id === req.requesterId)
           ? prev
-          : [{ id: req.requesterId, handle: req.handle, emoji: req.emoji, photo: req.photo, isMutual: false }, ...prev]
+          : [{ id: req.requesterId, handle: req.handle, emoji: req.emoji, photo: req.photo, isMutual: alreadyFollowing }, ...prev]
       );
     } catch {
       // 실패 시 목록 유지 — 다시 시도 가능

@@ -28,6 +28,8 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon } from '../components/icons';
+import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
+import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW } = Dimensions.get('window');
@@ -519,6 +521,31 @@ export default function DMScreen({ navigation, route }: Props) {
     ? messages[searchMatches[searchPos]]?.id ?? null
     : null;
 
+  // 메시지 속 eorth:// 링크(프로필/게시물)를 탭 가능하게 렌더 — 일반 Text로 두면
+  // 프로필 링크를 DM으로 받아도 눌러서 이동할 방법이 없다
+  const renderTextWithLinks = (text: string) => {
+    const parts = text.split(APP_LINK_SPLIT_RE);
+    if (parts.length === 1) return text;
+    return parts.map((p, i) => {
+      const link = parseAppLink(p);
+      return link ? (
+        <Text
+          key={i}
+          style={st.msgLinkText}
+          onPress={() =>
+            openAppLink(link, (name, params) =>
+              (navigation.navigate as (n: string, p?: object) => void)(name, params)
+            ).catch(() => {})
+          }
+        >
+          {p}
+        </Text>
+      ) : (
+        <Text key={i}>{p}</Text>
+      );
+    });
+  };
+
   // ─── 메시지 렌더링 ───
   const renderMessage = ({ item, index }: { item: Message; index: number }) => {
     const prev = index > 0 ? messages[index - 1] : null;
@@ -576,7 +603,7 @@ export default function DMScreen({ navigation, route }: Props) {
                       ? <Text key={i} style={st.searchHit}>{p.t}</Text>
                       : <Text key={i}>{p.t}</Text>,
                   )
-                : item.text}
+                : renderTextWithLinks(item.text)}
             </Text>
           </View>
         )}
@@ -595,7 +622,7 @@ export default function DMScreen({ navigation, route }: Props) {
           <RecordBubble
             rec={item.record}
             isMine={item.isMine}
-            onPress={() => {
+            onPress={async () => {
               // 공유 id는 서버 id(remoteId) 또는 발신자 로컬 id일 수 있다 —
               // 내 기록(id·remoteId)과 피드(feedPosts, id=서버 id) 양쪽에서 찾는다.
               const sharedId = item.record!.id;
@@ -604,6 +631,12 @@ export default function DMScreen({ navigation, route }: Props) {
                 feedPosts.find(r => r.id === sharedId || r.remoteId === sharedId);
               if (found) {
                 navigation.navigate('PostDetail', { postId: found.id });
+                return;
+              }
+              // 로컬에 없으면(피드 300개 상한 밖·미팔로우 상대의 공개 글 등) 서버에서 단건 조회
+              const fetched = await fetchPostById(sharedId).catch(() => null);
+              if (fetched) {
+                navigation.navigate('PostDetail', { postId: fetched.id, record: fetched });
               } else {
                 Alert.alert(t('dm.postNotFoundTitle'), t('dm.postNotFoundMsg'));
               }
@@ -963,6 +996,8 @@ const st = StyleSheet.create({
   bubbleMine: { backgroundColor: C.myBubble, borderBottomRightRadius: 4 },
   bubbleTheirs: { backgroundColor: C.theirBubble, borderBottomLeftRadius: 4 },
   bubbleText: { fontSize: 14, color: C.white, lineHeight: 20 },
+  // 메시지 속 앱 링크(프로필/게시물) — 눌러서 이동 가능함을 밑줄로 표시
+  msgLinkText: { textDecorationLine: 'underline', fontWeight: '600' },
 
   // 입력 중 버블
 

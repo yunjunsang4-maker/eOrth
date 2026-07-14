@@ -1679,7 +1679,7 @@ const en = {
     toastNotEorthQR: 'Not an eOrth QR code',
     toastSearching: 'Searching @{{handle}}...',
     shareMeMessage: 'Add me as a friend on eOrth!\n{{link}}',
-    shareProfileMsg: "Check out @{{username}}'s eOrth profile!\neOrth://profile/{{username}}",
+    shareProfileMsg: "Check out @{{username}}'s eOrth profile!\neorth://profile/{{username}}",
     shareProfileTitle: 'Share eOrth profile',
     fontDefault: 'Default',
     fontSizeSmall: 'Small',
@@ -1688,7 +1688,7 @@ const en = {
     fontSizeXLarge: 'X-Large',
     fontSizeHeading: 'Heading',
     icloudTitle: 'These photos are in iCloud',
-    sharePostMsg: 'Check out this post on eOrth!\neOrth://post/{{id}}',
+    sharePostMsg: 'Check out this post on eOrth!\neorth://post/{{id}}',
   },
 } as const;
 

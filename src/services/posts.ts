@@ -273,6 +273,27 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
   }
 }
 
+// 단일 게시물 조회 — 딥링크(eorth://post/<id>)·DM 링크로 진입 시 스토어에 없는 글의 폴백용.
+// id가 서버 uuid가 아니면(발신자 로컬 id 등) 조회가 실패하며 null을 반환한다.
+export async function fetchPostById(postId: string): Promise<TravelRecord | null> {
+  if (!supabase || !postId) return null;
+  try {
+    const { data, error } = await supabase
+      .from('posts')
+      .select(POST_SELECT)
+      .eq('id', postId)
+      .maybeSingle();
+    if (error || !data) return null;
+    const rec = mapRowToRecord(data);
+    // 뷰어(나)의 좋아요 상태 덧씌움 — fetchUserPosts와 동일한 이유(하트 드리프트 방지)
+    const { fetchMyLikedPostIds } = await import('./social');
+    const likedSet = new Set(await fetchMyLikedPostIds());
+    return rec.remoteId && likedSet.has(rec.remoteId) ? { ...rec, liked: true } : rec;
+  } catch {
+    return null;
+  }
+}
+
 // 특정 사용자의 공개 글 (친구 프로필용)
 export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
   if (!supabase || !userId) return [];

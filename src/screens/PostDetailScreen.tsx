@@ -52,6 +52,7 @@ import { toNaverHtml, BlogData } from '../utils/naverBlogConverter';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/social';
+import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -981,13 +982,14 @@ function SnapStoryViewer({
     ]).start(() => setCommentSheetOpen(false));
   };
 
-  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(`eOrth://post/${currentSnap.id}`); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
+  // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
+  const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(postLink(currentSnap.remoteId ?? currentSnap.id)); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
   // 공유 아이콘 → 인스타처럼 시트에서 친구 DM 전송 또는 외부 공유를 고른다
   const handleSharePost = () => { setMenuVisible(false); setShareSheetOpen(true); };
   const handleShareExternal = () => {
     setShareSheetOpen(false);
     // 공유 시트 모달이 닫히는 중에 시스템 공유 시트를 띄우면 iOS가 무시한다 — 닫힘 완료 후 호출
-    const id = currentSnap.id;
+    const id = currentSnap.remoteId ?? currentSnap.id;
     setTimeout(() => { Share.share({ message: t('comp2.sharePostMsg', { id }) }); }, 400);
   };
   const handleSendToFriend = (f: { name: string; handle: string }) => {
@@ -1213,6 +1215,11 @@ export default function PostDetailScreen() {
   const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
+  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
+  // 내 글은 미리보기 뷰어(currentViewer), 타인 글은 '나'(내 핸들)를 뷰어로 —
+  // 서버 data에 전체 사진이 내려오므로 안 거르면 작성자가 나에게 숨긴 사진이 보인다.
+  const viewerFor = (r: TravelRecord) =>
+    r.isMyPost || r.user?.handle === globalHandle ? currentViewer : (globalHandle || null);
   const snapViewerRecords = useMemo(
     () =>
       [...records, ...feedPosts]
@@ -1223,11 +1230,11 @@ export default function PostDetailScreen() {
             !archivedIds.includes(r.id) &&
             !reportedPostIds.includes(r.id)
         )
-        .filter((r) => !isPostHiddenForViewer(r, currentViewer))
-        .map((r) => applyViewer(r, currentViewer)),
-    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked]
+        .filter((r) => !isPostHiddenForViewer(r, viewerFor(r)))
+        .map((r) => applyViewer(r, viewerFor(r))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked, globalHandle]
   );
-  const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
 
   const comments = commentsByPost[postId] ?? [];
   const [commentText, setCommentText] = useState('');
@@ -1297,8 +1304,8 @@ export default function PostDetailScreen() {
     // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [postId, rawRecord?.remoteId]);
-  // 선택된 뷰어 시점에서 비공개 사진을 제거한 사본 (viewer=null이면 원본 그대로)
-  const record = rawRecord ? applyViewer(rawRecord, currentViewer) : rawRecord;
+  // 뷰어 시점에서 비공개 사진을 제거한 사본 — 내 글은 미리보기 뷰어, 타인 글은 나
+  const record = rawRecord ? applyViewer(rawRecord, viewerFor(rawRecord)) : rawRecord;
 
   if (!record) {
     return (
@@ -1370,9 +1377,11 @@ export default function PostDetailScreen() {
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = record?.isMyPost === true;
 
+  // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
+  const shareId = record?.remoteId ?? postId;
   const handleCopyLink = async () => {
     setMenuVisible(false);
-    await Clipboard.setStringAsync(`eOrth://post/${postId}`);
+    await Clipboard.setStringAsync(postLink(shareId));
     setToastMsg(t('social.linkCopiedToast'));
     setTimeout(() => setToastMsg(''), 2000);
   };
@@ -1381,7 +1390,7 @@ export default function PostDetailScreen() {
     setMenuVisible(false);
     // 메뉴 모달이 닫히는 동안 공유 시트를 띄우면 표시할 화면이 없어 무동작 → 모달 닫힘 후 호출
     setTimeout(() => {
-      Share.share({ message: t('comp2.sharePostMsg', { id: postId }) }).catch(() => {});
+      Share.share({ message: t('comp2.sharePostMsg', { id: shareId }) }).catch(() => {});
     }, 350);
   };
 

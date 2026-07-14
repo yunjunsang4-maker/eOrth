@@ -47,6 +47,7 @@ import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
 import { exchangeAuthCode, wasIntentionalSignOut } from '../services/auth';
 import { emitToast } from '../store/toastStore';
+import { parseAppLink, openAppLink } from '../utils/appLinks';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -126,19 +127,19 @@ export default function AppNavigator() {
         return;
       }
 
-      // eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
-      const m = /eorth:\/\/user\/(.+)$/i.exec(trimmed);
-      if (!m) return;
-      const handle = decodeURIComponent(m[1]).replace(/^@/, '').replace(/\/+$/, '');
-      if (!handle || handle === 'unknown') return;
+      // eorth://profile|user/<handle> → 해당 프로필 화면으로 직행 (조회 실패 시 친구찾기 폴백)
+      // eorth://post/<id> → 해당 게시물 상세로 직행
+      const link = parseAppLink(trimmed);
+      if (!link) return;
       // 방어 심화: 인증되어 본화면(Main)에 진입한 상태에서만 내부 화면으로 이동한다.
       // 미인증 상태의 딥링크로 인증 화면이 열리는 것을 막고, 콜드 스타트에서는
       // Main 진입까지 잠시(최대 ~5초) 기다렸다 이동(그 사이 인증 안 되면 무시).
       const tryGo = (attempts: number) => {
         const authed = navigationRef.current?.getRootState?.()?.routes?.some((r) => r.name === 'Main');
         if (authed) {
-          // ts: 같은 핸들로 재진입해도 화면이 검색어를 다시 채우도록 매번 새 값 전달
-          navigationRef.current?.navigate('FriendSearch', { initialQuery: handle, ts: Date.now() });
+          openAppLink(link, (name, params) =>
+            (navigationRef.current?.navigate as (n: string, p?: object) => void)?.(name, params)
+          ).catch(() => {});
         } else if (attempts > 0) {
           setTimeout(() => tryGo(attempts - 1), 800);
         }
