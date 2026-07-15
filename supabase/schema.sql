@@ -592,6 +592,32 @@ $$;
 grant execute on function public.neighbor_counts(uuid[]) to authenticated;
 
 -- 이전 follows 모델의 잔여 함수 정리 (재실행 안전)
+-- follows/follow_requests 테이블이 마이그레이션용으로 임시 유지된 경우, 거기 붙은
+-- 옛 트리거·정책이 아래 함수들을 참조하고 있어(2BP01) 먼저 전부 떼어내야 한다.
+-- 이름을 나열하지 않고 카탈로그에서 조회해 일괄 제거한다 (테이블이 없으면 아무것도 안 함).
+do $$
+declare r record;
+begin
+  for r in
+    select tg.tgname, c.relname
+    from pg_trigger tg
+    join pg_class c on c.oid = tg.tgrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public'
+      and c.relname in ('follows', 'follow_requests')
+      and not tg.tgisinternal
+  loop
+    execute format('drop trigger if exists %I on public.%I', r.tgname, r.relname);
+  end loop;
+  for r in
+    select pol.policyname, pol.tablename
+    from pg_policies pol
+    where pol.schemaname = 'public'
+      and pol.tablename in ('follows', 'follow_requests')
+  loop
+    execute format('drop policy if exists %I on public.%I', r.policyname, r.tablename);
+  end loop;
+end $$;
 drop function if exists public.is_private_account(uuid);
 drop function if exists public.cleanup_follows_on_block();
 drop function if exists public.follow_list_of(uuid, text);
@@ -691,7 +717,12 @@ create table if not exists public.notifications (
   created_at timestamptz not null default now()
 );
 -- 기존 DB의 타입 제약을 서로이웃 타입으로 교체 (follow* → neighbor_request/neighbor_accept)
+-- 순서 중요: 옛 제약을 먼저 떼야(neighbor_* 는 옛 제약이 허용 안 함) 데이터 이관이 가능하다.
+--   1) 제약 드롭 → 2) follow* 행 이관/정리 → 3) 새 제약 추가.
 alter table public.notifications drop constraint if exists notifications_type_check;
+update public.notifications set type = 'neighbor_request' where type = 'follow_request';
+update public.notifications set type = 'neighbor_accept'  where type = 'follow_accept';
+delete from public.notifications where type not in ('neighbor_request', 'neighbor_accept');
 alter table public.notifications add constraint notifications_type_check
   check (type in ('neighbor_request', 'neighbor_accept'));
 create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
@@ -729,7 +760,7 @@ drop trigger if exists trg_notify_neighbor_request on public.neighbors;
 create trigger trg_notify_neighbor_request after insert on public.neighbors
   for each row execute function public.notify_on_neighbor_request();
 
--- 이전 follows 알림 함수 정리 (follows 트리거는 아래 follows 테이블 drop cascade로 제거됨)
+-- 이전 follows 알림 함수 정리 (follows에 붙어 있던 트리거는 위 4-b 카탈로그 일괄 정리에서 제거됨)
 drop function if exists public.notify_on_follow();
 
 -- ============================================================
