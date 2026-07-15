@@ -790,10 +790,11 @@ async function init() {
   // 보류된 광고 마커 생성 (setSponsored가 worldData 로드 전에 도착한 경우)
   if (pendingSponsored) buildAdMarkers(pendingSponsored);
 
-  // Lights
-  scene.add(new THREE.AmbientLight(0xaaaaaa, 1.2));
+  // Lights — 정면 텍셀이 원본 밝기(≈1.0)에 가깝도록 낮춤. 기존(주변광 0.8 + 방향광 합 ~0.7)은
+  // 정면을 원본의 약 1.5배로 밝혀 사진이 "빛나 보이던" 원인이었다. 확산 음영(구체 입체감)은 유지.
+  scene.add(new THREE.AmbientLight(0xffffff, 0.7));
   [[5,3,5],[-5,3,5],[5,-3,5],[-5,-3,5],[0,0,-6],[0,5,0]].forEach(function(p) {
-    var l = new THREE.DirectionalLight(0xffffff, 0.25);
+    var l = new THREE.DirectionalLight(0xffffff, 0.1);
     l.position.set(p[0], p[1], p[2]);
     scene.add(l);
   });
