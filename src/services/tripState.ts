@@ -21,6 +21,7 @@ export interface TripStateBackup {
     coverUri?: string;
     date?: string;
     regionName?: string;
+    stay?: { type: string; status: string; startedAt: string; endedAt?: string; lastActiveAt: number };
   }>;
   session: { groups: Record<string, string>; lastActiveAt: number } | null;
 }

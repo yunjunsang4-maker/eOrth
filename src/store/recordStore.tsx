@@ -568,6 +568,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 체류 시작 — 체류 카드 생성(active) + 세션을 이 카드로 등록해 체류국 기록이 합류하게 한다
   const startStay = (countryName: string, type: StayType) => {
+    // 진행 중 체류가 이미 있으면 무시 — 동시 체류는 1개(프롬프트/감지 이벤트 중복 발화 방어)
+    if (tripGroupsRef.current.some((g) => g.stay && g.stay.status !== 'ended')) return;
     const today = new Date();
     const ymd = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
     const meta = COUNTRIES.find((c) => c.name === countryName);
@@ -602,6 +604,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
     setTripGroups(apply);
     tripGroupsRef.current = apply(tripGroupsRef.current);
+    // 종료된 체류 카드로 새 기록이 합류하지 않게 세션 매핑 제거
+    const cur = tripSessionRef.current;
+    if (cur) {
+      const entries = Object.entries(cur.groups).filter(([, gid]) => gid !== groupId);
+      const next = entries.length > 0 ? { groups: Object.fromEntries(entries), lastActiveAt: cur.lastActiveAt } : null;
+      setTripSession(next);
+      tripSessionRef.current = next;
+    }
   };
 
   // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
@@ -1580,6 +1590,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           coverUri: g.coverUri,
           date: g.date,
           regionName: g.regionName,
+          stay: g.stay,
         })),
         session: tripSession,
       });
@@ -1612,7 +1623,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           setTripGroups((prev) =>
             prev.length > 0
               ? prev
-              : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+              : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) } as TripGroup))
           );
           setTripSession((prev) => {
             if (prev) return prev;
