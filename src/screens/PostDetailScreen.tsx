@@ -1212,7 +1212,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, removeNeighbor, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1608,15 +1608,25 @@ export default function PostDetailScreen() {
                 const postDisplayName = isMyPost
                   ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
-                const authorUsername = record.user.name || record.user.handle;
-                const followedEntry = neighbors.find(
-                  (f) => (record.authorId && f.id === record.authorId) || f.username === authorUsername
-                );
-                const toggleFollow = () => {
+                // 작성자 uuid — 이웃 관계 판정은 반드시 uuid 기준
+                const authorId = typeof record.authorId === 'string' && record.authorId ? record.authorId : null;
+                // 이웃 3상태: 이웃 / 신청됨 / 없음 — 스토어 판정 사용
+                const neighborState: 'neighbor' | 'requested' | 'none' = authorId
+                  ? (isNeighbor(authorId) ? 'neighbor' : isNeighborRequested(authorId) ? 'requested' : 'none')
+                  : 'none';
+                const neighborLabel =
+                  neighborState === 'neighbor' ? t('friends.neighborActive')
+                  : neighborState === 'requested' ? t('friends.neighborRequested')
+                  : t('friends.neighborRequest');
+                const neighborA11y =
+                  neighborState === 'none' ? t('friends.neighborRequest') : t('friends.neighborActive');
+                const onNeighborPress = () => {
+                  if (!authorId) return;
                   buzz('light');
-                  // 이웃이면 끊고, 아니면 이웃신청 — 팔로우 모델 폐지에 따른 이웃 API 사용
-                  if (followedEntry) removeNeighbor(followedEntry.id || followedEntry.username);
-                  else requestNeighbor(record.authorId ?? '');
+                  // 없음→신청, 신청됨→취소, 이웃→끊기
+                  if (neighborState === 'neighbor') removeNeighbor(authorId);
+                  else if (neighborState === 'requested') cancelNeighborRequest(authorId);
+                  else requestNeighbor(authorId);
                 };
                 return (
                   <View style={s.userRow}>
@@ -1652,15 +1662,15 @@ export default function PostDetailScreen() {
                     {record.rating != null && record.rating > 0 && (
                       <Text style={[s.ratingStars, { color: skinAccent.accent }]}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
                     )}
-                    {!isMyPost && (
+                    {!isMyPost && authorId && (
                       <TouchableOpacity
-                        style={[s.followBtn, { backgroundColor: skinAccent.accent }, followedEntry && s.followingBtn]}
-                        onPress={toggleFollow}
+                        style={[s.followBtn, { backgroundColor: skinAccent.accent }, neighborState !== 'none' && s.followingBtn]}
+                        onPress={onNeighborPress}
                         accessibilityRole="button"
-                        accessibilityLabel={followedEntry ? t('postDetail.unfollowA11y') : t('postDetail.followA11y')}
+                        accessibilityLabel={neighborA11y}
                       >
-                        <Text style={[s.followBtnText, followedEntry && s.followingBtnText]}>
-                          {followedEntry ? t('postDetail.following') : t('postDetail.follow')}
+                        <Text style={[s.followBtnText, neighborState !== 'none' && s.followingBtnText]}>
+                          {neighborLabel}
                         </Text>
                       </TouchableOpacity>
                     )}

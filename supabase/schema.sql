@@ -157,7 +157,7 @@ revoke all on function public.cleanup_unconfirmed_accounts(interval) from public
 create table if not exists public.posts (
   id             uuid primary key default gen_random_uuid(),
   author_id      uuid not null references public.profiles(id) on delete cascade,
-  visibility     text not null default 'public',   -- public | neighbors  (레거시: friends/private)
+  visibility     text not null default 'neighbors', -- public|neighbors|private 중 neighbors/private만 사용 (기본 neighbors)
   view_type      text,                              -- feed | blog | cut | snap | album
   country_name   text,
   data           jsonb not null,                    -- TravelRecord 전체 (미디어는 공개 URL)
