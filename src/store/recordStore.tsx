@@ -13,6 +13,7 @@ import { normalizeHomeRegion } from '../constants/homeRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
+import type { StayType, StayStatus } from '../utils/stayMachine';
 import {
   requestNeighbor as apiRequestNeighbor,
   cancelNeighborRequest as apiCancelNeighborRequest,
@@ -137,6 +138,16 @@ export interface TravelRecord {
 // ─────────────────────────────────────────────
 // 여행 묶음 타입
 // ─────────────────────────────────────────────
+
+// 체류(장기체류) 메타 — 있으면 이 TripGroup은 여행 카드가 아니라 체류 카드다.
+export interface TripGroupStayMeta {
+  type: StayType;
+  status: StayStatus;
+  startedAt: string;    // YYYY.MM.DD (체류 시작일)
+  endedAt?: string;     // 종료일 (미종료면 없음)
+  lastActiveAt: number; // 마지막으로 체류국에 있던 시각(ms) — 60일 넛지 판정용
+}
+
 export interface TripGroup {
   id: string;
   title: string;
@@ -151,6 +162,7 @@ export interface TripGroup {
   date?: string;           // YYYY.MM.DD
   // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
   regionName?: string;
+  stay?: TripGroupStayMeta; // 있으면 체류 카드
 }
 
 // ─────────────────────────────────────────────
@@ -259,6 +271,10 @@ interface RecordContextType {
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   mergeTripGroups: (targetId: string, sourceIds: string[]) => void;
+  // 장기체류
+  activeStayGroup: TripGroup | null;
+  startStay: (countryName: string, type: StayType) => void;
+  endStay: (groupId: string) => void;
   markSnapViewed: (id: string) => void;
   viewedSnapIds: string[]; // 내가 본 타인 스냅(remoteId) — 안 본 링 판정용(영속)
   // 임시저장
@@ -544,6 +560,48 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const opened: TripSession = { groups: { ...(session?.groups ?? {}), [country]: ng.id }, lastActiveAt: Date.now() };
     setTripSession(opened);
     tripSessionRef.current = opened;
+  };
+
+  // ─── 장기체류(Stay) ───
+  // 진행 중(active/paused) 체류 카드 — 동시에 최대 1개 (ended는 제외)
+  const activeStayGroup = tripGroups.find((g) => g.stay && g.stay.status !== 'ended') ?? null;
+
+  // 체류 시작 — 체류 카드 생성(active) + 세션을 이 카드로 등록해 체류국 기록이 합류하게 한다
+  const startStay = (countryName: string, type: StayType) => {
+    const today = new Date();
+    const ymd = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+    const meta = COUNTRIES.find((c) => c.name === countryName);
+    const ng: TripGroup = {
+      id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: `${countryName} 체류`,
+      records: [],
+      coverRecordId: '',
+      createdAt: new Date(),
+      countryName,
+      countryFlag: meta?.flag,
+      date: ymd,
+      stay: { type, status: 'active', startedAt: ymd, lastActiveAt: Date.now() },
+    };
+    setTripGroups((prev) => [ng, ...prev]);
+    tripGroupsRef.current = [ng, ...tripGroupsRef.current];
+    const opened: TripSession = { groups: { ...(tripSessionRef.current?.groups ?? {}), [countryName]: ng.id }, lastActiveAt: Date.now() };
+    setTripSession(opened);
+    tripSessionRef.current = opened;
+  };
+
+  // 체류 종료 — status='ended', endedAt=마지막 체류국 기록일(기록 없으면 시작일)
+  const endStay = (groupId: string) => {
+    const apply = (list: TripGroup[]) => list.map((g) => {
+      if (g.id !== groupId || !g.stay) return g;
+      const dates = g.records
+        .map((id) => records.find((r) => r.id === id))
+        .map((r) => r && (r.endDate || r.startDate || r.date))
+        .filter(Boolean) as string[];
+      const endedAt = dates.sort().slice(-1)[0] || g.stay.startedAt;
+      return { ...g, stay: { ...g.stay, status: 'ended' as StayStatus, endedAt } };
+    });
+    setTripGroups(apply);
+    tripGroupsRef.current = apply(tripGroupsRef.current);
   };
 
   // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
@@ -1649,7 +1707,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
       {children}
     </RecordContext.Provider>
   );
