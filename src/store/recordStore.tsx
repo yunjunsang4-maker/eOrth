@@ -671,6 +671,15 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           : g);
       setTripGroups((prev2) => apply(prev2));
       tripGroupsRef.current = apply(tripGroupsRef.current);
+      // 재개: 귀국 때 지워진 세션에 체류 카드를 다시 등록 — 재전환 시 프롬프트 재노출 방지·세션 일관성 유지
+      if (d.resumeStay && stayGroup.countryName) {
+        const restored: TripSession = {
+          groups: { ...(tripSessionRef.current?.groups ?? {}), [stayGroup.countryName]: stayGroup.id },
+          lastActiveAt: Date.now(),
+        };
+        setTripSession(restored);
+        tripSessionRef.current = restored;
+      }
     }
 
     // 새 해외국(거주국·체류국 아님) → 여행/장기체류 프롬프트 요청 (이미 그 나라 여행 세션이 있으면 생략)
