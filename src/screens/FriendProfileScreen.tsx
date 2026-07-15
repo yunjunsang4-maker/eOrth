@@ -21,7 +21,7 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchFollowerCount, fetchFollowingCount, reportPostToServer } from '../services/social';
+import { fetchNeighborCount, reportPostToServer } from '../services/social';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
@@ -74,38 +74,34 @@ export default function FriendProfileScreen({
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   // handle 파라미터 없이 진입해도(댓글·알림 등 userId만 전달) 프로필 로드 후 본인 판정이 되도록
-  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 팔로우 버튼·차단 메뉴가 뜬다
+  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 이웃신청 버튼·차단 메뉴가 뜬다
   const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
-  const [followerCount, setFollowerCount] = useState(0);
-  const [followingCount, setFollowingCount] = useState(0);
+  const [neighborCount, setNeighborCount] = useState(0);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
-  // 프로필 로딩 완료 여부 — 완료 전엔 is_private 판정이 불가능하므로 콘텐츠를 그리지 않는다
-  // (로딩 중 잠깐 '공개 상태'로 보였다가 잠금으로 바뀌는 깜빡임 방지)
+  // 프로필 로딩 완료 여부 — 완료 전엔 콘텐츠를 그리지 않는다(로딩 깜빡임 방지)
   const [profileLoaded, setProfileLoaded] = useState(!isSupabaseConfigured || !userId);
   const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
-    const [p, posts, fc, fgc] = await Promise.all([
+    const [p, posts, nc] = await Promise.all([
       getProfileById(userId),
       fetchUserPosts(userId),
-      fetchFollowerCount(userId),
-      fetchFollowingCount(userId),
+      fetchNeighborCount(userId),
     ]);
     if (!aliveRef.current) return;
     setProfileRow(p);
     setUserPosts(posts);
-    if (fc !== null) setFollowerCount(fc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
-    if (fgc !== null) setFollowingCount(fgc);
+    if (nc !== null) setNeighborCount(nc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
-  // 진입 시 팔로잉·대기 요청을 서버 기준으로 동기화 — 상대가 내 요청을 수락했는데
-  // '요청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 팔로우 상태가 낡아 있는 문제 방지
-  const { refreshFollowing } = useRecords();
-  useEffect(() => { refreshFollowing(); }, [refreshFollowing]);
+  // 진입 시 이웃·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
+  // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 이웃 상태가 낡아 있는 문제 방지
+  const { refreshNeighbors } = useRecords();
+  useEffect(() => { refreshNeighbors(); }, [refreshNeighbors]);
 
-  // 당겨서 새로고침 — 프로필·글·팔로워/팔로잉 수 재조회
+  // 당겨서 새로고침 — 프로필·글·이웃 수 재조회
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -147,7 +143,7 @@ export default function FriendProfileScreen({
     photo: isSelf ? (myPhoto || null) : (profileRow?.profile_photo || null),
     bio: isSelf ? (myBio || '') : (profileRow?.bio || ''),
     recordCount: sourcePosts.length,
-    followers: followerCount,
+    neighbors: neighborCount,
     visitedCountries: new Set(sourcePosts.map((p) => p.countryName).filter(Boolean)).size,
     trips: sourcePosts.flatMap((p) => {
       // 다국가 분할 기록: 게시물은 하나지만 카드는 국가별로 나눠 그린다
@@ -179,40 +175,49 @@ export default function FriendProfileScreen({
     }),
   };
 
+  // 여행 카드 탭 → 내 프로필과 동일한 여행 상세(TripDetail)로 이동.
+  // 타인 기록은 로컬 스토어에 없으므로 이 여행에 속한 게시물(서버 조회본)을 guestRecords로
+  // 함께 넘긴다 → TripDetail이 읽기 전용 게스트 모드로 렌더 (기록 탭 시 PostDetail).
+  const openGuestTripDetail = (trip: (typeof display.trips)[number]) => {
+    const ids = new Set(trip.records.map((r) => r.id));
+    navigation.navigate('TripDetail', {
+      trip: {
+        id: trip.id,
+        emoji: trip.emoji,
+        title: trip.title,
+        country: trip.title, // 게스트 모드에선 표시용으로만 쓰임 (기록 매칭은 guestRecords가 대신)
+        countryFlag: trip.countryFlag,
+        date: trip.date,
+        // 내 프로필·메인과 동일한 기본 그라데이션 키 — 실제 색이 아니라 키 문자열이라
+        // 히어로 상단에 별도 색 밴드가 생기지 않는다 (ProfileScreen mappedThumbnails와 동일)
+        color: 'trip-japan',
+        records: trip.records.map((r) => ({ id: r.id, viewType: r.viewType })),
+      },
+      guestRecords: sourcePosts.filter((p) => ids.has(p.id)),
+    });
+  };
+
   // 아이디 표시 폰트(프리미엄) — 본인이면 내 설정값(구독 중일 때만), 타인이면 프로필의 handle_font
   const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
 
-  // 팔로우·차단은 store 공유 상태 — 팔로잉 목록/프로필 카운트와 동기화된다
-  const { followingUsers, followUser, unfollowUser, setFollowMutual, blockUser, toggleMute, isMuted, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
+  // 이웃·차단은 store 공유 상태 — 이웃 목록/프로필 카운트와 동기화된다
+  const { neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
-  // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 follows insert(uuid 컬럼)가 실패한다
+  // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
   const realId = userId ?? profileRow?.id ?? null;
-  const followId = realId ?? displayUsername;
-  const followEntry = followingUsers.find((f) => f.id === followId || (!!f.username && f.username === displayUsername));
-  const following = !!followEntry;
-  const isMutual = !!followEntry?.isMutual;
-  // 비공개 계정 — 팔로우 대신 요청 흐름, 팔로워가 아니면 기록·배지 잠금
-  const isPrivate = !!profileRow?.is_private;
-  const requested = !!realId && isFollowRequested(realId);
-  const privateLocked = isPrivate && !following && !isSelf;
-  const toggleFollow = () => {
-    if (following) {
-      // 빈 id('')로 찾으면 id가 빈 다른 항목과 오매칭될 수 있어 || 로 username 폴백
-      unfollowUser(followEntry?.id || followId);
-    } else if (isPrivate && realId) {
-      // 비공개 계정: 요청 보내기 ↔ 요청 취소 토글
-      if (requested) cancelFollowRequest(realId);
-      else requestFollow(realId);
-    } else {
-      followUser({
-        id: realId ?? '', // uuid 없으면 빈 값 → 로컬 전용(서버 동기화 생략), 매칭은 username으로
-        username: displayUsername,
-        isAbroad: false,
-        currentCountry: null,
-        currentCountryFlag: null,
-      });
-    }
+  const neighborNow = !!realId && isNeighbor(realId);
+  const requested = !!realId && isNeighborRequested(realId);
+  const neighborState: 'none' | 'requested' | 'neighbor' =
+    neighborNow ? 'neighbor' : requested ? 'requested' : 'none';
+  const onNeighborPress = () => {
+    if (!realId) return;
+    if (neighborState === 'none') requestNeighbor(realId);
+    else if (neighborState === 'requested') cancelNeighborRequest(realId);
+    else Alert.alert(t('friends.removeNeighborTitle'), t('friends.removeNeighborMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('friends.removeNeighbor'), style: 'destructive', onPress: () => removeNeighbor(realId) },
+    ]);
   };
   const [menuVisible, setMenuVisible] = useState(false);
   // 음소거는 store(mutedHandles)에 영속 — handle 기준(차단과 동일 신원 키)
@@ -334,39 +339,33 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 통계 — 프로필 탭과 동일한 3개(여행수·팔로워·팔로잉). 비공개 계정도 수치는 공개(콘텐츠만 잠금).
-                팔로워/팔로잉 탭 → 목록(조회 전용). 비공개 미팔로우면 목록도 잠금 */}
+            {/* 통계 — 여행수·이웃 2개. 이웃 탭 → 이웃 목록(조회 전용) */}
             <View style={pv.statsRow}>
               <StatCard value={String(display.trips.length)} label={t('profile.tripCount')} />
               <StatCard
-                value={String(display.followers)}
-                label={t('friends.followers')}
-                onPress={realId && !privateLocked ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'followers' }) : undefined}
-              />
-              <StatCard
-                value={String(isSelf ? followingUsers.length : followingCount)}
-                label={t('profile.following')}
-                onPress={realId && !privateLocked ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'following' }) : undefined}
+                value={String(neighborCount)}
+                label={t('profile.neighbors')}
+                onPress={realId ? () => navigation.navigate('UserFollowList', { userId: realId, mode: 'followers' }) : undefined}
               />
             </View>
           </View>
         </View>
 
-        {/* ── 팔로우 + DM 버튼 (본인 프로필이면 숨김) ── */}
+        {/* ── 이웃신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
         {!isSelf && (
           <>
             <View style={s.actionRow}>
               <TouchableOpacity
-                style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
-                onPress={toggleFollow}
+                style={[s.followBtn, neighborState === 'none' && { backgroundColor: skinAccent.accentDeep }, neighborState !== 'none' && s.followingBtn]}
+                onPress={onNeighborPress}
                 activeOpacity={0.85}
               >
-                <Text style={[s.followBtnText, (following || requested) && [s.followingBtnText, { color: skinAccent.accent }]]}>
-                  {following
-                    ? t('friends.followingCheck')
-                    : requested
-                      ? t('friends.requested')
-                      : t('friends.follow')}
+                <Text style={[s.followBtnText, neighborState !== 'none' && [s.followingBtnText, { color: skinAccent.accent }]]}>
+                  {neighborState === 'neighbor'
+                    ? t('friends.neighborActive')
+                    : neighborState === 'requested'
+                      ? t('friends.neighborRequested')
+                      : t('friends.neighborRequest')}
                 </Text>
               </TouchableOpacity>
               {/* DM — 대화 화면으로 이동 (핸들 기준 대화방) */}
@@ -388,42 +387,12 @@ export default function FriendProfileScreen({
                 <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
               </TouchableOpacity>
             </View>
-
-            {/* ── 맞팔 표시 — 친구 수 배지(78·81·82·83) 판정용 ──
-                백엔드 사용 시 서버(follows 양방향)가 판정하므로 읽기 전용 배지,
-                미설정(로컬 데모) 모드에서만 수동 토글 허용 (refreshFollowing이 서버 값으로 덮어쓰므로 토글이 유지되지 않음) */}
-            {following && isSupabaseConfigured && isMutual && (
-              <View style={[s.mutualBtn, { borderColor: skinAccent.accent }, s.mutualBtnOn, { backgroundColor: skinAccent.accent }]}>
-                <Text style={[s.mutualBtnText, s.mutualBtnTextOn]}>{t('friends.mutualYes')}</Text>
-              </View>
-            )}
-            {following && !isSupabaseConfigured && (
-              <TouchableOpacity
-                style={[s.mutualBtn, { borderColor: skinAccent.accent }, isMutual && [s.mutualBtnOn, { backgroundColor: skinAccent.accent }]]}
-                onPress={() => setFollowMutual(followEntry?.id || followId, !isMutual)}
-                activeOpacity={0.85}
-              >
-                <Text style={[s.mutualBtnText, { color: skinAccent.accent }, isMutual && s.mutualBtnTextOn]}>
-                  {isMutual ? t('friends.mutualYes') : t('friends.mutualMark')}
-                </Text>
-              </TouchableOpacity>
-            )}
           </>
         )}
 
         {!isSelf && !profileLoaded ? (
-          /* ── 프로필 로딩 중 — is_private 판정 전이라 콘텐츠를 아직 그리지 않는다 ── */
+          /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
-        ) : privateLocked ? (
-          /* ── 비공개 계정 잠금 — 팔로워가 아니면 배지·기록을 숨기고 안내만 표시 ── */
-          <>
-            <View style={pv.divider} />
-            <View style={s.privateBox}>
-              <Text style={s.privateEmoji}>🔒</Text>
-              <Text style={s.privateTitle}>{t('friends.privateTitle')}</Text>
-              <Text style={s.privateDesc}>{t('friends.privateDesc')}</Text>
-            </View>
-          </>
         ) : (
           <>
             {/* ── Travel badge — 프로필 탭과 동일한 섹션 헤더 + 구이 서클 배지 ── */}
@@ -460,27 +429,17 @@ export default function FriendProfileScreen({
               </Text>
             ) : (
               <>
-                {/* 메인 카드 (첫 여행) — 분할 카드는 id가 합성값이라 게시물 이동은 records[0].id.
-                    타인 글은 로컬/피드 스토어에 없으므로 record 폴백을 함께 넘긴다 (없으면 상세가 빈 화면) */}
+                {/* 메인 카드 (첫 여행) — 내 프로필과 동일하게 여행 상세(TripDetail)로 이동.
+                    타인 글은 로컬 스토어에 없으므로 그 여행의 기록(서버 조회본)을 guestRecords로 넘긴다 */}
                 <TripCard
                   trip={display.trips[0]}
                   main
-                  onPress={() => {
-                    const pid = display.trips[0].records[0].id;
-                    navigation.navigate('PostDetail', { postId: pid, record: sourcePosts.find((sp) => sp.id === pid) });
-                  }}
+                  onPress={() => openGuestTripDetail(display.trips[0])}
                 />
                 {/* 나머지 2열 그리드 */}
                 <View style={pv.tripGrid}>
                   {display.trips.slice(1).map((trip) => (
-                    <TripCard
-                      key={trip.id}
-                      trip={trip}
-                      onPress={() => {
-                        const pid = trip.records[0].id;
-                        navigation.navigate('PostDetail', { postId: pid, record: sourcePosts.find((sp) => sp.id === pid) });
-                      }}
-                    />
+                    <TripCard key={trip.id} trip={trip} onPress={() => openGuestTripDetail(trip)} />
                   ))}
                 </View>
               </>
@@ -599,26 +558,6 @@ const s = StyleSheet.create({
   followingBtn: { backgroundColor: COLORS.card },
   followBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
   followingBtnText: { color: COLORS.accent },
-  mutualBtn: {
-    height: 38, borderRadius: 12,
-    backgroundColor: COLORS.card,
-    borderWidth: 1, borderColor: COLORS.accent,
-    alignItems: 'center', justifyContent: 'center',
-    marginBottom: 4,
-  },
-  mutualBtnOn: { backgroundColor: COLORS.accent, borderColor: COLORS.accent },
-  mutualBtnText: { fontSize: 13, fontWeight: '700', color: COLORS.accent },
-  mutualBtnTextOn: { color: COLORS.white },
-
-  // ── 비공개 계정 잠금 안내 ──
-  privateBox: {
-    alignItems: 'center',
-    paddingVertical: 36,
-    paddingHorizontal: 24,
-  },
-  privateEmoji: { fontSize: 36, marginBottom: 12 },
-  privateTitle: { fontSize: 16, fontWeight: '700', color: COLORS.white, marginBottom: 6 },
-  privateDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', lineHeight: 19 },
 
   // ── 구분선 ──
   divider: {
