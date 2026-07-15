@@ -354,43 +354,33 @@ async function buildTexture() {
   ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
 
-  var deepZones = [
-    [W*0.15, H*0.35], [W*0.45, H*0.25], [W*0.7, H*0.55],
-    [W*0.25, H*0.7],  [W*0.85, H*0.35], [W*0.55, H*0.65],
-  ];
-  deepZones.forEach(function(z) {
-    var x = z[0], y = z[1];
-    var rg = ctx.createRadialGradient(x, y, 0, x, y, W * 0.22);
-    rg.addColorStop(0, 'rgba(' + cfg.deepRGB + ',0.6)');
-    rg.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, H);
+  // 바다 발광 블롭 — 경도 이음새(±W)가 매끄럽도록 좌우로 감아서 그린다(중앙 블롭은 사실상 1번만 유효).
+  // 안 감으면 텍스처 왼/오른쪽 끝 밝기가 달라 태평양(180°)에 세로 봉합선이 보인다.
+  function oceanRadial(x, y, radius, stops) {
+    [x - W, x, x + W].forEach(function(cx) {
+      var rg = ctx.createRadialGradient(cx, y, 0, cx, y, radius);
+      stops.forEach(function(s) { rg.addColorStop(s[0], s[1]); });
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, W, H);
+    });
+  }
+
+  [[W*0.15, H*0.35], [W*0.45, H*0.25], [W*0.7, H*0.55],
+   [W*0.25, H*0.7],  [W*0.85, H*0.35], [W*0.55, H*0.65]].forEach(function(z) {
+    oceanRadial(z[0], z[1], W * 0.22, [[0, 'rgba(' + cfg.deepRGB + ',0.6)'], [1, 'rgba(' + cfg.deepRGB + ',0)']]);
   });
 
-  var blueZones = [
-    [W*0.32, H*0.52, 0.20], [W*0.62, H*0.38, 0.17],
-    [W*0.82, H*0.6, 0.18], [W*0.12, H*0.62, 0.16], [W*0.92, H*0.42, 0.15],
-  ];
-  blueZones.forEach(function(z) {
-    var x = z[0], y = z[1], sz = z[2];
-    var rg = ctx.createRadialGradient(x, y, 0, x, y, W * sz);
-    rg.addColorStop(0, 'rgba(' + cfg.zoneRGB + ',0.50)');
-    rg.addColorStop(0.5, 'rgba(' + cfg.zoneRGB + ',0.22)');
-    rg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, H);
+  [[W*0.32, H*0.52, 0.20], [W*0.62, H*0.38, 0.17],
+   [W*0.82, H*0.6, 0.18], [W*0.12, H*0.62, 0.16], [W*0.92, H*0.42, 0.15]].forEach(function(z) {
+    oceanRadial(z[0], z[1], W * z[2], [[0, 'rgba(' + cfg.zoneRGB + ',0.50)'], [0.5, 'rgba(' + cfg.zoneRGB + ',0.22)'], [1, 'rgba(0,0,0,0)']]);
   });
 
   [[W*0.4, H*0.08], [W*0.75, H*0.92], [W*0.15, H*0.9]].forEach(function(z) {
-    var x = z[0], y = z[1];
-    var rg = ctx.createRadialGradient(x, y, 0, x, y, W*0.13);
-    rg.addColorStop(0, 'rgba(123,92,240,0.22)');
-    rg.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = rg;
-    ctx.fillRect(0, 0, W, H);
+    oceanRadial(z[0], z[1], W * 0.13, [[0, 'rgba(123,92,240,0.22)'], [1, 'rgba(0,0,0,0)']]);
   });
 
-  var tone = ctx.createLinearGradient(0, 0, W, H);
+  // 톤 오버레이 — 세로 그라데이션(좌우 동일)이라 이음새 없음 (대각선이면 좌/우 끝 색이 달라 봉합선 발생)
+  var tone = ctx.createLinearGradient(0, 0, 0, H);
   tone.addColorStop(0, 'rgba(30,70,200,0.12)');
   tone.addColorStop(0.5, 'rgba(40,30,140,0.06)');
   tone.addColorStop(1, 'rgba(30,70,200,0.12)');
@@ -635,6 +625,9 @@ async function buildTexture() {
   canvasTex.minFilter = THREE.LinearMipmapLinearFilter;
   canvasTex.magFilter = THREE.LinearFilter;
   canvasTex.generateMipmaps = true;
+  // 경도(가로) 이음새 제거 — 기본 ClampToEdge면 UV 봉합선(180°=태평양)에 세로선이 생김. neon과 동일하게 RepeatWrapping.
+  canvasTex.wrapS = THREE.RepeatWrapping;
+  canvasTex.wrapT = THREE.ClampToEdgeWrapping;
   return canvasTex;
 }
 
@@ -777,10 +770,12 @@ async function init() {
   var texture = await buildTexture();
 
   var geo = new THREE.SphereGeometry(1, 128, 128);
+  // 반사광(specular) 제거 — 사진 위에 유리 같은 광택 띠가 얹혀 "빛나 보이던" 문제 해결.
+  // 확산 조명(구체 입체 음영)은 유지하되 광택만 없애 사진이 원본처럼 보이게 한다.
   var mat = new THREE.MeshPhongMaterial({
     map: texture,
-    specular: new THREE.Color(0x111122),
-    shininess: 5,
+    specular: new THREE.Color(0x000000),
+    shininess: 0,
   });
   globeMesh = new THREE.Mesh(geo, mat);
   globe.add(globeMesh);
