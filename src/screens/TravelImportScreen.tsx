@@ -26,18 +26,18 @@ import { requestNotificationPermission } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
-// maxAssets는 안전 상한: 스캔이 최신순(DESC)이라 도달 시 "오래된 사진부터" 잘림(과거 여행 앞부분 누락).
+// 사진 수 상한 없음: 기간 내 사진은 전부 스캔한다 (과거엔 maxAssets 상한 도달 시
+// 최신순 스캔이라 오래된 여행이 잘려 누락되는 문제가 있어 제거).
 type ScanPeriodKey = '1y' | '3y' | 'all';
 interface ScanPeriodOption {
   key: ScanPeriodKey;
   label: string;
   years: number | null; // null = 전체 기간
-  maxAssets: number; // Infinity = 상한 없음
 }
 const SCAN_PERIODS: ScanPeriodOption[] = [
-  { key: '1y', label: '최근 1년', years: 1, maxAssets: 20000 },
-  { key: '3y', label: '최근 3년', years: 3, maxAssets: 50000 },
-  { key: 'all', label: '전체 스캔', years: null, maxAssets: Number.POSITIVE_INFINITY },
+  { key: '1y', label: '최근 1년', years: 1 },
+  { key: '3y', label: '최근 3년', years: 3 },
+  { key: 'all', label: '전체 스캔', years: null },
 ];
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
 
@@ -182,7 +182,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   //   1) 권한    : MediaLibrary(사진) 권한만 사용. 위치 권한 불필요
   //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
   //   2) 스캔    : getAssetsAsync를 endCursor/hasNextPage로 페이지네이션. createdAfter로
-  //                최근 SCAN_YEARS년 사진만 순회(creationTime 정렬, 안전 상한 MAX_ASSETS).
+  //                선택한 기간의 사진만 순회(creationTime 정렬, 사진 수 상한 없음).
   //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:false})로 위치 추출.
   //                location은 PHAsset 로컬 DB 메타데이터라 iCloud 원본 다운로드 불필요
   //                (iCloud 최적화 사진도 좌표는 기기에 남아 있음). 위경도가 유한한 숫자인 사진만 통과.
@@ -197,8 +197,7 @@ export default function TravelImportScreen({ navigation }: Props) {
     setScannedTrips([]);
     setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
 
-    // 기간 옵션에 따른 안전 상한·조회 시작점. 전체 스캔은 상한 없음(Infinity) + createdAfter 미적용.
-    const MAX_ASSETS = period.maxAssets;
+    // 기간 옵션에 따른 조회 시작점. 전체 스캔은 createdAfter 미적용.
     const CREATED_AFTER = period.years
       ? Date.now() - period.years * 365 * 24 * 60 * 60 * 1000
       : undefined;
@@ -209,7 +208,7 @@ export default function TravelImportScreen({ navigation }: Props) {
       const assets: MediaLibrary.Asset[] = [];
       let after: string | undefined = undefined;
       let hasNext = true;
-      while (hasNext && assets.length < MAX_ASSETS) {
+      while (hasNext) {
         if (scanCancelRef.current) return;
         const page = await MediaLibrary.getAssetsAsync({
           first: 100,
@@ -224,10 +223,6 @@ export default function TravelImportScreen({ navigation }: Props) {
         hasNext = page.hasNextPage;
       }
       if (assets.length === 0) throw new Error('No photos found in gallery');
-      if (hasNext && assets.length >= MAX_ASSETS) {
-        // 상한 도달 → 최신순 스캔이라 가장 오래된 쪽(과거 여행)이 잘림
-        console.warn(`[TravelImport] MAX_ASSETS(${MAX_ASSETS}) 도달: 스캔 범위가 "${period.label}"보다 짧게 잘렸을 수 있음`);
-      }
 
       const totalAssets = assets.length;
 
