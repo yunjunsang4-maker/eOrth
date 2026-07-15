@@ -31,7 +31,10 @@ create table if not exists public.profiles (
   gender        text,
   profile_photo text,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  -- 장기체류: 진행 중 체류 국가(ISO)와 상태. 이웃 프로필 위치 표시용(public_profiles 뷰 공개).
+  stay_country  text,                              -- ISO 국가 코드 (예: 'KR')
+  stay_status   text                               -- 'active' | null
 );
 
 -- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
@@ -39,6 +42,10 @@ alter table public.profiles add column if not exists country text;
 
 -- 아이디 표시 폰트(프리미엄 기능) — 타인 화면(프로필·피드)에서도 렌더돼야 하므로 공개 컬럼
 alter table public.profiles add column if not exists handle_font text;
+
+-- (2026-07-16) 장기체류 — 진행 중 체류의 국가(ISO)와 상태. 이웃 프로필 위치 표시용.
+alter table public.profiles add column if not exists stay_country text;
+alter table public.profiles add column if not exists stay_status text; -- 'active' | null
 
 -- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
 -- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
@@ -80,7 +87,11 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회.)
 create or replace view public.public_profiles
   with (security_invoker = false) as
-  select id, handle, emoji, bio, profile_photo, created_at, handle_font
+  select id, handle, emoji, bio, profile_photo, created_at, handle_font,
+         -- (2026-07-16) 장기체류: 이웃이 프로필에서 볼 수 있도록 공개 노출.
+         -- country(거주국)는 소유자 전용이라 뷰에 없음; stay_country/stay_status는
+         -- 이웃 위치 표시 목적이므로 무조건 공개 컬럼으로 추가한다.
+         stay_country, stay_status
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
