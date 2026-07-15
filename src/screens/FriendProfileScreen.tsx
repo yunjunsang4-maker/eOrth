@@ -31,6 +31,7 @@ import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryInfoFromCode } from '../utils/pastTripScan';
+import { COUNTRIES } from '../constants/countries';
 import { profileLink } from '../utils/appLinks';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -67,7 +68,7 @@ export default function FriendProfileScreen({
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio, homeCountryCode: myHomeCountryCode } = useSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
   const { records: myRecords } = useRecords();
 
@@ -124,9 +125,14 @@ export default function FriendProfileScreen({
   // 배지가 0개가 된다 — 이 화면에선 그분의 글이 곧 본인 기록이므로 되살려서 넘긴다.
   const friendBadges = useMemo(() => {
     const asOwn = isSelf ? sourcePosts : sourcePosts.map((p) => ({ ...p, isMyPost: true }));
-    const earned = computeEarnedBadgeIds(asOwn, BADGES);
+    // 거주국 제외 옵션 — 본인은 내 거주국 코드, 타인은 profileRow.country(맞팔 시 서버 제공)
+    const homeCode = isSelf ? myHomeCountryCode : (profileRow?.country ?? undefined);
+    const homeCountryName = homeCode
+      ? countryInfoFromCode(homeCode.toUpperCase()).countryName
+      : undefined;
+    const earned = computeEarnedBadgeIds(asOwn, BADGES, { homeCountryName });
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
-  }, [sourcePosts, isSelf]);
+  }, [sourcePosts, isSelf, myHomeCountryCode, profileRow?.country]);
 
   // 이름 아래 위치 — 내 프로필과 동일한 위치 줄.
   // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,

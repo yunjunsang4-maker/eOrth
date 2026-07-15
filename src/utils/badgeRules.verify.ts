@@ -1167,5 +1167,42 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [1, 2, 9, 10] }).has(56), '데이터와 겹치는 id 중복 → 여전히 4개 → 56 미획득');
 }
 
+// ── 거주국 동적 제외(homeCountryName) ──
+{
+  // 기본: 대한민국 + 일본 기록, 거주국 대한민국 → 대한민국 제외, 일본만 포함
+  const twoCountries: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsWithHome = computeTravelStats(twoCountries, { homeCountryName: '대한민국' });
+  assert(!statsWithHome.countries.has('대한민국'), '거주국(대한민국)은 countries에서 제외');
+  assert(statsWithHome.countries.has('일본'), '비거주국(일본)은 countries에 포함');
+  assert(!statsWithHome.diaryCountries.has('대한민국'), '거주국(대한민국)은 diaryCountries에서 제외');
+  assert(statsWithHome.diaryCountries.has('일본'), '비거주국(일본)은 diaryCountries에 포함');
+
+  // 별칭: 기록 국가명 '한국', 거주국 '대한민국' → '한국'도 제외
+  const korAlias: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '한국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsAlias = computeTravelStats(korAlias, { homeCountryName: '대한민국' });
+  assert(!statsAlias.countries.has('한국'), '별칭 한국도 거주국(대한민국)으로 제외');
+  assert(statsAlias.countries.has('일본'), '별칭 제외 후 일본은 포함');
+
+  // 별칭 역방향: 거주국 '한국', 기록 '대한민국' → '대한민국'도 제외
+  const korAlias2: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsAlias2 = computeTravelStats(korAlias2, { homeCountryName: '한국' });
+  assert(!statsAlias2.countries.has('대한민국'), '거주국 한국 → 대한민국도 제외');
+  assert(statsAlias2.countries.has('일본'), '역방향 별칭 후 일본은 포함');
+
+  // 옵션 없음(하위 호환): 둘 다 포함
+  const statsNoOpt = computeTravelStats(twoCountries);
+  assert(statsNoOpt.countries.has('대한민국'), '옵션 없으면 대한민국 그대로 포함(하위 호환)');
+  assert(statsNoOpt.countries.has('일본'), '옵션 없으면 일본도 그대로 포함(하위 호환)');
+}
+
 console.log(failures === 0 ? '\n✅ 모든 검증 통과' : `\n❌ ${failures}건 실패`);
 process.exit(failures === 0 ? 0 : 1);

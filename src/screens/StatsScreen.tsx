@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useId } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useId, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -278,7 +278,7 @@ export default function StatsScreen() {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
-  const { profilePhoto, globeSkin } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
+  const { profilePhoto, globeSkin, homeCountryCode } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
   const neonRing = (skinAccent.ringGradient ?? ['#00D7F3', '#FD07E0']) as [string, string];
@@ -478,6 +478,18 @@ export default function StatsScreen() {
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
 
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = useMemo(() => {
+    const s = new Set<string>();
+    const name = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name;
+    if (name) {
+      s.add(name);
+      if (name === '대한민국') s.add('한국');
+      if (name === '한국') s.add('대한민국');
+    }
+    return s;
+  }, [homeCountryCode]);
+
   // 1. World Explorations Hero Stats
   const visitedCountriesSet = new Set<string>();
   const visitedCountriesList: { name: string; flag: string }[] = [];
@@ -486,12 +498,14 @@ export default function StatsScreen() {
   myRecords.forEach((r) => {
     if (r.countries && r.countries.length > 0) {
       r.countries.forEach((c) => {
+        if (homeNames.has(c.name)) return; // 거주국 제외
         if (!visitedCountriesSet.has(c.name)) {
           visitedCountriesSet.add(c.name);
           visitedCountriesList.push({ name: c.name, flag: c.flag });
         }
       });
     } else if (r.countryName) {
+      if (homeNames.has(r.countryName)) return; // 거주국 제외
       if (!visitedCountriesSet.has(r.countryName)) {
         visitedCountriesSet.add(r.countryName);
         visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });

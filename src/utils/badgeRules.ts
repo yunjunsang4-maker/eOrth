@@ -33,6 +33,7 @@ export interface BadgeCatalogEntry {
 // 기록 외부의 사용자 데이터(설정 등)를 판정에 함께 넘길 때 사용.
 export interface BadgeComputeOptions {
   birthday?: string; // 'YYYY-MM-DD' (생일 여행 배지 판정용)
+  homeCountryName?: string; // 현재 거주국 이름 — 방문국 집계에서 동적 제외(거주국은 '방문'이 아님)
   // 이미 영구 획득한 배지 id (행동 배지 55, 과거 획득분 등). 메타 배지(개수 달성) 카운트에 합산된다.
   alreadyEarnedIds?: number[];
   commentsWritten?: number; // 내가 작성한 댓글 수 (75 댓글 요정용)
@@ -381,6 +382,14 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   // '같은 여행지|같은 월일' → 방문 연도 집합. 1년 차이(연속 연도)가 있으면 33 점등.
   const annualVisits = new Map<string, Set<number>>();
 
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = new Set<string>();
+  if (options?.homeCountryName) {
+    homeNames.add(options.homeCountryName);
+    if (options.homeCountryName === '대한민국') homeNames.add('한국');
+    if (options.homeCountryName === '한국') homeNames.add('대한민국');
+  }
+
   for (const r of mine) {
     const rep = parseDate(r.startDate) ?? parseDate(r.date); // 이 기록의 대표 날짜
     const isDiary = DIARY_VIEW_TYPES.has(r.viewType ?? 'feed'); // 피드·블로그·스트립만 '기록'으로 인정
@@ -409,6 +418,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     if (r.countries) for (const c of r.countries) if (c?.name) names.add(c.name);
     let isIsland = false;
     for (const n of names) {
+      if (homeNames.has(n)) continue; // 거주국 제외
       countries.add(n);
       if (isDiary) diaryCountries.add(n); // 형식 기록으로 방문한 국가
       const cont = NAME_TO_CONTINENT[n];

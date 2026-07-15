@@ -25,6 +25,7 @@ import Svg, {
 import { Colors, Typography } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { DETAIL_WIREFRAME, DETAIL_RING, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -138,6 +139,19 @@ export default function StatsDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
   const { records } = useRecords();
+  const { homeCountryCode } = useSettings();
+
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = useMemo(() => {
+    const s = new Set<string>();
+    const name = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name;
+    if (name) {
+      s.add(name);
+      if (name === '대한민국') s.add('한국');
+      if (name === '한국') s.add('대한민국');
+    }
+    return s;
+  }, [homeCountryCode]);
 
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
@@ -152,11 +166,13 @@ export default function StatsDetailScreen() {
     myRecords.forEach((r) => {
       if (r.countries && r.countries.length > 0) {
         r.countries.forEach((c) => {
+          if (homeNames.has(c.name)) return; // 거주국 제외
           if (!visitedCountriesSet.has(c.name)) {
             visitedCountriesSet.add(c.name);
           }
         });
       } else if (r.countryName) {
+        if (homeNames.has(r.countryName)) return; // 거주국 제외
         if (!visitedCountriesSet.has(r.countryName)) {
           visitedCountriesSet.add(r.countryName);
         }
@@ -481,7 +497,7 @@ export default function StatsDetailScreen() {
         };
       }
     }
-  }, [statType, myRecords, t, continentName]);
+  }, [statType, myRecords, homeNames, t, continentName]);
 
   // 지구본 히어로에 스포트라이트되는 항목 — 자동 순환(페이드 아웃→교체→페이드 인)
   const cycleItems = content.hero.cycle;
