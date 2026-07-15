@@ -9,6 +9,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { GlassButton } from '../components/ui';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { getMaxAlbumPhotos } from '../constants/limits';
@@ -461,13 +462,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             <Text style={st.dateTxt}>{fmtDate(endDate)}</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={st.loadBtn} onPress={startLoad} disabled={loading} activeOpacity={0.85}>
-            <LinearGradient colors={skinAccent.btnGradient} style={st.loadGrad}>
-              {loading
-                ? <ActivityIndicator color="#FFFFFF" size="small" />
-                : <Text style={st.loadTxt}>{t('album.loadPhotos')}</Text>}
-            </LinearGradient>
-          </TouchableOpacity>
+          {/* 앱 기본 버튼(온보딩 '다음' 유리 필 디자인) — GlassButton */}
+          <GlassButton
+            label={t('album.loadPhotos')}
+            onPress={startLoad}
+            disabled={loading}
+            loading={loading}
+            style={{ marginTop: 24 }}
+          />
 
           <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2) }]}>
             <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
