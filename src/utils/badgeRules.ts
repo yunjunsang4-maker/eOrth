@@ -36,7 +36,7 @@ export interface BadgeComputeOptions {
   // 이미 영구 획득한 배지 id (행동 배지 55, 과거 획득분 등). 메타 배지(개수 달성) 카운트에 합산된다.
   alreadyEarnedIds?: number[];
   commentsWritten?: number; // 내가 작성한 댓글 수 (75 댓글 요정용)
-  mutualFriendCount?: number; // 맞팔(서로 팔로우) 친구 수 (78·81·82·83용)
+  neighborCount?: number; // 이웃(서로이웃) 수 (78·81·82·83용)
   sharesSent?: number;        // 게시물 공유(보낸) 누적 횟수 (74용)
   loginStreak?: number;       // 앱 연속 접속 일수 (112·113·114용)
   daysSinceInstall?: number;  // 앱 설치 후 경과 일수 (115용)
@@ -773,12 +773,12 @@ export function computeEarnedBadgeIds(
   on(84, s.companionFriendRecordCount >= 1);       // 첫 동행: 앱 친구 동행 1회
   on(85, s.companionFriendRecordCount >= 3);       // 동행 메이트: 앱 친구 동행 3회
 
-  // ── 맞팔 친구 수 (서로 팔로우) ──
-  const mutual = options?.mutualFriendCount ?? 0;
-  on(81, mutual >= 1);    // 첫 친구
-  on(82, mutual >= 10);   // 인싸의 시작
-  on(78, mutual >= 50);   // 소셜 나비
-  on(83, mutual >= 100);  // 인맥왕
+  // ── 이웃 수 ──
+  const neighborCount = options?.neighborCount ?? 0;
+  on(81, neighborCount >= 1);    // 첫 친구
+  on(82, neighborCount >= 10);   // 인싸의 시작
+  on(78, neighborCount >= 50);   // 소셜 나비
+  on(83, neighborCount >= 100);  // 인맥왕
 
   // ── 앱 연속 접속일 (112·113·114) ──
   const streak = options?.loginStreak ?? 0;

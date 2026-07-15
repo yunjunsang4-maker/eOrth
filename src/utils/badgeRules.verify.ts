@@ -196,13 +196,13 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds([], catalog, { installedAt: LAUNCH + 40 * DAY }).has(116), '출시 40일 후 설치 → 116 미획득');
   assert(!computeEarnedBadgeIds([], catalog, {}).has(116), '설치일 없음 → 116 미획득');
 
-  // 맞팔 친구 수(78·81·82·83)
-  const friends = (n: number) => computeEarnedBadgeIds([], catalog, { mutualFriendCount: n });
-  assert(friends(1).has(81) && !friends(1).has(82), '맞팔 1명 → 81 O, 82 X');
-  assert(friends(10).has(82) && !friends(10).has(78), '맞팔 10명 → 82 O, 78 X');
-  assert(friends(50).has(78) && !friends(50).has(83), '맞팔 50명 → 78 O, 83 X');
-  assert(friends(100).has(83), '맞팔 100명 → 83 획득');
-  assert(!friends(0).has(81), '맞팔 0명 → 81 미획득');
+  // 이웃 수(78·81·82·83)
+  const friends = (n: number) => computeEarnedBadgeIds([], catalog, { neighborCount: n });
+  assert(friends(1).has(81) && !friends(1).has(82), '이웃 1명 → 81 O, 82 X');
+  assert(friends(10).has(82) && !friends(10).has(78), '이웃 10명 → 82 O, 78 X');
+  assert(friends(50).has(78) && !friends(50).has(83), '이웃 50명 → 78 O, 83 X');
+  assert(friends(100).has(83), '이웃 100명 → 83 획득');
+  assert(!friends(0).has(81), '이웃 0명 → 81 미획득');
 }
 
 // ── 만능 기록자(69) — 피드·블로그·스트립·스냅 각각 1개 이상 ──
