@@ -352,7 +352,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     (p) => {
       // 모든 필드에 배열/폴백 가드 — 한 필드라도 throw하면 부분 복원 상태가
       // hydrated=true 이후 디바운스 저장으로 원본을 덮어써 영구 데이터 파괴가 된다.
-      setRecords(Array.isArray(p.records) ? p.records : []);
+      // 과거 여행 불러오기 기록 1회 보정: 예전 버전이 private으로 발행해 친구에게 전혀
+      // 안 보였다 → friends로 승격 (서버는 migration-2026-07-15-imported-albums-friends.sql이 짝).
+      // 로컬을 안 고치면 이후 이 기록을 수정할 때 updatePost가 서버를 다시 private으로 되돌린다.
+      // 가져온 앨범엔 공개범위 UI가 없어 private은 전부 코드가 정한 값(사용자 선택 아님).
+      setRecords(
+        (Array.isArray(p.records) ? p.records : []).map((r) =>
+          r.id?.startsWith('rec-import-') && r.visibility === 'private'
+            ? { ...r, visibility: 'friends' as const }
+            : r
+        )
+      );
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
@@ -1219,7 +1229,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       content: data.title,
       likes: 0, comments: 0, liked: false,
       isMyPost: true,
-      visibility: 'private',
+      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 친구 프로필·피드에서
+      // 과거 여행이 전혀 안 보여 "기록이 있는데 안 보인다"는 혼란을 낳았다.
+      visibility: 'friends',
       timestamp: Date.now(),
       viewType: 'album',
       medias: data.medias,
@@ -1229,7 +1241,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       mediaTimes: data.mediaTimes,
     };
     setRecords((prev) => [rec, ...prev]);
-    publishToBackend(rec); // 가져온 앨범도 백엔드 발행(비공개면 본인만 보임)
+    publishToBackend(rec); // 가져온 앨범도 백엔드 발행 (기본 friends — 팔로워에게 보임)
     return rec; // 저장 직후 상세로 이동할 수 있게 생성된 기록을 그대로 반환
   };
 
