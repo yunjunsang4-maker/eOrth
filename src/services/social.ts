@@ -1,5 +1,5 @@
 /**
- * 소셜 그래프 서비스 (follows / post_likes / comments)
+ * 소셜 그래프 서비스 (neighbors / post_likes / comments)
  *
  * 로컬 스토어가 즉시 반영(낙관적 업데이트)하고, 이 서비스가 백엔드로 동기화한다.
  * id 규칙: 사용자는 profile uuid, 게시물은 posts.id(uuid=remoteId).
@@ -10,175 +10,144 @@ import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import type { PostComment } from '../store/recordStore';
 
-// ─── 팔로우 ───
-export interface FollowedProfile {
+// ─── 이웃 (서로이웃) ───
+export interface NeighborProfile {
   id: string;
   handle: string | null;
   emoji: string | null;
-  photo: string | null; // 프로필 사진 URL (목록 아바타 표시용)
-  isMutual: boolean;
+  photo: string | null; // 아바타 URL
 }
 
-export async function followUser(targetId: string): Promise<void> {
+// 이웃신청 — 상대가 이미 나에게 pending이면 자동 수락(양쪽 신청 → 즉시 서로이웃)
+export async function requestNeighbor(targetId: string): Promise<void> {
   if (!supabase || !targetId) return;
   const uid = await getMyUserId();
   if (!uid || uid === targetId) return;
-  // supabase-js는 실패해도 throw하지 않고 error를 반환하므로 직접 확인해서 던져야
-  // 호출부(recordStore)의 .catch(notifySyncError)가 동작한다.
-  const { error } = await supabase.from('follows').insert({ follower_id: uid, following_id: targetId });
-  if (error && error.code !== '23505') throw error; // 이미 팔로우(중복)만 정상 취급
+  const { data: reverse } = await supabase
+    .from('neighbors')
+    .select('status')
+    .eq('requester_id', targetId).eq('addressee_id', uid)
+    .maybeSingle();
+  if (reverse) { await acceptNeighbor(targetId); return; }
+  const { error } = await supabase.from('neighbors')
+    .insert({ requester_id: uid, addressee_id: targetId, status: 'pending' });
+  if (error && error.code !== '23505') throw error;
 }
 
-export async function unfollowUser(targetId: string): Promise<void> {
+export async function cancelNeighborRequest(targetId: string): Promise<void> {
   if (!supabase || !targetId) return;
   const uid = await getMyUserId();
   if (!uid) return;
-  const { error } = await supabase.from('follows').delete().eq('follower_id', uid).eq('following_id', targetId);
+  const { error } = await supabase.from('neighbors')
+    .delete().eq('requester_id', uid).eq('addressee_id', targetId).eq('status', 'pending');
   if (error) throw error;
 }
 
-// 특정 사용자의 팔로워/팔로잉 목록 — 타인 프로필의 카운트 탭에서 사용.
-// follows select RLS가 '당사자 행'으로 제한(follows_select_own)이라 직접 조회는 빈 결과 —
-// SECURITY DEFINER RPC(follow_list_of)로 조회한다. 비공개 계정은 서버가 본인/팔로워만 허용.
-// (schema.sql 재실행 필요)
-export interface FollowListEntry {
-  id: string;
+export async function acceptNeighbor(requesterId: string): Promise<void> {
+  if (!supabase || !requesterId) return;
+  const { error } = await supabase.rpc('accept_neighbor', { requester: requesterId });
+  if (error) throw error;
+}
+
+export async function declineNeighbor(requesterId: string): Promise<void> {
+  if (!supabase || !requesterId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('neighbors')
+    .delete().eq('requester_id', requesterId).eq('addressee_id', uid).eq('status', 'pending');
+  if (error) throw error;
+}
+
+// 이웃 끊기 — accepted 관계 삭제 (양쪽 방향 어느 행이든)
+export async function removeNeighbor(otherId: string): Promise<void> {
+  if (!supabase || !otherId) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  const { error } = await supabase.from('neighbors')
+    .delete()
+    .or(`and(requester_id.eq.${uid},addressee_id.eq.${otherId}),and(requester_id.eq.${otherId},addressee_id.eq.${uid})`)
+    .eq('status', 'accepted');
+  if (error) throw error;
+}
+
+// 내 이웃 목록 (오류 시 null → 로컬 캐시 유지)
+export async function fetchNeighbors(): Promise<NeighborProfile[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase.rpc('neighbor_list_of', { target: uid });
+    if (error) return null;
+    return ((data ?? []) as any[]).map((r) => ({
+      id: r.id, handle: r.handle ?? null, emoji: r.emoji ?? null, photo: r.profile_photo ?? null,
+    }));
+  } catch { return null; }
+}
+
+// 타인 프로필의 이웃 목록 (오류 시 null)
+export async function fetchNeighborsOf(userId: string): Promise<NeighborProfile[] | null> {
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('neighbor_list_of', { target: userId });
+    if (error) return null;
+    return ((data ?? []) as any[]).map((r) => ({
+      id: r.id, handle: r.handle ?? null, emoji: r.emoji ?? null, photo: r.profile_photo ?? null,
+    }));
+  } catch { return null; }
+}
+
+// 이웃 수 (오류 시 null)
+export async function fetchNeighborCount(userId: string): Promise<number | null> {
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('neighbor_counts', { ids: [userId] });
+    if (error) return null;
+    const row = (data as { user_id: string; neighbor_count: number }[] | null)?.[0];
+    return row?.neighbor_count ?? 0;
+  } catch { return null; }
+}
+
+// 내가 보낸 대기 신청 대상 id (버튼 '신청됨' 표시용). 오류 시 null(로컬 유지)
+export async function fetchMyOutgoingNeighborRequests(): Promise<string[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await supabase.from('neighbors')
+      .select('addressee_id').eq('requester_id', uid).eq('status', 'pending');
+    if (error) return null;
+    return (data ?? []).map((r: any) => r.addressee_id as string);
+  } catch { return null; }
+}
+
+export interface IncomingNeighborRequest {
+  requesterId: string;
   handle: string | null;
   emoji: string | null;
   photo: string | null;
+  createdAt: number;
 }
 
-async function fetchFollowListOf(userId: string, mode: 'followers' | 'following'): Promise<FollowListEntry[] | null> {
-  if (!supabase || !userId) return null;
-  try {
-    const { data, error } = await supabase.rpc('follow_list_of', { target: userId, mode });
-    if (error) return null;
-    return ((data ?? []) as any[]).map((row) => ({
-      id: row.id as string,
-      handle: row.handle ?? null,
-      emoji: row.emoji ?? null,
-      photo: row.profile_photo ?? null,
-    }));
-  } catch {
-    return null;
-  }
-}
-
-export const fetchFollowersOf = (userId: string) => fetchFollowListOf(userId, 'followers');
-export const fetchFollowingOf = (userId: string) => fetchFollowListOf(userId, 'following');
-
-// 내 팔로워 제거 — 나를 팔로우하는 행을 삭제.
-// RLS follows_delete_own이 following_id = auth.uid()도 허용한다(스키마 반영됨)
-export async function removeFollower(followerId: string): Promise<void> {
-  if (!supabase || !followerId) return;
+export async function fetchIncomingNeighborRequests(): Promise<IncomingNeighborRequest[]> {
+  if (!supabase) return [];
   const uid = await getMyUserId();
-  if (!uid) return;
-  const { error } = await supabase.from('follows').delete().eq('follower_id', followerId).eq('following_id', uid);
-  if (error) throw error;
-}
-
-// 내가 팔로우한 사람 + 맞팔 여부 (오류 시 null → 로컬 캐시 유지용)
-export async function fetchFollowing(): Promise<FollowedProfile[] | null> {
-  if (!supabase) return null;
-  const uid = await getMyUserId();
-  if (!uid) return null;
+  if (!uid) return [];
   try {
-    // 오류를 빈 목록으로 반환하면 호출부(refreshFollowing)가 로컬 팔로잉을 전부 지워버리므로
-    // error 시 반드시 null을 반환해 로컬 캐시를 유지한다.
-    const { data: following, error } = await supabase
-      .from('follows')
-      // profiles 테이블은 본인 행만 select 가능(RLS) — 타인 표시는 public_profiles 뷰로 임베드
-      // (별칭 'profiles'로 응답 키 유지, 힌트는 기반 테이블 FK 이름 사용)
-      .select('following_id, profiles:public_profiles!follows_following_id_fkey(id, handle, emoji, profile_photo)')
-      .eq('follower_id', uid);
-    if (error) return null;
-    if (!following) return [];
-    const { data: followers, error: followersError } = await supabase
-      .from('follows')
-      .select('follower_id')
-      .eq('following_id', uid);
-    if (followersError) return null; // 맞팔 정보가 틀린 목록으로 덮어쓰지 않음
-    const followerSet = new Set((followers ?? []).map((r: any) => r.follower_id));
-    return (following as any[]).map((row) => {
-      const p = row.profiles ?? {};
+    const { data, error } = await supabase
+      .from('neighbors')
+      .select('requester_id, created_at, profiles:public_profiles!neighbors_requester_id_fkey(handle, emoji, profile_photo)')
+      .eq('addressee_id', uid).eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => {
+      const p = r.profiles ?? {};
       return {
-        id: row.following_id as string,
-        handle: p.handle ?? null,
-        emoji: p.emoji ?? null,
-        photo: p.profile_photo ?? null,
-        isMutual: followerSet.has(row.following_id),
+        requesterId: r.requester_id as string,
+        handle: p.handle ?? null, emoji: p.emoji ?? null, photo: p.profile_photo ?? null,
+        createdAt: new Date(r.created_at).getTime(),
       };
     });
-  } catch {
-    return null;
-  }
-}
-
-// 나를 팔로우한 사람(팔로워) 목록 + 맞팔 여부 (오류 시 null)
-export async function fetchFollowers(): Promise<FollowedProfile[] | null> {
-  if (!supabase) return null;
-  const uid = await getMyUserId();
-  if (!uid) return null;
-  try {
-    // 오류와 "팔로워 없음"을 구분해야 하므로 error 시 null 반환 (빈 목록 오표시 방지)
-    const { data: followers, error } = await supabase
-      .from('follows')
-      .select('follower_id, profiles:public_profiles!follows_follower_id_fkey(id, handle, emoji, profile_photo)')
-      .eq('following_id', uid);
-    if (error) return null;
-    if (!followers) return [];
-    // 내가 팔로우하는 사람 집합(맞팔 판정)
-    const { data: following, error: followingError } = await supabase
-      .from('follows')
-      .select('following_id')
-      .eq('follower_id', uid);
-    if (followingError) return null;
-    const followingSet = new Set((following ?? []).map((r: any) => r.following_id));
-    return (followers as any[]).map((row) => {
-      const p = row.profiles ?? {};
-      return {
-        id: row.follower_id as string,
-        handle: p.handle ?? null,
-        emoji: p.emoji ?? null,
-        photo: p.profile_photo ?? null,
-        isMutual: followingSet.has(row.follower_id),
-      };
-    });
-  } catch {
-    return null;
-  }
-}
-
-// 특정 사용자의 팔로워 수
-// follows 조회가 '본인 당사자 행'으로 제한(RLS)되어 직접 count는 타인에 대해 틀린 값을 주므로
-// follower_counts RPC(SECURITY DEFINER, 공개 통계)로 조회한다.
-// 오류 시 null — 0으로 덮어쓰면 화면 카운트가 잠깐 0으로 깜빡이므로 호출부가 이전 값을 유지하게 한다
-export async function fetchFollowerCount(userId: string): Promise<number | null> {
-  if (!supabase || !userId) return null;
-  try {
-    const { data, error } = await supabase.rpc('follower_counts', { ids: [userId] });
-    if (error) return null;
-    const row = (data as { user_id: string; follower_count: number }[] | null)?.[0];
-    return row?.follower_count ?? 0;
-  } catch {
-    return null;
-  }
-}
-
-// 특정 사용자의 팔로잉 수 (내가 팔로우 중인 수가 아니라, 대상이 팔로우 중인 수)
-// follows 는 RLS로 당사자 행만 보이므로 타인 팔로잉은 직접 count 불가.
-// following_counts RPC(SECURITY DEFINER, 공개 통계)로 조회한다. (schema.sql 재실행 필요)
-// 오류 시 null — 0으로 덮어쓰면 화면 카운트가 잠깐 0으로 깜빡이므로 호출부가 이전 값을 유지하게 한다
-export async function fetchFollowingCount(userId: string): Promise<number | null> {
-  if (!supabase || !userId) return null;
-  try {
-    const { data, error } = await supabase.rpc('following_counts', { ids: [userId] });
-    if (error) return null;
-    const row = (data as { user_id: string; following_count: number }[] | null)?.[0];
-    return row?.following_count ?? 0;
-  } catch {
-    return null;
-  }
+  } catch { return []; }
 }
 
 // 게시물 신고 접수 — 서버 reports 테이블에 저장(운영자 확인용). 로컬 숨김과 별개. (schema.sql 재실행 필요)
@@ -198,6 +167,10 @@ export async function blockUser(targetId: string): Promise<void> {
   if (!uid || uid === targetId) return;
   const { error } = await supabase.from('blocks').insert({ blocker_id: uid, blocked_id: targetId });
   if (error && error.code !== '23505') throw error; // 이미 차단(중복)만 정상 취급
+  // 차단 시 이웃 관계도 정리 (서로 이웃 목록에 남지 않게). 실패해도 차단 자체는 유효.
+  await supabase.from('neighbors')
+    .delete()
+    .or(`and(requester_id.eq.${uid},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${uid})`);
 }
 
 export async function unblockUser(targetId: string): Promise<void> {
@@ -208,95 +181,12 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── 팔로우 요청 (비공개 계정) ───
-// 비공개 계정은 follows 직접 insert가 RLS로 막히므로 요청 → 대상 수락(RPC)을 거친다.
-
-export async function requestFollow(targetId: string): Promise<void> {
-  if (!supabase || !targetId) return;
-  const uid = await getMyUserId();
-  if (!uid || uid === targetId) return;
-  const { error } = await supabase.from('follow_requests').insert({ requester_id: uid, target_id: targetId });
-  if (error && error.code !== '23505') throw error; // 이미 요청(중복)만 정상 취급
-}
-
-export async function cancelFollowRequest(targetId: string): Promise<void> {
-  if (!supabase || !targetId) return;
-  const uid = await getMyUserId();
-  if (!uid) return;
-  const { error } = await supabase.from('follow_requests').delete().eq('requester_id', uid).eq('target_id', targetId);
-  if (error) throw error;
-}
-
-export async function declineFollowRequest(requesterId: string): Promise<void> {
-  if (!supabase || !requesterId) return;
-  const uid = await getMyUserId();
-  if (!uid) return;
-  const { error } = await supabase.from('follow_requests').delete().eq('requester_id', requesterId).eq('target_id', uid);
-  if (error) throw error;
-}
-
-// 수락 — SECURITY DEFINER RPC (요청 검증 → follows 생성 → 요청 삭제 → 수락 알림)
-export async function acceptFollowRequest(requesterId: string): Promise<void> {
-  if (!supabase || !requesterId) return;
-  const { error } = await supabase.rpc('accept_follow_request', { requester: requesterId });
-  if (error) throw error;
-}
-
-// 내가 보낸(대기 중) 요청의 대상 id 목록 — 버튼 '요청됨' 상태 표시용. 오류 시 null(로컬 유지)
-export async function fetchMyPendingRequestTargets(): Promise<string[] | null> {
-  if (!supabase) return null;
-  const uid = await getMyUserId();
-  if (!uid) return null;
-  try {
-    const { data, error } = await supabase.from('follow_requests').select('target_id').eq('requester_id', uid);
-    if (error) return null;
-    return (data ?? []).map((r: any) => r.target_id as string);
-  } catch {
-    return null;
-  }
-}
-
-// 내가 받은 요청 목록 (요청자 프로필 조인) — 팔로워 화면 상단 표시용
-export interface IncomingFollowRequest {
-  requesterId: string;
-  handle: string | null;
-  emoji: string | null;
-  photo: string | null; // 프로필 사진 URL
-  createdAt: number;
-}
-
-export async function fetchIncomingFollowRequests(): Promise<IncomingFollowRequest[]> {
-  if (!supabase) return [];
-  const uid = await getMyUserId();
-  if (!uid) return [];
-  try {
-    const { data, error } = await supabase
-      .from('follow_requests')
-      .select('requester_id, created_at, profiles:public_profiles!follow_requests_requester_id_fkey(handle, emoji, profile_photo)')
-      .eq('target_id', uid)
-      .order('created_at', { ascending: false });
-    if (error || !data) return [];
-    return (data as any[]).map((r) => {
-      const p = r.profiles ?? {};
-      return {
-        requesterId: r.requester_id as string,
-        handle: p.handle ?? null,
-        emoji: p.emoji ?? null,
-        photo: p.profile_photo ?? null,
-        createdAt: new Date(r.created_at).getTime(),
-      };
-    });
-  } catch {
-    return [];
-  }
-}
-
-// ─── 알림 (팔로우) ───
-// notifications 테이블은 follows insert 트리거(notify_on_follow)로 채워진다.
-export type FollowNotificationType = 'follow' | 'follow_request' | 'follow_accept';
-export interface FollowNotification {
+// ─── 알림 (이웃) ───
+// notifications 테이블은 이웃 신청/수락 시 채워진다.
+export type NeighborNotificationType = 'neighbor_request' | 'neighbor_accept';
+export interface NeighborNotification {
   id: string;
-  type: FollowNotificationType;
+  type: NeighborNotificationType;
   actorId: string;
   actorHandle: string | null;
   actorEmoji: string | null;
@@ -304,7 +194,7 @@ export interface FollowNotification {
   createdAt: number; // ms
 }
 
-export async function fetchFollowNotifications(): Promise<FollowNotification[]> {
+export async function fetchNeighborNotifications(): Promise<NeighborNotification[]> {
   if (!supabase) return [];
   const uid = await getMyUserId();
   if (!uid) return [];
@@ -313,7 +203,7 @@ export async function fetchFollowNotifications(): Promise<FollowNotification[]> 
       .from('notifications')
       .select('id, type, actor_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji)')
       .eq('user_id', uid)
-      .in('type', ['follow', 'follow_request', 'follow_accept'])
+      .in('type', ['neighbor_request', 'neighbor_accept'])
       .order('created_at', { ascending: false })
       .limit(50);
     if (error || !data) return [];
@@ -321,7 +211,7 @@ export async function fetchFollowNotifications(): Promise<FollowNotification[]> 
       const p = r.profiles ?? {};
       return {
         id: r.id as string,
-        type: r.type as FollowNotificationType,
+        type: r.type as NeighborNotificationType,
         actorId: r.actor_id as string,
         actorHandle: p.handle ?? null,
         actorEmoji: p.emoji ?? null,
@@ -347,14 +237,13 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
 }
 
 // ─── 추천 친구 ───
-// friend_suggestions RPC(SECURITY DEFINER) — 내가 팔로우한 사람들이 팔로우하는 사용자.
+// friend_suggestions RPC(SECURITY DEFINER) — 내 이웃들이 이웃 맺은 사용자.
 export interface FriendSuggestion {
   id: string;
   handle: string | null;
   emoji: string | null;
   profilePhoto: string | null;
-  isPrivate: boolean;  // 비공개 계정 — 팔로우 대신 요청 흐름
-  mutualCount: number; // 나와 함께 아는(내 팔로잉 중 이 사람을 팔로우하는) 수
+  mutualCount: number; // 나와 함께 아는(내 이웃 중 이 사람과 이웃인) 수
 }
 
 export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSuggestion[]> {
@@ -367,7 +256,6 @@ export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSugge
       handle: r.handle ?? null,
       emoji: r.emoji ?? null,
       profilePhoto: r.profile_photo ?? null,
-      isPrivate: !!r.is_private,
       mutualCount: r.mutual_count ?? 0,
     }));
   } catch {
