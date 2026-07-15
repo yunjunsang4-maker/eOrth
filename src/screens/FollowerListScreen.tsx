@@ -14,13 +14,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import {
-  fetchFollowers,
-  fetchIncomingFollowRequests,
-  acceptFollowRequest,
-  declineFollowRequest,
-  removeFollower,
-  type FollowedProfile,
-  type IncomingFollowRequest,
+  fetchNeighbors,
+  fetchIncomingNeighborRequests,
+  type NeighborProfile,
+  type IncomingNeighborRequest,
 } from '../services/social';
 import { useRecords } from '../store/recordStore';
 import { buzz } from '../utils/haptics';
@@ -57,32 +54,17 @@ const COLORS = {
 export default function FollowerListScreen({ navigation }: RootStackScreenProps<'FollowerList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  // 맞팔로우 버튼 — 팔로우 상태는 store 공유(팔로잉 목록·프로필 카운트와 동기화)
-  const { followingUsers, followUser, isBlocked } = useRecords();
-  const isFollowing = (id: string) => followingUsers.some((f) => f.id === id);
-  const followBack = (follower: FollowedProfile) => {
-    buzz('light');
-    followUser({
-      id: follower.id,
-      username: follower.handle || follower.id,
-      emoji: follower.emoji ?? undefined,
-      photo: follower.photo ?? undefined,
-      isAbroad: false,
-      currentCountry: null,
-      currentCountryFlag: null,
-    });
-    // 낙관 반영 — 서버 refreshFollowing 완료 전까지 버튼이 남는 깜빡임/연타 방지
-    setFollowers((prev) => prev.map((f) => (f.id === follower.id ? { ...f, isMutual: true } : f)));
-  };
-  const [followers, setFollowers] = useState<FollowedProfile[]>([]);
+  // 이웃 관계 액션은 store 경유 — store의 이웃 목록·배지와 동기화
+  const { removeNeighbor, acceptNeighbor, declineNeighbor, isBlocked } = useRecords();
+  const [followers, setFollowers] = useState<NeighborProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false); // 오류 ↔ "팔로워 없음" 구분
-  // 받은 팔로우 요청 (비공개 계정일 때 쌓임) — 수락/거절
-  const [requests, setRequests] = useState<IncomingFollowRequest[]>([]);
+  const [loadError, setLoadError] = useState(false); // 오류 ↔ "이웃 없음" 구분
+  // 받은 이웃신청 (비공개 계정일 때 쌓임) — 수락/거절
+  const [requests, setRequests] = useState<IncomingNeighborRequest[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null); // 중복 탭 방지
 
   // DM으로 이동
-  const openDM = (follower: FollowedProfile) => {
+  const openDM = (follower: NeighborProfile) => {
     buzz('light');
     const name = follower.handle || '여행자';
     navigation.navigate('DM', {
@@ -90,24 +72,22 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     });
   };
 
-  // X 버튼 — 팔로워에서 빠르게 제거 (확인 1번 → 서버 follows 삭제 → 목록 반영)
+  // ✕ 버튼 — 이웃 끊기 (확인 1번 → store가 서버 neighbors 삭제 → 목록 반영)
   const [removingId, setRemovingId] = useState<string | null>(null);
-  const handleRemoveFollower = (follower: FollowedProfile) => {
+  const handleRemoveNeighbor = (neighbor: NeighborProfile) => {
     if (removingId) return;
     buzz('light');
-    const name = follower.handle || '여행자';
-    Alert.alert(t('friends.removeFollowerTitle'), t('friends.removeFollowerMsg', { name }), [
+    const name = neighbor.handle || '여행자';
+    Alert.alert(t('friends.removeNeighborTitle'), t('friends.removeNeighborMsg', { name }), [
       { text: t('common.cancel'), style: 'cancel' },
       {
-        text: t('friends.remove'),
+        text: t('friends.removeNeighbor'),
         style: 'destructive',
-        onPress: async () => {
-          setRemovingId(follower.id);
+        onPress: () => {
+          setRemovingId(neighbor.id);
           try {
-            await removeFollower(follower.id);
-            setFollowers((prev) => prev.filter((f) => f.id !== follower.id));
-          } catch {
-            // 실패 시 목록 유지 — 다시 시도 가능
+            removeNeighbor(neighbor.id);
+            setFollowers((prev) => prev.filter((f) => f.id !== neighbor.id));
           } finally {
             setRemovingId(null);
           }
@@ -116,15 +96,15 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     ]);
   };
 
-  // 팔로워는 로컬 스토어에 없으므로 진입 시 백엔드에서 조회한다.
+  // 이웃은 store에도 있지만 신청 섹션 병합·최신 서버값을 위해 진입 시 백엔드에서 조회한다.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
       (async () => {
         setLoading(true);
         const [list, reqs] = await Promise.all([
-          fetchFollowers(), // 오류 시 null
-          fetchIncomingFollowRequests(),
+          fetchNeighbors(), // 오류 시 null
+          fetchIncomingNeighborRequests(),
         ]);
         if (!alive) return;
         setLoadError(list === null);
@@ -137,37 +117,31 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     }, [isBlocked])
   );
 
-  // 요청 수락 → 요청자가 팔로워가 되므로 팔로워 목록에 즉시 반영
-  const handleAccept = async (req: IncomingFollowRequest) => {
+  // 신청 수락 → 요청자가 이웃이 되므로 이웃 목록에 즉시 반영
+  const handleAccept = (req: IncomingNeighborRequest) => {
     if (processingId) return;
     buzz('light');
     setProcessingId(req.requesterId);
     try {
-      await acceptFollowRequest(req.requesterId);
+      acceptNeighbor(req.requesterId);
       setRequests((prev) => prev.filter((r) => r.requesterId !== req.requesterId));
-      // 내가 이미 이 사람을 팔로우 중이면 수락 즉시 맞팔 — false 하드코딩하면 서버 재조회 전까지 표시가 어긋난다
-      const alreadyFollowing = followingUsers.some((f) => f.id === req.requesterId);
       setFollowers((prev) =>
         prev.some((f) => f.id === req.requesterId)
           ? prev
-          : [{ id: req.requesterId, handle: req.handle, emoji: req.emoji, photo: req.photo, isMutual: alreadyFollowing }, ...prev]
+          : [{ id: req.requesterId, handle: req.handle, emoji: req.emoji, photo: req.photo }, ...prev]
       );
-    } catch {
-      // 실패 시 목록 유지 — 다시 시도 가능
     } finally {
       setProcessingId(null);
     }
   };
 
-  const handleDecline = async (req: IncomingFollowRequest) => {
+  const handleDecline = (req: IncomingNeighborRequest) => {
     if (processingId) return;
     buzz('light');
     setProcessingId(req.requesterId);
     try {
-      await declineFollowRequest(req.requesterId);
+      declineNeighbor(req.requesterId);
       setRequests((prev) => prev.filter((r) => r.requesterId !== req.requesterId));
-    } catch {
-      // 실패 시 목록 유지
     } finally {
       setProcessingId(null);
     }
@@ -180,7 +154,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('friends.followersTitle')}</Text>
+        <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 — backBtn 스타일을 쓰면 빈 원이 보인다 */}
         <View style={styles.headerSpacer} />
       </View>
@@ -194,10 +168,10 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── 받은 팔로우 요청 (비공개 계정) — 수락/거절 ── */}
+          {/* ── 받은 이웃신청 (비공개 계정) — 수락/거절 ── */}
           {requests.length > 0 && (
             <>
-              <Text style={styles.sectionLabel}>{t('friends.followRequestsN', { count: requests.length })}</Text>
+              <Text style={styles.sectionLabel}>{t('friends.neighborRequestsN', { count: requests.length })}</Text>
               {requests.map((req) => {
                 const reqName = req.handle || '여행자';
                 return (
@@ -237,13 +211,13 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                   </View>
                 );
               })}
-              <Text style={styles.sectionLabel}>{t('friends.followersTitle')}</Text>
+              <Text style={styles.sectionLabel}>{t('friends.neighborsTitle')}</Text>
             </>
           )}
 
           {followers.length === 0 && (
             <Text style={styles.emptyText}>
-              {loadError ? t('friends.followersLoadError') : t('friends.noFollowers')}
+              {loadError ? t('friends.neighborsLoadError') : t('friends.noNeighbors')}
             </Text>
           )}
           {followers.map((follower, index) => {
@@ -264,28 +238,12 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                     </View>
                   )}
 
-                  {/* 정보 */}
+                  {/* 정보 — 모든 이웃은 서로이웃이라 별도 표시 없음 */}
                   <View style={styles.infoWrap}>
                     <Text style={styles.username}>@{name}</Text>
-                    {(follower.isMutual || isFollowing(follower.id)) && (
-                      <Text style={styles.mutualText}>{t('friends.mutualYes')}</Text>
-                    )}
                   </View>
 
-                  {/* 맞팔로우 버튼 (아직 안 팔로우한 팔로워만) */}
-                  {!follower.isMutual && !isFollowing(follower.id) && (
-                    <TouchableOpacity
-                      style={styles.followBackBtn}
-                      onPress={(e) => { e.stopPropagation?.(); followBack(follower); }}
-                      activeOpacity={0.8}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('friends.followNameA11y', { name })}
-                    >
-                      <Text style={styles.followBackBtnText}>{t('friends.followBack')}</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {/* DM + X(팔로워에서 제거) */}
+                  {/* DM + ✕(이웃 끊기) */}
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={(e) => { e.stopPropagation?.(); openDM(follower); }}
@@ -297,10 +255,10 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionBtn, removingId === follower.id && styles.btnBusy]}
-                    onPress={(e) => { e.stopPropagation?.(); handleRemoveFollower(follower); }}
+                    onPress={(e) => { e.stopPropagation?.(); handleRemoveNeighbor(follower); }}
                     activeOpacity={0.8}
                     accessibilityRole="button"
-                    accessibilityLabel={t('friends.removeFollowerA11y', { name })}
+                    accessibilityLabel={t('friends.removeNeighbor')}
                   >
                     <Text style={styles.removeText}>✕</Text>
                   </TouchableOpacity>
@@ -379,24 +337,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.purpleNeon,
   },
-  mutualText: {
-    fontSize: 13,
-    color: COLORS.textDim,
-    marginTop: 2,
-  },
-  followBackBtn: {
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-  },
-  followBackBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
-
-  // ── 받은 팔로우 요청 ──
+  // ── 받은 이웃신청 ──
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',

@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { fetchFollowersOf, fetchFollowingOf, type FollowListEntry } from '../services/social';
+import { fetchNeighborsOf, type NeighborProfile } from '../services/social';
 import { useRecords } from '../store/recordStore';
 import { PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -26,13 +26,13 @@ const COLORS = {
   textMuted:  '#4A4A59',
 };
 
-// 타인 프로필의 팔로워/팔로잉 목록 — 조회 전용(관리 버튼 없음), 행 탭 → 해당 프로필로 이동
+// 타인 프로필의 이웃 목록 — 조회 전용(관리 버튼 없음), 행 탭 → 해당 프로필로 이동. mode는 무시(대칭 모델)
 export default function UserFollowListScreen({ navigation, route }: RootStackScreenProps<'UserFollowList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { userId, mode } = route.params;
+  const { userId } = route.params;
   const { isBlocked } = useRecords();
-  const [list, setList] = useState<FollowListEntry[]>([]);
+  const [list, setList] = useState<NeighborProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
 
@@ -41,7 +41,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
       let alive = true;
       (async () => {
         setLoading(true);
-        const result = mode === 'followers' ? await fetchFollowersOf(userId) : await fetchFollowingOf(userId);
+        const result = await fetchNeighborsOf(userId);
         if (!alive) return;
         setLoadError(result === null);
         // 서버가 차단 관계를 거르지만, 로컬 전용 차단(서버 미반영)도 함께 가린다
@@ -49,7 +49,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
         setLoading(false);
       })();
       return () => { alive = false; };
-    }, [userId, mode, isBlocked])
+    }, [userId, isBlocked])
   );
 
   return (
@@ -59,9 +59,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>
-          {mode === 'followers' ? t('friends.followersTitle') : t('friends.followingTitle')}
-        </Text>
+        <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 */}
         <View style={styles.headerSpacer} />
       </View>
@@ -74,9 +72,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
           {list.length === 0 && (
             <Text style={styles.emptyText}>
-              {loadError
-                ? t('friends.followersLoadError')
-                : mode === 'followers' ? t('friends.noFollowers') : t('friends.noFollowing')}
+              {loadError ? t('friends.neighborsLoadError') : t('friends.noNeighbors')}
             </Text>
           )}
           {list.map((entry, index) => {

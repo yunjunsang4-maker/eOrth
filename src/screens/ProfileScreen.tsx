@@ -49,7 +49,7 @@ import { andFitText } from '../utils/fitText';
 import { getMyUserId } from '../services/profile';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { setCoachActive } from '../components/coachOverlayState';
-import { fetchFollowerCount } from '../services/social';
+import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
@@ -1533,31 +1533,31 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, followingUsers, mergeTripGroups, refreshFollowing } = useRecords();
+  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors } = useRecords();
 
-  // 팔로워 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
+  // 이웃 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   // 리마운트 시 0으로 깜빡이지 않게 마지막 값을 모듈 캐시에서 복원, 오류(null)면 이전 값 유지
-  const [followerCount, setFollowerCount] = useState(lastFollowerCountCache);
+  const [neighborCount, setNeighborCount] = useState(lastFollowerCountCache);
   const followerAliveRef = useRef(true);
   useEffect(() => () => { followerAliveRef.current = false; }, []);
-  const loadFollowerCount = useCallback(async () => {
+  const loadNeighborCount = useCallback(async () => {
     const uid = await getMyUserId();
     if (!uid) return;
-    const count = await fetchFollowerCount(uid);
+    const count = await fetchNeighborCount(uid);
     if (count !== null && followerAliveRef.current) {
       lastFollowerCountCache = count;
-      setFollowerCount(count);
+      setNeighborCount(count);
     }
   }, []);
-  useEffect(() => { loadFollowerCount(); }, [loadFollowerCount]);
+  useEffect(() => { loadNeighborCount(); }, [loadNeighborCount]);
 
-  // 당겨서 새로고침 — 팔로워 수 + 팔로잉 목록을 서버 기준으로 재조회
+  // 당겨서 새로고침 — 이웃 수 + 이웃 목록을 서버 기준으로 재조회
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try { await Promise.all([loadFollowerCount(), refreshFollowing()]); }
+    try { await Promise.all([loadNeighborCount(), refreshNeighbors()]); }
     finally { if (followerAliveRef.current) setRefreshing(false); }
-  }, [loadFollowerCount, refreshFollowing]);
+  }, [loadNeighborCount, refreshNeighbors]);
 
   // 배지 판정·획득은 전역 BadgeEvaluator가 담당한다. 여기선 '표시'만:
   //  - 획득 집합은 영구 저장된 badgeEarnedAt에서 읽는다(중복 계산 제거).
@@ -1858,8 +1858,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
-              <StatCard value={String(followerCount)} label={t('profile.followers')} onPress={() => navigation.navigate('FollowerList')} />
-              <StatCard value={String(followingUsers.length)} label={t('profile.following')} onPress={() => navigation.navigate('FollowingList')} />
+              <StatCard value={String(neighborCount)} label={t('profile.neighbors')} onPress={() => navigation.navigate('FollowerList')} />
             </View>
           </View>
         </View>

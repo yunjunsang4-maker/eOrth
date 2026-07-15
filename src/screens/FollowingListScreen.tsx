@@ -47,26 +47,26 @@ const COLORS = {
 export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { followingUsers, unfollowUser, blockUser } = useRecords();
+  const { neighbors, removeNeighbor, blockUser } = useRecords();
 
   // DM으로 이동 — username은 handle과 동일 값이라 name/handle 겸용
-  const openDM = (friend: (typeof followingUsers)[number]) => {
+  const openDM = (friend: (typeof neighbors)[number]) => {
     buzz('light');
     navigation.navigate('DM', {
       friend: { name: friend.username, handle: friend.username, emoji: friend.emoji || '👤', photo: friend.photo, id: friend.id },
     });
   };
 
-  // ⋯ 메뉴 — 커스텀 박스 시트(UserActionSheet)로 언팔로우/차단. 차단은 확인 후
-  // store가 팔로잉 제거·서버 blocks까지 처리
-  const [menuTarget, setMenuTarget] = useState<(typeof followingUsers)[number] | null>(null);
-  const openMenu = (friend: (typeof followingUsers)[number]) => {
+  // ⋯ 메뉴 — 커스텀 박스 시트(UserActionSheet)로 이웃 끊기/차단. 차단은 확인 후
+  // store가 이웃 제거·서버 blocks까지 처리
+  const [menuTarget, setMenuTarget] = useState<(typeof neighbors)[number] | null>(null);
+  const openMenu = (friend: (typeof neighbors)[number]) => {
     buzz('light');
     setMenuTarget(friend);
   };
   const handleMenuUnfollow = () => {
     if (!menuTarget) return;
-    unfollowUser(menuTarget.id || menuTarget.username);
+    removeNeighbor(menuTarget.id || menuTarget.username);
     setMenuTarget(null);
   };
   const handleMenuBlock = () => {
@@ -88,7 +88,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} activeOpacity={0.7} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
           <Text style={styles.backBtnText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{t('friends.followingTitle')}</Text>
+        <Text style={styles.headerTitle}>{t('friends.neighborsTitle')}</Text>
         {/* 좌우 균형용 투명 스페이서 — backBtn 스타일을 쓰면 빈 원이 보인다 */}
         <View style={styles.headerSpacer} />
       </View>
@@ -97,10 +97,10 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
         contentContainerStyle={styles.listContent}
         showsVerticalScrollIndicator={false}
       >
-        {followingUsers.length === 0 && (
-          <Text style={styles.emptyText}>{t('friends.noFollowing')}</Text>
+        {neighbors.length === 0 && (
+          <Text style={styles.emptyText}>{t('friends.noNeighbors')}</Text>
         )}
-        {followingUsers.map((friend, index) => (
+        {neighbors.map((friend, index) => (
           <React.Fragment key={friend.id}>
             <TouchableOpacity
               style={styles.friendRow}
@@ -116,12 +116,9 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
                 </View>
               )}
 
-              {/* 정보 — isAbroad는 항상 false인 더미 필드였어서 맞팔 여부 표시로 교체 (팔로워 목록과 동일) */}
+              {/* 정보 — 모든 이웃은 서로이웃이라 별도 표시 없음 */}
               <View style={styles.infoWrap}>
                 <Text style={styles.username}>@{friend.username}</Text>
-                {friend.isMutual && (
-                  <Text style={styles.mutualText}>{t('friends.mutualYes')}</Text>
-                )}
               </View>
 
               {/* DM + 더보기(언팔로우·차단) */}
@@ -145,7 +142,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
               </TouchableOpacity>
             </TouchableOpacity>
 
-            {index < followingUsers.length - 1 && (
+            {index < neighbors.length - 1 && (
               <View style={styles.divider} />
             )}
           </React.Fragment>
@@ -220,11 +217,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
     color: COLORS.purpleNeon,
-  },
-  mutualText: {
-    fontSize: 13,
-    color: COLORS.textDim,
-    marginTop: 2,
   },
   actionBtn: {
     width: 36,
