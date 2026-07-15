@@ -135,6 +135,9 @@ interface SettingsContextType {
   // 메인 튜토리얼(코치마크)을 이미 봤는지 — 유저당 1회 자동 표시 게이트 (백업 포함)
   tutorialSeen: boolean;
   setTutorialSeen: (v: boolean) => void;
+  // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
+  stayNudgeDismissedFor: string | null;
+  setStayNudgeDismissedFor: (v: string | null) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
   // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
   // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
@@ -184,6 +187,7 @@ interface SettingsPersistPayload {
   stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
   qrDesign?: string; // 개별 QR 디자인 id (프리미엄)
   tutorialSeen?: boolean; // 메인 튜토리얼 1회 표시 여부
+  stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -253,6 +257,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
   const [qrDesign, setQrDesign] = useState('default'); // 개별 QR 디자인 — 기본(보라)
   const [tutorialSeen, setTutorialSeen] = useState(false); // 메인 튜토리얼 1회 표시 여부
+  const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -330,6 +335,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setStripLogoRemoval(p.stripLogoRemoval ?? true);
       setQrDesign(p.qrDesign ?? 'default');
       setTutorialSeen(p.tutorialSeen ?? false);
+      setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
     () => ({
       showCounts,
@@ -371,6 +377,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       stripLogoRemoval,
       qrDesign,
       tutorialSeen,
+      stayNudgeDismissedFor,
     }),
     [
       showCounts,
@@ -412,6 +419,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       stripLogoRemoval,
       qrDesign,
       tutorialSeen,
+      stayNudgeDismissedFor,
     ],
   );
 
@@ -472,6 +480,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setStripLogoRemoval(true);
     setQrDesign('default');
     setTutorialSeen(false);
+    setStayNudgeDismissedFor(null);
     visitRecordedRef.current = false;
   };
 
@@ -602,6 +611,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setQrDesign,
         tutorialSeen,
         setTutorialSeen,
+        stayNudgeDismissedFor,
+        setStayNudgeDismissedFor,
         resetSettings,
         exportSettingsBackup,
         applySettingsBackup,
