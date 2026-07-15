@@ -182,7 +182,7 @@ var SHOOT = (function(){
   function fire(s) {
     var b = bounds();
     var len = b.halfW * (0.16 + Math.random() * 0.12);
-    var startY = b.halfH * (0.35 + Math.random() * 0.55);
+    var startY = b.halfH * (0.18 + Math.random() * 0.55); // 살짝 아래로 (3D는 +Y가 위 → 값 감소가 하강)
     var drop = b.halfH * (0.06 + Math.random() * 0.10);
     s.sx = -b.halfW - len; s.sy = startY; s.ex = b.halfW + len; s.ey = startY - drop;
     s.dur = 720 + Math.random() * 520; s.t = 0; s.active = true;
@@ -1285,7 +1285,7 @@ var worldData = null, globeMesh = null, material = null;
   var host = document.getElementById('shooting'); if (!host) return;
   function fire(){
     var len = 90 + Math.random()*95;                 // 꼬리 길이
-    var startY = window.innerHeight * (0.04 + Math.random()*0.24); // 상단 랜덤
+    var startY = window.innerHeight * (0.13 + Math.random()*0.24); // 상단 랜덤(살짝 아래로)
     var startX = -len - 20 - Math.random()*window.innerWidth*0.15; // 화면 왼쪽 바깥
     var angDeg = 8 + Math.random()*13;               // 진행 각도(우하향, 살짝 떨어짐)
     var dist = window.innerWidth + len + 60;         // 오른쪽 끝까지
