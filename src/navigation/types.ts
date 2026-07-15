@@ -126,7 +126,8 @@ export type RootStackParamList = {
   StatsDetail: { statType: StatsDetailType };
   TripRecord: { record: TravelRecord; viewType?: RecordViewType };
   TripGroup: { groupId: string };
-  TripDetail: { trip: TripThumbnailParam };
+  // guestRecords: 타인 프로필 진입용 — 그 여행의 기록(서버 조회본). 있으면 읽기 전용 게스트 모드
+  TripDetail: { trip: TripThumbnailParam; guestRecords?: TravelRecord[] };
   // record: 스토어에 없는 글(타인 프로필에서 조회한 공개 글)의 폴백 — 있으면 그대로 렌더
   PostDetail: { postId: string; record?: TravelRecord };
   BlogRecord: {

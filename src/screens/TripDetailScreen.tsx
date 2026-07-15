@@ -217,7 +217,9 @@ interface TripThumbnail {
 }
 
 type RouteParams = {
-  TripDetail: { trip: TripThumbnail };
+  // guestRecords: 타인 프로필에서 진입 시 그 여행의 기록들(서버 조회본) — 로컬 스토어에 없어
+  // 직접 넘긴다. 존재하면 읽기 전용 게스트 모드(편집 메뉴·기록 추가 숨김).
+  TripDetail: { trip: TripThumbnail; guestRecords?: TravelRecord[] };
 };
 
 export default function TripDetailScreen() {
@@ -226,7 +228,8 @@ export default function TripDetailScreen() {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
-  const { trip } = route.params;
+  const { trip, guestRecords } = route.params;
+  const isGuest = !!guestRecords; // 타인의 여행 — 읽기 전용
   const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup, archivedIds } = useRecords();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
@@ -338,13 +341,16 @@ export default function TripDetailScreen() {
   // 이 여행 카드의 기록 = 해당 그룹(currentGroup)에 묶인 기록만 사용한다.
   // 국가명으로 매칭하면 같은 국가의 '다른 일정' 여행 기록까지 섞여 중복 표시되므로,
   // 그룹이 있으면 그룹 기록만 쓴다. 그룹이 없는 예외 카드만 국가명으로 폴백.
-  const matchedRecords = currentGroup
-    ? groupRecordObjs
-    : trip.country
-      ? records.filter(
-          (r) => !archivedIds.includes(r.id) && (r.countryName === trip.country || r.country?.includes(trip.country))
-        )
-      : groupRecordObjs;
+  // 게스트(타인 여행)는 로컬 스토어에 기록이 없으므로 파라미터로 받은 서버 조회본을 그대로 쓴다.
+  const matchedRecords = guestRecords
+    ? guestRecords
+    : currentGroup
+      ? groupRecordObjs
+      : trip.country
+        ? records.filter(
+            (r) => !archivedIds.includes(r.id) && (r.countryName === trip.country || r.country?.includes(trip.country))
+          )
+        : groupRecordObjs;
 
   // 여행 기간 — 기록들의 실제 날짜에서 산출(없으면 param 스냅샷 trip.date 폴백)
   const tripPeriod = computeTripPeriod(matchedRecords);
@@ -412,6 +418,12 @@ export default function TripDetailScreen() {
   };
 
   const handleRecordPress = (rec: TravelRecord) => {
+    // 타인 기록은 전부 게시물 상세로 — TripRecord는 소유자 편집 UI가 섞여 있고,
+    // 스토어에 없는 글이라 record 폴백을 함께 넘긴다 (친구 프로필의 기존 동작과 동일)
+    if (isGuest) {
+      navigation.navigate('PostDetail', { postId: rec.id, record: rec });
+      return;
+    }
     // 피드·스트립·블로그는 소셜탭과 동일한 상세 게시물 화면(PostDetail)으로 이동
     const vt = rec.viewType || 'feed';
     if (vt === 'feed' || vt === 'cut' || vt === 'blog') {
@@ -453,14 +465,19 @@ export default function TripDetailScreen() {
             <Text style={s.headerTitle}>{titleToDisplay}</Text>
           )}
         </View>
-        {/* ☰ 편집 메뉴 */}
-        <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
-          <View style={s.menuBars}>
-            <View style={s.menuBar} />
-            <View style={s.menuBar} />
-            <View style={s.menuBar} />
-          </View>
-        </TouchableOpacity>
+        {/* ☰ 편집 메뉴 — 타인 여행(게스트)은 편집 대상이 없어 숨김.
+            테두리 없는 투명 스페이서로 폭만 유지해 제목 중앙 정렬은 그대로 둔다 */}
+        {isGuest ? (
+          <View style={{ width: 38, height: 38 }} />
+        ) : (
+          <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
+            <View style={s.menuBars}>
+              <View style={s.menuBar} />
+              <View style={s.menuBar} />
+              <View style={s.menuBar} />
+            </View>
+          </TouchableOpacity>
+        )}
       </Animated.View>
 
       {/* 편집 메뉴 시트 */}
