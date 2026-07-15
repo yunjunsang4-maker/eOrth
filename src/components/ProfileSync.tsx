@@ -12,7 +12,7 @@ import i18n from '../i18n';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
+  const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
@@ -35,7 +35,6 @@ export default function ProfileSync() {
         gender: gender || null,
         country: homeCountryCode || null,
         profile_photo: photoUrl,
-        is_private: !accountPublic, // 계정 공개 설정(온보딩·계정설정 토글) → 서버 RLS가 비공개 잠금에 사용
         // 아이디 표시 폰트(프리미엄) — 해지 시 서버는 null(타인에겐 기본 폰트), 로컬 선택값은 보존 → 재구독 시 자동 복원
         handle_font: isPremium ? handleFont : null,
       };
@@ -58,7 +57,7 @@ export default function ProfileSync() {
         }
       }
     })();
-  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, accountPublic, handleFont, isPremium]);
+  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium]);
 
   return null;
 }

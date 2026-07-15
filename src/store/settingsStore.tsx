@@ -119,8 +119,6 @@ interface SettingsContextType {
   // 알림 설정 토글 — 영속
   notifPrefs: Record<NotifPrefKey, boolean>;
   setNotifPref: (key: NotifPrefKey, value: boolean) => void;
-  // 계정 공개 여부 — 영속(현재는 UI 상태 저장; 실제 공개범위 강제는 백엔드 도입 후)
-  accountPublic: boolean;
   // ── 프리미엄 구독 ──
   // 현재는 로컬 상태(베타 체험 토글). 결제(RevenueCat) 연동 시 구매 검증 결과로 갱신하도록 교체.
   isPremium: boolean;
@@ -134,7 +132,6 @@ interface SettingsContextType {
   // 개별 QR 디자인(프리미엄) — QR_DESIGNS의 id (constants/qrDesigns.ts)
   qrDesign: string;
   setQrDesign: (v: string) => void;
-  setAccountPublic: (v: boolean) => void;
   // 메인 튜토리얼(코치마크)을 이미 봤는지 — 유저당 1회 자동 표시 게이트 (백업 포함)
   tutorialSeen: boolean;
   setTutorialSeen: (v: boolean) => void;
@@ -182,7 +179,6 @@ interface SettingsPersistPayload {
   lastVisitDay?: number | null; // 마지막 접속일(로컬 자정 timestamp)
   installedAt?: number | null;  // 앱 첫 실행 시각
   notifPrefs?: Partial<Record<NotifPrefKey, boolean>>; // 알림 설정 토글
-  accountPublic?: boolean; // 계정 공개 여부
   isPremium?: boolean;     // 프리미엄 구독 (베타: 로컬 토글)
   handleFont?: string | null; // 아이디 표시 폰트 id
   stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
@@ -252,7 +248,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const setNotifPref = useCallback((key: NotifPrefKey, value: boolean) => {
     setNotifPrefs((prev) => ({ ...prev, [key]: value }));
   }, []);
-  const [accountPublic, setAccountPublic] = useState(true);
   const [isPremium, setIsPremium] = useState(false);
   const [handleFont, setHandleFont] = useState<string | null>(null);
   const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
@@ -330,7 +325,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLastVisitDay(p.lastVisitDay ?? null);
       setInstalledAt(p.installedAt ?? null);
       setNotifPrefs({ ...DEFAULT_NOTIF_PREFS, ...(p.notifPrefs ?? {}) });
-      setAccountPublic(p.accountPublic ?? true);
       setIsPremium(p.isPremium ?? false);
       setHandleFont(p.handleFont ?? null);
       setStripLogoRemoval(p.stripLogoRemoval ?? true);
@@ -372,7 +366,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       lastVisitDay,
       installedAt,
       notifPrefs,
-      accountPublic,
       isPremium,
       handleFont,
       stripLogoRemoval,
@@ -414,7 +407,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       lastVisitDay,
       installedAt,
       notifPrefs,
-      accountPublic,
       isPremium,
       handleFont,
       stripLogoRemoval,
@@ -475,7 +467,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setLastVisitDay(null);
     setInstalledAt(null);
     setNotifPrefs(DEFAULT_NOTIF_PREFS);
-    setAccountPublic(true);
     setIsPremium(false);
     setHandleFont(null);
     setStripLogoRemoval(true);
@@ -601,8 +592,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         installedAt,
         notifPrefs,
         setNotifPref,
-        accountPublic,
-        setAccountPublic,
         isPremium,
         setIsPremium,
         handleFont,

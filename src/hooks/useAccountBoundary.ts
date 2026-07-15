@@ -25,7 +25,7 @@ export function useAccountBoundary(): () => Promise<void> {
   const {
     birthday,
     setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode,
-    setAccountPublic, setHandleFont, resetSettings, applySettingsBackup,
+    setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
   const { resetConversations } = useDM();
@@ -37,9 +37,6 @@ export function useAccountBoundary(): () => Promise<void> {
     if (p.gender === 'male' || p.gender === 'female') setGender(p.gender);
     if (p.country) setHomeCountryCode(p.country);
     setProfilePhoto(p.profile_photo ?? null);
-    // 계정 공개 여부 복원 — 빠뜨리면 리셋 기본값(공개)이 ProfileSync를 타고 is_private=false로
-    // 서버에 밀려, 비공개 계정이 사용자 모르게 공개로 뒤집힌다.
-    setAccountPublic(!(p.is_private ?? false));
     // 아이디 표시 폰트 복원(해지 정책 '잠금+값 보존'의 값 보존) — 재구독 시 그대로 살아난다
     setHandleFont(p.handle_font ?? null);
   };
