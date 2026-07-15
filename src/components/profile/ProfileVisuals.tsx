@@ -8,7 +8,7 @@ import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
-import { LiquidPressable, GooeyCircle, LiquidCardGlow } from '../LiquidEffects';
+import { LiquidPressable, LiquidCardGlow } from '../LiquidEffects';
 import { PersonIcon } from '../icons';
 import { andFitText } from '../../utils/fitText';
 import { useSkinAccent } from '../../constants/skinTheme';
@@ -44,17 +44,6 @@ const GlassFill = ({ intensity = 30, specular = true }: { intensity?: number; sp
       <LinearGradient colors={[GLASS.specular, 'rgba(255,255,255,0)']} start={{ x: 0, y: 0 }} end={{ x: 0, y: 1 }} style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '55%', opacity: 0.4 }} pointerEvents="none" />
     ) : null}
   </>
-);
-
-const NeonRing = ({ size, colors, borderWidth = 2, intensity = 16, children }: {
-  size: number; colors: readonly [string, string, ...string[]]; borderWidth?: number; intensity?: number; children?: React.ReactNode;
-}) => (
-  <LinearGradient colors={colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ width: size, height: size, borderRadius: size / 2, padding: borderWidth, alignItems: 'center', justifyContent: 'center' }}>
-    <View style={{ width: size - borderWidth * 2, height: size - borderWidth * 2, borderRadius: (size - borderWidth * 2) / 2, overflow: 'hidden', backgroundColor: 'rgba(10,10,15,0.45)', alignItems: 'center', justifyContent: 'center' }}>
-      <GlassFill intensity={intensity} />
-      {children}
-    </View>
-  </LinearGradient>
 );
 
 // ─── 형식 배지 아이콘 ───
@@ -146,17 +135,29 @@ export const StatCard = ({ value, label, onPress }: {
   </LiquidPressable>
 );
 
-// ─── 배지 하이라이트 ───
-export const BadgeHighlightItem = ({ emoji, glow, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => {
-  const skinAccent = useSkinAccent(); // 배지 글로우색을 스킨 강조색으로 (링 무지개는 유지)
+// ─── 배지 하이라이트 — ProfileScreen의 유리 디자인과 동일 (Ellipse 2989 채움 + 유리 그라데이션 테두리) ───
+let pvBadgeRingSeq = 0; // SVG 그라데이션 id 충돌 방지용 (인스턴스별 고유 id)
+export const BadgeHighlightItem = ({ emoji, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => {
+  const ringId = React.useMemo(() => 'pvBadgeRing' + (pvBadgeRingSeq++), []);
   return (
-  <LiquidPressable style={[pv.badgeItem, !earned && { opacity: 0.6 }]} intensity={0.1}>
-    <GooeyCircle size={64} color={glow || skinAccent.accent} glowOpacity={earned ? 0.5 : 0.12}>
-      <NeonRing size={58} borderWidth={1.6} intensity={20} colors={earned ? (skinAccent.ringGradient ?? [NEON.cyan, NEON.purple, NEON.magenta]) : ['rgba(255,255,255,0.25)', 'rgba(255,255,255,0.1)']}>
-        {earned ? <Text style={pv.badgeEmoji}>{emoji}</Text> : <Text style={pv.badgeLock}>🔒</Text>}
-      </NeonRing>
-    </GooeyCircle>
-  </LiquidPressable>
+    <LiquidPressable style={[pv.badgeItem, !earned && { opacity: 0.6 }]} intensity={0.1}>
+      <View style={pv.badgeCircle}>
+        {earned ? (
+          <Text style={pv.badgeEmoji}>{emoji}</Text>
+        ) : (
+          <Text style={pv.badgeLock}>🔒</Text>
+        )}
+        <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Defs>
+            <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+            </SvgLinearGradient>
+          </Defs>
+          <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+        </Svg>
+      </View>
+    </LiquidPressable>
   );
 };
 
@@ -232,9 +233,18 @@ export const pv = StyleSheet.create({
   statValue: { fontSize: 22, fontWeight: '800', fontFamily: 'Inter_800ExtraBold', color: '#FFFFFF', lineHeight: 26 },
   statLabel: { fontSize: 13, color: '#FFFFFF', marginTop: 4, lineHeight: 16 },
   divider: { height: 1, backgroundColor: '#1A1A26', marginHorizontal: -16, marginBottom: 7 },
-  badgeScroll: { marginBottom: 7, height: 88 },
-  badgeScrollContent: { paddingLeft: 16, paddingRight: 8, gap: 14, flexDirection: 'row', alignItems: 'center' },
-  badgeItem: { alignItems: 'center', width: 60 },
+  // 배지 스크롤/원 — ProfileScreen의 badgeHL과 동일 수치 (본문 패딩 16 + paddingLeft 4 = 왼쪽 20)
+  badgeScroll: { marginBottom: 16, height: 72 },
+  badgeScrollContent: { paddingLeft: 4, paddingRight: 8, gap: 21, flexDirection: 'row', alignItems: 'center' },
+  badgeItem: { alignItems: 'center', width: 64 },
+  badgeCircle: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: '#D9D9D933', // #D9D9D9 20% — Ellipse 2989 채움
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badgeEmoji: { fontSize: 24 },
   badgeLock: { fontSize: 22 },
   gridHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
