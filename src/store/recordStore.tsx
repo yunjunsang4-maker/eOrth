@@ -14,6 +14,7 @@ import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import type { StayType, StayStatus } from '../utils/stayMachine';
+import { decideOnVisitedChange, type StaySnapshot } from '../utils/stayMachine';
 import {
   requestNeighbor as apiRequestNeighbor,
   cancelNeighborRequest as apiCancelNeighborRequest,
@@ -275,6 +276,9 @@ interface RecordContextType {
   activeStayGroup: TripGroup | null;
   startStay: (countryName: string, type: StayType) => void;
   endStay: (groupId: string) => void;
+  // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
+  stayPromptCountry: string | null;
+  setStayPromptCountry: React.Dispatch<React.SetStateAction<string | null>>;
   markSnapViewed: (id: string) => void;
   viewedSnapIds: string[]; // 내가 본 타인 스냅(remoteId) — 안 본 링 판정용(영속)
   // 임시저장
@@ -363,6 +367,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
+  // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
+  const [stayPromptCountry, setStayPromptCountry] = useState<string | null>(null);
 
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
@@ -525,6 +531,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // 진행 중(active) 체류국의 실시간 기록 → 체류 카드에 직접 합류 + 활동 시각 갱신
+    const stayG = tripGroupsRef.current.find(
+      (g) => g.stay && g.stay.status === 'active' && g.countryName === country
+    );
+    if (stayG && country !== homeCountryName) {
+      if (!stayG.records.includes(rec.id)) {
+        const grow = (list: TripGroup[]) => list.map((g) =>
+          g.id === stayG.id
+            ? { ...g, records: [...g.records, rec.id], coverRecordId: g.coverRecordId || rec.id, stay: { ...g.stay!, lastActiveAt: Date.now() } }
+            : g);
+        setTripGroups((prev) => grow(prev));
+        tripGroupsRef.current = grow(tripGroupsRef.current);
+      }
+      return;
+    }
+
     // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료.
     // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
     // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
@@ -614,15 +636,48 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
-  // 값 '전환'만 신호로 쓴다 — 감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐.
+  // 국가명 → ISO 코드 (COUNTRIES term의 첫 토큰이 소문자 iso2)
+  const codeOfCountryName = (name: string | undefined | null): string | null => {
+    if (!name) return null;
+    const c = COUNTRIES.find((x) => x.name === name);
+    return c ? c.term.split(' ')[0].toUpperCase() : null;
+  };
+
+  // 도착 감지 — 위치 전환 시 여행 세션 종료(귀국) + 체류 일시정지/재개 + 새 해외국 프롬프트.
+  // 값 '전환'만 신호로 쓴다(감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐).
   const prevVisitedRef = useRef(currentVisitedCountryCode);
   useEffect(() => {
     const prev = prevVisitedRef.current;
     prevVisitedRef.current = currentVisitedCountryCode;
     if (prev === currentVisitedCountryCode) return;
+
+    // 귀국(해외→거주국 전환) → 여행 세션 종료 (기존 동작 유지)
     if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {
       setTripSession(null);
+      tripSessionRef.current = null;
+    }
+
+    // 체류 일시정지/재개/새 해외국 판정 (ended 체류는 snapshot으로 만들지 않는다)
+    const stayGroup = tripGroupsRef.current.find((g) => g.stay && g.stay.status !== 'ended');
+    const snap: StaySnapshot | null = stayGroup
+      ? { countryCode: codeOfCountryName(stayGroup.countryName) ?? '', status: stayGroup.stay!.status, lastActiveAt: stayGroup.stay!.lastActiveAt }
+      : null;
+    const d = decideOnVisitedChange({ visitedCountryCode: currentVisitedCountryCode, homeCountryCode, stay: snap });
+
+    if ((d.pauseStay || d.resumeStay) && stayGroup) {
+      const apply = (list: TripGroup[]) => list.map((g) =>
+        g.id === stayGroup.id
+          ? { ...g, stay: { ...g.stay!, status: (d.resumeStay ? 'active' : 'paused') as StayStatus, lastActiveAt: d.resumeStay ? Date.now() : g.stay!.lastActiveAt } }
+          : g);
+      setTripGroups((prev2) => apply(prev2));
+      tripGroupsRef.current = apply(tripGroupsRef.current);
+    }
+
+    // 새 해외국(거주국·체류국 아님) → 여행/장기체류 프롬프트 요청 (이미 그 나라 여행 세션이 있으면 생략)
+    if (d.isNewAbroadCountry) {
+      const visitName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === currentVisitedCountryCode.toUpperCase())?.name ?? null;
+      const alreadyTravel = !!(tripSessionRef.current && visitName && tripSessionRef.current.groups[visitName]);
+      if (visitName && !alreadyTravel) setStayPromptCountry(visitName);
     }
   }, [currentVisitedCountryCode, homeCountryCode]);
 
@@ -1718,7 +1773,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
       {children}
     </RecordContext.Provider>
   );
