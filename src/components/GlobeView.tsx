@@ -64,7 +64,12 @@ const globeHTML = `<!DOCTYPE html>
     cursor: grab;
   }
   body:active { cursor: grabbing; }
-  #canvas-container { position: fixed; inset: 0; }
+  /* 배경 — 색활성화(neon) 지구본과 동일한 DOM 배경으로 통일. 단 우주가스(nebula)는 넣지 않는다. */
+  #bg { position: fixed; inset: 0; overflow: hidden; background: #0A0B0F; z-index: 1; }
+  #stars { position: absolute; inset: 0; pointer-events: none; }
+  #stars i { position: absolute; border-radius: 50%; background: #ffffff; display: block; }
+  @keyframes ng-twinkle { 0%,100% { opacity: var(--o); } 50% { opacity: calc(var(--o)*0.35); } }
+  #canvas-container { position: fixed; inset: 0; z-index: 2; }
   canvas { display: block; }
   /* 광고(스폰서) 마커 레이어 — 영토 위 지점에서 선이 올라가 작은 카드가 달린 형태.
      .ad-pin 은 0크기 앵커(=영토 지점), 자식들은 그 지점 기준으로 배치. 카드만 터치 수신 */
@@ -101,6 +106,7 @@ const globeHTML = `<!DOCTYPE html>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
+<div id="bg"><div id="stars"></div></div>
 <div id="canvas-container"></div>
 <div id="ad-layer"></div>
 
@@ -127,8 +133,24 @@ var container = document.getElementById('canvas-container');
 var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
-renderer.setClearColor(0x0A0A0F, 1);
+renderer.setClearColor(0x000000, 0); // 투명 → 뒤 CSS #bg 별밭이 비침 (색활성화 지구본 배경과 통일)
 container.appendChild(renderer.domElement);
+
+// 별밭(DOM, 결정적) — neon 배경과 동일 파라미터. 우주가스(nebula)는 제외.
+// 아래 3D Points 별밭은 이걸로 대체하므로 비활성화한다. (신뢰 불가 입력 없음 — createElement로 구성)
+(function(){
+  var el = document.getElementById('stars'); if (!el) return;
+  var seed = 1337; function rnd(){ seed = (seed*1664525 + 1013904223) >>> 0; return seed/4294967296; }
+  for (var i=0;i<320;i++){
+    var o=(0.45+rnd()*0.4), x=(rnd()*100).toFixed(2), y=(rnd()*100).toFixed(2);
+    var d=(0.8+rnd()*1.8).toFixed(2), t=(2.5+rnd()*4).toFixed(2);
+    var s = document.createElement('i');
+    s.style.left = x+'%'; s.style.top = y+'%'; s.style.width = d+'px'; s.style.height = d+'px';
+    s.style.setProperty('--o', o.toFixed(2)); s.style.opacity = o.toFixed(2);
+    s.style.animation = 'ng-twinkle '+t+'s ease-in-out infinite';
+    el.appendChild(s);
+  }
+})();
 
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -152,7 +174,8 @@ for (var i = 0; i < 600; i++) {
 }
 starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starPositions, 3));
 var starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.6, sizeAttenuation: false, transparent: true, opacity: 0.6 });
-scene.add(new THREE.Points(starGeo, starMat));
+// 3D 별밭 비활성화 — DOM #bg 별밭(위)으로 대체해 색활성화 지구본 배경과 통일.
+// scene.add(new THREE.Points(starGeo, starMat));
 
 // 별똥별 (3D) — 지구본 뒤(깊이 Z<0)에서 좌상단→우상단으로 살짝 떨어지며 지나감.
 // 그라데이션 꼬리 플레인. 깊이 테스트로 지구본 구체 뒤로 자연스럽게 가려진다. animate 루프에서 갱신.
