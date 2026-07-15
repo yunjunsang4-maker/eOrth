@@ -32,7 +32,13 @@ const { width: SW } = Dimensions.get('window');
 const BTN_W = SW - 68; // 다음 버튼 폭 = 화면 - 좌우 패딩(40) - 버튼 마진(28)
 
 // 온보딩 5단계 — 시안(iPhone 17 - 64~68.svg) 순서 그대로. 비주얼은 introVisuals에 페이지별 분리.
-const SLIDES = [
+// Visual에 active를 내려 영상 비주얼(5페이지)이 활성 시점에 처음부터 재생되게 함
+const SLIDES: {
+  id: string;
+  Visual: React.ComponentType<{ active?: boolean }>;
+  titleKey: string;
+  subtitleKey: string;
+}[] = [
   { id: '1', Visual: IntroVisual1, titleKey: 'appIntro.slides.1.title', subtitleKey: 'appIntro.slides.1.subtitle' },
   { id: '2', Visual: IntroVisual2, titleKey: 'appIntro.slides.2.title', subtitleKey: 'appIntro.slides.2.subtitle' },
   { id: '3', Visual: IntroVisual3, titleKey: 'appIntro.slides.3.title', subtitleKey: 'appIntro.slides.3.subtitle' },
@@ -78,7 +84,7 @@ export default function AppIntroScreen({ navigation }: Props) {
     const V = item.Visual;
     return (
       <View style={styles.slide}>
-        <V />
+        <V active={index === activeIdx} />
         {/* 텍스트 블록 — 하단 정렬 (시안: step 라벨 + 제목 + 설명) */}
         <View style={styles.textBlock}>
           <Text style={styles.stepLabel}>{`step 0${index + 1}`}</Text>
@@ -104,6 +110,7 @@ export default function AppIntroScreen({ navigation }: Props) {
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
         renderItem={renderSlide}
+        extraData={activeIdx}
         style={styles.flatList}
       />
 

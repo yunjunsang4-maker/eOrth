@@ -1,9 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, Text, StyleSheet, Dimensions, AppState } from 'react-native';
+import { useVideoPlayer, VideoView } from 'expo-video';
+import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
   Path as SvgPath,
   Circle as SvgCircle,
-  Line as SvgLine,
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,
   RadialGradient as SvgRadialGradient,
@@ -20,12 +21,6 @@ import {
   INTRO_WIREFRAME,
   INTRO4_ARC_1,
   INTRO4_ARC_2,
-  INTRO5_CONTINENTS_A,
-  INTRO5_CONTINENTS_B,
-  INTRO5_GLOBE_RING,
-  INTRO5_ARC_OUTER,
-  INTRO5_ARC_INNER,
-  INTRO5_GRID_LINES,
 } from '../data/introGlobePaths';
 
 const { width: SW } = Dimensions.get('window');
@@ -320,77 +315,97 @@ export function IntroVisual4() {
   );
 }
 
-// ── 5페이지: 보라 지구본 + 원근 격자 (시안 68, 지구본 중심 ≈204, 313.7) ──
-export function IntroVisual5() {
-  const H = 700 * DS;
+// ── 5페이지: 지구본 애니메이션 영상 (kling 시안) — 기존 SVG 지구본을 영상으로 교체 ──
+// 영상은 expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
+const INTRO5_VIDEO = require('../../assets/intro5.mp4');
+const INTRO5_SCALE = 0.92; // 영상 크기 소폭 축소 — 중앙 기준
+const INTRO5_VOID = '#000000'; // 영상 자체 배경(우주 검정)과 같은 백드롭 — 축소돼도 경계가 안 보이게
+const INTRO5_VOID_0 = 'rgba(0,0,0,0)';
+
+export function IntroVisual5({ active = true }: { active?: boolean }) {
+  const H = 700 * DS; // 영상 배치 기준 높이 (시안)
+  const HB = 800 * DS; // 백드롭 전체 높이 — 하단이 투명으로 사그라들 여유 포함
+  const vw = SW * INTRO5_SCALE;
+  const vh = H * INTRO5_SCALE;
+  const fadeV = 70 * DS; // 상·하 가장자리 페이드 폭
+  const fadeH = 44 * DS; // 좌·우 가장자리 페이드 폭
+  const player = useVideoPlayer(INTRO5_VIDEO, (p) => {
+    p.loop = true;
+    p.muted = true;
+  });
+  // FlatList가 슬라이드를 미리 마운트하므로 여기서 재생하지 않고,
+  // 5페이지가 실제 활성화되는 순간 처음부터 재생 (미리 재생돼 중간부터 보이는 문제 방지)
+  useEffect(() => {
+    try {
+      if (active) player.replay();
+      else player.pause();
+    } catch {
+      // 플레이어가 이미 해제된 경우 무시
+    }
+  }, [active, player]);
+  // 앱이 백그라운드로 갔다 돌아오면 플레이어가 일시정지 상태로 남음 — 복귀 시 재생 재개
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active' && active) {
+        try {
+          player.play();
+        } catch {
+          // 플레이어가 이미 해제된 경우 무시
+        }
+      }
+    });
+    return () => sub.remove();
+  }, [player, active]);
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
-      <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          {/* 시안 paint2~9 그대로 */}
-          <SvgLinearGradient id="g5a" x1="220.73" y1="194.16" x2="110.81" y2="377.15" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#1D0930" />
-            <SvgStop offset="1" stopColor="#5B1C96" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5b" x1="205.14" y1="432.71" x2="175.69" y2="274.57" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#000000" />
-            <SvgStop offset="1" stopColor="#666666" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5c" x1="204.12" y1="327.52" x2="105.04" y2="382.95" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#1D0930" />
-            <SvgStop offset="1" stopColor="#7519AE" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5d" x1="252.13" y1="413.07" x2="176.17" y2="276.8" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#000000" />
-            <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0.2} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5e" x1="166.15" y1="191.78" x2="217.65" y2="286.93" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#000000" />
-            <SvgStop offset="1" stopColor="#761AAD" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5ring" x1="182.54" y1="317.82" x2="252.25" y2="479.89" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#666666" stopOpacity={0} />
-            <SvgStop offset="1" stopColor="#C982FF" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5arcO" x1="200" y1="105" x2="200" y2="285" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#824D99" stopOpacity={0} />
-            <SvgStop offset="0.48" stopColor="#AC66CA" stopOpacity={0.48} />
-            <SvgStop offset="1" stopColor="#E9B5FF" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="g5arcI" x1="201.5" y1="211" x2="201.05" y2="355.01" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#824D99" stopOpacity={0} />
-            <SvgStop offset="1" stopColor="#EDC5FF" />
-          </SvgLinearGradient>
-          <SvgRadialGradient id="g5glow" cx="50%" cy="50%" r="50%">
-            <SvgStop offset="0.7" stopColor="#6B21A8" stopOpacity={0.2} />
-            <SvgStop offset="1" stopColor="#6B21A8" stopOpacity={0} />
-          </SvgRadialGradient>
-        </SvgDefs>
-
-        <SideGlows purpleCx={6.5} purpleCy={247} />
-
-        {/* 상단 호 2개 (지구본 뒤) */}
-        <SvgPath d={INTRO5_ARC_OUTER} stroke="url(#g5arcO)" strokeOpacity={0.7} strokeWidth={1} fill="none" />
-        <SvgPath d={INTRO5_ARC_INNER} stroke="url(#g5arcI)" strokeWidth={1} fill="none" />
-
-        {/* 원근 격자 (지구본 뒤) */}
-        {INTRO5_GRID_LINES.map(([x1, y1, x2, y2], i) => (
-          <SvgLine key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#FFFFFF" strokeWidth={1} />
-        ))}
-
-        {/* 보라 지구본 — 시안 레이어 순서 그대로 */}
-        <SvgCircle cx={201.5} cy={314.5} r={175} fill="url(#g5glow)" />
-        <SvgCircle cx={204.64} cy={312.93} r={160.44} fill="#751AAD" fillOpacity={0.2} />
-        <SvgCircle cx={204.64} cy={312.93} r={160.44} fill="url(#g5a)" fillOpacity={0.7} />
-        <SvgCircle cx={204.64} cy={312.93} r={160.44} fill="url(#g5b)" fillOpacity={0.4} />
-        <SvgCircle cx={203.85} cy={313.72} r={154.95} fill="#FF14E4" />
-        <SvgCircle cx={203.85} cy={313.72} r={154.95} fill="url(#g5c)" fillOpacity={0.5} />
-        <SvgCircle cx={203.85} cy={313.72} r={154.95} fill="url(#g5d)" fillOpacity={0.3} />
-        <SvgCircle cx={203.85} cy={313.72} r={154.95} fill="url(#g5e)" fillOpacity={0.1} />
-        <SvgPath d={INTRO5_CONTINENTS_A} fill="#FFFFFF" fillOpacity={0.2} />
-        <SvgPath d={INTRO5_CONTINENTS_B} fill="#FFFFFF" fillOpacity={0.2} />
-        <SvgPath d={INTRO5_GLOBE_RING} stroke="url(#g5ring)" strokeWidth={1} fill="none" />
-      </Svg>
+    <View
+      style={{ position: 'absolute', top: 0, left: 0, width: SW, height: HB }}
+      pointerEvents="none"
+    >
+      {/* 백드롭: 검정 풀블리드(좌·우·상단 경계는 화면 밖) → 하단은 서서히 투명해져
+          실제 화면 배경(별·앰비언트)이 그대로 드러남 — 불투명 색으로 끝나며 생기던 하단 단차 제거 */}
+      <LinearGradient
+        colors={[INTRO5_VOID, INTRO5_VOID, INTRO5_VOID_0]}
+        locations={[0, 0.84, 1]}
+        style={StyleSheet.absoluteFill}
+      />
+      <View
+        style={{
+          position: 'absolute',
+          top: (H - vh) / 2,
+          left: (SW - vw) / 2,
+          width: vw,
+          height: vh,
+          overflow: 'hidden',
+        }}
+      >
+        <VideoView
+          player={player}
+          style={{ width: vw, height: vh }}
+          contentFit="cover"
+          nativeControls={false}
+        />
+        {/* 영상 가장자리를 백드롭과 같은 검정으로 페이드 — 축소된 사각형 경계 제거 */}
+        <LinearGradient
+          colors={[INTRO5_VOID, INTRO5_VOID_0]}
+          style={{ position: 'absolute', top: 0, left: 0, right: 0, height: fadeV }}
+        />
+        <LinearGradient
+          colors={[INTRO5_VOID_0, INTRO5_VOID]}
+          style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: fadeV }}
+        />
+        <LinearGradient
+          colors={[INTRO5_VOID, INTRO5_VOID_0]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: fadeH }}
+        />
+        <LinearGradient
+          colors={[INTRO5_VOID_0, INTRO5_VOID]}
+          start={{ x: 0, y: 0.5 }}
+          end={{ x: 1, y: 0.5 }}
+          style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: fadeH }}
+        />
+      </View>
     </View>
   );
 }
