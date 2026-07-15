@@ -6,6 +6,7 @@ import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
+import i18n from '../i18n';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type PublishMediaOptions } from '../services/posts';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
@@ -679,6 +680,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         };
         setTripSession(restored);
         tripSessionRef.current = restored;
+        emitToast(i18n.t('stay.resumeToast', { country: stayGroup.countryName }));
       }
     }
 

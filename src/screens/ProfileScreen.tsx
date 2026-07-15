@@ -51,6 +51,9 @@ import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark
 import { setCoachActive } from '../components/coachOverlayState';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
+import { StayManageSheet } from '../components/profile/StayManageSheet';
+import { StayPromptModal } from '../components/record/StayPromptModal';
+import { shouldNudgeEnd } from '../utils/stayMachine';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1544,6 +1547,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     handleFont,
     isPremium,
     notifPrefs,
+    stayNudgeDismissedFor,
+    setStayNudgeDismissedFor,
   } = useSettings();
   const profileName = handle; // 디자인(iPhone 17-52)과 동일하게 아이디를 @ 없이 그대로 표시
   // 아이디 표시 폰트(프리미엄) — 해지 시 기본 폰트로(잠금), 선택값은 보존돼 재구독 시 복원
@@ -1567,7 +1572,10 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
-  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors } = useRecords();
+  const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
+
+  const [staySheetVisible, setStaySheetVisible] = useState(false);
+  const stayActive = activeStayGroup?.stay?.status === 'active';
 
   // 이웃 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   // 리마운트 시 0으로 깜빡이지 않게 마지막 값을 모듈 캐시에서 복원, 오류(null)면 이전 값 유지
@@ -1771,6 +1779,23 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     navigation.navigate('TripDetail', { trip });
   };
 
+  // 체류 종료 넛지 — 체류국 60일 무복귀(paused) 시 카드당 1회 물어본다
+  useEffect(() => {
+    if (!activeStayGroup?.stay) return;
+    if (stayNudgeDismissedFor === activeStayGroup.id) return;
+    const snap = { countryCode: '', status: activeStayGroup.stay.status, lastActiveAt: activeStayGroup.stay.lastActiveAt };
+    if (!shouldNudgeEnd(snap, Date.now())) return;
+    Alert.alert(
+      t('stay.nudgeTitle'),
+      t('stay.nudgeMsg', { country: activeStayGroup.countryName ?? '' }),
+      [
+        { text: t('stay.nudgeKeep'), style: 'cancel', onPress: () => setStayNudgeDismissedFor(activeStayGroup.id) },
+        { text: t('stay.endStay'), style: 'destructive', onPress: () => { endStay(activeStayGroup.id); setStayNudgeDismissedFor(activeStayGroup.id); } },
+      ]
+    );
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeStayGroup?.id]);
+
 
   return (
     <View style={styles.safeArea}>
@@ -1876,17 +1901,23 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           <View style={styles.profileInfo}>
             <Text style={[styles.userName, nameFontStyle]}>{profileName}</Text>
             <View style={styles.statusRow}>
-              <Text style={styles.userLocation}>
-                {(() => {
-                  const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
-                  const visit = COUNTRY_DATA[currentVisitedCountryCode];
-                  // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
-                  if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
-                    return t('profile.traveling', { flag: visit.flag, name: visit.name });
-                  }
-                  return `${home.flag} ${home.name}`;
-                })()}
-              </Text>
+              <TouchableOpacity disabled={!stayActive} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
+                <Text style={styles.userLocation}>
+                  {(() => {
+                    const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
+                    // 체류 진행 중 — "🇯🇵 일본 체류 중" (여행 중보다 우선)
+                    if (stayActive && activeStayGroup?.countryName) {
+                      return t('stay.stayingIn', { flag: activeStayGroup.countryFlag || '📍', name: activeStayGroup.countryName });
+                    }
+                    const visit = COUNTRY_DATA[currentVisitedCountryCode];
+                    // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
+                    if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
+                      return t('profile.traveling', { flag: visit.flag, name: visit.name });
+                    }
+                    return `${home.flag} ${home.name}`;
+                  })()}
+                </Text>
+              </TouchableOpacity>
             </View>
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
@@ -2173,6 +2204,46 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         visible={coachVisible}
         steps={coachSteps}
         onClose={() => setCoachVisible(false)}
+      />
+
+      {/* 체류 관리 시트 — 위치 표시 탭 */}
+      <StayManageSheet
+        visible={staySheetVisible}
+        onOpenCard={() => {
+          setStaySheetVisible(false);
+          const thumb = displayTrips.find((tr) => tr.id === activeStayGroup?.id);
+          if (thumb) openTripDetail(thumb);
+        }}
+        onEnd={() => {
+          setStaySheetVisible(false);
+          if (!activeStayGroup) return;
+          Alert.alert(
+            t('stay.endConfirmTitle'),
+            t('stay.endConfirmMsg', { country: activeStayGroup.countryName ?? '' }),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('stay.endStay'), style: 'destructive', onPress: () => endStay(activeStayGroup.id) },
+            ]
+          );
+        }}
+        onClose={() => setStaySheetVisible(false)}
+      />
+
+      {/* 해외 도착 — 여행/장기체류 진입 프롬프트 */}
+      <StayPromptModal
+        countryName={stayPromptCountry}
+        onTravel={() => setStayPromptCountry(null)}
+        onStay={(type) => {
+          // 동시 체류 1개 — 기존 진행 중 체류가 있으면 안내 후 무시
+          if (activeStayGroup) {
+            Alert.alert(t('stay.alreadyActiveTitle'), t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }));
+            setStayPromptCountry(null);
+            return;
+          }
+          if (stayPromptCountry) startStay(stayPromptCountry, type);
+          setStayPromptCountry(null);
+        }}
+        onClose={() => setStayPromptCountry(null)}
       />
     </View>
   );
