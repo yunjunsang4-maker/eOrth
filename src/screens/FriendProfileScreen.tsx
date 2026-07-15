@@ -118,11 +118,15 @@ export default function FriendProfileScreen({
       .filter((p) => !isPostHiddenForViewer(p, viewer))
       .map((p) => applyViewer(p, viewer));
   }, [isSelf, myRecords, userPosts, myHandle]);
-  // 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시)
+  // 공개 글로 배지 계산 (내 프로필과 동일한 배지 하이라이트 표시).
+  // fetchUserPosts는 타인 글을 isMyPost=false로 매핑하는데, computeTravelStats가
+  // isMyPost !== false만 집계해(내 통계에 남 글 섞임 방지) 그대로 넘기면 전부 걸러져
+  // 배지가 0개가 된다 — 이 화면에선 그분의 글이 곧 본인 기록이므로 되살려서 넘긴다.
   const friendBadges = useMemo(() => {
-    const earned = computeEarnedBadgeIds(sourcePosts, BADGES);
+    const asOwn = isSelf ? sourcePosts : sourcePosts.map((p) => ({ ...p, isMyPost: true }));
+    const earned = computeEarnedBadgeIds(asOwn, BADGES);
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
-  }, [sourcePosts]);
+  }, [sourcePosts, isSelf]);
 
   // 이름 아래 위치 — 내 프로필과 동일한 위치 줄.
   // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,
