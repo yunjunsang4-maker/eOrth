@@ -1329,10 +1329,10 @@ function buildNeonTexture(){
     ctx.fillStyle = v ? (v.color || globeDefaultColor) : NEON_LAND;
     ctx.beginPath(); path(f); ctx.fill();
   });
-  // 모노톤 노이즈(0.5px, #00000040 25%) — 지정 활성화 색(#E0C9FF/#FD07E0)으로 칠한 국가에만 입힘.
-  // MainScreen의 NOISE_ACTIVE_COLORS와 값 일치 필요.
+  // 모노톤 노이즈(0.5px, #00000040 25%) — 지정 활성화 색(#E1CDFB/#EB19D2)으로 칠한 국가에만 입힘.
+  // MainScreen의 NOISE_ACTIVE_COLORS와 값 일치 필요 (팔레트 채도 -15% 반영).
   (function(){
-    var NOISE_COLORS = ['#E0C9FF','#FD07E0'];
+    var NOISE_COLORS = ['#E1CDFB','#EB19D2'];
     var isNoise = function(col){ col=(col||'').toUpperCase(); return NOISE_COLORS.indexOf(col)!==-1; };
     var hasAny = worldData.features.some(function(f){ var v=visitedMap[f.properties.name||'']; return v && isNoise(v.color||globeDefaultColor); });
     if(!hasAny) return;

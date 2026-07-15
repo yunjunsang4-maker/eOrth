@@ -61,15 +61,16 @@ const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
 const DS_PAD = DS_CARD_W * (29 / 325); // 좌우 패딩 29 (버튼폭 268)
 const DS_CARD_TOP = height * (168.85 / 874); // Figma 목업 기준 카드 상단 위치(가운데 아님, 상단 배치)
 // 스킨별 활성화색 팔레트(각 4색). aurora=보라(뒤 2색 노이즈), cyan=시안. 미지정 스킨(mint 등)은 aurora 폴백.
+// 채도 -15%(색상·밝기 유지) — 활성화색이 과포화로 튀지 않게 살짝 낮춤. 원본 대비 HSL S만 ×0.85.
 const DS_PALETTES: Record<string, string[]> = {
-  aurora: ['#EC34F7', '#C982FF', '#E0C9FF', '#FD07E0'],
-  cyan:   ['#02E2FF', '#00D8F3', '#C3F8FF', '#86FFF3'],
-  mint:   ['#86FFBC', '#00F37A', '#C3FFCD', '#86FF9A'],
+  aurora: ['#DF43E8', '#C88BF6', '#E1CDFB', '#EB19D2'],
+  cyan:   ['#15D3EC', '#12CAE1', '#C8F5FB', '#8FF6EC'],
+  mint:   ['#8FF6BD', '#12E17A', '#C8FBD0', '#8FF6A0'],
 };
 // 통계 화면(연도별·대륙별 막대 색)도 이 팔레트를 사용한다 (StatsScreen)
 export const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || DS_PALETTES.aurora;
-// 모노톤 노이즈(0.5px, #00000040 25%) 적용 색(aurora 2색) — GlobeView와 값 일치 필요
-const NOISE_ACTIVE_COLORS = ['#E0C9FF', '#FD07E0'];
+// 모노톤 노이즈(0.5px, #00000040 25%) 적용 색(aurora 2색) — GlobeView와 값 일치 필요 (팔레트 채도 감소분 반영)
+const NOISE_ACTIVE_COLORS = ['#E1CDFB', '#EB19D2'];
 const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
 const SHEET_HEIGHT = height * 0.6;
 const COUNTRY_SHEET_HEIGHT = height * 0.65;

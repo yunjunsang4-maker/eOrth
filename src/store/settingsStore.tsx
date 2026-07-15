@@ -37,8 +37,8 @@ export interface SkinColorSet {
   regionColors: Record<string, string>;
 }
 
-// 스킨별 기본 활성화색 (MainScreen DS_PALETTES 기본색과 일치해야 함)
-const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#C982FF', cyan: '#00D8F3', mint: '#86FFBC' };
+// 스킨별 기본 활성화색 (MainScreen DS_PALETTES 기본색과 일치해야 함 — 채도 -15% 반영)
+const SKIN_DEFAULT_GLOBE_COLOR: Record<string, string> = { aurora: '#C88BF6', cyan: '#12CAE1', mint: '#8FF6BD' };
 
 interface SettingsContextType {
   showCounts: boolean;
@@ -218,7 +218,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   // 아이콘 팔레트를 스킨에 동기화 — setState '전에' 모듈 COLORS를 갈아끼워 재렌더 시 새 색이 반영되게 한다
   const applyIconPalette = (skin: string) => setPalette(skin === 'cyan' ? 'cyan' : skin === 'mint' ? 'mint' : 'purple');
   const [globeDisplayMode, setGlobeDisplayMode] = useState<MapDisplayMode>('flag');
-  const [globeColor, setGlobeColor] = useState('#C982FF'); // 보라 활성화색 기본 (팔레트 4종 중)
+  const [globeColor, setGlobeColor] = useState('#C88BF6'); // 보라 활성화색 기본 (팔레트 4종 중, 채도 -15%)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
@@ -311,7 +311,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       applyIconPalette(p.globeSkin ?? 'aurora');
       setGlobeSkin(p.globeSkin ?? 'aurora');
       setGlobeDisplayMode(p.globeDisplayMode ?? 'flag');
-      setGlobeColor(p.globeColor ?? '#C982FF');
+      setGlobeColor(p.globeColor ?? '#C88BF6');
       setCountryColors(p.countryColors ?? {});
       setCountryDisplayModes(p.countryDisplayModes ?? {});
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
@@ -452,7 +452,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     applyIconPalette('aurora'); // 아이콘 팔레트도 함께 복원 (원시 setter라 테마드 경로를 안 타므로 직접)
     setGlobeSkin('aurora');
     setGlobeDisplayMode('flag');
-    setGlobeColor('#C982FF'); // 초기 기본값과 동일하게 (팔레트 4종 중 하나 — #BF85FC는 팔레트 밖)
+    setGlobeColor('#C88BF6'); // 초기 기본값과 동일하게 (팔레트 4종 중 하나, 채도 -15% — #BF85FC는 팔레트 밖)
     setCountryColors({});
     setCountryDisplayModes({});
     setRegionGlobalMode('color');
