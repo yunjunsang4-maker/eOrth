@@ -23,9 +23,10 @@ import Svg, {
   Stop as SvgStop,
 } from 'react-native-svg';
 import { Colors, Typography } from '../constants';
+import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { STATS_GLOBE_PATH } from '../data/statsGlobePath';
+import { DETAIL_WIREFRAME, DETAIL_RING, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
   recentTrips,
@@ -100,30 +101,29 @@ type Box =
 type Hero = { cycle: BoxRow[] }; // 지구본 중앙에 자동 순환(페이드)으로 보여줄 간단 통계들
 type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 
-// ── 지구본 히어로 기하 (시안 iPhone 17-86: 화면 중앙 대형 와이어프레임) ──
-// STATS_GLOBE_PATH 원본 좌표계: 중심 (168.46, 193), 지름 ≈ 188.
+// ── 지구본 히어로 기하 (시안 iPhone 17-85: 와이어프레임 구체 + 링 호 + 별가루 입자) ──
+// 시안 좌표계(402×874): 와이어프레임 구체 중심 (206.47, 282.93), 반경 ≈115.34.
 const HERO_CX = SW / 2;
 const HERO_R = SW * 0.34;                       // 지구본 반지름
 const HERO_GLOBE_H = Math.round(HERO_R * 2 + 92); // 히어로 섹션 높이(글로우·화살표 여유 포함)
 const HERO_CY = HERO_R + 30;                    // 지구본 중심 y (섹션 내)
-const HERO_SCALE = (HERO_R * 2) / 188;
-const HERO_GLOBE_TRANSFORM = `translate(${HERO_CX} ${HERO_CY}) scale(${HERO_SCALE}) translate(${-168.46} ${-193})`;
-// 하단을 감싸는 발광 궤도 호 (시안의 빛나는 링)
-const HERO_ARC_R = HERO_R + 8;
-const HERO_ARC_SPAN = 1.15; // 정상 기준 ±rad
-const HERO_ARC_PATH = (() => {
-  const x1 = HERO_CX - HERO_ARC_R * Math.sin(HERO_ARC_SPAN);
-  const y1 = HERO_CY + HERO_ARC_R * Math.cos(HERO_ARC_SPAN);
-  const x2 = HERO_CX + HERO_ARC_R * Math.sin(HERO_ARC_SPAN);
-  // 하단을 지나는 호 (좌하 → 우하)
-  return `M ${x1} ${y1} A ${HERO_ARC_R} ${HERO_ARC_R} 0 0 0 ${x2} ${y1}`;
-})();
+// 시안 좌표 → 히어로 좌표 매핑 (구체 반경을 HERO_R에 맞춤)
+const HERO_MAP_SCALE = HERO_R / 115.34;
+const HERO_GLOBE_TRANSFORM = `translate(${HERO_CX} ${HERO_CY}) scale(${HERO_MAP_SCALE}) translate(${-206.47} ${-282.93})`;
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
+  // 지구본 스킨 연동 — aurora는 시안의 라벤더→보라 유지, 커스텀 스킨(cyan/mint)만
+  // 스킨색으로 교체 (StatsScreen과 동일하게 ringGradient 유무로 판정)
+  const skinAccent = useSkinAccent();
+  const customSkin = !!skinAccent.ringGradient;
+  const glowColor = customSkin ? skinAccent.accent : '#7C3AED';        // 지구본 뒤 글로우
+  const wireTop = customSkin ? skinAccent.barGradient[1] : '#E0C9FF';  // 와이어프레임 밝은 끝
+  const wireBottom = customSkin ? skinAccent.accentDeep : '#7C3AED';   // 와이어프레임 진한 끝
+  const pointColor = customSkin ? skinAccent.barGradient[1] : '#E0C9FF'; // 값·더보기 포인트 텍스트
   // 대륙 키(한글, COUNTRIES 데이터)를 표시용 라벨로 변환
   const continentName = useCallback((cont: string) => {
     switch (cont) {
@@ -596,27 +596,42 @@ export default function StatsDetailScreen() {
                 <Svg width={SW} height={HERO_GLOBE_H}>
                   <SvgDefs>
                     <SvgRadialGradient id="detailGlobeGlow" cx="50%" cy="50%" r="50%">
-                      <SvgStop offset="0%" stopColor="#7C3AED" stopOpacity={0.28} />
-                      <SvgStop offset="100%" stopColor="#7C3AED" stopOpacity={0} />
+                      <SvgStop offset="0%" stopColor={glowColor} stopOpacity={0.28} />
+                      <SvgStop offset="100%" stopColor={glowColor} stopOpacity={0} />
                     </SvgRadialGradient>
-                    <SvgLinearGradient id="detailGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
-                      <SvgStop offset="0" stopColor="#E0C9FF" />
-                      <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.3} />
+                    {/* 와이어프레임 구체 — 밝은→진한 스킨색 (aurora는 시안 라벤더→보라, 좌표는 시안 좌표계) */}
+                    <SvgLinearGradient id="detailWireGrad" x1="206.47" y1="167.585" x2="206.47" y2="398.267" gradientUnits="userSpaceOnUse">
+                      <SvgStop offset="0" stopColor={wireTop} />
+                      <SvgStop offset="1" stopColor={wireBottom} />
                     </SvgLinearGradient>
-                    <SvgLinearGradient id="detailArc" x1="0" y1="0" x2="1" y2="0">
-                      <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0} />
-                      <SvgStop offset="0.5" stopColor="#FFFFFF" stopOpacity={0.7} />
-                      <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
+                    {/* 링 호 — 아래 흰색 → 위 투명 (시안 paint1) */}
+                    <SvgLinearGradient id="detailRingGrad" x1="207.98" y1="430" x2="207.98" y2="271.27" gradientUnits="userSpaceOnUse">
+                      <SvgStop offset="0" stopColor="#FFFFFF" />
+                      <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
                     </SvgLinearGradient>
                   </SvgDefs>
                   {/* 뒤 보라 글로우 */}
                   <SvgCircle cx={HERO_CX} cy={HERO_CY} r={HERO_R * 1.15} fill="url(#detailGlobeGlow)" />
-                  {/* 지구본 격자 (시안 원본 패스) */}
+                  {/* 시안 좌표계 요소들 — 구체 반경을 HERO_R에 맞춰 매핑 */}
                   <SvgG transform={HERO_GLOBE_TRANSFORM}>
-                    <SvgPath d={STATS_GLOBE_PATH} fill="url(#detailGlobeGrid)" fillOpacity={0.55} />
+                    {/* 유리 베이스 원 */}
+                    <SvgCircle cx={205.89} cy={284.11} r={127.07} fill="#FFFFFF" fillOpacity={0.03} />
+                    {/* 와이어프레임 구체 (시안은 blur — fill 0.25로 발광 근사) */}
+                    <SvgPath d={DETAIL_WIREFRAME} fill="url(#detailWireGrad)" fillOpacity={0.25} />
+                    {/* 하단 링 호 — 시안 blur 근사(소프트 1겹 + 본선) */}
+                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={13} strokeOpacity={0.12} strokeLinecap="round" fill="none" />
+                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={6.27} strokeOpacity={0.3} strokeLinecap="round" fill="none" />
+                    {/* 별가루 입자 — 하단 아치 (시안 원본 좌표) */}
+                    {(() => {
+                      const dots = [] as React.ReactNode[];
+                      for (let i = 0; i < DETAIL_PARTICLES.length; i += 3) {
+                        dots.push(
+                          <SvgCircle key={i} cx={DETAIL_PARTICLES[i]} cy={DETAIL_PARTICLES[i + 1]} r={DETAIL_PARTICLES[i + 2]} fill="#FFFFFF" fillOpacity={0.3} />
+                        );
+                      }
+                      return dots;
+                    })()}
                   </SvgG>
-                  {/* 하단 발광 궤도 호 */}
-                  <SvgPath d={HERO_ARC_PATH} stroke="url(#detailArc)" strokeWidth={2} fill="none" />
                 </Svg>
               </View>
 
@@ -648,8 +663,8 @@ export default function StatsDetailScreen() {
                       <View key={i} style={s.tripRow}>
                         <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
                         <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
-                        <Text style={[s.tripCell, s.tripColPeriod, s.tableValue]} numberOfLines={1}>{tp.period}</Text>
-                        <Text style={[s.tripCell, s.tripColRecords, s.tableValue]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>
+                        <Text style={[s.tripCell, s.tripColPeriod, s.tableValue, { color: pointColor }]} numberOfLines={1}>{tp.period}</Text>
+                        <Text style={[s.tripCell, s.tripColRecords, s.tableValue, { color: pointColor }]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>
                       </View>
                     ))}
                   </>
@@ -669,7 +684,7 @@ export default function StatsDetailScreen() {
                             <Text style={s.tableLabel} numberOfLines={1}>{row.label}</Text>
                             {!!row.sub && <Text style={s.tableSub} numberOfLines={1}>{row.sub}</Text>}
                           </View>
-                          <Text style={s.tableValue} numberOfLines={1}>{row.value}</Text>
+                          <Text style={[s.tableValue, { color: pointColor }]} numberOfLines={1}>{row.value}</Text>
                         </View>
                       ))}
                       {hasMore && (
@@ -678,7 +693,7 @@ export default function StatsDetailScreen() {
                           onPress={() => setRowsExpanded((v) => !v)}
                           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                         >
-                          <Text style={s.moreBtnTxt}>{rowsExpanded ? t('statsDetail.collapse') : t('statsDetail.showMore')}</Text>
+                          <Text style={[s.moreBtnTxt, { color: pointColor }]}>{rowsExpanded ? t('statsDetail.collapse') : t('statsDetail.showMore')}</Text>
                         </Pressable>
                       )}
                     </>
