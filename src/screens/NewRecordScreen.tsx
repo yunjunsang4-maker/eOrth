@@ -20,6 +20,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { GlassButton } from '../components/ui';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
@@ -299,20 +300,19 @@ function StepNavBar({
   return (
     <View style={nav.wrap}>
       {step > 1 ? (
-        <TouchableOpacity style={nav.prevBtn} onPress={onPrev} activeOpacity={0.8}>
-          <Text style={nav.prevTxt}>{t('newRecord.prev')}</Text>
-        </TouchableOpacity>
+        // 다음 버튼과 동일한 유리 필 디자인(GlassButton)
+        <GlassButton label={t('newRecord.prev')} onPress={onPrev} style={{ flex: 1 }} />
       ) : (
         <View style={nav.prevPlaceholder} />
       )}
       {step < totalSteps ? (
-        <TouchableOpacity
-          style={[nav.nextBtn, { backgroundColor: skinAccent.accentDeep }, !canNext && nav.nextBtnDisabled]}
+        // 앱 기본 버튼(온보딩 '다음' 유리 필 디자인) — GlassButton. flex만 넘겨 유리 스타일 보존
+        <GlassButton
+          label={t('newRecord.next')}
           onPress={onNext}
-          activeOpacity={0.85}
-        >
-          <Text style={nav.nextTxt}>{t('newRecord.next')}</Text>
-        </TouchableOpacity>
+          disabled={!canNext}
+          style={{ flex: 2 }}
+        />
       ) : (
         <TouchableOpacity
           style={[nav.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canNext || saving) && nav.nextBtnDisabled]}

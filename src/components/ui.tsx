@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId, useState } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import { Colors, BorderRadius, Typography, Spacing } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
 
@@ -47,6 +48,55 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       )}
     </LinearGradient>
   </TouchableOpacity>
+  );
+};
+
+// ─── Glass Button (앱 기본 버튼) ───────────────────────────────────────────────
+// 온보딩 '다음' 버튼 디자인(AppIntro/Login) — 흰색 10% 유리 채움 + #CECFCD 대각선
+// 그라데이션 테두리(탭바·토글과 동일). 진행/다음 계열 기본 버튼으로 쓴다.
+interface GlassButtonProps {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: object;
+}
+
+export const GlassButton: React.FC<GlassButtonProps> = ({
+  label,
+  onPress,
+  disabled = false,
+  loading = false,
+  style,
+}) => {
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  // 인스턴스마다 고유 그라데이션 id (여러 버튼이 있어도 url(#id) 충돌 방지)
+  const gid = 'glassBtnRing' + useId().replace(/[^a-zA-Z0-9]/g, '');
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.85}
+      onLayout={(e) => setSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
+      style={[styles.glassBtn, disabled && styles.glassBtnDisabled, style]}
+    >
+      {size.w > 0 && (
+        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <SvgDefs>
+            <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+              <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
+              <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+            </SvgLinearGradient>
+          </SvgDefs>
+          <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
+        </Svg>
+      )}
+      {loading ? (
+        <ActivityIndicator color={Colors.white} size="small" />
+      ) : (
+        <Text style={styles.glassBtnText}>{label}</Text>
+      )}
+    </TouchableOpacity>
   );
 };
 
@@ -170,6 +220,27 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
 
+  // Glass Button (앱 기본 버튼 — 온보딩 '다음' 디자인)
+  glassBtn: {
+    borderRadius: BorderRadius.full,
+    paddingVertical: 18,
+    paddingHorizontal: 32,
+    minHeight: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    overflow: 'hidden',
+  },
+  glassBtnDisabled: {
+    opacity: 0.5,
+  },
+  glassBtnText: {
+    color: Colors.white,
+    fontSize: Typography.fontSize.md,
+    fontFamily: Typography.fontFamily.semiBold,
+    letterSpacing: 0.3,
+  },
+
   // Social Button
   socialBtn: {
     flexDirection: 'row',
@@ -284,6 +355,7 @@ const styles = StyleSheet.create({
 
 export default {
   PrimaryButton,
+  GlassButton,
   SocialButton,
   PillTag,
   SectionTitle,
