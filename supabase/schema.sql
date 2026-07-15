@@ -87,11 +87,7 @@ create policy "profiles_update_own" on public.profiles
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회.)
 create or replace view public.public_profiles
   with (security_invoker = false) as
-  select id, handle, emoji, bio, profile_photo, created_at, handle_font,
-         -- (2026-07-16) 장기체류: 이웃이 프로필에서 볼 수 있도록 공개 노출.
-         -- country(거주국)는 소유자 전용이라 뷰에 없음; stay_country/stay_status는
-         -- 이웃 위치 표시 목적이므로 무조건 공개 컬럼으로 추가한다.
-         stay_country, stay_status
+  select id, handle, emoji, bio, profile_photo, created_at, handle_font
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
@@ -703,7 +699,11 @@ create or replace view public.public_profiles
            when public.are_neighbors(auth.uid(), profiles.id)
            then country
            else null
-         end as country
+         end as country,
+         -- (2026-07-16) 장기체류 — 위치 정보라 본인·이웃(서로이웃)에게만 노출, 그 외 null.
+         -- (country(거주국)는 소유자 전용이라 뷰에 없음)
+         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_country else null end as stay_country,
+         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_status else null end as stay_status
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 -- 재정의 이후에도 anon 회수 보장 (definer 뷰 — 비로그인 노출 방지, 1) 섹션 주석 참조)
