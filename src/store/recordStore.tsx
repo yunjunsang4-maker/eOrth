@@ -277,6 +277,7 @@ interface RecordContextType {
   activeStayGroup: TripGroup | null;
   startStay: (countryName: string, type: StayType) => void;
   endStay: (groupId: string) => void;
+  absorbIntoStay: (recordId: string, recDate?: string) => void;
   // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
   stayPromptCountry: string | null;
   setStayPromptCountry: React.Dispatch<React.SetStateAction<string | null>>;
@@ -540,7 +541,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (!stayG.records.includes(rec.id)) {
         const grow = (list: TripGroup[]) => list.map((g) =>
           g.id === stayG.id
-            ? { ...g, records: [...g.records, rec.id], coverRecordId: g.coverRecordId || rec.id, stay: { ...g.stay!, lastActiveAt: Date.now() } }
+            ? { ...g, records: [...g.records, rec.id], coverRecordId: g.coverRecordId || rec.id,
+                stay: { ...g.stay!, lastActiveAt: Date.now(),
+                  startedAt: (() => { const d = rec.startDate || rec.date; return d && d < g.stay!.startedAt ? d : g.stay!.startedAt; })() } }
             : g);
         setTripGroups((prev) => grow(prev));
         tripGroupsRef.current = grow(tripGroupsRef.current);
@@ -635,6 +638,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setTripSession(next);
       tripSessionRef.current = next;
     }
+  };
+
+  // import 흡수 등 — 체류 카드에 기록을 붙이고 시작일을 그 기록 날짜로 당긴다(백데이팅).
+  // lastActiveAt은 건드리지 않는다(현재 체류 중이라 넛지는 now 기준 유지).
+  const absorbIntoStay = (recordId: string, recDate?: string) => {
+    const apply = (list: TripGroup[]) => list.map((g) => {
+      if (!g.stay || g.stay.status === 'ended') return g;
+      const records2 = g.records.includes(recordId) ? g.records : [...g.records, recordId];
+      const started = (recDate && recDate < g.stay.startedAt) ? recDate : g.stay.startedAt;
+      return { ...g, records: records2, coverRecordId: g.coverRecordId || recordId, stay: { ...g.stay, startedAt: started } };
+    });
+    setTripGroups(apply);
+    tripGroupsRef.current = apply(tripGroupsRef.current);
   };
 
   // 국가명 → ISO 코드 (COUNTRIES term의 첫 토큰이 소문자 iso2)
@@ -1784,7 +1800,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
       {children}
     </RecordContext.Provider>
   );
