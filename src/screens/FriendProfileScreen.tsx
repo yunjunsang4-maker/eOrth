@@ -138,13 +138,18 @@ export default function FriendProfileScreen({
   // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,
   // 없으면 최근 공개 글(created_at desc)의 국가로 폴백.
   const friendLocation = useMemo(() => {
+    // 체류 중(이웃 조건부 노출) — 거주국 표시보다 우선
+    if (profileRow?.stay_status === 'active' && profileRow?.stay_country) {
+      const info = countryInfoFromCode(profileRow.stay_country.toUpperCase());
+      return t('stay.stayingIn', { flag: info.countryFlag, name: info.countryName });
+    }
     if (profileRow?.country) {
       const info = countryInfoFromCode(profileRow.country.toUpperCase());
       return `${info.countryFlag} ${info.countryName}`;
     }
     const recent = sourcePosts.find((p) => p.countryName);
     return recent?.countryName ? `${recent.countryFlag || '📍'} ${recent.countryName}` : '';
-  }, [sourcePosts, profileRow?.country]);
+  }, [sourcePosts, profileRow?.stay_status, profileRow?.stay_country, profileRow?.country, t]);
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {

@@ -20,6 +20,8 @@ export interface ProfileRow {
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
+  stay_country?: string | null; // 장기체류 국가 ISO 코드 — 이웃에게만 공개(public_profiles 조건부 노출)
+  stay_status?: string | null;  // 'active' | null
 }
 
 /**
