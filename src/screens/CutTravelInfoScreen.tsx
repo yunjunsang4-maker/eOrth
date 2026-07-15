@@ -344,9 +344,9 @@ function PrivacyModal({
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { addRecord, addTripGroup, followingUsers, records } = useRecords();
+  const { addRecord, addTripGroup, neighbors, records } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
-  const friendNames = followingUsers.map((f) => f.username);
+  const friendNames = neighbors.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
   // 여행 카드에서 추가 시 받은 기간을 기본 날짜로 적용 ('YYYY.MM.DD' → Date)

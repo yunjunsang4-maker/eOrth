@@ -650,16 +650,16 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, followingUsers } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors } = useRecords();
   // ── 공유 시트 (인스타식: 친구 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
   // 대화량 많은 친구 순 — 소셜 피드 빠른공유와 동일 기준
   const shareFriends = useMemo(
-    () => followingUsers
+    () => neighbors
       .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' }))
       .sort((a, b) => (conversations[b.handle]?.length ?? 0) - (conversations[a.handle]?.length ?? 0)),
-    [followingUsers, conversations]
+    [neighbors, conversations]
   );
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
@@ -1212,7 +1212,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, followingUsers, followUser, unfollowUser, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, removeNeighbor, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1225,7 +1225,7 @@ export default function PostDetailScreen() {
       [...records, ...feedPosts]
         .filter(
           (r) =>
-            (r.visibility === 'friends' || r.visibility === 'public') &&
+            r.visibility === 'neighbors' &&
             !isBlocked(r.user) &&
             !archivedIds.includes(r.id) &&
             !reportedPostIds.includes(r.id)
@@ -1609,13 +1609,14 @@ export default function PostDetailScreen() {
                   ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
                 const authorUsername = record.user.name || record.user.handle;
-                const followedEntry = followingUsers.find(
+                const followedEntry = neighbors.find(
                   (f) => (record.authorId && f.id === record.authorId) || f.username === authorUsername
                 );
                 const toggleFollow = () => {
                   buzz('light');
-                  if (followedEntry) unfollowUser(followedEntry.id || followedEntry.username);
-                  else followUser({ id: record.authorId ?? '', username: authorUsername, isAbroad: false, currentCountry: null, currentCountryFlag: null });
+                  // 이웃이면 끊고, 아니면 이웃신청 — 팔로우 모델 폐지에 따른 이웃 API 사용
+                  if (followedEntry) removeNeighbor(followedEntry.id || followedEntry.username);
+                  else requestNeighbor(record.authorId ?? '');
                 };
                 return (
                   <View style={s.userRow}>

@@ -419,7 +419,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, followingUsers, records } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, neighbors, records } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -433,7 +433,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
   };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
-  const friendNames = followingUsers.map((f) => f.username);
+  const friendNames = neighbors.map((f) => f.username);
   const TOTAL_STEPS = 3;
 
   // ─── 편집 모드 ───

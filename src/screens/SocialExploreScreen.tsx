@@ -149,7 +149,7 @@ function AdBanner() {
 export default function SocialExploreScreen() {
   const { t } = useTranslation();
   const { records } = useRecords();
-  const publicRecords = records.filter((r) => r.visibility === 'public');
+  const publicRecords = records.filter((r) => r.visibility === 'neighbors');
   const largeCard = publicRecords[0];
   const smallCards = publicRecords.slice(1);
 

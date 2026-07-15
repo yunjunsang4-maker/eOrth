@@ -97,9 +97,9 @@ function ShareBottomSheet({
   const { t } = useTranslation();
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const { followingUsers } = useRecords();
+  const { neighbors } = useRecords();
   // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지·사진 반영
-  const shareFriends = followingUsers.map((f) => ({
+  const shareFriends = neighbors.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
   }));
 
@@ -2245,7 +2245,7 @@ const DiaryCardMemo = React.memo(DiaryCard);
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, followingUsers, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 친구 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2284,14 +2284,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  // 빠른공유 친구는 실제 팔로우 친구(followingUsers)에서 — 대화량 많은 순 상위 3명.
+  // 빠른공유 친구는 이웃(neighbors)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
-    () => followingUsers
+    () => neighbors
       // 차단한 상대는 공유 대상에서 제외 — 차단 시 언팔되지만 로컬 상태가 어긋난 경우의 안전망
       .filter((f) => !isBlocked({ handle: f.username, name: f.username }))
       .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳' })),
-    [followingUsers, isBlocked]
+    [neighbors, isBlocked]
   );
   const top3 = useMemo(
     () => [...dmFriends]
@@ -2419,7 +2419,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
       .filter(
         (r) =>
-          (r.visibility === 'friends' || r.visibility === 'public') &&
+          r.visibility === 'neighbors' &&
           !isBlocked(r.user) &&
           !archivedIds.includes(r.id) &&
           !reportedPostIds.includes(r.id)

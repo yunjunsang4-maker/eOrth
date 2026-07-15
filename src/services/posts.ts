@@ -120,7 +120,7 @@ export async function publishPost(rec: TravelRecord, opts?: PublishMediaOptions)
   try {
     const row = {
       author_id: uid,
-      visibility: rec.visibility ?? 'public',
+      visibility: rec.visibility ?? 'neighbors',
       view_type: rec.viewType ?? 'feed',
       country_name: rec.countryName ?? null,
       data: uploaded,
@@ -162,7 +162,7 @@ export async function updatePost(remoteId: string, rec: TravelRecord, opts?: Pub
     const { error } = await supabase
       .from('posts')
       .update({
-        visibility: rec.visibility ?? 'public',
+        visibility: rec.visibility ?? 'neighbors',
         view_type: rec.viewType ?? 'feed',
         country_name: rec.countryName ?? null,
         data: uploaded,

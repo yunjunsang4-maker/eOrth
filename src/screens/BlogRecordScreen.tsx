@@ -290,7 +290,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, followingUsers, records } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -333,7 +333,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
-  const friendNames = followingUsers.map((f) => f.username);
+  const friendNames = neighbors.map((f) => f.username);
 
   // ─── 편집 모드 ───
   // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
