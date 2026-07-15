@@ -2420,6 +2420,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
       .filter(
         (r) =>
           r.visibility === 'neighbors' &&
+          // 사진첩(과거 여행 불러오기)은 게시물이 아니라 앨범 — 이웃 프로필·여행 카드에서만
+          // 보이고 소셜 피드 스트림에는 흐르지 않는다 (b84d93a로 friends 승격되며 피드
+          // 공개범위 조건을 충족하게 된 부작용 차단).
+          r.viewType !== 'album' &&
           !isBlocked(r.user) &&
           !archivedIds.includes(r.id) &&
           !reportedPostIds.includes(r.id)

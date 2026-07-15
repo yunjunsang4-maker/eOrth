@@ -149,7 +149,8 @@ function AdBanner() {
 export default function SocialExploreScreen() {
   const { t } = useTranslation();
   const { records } = useRecords();
-  const publicRecords = records.filter((r) => r.visibility === 'neighbors');
+  // 사진첩(album)은 소셜탭 미노출 — 이웃 프로필·여행 카드에서만 (SocialScreen 피드와 동일 정책)
+  const publicRecords = records.filter((r) => r.visibility === 'neighbors' && r.viewType !== 'album');
   const largeCard = publicRecords[0];
   const smallCards = publicRecords.slice(1);
 
