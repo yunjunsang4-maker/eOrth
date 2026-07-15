@@ -63,10 +63,9 @@ interface ContactFriend {
   initial: string;
   username: string;
   countries: number;
-  followers?: number;     // 팔로워 수
+  followers?: number;     // 이웃 수
   photo?: string | null; // 프로필 사진 URL (있으면 아바타로 표시)
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
-  isPrivate?: boolean;    // 비공개 계정 — 팔로우 대신 요청 흐름
 }
 
 // ─────────────────────────────────────────────
@@ -80,8 +79,8 @@ function FriendItem({
   onPress,
 }: {
   item: ContactFriend;
-  following: boolean;
-  requested: boolean; // 비공개 계정에 팔로우 요청을 보낸 상태
+  following: boolean; // 이미 이웃(서로이웃) 상태
+  requested: boolean; // 이웃 신청을 보내고 수락 대기 중인 상태
   onToggle: () => void;
   onPress?: () => void;
 }) {
@@ -114,14 +113,14 @@ function FriendItem({
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
         activeOpacity={0.8}
         accessibilityRole="button"
-        accessibilityLabel={following ? t('friends.unfollowNameA11y', { name: item.name }) : t('friends.followNameA11y', { name: item.name })}
+        accessibilityLabel={following ? t('friends.neighborActive') : t('friends.neighborRequest')}
       >
         <Text style={[s.followBtnText, (following || requested) && s.followingBtnText]}>
           {following
-            ? t('friends.followingTitle')
+            ? t('friends.neighborActive')
             : requested
-              ? t('friends.requested')
-              : t('friends.follow')}
+              ? t('friends.neighborRequested')
+              : t('friends.neighborRequest')}
         </Text>
       </TouchableOpacity>
     </TouchableOpacity>
@@ -158,8 +157,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     const q = route.params?.initialQuery;
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
-  // 팔로우 상태는 store 공유 — 친구 프로필·팔로잉 목록·프로필 카운트와 동기화
-  const { records, followingUsers, followUser, unfollowUser, isBlocked, requestFollow, cancelFollowRequest, isFollowRequested } = useRecords();
+  // 이웃 상태는 store 공유 — 친구 프로필·이웃 목록·프로필 카운트와 동기화
+  const { records, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked } = useRecords();
   // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
   const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
@@ -199,7 +198,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     });
   }, [navigation]);
 
-  // 팔로우/언팔 시 목록에 표시된 팔로워 수 낙관적 반영 (서버 재조회 없이 ±1)
+  // 이웃 해제 시 목록에 표시된 이웃 수 낙관적 반영 (서버 재조회 없이 ±1)
+  // 신청은 수락 전까지 pending이라 카운트는 건드리지 않고, 해제(-1)만 반영한다.
   const bumpFollowerCount = (id: string, delta: number) => {
     const adjust = (list: ContactFriend[]) =>
       list.map((f) => (f.id === id ? { ...f, followers: Math.max(0, (f.followers ?? 0) + delta) } : f));
@@ -207,33 +207,18 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     setSuggestions(adjust);
   };
 
-  const toggleFollow = (friend: ContactFriend) => {
+  const onNeighborToggle = (friend: ContactFriend) => {
     buzz('light');
-    // id 우선 매칭 — 핸들(username)이 빈 유저끼리 서로 같다고 오판되는 문제 방지
-    const followed = followingUsers.find((f) => (f.id ? f.id === friend.id : f.username === friend.username));
-    if (followed) {
-      unfollowUser(followed.id || followed.username);
+    if (isNeighbor(friend.id)) {
+      removeNeighbor(friend.id);
       bumpFollowerCount(friend.id, -1);
-      showToast(t('comp2.toastUnfollowed', { name: friend.name }));
-    } else if (friend.isPrivate) {
-      // 비공개 계정: 팔로우 요청 보내기 ↔ 요청 취소
-      if (isFollowRequested(friend.id)) {
-        cancelFollowRequest(friend.id);
-        showToast(t('friends.requestCanceledToast'));
-      } else {
-        requestFollow(friend.id);
-        showToast(t('friends.requestSentToast', { name: friend.name }));
-      }
+      showToast(t('comp2.toastNeighborRemoved', { name: friend.name }));
+    } else if (isNeighborRequested(friend.id)) {
+      cancelNeighborRequest(friend.id);
+      showToast(t('comp2.toastNeighborRequestCanceled', { name: friend.name }));
     } else {
-      followUser({
-        id: friend.id,
-        username: friend.username,
-        isAbroad: false,
-        currentCountry: null,
-        currentCountryFlag: null,
-      });
-      bumpFollowerCount(friend.id, +1);
-      showToast(t('comp2.toastFollowed', { name: friend.name }));
+      requestNeighbor(friend.id);
+      showToast(t('comp2.toastNeighborRequested', { name: friend.name }));
     }
   };
 
@@ -327,7 +312,6 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             followers: fcounts[r.id] ?? 0,
             photo: r.profilePhoto,
             emoji: r.emoji,
-            isPrivate: r.isPrivate,
           }))
         );
       } catch {
@@ -366,7 +350,6 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             followers: fcounts[p.id] ?? 0,
             photo: p.profile_photo,
             emoji: p.emoji,
-            isPrivate: !!p.is_private,
           }))
         );
       } catch {
@@ -391,9 +374,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       <React.Fragment key={item.id}>
         <FriendItem
           item={item}
-          following={followingUsers.some((f) => (f.id ? f.id === item.id : f.username === item.username))}
-          requested={isFollowRequested(item.id)}
-          onToggle={() => toggleFollow(item)}
+          following={isNeighbor(item.id)}
+          requested={isNeighborRequested(item.id)}
+          onToggle={() => onNeighborToggle(item)}
           onPress={() => navigation.navigate('FriendProfile', { userId: item.id, username: item.username })}
         />
         {idx < list.length - 1 && <View style={s.divider} />}

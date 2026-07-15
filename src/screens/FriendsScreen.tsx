@@ -79,34 +79,34 @@ type Props = RootStackScreenProps<'Friends'>;
 export default function FriendsScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { blockUser, followingUsers, isBlocked, toggleMute, isMuted, refreshFollowing } = useRecords();
+  const { blockUser, neighbors, isBlocked, toggleMute, isMuted, refreshNeighbors } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
-  // 당겨서 새로고침 — 팔로잉 목록(친구)을 서버 기준으로 재동기화
+  // 당겨서 새로고침 — 이웃 목록(친구)을 서버 기준으로 재동기화
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
-    try { await refreshFollowing(); } finally { setRefreshing(false); }
+    try { await refreshNeighbors(); } finally { setRefreshing(false); }
   };
 
   const [search, setSearch] = useState('');
-  // 친구 목록은 실제 팔로우한 친구로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
+  // 친구 목록은 실제 이웃으로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
   const [friends, setFriends] = useState<Friend[]>(() =>
-    followingUsers.map((f) => ({
+    neighbors.map((f) => ({
       id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo,
       lastMessage: '', lastMessageAt: 0, unread: 0, online: false,
     }))
   );
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
 
-  // 팔로우 목록 변경을 친구 목록에 반영(새 팔로우 추가/언팔 제거). 로컬 상태(음소거 등)는 유지.
-  // 팔로잉이 아니어도 '대화가 있는' 행(아래 낯선 상대 effect가 추가)은 지우지 않는다 —
-  // 서버 정책상 팔로우하지 않은 사용자도 내게 DM을 보낼 수 있는데, 팔로잉 기준으로만
+  // 이웃 목록 변경을 친구 목록에 반영(새 이웃 추가/해제 제거). 로컬 상태(음소거 등)는 유지.
+  // 이웃이 아니어도 '대화가 있는' 행(아래 낯선 상대 effect가 추가)은 지우지 않는다 —
+  // 서버 정책상 이웃이 아닌 사용자도 내게 DM을 보낼 수 있는데, 이웃 기준으로만
   // 목록을 만들면 그 메시지를 열람할 경로가 전혀 없다.
   useEffect(() => {
     setFriends((prev) => {
       const byId = new Map(prev.map((f) => [f.id, f]));
-      const base = followingUsers.map((u) => {
+      const base = neighbors.map((u) => {
         const ex = byId.get(u.id);
         return ex
           ? { ...ex, name: u.username, handle: u.username, emoji: u.emoji || ex.emoji, photo: u.photo ?? ex.photo }
@@ -118,12 +118,12 @@ export default function FriendsScreen({ navigation }: Props) {
       );
       return [...base, ...extras];
     });
-  }, [followingUsers, conversations]);
+  }, [neighbors, conversations]);
 
-  // 팔로우하지 않은 상대가 보낸 대화 → 목록 행 생성 (프로필 조회로 이모지·uuid 확보)
+  // 이웃이 아닌 상대가 보낸 대화 → 목록 행 생성 (프로필 조회로 이모지·uuid 확보)
   useEffect(() => {
     const known = new Set([
-      ...followingUsers.map((u) => u.username),
+      ...neighbors.map((u) => u.username),
       ...friends.map((f) => f.handle),
     ]);
     const strangers = Object.keys(conversations).filter(
@@ -152,12 +152,12 @@ export default function FriendsScreen({ navigation }: Props) {
     return () => { cancelled = true; };
     // friends는 이 effect가 스스로 갱신하므로 deps에 넣지 않는다(무한 루프 방지) — known 집합은 conversations 변경 시 재평가
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [conversations, followingUsers, registerPeer]);
+  }, [conversations, neighbors, registerPeer]);
 
   // 실시간 DM 수신이 목록과 같은 키(username)로 묶이도록 상대 uuid 매핑을 미리 등록
   useEffect(() => {
-    followingUsers.forEach((u) => { if (u.id) registerPeer(u.username, u.id); });
-  }, [followingUsers, registerPeer]);
+    neighbors.forEach((u) => { if (u.id) registerPeer(u.username, u.id); });
+  }, [neighbors, registerPeer]);
 
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
