@@ -419,7 +419,7 @@ const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, neighbors, records } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -488,8 +488,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     [homeCountryCode]
   );
   const isDomesticSelected = !!homeCountryName && selectedCountries.some(c => c.name === homeCountryName);
+
+  // 진행 중 체류국(active/paused 모두 — ended 아니면 기록 작성 시 지역 프리셋 제공)
+  const stayCountryName = activeStayGroup?.stay?.status !== 'ended' ? (activeStayGroup?.countryName ?? null) : null;
+  const stayCountryCode = useMemo(
+    () => (stayCountryName ? COUNTRIES.find((c) => c.name === stayCountryName)?.term.split(' ')[0].toUpperCase() ?? null : null),
+    [stayCountryName]
+  );
+  const isStaySelected = !!stayCountryName && selectedCountries.some(c => c.name === stayCountryName);
+
+  // 지역 프리셋 대상 국가 코드 — 거주국 우선, 없으면 체류국
+  const regionCountryCode = isDomesticSelected ? homeCountryCode : isStaySelected ? stayCountryCode : null;
   // 거주국가의 지역 프리셋 — 한국은 시/도, countryGeo 수록국(일본·미국 등)은 주/현. 없으면 칩 숨김
-  const homeRegions = useMemo(() => getHomeRegions(homeCountryCode), [homeCountryCode]);
+  const homeRegions = useMemo(
+    () => (regionCountryCode ? getHomeRegions(regionCountryCode) : getHomeRegions(homeCountryCode)),
+    [regionCountryCode, homeCountryCode]
+  );
 
   // 선택 국가에 이미 기록된 날짜 — 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게 (편집 중 기록 제외)
   const recordedDates = useMemo(
@@ -528,8 +542,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (!mapped) return;
       setSelectedCountries(prev => (prev.length === 0 ? [mapped] : prev)); // 비어있을 때만
       if (city) {
-        // 국내면 GPS 도시명을 거주국가 지역 프리셋으로 정규화(수원시→경기, Kyoto→교토부) — 카드 파편화 방지
-        const reg = mapped.name === homeCountryName ? normalizeHomeRegion(homeCountryCode, city) : null;
+        // 국내 또는 체류국이면 GPS 도시명을 지역 프리셋으로 정규화(수원시→경기, Kyoto→교토부) — 카드 파편화 방지
+        const isHome = mapped.name === homeCountryName;
+        const isStay = !isHome && mapped.name === stayCountryName;
+        const normCode = isHome ? homeCountryCode : isStay ? stayCountryCode : null;
+        const reg = normCode ? normalizeHomeRegion(normCode, city) : null;
         setSelectedRegion(prev => prev ?? (reg ? { name: reg.name, nameEn: reg.nameEn } : { name: city, nameEn: city }));
       }
     })();
@@ -1458,7 +1475,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
               {/* 국내 지역 선택 — 국내 기록은 지역(시/도·주/현) 단위로 여행 카드가 구분된다.
                   거주국가에 지역 프리셋이 없으면 칩을 숨기고 기존(자유 문자열) 동작 유지 */}
-              {isDomesticSelected && homeRegions.length > 0 && (
+              {(isDomesticSelected || isStaySelected) && homeRegions.length > 0 && (
                 <View style={{ marginBottom: 12 }}>
                   <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>

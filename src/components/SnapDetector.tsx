@@ -3,9 +3,11 @@
  * 해외 감지 시 스냅 알림을 예약하는 컴포넌트.
  * App.tsx에서 Provider 내부에 마운트.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { COUNTRIES } from '../constants/countries';
 import {
   detectCurrentCountry,
   isAbroad,
@@ -19,8 +21,17 @@ const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4시간마다 체크
 
 export default function SnapDetector() {
   const { homeCountryCode, snapEnabled, notifPrefs } = useSettings();
+  const { activeStayGroup } = useRecords();
   const lastCheckRef = useRef(0);
   const hasSentRef = useRef(false);
+
+  // 진행 중(active) 체류국 ISO2 코드 — 체류국은 해외로 치지 않는다
+  const stayCountryCode = useMemo(() => {
+    if (activeStayGroup?.stay?.status !== 'active') return null;
+    const name = activeStayGroup.countryName;
+    if (!name) return null;
+    return COUNTRIES.find((c) => c.name === name)?.term.split(' ')[0].toUpperCase() ?? null;
+  }, [activeStayGroup]);
 
   useEffect(() => {
     // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 스냅 토글을 꺼진 것으로
@@ -39,7 +50,7 @@ export default function SnapDetector() {
       const { countryCode, countryName } = await detectCurrentCountry();
       if (!countryCode) return;
 
-      if (isAbroad(countryCode, homeCountryCode)) {
+      if (isAbroad(countryCode, homeCountryCode, stayCountryCode)) {
         if (!hasSentRef.current) {
           // 처음 해외 감지 → 즉시 알림
           const hasPermission = await requestNotificationPermission();
@@ -65,7 +76,7 @@ export default function SnapDetector() {
     check();
 
     return () => subscription.remove();
-  }, [snapEnabled, notifPrefs.master, homeCountryCode]);
+  }, [snapEnabled, notifPrefs.master, homeCountryCode, stayCountryCode]);
 
   return null; // UI 없음
 }

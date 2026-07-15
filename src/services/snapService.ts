@@ -68,12 +68,18 @@ export async function detectCurrentCountry(): Promise<{
 }
 
 // ─── 해외 여부 판단 ───
+// 거주국은 물론, 진행 중 체류국(장기체류 active)도 '홈'으로 취급해 해외 알림을 억제한다.
+// stayCountryCode: 진행 중(active) 체류국 ISO2 코드. 없거나 null이면 기존 동작 유지.
 export function isAbroad(
   currentCountryCode: string | null,
-  homeCountryCode: string
+  homeCountryCode: string,
+  stayCountryCode?: string | null
 ): boolean {
   if (!currentCountryCode) return false;
-  return currentCountryCode.toUpperCase() !== homeCountryCode.toUpperCase();
+  const cur = currentCountryCode.toUpperCase();
+  if (cur === homeCountryCode.toUpperCase()) return false;
+  if (stayCountryCode && cur === stayCountryCode.toUpperCase()) return false;
+  return true;
 }
 
 // ─── 알림 권한 요청 ───
