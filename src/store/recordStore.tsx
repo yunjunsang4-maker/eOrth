@@ -1290,7 +1290,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripGroups((prev) => {
       const target = prev.find((g) => g.id === targetId);
       if (!target) return prev;
-      // 다국가 분할 카드는 같은 기록을 공유할 수 있어 중복 제거하며 이어붙인다
+      // 대표(target) 카드 기준으로 합친다 — 대표 기록 뒤에 소스 기록을 이어붙인다.
+      // 다국가 분할 카드는 같은 기록을 공유할 수 있어 중복 제거하며 이어붙인다.
       const seen = new Set(target.records);
       const added: string[] = [];
       for (const sid of ids) {

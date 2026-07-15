@@ -25,7 +25,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
+import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
@@ -991,15 +991,41 @@ function DraggableCardWrapper({
   const cbRef = useRef({ idx, onDragStart, onDragMove, onDragEnd, onPress });
   cbRef.current = { idx, onDragStart, onDragMove, onDragEnd, onPress };
 
+  // 탭 스퀴시 — FriendProfile TripCard(LiquidPressable)와 동일한 눌림 효과(강도 0.02).
+  // hoverAnim이 non-native라 같은 노드 transform에 얹으려면 이 값도 non-native로 구동한다.
+  const SQUISH = 0.02;
+  const pressX = useRef(new Animated.Value(1)).current;
+  const pressY = useRef(new Animated.Value(1)).current;
+  const squishIn = useCallback(() => {
+    Animated.parallel([
+      Animated.spring(pressX, { toValue: 1 + SQUISH, tension: 300, friction: 8, useNativeDriver: false }),
+      Animated.spring(pressY, { toValue: 1 - SQUISH, tension: 300, friction: 8, useNativeDriver: false }),
+    ]).start();
+  }, [pressX, pressY]);
+  const squishOut = useCallback(() => {
+    Animated.sequence([
+      Animated.parallel([
+        Animated.spring(pressX, { toValue: 1 - SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: false }),
+        Animated.spring(pressY, { toValue: 1 + SQUISH * 0.5, tension: 400, friction: 6, useNativeDriver: false }),
+      ]),
+      Animated.parallel([
+        Animated.spring(pressX, { toValue: 1, tension: 200, friction: 10, useNativeDriver: false }),
+        Animated.spring(pressY, { toValue: 1, tension: 200, friction: 10, useNativeDriver: false }),
+      ]),
+    ]).start();
+  }, [pressX, pressY]);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
       onMoveShouldSetPanResponder: () => isDraggingRef.current,
       onPanResponderGrant: (evt, gestureState) => {
         isDraggingRef.current = false;
+        squishIn(); // 탭 눌림 피드백 (드래그로 전환되면 아래에서 원복)
         if (timerRef.current) clearTimeout(timerRef.current);
         timerRef.current = setTimeout(() => {
           isDraggingRef.current = true;
+          pressX.setValue(1); pressY.setValue(1); // 드래그 전환 → 스퀴시 원복(드래그 변형이 대신 적용)
           cbRef.current.onDragStart(cbRef.current.idx);
         }, 400);
       },
@@ -1011,6 +1037,7 @@ function DraggableCardWrapper({
             if (timerRef.current) {
               clearTimeout(timerRef.current);
               timerRef.current = null;
+              squishOut(); // 스크롤로 판정 → 눌림 원복
             }
           }
         }
@@ -1024,6 +1051,7 @@ function DraggableCardWrapper({
           isDraggingRef.current = false;
           cbRef.current.onDragEnd(cbRef.current.idx, gestureState.dx, gestureState.dy);
         } else {
+          squishOut(); // 탭 릴리즈 → 탄성 복원
           cbRef.current.onPress();
         }
       },
@@ -1035,6 +1063,8 @@ function DraggableCardWrapper({
         if (isDraggingRef.current) {
           isDraggingRef.current = false;
           cbRef.current.onDragEnd(cbRef.current.idx, gestureState.dx, gestureState.dy);
+        } else {
+          squishOut(); // 제스처 가로채짐 → 눌림 원복
         }
       },
       onPanResponderTerminationRequest: () => !isDraggingRef.current,
@@ -1065,7 +1095,7 @@ function DraggableCardWrapper({
       {...panResponder.panHandlers}
       style={[
         style,
-        !isActive && { transform: [{ scale: hoverScale }] },
+        !isActive && { transform: [{ scale: hoverScale }, { scaleX: pressX }, { scaleY: pressY }] },
         isActive && {
           transform: [
             { translateX: dragOffset.x },
@@ -1393,6 +1423,10 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // ─── 여행 카드 합치기(병합 모드) — 탭 순서 유지, 첫 번째로 선택한 카드가 대표 ───
   const [mergeMode, setMergeMode] = useState(false);
   const [mergeSelected, setMergeSelected] = useState<string[]>([]);
+  // 합치기 버튼 크기 — 유리 테두리(그라데이션 stroke) SVG를 버튼 크기에 맞춰 그리기 위한 측정값
+  const [mergeBtnSize, setMergeBtnSize] = useState({ w: 0, h: 0 });
+  // 병합 모드 동안 탭바를 잠시 숨긴다 (선택·정렬에 집중). 종료/언마운트 시 복원.
+  useEffect(() => { setTabBarHidden(mergeMode); }, [mergeMode]);
   const dragOffset = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const dragScale = useRef(new Animated.Value(1)).current;
   // 현재 드래그 카드가 올라가 있는 대상 카드 인덱스 (그 카드가 네온 링으로 반응)
@@ -2070,13 +2104,35 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
       {/* 병합 모드 하단 고정 바 — 2장 이상 선택 시 활성화 */}
       {mergeMode && (
-        <View style={[mergeSt.bar, { bottom: insets.bottom + 96 }]} pointerEvents="box-none">
+        <View style={[mergeSt.bar, { bottom: insets.bottom + 20 }]} pointerEvents="box-none">
           <TouchableOpacity
-            style={[mergeSt.barBtn, { backgroundColor: skinAccent.accent }, mergeSelected.length < 2 && mergeSt.barBtnDisabled]}
+            style={[mergeSt.barBtn, mergeSelected.length < 2 && mergeSt.barBtnDisabled]}
             disabled={mergeSelected.length < 2}
             onPress={confirmMerge}
             activeOpacity={0.85}
+            onLayout={(e) => setMergeBtnSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
           >
+            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208) */}
+            {mergeBtnSize.w > 0 && (
+              <Svg width={mergeBtnSize.w} height={mergeBtnSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Defs>
+                  <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
+                    <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
+                    <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+                  </SvgLinearGradient>
+                </Defs>
+                <SvgRect
+                  x={0.5}
+                  y={0.5}
+                  width={mergeBtnSize.w - 1}
+                  height={mergeBtnSize.h - 1}
+                  rx={(mergeBtnSize.h - 1) / 2}
+                  stroke="url(#mergeBtnRing)"
+                  strokeWidth={1}
+                  fill="none"
+                />
+              </Svg>
+            )}
             <Text style={[mergeSt.barBtnTxt, mergeSelected.length < 2 && mergeSt.barBtnTxtDisabled]}>
               {t('profile.mergeBtn', { count: mergeSelected.length })}
             </Text>
@@ -3191,22 +3247,26 @@ const mergeSt = StyleSheet.create({
     right: 16,
     alignItems: 'center',
   },
+  // 유리(글래스) 알약 — 시안 Frame 2147230208의 #CECFCD 그라데이션 테두리 + 흰 텍스트.
+  // 채움은 별/배경이 비치지 않게 불투명 색으로(토글 배경과 맞춤). 그 위에 흰색 10% 글래스 틴트를 얹는다.
   barBtn: {
     width: '100%',
-    borderRadius: 26,
-    paddingVertical: 15,
+    borderRadius: 31.5,
+    paddingVertical: 18,
     alignItems: 'center',
-    backgroundColor: '#BF85FC',
+    justifyContent: 'center',
+    backgroundColor: '#211E2B', // #12101A(토글) 위에 흰색 10% 글래스를 구운 톤 — 불투명
+    overflow: 'hidden',
   },
   barBtnDisabled: {
-    backgroundColor: '#2E2E3B',
+    backgroundColor: '#16141E',
   },
   barBtnTxt: {
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '800',
-    color: '#0A0A0F',
+    color: '#FFFFFF',
   },
   barBtnTxtDisabled: {
-    color: '#A1A1B0',
+    color: 'rgba(255,255,255,0.35)',
   },
 });

@@ -176,7 +176,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
   const grad = TRIP_GRADIENT_COLORS[trip.id] || ['rgba(221,183,255,0.2)', 'rgba(221,183,255,0)'];
   const glowColor = grad[0]?.replace(/[,\s]0\.\d+\)/, ',1)') || '#A855F7';
   return (
-    <LiquidPressable onPress={onPress} style={main ? thumbSt.mainCard : thumbSt.gridCard} intensity={0.12}>
+    <LiquidPressable onPress={onPress} style={main ? thumbSt.mainCard : thumbSt.gridCard} intensity={0.02}>
       <LiquidCardGlow width={main ? SCREEN_WIDTH : THUMB_WIDTH} height={main ? 320 : 260} color={glowColor} opacity={main ? 0.34 : 0.3} />
       <LinearGradient colors={grad} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
       {trip.coverUri ? (
