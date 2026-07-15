@@ -43,9 +43,8 @@ const WEATHER_OPTIONS = [
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
 const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'public',  label: '🌐 전체 공개' },
-  { value: 'friends', label: '👥 친구만' },
-  { value: 'private', label: '🔒 나만 보기' },
+  { value: 'neighbors', label: '🏡 이웃만' },
+  { value: 'private',   label: '🔒 나만 보기' },
 ];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
@@ -111,9 +110,8 @@ const weatherLabel = (v: string, tr: TFunction) => {
 const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
 const visibilityLabel = (v: Visibility, tr: TFunction) => {
   switch (v) {
-    case 'public': return `🌐 ${tr('newRecord.visPublic')}`;
-    case 'friends': return `👥 ${tr('newRecord.visFriends')}`;
-    case 'private': return `🔒 ${tr('newRecord.visPrivate')}`;
+    case 'neighbors': return `🏡 ${tr('newRecord.visNeighbors')}`;
+    case 'private':   return `🔒 ${tr('newRecord.visPrivate')}`;
     default: return '';
   }
 };
@@ -401,7 +399,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
-  const [visibility, setVisibility] = useState<Visibility>('friends');
+  const [visibility, setVisibility] = useState<Visibility>('neighbors');
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [privateFriends, setPrivateFriends] = useState<string[]>([]);
   const [privacyVisible, setPrivacyVisible] = useState(false);

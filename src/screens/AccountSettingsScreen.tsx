@@ -116,7 +116,7 @@ const CardRow = ({
 
 export default function AccountSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
-  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender, accountPublic, setAccountPublic } = useSettings();
+  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender } = useSettings();
   const genderLabel = (g: Gender) =>
     g === 'male' ? t('basicInfo.genderMale') : g === 'female' ? t('basicInfo.genderFemale') : t('accountSettings.genderUnset');
   // 실제 identity 연동 API 미연동 — 연동 상태는 가입 수단에서 파생(가짜 토글 상태 금지, H2)
@@ -166,24 +166,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setIsGenderModalVisible(false);
   };
   const appleLinked = signUpMethod === 'apple';
-  // 계정 공개 여부는 settingsStore에 영속 저장 (화면 재진입 시 유지)
-  const isPublic = accountPublic;
-
-  const handlePublicToggle = (newValue: boolean) => {
-    const title = newValue ? t('accountSettings.publicToggleTitleOn') : t('accountSettings.publicToggleTitleOff');
-    const message = newValue
-      ? t('accountSettings.publicToggleMsgOn')
-      : t('accountSettings.publicToggleMsgOff');
-
-    Alert.alert(
-      title,
-      message,
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('accountSettings.toggleConfirm'), onPress: () => setAccountPublic(newValue) }
-      ]
-    );
-  };
 
   // 비밀번호 변경 모달 상태
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
@@ -497,25 +479,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 onValueChange={() => toggleSocial('Apple')}
                 trackColor={{ false: COLORS.divider, true: '#555' }}
                 thumbColor={COLORS.white}
-              />
-            }
-          />
-        </View>
-
-        {/* ── 공개 설정 ── */}
-        <SectionTitle label={t('accountSettings.sectionVisibility')} />
-        <View style={styles.card}>
-          <CardRow
-            icon={isPublic ? <GlobeIcon size={20} /> : <LockClosedIcon size={20} />}
-            label={t('accountSettings.accountPublic')}
-            value={isPublic ? t('accountSettings.publicDesc') : t('accountSettings.privateDesc')}
-            rightElement={
-              <Switch
-                value={isPublic}
-                onValueChange={handlePublicToggle}
-                trackColor={{ false: COLORS.divider, true: COLORS.purpleDeep }}
-                thumbColor={COLORS.purpleNeon}
-                ios_backgroundColor={COLORS.divider}
               />
             }
           />

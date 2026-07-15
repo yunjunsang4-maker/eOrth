@@ -395,7 +395,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
       regionNameEn: selectedCountry?.regionEn || undefined,
       date: dateStr,
       content: caption || t('snap.defaultCaption'),
-      visibility: 'friends',
+      visibility: 'neighbors',
       medias: [backPhoto, frontPhoto].filter(Boolean) as string[],
       viewType: 'snap',
       snapFrontUri: frontPhoto || undefined,

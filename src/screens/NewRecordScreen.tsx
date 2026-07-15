@@ -693,7 +693,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [memo,            setMemo]            = useState(editRecord?.memo ?? '');
   const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
   // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 친구만 기본
-  const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'friends');
+  const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
 
   // ── 국가별 데이터 관리 (2개국 이상 선택 시) ──
   const isMultiCountry = selectedCountries.length > 1;
@@ -905,9 +905,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const FLIGHT_OPTIONS  = ['직항', '경유'];
   const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
   const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-    { value: 'public',  label: `🌐 ${t('newRecord.visPublic')}` },
-    { value: 'friends', label: `👥 ${t('newRecord.visFriends')}` },
-    { value: 'private', label: `🔒 ${t('newRecord.visPrivate')}` },
+    { value: 'neighbors', label: `🏡 ${t('newRecord.visNeighbors')}` },
+    { value: 'private',   label: `🔒 ${t('newRecord.visPrivate')}` },
   ];
   const KEYWORD_OPTIONS = ['#맛집','#쇼핑','#자연','#역사','#휴양','#액티비티','#도시','#힐링','#백패킹','#럭셔리'];
 

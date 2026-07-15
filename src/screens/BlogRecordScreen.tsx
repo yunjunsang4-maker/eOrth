@@ -100,9 +100,8 @@ const WEATHER_OPTIONS = [
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
 const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'public',  label: '🌐 전체 공개' },
-  { value: 'friends', label: '👥 친구만' },
-  { value: 'private', label: '🔒 나만 보기' },
+  { value: 'neighbors', label: '🏡 이웃만' },
+  { value: 'private',   label: '🔒 나만 보기' },
 ];
 // 글자 크기 라벨 → i18n 키 (FONT_SIZE_OPTIONS.size 기준, 라벨은 UI 문구라 번역)
 const FONT_SIZE_KEY: Record<number, string> = {
@@ -318,9 +317,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
   const visibilityLabel = (v: Visibility) => {
     switch (v) {
-      case 'public': return `🌐 ${t('newRecord.visPublic')}`;
-      case 'friends': return `👥 ${t('newRecord.visFriends')}`;
-      case 'private': return `🔒 ${t('newRecord.visPrivate')}`;
+      case 'neighbors': return `🏡 ${t('newRecord.visNeighbors')}`;
+      case 'private':   return `🔒 ${t('newRecord.visPrivate')}`;
       default: return '';
     }
   };
@@ -406,7 +404,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPeriod?.endDate ?? '');
   const [rating, setRating] = useState(editRecord?.rating ?? 0);
   const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
-  const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'friends');
+  const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
   const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [weather, setWeather] = useState(editRecord?.weather ?? '');
@@ -664,7 +662,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setRating(draft.rating || 0);
     setCompanions(draft.companions || []);
     setCompanionFriends(draft.companionFriends || []);
-    setVisibility(draft.visibility ?? 'friends');
+    setVisibility(draft.visibility ?? 'neighbors');
     setWeather(draft.weather || '');
     setBudget(draft.budget ? String(draft.budget.amount) : '');
     chooseCurrency(draft.budget?.currency || 'KRW');

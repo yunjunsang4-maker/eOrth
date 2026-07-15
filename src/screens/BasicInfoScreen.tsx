@@ -76,8 +76,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setGender: setStoreGender,
     language: storeLanguage,
     setLanguage: setStoreLanguage,
-    accountPublic: storeAccountPublic,
-    setAccountPublic: setStoreAccountPublic,
     handle: storeHandle,
     setHandle: setStoreHandle,
     setHandleChosen,
@@ -89,7 +87,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const [birthday, setBirthday] = useState(storeBirthday || '');
   const [gender, setGender] = useState<Gender>(storeGender || '');
   const [language, setLanguage] = useState<AppLanguage>(storeLanguage || 'ko');
-  const [accountPublic, setAccountPublic] = useState<boolean>(storeAccountPublic);
   const [selectedCountry, setSelectedCountry] = useState<Country>(
     COUNTRIES.find((c) => codeOf(c) === homeCountryCode) ?? DEFAULT_COUNTRY
   );
@@ -154,7 +151,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setStoreBirthday(birthday);
     setStoreGender(gender);
     setStoreLanguage(language);
-    setStoreAccountPublic(accountPublic);
     navigation.navigate('TravelImport');
   };
 
@@ -306,36 +302,6 @@ export default function BasicInfoScreen({ navigation }: Props) {
               </Text>
               <Text style={styles.charCount}>{t('common.change')}</Text>
             </TouchableOpacity>
-          </View>
-
-          {/* 계정 공개 범위 */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>{t('basicInfo.accountVisibility')}</Text>
-            <View style={styles.genderRow}>
-              {([
-                { value: true, label: t('basicInfo.visibilityPublic') },
-                { value: false, label: t('basicInfo.visibilityPrivate') },
-              ] as { value: boolean; label: string }[]).map((opt) => {
-                const active = accountPublic === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.label}
-                    style={[styles.genderBtn, active && styles.genderBtnActive]}
-                    activeOpacity={0.8}
-                    onPress={() => setAccountPublic(opt.value)}
-                  >
-                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <Text style={styles.privacyHint}>
-              {accountPublic
-                ? t('basicInfo.visibilityPublicHint')
-                : t('basicInfo.visibilityPrivateHint')}
-            </Text>
           </View>
 
         </ScrollView>
