@@ -7,22 +7,23 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type PublishMediaOptions } from '../services/posts';
-import { getProfileByHandle, getProfileById, getMyUserId } from '../services/profile';
+import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
 import {
-  followUser as apiFollow,
-  unfollowUser as apiUnfollow,
+  requestNeighbor as apiRequestNeighbor,
+  cancelNeighborRequest as apiCancelNeighborRequest,
+  acceptNeighbor as apiAcceptNeighbor,
+  declineNeighbor as apiDeclineNeighbor,
+  removeNeighbor as apiRemoveNeighbor,
+  fetchNeighbors,
+  fetchMyOutgoingNeighborRequests,
   blockUser as apiBlock,
   unblockUser as apiUnblock,
   reportPostToServer as apiReportPost,
-  requestFollow as apiRequestFollow,
-  cancelFollowRequest as apiCancelRequest,
-  fetchMyPendingRequestTargets,
-  fetchFollowing,
   likePost,
   unlikePost,
   fetchMyLikedPostIds,
@@ -36,7 +37,7 @@ import {
 // ─────────────────────────────────────────────
 // 타입 정의
 // ─────────────────────────────────────────────
-export type Visibility = 'private' | 'friends' | 'public';
+export type Visibility = 'private' | 'neighbors';
 
 export type RecordViewType =
   | 'feed'        // 피드 (기본값)
@@ -197,7 +198,7 @@ export interface PostComment {
 }
 
 // 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
-const INITIAL_FOLLOWING: FollowedFriend[] = [];
+const INITIAL_NEIGHBORS: FollowedFriend[] = [];
 const INITIAL_COMMENTS: Record<string, PostComment[]> = {};
 
 // 게시물 총 댓글 수(최상위 + 답글) — record.comments(표시용 숫자)를 commentsByPost와 동기화할 때 사용
@@ -235,15 +236,17 @@ interface RecordContextType {
   mutedHandles: string[];
   toggleMute: (handle: string) => void;
   isMuted: (handle: string) => boolean;
-  followingUsers: FollowedFriend[];
-  followUser: (user: Omit<FollowedFriend, 'followedAt'>) => void;
-  unfollowUser: (idOrUsername: string) => void;
-  setFollowMutual: (idOrUsername: string, isMutual: boolean) => void;
-  // 비공개 계정 팔로우 요청 — 내가 보낸 대기 중 요청의 대상 id (서버 상태, 비영속)
-  pendingFollowRequests: string[];
-  requestFollow: (targetId: string) => void;
-  cancelFollowRequest: (targetId: string) => void;
-  isFollowRequested: (targetId: string) => boolean;
+  neighbors: FollowedFriend[];
+  requestNeighbor: (targetId: string) => void;
+  cancelNeighborRequest: (targetId: string) => void;
+  acceptNeighbor: (requesterId: string) => void;
+  declineNeighbor: (requesterId: string) => void;
+  removeNeighbor: (idOrUsername: string) => void;
+  // 내가 보낸 대기 중 이웃신청의 대상 id (서버 상태, 비영속)
+  outgoingNeighborRequests: string[];
+  isNeighbor: (id: string) => boolean;
+  isNeighborRequested: (targetId: string) => boolean;
+  refreshNeighbors: () => Promise<void>;
   commentsByPost: Record<string, PostComment[]>;
   // remoteIdOverride: 스토어에 없는 글(타인 프로필 폴백)도 댓글이 서버에 저장되게 하는 보조 키
   addComment: (postId: string, text: string, replyToId?: string, remoteIdOverride?: string) => void;
@@ -280,8 +283,6 @@ interface RecordContextType {
   // 백엔드 피드(남들의 공개/친구 글). Supabase 미설정 시 항상 빈 배열.
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
-  // 팔로잉 목록을 서버 기준으로 재동기화 (당겨서 새로고침 등)
-  refreshFollowing: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
@@ -304,7 +305,7 @@ interface RecordPersistPayload {
   tripGroups: (Omit<TripGroup, 'createdAt'> & { createdAt: string | Date })[];
   drafts: TravelRecord[];
   // 아래 두 필드는 나중에 추가됨 — 과거 저장본에는 없을 수 있어 복원 시 시드로 폴백
-  followingUsers?: FollowedFriend[];
+  neighbors?: FollowedFriend[];
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
   mutedHandles?: string[];
@@ -336,9 +337,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const sessionAlive = (s: TripSession | null): s is TripSession =>
     !!s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS;
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
-  const [followingUsers, setFollowingUsers] = useState<FollowedFriend[]>(INITIAL_FOLLOWING);
-  // 비공개 계정에 보낸 대기 중 팔로우 요청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
-  const [pendingFollowRequests, setPendingFollowRequests] = useState<string[]>([]);
+  const [neighbors, setNeighbors] = useState<FollowedFriend[]>(INITIAL_NEIGHBORS);
+  // 내가 보낸 대기 중 이웃신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
+  const [outgoingNeighborRequests, setOutgoingNeighborRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
   // 내가 본 타인 스냅(remoteId) — feedPosts는 재조회 시 초기화되므로 '안 본 링' 상태를 영속 유지
@@ -352,16 +353,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     (p) => {
       // 모든 필드에 배열/폴백 가드 — 한 필드라도 throw하면 부분 복원 상태가
       // hydrated=true 이후 디바운스 저장으로 원본을 덮어써 영구 데이터 파괴가 된다.
-      // 과거 여행 불러오기 기록 1회 보정: 예전 버전이 private으로 발행해 친구에게 전혀
-      // 안 보였다 → friends로 승격 (서버는 migration-2026-07-15-imported-albums-friends.sql이 짝).
-      // 로컬을 안 고치면 이후 이 기록을 수정할 때 updatePost가 서버를 다시 private으로 되돌린다.
-      // 가져온 앨범엔 공개범위 UI가 없어 private은 전부 코드가 정한 값(사용자 선택 아님).
+      // 공개범위 2값(private | neighbors) 전환 보정: 과거 저장본의 'public'/'friends'는
+      // 더 이상 유효하지 않으므로 모두 'neighbors'로 승격한다. ('private'은 그대로 유지)
       setRecords(
-        (Array.isArray(p.records) ? p.records : []).map((r) =>
-          r.id?.startsWith('rec-import-') && r.visibility === 'private'
-            ? { ...r, visibility: 'friends' as const }
-            : r
-        )
+        (Array.isArray(p.records) ? p.records : []).map((r) => {
+          // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
+          // 비교가 안 되므로 문자열로 확인한다(런타임엔 존재).
+          const legacy = r.visibility as string;
+          return legacy === 'public' || legacy === 'friends'
+            ? { ...r, visibility: 'neighbors' as const }
+            : r;
+        })
       );
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
@@ -371,7 +373,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           : []
       );
       setDrafts(Array.isArray(p.drafts) ? p.drafts : []);
-      setFollowingUsers(p.followingUsers ?? INITIAL_FOLLOWING);
+      setNeighbors(
+        Array.isArray(p.neighbors)
+          ? p.neighbors
+          : (Array.isArray((p as any).followingUsers) ? (p as any).followingUsers : INITIAL_NEIGHBORS)
+      );
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
@@ -387,8 +393,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, followingUsers, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -916,13 +922,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
-    // 차단하면 팔로잉에서도 제거 — 화면별 처리 불일치 방지 (팔로우 안 했으면 no-op)
-    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (팔로잉 항목의 username은 handle과 동일 값)
-    const followed = followingUsers.find((f) =>
+    // 차단하면 이웃에서도 제거 — 화면별 처리 불일치 방지 (이웃 아니면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (이웃 항목의 username은 handle과 동일 값)
+    const nb = neighbors.find((f) =>
       (!!user.id && f.id === user.id) ||
       (!!f.username && (f.username === user.handle || f.username === user.name))
     );
-    if (followed) unfollowUser(followed.id || followed.username);
+    if (nb) removeNeighbor(nb.id || nb.username);
     // 서버 blocks 반영 — 서버 RLS(게시물·댓글·DM 차단)가 실제로 동작하게 함.
     // id가 uuid가 아니면(로컬 합성 id: 'dm-핸들' 등) 그대로 보내면 uuid 컬럼에서 실패하므로
     // handle로 profile uuid를 조회(백필)해서 반영한다.
@@ -977,82 +983,69 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
   const isMuted = useCallback((handle: string) => mutedHandles.includes(handle), [mutedHandles]);
 
-  // 신원은 id 기준 — 핸들(username)이 빈 유저끼리 같은 사람으로 오판되지 않도록 한다.
-  // (빈 username은 매칭 키로 쓰지 않음)
-  const sameFollowed = (f: FollowedFriend, key: string) =>
+  // 신원은 id 기준 — 핸들(username)이 빈 유저끼리 오판 방지
+  const sameNeighbor = (f: FollowedFriend, key: string) =>
     f.id === key || (!!f.username && f.username === key);
 
-  const followUser = (user: Omit<FollowedFriend, 'followedAt'>) => {
-    setFollowingUsers((prev) => {
-      // id가 양쪽에 있으면 id로, 아니면 빈 값이 아닌 username으로만 중복 판정
-      const dup = prev.some((f) =>
-        (f.id && user.id) ? f.id === user.id : (!!f.username && f.username === user.username)
-      );
-      if (dup) return prev;
-      return [...prev, { ...user, followedAt: Date.now() }];
-    });
-    if (isSupabaseConfigured && user.id) {
-      apiFollow(user.id)
-        .then(() => refreshFollowing())
-        .catch(async (e) => {
-          // 서버 거부 시 낙관 반영 롤백 — 버튼이 '팔로잉'으로 남는데 서버엔 팔로우가 없어
-          // 다음 새로고침 때 말없이 원복되던 불일치를 막는다.
-          setFollowingUsers((prev) => prev.filter((f) => f.id !== user.id));
-          // 비공개 계정은 RLS(follows_insert_own)가 직접 팔로우를 거부한다 —
-          // is_private 분기가 없는 화면(팔로워 목록 맞팔로우·게시물 상세)에서도
-          // 요청 흐름으로 자동 전환해 준다.
-          const prof = await getProfileById(user.id!).catch(() => null);
-          if (prof?.is_private) {
-            requestFollow(user.id!);
-            emitToast('비공개 계정이에요. 팔로우 요청을 보냈어요.');
-          } else {
-            notifySyncError(e);
-          }
+  // 이웃신청 — 낙관적으로 '신청됨'(대기) 목록에 추가. 수락 전까지 이웃 목록엔 넣지 않는다.
+  // (상대도 나에게 신청해 둔 상태면 service가 자동 수락 → refreshNeighbors가 이웃으로 반영)
+  const requestNeighbor = (targetId: string) => {
+    if (!targetId) return;
+    setOutgoingNeighborRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+    if (isSupabaseConfigured) {
+      apiRequestNeighbor(targetId)
+        .then(() => refreshNeighbors())
+        .catch((e) => {
+          setOutgoingNeighborRequests((prev) => prev.filter((id) => id !== targetId));
+          notifySyncError(e);
         });
     }
   };
 
-  const unfollowUser = (idOrUsername: string) => {
-    // 정확히 한 항목만 제거(참조 비교) — 빈 username으로 인한 일괄 오삭제 방지
-    const target = followingUsers.find((f) => sameFollowed(f, idOrUsername));
-    if (!target) return;
-    setFollowingUsers((prev) => prev.filter((f) => f !== target));
-    if (isSupabaseConfigured && target.id) apiUnfollow(target.id).catch(notifySyncError);
-  };
-
-  // 맞팔(서로 팔로우) 여부 설정 — 친구 수 배지(78·81·82·83) 판정용
-  const setFollowMutual = (idOrUsername: string, isMutual: boolean) => {
-    setFollowingUsers((prev) => prev.map((f) => (sameFollowed(f, idOrUsername) ? { ...f, isMutual } : f)));
-  };
-
-  // ─── 비공개 계정 팔로우 요청 (낙관적 반영 + 서버 동기화, 실패 시 되돌림) ───
-  const requestFollow = (targetId: string) => {
+  const cancelNeighborRequest = (targetId: string) => {
     if (!targetId) return;
-    setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
+    setOutgoingNeighborRequests((prev) => prev.filter((id) => id !== targetId));
     if (isSupabaseConfigured) {
-      apiRequestFollow(targetId).catch((e) => {
-        setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+      apiCancelNeighborRequest(targetId).catch((e) => {
+        setOutgoingNeighborRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
         notifySyncError(e);
       });
     }
   };
 
-  const cancelFollowRequest = (targetId: string) => {
-    if (!targetId) return;
-    setPendingFollowRequests((prev) => prev.filter((id) => id !== targetId));
+  // 받은 신청 수락 → 이웃이 됨(refreshNeighbors로 목록 반영)
+  const acceptNeighbor = (requesterId: string) => {
+    if (!requesterId) return;
     if (isSupabaseConfigured) {
-      apiCancelRequest(targetId).catch((e) => {
-        setPendingFollowRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
-        notifySyncError(e);
-      });
+      apiAcceptNeighbor(requesterId)
+        .then(() => refreshNeighbors())
+        .catch(notifySyncError);
     }
   };
 
-  // '요청됨' 판정 — 이미 팔로우 중이면(수락됨) 요청 상태로 보지 않는다
-  const isFollowRequested = useCallback(
+  const declineNeighbor = (requesterId: string) => {
+    if (!requesterId) return;
+    if (isSupabaseConfigured) apiDeclineNeighbor(requesterId).catch(notifySyncError);
+  };
+
+  // 이웃 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
+  const removeNeighbor = (idOrUsername: string) => {
+    const target = neighbors.find((f) => sameNeighbor(f, idOrUsername));
+    setNeighbors((prev) => prev.filter((f) => (target ? f !== target : !sameNeighbor(f, idOrUsername))));
+    const targetId = target?.id || (/* id로 직접 넘어온 경우 */ idOrUsername);
+    if (isSupabaseConfigured && targetId) apiRemoveNeighbor(targetId).catch(notifySyncError);
+  };
+
+  const isNeighbor = useCallback(
+    (id: string) => neighbors.some((f) => f.id === id),
+    [neighbors]
+  );
+
+  // '신청됨' 판정 — 이미 이웃이면(수락됨) 신청 상태로 보지 않는다
+  const isNeighborRequested = useCallback(
     (targetId: string) =>
-      pendingFollowRequests.includes(targetId) && !followingUsers.some((f) => f.id === targetId),
-    [pendingFollowRequests, followingUsers]
+      outgoingNeighborRequests.includes(targetId) && !neighbors.some((f) => f.id === targetId),
+    [outgoingNeighborRequests, neighbors]
   );
 
   const addComment = (postId: string, text: string, replyToId?: string, remoteIdOverride?: string) => {
@@ -1229,9 +1222,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       content: data.title,
       likes: 0, comments: 0, liked: false,
       isMyPost: true,
-      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 친구 프로필·피드에서
+      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 이웃 프로필·피드에서
       // 과거 여행이 전혀 안 보여 "기록이 있는데 안 보인다"는 혼란을 낳았다.
-      visibility: 'friends',
+      visibility: 'neighbors',
       timestamp: Date.now(),
       viewType: 'album',
       medias: data.medias,
@@ -1327,7 +1320,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setBlockedUsers([]);
     setTripGroups([]);
     setDrafts([]);
-    setFollowingUsers(INITIAL_FOLLOWING);
+    setNeighbors(INITIAL_NEIGHBORS);
     setCommentsByPost(INITIAL_COMMENTS);
     setReportedPostIds([]);
     setMutedHandles([]);
@@ -1336,7 +1329,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 계정 경계 잔존물 정리 — 이전 계정의 세션·열람 이력·요청이 새 계정 저장본/서버 행으로 이월되지 않게
     setTripSession(null);
     setViewedSnapIds([]);
-    setPendingFollowRequests([]);
+    setOutgoingNeighborRequests([]);
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
@@ -1369,28 +1362,25 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 팔로잉 목록을 백엔드 기준으로 동기화 (맞팔 여부 포함)
-  // 서버가 연속으로 빈 팔로잉 목록을 준 횟수 — refreshFollowing의 일시 빈 응답 필터용
-  const emptyFollowingStreakRef = useRef(0);
-  const refreshFollowing = useCallback(async () => {
+  // 이웃 목록을 백엔드 기준으로 동기화
+  // 서버가 연속으로 빈 이웃 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
+  const emptyNeighborStreakRef = useRef(0);
+  const refreshNeighbors = useCallback(async () => {
     if (!isSupabaseConfigured) return;
-    // 대기 중 팔로우 요청도 함께 갱신 (오류 시 null → 로컬 유지)
-    fetchMyPendingRequestTargets().then((pending) => {
-      if (pending) setPendingFollowRequests(pending);
+    // 내가 보낸 대기 신청도 함께 갱신 (오류 시 null → 로컬 유지)
+    fetchMyOutgoingNeighborRequests().then((pending) => {
+      if (pending) setOutgoingNeighborRequests(pending);
     });
-    const list = await fetchFollowing();
-    if (!list) return; // 오류 시 로컬 유지(덮어쓰지 않음)
-    // 서버 목록으로 갱신하되 로컬 항목의 followedAt 등은 보존(서버는 팔로우 시각을 안 내려줌).
-    // isMutual은 서버(양방향 follows)가 정확하므로 항상 서버 값을 쓴다.
-    setFollowingUsers((prev) => {
-      // 토큰 갱신 직후 등 RLS가 순간적으로 빈 목록을 줄 수 있다(에러 없이) —
-      // 첫 빈 응답은 유지(팔로잉 수 0 깜빡임 방지)하고, 연속 2회 빈 응답이면
-      // 실제 전체 언팔(다른 기기에서)로 보고 수용한다. (유령 팔로잉 영구 잔존 방지)
+    const list = await fetchNeighbors();
+    if (!list) return; // 오류 시 로컬 유지
+    setNeighbors((prev) => {
+      // 토큰 갱신 직후 RLS가 순간적으로 빈 목록을 줄 수 있다 — 첫 빈 응답은 유지,
+      // 연속 2회 빈 응답이면 실제 전체 이웃 해제로 보고 수용(유령 이웃 잔존 방지).
       if (list.length === 0 && prev.length > 0) {
-        emptyFollowingStreakRef.current += 1;
-        if (emptyFollowingStreakRef.current < 2) return prev;
+        emptyNeighborStreakRef.current += 1;
+        if (emptyNeighborStreakRef.current < 2) return prev;
       } else {
-        emptyFollowingStreakRef.current = 0;
+        emptyNeighborStreakRef.current = 0;
       }
       const byId = new Map(prev.map((f) => [f.id, f]));
       return list.map((p) => {
@@ -1404,19 +1394,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           currentCountry: ex?.currentCountry ?? null,
           currentCountryFlag: ex?.currentCountryFlag ?? null,
           followedAt: ex?.followedAt ?? 0,
-          isMutual: p.isMutual,
+          isMutual: true, // 서로이웃은 모두 대칭
         };
       });
     });
   }, []);
 
-  // 앱 시작/복원 후 피드·팔로잉 1회 로드
+  // 앱 시작/복원 후 피드·이웃 1회 로드
   useEffect(() => {
     if (hydrated) {
       refreshFeed();
-      refreshFollowing();
+      refreshNeighbors();
     }
-  }, [hydrated, refreshFeed, refreshFollowing]);
+  }, [hydrated, refreshFeed, refreshNeighbors]);
 
   // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
   // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
@@ -1658,7 +1648,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, followingUsers, followUser, unfollowUser, setFollowMutual, pendingFollowRequests, requestFollow, cancelFollowRequest, isFollowRequested, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshFollowing, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
       {children}
     </RecordContext.Provider>
   );
