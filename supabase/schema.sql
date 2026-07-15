@@ -701,7 +701,7 @@ create or replace view public.public_profiles
            else null
          end as country,
          -- (2026-07-16) 장기체류 — 위치 정보라 본인·이웃(서로이웃)에게만 노출, 그 외 null.
-         -- (country(거주국)는 소유자 전용이라 뷰에 없음)
+         -- (위 country(거주국)와 동일한 이웃 조건부 정책 + 본인 예외)
          case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_country else null end as stay_country,
          case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_status else null end as stay_status
   from public.profiles
