@@ -1732,6 +1732,9 @@ const ko = {
     alreadyActiveMsg: '새 체류를 시작하려면 기존 체류({{country}})를 먼저 종료해 주세요.',
     cardBadge: '체류 · {{type}}',
     ongoing: '진행 중',
+    settingsStart: '장기체류',
+    settingsStarted: '{{country}} 체류를 시작했어요',
+    countryTitle: '어느 나라에 체류하나요?',
   },
 } as const;
 

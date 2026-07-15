@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -10,12 +10,16 @@ import {
   Modal,
   TextInput,
   Pressable,
+  FlatList,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
+import { emitToast } from '../store/toastStore';
+import { COUNTRIES } from '../constants/countries';
+import type { StayType } from '../utils/stayMachine';
 import { clearPersistedStores } from '../store/persist';
 import { signOut } from '../services/auth';
 import { deleteAllMyPosts } from '../services/posts';
@@ -122,7 +126,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     globeSkin, setGlobeSkin,
     resetSettings,
   } = useSettings();
-  const { resetRecords } = useRecords();
+  const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
@@ -148,6 +152,70 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     const v = countryDraft.trim().toUpperCase();
     if (v) setHomeCountryCode(v);
     setCountryModalVisible(false);
+  };
+
+  // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
+  // step: null=닫힘, 'country'=국가 선택, 'type'=유형 선택
+  const [stayModalStep, setStayModalStep] = useState<null | 'country' | 'type'>(null);
+  const [stayCountrySearch, setStayCountrySearch] = useState('');
+  const [staySelectedCountry, setStaySelectedCountry] = useState<{ name: string; flag: string } | null>(null);
+
+  // 거주국가 이름(homeCountryCode → 국가명) — 체류국 선택 시 거주국 제외
+  const homeCountryName = useMemo(
+    () => COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
+    [homeCountryCode],
+  );
+
+  // 검색어 필터링 (거주국 제외)
+  const stayFilteredCountries = useMemo(() => {
+    const q = stayCountrySearch.trim().toLowerCase();
+    return COUNTRIES.filter((c) => {
+      if (c.name === homeCountryName) return false;
+      if (!q) return true;
+      return c.term.toLowerCase().includes(q) || c.name.includes(q);
+    });
+  }, [stayCountrySearch, homeCountryName]);
+
+  const STAY_TYPES: { type: StayType; labelKey: string }[] = [
+    { type: 'exchange',        labelKey: 'stay.typeExchange' },
+    { type: 'language',        labelKey: 'stay.typeLanguage' },
+    { type: 'intern',          labelKey: 'stay.typeIntern' },
+    { type: 'workingHoliday', labelKey: 'stay.typeWorkingHoliday' },
+    { type: 'other',           labelKey: 'stay.typeOther' },
+  ];
+
+  const openStayModal = () => {
+    setStayCountrySearch('');
+    setStaySelectedCountry(null);
+    setStayModalStep('country');
+  };
+  const closeStayModal = () => setStayModalStep(null);
+
+  const handleStayCountrySelect = (country: { name: string; flag: string }) => {
+    setStaySelectedCountry(country);
+    setStayModalStep('type');
+  };
+
+  const handleStayTypeSelect = (type: StayType) => {
+    if (!staySelectedCountry) return;
+    startStay(staySelectedCountry.name, type);
+    emitToast(t('stay.settingsStarted', { country: staySelectedCountry.name }));
+    closeStayModal();
+  };
+
+  const handleStayPress = () => {
+    if (activeStayGroup) {
+      Alert.alert(
+        t('stay.alreadyActiveTitle'),
+        t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('stay.endStay'), style: 'destructive', onPress: () => endStay(activeStayGroup.id) },
+        ],
+      );
+    } else {
+      openStayModal();
+    }
   };
 
   const handleResetData = () => {
@@ -266,6 +334,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               label: t('settings.residence'),
               value: homeCountryCode,
               onPress: openCountryModal,
+            },
+            {
+              icon: <GlobeSkinIcon size={22} />,
+              label: t('stay.settingsStart'),
+              value: activeStayGroup
+                ? `${activeStayGroup.countryFlag ?? ''} ${activeStayGroup.countryName ?? ''}`.trim()
+                : '—',
+              onPress: handleStayPress,
             },
             {
               // 튜토리얼 다시 보기 — 'replay'는 tutorialSeen(1회 게이트)을 무시하고 강제 재생
@@ -461,6 +537,77 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             })}
             </ScrollView>
             <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={() => setFontModalVisible(false)}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 장기체류 수동 시작 모달 — 국가 선택 단계 */}
+      <Modal
+        visible={stayModalStep === 'country'}
+        transparent
+        animationType="fade"
+        onRequestClose={closeStayModal}
+      >
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
+            <TextInput
+              style={[st.modalInput, { marginBottom: 8 }]}
+              value={stayCountrySearch}
+              onChangeText={setStayCountrySearch}
+              placeholder={t('basicInfo.residenceSearchPlaceholder')}
+              placeholderTextColor={COLORS.textMuted}
+              autoCorrect={false}
+            />
+            <FlatList
+              data={stayFilteredCountries}
+              keyExtractor={(item) => item.name}
+              style={st.fontList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={st.fontRow}
+                  activeOpacity={0.7}
+                  onPress={() => handleStayCountrySelect(item)}
+                >
+                  <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{item.flag} {item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}
+      <Modal
+        visible={stayModalStep === 'type'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStayModalStep('country')}
+      >
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setStayModalStep('country')}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('stay.typeTitle')}</Text>
+            <Text style={st.modalDesc}>
+              {staySelectedCountry ? `${staySelectedCountry.flag} ${staySelectedCountry.name}` : ''}
+            </Text>
+            {STAY_TYPES.map((item) => (
+              <TouchableOpacity
+                key={item.type}
+                style={[st.fontRow, { marginBottom: 8 }]}
+                activeOpacity={0.7}
+                onPress={() => handleStayTypeSelect(item.type)}
+              >
+                <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{t(item.labelKey)}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
               <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </Pressable>

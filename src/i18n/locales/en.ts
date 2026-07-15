@@ -1731,6 +1731,9 @@ const en = {
     alreadyActiveMsg: 'To start a new stay, please end your current stay in {{country}} first.',
     cardBadge: 'Stay · {{type}}',
     ongoing: 'Ongoing',
+    settingsStart: 'Long stay',
+    settingsStarted: 'Started your stay in {{country}}',
+    countryTitle: 'Which country are you staying in?',
   },
 } as const;
 
