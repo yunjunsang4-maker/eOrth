@@ -193,6 +193,9 @@ interface TripThumbnail {
   color: string;
   records: { id: string; viewType: string }[];
   coverUri?: string; // 대표 기록의 첫 사진 — 있으면 카드 썸네일 배경으로 사용
+  // 체류 카드 표시용 (stay 메타가 있는 TripGroup에서 파생)
+  stayLabel?: string;   // 예: "체류 · 교환학생"
+  stayPeriod?: string;  // 예: "2026.03 ~ 진행 중" / "2026.03 ~ 2026.08"
 }
 
 // 프로필 여행 카드는 실제 작성 기록으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거)
@@ -1639,6 +1642,22 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
       // 다국가 분할 카드: 그룹에 표시 오버라이드(국가·커버·날짜)가 있으면 기록 값 대신 사용
       const groupDate = group.date ?? firstRec?.date;
+
+      // 체류 카드 — 유형 배지·기간 라벨 (일반 여행 카드는 undefined)
+      const stayTypeKeyMap: Record<string, string> = {
+        exchange: 'Exchange',
+        language: 'Language',
+        intern: 'Intern',
+        workingHoliday: 'WorkingHoliday',
+        other: 'Other',
+      };
+      const stayLabel = group.stay
+        ? t('stay.cardBadge', { type: t(`stay.type${stayTypeKeyMap[group.stay.type]}`) })
+        : undefined;
+      const stayPeriod = group.stay
+        ? `${group.stay.startedAt.slice(0, 7)} ~ ${group.stay.endedAt ? group.stay.endedAt.slice(0, 7) : t('stay.ongoing')}`
+        : undefined;
+
       return {
         id: group.id,
         emoji: firstRec?.user.emoji || '🗼',
@@ -1650,9 +1669,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         records: groupRecords.map(r => ({ id: r.id, viewType: r.viewType || 'feed' })),
         uniqueViewTypes,
         coverUri: group.coverUri ?? coverRec?.representativePhoto ?? coverRec?.medias?.[0], // 오버라이드 → 크롭본 → 썸네일 순
+        stayLabel,
+        stayPeriod,
       };
-    }).filter(t => t.records.length > 0);
-  }, [tripGroups, records, archivedIds]);
+    }).filter(t2 => t2.records.length > 0 || !!t2.stayLabel); // 체류 카드는 기록 0개(갓 시작)여도 노출
+  }, [tripGroups, records, archivedIds, t]);
 
   // import/기록 기반 여행 카드(mappedThumbnails)를 맨 앞에 병합
   // → 새로 만든 카드가 기본으로 큰 메인 카드 자리를 차지하고, 기존 카드는 그리드로 밀린다
@@ -2035,8 +2056,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               style={thumbSt.mainInfoBar}
             >
               <View style={{ flex: 1 }}>
+                {displayTrips[0].stayLabel && (
+                  <Text style={thumbSt.stayBadge}>{displayTrips[0].stayLabel}</Text>
+                )}
                 <Text style={thumbSt.mainTitle}>{displayTrips[0].countryFlag} {displayTrips[0].title}</Text>
-                <Text style={thumbSt.mainDate}>{displayTrips[0].date}</Text>
+                <Text style={thumbSt.mainDate}>{displayTrips[0].stayPeriod ?? displayTrips[0].date}</Text>
               </View>
               <View style={thumbSt.mainBadges}>
                 {Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed'))).map((vt) => (
@@ -2109,8 +2133,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   experimentalBlurMethod="dimezisBlurView"
                   style={thumbSt.gridInfoBar}
                 >
+                  {trip.stayLabel && (
+                    <Text style={thumbSt.stayBadge}>{trip.stayLabel}</Text>
+                  )}
                   <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
-                  <Text style={thumbSt.gridDate}>{trip.date}</Text>
+                  <Text style={thumbSt.gridDate}>{trip.stayPeriod ?? trip.date}</Text>
                   <View style={thumbSt.gridBadges}>
                     {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (
                       <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
@@ -3067,6 +3094,20 @@ const thumbSt = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
     alignItems: 'center' as const,
     justifyContent: 'center' as const,
+  },
+
+  // 체류 카드 배지 (메인·그리드 공용)
+  stayBadge: {
+    alignSelf: 'flex-start' as const,
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    backgroundColor: 'rgba(191,133,252,0.35)',
+    borderRadius: 8,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    overflow: 'hidden' as const,
+    marginBottom: 3,
   },
 });
 
