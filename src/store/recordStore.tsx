@@ -135,6 +135,7 @@ export interface TravelRecord {
   };
   regionName?: string;                // 예: "도쿄" (대륙 기록 시 사용)
   regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)
+  isExample?: boolean;                // eOrth 공식 예시 콘텐츠 — 상호작용 비활성·공식 배지·프로필 이동 차단
 }
 
 // ─────────────────────────────────────────────
