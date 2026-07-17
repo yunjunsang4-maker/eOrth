@@ -112,7 +112,7 @@ type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 // 시안 좌표계(402×874): 와이어프레임 구체 중심 (206.47, 282.93), 반경 ≈115.34.
 const HERO_CX = SW / 2;
 const HERO_R = SW * 0.34;                       // 지구본 반지름
-const HERO_GLOBE_H = Math.round(HERO_R * 2 + 92); // 히어로 섹션 높이(글로우·화살표 여유 포함)
+const HERO_GLOBE_H = Math.round(HERO_R * 2 + 72); // 히어로 섹션 높이(글로우·화살표 여유 포함) — 둥근선~통계 간격 축소 위해 하단 여백 소폭 감소
 const HERO_CY = HERO_R + 30;                    // 지구본 중심 y (섹션 내)
 // 시안 좌표 → 히어로 좌표 매핑 (구체 반경을 HERO_R에 맞춤)
 const HERO_MAP_SCALE = HERO_R / 115.34;
