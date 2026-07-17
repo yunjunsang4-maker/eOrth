@@ -279,9 +279,10 @@ const ORBIT_IMG_W = ORBIT_IMG_HALF_W * 2;                      // 전체 폭
 const ORBIT_IMG_H = ORBIT_R * (1 - Math.cos(ORBIT_SPAN));      // 정점→끝점 높이
 // 별점 지구본 emblem(디스크+격자) — Figma 시안(Group 2085664602) PNG. 맨뒤 원판/격자 문양 공용.
 const RATING_GLOBE_IMG = require('../../assets/statsRatingGlobe.png');
-const RATING_GLOBE_D = 217 * OS;                               // emblem 지름(맨뒤 원판과 동일)
-const RATING_GLOBE_X = (168.46 - 108.5) * OS;                  // 좌측(중심 168.46,193)
-const RATING_GLOBE_Y = (193 - 108.5) * OS;                     // 상단
+const RATING_GLOBE_R = 120;                                    // emblem 반지름(살짝 키움: 108.5→120)
+const RATING_GLOBE_D = RATING_GLOBE_R * 2 * OS;                // emblem 지름
+const RATING_GLOBE_X = (168.46 - RATING_GLOBE_R) * OS;         // 좌측(중심 168.46,193)
+const RATING_GLOBE_Y = (193 - RATING_GLOBE_R) * OS;           // 상단
 // 지구본 문양(2겹)은 시안 원본 격자 패스(data/statsGlobePath)를 라벤더→보라 그라데이션으로 그린다
 
 export default function StatsScreen() {
