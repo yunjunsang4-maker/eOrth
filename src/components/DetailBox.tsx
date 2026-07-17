@@ -64,7 +64,7 @@ export default function DetailBox({
 const styles = StyleSheet.create({
   wrap: { marginTop: 20 },
   title: {
-    fontSize: 15,
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.textPrimary,
     marginBottom: 10,
