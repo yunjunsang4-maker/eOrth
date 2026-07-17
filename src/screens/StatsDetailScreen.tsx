@@ -14,6 +14,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Svg, {
+  Image as SvgImage,
   Path as SvgPath,
   Circle as SvgCircle,
   G as SvgG,
@@ -27,7 +28,10 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
-import { DETAIL_WIREFRAME, DETAIL_RING, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+import { DETAIL_WIREFRAME, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+
+// 지구본 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스에 맞춰 배치.
+const DETAIL_RING_IMG = require('../../assets/statsDetailRing.png');
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
   recentTrips,
@@ -620,11 +624,6 @@ export default function StatsDetailScreen() {
                       <SvgStop offset="0" stopColor={wireTop} />
                       <SvgStop offset="1" stopColor={wireBottom} />
                     </SvgLinearGradient>
-                    {/* 링 호 — 아래 흰색 → 위 투명 (시안 paint1) */}
-                    <SvgLinearGradient id="detailRingGrad" x1="207.98" y1="430" x2="207.98" y2="271.27" gradientUnits="userSpaceOnUse">
-                      <SvgStop offset="0" stopColor="#FFFFFF" />
-                      <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-                    </SvgLinearGradient>
                   </SvgDefs>
                   {/* 뒤 보라 글로우 */}
                   <SvgCircle cx={HERO_CX} cy={HERO_CY} r={HERO_R * 1.15} fill="url(#detailGlobeGlow)" />
@@ -634,9 +633,8 @@ export default function StatsDetailScreen() {
                     <SvgCircle cx={205.89} cy={284.11} r={127.07} fill="#FFFFFF" fillOpacity={0.03} />
                     {/* 와이어프레임 구체 (시안은 blur — fill 0.25로 발광 근사) */}
                     <SvgPath d={DETAIL_WIREFRAME} fill="url(#detailWireGrad)" fillOpacity={0.25} />
-                    {/* 하단 링 호 — 시안 blur 근사(소프트 1겹 + 본선) */}
-                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={13} strokeOpacity={0.12} strokeLinecap="round" fill="none" />
-                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={6.27} strokeOpacity={0.3} strokeLinecap="round" fill="none" />
+                    {/* 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스(x 63.14~352.82, y 293~426.86)에 정렬 */}
+                    <SvgImage href={DETAIL_RING_IMG} x={63.137} y={293} width={289.687} height={133.863} preserveAspectRatio="none" />
                     {/* 별가루 입자 — 하단 아치 (시안 원본 좌표) */}
                     {(() => {
                       const dots = [] as React.ReactNode[];
