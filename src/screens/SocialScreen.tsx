@@ -2651,7 +2651,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
               <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
               {/* 주 CTA: 첫 기록 남기기 */}
               <TouchableOpacity
-                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep, shadowColor: skinAccent.accent }]}
+                style={[s.emptyCta, { backgroundColor: skinAccent.pill, shadowColor: skinAccent.accent }]}
                 activeOpacity={0.85}
                 onPress={() => {
                   // 메인(지구본) 탭으로 이동한 뒤 RecordFab의 기록 형식 메뉴를 펼친다.
