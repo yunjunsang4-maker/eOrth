@@ -949,9 +949,11 @@ function SnapStoryViewer({
                     {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => { if (s.isExample) return; toggleLike(s.id); }} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
-                </TouchableOpacity>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                    <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
                   <SendPlaneSvg size={22} />
                 </TouchableOpacity>
@@ -970,9 +972,12 @@ function SnapStoryViewer({
                     {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => { if (s.isExample) return; toggleLike(s.id); }} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
-                </TouchableOpacity>
+                {/* 예시 스냅은 좋아요 아이콘 자체를 숨김 (댓글·답장도 위에서 숨김) */}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                    <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                  </TouchableOpacity>
+                )}
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
               </>
             )}
@@ -2544,8 +2549,8 @@ const blogS = StyleSheet.create({
 // ── 모먼트 스토리 스타일 ──
 // ── 스냅 스토리 전체화면 스타일 ──
 const storyS = StyleSheet.create({
-  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
-  officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드와 동일 룩, 스토리 헤더에선 살짝 크게
+  officialBadge: { alignSelf: 'center', fontSize: 12, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   container: {
     flex: 1,
     backgroundColor: '#000',
