@@ -27,6 +27,7 @@ import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
 import * as Haptics from 'expo-haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
+import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
@@ -2652,7 +2653,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
               <TouchableOpacity
                 style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
                 activeOpacity={0.85}
-                onPress={() => navigation.navigate('NewRecord')}
+                onPress={() => {
+                  // 메인(지구본) 탭으로 이동한 뒤 RecordFab의 기록 형식 메뉴를 펼친다.
+                  requestOpenRecordFab();
+                  navigation.navigate('MainTab');
+                }}
               >
                 <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
               </TouchableOpacity>
