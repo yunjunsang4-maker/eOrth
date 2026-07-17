@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image } from 'react-native';
+import { Image, View } from 'react-native';
 import { PersonIcon } from './icons';
 
 // eOrth 앱 아이콘 — 공식 예시 아바타용
