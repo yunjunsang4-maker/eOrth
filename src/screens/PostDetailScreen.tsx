@@ -954,9 +954,11 @@ function SnapStoryViewer({
                     <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
-                  <SendPlaneSvg size={22} />
-                </TouchableOpacity>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
+                    <SendPlaneSvg size={22} />
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               /* 타인이 올린 스냅 */
@@ -972,13 +974,15 @@ function SnapStoryViewer({
                     {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
                   </TouchableOpacity>
                 )}
-                {/* 예시 스냅은 좋아요 아이콘 자체를 숨김 (댓글·답장도 위에서 숨김) */}
+                {/* 예시 스냅은 좋아요·공유 아이콘 모두 숨김 (댓글·답장도 위에서 숨김) */}
                 {!s.isExample && (
                   <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                     <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
+                )}
               </>
             )}
           </View>
