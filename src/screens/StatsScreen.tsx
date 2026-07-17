@@ -25,6 +25,7 @@ import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, {
+  Image as SvgImage,
   Path as SvgPath,
   Circle as SvgCircle,
   Rect as SvgRect,
@@ -270,6 +271,13 @@ const ORBIT_PATH = (() => {
   const x2 = ORBIT_CX + ORBIT_R * Math.sin(ORBIT_SPAN);
   return `M ${x1} ${y1} A ${ORBIT_R} ${ORBIT_R} 0 0 1 ${x2} ${y1}`;
 })();
+// 궤도 곡선 PNG — Figma 시안(Ellipse 3073 (1)) 소프트 아치. ORBIT_PATH 아치 바운딩 박스에 정렬(노드와 동일 위치 통과).
+const ORBIT_LINE_IMG = require('../../assets/statsOrbitLine.png');
+const ORBIT_IMG_HALF_W = ORBIT_R * Math.sin(ORBIT_SPAN);       // 아치 반폭(끝점 x)
+const ORBIT_IMG_X = ORBIT_CX - ORBIT_IMG_HALF_W;               // 좌측 끝
+const ORBIT_IMG_Y = ORBIT_CY - ORBIT_R;                        // 아치 정점(top)
+const ORBIT_IMG_W = ORBIT_IMG_HALF_W * 2;                      // 전체 폭
+const ORBIT_IMG_H = ORBIT_R * (1 - Math.cos(ORBIT_SPAN));      // 정점→끝점 높이
 // 지구본 문양(2겹)은 시안 원본 격자 패스(data/statsGlobePath)를 라벤더→보라 그라데이션으로 그린다
 
 export default function StatsScreen() {
@@ -885,17 +893,9 @@ export default function StatsScreen() {
             {/* 궤도 곡선 — 스펙: border 4px + border-image(180deg 흰0.3 0%→회0 57.93%) + backdrop-filter blur(4px).
                 translateY -6로 살짝 위. backdrop-filter는 SVG 스트로크에 못 걸어 같은 그라데이션의 옅은 소프트 1겹으로 근사 */}
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
-              <SvgDefs>
-                <SvgLinearGradient id="statsOrbitLine" x1="0" y1={22 * OS} x2="0" y2={206 * OS} gradientUnits="userSpaceOnUse">
-                  <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.3} />
-                  <SvgStop offset="0.5793" stopColor="#999999" stopOpacity={0} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgG translateY={-6} opacity={0.3}>
-                {/* backdrop blur(4px) 근사 — 4px 선 양옆으로 ~2px 번짐 */}
-                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.38} strokeWidth={8} strokeLinecap="round" fill="none" />
-                {/* border 4px solid */}
-                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeWidth={4} strokeLinecap="round" fill="none" />
+              {/* 궤도 곡선 — Figma 시안(Ellipse 3073 (1)) PNG. 아치 바운딩 박스에 정렬해 노드와 동일 위치를 통과 */}
+              <SvgG translateY={-6}>
+                <SvgImage href={ORBIT_LINE_IMG} x={ORBIT_IMG_X} y={ORBIT_IMG_Y} width={ORBIT_IMG_W} height={ORBIT_IMG_H} preserveAspectRatio="none" />
               </SvgG>
             </Svg>
             {/* 1겹 — 지구본 뒤 유리 원판 (스펙: #FFFFFF08(3%) + backdrop blur 4.17px) */}
