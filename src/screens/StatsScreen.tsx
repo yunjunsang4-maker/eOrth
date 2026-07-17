@@ -35,7 +35,6 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
-import { STATS_GLOBE_PATH } from '../data/statsGlobePath';
 import { useSettings } from '../store/settingsStore';
 import { PersonIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
@@ -278,6 +277,11 @@ const ORBIT_IMG_X = ORBIT_CX - ORBIT_IMG_HALF_W;               // 좌측 끝
 const ORBIT_IMG_Y = ORBIT_CY - ORBIT_R;                        // 아치 정점(top)
 const ORBIT_IMG_W = ORBIT_IMG_HALF_W * 2;                      // 전체 폭
 const ORBIT_IMG_H = ORBIT_R * (1 - Math.cos(ORBIT_SPAN));      // 정점→끝점 높이
+// 별점 지구본 emblem(디스크+격자) — Figma 시안(Group 2085664602) PNG. 맨뒤 원판/격자 문양 공용.
+const RATING_GLOBE_IMG = require('../../assets/statsRatingGlobe.png');
+const RATING_GLOBE_D = 217 * OS;                               // emblem 지름(맨뒤 원판과 동일)
+const RATING_GLOBE_X = (168.46 - 108.5) * OS;                  // 좌측(중심 168.46,193)
+const RATING_GLOBE_Y = (193 - 108.5) * OS;                     // 상단
 // 지구본 문양(2겹)은 시안 원본 격자 패스(data/statsGlobePath)를 라벤더→보라 그라데이션으로 그린다
 
 export default function StatsScreen() {
@@ -854,40 +858,12 @@ export default function StatsScreen() {
         <View style={styles.orbitSection}>
           {/* 장식 레이어 — 별점 스택(1겹 유리→2겹 지구본→3겹 유리) + 배경 구 + 궤도 곡선 */}
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {/* 맨뒤 유리 원판(배경 구) — 블러 + 흰3% 틴트 + 메뉴탭바와 동일한 #CECFCD 그라데이션 테두리 */}
+            {/* 맨뒤 유리 원판(배경 구) — Figma 시안(Group 2085664602) 지구본 emblem PNG. 블러 컨테이너 위 옅게(0.2) 깔려 배경 구 역할 */}
             <View style={styles.ratingDiskBack}>
               <BlurView intensity={16} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
               <View style={styles.ratingDiskBackTint} />
               <Svg width={217 * OS} height={217 * OS} style={StyleSheet.absoluteFill}>
-                <SvgDefs>
-                  {/* 프로스트 매트 — 뒤가 비어 블러가 안 보이는 맨뒤 판에 유리 광택을 얹어 흐릿한 느낌을 냄 */}
-                  <SvgRadialGradient id="ratingDiskBackFrost" cx="42%" cy="38%" r="65%">
-                    <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.06} />
-                    <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-                  </SvgRadialGradient>
-                  {/* 좌상단→우하단 대각선. 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
-                  <SvgLinearGradient id="ratingDiskBackBorder" x1="0" y1="0" x2="1" y2="1">
-                    <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                    <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
-                    <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
-                    <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
-                  </SvgLinearGradient>
-                </SvgDefs>
-                {/* 프로스트 광택(테두리보다 뒤) */}
-                <SvgCircle
-                  cx={(217 * OS) / 2}
-                  cy={(217 * OS) / 2}
-                  r={(217 * OS) / 2 - 0.75}
-                  fill="url(#ratingDiskBackFrost)"
-                />
-                <SvgCircle
-                  cx={(217 * OS) / 2}
-                  cy={(217 * OS) / 2}
-                  r={(217 * OS) / 2 - 0.75}
-                  fill="none"
-                  stroke="url(#ratingDiskBackBorder)"
-                  strokeWidth={1.5}
-                />
+                <SvgImage href={RATING_GLOBE_IMG} x={0} y={0} width={217 * OS} height={217 * OS} preserveAspectRatio="xMidYMid meet" />
               </Svg>
             </View>
             {/* 궤도 곡선 — 스펙: border 4px + border-image(180deg 흰0.3 0%→회0 57.93%) + backdrop-filter blur(4px).
@@ -908,26 +884,10 @@ export default function StatsScreen() {
               <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
               <View style={styles.ratingDisk3Tint} />
             </View>
-            {/* 2겹 지구본 문양 — 시안 원본 격자 패스(라벤더→보라 그라데이션). 판 위에 그려 문양 유지 */}
+            {/* 지구본 문양 — Figma 시안(Group 2085664602) PNG. 유리판 위, 맨뒤 원판과 동심·동일 크기(217*OS)로 또렷한 emblem */}
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
-              <SvgDefs>
-                <SvgLinearGradient id="statsGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
-                  <SvgStop offset="0" stopColor="#E0C9FF" />
-                  <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.2} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgG scale={OS} opacity={0.6}>
-                <SvgPath d={STATS_GLOBE_PATH} fill="url(#statsGlobeGrid)" fillOpacity={0.28} />
-              </SvgG>
+              <SvgImage href={RATING_GLOBE_IMG} x={RATING_GLOBE_X} y={RATING_GLOBE_Y} width={RATING_GLOBE_D} height={RATING_GLOBE_D} preserveAspectRatio="xMidYMid meet" />
             </Svg>
-            {/* 문양 살짝 번지게 — 새 아키텍처에서 SVG 필터가 안 먹어, 문양 위에 얇은 네이티브 블러를 얹어 격자를 부드럽게 */}
-            <BlurView
-              intensity={16}
-              tint="dark"
-              experimentalBlurMethod="dimezisBlurView"
-              style={styles.globeGridBlur}
-              pointerEvents="none"
-            />
             {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽) */}
             <Svg width={170 * OS} height={170 * OS} style={styles.ratingDisk3BorderBox} pointerEvents="none">
               <SvgDefs>
