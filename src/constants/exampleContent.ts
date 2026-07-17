@@ -37,6 +37,9 @@ export const EXAMPLE_SNAP: TravelRecord = {
   content: '스냅은 여행 중 순간을 한 장으로 — 이렇게 보여요',
   viewType: 'snap',
   medias: [asUri(require('../../assets/example/snap1.jpg'))],
+  // 듀얼 카메라 — 메인(후면)=뉴욕, PIP(전면)=허스키. 둘 다 있어야 스토리에 PIP가 뜬다.
+  snapBackUri: asUri(require('../../assets/example/snap1.jpg')),
+  snapFrontUri: asUri(require('../../assets/example/snap1-pip.jpg')),
   visibility: 'neighbors',
   likes: 0,
   comments: 0,
