@@ -43,6 +43,7 @@ import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
+import { EorthGlobeMark } from '../components/EorthGlobeMark';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
@@ -900,8 +901,10 @@ function SnapStoryViewer({
                   : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
               }}
             >
-              <View style={storyS.avatarRing}><View style={storyS.avatar}>
-                {s.isMyPost === true && myPhoto ? (
+              <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { backgroundColor: '#000' }]}>
+                {s.isExample ? (
+                  <EorthGlobeMark size={38} />
+                ) : s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
                   <PersonIcon size={22} color="#A0A0B0" />
@@ -1678,8 +1681,10 @@ export default function PostDetailScreen() {
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >
-                      <View style={s.avatar}>
-                        {isMyPost && globalProfilePhoto ? (
+                      <View style={[s.avatar, record.isExample && { backgroundColor: '#000' }]}>
+                        {record.isExample ? (
+                          <EorthGlobeMark size={34} />
+                        ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (
                           <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />

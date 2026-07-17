@@ -50,6 +50,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import BlogPin from '../components/BlogPin';
 import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
+import { EorthGlobeMark } from '../components/EorthGlobeMark';
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
@@ -451,7 +452,7 @@ function FeedCard({
           activeOpacity={0.7}
         >
           <View style={s.feedAvatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} />
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} isExample={item.isExample} />
           </View>
         </TouchableOpacity>
         <View style={s.userInfo}>
@@ -962,7 +963,7 @@ function BlogCard({
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
           >
             <View style={bc.avatar}>
-              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} />
+              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} isExample={item.isExample} />
             </View>
             <View>
               <Text style={[bc.userName, nameFontStyle]}>{item.user.handle}</Text>
@@ -1261,7 +1262,7 @@ function AlbumCard({
           style={ab.userRow} activeOpacity={0.7}
         >
           <View style={ab.avatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} />
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} isExample={item.isExample} />
           </View>
           <View>
             <Text style={[ab.userName, nameFontStyle]}>{item.user.handle}</Text>
@@ -1579,8 +1580,10 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
         activeOpacity={item.isExample ? 1 : 0.7}
         onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
       >
-        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
-          {isMyPost && globalProfilePhoto ? (
+        <View style={[d.metaAvatar, onLight && d.metaAvatarLight, item.isExample && { backgroundColor: '#000' }]}>
+          {item.isExample ? (
+            <EorthGlobeMark size={15} />
+          ) : isMyPost && globalProfilePhoto ? (
             <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : item.user.photo ? (
             <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
@@ -2604,8 +2607,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     style={s.storyRing}
                   >
                     <View style={s.storyAvatarWrap}>
-                      <View style={s.storyAvatar}>
-                        {(snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
+                      <View style={[s.storyAvatar, snap.isExample && { backgroundColor: '#000' }]}>
+                        {snap.isExample ? (
+                          <EorthGlobeMark size={44} />
+                        ) : (snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : snap.user.photo ? (
                           <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
