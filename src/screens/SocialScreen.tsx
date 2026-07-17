@@ -2723,7 +2723,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   navigation.navigate('MainTab');
                 }}
               >
-                {/* 탭 활성 알약과 동일한 #CECFCD→투명 그라데이션 테두리(stroke만) */}
+                {/* 통계탭 연도별 방문 통계 박스(GradientHalfCard)와 동일한 #CECFCD 대각선 그라데이션 테두리(stroke만) */}
                 {ctaSize.w > 0 && (
                   <Svg
                     style={StyleSheet.absoluteFill}
@@ -2732,9 +2732,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     pointerEvents="none"
                   >
                     <SvgDefs>
-                      <SvgLinearGradient id="ctaBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                      <SvgLinearGradient id="ctaBorderGrad" x1="0" y1="0" x2="1" y2="1">
                         <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-                        <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
+                        <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity="0" />
+                        <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity="0" />
+                        <SvgStop offset="1" stopColor="#CECFCD" stopOpacity="0.45" />
                       </SvgLinearGradient>
                     </SvgDefs>
                     <Rect
