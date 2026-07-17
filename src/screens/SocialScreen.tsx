@@ -50,7 +50,8 @@ import { useSkinAccent } from '../constants/skinTheme';
 import BlogPin from '../components/BlogPin';
 import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
-import { EorthGlobeMark } from '../components/EorthGlobeMark';
+
+const APP_LOGO = require('../../assets/icon.png');
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
@@ -1580,9 +1581,9 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
         activeOpacity={item.isExample ? 1 : 0.7}
         onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
       >
-        <View style={[d.metaAvatar, onLight && d.metaAvatarLight, item.isExample && { backgroundColor: '#000' }]}>
+        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
           {item.isExample ? (
-            <EorthGlobeMark size={15} />
+            <Image source={APP_LOGO} style={{ width: 18, height: 18, borderRadius: 9 }} resizeMode="cover" />
           ) : isMyPost && globalProfilePhoto ? (
             <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : item.user.photo ? (
@@ -2607,9 +2608,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     style={s.storyRing}
                   >
                     <View style={s.storyAvatarWrap}>
-                      <View style={[s.storyAvatar, snap.isExample && { backgroundColor: '#000' }]}>
+                      <View style={s.storyAvatar}>
                         {snap.isExample ? (
-                          <EorthGlobeMark size={44} />
+                          <Image source={APP_LOGO} style={{ width: 52, height: 52, borderRadius: 26 }} resizeMode="cover" />
                         ) : (snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : snap.user.photo ? (

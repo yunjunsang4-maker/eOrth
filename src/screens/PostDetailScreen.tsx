@@ -43,7 +43,8 @@ import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
-import { EorthGlobeMark } from '../components/EorthGlobeMark';
+
+const APP_LOGO = require('../../assets/icon.png');
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
@@ -901,9 +902,9 @@ function SnapStoryViewer({
                   : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
               }}
             >
-              <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { backgroundColor: '#000' }]}>
+              <View style={storyS.avatarRing}><View style={storyS.avatar}>
                 {s.isExample ? (
-                  <EorthGlobeMark size={38} />
+                  <Image source={APP_LOGO} style={storyS.avatarImg} resizeMode="cover" />
                 ) : s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
@@ -1681,9 +1682,9 @@ export default function PostDetailScreen() {
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >
-                      <View style={[s.avatar, record.isExample && { backgroundColor: '#000' }]}>
+                      <View style={s.avatar}>
                         {record.isExample ? (
-                          <EorthGlobeMark size={34} />
+                          <Image source={APP_LOGO} style={{ width: 42, height: 42, borderRadius: 21 }} resizeMode="cover" />
                         ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (
