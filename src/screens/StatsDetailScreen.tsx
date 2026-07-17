@@ -28,10 +28,12 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
-import { DETAIL_WIREFRAME, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+import { DETAIL_PARTICLES } from '../data/statsDetailGlobe';
 
 // 지구본 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스에 맞춰 배치.
 const DETAIL_RING_IMG = require('../../assets/statsDetailRing.png');
+// 지구본 문양 — Figma 시안(Group 2085664601) 그리드 지구본 PNG. 유리 베이스 원(중심 205.89,284.11 / 반경 127.07)에 정렬.
+const DETAIL_GLOBE_IMG = require('../../assets/statsDetailGlobe.png');
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
   recentTrips,
@@ -126,8 +128,6 @@ export default function StatsDetailScreen() {
   const skinAccent = useSkinAccent();
   const customSkin = !!skinAccent.ringGradient;
   const glowColor = customSkin ? skinAccent.accent : '#7C3AED';        // 지구본 뒤 글로우
-  const wireTop = customSkin ? skinAccent.barGradient[1] : '#E0C9FF';  // 와이어프레임 밝은 끝
-  const wireBottom = customSkin ? skinAccent.accentDeep : '#7C3AED';   // 와이어프레임 진한 끝
   const pointColor = customSkin ? skinAccent.barGradient[1] : '#E0C9FF'; // 값·더보기 포인트 텍스트
   // 대륙 키(한글, COUNTRIES 데이터)를 표시용 라벨로 변환
   const continentName = useCallback((cont: string) => {
@@ -619,11 +619,6 @@ export default function StatsDetailScreen() {
                       <SvgStop offset="0%" stopColor={glowColor} stopOpacity={0.28} />
                       <SvgStop offset="100%" stopColor={glowColor} stopOpacity={0} />
                     </SvgRadialGradient>
-                    {/* 와이어프레임 구체 — 밝은→진한 스킨색 (aurora는 시안 라벤더→보라, 좌표는 시안 좌표계) */}
-                    <SvgLinearGradient id="detailWireGrad" x1="206.47" y1="167.585" x2="206.47" y2="398.267" gradientUnits="userSpaceOnUse">
-                      <SvgStop offset="0" stopColor={wireTop} />
-                      <SvgStop offset="1" stopColor={wireBottom} />
-                    </SvgLinearGradient>
                   </SvgDefs>
                   {/* 뒤 보라 글로우 */}
                   <SvgCircle cx={HERO_CX} cy={HERO_CY} r={HERO_R * 1.15} fill="url(#detailGlobeGlow)" />
@@ -631,8 +626,8 @@ export default function StatsDetailScreen() {
                   <SvgG transform={HERO_GLOBE_TRANSFORM}>
                     {/* 유리 베이스 원 */}
                     <SvgCircle cx={205.89} cy={284.11} r={127.07} fill="#FFFFFF" fillOpacity={0.03} />
-                    {/* 와이어프레임 구체 (시안은 blur — fill 0.25로 발광 근사) */}
-                    <SvgPath d={DETAIL_WIREFRAME} fill="url(#detailWireGrad)" fillOpacity={0.25} />
+                    {/* 지구본 문양 — Figma 시안(Group 2085664601) PNG. 유리 베이스 원 바운딩 박스에 정렬 */}
+                    <SvgImage href={DETAIL_GLOBE_IMG} x={78.82} y={157.04} width={254.14} height={254.14} preserveAspectRatio="xMidYMid meet" />
                     {/* 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스(x 63.14~352.82, y 293~426.86)에 정렬 */}
                     <SvgImage href={DETAIL_RING_IMG} x={63.137} y={293} width={289.687} height={133.863} preserveAspectRatio="none" />
                     {/* 별가루 입자 — 하단 아치 (시안 원본 좌표) */}
