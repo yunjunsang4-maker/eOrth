@@ -1588,8 +1588,8 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
             <PersonIcon size={12} color="#A0A0B0" />
           )}
         </View>
-        <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
-        {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
+        {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식'만 표시 */}
+        <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{item.isExample ? t('socialEmpty.official') : displayName}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
@@ -1628,8 +1628,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
           activeOpacity={item.isExample ? 1 : 0.7}
           onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
         >
-          <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
-          {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
+          <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>{item.isExample ? t('socialEmpty.official') : `@${displayHandle}`}</Text>
         </TouchableOpacity>
         <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
           <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
@@ -1962,8 +1961,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
               activeOpacity={item.isExample ? 1 : 0.7}
               onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
             >
-              <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
-              {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
+              <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>{item.isExample ? t('socialEmpty.official') : `@${postHandle}`}</Text>
             </TouchableOpacity>
             <View style={d.jourFooterRight}>
               <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
@@ -2014,8 +2012,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             activeOpacity={item.isExample ? 1 : 0.7}
             onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
           >
-            <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
-            {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
+            <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>{item.isExample ? t('socialEmpty.official') : `@${postHandle}`}</Text>
           </TouchableOpacity>
           <View style={d.polaMetaRight}>
             <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
@@ -2094,7 +2091,6 @@ const d = StyleSheet.create({
   col: { flex: 1, gap: 12 },
 
   // 공식 예시 콘텐츠 배지
-  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
 
   // 더블탭 하트 팝
   tapWrap: { position: 'relative' },

@@ -909,8 +909,8 @@ function SnapStoryViewer({
               </View></View>
               <View style={storyS.userInfo}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
-                  {s.isExample && <Text style={storyS.officialBadge}>{t('socialEmpty.official')}</Text>}
+                  {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식'만 표시 */}
+                  <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>{s.isExample ? t('socialEmpty.official') : `@${s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}`}</Text>
                 </View>
                 <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
               </View>
@@ -1677,8 +1677,8 @@ export default function PostDetailScreen() {
                       <View style={s.userInfo}>
                         {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
-                          {record.isExample && <Text style={s.officialBadge}>{t('socialEmpty.official')}</Text>}
+                          {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식'만 표시 */}
+                          <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{record.isExample ? t('socialEmpty.official') : postDisplayName}</Text>
                         </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
@@ -2242,7 +2242,6 @@ const s = StyleSheet.create({
   },
   userInfo: { flex: 1 },
   userName: { fontSize: 15, fontWeight: '700', color: C.white },
-  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
   userMeta: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4,
   },
@@ -2635,7 +2634,6 @@ const storyS = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
-  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
   // 시안: 배경 원 없이 글리프만
   moreBtn: {
     width: 36,
