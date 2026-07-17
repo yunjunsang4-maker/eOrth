@@ -200,6 +200,7 @@ const ORBIT_H = Math.ceil(312 * OS);
 const ORBIT_CX = ARC_W / 2;
 const ORBIT_CY = 196.2 * OS;
 const ORBIT_R = 160.2 * OS;
+const ORBIT_LIFT = 12; // 랭킹 노드·궤도선을 함께 위로 살짝 올리는 오프셋(px)
 // 노드 — [cx, cy, r] (시안 좌표), 순위 낮을수록 링이 옅어진다
 const NODE_GEO: [number, number, number][] = [
   [168, 36, 35.5],
@@ -871,7 +872,7 @@ export default function StatsScreen() {
                 translateY -6로 살짝 위. backdrop-filter는 SVG 스트로크에 못 걸어 같은 그라데이션의 옅은 소프트 1겹으로 근사 */}
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
               {/* 궤도 곡선 — Figma 시안(Ellipse 3073 (1)) PNG. 아치 바운딩 박스에 정렬해 노드와 동일 위치를 통과 */}
-              <SvgG translateY={-6}>
+              <SvgG translateY={-6 - ORBIT_LIFT}>
                 <SvgImage href={ORBIT_LINE_IMG} x={ORBIT_IMG_X} y={ORBIT_IMG_Y} width={ORBIT_IMG_W} height={ORBIT_IMG_H} preserveAspectRatio="none" />
               </SvgG>
             </Svg>
@@ -948,7 +949,7 @@ export default function StatsScreen() {
             const { x: gx, y: gy, gr, opacity } = pos;
             const size = gr * 2 * OS;
             const left = gx * OS - size / 2;
-            const top = gy * OS - size / 2;
+            const top = gy * OS - size / 2 - ORBIT_LIFT;
             const big = gr >= 33;   // 상단 대형 슬롯 부근
             const small = gr <= 26; // 가장자리 소형 슬롯 부근
             return (
