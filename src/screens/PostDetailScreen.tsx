@@ -902,9 +902,9 @@ function SnapStoryViewer({
                   : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
               }}
             >
-              <View style={storyS.avatarRing}><View style={storyS.avatar}>
+              <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { overflow: 'hidden' }]}>
                 {s.isExample ? (
-                  <Image source={APP_LOGO} style={storyS.avatarImg} resizeMode="cover" />
+                  <Image source={APP_LOGO} style={{ width: 52, height: 52 }} resizeMode="cover" />
                 ) : s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
@@ -1682,9 +1682,9 @@ export default function PostDetailScreen() {
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >
-                      <View style={s.avatar}>
+                      <View style={[s.avatar, record.isExample && { overflow: 'hidden' }]}>
                         {record.isExample ? (
-                          <Image source={APP_LOGO} style={{ width: 42, height: 42, borderRadius: 21 }} resizeMode="cover" />
+                          <Image source={APP_LOGO} style={{ width: 59, height: 59 }} resizeMode="cover" />
                         ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (

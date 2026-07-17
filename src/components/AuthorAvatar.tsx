@@ -22,7 +22,13 @@ export default function AuthorAvatar({
   isExample?: boolean;
 }) {
   if (isExample) {
-    return <Image source={APP_LOGO} style={{ width: size, height: size, borderRadius: size / 2 }} resizeMode="cover" />;
+    // 아이콘 내부 여백 때문에 작아 보여, 원보다 크게 그린 뒤 원으로 잘라 로고를 키운다.
+    const z = Math.round(size * 1.35);
+    return (
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
+        <Image source={APP_LOGO} style={{ width: z, height: z }} resizeMode="cover" />
+      </View>
+    );
   }
   if (photo) {
     return <Image source={{ uri: photo }} style={{ width: size, height: size, borderRadius: size / 2 }} />;
