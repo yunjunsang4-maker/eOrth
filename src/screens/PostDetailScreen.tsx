@@ -909,8 +909,12 @@ function SnapStoryViewer({
               </View></View>
               <View style={storyS.userInfo}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식'만 표시 */}
-                  <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>{s.isExample ? t('socialEmpty.official') : `@${s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}`}</Text>
+                  {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
+                  {s.isExample ? (
+                    <Text style={storyS.officialBadge}>{t('socialEmpty.official')}</Text>
+                  ) : (
+                    <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                  )}
                 </View>
                 <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
               </View>
@@ -1677,8 +1681,12 @@ export default function PostDetailScreen() {
                       <View style={s.userInfo}>
                         {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                          {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식'만 표시 */}
-                          <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{record.isExample ? t('socialEmpty.official') : postDisplayName}</Text>
+                          {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
+                          {record.isExample ? (
+                            <Text style={s.officialBadge}>{t('socialEmpty.official')}</Text>
+                          ) : (
+                            <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                          )}
                         </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
@@ -2197,6 +2205,8 @@ export default function PostDetailScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
+  officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
 
   // ── 헤더 ──
   header: {
@@ -2534,6 +2544,8 @@ const blogS = StyleSheet.create({
 // ── 모먼트 스토리 스타일 ──
 // ── 스냅 스토리 전체화면 스타일 ──
 const storyS = StyleSheet.create({
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
+  officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
   container: {
     flex: 1,
     backgroundColor: '#000',
