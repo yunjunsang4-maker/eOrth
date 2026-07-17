@@ -1415,6 +1415,18 @@ const ko = {
     nvRetry: '다시 시도',
     nvWriteWithThis: '이 내용으로 작성하기',
   },
+  socialEmpty: {
+    title: '기록을 남기면 여기서 이웃과 나눠져요',
+    cta: '첫 기록 남기기',
+    official: 'eOrth 공식',
+    feedHint: '이렇게 기록을 남겨보세요',
+    featGlobeTitle: '지구본에 내 여행을 색칠',
+    featGlobeDesc: '다녀온 나라가 지구본에 물들어요',
+    featStatsTitle: '여행 통계 한눈에',
+    featStatsDesc: '방문한 나라·기록을 숫자로',
+    featBadgeTitle: '여행 배지 수집',
+    featBadgeDesc: '기록을 남기면 배지가 열려요',
+  },
   misc: {
     all: '전체',
     archivedTitle: '보관된 게시물',

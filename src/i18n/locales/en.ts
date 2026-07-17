@@ -1414,6 +1414,18 @@ const en = {
     nvRetry: 'Try again',
     nvWriteWithThis: 'Write with this content',
   },
+  socialEmpty: {
+    title: 'Post a record and it appears here for neighbors',
+    cta: 'Create your first record',
+    official: 'eOrth Official',
+    feedHint: 'Try recording like this',
+    featGlobeTitle: 'Color your globe',
+    featGlobeDesc: 'Countries you visit light up your globe',
+    featStatsTitle: 'Travel stats at a glance',
+    featStatsDesc: 'Your countries and records in numbers',
+    featBadgeTitle: 'Collect travel badges',
+    featBadgeDesc: 'Records unlock badges',
+  },
   misc: {
     all: 'All',
     archivedTitle: 'Archived posts',
