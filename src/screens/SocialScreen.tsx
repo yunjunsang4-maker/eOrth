@@ -2647,8 +2647,66 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
+          <View style={d.masonry}>
+            {[0, 1].map((ci) => (
+              <View key={ci} style={d.col}>
+                {columns[ci].map((item: any) => {
+                  if (item._featureCard) {
+                    return <FeatureShowcaseCard key={item.id} />;
+                  }
+                  if (item._adSlot) {
+                    return (
+                      <FeedAdCard
+                        key={item.id}
+                        ad={item.ad as HouseAd}
+                        variant={item.adVariant}
+                        tilt={item.adTilt}
+                        onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
+                      />
+                    );
+                  }
+                  const card = (
+                    <DiaryCardMemo
+                      item={item}
+                      mode={diaryCardMode}
+                      navigation={navigation}
+                      toggleLike={cbToggleLike}
+                      showCounts={showCounts}
+                      onArchive={cbArchive}
+                      onDelete={cbDelete}
+                      onBlock={cbBlock}
+                      onReport={cbReport}
+                      onQuickStart={cbQuickStart}
+                      onQuickMove={cbQuickMove}
+                      onQuickEnd={cbQuickEnd}
+                      onQuickCancel={cbQuickCancel}
+                      dragPos={dragPos}
+                      columnIndex={ci}
+                    />
+                  );
+                  // 스티커 광고: 게시물 위에 겹쳐 붙임 (시안 iPhone 17 - 54)
+                  if (item._overlayAd) {
+                    return (
+                      <View key={item.id} style={{ position: 'relative' }}>
+                        {card}
+                        <FeedAdCard
+                          ad={item._overlayAd as HouseAd}
+                          variant="sticker"
+                          overlay
+                          overlaySide={ci === 0 ? 'right' : 'left'}
+                          tilt={item._overlayTilt}
+                          onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
+                        />
+                      </View>
+                    );
+                  }
+                  return <React.Fragment key={item.id}>{card}</React.Fragment>;
+                })}
+              </View>
+            ))}
+          </View>
           {isEmptyFeed && (
-            /* 빈 피드 기본 콘텐츠 — 안내 + 기록 유도 CTA + 추천 친구 + 친구 찾기 보조 링크 */
+            /* 빈 피드 기본 콘텐츠 — 예시 카드 아래에 배치: 안내 + 기록 유도 CTA + 추천 친구 + 친구 찾기 보조 링크 */
             <View style={s.emptyWrap}>
               <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
               {/* 주 CTA: 첫 기록 남기기 */}
@@ -2732,64 +2790,6 @@ function FriendsTab({ navigation }: { navigation: any }) {
               </TouchableOpacity>
             </View>
           )}
-          <View style={d.masonry}>
-            {[0, 1].map((ci) => (
-              <View key={ci} style={d.col}>
-                {columns[ci].map((item: any) => {
-                  if (item._featureCard) {
-                    return <FeatureShowcaseCard key={item.id} />;
-                  }
-                  if (item._adSlot) {
-                    return (
-                      <FeedAdCard
-                        key={item.id}
-                        ad={item.ad as HouseAd}
-                        variant={item.adVariant}
-                        tilt={item.adTilt}
-                        onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
-                      />
-                    );
-                  }
-                  const card = (
-                    <DiaryCardMemo
-                      item={item}
-                      mode={diaryCardMode}
-                      navigation={navigation}
-                      toggleLike={cbToggleLike}
-                      showCounts={showCounts}
-                      onArchive={cbArchive}
-                      onDelete={cbDelete}
-                      onBlock={cbBlock}
-                      onReport={cbReport}
-                      onQuickStart={cbQuickStart}
-                      onQuickMove={cbQuickMove}
-                      onQuickEnd={cbQuickEnd}
-                      onQuickCancel={cbQuickCancel}
-                      dragPos={dragPos}
-                      columnIndex={ci}
-                    />
-                  );
-                  // 스티커 광고: 게시물 위에 겹쳐 붙임 (시안 iPhone 17 - 54)
-                  if (item._overlayAd) {
-                    return (
-                      <View key={item.id} style={{ position: 'relative' }}>
-                        {card}
-                        <FeedAdCard
-                          ad={item._overlayAd as HouseAd}
-                          variant="sticker"
-                          overlay
-                          overlaySide={ci === 0 ? 'right' : 'left'}
-                          tilt={item._overlayTilt}
-                          onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
-                        />
-                      </View>
-                    );
-                  }
-                  return <React.Fragment key={item.id}>{card}</React.Fragment>;
-                })}
-              </View>
-            ))}
-          </View>
           <View style={{ height: 100 }} />
         </View>
       </Animated.ScrollView>
