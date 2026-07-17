@@ -2652,7 +2652,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
               <View key={ci} style={d.col}>
                 {columns[ci].map((item: any) => {
                   if (item._featureCard) {
-                    return <FeatureShowcaseCard key={item.id} />;
+                    return <FeatureShowcaseCard key={item.id} onPremiumPress={() => navigation.navigate('Premium')} />;
                   }
                   if (item._adSlot) {
                     return (

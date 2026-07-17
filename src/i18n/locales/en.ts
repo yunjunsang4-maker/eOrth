@@ -1425,6 +1425,10 @@ const en = {
     featStatsDesc: 'Your countries and records in numbers',
     featBadgeTitle: 'Collect travel badges',
     featBadgeDesc: 'Records unlock badges',
+    premiumBadge: 'Premium',
+    featPremiumTitle: 'Do more with Premium',
+    featPremiumDesc: 'No ads, 100 photos, original backup, strip, QR',
+    featPremiumCta: 'See benefits ›',
   },
   misc: {
     all: 'All',

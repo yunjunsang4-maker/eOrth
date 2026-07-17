@@ -48,10 +48,26 @@ export const EXAMPLE_SNAP: TravelRecord = {
   isExample: true,
 };
 
-// 기능 소개 슬라이드 (지구본·통계·배지) — FeatureShowcaseCard가 순회
-export interface FeatureSlide { image: number; titleKey: string; descKey: string; }
+// 기능 소개 슬라이드 (지구본·통계·배지·프리미엄) — FeatureShowcaseCard가 순회
+// isPremium 슬라이드만 탭 가능(프리미엄 페이월로 이동), 나머지는 정보 전용.
+export interface FeatureSlide {
+  image: number;
+  titleKey: string;
+  descKey: string;
+  isPremium?: boolean;   // 광고 슬라이드 — 탭하면 프리미엄 팝업
+  badgeKey?: string;     // 뱃지 문구 오버라이드(기본은 'eOrth 공식')
+  ctaKey?: string;       // 탭 유도 문구(프리미엄 슬라이드에만)
+}
 export const FEATURE_SLIDES: FeatureSlide[] = [
   { image: require('../../assets/example/feature-globe.jpg'), titleKey: 'socialEmpty.featGlobeTitle', descKey: 'socialEmpty.featGlobeDesc' },
   { image: require('../../assets/example/feature-stats.jpg'), titleKey: 'socialEmpty.featStatsTitle', descKey: 'socialEmpty.featStatsDesc' },
   { image: require('../../assets/example/feature-badge.jpg'), titleKey: 'socialEmpty.featBadgeTitle', descKey: 'socialEmpty.featBadgeDesc' },
+  {
+    image: require('../../assets/example/feature-premium.jpg'),
+    titleKey: 'socialEmpty.featPremiumTitle',
+    descKey: 'socialEmpty.featPremiumDesc',
+    isPremium: true,
+    badgeKey: 'socialEmpty.premiumBadge',
+    ctaKey: 'socialEmpty.featPremiumCta',
+  },
 ];

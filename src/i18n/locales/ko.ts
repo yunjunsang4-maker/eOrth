@@ -1426,6 +1426,10 @@ const ko = {
     featStatsDesc: '방문한 나라·기록을 숫자로',
     featBadgeTitle: '여행 배지 수집',
     featBadgeDesc: '기록을 남기면 배지가 열려요',
+    premiumBadge: '프리미엄',
+    featPremiumTitle: '프리미엄으로 더 풍부하게',
+    featPremiumDesc: '광고 제거·사진 100장·원본 백업·스트립·QR',
+    featPremiumCta: '혜택 보기 ›',
   },
   misc: {
     all: '전체',
