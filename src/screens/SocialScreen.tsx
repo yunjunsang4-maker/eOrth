@@ -1576,8 +1576,8 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
     <View style={d.meta}>
       <TouchableOpacity
         style={d.metaUser}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+        activeOpacity={item.isExample ? 1 : 0.7}
+        onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
       >
         <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
           {isMyPost && globalProfilePhoto ? (
@@ -1589,14 +1589,17 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
           )}
         </View>
         <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
+        {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
       </TouchableOpacity>
-      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
         {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
-      <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-        <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
-      </TouchableOpacity>
+      {!item.isExample && (
+        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+          <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1622,18 +1625,21 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
       <View style={d.cutMetaRow}>
         <TouchableOpacity
           style={d.cutMetaIdBtn}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+          activeOpacity={item.isExample ? 1 : 0.7}
+          onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
         >
           <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
+          {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
         </TouchableOpacity>
-        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
           <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
           {showCounts && item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
         </TouchableOpacity>
-        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-          <Text style={d.more}>⋯</Text>
-        </TouchableOpacity>
+        {!item.isExample && (
+          <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+            <Text style={d.more}>⋯</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -1796,7 +1802,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const vt = item.viewType || 'feed';
   const open = () => navigation.navigate('PostDetail', { postId: item.id });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
-  const like = () => { if (!item.liked) toggleLike(item.id); };
+  const like = () => { if (item.isExample || item.liked) return; toggleLike(item.id); };
   const tilt = tiltFor(item.id);
   const isMy = item.isMyPost ?? false;
   // 게시자 아이디 + 프리미엄 폰트 (내 글=내 설정값, 타인=프로필 조인 값)
@@ -1805,7 +1811,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
 
-  const onMore = () => setMenuVisible(true);
+  const onMore = () => { if (item.isExample) return; setMenuVisible(true); };
 
   const handleShare = async () => {
     const text = (item.content || item.memo || '').trim();
@@ -1953,19 +1959,22 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           <View style={d.jourFooterRow}>
             <TouchableOpacity
               style={d.jourHandleBtn}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+              activeOpacity={item.isExample ? 1 : 0.7}
+              onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
             >
               <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+              {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
             </TouchableOpacity>
             <View style={d.jourFooterRight}>
-              <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+              <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
                 <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
                 {showCounts && item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
               </TouchableOpacity>
-              <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-                <Text style={d.jourMore}>⋯</Text>
-              </TouchableOpacity>
+              {!item.isExample && (
+                <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+                  <Text style={d.jourMore}>⋯</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -2002,19 +2011,22 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         <View style={d.polaMetaRow}>
           <TouchableOpacity
             style={d.polaHandleBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+            activeOpacity={item.isExample ? 1 : 0.7}
+            onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
           >
             <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+            {item.isExample && <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>}
           </TouchableOpacity>
           <View style={d.polaMetaRight}>
-            <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+            <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
               <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
               {showCounts && item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
             </TouchableOpacity>
-            <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-              <Text style={d.polaMore}>⋯</Text>
-            </TouchableOpacity>
+            {!item.isExample && (
+              <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+                <Text style={d.polaMore}>⋯</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -2080,6 +2092,9 @@ const estDiaryHeight = (item: any, mode: string): number => {
 const d = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
+
+  // 공식 예시 콘텐츠 배지
+  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
 
   // 더블탭 하트 팝
   tapWrap: { position: 'relative' },

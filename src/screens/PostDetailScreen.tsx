@@ -887,13 +887,14 @@ function SnapStoryViewer({
             })}
           </View>
           <View style={storyS.topRow}>
-            {/* 프로필 사진·아이디 탭 → 프로필 화면 (내 스냅이면 내 프로필로) */}
+            {/* 프로필 사진·아이디 탭 → 프로필 화면 (내 스냅이면 내 프로필로, 예시는 이동 금지) */}
             <TouchableOpacity
               style={storyS.authorTap}
-              activeOpacity={0.7}
+              activeOpacity={s.isExample ? 1 : 0.7}
               accessibilityRole="button"
               accessibilityLabel={s.isMyPost === true ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
               onPress={() => {
+                if (s.isExample) return;
                 navigation.navigate('FriendProfile', s.isMyPost === true
                   ? { userId: s.authorId ?? s.id, username: myHandle || s.user.name, handle: myHandle }
                   : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
@@ -911,7 +912,9 @@ function SnapStoryViewer({
                 <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
               </View>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            {!s.isExample && (
+              <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn} accessibilityRole="button" accessibilityLabel={t('common.close')}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
           </View>
         </LinearGradient>
@@ -933,11 +936,13 @@ function SnapStoryViewer({
                   <Text style={storyS.actionLabel}>{s.snapViewers?.length ?? 0}</Text>
                 </TouchableOpacity>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                  <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
+                    <CommentSvg size={22} color="#fff" />
+                    {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => { if (s.isExample) return; toggleLike(s.id); }} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                   <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
@@ -947,14 +952,18 @@ function SnapStoryViewer({
             ) : (
               /* 타인이 올린 스냅 */
               <>
-                <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
-                  <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                  <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
+                    <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
+                  </TouchableOpacity>
+                )}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
+                    <CommentSvg size={22} color="#fff" />
+                    {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={storyS.actionBtn} onPress={() => { if (s.isExample) return; toggleLike(s.id); }} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                   <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
@@ -1275,6 +1284,8 @@ export default function PostDetailScreen() {
   const storeRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
   const rawRecord = storeRecord ?? fallbackRecord ?? undefined;
   const handleToggleLike = () => {
+    // 예시 콘텐츠는 서버 호출 금지
+    if (rawRecord?.isExample) return;
     if (storeRecord) {
       toggleLike(postId);
       return;
@@ -1297,8 +1308,9 @@ export default function PostDetailScreen() {
     }
   };
   // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
+  // 예시 콘텐츠(isExample)는 서버 글이 아니므로 조회 생략
   useEffect(() => {
-    if (!rawRecord?.remoteId) return;
+    if (!rawRecord?.remoteId || rawRecord?.isExample) return;
     setCommentsLoading(true);
     refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
     // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
@@ -1465,7 +1477,9 @@ export default function PostDetailScreen() {
   };
 
   // 더블탭: 좋아요(이미 좋아요면 유지) + 하트 버스트 애니메이션
+  // 예시 콘텐츠는 좋아요 비활성
   const triggerLikeBurst = () => {
+    if (record.isExample) return;
     if (!record.liked) handleToggleLike();
     buzz('light');
     setHeartBurst(true);
@@ -1584,9 +1598,11 @@ export default function PostDetailScreen() {
                 <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
-              <Text style={s.menuDots}>···</Text>
-            </TouchableOpacity>
+            {!record.isExample && (
+              <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
+                <Text style={s.menuDots}>···</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1632,10 +1648,11 @@ export default function PostDetailScreen() {
                   <View style={s.userRow}>
                     <TouchableOpacity
                       style={s.authorTouch}
-                      activeOpacity={0.7}
+                      activeOpacity={record.isExample ? 1 : 0.7}
                       accessibilityRole="button"
                       accessibilityLabel={isMyPost ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
                       onPress={() => {
+                        if (record.isExample) return;
                         navigation.navigate('FriendProfile', isMyPost
                           ? { userId: record.authorId ?? record.id, username: globalHandle || record.user.name, handle: globalHandle }
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
@@ -1662,7 +1679,7 @@ export default function PostDetailScreen() {
                     {record.rating != null && record.rating > 0 && (
                       <Text style={[s.ratingStars, { color: skinAccent.accent }]}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
                     )}
-                    {!isMyPost && authorId && (
+                    {!isMyPost && authorId && !record.isExample && (
                       <TouchableOpacity
                         style={[s.followBtn, { backgroundColor: skinAccent.accent }, neighborState !== 'none' && s.followingBtn]}
                         onPress={onNeighborPress}
@@ -1875,19 +1892,21 @@ export default function PostDetailScreen() {
           {viewType !== 'album' && (<>
           <View style={s.statsRow}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                   {record.liked ? '♥' : '♡'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
+              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
                 <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
-              <CommentSvg />
-              <Text style={s.statCount}>{totalComments}</Text>
-            </TouchableOpacity>
+            {!record.isExample && (
+              <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
+                <CommentSvg />
+                <Text style={s.statCount}>{totalComments}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* ── 구분선 ── */}
@@ -1992,8 +2011,8 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {/* ── 댓글 입력 (앨범 제외) ── */}
-        {viewType !== 'album' && (
+        {/* ── 댓글 입력 (앨범 및 예시 콘텐츠 제외) ── */}
+        {viewType !== 'album' && !record.isExample && (
         <View style={s.inputBar}>
           <TextInput
             ref={commentInputRef}
