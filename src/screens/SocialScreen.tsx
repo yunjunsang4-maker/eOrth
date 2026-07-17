@@ -21,7 +21,7 @@ import {
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
 import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
@@ -2281,6 +2281,8 @@ const DiaryCardMemo = React.memo(DiaryCard);
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
+  // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
+  const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
   const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 친구 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
@@ -2653,12 +2655,43 @@ function FriendsTab({ navigation }: { navigation: any }) {
               <TouchableOpacity
                 style={[s.emptyCta, { backgroundColor: skinAccent.pill, shadowColor: skinAccent.accent }]}
                 activeOpacity={0.85}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  setCtaSize((p) => (p.w === width && p.h === height ? p : { w: width, h: height }));
+                }}
                 onPress={() => {
                   // 메인(지구본) 탭으로 이동한 뒤 RecordFab의 기록 형식 메뉴를 펼친다.
                   requestOpenRecordFab();
                   navigation.navigate('MainTab');
                 }}
               >
+                {/* 탭 활성 알약과 동일한 #CECFCD→투명 그라데이션 테두리(stroke만) */}
+                {ctaSize.w > 0 && (
+                  <Svg
+                    style={StyleSheet.absoluteFill}
+                    width={ctaSize.w}
+                    height={ctaSize.h}
+                    pointerEvents="none"
+                  >
+                    <SvgDefs>
+                      <SvgLinearGradient id="ctaBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                        <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                        <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
+                      </SvgLinearGradient>
+                    </SvgDefs>
+                    <Rect
+                      x={0.5}
+                      y={0.5}
+                      width={ctaSize.w - 1}
+                      height={ctaSize.h - 1}
+                      rx={ctaSize.h / 2 - 0.5}
+                      ry={ctaSize.h / 2 - 0.5}
+                      fill="none"
+                      stroke="url(#ctaBorderGrad)"
+                      strokeWidth={1}
+                    />
+                  </Svg>
+                )}
                 <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
               </TouchableOpacity>
               {/* 추천 친구 (보조) */}
@@ -3170,8 +3203,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     alignSelf: 'center',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(206, 207, 205, 0.4)',
+    justifyContent: 'center',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.5,
     shadowRadius: 12,
