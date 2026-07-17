@@ -643,7 +643,7 @@ function SnapStoryViewer({
   const currentSnap = currentStory?.snaps[Math.min(localIdx, (currentStory?.snaps.length || 1) - 1)];
   // 스냅 열람 시 viewed 처리 — 스냅 id가 바뀔 때만 실행(snapViewed 변경으로 인한 재실행 방지)
   useEffect(() => {
-    if (currentSnap && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+    if (currentSnap && !currentSnap.isExample && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id]);
 
@@ -908,7 +908,10 @@ function SnapStoryViewer({
                 )}
               </View></View>
               <View style={storyS.userInfo}>
-                <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                  {s.isExample && <Text style={storyS.officialBadge}>{t('socialEmpty.official')}</Text>}
+                </View>
                 <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
               </View>
             </TouchableOpacity>
@@ -1535,12 +1538,16 @@ export default function PostDetailScreen() {
 
   // ── 스냅: 인스타 스토리 스타일 전체화면 ──
   if (viewType === 'snap') {
+    // 예시 스냅은 snapViewerRecords(store 필터링 목록)에 없으므로 rawRecord를 단독으로 넘긴다
+    const snapRecords = rawRecord?.isExample
+      ? [rawRecord]
+      : snapViewerRecords;
     return (
       <SnapStoryViewer
         initialPostId={postId}
         // 친구 스냅은 feedPosts에 있다 — records만 넘기면 친구 스냅을 열 때 내 스토리가
         // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스+동일 필터.
-        records={snapViewerRecords}
+        records={snapRecords}
         navigation={navigation}
         toggleLike={toggleLike}
         deleteRecord={deleteRecord}
@@ -1669,7 +1676,10 @@ export default function PostDetailScreen() {
                       </View>
                       <View style={s.userInfo}>
                         {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
-                        <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                          {record.isExample && <Text style={s.officialBadge}>{t('socialEmpty.official')}</Text>}
+                        </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
                           <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
@@ -2232,6 +2242,7 @@ const s = StyleSheet.create({
   },
   userInfo: { flex: 1 },
   userName: { fontSize: 15, fontWeight: '700', color: C.white },
+  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
   userMeta: {
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4,
   },
@@ -2624,6 +2635,7 @@ const storyS = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
   },
+  officialBadge: { fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden', marginLeft: 6, alignSelf: 'center' },
   // 시안: 배경 원 없이 글리프만
   moreBtn: {
     width: 36,

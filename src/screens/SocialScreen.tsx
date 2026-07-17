@@ -611,14 +611,14 @@ function FeedCard({
       </View>
 
       {/* 사진 영역 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
         <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photoPlaceholder}>
           <Text style={{ fontSize: 48, opacity: 0.4 }}>🌄</Text>
         </LinearGradient>
       </TouchableOpacity>
 
       {/* 본문 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
         <View style={s.cardBody}>
           <Text style={s.content}>{item.content}</Text>
         </View>
@@ -706,7 +706,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   })();
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
       <View style={sc.card}>
         {/* 헤더 */}
         <View style={sc.header}>
@@ -953,7 +953,7 @@ function BlogCard({
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
       <View style={bc.card}>
         {/* 블로그 헤더 */}
         <View style={bc.header}>
@@ -1252,7 +1252,7 @@ function AlbumCard({
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
     <View style={ab.card}>
       {/* 헤더 */}
       <View style={ab.header}>
@@ -1800,7 +1800,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
   const vt = item.viewType || 'feed';
-  const open = () => navigation.navigate('PostDetail', { postId: item.id });
+  const open = () => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
   const like = () => { if (item.isExample || item.liked) return; toggleLike(item.id); };
   const tilt = tiltFor(item.id);
@@ -2583,7 +2583,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   key={snap.id}
                   style={s.storyItem}
                   activeOpacity={0.8}
-                  onPress={() => navigation.navigate('PostDetail', { postId: snap.id })}
+                  onPress={() => navigation.navigate('PostDetail', { postId: snap.id, record: snap.isExample ? snap : undefined })}
                 >
                   <LinearGradient
                     colors={snap._hasUnviewed ? (skinAccent.ringGradient ?? ['#22D3EE', '#A855F7', '#D946EF']) : ['#3A3A4A', '#3A3A4A']}
