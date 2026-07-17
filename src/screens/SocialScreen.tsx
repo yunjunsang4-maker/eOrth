@@ -55,6 +55,8 @@ import * as Clipboard from 'expo-clipboard';
 import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
+import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
+import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const SCREEN_W_SOCIAL = Dimensions.get('window').width;
@@ -2505,19 +2507,30 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return out;
   }, [timelineItems, isPremium]);
 
+  const isEmptyFeed = allVisible.length === 0;
+
+  // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링 소개
+  const snapDisplay = snapItems.length === 0 ? [{ ...EXAMPLE_SNAP, _hasUnviewed: true }] : snapItems;
+
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
+    // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
+    const feedSource = isEmptyFeed
+      ? [EXAMPLE_FEED_RECORD, { _featureCard: true, id: 'feature-card' }]
+      : timelineWithAds;
     const cols: any[][] = [[], []];
     const h = [0, 0];
-    timelineWithAds.forEach((item) => {
+    feedSource.forEach((item) => {
       const c = h[0] <= h[1] ? 0 : 1;
       cols[c].push(item);
       h[c] += item._adSlot
         ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
-        : estDiaryHeight(item, diaryCardMode);
+        : item._featureCard
+          ? 260 // 기능 소개 카드 고정 추정치
+          : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [timelineWithAds, diaryCardMode]);
+  }, [isEmptyFeed, timelineWithAds, diaryCardMode]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -2547,10 +2560,10 @@ function FriendsTab({ navigation }: { navigation: any }) {
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
-        {snapItems.length > 0 && (
+        {snapDisplay.length > 0 && (
           <View style={s.storySection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storyScroll}>
-              {snapItems.map(snap => (
+              {snapDisplay.map(snap => (
                 <TouchableOpacity
                   key={snap.id}
                   style={s.storyItem}
@@ -2596,10 +2609,19 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
-          {allVisible.length === 0 && (
-            /* 빈 피드 기본 콘텐츠 — 안내 + 추천 친구 + 친구 찾기 CTA */
+          {isEmptyFeed && (
+            /* 빈 피드 기본 콘텐츠 — 안내 + 기록 유도 CTA + 추천 친구 + 친구 찾기 보조 링크 */
             <View style={s.emptyWrap}>
-              <Text style={s.emptyText}>{t('social.emptyText')}</Text>
+              <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
+              {/* 주 CTA: 첫 기록 남기기 */}
+              <TouchableOpacity
+                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('NewRecord')}
+              >
+                <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
+              </TouchableOpacity>
+              {/* 추천 친구 (보조) */}
               {suggested.length > 0 && (
                 <>
                   <Text style={s.emptySuggestTitle}>{t('social.emptySuggestTitle')}</Text>
@@ -2627,12 +2649,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   ))}
                 </>
               )}
+              {/* 친구찾기 보조 링크 (덜 강조) */}
               <TouchableOpacity
-                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
-                activeOpacity={0.85}
+                style={s.emptyCtaLink}
+                activeOpacity={0.75}
                 onPress={() => navigation.navigate('FriendSearch')}
               >
-                <Text style={s.emptyCtaText}>{t('social.emptyCtaFindFriends')}</Text>
+                <Text style={s.emptyCtaLinkText}>{t('social.emptyCtaFindFriends')}</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -2640,6 +2663,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
                 {columns[ci].map((item: any) => {
+                  if (item._featureCard) {
+                    return <FeatureShowcaseCard key={item.id} />;
+                  }
                   if (item._adSlot) {
                     return (
                       <FeedAdCard
@@ -3106,6 +3132,16 @@ const s = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  emptyCtaLink: {
+    marginTop: 14,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  emptyCtaLinkText: {
+    fontSize: 13,
+    color: C.dim,
+    textDecorationLine: 'underline',
   },
 });
 
