@@ -7,11 +7,9 @@ import Svg, {
   Rect as SvgRect,
 } from 'react-native-svg';
 import { Colors } from '../constants';
-import { useSkinAccent } from '../constants/skinTheme';
 
 // 시안 카드: 흰 3% 패널 + 그라데이션 1px 스트로크(rx 28). 높이는 onLayout로 측정.
-// 테두리 색은 지구본 스킨 연동 — aurora는 시안의 마젠타→시안 유지, 커스텀 스킨은 스킨 링 2-스톱
-// (StatsScreen 히어로 카드 테두리와 동일 규칙).
+// 테두리는 연도별 방문 통계 카드(GradientHalfCard)와 동일한 #CECFCD 대각선 그라데이션(스킨 무관).
 export default function DetailBox({
   title,
   children,
@@ -20,7 +18,6 @@ export default function DetailBox({
   children: React.ReactNode;
 }) {
   const [size, setSize] = useState({ w: 0, h: 0 });
-  const skinAccent = useSkinAccent();
   return (
     <View style={styles.wrap}>
       {!!title && <Text style={styles.title}>{title}</Text>}
@@ -38,18 +35,12 @@ export default function DetailBox({
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             <Svg width={size.w} height={size.h}>
               <SvgDefs>
-                <SvgLinearGradient id="detailBoxRing" x1="15%" y1="0%" x2="70%" y2="72%">
-                  {skinAccent.ringGradient
-                    ? [
-                        <SvgStop key="s0" offset="0" stopColor={skinAccent.ringGradient[0]} />,
-                        <SvgStop key="s1" offset="0.6" stopColor={skinAccent.ringGradient[1]} stopOpacity={0} />,
-                        <SvgStop key="s2" offset="1" stopColor={skinAccent.ringGradient[1]} stopOpacity={0.5} />,
-                      ]
-                    : [
-                        <SvgStop key="s0" offset="0" stopColor="#FF14E4" />,
-                        <SvgStop key="s1" offset="0.6" stopColor="#00D8F3" stopOpacity={0} />,
-                        <SvgStop key="s2" offset="1" stopColor="#00D8F3" stopOpacity={0.5} />,
-                      ]}
+                {/* 연도별 방문 통계(GradientHalfCard) 테두리와 동일 그라데이션 — #CECFCD 대각선(좌상단 진하게, 가운데 투명, 우하단 약하게) */}
+                <SvgLinearGradient id="detailBoxRing" x1="0" y1="0" x2="1" y2="1">
+                  <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                  <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
+                  <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
+                  <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
                 </SvgLinearGradient>
               </SvgDefs>
               <SvgRect
