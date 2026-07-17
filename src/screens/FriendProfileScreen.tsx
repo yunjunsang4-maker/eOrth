@@ -21,7 +21,8 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchNeighborCount, reportPostToServer } from '../services/social';
+import { fetchNeighborCount, fetchPostCount, reportPostToServer } from '../services/social';
+import GlobeLockIcon from '../components/GlobeLockIcon';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
@@ -79,21 +80,25 @@ export default function FriendProfileScreen({
   const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [neighborCount, setNeighborCount] = useState(0);
+  // 여행수(기록 수) — 서버 동기화값. 비이웃은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.
+  const [postCount, setPostCount] = useState<number | null>(null);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
   // 프로필 로딩 완료 여부 — 완료 전엔 콘텐츠를 그리지 않는다(로딩 깜빡임 방지)
   const [profileLoaded, setProfileLoaded] = useState(!isSupabaseConfigured || !userId);
   const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
-    const [p, posts, nc] = await Promise.all([
+    const [p, posts, nc, pc] = await Promise.all([
       getProfileById(userId),
       fetchUserPosts(userId),
       fetchNeighborCount(userId),
+      fetchPostCount(userId),
     ]);
     if (!aliveRef.current) return;
     setProfileRow(p);
     setUserPosts(posts);
     if (nc !== null) setNeighborCount(nc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
+    if (pc !== null) setPostCount(pc);     // 여행수 서버 동기화값(오류면 로컬 폴백)
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
@@ -225,6 +230,10 @@ export default function FriendProfileScreen({
   const requested = !!realId && isNeighborRequested(realId);
   const neighborState: 'none' | 'requested' | 'neighbor' =
     neighborNow ? 'neighbor' : requested ? 'requested' : 'none';
+  // 비이웃 잠금 — 여행기록은 이웃 전용. 카운트만 노출하고 아카이브는 잠금 안내로 대체.
+  const locked = !isSelf && !neighborNow;
+  // 여행수 스탯 — 타인은 서버 동기화값 우선(비이웃도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
+  const tripStatValue = isSelf ? display.trips.length : (postCount ?? display.trips.length);
   const onNeighborPress = () => {
     if (!realId) return;
     if (neighborState === 'none') requestNeighbor(realId);
@@ -356,7 +365,7 @@ export default function FriendProfileScreen({
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
             {/* 통계 — 여행수·이웃 2개. 이웃 탭 → 이웃 목록(조회 전용) */}
             <View style={pv.statsRow}>
-              <StatCard value={String(display.trips.length)} label={t('profile.tripCount')} />
+              <StatCard value={String(tripStatValue)} label={t('profile.tripCount')} />
               <StatCard
                 value={String(neighborCount)}
                 label={t('profile.neighbors')}
@@ -408,6 +417,16 @@ export default function FriendProfileScreen({
         {!isSelf && !profileLoaded ? (
           /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
+        ) : locked ? (
+          /* ── 비이웃 잠금 안내 — 카운트만 노출, 아카이브는 지구본+자물쇠 + 문구로 대체 ── */
+          <>
+            <View style={s.divider} />
+            <View style={s.lockedBox}>
+              <GlobeLockIcon size={72} color={skinAccent.accent} />
+              <Text style={s.lockedTitle}>{t('friends.lockedTitle')}</Text>
+              <Text style={s.lockedDesc}>{t('friends.lockedDesc')}</Text>
+            </View>
+          </>
         ) : (
           <>
             {/* ── Travel badge — 프로필 탭과 동일한 섹션 헤더 + 구이 서클 배지 ── */}
@@ -589,6 +608,10 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 23, fontFamily: 'Inter_800ExtraBold', color: COLORS.white },
   archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
+  // 비이웃 잠금 안내 — 인스타 비공개 계정 스타일(아이콘 1개 + 문구)
+  lockedBox: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 32 },
+  lockedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 16 },
+  lockedDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', marginTop: 6, lineHeight: 18 },
 
   // ── 여행 썸네일 2열 그리드 ──
 

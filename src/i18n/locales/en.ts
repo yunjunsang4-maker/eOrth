@@ -1246,6 +1246,8 @@ const en = {
     contactPermDesc: "We'll find people who use eOrth\namong your contacts.",
     tripCountN: '{{count}} trips',
     noPublicTrips: 'No public travel records yet',
+    lockedTitle: 'Only neighbors can see travel records',
+    lockedDesc: 'Become neighbors to unlock their records',
     consentFootnote: 'By continuing, you agree to the notice above.',
     followNameA11y: 'Follow {{name}}',
     unfollowNameA11y: 'Unfollow {{name}}',

@@ -598,6 +598,18 @@ language sql stable security definer set search_path = public as $$
 $$;
 grant execute on function public.neighbor_counts(uuid[]) to authenticated;
 
+-- 여러 사용자의 공유 기록 수(visibility='neighbors' 글)를 한 번에 집계 — 비이웃 프로필의 여행수 스탯 표시용.
+-- 이웃수(neighbor_counts)와 동일하게 집계값만 반환하는 공개 통계(개별 글 노출 없음). RLS 우회 위해 security definer.
+create or replace function public.post_counts(ids uuid[])
+returns table (user_id uuid, post_count int)
+language sql stable security definer set search_path = public as $$
+  select u as user_id,
+    (select count(*) from public.posts p
+      where p.author_id = u and p.visibility = 'neighbors')::int
+  from unnest(ids) as u;
+$$;
+grant execute on function public.post_counts(uuid[]) to authenticated;
+
 -- 이전 follows 모델의 잔여 함수 정리 (재실행 안전)
 -- follows/follow_requests 테이블이 마이그레이션용으로 임시 유지된 경우, 거기 붙은
 -- 옛 트리거·정책이 아래 함수들을 참조하고 있어(2BP01) 먼저 전부 떼어내야 한다.

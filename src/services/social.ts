@@ -107,6 +107,17 @@ export async function fetchNeighborCount(userId: string): Promise<number | null>
   } catch { return null; }
 }
 
+// 공유 기록 수 (visibility='neighbors' 글 집계) — 비이웃 프로필 여행수 스탯 동기화용. 오류 시 null
+export async function fetchPostCount(userId: string): Promise<number | null> {
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('post_counts', { ids: [userId] });
+    if (error) return null;
+    const row = (data as { user_id: string; post_count: number }[] | null)?.[0];
+    return row?.post_count ?? 0;
+  } catch { return null; }
+}
+
 // 내가 보낸 대기 신청 대상 id (버튼 '신청됨' 표시용). 오류 시 null(로컬 유지)
 export async function fetchMyOutgoingNeighborRequests(): Promise<string[] | null> {
   if (!supabase) return null;

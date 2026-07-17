@@ -1247,6 +1247,8 @@ const ko = {
     contactPermDesc: '내 연락처에 있는 친구 중\neOrth를 사용하는 사람을 찾아드려요.',
     tripCountN: '{{count}}개의 여행',
     noPublicTrips: '아직 공개된 여행 기록이 없어요',
+    lockedTitle: '이웃만 여행기록을 볼 수 있어요',
+    lockedDesc: '이웃이 되면 여행기록이 공개돼요',
     consentFootnote: '계속하면 위 안내에 동의하는 것으로 간주됩니다.',
     followNameA11y: '{{name}} 팔로우',
     unfollowNameA11y: '{{name}} 팔로우 취소',
