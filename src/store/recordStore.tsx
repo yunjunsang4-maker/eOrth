@@ -3,7 +3,7 @@ import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
-import { usePersistence, STORE_KEYS } from './persist';
+import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import i18n from '../i18n';
@@ -370,8 +370,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
+  // 피드 캐시 복원 race 가드 — 서버 refreshFeed가 먼저 성공했으면 캐시(구본)로 덮어쓰지 않는다
+  const feedFreshRef = useRef(false);
   // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
   const [stayPromptCountry, setStayPromptCountry] = useState<string | null>(null);
+
+  // 피드 캐시 복원 (마운트 1회) — 오프라인 재시작 시 마지막 피드를 즉시 표시.
+  // 온라인이면 곧이어 refreshFeed가 최신으로 교체한다(캐시 선표시 → 체감 로딩 개선).
+  useEffect(() => {
+    (async () => {
+      const cached = await loadEnvelope<TravelRecord[]>(STORE_KEYS.feedCache);
+      if (!cached || !Array.isArray(cached) || cached.length === 0) return;
+      if (feedFreshRef.current) return; // 서버 피드가 이미 도착 — 구본으로 덮지 않음
+      setFeedPosts((prev) => (prev.length > 0 ? prev : cached));
+    })();
+  }, []);
 
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
@@ -1495,7 +1508,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
       const [posts, likedIds] = await withTimeout(Promise.all([fetchFeed(), fetchMyLikedPostIds()]), 12000);
       const likedSet = new Set(likedIds);
-      setFeedPosts(posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) })));
+      const fresh = posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
+      feedFreshRef.current = true; // 이후 도착하는 캐시 복원이 구본으로 덮지 않게
+      setFeedPosts(fresh);
+      // 피드 캐시 영속화 — 오프라인 재시작 시 마지막 피드 표시용(최대 100개, 실패 무시)
+      saveEnvelope(STORE_KEYS.feedCache, fresh.slice(0, 100));
     } catch {
       // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
       emitToast('피드를 불러오지 못했어요. 네트워크를 확인해 주세요.');
