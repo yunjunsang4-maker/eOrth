@@ -2651,7 +2651,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
               <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
               {/* 주 CTA: 첫 기록 남기기 */}
               <TouchableOpacity
-                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
+                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep, shadowColor: skinAccent.accent }]}
                 activeOpacity={0.85}
                 onPress={() => {
                   // 메인(지구본) 탭으로 이동한 뒤 RecordFab의 기록 형식 메뉴를 펼친다.
@@ -3163,10 +3163,19 @@ const s = StyleSheet.create({
     marginTop: 1,
   },
   emptyCta: {
+    // 하단 탭의 활성 알약과 동일한 디자인: 보라 알약 + 밝은(#CECFCD) 테두리 + 보라 글로우
     marginTop: 18,
-    borderRadius: 22,
-    paddingVertical: 13,
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignSelf: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(206, 207, 205, 0.4)',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 6,
   },
   emptyCtaText: {
     fontSize: 14,
