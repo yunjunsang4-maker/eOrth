@@ -209,7 +209,6 @@ const NODE_GEO: [number, number, number][] = [
   [23, 127, 23],
   [312, 127, 23],
 ];
-const NODE_RING_OPACITY = [1, 0.5, 0.5, 0.2, 0.2];
 // ── 궤도 캐러셀(이스터에그) — 별점 원판을 꾹 누른 채 좌우 드래그로 랭킹 노드 회전 ──
 // 슬롯을 좌→우 순서로 정렬하고 각 슬롯의 (궤도 중심 기준) 각도·반지름을 구해 원호를 따라 보간.
 // 맨 오른쪽→맨 왼쪽 랩 구간은 아래쪽 큰 호를 한 바퀴 돌아 넘어간다(행성 궤도 느낌).
@@ -973,7 +972,8 @@ export default function StatsScreen() {
                     {t('stats.visitsUnit', { count: c.visits })}
                   </Text>
                 </View>
-                {/* 노드 링 — 개별 마젠타→시안 그라데이션 스트로크, 순위별 불투명도 1/0.5/0.2 */}
+                {/* 노드 링 — 개별 마젠타→시안 그라데이션 스트로크. 위치별 불투명도(가운데 1 / 양옆 첫번째=2위 0.5 / 양끝=6위 0.2).
+                    순위(i)가 아니라 현재 위치(big/small)를 기준 — 캐러셀 회전 시 좌우 짝이 맞게 */}
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   <Svg width={size} height={size}>
                     <SvgDefs>
@@ -987,7 +987,7 @@ export default function StatsScreen() {
                       cy={size / 2}
                       r={size / 2 - 0.5}
                       stroke={`url(#arcNodeRing${i})`}
-                      strokeOpacity={NODE_RING_OPACITY[Math.min(i, 4)]}
+                      strokeOpacity={big ? 1 : small ? 0.2 : 0.5}
                       strokeWidth={1}
                       fill="none"
                     />
