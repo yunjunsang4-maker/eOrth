@@ -392,24 +392,26 @@ export default function FriendProfileScreen({
                       : t('friends.neighborRequest')}
                 </Text>
               </TouchableOpacity>
-              {/* DM — 대화 화면으로 이동 (핸들 기준 대화방) */}
-              <TouchableOpacity
-                style={s.dmBtn}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate('DM', {
-                  friend: {
-                    name: display.name,
-                    handle: profileRow?.handle || route.params?.handle || displayUsername,
-                    emoji: display.emoji,
-                    photo: display.photo ?? undefined,
-                    id: realId ?? undefined,
-                  },
-                })}
-                accessibilityRole="button"
-                accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
-              >
-                <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
-              </TouchableOpacity>
+              {/* DM — 이웃일 때만 노출. 비이웃은 DM 불가(이웃 버튼이 폭을 채움) */}
+              {neighborNow && (
+                <TouchableOpacity
+                  style={s.dmBtn}
+                  activeOpacity={0.85}
+                  onPress={() => navigation.navigate('DM', {
+                    friend: {
+                      name: display.name,
+                      handle: profileRow?.handle || route.params?.handle || displayUsername,
+                      emoji: display.emoji,
+                      photo: display.photo ?? undefined,
+                      id: realId ?? undefined,
+                    },
+                  })}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
+                >
+                  <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </>
         )}
