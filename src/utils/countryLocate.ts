@@ -22,6 +22,7 @@ const GEO_NAME_FIX: Record<string, string> = {
 
 // GeoJSON 영문 국가명 → ISO 3166-1 alpha-2 (GlobeView와 동일)
 const EN_TO_ISO: Record<string, string> = {
+  'Hong Kong': 'hk', 'Macau': 'mo', // 중국에서 분리한 별도 지역
   'Belize': 'bz', 'Benin': 'bj', 'Burkina Faso': 'bf', 'Burundi': 'bi', 'Central African Republic': 'cf',
   'Djibouti': 'dj', 'East Timor': 'tl', 'Equatorial Guinea': 'gq', 'Eritrea': 'er', 'Fiji': 'fj',
   'Gabon': 'ga', 'Gambia': 'gm', 'Lesotho': 'ls', 'Liberia': 'lr', 'Malawi': 'mw', 'Mauritania': 'mr',
@@ -115,6 +116,10 @@ function buildIndex(): CountryShape[] {
     }
     out.push({ code: iso.toUpperCase(), name, bbox: [minLon, minLat, maxLon, maxLat], polys });
   }
+  // 작은 영토(홍콩·마카오 등 중국 안 엔클레이브) 먼저 판정 — 겹치는 좌표에서 작은 쪽이 이기게 bbox 면적 오름차순
+  out.sort((a, b) =>
+    (a.bbox[2] - a.bbox[0]) * (a.bbox[3] - a.bbox[1]) - (b.bbox[2] - b.bbox[0]) * (b.bbox[3] - b.bbox[1])
+  );
   return out;
 }
 

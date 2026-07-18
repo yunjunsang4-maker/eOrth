@@ -245,6 +245,7 @@ export const KO_TO_EN: Record<string, string> = {
   '남아프리카공화국':'South Africa','대한민국':'South Korea','남수단':'South Sudan',
   '스페인':'Spain','스리랑카':'Sri Lanka','수단':'Sudan',
   '스웨덴':'Sweden','스위스':'Switzerland','시리아':'Syria',
+  '홍콩':'Hong Kong','마카오':'Macau', // 중국에서 분리한 별도 지역
   '대만':'Taiwan','타지키스탄':'Tajikistan','탄자니아':'Tanzania',
   '태국':'Thailand','토고':'Togo','튀니지':'Tunisia',
   '튀르키예':'Turkey','투르크메니스탄':'Turkmenistan',
