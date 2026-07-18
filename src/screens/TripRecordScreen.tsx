@@ -232,6 +232,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   const handleAlbumDragState = (dragging: boolean) => {
     setScrollEnabled(!dragging);
+    // 드래그 중엔 화면 뒤로가기 스와이프(iOS 왼쪽 엣지 pan)를 끈다 — 왼쪽 사진을 옆으로 끌 때
+    // 재정렬 대신 화면이 뒤로 밀리던 제스처 충돌 방지. 드래그는 400ms 정지 후 시작되므로
+    // 이 시점엔 아직 가로 이동 전이라 스와이프를 안전하게 비활성화할 수 있다.
+    navigation.setOptions({ gestureEnabled: !dragging });
     if (dragging) {
       dragPageYRef.current = null;
       if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current);
