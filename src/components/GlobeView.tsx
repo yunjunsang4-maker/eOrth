@@ -1806,9 +1806,19 @@ function applyNebula(s){
     el.style.background = 'radial-gradient(circle at 50% 50%, rgba('+rgb+','+el.getAttribute('data-a')+'), rgba('+rgb+',0) '+el.getAttribute('data-s')+'%)';
   }
 }
+// 지역명 라벨 외곽선(halo) — 스킨 본체색을 어둡게(×0.25) 파생. 기본(aurora)=어두운 보라
+var LABEL_HALO = 'rgba(45,16,84,';
 function applyNeonSkin(s){
   pendingNeonSkin = s || null;
   applyNebula(s || null); // 가스는 DOM만 있으면 즉시 반영 (material 준비 전에도)
+  // 라벨 halo를 스킨색 기반으로 갱신 (스킨 없으면 기본 보라 복원)
+  if(s && s.base){
+    var bn = parseInt(String(s.base).replace('#',''),16);
+    LABEL_HALO = 'rgba('+Math.round(((bn>>16)&255)*0.25)+','+Math.round(((bn>>8)&255)*0.25)+','+Math.round((bn&255)*0.25)+',';
+  } else {
+    LABEL_HALO = 'rgba(45,16,84,';
+  }
+  if(typeof _lblLast!=='undefined' && _lblLast) _lblLast.zf = NaN; // 다음 프레임에 라벨 즉시 재도색
   if(!material) return;
   var d = NEON_DEFAULT_SKIN, t = s || d;
   material.uniforms.uBase.value = hex3(t.base || d.base);
@@ -2174,7 +2184,7 @@ function updateLabels(){
     if(!occupy(p.x,p.y)) continue;
     var a=Math.min(1,(p.facing-0.3)/0.25);
     labelCtx.font='600 '+fs+'px sans-serif';
-    labelCtx.strokeStyle='rgba(45,16,84,'+(0.8*a)+')';
+    labelCtx.strokeStyle=LABEL_HALO+(0.8*a)+')';
     labelCtx.lineWidth=3;
     labelCtx.strokeText(L.ko, p.x, p.y);
     labelCtx.fillStyle='rgba(255,255,255,'+(0.92*a)+')';
@@ -2192,7 +2202,7 @@ function updateLabels(){
       labelCtx.fillStyle='rgba(255,213,74,'+(0.95*ca)+')';
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y-cfs*0.9, 2.2, 0, Math.PI*2); labelCtx.fill();
       labelCtx.font='500 '+cfs+'px sans-serif';
-      labelCtx.strokeStyle='rgba(45,16,84,'+(0.75*ca)+')';
+      labelCtx.strokeStyle=LABEL_HALO+(0.75*ca)+')';
       labelCtx.lineWidth=2.5;
       labelCtx.strokeText(C.n, q.x, q.y+cfs*0.35);
       labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
