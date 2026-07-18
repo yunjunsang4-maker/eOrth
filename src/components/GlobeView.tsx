@@ -1121,10 +1121,16 @@ function applyLOD(target) {
   worldLOD = target;
   // 채움 텍스처만 재생성 — 국경선은 110m/50m 두 그룹을 상시 두고 줌에 따라 크로스페이드(updateBorderFade)
   loadAllImages().then(function() { return buildTexture(); }).then(function(tex) {
-    var old = globeMesh.material.map;
-    globeMesh.material.map = tex;
-    globeMesh.material.needsUpdate = true;
-    if (old && old.dispose) old.dispose();
+    if (regionActive) {
+      // 완료 시점에 지역 창이 켜져 있으면 전역 텍스처는 복귀용 슬롯만 갱신(지역 창 덮어쓰기 방지)
+      var oldG = regionPrevTex; regionPrevTex = tex;
+      if (oldG && oldG.dispose) oldG.dispose();
+    } else {
+      var old = globeMesh.material.map;
+      globeMesh.material.map = tex;
+      globeMesh.material.needsUpdate = true;
+      if (old && old.dispose) old.dispose();
+    }
     lodBusy = false;
   }).catch(function() { lodBusy = false; });
 }
@@ -1281,6 +1287,28 @@ function centerLatLon() {
   if (lon < -180) lon += 360;
   return { lat: lat, lon: lon };
 }
+// 링을 창 사각형으로 클리핑(Sutherland–Hodgman) — ① 거대 대륙 링이 회전 투영 경계를 넘으며
+// 채움이 뒤집히던 문제(활성색 지워짐) 해결 ② 창 밖 수만 점 드로잉 제거(렉 감소)
+function clipRingToRect(ring, minLon, minLat, maxLon, maxLat) {
+  function clipEdge(pts, inside, isect) {
+    var res = [];
+    for (var i = 0; i < pts.length; i++) {
+      var cur = pts[i], prev = pts[(i + pts.length - 1) % pts.length];
+      var cin = inside(cur), pin = inside(prev);
+      if (cin) { if (!pin) res.push(isect(prev, cur)); res.push(cur); }
+      else if (pin) { res.push(isect(prev, cur)); }
+    }
+    return res;
+  }
+  function ix(a, b, x) { var t = (x - a[0]) / (b[0] - a[0]); return [x, a[1] + t * (b[1] - a[1])]; }
+  function iy(a, b, y) { var t = (y - a[1]) / (b[1] - a[1]); return [a[0] + t * (b[0] - a[0]), y]; }
+  var out = ring;
+  out = clipEdge(out, function(p) { return p[0] >= minLon; }, function(a, b) { return ix(a, b, minLon); }); if (!out.length) return out;
+  out = clipEdge(out, function(p) { return p[0] <= maxLon; }, function(a, b) { return ix(a, b, maxLon); }); if (!out.length) return out;
+  out = clipEdge(out, function(p) { return p[1] >= minLat; }, function(a, b) { return iy(a, b, minLat); }); if (!out.length) return out;
+  out = clipEdge(out, function(p) { return p[1] <= maxLat; }, function(a, b) { return iy(a, b, maxLat); });
+  return out;
+}
 function buildRegionTexture(lonC, latC, span) {
   var S = 4096;
   var c = document.createElement('canvas'); c.width = S; c.height = S;
@@ -1290,8 +1318,15 @@ function buildRegionTexture(lonC, latC, span) {
   var proj = d3.geoEquirectangular().rotate([-lonC, 0]).center([0, latC]).scale(S / (span * Math.PI / 180)).translate([S / 2, S / 2]);
   var path = d3.geoPath().projection(proj).context(ctx);
   var pfb = d3.geoPath().projection(proj);
+  var wMinLon = lonC - span / 2, wMaxLon = lonC + span / 2, wMinLat = latC - span / 2, wMaxLat = latC + span / 2;
   var src = (world50Data || world110Data || worldData);
   src.features.forEach(function(f) {
+    // 창과 겹치지 않는 나라는 스킵(빌드 시간 단축) — geoBounds 1회 캐시, 날짜변경선 걸침은 통과
+    if (!f.__gb) f.__gb = d3.geoBounds(f);
+    var gb = f.__gb;
+    if (gb[0][0] <= gb[1][0]) {
+      if (gb[1][0] < wMinLon || gb[0][0] > wMaxLon || gb[1][1] < wMinLat || gb[0][1] > wMaxLat) return;
+    }
     var name = f.properties.name || '';
     var visited = visitedMap[name];
     var mode = visited ? (visited.mode || globeDisplayMode) : null;
@@ -1322,18 +1357,19 @@ function buildRegionTexture(lonC, latC, span) {
     }
   });
   if (land10) {
-    var minLon = lonC - span, maxLon = lonC + span, minLat = latC - span, maxLat = latC + span;
     ctx.globalCompositeOperation = 'destination-in';
     ctx.beginPath();
     for (var i = 0; i < land10.length; i++) {
       var b = land10[i].b;
-      if (b[2] < minLon || b[0] > maxLon || b[3] < minLat || b[1] > maxLat) continue;
-      var ring = land10[i].r, started = false;
+      if (b[2] < wMinLon || b[0] > wMaxLon || b[3] < wMinLat || b[1] > wMaxLat) continue;
+      // 창 사각형으로 클리핑 후 투영 — 회전 경계 넘김(채움 뒤집힘)·창 밖 점 낭비 방지
+      var ring = clipRingToRect(land10[i].r, wMinLon, wMinLat, wMaxLon, wMaxLat);
+      if (ring.length < 3) continue;
       for (var j = 0; j < ring.length; j++) {
         var p = proj(ring[j]);
-        if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
+        if (j === 0) ctx.moveTo(p[0], p[1]); else ctx.lineTo(p[0], p[1]);
       }
-      if (started) ctx.closePath();
+      ctx.closePath();
     }
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
@@ -1445,14 +1481,22 @@ function projectLL(lon, lat) {
   return { x: (ndc.x * 0.5 + 0.5) * window.innerWidth, y: (-ndc.y * 0.5 + 0.5) * window.innerHeight, facing: facing };
 }
 var _lblLast = { rx: NaN, ry: NaN, zf: NaN };
+var _lblFrame = 0, _lblEmpty = true;
 function updateLabels() {
   if (!labelCtx) return;
+  _lblFrame++;
+  if (_lblFrame % 2) return; // 격프레임(30fps) 갱신 — 자동회전 중 매 프레임 텍스트 렌더로 인한 발열 감소
   var zf = zoomFactor();
+  if (zf < 1.25 || !countryLabels.length) {
+    // 라벨 없음 구간 — 이미 비어 있으면 clearRect 반복도 생략
+    if (!_lblEmpty) { labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight); _lblEmpty = true; _lblLast.zf = NaN; }
+    return;
+  }
   // 회전·줌이 안 변했으면 다시 그리지 않는다(발열 방지)
   if (Math.abs(_lblLast.rx - rotX) < 1e-4 && Math.abs(_lblLast.ry - rotY) < 1e-4 && Math.abs(_lblLast.zf - zf) < 1e-3) return;
   _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf;
   labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
-  if (zf < 1.25 || !countryLabels.length) return;
+  _lblEmpty = false;
   var grid = {}; var CELL = 76;
   function occupy(x, y) {
     var k = Math.floor(x / CELL) + '_' + Math.floor(y / CELL);
@@ -1562,10 +1606,15 @@ function applyTheme(t) {
   loadAllImages().then(function() {
     return buildTexture();
   }).then(function(tex) {
-    var old = globeMesh.material.map; // 4096x2048 CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
-    globeMesh.material.map = tex;
-    globeMesh.material.needsUpdate = true;
-    if (old && old.dispose) old.dispose();
+    if (regionActive) {
+      var oldG = regionPrevTex; regionPrevTex = tex;
+      if (oldG && oldG.dispose) oldG.dispose();
+    } else {
+      var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
+      globeMesh.material.map = tex;
+      globeMesh.material.needsUpdate = true;
+      if (old && old.dispose) old.dispose();
+    }
   });
   if (atmosphere) {
     globe.remove(atmosphere);
@@ -1611,10 +1660,15 @@ function handleVisitedMessage(msg) {
       loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
-        var old = globeMesh.material.map;
-        globeMesh.material.map = tex;
-        globeMesh.material.needsUpdate = true;
-        if (old && old.dispose) old.dispose();
+        if (regionActive) {
+          var oldG = regionPrevTex; regionPrevTex = tex;
+          if (oldG && oldG.dispose) oldG.dispose();
+        } else {
+          var old = globeMesh.material.map;
+          globeMesh.material.map = tex;
+          globeMesh.material.needsUpdate = true;
+          if (old && old.dispose) old.dispose();
+        }
       });
     }
   } else if (msg.type === 'setSponsored') {
@@ -2337,32 +2391,60 @@ function centerLatLon(){
   if(lon<-180) lon+=360;
   return { lat:lat, lon:lon };
 }
+// 링을 창 사각형으로 클리핑(Sutherland–Hodgman) — 거대 대륙 링의 회전 경계 넘김(채움 뒤집힘) 방지 + 창 밖 점 제거
+function clipRingToRect(ring, minLon, minLat, maxLon, maxLat){
+  function clipEdge(pts, inside, isect){
+    var res=[];
+    for(var i=0;i<pts.length;i++){
+      var cur=pts[i], prev=pts[(i+pts.length-1)%pts.length];
+      var cin=inside(cur), pin=inside(prev);
+      if(cin){ if(!pin) res.push(isect(prev,cur)); res.push(cur); }
+      else if(pin){ res.push(isect(prev,cur)); }
+    }
+    return res;
+  }
+  function ix(a,b,x){ var t=(x-a[0])/(b[0]-a[0]); return [x, a[1]+t*(b[1]-a[1])]; }
+  function iy(a,b,y){ var t=(y-a[1])/(b[1]-a[1]); return [a[0]+t*(b[0]-a[0]), y]; }
+  var out=ring;
+  out=clipEdge(out,function(p){return p[0]>=minLon;},function(a,b){return ix(a,b,minLon);}); if(!out.length) return out;
+  out=clipEdge(out,function(p){return p[0]<=maxLon;},function(a,b){return ix(a,b,maxLon);}); if(!out.length) return out;
+  out=clipEdge(out,function(p){return p[1]>=minLat;},function(a,b){return iy(a,b,minLat);}); if(!out.length) return out;
+  out=clipEdge(out,function(p){return p[1]<=maxLat;},function(a,b){return iy(a,b,maxLat);});
+  return out;
+}
 function buildRegionTexture(lonC, latC, span){
   var S=4096;
   var c=document.createElement('canvas'); c.width=S; c.height=S;
   var ctx=c.getContext('2d');
   var proj=d3.geoEquirectangular().rotate([-lonC,0]).center([0,latC]).scale(S/(span*Math.PI/180)).translate([S/2,S/2]);
   var path=d3.geoPath().projection(proj).context(ctx);
+  var wMinLon=lonC-span/2, wMaxLon=lonC+span/2, wMinLat=latC-span/2, wMaxLat=latC+span/2;
   var src=(world50Data||world110Data||worldData);
   src.features.forEach(function(f){
+    // 창 밖 나라 스킵(빌드 시간 단축) — geoBounds 1회 캐시, 날짜변경선 걸침은 통과
+    if(!f.__gb) f.__gb=d3.geoBounds(f);
+    var gb=f.__gb;
+    if(gb[0][0]<=gb[1][0]){
+      if(gb[1][0]<wMinLon||gb[0][0]>wMaxLon||gb[1][1]<wMinLat||gb[0][1]>wMaxLat) return;
+    }
     var v=visitedMap[f.properties.name||''];
     var col=v?(v.color||globeDefaultColor):NEON_LAND;
     ctx.fillStyle=col; ctx.strokeStyle=col; ctx.lineWidth=10; ctx.lineJoin='round';
     ctx.beginPath(); path(f); ctx.fill(); ctx.stroke(); // 두꺼운 동색 스트로크 = 10m 마스크 대비 해안 여유
   });
   if(land10){
-    var minLon=lonC-span, maxLon=lonC+span, minLat=latC-span, maxLat=latC+span; // 창+여유
     ctx.globalCompositeOperation='destination-in';
     ctx.beginPath();
     for(var i=0;i<land10.length;i++){
       var b=land10[i].b;
-      if(b[2]<minLon||b[0]>maxLon||b[3]<minLat||b[1]>maxLat) continue; // 창 밖 링 스킵
-      var ring=land10[i].r, started=false;
+      if(b[2]<wMinLon||b[0]>wMaxLon||b[3]<wMinLat||b[1]>wMaxLat) continue; // 창 밖 링 스킵
+      var ring=clipRingToRect(land10[i].r, wMinLon, wMinLat, wMaxLon, wMaxLat);
+      if(ring.length<3) continue;
       for(var j=0;j<ring.length;j++){
         var p=proj(ring[j]);
-        if(!started){ ctx.moveTo(p[0],p[1]); started=true; } else ctx.lineTo(p[0],p[1]);
+        if(j===0) ctx.moveTo(p[0],p[1]); else ctx.lineTo(p[0],p[1]);
       }
-      if(started) ctx.closePath();
+      ctx.closePath();
     }
     ctx.fill();
     ctx.globalCompositeOperation='source-over';
@@ -2479,13 +2561,20 @@ function projectLL(lon, lat){
   return { x:(ndc.x*0.5+0.5)*window.innerWidth, y:(-ndc.y*0.5+0.5)*window.innerHeight, facing:facing };
 }
 var _lblLast={ rx:NaN, ry:NaN, zf:NaN };
+var _lblFrame=0, _lblEmpty=true;
 function updateLabels(){
   if(!labelCtx) return;
+  _lblFrame++;
+  if(_lblFrame%2) return; // 격프레임(30fps) 갱신 — 자동회전 중 매 프레임 텍스트 렌더로 인한 발열 감소
   var zf=currentZoom;
+  if(zf<1.25 || !countryLabels.length){
+    if(!_lblEmpty){ labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight); _lblEmpty=true; _lblLast.zf=NaN; }
+    return;
+  }
   if(Math.abs(_lblLast.rx-rotX)<1e-4 && Math.abs(_lblLast.ry-rotY)<1e-4 && Math.abs(_lblLast.zf-zf)<1e-3) return;
   _lblLast.rx=rotX; _lblLast.ry=rotY; _lblLast.zf=zf;
   labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight);
-  if(zf<1.25 || !countryLabels.length) return;
+  _lblEmpty=false;
   var grid={}; var CELL=76;
   function occupy(x,y){
     var k=Math.floor(x/CELL)+'_'+Math.floor(y/CELL);
