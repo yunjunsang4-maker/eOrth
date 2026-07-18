@@ -1440,11 +1440,13 @@ const neonGlobeHTML = `<!DOCTYPE html>
   <div id="shooting"></div>
 </div>
 <div id="canvas-container"></div>
+<canvas id="label-layer" style="position:fixed;inset:0;pointer-events:none;z-index:4;"></canvas>
 <div id="ad-layer"></div>
 
 <script>${THREE_INLINE}<\/script>
 <script>${D3_INLINE}<\/script>
 <script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
+<script>var CITY_LABELS=${CITY_LABELS_INLINE};<\/script>
 
 <script>
 var NEON_LAND = 'rgba(255,255,255,0.20)';  // 비방문(기본) 대륙 — 흰색 20%(유리: 본체색이 비침)
@@ -1575,7 +1577,8 @@ var worldData = null, globeMesh = null, material = null;
 // 적도원통(equirectangular) 텍스처: 바다는 투명(셰이더가 절차적으로 칠함),
 // 대륙은 라벤더/방문국 활성화 색, 흰 해안선/국경선. (탭 판정과 동일한 WORLD_GEO 사용)
 function buildNeonTexture(){
-  var W=4096, H=2048;
+  // 딥줌(50m LOD) 상태에선 해상도도 올려 확대 시 채움·국경이 선명하게
+  var W = (typeof worldLOD !== 'undefined' && worldLOD === '50m') ? 6144 : 4096, H = W / 2;
   var c=document.createElement('canvas'); c.width=W; c.height=H;
   var ctx=c.getContext('2d');
   ctx.clearRect(0,0,W,H);
@@ -1706,6 +1709,8 @@ async function init(){
   // 번들 GeoJSON 국가명 정규화 — classic과 동일 (매핑 테이블 정식 명칭 기준)
   var GEO_NAME_FIX = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
   worldData.features.forEach(function(f){ var fx = GEO_NAME_FIX[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
+  world110Data = worldData; // 딥줌 LOD 복귀용 원본 보관
+  buildLabelIndex();        // 지역명 라벨 인덱스(centroid·면적) — 110m 기준 1회
 
   var tex = buildNeonTexture();
   material = new THREE.ShaderMaterial({
@@ -1731,10 +1736,14 @@ async function init(){
   if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type:'globeReady' }));
 }
 
-// 회전/줌 상태
-var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=4.0;
+// 회전/줌 상태 — 딥줌: 정사영이라 camera.zoom 배율만 키우면 클리핑 없이 깊이 확대된다
+var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=12.0;
 var isDragging=false, prevMouse={x:0,y:0}, velocity={x:0,y:0};
 var rotX=0, rotY=0, lastT=0;
+// 회전 감도 — 확대할수록 반비례(구글맵식 정밀 이동)
+function rotSens(){ return 0.005 / Math.max(1, currentZoom*0.55); }
+// 상하 회전 클램프 — 기본 ±0.6, 확대할수록 완화(고위도 나라를 중앙에 볼 수 있게)
+function rotXClamp(){ return Math.min(1.35, 0.6 + Math.max(0, currentZoom-1)*0.35); }
 
 // 탭 → 국가 검출 (classic과 동일: 구체 레이캐스트 → 경위도 → geoContains)
 var raycaster=new THREE.Raycaster(), tapStartPos={x:0,y:0}, lastPinchDist=null;
@@ -1759,7 +1768,7 @@ function onTap(x,y){
 
 window.addEventListener('mousedown', function(e){ isDragging=true; tapStartPos={x:e.clientX,y:e.clientY}; prevMouse={x:e.clientX,y:e.clientY}; });
 window.addEventListener('mouseup', function(e){ if(Math.hypot(e.clientX-tapStartPos.x,e.clientY-tapStartPos.y)<5) onTap(e.clientX,e.clientY); isDragging=false; });
-window.addEventListener('mousemove', function(e){ if(!isDragging) return; var dx=e.clientX-prevMouse.x, dy=e.clientY-prevMouse.y; velocity.x=dy*0.005; velocity.y=dx*0.005; rotY+=dx*0.005; rotX+=dy*0.005; rotX=Math.max(-0.6,Math.min(0.6,rotX)); prevMouse={x:e.clientX,y:e.clientY}; });
+window.addEventListener('mousemove', function(e){ if(!isDragging) return; var dx=e.clientX-prevMouse.x, dy=e.clientY-prevMouse.y; var s=rotSens(); velocity.x=dy*s; velocity.y=dx*s; rotY+=dx*s; rotX+=dy*s; var cx=rotXClamp(); rotX=Math.max(-cx,Math.min(cx,rotX)); prevMouse={x:e.clientX,y:e.clientY}; });
 
 window.addEventListener('touchstart', function(e){ if(e.touches.length===2){ lastPinchDist=null; return; } isDragging=true; tapStartPos={x:e.touches[0].clientX,y:e.touches[0].clientY}; prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY}; }, { passive:true });
 window.addEventListener('touchend', function(e){ var t=e.changedTouches[0]; if(Math.hypot(t.clientX-tapStartPos.x,t.clientY-tapStartPos.y)<8) onTap(t.clientX,t.clientY); isDragging=false; lastPinchDist=null; });
@@ -1772,8 +1781,9 @@ window.addEventListener('touchmove', function(e){
   }
   if(!isDragging) return;
   var tdx=e.touches[0].clientX-prevMouse.x, tdy=e.touches[0].clientY-prevMouse.y;
-  velocity.x=tdy*0.005; velocity.y=tdx*0.005;
-  rotY+=tdx*0.005; rotX+=tdy*0.005; rotX=Math.max(-0.6,Math.min(0.6,rotX));
+  var s=rotSens();
+  velocity.x=tdy*s; velocity.y=tdx*s;
+  rotY+=tdx*s; rotX+=tdy*s; var cx=rotXClamp(); rotX=Math.max(-cx,Math.min(cx,rotX));
   prevMouse={x:e.touches[0].clientX,y:e.touches[0].clientY};
 }, { passive:true });
 
@@ -1787,6 +1797,7 @@ function resize(){
   var halfV = R / (0.85 * aspect);            // 폭 기준 → 세로로 긴 화면에서도 폭을 안 넘침
   camera.top=halfV; camera.bottom=-halfV; camera.left=-halfV*aspect; camera.right=halfV*aspect;
   camera.updateProjectionMatrix();
+  sizeLabelCanvas();
 }
 window.addEventListener('resize', resize);
 
@@ -1837,17 +1848,182 @@ function updateAdMarkers(){
   }
 }
 
+// ── 딥줌 LOD: 확대 시 채움·국경 텍스처를 50m 데이터로 재생성 (classic과 동일 흐름) ──
+var world110Data=null, world50Data=null, world50Requested=false, lodBusy=false, worldLOD='110m';
+var LOD_HI_AT=2.2;
+var NAME_FIX_50M = {
+  "USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia",
+  "United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini",
+  "eSwatini":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine",
+  "Macao":"Macau","Czechia":"Czech Republic","Bosnia and Herz.":"Bosnia and Herzegovina",
+  "Central African Rep.":"Central African Republic","Côte d'Ivoire":"Ivory Coast",
+  "Dem. Rep. Congo":"Democratic Republic of the Congo","Dominican Rep.":"Dominican Republic",
+  "Eq. Guinea":"Equatorial Guinea","Falkland Is.":"Falkland Islands",
+  "Fr. S. Antarctic Lands":"French Southern and Antarctic Lands","Guinea-Bissau":"Guinea Bissau",
+  "N. Cyprus":"Northern Cyprus","S. Sudan":"South Sudan","Solomon Is.":"Solomon Islands",
+  "Timor-Leste":"East Timor","W. Sahara":"Western Sahara","Bahamas":"The Bahamas",
+};
+function topoDecode(topo, objName){
+  var tf=topo.transform;
+  var arcs=topo.arcs.map(function(arc){
+    if(!tf) return arc.map(function(p){ return [p[0],p[1]]; });
+    var x=0,y=0;
+    return arc.map(function(p){ x+=p[0]; y+=p[1]; return [x*tf.scale[0]+tf.translate[0], y*tf.scale[1]+tf.translate[1]]; });
+  });
+  function ringFromArcs(arcIdxs){
+    var ring=[];
+    arcIdxs.forEach(function(ai){
+      var pts=ai>=0 ? arcs[ai] : arcs[~ai].slice().reverse();
+      if(ring.length) pts=pts.slice(1);
+      ring=ring.concat(pts);
+    });
+    return ring;
+  }
+  var feats=[];
+  (topo.objects[objName].geometries||[]).forEach(function(g){
+    var name=(g.properties && g.properties.name)||'';
+    name=NAME_FIX_50M[name]||name;
+    var geom=null;
+    if(g.type==='Polygon'){ geom={ type:'Polygon', coordinates:g.arcs.map(ringFromArcs) }; }
+    else if(g.type==='MultiPolygon'){ geom={ type:'MultiPolygon', coordinates:g.arcs.map(function(poly){ return poly.map(ringFromArcs); }) }; }
+    if(geom) feats.push({ type:'Feature', properties:{ name:name }, geometry:geom });
+  });
+  return { type:'FeatureCollection', features:feats };
+}
+function applyLOD(target){
+  if(lodBusy || !material) return;
+  lodBusy=true;
+  worldData = target==='50m' ? world50Data : world110Data;
+  worldLOD = target;
+  try {
+    var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
+    material.uniforms.uLand.value=tex;
+    if(old && old.dispose) old.dispose();
+  } catch(err){}
+  lodBusy=false;
+}
+function maybeSwapLOD(){
+  if(!material) return;
+  var want = currentZoom>=LOD_HI_AT ? '50m' : '110m';
+  if(want===worldLOD) return;
+  if(want==='50m'){
+    if(!world50Data){
+      if(!world50Requested && window.ReactNativeWebView){
+        world50Requested=true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type:'need50m' }));
+      }
+      return;
+    }
+    applyLOD('50m');
+  } else {
+    applyLOD('110m');
+  }
+}
+
+// ── 지역명 라벨(나라·도시) — classic과 동일 엔진, 정사영 facing(z/len)만 다름 ──
+var labelCanvas=document.getElementById('label-layer');
+var labelCtx=labelCanvas ? labelCanvas.getContext('2d') : null;
+function sizeLabelCanvas(){
+  if(!labelCanvas) return;
+  var dpr=Math.min(window.devicePixelRatio||1,2);
+  labelCanvas.width=Math.round(window.innerWidth*dpr);
+  labelCanvas.height=Math.round(window.innerHeight*dpr);
+  labelCanvas.style.width=window.innerWidth+'px';
+  labelCanvas.style.height=window.innerHeight+'px';
+  if(labelCtx) labelCtx.setTransform(dpr,0,0,dpr,0,0);
+}
+sizeLabelCanvas();
+var countryLabels=[];
+function buildLabelIndex(){
+  countryLabels=[];
+  if(!world110Data) return;
+  world110Data.features.forEach(function(f){
+    var name=f.properties.name||''; if(!name) return;
+    var c=d3.geoCentroid(f);
+    var b=d3.geoBounds(f);
+    var dLon=Math.abs(b[1][0]-b[0][0]); if(dLon>180) dLon=360-dLon;
+    var dLat=Math.abs(b[1][1]-b[0][1]);
+    var area=dLon*dLat*Math.max(0.15, Math.cos(c[1]*Math.PI/180));
+    countryLabels.push({ name:name, ko:KO_NAMES[name]||name, lon:c[0], lat:c[1], area:area });
+  });
+  countryLabels.sort(function(a,b){ return b.area-a.area; });
+}
+var _lblVec=new THREE.Vector3();
+function projectLL(lon, lat){
+  var latR=lat*Math.PI/180, lonR=lon*Math.PI/180, rh=Math.cos(latR), A=lonR+Math.PI;
+  _lblVec.set(-rh*Math.cos(A), Math.sin(latR), rh*Math.sin(A));
+  _lblVec.multiplyScalar(1.01);
+  globe.localToWorld(_lblVec);
+  var lenW=Math.sqrt(_lblVec.x*_lblVec.x+_lblVec.y*_lblVec.y+_lblVec.z*_lblVec.z);
+  var facing=(lenW>0) ? _lblVec.z/lenW : -1; // 정사영: 정면 = +z
+  var ndc=_lblVec.clone().project(camera);
+  if(ndc.z>=1) return null;
+  return { x:(ndc.x*0.5+0.5)*window.innerWidth, y:(-ndc.y*0.5+0.5)*window.innerHeight, facing:facing };
+}
+var _lblLast={ rx:NaN, ry:NaN, zf:NaN };
+function updateLabels(){
+  if(!labelCtx) return;
+  var zf=currentZoom;
+  if(Math.abs(_lblLast.rx-rotX)<1e-4 && Math.abs(_lblLast.ry-rotY)<1e-4 && Math.abs(_lblLast.zf-zf)<1e-3) return;
+  _lblLast.rx=rotX; _lblLast.ry=rotY; _lblLast.zf=zf;
+  labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight);
+  if(zf<1.25 || !countryLabels.length) return;
+  var grid={}; var CELL=76;
+  function occupy(x,y){
+    var k=Math.floor(x/CELL)+'_'+Math.floor(y/CELL);
+    if(grid[k]) return false;
+    grid[k]=1; return true;
+  }
+  var n=Math.min(countryLabels.length, Math.max(0, Math.floor((zf-1.15)*22)));
+  var fs=Math.min(15, 10+zf*0.45);
+  labelCtx.textAlign='center'; labelCtx.textBaseline='middle'; labelCtx.lineJoin='round';
+  for(var i=0;i<n;i++){
+    var L=countryLabels[i];
+    var p=projectLL(L.lon, L.lat);
+    if(!p || p.facing<0.3) continue;
+    if(!occupy(p.x,p.y)) continue;
+    var a=Math.min(1,(p.facing-0.3)/0.25);
+    labelCtx.font='600 '+fs+'px sans-serif';
+    labelCtx.strokeStyle='rgba(10,10,15,'+(0.8*a)+')';
+    labelCtx.lineWidth=3;
+    labelCtx.strokeText(L.ko, p.x, p.y);
+    labelCtx.fillStyle='rgba(255,255,255,'+(0.92*a)+')';
+    labelCtx.fillText(L.ko, p.x, p.y);
+  }
+  if(zf>=3.2 && typeof CITY_LABELS!=='undefined'){
+    var cfs=Math.min(13, 9+zf*0.35);
+    for(var j=0;j<CITY_LABELS.length;j++){
+      var C=CITY_LABELS[j];
+      if(C.t===2 && zf<5) continue;
+      var q=projectLL(C.lon, C.lat);
+      if(!q || q.facing<0.42) continue;
+      if(!occupy(q.x,q.y)) continue;
+      var ca=Math.min(1,(q.facing-0.42)/0.22);
+      labelCtx.fillStyle='rgba(255,213,74,'+(0.95*ca)+')';
+      labelCtx.beginPath(); labelCtx.arc(q.x, q.y-cfs*0.9, 2.2, 0, Math.PI*2); labelCtx.fill();
+      labelCtx.font='500 '+cfs+'px sans-serif';
+      labelCtx.strokeStyle='rgba(10,10,15,'+(0.75*ca)+')';
+      labelCtx.lineWidth=2.5;
+      labelCtx.strokeText(C.n, q.x, q.y+cfs*0.35);
+      labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
+      labelCtx.fillText(C.n, q.x, q.y+cfs*0.35);
+    }
+  }
+}
+
 function animate(){
   requestAnimationFrame(animate);
   if(window.__globePaused) return; // RN이 화면 밖(다른 탭/백그라운드)일 때 렌더 작업 스킵 → 발열 감소
   var now=performance.now(), dt=Math.min(0.05,(now-lastT)/1000); lastT=now;
-  if(!isDragging){ velocity.x*=0.95; velocity.y*=0.95; rotX+=velocity.x; rotY+=velocity.y; rotY-=dt*(Math.PI*2/45); } // 우→좌 자동회전 ~45s
-  rotX=Math.max(-0.6,Math.min(0.6,rotX));
+  if(!isDragging){ velocity.x*=0.95; velocity.y*=0.95; rotX+=velocity.x; rotY+=velocity.y; rotY-=dt*(Math.PI*2/45)/Math.max(1,currentZoom*0.55); } // 우→좌 자동회전 ~45s (확대 시 감속)
+  var _cx=rotXClamp(); rotX=Math.max(-_cx,Math.min(_cx,rotX));
   currentZoom+=(targetZoom-currentZoom)*0.1;
   if(Math.abs(camera.zoom-currentZoom)>1e-4){ camera.zoom=currentZoom; camera.updateProjectionMatrix(); }
   globe.rotation.y=rotY; globe.rotation.x=rotX;
   renderer.render(scene, camera);
   updateAdMarkers();
+  updateLabels();    // 지역명 라벨(나라·도시)
+  maybeSwapLOD();    // 확대 임계 넘으면 50m 재텍스처
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -1866,6 +2042,10 @@ function handleMsg(msg){
   } else if(msg.type==='setSponsored'){
     pendingSponsored=msg.items||[];
     if(worldData) buildAdMarkers(pendingSponsored);
+  } else if(msg.type==='world50m' && msg.topo){
+    // 딥줌 LOD 데이터 도착 — 디코드 후 다음 maybeSwapLOD에서 교체
+    try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); }
+    catch(err){ world50Requested=false; }
   }
 }
 window.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
