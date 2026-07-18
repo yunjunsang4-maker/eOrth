@@ -43,19 +43,23 @@ export default function App() {
     });
 
     // 콜드스타트: 종료 상태에서 moment 알림 탭으로 열린 경우 — 네비 준비를 기다렸다 이동
+    let coldStartTimer: ReturnType<typeof setInterval> | null = null;
     Notifications.getLastNotificationResponseAsync().then((response) => {
       const data = response?.notification.request.content.data;
       if (data?.type !== 'moment') return;
       let tries = 0;
-      const timer = setInterval(() => {
+      coldStartTimer = setInterval(() => {
         const nav = navigationRef.current;
         tries += 1;
-        if (nav?.isReady()) { clearInterval(timer); nav.navigate('MomentCapture'); }
-        else if (tries > 20) clearInterval(timer); // 10초 포기
+        if (nav?.isReady()) { if (coldStartTimer) clearInterval(coldStartTimer); nav.navigate('MomentCapture'); }
+        else if (tries > 20) { if (coldStartTimer) clearInterval(coldStartTimer); } // 10초 포기
       }, 500);
     });
 
-    return () => subscription.remove();
+    return () => {
+      subscription.remove();
+      if (coldStartTimer) clearInterval(coldStartTimer);
+    };
   }, []);
 
   const [fontsLoaded] = useFonts({
