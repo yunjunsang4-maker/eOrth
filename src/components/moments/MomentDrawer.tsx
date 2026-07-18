@@ -1,6 +1,6 @@
 // 기록 작성 화면 상단 서랍 — 순수 참고용(스펙 ④). 삽입·복사 없음.
 // 매칭되는 순간이 있을 때만 배너 표시 → 펼치면 가로 카드 → 탭하면 확대 모달.
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, Modal, Image, StyleSheet,
 } from 'react-native';
@@ -13,6 +13,10 @@ export default function MomentDrawer({ moments }: { moments: TravelMoment[] }) {
   const [open, setOpen] = useState(false);
   const [enlarged, setEnlarged] = useState<TravelMoment | null>(null);
 
+  useEffect(() => {
+    if (moments.length === 0) setOpen(false);
+  }, [moments.length]);
+
   if (moments.length === 0) return null;
   const sorted = [...moments].sort((a, b) => a.createdAt - b.createdAt);
 
@@ -23,7 +27,7 @@ export default function MomentDrawer({ moments }: { moments: TravelMoment[] }) {
         <Text style={st.bannerArrow}>{open ? '▴' : '▾'}</Text>
       </TouchableOpacity>
       {open && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.row}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={st.row} contentContainerStyle={{ paddingRight: 16 }}>
           {sorted.map((m) => (
             <MomentCard key={m.id} moment={m} compact onPress={() => setEnlarged(m)} />
           ))}
@@ -39,7 +43,7 @@ export default function MomentDrawer({ moments }: { moments: TravelMoment[] }) {
       >
         <TouchableOpacity style={st.dim} activeOpacity={1} onPress={() => setEnlarged(null)}>
           {enlarged && (
-            <View style={st.big}>
+            <View style={st.big} onStartShouldSetResponder={() => true}>
               {enlarged.mood ? <Text style={st.bigMood}>{enlarged.mood}</Text> : null}
               {enlarged.photoUri ? (
                 <Image source={{ uri: enlarged.photoUri }} style={st.bigPhoto} />
