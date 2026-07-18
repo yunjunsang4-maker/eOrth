@@ -72,7 +72,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // ── 사진첩(앨범) 사진 추가/삭제/이동 + 섹션 관리 ──
   // updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리한다.
   const medias = record.medias ?? [];
-  // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
+  // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
   const { isPremium } = useSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
   const sections = record.albumSections && record.albumSections.length > 0
