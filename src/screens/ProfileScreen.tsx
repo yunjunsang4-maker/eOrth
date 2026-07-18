@@ -2099,7 +2099,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               </View>
               {momentsByTrip.has(displayTrips[0].id) && (
                 <TouchableOpacity
-                  onPress={() => setMomentSheetTrip(displayTrips[0])}
+                  onPress={() => { if (mergeMode) return; setMomentSheetTrip(displayTrips[0]); }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 >
                   <Text style={{ fontSize: 14 }}>✨</Text>
@@ -2183,7 +2183,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   </View>
                   {momentsByTrip.has(trip.id) && (
                     <TouchableOpacity
-                      onPress={() => setMomentSheetTrip(trip)}
+                      onPress={() => { if (mergeMode) return; setMomentSheetTrip(trip); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                     >
                       <Text style={{ fontSize: 14 }}>✨</Text>
