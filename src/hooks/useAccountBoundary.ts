@@ -30,7 +30,7 @@ export function useAccountBoundary(): () => Promise<void> {
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
   const { resetConversations } = useDM();
-  const { applyMomentsBackup } = useMoments();
+  const { resetMoments, applyMomentsBackup } = useMoments();
 
   const applyServerProfile = (p: ProfileRow) => {
     if (p.handle) setHandle(p.handle);
@@ -72,6 +72,7 @@ export function useAccountBoundary(): () => Promise<void> {
         resetRecords();
         resetSettings();
         resetConversations();
+        resetMoments();
         await clearPersistedStores().catch(() => {});
         // 프로필 먼저 복원 → ProfileSync가 빈값으로 서버를 덮어쓰지 않도록.
         try {
