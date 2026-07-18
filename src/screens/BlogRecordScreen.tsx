@@ -35,6 +35,9 @@ import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, countryNameToCode, parseDotDate as parseDotDateMatch } from '../utils/momentMatch';
+import MomentDrawer from '../components/moments/MomentDrawer';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -379,6 +382,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     [records, selectedCountries, editRecord?.id]
   );
 
+  // useMoments — 서랍용 훅 (matchedMoments useMemo는 startDate/endDate state 이후에 위치)
+  const { moments: allMoments } = useMoments();
+
   // 콘텐츠
   const [title, setTitle] = useState(editRecord?.content ?? '');
   const [subtitle, setSubtitle] = useState(editRecord?.subtitle ?? ''); // 부제목(선택)
@@ -403,6 +409,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [memo, setMemo] = useState(editRecord?.memo ?? '');
   const [startDate, setStartDate] = useState(editRecord?.startDate ?? tripPeriod?.startDate ?? '');
   const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPeriod?.endDate ?? '');
+
+  // ── 작성 화면 참고용 서랍: 선택 국가+날짜로 순간 매칭 ──
+  // startDate는 'YYYY.MM.DD' 문자열, parseDotDateMatch로 epoch ms 변환
+  const matchedMoments = useMemo(() => {
+    const first = selectedCountries[0] ?? null;
+    const startMs = parseDotDateMatch(startDate || null);
+    const endMs = parseDotDateMatch(endDate || null) ?? startMs;
+    return matchMoments(allMoments, {
+      countryCode: countryNameToCode(first?.name),
+      startMs,
+      endMs,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMoments, selectedCountries, startDate, endDate]);
+
   const [rating, setRating] = useState(editRecord?.rating ?? 0);
   const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
   const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
@@ -1293,6 +1314,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             </TouchableOpacity>
             {countryRequired && <View style={st.requiredDot} />}
           </View>
+
+          {/* 이 여행의 순간 참고 서랍 — 순수 참고용, 삽입/복사 없음 */}
+          <MomentDrawer moments={matchedMoments} />
 
           {/* 제목 */}
           <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}

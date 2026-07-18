@@ -14,6 +14,9 @@ import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, countryNameToCode } from '../utils/momentMatch';
+import MomentDrawer from '../components/moments/MomentDrawer';
 import {
   CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
@@ -418,6 +421,21 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
 
+  // ── 작성 화면 참고용 서랍: 선택 국가+날짜로 순간 매칭 ──
+  // startDate/endDate는 Date | null 타입
+  const { moments: allMoments } = useMoments();
+  const matchedMoments = useMemo(() => {
+    const first = selectedCountries[0] ?? null;
+    const startMs = startDate instanceof Date ? startDate.getTime() : null;
+    const endMs = endDate instanceof Date ? endDate.getTime() : (startMs ?? null);
+    return matchMoments(allMoments, {
+      countryCode: countryNameToCode(first?.name),
+      startMs,
+      endMs,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMoments, selectedCountries, startDate, endDate]);
+
   // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
   useEffect(() => {
     if (currencyTouchedRef.current) return;
@@ -659,6 +677,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* 이 여행의 순간 참고 서랍 — 순수 참고용, 삽입/복사 없음 */}
+          <MomentDrawer moments={matchedMoments} />
 
           {/* 날짜 */}
           <View style={st.fieldBlock}>
