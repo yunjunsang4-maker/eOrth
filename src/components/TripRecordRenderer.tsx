@@ -468,7 +468,12 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
           <Text style={styles.albumFlag}>{record.countryFlag}</Text>
           <View>
             <Text style={styles.albumCountry}>{record.countryName}</Text>
-            <Text style={styles.albumDate}>{record.date}</Text>
+            {/* 여행 기간 표시 — 시작~종료(다르면 범위, 같으면 단일). 마지막날 단일 표기 대체 */}
+            <Text style={styles.albumDate}>
+              {record.startDate && record.endDate && record.startDate !== record.endDate
+                ? `${record.startDate} ~ ${record.endDate}`
+                : (record.startDate || record.date)}
+            </Text>
           </View>
         </View>
         <StarRow rating={record.rating} size={14} />
