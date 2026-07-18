@@ -90,6 +90,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   const newFollower = notifPrefs.newFollower;
   const returnDetect = notifPrefs.returnDetect;
   const memoryRemind = notifPrefs.memoryRemind;
+  const travelMoment = notifPrefs.travelMoment;
   const marketing = notifPrefs.marketing;
 
   // 기기 알림 권한 상태
@@ -258,6 +259,14 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description={t('notifSettings.memoryDesc')}
             value={memoryRemind}
             onValueChange={(v) => setNotifPref('memoryRemind', v)}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<Text style={{ fontSize: 18 }}>✨</Text>}
+            label={t('moments.settingsLabel')}
+            description={t('moments.settingsDesc')}
+            value={travelMoment}
+            onValueChange={(v) => setNotifPref('travelMoment', v)}
             disabled={!masterEnabled}
             isLast
           />

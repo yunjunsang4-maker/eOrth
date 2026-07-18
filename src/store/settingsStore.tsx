@@ -25,10 +25,10 @@ export function genHandle(): string {
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
   | 'master' | 'friendTrip' | 'likes' | 'newFollower'
-  | 'returnDetect' | 'memoryRemind' | 'marketing';
+  | 'returnDetect' | 'memoryRemind' | 'marketing' | 'travelMoment';
 const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
   master: true, friendTrip: true, likes: true, newFollower: true,
-  returnDetect: false, memoryRemind: true, marketing: false,
+  returnDetect: false, memoryRemind: true, marketing: false, travelMoment: true,
 };
 
 // 스킨별로 저장하는 활성화 색 묶음 — 스킨 전환 시 저장/복원 (스킨마다 개별색 기억)

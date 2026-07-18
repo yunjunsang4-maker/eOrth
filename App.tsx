@@ -16,6 +16,7 @@ import { ToastProvider } from './src/store/toastStore';
 import { MomentProvider } from './src/store/momentStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
+import MomentNotifier from './src/components/MomentNotifier';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import BadgeToastHost from './src/components/BadgeToastHost';
 import BadgeEvaluator from './src/components/BadgeEvaluator';
@@ -25,7 +26,7 @@ import ProfileSync from './src/components/ProfileSync';
 import AppStateSync from './src/components/AppStateSync';
 
 export default function App() {
-  // 알림 탭 → 스냅 화면으로 이동
+  // 알림 탭 → 화면 이동 (snap / moment 분기)
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
@@ -35,7 +36,25 @@ export default function App() {
           nav.navigate('SnapRecord', { notifTimestamp: Number(data.timestamp) || undefined });
         }
       }
+      if (data?.type === 'moment') {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) nav.navigate('MomentCapture');
+      }
     });
+
+    // 콜드스타트: 종료 상태에서 moment 알림 탭으로 열린 경우 — 네비 준비를 기다렸다 이동
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      const data = response?.notification.request.content.data;
+      if (data?.type !== 'moment') return;
+      let tries = 0;
+      const timer = setInterval(() => {
+        const nav = navigationRef.current;
+        tries += 1;
+        if (nav?.isReady()) { clearInterval(timer); nav.navigate('MomentCapture'); }
+        else if (tries > 20) clearInterval(timer); // 10초 포기
+      }, 500);
+    });
+
     return () => subscription.remove();
   }, []);
 
@@ -88,6 +107,7 @@ export default function App() {
                   <ToastProvider>
                     <StatusBar style="light" backgroundColor="#0A0118" translucent />
                     <SnapDetector />
+                    <MomentNotifier />
                     <ProfileSync />
                     <AppStateSync />
                     <BadgeEvaluator />
