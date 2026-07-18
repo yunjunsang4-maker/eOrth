@@ -1123,6 +1123,47 @@ function applyLOD(target) {
 var borderGroup50 = null;                  // 50m 국경 그룹(데이터 도착 후 lazy 생성)
 var admin1Lines = null, admin1Group = null, admin1Requested = false; // 주/도 경계선
 function smoothstep01(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+// 줌 안정(제스처 종료+보간 수렴) 판정 — 텍스처 재생성·그룹 생성 같은 무거운 작업은
+// 핀치 도중이 아니라 안정된 뒤에만 실행해 확대/축소 중 렉을 없앤다(구글맵과 동일한 타이밍)
+function zoomSettled() {
+  return lastPinchDist === null
+    && Math.abs(targetZoomX - currentZoomX) < 0.03
+    && Math.abs(targetZ - currentZ) < 0.03;
+}
+// 50m 국경 병합 빌더 — buildBorders(링당 Line 2개, 수천 객체)와 달리 LineSegments 2개(단일 지오메트리)로
+// 생성·드로우콜 비용을 크게 줄인다(크로스페이드 인터페이스 userData.mats/baseOp는 동일)
+function buildBordersMerged(world, hexColor) {
+  var posCore = [], posGlow = [];
+  function addRing(coords) {
+    if (coords.length < 2) return;
+    var prev = null, prevG = null;
+    for (var i = 0; i < coords.length; i++) {
+      var v = geoToVec3(coords[i][0], coords[i][1], 1.0015);
+      var g = geoToVec3(coords[i][0], coords[i][1], 1.0015 * 1.001);
+      if (prev) {
+        posCore.push(prev.x, prev.y, prev.z, v.x, v.y, v.z);
+        posGlow.push(prevG.x, prevG.y, prevG.z, g.x, g.y, g.z);
+      }
+      prev = v; prevG = g;
+    }
+  }
+  world.features.forEach(function(f) {
+    var geom = f.geometry;
+    if (!geom) return;
+    if (geom.type === 'Polygon') geom.coordinates.forEach(addRing);
+    else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(function(poly) { poly.forEach(addRing); });
+  });
+  var matCore = new THREE.LineBasicMaterial({ color: new THREE.Color(hexColor), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
+  var matGlow = new THREE.LineBasicMaterial({ color: new THREE.Color(hexColor), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+  var geoC = new THREE.BufferGeometry(); geoC.setAttribute('position', new THREE.Float32BufferAttribute(posCore, 3));
+  var geoG = new THREE.BufferGeometry(); geoG.setAttribute('position', new THREE.Float32BufferAttribute(posGlow, 3));
+  var grp = new THREE.Group();
+  grp.add(new THREE.LineSegments(geoC, matCore));
+  grp.add(new THREE.LineSegments(geoG, matGlow));
+  grp.userData.mats = [matCore, matGlow];
+  grp.userData.baseOp = [0.95, 0.3];
+  return grp;
+}
 function setGroupOp(g, k) {
   var mats = g.userData.mats, base = g.userData.baseOp;
   if (!mats) return;
@@ -1155,11 +1196,12 @@ function updateBorderFade() {
   var zf = zoomFactor();
   // 국경 크로스페이드 — 1.9~2.6 구간에서 110m이 서서히 빠지고 50m이 선명해진다
   var t = world50Data ? smoothstep01(1.9, 2.6, zf) : 0;
-  if (t > 0 && !borderGroup50 && world50Data) {
-    borderGroup50 = buildBorders(world50Data, cfg.borderColor);
+  if (t > 0 && !borderGroup50 && world50Data && zoomSettled()) {
+    // 그룹 생성(무거움)은 줌 안정 후 1회 — 핀치 중 렉 방지
+    borderGroup50 = buildBordersMerged(world50Data, cfg.borderColor);
     globe.add(borderGroup50);
   }
-  if (borderGroup) setGroupOp(borderGroup, 1 - t);
+  if (borderGroup) setGroupOp(borderGroup, borderGroup50 ? 1 - t : 1);
   if (borderGroup50) setGroupOp(borderGroup50, t);
   // 주/도 지역구분선 — 3.0~4.2 구간에서 서서히 등장 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a = smoothstep01(3.0, 4.2, zf);
@@ -1167,7 +1209,7 @@ function updateBorderFade() {
     admin1Requested = true;
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needAdmin1' }));
   }
-  if (a > 0 && admin1Lines && !admin1Group) {
+  if (a > 0 && admin1Lines && !admin1Group && zoomSettled()) {
     admin1Group = buildAdmin1Group(admin1Lines);
     globe.add(admin1Group);
   }
@@ -1178,6 +1220,7 @@ function updateBorderFade() {
 }
 function maybeSwapLOD() {
   if (!globeMesh) return;
+  if (!zoomSettled()) return; // 텍스처 재생성(무거움)은 핀치 종료 후에만 — 확대/축소 중 렉 방지
   var want = zoomFactor() >= LOD_HI_AT ? '50m' : '110m';
   if (want === worldLOD) return;
   if (want === '50m') {
@@ -1383,7 +1426,7 @@ function applyTheme(t) {
       if (o.geometry) o.geometry.dispose();
       if (o.material) o.material.dispose();
     });
-    borderGroup50 = world50Data ? buildBorders(world50Data, cfg.borderColor) : null;
+    borderGroup50 = world50Data ? buildBordersMerged(world50Data, cfg.borderColor) : null;
     if (borderGroup50) globe.add(borderGroup50);
   }
 }
@@ -1975,8 +2018,10 @@ function applyLOD(target){
   } catch(err){}
   lodBusy=false;
 }
+function zoomSettled(){ return lastPinchDist===null && Math.abs(targetZoom-currentZoom)<0.03; }
 function maybeSwapLOD(){
   if(!material) return;
+  if(!zoomSettled()) return; // 텍스처 재생성(무거움)은 핀치 종료 후에만 — 확대/축소 중 렉 방지
   var want = currentZoom>=LOD_HI_AT ? '50m' : '110m';
   if(want===worldLOD) return;
   if(want==='50m'){
