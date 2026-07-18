@@ -1142,9 +1142,11 @@ const catalog: BadgeCatalogEntry[] = [
     { isMyPost: true, countryName: '독일' },
   ];
   const earned = computeEarnedBadgeIds(recs, catalog);
-  // 1,2,3,9,10,11,12,35,52,8(static) = 10개 → 56(>=5),57(>=10) 켜짐
+  // 1,2,3,9,10,11,12,35,8(static) = 9개 → 56(>=5)만 켜짐.
+  // 52(별점 마스터)는 점등되지만 출시 축소로 숨김이라 메타 카운트에서 제외된다.
+  assert(earned.has(52), '별점 5점 → 52 자체는 점등(규칙 유지)');
   assert(earned.has(56), '배지 5개 달성(56) 획득');
-  assert(earned.has(57), '배지 10개 달성(57) 획득');
+  assert(!earned.has(57), '숨김 배지(52) 카운트 제외 → 9개라 배지 10개(57) 미획득');
   assert(!earned.has(58), '배지 30개(58)는 미획득');
 }
 
@@ -1157,8 +1159,11 @@ const catalog: BadgeCatalogEntry[] = [
   ];
   assert(!computeEarnedBadgeIds(recs, emptyCat).has(56), '데이터 4개뿐 → 56 미획득');
 
-  // 행동 배지 55를 이미 획득 → 5개째 → 56 점등
-  assert(computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [55] }).has(56), '데이터4 + 영구획득(55) = 5개 → 56 획득');
+  // 노출 배지 99(크리스마스)를 이미 획득 → 5개째 → 56 점등
+  assert(computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [99] }).has(56), '데이터4 + 영구획득(99) = 5개 → 56 획득');
+
+  // 숨김 배지는 영구 획득분이어도 메타 카운트에서 제외 (55는 출시 축소로 숨김)
+  assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [55] }).has(56), '숨김 배지(55)는 카운트 제외 → 4개라 56 미획득');
 
   // 메타 id는 카운트에서 제외(메타를 alreadyEarned로 줘도 카운트 안 늘어남)
   assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [56, 57, 58] }).has(56), '메타 id만 추가 → 데이터 4개라 56 미획득');

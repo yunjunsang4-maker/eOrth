@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect, use
 import { View } from 'react-native';
 import { usePersistence, STORE_KEYS } from './persist';
 import { setPalette } from '../components/icons';
+import { HIDDEN_BADGE_IDS } from '../constants/badges';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -284,7 +285,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const isStartupSeed =
       Object.keys(prev).length === 0 && now - providerMountedAtRef.current < 15000;
     if (!isStartupSeed) {
-      setPendingBadgeToasts((q) => [...q, ...newly]);
+      // 출시 축소로 숨긴 배지는 획득 사실만 저장하고 토스트는 띄우지 않는다(안 보이는 배지 알림 방지)
+      const toastable = newly.filter((id) => !HIDDEN_BADGE_IDS.has(id));
+      if (toastable.length > 0) setPendingBadgeToasts((q) => [...q, ...toastable]);
     }
   }, []);
 

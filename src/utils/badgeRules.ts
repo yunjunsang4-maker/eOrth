@@ -3,6 +3,7 @@
 // 순수 함수로 작성 → 화면과 독립적으로 테스트 가능.
 
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
+import { HIDDEN_BADGE_IDS } from '../constants/badges';
 
 // 판정에 필요한 최소 필드만 받는다(TravelRecord와 느슨하게 호환).
 export interface BadgeStatRecord {
@@ -809,11 +810,12 @@ export function computeEarnedBadgeIds(
   }
 
   // ── 메타 배지: 데이터/static 획득 + 이미 영구 획득(행동 배지 등)을 합쳐 판정(메타 자신은 제외) ──
+  // 출시 축소로 숨긴 배지는 사용자에게 보이지 않으므로 개수에 넣지 않는다(숨김 해제 시 자동 합산 복귀).
   const metaIds = new Set(Object.keys(META_BADGE_THRESHOLDS).map(Number));
   const countSet = new Set<number>();
-  for (const id of earned) if (!metaIds.has(id)) countSet.add(id);
+  for (const id of earned) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
   if (options?.alreadyEarnedIds) {
-    for (const id of options.alreadyEarnedIds) if (!metaIds.has(id)) countSet.add(id);
+    for (const id of options.alreadyEarnedIds) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
   }
   const total = countSet.size;
   for (const [idStr, threshold] of Object.entries(META_BADGE_THRESHOLDS)) {

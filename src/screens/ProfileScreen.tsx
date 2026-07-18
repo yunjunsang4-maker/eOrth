@@ -359,6 +359,8 @@ function BadgeListModal({
                 ? cat.ids.flatMap(pick)
                 : BADGES.filter((b) => b.id >= cat.range[0] && b.id <= cat.range[1]);
               const catBadges = cat.extra ? [...base, ...cat.extra.flatMap(pick)] : base;
+              // 출시 축소로 전부 숨겨진 카테고리(기록 형식·스냅 특별 등)는 제목도 표시하지 않는다
+              if (catBadges.length === 0) return null;
               // Group into rows of 3
               const rows = [];
               for (let i = 0; i < catBadges.length; i += 3) {
