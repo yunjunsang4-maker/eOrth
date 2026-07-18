@@ -1116,6 +1116,7 @@ function topoDecode(topo, objName) {
 function applyLOD(target) {
   if (lodBusy || !globeMesh) return;
   lodBusy = true;
+  if (regionActive) clearRegion(); // 전역 텍스처 교체 전 지역 창 해제(다음 settle에 재생성)
   worldData = target === '50m' ? world50Data : world110Data;
   worldLOD = target;
   // 채움 텍스처만 재생성 — 국경선은 110m/50m 두 그룹을 상시 두고 줌에 따라 크로스페이드(updateBorderFade)
@@ -1261,6 +1262,128 @@ function maybeSwapLOD() {
   }
 }
 
+// ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
+// 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
+// 채움은 50m 폴리곤(색/사진/국기) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
+var REGION_AT = 10;
+var regionActive = false, regionPrevTex = null, regionC = { lon: 0, lat: 0, span: 0 };
+var land10 = null, land10Requested = false;
+function centerLatLon() {
+  if (!globeMesh) return null;
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  var hits = raycaster.intersectObject(globeMesh);
+  if (!hits.length) return null;
+  var pt = hits[0].point.clone();
+  var inv = new THREE.Matrix4().copy(globe.matrixWorld).invert();
+  pt.applyMatrix4(inv);
+  var lat = 90 - THREE.MathUtils.radToDeg(Math.acos(Math.max(-1, Math.min(1, pt.y))));
+  var lon = THREE.MathUtils.radToDeg(Math.atan2(pt.z, -pt.x)) - 180;
+  if (lon < -180) lon += 360;
+  return { lat: lat, lon: lon };
+}
+function buildRegionTexture(lonC, latC, span) {
+  var S = 4096;
+  var c = document.createElement('canvas'); c.width = S; c.height = S;
+  var ctx = c.getContext('2d');
+  ctx.imageSmoothingEnabled = true;
+  try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+  var proj = d3.geoEquirectangular().rotate([-lonC, 0]).center([0, latC]).scale(S / (span * Math.PI / 180)).translate([S / 2, S / 2]);
+  var path = d3.geoPath().projection(proj).context(ctx);
+  var pfb = d3.geoPath().projection(proj);
+  var src = (world50Data || world110Data || worldData);
+  src.features.forEach(function(f) {
+    var name = f.properties.name || '';
+    var visited = visitedMap[name];
+    var mode = visited ? (visited.mode || globeDisplayMode) : null;
+    var img = null;
+    if (visited && mode === 'photo' && visited.photo) img = photoImageCache[visited.photo] || null;
+    if (visited && mode === 'flag') { var iso = EN_TO_ISO[name]; if (iso && flagImageCache[iso]) img = flagImageCache[iso]; }
+    if (visited && img) {
+      // 사진/국기 — 폴리곤별 cover 드로잉(전역 빌더와 동일 방식, 창 좌표)
+      var polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates]
+        : f.geometry.type === 'MultiPolygon' ? f.geometry.coordinates : [];
+      polys.forEach(function(coords) {
+        var sub = { type: 'Feature', properties: f.properties, geometry: { type: 'Polygon', coordinates: coords } };
+        var bnd = pfb.bounds(sub);
+        var bx = bnd[0][0], by = bnd[0][1], bw = bnd[1][0] - bx, bh = bnd[1][1] - by;
+        if (bw <= 0 || bh <= 0 || bx > S || by > S || bx + bw < 0 || by + bh < 0) return;
+        ctx.save(); ctx.beginPath(); path(sub); ctx.clip();
+        var ir = img.width / img.height, br = bw / bh;
+        var dw, dh, dx, dy;
+        if (ir > br) { dh = bh; dw = bh * ir; dx = bx - (dw - bw) / 2; dy = by; }
+        else { dw = bw; dh = bw / ir; dx = bx; dy = by - (dh - bh) / 2; }
+        ctx.drawImage(img, dx, dy, dw, dh);
+        ctx.restore();
+      });
+    } else {
+      var col = visited ? (visited.color || globeDefaultColor) : cfg.landColor;
+      ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 10; ctx.lineJoin = 'round';
+      ctx.beginPath(); path(f); ctx.fill(); ctx.stroke(); // 두꺼운 동색 스트로크 = 10m 마스크 대비 해안 여유
+    }
+  });
+  if (land10) {
+    var minLon = lonC - span, maxLon = lonC + span, minLat = latC - span, maxLat = latC + span;
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.beginPath();
+    for (var i = 0; i < land10.length; i++) {
+      var b = land10[i].b;
+      if (b[2] < minLon || b[0] > maxLon || b[3] < minLat || b[1] > maxLat) continue;
+      var ring = land10[i].r, started = false;
+      for (var j = 0; j < ring.length; j++) {
+        var p = proj(ring[j]);
+        if (!started) { ctx.moveTo(p[0], p[1]); started = true; } else ctx.lineTo(p[0], p[1]);
+      }
+      if (started) ctx.closePath();
+    }
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  // 바다 — 마스크로 뚫린 영역 뒤에 채움(classic은 불투명 구)
+  ctx.globalCompositeOperation = 'destination-over';
+  ctx.fillStyle = cfg.oceanBase;
+  ctx.fillRect(0, 0, S, S);
+  ctx.globalCompositeOperation = 'source-over';
+  var tex = new THREE.CanvasTexture(c);
+  tex.anisotropy = renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
+  tex.minFilter = THREE.LinearMipmapLinearFilter; tex.magFilter = THREE.LinearFilter; tex.generateMipmaps = true;
+  tex.wrapS = THREE.ClampToEdgeWrapping; tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+function clearRegion() {
+  if (!regionActive || !globeMesh) return;
+  var old = globeMesh.material.map;
+  globeMesh.material.map = regionPrevTex;
+  globeMesh.material.needsUpdate = true;
+  if (old && old.dispose && old !== regionPrevTex) old.dispose();
+  regionActive = false; regionC.span = 0;
+}
+function updateRegion() {
+  if (!globeMesh) return;
+  var zf = zoomFactor();
+  if (zf > REGION_AT * 0.7 && !land10 && !land10Requested && window.ReactNativeWebView) {
+    land10Requested = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needLand10m' }));
+  }
+  if (zf < REGION_AT * 0.9) { if (regionActive) clearRegion(); return; }
+  if (!zoomSettled()) return;
+  var span = Math.max(2.5, Math.min(60, 480 / zf));
+  var c = centerLatLon(); if (!c) return;
+  if (Math.abs(c.lon) > 180 - span) { if (regionActive) clearRegion(); return; } // 날짜변경선 창은 전역 유지
+  if (regionActive) {
+    if (Math.abs(c.lon - regionC.lon) < regionC.span * 0.15 && Math.abs(c.lat - regionC.lat) < regionC.span * 0.15
+      && span > regionC.span / 1.6 && span < regionC.span * 1.6) return; // 창 유지
+  }
+  var tex = buildRegionTexture(c.lon, c.lat, span);
+  if (!regionActive) { regionPrevTex = globeMesh.material.map; }
+  else { var old = globeMesh.material.map; if (old && old.dispose && old !== regionPrevTex) old.dispose(); }
+  var u0 = (c.lon - span / 2 + 180) / 360, v0 = (c.lat - span / 2 + 90) / 180;
+  tex.repeat.set(360 / span, 180 / span);
+  tex.offset.set(-u0 * 360 / span, -v0 * 180 / span);
+  globeMesh.material.map = tex;
+  globeMesh.material.needsUpdate = true;
+  regionActive = true; regionC = { lon: c.lon, lat: c.lat, span: span };
+}
+
 // ── 지역명 라벨(나라·도시) — 구글맵식 줌 단계 등장, 캔버스 1장 렌더 ──
 var labelCanvas = document.getElementById('label-layer');
 var labelCtx = labelCanvas ? labelCanvas.getContext('2d') : null;
@@ -1397,7 +1520,8 @@ function animate() {
   updateAdMarkers();   // 렌더 후(월드행렬 최신) 마커 위치 갱신
   updateLabels();      // 지역명 라벨(나라·도시) — 줌 단계별 등장
   maybeSwapLOD();      // 확대 임계 넘으면 채움 텍스처를 50m로 교체
-  updateBorderFade();  // 국경 110m↔50m 크로스페이드 + 주/도 지역구분선 페이드
+  updateBorderFade();  // 국경 110m↔50m↔10m 크로스페이드 + 주/도 지역구분선 페이드
+  updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
 }
 
 window.addEventListener('resize', function() {
@@ -1420,6 +1544,7 @@ function applyTheme(t) {
   if (t.neonColor) cfg.neonColor = t.neonColor;
   if (t.borderColor) cfg.borderColor = t.borderColor;
   if (!worldData || !globeMesh) return; // init 전이면 cfg만 갱신 → init이 새 cfg로 생성
+  if (regionActive) clearRegion(); // 테마 변경 → 지역 창 무효(다음 settle에 재생성)
   loadAllImages().then(function() {
     return buildTexture();
   }).then(function(tex) {
@@ -1468,6 +1593,7 @@ function handleVisitedMessage(msg) {
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
     if (worldData && globeMesh) {
+      if (regionActive) clearRegion(); // 방문색/모드 변경 → 지역 창 무효(다음 settle에 재생성)
       loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
@@ -1501,6 +1627,25 @@ function handleVisitedMessage(msg) {
       borders10Lines = JSON.parse(msg.lines);
     } catch (err) {
       borders10Requested = false;
+    }
+  } else if (msg.type === 'land10m' && msg.rings) {
+    // 10m 육지 마스크 도착 — 링별 bbox 사전계산(지역 텍스처 창 밖 스킵용)
+    try {
+      var rl = JSON.parse(msg.rings);
+      land10 = rl.map(function(r) {
+        var b = [999, 999, -999, -999];
+        for (var i = 0; i < r.length; i++) {
+          var p = r[i];
+          if (p[0] < b[0]) b[0] = p[0];
+          if (p[1] < b[1]) b[1] = p[1];
+          if (p[0] > b[2]) b[2] = p[0];
+          if (p[1] > b[3]) b[3] = p[1];
+        }
+        return { r: r, b: b };
+      });
+      regionC.span = 0; // 마스크 도착 → 다음 settle에 지역 창 재생성(마스크 반영)
+    } catch (err) {
+      land10Requested = false;
     }
   }
 }
@@ -1797,6 +1942,8 @@ var NEON_FS =
   'precision highp float;' +
   'varying vec3 vN; varying vec2 vUv;' +
   'uniform sampler2D uLand; uniform float uLandOpacity; uniform float uGlow;' +
+  // 지역(region) 텍스처 창 매핑 — 전역 텍스처일 땐 scale=(1,1)/off=(0,0)
+  'uniform vec2 uUvScale; uniform vec2 uUvOff;' +
   // 본체 색 유니폼 — 스킨(setTheme의 neon)으로 교체 가능. 기본값 = 보라 발광 행성
   'uniform vec3 uBase; uniform vec3 uG1A; uniform vec3 uG1B; uniform float uG1W; uniform float uG2W;' +
   'void main(){' +
@@ -1813,7 +1960,7 @@ var NEON_FS =
   ' vec3 col = bg * mix(0.96,1.0,diff);' +                       // 아주 옅은 입체 음영
   ' float spec = pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),7.0);' +
   ' col += vec3(1.0)*spec*0.08;' +
-  ' vec4 t = texture2D(uLand, vUv);' +                          // 대륙은 지오메트리 uv → 표면과 함께 회전
+  ' vec4 t = texture2D(uLand, vUv * uUvScale + uUvOff);' +      // 대륙은 지오메트리 uv → 표면과 함께 회전(지역 창 매핑 포함)
   ' float landA = t.a;' +                                        // 0.20=유리(기본)육지, 1.0=방문국
   ' float landMask = step(0.004, t.a);' +                        // 육지 픽셀 여부(불투명도와 별개의 커버리지)
   ' vec3 landCol = t.rgb * mix(0.85, 1.0, diff);' +              // 빛에 따른 미세 음영(불투명도엔 영향 없음)
@@ -1885,6 +2032,7 @@ async function init(){
   material = new THREE.ShaderMaterial({
     uniforms: {
       uLand:{value:tex}, uLandOpacity:{value:1.0}, uGlow:{value:1.0},
+      uUvScale:{value:new THREE.Vector2(1,1)}, uUvOff:{value:new THREE.Vector2(0,0)},
       uBase:{value:hex3(NEON_DEFAULT_SKIN.base)},
       uG1A:{value:hex3(NEON_DEFAULT_SKIN.gradFrom)},
       uG1B:{value:hex3(NEON_DEFAULT_SKIN.gradTo)},
@@ -2062,6 +2210,7 @@ function topoDecode(topo, objName){
 function applyLOD(target){
   if(lodBusy || !material) return;
   lodBusy=true;
+  if(regionActive) clearRegion(); // 전역 텍스처 교체 전 지역 창 해제(다음 settle에 재생성)
   worldData = target==='50m' ? world50Data : world110Data;
   worldLOD = target;
   try {
@@ -2153,6 +2302,95 @@ function updateVectorLines(){
     admin1Group=buildPolylinesMerged(admin1Lines, 1.001); globe.add(admin1Group);
   }
   if(admin1Group){ admin1Group.userData.mat.opacity=a; admin1Group.visible=a>0.01; }
+}
+
+// ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
+// 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
+// 채움은 50m 국가 폴리곤(색) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
+var REGION_AT=10;
+var regionActive=false, regionPrevTex=null, regionC={lon:0,lat:0,span:0};
+var land10=null, land10Requested=false;
+function centerLatLon(){
+  if(!globeMesh) return null;
+  raycaster.setFromCamera(new THREE.Vector2(0,0), camera);
+  var hits=raycaster.intersectObject(globeMesh);
+  if(!hits.length) return null;
+  var pt=hits[0].point.clone();
+  var inv=new THREE.Matrix4().copy(globe.matrixWorld).invert();
+  pt.applyMatrix4(inv);
+  var lat=90-THREE.MathUtils.radToDeg(Math.acos(Math.max(-1,Math.min(1,pt.y))));
+  var lon=THREE.MathUtils.radToDeg(Math.atan2(pt.z,-pt.x))-180;
+  if(lon<-180) lon+=360;
+  return { lat:lat, lon:lon };
+}
+function buildRegionTexture(lonC, latC, span){
+  var S=4096;
+  var c=document.createElement('canvas'); c.width=S; c.height=S;
+  var ctx=c.getContext('2d');
+  var proj=d3.geoEquirectangular().rotate([-lonC,0]).center([0,latC]).scale(S/(span*Math.PI/180)).translate([S/2,S/2]);
+  var path=d3.geoPath().projection(proj).context(ctx);
+  var src=(world50Data||world110Data||worldData);
+  src.features.forEach(function(f){
+    var v=visitedMap[f.properties.name||''];
+    var col=v?(v.color||globeDefaultColor):NEON_LAND;
+    ctx.fillStyle=col; ctx.strokeStyle=col; ctx.lineWidth=10; ctx.lineJoin='round';
+    ctx.beginPath(); path(f); ctx.fill(); ctx.stroke(); // 두꺼운 동색 스트로크 = 10m 마스크 대비 해안 여유
+  });
+  if(land10){
+    var minLon=lonC-span, maxLon=lonC+span, minLat=latC-span, maxLat=latC+span; // 창+여유
+    ctx.globalCompositeOperation='destination-in';
+    ctx.beginPath();
+    for(var i=0;i<land10.length;i++){
+      var b=land10[i].b;
+      if(b[2]<minLon||b[0]>maxLon||b[3]<minLat||b[1]>maxLat) continue; // 창 밖 링 스킵
+      var ring=land10[i].r, started=false;
+      for(var j=0;j<ring.length;j++){
+        var p=proj(ring[j]);
+        if(!started){ ctx.moveTo(p[0],p[1]); started=true; } else ctx.lineTo(p[0],p[1]);
+      }
+      if(started) ctx.closePath();
+    }
+    ctx.fill();
+    ctx.globalCompositeOperation='source-over';
+  }
+  var tex=new THREE.CanvasTexture(c);
+  tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter; tex.generateMipmaps=true;
+  tex.wrapS=THREE.ClampToEdgeWrapping; tex.wrapT=THREE.ClampToEdgeWrapping;
+  return tex;
+}
+function clearRegion(){
+  if(!regionActive||!material) return;
+  var old=material.uniforms.uLand.value;
+  material.uniforms.uLand.value=regionPrevTex;
+  material.uniforms.uUvScale.value.set(1,1);
+  material.uniforms.uUvOff.value.set(0,0);
+  if(old&&old.dispose&&old!==regionPrevTex) old.dispose();
+  regionActive=false; regionC.span=0;
+}
+function updateRegion(){
+  if(!material||!globeMesh) return;
+  var z=currentZoom;
+  if(z>REGION_AT*0.7 && !land10 && !land10Requested && window.ReactNativeWebView){
+    land10Requested=true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needLand10m' }));
+  }
+  if(z<REGION_AT*0.9){ if(regionActive) clearRegion(); return; }
+  if(!zoomSettled()) return;
+  var span=Math.max(2.5, Math.min(60, 480/z));
+  var c=centerLatLon(); if(!c) return;
+  if(Math.abs(c.lon)>180-span){ if(regionActive) clearRegion(); return; } // 날짜변경선 창은 전역 유지
+  if(regionActive){
+    if(Math.abs(c.lon-regionC.lon)<regionC.span*0.15 && Math.abs(c.lat-regionC.lat)<regionC.span*0.15
+       && span>regionC.span/1.6 && span<regionC.span*1.6) return; // 창 유지
+  }
+  var tex=buildRegionTexture(c.lon,c.lat,span);
+  if(!regionActive){ regionPrevTex=material.uniforms.uLand.value; }
+  else { var old=material.uniforms.uLand.value; if(old&&old.dispose&&old!==regionPrevTex) old.dispose(); }
+  material.uniforms.uLand.value=tex;
+  var u0=(c.lon-span/2+180)/360, v0=(c.lat-span/2+90)/180;
+  material.uniforms.uUvScale.value.set(360/span, 180/span);
+  material.uniforms.uUvOff.value.set(-u0*360/span, -v0*180/span);
+  regionActive=true; regionC={lon:c.lon,lat:c.lat,span:span};
 }
 function maybeSwapLOD(){
   if(!material) return;
@@ -2279,6 +2517,7 @@ function animate(){
   updateLabels();      // 지역명 라벨(나라·도시)
   maybeSwapLOD();      // 확대 임계 넘으면 50m 재텍스처
   updateVectorLines(); // 벡터 국경(딥줌 선명)·주/도 지역구분선 페이드
+  updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -2288,6 +2527,7 @@ function handleMsg(msg){
     msg.countries.forEach(function(c){ visitedMap[c.nameEn]={ color:c.color||null }; });
     if(msg.defaultColor) globeDefaultColor=msg.defaultColor;
     if(worldData && material){
+      if(regionActive) clearRegion(); // 방문색 변경 → 지역 창도 무효(다음 settle에 재생성)
       var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
       material.uniforms.uLand.value=tex;
       if(old && old.dispose) old.dispose();
@@ -2309,6 +2549,17 @@ function handleMsg(msg){
     // 10m 최정밀 구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
     try { borders10Lines = JSON.parse(msg.lines); }
     catch(err){ borders10Requested=false; }
+  } else if(msg.type==='land10m' && msg.rings){
+    // 10m 육지 마스크 도착 — 링별 bbox 사전계산(지역 텍스처 창 밖 스킵용)
+    try {
+      var rl=JSON.parse(msg.rings);
+      land10=rl.map(function(r){
+        var b=[999,999,-999,-999];
+        for(var i=0;i<r.length;i++){ var p=r[i]; if(p[0]<b[0])b[0]=p[0]; if(p[1]<b[1])b[1]=p[1]; if(p[0]>b[2])b[2]=p[0]; if(p[1]>b[3])b[3]=p[1]; }
+        return { r:r, b:b };
+      });
+      regionC.span=0; // 마스크 도착 → 다음 settle에 지역 창 재생성(마스크 반영)
+    } catch(err){ land10Requested=false; }
   }
 }
 window.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
@@ -2406,9 +2657,15 @@ export default function GlobeView({
       return; // 내부 신호
     }
     if (data?.type === 'needBorders10m') {
-      // 10m 최정밀 구분선(해안+국경) 요청 — 3.4MB 문자열, 최심 줌 접근 시에만 lazy 전송
+      // 10m 최정밀 구분선(해안+국경) 요청 — 최심 줌 접근 시에만 lazy 전송
       const { BORDERS_10M_JSON } = require('../data/vendorBorders10m');
       webViewRef.current?.postMessage(JSON.stringify({ type: 'borders10m', lines: BORDERS_10M_JSON }));
+      return; // 내부 신호
+    }
+    if (data?.type === 'needLand10m') {
+      // 딥줌 지역(region) 텍스처의 10m 육지 마스크 요청 — 최심 줌 접근 시에만 lazy 전송
+      const { LAND_10M_JSON } = require('../data/vendorLand10m');
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'land10m', rings: LAND_10M_JSON }));
       return; // 내부 신호
     }
     onMessage?.(e);
