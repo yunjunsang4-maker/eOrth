@@ -71,13 +71,15 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
       // 서버에만 있는 항목을 추가, 로컬에 있는 항목은 로컬값 그대로 유지
       const merged = [...local];
       for (const r of remote) {
-        // 서버 데이터 방어: id·text 필수 필드 타입 검증 후 추가
+        // 서버 데이터 방어: id·text·createdAt 필수 필드 타입 검증 후 추가
         if (
           !r ||
           typeof r !== 'object' ||
           typeof (r as any).id !== 'string' ||
           !(r as any).id ||
-          typeof (r as any).text !== 'string'
+          typeof (r as any).text !== 'string' ||
+          !(r as any).text ||
+          typeof (r as any).createdAt !== 'number'
         ) continue;
         if (!localById.has((r as any).id)) {
           merged.push(r as TravelMoment); // photoUri 없는 채로 추가
