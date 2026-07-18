@@ -305,7 +305,12 @@ export default function AppNavigator() {
         <Stack.Screen
           name="MomentCapture"
           component={MomentCaptureScreen}
-          options={{ presentation: 'transparentModal', animation: 'slide_from_bottom', headerShown: false }}
+          options={{
+            presentation: 'transparentModal',
+            animation: 'slide_from_bottom',
+            headerShown: false,
+            cardStyle: { backgroundColor: 'transparent' },
+          }}
         />
         <Stack.Screen
           name="AlbumCreate"
