@@ -2019,6 +2019,78 @@ function applyLOD(target){
   lodBusy=false;
 }
 function zoomSettled(){ return lastPinchDist===null && Math.abs(targetZoom-currentZoom)<0.03; }
+function smoothstep01(a,b,x){ var t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); }
+function geoToVec3N(lon, lat, r){
+  var phi=THREE.MathUtils.degToRad(90-lat), theta=THREE.MathUtils.degToRad(lon+180);
+  return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+}
+// ── 벡터 구분선 오버레이 — 텍스처에 구운 선은 딥줌에서 흐려지므로(텍셀 확대),
+// 확대할수록 구 표면 위 LineSegments(벡터, 항상 선명)가 페이드인해 대신한다 ──
+function buildWorldLinesMerged(world, R){
+  var pos=[];
+  function addRing(coords){
+    if(coords.length<2) return;
+    var prev=null;
+    for(var i=0;i<coords.length;i++){
+      var v=geoToVec3N(coords[i][0], coords[i][1], R);
+      if(prev) pos.push(prev.x,prev.y,prev.z, v.x,v.y,v.z);
+      prev=v;
+    }
+  }
+  world.features.forEach(function(f){
+    var g=f.geometry; if(!g) return;
+    if(g.type==='Polygon') g.coordinates.forEach(addRing);
+    else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ poly.forEach(addRing); });
+  });
+  var geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  var mat=new THREE.LineBasicMaterial({ color:new THREE.Color('#FFFFFF'), transparent:true, opacity:0, depthWrite:false });
+  var grp=new THREE.Group(); grp.add(new THREE.LineSegments(geo, mat));
+  grp.userData.mat=mat; grp.visible=false;
+  return grp;
+}
+function buildPolylinesMerged(lines, R){
+  var pos=[];
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i], prev=null;
+    for(var j=0;j<ln.length;j++){
+      var v=geoToVec3N(ln[j][0], ln[j][1], R);
+      if(prev) pos.push(prev.x,prev.y,prev.z, v.x,v.y,v.z);
+      prev=v;
+    }
+  }
+  var geo=new THREE.BufferGeometry(); geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  var mat=new THREE.LineBasicMaterial({ color:new THREE.Color('#FFFFFF'), transparent:true, opacity:0, depthWrite:false });
+  var grp=new THREE.Group(); grp.add(new THREE.LineSegments(geo, mat));
+  grp.userData.mat=mat; grp.visible=false;
+  return grp;
+}
+var vecBorders110=null, vecBorders50=null;
+var admin1Lines=null, admin1Group=null, admin1Requested=false;
+function updateVectorLines(){
+  if(!globeMesh) return;
+  var z=currentZoom;
+  // 벡터 국경 — 1.35배부터 서서히 등장(그 전엔 텍스처 선만), 110m↔50m 크로스페이드(1.9~2.6)
+  var vb=smoothstep01(1.35, 2.0, z)*0.9;
+  var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
+  if(vb>0 && !vecBorders110 && world110Data && zoomSettled()){
+    vecBorders110=buildWorldLinesMerged(world110Data, 1.002); globe.add(vecBorders110);
+  }
+  if(t>0 && !vecBorders50 && world50Data && zoomSettled()){
+    vecBorders50=buildWorldLinesMerged(world50Data, 1.002); globe.add(vecBorders50);
+  }
+  if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
+  if(vecBorders50){ var o2=vb*t; vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
+  // 주/도 지역구분선 — 3.0~4.2 페이드인 (데이터는 처음 필요 시 RN에 lazy 요청)
+  var a=smoothstep01(3.0, 4.2, z)*0.45;
+  if(a>0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView){
+    admin1Requested=true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needAdmin1' }));
+  }
+  if(a>0 && admin1Lines && !admin1Group && zoomSettled()){
+    admin1Group=buildPolylinesMerged(admin1Lines, 1.001); globe.add(admin1Group);
+  }
+  if(admin1Group){ admin1Group.userData.mat.opacity=a; admin1Group.visible=a>0.01; }
+}
 function maybeSwapLOD(){
   if(!material) return;
   if(!zoomSettled()) return; // 텍스처 재생성(무거움)은 핀치 종료 후에만 — 확대/축소 중 렉 방지
@@ -2140,8 +2212,9 @@ function animate(){
   globe.rotation.y=rotY; globe.rotation.x=rotX;
   renderer.render(scene, camera);
   updateAdMarkers();
-  updateLabels();    // 지역명 라벨(나라·도시)
-  maybeSwapLOD();    // 확대 임계 넘으면 50m 재텍스처
+  updateLabels();      // 지역명 라벨(나라·도시)
+  maybeSwapLOD();      // 확대 임계 넘으면 50m 재텍스처
+  updateVectorLines(); // 벡터 국경(딥줌 선명)·주/도 지역구분선 페이드
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -2164,6 +2237,10 @@ function handleMsg(msg){
     // 딥줌 LOD 데이터 도착 — 디코드 후 다음 maybeSwapLOD에서 교체
     try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); }
     catch(err){ world50Requested=false; }
+  } else if(msg.type==='admin1Lines' && msg.lines){
+    // 주/도 지역구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
+    try { admin1Lines = JSON.parse(msg.lines); }
+    catch(err){ admin1Requested=false; }
   }
 }
 window.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
