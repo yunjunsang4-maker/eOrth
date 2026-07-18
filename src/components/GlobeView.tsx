@@ -844,7 +844,7 @@ async function init() {
 // 카메라를 구·글로우 셸(1.08) 안으로 이동시키지 않아 클리핑 없이 깊은 확대가 된다.
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
-var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 28.0; // 총 ~90배 — 미국 기준 뉴욕 도시권이 보이는 수준
+var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 10.0; // 총 ~32배 — 최대 화면 폭 ≈ 5°(뉴욕~보스턴권, 사용자 확정 스케일)
 // 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
 function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
 // 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
@@ -2118,7 +2118,7 @@ async function init(){
 }
 
 // 회전/줌 상태 — 딥줌: 정사영이라 camera.zoom 배율만 키우면 클리핑 없이 깊이 확대된다
-var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=55.0; // 미국 기준 뉴욕 도시권이 보이는 수준
+var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=28.0; // 최대 화면 폭 ≈ 5°(뉴욕~보스턴권, 사용자 확정 스케일)
 var isDragging=false, prevMouse={x:0,y:0}, velocity={x:0,y:0};
 var rotX=0, rotY=0, lastT=0;
 // 회전 감도 — 확대할수록 반비례(구글맵식 정밀 이동)
