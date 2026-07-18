@@ -1282,6 +1282,7 @@ const ko = {
     photoAttachFailMsg: '사진을 불러오는 중 오류가 발생했어요.',
     cameraPermTitle: '카메라 권한 필요',
     cameraPermMsg: '사진을 촬영하려면 설정에서 카메라 권한을 허용해주세요.',
+    cameraAllow: '카메라 허용',
     captureFailTitle: '촬영 실패',
     captureFailMsg: '사진을 촬영하는 중 오류가 발생했어요.',
     deleteMsgTitle: '메시지 삭제',

@@ -1281,6 +1281,7 @@ const en = {
     photoAttachFailMsg: 'An error occurred while loading the photo.',
     cameraPermTitle: 'Camera permission required',
     cameraPermMsg: 'To take a photo, allow camera access in Settings.',
+    cameraAllow: 'Allow camera',
     captureFailTitle: 'Capture failed',
     captureFailMsg: 'An error occurred while taking the photo.',
     deleteMsgTitle: 'Delete message',

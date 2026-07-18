@@ -28,6 +28,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
 import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon } from '../components/icons';
+import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -319,6 +320,7 @@ export default function DMScreen({ navigation, route }: Props) {
   }, [messages, markBadgesEarned]);
   const [input, setInput] = useState('');
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [recordPickerOpen, setRecordPickerOpen] = useState(false);
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
@@ -388,23 +390,11 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   // ─── 카메라 촬영 전송 ───
-  const takePhoto = async () => {
+  // expo-image-picker launchCameraAsync가 SDK54/새 아키텍처에서 셔터가 먹지 않아,
+  // 검증된 expo-camera(CameraCaptureModal)로 촬영한다(권한도 모달 내부에서 처리).
+  const takePhoto = () => {
     setAttachMenuOpen(false);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) {
-      Alert.alert(t('dm.cameraPermTitle'), t('dm.cameraPermMsg'));
-      return;
-    }
-    try {
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ['images'],
-        quality: 0.8,
-      });
-      if (result.canceled || !result.assets?.length) return;
-      addMessage({ type: 'image', text: '', imageUri: result.assets[0].uri });
-    } catch (e: any) {
-      Alert.alert(t('dm.captureFailTitle'), e?.message ?? t('dm.captureFailMsg'));
-    }
+    setCameraOpen(true);
   };
 
   // ─── 여행 기록 공유 ───
@@ -840,6 +830,13 @@ export default function DMScreen({ navigation, route }: Props) {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 인앱 카메라 촬영 (expo-camera) — 촬영 후 사진 메시지 전송 */}
+      <CameraCaptureModal
+        visible={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(uri) => addMessage({ type: 'image', text: '', imageUri: uri })}
+      />
 
       {/* 여행 기록 선택 모달 */}
       <Modal visible={recordPickerOpen} transparent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
