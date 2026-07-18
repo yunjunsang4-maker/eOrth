@@ -10,6 +10,7 @@ import { useEffect, useRef } from 'react';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useCardOrder } from '../store/cardOrderStore';
+import { useMoments } from '../store/momentStore';
 import { saveAppState } from '../services/appState';
 import { isSupabaseConfigured } from '../services/supabase';
 
@@ -23,11 +24,13 @@ export default function AppStateSync() {
   const { exportSettingsBackup } = useSettings();
   const { exportLocalStateBackup } = useRecords();
   const cardOrder = useCardOrder();
+  const { exportMomentsBackup } = useMoments();
 
   const payload = {
     settings: exportSettingsBackup(),
     records: exportLocalStateBackup(),
     cardOrder,
+    moments: exportMomentsBackup(), // 텍스트/메타만, photoUri 제외
   };
   const json = JSON.stringify(payload);
   const payloadRef = useRef(payload);

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
+import { useMoments } from '../store/momentStore';
 import { clearPersistedStores } from '../store/persist';
 import { setCardOrder } from '../store/cardOrderStore';
 import { setAppStateBackupArmed } from '../components/AppStateSync';
@@ -29,6 +30,7 @@ export function useAccountBoundary(): () => Promise<void> {
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
   const { resetConversations } = useDM();
+  const { applyMomentsBackup } = useMoments();
 
   const applyServerProfile = (p: ProfileRow) => {
     if (p.handle) setHandle(p.handle);
@@ -49,6 +51,8 @@ export function useAccountBoundary(): () => Promise<void> {
       if (b.settings) applySettingsBackup(b.settings);
       if (b.records) applyLocalStateBackup(b.records);
       if (Array.isArray(b.cardOrder)) setCardOrder(b.cardOrder);
+      // moments: id 기준 병합(로컬 우선) — photoUri 보존을 위해 덮어쓰기 대신 병합
+      if (Array.isArray(b.moments)) applyMomentsBackup(b.moments);
     } catch {
       // 복원 실패해도 진행 (로컬 기본값 유지)
     }

@@ -19,6 +19,9 @@ interface MomentContextValue {
   addMoment: (m: Omit<TravelMoment, 'id' | 'createdAt'>) => void;
   removeMoment: (id: string) => void;
   hydrated: boolean;
+  // 앱 상태 통합 백업(user_app_state) 편승 — 텍스트/메타만, photoUri 제외
+  exportMomentsBackup: () => Omit<TravelMoment, 'photoUri'>[];
+  applyMomentsBackup: (b: unknown) => void;
 }
 
 const MomentContext = createContext<MomentContextValue | null>(null);
@@ -45,9 +48,39 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
     [moments],
   );
 
+  // ── 앱 상태 통합 백업(user_app_state) 편승 ──
+  // 직렬화: photoUri는 로컬 전용이므로 제거하고 텍스트/메타만 포함
+  const exportMomentsBackup = useCallback(
+    (): Omit<TravelMoment, 'photoUri'>[] =>
+      moments.map(({ photoUri: _photoUri, ...rest }) => rest),
+    [moments],
+  );
+
+  // 복원: 서버본에는 photoUri가 없으므로 무조건 덮어쓰면 로컬 사진 연결이 소실된다.
+  // → id 기준 병합(로컬 우선) 정책: 로컬에 같은 id가 있으면 로컬값을 유지하고,
+  //   서버에만 있는 항목은 추가한다. (settingsStore/recordStore는 무조건 덮어쓰기이나
+  //   moments는 photoUri 보존이 필요하므로 의도적으로 다른 정책을 적용)
+  const applyMomentsBackup = useCallback((b: unknown) => {
+    if (!Array.isArray(b)) return;
+    const remote = b as Omit<TravelMoment, 'photoUri'>[];
+    setMoments((local) => {
+      const localById = new Map(local.map((m) => [m.id, m]));
+      // 서버에만 있는 항목을 추가, 로컬에 있는 항목은 로컬값 그대로 유지
+      const merged = [...local];
+      for (const r of remote) {
+        if (!localById.has(r.id)) {
+          merged.push(r as TravelMoment); // photoUri 없는 채로 추가
+        }
+      }
+      // 최신순 정렬 유지
+      merged.sort((a, b) => b.createdAt - a.createdAt);
+      return merged;
+    });
+  }, []);
+
   const value = useMemo(
-    () => ({ moments, addMoment, removeMoment, hydrated }),
-    [moments, addMoment, removeMoment, hydrated],
+    () => ({ moments, addMoment, removeMoment, hydrated, exportMomentsBackup, applyMomentsBackup }),
+    [moments, addMoment, removeMoment, hydrated, exportMomentsBackup, applyMomentsBackup],
   );
   return <MomentContext.Provider value={value}>{children}</MomentContext.Provider>;
 }
