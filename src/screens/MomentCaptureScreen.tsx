@@ -12,8 +12,9 @@ import { useTranslation } from 'react-i18next';
 import * as Location from 'expo-location';
 import { useMoments } from '../store/momentStore';
 import { useToast } from '../store/toastStore';
-import { detectCurrentCountry } from '../services/snapService';
 import { locateCountry } from '../utils/countryLocate';
+
+const MOMENT_MEDIA_DIR = 'moments/';
 
 const MOODS = ['😊', '🥹', '😮', '😌', '🤩', '😭'];
 
@@ -34,21 +35,62 @@ export default function MomentCaptureScreen() {
     let cancelled = false;
     (async () => {
       try {
-        // 1차: OS 역지오코딩 (snapService 재사용)
-        const { countryCode, countryName, city } = await detectCurrentCountry();
-        if (cancelled) return;
-        if (countryCode || countryName) {
-          setGeo({ code: countryCode ?? undefined, name: countryName ?? undefined, region: city ?? undefined });
-          return;
-        }
-        // 2차: 오프라인 폴백 — 좌표만으로 GeoJSON 판정 (countryLocate)
+        // 권한 확인만 — 미부여 시 OS 팝업 없이 조용히 종료(시간만 저장됨)
         const perm = await Location.getForegroundPermissionsAsync();
-        if (perm.status !== 'granted') return;
-        const loc = await Location.getLastKnownPositionAsync();
-        if (!loc || cancelled) return;
-        const hit = locateCountry(loc.coords.latitude, loc.coords.longitude);
-        if (hit && !cancelled) setGeo({ code: hit.code, name: hit.name });
-      } catch { /* 위치 실패는 무시 — 시간만 저장 */ }
+        if (perm.status !== 'granted' || cancelled) return;
+
+        // lastKnown 우선(즉시 반환)
+        const lastKnown = await Location.getLastKnownPositionAsync();
+        const coords = lastKnown?.coords ?? null;
+
+        if (coords) {
+          // 1차: OS 역지오코딩
+          try {
+            const [rev] = await Location.reverseGeocodeAsync(
+              { latitude: coords.latitude, longitude: coords.longitude }
+            );
+            if (!cancelled && (rev?.isoCountryCode || rev?.country)) {
+              setGeo({
+                code: rev.isoCountryCode ?? undefined,
+                name: rev.country ?? undefined,
+                region: rev.city ?? rev.district ?? undefined,
+              });
+              return;
+            }
+          } catch { /* 오프라인이면 아래 폴백으로 */ }
+          // 2차: 오프라인 폴백 — GeoJSON 폴리곤 판정
+          if (!cancelled) {
+            const hit = locateCountry(coords.latitude, coords.longitude);
+            if (hit) setGeo({ code: hit.code, name: hit.name });
+          }
+        } else {
+          // lastKnown 없으면 실제 위치 요청(정확도 낮춰 빠르게)
+          try {
+            const fresh = await Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Balanced,
+            });
+            if (cancelled) return;
+            try {
+              const [rev] = await Location.reverseGeocodeAsync({
+                latitude: fresh.coords.latitude,
+                longitude: fresh.coords.longitude,
+              });
+              if (!cancelled && (rev?.isoCountryCode || rev?.country)) {
+                setGeo({
+                  code: rev.isoCountryCode ?? undefined,
+                  name: rev.country ?? undefined,
+                  region: rev.city ?? rev.district ?? undefined,
+                });
+                return;
+              }
+            } catch { /* 오프라인 폴백 */ }
+            if (!cancelled) {
+              const hit = locateCountry(fresh.coords.latitude, fresh.coords.longitude);
+              if (hit) setGeo({ code: hit.code, name: hit.name });
+            }
+          } catch { /* getCurrentPosition 실패 무시 — 시간만 저장 */ }
+        }
+      } catch { /* 위치 전체 실패 무시 — 시간만 저장 */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -59,7 +101,23 @@ export default function MomentCaptureScreen() {
       allowsMultipleSelection: false,
       quality: 0.8,
     });
-    if (!result.canceled && result.assets[0]) setPhotoUri(result.assets[0].uri);
+    if (result.canceled || !result.assets[0]) return;
+    const srcUri = result.assets[0].uri;
+    // documentDirectory로 복사해 OS 캐시 정리 후에도 사진 유지(persistRecordPhotos 동일 패턴)
+    try {
+      const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+      const base = FileSystem.documentDirectory;
+      if (base) {
+        const dir = `${base}${MOMENT_MEDIA_DIR}`;
+        try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
+        const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
+        const to = `${dir}moment-${Date.now()}.${ext}`;
+        await FileSystem.copyAsync({ from: srcUri, to });
+        setPhotoUri(to);
+        return;
+      }
+    } catch { /* 복사 실패 → 원본 URI 유지(기존 컨벤션) */ }
+    setPhotoUri(srcUri);
   };
 
   const save = () => {
