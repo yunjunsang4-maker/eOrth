@@ -831,7 +831,7 @@ async function init() {
 // 카메라를 구·글로우 셸(1.08) 안으로 이동시키지 않아 클리핑 없이 깊은 확대가 된다.
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
-var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 6.0;
+var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 10.0;
 // 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
 function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
 // 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
@@ -1170,9 +1170,9 @@ function setGroupOp(g, k) {
   for (var i = 0; i < mats.length; i++) mats[i].opacity = base[i] * k;
   g.visible = k > 0.01;
 }
-function buildAdmin1Group(lines) {
-  // 전체 라인을 LineSegments 1개(단일 지오메트리·드로우콜)로 병합 — 4.4만 폴리라인도 가볍게
-  var R = 1.001; // 국경선(1.0015)보다 살짝 아래
+function buildAdmin1Group(lines, radius) {
+  // 전체 라인을 LineSegments 1개(단일 지오메트리·드로우콜)로 병합 — 수만 폴리라인도 가볍게
+  var R = radius || 1.001; // 기본: 국경선(1.0015)보다 살짝 아래
   var pos = [];
   for (var i = 0; i < lines.length; i++) {
     var ln = lines[i]; var prev = null;
@@ -1191,18 +1191,33 @@ function buildAdmin1Group(lines) {
   grp.visible = false;
   return grp;
 }
+var borders10Lines = null, borders10Group = null, borders10Requested = false; // 10m 최정밀 구분선(해안+국경)
 function updateBorderFade() {
   if (!globeMesh) return;
   var zf = zoomFactor();
-  // 국경 크로스페이드 — 1.9~2.6 구간에서 110m이 서서히 빠지고 50m이 선명해진다
+  // 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8) — 확대할수록 매끄럽게 선명해진다
   var t = world50Data ? smoothstep01(1.9, 2.6, zf) : 0;
+  var t10 = borders10Lines ? smoothstep01(4.5, 5.8, zf) : 0;
   if (t > 0 && !borderGroup50 && world50Data && zoomSettled()) {
     // 그룹 생성(무거움)은 줌 안정 후 1회 — 핀치 중 렉 방지
     borderGroup50 = buildBordersMerged(world50Data, cfg.borderColor);
     globe.add(borderGroup50);
   }
+  // 10m 데이터는 4배 이상 확대에 접근하면 미리 요청(lazy)
+  if (zf > 3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView) {
+    borders10Requested = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needBorders10m' }));
+  }
+  if (t10 > 0 && !borders10Group && borders10Lines && zoomSettled()) {
+    borders10Group = buildAdmin1Group(borders10Lines, 1.0018); // 50m 국경(1.0015) 위
+    globe.add(borders10Group);
+  }
   if (borderGroup) setGroupOp(borderGroup, borderGroup50 ? 1 - t : 1);
-  if (borderGroup50) setGroupOp(borderGroup50, t);
+  if (borderGroup50) setGroupOp(borderGroup50, borders10Group ? t * (1 - t10) : t);
+  if (borders10Group) {
+    borders10Group.userData.mat.opacity = 0.95 * t10;
+    borders10Group.visible = t10 > 0.01;
+  }
   // 주/도 지역구분선 — 3.0~4.2 구간에서 서서히 등장 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a = smoothstep01(3.0, 4.2, zf);
   if (a > 0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView) {
@@ -1470,6 +1485,13 @@ function handleVisitedMessage(msg) {
       admin1Lines = JSON.parse(msg.lines);
     } catch (err) {
       admin1Requested = false;
+    }
+  } else if (msg.type === 'borders10m' && msg.lines) {
+    // 10m 최정밀 구분선 데이터 도착 — 다음 updateBorderFade에서 그룹 생성
+    try {
+      borders10Lines = JSON.parse(msg.lines);
+    } catch (err) {
+      borders10Requested = false;
     }
   }
 }
@@ -1870,7 +1892,7 @@ async function init(){
 }
 
 // 회전/줌 상태 — 딥줌: 정사영이라 camera.zoom 배율만 키우면 클리핑 없이 깊이 확대된다
-var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=12.0;
+var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=20.0;
 var isDragging=false, prevMouse={x:0,y:0}, velocity={x:0,y:0};
 var rotX=0, rotY=0, lastT=0;
 // 회전 감도 — 확대할수록 반비례(구글맵식 정밀 이동)
@@ -2083,20 +2105,30 @@ function buildPolylinesMerged(lines, R){
 }
 var vecBorders110=null, vecBorders50=null;
 var admin1Lines=null, admin1Group=null, admin1Requested=false;
+var borders10Lines=null, borders10Group=null, borders10Requested=false; // 10m 최정밀(해안+국경)
 function updateVectorLines(){
   if(!globeMesh) return;
   var z=currentZoom;
-  // 벡터 국경 — 1.35배부터 서서히 등장(그 전엔 텍스처 선만), 110m↔50m 크로스페이드(1.9~2.6)
+  // 벡터 국경 — 1.35배부터 등장, 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8)
   var vb=smoothstep01(1.35, 2.0, z)*0.9;
   var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
+  var t10=borders10Lines ? smoothstep01(4.5, 5.8, z) : 0;
   if(vb>0 && !vecBorders110 && world110Data && zoomSettled()){
     vecBorders110=buildWorldLinesMerged(world110Data, 1.002); globe.add(vecBorders110);
   }
   if(t>0 && !vecBorders50 && world50Data && zoomSettled()){
     vecBorders50=buildWorldLinesMerged(world50Data, 1.002); globe.add(vecBorders50);
   }
+  if(z>3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView){
+    borders10Requested=true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needBorders10m' }));
+  }
+  if(t10>0 && !borders10Group && borders10Lines && zoomSettled()){
+    borders10Group=buildPolylinesMerged(borders10Lines, 1.0025); globe.add(borders10Group);
+  }
   if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
-  if(vecBorders50){ var o2=vb*t; vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
+  if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
+  if(borders10Group){ var o3=0.92*t10; borders10Group.userData.mat.opacity=o3; borders10Group.visible=o3>0.01; }
   // 주/도 지역구분선 — 3.0~4.2 페이드인 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a=smoothstep01(3.0, 4.2, z)*0.45;
   if(a>0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView){
@@ -2259,6 +2291,10 @@ function handleMsg(msg){
     // 주/도 지역구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
     try { admin1Lines = JSON.parse(msg.lines); }
     catch(err){ admin1Requested=false; }
+  } else if(msg.type==='borders10m' && msg.lines){
+    // 10m 최정밀 구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
+    try { borders10Lines = JSON.parse(msg.lines); }
+    catch(err){ borders10Requested=false; }
   }
 }
 window.addEventListener('message', function(e){ try{ handleMsg(typeof e.data==='string'?JSON.parse(e.data):e.data); }catch(_){} });
@@ -2353,6 +2389,12 @@ export default function GlobeView({
       // 주/도 지역구분선 요청 — 1.7MB 문자열, 딥줌 진입 시에만 lazy 전송
       const { ADMIN1_LINES_JSON } = require('../data/vendorAdmin1');
       webViewRef.current?.postMessage(JSON.stringify({ type: 'admin1Lines', lines: ADMIN1_LINES_JSON }));
+      return; // 내부 신호
+    }
+    if (data?.type === 'needBorders10m') {
+      // 10m 최정밀 구분선(해안+국경) 요청 — 3.4MB 문자열, 최심 줌 접근 시에만 lazy 전송
+      const { BORDERS_10M_JSON } = require('../data/vendorBorders10m');
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'borders10m', lines: BORDERS_10M_JSON }));
       return; // 내부 신호
     }
     onMessage?.(e);
