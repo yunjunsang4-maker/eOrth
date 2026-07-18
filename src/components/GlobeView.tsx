@@ -359,8 +359,12 @@ async function buildTexture() {
   var hiTex = (typeof worldLOD !== 'undefined' && worldLOD === '50m');
   // 해상도: 사진 모드는 항상 8192, 색/국기 모드도 딥줌에선 8192로 상향(채움 경계 선명)
   var W = (isPhotoMode || hiTex) ? 8192 : 4096, H = W / 2;
-  var offscreen = document.createElement('canvas');
-  offscreen.width = W; offscreen.height = H;
+  // 캔버스 싱글턴 재사용 — 재생성마다 새 캔버스를 만들면 iOS WebView 캔버스 메모리 한도를 넘어
+  // 그리기가 조용히 실패(빈 텍스처=활성색 꺼짐)한다. 크기 변경 시에만 리사이즈(자동 클리어).
+  if (!window.__texCv) window.__texCv = document.createElement('canvas');
+  var offscreen = window.__texCv;
+  if (offscreen.width !== W) offscreen.width = W;
+  if (offscreen.height !== H) offscreen.height = H;
   var ctx = offscreen.getContext('2d');
   // 사진 활성화 모드에서 확대 그리기 화질 개선 (기본 low 스무딩 → high)
   ctx.imageSmoothingEnabled = true;
@@ -1114,25 +1118,11 @@ function topoDecode(topo, objName) {
   return { type: 'FeatureCollection', features: feats };
 }
 function applyLOD(target) {
-  if (lodBusy || !globeMesh) return;
-  lodBusy = true;
-  if (regionActive) clearRegion(); // 전역 텍스처 교체 전 지역 창 해제(다음 settle에 재생성)
-  worldData = target === '50m' ? world50Data : world110Data;
+  if (!globeMesh) return;
+  // 텍스처는 재생성하지 않는다 — 전역 채움은 110m 텍스처 유지, 딥줌 채움은 region 텍스처가 담당.
+  // (임계 통과마다 8192 재생성으로 생기던 렉 + iOS 캔버스 메모리 폭증(활성색 꺼짐)의 제거)
+  worldData = target === '50m' ? world50Data : world110Data; // 탭 판정·국경 그룹 정밀도용
   worldLOD = target;
-  // 채움 텍스처만 재생성 — 국경선은 110m/50m 두 그룹을 상시 두고 줌에 따라 크로스페이드(updateBorderFade)
-  loadAllImages().then(function() { return buildTexture(); }).then(function(tex) {
-    if (regionActive) {
-      // 완료 시점에 지역 창이 켜져 있으면 전역 텍스처는 복귀용 슬롯만 갱신(지역 창 덮어쓰기 방지)
-      var oldG = regionPrevTex; regionPrevTex = tex;
-      if (oldG && oldG.dispose) oldG.dispose();
-    } else {
-      var old = globeMesh.material.map;
-      globeMesh.material.map = tex;
-      globeMesh.material.needsUpdate = true;
-      if (old && old.dispose) old.dispose();
-    }
-    lodBusy = false;
-  }).catch(function() { lodBusy = false; });
 }
 
 // ── 구글맵식 매끄러운 전환: 국경 110m↔50m 크로스페이드 + 주/도(admin-1) 지역구분선 페이드인 ──
@@ -1271,7 +1261,7 @@ function maybeSwapLOD() {
 // ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
 // 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
 // 채움은 50m 폴리곤(색/사진/국기) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
-var REGION_AT = 10;
+var REGION_AT = 5; // 전역 텍스처 LOD 재생성을 없앤 대신 지역 창이 더 일찍 채움을 이어받는다
 var regionActive = false, regionPrevTex = null, regionC = { lon: 0, lat: 0, span: 0 };
 var land10 = null, land10Requested = false;
 function centerLatLon() {
@@ -1310,9 +1300,12 @@ function clipRingToRect(ring, minLon, minLat, maxLon, maxLat) {
   return out;
 }
 function buildRegionTexture(lonC, latC, span) {
-  var S = 4096;
-  var c = document.createElement('canvas'); c.width = S; c.height = S;
+  var S = 3072; // 4096→3072: iOS 캔버스 메모리 여유(span 60°에서도 전역 8192보다 2.3배 정밀)
+  if (!window.__regionCv) window.__regionCv = document.createElement('canvas');
+  var c = window.__regionCv;
+  if (c.width !== S) { c.width = S; c.height = S; }
   var ctx = c.getContext('2d');
+  ctx.clearRect(0, 0, S, S); // 재사용 캔버스 — 이전 창 내용 제거
   ctx.imageSmoothingEnabled = true;
   try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
   var proj = d3.geoEquirectangular().rotate([-lonC, 0]).center([0, latC]).scale(S / (span * Math.PI / 180)).translate([S / 2, S / 2]);
@@ -1938,9 +1931,12 @@ var worldData = null, globeMesh = null, material = null;
 // 적도원통(equirectangular) 텍스처: 바다는 투명(셰이더가 절차적으로 칠함),
 // 대륙은 라벤더/방문국 활성화 색, 흰 해안선/국경선. (탭 판정과 동일한 WORLD_GEO 사용)
 function buildNeonTexture(){
-  // 딥줌(50m LOD) 상태에선 해상도도 올려 확대 시 채움·국경이 선명하게
-  var W = (typeof worldLOD !== 'undefined' && worldLOD === '50m') ? 8192 : 4096, H = W / 2;
-  var c=document.createElement('canvas'); c.width=W; c.height=H;
+  // 전역 텍스처는 110m/4096 고정 — 딥줌 채움은 region 텍스처가 담당(LOD 재생성 렉·메모리 제거)
+  var W = 4096, H = W / 2;
+  // 캔버스 싱글턴 재사용 — iOS WebView 캔버스 메모리 한도 초과(빈 텍스처=활성색 꺼짐) 방지
+  if(!window.__texCv) window.__texCv = document.createElement('canvas');
+  var c = window.__texCv;
+  if(c.width !== W){ c.width = W; c.height = H; }
   var ctx=c.getContext('2d');
   ctx.clearRect(0,0,W,H);
   var proj=d3.geoEquirectangular().scale(H/Math.PI).translate([W/2,H/2]);
@@ -2276,17 +2272,11 @@ function topoDecode(topo, objName){
   return { type:'FeatureCollection', features:feats };
 }
 function applyLOD(target){
-  if(lodBusy || !material) return;
-  lodBusy=true;
-  if(regionActive) clearRegion(); // 전역 텍스처 교체 전 지역 창 해제(다음 settle에 재생성)
-  worldData = target==='50m' ? world50Data : world110Data;
+  if(!material) return;
+  // 텍스처는 재생성하지 않는다 — 전역 채움은 110m 유지, 딥줌 채움은 region 텍스처가 담당.
+  // (임계 통과마다 재생성으로 생기던 렉 + iOS 캔버스 메모리 폭증(활성색 꺼짐) 제거)
+  worldData = target==='50m' ? world50Data : world110Data; // 탭 판정·벡터 국경 정밀도용
   worldLOD = target;
-  try {
-    var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
-    material.uniforms.uLand.value=tex;
-    if(old && old.dispose) old.dispose();
-  } catch(err){}
-  lodBusy=false;
 }
 function zoomSettled(){ return lastPinchDist===null && Math.abs(targetZoom-currentZoom)<0.03; }
 function smoothstep01(a,b,x){ var t=Math.max(0,Math.min(1,(x-a)/(b-a))); return t*t*(3-2*t); }
@@ -2375,7 +2365,7 @@ function updateVectorLines(){
 // ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
 // 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
 // 채움은 50m 국가 폴리곤(색) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
-var REGION_AT=10;
+var REGION_AT=5; // 전역 텍스처 LOD 재생성을 없앤 대신 지역 창이 더 일찍 채움을 이어받는다
 var regionActive=false, regionPrevTex=null, regionC={lon:0,lat:0,span:0};
 var land10=null, land10Requested=false;
 function centerLatLon(){
@@ -2413,9 +2403,12 @@ function clipRingToRect(ring, minLon, minLat, maxLon, maxLat){
   return out;
 }
 function buildRegionTexture(lonC, latC, span){
-  var S=4096;
-  var c=document.createElement('canvas'); c.width=S; c.height=S;
+  var S=3072; // iOS 캔버스 메모리 여유(span 60°에서도 전역보다 훨씬 정밀)
+  if(!window.__regionCv) window.__regionCv=document.createElement('canvas');
+  var c=window.__regionCv;
+  if(c.width!==S){ c.width=S; c.height=S; }
   var ctx=c.getContext('2d');
+  ctx.clearRect(0,0,S,S); // 재사용 캔버스 — 이전 창 내용 제거
   var proj=d3.geoEquirectangular().rotate([-lonC,0]).center([0,latC]).scale(S/(span*Math.PI/180)).translate([S/2,S/2]);
   var path=d3.geoPath().projection(proj).context(ctx);
   var wMinLon=lonC-span/2, wMaxLon=lonC+span/2, wMinLat=latC-span/2, wMaxLat=latC+span/2;
