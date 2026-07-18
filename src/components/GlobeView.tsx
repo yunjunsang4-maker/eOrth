@@ -713,6 +713,9 @@ function buildBorders(world, hexColor) {
       geom.coordinates.forEach(function(poly) { poly.forEach(addRing); });
     }
   });
+  // 크로스페이드용 — 재질은 그룹당 2개뿐이라 매 프레임 opacity 갱신이 저렴
+  group.userData.mats = [matCore, matGlow];
+  group.userData.baseOp = [0.95, 0.3];
   return group;
 }
 
@@ -828,7 +831,7 @@ async function init() {
 // 카메라를 구·글로우 셸(1.08) 안으로 이동시키지 않아 클리핑 없이 깊은 확대가 된다.
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
-var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 3.2;
+var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 6.0;
 // 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
 function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
 // 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
@@ -1106,20 +1109,72 @@ function applyLOD(target) {
   lodBusy = true;
   worldData = target === '50m' ? world50Data : world110Data;
   worldLOD = target;
-  // 채움 텍스처·국경선을 세트로 재구축(따로 바꾸면 경계가 어긋나 보인다)
+  // 채움 텍스처만 재생성 — 국경선은 110m/50m 두 그룹을 상시 두고 줌에 따라 크로스페이드(updateBorderFade)
   loadAllImages().then(function() { return buildTexture(); }).then(function(tex) {
     var old = globeMesh.material.map;
     globeMesh.material.map = tex;
     globeMesh.material.needsUpdate = true;
     if (old && old.dispose) old.dispose();
-    if (borderGroup) {
-      globe.remove(borderGroup);
-      borderGroup.traverse(function(o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
-    }
-    borderGroup = buildBorders(worldData, cfg.borderColor);
-    globe.add(borderGroup);
     lodBusy = false;
   }).catch(function() { lodBusy = false; });
+}
+
+// ── 구글맵식 매끄러운 전환: 국경 110m↔50m 크로스페이드 + 주/도(admin-1) 지역구분선 페이드인 ──
+var borderGroup50 = null;                  // 50m 국경 그룹(데이터 도착 후 lazy 생성)
+var admin1Lines = null, admin1Group = null, admin1Requested = false; // 주/도 경계선
+function smoothstep01(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function setGroupOp(g, k) {
+  var mats = g.userData.mats, base = g.userData.baseOp;
+  if (!mats) return;
+  for (var i = 0; i < mats.length; i++) mats[i].opacity = base[i] * k;
+  g.visible = k > 0.01;
+}
+function buildAdmin1Group(lines) {
+  // 전체 라인을 LineSegments 1개(단일 지오메트리·드로우콜)로 병합 — 4.4만 폴리라인도 가볍게
+  var R = 1.001; // 국경선(1.0015)보다 살짝 아래
+  var pos = [];
+  for (var i = 0; i < lines.length; i++) {
+    var ln = lines[i]; var prev = null;
+    for (var j = 0; j < ln.length; j++) {
+      var v = geoToVec3(ln[j][0], ln[j][1], R);
+      if (prev) pos.push(prev.x, prev.y, prev.z, v.x, v.y, v.z);
+      prev = v;
+    }
+  }
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  var mat = new THREE.LineBasicMaterial({ color: new THREE.Color('#FFFFFF'), transparent: true, opacity: 0, depthWrite: false });
+  var grp = new THREE.Group();
+  grp.add(new THREE.LineSegments(geo, mat));
+  grp.userData.mat = mat;
+  grp.visible = false;
+  return grp;
+}
+function updateBorderFade() {
+  if (!globeMesh) return;
+  var zf = zoomFactor();
+  // 국경 크로스페이드 — 1.9~2.6 구간에서 110m이 서서히 빠지고 50m이 선명해진다
+  var t = world50Data ? smoothstep01(1.9, 2.6, zf) : 0;
+  if (t > 0 && !borderGroup50 && world50Data) {
+    borderGroup50 = buildBorders(world50Data, cfg.borderColor);
+    globe.add(borderGroup50);
+  }
+  if (borderGroup) setGroupOp(borderGroup, 1 - t);
+  if (borderGroup50) setGroupOp(borderGroup50, t);
+  // 주/도 지역구분선 — 3.0~4.2 구간에서 서서히 등장 (데이터는 처음 필요 시 RN에 lazy 요청)
+  var a = smoothstep01(3.0, 4.2, zf);
+  if (a > 0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView) {
+    admin1Requested = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needAdmin1' }));
+  }
+  if (a > 0 && admin1Lines && !admin1Group) {
+    admin1Group = buildAdmin1Group(admin1Lines);
+    globe.add(admin1Group);
+  }
+  if (admin1Group) {
+    admin1Group.userData.mat.opacity = 0.42 * a;
+    admin1Group.visible = a > 0.01;
+  }
 }
 function maybeSwapLOD() {
   if (!globeMesh) return;
@@ -1271,9 +1326,10 @@ function animate() {
   globe.rotation.x = rotX;
 
   renderer.render(scene, camera);
-  updateAdMarkers(); // 렌더 후(월드행렬 최신) 마커 위치 갱신
-  updateLabels();    // 지역명 라벨(나라·도시) — 줌 단계별 등장
-  maybeSwapLOD();    // 확대 임계 넘으면 국경·채움을 50m로 교체
+  updateAdMarkers();   // 렌더 후(월드행렬 최신) 마커 위치 갱신
+  updateLabels();      // 지역명 라벨(나라·도시) — 줌 단계별 등장
+  maybeSwapLOD();      // 확대 임계 넘으면 채움 텍스처를 50m로 교체
+  updateBorderFade();  // 국경 110m↔50m 크로스페이드 + 주/도 지역구분선 페이드
 }
 
 window.addEventListener('resize', function() {
@@ -1318,8 +1374,18 @@ function applyTheme(t) {
       if (o.material) o.material.dispose();
     });
   }
-  borderGroup = buildBorders(worldData, cfg.borderColor);
+  // 110m 기준으로 재구축(딥줌 중 worldData가 50m일 수 있음) — 50m 그룹도 있으면 새 색으로 재생성
+  borderGroup = buildBorders(world110Data || worldData, cfg.borderColor);
   globe.add(borderGroup);
+  if (borderGroup50) {
+    globe.remove(borderGroup50);
+    borderGroup50.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) o.material.dispose();
+    });
+    borderGroup50 = world50Data ? buildBorders(world50Data, cfg.borderColor) : null;
+    if (borderGroup50) globe.add(borderGroup50);
+  }
 }
 
 // 방문 국가 업데이트 수신
@@ -1353,6 +1419,13 @@ function handleVisitedMessage(msg) {
       world50Data = topoDecode(JSON.parse(msg.topo), 'countries');
     } catch (err) {
       world50Requested = false; // 실패 시 재요청 가능
+    }
+  } else if (msg.type === 'admin1Lines' && msg.lines) {
+    // 주/도 지역구분선 데이터 도착 — 다음 updateBorderFade에서 그룹 생성
+    try {
+      admin1Lines = JSON.parse(msg.lines);
+    } catch (err) {
+      admin1Requested = false;
     }
   }
 }
@@ -2134,6 +2207,12 @@ export default function GlobeView({
       // 딥줌 LOD 데이터 요청 — 740KB 문자열이라 처음 필요할 때만 lazy require해 전송
       const { WORLD_50M_TOPO } = require('../data/vendorWorld50m');
       webViewRef.current?.postMessage(JSON.stringify({ type: 'world50m', topo: WORLD_50M_TOPO }));
+      return; // 내부 신호
+    }
+    if (data?.type === 'needAdmin1') {
+      // 주/도 지역구분선 요청 — 1.7MB 문자열, 딥줌 진입 시에만 lazy 전송
+      const { ADMIN1_LINES_JSON } = require('../data/vendorAdmin1');
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'admin1Lines', lines: ADMIN1_LINES_JSON }));
       return; // 내부 신호
     }
     onMessage?.(e);
