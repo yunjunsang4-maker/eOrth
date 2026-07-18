@@ -356,6 +356,8 @@ async function buildTexture() {
   // 다른 모드(국기·색)는 메모리 절약 위해 4096x2048 유지. (2:1 등장방형 비율 유지 필수)
   var isPhotoMode = globeDisplayMode === 'photo';
   var W = isPhotoMode ? 8192 : 4096, H = isPhotoMode ? 4096 : 2048;
+  // 딥줌(50m) 텍스처 여부 — 이때는 스트로크/글로우를 굽지 않는다(확대 시 뿌연 후광 방지, 벡터 선이 대신)
+  var hiTex = (typeof worldLOD !== 'undefined' && worldLOD === '50m');
   var offscreen = document.createElement('canvas');
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
@@ -495,16 +497,18 @@ async function buildTexture() {
         ctx.restore();
       });
 
-      // 전체 테두리
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.lineJoin = 'round';
-      ctx.shadowColor = 'rgba(255,255,255,0.3)';
-      ctx.shadowBlur = 3;
-      ctx.beginPath();
-      path(f);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(확대 시 뿌연 후광의 원인, 벡터 선이 대신)
+      if (!hiTex) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(255,255,255,0.3)';
+        ctx.shadowBlur = 3;
+        ctx.beginPath();
+        path(f);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
     } else if (mode === 'photo' && photoImg) {
       // 대표 사진 모드: 각 폴리곤(영토)마다 개별적으로 사진 그리기
       var geom = f.geometry;
@@ -547,49 +551,53 @@ async function buildTexture() {
         ctx.restore();
       });
 
-      // 전체 테두리
-      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-      ctx.lineWidth = 1.5;
-      ctx.lineJoin = 'round';
-      ctx.shadowColor = 'rgba(255,255,255,0.3)';
-      ctx.shadowBlur = 3;
-      ctx.beginPath();
-      path(f);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
+      // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신)
+      if (!hiTex) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = 'rgba(255,255,255,0.3)';
+        ctx.shadowBlur = 3;
+        ctx.beginPath();
+        path(f);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+      }
     } else {
-      // 색상 모드 (또는 국기 로드 실패 시 폴백)
+      // 색상 모드 (또는 국기 로드 실패 시 폴백) — 딥줌 텍스처엔 글로우/스트로크 생략(후광 방지)
       ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 4;
+      ctx.shadowBlur = hiTex ? 0 : 4;
       ctx.fillStyle = baseColor;
       ctx.beginPath();
       path(f);
       ctx.fill();
       ctx.shadowBlur = 0;
 
-      ctx.globalCompositeOperation = 'lighter';
-      var centroid = d3.geoCentroid(f);
-      var projC = proj(centroid);
-      if (projC) {
-        var grd = ctx.createRadialGradient(projC[0], projC[1], 0, projC[0], projC[1], 120);
-        grd.addColorStop(0, 'rgba(255,255,255,0.06)');
-        grd.addColorStop(1, 'rgba(255,255,255,0)');
-        ctx.fillStyle = grd;
+      if (!hiTex) {
+        ctx.globalCompositeOperation = 'lighter';
+        var centroid = d3.geoCentroid(f);
+        var projC = proj(centroid);
+        if (projC) {
+          var grd = ctx.createRadialGradient(projC[0], projC[1], 0, projC[0], projC[1], 120);
+          grd.addColorStop(0, 'rgba(255,255,255,0.06)');
+          grd.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = grd;
+          ctx.beginPath();
+          path(f);
+          ctx.fill();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+
+        ctx.strokeStyle = baseColor;
+        ctx.lineWidth = 2;
+        ctx.lineJoin = 'round';
+        ctx.shadowColor = baseColor;
+        ctx.shadowBlur = 3;
         ctx.beginPath();
         path(f);
-        ctx.fill();
+        ctx.stroke();
+        ctx.shadowBlur = 0;
       }
-      ctx.globalCompositeOperation = 'source-over';
-
-      ctx.strokeStyle = baseColor;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = 'round';
-      ctx.shadowColor = baseColor;
-      ctx.shadowBlur = 3;
-      ctx.beginPath();
-      path(f);
-      ctx.stroke();
-      ctx.shadowBlur = 0;
     }
   });
 
@@ -1750,22 +1758,27 @@ function buildNeonTexture(){
       ctx.fillStyle=pat; ctx.beginPath(); path(f); ctx.fill(); ctx.restore();
     });
   })();
-  // 방문국 내부 발광(가산)
-  ctx.globalCompositeOperation='lighter';
-  worldData.features.forEach(function(f){
-    var v=visitedMap[f.properties.name||'']; if(!v) return;
-    var ctr=d3.geoCentroid(f), pc=proj(ctr); if(!pc) return;
-    var g=ctx.createRadialGradient(pc[0],pc[1],0,pc[0],pc[1],150);
-    g.addColorStop(0,'rgba(255,255,255,0.10)'); g.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=g; ctx.beginPath(); path(f); ctx.fill();
-  });
-  ctx.globalCompositeOperation='source-over';
-  // 흰 해안선/국경선 (전체)
-  ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
-  worldData.features.forEach(function(f){ ctx.beginPath(); path(f); ctx.stroke(); });
-  // 방문국은 더 또렷한 테두리
-  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=3;
-  worldData.features.forEach(function(f){ if(visitedMap[f.properties.name||'']){ ctx.beginPath(); path(f); ctx.stroke(); } });
+  // 딥줌(50m) 텍스처엔 발광·스트로크를 굽지 않는다 — 확대 시 텍셀이 늘어나 뿌연 후광처럼 보이던 원인.
+  // 그 시점엔 벡터 구분선(updateVectorLines)이 완전히 대신하므로 시각 손실 없음.
+  var hiTex = (typeof worldLOD !== 'undefined' && worldLOD === '50m');
+  if(!hiTex){
+    // 방문국 내부 발광(가산)
+    ctx.globalCompositeOperation='lighter';
+    worldData.features.forEach(function(f){
+      var v=visitedMap[f.properties.name||'']; if(!v) return;
+      var ctr=d3.geoCentroid(f), pc=proj(ctr); if(!pc) return;
+      var g=ctx.createRadialGradient(pc[0],pc[1],0,pc[0],pc[1],150);
+      g.addColorStop(0,'rgba(255,255,255,0.10)'); g.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle=g; ctx.beginPath(); path(f); ctx.fill();
+    });
+    ctx.globalCompositeOperation='source-over';
+    // 흰 해안선/국경선 (전체)
+    ctx.strokeStyle='rgba(255,255,255,0.28)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
+    worldData.features.forEach(function(f){ ctx.beginPath(); path(f); ctx.stroke(); });
+    // 방문국은 더 또렷한 테두리
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=3;
+    worldData.features.forEach(function(f){ if(visitedMap[f.properties.name||'']){ ctx.beginPath(); path(f); ctx.stroke(); } });
+  }
 
   var tex=new THREE.CanvasTexture(c);
   tex.anisotropy=renderer.capabilities.getMaxAnisotropy ? renderer.capabilities.getMaxAnisotropy() : 1;
