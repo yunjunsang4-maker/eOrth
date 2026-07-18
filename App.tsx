@@ -13,6 +13,7 @@ import { RecordProvider } from './src/store/recordStore';
 import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { ToastProvider } from './src/store/toastStore';
+import { MomentProvider } from './src/store/momentStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -82,19 +83,21 @@ export default function App() {
           <SettingsProvider>
             <LanguageBridge />
             <RecordProvider>
-              <DMProvider>
-                <ToastProvider>
-                  <StatusBar style="light" backgroundColor="#0A0118" translucent />
-                  <SnapDetector />
-                  <ProfileSync />
-                  <AppStateSync />
-                  <BadgeEvaluator />
-                  <AppNavigator />
-                  <BadgeToastHost />
-                  <DMToastHost />
-                  <ToastHost />
-                </ToastProvider>
-              </DMProvider>
+              <MomentProvider>
+                <DMProvider>
+                  <ToastProvider>
+                    <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                    <SnapDetector />
+                    <ProfileSync />
+                    <AppStateSync />
+                    <BadgeEvaluator />
+                    <AppNavigator />
+                    <BadgeToastHost />
+                    <DMToastHost />
+                    <ToastHost />
+                  </ToastProvider>
+                </DMProvider>
+              </MomentProvider>
             </RecordProvider>
           </SettingsProvider>
         </ErrorBoundary>

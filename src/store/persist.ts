@@ -21,6 +21,7 @@ export const STORE_KEYS = {
   settings: '@eorth/settings',
   dm: '@eorth/dm',
   feedCache: '@eorth/feedCache', // 소셜 피드 캐시(타인 글) — 오프라인 재시작 시 마지막 피드 표시용
+  moments: '@eorth/moments', // 여행 기억(순간 메모)
 } as const;
 
 interface Envelope<T> {
@@ -95,7 +96,7 @@ export function usePersistence<T>(
 
 /** 영속 데이터 전체 삭제 (설정 → 데이터 초기화 등에서 사용) */
 export async function clearPersistedStores(): Promise<void> {
-  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache]);
+  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments]);
 }
 
 /**
