@@ -355,9 +355,10 @@ async function buildTexture() {
   // 사진 모드는 작은 나라(폴리곤이 몇 텍셀뿐)도 선명하도록 텍스처를 2배(8192x4096)로 키운다.
   // 다른 모드(국기·색)는 메모리 절약 위해 4096x2048 유지. (2:1 등장방형 비율 유지 필수)
   var isPhotoMode = globeDisplayMode === 'photo';
-  var W = isPhotoMode ? 8192 : 4096, H = isPhotoMode ? 4096 : 2048;
   // 딥줌(50m) 텍스처 여부 — 이때는 스트로크/글로우를 굽지 않는다(확대 시 뿌연 후광 방지, 벡터 선이 대신)
   var hiTex = (typeof worldLOD !== 'undefined' && worldLOD === '50m');
+  // 해상도: 사진 모드는 항상 8192, 색/국기 모드도 딥줌에선 8192로 상향(채움 경계 선명)
+  var W = (isPhotoMode || hiTex) ? 8192 : 4096, H = W / 2;
   var offscreen = document.createElement('canvas');
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
@@ -839,7 +840,7 @@ async function init() {
 // 카메라를 구·글로우 셸(1.08) 안으로 이동시키지 않아 클리핑 없이 깊은 확대가 된다.
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
-var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 10.0;
+var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 28.0; // 총 ~90배 — 미국 기준 뉴욕 도시권이 보이는 수준
 // 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
 function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
 // 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
@@ -935,9 +936,9 @@ window.addEventListener('touchend', function(e) {
 // 핀치/휠 공용 — 확대(delta>0)는 dolly 한계 후 2단계 배율로 이어받고, 축소는 배율부터 되돌린다
 function applyZoomDelta(delta) {
   if (delta > 0 && targetZ <= MIN_Z + 1e-4) {
-    targetZoomX = Math.min(MAX_ZOOM_X, targetZoomX * (1 + delta * 0.6));
+    targetZoomX = Math.min(MAX_ZOOM_X, targetZoomX * (1 + delta * 0.8));
   } else if (delta < 0 && targetZoomX > 1 + 1e-4) {
-    targetZoomX = Math.max(1, targetZoomX * (1 + delta * 0.6));
+    targetZoomX = Math.max(1, targetZoomX * (1 + delta * 0.8));
   } else {
     targetZ -= delta * 1.0;
     targetZ = Math.max(MIN_Z, Math.min(MAX_Z, targetZ));
@@ -1725,7 +1726,7 @@ var worldData = null, globeMesh = null, material = null;
 // 대륙은 라벤더/방문국 활성화 색, 흰 해안선/국경선. (탭 판정과 동일한 WORLD_GEO 사용)
 function buildNeonTexture(){
   // 딥줌(50m LOD) 상태에선 해상도도 올려 확대 시 채움·국경이 선명하게
-  var W = (typeof worldLOD !== 'undefined' && worldLOD === '50m') ? 6144 : 4096, H = W / 2;
+  var W = (typeof worldLOD !== 'undefined' && worldLOD === '50m') ? 8192 : 4096, H = W / 2;
   var c=document.createElement('canvas'); c.width=W; c.height=H;
   var ctx=c.getContext('2d');
   ctx.clearRect(0,0,W,H);
@@ -1905,7 +1906,7 @@ async function init(){
 }
 
 // 회전/줌 상태 — 딥줌: 정사영이라 camera.zoom 배율만 키우면 클리핑 없이 깊이 확대된다
-var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=20.0;
+var targetZoom=1, currentZoom=1, MINZ=0.7, MAXZ=55.0; // 미국 기준 뉴욕 도시권이 보이는 수준
 var isDragging=false, prevMouse={x:0,y:0}, velocity={x:0,y:0};
 var rotX=0, rotY=0, lastT=0;
 // 회전 감도 — 확대할수록 반비례(구글맵식 정밀 이동)
