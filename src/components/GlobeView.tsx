@@ -1262,7 +1262,10 @@ function maybeSwapLOD() {
 // 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
 // 채움은 50m 폴리곤(색/사진/국기) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
 var REGION_AT = 5; // 전역 텍스처 LOD 재생성을 없앤 대신 지역 창이 더 일찍 채움을 이어받는다
-var regionActive = false, regionPrevTex = null, regionC = { lon: 0, lat: 0, span: 0 };
+// 지역 창은 텍스처 교체가 아니라 '오버레이 구'로 얹고 opacity를 보간 — 켜지고 꺼질 때 스르륵 페이드.
+// 전역 텍스처는 아예 건드리지 않아 활성색이 순간적으로 꺼지는 일이 없다.
+var regionActive = false, regionMesh = null, regionMat = null, regionOpTarget = 0;
+var regionC = { lon: 0, lat: 0, span: 0 };
 var land10 = null, land10Requested = false;
 function centerLatLon() {
   if (!globeMesh) return null;
@@ -1379,12 +1382,19 @@ function buildRegionTexture(lonC, latC, span) {
   return tex;
 }
 function clearRegion() {
-  if (!regionActive || !globeMesh) return;
-  var old = globeMesh.material.map;
-  globeMesh.material.map = regionPrevTex;
-  globeMesh.material.needsUpdate = true;
-  if (old && old.dispose && old !== regionPrevTex) old.dispose();
+  // 즉시 끄지 않고 페이드 목표만 설정 — 활성색/창이 '탁' 사라지지 않고 스르륵 사라진다(updateRegionFade)
+  regionOpTarget = 0;
   regionActive = false; regionC.span = 0;
+}
+function updateRegionFade() {
+  if (!regionMat) return;
+  var o = regionMat.opacity + (regionOpTarget - regionMat.opacity) * 0.08;
+  if (Math.abs(o - regionOpTarget) < 0.01) o = regionOpTarget;
+  regionMat.opacity = o;
+  if (regionOpTarget === 0 && o <= 0.01 && regionMesh && regionMesh.visible) {
+    regionMesh.visible = false;
+    if (regionMat.map && regionMat.map.dispose) { regionMat.map.dispose(); regionMat.map = null; }
+  }
 }
 function updateRegion() {
   if (!globeMesh) return;
@@ -1403,13 +1413,21 @@ function updateRegion() {
       && span > regionC.span / 1.6 && span < regionC.span * 1.6) return; // 창 유지
   }
   var tex = buildRegionTexture(c.lon, c.lat, span);
-  if (!regionActive) { regionPrevTex = globeMesh.material.map; }
-  else { var old = globeMesh.material.map; if (old && old.dispose && old !== regionPrevTex) old.dispose(); }
   var u0 = (c.lon - span / 2 + 180) / 360, v0 = (c.lat - span / 2 + 90) / 180;
   tex.repeat.set(360 / span, 180 / span);
   tex.offset.set(-u0 * 360 / span, -v0 * 180 / span);
-  globeMesh.material.map = tex;
-  globeMesh.material.needsUpdate = true;
+  if (!regionMesh) {
+    regionMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false });
+    regionMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0008, 128, 128), regionMat);
+    regionMesh.renderOrder = -1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
+    globe.add(regionMesh);
+  } else {
+    var old = regionMat.map;
+    regionMat.map = tex;
+    if (old && old.dispose) old.dispose();
+  }
+  regionMesh.visible = true;
+  regionOpTarget = 1; // 스르륵 페이드 인
   regionActive = true; regionC = { lon: c.lon, lat: c.lat, span: span };
 }
 
@@ -1573,6 +1591,7 @@ function animate() {
   maybeSwapLOD();      // 확대 임계 넘으면 채움 텍스처를 50m로 교체
   updateBorderFade();  // 국경 110m↔50m↔10m 크로스페이드 + 주/도 지역구분선 페이드
   updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
+  updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
 }
 
 window.addEventListener('resize', function() {
@@ -1595,19 +1614,14 @@ function applyTheme(t) {
   if (t.neonColor) cfg.neonColor = t.neonColor;
   if (t.borderColor) cfg.borderColor = t.borderColor;
   if (!worldData || !globeMesh) return; // init 전이면 cfg만 갱신 → init이 새 cfg로 생성
-  if (regionActive) clearRegion(); // 테마 변경 → 지역 창 무효(다음 settle에 재생성)
+  regionC.span = 0; // 테마 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
   loadAllImages().then(function() {
     return buildTexture();
   }).then(function(tex) {
-    if (regionActive) {
-      var oldG = regionPrevTex; regionPrevTex = tex;
-      if (oldG && oldG.dispose) oldG.dispose();
-    } else {
-      var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
-      globeMesh.material.map = tex;
-      globeMesh.material.needsUpdate = true;
-      if (old && old.dispose) old.dispose();
-    }
+    var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
+    globeMesh.material.map = tex;
+    globeMesh.material.needsUpdate = true;
+    if (old && old.dispose) old.dispose();
   });
   if (atmosphere) {
     globe.remove(atmosphere);
@@ -1649,19 +1663,14 @@ function handleVisitedMessage(msg) {
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
     if (worldData && globeMesh) {
-      if (regionActive) clearRegion(); // 방문색/모드 변경 → 지역 창 무효(다음 settle에 재생성)
+      regionC.span = 0; // 방문색/모드 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
-        if (regionActive) {
-          var oldG = regionPrevTex; regionPrevTex = tex;
-          if (oldG && oldG.dispose) oldG.dispose();
-        } else {
-          var old = globeMesh.material.map;
-          globeMesh.material.map = tex;
-          globeMesh.material.needsUpdate = true;
-          if (old && old.dispose) old.dispose();
-        }
+        var old = globeMesh.material.map;
+        globeMesh.material.map = tex;
+        globeMesh.material.needsUpdate = true;
+        if (old && old.dispose) old.dispose();
       });
     }
   } else if (msg.type === 'setSponsored') {
@@ -2366,7 +2375,10 @@ function updateVectorLines(){
 // 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
 // 채움은 50m 국가 폴리곤(색) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
 var REGION_AT=5; // 전역 텍스처 LOD 재생성을 없앤 대신 지역 창이 더 일찍 채움을 이어받는다
-var regionActive=false, regionPrevTex=null, regionC={lon:0,lat:0,span:0};
+// 지역 창은 텍스처 교체가 아니라 '오버레이 구'로 얹고 opacity 보간 — 켜지고 꺼질 때 스르륵 페이드.
+// 전역 텍스처(셰이더 uLand)는 아예 건드리지 않아 활성색이 순간적으로 꺼지는 일이 없다.
+var regionActive=false, regionMesh=null, regionMat=null, regionOpTarget=0;
+var regionC={lon:0,lat:0,span:0};
 var land10=null, land10Requested=false;
 function centerLatLon(){
   if(!globeMesh) return null;
@@ -2448,13 +2460,19 @@ function buildRegionTexture(lonC, latC, span){
   return tex;
 }
 function clearRegion(){
-  if(!regionActive||!material) return;
-  var old=material.uniforms.uLand.value;
-  material.uniforms.uLand.value=regionPrevTex;
-  material.uniforms.uUvScale.value.set(1,1);
-  material.uniforms.uUvOff.value.set(0,0);
-  if(old&&old.dispose&&old!==regionPrevTex) old.dispose();
+  // 즉시 끄지 않고 페이드 목표만 설정 — 활성색/창이 '탁' 사라지지 않고 스르륵 사라진다(updateRegionFade)
+  regionOpTarget=0;
   regionActive=false; regionC.span=0;
+}
+function updateRegionFade(){
+  if(!regionMat) return;
+  var o=regionMat.opacity+(regionOpTarget-regionMat.opacity)*0.08;
+  if(Math.abs(o-regionOpTarget)<0.01) o=regionOpTarget;
+  regionMat.opacity=o;
+  if(regionOpTarget===0 && o<=0.01 && regionMesh && regionMesh.visible){
+    regionMesh.visible=false;
+    if(regionMat.map && regionMat.map.dispose){ regionMat.map.dispose(); regionMat.map=null; }
+  }
 }
 function updateRegion(){
   if(!material||!globeMesh) return;
@@ -2473,12 +2491,21 @@ function updateRegion(){
        && span>regionC.span/1.6 && span<regionC.span*1.6) return; // 창 유지
   }
   var tex=buildRegionTexture(c.lon,c.lat,span);
-  if(!regionActive){ regionPrevTex=material.uniforms.uLand.value; }
-  else { var old=material.uniforms.uLand.value; if(old&&old.dispose&&old!==regionPrevTex) old.dispose(); }
-  material.uniforms.uLand.value=tex;
   var u0=(c.lon-span/2+180)/360, v0=(c.lat-span/2+90)/180;
-  material.uniforms.uUvScale.value.set(360/span, 180/span);
-  material.uniforms.uUvOff.value.set(-u0*360/span, -v0*180/span);
+  tex.repeat.set(360/span, 180/span);
+  tex.offset.set(-u0*360/span, -v0*180/span);
+  if(!regionMesh){
+    regionMat=new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:0, depthWrite:false });
+    regionMesh=new THREE.Mesh(new THREE.SphereGeometry(1.0006, 128, 128), regionMat);
+    regionMesh.renderOrder=-1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
+    globe.add(regionMesh);
+  } else {
+    var old=regionMat.map;
+    regionMat.map=tex;
+    if(old && old.dispose) old.dispose();
+  }
+  regionMesh.visible=true;
+  regionOpTarget=1; // 스르륵 페이드 인
   regionActive=true; regionC={lon:c.lon,lat:c.lat,span:span};
 }
 function maybeSwapLOD(){
@@ -2627,6 +2654,7 @@ function animate(){
   maybeSwapLOD();      // 확대 임계 넘으면 50m 재텍스처
   updateVectorLines(); // 벡터 국경(딥줌 선명)·주/도 지역구분선 페이드
   updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
+  updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -2636,7 +2664,7 @@ function handleMsg(msg){
     msg.countries.forEach(function(c){ visitedMap[c.nameEn]={ color:c.color||null }; });
     if(msg.defaultColor) globeDefaultColor=msg.defaultColor;
     if(worldData && material){
-      if(regionActive) clearRegion(); // 방문색 변경 → 지역 창도 무효(다음 settle에 재생성)
+      regionC.span=0; // 방문색 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
       material.uniforms.uLand.value=tex;
       if(old && old.dispose) old.dispose();
