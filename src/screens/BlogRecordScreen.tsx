@@ -22,6 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
+import CameraCaptureModal from '../components/CameraCaptureModal';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
@@ -474,6 +475,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [tocSuggestions, setTocSuggestions] = useState<TocSuggestion[]>([]);
   // 하단 툴바 서브패널
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [fontBarVisible, setFontBarVisible] = useState(false);
   const [headingBarVisible, setHeadingBarVisible] = useState(false);
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
@@ -837,19 +839,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleCamera = async () => {
+  // expo-image-picker launchCameraAsync가 SDK54/새 아키텍처에서 셔터가 먹지 않아,
+  // 검증된 expo-camera(CameraCaptureModal)로 촬영한다(권한도 모달 내부에서 처리).
+  const handleCamera = () => {
     setPhotoMenuVisible(false);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { showPermissionDeniedAlert(t('permission.camera')); return; }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'] as MediaType[], quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const orig = result.assets[0].uri;
-      const c = await compressImage(orig);
-      if (c !== orig) originalUriMapRef.current[c] = orig;
-      insertBlockAfter(createImageBlock(c));
-    }
+    setCameraOpen(true);
+  };
+  // 촬영 완료 → 압축 후 이미지 블록 삽입 (기존 handleCamera 후처리와 동일)
+  const handleCameraCaptured = async (uri: string) => {
+    const c = await compressImage(uri);
+    if (c !== uri) originalUriMapRef.current[c] = uri;
+    insertBlockAfter(createImageBlock(c));
   };
 
   const handleAddVideo = async () => {
@@ -1874,6 +1874,13 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* 인앱 카메라 촬영 (expo-camera) — 촬영 후 이미지 블록 삽입 */}
+      <CameraCaptureModal
+        visible={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(uri) => { void handleCameraCaptured(uri); }}
+      />
 
       {/* 토스트 */}
       {toastMsg !== '' && (
