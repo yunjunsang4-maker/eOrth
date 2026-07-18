@@ -5,6 +5,7 @@ import { useAnimationsActive } from '../hooks/useAnimationsActive';
 import { THREE_SRC } from '../data/vendorThree';
 import { D3_SRC } from '../data/vendorD3';
 import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
+import { CITY_LABELS } from '../data/cityLabels';
 
 // 오프라인 번들: WebView HTML에 라이브러리/지형 데이터를 인라인 주입
 // (script 태그 조기 종료 방지를 위해 </script 만 이스케이프)
@@ -12,6 +13,8 @@ const escScript = (s: string) => s.replace(/<\/script/gi, '<\\/script');
 const THREE_INLINE = escScript(THREE_SRC);
 const D3_INLINE = escScript(D3_SRC);
 const WORLD_GEO_INLINE = escScript(WORLD_GEO_TEXT);
+// 딥줌 도시 라벨 데이터 — 3D 지구본에만 주입(네온 폼 제외)
+const CITY_LABELS_INLINE = escScript(JSON.stringify(CITY_LABELS));
 
 export type GlobeDisplayMode = 'flag' | 'color' | 'photo';
 export type GlobeVariant = 'aurora' | 'classic';
@@ -101,6 +104,8 @@ const globeHTML = `<!DOCTYPE html>
   .ad-pin .ad-minicard .mc-title { font-size: 9.5px; font-weight: 700; color: #fff; max-width: 110px; overflow: hidden; text-overflow: ellipsis; }
   .ad-pin .ad-minicard .mc-price { font-size: 9.5px; font-weight: 800; color: #FFC45A; margin-top: 1px; }
   @keyframes adpulse { 0%,100% { transform: translate(-50%,-50%) scale(0.9); opacity: 0.85; } 50% { transform: translate(-50%,-50%) scale(1.2); opacity: 1; } }
+  /* 딥줌 지역명 라벨(나라·도시) 캔버스 — 광고핀(z5) 아래, 지구본(z2) 위 */
+  #label-layer { position: fixed; inset: 0; pointer-events: none; z-index: 4; }
 </style>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
@@ -108,11 +113,13 @@ const globeHTML = `<!DOCTYPE html>
 <body>
 <div id="bg"><div id="stars"></div></div>
 <div id="canvas-container"></div>
+<canvas id="label-layer"></canvas>
 <div id="ad-layer"></div>
 
 <script>${THREE_INLINE}<\/script>
 <script>${D3_INLINE}<\/script>
 <script>var WORLD_GEO=${WORLD_GEO_INLINE};<\/script>
+<script>var CITY_LABELS=${CITY_LABELS_INLINE};<\/script>
 
 <script>
 // 색상은 RN에서 variant(aurora/classic)에 따라 setTheme 메시지로 주입된다.
@@ -158,6 +165,7 @@ camera.position.z = 4.2;
 camera.position.y = 0; // 전체화면: 화면 세로 정중앙 배치(neon과 일치)
 camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 기본 크기(디스크=폭의 85%)
 camera.updateProjectionMatrix();
+var BASE_ZOOM = camera.zoom; // 2단계 딥줌 배율의 기준값(리사이즈 시 재계산)
 
 // Stars
 var starGeo = new THREE.BufferGeometry();
@@ -772,6 +780,8 @@ async function init() {
   // 번들 GeoJSON 국가명 정규화 — 매핑 테이블(정식 명칭) 기준으로 통일 (미국·영국 등 활성화/탭 매칭 복구)
   var GEO_NAME_FIX = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
   worldData.features.forEach(function(f){ var fx = GEO_NAME_FIX[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
+  world110Data = worldData; // 딥줌 LOD 복귀용 원본 보관
+  buildLabelIndex();        // 지역명 라벨 인덱스(centroid·면적) — 110m 기준 1회
   var texture = await buildTexture();
 
   var geo = new THREE.SphereGeometry(1, 128, 128);
@@ -814,9 +824,15 @@ async function init() {
 }
 
 
-// Zoom
+// Zoom — 2단계 딥줌: 1단계 dolly(targetZ 5.0→1.3), 한계 도달 후 2단계 camera.zoom 배율(1→3.2).
+// 카메라를 구·글로우 셸(1.08) 안으로 이동시키지 않아 클리핑 없이 깊은 확대가 된다.
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
+var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 3.2;
+// 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
+function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
+// 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
+function rotSens() { return 0.005 / Math.max(1, zoomFactor() * 0.55); }
 
 // Drag
 var isDragging = false;
@@ -883,10 +899,11 @@ window.addEventListener('mousemove', function(e) {
   if (!isDragging) return;
   var dx = e.clientX - prevMouse.x;
   var dy = e.clientY - prevMouse.y;
-  velocity.x = dx * 0.005;
-  velocity.y = dy * 0.005;
-  rotY += dx * 0.005;
-  rotX += dy * 0.005;
+  var s = rotSens();
+  velocity.x = dx * s;
+  velocity.y = dy * s;
+  rotY += dx * s;
+  rotX += dy * s;
   rotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX));
   prevMouse = { x: e.clientX, y: e.clientY };
 });
@@ -904,14 +921,25 @@ window.addEventListener('touchend', function(e) {
   isDragging = false;
   lastPinchDist = null;
 });
+// 핀치/휠 공용 — 확대(delta>0)는 dolly 한계 후 2단계 배율로 이어받고, 축소는 배율부터 되돌린다
+function applyZoomDelta(delta) {
+  if (delta > 0 && targetZ <= MIN_Z + 1e-4) {
+    targetZoomX = Math.min(MAX_ZOOM_X, targetZoomX * (1 + delta * 0.6));
+  } else if (delta < 0 && targetZoomX > 1 + 1e-4) {
+    targetZoomX = Math.max(1, targetZoomX * (1 + delta * 0.6));
+  } else {
+    targetZ -= delta * 1.0;
+    targetZ = Math.max(MIN_Z, Math.min(MAX_Z, targetZ));
+  }
+}
+
 window.addEventListener('touchmove', function(e) {
   if (e.touches.length === 2) {
     var dx = e.touches[0].clientX - e.touches[1].clientX;
     var dy = e.touches[0].clientY - e.touches[1].clientY;
     var dist = Math.sqrt(dx*dx + dy*dy);
     if (lastPinchDist !== null) {
-      targetZ -= (dist - lastPinchDist) * 0.01;
-      targetZ = Math.max(MIN_Z, Math.min(MAX_Z, targetZ));
+      applyZoomDelta((dist - lastPinchDist) * 0.01);
     }
     lastPinchDist = dist;
     return;
@@ -919,16 +947,16 @@ window.addEventListener('touchmove', function(e) {
   if (!isDragging) return;
   var tdx = e.touches[0].clientX - prevMouse.x;
   var tdy = e.touches[0].clientY - prevMouse.y;
-  rotY += tdx * 0.005;
-  rotX += tdy * 0.005;
+  var s = rotSens();
+  rotY += tdx * s;
+  rotX += tdy * s;
   rotX = Math.max(-Math.PI/2, Math.min(Math.PI/2, rotX));
   prevMouse = { x: e.touches[0].clientX, y: e.touches[0].clientY };
 }, { passive: true });
 
 window.addEventListener('wheel', function(e) {
   e.preventDefault();
-  targetZ += e.deltaY * 0.003;
-  targetZ = Math.max(MIN_Z, Math.min(MAX_Z, targetZ));
+  applyZoomDelta(-e.deltaY * 0.003);
 }, { passive: false });
 
 // ── 광고(스폰서) 마커 ──
@@ -1021,6 +1049,197 @@ function updateAdMarkers() {
   }
 }
 
+// ── 딥줌 LOD: 확대 시 국경·채움을 50m 데이터로 교체 ──
+// 50m TopoJSON(~740KB)은 처음 필요할 때 RN에 요청해 받는다(need50m → world50m).
+var world110Data = null, world50Data = null, world50Requested = false, lodBusy = false;
+var worldLOD = '110m';
+var LOD_HI_AT = 2.2; // zoomFactor 임계 — 이상이면 50m
+// 50m(Natural Earth 축약명) → 우리 표준명. 기본 GEO_NAME_FIX + 50m 전용 축약 별칭.
+var NAME_FIX_50M = {
+  "USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia",
+  "United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini",
+  "eSwatini":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine",
+  "Macao":"Macau","Czechia":"Czech Republic","Bosnia and Herz.":"Bosnia and Herzegovina",
+  "Central African Rep.":"Central African Republic","Côte d'Ivoire":"Ivory Coast",
+  "Dem. Rep. Congo":"Democratic Republic of the Congo","Dominican Rep.":"Dominican Republic",
+  "Eq. Guinea":"Equatorial Guinea","Falkland Is.":"Falkland Islands",
+  "Fr. S. Antarctic Lands":"French Southern and Antarctic Lands","Guinea-Bissau":"Guinea Bissau",
+  "N. Cyprus":"Northern Cyprus","S. Sudan":"South Sudan","Solomon Is.":"Solomon Islands",
+  "Timor-Leste":"East Timor","W. Sahara":"Western Sahara","Bahamas":"The Bahamas",
+};
+// TopoJSON 미니 디코더 — feature 추출만(topojson-client 해당분). quantized(transform) 지원.
+function topoDecode(topo, objName) {
+  var tf = topo.transform;
+  var arcs = topo.arcs.map(function(arc) {
+    if (!tf) return arc.map(function(p) { return [p[0], p[1]]; });
+    var x = 0, y = 0;
+    return arc.map(function(p) {
+      x += p[0]; y += p[1];
+      return [x * tf.scale[0] + tf.translate[0], y * tf.scale[1] + tf.translate[1]];
+    });
+  });
+  function ringFromArcs(arcIdxs) {
+    var ring = [];
+    arcIdxs.forEach(function(ai) {
+      var pts = ai >= 0 ? arcs[ai] : arcs[~ai].slice().reverse();
+      if (ring.length) pts = pts.slice(1); // 이음점 중복 제거
+      ring = ring.concat(pts);
+    });
+    return ring;
+  }
+  var feats = [];
+  (topo.objects[objName].geometries || []).forEach(function(g) {
+    var name = (g.properties && g.properties.name) || '';
+    name = NAME_FIX_50M[name] || name;
+    var geom = null;
+    if (g.type === 'Polygon') {
+      geom = { type: 'Polygon', coordinates: g.arcs.map(ringFromArcs) };
+    } else if (g.type === 'MultiPolygon') {
+      geom = { type: 'MultiPolygon', coordinates: g.arcs.map(function(poly) { return poly.map(ringFromArcs); }) };
+    }
+    if (geom) feats.push({ type: 'Feature', properties: { name: name }, geometry: geom });
+  });
+  return { type: 'FeatureCollection', features: feats };
+}
+function applyLOD(target) {
+  if (lodBusy || !globeMesh) return;
+  lodBusy = true;
+  worldData = target === '50m' ? world50Data : world110Data;
+  worldLOD = target;
+  // 채움 텍스처·국경선을 세트로 재구축(따로 바꾸면 경계가 어긋나 보인다)
+  loadAllImages().then(function() { return buildTexture(); }).then(function(tex) {
+    var old = globeMesh.material.map;
+    globeMesh.material.map = tex;
+    globeMesh.material.needsUpdate = true;
+    if (old && old.dispose) old.dispose();
+    if (borderGroup) {
+      globe.remove(borderGroup);
+      borderGroup.traverse(function(o) { if (o.geometry) o.geometry.dispose(); if (o.material) o.material.dispose(); });
+    }
+    borderGroup = buildBorders(worldData, cfg.borderColor);
+    globe.add(borderGroup);
+    lodBusy = false;
+  }).catch(function() { lodBusy = false; });
+}
+function maybeSwapLOD() {
+  if (!globeMesh) return;
+  var want = zoomFactor() >= LOD_HI_AT ? '50m' : '110m';
+  if (want === worldLOD) return;
+  if (want === '50m') {
+    if (!world50Data) {
+      if (!world50Requested && window.ReactNativeWebView) {
+        world50Requested = true;
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'need50m' }));
+      }
+      return; // 데이터 도착(world50m 메시지) 후 다음 프레임에 교체
+    }
+    applyLOD('50m');
+  } else {
+    applyLOD('110m');
+  }
+}
+
+// ── 지역명 라벨(나라·도시) — 구글맵식 줌 단계 등장, 캔버스 1장 렌더 ──
+var labelCanvas = document.getElementById('label-layer');
+var labelCtx = labelCanvas ? labelCanvas.getContext('2d') : null;
+function sizeLabelCanvas() {
+  if (!labelCanvas) return;
+  var dpr = Math.min(window.devicePixelRatio || 1, 2);
+  labelCanvas.width = Math.round(window.innerWidth * dpr);
+  labelCanvas.height = Math.round(window.innerHeight * dpr);
+  labelCanvas.style.width = window.innerWidth + 'px';
+  labelCanvas.style.height = window.innerHeight + 'px';
+  if (labelCtx) labelCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+sizeLabelCanvas();
+var countryLabels = []; // { name, ko, lon, lat, area } 면적 내림차순
+function buildLabelIndex() {
+  countryLabels = [];
+  if (!world110Data) return;
+  world110Data.features.forEach(function(f) {
+    var name = f.properties.name || '';
+    if (!name) return;
+    var c = d3.geoCentroid(f);
+    var b = d3.geoBounds(f); // [[minLon,minLat],[maxLon,maxLat]]
+    var dLon = Math.abs(b[1][0] - b[0][0]); if (dLon > 180) dLon = 360 - dLon; // 날짜변경선 걸친 나라(러시아 등)
+    var dLat = Math.abs(b[1][1] - b[0][1]);
+    var area = dLon * dLat * Math.max(0.15, Math.cos(c[1] * Math.PI / 180));
+    countryLabels.push({ name: name, ko: KO_NAMES[name] || name, lon: c[0], lat: c[1], area: area });
+  });
+  countryLabels.sort(function(a, b) { return b.area - a.area; });
+}
+var _lblVec = new THREE.Vector3();
+// 표면점 투영 — 성공 시 {x,y,facing} (facing: 1=정중앙, 0=림)
+function projectLL(lon, lat) {
+  var latR = lat * Math.PI / 180, lonR = lon * Math.PI / 180;
+  var rh = Math.cos(latR), A = lonR + Math.PI;
+  _lblVec.set(-rh * Math.cos(A), Math.sin(latR), rh * Math.sin(A));
+  _lblVec.multiplyScalar(1.01);
+  globe.localToWorld(_lblVec);
+  var tx = camera.position.x - _lblVec.x, ty = camera.position.y - _lblVec.y, tz = camera.position.z - _lblVec.z;
+  var dot = _lblVec.x * tx + _lblVec.y * ty + _lblVec.z * tz;
+  var lw = Math.sqrt(_lblVec.x * _lblVec.x + _lblVec.y * _lblVec.y + _lblVec.z * _lblVec.z);
+  var lc = Math.sqrt(tx * tx + ty * ty + tz * tz);
+  var facing = (lw > 0 && lc > 0) ? dot / (lw * lc) : -1;
+  var ndc = _lblVec.clone().project(camera);
+  if (ndc.z >= 1) return null;
+  return { x: (ndc.x * 0.5 + 0.5) * window.innerWidth, y: (-ndc.y * 0.5 + 0.5) * window.innerHeight, facing: facing };
+}
+var _lblLast = { rx: NaN, ry: NaN, zf: NaN };
+function updateLabels() {
+  if (!labelCtx) return;
+  var zf = zoomFactor();
+  // 회전·줌이 안 변했으면 다시 그리지 않는다(발열 방지)
+  if (Math.abs(_lblLast.rx - rotX) < 1e-4 && Math.abs(_lblLast.ry - rotY) < 1e-4 && Math.abs(_lblLast.zf - zf) < 1e-3) return;
+  _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf;
+  labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  if (zf < 1.25 || !countryLabels.length) return;
+  var grid = {}; var CELL = 76;
+  function occupy(x, y) {
+    var k = Math.floor(x / CELL) + '_' + Math.floor(y / CELL);
+    if (grid[k]) return false;
+    grid[k] = 1; return true;
+  }
+  // 나라 라벨 — 큰 나라부터, 줌 깊어질수록 개수 확대
+  var n = Math.min(countryLabels.length, Math.max(0, Math.floor((zf - 1.15) * 22)));
+  var fs = Math.min(15, 10 + zf * 0.45);
+  labelCtx.textAlign = 'center'; labelCtx.textBaseline = 'middle';
+  labelCtx.lineJoin = 'round';
+  for (var i = 0; i < n; i++) {
+    var L = countryLabels[i];
+    var p = projectLL(L.lon, L.lat);
+    if (!p || p.facing < 0.3) continue;
+    if (!occupy(p.x, p.y)) continue;
+    var a = Math.min(1, (p.facing - 0.3) / 0.25);
+    labelCtx.font = '600 ' + fs + 'px sans-serif';
+    labelCtx.strokeStyle = 'rgba(10,10,15,' + (0.8 * a) + ')';
+    labelCtx.lineWidth = 3;
+    labelCtx.strokeText(L.ko, p.x, p.y);
+    labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
+    labelCtx.fillText(L.ko, p.x, p.y);
+  }
+  // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장
+  if (zf >= 3.2 && typeof CITY_LABELS !== 'undefined') {
+    var cfs = Math.min(13, 9 + zf * 0.35);
+    for (var j = 0; j < CITY_LABELS.length; j++) {
+      var C = CITY_LABELS[j];
+      if (C.t === 2 && zf < 5) continue;
+      var q = projectLL(C.lon, C.lat);
+      if (!q || q.facing < 0.42) continue;
+      if (!occupy(q.x, q.y)) continue;
+      var ca = Math.min(1, (q.facing - 0.42) / 0.22);
+      labelCtx.fillStyle = 'rgba(255,213,74,' + (0.95 * ca) + ')';
+      labelCtx.beginPath(); labelCtx.arc(q.x, q.y - cfs * 0.9, 2.2, 0, Math.PI * 2); labelCtx.fill();
+      labelCtx.font = '500 ' + cfs + 'px sans-serif';
+      labelCtx.strokeStyle = 'rgba(10,10,15,' + (0.75 * ca) + ')';
+      labelCtx.lineWidth = 2.5;
+      labelCtx.strokeText(C.n, q.x, q.y + cfs * 0.35);
+      labelCtx.fillStyle = 'rgba(240,240,248,' + (0.95 * ca) + ')';
+      labelCtx.fillText(C.n, q.x, q.y + cfs * 0.35);
+    }
+  }
+}
+
 // Animation loop
 var _shootLastT = performance.now();
 function animate() {
@@ -1033,7 +1252,7 @@ function animate() {
   if (!isDragging && cfg.autoRotate) {
     velocity.x *= 0.95;
     velocity.y *= 0.95;
-    rotY += 0.001;
+    rotY += 0.001 / Math.max(1, zoomFactor() * 0.55); // 확대 중엔 자동회전도 느리게
   } else if (!isDragging) {
     velocity.x *= 0.95;
     velocity.y *= 0.95;
@@ -1043,19 +1262,27 @@ function animate() {
 
   currentZ += (targetZ - currentZ) * 0.1;
   camera.position.z = currentZ;
+  // 2단계 딥줌 배율 반영 (dolly와 독립)
+  currentZoomX += (targetZoomX - currentZoomX) * 0.1;
+  var _dz = BASE_ZOOM * currentZoomX;
+  if (Math.abs(camera.zoom - _dz) > 1e-4) { camera.zoom = _dz; camera.updateProjectionMatrix(); }
 
   globe.rotation.y = rotY;
   globe.rotation.x = rotX;
 
   renderer.render(scene, camera);
   updateAdMarkers(); // 렌더 후(월드행렬 최신) 마커 위치 갱신
+  updateLabels();    // 지역명 라벨(나라·도시) — 줌 단계별 등장
+  maybeSwapLOD();    // 확대 임계 넘으면 국경·채움을 50m로 교체
 }
 
 window.addEventListener('resize', function() {
   camera.aspect = window.innerWidth / window.innerHeight;
-  camera.zoom = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 크기(디스크=폭의 85%)
+  BASE_ZOOM = 1.436 * (window.innerWidth / window.innerHeight); // neon과 동일 크기(디스크=폭의 85%)
+  camera.zoom = BASE_ZOOM * currentZoomX;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
+  sizeLabelCanvas();
 });
 
 // 지구본 형태(테마) 적용 — cfg 색을 갈아끼우고 텍스처/대기광/국경선만 재생성
@@ -1120,6 +1347,13 @@ function handleVisitedMessage(msg) {
     // 광고 항목 [{nameEn,label,price}]. worldData 로드 전이면 보류 후 init에서 생성.
     pendingSponsored = msg.items || [];
     if (worldData) buildAdMarkers(pendingSponsored);
+  } else if (msg.type === 'world50m' && msg.topo) {
+    // 딥줌 LOD 데이터 도착 — 디코드 후 다음 maybeSwapLOD에서 교체
+    try {
+      world50Data = topoDecode(JSON.parse(msg.topo), 'countries');
+    } catch (err) {
+      world50Requested = false; // 실패 시 재요청 가능
+    }
   }
 }
 window.addEventListener('message', function(e) {
@@ -1715,6 +1949,12 @@ export default function GlobeView({
       readyRef.current = true;
       sendAll();
       return; // 내부 신호는 부모로 올리지 않음
+    }
+    if (data?.type === 'need50m') {
+      // 딥줌 LOD 데이터 요청 — 740KB 문자열이라 처음 필요할 때만 lazy require해 전송
+      const { WORLD_50M_TOPO } = require('../data/vendorWorld50m');
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'world50m', topo: WORLD_50M_TOPO }));
+      return; // 내부 신호
     }
     onMessage?.(e);
   }, [sendAll, onMessage]);
