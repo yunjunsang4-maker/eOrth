@@ -1310,7 +1310,7 @@ function updateLabels() {
     if (!occupy(p.x, p.y)) continue;
     var a = Math.min(1, (p.facing - 0.3) / 0.25);
     labelCtx.font = '600 ' + fs + 'px sans-serif';
-    labelCtx.strokeStyle = 'rgba(10,10,15,' + (0.8 * a) + ')';
+    labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.8 * a) + ')';
     labelCtx.lineWidth = 3;
     labelCtx.strokeText(L.ko, p.x, p.y);
     labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
@@ -1329,7 +1329,7 @@ function updateLabels() {
       labelCtx.fillStyle = 'rgba(255,213,74,' + (0.95 * ca) + ')';
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y - cfs * 0.9, 2.2, 0, Math.PI * 2); labelCtx.fill();
       labelCtx.font = '500 ' + cfs + 'px sans-serif';
-      labelCtx.strokeStyle = 'rgba(10,10,15,' + (0.75 * ca) + ')';
+      labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.75 * ca) + ')';
       labelCtx.lineWidth = 2.5;
       labelCtx.strokeText(C.n, q.x, q.y + cfs * 0.35);
       labelCtx.fillStyle = 'rgba(240,240,248,' + (0.95 * ca) + ')';
@@ -2174,7 +2174,7 @@ function updateLabels(){
     if(!occupy(p.x,p.y)) continue;
     var a=Math.min(1,(p.facing-0.3)/0.25);
     labelCtx.font='600 '+fs+'px sans-serif';
-    labelCtx.strokeStyle='rgba(10,10,15,'+(0.8*a)+')';
+    labelCtx.strokeStyle='rgba(45,16,84,'+(0.8*a)+')';
     labelCtx.lineWidth=3;
     labelCtx.strokeText(L.ko, p.x, p.y);
     labelCtx.fillStyle='rgba(255,255,255,'+(0.92*a)+')';
@@ -2192,7 +2192,7 @@ function updateLabels(){
       labelCtx.fillStyle='rgba(255,213,74,'+(0.95*ca)+')';
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y-cfs*0.9, 2.2, 0, Math.PI*2); labelCtx.fill();
       labelCtx.font='500 '+cfs+'px sans-serif';
-      labelCtx.strokeStyle='rgba(10,10,15,'+(0.75*ca)+')';
+      labelCtx.strokeStyle='rgba(45,16,84,'+(0.75*ca)+')';
       labelCtx.lineWidth=2.5;
       labelCtx.strokeText(C.n, q.x, q.y+cfs*0.35);
       labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
