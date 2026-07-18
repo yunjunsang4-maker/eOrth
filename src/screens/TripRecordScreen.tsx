@@ -401,7 +401,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{record.countryFlag ?? ''} {record.countryName ?? record.country ?? ''}</Text>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ?? record.country ?? ''}</Text>
+            {/* 사진첩(앨범) 총 사진 수 — 스크롤 없이 상단에서 바로 확인 */}
+            {isAlbum && (
+              <Text style={styles.headerCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+            )}
+          </View>
           <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
             <Text style={styles.menuIcon}>⋯</Text>
           </TouchableOpacity>
@@ -925,12 +931,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     lineHeight: 22,
   },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    flex: 1,
     textAlign: 'center',
+  },
+  headerCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A1A1B0',
+    marginTop: 2,
   },
   menuBtn: {
     width: 36,
