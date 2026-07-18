@@ -33,7 +33,7 @@ export default function MomentListSheet({
         <View style={st.handle} />
         <View style={st.titleRow}>
           <Text style={st.title}>✨ {t('moments.sheetTitle')}</Text>
-          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <TouchableOpacity style={st.closeBtnWrapper} onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
             <Text style={st.closeBtn}>{t('common.close')}</Text>
           </TouchableOpacity>
         </View>
@@ -56,6 +56,7 @@ const st = StyleSheet.create({
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2E2E3B', alignSelf: 'center', marginTop: 10 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14, position: 'relative' },
   title: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center', flex: 1 },
-  closeBtn: { color: '#A1A1B0', fontSize: 14, position: 'absolute', right: 16 },
+  closeBtnWrapper: { position: 'absolute', right: 16 },
+  closeBtn: { color: '#A1A1B0', fontSize: 14 },
   subtitle: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 8 },
 });
