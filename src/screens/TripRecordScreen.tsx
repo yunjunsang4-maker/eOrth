@@ -405,7 +405,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ?? record.country ?? ''}</Text>
             {/* 사진첩(앨범) 총 사진 수 — 스크롤 없이 상단에서 바로 확인 */}
             {isAlbum && (
-              <Text style={styles.headerCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+              <Text style={styles.headerCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
             )}
           </View>
           <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
@@ -452,7 +452,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
             <>
-              <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+              <Text style={styles.albumCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
               {/* 순서변경 안내 — 버튼이 없어 발견이 어려운 꾹 누르기 드래그 제스처를 알려준다 (첫 성공 후 숨김) */}
               {(record.medias?.length ?? 0) > 1 && !selecting && !reorderHintSeen && (
                 <Text style={styles.albumHint}>{t('trip.albumReorderHint')}</Text>

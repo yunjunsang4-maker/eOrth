@@ -1089,6 +1089,7 @@ const en = {
     typeBlog: 'Blog',
     typeAlbum: 'Album',
     albumPhotoCount: '{{count}} photos',
+    albumPhotoCountMax: '{{count}} / {{max}} photos',
     typeCut: 'Four-cut',
     typeSnap: 'Snap',
     deleteCommentTitle: 'Delete comment',
