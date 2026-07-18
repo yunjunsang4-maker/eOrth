@@ -998,7 +998,7 @@ function buildAdMarkers(list) {
     if (!nameEn) return;
     var f = worldData.features.find(function(ft) { return ft.properties.name === nameEn; });
     if (!f) return;
-    var c = d3.geoCentroid(f); // [lon, lat]
+    var c = d3.geoCentroid(mainPolyFeature(f)); // [lon, lat] — 본토 기준(해외영토로 안 밀리게)
     var priceHtml = item.price ? '<div class="mc-price">' + escapeHtml(item.price) + '</div>' : '';
     var thumbHtml = item.image ? '<img class="mc-thumb" src="' + escapeHtml(item.image) + '" />' : '';
     var el = document.createElement('div');
@@ -1398,14 +1398,28 @@ function sizeLabelCanvas() {
 }
 sizeLabelCanvas();
 var countryLabels = []; // { name, ko, lon, lat, area } 면적 내림차순
+// 본토(최대 폴리곤) 서브피처 — MultiPolygon 전체 centroid는 해외영토(프랑스령 기아나 등) 때문에
+// 바다 한가운데로 밀린다. 라벨·핀은 가장 큰 폴리곤 기준으로 잡는다.
+function mainPolyFeature(f) {
+  var g = f.geometry;
+  if (!g || g.type !== 'MultiPolygon') return f;
+  var best = null, bestA = -1;
+  g.coordinates.forEach(function(poly) {
+    var sub = { type: 'Feature', properties: f.properties, geometry: { type: 'Polygon', coordinates: poly } };
+    var a = d3.geoArea(sub);
+    if (a > bestA) { bestA = a; best = sub; }
+  });
+  return best || f;
+}
 function buildLabelIndex() {
   countryLabels = [];
   if (!world110Data) return;
   world110Data.features.forEach(function(f) {
     var name = f.properties.name || '';
     if (!name) return;
-    var c = d3.geoCentroid(f);
-    var b = d3.geoBounds(f); // [[minLon,minLat],[maxLon,maxLat]]
+    var mf = mainPolyFeature(f);
+    var c = d3.geoCentroid(mf);
+    var b = d3.geoBounds(mf); // [[minLon,minLat],[maxLon,maxLat]]
     var dLon = Math.abs(b[1][0] - b[0][0]); if (dLon > 180) dLon = 360 - dLon; // 날짜변경선 걸친 나라(러시아 등)
     var dLat = Math.abs(b[1][1] - b[0][1]);
     var area = dLon * dLat * Math.max(0.15, Math.cos(c[1] * Math.PI / 180));
@@ -2130,7 +2144,7 @@ function buildAdMarkers(list){
   list.forEach(function(item){
     var nameEn=item && item.nameEn; if(!nameEn) return;
     var f=worldData.features.find(function(ft){ return ft.properties.name===nameEn; }); if(!f) return;
-    var c=d3.geoCentroid(f);
+    var c=d3.geoCentroid(mainPolyFeature(f)); // 본토 기준(해외영토로 안 밀리게)
     var priceHtml=item.price ? '<div class="mc-price">'+escapeHtml(item.price)+'</div>' : '';
     var thumbHtml=item.image ? '<img class="mc-thumb" src="'+escapeHtml(item.image)+'" />' : '';
     var el=document.createElement('div'); el.className='ad-pin';
@@ -2425,13 +2439,26 @@ function sizeLabelCanvas(){
 }
 sizeLabelCanvas();
 var countryLabels=[];
+// 본토(최대 폴리곤) 기준 — MultiPolygon 전체 centroid는 해외영토(프랑스령 기아나 등)로 바다에 밀린다
+function mainPolyFeature(f){
+  var g=f.geometry;
+  if(!g || g.type!=='MultiPolygon') return f;
+  var best=null, bestA=-1;
+  g.coordinates.forEach(function(poly){
+    var sub={ type:'Feature', properties:f.properties, geometry:{ type:'Polygon', coordinates:poly } };
+    var a=d3.geoArea(sub);
+    if(a>bestA){ bestA=a; best=sub; }
+  });
+  return best||f;
+}
 function buildLabelIndex(){
   countryLabels=[];
   if(!world110Data) return;
   world110Data.features.forEach(function(f){
     var name=f.properties.name||''; if(!name) return;
-    var c=d3.geoCentroid(f);
-    var b=d3.geoBounds(f);
+    var mf=mainPolyFeature(f);
+    var c=d3.geoCentroid(mf);
+    var b=d3.geoBounds(mf);
     var dLon=Math.abs(b[1][0]-b[0][0]); if(dLon>180) dLon=360-dLon;
     var dLat=Math.abs(b[1][1]-b[0][1]);
     var area=dLon*dLat*Math.max(0.15, Math.cos(c[1]*Math.PI/180));
