@@ -1,6 +1,6 @@
 // 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록 + 길게 눌러 삭제.
 import React from 'react';
-import { View, Text, Modal, FlatList, Alert, StyleSheet } from 'react-native';
+import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useMoments } from '../../store/momentStore';
 import type { TravelMoment } from '../../store/momentStore';
@@ -29,9 +29,14 @@ export default function MomentListSheet({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={st.root}>
+      <View style={st.root} accessibilityViewIsModal>
         <View style={st.handle} />
-        <Text style={st.title}>✨ {t('moments.sheetTitle')}</Text>
+        <View style={st.titleRow}>
+          <Text style={st.title}>✨ {t('moments.sheetTitle')}</Text>
+          <TouchableOpacity onPress={onClose} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={st.closeBtn}>{t('common.close')}</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={st.subtitle}>{tripTitle}</Text>
         <FlatList
           data={sorted}
@@ -49,6 +54,8 @@ export default function MomentListSheet({
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#0A0A0F' },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2E2E3B', alignSelf: 'center', marginTop: 10 },
-  title: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center', marginTop: 14 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 14, position: 'relative' },
+  title: { color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center', flex: 1 },
+  closeBtn: { color: '#A1A1B0', fontSize: 14, position: 'absolute', right: 16 },
   subtitle: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 8 },
 });

@@ -2101,6 +2101,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 <TouchableOpacity
                   onPress={() => { if (mergeMode) return; setMomentSheetTrip(displayTrips[0]); }}
                   hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('moments.sheetTitle')}
+                  style={{ marginLeft: 8 }}
                 >
                   <Text style={{ fontSize: 14 }}>✨</Text>
                 </TouchableOpacity>
@@ -2185,6 +2188,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     <TouchableOpacity
                       onPress={() => { if (mergeMode) return; setMomentSheetTrip(trip); }}
                       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('moments.sheetTitle')}
                     >
                       <Text style={{ fontSize: 14 }}>✨</Text>
                     </TouchableOpacity>
