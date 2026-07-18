@@ -1760,6 +1760,21 @@ const ko = {
     settingsStarted: '{{country}} 체류를 시작했어요',
     countryTitle: '어느 나라에 체류하나요?',
   },
+  moments: {
+    captureTitle: '지금 이 순간',
+    placeholder: '지금 느낌을 한 줄로 남겨보세요',
+    addPhoto: '사진',
+    save: '저장',
+    saved: '✨ 순간이 저장됐어요',
+    notifTitle: '여행 중이네요! ✨',
+    notifBody: '지금 이 순간의 감정을 남겨보세요',
+    drawerBanner: '✨ 이 여행의 순간 {{count}}개',
+    sheetTitle: '여행 기억',
+    deleteTitle: '이 순간을 삭제할까요?',
+    deleteConfirm: '삭제',
+    settingsLabel: '여행 중 순간 기록 알림',
+    settingsDesc: '해외 여행 중 순간 메모 알림을 띄워요',
+  },
 } as const;
 
 export default ko;

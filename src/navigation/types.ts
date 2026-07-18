@@ -143,6 +143,7 @@ export type RootStackParamList = {
     selectedCountry?: SelectedCountryParam;
   } | undefined;
   AlbumCreate: { selectedCountry?: SelectedCountryParam; tripGroupId?: string } | undefined; // tripGroupId: 여행 상세에서 진입 시 그 카드에 연결(카드당 앨범 1개)
+  MomentCapture: undefined;
 };
 
 // ─── 화면 Props 헬퍼 ───

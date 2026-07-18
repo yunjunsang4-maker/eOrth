@@ -1759,6 +1759,21 @@ const en = {
     settingsStarted: 'Started your stay in {{country}}',
     countryTitle: 'Which country are you staying in?',
   },
+  moments: {
+    captureTitle: 'This moment',
+    placeholder: 'Capture how you feel in one line',
+    addPhoto: 'Photo',
+    save: 'Save',
+    saved: '✨ Moment saved',
+    notifTitle: 'You are traveling! ✨',
+    notifBody: 'Capture how this moment feels',
+    drawerBanner: '✨ {{count}} moments from this trip',
+    sheetTitle: 'Trip memories',
+    deleteTitle: 'Delete this moment?',
+    deleteConfirm: 'Delete',
+    settingsLabel: 'Travel moment reminder',
+    settingsDesc: 'Show a reminder to capture moments while abroad',
+  },
 } as const;
 
 export default en;

@@ -38,6 +38,7 @@ import CutRecordScreen from '../screens/CutRecordScreen';
 import CutTravelInfoScreen from '../screens/CutTravelInfoScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
+import MomentCaptureScreen from '../screens/MomentCaptureScreen';
 import AlbumCreateScreen from '../screens/AlbumCreateScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
@@ -300,6 +301,11 @@ export default function AppNavigator() {
           name="SnapRecord"
           component={SnapRecordScreen}
           options={{ presentation: 'modal', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="MomentCapture"
+          component={MomentCaptureScreen}
+          options={{ presentation: 'transparentModal', animation: 'slide_from_bottom', headerShown: false }}
         />
         <Stack.Screen
           name="AlbumCreate"
