@@ -25,8 +25,8 @@ export const GLOBE_THEMES: Record<GlobeVariant, {
   oceanBase: string; deepRGB: string; zoneRGB: string;
   landColor: string; neonColor: string; borderColor: string;
 }> = {
-  aurora: { oceanBase: '#1D0930', deepRGB: '40,12,70', zoneRGB: '150,70,230', landColor: '#5B1C96', neonColor: '#C982FF', borderColor: '#BF85FC' },
-  classic: { oceanBase: '#04102e', deepRGB: '5,15,55', zoneRGB: '50,110,220', landColor: '#6f6d6d', neonColor: '#a78bfa', borderColor: '#7B5CF0' },
+  aurora: { oceanBase: '#1D0930', deepRGB: '40,12,70', zoneRGB: '150,70,230', landColor: '#5B1C96', neonColor: '#C982FF', borderColor: '#FFFFFF' },
+  classic: { oceanBase: '#04102e', deepRGB: '5,15,55', zoneRGB: '50,110,220', landColor: '#6f6d6d', neonColor: '#a78bfa', borderColor: '#FFFFFF' },
 };
 
 export interface VisitedCountry {
@@ -123,7 +123,7 @@ var cfg = {
   zoneRGB: "150,70,230",  // 발광 존(밝은 그라데이션) rgb
   landColor: "#5B1C96",   // 비방문 대륙 색
   neonColor: "#C982FF",   // 대기광
-  borderColor: "#BF85FC", // 국경선
+  borderColor: "#FFFFFF", // 국경선(구분선) — 흰색
   autoRotate: true,
   gridOpacity: 0
 };
