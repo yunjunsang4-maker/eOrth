@@ -1327,13 +1327,14 @@ function updateLabels() {
       if (!occupy(q.x, q.y)) continue;
       var ca = Math.min(1, (q.facing - 0.42) / 0.22);
       labelCtx.fillStyle = 'rgba(255,213,74,' + (0.95 * ca) + ')';
-      labelCtx.beginPath(); labelCtx.arc(q.x, q.y - cfs * 0.9, 2.2, 0, Math.PI * 2); labelCtx.fill();
+      // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
+      labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI * 2); labelCtx.fill();
       labelCtx.font = '500 ' + cfs + 'px sans-serif';
       labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.75 * ca) + ')';
       labelCtx.lineWidth = 2.5;
-      labelCtx.strokeText(C.n, q.x, q.y + cfs * 0.35);
+      labelCtx.strokeText(C.n, q.x, q.y + cfs * 1.15);
       labelCtx.fillStyle = 'rgba(240,240,248,' + (0.95 * ca) + ')';
-      labelCtx.fillText(C.n, q.x, q.y + cfs * 0.35);
+      labelCtx.fillText(C.n, q.x, q.y + cfs * 1.15);
     }
   }
 }
@@ -2200,13 +2201,14 @@ function updateLabels(){
       if(!occupy(q.x,q.y)) continue;
       var ca=Math.min(1,(q.facing-0.42)/0.22);
       labelCtx.fillStyle='rgba(255,213,74,'+(0.95*ca)+')';
-      labelCtx.beginPath(); labelCtx.arc(q.x, q.y-cfs*0.9, 2.2, 0, Math.PI*2); labelCtx.fill();
+      // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
+      labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI*2); labelCtx.fill();
       labelCtx.font='500 '+cfs+'px sans-serif';
       labelCtx.strokeStyle=LABEL_HALO+(0.75*ca)+')';
       labelCtx.lineWidth=2.5;
-      labelCtx.strokeText(C.n, q.x, q.y+cfs*0.35);
+      labelCtx.strokeText(C.n, q.x, q.y+cfs*1.15);
       labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
-      labelCtx.fillText(C.n, q.x, q.y+cfs*0.35);
+      labelCtx.fillText(C.n, q.x, q.y+cfs*1.15);
     }
   }
 }
