@@ -21,6 +21,7 @@ export default function MomentNotifier() {
   const { activeStayGroup } = useRecords();
   const lastLocCheckRef = useRef(0);
   const abroadRef = useRef<boolean | null>(null); // 마지막 위치 판정 캐시
+  const checkingRef = useRef(false); // check() 병렬 실행 방지
 
   // 진행 중 체류국은 해외로 치지 않는다 (SnapDetector와 동일 규칙)
   const stayCountryCode = useMemo(() => {
@@ -36,22 +37,32 @@ export default function MomentNotifier() {
       return;
     }
 
+    // 거주국·체류국이 바뀌면 직전 판정은 무효 — 다음 check에서 재판정
+    abroadRef.current = null;
+    lastLocCheckRef.current = 0;
+
     const check = async () => {
-      const now = Date.now();
-      // 위치 판정은 스로틀, 알림 존재 확인·재게시는 매 포그라운드마다
-      if (abroadRef.current === null || now - lastLocCheckRef.current >= LOCATION_CHECK_INTERVAL) {
-        lastLocCheckRef.current = now;
-        const { countryCode } = await detectCurrentCountry();
-        if (countryCode) abroadRef.current = isAbroad(countryCode, homeCountryCode, stayCountryCode);
-        // countryCode를 못 얻으면 직전 판정 유지(오프라인 대응)
-      }
-      if (abroadRef.current === true) {
-        if (!(await isMomentNotificationPresented())) {
-          const ok = await requestNotificationPermission();
-          if (ok) await postMomentNotification(t('moments.notifTitle'), t('moments.notifBody'));
+      if (checkingRef.current) return;
+      checkingRef.current = true;
+      try {
+        const now = Date.now();
+        // 위치 판정은 스로틀, 알림 존재 확인·재게시는 매 포그라운드마다
+        if (abroadRef.current === null || now - lastLocCheckRef.current >= LOCATION_CHECK_INTERVAL) {
+          lastLocCheckRef.current = now;
+          const { countryCode } = await detectCurrentCountry();
+          if (countryCode) abroadRef.current = isAbroad(countryCode, homeCountryCode, stayCountryCode);
+          // countryCode를 못 얻으면 직전 판정 유지(오프라인 대응)
         }
-      } else if (abroadRef.current === false) {
-        await dismissMomentNotification(); // 귀국 → 제거
+        if (abroadRef.current === true) {
+          if (!(await isMomentNotificationPresented())) {
+            const ok = await requestNotificationPermission();
+            if (ok) await postMomentNotification(t('moments.notifTitle'), t('moments.notifBody'));
+          }
+        } else if (abroadRef.current === false) {
+          await dismissMomentNotification(); // 귀국 → 제거
+        }
+      } finally {
+        checkingRef.current = false;
       }
     };
 

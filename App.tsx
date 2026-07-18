@@ -38,7 +38,10 @@ export default function App() {
       }
       if (data?.type === 'moment') {
         const nav = navigationRef.current;
-        if (nav?.isReady()) nav.navigate('MomentCapture');
+        if (nav?.isReady()) {
+          nav.navigate('MomentCapture');
+          Notifications.clearLastNotificationResponseAsync();
+        }
       }
     });
 
@@ -51,7 +54,7 @@ export default function App() {
       coldStartTimer = setInterval(() => {
         const nav = navigationRef.current;
         tries += 1;
-        if (nav?.isReady()) { if (coldStartTimer) clearInterval(coldStartTimer); nav.navigate('MomentCapture'); }
+        if (nav?.isReady()) { if (coldStartTimer) clearInterval(coldStartTimer); nav.navigate('MomentCapture'); Notifications.clearLastNotificationResponseAsync(); }
         else if (tries > 20) { if (coldStartTimer) clearInterval(coldStartTimer); } // 10초 포기
       }, 500);
     });
