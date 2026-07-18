@@ -1326,7 +1326,7 @@ function updateLabels() {
       if (!q || q.facing < 0.42) continue;
       if (!occupy(q.x, q.y)) continue;
       var ca = Math.min(1, (q.facing - 0.42) / 0.22);
-      labelCtx.fillStyle = 'rgba(255,213,74,' + (0.95 * ca) + ')';
+      labelCtx.fillStyle = 'rgba(255,0,183,' + (0.95 * ca) + ')'; // 핀 #FF00B7 (classic은 스킨 미적용 — aurora 기본색)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI * 2); labelCtx.fill();
       labelCtx.font = '500 ' + cfs + 'px sans-serif';
@@ -1809,6 +1809,9 @@ function applyNebula(s){
 }
 // 지역명 라벨 외곽선(halo) — 스킨 본체색을 어둡게(×0.25) 파생. 기본(aurora)=어두운 보라
 var LABEL_HALO = 'rgba(45,16,84,';
+// 도시 핀 색 — 스킨별 지정값(사용자 확정): aurora #FF00B7 / cyan #19FF8C / mint #00EEFF
+var PIN_RGBA = 'rgba(255,0,183,';
+var PIN_BY_BASE = { '#00D7F3':'25,255,140', '#86FFBC':'0,238,255' }; // 스킨 base색 → 핀 rgb
 function applyNeonSkin(s){
   pendingNeonSkin = s || null;
   applyNebula(s || null); // 가스는 DOM만 있으면 즉시 반영 (material 준비 전에도)
@@ -1819,6 +1822,9 @@ function applyNeonSkin(s){
   } else {
     LABEL_HALO = 'rgba(45,16,84,';
   }
+  // 핀 색 — 스킨 base색으로 판별(미지정 스킨은 aurora 핀 폴백)
+  var pb = s && s.base ? PIN_BY_BASE[String(s.base).toUpperCase()] : null;
+  PIN_RGBA = 'rgba(' + (pb || '255,0,183') + ',';
   if(typeof _lblLast!=='undefined' && _lblLast) _lblLast.zf = NaN; // 다음 프레임에 라벨 즉시 재도색
   if(!material) return;
   var d = NEON_DEFAULT_SKIN, t = s || d;
@@ -2200,7 +2206,7 @@ function updateLabels(){
       if(!q || q.facing<0.42) continue;
       if(!occupy(q.x,q.y)) continue;
       var ca=Math.min(1,(q.facing-0.42)/0.22);
-      labelCtx.fillStyle='rgba(255,213,74,'+(0.95*ca)+')';
+      labelCtx.fillStyle=PIN_RGBA+(0.95*ca)+')'; // 스킨별 핀 색(aurora/cyan/mint)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
       labelCtx.beginPath(); labelCtx.arc(q.x, q.y, 2.2, 0, Math.PI*2); labelCtx.fill();
       labelCtx.font='500 '+cfs+'px sans-serif';
