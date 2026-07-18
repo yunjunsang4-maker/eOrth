@@ -343,10 +343,10 @@ async function loadAllImages() {
 
 // Create texture from world GeoJSON
 async function buildTexture() {
-  // 사진 모드는 작은 나라(폴리곤이 몇 텍셀뿐)도 선명하도록 텍스처를 1.5배(6144x3072)로 키운다.
+  // 사진 모드는 작은 나라(폴리곤이 몇 텍셀뿐)도 선명하도록 텍스처를 2배(8192x4096)로 키운다.
   // 다른 모드(국기·색)는 메모리 절약 위해 4096x2048 유지. (2:1 등장방형 비율 유지 필수)
   var isPhotoMode = globeDisplayMode === 'photo';
-  var W = isPhotoMode ? 6144 : 4096, H = isPhotoMode ? 3072 : 2048;
+  var W = isPhotoMode ? 8192 : 4096, H = isPhotoMode ? 4096 : 2048;
   var offscreen = document.createElement('canvas');
   offscreen.width = W; offscreen.height = H;
   var ctx = offscreen.getContext('2d');
