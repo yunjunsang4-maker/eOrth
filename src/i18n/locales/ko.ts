@@ -1143,6 +1143,8 @@ const ko = {
     blockedTitle: '차단한 사용자',
     noBlocked: '차단한 사용자가 없어요',
     noBlockedDesc: '소셜 피드에서 게시물의 ··· 버튼을 통해\n사용자를 차단할 수 있어요',
+    blockedCount: '{{count}}명 차단됨',
+    blockedOn: '{{date}} 차단됨',
     unblockShort: '해제',
     followingTitle: '팔로잉',
     noFollowing: '아직 팔로우한 친구가 없어요',

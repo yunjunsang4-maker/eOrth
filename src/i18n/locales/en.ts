@@ -1142,6 +1142,8 @@ const en = {
     blockedTitle: 'Blocked users',
     noBlocked: 'No blocked users',
     noBlockedDesc: 'You can block a user via the ··· button on a post\nin the social feed',
+    blockedCount: '{{count}} blocked',
+    blockedOn: 'Blocked on {{date}}',
     unblockShort: 'Unblock',
     followingTitle: 'Following',
     noFollowing: "You don't follow any friends yet",
