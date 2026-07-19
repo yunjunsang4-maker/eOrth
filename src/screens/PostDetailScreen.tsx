@@ -1850,15 +1850,17 @@ export default function PostDetailScreen() {
                     </LinearGradient>
                   )}
 
-                  <Text
-                    style={[
-                      s.content,
-                      { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
-                    ]}
-                    numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
-                  >
-                    {bodyText}
-                  </Text>
+                  {bodyText ? (
+                    <Text
+                      style={[
+                        s.content,
+                        { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
+                      ]}
+                      numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
+                    >
+                      {bodyText}
+                    </Text>
+                  ) : null}
                   {bodyLong && !bodyExpanded && (
                     <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
                       <Text style={[s.moreBtn, { color: skinAccent.accent }]}>{t('postDetail.more')}</Text>
