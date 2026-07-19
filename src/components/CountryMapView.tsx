@@ -241,7 +241,8 @@ var CITY_TO_PROV = {
   PRT:{lisboncity:'Lisboa',lisbon:'Lisboa',portocity:'Porto',sintra:'Lisboa',lagos:'Faro',cabodaroca:'Lisboa',colares:'Lisboa','리스본':'Lisboa','포르투':'Porto','신트라':'Lisboa','라구스':'Faro','호카곶':'Lisboa'},
   NLD:{amsterdam:'Noord-Holland',rotterdam:'Zuid-Holland',zaanseschans:'Noord-Holland',zaanstad:'Noord-Holland',thehague:'Zuid-Holland',denhaag:'Zuid-Holland',sgravenhage:'Zuid-Holland','암스테르담':'Noord-Holland','로테르담':'Zuid-Holland','잔세스칸스':'Noord-Holland','헤이그':'Zuid-Holland'},
   THA:{pattaya:'ChonBuri',banglamung:'ChonBuri',bangkok:'BangkokMetropolis','방콕':'BangkokMetropolis','치앙마이':'ChiangMai','푸켓':'Phuket','파타야':'ChonBuri'},
-  MYS:{kotakinabalu:'Sabah',johorbahru:'Johor',johorbaharu:'Johor',langkawi:'Kedah',penang:'PulauPinang',malacca:'Melaka','코타키나발루':'Sabah','조호르바루':'Johor','랑카위':'Kedah','페낭':'PulauPinang','말라카':'Melaka','쿠알라룸푸르':'KualaLumpur'}
+  MYS:{kotakinabalu:'Sabah',johorbahru:'Johor',johorbaharu:'Johor',langkawi:'Kedah',penang:'PulauPinang',malacca:'Melaka','코타키나발루':'Sabah','조호르바루':'Johor','랑카위':'Kedah','페낭':'PulauPinang','말라카':'Melaka','쿠알라룸푸르':'KualaLumpur'},
+  VNM:{nhatrang:'KhánhHòa',hoian:'QuảngNam',halong:'QuảngNinh',halongbay:'QuảngNinh',phuquoc:'KiênGiang','나트랑':'KhánhHòa','호이안':'QuảngNam','하롱베이':'QuảngNinh','푸꾸옥':'KiênGiang'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -510,7 +511,8 @@ function render(geo){
     PRT:['LisbonCity','PortoCity','Sintra','Lagos','CaboDaRoca'],
     NLD:['Amsterdam','Rotterdam','ZaanseSchans','TheHague'],
     THA:['BangkokMetropolis','ChiangMai','Phuket','Pattaya'],
-    MYS:['KualaLumpur','PulauPinang','Melaka','KotaKinabalu','JohorBahru','Langkawi']
+    MYS:['KualaLumpur','PulauPinang','Melaka','KotaKinabalu','JohorBahru','Langkawi'],
+    VNM:['HàNội','ĐàNẵng','HồChíMinh','NhaTrang','HoiAn','HaLong','PhuQuoc']
   };
   highlight=HL[CODE]||[];
 

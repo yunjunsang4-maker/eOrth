@@ -42,6 +42,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   NLD: { amsterdam: 'Noord-Holland', rotterdam: 'Zuid-Holland', zaanseschans: 'Noord-Holland', zaanstad: 'Noord-Holland', thehague: 'Zuid-Holland', denhaag: 'Zuid-Holland', sgravenhage: 'Zuid-Holland' },
   THA: { pattaya: 'ChonBuri', banglamung: 'ChonBuri' },
   MYS: { kotakinabalu: 'Sabah', johorbahru: 'Johor', johorbaharu: 'Johor', langkawi: 'Kedah' },
+  VNM: { nhatrang: 'KhánhHòa', hoian: 'QuảngNam', halong: 'QuảngNinh', halongbay: 'QuảngNinh', phuquoc: 'KiênGiang' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
