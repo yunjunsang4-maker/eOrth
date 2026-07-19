@@ -213,7 +213,7 @@ const companionIcon = (name: string): React.ReactNode => {
 };
 
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
-const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void }) => {
+const SlideImageViewerDetail = ({ items, onImagePress, captions }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[] }) => {
   const skinAccent = useSkinAccent();
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
@@ -266,6 +266,12 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
           ))}
         </View>
       )}
+      {/* 사진별 글 — captions[activeIdx]가 있을 때만 표시 */}
+      {captions && captions[activeIdx] ? (
+        <Text style={{ color: '#E8E8F0', fontSize: 14, lineHeight: 21, marginTop: 10, paddingHorizontal: 4 }}>
+          {captions[activeIdx]}
+        </Text>
+      ) : null}
     </View>
   );
 };
@@ -1367,7 +1373,10 @@ export default function PostDetailScreen() {
     ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
     : typeLabel;
   // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
-  const bodyText = record.memo || record.content || '';
+  // 피드에서 photoTexts가 있으면 memo는 대표 글 복사본이라 캐러셀에서 표시됨 → bodyText 숨김
+  const bodyText = (viewType === 'feed' && record.photoTexts && record.photoTexts.length > 0)
+    ? ''
+    : (record.memo || record.content || '');
   const bodyLong = bodyText.trim().length > 150;
 
   const addComment = () => {
@@ -1815,6 +1824,7 @@ export default function PostDetailScreen() {
                       <SlideImageViewerDetail
                         items={record.medias.map((uri) => ({ uri }))}
                         onImagePress={(uris, i) => handleMediaTap(() => openFullImage(uris, i))}
+                        captions={record.photoTexts}
                       />
                       {companionsOverlay}
                       {heartOverlay}
