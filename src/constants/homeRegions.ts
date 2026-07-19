@@ -47,6 +47,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   MAR: { marrakech: 'Marrakech-Tensift-AlHaouz', marrakesh: 'Marrakech-Tensift-AlHaouz', casablanca: 'GrandCasablanca', fes: 'Fès-Boulemane', fez: 'Fès-Boulemane', chefchaouen: 'Tanger-Tétouan' },
   EGY: { giza: 'AlJizah', luxor: 'AlUqsur', aswancity: 'Aswan', hurghada: 'AlBahralAhmar', alghurdaqah: 'AlBahralAhmar' },
   TUN: { carthage: 'Tunis', sidibousaid: 'Tunis', eljem: 'Mahdia', tozeurcity: 'Tozeur' },
+  ZAF: { capetown: 'WesternCape', johannesburg: 'Gauteng', pretoria: 'Gauteng', tshwane: 'Gauteng' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
