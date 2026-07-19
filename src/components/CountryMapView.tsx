@@ -237,7 +237,8 @@ var CITY_TO_PROV = {
   ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'},
   TUR:{cappadocia:'Nevsehir',pamukkale:'Denizli',fethiye:'Mugla','카파도키아':'Nevsehir','파묵칼레':'Denizli','페티예':'Mugla'},
   GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Peloponnese,WesternGreeceand','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Peloponnese,WesternGreeceand'},
-  AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'}
+  AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'},
+  PRT:{lisboncity:'Lisboa',lisbon:'Lisboa',portocity:'Porto',sintra:'Lisboa',lagos:'Faro',cabodaroca:'Lisboa',colares:'Lisboa','리스본':'Lisboa','포르투':'Porto','신트라':'Lisboa','라구스':'Faro','호카곶':'Lisboa'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -502,7 +503,8 @@ function render(geo){
     ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa','Turin','Bologna','Genoa','Palermo','Bari'],
     TUR:['Istanbul','Antalya','Ankara','Cappadocia','Pamukkale','Fethiye'],
     GRC:['Athens','Santorini','Mykonos','Meteora','Zakynthos','Crete'],
-    AUT:['Wien','SalzburgCity','Hallstatt','Innsbruck']
+    AUT:['Wien','SalzburgCity','Hallstatt','Innsbruck'],
+    PRT:['LisbonCity','PortoCity','Sintra','Lagos','CaboDaRoca']
   };
   highlight=HL[CODE]||[];
 
