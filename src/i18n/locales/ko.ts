@@ -865,6 +865,8 @@ const ko = {
     photoTextPlaceholder: '이 순간의 이야기를 적어보세요',
     photoEmpty: '사진을 추가해 시작해보세요',
     repBadge: '대표',
+    actionPrivacy: '비공개',
+    actionDelete: '삭제',
     sectionPhoto: '사진',
     sectionCountry: '국가 선택',
     sectionTripInfo: '여행 정보',

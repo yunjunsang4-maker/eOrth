@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
-import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
+import { DraggableCountryList } from '../components/record/DraggableLists';
 import PhotoPagerSection from '../components/record/PhotoPagerSection';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
@@ -240,7 +240,6 @@ function geoJsonToCountry(name: string, code?: string) {
 }
 
 const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
-const THUMB_SIZE = Math.floor((SCREEN_W - 40 - 16) / 3); // 3열 그리드
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
@@ -515,6 +514,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     });
   };
 
+  // 페이저 통합으로 미사용 — 재정렬 재도입 시 사용
   const handleReorderMedias = (fromIdx: number, toIdx: number) => {
     // 1. Reorder medias array
     let updatedMedias = [...medias];
@@ -1346,13 +1346,20 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           >
             <Text style={s.sectionLabel}>{t('newRecord.sectionPhoto')}</Text>
 
-            {/* 큰 페이저 + 사진별 글 입력 */}
+            {/* 큰 페이저 + 사진별 글 입력 + 액션(대표·비공개·삭제) */}
             <PhotoPagerSection
               medias={medias}
               photoTexts={photoTexts}
               representativePhoto={representativePhoto}
               onChangeText={(i, v) => setPhotoTexts((prev) => prev.map((x, k) => (k === i ? v : x)))}
               onAddPress={selectMedia}
+              onSetRepresentative={(idx) => {
+                const uri = medias[idx];
+                if (uri) setRepresentativePhoto(prev => prev === uri ? null : uri);
+              }}
+              onRemove={removeMedia}
+              onPrivacyPress={(idx) => setPrivacyModalIndex(idx)}
+              privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
             />
 
             {/* 기간으로 자동 불러오기 버튼 (사진 0장일 때도 표시) */}
@@ -1394,43 +1401,25 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
               )}
 
-              {/* 갤러리·썸네일은 사진 있을 때만 표시 */}
+              {/* 갤러리 선택 버튼은 사진 있을 때만 표시 */}
               {medias.length > 0 && (
-                <>
-                  {/* 갤러리 선택 버튼 */}
-                  <TouchableOpacity
-                    style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
-                    onPress={selectMedia}
-                    activeOpacity={0.8}
-                    disabled={medias.length >= maxRecordPhotos}
-                  >
-                    <View style={s.addMediaLeft}>
-                      <DesignerCameraIcon size={20} color={skinAccent.accent} />
-                      <View>
-                        <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
-                        <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
-                      </View>
+                <TouchableOpacity
+                  style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
+                  onPress={selectMedia}
+                  activeOpacity={0.8}
+                  disabled={medias.length >= maxRecordPhotos}
+                >
+                  <View style={s.addMediaLeft}>
+                    <DesignerCameraIcon size={20} color={skinAccent.accent} />
+                    <View>
+                      <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
+                      <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
                     </View>
-                    <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
-                      <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
-                    </View>
-                  </TouchableOpacity>
-
-                  {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
-                  <DraggablePhotoGrid
-                    medias={medias}
-                    mediaPrivacy={mediaPrivacy}
-                    onReorder={handleReorderMedias}
-                    onRemove={removeMedia}
-                    onOpenPrivacyModal={setPrivacyModalIndex}
-                    onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
-                    THUMB_SIZE={THUMB_SIZE}
-                    representativePhoto={representativePhoto}
-                    onSetRepresentative={(uri) => {
-                      setRepresentativePhoto(prev => prev === uri ? null : uri);
-                    }}
-                  />
-                </>
+                  </View>
+                  <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                    <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
+                  </View>
+                </TouchableOpacity>
               )}
             </View>
           </View>

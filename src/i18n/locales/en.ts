@@ -864,6 +864,8 @@ const en = {
     photoTextPlaceholder: 'Write about this moment',
     photoEmpty: 'Add photos to get started',
     repBadge: 'Cover',
+    actionPrivacy: 'Privacy',
+    actionDelete: 'Delete',
     sectionPhoto: 'Photos',
     sectionCountry: 'Country',
     sectionTripInfo: 'Trip info',

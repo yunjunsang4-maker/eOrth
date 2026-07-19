@@ -1,6 +1,6 @@
-// 피드 작성 — 큰 사진 페이저 + 현재 사진의 글 입력.
-// 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다. 재정렬·대표 지정·비공개는
-// 아래 썸네일 스트립(기존 DraggablePhotoGrid)이 담당하고, 이 컴포넌트는 크게 보기+글만.
+// 피드 작성 — 큰 사진 페이저 + 현재 사진의 글 입력 + 사진 액션(대표·비공개·삭제).
+// 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
+// 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions } from 'react-native';
 import { useTranslation } from 'react-i18next';
@@ -11,12 +11,17 @@ const PAGE_H = Math.round(SCREEN_W * 1.05);
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
+  onSetRepresentative, onRemove, onPrivacyPress, privacyMarks,
 }: {
   medias: string[];
   photoTexts: string[];
   representativePhoto: string | null;
   onChangeText: (index: number, text: string) => void;
   onAddPress: () => void;
+  onSetRepresentative: (index: number) => void;
+  onRemove: (index: number) => void;
+  onPrivacyPress: (index: number) => void;
+  privacyMarks?: boolean[];
 }) {
   const { t } = useTranslation();
   const [activeIdx, setActiveIdx] = useState(0);
@@ -42,6 +47,9 @@ export default function PhotoPagerSection({
     );
   }
 
+  const isRep = representativePhoto === medias[activeIdx];
+  const hasPrivacy = privacyMarks?.[activeIdx] === true;
+
   return (
     <View>
       <View>
@@ -57,9 +65,9 @@ export default function PhotoPagerSection({
             <Image key={`${uri}-${i}`} source={{ uri }} style={{ width: PAGE_W, height: PAGE_H }} resizeMode="cover" />
           ))}
         </ScrollView>
-        {/* n/N + 대표 표시 */}
+        {/* n/N + 대표 배지 */}
         <View style={st.counter}><Text style={st.counterText}>{activeIdx + 1} / {medias.length}</Text></View>
-        {representativePhoto === medias[activeIdx] && (
+        {isRep && (
           <View style={st.repBadge}><Text style={st.repBadgeText}>{t('newRecord.repBadge')}</Text></View>
         )}
         {/* 도트 인디케이터 */}
@@ -69,6 +77,46 @@ export default function PhotoPagerSection({
           ))}
         </View>
       </View>
+
+      {/* 액션 바: 대표·비공개·삭제 */}
+      <View style={st.actionBar}>
+        {/* 대표 버튼 — 활성이면 채워진 배지 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, isRep && st.actionBtnActive]}
+          onPress={() => onSetRepresentative(activeIdx)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.repBadge')}
+        >
+          <Text style={[st.actionBtnIcon, isRep && st.actionBtnIconActive]}>★</Text>
+          <Text style={[st.actionBtnText, isRep && st.actionBtnTextActive]}>{t('newRecord.repBadge')}</Text>
+        </TouchableOpacity>
+
+        {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
+        <TouchableOpacity
+          style={[st.actionBtn, hasPrivacy && st.actionBtnPrivacyActive]}
+          onPress={() => onPrivacyPress(activeIdx)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionPrivacy')}
+        >
+          <Text style={[st.actionBtnIcon, hasPrivacy && st.actionBtnIconPrivacy]}>🔒</Text>
+          <Text style={[st.actionBtnText, hasPrivacy && st.actionBtnTextPrivacy]}>{t('newRecord.actionPrivacy')}</Text>
+        </TouchableOpacity>
+
+        {/* 삭제 버튼 */}
+        <TouchableOpacity
+          style={[st.actionBtn, st.actionBtnDelete]}
+          onPress={() => onRemove(activeIdx)}
+          activeOpacity={0.75}
+          accessibilityRole="button"
+          accessibilityLabel={t('newRecord.actionDelete')}
+        >
+          <Text style={st.actionBtnDeleteIcon}>✕</Text>
+          <Text style={st.actionBtnDeleteText}>{t('newRecord.actionDelete')}</Text>
+        </TouchableOpacity>
+      </View>
+
       {/* 현재 사진의 글 */}
       <View style={st.captionBox}>
         <Text style={st.captionLabel}>
@@ -107,6 +155,35 @@ const st = StyleSheet.create({
   dots: { flexDirection: 'row', gap: 4, alignSelf: 'center', position: 'absolute', bottom: 10 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.4)' },
   dotOn: { backgroundColor: '#BF85FC', width: 12 },
+
+  // 액션 바
+  actionBar: {
+    flexDirection: 'row', alignItems: 'center',
+    marginHorizontal: 16, marginTop: 10, gap: 8,
+  },
+  actionBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 4, paddingVertical: 8, borderRadius: 10,
+    backgroundColor: '#17131f', borderWidth: 1, borderColor: '#2E2E3B',
+  },
+  actionBtnActive: {
+    backgroundColor: 'rgba(191,133,252,0.15)', borderColor: '#BF85FC',
+  },
+  actionBtnPrivacyActive: {
+    backgroundColor: 'rgba(107,33,168,0.2)', borderColor: '#6B21A8',
+  },
+  actionBtnDelete: {
+    // 삭제는 기본 스타일에서 텍스트/아이콘 색만 빨강
+  },
+  actionBtnIcon: { fontSize: 13, color: '#A1A1B0' },
+  actionBtnIconActive: { color: '#BF85FC' },
+  actionBtnIconPrivacy: { color: '#BF85FC' },
+  actionBtnText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
+  actionBtnTextActive: { color: '#BF85FC' },
+  actionBtnTextPrivacy: { color: '#BF85FC' },
+  actionBtnDeleteIcon: { fontSize: 13, color: '#FF3B30' },
+  actionBtnDeleteText: { fontSize: 12, color: '#FF3B30', fontWeight: '600' },
+
   captionBox: { marginHorizontal: 16, marginTop: 10 },
   captionLabel: { color: '#BF85FC', fontSize: 11, fontWeight: '700', marginBottom: 6 },
   captionInput: {
