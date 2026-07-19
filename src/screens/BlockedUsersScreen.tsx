@@ -69,7 +69,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
           <>
             <Text style={st.countText}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
             {blockedUsers.map((user) => (
-              <View key={user.handle ?? user.name} style={st.userCard}>
+              <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}`} style={st.userCard}>
                 {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
                 <View style={st.avatarWrap}>
                   <PersonIcon size={24} color="#A0A0B0" />

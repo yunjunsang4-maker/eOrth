@@ -56,6 +56,7 @@ import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/social';
 import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -658,7 +659,7 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked } = useRecords();
   // ── 공유 시트 (인스타식: 친구 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
@@ -794,7 +795,14 @@ function SnapStoryViewer({
 
   if (!currentSnap || stories.length === 0) return null;
 
-  const comments = commentsByPost[currentSnap.id] ?? [];
+  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
+  const rawSnapComments = commentsByPost[currentSnap.id] ?? [];
+  const comments = rawSnapComments
+    .filter((c: any) => !isBlocked({ name: c.name }))
+    .map((c: any) => ({
+      ...c,
+      replies: c.replies ? c.replies.filter((r: any) => !isBlocked({ name: r.name })) : c.replies,
+    }));
   const totalComments = comments.reduce((sum: number, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = currentSnap.isMyPost === true;
 
@@ -1247,7 +1255,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1271,7 +1279,14 @@ export default function PostDetailScreen() {
     [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked, globalHandle]
   );
 
-  const comments = commentsByPost[postId] ?? [];
+  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
+  const rawComments = commentsByPost[postId] ?? [];
+  const comments = rawComments
+    .filter((c) => !isBlocked({ name: c.name }))
+    .map((c) => ({
+      ...c,
+      replies: c.replies ? c.replies.filter((r) => !isBlocked({ name: r.name })) : c.replies,
+    }));
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
   const [showTravelInfo, setShowTravelInfo] = useState(false);
@@ -1503,6 +1518,22 @@ export default function PostDetailScreen() {
   const handleReport = () => {
     setMenuVisible(false);
     setReportVisible(true);
+  };
+
+  // 수정 6: 타인 게시물 차단 — SocialScreen과 동일한 UX (confirmBlock Alert + blockedToast + goBack)
+  const handleBlockAuthor = () => {
+    setMenuVisible(false);
+    const authorUser = {
+      name: record.user.name,
+      emoji: record.user.emoji ?? '🧳',
+      handle: record.user.handle,
+      id: typeof record.authorId === 'string' ? record.authorId : undefined,
+    };
+    confirmBlock(authorUser.handle ?? authorUser.name, () => {
+      blockUser(authorUser);
+      setToastMsg(t('social.blockedToast'));
+      setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1200);
+    }, t);
   };
 
   // 더블탭: 좋아요(이미 좋아요면 유지) + 하트 버스트 애니메이션
@@ -2160,6 +2191,12 @@ export default function PostDetailScreen() {
                 <TouchableOpacity style={s.menuItem} onPress={handleReport} activeOpacity={0.7}>
                   <MegaphoneIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
+                </TouchableOpacity>
+                {/* 수정 6: 타인 게시물 차단 — SocialScreen과 동일 패턴 */}
+                <View style={s.menuDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
+                  <PersonIcon size={16} color="#FF3B30" />
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
                 </TouchableOpacity>
               </>
             )}

@@ -1117,9 +1117,31 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const unblockUser = (nameOrHandle: string) => {
-    const target = blockedUsers.find((b) => b.name === nameOrHandle || b.handle === nameOrHandle);
-    setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
-    if (isSupabaseConfigured && target?.id) apiUnblock(target.id).catch(notifySyncError);
+    // 수정 5: 정확히 하나의 대상만 제거 — handle 일치 우선, 없으면 name 일치 첫 항목
+    const target =
+      blockedUsers.find((b) => b.handle && b.handle === nameOrHandle) ??
+      blockedUsers.find((b) => b.name === nameOrHandle);
+    if (!target) return;
+    setBlockedUsers((prev) => {
+      let removed = false;
+      return prev.filter((b) => {
+        if (!removed && b === target) { removed = true; return false; }
+        return true;
+      });
+    });
+    // 수정 1: id 없고 handle 있으면 getProfileByHandle로 uuid 조회 후 서버 해제
+    if (isSupabaseConfigured) {
+      if (target.id) {
+        apiUnblock(target.id).catch(notifySyncError);
+      } else if (target.handle) {
+        getProfileByHandle(target.handle)
+          .then((p) => {
+            if (!p?.id) return;
+            apiUnblock(p.id).catch(notifySyncError);
+          })
+          .catch(notifySyncError);
+      }
+    }
   };
 
   // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
@@ -1581,21 +1603,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, refreshFeed, refreshNeighbors]);
 
   // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
-  // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
-  const blockBackfillRef = useRef(false);
+  // 서버 blocks에도 반영한다(RLS 차단 필터 동작).
+  // 수정 2(백필): ref를 boolean 대신 '성공한 handle Set'으로 — 실패 항목은 다음 기회에 재시도.
+  const blockBackfillDoneRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!hydrated || !isSupabaseConfigured || blockBackfillRef.current) return;
-    blockBackfillRef.current = true;
-    const targets = blockedUsers.filter((b) => !b.id && b.handle);
+    if (!hydrated || !isSupabaseConfigured) return;
+    const targets = blockedUsers.filter((b) => !b.id && b.handle && !blockBackfillDoneRef.current.has(b.handle!));
     if (targets.length === 0) return;
     (async () => {
       for (const b of targets) {
-        const p = await getProfileByHandle(b.handle!);
-        if (!p?.id) continue; // 탈퇴/핸들 변경 등 — 로컬 차단만 유지
-        setBlockedUsers((prev) =>
-          prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
-        );
-        apiBlock(p.id).catch(() => {}); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+        try {
+          const p = await getProfileByHandle(b.handle!);
+          if (!p?.id) {
+            // 탈퇴/핸들 변경 등 — 로컬 차단만 유지, 재시도 방지를 위해 done에 추가
+            blockBackfillDoneRef.current.add(b.handle!);
+            continue;
+          }
+          setBlockedUsers((prev) =>
+            prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+          );
+          await apiBlock(p.id); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+          blockBackfillDoneRef.current.add(b.handle!); // 성공한 항목만 제외
+        } catch {
+          // 실패 항목은 done에 추가하지 않아 다음 렌더(재마운트·재연결)에서 재시도
+        }
       }
     })();
   }, [hydrated, blockedUsers]);
