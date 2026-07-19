@@ -997,10 +997,12 @@ create policy "feedback_insert_own" on public.feedback
 --   배포: supabase functions deploy delete-account  (Edge Function도 함께 배포할 것)
 -- ============================================================
 alter table public.profiles add column if not exists deletion_requested_at timestamptz;
+alter table public.profiles add column if not exists deletion_reason text;
 
 -- 탈퇴 신청 — 이미 신청돼 있으면 최초 신청 시각 유지(중복 신청으로 유예가 연장되지 않게).
 -- 신청 시각을 반환해 클라이언트가 로컬 캐시와 동기화한다.
-create or replace function public.request_account_deletion()
+-- p_reason: 탈퇴 사유 문자열 (기본값 null, 없는 인자로 호출된 구버전 클라이언트와 호환).
+create or replace function public.request_account_deletion(p_reason text default null)
 returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare ts timestamptz;
@@ -1009,12 +1011,13 @@ begin
     raise exception 'not_authenticated';
   end if;
   update public.profiles
-     set deletion_requested_at = coalesce(deletion_requested_at, now())
+     set deletion_requested_at = coalesce(deletion_requested_at, now()),
+         deletion_reason       = coalesce(deletion_reason, p_reason)
    where id = auth.uid()
    returning deletion_requested_at into ts;
   return ts;
 end; $$;
-grant execute on function public.request_account_deletion() to authenticated;
+grant execute on function public.request_account_deletion(text) to authenticated;
 
 -- 탈퇴 신청 취소(계정 복구)
 create or replace function public.cancel_account_deletion()

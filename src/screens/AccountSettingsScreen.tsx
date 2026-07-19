@@ -10,6 +10,7 @@ import {
   Switch,
   Platform,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
@@ -124,6 +125,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
   // 화면의 이메일 표시를 auth 실제 값과 동기화 (이메일 변경 인증 완료 후 재진입 시 최신화)
   useEffect(() => {
+    if (signUpMethod !== 'email') return; // 수정4: 소셜 가입자는 이메일 덮어쓰기 불필요
     if (!isSupabaseConfigured) return;
     getAuthEmail()
       .then((e) => {
@@ -167,6 +169,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   };
   const appleLinked = signUpMethod === 'apple';
 
+  // 이메일 변경 제출 중 중복 방지
+  const [emailSubmitting, setEmailSubmitting] = useState(false);
+
   // 비밀번호 변경 모달 상태
   const [isPasswordModalVisible, setIsPasswordModalVisible] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
@@ -187,6 +192,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   // 실제 이메일 변경: auth에 변경을 요청하면 새 주소로 인증 메일이 가고, 링크 확인 후 변경이 완료된다.
   // (즉시 로컬 표시만 바꾸면 로그인 이메일과 어긋난다 — 인증 완료 후 위 useEffect가 표시를 동기화)
   const submitEmailChange = async (newEmail: string) => {
+    if (emailSubmitting) return; // 수정3: 중복 제출 방지
     if (!EMAIL_INPUT_RE.test(newEmail)) {
       Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.emailInvalidMsg'));
       return;
@@ -197,15 +203,20 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       Alert.alert(t('accountSettings.emailChangedTitle'), t('accountSettings.emailChangedMsg', { email: newEmail }));
       return;
     }
-    const result = await requestEmailChange(newEmail);
-    if (!result.ok) {
-      Alert.alert(t('accountSettings.errorTitle'), result.error ?? t('login.genericError'));
-      return;
+    setEmailSubmitting(true);
+    try {
+      const result = await requestEmailChange(newEmail);
+      if (!result.ok) {
+        Alert.alert(t('accountSettings.errorTitle'), result.error ?? t('login.genericError'));
+        return;
+      }
+      Alert.alert(
+        t('accountSettings.emailChangeSentTitle'),
+        t('accountSettings.emailChangeSentMsg', { email: newEmail })
+      );
+    } finally {
+      setEmailSubmitting(false);
     }
-    Alert.alert(
-      t('accountSettings.emailChangeSentTitle'),
-      t('accountSettings.emailChangeSentMsg', { email: newEmail })
-    );
   };
 
   const handleEmailChange = () => {
@@ -335,11 +346,32 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       }
     }
 
+    // 탈퇴 사유 문자열 조립 (수정2)
+    const reasonStr = deleteReason
+      ? deleteReason === 'other' && deleteReasonDetail.trim()
+        ? `${deleteReason}: ${deleteReasonDetail.trim()}`
+        : deleteReason
+      : undefined;
+
     // 즉시 파기하지 않고 서버 유예 플래그만 기록 (30일 내 재로그인 시 복구).
     // 서버 기록에 실패하면 신청을 중단한다 — 로컬만 기록되면 영구 삭제가 이행되지 않는다.
     setDeleteSubmitting(true);
     try {
-      await requestAccountDeletion();
+      // 수정1: email 가입자 — 비밀번호 재인증으로 본인 확인
+      if (signUpMethod === 'email') {
+        const email = (await getAuthEmail()) ?? signUpEmail;
+        if (!email) {
+          Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
+          return;
+        }
+        const verify = await signInWithEmail(email.toLowerCase(), deletePassword.trim());
+        if (!verify.ok) {
+          Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+          return;
+        }
+      }
+      // 수정2: 탈퇴 사유와 함께 서버 신청
+      await requestAccountDeletion(reasonStr);
     } catch {
       Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.deleteRequestFailMsg'));
       return;
@@ -417,7 +449,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             icon={<EmailIcon size={20} />}
             label={signUpMethod === 'email' ? t('accountSettings.emailAddress') : (signUpMethod === 'google' ? t('accountSettings.googleAccount') : t('accountSettings.appleAccount'))}
             value={signUpEmail}
-            onPress={signUpMethod === 'email' ? handleEmailChange : undefined}
+            onPress={signUpMethod === 'email' && !emailSubmitting ? handleEmailChange : undefined}
+            rightElement={emailSubmitting ? <ActivityIndicator size="small" color={COLORS.purpleNeon} /> : undefined}
           />
         </View>
 
