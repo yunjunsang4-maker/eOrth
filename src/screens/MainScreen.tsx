@@ -51,7 +51,8 @@ import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { useSettings, type MapDisplayMode, type SkinColorSet } from '../store/settingsStore';
+import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
+import { getCountryRegionOptions } from '../constants/homeRegions';
 import type { TabScreenProps } from '../navigation/types';
 
 const { height, width } = Dimensions.get('window');
@@ -489,6 +490,8 @@ export default function MainScreen({ navigation, route }: Props) {
     countryDisplayModes, setCountryDisplayModes,
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
+    taggedRegions, setTaggedRegions,
+    dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
     tutorialSeen, setTutorialSeen,
   } = useSettings();
@@ -699,14 +702,94 @@ export default function MainScreen({ navigation, route }: Props) {
       }
     });
 
+    // 소급 태깅 지역 병합 — 기록 유래 지역이 우선, 태그는 nameEn 미중복분만 추가.
+    // 태그 지역의 사진은 이 국가 기록의 대표사진 폴백(없으면 undefined → 색 모드).
+    const tagged = taggedRegions[regionCountry] || [];
+    if (tagged.length > 0) {
+      let countryPhoto: string | undefined;
+      for (const r of records) {
+        if (r.viewType === 'snap') continue;
+        const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
+        if (!matchCountry) continue;
+        countryPhoto = r.perCountryData?.[countryKo]?.representativePhoto
+          || (r.countryName === countryKo ? r.representativePhoto : undefined)
+          || (r.viewType === 'cut' ? r.cutPhoto?.previewUri : undefined)
+          || (r.medias && r.medias.length > 0 ? r.medias[0] : undefined);
+        if (countryPhoto) break;
+      }
+      tagged.forEach(tr => {
+        if (regionsMap.has(tr.nameEn)) return;
+        const key = `${regionCountry}|${tr.nameEn}`;
+        regionsMap.set(tr.nameEn, {
+          name: tr.name,
+          nameEn: tr.nameEn,
+          key,
+          photo: countryPhoto,
+          mode: regionDisplayModes[key] || undefined,
+          color: regionColors[key] || undefined,
+        });
+      });
+    }
+
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, regionDisplayModes, regionColors]);
+  }, [records, regionCountry, regionDisplayModes, regionColors, taggedRegions]);
+
+  // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
+  const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
+  const [regionTagSearch, setRegionTagSearch] = useState('');
+  const [regionTagSelection, setRegionTagSelection] = useState<Set<string>>(new Set());
+  // 선택 가능한 지역 목록 — 인기명소 도시(상단 고정) + 광역
+  const regionTagOptions = useMemo(
+    () => (regionCountry ? getCountryRegionOptions(regionCountry) : { provinces: [], cities: [] }),
+    [regionCountry],
+  );
+  // 이 국가의 지구본 기록 수 (스냅 제외 — 대륙 활성화 규칙과 동일 기준)
+  const regionCountryRecordCount = useMemo(() => {
+    if (!regionCountry) return 0;
+    const countryKo = ISO3_TO_KO[regionCountry];
+    if (!countryKo) return 0;
+    return records.filter(r =>
+      r.viewType !== 'snap' && (r.countryName === countryKo || r.countries?.some(c => c.name === countryKo)),
+    ).length;
+  }, [records, regionCountry]);
+  const showRegionTagChip =
+    !!regionCountry && regionCountryRecordCount > 0 && recordedRegions.length === 0
+    && !dismissedRegionTagChips.includes(regionCountry);
+  const openRegionTagSheet = useCallback(() => {
+    if (!regionCountry) return;
+    setRegionTagSelection(new Set((taggedRegions[regionCountry] || []).map(t => t.nameEn)));
+    setRegionTagSearch('');
+    setRegionTagSheetVisible(true);
+  }, [regionCountry, taggedRegions]);
+  const saveRegionTags = useCallback(() => {
+    if (!regionCountry) return;
+    const all = [...regionTagOptions.cities, ...regionTagOptions.provinces];
+    const list: TaggedRegion[] = all
+      .filter(o => regionTagSelection.has(o.nameEn))
+      .map(o => ({ name: o.name, nameEn: o.nameEn }));
+    setTaggedRegions(prev => {
+      const next = { ...prev };
+      if (list.length === 0) delete next[regionCountry];
+      else next[regionCountry] = list;
+      return next;
+    });
+    setRegionTagSheetVisible(false);
+  }, [regionCountry, regionTagOptions, regionTagSelection, setTaggedRegions]);
+  // 시트 내 검색 필터 (한글명·영문명 모두 매칭)
+  const regionTagFilter = useCallback((list: { name: string; nameEn: string }[]) => {
+    const q = regionTagSearch.trim();
+    if (!q) return list;
+    const ql = q.toLowerCase();
+    return list.filter(o => o.name.includes(q) || o.nameEn.toLowerCase().includes(ql));
+  }, [regionTagSearch]);
 
   // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거
   // (영속화 이후 누적 방지. 변경 없으면 같은 참조 반환 → 불필요한 저장/렌더 없음)
   useEffect(() => {
     const validRegions = new Set<string>();
     records.forEach(r => { if (r.regionNameEn) validRegions.add(r.regionNameEn); });
+    // 소급 태깅 지역의 색/모드 설정도 유효 — 태그가 살아있는 동안 지역별 설정이 지워지지 않게 포함
+    Object.values(taggedRegions).forEach(list => list.forEach(tr => validRegions.add(tr.nameEn)));
     const prune = <T,>(obj: Record<string, T>, valid: Set<string>): Record<string, T> => {
       const remove = Object.keys(obj).filter(k => !valid.has(k));
       if (remove.length === 0) return obj;
@@ -729,7 +812,26 @@ export default function MainScreen({ navigation, route }: Props) {
     setCountryDisplayModes(prev => prune(prev, visitedNameSet));
     setRegionDisplayModes(prev => pruneRegion(prev));
     setRegionColors(prev => pruneRegion(prev));
-  }, [records, visitedNameSet, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors]);
+    // 소급 태깅·칩 닫음 목록 정리 — 그 국가 기록(스냅 제외)이 전부 사라지면 함께 제거
+    const recordedCountryKos = new Set<string>();
+    records.forEach(r => {
+      if (r.viewType === 'snap') return;
+      if (r.countryName) recordedCountryKos.add(r.countryName);
+      r.countries?.forEach(c => recordedCountryKos.add(c.name));
+    });
+    const hasCountryRecord = (iso3: string) => recordedCountryKos.has(ISO3_TO_KO[iso3] || '');
+    setTaggedRegions(prev => {
+      const remove = Object.keys(prev).filter(k => !hasCountryRecord(k));
+      if (remove.length === 0) return prev;
+      const next = { ...prev };
+      remove.forEach(k => delete next[k]);
+      return next;
+    });
+    setDismissedRegionTagChips(prev => {
+      const next = prev.filter(hasCountryRecord);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -1112,6 +1214,91 @@ export default function MainScreen({ navigation, route }: Props) {
                 showPopular={popularActive}
               />
             </View>
+            {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
+            {showRegionTagChip && (
+              <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 148, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
+                  <TouchableOpacity activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                      {t('main.regionTagChip', { count: regionCountryRecordCount })}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                    onPress={() => setDismissedRegionTagChips(prev => (regionCountry && !prev.includes(regionCountry) ? [...prev, regionCountry] : prev))}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('main.regionTagDismissA11y')}
+                  >
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginLeft: 10, padding: 4 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            {/* 방문 지역 선택 시트 (소급 태깅) */}
+            <Modal visible={regionTagSheetVisible} transparent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
+              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <TouchableOpacity
+                  style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
+                  activeOpacity={1}
+                  onPress={() => setRegionTagSheetVisible(false)}
+                />
+                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%' }}>
+                  <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
+                  <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
+                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
+                    {t('main.regionTagSub', { country: ISO3_TO_KO[regionCountry] || '' })}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 }}>
+                    <SearchLineIcon size={18} color="#A9A9A9" />
+                    <TextInput
+                      style={{ flex: 1, color: '#FFFFFF', fontSize: 14, paddingVertical: 10, marginLeft: 8 }}
+                      value={regionTagSearch}
+                      onChangeText={setRegionTagSearch}
+                      placeholder={t('main.regionTagSearchPh')}
+                      placeholderTextColor="#7A7A88"
+                    />
+                  </View>
+                  <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    {([
+                      ['main.regionTagPopular', regionTagFilter(regionTagOptions.cities)],
+                      ['main.regionTagProvinces', regionTagFilter(regionTagOptions.provinces)],
+                    ] as const).map(([labelKey, list]) => (
+                      list.length === 0 ? null : (
+                        <View key={labelKey}>
+                          <Text style={{ color: '#A1A1B0', fontSize: 12, fontWeight: '600', marginTop: 12, marginBottom: 2 }}>{t(labelKey)}</Text>
+                          {list.map(o => {
+                            const sel = regionTagSelection.has(o.nameEn);
+                            return (
+                              <TouchableOpacity
+                                key={o.nameEn}
+                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)' }}
+                                activeOpacity={0.7}
+                                onPress={() => setRegionTagSelection(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(o.nameEn)) next.delete(o.nameEn); else next.add(o.nameEn);
+                                  return next;
+                                })}
+                              >
+                                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel ? skinAccent.accent : 'rgba(255,255,255,0.3)', backgroundColor: sel ? skinAccent.accent : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                  {sel && <Text style={{ color: '#0A0A0F', fontSize: 13, fontWeight: '800' }}>✓</Text>}
+                                </View>
+                                <Text style={{ color: '#FFFFFF', fontSize: 15 }}>{o.name}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity style={{ marginTop: 14, borderRadius: 14, overflow: 'hidden' }} activeOpacity={0.85} onPress={saveRegionTags}>
+                    <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingVertical: 14, alignItems: 'center' }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('main.regionTagSave', { count: regionTagSelection.size })}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
             <TouchableOpacity
               style={styles.regionBackBtn}
@@ -1651,7 +1838,17 @@ export default function MainScreen({ navigation, route }: Props) {
 
                 {/* 지역별 개별 설정 */}
                 <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
-                  <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
+                    {/* 방문 지역 소급 태깅 편집 — 표시 설정을 유지·닫고 태깅 시트를 연다 */}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => { confirmDisplaySettings(); setTimeout(openRegionTagSheet, 300); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={{ color: skinAccent.accent, fontSize: 13, fontWeight: '600' }}>{t('main.regionTagEdit')} ›</Text>
+                    </TouchableOpacity>
+                  </View>
                   {recordedRegions.length === 0 ? (
                     <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
                       기록된 지역이 없습니다.

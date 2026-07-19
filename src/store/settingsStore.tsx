@@ -31,6 +31,12 @@ const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
   returnDetect: false, memoryRemind: true, marketing: false, travelMoment: true,
 };
 
+// 소급 태깅한 방문 지역 항목 (대륙 지도 NAME_1 기준)
+export interface TaggedRegion {
+  name: string;   // 표시용 한글 지명 (NL_NAME_1)
+  nameEn: string; // 대륙 지도 매칭 키 (NAME_1)
+}
+
 // 스킨별로 저장하는 활성화 색 묶음 — 스킨 전환 시 저장/복원 (스킨마다 개별색 기억)
 export interface SkinColorSet {
   globeColor: string;
@@ -99,6 +105,12 @@ interface SettingsContextType {
   // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
   regionColors: Record<string, string>;
   setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 소급 태깅한 방문 지역 (키: ISO3) — 지구본 기록만 있는 국가의 대륙 지역 활성화용
+  taggedRegions: Record<string, TaggedRegion[]>;
+  setTaggedRegions: React.Dispatch<React.SetStateAction<Record<string, TaggedRegion[]>>>;
+  // '방문 지역 추가' 안내 칩을 닫은 국가(ISO3) 목록 — 닫으면 그 국가는 다시 안 띄움
+  dismissedRegionTagChips: string[];
+  setDismissedRegionTagChips: React.Dispatch<React.SetStateAction<string[]>>;
   // 스킨별 색 저장소 — 스킨 전환 시 이전 스킨의 색(기본·국가·지역)을 보관하고 대상 스킨의 색을 복원
   skinColorStore: Record<string, SkinColorSet>;
   setSkinColorStore: React.Dispatch<React.SetStateAction<Record<string, SkinColorSet>>>;
@@ -175,6 +187,8 @@ interface SettingsPersistPayload {
   regionGlobalMode?: 'color' | 'photo';
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
+  taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
+  dismissedRegionTagChips?: string[]; // 방문 지역 칩 닫은 국가 (과거 저장본엔 없음)
   skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
@@ -229,6 +243,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
+  const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
+  const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
   // 스킨 전환: 아이콘 팔레트 동기화 + 현재 스킨의 색을 저장하고 대상 스킨에 저장된 색(없으면 그 스킨 기본색)을 복원
   const setGlobeSkinThemed = useCallback((s: string) => {
@@ -325,6 +341,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
       setRegionDisplayModes(p.regionDisplayModes ?? {});
       setRegionColors(p.regionColors ?? {});
+      setTaggedRegions(p.taggedRegions ?? {});
+      setDismissedRegionTagChips(p.dismissedRegionTagChips ?? []);
       setSkinColorStore(p.skinColorStore ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
@@ -367,6 +385,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      taggedRegions,
+      dismissedRegionTagChips,
       skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
@@ -409,6 +429,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      taggedRegions,
+      dismissedRegionTagChips,
       skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
@@ -469,6 +491,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionGlobalMode('color');
     setRegionDisplayModes({});
     setRegionColors({});
+    setTaggedRegions({});
+    setDismissedRegionTagChips([]);
     setSkinColorStore({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
@@ -493,6 +517,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
+    taggedRegions, dismissedRegionTagChips,
     representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
     notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
     tutorialSeen,
@@ -513,6 +538,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
     if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(v.regionDisplayModes);
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(v.regionColors);
+    if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(v.taggedRegions);
+    if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
     if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(v.skinColorStore);
     if (Array.isArray(v.representativeBadgeIds)) setRepresentativeBadgeIds(v.representativeBadgeIds);
     if (v.badgeEarnedAt && typeof v.badgeEarnedAt === 'object') setBadgeEarnedAt(v.badgeEarnedAt);
@@ -590,6 +617,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionDisplayModes,
         regionColors,
         setRegionColors,
+        taggedRegions,
+        setTaggedRegions,
+        dismissedRegionTagChips,
+        setDismissedRegionTagChips,
         skinColorStore,
         setSkinColorStore,
         representativeBadgeIds,

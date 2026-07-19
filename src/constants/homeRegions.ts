@@ -59,6 +59,27 @@ const isCityFeature = (geoKey: string, nameEn: string): boolean => {
   return !!prov && prov !== nameEn;
 };
 
+/**
+ * 대륙 지도 국가(ISO3 geoKey)의 선택 가능한 지역 목록 — 광역(주)과 인기명소 도시를 분리해 반환.
+ * 방문 지역 소급 태깅 시트 등 UI 선택용. nameEn은 대륙 지도 활성화 키(NAME_1)와 동일.
+ */
+export function getCountryRegionOptions(geoKey: string): { provinces: HomeRegion[]; cities: HomeRegion[] } {
+  const features: any[] = getCountryGeo(geoKey)?.features ?? [];
+  const seen = new Set<string>();
+  const provinces: HomeRegion[] = [];
+  const cities: HomeRegion[] = [];
+  for (const f of features) {
+    const nameEn = f?.properties?.NAME_1;
+    if (!nameEn || seen.has(nameEn)) continue;
+    seen.add(nameEn);
+    const item = { name: f?.properties?.NL_NAME_1 || nameEn, nameEn };
+    (isCityFeature(geoKey, nameEn) ? cities : provinces).push(item);
+  }
+  provinces.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  cities.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  return { provinces, cities };
+}
+
 // countryGeo 파싱 결과 캐시 — 국가당 1회만 추출
 const regionCache: Record<string, HomeRegion[]> = {};
 
