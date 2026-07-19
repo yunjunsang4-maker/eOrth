@@ -127,18 +127,24 @@ async function sendChunk(
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('method_not_allowed', { status: 405 });
 
-  // DB 웹훅 표준 payload 파싱
-  let notif: NotifRecord | null = null;
+  // DB 웹훅 표준 payload 파싱 — payload의 record는 신뢰하지 않고 notifId 추출용으로만 사용
+  let notifId: string | null = null;
+  let payloadUserId: string | null = null;
+  let payloadType: string | null = null;
   try {
     const body = await req.json();
     if (body?.type !== 'INSERT' || body?.table !== 'notifications') {
       return new Response('ignored', { status: 200 });
     }
-    notif = body.record ?? null;
+    notifId = body.record?.id ?? null;
+    payloadUserId = body.record?.user_id ?? null;
+    payloadType = body.record?.type ?? null;
   } catch {
     return new Response('bad_request', { status: 400 });
   }
-  if (!notif) return new Response('ignored', { status: 200 });
+  if (!notifId || !payloadUserId || !payloadType) {
+    return new Response('ignored', { status: 200 });
+  }
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
@@ -150,7 +156,36 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false },
   });
 
-  // ① 행위자 핸들 조회
+  // ① DB 재조회로 알림 실존·일치·최신성 검증
+  // — 행이 없으면: 위조 또는 이미 삭제된 알림 → 무시
+  // — user_id/type 불일치: payload 위조 시도 → 403
+  // — created_at이 5분 초과: 재전송 공격 완화 → 무시
+  const { data: notif, error: notifError } = await admin
+    .from('notifications')
+    .select('id, user_id, type, actor_id, post_id, read, created_at')
+    .eq('id', notifId)
+    .maybeSingle();
+
+  if (notifError) {
+    console.error('notif_fetch_error', notifError.message);
+    return new Response('db_error', { status: 500 });
+  }
+  if (!notif) {
+    console.warn('notif_not_found', notifId);
+    return new Response('ignored', { status: 200 });
+  }
+  if (notif.user_id !== payloadUserId || notif.type !== payloadType) {
+    console.warn('notif_payload_mismatch', { notifId, payloadUserId, payloadType });
+    return new Response('forbidden', { status: 403 });
+  }
+  // 재전송 공격 완화: 5분 이내 생성된 알림만 발송 (created_at 컬럼 확인됨)
+  const ageMs = Date.now() - new Date(notif.created_at).getTime();
+  if (ageMs > 5 * 60 * 1000) {
+    console.warn('notif_too_old', { notifId, ageMs });
+    return new Response('ignored', { status: 200 });
+  }
+
+  // ② 행위자 핸들 조회 (payload 대신 DB 조회 행 기준)
   let actorHandle = '';
   try {
     const { data: actor } = await admin
@@ -163,7 +198,7 @@ Deno.serve(async (req: Request) => {
     // 조회 실패 시 빈 핸들로 진행
   }
 
-  // ② 수신자 push_tokens 조회 (prefs 포함)
+  // ③ 수신자 push_tokens 조회 (prefs 포함)
   const { data: tokens, error: tokensError } = await admin
     .from('push_tokens')
     .select('token, prefs')
@@ -177,7 +212,7 @@ Deno.serve(async (req: Request) => {
     return new Response('no_tokens', { status: 200 });
   }
 
-  // ③ prefs 게이트 + 메시지 빌드
+  // ④ prefs 게이트 + 메시지 빌드
   const messages: ExpoPushMessage[] = [];
   const validTokens: string[] = [];
 
@@ -194,7 +229,7 @@ Deno.serve(async (req: Request) => {
     return new Response('all_filtered', { status: 200 });
   }
 
-  // ④ 100개 단위 청크 발송 + DeviceNotRegistered 토큰 수집
+  // ⑤ 100개 단위 청크 발송 + DeviceNotRegistered 토큰 수집
   const staleTokens: string[] = [];
 
   for (let i = 0; i < messages.length; i += CHUNK_SIZE) {
@@ -222,7 +257,7 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // ⑤ 만료 토큰 삭제
+  // ⑥ 만료 토큰 삭제
   if (staleTokens.length > 0) {
     const { error: delError } = await admin
       .from('push_tokens')
