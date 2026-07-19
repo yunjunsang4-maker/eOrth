@@ -16,7 +16,7 @@ import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
-import MomentDrawer from '../components/moments/MomentDrawer';
+import MomentListSheet from '../components/moments/MomentListSheet';
 import {
   CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
@@ -399,6 +399,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
   const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
@@ -633,6 +634,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
         <View style={st.headerRight}>
+          {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (참고용) */}
+          <TouchableOpacity
+            style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
+            onPress={() => setMomentSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('moments.sheetTitle')}
+          >
+            <Text style={{ fontSize: 16 }}>✨</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
             style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.35) }]]}
@@ -678,8 +688,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             </TouchableOpacity>
           </View>
 
-          {/* 이 여행의 순간 참고 서랍 — 순수 참고용, 삽입/복사 없음 */}
-          <MomentDrawer moments={matchedMoments} />
+          {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
 
           {/* 날짜 */}
           <View style={st.fieldBlock}>
@@ -950,6 +959,18 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriends}
         onClose={() => setPrivacyVisible(false)}
+      />
+
+      {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={matchedMoments}
+        tripTitle={
+          selectedCountries.length > 0
+            ? `${selectedCountries[0].flag} ${selectedCountries[0].name}`
+            : ''
+        }
       />
 
       {/* 기타 통화 선택 모달 */}

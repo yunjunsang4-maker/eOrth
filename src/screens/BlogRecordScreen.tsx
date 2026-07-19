@@ -37,7 +37,7 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode, parseDotDate as parseDotDateMatch } from '../utils/momentMatch';
-import MomentDrawer from '../components/moments/MomentDrawer';
+import MomentListSheet from '../components/moments/MomentListSheet';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -459,6 +459,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const today = new Date(); today.setHours(0, 0, 0, 0); return today;
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPeriod?.startDate));
   const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPeriod?.endDate));
 
@@ -1263,6 +1264,15 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
+          {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (참고용) */}
+          <TouchableOpacity
+            style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
+            onPress={() => setMomentSheetVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel={t('moments.sheetTitle')}
+          >
+            <Text style={{ fontSize: 16 }}>✨</Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}
             style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
@@ -1315,8 +1325,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {countryRequired && <View style={st.requiredDot} />}
           </View>
 
-          {/* 이 여행의 순간 참고 서랍 — 순수 참고용, 삽입/복사 없음 */}
-          <MomentDrawer moments={matchedMoments} />
+          {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
 
           {/* 제목 */}
           <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
@@ -1942,6 +1951,18 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         selectedPhoto={representativePhoto}
         onSelect={(uri, original) => { if (uri && original) originalUriMapRef.current[uri] = original; setRepresentativePhoto(uri); }}
         onClose={() => setRepPhotoModalVisible(false)}
+      />
+
+      {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={matchedMoments}
+        tripTitle={
+          selectedCountries.length > 0
+            ? `${selectedCountries[0].flag} ${selectedCountries[0].name}`
+            : ''
+        }
       />
 
     </SafeAreaView>
