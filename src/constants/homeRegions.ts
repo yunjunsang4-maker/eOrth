@@ -44,6 +44,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   MYS: { kotakinabalu: 'Sabah', johorbahru: 'Johor', johorbaharu: 'Johor', langkawi: 'Kedah' },
   VNM: { nhatrang: 'KhánhHòa', hoian: 'QuảngNam', halong: 'QuảngNinh', halongbay: 'QuảngNinh', phuquoc: 'KiênGiang' },
   SAU: { riyadh: 'ArRiyad', jeddah: 'Makkah', jiddah: 'Makkah', mecca: 'Makkah', medina: 'AlMadinah', alula: 'AlMadinah' },
+  MAR: { marrakech: 'Marrakech-Tensift-AlHaouz', marrakesh: 'Marrakech-Tensift-AlHaouz', casablanca: 'GrandCasablanca', fes: 'Fès-Boulemane', fez: 'Fès-Boulemane', chefchaouen: 'Tanger-Tétouan' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
