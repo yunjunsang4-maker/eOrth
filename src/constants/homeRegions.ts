@@ -2,7 +2,7 @@
 // 한국은 시/도 프리셋(koreaRegions), 그 외 국가는 대륙 지도와 동일한 GADM Level-1 데이터(countryGeo)에서
 // 지역 목록을 뽑는다. nameEn(NAME_1)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
 import { KOREA_REGIONS, normalizeKoreaRegion } from './koreaRegions';
-import COUNTRY_GEO from '../data/countryGeo';
+import { getCountryGeo } from '../data/countryGeo';
 
 export interface HomeRegion {
   name: string;   // 표시·저장용 한글 표기 (예: '교토부', '캘리포니아')
@@ -13,6 +13,11 @@ export interface HomeRegion {
 const ISO2_TO_GEO: Record<string, string> = {
   JP: 'JPN', CN: 'CHN', US: 'USA', DE: 'DEU',
   ES: 'ESP', GB: 'GBR', FR: 'FRA', IT: 'ITA',
+  // 2026-07-20 확장 18개국
+  TR: 'TUR', GR: 'GRC', AT: 'AUT', PT: 'PRT', NL: 'NLD',
+  TH: 'THA', MY: 'MYS', VN: 'VNM', SA: 'SAU', AE: 'ARE',
+  MA: 'MAR', EG: 'EGY', TN: 'TUN', ZA: 'ZAF',
+  MX: 'MEX', CA: 'CAN', BR: 'BRA', CO: 'COL',
 };
 
 // 발음 구별 기호 제거(Ōsaka→Osaka) — GPS 도시명과 GADM 영문명 표기차 흡수
@@ -53,7 +58,7 @@ export function getHomeRegions(countryCode?: string | null): HomeRegion[] {
   if (!geoKey) return [];
   if (regionCache[geoKey]) return regionCache[geoKey];
 
-  const features: any[] = COUNTRY_GEO[geoKey]?.features ?? [];
+  const features: any[] = getCountryGeo(geoKey)?.features ?? [];
   const seen = new Set<string>();
   const regions: HomeRegion[] = [];
   for (const f of features) {

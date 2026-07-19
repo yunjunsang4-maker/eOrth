@@ -1,7 +1,7 @@
 import React, { useMemo , useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
-import COUNTRY_GEO from '../data/countryGeo';
+import { getCountryGeo } from '../data/countryGeo';
 import { D3_SRC } from '../data/vendorD3';
 
 
@@ -166,7 +166,7 @@ export default function CountryMapView({
 }
 
 function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '') {
-  const geo = COUNTRY_GEO[code];
+  const geo = getCountryGeo(code);
   if (!geo) {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>지도 데이터가 없습니다</body></html>`;
   }
