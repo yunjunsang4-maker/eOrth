@@ -33,7 +33,7 @@ import { compressImage, compressImages } from '../utils/imageCompress';
 import { withTimeout } from '../utils/withTimeout';
 import { getMaxRecordPhotos } from '../constants/limits';
 import { getHomeRegions, normalizeHomeRegion } from '../constants/homeRegions';
-import { collectRecordedDateKeys } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { useSettings } from '../store/settingsStore';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
@@ -339,10 +339,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     [regionCountryCode, homeCountryCode]
   );
 
-  // 선택 국가에 이미 기록된 날짜 — 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게 (편집 중 기록 제외)
+  // 이미 기록된 날짜 — 국가 구별 없이 전체 내 기록을 캘린더에 점으로 표시 (편집 중 기록 제외)
   const recordedDates = useMemo(
-    () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name), editRecord?.id),
-    [records, selectedCountries, editRecord?.id]
+    () => collectRecordedDateKeys(records, null, editRecord?.id),
+    [records, editRecord?.id]
+  );
+  // 날짜 키 → 그 기록의 전체 기간 — 여행 날짜 캘린더에서 점 찍힌 날 탭 시 기간 통째 선택용
+  const recordedRanges = useMemo(
+    () => collectRecordedRanges(records, editRecord?.id),
+    [records, editRecord?.id]
   );
 
   // useMoments — 서랍용 훅 (matchedMoments useMemo는 startDate/endDate state 이후에 위치)
@@ -1906,6 +1911,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
         onClose={() => setCalendarVisible(false)}
         recordedDates={recordedDates}
+        recordedRanges={recordedRanges}
       />
 
       {/* 🔒 비공개 친구 선택 모달 */}

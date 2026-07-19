@@ -35,6 +35,7 @@ export function CalendarBottomSheet({
   startLabel,
   endLabel,
   recordedDates,
+  recordedRanges,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -43,8 +44,10 @@ export function CalendarBottomSheet({
   onClose: () => void;
   startLabel?: string;
   endLabel?: string;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시). utils/recordedDates 참조 */
+  /** 'YYYY-MM-DD' 키 집합 — 이미 기록이 있는 날짜(점 표시). utils/recordedDates 참조 */
   recordedDates?: Set<string>;
+  /** 'YYYY-MM-DD' → 그 기록의 전체 기간. 점 찍힌 날을 탭하면 기간이 통째로 선택된다(시작 선택 시에만) */
+  recordedRanges?: Map<string, { start: Date; end: Date }>;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -84,6 +87,13 @@ export function CalendarBottomSheet({
 
   const handleDayPress = (date: Date) => {
     if (!selectingEnd) {
+      // 기록이 있는 날을 시작 선택으로 탭하면 그 기록의 기간을 통째로 선택.
+      // 종료일 선택 중(selectingEnd)에는 일반 탭으로 취급 — 커스텀 기간 지정을 막지 않는다.
+      const range = recordedRanges?.get(toDateKey(date));
+      if (range) {
+        setTempStart(range.start); setTempEnd(range.end); setSelectingEnd(false);
+        return;
+      }
       setTempStart(date); setTempEnd(null); setSelectingEnd(true);
     } else {
       if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
