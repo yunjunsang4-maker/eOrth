@@ -824,11 +824,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const toggleKeyword = (kw: string) =>
     setKeywords(prev => prev.includes(kw) ? prev.filter(k => k !== kw) : [...prev, kw]);
 
-  // ── 기간 자동 불러오기 ──
-  const [autoLoadStart,           setAutoLoadStart]           = useState(todayInit);
-  const [autoLoadEnd,             setAutoLoadEnd]             = useState(todayInit);
+  // ── 미디어 로딩 상태 ──
   const [loadingMedia,            setLoadingMedia]            = useState(false);
-  const [autoLoadCalendarVisible, setAutoLoadCalendarVisible] = useState(false);
 
   // ── 미디어 선택 모달 (상한 초과 시) ──
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
@@ -946,124 +943,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudSkippedRef.current));
       } else {
         Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudSkippedRef.current));
-      }
-    } catch (e: any) {
-      Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
-    } finally {
-      setLoadingMedia(false);
-    }
-  };
-
-  const loadMediaByDate = async (overrideStart?: Date, overrideEnd?: Date) => {
-    const rangeStart = overrideStart ?? autoLoadStart;
-    const rangeEnd   = overrideEnd   ?? autoLoadEnd;
-
-    if (!rangeStart || !rangeEnd || isNaN(rangeStart.getTime()) || isNaN(rangeEnd.getTime())) {
-      Alert.alert(t('newRecord.dateErrorTitle'), t('newRecord.dateErrorMsg'));
-      return;
-    }
-
-    setLoadingMedia(true);
-    try {
-      const perm = await MediaLibrary.requestPermissionsAsync();
-      if (perm.status !== 'granted') {
-        Alert.alert(
-          t('newRecord.galleryPermTitle'),
-          t('newRecord.galleryPermMsg'),
-          [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-
-      const startOfDay = new Date(rangeStart);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(rangeEnd);
-      endOfDay.setHours(23, 59, 59, 999);
-
-      const result = await MediaLibrary.getAssetsAsync({
-        mediaType: [MediaLibrary.MediaType.photo],
-        createdAfter:  startOfDay.getTime(),
-        createdBefore: endOfDay.getTime(),
-        sortBy: MediaLibrary.SortBy.creationTime,
-        first: 500,
-      });
-      // 기간 내 사진이 상한(500장)보다 많으면 최신순으로 잘림 — 완료 안내에 표시
-      truncatedRef.current = !!result?.hasNextPage;
-
-      const allAssets = result?.assets ?? [];
-      if (allAssets.length === 0) {
-        // '일부 사진만 허용' 상태면 허용된 사진만 검색되므로, "기간 내 사진 없음"과 구분해 안내
-        if (perm.accessPrivileges === 'limited') {
-          Alert.alert(
-            t('newRecord.limitedAccessTitle'),
-            t('newRecord.limitedAccessMsg'),
-            [
-              { text: t('common.cancel'), style: 'cancel' },
-              Platform.OS === 'ios'
-                ? { text: t('newRecord.limitedAddPhotos'), onPress: () => { MediaLibrary.presentPermissionsPickerAsync().catch(() => {}); } }
-                : { text: t('newRecord.allowInSettings'), onPress: () => Linking.openSettings() },
-            ]
-          );
-        } else {
-          Alert.alert(t('newRecord.noPhotoTitle'), t('newRecord.noPhotoMsg'));
-        }
-        return;
-      }
-
-      // 1차: 로컬 사진 즉시 확보 → 2차: iCloud 오프로드분은 네트워크 다운로드 시도(타임아웃 포함).
-      // 그래도 실패한 장수만 안내하고 제외한다 (검은 타일/조용한 실패 방지).
-      const { ok: localOk, cloud } = await resolveImportable(allAssets);
-      const cloudOk = await downloadCloudAssets(cloud);
-      // 원래 검색 순서(최신순)를 유지해 병합
-      const resolvedById = new Map([...localOk, ...cloudOk].map((p) => [p.asset.id, p]));
-      const ok = allAssets.filter((a) => resolvedById.has(a.id)).map((a) => resolvedById.get(a.id)!);
-      const cloudCount = allAssets.length - ok.length;
-      cloudSkippedRef.current = cloudCount;
-
-      if (ok.length === 0) {
-        Alert.alert(
-          t('comp2.icloudTitle'),
-          t('newRecord.iCloudOnlyMsg', { count: cloudCount })
-        );
-        return;
-      }
-
-      const total = ok.length;
-      const slotsAvailable = maxRecordPhotos - medias.length;
-      if (slotsAvailable <= 0) {
-        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.maxPhotosN', { max: maxRecordPhotos }));
-        return;
-      }
-
-      // 상한 초과 시 → 선택 모달 표시 (가져올 수 있는 사진만 전달 → 검은 타일 없음)
-      // ⚠️ 원본 asset의 uri는 iOS에서 ph:// 라 모달 <Image>가 검은 타일로 뜬다 —
-      //    위에서 확보한 localUri(file://)로 교체해 전달한다.
-      if (total > slotsAvailable) {
-        setMediaPickerAssets(ok.map((p) => ({ ...p.asset, uri: p.uri })));
-        setMediaPickerMax(slotsAvailable);
-        setMediaPickerSelected(new Set());
-        setMediaPickerVisible(true);
-        return;
-      }
-
-      // 상한 이하 → 전체 추가 (이미 변환된 localUri 사용)
-      const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
-
-      setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
-      // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
-      setPhotoTexts((prev) => {
-        const addedCount = Math.max(0, Math.min(resolvedUris.length, maxRecordPhotos - prev.length));
-        return [...prev, ...Array(addedCount).fill('')];
-      });
-
-      // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
-      if (resolvedUris.length === 0) {
-        Alert.alert(t('newRecord.noticeTitle'), t('newRecord.allDuplicateMsg') + cloudNote(cloudCount));
-      } else {
-        Alert.alert(t('newRecord.loadDoneTitle'), t('newRecord.loadedNPhotos', { count: resolvedUris.length }) + truncatedNote() + cloudNote(cloudCount));
       }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
@@ -1377,47 +1256,31 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
             />
 
-            {/* 기간으로 자동 불러오기 버튼 (사진 0장일 때도 표시) */}
-            <View style={{ marginTop: 12 }}>
-              <TouchableOpacity
-                style={s.autoLoadBtn}
-                onPress={() => {
-                  setAutoLoadStart(startDate);
-                  setAutoLoadEnd(endDate);
-                  setAutoLoadCalendarVisible(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <CalendarIcon size={16} color={skinAccent.accent} />
-                  <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
-                </View>
-              </TouchableOpacity>
+            {loadingMedia && (
+              <View style={{ marginTop: 12, marginVertical: 12, alignItems: 'center', gap: 6 }}>
+                <ActivityIndicator color={skinAccent.accent} size="large" />
+                {cloudProgress && (
+                  <>
+                    <Text style={s.cloudProgressText}>
+                      {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                    </Text>
+                    <TouchableOpacity
+                      style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
+                      onPress={() => { cloudCancelRef.current = true; }}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('newRecord.cloudCancelA11y')}
+                    >
+                      <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            )}
 
-              {loadingMedia && (
-                <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
-                  <ActivityIndicator color={skinAccent.accent} size="large" />
-                  {cloudProgress && (
-                    <>
-                      <Text style={s.cloudProgressText}>
-                        {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
-                      </Text>
-                      <TouchableOpacity
-                        style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
-                        onPress={() => { cloudCancelRef.current = true; }}
-                        activeOpacity={0.7}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('newRecord.cloudCancelA11y')}
-                      >
-                        <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* 갤러리 선택 버튼은 사진 있을 때만 표시 */}
-              {medias.length > 0 && (
+            {/* 갤러리 선택 버튼은 사진 있을 때만 표시 */}
+            {medias.length > 0 && (
+              <View style={{ marginTop: 12 }}>
                 <TouchableOpacity
                   style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
                   onPress={selectMedia}
@@ -1435,8 +1298,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
                   </View>
                 </TouchableOpacity>
-              )}
-            </View>
+              </View>
+            )}
           </View>
 
           {/* ══════════════════ ② 박스 A: 국가 선택 ══════════════════ */}
@@ -1958,23 +1821,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         selected={currency}
         onSelect={(code) => { chooseCurrency(code); setCurrencyModalVisible(false); }}
         onClose={() => setCurrencyModalVisible(false)}
-      />
-
-      {/* 자동 불러오기용 캘린더 */}
-      <CalendarBottomSheet
-        visible={autoLoadCalendarVisible}
-        initialStart={autoLoadStart}
-        initialEnd={autoLoadEnd}
-        startLabel={t('newRecord.startLabel')}
-        endLabel={t('newRecord.endLabel')}
-        recordedDates={recordedDates}
-        onConfirm={(s, e) => {
-          setAutoLoadStart(s);
-          setAutoLoadEnd(e);
-          setAutoLoadCalendarVisible(false);
-          loadMediaByDate(s, e);
-        }}
-        onClose={() => setAutoLoadCalendarVisible(false)}
       />
 
       {/* ── 미디어 선택 모달 (상한 초과 시) ── */}
@@ -2641,20 +2487,6 @@ const s = StyleSheet.create({
 
   // 기타 통화 모달 스타일은 components/record/CurrencyPickerModal 로 이동
 
-  // ── 기간 자동 불러오기 ──
-  autoLoadBtn: {
-    backgroundColor: COLORS.card,
-    borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  autoLoadBtnText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.purpleNeon,
-  },
   cloudProgressText: {
     fontSize: 12,
     color: COLORS.textDim,
