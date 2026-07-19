@@ -140,10 +140,11 @@ const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) 
   </Svg>
 );
 
-const ISO3_TO_KO: Record<string, string> = {
-  JPN: '일본', CHN: '중국', USA: '미국', DEU: '독일',
-  ESP: '스페인', GBR: '영국', FRA: '프랑스', ITA: '이탈리아',
-};
+// REGION_COUNTRIES에서 파생 — 국가 추가 시 목록 한 곳만 고치면 됨.
+// (하드코딩 8개국이던 시절, 신규 국가에서 국가 칩이 ISO3로 뜨고 지역 활성색이 안 그려지는 버그가 있었음)
+const ISO3_TO_KO: Record<string, string> = Object.fromEntries(
+  REGION_COUNTRIES.map((c) => [c.code, c.name])
+);
 
 const VISITED_COUNTRIES = [
   { flag: '🇯🇵', name: '일본', visits: 5 },
