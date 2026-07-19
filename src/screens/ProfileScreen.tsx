@@ -2096,16 +2096,18 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     {VIEW_TYPE_BADGE[vt] || null}
                   </LiquidPressable>
                 ))}
-                {/* 여행 기억 — 이 여행 기간에 캡처한 순간들. 형식 아이콘 옆에 항상 노출 */}
+              </View>
+              {momentsByTrip.has(displayTrips[0].id) && (
                 <TouchableOpacity
-                  style={thumbSt.mainBadge}
                   onPress={() => { if (mergeMode) return; setMomentSheetTrip(displayTrips[0]); }}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   accessibilityRole="button"
                   accessibilityLabel={t('moments.sheetTitle')}
+                  style={{ marginLeft: 8 }}
                 >
                   <Text style={{ fontSize: 14 }}>✨</Text>
                 </TouchableOpacity>
-              </View>
+              )}
             </BlurView>
             {mergeMode && mergeableIds.has(displayTrips[0].id) && (
               <MergeSelectOverlay
@@ -2181,16 +2183,17 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                         {VIEW_TYPE_BADGE[vt] || null}
                       </LiquidPressable>
                     ))}
-                    {/* 여행 기억 — 형식 아이콘 옆에 항상 노출 */}
+                  </View>
+                  {momentsByTrip.has(trip.id) && (
                     <TouchableOpacity
-                      style={thumbSt.gridBadge}
                       onPress={() => { if (mergeMode) return; setMomentSheetTrip(trip); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                       accessibilityRole="button"
                       accessibilityLabel={t('moments.sheetTitle')}
                     >
-                      <Text style={{ fontSize: 12 }}>✨</Text>
+                      <Text style={{ fontSize: 14 }}>✨</Text>
                     </TouchableOpacity>
-                  </View>
+                  )}
                 </BlurView>
                 {mergeMode && mergeableIds.has(trip.id) && (
                   <MergeSelectOverlay

@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -24,6 +24,9 @@ import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, tripPeriodOf, countryNameToCode } from '../utils/momentMatch';
+import MomentListSheet from '../components/moments/MomentListSheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -233,11 +236,26 @@ export default function TripDetailScreen() {
   const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup, archivedIds } = useRecords();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
+
+  // 이 여행 기간에 캡처한 순간들 — 국가코드 + 소속 기록들의 날짜 범위로 매칭 (ProfileScreen과 동일 규칙)
+  const { moments } = useMoments();
+  const tripMoments = useMemo(() => {
+    const fullRecs = trip.records
+      .map((r) => records.find((x) => x.id === r.id))
+      .filter(Boolean) as TravelRecord[];
+    const period = tripPeriodOf(fullRecs);
+    return matchMoments(moments, {
+      countryCode: countryNameToCode(trip.country),
+      startMs: period?.startMs,
+      endMs: period?.endMs,
+    });
+  }, [moments, trip, records]);
   const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(titleToDisplay);
   const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트
   const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
   const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
   const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
@@ -470,13 +488,24 @@ export default function TripDetailScreen() {
         {isGuest ? (
           <View style={{ width: 38, height: 38 }} />
         ) : (
-          <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
-            <View style={s.menuBars}>
-              <View style={s.menuBar} />
-              <View style={s.menuBar} />
-              <View style={s.menuBar} />
-            </View>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+            {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => setMomentSheetVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('moments.sheetTitle')}
+            >
+              <Text style={{ fontSize: 16 }}>✨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
+              <View style={s.menuBars}>
+                <View style={s.menuBar} />
+                <View style={s.menuBar} />
+                <View style={s.menuBar} />
+              </View>
+            </TouchableOpacity>
+          </View>
         )}
       </Animated.View>
 
@@ -521,6 +550,14 @@ export default function TripDetailScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 목록 */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={tripMoments}
+        tripTitle={`${trip.countryFlag} ${titleToDisplay}`}
+      />
 
       {/* 기록 추가 — 형식 선택 모달 */}
       <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
