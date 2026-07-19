@@ -20,10 +20,10 @@ import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { GlassButton } from '../components/ui';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 import { DraggableCountryList, DraggablePhotoGrid } from '../components/record/DraggableLists';
+import PhotoPagerSection from '../components/record/PhotoPagerSection';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { MediaPickerModal } from '../components/record/MediaPickerModal';
@@ -207,182 +207,6 @@ const WEATHER_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
   '바람':     (c) => <WindIcon size={16} color={c} />,
 };
 
-// ─── 진행 바 ───
-function StepProgressBar({ current, total }: { current: number; total: number }) {
-  const skinAccent = useSkinAccent(); // 활성 점·라인을 스킨색으로
-  return (
-    <View style={pb.wrap}>
-      {Array.from({ length: total }, (_, i) => {
-        const stepNum = i + 1;
-        const active  = stepNum <= current;
-        return (
-          <React.Fragment key={stepNum}>
-            <View style={[pb.circle, active ? [pb.circleActive, { backgroundColor: skinAccent.accent }] : pb.circleInactive]}>
-              {active
-                ? <View style={pb.dot} />
-                : <View style={pb.dotEmpty} />}
-            </View>
-            {i < total - 1 && (
-              <View style={[pb.line, stepNum < current ? [pb.lineActive, { backgroundColor: skinAccent.accent }] : pb.lineInactive]} />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </View>
-  );
-}
-
-const pb = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 24,
-  },
-  circle: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  circleActive: {
-    backgroundColor: COLORS.purpleNeon,
-  },
-  circleInactive: {
-    backgroundColor: COLORS.card,
-    borderWidth: 1.5,
-    borderColor: COLORS.divider,
-  },
-  dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.white,
-  },
-  dotEmpty: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.textMuted,
-  },
-  line: {
-    flex: 1,
-    height: 2,
-    marginHorizontal: 4,
-  },
-  lineActive: {
-    backgroundColor: COLORS.purpleNeon,
-  },
-  lineInactive: {
-    backgroundColor: COLORS.card,
-  },
-});
-
-// ─── 하단 내비게이션 버튼 ───
-function StepNavBar({
-  step,
-  totalSteps,
-  canNext,
-  onPrev,
-  onNext,
-  onSave,
-  saving = false,
-}: {
-  step: number;
-  totalSteps: number;
-  canNext: boolean;
-  onPrev: () => void;
-  onNext: () => void;
-  onSave: () => void;
-  saving?: boolean;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  return (
-    <View style={nav.wrap}>
-      {step > 1 ? (
-        // 다음 버튼과 동일한 유리 필 디자인(GlassButton)
-        <GlassButton label={t('newRecord.prev')} onPress={onPrev} style={{ flex: 1 }} />
-      ) : (
-        <View style={nav.prevPlaceholder} />
-      )}
-      {step < totalSteps ? (
-        // 앱 기본 버튼(온보딩 '다음' 유리 필 디자인) — GlassButton. flex만 넘겨 유리 스타일 보존
-        <GlassButton
-          label={t('newRecord.next')}
-          onPress={onNext}
-          disabled={!canNext}
-          style={{ flex: 2 }}
-        />
-      ) : (
-        <TouchableOpacity
-          style={[nav.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canNext || saving) && nav.nextBtnDisabled]}
-          onPress={onSave}
-          activeOpacity={0.85}
-          disabled={saving}
-        >
-          <Text style={nav.saveTxt}>{saving ? t('newRecord.saving') : t('newRecord.save')}</Text>
-        </TouchableOpacity>
-      )}
-    </View>
-  );
-}
-
-const nav = StyleSheet.create({
-  wrap: {
-    flexDirection: 'row',
-    gap: 10,
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    paddingBottom: 24,
-    backgroundColor: COLORS.bg,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
-  },
-  prevPlaceholder: { flex: 1 },
-  prevBtn: {
-    flex: 1,
-    backgroundColor: COLORS.card,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  prevTxt: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.textDim,
-  },
-  nextBtn: {
-    flex: 2,
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  nextBtnDisabled: {
-    opacity: 0.4,
-  },
-  nextTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-  saveBtn: {
-    flex: 2,
-    backgroundColor: COLORS.purpleDeep,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-  },
-  saveTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: COLORS.white,
-  },
-});
-
 // 캘린더/비공개 모달은 components/record/ 로 분리
 
 // 국가 데이터: 공용 모듈(../constants/countries)에서 가져옴
@@ -437,7 +261,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
   const friendNames = neighbors.map((f) => f.username);
-  const TOTAL_STEPS = 3;
 
   // ─── 편집 모드 ───
   // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
@@ -465,11 +288,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 다국가 기록이면 대표 국가의 데이터로 활성 상태를 채운다 (top-level medias는 전체 합본이므로)
   const editFirstCountryData = editRecord?.perCountryData?.[editRecord.countryName];
 
-  const [step, setStep] = useState(1);
   const [hintMsg, setHintMsg] = useState(''); // 필수 미충족 안내 토스트
   const savedRef = useRef(false);             // 저장 후 이탈은 확인 다이얼로그 건너뜀
   const scrollRef = useRef<ScrollView>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
+  // 국가 섹션 접힘 상태 — 최초에 국가 없으면 펼침, 있으면 접힘
+  const [countryExpanded, setCountryExpanded] = useState(true);
+  // 섹션 Y 좌표 캐시 (저장 바 스크롤 이동용)
+  const sectionYRef = useRef<{ photo: number; country: number; info: number }>({ photo: 0, country: 0, info: 0 });
 
   // Step 1 - 국가 (복수 선택)
   const MAX_COUNTRIES = 10;
@@ -1232,33 +1058,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     }
   };
 
-  // ── 내비 ──
-  const canGoNext = () => {
-    if (step === 1) return selectedCountries.length > 0;
-    if (step === 2) return medias.length > 0 && !!representativePhoto; // 사진 1장 이상 + 대표 사진 지정 필수
-    if (step === TOTAL_STEPS) {
-      if (selectedCompanions.length === 0) return false; // 글(memo)은 선택 항목
+  // ── 일괄 검증 ──
+  // 모든 선택 국가에 평점이 채워졌는지 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
+  const allRatingsFilled = selectedCountries.every((c, idx) =>
+    idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
+  );
 
-      // 모든 선택 국가에 평점 필요 (활성 국가는 전역 rating, 나머지는 국가별 저장값)
-      return selectedCountries.every((c, idx) =>
-        idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
-      );
-    }
-    return true;
+  const missing = (): { key: 'photo' | 'country' | 'info'; msg: string } | null => {
+    if (medias.length === 0) return { key: 'photo', msg: t('newRecord.missPhoto') };
+    if (!representativePhoto) return { key: 'photo', msg: t('newRecord.missRepPhoto') };
+    if (selectedCountries.length === 0) return { key: 'country', msg: t('newRecord.missCountry') };
+    if (selectedCompanions.length === 0) return { key: 'info', msg: t('newRecord.missCompanion') };
+    if (!allRatingsFilled) return { key: 'info', msg: isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating') };
+    return null;
   };
 
-  const goNext = () => {
-    if (step < TOTAL_STEPS) {
-      setStep(s => s + 1);
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }
-  };
-  const goPrev = () => {
-    if (step > 1) {
-      setStep(s => s - 1);
-      scrollRef.current?.scrollTo({ y: 0, animated: false });
-    }
-  };
+  const canSave = missing() === null;
 
   const handleSave = async () => {
     if (selectedCountries.length === 0) {
@@ -1420,36 +1235,17 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // 필수 미충족 시 빠진 항목 안내
   const showHint = (msg: string) => { setHintMsg(msg); setTimeout(() => setHintMsg(''), 2200); };
-  const missingHint = (): string[] => {
-    const m: string[] = [];
-    if (step === 1) { if (selectedCountries.length === 0) m.push(t('newRecord.missCountry')); }
-    else if (step === 2) {
-      if (medias.length === 0) m.push(t('newRecord.missPhoto'));
-      else if (!representativePhoto) m.push(t('newRecord.missRepPhoto'));
-    }
-    else if (step === TOTAL_STEPS) {
-      const noRating = selectedCountries.some((c, idx) =>
-        idx === activeCountryIdx ? rating <= 0 : (perCountryStore.current[c.name]?.rating ?? 0) <= 0);
-      if (noRating) m.push(isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating'));
-      if (selectedCompanions.length === 0) m.push(t('newRecord.missCompanion'));
-    }
-    return m;
-  };
-  const handleNextPress = () => {
-    if (canGoNext()) { goNext(); return; }
-    const miss = missingHint();
-    showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
-  };
-  const handleSavePress = async () => {
+
+  // 하단 저장 바 버튼 핸들러
+  const handleSaveBarPress = async () => {
     if (savingRef.current) return; // 저장 중복 클릭 방지
-    if (!canGoNext()) {
-      const miss = missingHint();
-      showHint(miss.length ? t('newRecord.missHint', { fields: miss.join(', ') }) : t('newRecord.requiredHint'));
+    const miss = missing();
+    if (miss) {
+      showHint(miss.msg);
+      scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
       return;
     }
-    // 저장 플래그는 doSave가 직접 관리한다 (BlogRecordScreen.publish와 동일 구조).
-    // 여기서 미리 잠그면 다국가 다이얼로그에서 '취소'했을 때(저장 시작 안 됨) 플래그가
-    // 리셋되지 않아 저장 버튼이 화면을 나가기 전까지 영구 비활성화된다.
+    // 저장 플래그는 doSave가 직접 관리한다 (다국가 다이얼로그 취소 시 플래그 리셋 불필요)
     await handleSave();
   };
 
@@ -1468,9 +1264,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     setKeywordQuery('');
   };
 
-  // ── 단계별 제목 ──
-  const STEP_TITLES = [t('newRecord.step1'), t('newRecord.step2'), t('newRecord.step3')];
-
   // ─── 렌더 ───
   return (
     <SafeAreaView style={s.safeArea}>
@@ -1481,15 +1274,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
         <View style={{ width: 44 }} />
-      </View>
-
-      {/* 진행 바 */}
-      <StepProgressBar current={step} total={TOTAL_STEPS} />
-
-      {/* 단계 타이틀 */}
-      <View style={s.stepTitleWrap}>
-        <Text style={s.stepTitleText}>{STEP_TITLES[step - 1]}</Text>
-        <Text style={s.stepCountText}>{step} / {TOTAL_STEPS}</Text>
       </View>
 
       {/* Android: edge-to-edge(SDK54)에서 adjustResize가 무력화될 수 있어 'height'로 스크롤 영역을 직접 축소 */}
@@ -1503,204 +1287,82 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           scrollEnabled={scrollEnabled}
         >
 
-          {/* ══════════════════ STEP 1 ══════════════════ */}
-          {step === 1 && (
-            <View style={s.step1Wrap}>
-              {/* 선택된 국가 목록 */}
-              {selectedCountries.length === 1 && (
-                <View style={s.selectedChipsWrap}>
-                  {selectedCountries.map((c) => (
-                    <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
-                      <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
-                      <TouchableOpacity
-                        onPress={() => handleRemoveCountry(c.name)}
-                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                      >
-                        <Text style={s.countryChipRemove}>✕</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ))}
-                </View>
-              )}
+          {/* ══════════════════ ① 사진 섹션 ══════════════════ */}
+          <View
+            onLayout={(e) => { sectionYRef.current.photo = e.nativeEvent.layout.y; }}
+          >
+            <Text style={s.sectionLabel}>📷 {t('newRecord.sectionPhoto')}</Text>
 
-              {selectedCountries.length >= 2 && (
-                <View style={{ marginBottom: 12 }}>
-                  <DraggableCountryList
-                    countries={selectedCountries}
-                    onReorder={handleReorder}
-                    onRemove={handleRemoveCountry}
-                    onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
-                  />
-                  <Text style={s.draggableHelperText}>
-                    {t('newRecord.dragCountryHint')}
-                  </Text>
-                </View>
-              )}
+            {/* 큰 페이저 + 사진별 글 입력 */}
+            <PhotoPagerSection
+              medias={medias}
+              photoTexts={photoTexts}
+              representativePhoto={representativePhoto}
+              onChangeText={(i, v) => setPhotoTexts((prev) => prev.map((x, k) => (k === i ? v : x)))}
+              onAddPress={selectMedia}
+            />
 
-              {/* 국내 지역 선택 — 국내 기록은 지역(시/도·주/현) 단위로 여행 카드가 구분된다.
-                  거주국가에 지역 프리셋이 없으면 칩을 숨기고 기존(자유 문자열) 동작 유지 */}
-              {(isDomesticSelected || isStaySelected) && homeRegions.length > 0 && (
-                <View style={{ marginBottom: 12 }}>
-                  <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                      {homeRegions.map((r) => {
-                        const active = selectedRegion?.name === r.name;
-                        return (
-                          <TouchableOpacity
-                            key={r.name}
-                            style={[s.regionPickChip, active && [s.regionPickChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
-                            onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
-                            activeOpacity={0.75}
-                          >
-                            <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* 검색창 — 항상 표시 */}
-              <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
-                <View style={s.searchRow}>
-                  <SearchIcon size={16} color={COLORS.textDim} />
-                  <TextInput
-                    style={s.searchInput}
-                    placeholder={selectedCountries.length > 0
-                      ? t('newRecord.searchMore')
-                      : t('newRecord.searchCountry')}
-                    placeholderTextColor={COLORS.textMuted}
-                    value={countrySearch}
-                    onChangeText={setCountrySearch}
-                  />
-                  {countrySearch.length > 0 && (
-                    <TouchableOpacity
-                      onPress={() => setCountrySearch('')}
-                      activeOpacity={0.7}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                    >
-                      <Text style={s.clearBtnTxt}>✕</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-
-              {/* 검색 결과 — 1글자 이상 */}
-              {countrySearch.length >= 1 && (
-                <View style={s.countryResultBox}>
-                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                    {groupedCountries.length === 0 ? (
-                      <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
-                    ) : (
-                      groupedCountries.map(({ continent, countries }) => (
-                        <View key={continent}>
-                          <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
-                          {countries.map(c => {
-                            const isSelected = selectedCountries.some(sc => sc.name === c.name);
-                            return (
-                              <TouchableOpacity
-                                key={c.name}
-                                style={[s.countryItem, isSelected && [s.countryItemSelected, { backgroundColor: skinAccent.tint(0.08) }]]}
-                                onPress={() => {
-                                  if (isSelected) {
-                                    handleRemoveCountry(c.name);
-                                  } else if (selectedCountries.length < MAX_COUNTRIES) {
-                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                    setSelectedCountries(prev => [...prev, { flag: c.flag, name: c.name }]);
-                                  }
-                                }}
-                              >
-                                <Text style={s.countryIcon}>{c.flag}</Text>
-                                <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
-                                {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
-                              </TouchableOpacity>
-                            );
-                          })}
-                        </View>
-                      ))
-                    )}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* 안내 문구 */}
-              {selectedCountries.length === 0 && countrySearch.length === 0 && (
-                <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
-              )}
-
-              {/* 선택 완료 확인 */}
-              {selectedCountries.length > 0 && countrySearch.length === 0 && (
-                <View style={[s.selectedBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
-                  <Text style={[s.selectedBadgeTxt, { color: skinAccent.accent }]}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
-                </View>
-              )}
-            </View>
-          )}
-
-          {/* ══════════════════ STEP 2 ══════════════════ */}
-          {step === 2 && (
-            <View>
-              {/* 사진은 여행 전체 공용 — 다국가여도 국가 탭 없이 한 번에 담는다 */}
-              {/* 기간으로 자동 불러오기 버튼 */}
-              <TouchableOpacity
-                style={s.autoLoadBtn}
-                onPress={() => {
-                  setAutoLoadStart(startDate);
-                  setAutoLoadEnd(endDate);
-                  setAutoLoadCalendarVisible(true);
-                }}
-                activeOpacity={0.8}
-              >
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                  <CalendarIcon size={16} color={skinAccent.accent} />
-                  <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
-                </View>
-              </TouchableOpacity>
-              {loadingMedia && (
-                <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
-                  <ActivityIndicator color={skinAccent.accent} size="large" />
-                  {cloudProgress && (
-                    <>
-                      <Text style={s.cloudProgressText}>
-                        {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
-                      </Text>
-                      <TouchableOpacity
-                        style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
-                        onPress={() => { cloudCancelRef.current = true; }}
-                        activeOpacity={0.7}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('newRecord.cloudCancelA11y')}
-                      >
-                        <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              )}
-
-              {/* 갤러리 선택 버튼 */}
-              <TouchableOpacity
-                style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
-                onPress={selectMedia}
-                activeOpacity={0.8}
-                disabled={medias.length >= maxRecordPhotos}
-              >
-                <View style={s.addMediaLeft}>
-                  <DesignerCameraIcon size={20} color={skinAccent.accent} />
-                  <View>
-                    <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
-                    <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
+            {/* 사진이 있으면 추가 버튼·자동불러오기·썸네일 스트립 표시 */}
+            {medias.length > 0 && (
+              <View style={{ marginTop: 12 }}>
+                {/* 기간으로 자동 불러오기 버튼 */}
+                <TouchableOpacity
+                  style={s.autoLoadBtn}
+                  onPress={() => {
+                    setAutoLoadStart(startDate);
+                    setAutoLoadEnd(endDate);
+                    setAutoLoadCalendarVisible(true);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <CalendarIcon size={16} color={skinAccent.accent} />
+                    <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
                   </View>
-                </View>
-                <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
-                  <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
-                </View>
-              </TouchableOpacity>
+                </TouchableOpacity>
 
-              {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
-              {medias.length > 0 && (
+                {loadingMedia && (
+                  <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
+                    <ActivityIndicator color={skinAccent.accent} size="large" />
+                    {cloudProgress && (
+                      <>
+                        <Text style={s.cloudProgressText}>
+                          {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                        </Text>
+                        <TouchableOpacity
+                          style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
+                          onPress={() => { cloudCancelRef.current = true; }}
+                          activeOpacity={0.7}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('newRecord.cloudCancelA11y')}
+                        >
+                          <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                )}
+
+                {/* 갤러리 선택 버튼 */}
+                <TouchableOpacity
+                  style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
+                  onPress={selectMedia}
+                  activeOpacity={0.8}
+                  disabled={medias.length >= maxRecordPhotos}
+                >
+                  <View style={s.addMediaLeft}>
+                    <DesignerCameraIcon size={20} color={skinAccent.accent} />
+                    <View>
+                      <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
+                      <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
+                    </View>
+                  </View>
+                  <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                    <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
                 <DraggablePhotoGrid
                   medias={medias}
                   mediaPrivacy={mediaPrivacy}
@@ -1714,21 +1376,183 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     setRepresentativePhoto(prev => prev === uri ? null : uri);
                   }}
                 />
-              )}
+              </View>
+            )}
+          </View>
 
-              {/* 빈 상태 */}
-              {medias.length === 0 && (
-                <View style={s.mediaEmptyBox}>
-                  <DesignerCameraIcon size={32} color={COLORS.textMuted} />
-                  <Text style={s.mediaEmptyTitle}>{t('newRecord.noPhotoSelectedTitle')}</Text>
-                  <Text style={s.mediaEmptyDesc}>{t('newRecord.noPhotoSelectedDesc')}</Text>
+          {/* ══════════════════ ② 국가 섹션 ══════════════════ */}
+          <View
+            style={{ marginTop: 24 }}
+            onLayout={(e) => { sectionYRef.current.country = e.nativeEvent.layout.y; }}
+          >
+            <Text style={s.sectionLabel}>🌍 {t('newRecord.sectionCountry')}</Text>
+
+            {/* 국가가 선택됐고 접혀 있으면 요약 칩만 표시 */}
+            {selectedCountries.length > 0 && !countryExpanded ? (
+              <View style={s.countryCollapseRow}>
+                {selectedCountries.map(c => (
+                  <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+                    <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
+                  </View>
+                ))}
+                <TouchableOpacity
+                  onPress={() => setCountryExpanded(true)}
+                  style={[s.countryChangeBtn, { borderColor: skinAccent.tint(0.4) }]}
+                  activeOpacity={0.75}
+                >
+                  <Text style={[s.countryChangeBtnTxt, { color: skinAccent.accent }]}>{t('newRecord.countryChange')}</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                {/* 선택된 국가 목록 */}
+                {selectedCountries.length === 1 && (
+                  <View style={s.selectedChipsWrap}>
+                    {selectedCountries.map((c) => (
+                      <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+                        <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
+                        <TouchableOpacity
+                          onPress={() => handleRemoveCountry(c.name)}
+                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                        >
+                          <Text style={s.countryChipRemove}>✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+
+                {selectedCountries.length >= 2 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <DraggableCountryList
+                      countries={selectedCountries}
+                      onReorder={handleReorder}
+                      onRemove={handleRemoveCountry}
+                      onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
+                    />
+                    <Text style={s.draggableHelperText}>
+                      {t('newRecord.dragCountryHint')}
+                    </Text>
+                  </View>
+                )}
+
+                {/* 국내 지역 선택 */}
+                {(isDomesticSelected || isStaySelected) && homeRegions.length > 0 && (
+                  <View style={{ marginBottom: 12 }}>
+                    <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                      <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                        {homeRegions.map((r) => {
+                          const active = selectedRegion?.name === r.name;
+                          return (
+                            <TouchableOpacity
+                              key={r.name}
+                              style={[s.regionPickChip, active && [s.regionPickChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+                              onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
+                              activeOpacity={0.75}
+                            >
+                              <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    </ScrollView>
+                  </View>
+                )}
+
+                {/* 검색창 */}
+                <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
+                  <View style={s.searchRow}>
+                    <SearchIcon size={16} color={COLORS.textDim} />
+                    <TextInput
+                      style={s.searchInput}
+                      placeholder={selectedCountries.length > 0
+                        ? t('newRecord.searchMore')
+                        : t('newRecord.searchCountry')}
+                      placeholderTextColor={COLORS.textMuted}
+                      value={countrySearch}
+                      onChangeText={setCountrySearch}
+                    />
+                    {countrySearch.length > 0 && (
+                      <TouchableOpacity
+                        onPress={() => setCountrySearch('')}
+                        activeOpacity={0.7}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Text style={s.clearBtnTxt}>✕</Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
                 </View>
-              )}
 
-            </View>
-          )}
+                {/* 검색 결과 */}
+                {countrySearch.length >= 1 && (
+                  <View style={s.countryResultBox}>
+                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                      {groupedCountries.length === 0 ? (
+                        <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
+                      ) : (
+                        groupedCountries.map(({ continent, countries }) => (
+                          <View key={continent}>
+                            <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
+                            {countries.map(c => {
+                              const isSelected = selectedCountries.some(sc => sc.name === c.name);
+                              return (
+                                <TouchableOpacity
+                                  key={c.name}
+                                  style={[s.countryItem, isSelected && [s.countryItemSelected, { backgroundColor: skinAccent.tint(0.08) }]]}
+                                  onPress={() => {
+                                    if (isSelected) {
+                                      handleRemoveCountry(c.name);
+                                    } else if (selectedCountries.length < MAX_COUNTRIES) {
+                                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                      setSelectedCountries(prev => {
+                                        const next = [...prev, { flag: c.flag, name: c.name }];
+                                        // 첫 국가 선택 시 섹션 접기
+                                        if (prev.length === 0) setCountryExpanded(false);
+                                        return next;
+                                      });
+                                    }
+                                  }}
+                                >
+                                  <Text style={s.countryIcon}>{c.flag}</Text>
+                                  <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                                  {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </View>
+                        ))
+                      )}
+                    </ScrollView>
+                  </View>
+                )}
 
-          {step === 3 && (
+                {/* 안내 문구 */}
+                {selectedCountries.length === 0 && countrySearch.length === 0 && (
+                  <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
+                )}
+
+                {/* 선택 완료 확인 */}
+                {selectedCountries.length > 0 && countrySearch.length === 0 && (
+                  <View style={[s.selectedBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
+                    <Text style={[s.selectedBadgeTxt, { color: skinAccent.accent }]}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* 순간 참고 서랍 — 국가 섹션 하단 */}
+            <MomentDrawer moments={matchedMoments} />
+          </View>
+
+          {/* ══════════════════ ③ 여행 정보 섹션 ══════════════════ */}
+          <View
+            style={{ marginTop: 24 }}
+            onLayout={(e) => { sectionYRef.current.info = e.nativeEvent.layout.y; }}
+          >
+            <Text style={s.sectionLabel}>🗓️ {t('newRecord.sectionTripInfo')}</Text>
+
             <View style={s.step3Wrap}>
               {/* 국가별 탭 (2개국 이상) */}
               {isMultiCountry && (
@@ -1745,9 +1569,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   ))}
                 </ScrollView>
               )}
-
-              {/* 이 여행의 순간 참고 서랍 — 순수 참고용, 삽입/복사 없음 */}
-              <MomentDrawer moments={matchedMoments} />
 
               {/* 날짜 (국가별) */}
               <View style={s.fieldBlock}>
@@ -2033,11 +1854,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
                 <Text style={s.kwHint}>{t('newRecord.keywordHint')}</Text>
               </View>
-
             </View>
-          )}
+          </View>
 
-          <View style={{ height: 32 }} />
+          {/* 하단 저장 바 높이만큼 여백 확보 */}
+          <View style={{ height: 80 }} />
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -2048,16 +1869,17 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         </View>
       )}
 
-      {/* 이전 / 다음 / 저장 버튼 */}
-      <StepNavBar
-        step={step}
-        totalSteps={TOTAL_STEPS}
-        canNext={canGoNext()}
-        onPrev={goPrev}
-        onNext={handleNextPress}
-        onSave={handleSavePress}
-        saving={saving}
-      />
+      {/* 하단 고정 저장 바 */}
+      <View style={s.saveBar}>
+        <TouchableOpacity
+          style={[s.saveBarBtn, { backgroundColor: skinAccent.accentDeep }, !canSave && s.saveBarBtnDisabled]}
+          onPress={handleSaveBarPress}
+          activeOpacity={0.85}
+          disabled={saving}
+        >
+          <Text style={s.saveBarBtnTxt}>{saving ? t('newRecord.saving') : t('newRecord.save')}</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* 캘린더 바텀시트 */}
       <CalendarBottomSheet
@@ -2147,18 +1969,61 @@ const s = StyleSheet.create({
   cancelTxt: { fontSize: 16, color: COLORS.textMuted },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
 
-  stepTitleWrap: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingBottom: 8,
-  },
-  stepTitleText: { fontSize: 18, fontWeight: '700', color: COLORS.white },
-  stepCountText: { fontSize: 13, color: COLORS.textMuted },
-
   scroll:   { flex: 1 },
   content:  { paddingHorizontal: 20, paddingTop: 8, paddingBottom: 20 },
+
+  // ── 섹션 라벨 ──
+  sectionLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.purpleNeon,
+    letterSpacing: 0.6,
+    marginBottom: 10,
+  },
+
+  // ── 국가 섹션 접힘 요약 ──
+  countryCollapseRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  countryChangeBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: COLORS.purpleNeon,
+  },
+  countryChangeBtnTxt: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: COLORS.purpleNeon,
+  },
+
+  // ── 하단 고정 저장 바 ──
+  saveBar: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingBottom: 24,
+    backgroundColor: COLORS.bg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
+  },
+  saveBarBtn: {
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    backgroundColor: COLORS.purpleDeep,
+  },
+  saveBarBtnDisabled: {
+    opacity: 0.4,
+  },
+  saveBarBtnTxt: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: COLORS.white,
+  },
 
   stepHint: {
     marginTop: 20,
@@ -2167,10 +2032,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
   },
 
-  // ── Step 1 ──
-  step1Wrap: {
-    flex: 1,
-  },
+  // ── 국가 섹션 UI ──
   searchCard: {
     backgroundColor: COLORS.card,
     borderRadius: 14,
