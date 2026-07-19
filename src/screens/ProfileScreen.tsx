@@ -54,10 +54,6 @@ import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
 import { StayPromptModal } from '../components/record/StayPromptModal';
 import { shouldNudgeEnd } from '../utils/stayMachine';
-import { useMoments } from '../store/momentStore';
-import type { TravelMoment } from '../store/momentStore';
-import { matchMoments, tripPeriodOf, countryNameToCode } from '../utils/momentMatch';
-import MomentListSheet from '../components/moments/MomentListSheet';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -1586,10 +1582,6 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const [staySheetVisible, setStaySheetVisible] = useState(false);
   const stayActive = activeStayGroup?.stay?.status === 'active';
 
-  // 여행 기억 시트 — 여행 카드 ✨ 탭 시 해당 trip 저장
-  const [momentSheetTrip, setMomentSheetTrip] = useState<TripThumbnail | null>(null);
-  const { moments } = useMoments();
-
   // 이웃 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   // 리마운트 시 0으로 깜빡이지 않게 마지막 값을 모듈 캐시에서 복원, 오류(null)면 이전 값 유지
   const [neighborCount, setNeighborCount] = useState(lastFollowerCountCache);
@@ -1684,24 +1676,6 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       };
     }).filter(t2 => t2.records.length > 0 || !!t2.stayLabel); // 체류 카드는 기록 0개(갓 시작)여도 노출
   }, [tripGroups, records, archivedIds, t]);
-
-  // 여행별 매칭된 순간 목록 — 국가코드 + 기록 날짜 범위로 매칭
-  const momentsByTrip = useMemo(() => {
-    const map = new Map<string, TravelMoment[]>();
-    for (const trip of mappedThumbnails) {
-      const fullRecs = trip.records
-        .map((r) => records.find((x) => x.id === r.id))
-        .filter(Boolean) as typeof records;
-      const period = tripPeriodOf(fullRecs);
-      const matched = matchMoments(moments, {
-        countryCode: countryNameToCode(trip.country),
-        startMs: period?.startMs,
-        endMs: period?.endMs,
-      });
-      if (matched.length > 0) map.set(trip.id, matched);
-    }
-    return map;
-  }, [moments, mappedThumbnails, records]);
 
   // import/기록 기반 여행 카드(mappedThumbnails)를 맨 앞에 병합
   // → 새로 만든 카드가 기본으로 큰 메인 카드 자리를 차지하고, 기존 카드는 그리드로 밀린다
@@ -2097,17 +2071,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   </LiquidPressable>
                 ))}
               </View>
-              {momentsByTrip.has(displayTrips[0].id) && (
-                <TouchableOpacity
-                  onPress={() => { if (mergeMode) return; setMomentSheetTrip(displayTrips[0]); }}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('moments.sheetTitle')}
-                  style={{ marginLeft: 8 }}
-                >
-                  <Text style={{ fontSize: 14 }}>✨</Text>
-                </TouchableOpacity>
-              )}
+              {/* 여행 기억(✨) 진입은 상세 여행 화면(TripDetail) 헤더에서만 — 카드에는 두지 않는다(사용자 결정) */}
             </BlurView>
             {mergeMode && mergeableIds.has(displayTrips[0].id) && (
               <MergeSelectOverlay
@@ -2184,16 +2148,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                       </LiquidPressable>
                     ))}
                   </View>
-                  {momentsByTrip.has(trip.id) && (
-                    <TouchableOpacity
-                      onPress={() => { if (mergeMode) return; setMomentSheetTrip(trip); }}
-                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('moments.sheetTitle')}
-                    >
-                      <Text style={{ fontSize: 14 }}>✨</Text>
-                    </TouchableOpacity>
-                  )}
+                  {/* 여행 기억(✨) 진입은 상세 여행 화면에서만(사용자 결정) */}
                 </BlurView>
                 {mergeMode && mergeableIds.has(trip.id) && (
                   <MergeSelectOverlay
@@ -2322,13 +2277,6 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         onClose={() => setStayPromptCountry(null)}
       />
 
-      {/* 여행 기억 목록 시트 — 여행 카드 ✨ 탭 */}
-      <MomentListSheet
-        visible={momentSheetTrip != null}
-        onClose={() => setMomentSheetTrip(null)}
-        moments={momentSheetTrip ? momentsByTrip.get(momentSheetTrip.id) ?? [] : []}
-        tripTitle={momentSheetTrip ? `${momentSheetTrip.countryFlag} ${momentSheetTrip.title}`.trim() : ''}
-      />
     </View>
   );
 }
