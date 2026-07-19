@@ -292,8 +292,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const savedRef = useRef(false);             // 저장 후 이탈은 확인 다이얼로그 건너뜀
   const scrollRef = useRef<ScrollView>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
-  // 국가 섹션 접힘 상태 — 최초에 국가 없으면 펼침, 있으면 접힘
-  const [countryExpanded, setCountryExpanded] = useState(true);
   // 섹션 Y 좌표 캐시 (저장 바 스크롤 이동용)
   const sectionYRef = useRef<{ photo: number; country: number; info: number }>({ photo: 0, country: 0, info: 0 });
 
@@ -305,6 +303,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       ? editRecord.countries ?? [{ flag: editRecord.countryFlag, name: editRecord.countryName }]
       : []
   );
+  // 국가 섹션 접힘 상태 — 국가가 이미 있으면(편집 모드 등) 접힌 칩으로 시작, 없으면 펼침
+  // (selectedCountries가 위에서 선언되므로 TDZ 문제 없음)
+  const [countryExpanded, setCountryExpanded] = useState(() => selectedCountries.length === 0);
   const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
     editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
   );
@@ -1302,82 +1303,84 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               onAddPress={selectMedia}
             />
 
-            {/* 사진이 있으면 추가 버튼·자동불러오기·썸네일 스트립 표시 */}
-            {medias.length > 0 && (
-              <View style={{ marginTop: 12 }}>
-                {/* 기간으로 자동 불러오기 버튼 */}
-                <TouchableOpacity
-                  style={s.autoLoadBtn}
-                  onPress={() => {
-                    setAutoLoadStart(startDate);
-                    setAutoLoadEnd(endDate);
-                    setAutoLoadCalendarVisible(true);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                    <CalendarIcon size={16} color={skinAccent.accent} />
-                    <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
-                  </View>
-                </TouchableOpacity>
+            {/* 기간으로 자동 불러오기 버튼 (사진 0장일 때도 표시) */}
+            <View style={{ marginTop: 12 }}>
+              <TouchableOpacity
+                style={s.autoLoadBtn}
+                onPress={() => {
+                  setAutoLoadStart(startDate);
+                  setAutoLoadEnd(endDate);
+                  setAutoLoadCalendarVisible(true);
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                  <CalendarIcon size={16} color={skinAccent.accent} />
+                  <Text style={[s.autoLoadBtnText, { color: skinAccent.accent }]}>{t('newRecord.autoLoadByPeriod')}</Text>
+                </View>
+              </TouchableOpacity>
 
-                {loadingMedia && (
-                  <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
-                    <ActivityIndicator color={skinAccent.accent} size="large" />
-                    {cloudProgress && (
-                      <>
-                        <Text style={s.cloudProgressText}>
-                          {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
-                        </Text>
-                        <TouchableOpacity
-                          style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
-                          onPress={() => { cloudCancelRef.current = true; }}
-                          activeOpacity={0.7}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('newRecord.cloudCancelA11y')}
-                        >
-                          <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
-                        </TouchableOpacity>
-                      </>
-                    )}
-                  </View>
-                )}
+              {loadingMedia && (
+                <View style={{ marginVertical: 12, alignItems: 'center', gap: 6 }}>
+                  <ActivityIndicator color={skinAccent.accent} size="large" />
+                  {cloudProgress && (
+                    <>
+                      <Text style={s.cloudProgressText}>
+                        {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
+                      </Text>
+                      <TouchableOpacity
+                        style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
+                        onPress={() => { cloudCancelRef.current = true; }}
+                        activeOpacity={0.7}
+                        accessibilityRole="button"
+                        accessibilityLabel={t('newRecord.cloudCancelA11y')}
+                      >
+                        <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              )}
 
-                {/* 갤러리 선택 버튼 */}
-                <TouchableOpacity
-                  style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
-                  onPress={selectMedia}
-                  activeOpacity={0.8}
-                  disabled={medias.length >= maxRecordPhotos}
-                >
-                  <View style={s.addMediaLeft}>
-                    <DesignerCameraIcon size={20} color={skinAccent.accent} />
-                    <View>
-                      <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
-                      <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
+              {/* 갤러리·썸네일은 사진 있을 때만 표시 */}
+              {medias.length > 0 && (
+                <>
+                  {/* 갤러리 선택 버튼 */}
+                  <TouchableOpacity
+                    style={[s.addMediaBtn, { borderColor: skinAccent.tint(0.35) }, medias.length >= maxRecordPhotos && s.addMediaBtnDisabled]}
+                    onPress={selectMedia}
+                    activeOpacity={0.8}
+                    disabled={medias.length >= maxRecordPhotos}
+                  >
+                    <View style={s.addMediaLeft}>
+                      <DesignerCameraIcon size={20} color={skinAccent.accent} />
+                      <View>
+                        <Text style={s.addMediaText}>{t('newRecord.selectFromGallery')}</Text>
+                        <Text style={s.addMediaSub}>{t('newRecord.maxPhotosSub', { max: maxRecordPhotos })}</Text>
+                      </View>
                     </View>
-                  </View>
-                  <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
-                    <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
-                  </View>
-                </TouchableOpacity>
+                    <View style={[s.addMediaCountBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                      <Text style={[s.addMediaCountTxt, { color: skinAccent.accent }]}>{medias.length}/{maxRecordPhotos}</Text>
+                    </View>
+                  </TouchableOpacity>
 
-                {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
-                <DraggablePhotoGrid
-                  medias={medias}
-                  mediaPrivacy={mediaPrivacy}
-                  onReorder={handleReorderMedias}
-                  onRemove={removeMedia}
-                  onOpenPrivacyModal={setPrivacyModalIndex}
-                  onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
-                  THUMB_SIZE={THUMB_SIZE}
-                  representativePhoto={representativePhoto}
-                  onSetRepresentative={(uri) => {
-                    setRepresentativePhoto(prev => prev === uri ? null : uri);
-                  }}
-                />
-              </View>
-            )}
+                  {/* 썸네일 그리드 (드래그 앤 드롭 정렬 가능) */}
+                  <DraggablePhotoGrid
+                    medias={medias}
+                    mediaPrivacy={mediaPrivacy}
+                    onReorder={handleReorderMedias}
+                    onRemove={removeMedia}
+                    onOpenPrivacyModal={setPrivacyModalIndex}
+                    onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
+                    THUMB_SIZE={THUMB_SIZE}
+                    representativePhoto={representativePhoto}
+                    onSetRepresentative={(uri) => {
+                      setRepresentativePhoto(prev => prev === uri ? null : uri);
+                    }}
+                  />
+                </>
+              )}
+            </View>
           </View>
 
           {/* ══════════════════ ② 국가 섹션 ══════════════════ */}
