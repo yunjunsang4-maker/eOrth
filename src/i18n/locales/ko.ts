@@ -859,6 +859,13 @@ const ko = {
     visFriends: '친구만',
     visNeighbors: '이웃만',
     visPrivate: '나만 보기',
+    photoTextLabel: '이 사진의 글 ({{n}}/{{total}})',
+    photoTextPlaceholder: '이 순간의 이야기를 적어보세요',
+    photoEmpty: '사진을 추가해 시작해보세요',
+    repBadge: '대표',
+    sectionPhoto: '사진',
+    sectionCountry: '국가 선택',
+    sectionTripInfo: '여행 정보',
   },
   blog: {
     noFollowedFriends: '아직 팔로우한 친구가 없어요',

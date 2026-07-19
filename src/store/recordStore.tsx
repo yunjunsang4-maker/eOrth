@@ -87,6 +87,9 @@ export interface TravelRecord {
   companions?: string[];
   companionFriends?: string[];
   medias?: string[];
+  // 사진별 글 — medias와 index가 짝인 병렬 배열(빈 글은 ''). 피드 한 화면 개편(2026-07-19)부터 사용.
+  // 사진 추가·삭제·재정렬 시 반드시 medias와 함께 조작할 것. 옛 기록엔 없음(단일 memo 렌더 유지).
+  photoTexts?: string[];
   // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
   albumSections?: { id: string; title: string; count: number }[];
   // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)

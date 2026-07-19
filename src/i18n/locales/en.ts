@@ -858,6 +858,13 @@ const en = {
     visFriends: 'Friends only',
     visNeighbors: 'Neighbors only',
     visPrivate: 'Only me',
+    photoTextLabel: 'Text for this photo ({{n}}/{{total}})',
+    photoTextPlaceholder: 'Write about this moment',
+    photoEmpty: 'Add photos to get started',
+    repBadge: 'Cover',
+    sectionPhoto: 'Photos',
+    sectionCountry: 'Country',
+    sectionTripInfo: 'Trip info',
   },
   blog: {
     noFollowedFriends: "You haven't followed any friends yet",
