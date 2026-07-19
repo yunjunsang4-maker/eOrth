@@ -239,7 +239,8 @@ var CITY_TO_PROV = {
   GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Peloponnese,WesternGreeceand','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Peloponnese,WesternGreeceand'},
   AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'},
   PRT:{lisboncity:'Lisboa',lisbon:'Lisboa',portocity:'Porto',sintra:'Lisboa',lagos:'Faro',cabodaroca:'Lisboa',colares:'Lisboa','리스본':'Lisboa','포르투':'Porto','신트라':'Lisboa','라구스':'Faro','호카곶':'Lisboa'},
-  NLD:{amsterdam:'Noord-Holland',rotterdam:'Zuid-Holland',zaanseschans:'Noord-Holland',zaanstad:'Noord-Holland',thehague:'Zuid-Holland',denhaag:'Zuid-Holland',sgravenhage:'Zuid-Holland','암스테르담':'Noord-Holland','로테르담':'Zuid-Holland','잔세스칸스':'Noord-Holland','헤이그':'Zuid-Holland'}
+  NLD:{amsterdam:'Noord-Holland',rotterdam:'Zuid-Holland',zaanseschans:'Noord-Holland',zaanstad:'Noord-Holland',thehague:'Zuid-Holland',denhaag:'Zuid-Holland',sgravenhage:'Zuid-Holland','암스테르담':'Noord-Holland','로테르담':'Zuid-Holland','잔세스칸스':'Noord-Holland','헤이그':'Zuid-Holland'},
+  THA:{pattaya:'ChonBuri',banglamung:'ChonBuri',bangkok:'BangkokMetropolis','방콕':'BangkokMetropolis','치앙마이':'ChiangMai','푸켓':'Phuket','파타야':'ChonBuri'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -506,7 +507,8 @@ function render(geo){
     GRC:['Athens','Santorini','Mykonos','Meteora','Zakynthos','Crete'],
     AUT:['Wien','SalzburgCity','Hallstatt','Innsbruck'],
     PRT:['LisbonCity','PortoCity','Sintra','Lagos','CaboDaRoca'],
-    NLD:['Amsterdam','Rotterdam','ZaanseSchans','TheHague']
+    NLD:['Amsterdam','Rotterdam','ZaanseSchans','TheHague'],
+    THA:['BangkokMetropolis','ChiangMai','Phuket','Pattaya']
   };
   highlight=HL[CODE]||[];
 
