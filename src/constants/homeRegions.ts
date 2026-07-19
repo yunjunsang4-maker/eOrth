@@ -51,6 +51,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   MEX: { cancun: 'QuintanaRoo', benitojuarez: 'QuintanaRoo', playadelcarmen: 'QuintanaRoo', solidaridad: 'QuintanaRoo', tulum: 'QuintanaRoo', guadalajara: 'Jalisco', oaxacacity: 'Oaxaca', oaxacadejuarez: 'Oaxaca', guanajuatocity: 'Guanajuato' },
   CAN: { vancouver: 'BritishColumbia', greatervancouver: 'BritishColumbia', toronto: 'Ontario', montreal: 'Québec', niagarafalls: 'Ontario', quebeccity: 'Québec' },
   BRA: { riodejaneirocity: 'RiodeJaneiro', saopaulocity: 'SãoPaulo', salvador: 'Bahia', manaus: 'Amazonas', fozdoiguacu: 'Paraná', iguazufalls: 'Paraná' },
+  COL: { medellin: 'Antioquia', cartagena: 'Bolívar', cartagenadeindias: 'Bolívar', cali: 'ValledelCauca', santiagodecali: 'ValledelCauca', salento: 'Quindío' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
