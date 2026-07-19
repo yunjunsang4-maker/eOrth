@@ -22,10 +22,15 @@ export default function PhotoPagerSection({
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
-  // 사진 삭제 등으로 배열이 줄면 activeIdx 보정
+  // 사진 삭제 등으로 배열이 줄면 index와 스크롤 오프셋을 함께 보정
   useEffect(() => {
-    if (activeIdx > medias.length - 1) setActiveIdx(Math.max(0, medias.length - 1));
-  }, [medias.length, activeIdx]);
+    if (activeIdx > medias.length - 1) {
+      const corrected = Math.max(0, medias.length - 1);
+      setActiveIdx(corrected);
+      scrollRef.current?.scrollTo({ x: corrected * PAGE_W, animated: false });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [medias.length]); // activeIdx는 의도적으로 제외 — 보정 트리거는 배열 축소뿐
 
   if (medias.length === 0) {
     return (
