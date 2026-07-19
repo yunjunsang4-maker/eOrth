@@ -20,6 +20,7 @@ import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
+import { useSkinAccent } from '../constants/skinTheme';
 import { isHandleAvailable } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -76,6 +77,7 @@ type Props = RootStackScreenProps<'BasicInfo'>;
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const {
     setProfilePhoto,
     profilePhoto,
@@ -326,7 +328,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
             <View style={styles.stayToggleRow}>
               <Text style={styles.inputLabel}>{t('basicInfo.stayToggle')}</Text>
               <Switch value={stayOn} onValueChange={setStayOn}
-                trackColor={{ false: '#3A3A46', true: '#6B21A8' }} thumbColor={stayOn ? '#BF85FC' : '#f4f3f4'} />
+                trackColor={{ false: '#3A3A46', true: skinAccent.accent }} thumbColor="#FFFFFF" />
             </View>
             {stayOn && (
               <>
