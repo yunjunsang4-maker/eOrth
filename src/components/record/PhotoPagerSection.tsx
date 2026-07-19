@@ -2,7 +2,7 @@
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 
 const SCREEN_W = Dimensions.get('window').width;
@@ -104,10 +104,19 @@ export default function PhotoPagerSection({
           <Text style={[st.actionBtnText, hasPrivacy && st.actionBtnTextPrivacy]}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
-        {/* 삭제 버튼 */}
+        {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}
         <TouchableOpacity
           style={[st.actionBtn, st.actionBtnDelete]}
-          onPress={() => onRemove(activeIdx)}
+          onPress={() => {
+            Alert.alert(
+              t('newRecord.deletePhotoTitle'),
+              t('newRecord.deletePhotoDesc'),
+              [
+                { text: t('common.cancel'), style: 'cancel' },
+                { text: t('newRecord.actionDelete'), style: 'destructive', onPress: () => onRemove(activeIdx) },
+              ],
+            );
+          }}
           activeOpacity={0.75}
           accessibilityRole="button"
           accessibilityLabel={t('newRecord.actionDelete')}

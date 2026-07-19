@@ -867,6 +867,8 @@ const ko = {
     repBadge: '대표',
     actionPrivacy: '비공개',
     actionDelete: '삭제',
+    deletePhotoTitle: '이 사진을 삭제할까요?',
+    deletePhotoDesc: '사진과 함께 이 사진에 쓴 글도 지워져요.',
     sectionPhoto: '사진',
     sectionCountry: '국가 선택',
     sectionTripInfo: '여행 정보',

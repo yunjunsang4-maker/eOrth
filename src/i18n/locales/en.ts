@@ -866,6 +866,8 @@ const en = {
     repBadge: 'Cover',
     actionPrivacy: 'Privacy',
     actionDelete: 'Delete',
+    deletePhotoTitle: 'Delete this photo?',
+    deletePhotoDesc: 'The text written for this photo will be deleted too.',
     sectionPhoto: 'Photos',
     sectionCountry: 'Country',
     sectionTripInfo: 'Trip info',
