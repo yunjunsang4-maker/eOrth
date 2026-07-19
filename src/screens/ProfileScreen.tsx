@@ -2090,7 +2090,13 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 <Text style={thumbSt.mainTitle}>{displayTrips[0].countryFlag} {displayTrips[0].title}</Text>
                 <Text style={thumbSt.mainDate}>{displayTrips[0].stayPeriod ?? displayTrips[0].date}</Text>
               </View>
-              {/* 기록 형식 아이콘 배지는 사용자 결정으로 카드에서 제거됨(2026-07-19) */}
+              <View style={thumbSt.mainBadges}>
+                {Array.from(new Set(displayTrips[0].records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                  <LiquidPressable key={vt} style={thumbSt.mainBadge} intensity={0.15}>
+                    {VIEW_TYPE_BADGE[vt] || null}
+                  </LiquidPressable>
+                ))}
+              </View>
               {momentsByTrip.has(displayTrips[0].id) && (
                 <TouchableOpacity
                   onPress={() => { if (mergeMode) return; setMomentSheetTrip(displayTrips[0]); }}
@@ -2171,7 +2177,13 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   )}
                   <Text style={thumbSt.gridTitle} {...andFitText}>{trip.countryFlag} {trip.title}</Text>
                   <Text style={thumbSt.gridDate}>{trip.stayPeriod ?? trip.date}</Text>
-                  {/* 기록 형식 아이콘 배지는 사용자 결정으로 카드에서 제거됨(2026-07-19) */}
+                  <View style={thumbSt.gridBadges}>
+                    {Array.from(new Set(trip.records.map((r) => r.viewType || 'feed'))).map((vt) => (
+                      <LiquidPressable key={vt} style={thumbSt.gridBadge} intensity={0.15}>
+                        {VIEW_TYPE_BADGE[vt] || null}
+                      </LiquidPressable>
+                    ))}
+                  </View>
                   {momentsByTrip.has(trip.id) && (
                     <TouchableOpacity
                       onPress={() => { if (mergeMode) return; setMomentSheetTrip(trip); }}
