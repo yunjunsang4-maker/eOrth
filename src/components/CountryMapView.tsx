@@ -236,7 +236,8 @@ var CITY_TO_PROV = {
   FRA:{paris:'Île-de-France',nice:"Provence-Alpes-Côted'Azur",lyon:'Auvergne-Rhône-Alpes',marseille:"Provence-Alpes-Côted'Azur",bordeaux:'Nouvelle-Aquitaine',strasbourg:'GrandEst',toulouse:'Occitanie',lille:'Hauts-de-France',nantes:'PaysdelaLoire',montpellier:'Occitanie',cannes:"Provence-Alpes-Côted'Azur",'파리':'Île-de-France','니스':"Provence-Alpes-Côted'Azur",'리옹':'Auvergne-Rhône-Alpes','마르세유':"Provence-Alpes-Côted'Azur",'보르도':'Nouvelle-Aquitaine','스트라스부르':'GrandEst','툴루즈':'Occitanie','릴':'Hauts-de-France','낭트':'PaysdelaLoire','몽펠리에':'Occitanie','칸':"Provence-Alpes-Côted'Azur"},
   ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'},
   TUR:{cappadocia:'Nevsehir',pamukkale:'Denizli',fethiye:'Mugla','카파도키아':'Nevsehir','파묵칼레':'Denizli','페티예':'Mugla'},
-  GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Peloponnese,WesternGreeceand','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Peloponnese,WesternGreeceand'}
+  GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Peloponnese,WesternGreeceand','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Peloponnese,WesternGreeceand'},
+  AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -500,7 +501,8 @@ function render(geo){
     FRA:['Paris','Nice','Lyon','Marseille','Bordeaux','Strasbourg','Toulouse','Lille','Nantes','Montpellier','Cannes'],
     ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa','Turin','Bologna','Genoa','Palermo','Bari'],
     TUR:['Istanbul','Antalya','Ankara','Cappadocia','Pamukkale','Fethiye'],
-    GRC:['Athens','Santorini','Mykonos','Meteora','Zakynthos','Crete']
+    GRC:['Athens','Santorini','Mykonos','Meteora','Zakynthos','Crete'],
+    AUT:['Wien','SalzburgCity','Hallstatt','Innsbruck']
   };
   highlight=HL[CODE]||[];
 

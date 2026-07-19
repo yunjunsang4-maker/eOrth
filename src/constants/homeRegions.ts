@@ -37,6 +37,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   ITA: { rome: 'Lazio', milan: 'Lombardia', florence: 'Toscana', venice: 'Veneto', naples: 'Campania', verona: 'Veneto', pisa: 'Toscana', turin: 'Piemonte', bologna: 'Emilia-Romagna', genoa: 'Liguria', palermo: 'Sicily', bari: 'Apulia' },
   TUR: { cappadocia: 'Nevsehir', pamukkale: 'Denizli', fethiye: 'Mugla' },
   GRC: { athens: 'Attica', santorini: 'Aegean', thira: 'Aegean', mykonos: 'Aegean', meteora: 'ThessalyandCentralGreece', kalambaka: 'ThessalyandCentralGreece', zakynthos: 'Peloponnese,WesternGreeceand' },
+  AUT: { salzburgcity: 'Salzburg', hallstatt: 'Oberösterreich', innsbruck: 'Tirol', vienna: 'Wien' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
