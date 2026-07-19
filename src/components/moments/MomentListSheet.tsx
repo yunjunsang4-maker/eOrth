@@ -1,6 +1,10 @@
-// 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록 + 길게 눌러 삭제.
+// 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록.
+// 삭제: 오른쪽 스와이프(즉시) 또는 길게 눌러 확인 후.
 import React from 'react';
 import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+// RN Modal은 별도 네이티브 뷰 계층이라 앱 루트의 GestureHandlerRootView가 닿지 않는다 — 시트 내부에 자체 루트 필요
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useTranslation } from 'react-i18next';
 import { useMoments } from '../../store/momentStore';
 import type { TravelMoment } from '../../store/momentStore';
@@ -29,7 +33,7 @@ export default function MomentListSheet({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={st.root} accessibilityViewIsModal>
+      <GestureHandlerRootView style={st.root} accessibilityViewIsModal>
         <View style={st.handle} />
         <View style={st.titleRow}>
           <Text style={st.title}>✨ {t('moments.sheetTitle')}</Text>
@@ -43,7 +47,19 @@ export default function MomentListSheet({
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: 16, flexGrow: 1 }}
           renderItem={({ item }) => (
-            <MomentCard moment={item} onLongPress={() => confirmDelete(item)} />
+            // 오른쪽 스와이프 → 왼쪽에서 빨간 삭제 영역이 드러나고, 끝까지 열리면 즉시 삭제
+            <ReanimatedSwipeable
+              renderLeftActions={() => (
+                <View style={st.deleteAction}>
+                  <Text style={st.deleteActionText}>🗑️ {t('moments.deleteConfirm')}</Text>
+                </View>
+              )}
+              onSwipeableOpen={(direction) => { if (direction === 'left') removeMoment(item.id); }}
+              leftThreshold={80}
+              overshootLeft={false}
+            >
+              <MomentCard moment={item} onLongPress={() => confirmDelete(item)} />
+            </ReanimatedSwipeable>
           )}
           ListEmptyComponent={
             <View style={st.emptyWrap}>
@@ -52,7 +68,7 @@ export default function MomentListSheet({
             </View>
           }
         />
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }
@@ -68,4 +84,10 @@ const st = StyleSheet.create({
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
   emptyEmoji: { fontSize: 34, opacity: 0.6 },
   emptyText: { color: '#A1A1B0', fontSize: 13, textAlign: 'center' },
+  // 스와이프 삭제 영역 — 카드와 같은 라운드·마진(marginBottom 10)으로 뒤에서 드러난다
+  deleteAction: {
+    flex: 1, backgroundColor: '#FF3B30', borderRadius: 14, marginBottom: 10,
+    justifyContent: 'center', alignItems: 'flex-start', paddingLeft: 18,
+  },
+  deleteActionText: { color: '#FFFFFF', fontSize: 13, fontWeight: '700' },
 });
