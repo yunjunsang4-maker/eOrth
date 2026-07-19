@@ -1298,7 +1298,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           <View
             onLayout={(e) => { sectionYRef.current.photo = e.nativeEvent.layout.y; }}
           >
-            <Text style={s.sectionLabel}>📷 {t('newRecord.sectionPhoto')}</Text>
+            <Text style={s.sectionLabel}>{t('newRecord.sectionPhoto')}</Text>
 
             {/* 큰 페이저 + 사진별 글 입력 */}
             <PhotoPagerSection
@@ -1394,7 +1394,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             style={{ marginTop: 24 }}
             onLayout={(e) => { sectionYRef.current.country = e.nativeEvent.layout.y; }}
           >
-            <Text style={s.sectionLabel}>🌍 {t('newRecord.sectionCountry')}</Text>
+            <Text style={s.sectionLabel}>{t('newRecord.sectionCountry')}</Text>
 
             {/* 국가가 선택됐고 접혀 있으면 요약 칩만 표시 */}
             {selectedCountries.length > 0 && !countryExpanded ? (
@@ -1560,7 +1560,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             style={{ marginTop: 24 }}
             onLayout={(e) => { sectionYRef.current.info = e.nativeEvent.layout.y; }}
           >
-            <Text style={s.sectionLabel}>🗓️ {t('newRecord.sectionTripInfo')}</Text>
+            <Text style={s.sectionLabel}>{t('newRecord.sectionTripInfo')}</Text>
 
             <View style={s.step3Wrap}>
               {/* 국가별 탭 (2개국 이상) */}
