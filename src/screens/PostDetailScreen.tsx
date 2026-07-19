@@ -595,13 +595,14 @@ function SnapViewerModal({
 }
 
 function SnapStoryViewer({
-  initialPostId, records, navigation, toggleLike, deleteRecord, markSnapViewed,
+  initialPostId, records, navigation, toggleLike, deleteRecord, archiveRecord, markSnapViewed,
 }: {
   initialPostId: string;
   records: TravelRecord[];
   navigation: any;
   toggleLike: (id: string) => void;
   deleteRecord: (id: string) => void;
+  archiveRecord: (id: string) => void;
   markSnapViewed: (id: string) => void;
 }) {
   const { t } = useTranslation();
@@ -1044,6 +1045,8 @@ function SnapStoryViewer({
     setTimeout(() => setToastMsg(''), 2000);
   };
   const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
+  // 보관하기 — 일반 게시물 메뉴(handleArchive)와 동일 UX: 토스트 후 닫기
+  const handleArchive = () => { setMenuVisible(false); archiveRecord(currentSnap.id); setToastMsg(t('social.archivedToast')); setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000); };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
   // 시안(Group.svg): 두 줄 텍스트가 든 말풍선 아웃라인 — 스냅 스토리 전용 댓글 아이콘
@@ -1186,7 +1189,11 @@ function SnapStoryViewer({
               <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             {isMyPost ? (
-              <><View style={s.menuSectionDivider} />
+              <><View style={s.menuDivider} />
+              <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
+                <ArchiveIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
+              </TouchableOpacity>
+              <View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
                 <TrashIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
               </TouchableOpacity></>
@@ -1608,6 +1615,7 @@ export default function PostDetailScreen() {
         navigation={navigation}
         toggleLike={toggleLike}
         deleteRecord={deleteRecord}
+        archiveRecord={archiveRecord}
         markSnapViewed={markSnapViewed}
       />
     );
