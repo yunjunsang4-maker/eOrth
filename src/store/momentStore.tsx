@@ -5,7 +5,7 @@ import { usePersistence, STORE_KEYS } from './persist';
 
 export interface TravelMoment {
   id: string;
-  text: string;          // 한 줄 메모 (필수)
+  text: string;          // 한 줄 메모 (무드만 있으면 빈 문자열 허용 — 텍스트·무드 중 하나는 필수)
   mood?: string;         // 이모지 1개 (선택)
   photoUri?: string;     // 로컬 사진 1장 (선택) — 서버 백업 제외
   countryCode?: string;  // ISO2 대문자 (매칭용, 역지오코딩 실패 시 없음)
@@ -71,15 +71,15 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
       // 서버에만 있는 항목을 추가, 로컬에 있는 항목은 로컬값 그대로 유지
       const merged = [...local];
       for (const r of remote) {
-        // 서버 데이터 방어: id·text·createdAt 필수 필드 타입 검증 후 추가
+        // 서버 데이터 방어: id·createdAt 타입 + 내용(텍스트 또는 무드) 존재 검증 후 추가
         if (
           !r ||
           typeof r !== 'object' ||
           typeof (r as any).id !== 'string' ||
           !(r as any).id ||
           typeof (r as any).text !== 'string' ||
-          !(r as any).text ||
-          typeof (r as any).createdAt !== 'number'
+          typeof (r as any).createdAt !== 'number' ||
+          (!(r as any).text && !(r as any).mood)
         ) continue;
         if (!localById.has((r as any).id)) {
           merged.push(r as TravelMoment); // photoUri 없는 채로 추가

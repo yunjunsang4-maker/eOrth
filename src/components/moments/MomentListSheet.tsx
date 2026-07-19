@@ -18,7 +18,7 @@ export default function MomentListSheet({
   const { removeMoment } = useMoments();
 
   const confirmDelete = (m: TravelMoment) => {
-    Alert.alert(t('moments.deleteTitle'), m.text, [
+    Alert.alert(t('moments.deleteTitle'), m.text || m.mood || '', [
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('moments.deleteConfirm'), style: 'destructive', onPress: () => removeMoment(m.id) },
     ]);

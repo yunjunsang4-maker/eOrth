@@ -32,7 +32,10 @@ export default function MomentCard({
         {moment.mood ? <Text style={st.mood}>{moment.mood}</Text> : null}
         {moment.photoUri ? <Image source={{ uri: moment.photoUri }} style={st.thumb} /> : null}
       </View>
-      <Text style={st.text} numberOfLines={compact ? 3 : undefined}>{moment.text}</Text>
+      {/* 무드만 있는 순간은 빈 텍스트 줄을 그리지 않는다 */}
+      {moment.text ? (
+        <Text style={st.text} numberOfLines={compact ? 3 : undefined}>{moment.text}</Text>
+      ) : null}
       <Text style={st.meta}>
         {place ? `📍 ${place} · ` : ''}{formatMomentTime(moment.createdAt)}
       </Text>

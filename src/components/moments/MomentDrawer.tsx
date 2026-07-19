@@ -48,7 +48,7 @@ export default function MomentDrawer({ moments }: { moments: TravelMoment[] }) {
               {enlarged.photoUri ? (
                 <Image source={{ uri: enlarged.photoUri }} style={st.bigPhoto} />
               ) : null}
-              <Text style={st.bigText}>{enlarged.text}</Text>
+              {enlarged.text ? <Text style={st.bigText}>{enlarged.text}</Text> : null}
               <Text style={st.bigMeta}>
                 {(enlarged.regionName || enlarged.countryName)
                   ? `📍 ${enlarged.regionName || enlarged.countryName} · `

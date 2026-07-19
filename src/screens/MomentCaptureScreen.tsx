@@ -1,5 +1,5 @@
 // 순간 캡처 시트 — 알림 탭으로만 진입(스펙: 알림 단독 진입점).
-// 텍스트(필수) + 무드 이모지(선택) + 사진 1장(선택) + 자동 시간·위치. 2초 안에 입력 시작이 목표.
+// 텍스트·무드 중 하나(필수) + 사진 1장(선택) + 자동 시간·위치. 2초 안에 입력 시작이 목표.
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
@@ -130,11 +130,13 @@ export default function MomentCaptureScreen() {
     setPhotoUri(await persistMomentPhoto(uri));
   };
 
+  // 텍스트 또는 무드 중 하나만 있어도 저장 가능 (감정만 남기는 캡처 허용)
+  const canSave = !!text.trim() || !!mood;
+
   const save = () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
+    if (!canSave) return;
     addMoment({
-      text: trimmed,
+      text: text.trim(),
       mood: mood ?? undefined,
       photoUri: photoUri ?? undefined,
       countryCode: geo.code,
@@ -187,9 +189,9 @@ export default function MomentCaptureScreen() {
               </View>
             ) : null}
             <TouchableOpacity
-              style={[st.saveBtn, !text.trim() && { opacity: 0.4 }]}
+              style={[st.saveBtn, !canSave && { opacity: 0.4 }]}
               onPress={save}
-              disabled={!text.trim()}
+              disabled={!canSave}
             >
               <Text style={st.saveText}>{t('moments.save')}</Text>
             </TouchableOpacity>
