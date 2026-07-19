@@ -353,6 +353,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (mapped && !selectedCountries.some(c => c.name === mapped.name)) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSelectedCountries(prev => [...prev, mapped]);
+        setCountryExpanded(false); // 지구본 등 경유 진입도 검색 선택과 동일하게 칩으로 접힘
       }
       if (params.selectedCountry.region) {
         setSelectedRegion({
