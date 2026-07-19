@@ -4,6 +4,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { LockClosedIcon } from '../icons';
 
 const SCREEN_W = Dimensions.get('window').width;
 const PAGE_W = SCREEN_W; // 화면 폭 전체(최대한 크게)
@@ -100,7 +101,7 @@ export default function PhotoPagerSection({
           accessibilityRole="button"
           accessibilityLabel={t('newRecord.actionPrivacy')}
         >
-          <Text style={[st.actionBtnIcon, hasPrivacy && st.actionBtnIconPrivacy]}>🔒</Text>
+          <LockClosedIcon size={13} color={hasPrivacy ? '#BF85FC' : '#A1A1B0'} />
           <Text style={[st.actionBtnText, hasPrivacy && st.actionBtnTextPrivacy]}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
@@ -186,7 +187,6 @@ const st = StyleSheet.create({
   },
   actionBtnIcon: { fontSize: 13, color: '#A1A1B0' },
   actionBtnIconActive: { color: '#BF85FC' },
-  actionBtnIconPrivacy: { color: '#BF85FC' },
   actionBtnText: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
   actionBtnTextActive: { color: '#BF85FC' },
   actionBtnTextPrivacy: { color: '#BF85FC' },
