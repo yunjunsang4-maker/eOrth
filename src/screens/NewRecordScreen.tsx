@@ -804,13 +804,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
   // OTHER_CURRENCIES 목록은 components/record/CurrencyPickerModal 로 이동
+  // 라벨 이모지 제거 — 버튼에 SVG 날씨 아이콘(WEATHER_ICON_MAP)이 이미 있어 이중 표시였음
   const WEATHER_OPTIONS = [
-    { label: `☀️ ${t('newRecord.wSunny')}`,     value: '맑음' },
-    { label: `🌤️ ${t('newRecord.wPartly')}`, value: '부분흐림' },
-    { label: `⛅ ${t('newRecord.wCloudy')}`,     value: '흐림' },
-    { label: `🌧️ ${t('newRecord.wRain')}`,       value: '비' },
-    { label: `❄️ ${t('newRecord.wSnow')}`,       value: '눈' },
-    { label: `💨 ${t('newRecord.wWind')}`,     value: '바람' },
+    { label: t('newRecord.wSunny'),  value: '맑음' },
+    { label: t('newRecord.wPartly'), value: '부분흐림' },
+    { label: t('newRecord.wCloudy'), value: '흐림' },
+    { label: t('newRecord.wRain'),   value: '비' },
+    { label: t('newRecord.wSnow'),   value: '눈' },
+    { label: t('newRecord.wWind'),   value: '바람' },
   ];
   const FLIGHT_OPTIONS  = ['직항', '경유'];
   const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
