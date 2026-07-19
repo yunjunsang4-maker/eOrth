@@ -571,6 +571,23 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // Step 2 - 미디어 (다국가여도 사진은 여행 전체 공용 — 국가 구분 없이 한 번에 입력)
   const [medias,            setMedias]           = useState<string[]>(editRecord?.medias ?? []);
+
+  // 사진별 글 — medias와 index 짝. 편집 모드: 기존 photoTexts 복원.
+  // 옛 기록(photoTexts 없음)이면 대표 사진 위치에 memo를 시드해 새 구조로 자연 전환.
+  // medias 초기값이 editRecord.medias 이므로 길이가 항상 일치한다.
+  const [photoTexts, setPhotoTexts] = useState<string[]>(() => {
+    if (!editRecord) return [];
+    const base = (editRecord.medias ?? []).map((_, i) => editRecord.photoTexts?.[i] ?? '');
+    if (!editRecord.photoTexts && editRecord.memo) {
+      // representativePhotoSource는 medias의 압축본 uri와 일치 → indexOf 매칭 가능.
+      // representativePhoto(고해상도)는 medias uri와 다를 수 있으므로 우선순위를 Source에 둔다.
+      const repUri = editRecord.representativePhotoSource ?? editRecord.representativePhoto ?? '';
+      const repIdx = repUri ? Math.max(0, (editRecord.medias ?? []).indexOf(repUri)) : 0;
+      if (base.length > 0) base[repIdx] = editRecord.memo;
+    }
+    return base;
+  });
+
   const [mediaPrivacy,      setMediaPrivacy]      = useState<Record<number, string[]>>(
     editRecord?.mediaPrivacy ?? {}
   );
@@ -626,6 +643,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         setLoadingMedia(true);
         const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
         setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
+        // 추가된 사진 수만큼 빈 글 슬롯 append
+        setPhotoTexts(prev => [...prev, ...compressed.map(() => '')]);
       }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
@@ -641,6 +660,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       setRepresentativePhoto(null);
     }
     setMedias(prev => prev.filter((_, i) => i !== index));
+    // 삭제된 인덱스의 글 슬롯도 함께 제거
+    setPhotoTexts(prev => prev.filter((_, i) => i !== index));
     // Realign mediaPrivacy indices after deletion
     setMediaPrivacy(prev => {
       const updatedPrivacy: Record<number, string[]> = {};
@@ -664,7 +685,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     updatedMedias.splice(toIdx, 0, movedMedia);
     setMedias(updatedMedias);
 
-    // 2. Reorder mediaPrivacy object to align with new indices
+    // 2. Reorder photoTexts — medias와 동일한 splice 변환 미러링
+    setPhotoTexts(prev => {
+      const updated = [...prev];
+      const [movedText] = updated.splice(fromIdx, 1);
+      updated.splice(toIdx, 0, movedText);
+      return updated;
+    });
+
+    // 3. Reorder mediaPrivacy object to align with new indices
     setMediaPrivacy(prev => {
       const updatedPrivacy: Record<number, string[]> = {};
       Object.keys(prev).forEach(keyStr => {
@@ -1062,6 +1091,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
+      // 추가된 사진 수만큼 빈 글 슬롯 append (confirmMediaPickerSelection)
+      setPhotoTexts((prev) => [...prev, ...resolvedUris.map(() => '')]);
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
       if (resolvedUris.length === 0) {
@@ -1175,6 +1206,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
+      // 추가된 사진 수만큼 빈 글 슬롯 append (loadMediaByDate)
+      setPhotoTexts((prev) => [...prev, ...resolvedUris.map(() => '')]);
 
       // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
       if (resolvedUris.length === 0) {
