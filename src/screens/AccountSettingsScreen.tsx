@@ -18,6 +18,7 @@ import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEm
 import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, CalendarIcon, PersonIcon } from '../components/icons';
+import { useSkinAccent } from '../constants/skinTheme';
 import type { Gender } from '../store/settingsStore';
 
 const COLORS = {
@@ -116,6 +117,7 @@ const CardRow = ({
 
 export default function AccountSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 토글 트랙 색 — 설정 전역 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender } = useSettings();
   const genderLabel = (g: Gender) =>
     g === 'male' ? t('basicInfo.genderMale') : g === 'female' ? t('basicInfo.genderFemale') : t('accountSettings.genderUnset');
@@ -502,7 +504,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
               <Switch
                 value={googleLinked}
                 onValueChange={() => toggleSocial('Google')}
-                trackColor={{ false: COLORS.divider, true: '#4285F4' }}
+                trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
                 thumbColor={COLORS.white}
               />
             }
@@ -517,7 +519,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
               <Switch
                 value={appleLinked}
                 onValueChange={() => toggleSocial('Apple')}
-                trackColor={{ false: COLORS.divider, true: '#555' }}
+                trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
                 thumbColor={COLORS.white}
               />
             }

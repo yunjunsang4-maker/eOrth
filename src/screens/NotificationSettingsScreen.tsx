@@ -69,8 +69,8 @@ const ToggleRow = ({
           value={displayValue}
           onValueChange={onValueChange}
           disabled={disabled}
-          trackColor={{ false: COLORS.divider, true: skinAccent.accentDeep }}
-          thumbColor={skinAccent.accent}
+          trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
+          thumbColor="#FFFFFF"
           ios_backgroundColor={COLORS.divider}
         />
       </View>
