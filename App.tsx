@@ -24,6 +24,8 @@ import DMToastHost from './src/components/DMToastHost';
 import ToastHost from './src/components/ToastHost';
 import ProfileSync from './src/components/ProfileSync';
 import AppStateSync from './src/components/AppStateSync';
+import PushTokenSync from './src/components/PushTokenSync';
+import ReturnDetector from './src/components/ReturnDetector';
 
 export default function App() {
   // 알림 탭 → 화면 이동 (snap / moment 분기)
@@ -41,6 +43,23 @@ export default function App() {
         if (nav?.isReady()) {
           nav.navigate('MomentCapture');
           Notifications.clearLastNotificationResponseAsync();
+        }
+      }
+      // 푸시 알림 탭 라우팅 — like / comment / friend_post → 게시물 상세
+      if (
+        (data?.type === 'like' || data?.type === 'comment' || data?.type === 'friend_post') &&
+        data?.postId
+      ) {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) {
+          nav.navigate('PostDetail', { postId: String(data.postId) });
+        }
+      }
+      // 이웃 요청 / 수락 → 알림 화면
+      if (data?.type === 'neighbor_request' || data?.type === 'neighbor_accept') {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) {
+          nav.navigate('Notifications');
         }
       }
     });
@@ -115,8 +134,10 @@ export default function App() {
                     <StatusBar style="light" backgroundColor="#0A0118" translucent />
                     <SnapDetector />
                     <MomentNotifier />
+                    <ReturnDetector />
                     <ProfileSync />
                     <AppStateSync />
+                    <PushTokenSync />
                     <BadgeEvaluator />
                     <AppNavigator />
                     <BadgeToastHost />

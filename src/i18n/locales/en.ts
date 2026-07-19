@@ -1790,6 +1790,10 @@ const en = {
     settingsDesc: 'Show a reminder to capture moments while abroad',
     empty: 'No moments captured on this trip yet',
   },
+  returnDetect: {
+    notifTitle: 'Welcome home! 🏠',
+    notifBody: 'How was your trip? Capture it as a record',
+  },
 } as const;
 
 export default en;

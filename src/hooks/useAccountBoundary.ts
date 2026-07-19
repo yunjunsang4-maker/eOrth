@@ -9,6 +9,7 @@ import { setAppStateBackupArmed } from '../components/AppStateSync';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getMyUserId, getMyProfile, type ProfileRow } from '../services/profile';
 import { fetchAppState } from '../services/appState';
+import { unregisterPushToken } from '../services/pushToken';
 
 // 마지막으로 이 기기에서 로그인한 사용자 id (계정 전환 감지용).
 // clearPersistedStores 대상 키(@eorth/records|settings|dm)가 아니라 별도 키라 초기화에도 유지된다.
@@ -69,6 +70,8 @@ export function useAccountBoundary(): () => Promise<void> {
       const last = await AsyncStorage.getItem(LAST_UID_KEY);
       if (last && last !== uid) {
         // 계정 전환(다른 계정): 이전 계정 로컬 제거 후 새 계정 데이터를 서버에서 복원.
+        // 푸시 토큰 삭제 — 세션이 살아있는 이 시점에 실행해야 RLS가 통과된다(클리어 후엔 권한 없음).
+        await unregisterPushToken().catch(() => {});
         resetRecords();
         resetSettings();
         resetConversations();

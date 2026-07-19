@@ -1791,6 +1791,10 @@ const ko = {
     settingsDesc: '해외 여행 중 순간 메모 알림을 띄워요',
     empty: '아직 이 여행에서 남긴 순간이 없어요',
   },
+  returnDetect: {
+    notifTitle: '어서 오세요! 🏠',
+    notifBody: '여행은 어떠셨나요? 이번 여행을 기록으로 남겨보세요',
+  },
 } as const;
 
 export default ko;
