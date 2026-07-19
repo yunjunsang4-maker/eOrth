@@ -514,7 +514,8 @@ function render(geo){
     THA:['BangkokMetropolis','ChiangMai','Phuket','Pattaya'],
     MYS:['KualaLumpur','PulauPinang','Melaka','KotaKinabalu','JohorBahru','Langkawi'],
     VNM:['HàNội','ĐàNẵng','HồChíMinh','NhaTrang','HoiAn','HaLong','PhuQuoc'],
-    SAU:['Riyadh','Jeddah','Mecca','Medina','AlUla']
+    SAU:['Riyadh','Jeddah','Mecca','Medina','AlUla'],
+    ARE:['Dubai','AbuDhabi','Sharjah']
   };
   highlight=HL[CODE]||[];
 
