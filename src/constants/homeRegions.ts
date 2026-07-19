@@ -39,6 +39,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   GRC: { athens: 'Attica', santorini: 'Aegean', thira: 'Aegean', mykonos: 'Aegean', meteora: 'ThessalyandCentralGreece', kalambaka: 'ThessalyandCentralGreece', zakynthos: 'Peloponnese,WesternGreeceand' },
   AUT: { salzburgcity: 'Salzburg', hallstatt: 'Oberösterreich', innsbruck: 'Tirol', vienna: 'Wien' },
   PRT: { lisboncity: 'Lisboa', lisbon: 'Lisboa', portocity: 'Porto', sintra: 'Lisboa', lagos: 'Faro', cabodaroca: 'Lisboa', colares: 'Lisboa' },
+  NLD: { amsterdam: 'Noord-Holland', rotterdam: 'Zuid-Holland', zaanseschans: 'Noord-Holland', zaanstad: 'Noord-Holland', thehague: 'Zuid-Holland', denhaag: 'Zuid-Holland', sgravenhage: 'Zuid-Holland' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
