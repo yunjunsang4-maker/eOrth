@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -7,12 +7,14 @@ import {
   TouchableOpacity,
   StyleSheet,
   Pressable,
-  Alert,} from 'react-native';
+  Alert,
+  Image,} from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useRecords } from '../store/recordStore';
-import { TrashIcon, LandscapeIcon } from '../components/icons';
+import { useRecords, TravelRecord } from '../store/recordStore';
+import { useToast } from '../store/toastStore';
+import { TrashIcon, LandscapeIcon, PersonIcon, ArchiveIcon } from '../components/icons';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -32,15 +34,21 @@ const C = {
 // ─────────────────────────────────────────────
 function ArchivedCard({
   item,
+  onPress,
   onUnarchive,
   onDelete,
 }: {
-  item: any;
+  item: TravelRecord;
+  onPress: (id: string) => void;
   onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
   const { t } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
+
+  // 실제 사진 표시 — 형식별 커버 우선순위 (없을 때만 자리표시자)
+  const coverUri =
+    item.representativePhoto ?? item.medias?.[0] ?? item.cutPhoto?.previewUri ?? item.snapFrontUri ?? null;
 
   const handleUnarchive = () => {
     setMenuVisible(false);
@@ -60,18 +68,23 @@ function ArchivedCard({
   };
 
   return (
-    <View style={s.card}>
+    // 카드 탭 → 상세 보기(PostDetail — 사진별 글 캐러셀 등 최신 렌더 공유)
+    <Pressable style={s.card} onPress={() => onPress(item.id)}>
       {/* 카드 헤더 */}
       <View style={s.cardHeader}>
         <View style={s.avatar}>
-          <Text style={{ fontSize: 22 }}>{item.user.emoji}</Text>
+          {item.user.photo ? (
+            <Image source={{ uri: item.user.photo }} style={s.avatarImg} />
+          ) : (
+            <PersonIcon size={22} color="#A0A0B0" />
+          )}
         </View>
         <View style={s.userInfo}>
           <Text style={s.userName}>{item.user.name}</Text>
           <View style={s.metaRow}>
             <Text style={s.countryTag}>{item.country}</Text>
             <Text style={s.typeTag}>
-              {item.viewType === 'blog' ? t('main.formatBlog') : item.viewType === 'snap' ? t('main.formatSnap') : item.viewType === 'cut' ? t('main.formatCut') : t('main.formatFeed')}
+              {item.viewType === 'blog' ? t('main.formatBlog') : item.viewType === 'snap' ? t('main.formatSnap') : item.viewType === 'cut' ? t('main.formatCut') : item.viewType === 'album' ? t('main.formatAlbum') : t('main.formatFeed')}
             </Text>
             <Text style={s.dateMeta}>{item.date}</Text>
           </View>
@@ -85,7 +98,7 @@ function ArchivedCard({
               <Pressable style={s.menuOverlay} onPress={() => setMenuVisible(false)} />
               <View style={s.dropdownMenu}>
                 <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>📤</Text>
+                  <ArchiveIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -99,28 +112,20 @@ function ArchivedCard({
         </View>
       </View>
 
-      {/* 사진 */}
-      <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photo}>
-        <LandscapeIcon size={48} color="#A1A1B0" />
-      </LinearGradient>
+      {/* 사진 — 실제 커버, 없으면 자리표시자 */}
+      {coverUri ? (
+        <Image source={{ uri: coverUri }} style={s.photo} resizeMode="cover" />
+      ) : (
+        <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photo}>
+          <LandscapeIcon size={48} color="#A1A1B0" />
+        </LinearGradient>
+      )}
 
-      {/* 본문 */}
+      {/* 본문 미리보기 — memo(대표 사진 글) 우선, 없으면 제목 */}
       <View style={s.cardBody}>
-        <Text style={s.content}>{item.content}</Text>
+        <Text style={s.content} numberOfLines={3}>{item.memo || item.content}</Text>
       </View>
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────
-// 토스트
-// ─────────────────────────────────────────────
-function Toast({ message, visible }: { message: string; visible: boolean }) {
-  if (!visible) return null;
-  return (
-    <View style={s.toast} pointerEvents="none">
-      <Text style={s.toastText}>{message}</Text>
-    </View>
+    </Pressable>
   );
 }
 
@@ -131,11 +136,10 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
   const { t } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
-  const [toast, setToast] = useState({ visible: false, message: '' });
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { pushToast } = useToast(); // 공용 토스트(자체 구현 대체)
 
   // 기록 형식 필터링 상태 추가
-  const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'snap' | 'cut'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'album' | 'snap' | 'cut'>('all');
 
   const archivedRecords = records.filter((r) => archivedIds.includes(r.id));
 
@@ -144,6 +148,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     all: archivedRecords.length,
     feed: archivedRecords.filter((r) => r.viewType === 'feed' || !r.viewType).length,
     blog: archivedRecords.filter((r) => r.viewType === 'blog').length,
+    album: archivedRecords.filter((r) => r.viewType === 'album').length,
     snap: archivedRecords.filter((r) => r.viewType === 'snap').length,
     cut: archivedRecords.filter((r) => r.viewType === 'cut').length,
   };
@@ -159,21 +164,19 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     all: t('misc.all'),
     feed: t('main.formatFeed'),
     blog: t('main.formatBlog'),
+    album: t('main.formatAlbum'),
     snap: t('main.formatSnap'),
     cut: t('main.formatCut'),
   };
 
-  const showToast = (msg: string) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ visible: true, message: msg });
-    toastTimer.current = setTimeout(() => setToast({ visible: false, message: '' }), 2500);
-  };
-
-  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
-
   const handleUnarchive = (id: string) => {
     unarchiveRecord(id);
-    showToast(t('misc.unarchivedToast'));
+    pushToast(t('misc.unarchivedToast'));
+  };
+
+  // 카드 탭 → 상세 보기 (최신 PostDetail 렌더 공유)
+  const handleOpen = (id: string) => {
+    navigation.navigate('PostDetail', { postId: id });
   };
 
   const handleDelete = (id: string) => {
@@ -198,7 +201,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
       {/* 기록 형식 필터 탭바 */}
       <View style={s.tabBar}>
-        {(['all', 'feed', 'blog', 'snap', 'cut'] as const).map((tab) => {
+        {(['all', 'feed', 'blog', 'album', 'snap', 'cut'] as const).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -230,13 +233,13 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
               <ArchivedCard
                 key={item.id}
                 item={item}
+                onPress={handleOpen}
                 onUnarchive={handleUnarchive}
                 onDelete={handleDelete}
               />
             ))}
             <View style={{ height: 40 }} />
           </ScrollView>
-          <Toast message={toast.message} visible={toast.visible} />
         </View>
       )}
     </SafeAreaView>
@@ -355,6 +358,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(191,133,252,0.25)',
   },
+  avatarImg: { width: 44, height: 44, borderRadius: 22 },
   userInfo: { flex: 1 },
   userName: {
     fontSize: 15,
@@ -427,9 +431,6 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
   },
-  menuItemIcon: {
-    fontSize: 16,
-  },
   menuItemText: {
     fontSize: 14,
     fontWeight: '500',
@@ -470,23 +471,5 @@ const s = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: C.dim,
-  },
-
-  // 토스트
-  toast: {
-    position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(30,30,46,0.96)',
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-  },
-  toastText: {
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '500',
   },
 });
