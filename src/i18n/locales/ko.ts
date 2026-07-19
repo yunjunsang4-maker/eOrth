@@ -821,6 +821,7 @@ const ko = {
     maxPhotosSub: '사진 최대 {{max}}장',
     noPhotoSelectedTitle: '아직 선택된 사진이 없어요',
     noPhotoSelectedDesc: '최소 1장의 사진을 추가해야 다음으로 넘어갈 수 있어요',
+    countryChange: '변경',
     date: '날짜',
     departDate: '출발일',
     arriveDate: '도착일',

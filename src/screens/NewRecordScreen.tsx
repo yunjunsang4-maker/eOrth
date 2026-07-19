@@ -2217,15 +2217,6 @@ const s = StyleSheet.create({
 
   // 사진 썸네일/드래그 행 스타일은 components/record/DraggableLists 로 이동
 
-  // 빈 상태
-  mediaEmptyBox: {
-    alignItems: 'center',
-    paddingVertical: 48,
-    gap: 10,
-  },
-  mediaEmptyTitle: { fontSize: 15, fontWeight: '600', color: COLORS.white },
-  mediaEmptyDesc:  { fontSize: 13, color: COLORS.textMuted },
-
   // ── Step 3 ──
   step3Wrap: {
     gap: 16,

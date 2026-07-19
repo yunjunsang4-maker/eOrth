@@ -820,6 +820,7 @@ const en = {
     maxPhotosSub: 'Up to {{max}} photos',
     noPhotoSelectedTitle: 'No photos selected yet',
     noPhotoSelectedDesc: 'Add at least one photo to continue',
+    countryChange: 'Change',
     date: 'Date',
     departDate: 'Departure',
     arriveDate: 'Arrival',
