@@ -1068,3 +1068,201 @@ end; $$;
 
 -- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
 revoke all on function public.purge_expired_deletion_requests(int) from public, anon, authenticated;
+
+-- ============================================================
+-- 10) 원격 푸시 알림 인프라
+--     a) push_tokens — Expo 푸시 토큰 + 알림 수신 설정
+--     b) notifications 타입·컬럼 확장 (like, comment, friend_post)
+--     c) 좋아요 알림 저장 트리거
+--     d) 댓글 알림 저장 트리거
+--     e) 친구 새 기록 알림 저장 트리거 (이웃 대상 bulk insert)
+--     f) notifications insert → send-push Edge Function 호출 트리거
+-- ============================================================
+
+-- ============================================================
+-- 10-a) push_tokens
+--   PK(user_id, token): 사용자가 여러 기기를 등록할 수 있음.
+--   prefs jsonb: 앱에서 저장한 notifPrefs(master·likes·comments·newFollower·friendTrip·marketing).
+--               없는 키 = 기본값(아래 Edge Function 규칙 참조).
+-- ============================================================
+create table if not exists public.push_tokens (
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  token      text not null,
+  platform   text,                        -- 'ios' | 'android'
+  prefs      jsonb not null default '{}', -- notifPrefs 사본 (클라이언트가 함께 upsert)
+  updated_at timestamptz not null default now(),
+  primary key (user_id, token)
+);
+create index if not exists idx_push_tokens_user on public.push_tokens (user_id);
+
+drop trigger if exists trg_push_tokens_updated on public.push_tokens;
+create trigger trg_push_tokens_updated before update on public.push_tokens
+  for each row execute function public.set_updated_at();
+
+alter table public.push_tokens enable row level security;
+
+-- 본인 토큰만 insert/upsert/update/delete/select (service_role은 RLS 우회)
+drop policy if exists "push_tokens_all_own" on public.push_tokens;
+create policy "push_tokens_all_own" on public.push_tokens
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- ============================================================
+-- 10-b) notifications 타입 확장 — like / comment / friend_post 추가
+--   post_id: 좋아요·댓글·친구 기록 알림에서 해당 게시물 id (딥링크용).
+--   기존 neighbor_request/neighbor_accept는 post_id null.
+-- ============================================================
+alter table public.notifications add column if not exists post_id uuid references public.posts(id) on delete cascade;
+
+-- 타입 제약을 확장된 목록으로 교체 (drop → recreate, idempotent)
+alter table public.notifications drop constraint if exists notifications_type_check;
+alter table public.notifications add constraint notifications_type_check
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'friend_post'));
+
+-- uq_notifications_actor_type 유일 인덱스:
+-- like/comment는 같은 게시물에 대한 중복 알림을 막지 않는다(like는 1인당 1개라 자연 방지;
+-- comment는 여러 번 가능하므로 post_id 포함 유일 인덱스로 교체).
+-- 기존 인덱스(user_id, actor_id, type)는 neighbor_*에서 유용하므로 유지하되
+-- 좋아요·댓글은 트리거에서 (user_id, actor_id, type, post_id) 조합으로 on conflict 처리.
+-- → 인덱스는 그대로 두고, 아래 트리거에서 on conflict(user_id, actor_id, type) do update만
+--   neighbor_*에 적용하고 like/comment/friend_post는 insert(중복 허용, 단 like는 별도 방어).
+
+-- ============================================================
+-- 10-c) 좋아요 알림 저장 트리거
+--   post_likes insert 시 → 게시물 작성자(본인 제외)에게 type='like' 알림.
+--   join 경로: post_likes.post_id → posts.author_id
+-- ============================================================
+create or replace function public.notify_on_like()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  post_author uuid;
+begin
+  select author_id into post_author
+    from public.posts where id = new.post_id;
+
+  -- 자기 글 좋아요는 알림 없음
+  if post_author is null or post_author = new.user_id then
+    return null;
+  end if;
+
+  -- (user_id=수신자, actor_id=행위자, type, post_id) 복합 충돌 처리:
+  -- 같은 (수신자, 행위자, type, post_id) 중복 방지 — post_likes PK가 (post_id, user_id)라
+  -- 한 사람이 같은 글에 좋아요를 두 번 누를 수 없으므로 사실상 중복 없음.
+  insert into public.notifications (user_id, actor_id, type, post_id)
+    values (post_author, new.user_id, 'like', new.post_id)
+    on conflict (user_id, actor_id, type) do update
+      set created_at = now(), read = false, post_id = excluded.post_id;
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_like on public.post_likes;
+create trigger trg_notify_like after insert on public.post_likes
+  for each row execute function public.notify_on_like();
+
+-- ============================================================
+-- 10-d) 댓글 알림 저장 트리거
+--   comments insert 시 → 게시물 작성자(본인 제외)에게 type='comment' 알림.
+--   join 경로: comments.post_id → posts.author_id
+-- ============================================================
+create or replace function public.notify_on_comment()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  post_author uuid;
+begin
+  select author_id into post_author
+    from public.posts where id = new.post_id;
+
+  -- 자기 글에 자기 댓글은 알림 없음
+  if post_author is null or post_author = new.author_id then
+    return null;
+  end if;
+
+  -- 댓글은 여러 번 올 수 있어 uq_notifications_actor_type 인덱스 충돌 가능.
+  -- on conflict do update로 가장 최근 댓글 알림만 유지(timestamp 갱신).
+  insert into public.notifications (user_id, actor_id, type, post_id)
+    values (post_author, new.author_id, 'comment', new.post_id)
+    on conflict (user_id, actor_id, type) do update
+      set created_at = now(), read = false, post_id = excluded.post_id;
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_comment on public.comments;
+create trigger trg_notify_comment after insert on public.comments
+  for each row execute function public.notify_on_comment();
+
+-- ============================================================
+-- 10-e) 친구 새 기록 알림 — posts insert 시 이웃들에게 type='friend_post' 알림
+--   visibility 'neighbors'(또는 'public') 게시물만 대상.
+--   bulk insert ... select — 이웃 수가 많아도 N 쿼리 없이 1 쿼리로 처리.
+-- ============================================================
+create or replace function public.notify_on_friend_post()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- private 게시물은 이웃에게도 알림 안 함
+  if new.visibility = 'private' then
+    return null;
+  end if;
+
+  -- accepted 이웃 전원에게 알림 삽입 (on conflict: 같은 작성자의 이전 friend_post 알림 갱신)
+  insert into public.notifications (user_id, actor_id, type, post_id)
+  select
+    case
+      when n.requester_id = new.author_id then n.addressee_id
+      else n.requester_id
+    end as user_id,
+    new.author_id,
+    'friend_post',
+    new.id
+  from public.neighbors n
+  where n.status = 'accepted'
+    and (n.requester_id = new.author_id or n.addressee_id = new.author_id)
+  on conflict (user_id, actor_id, type) do update
+    set created_at = now(), read = false, post_id = excluded.post_id;
+
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_friend_post on public.posts;
+create trigger trg_notify_friend_post after insert on public.posts
+  for each row execute function public.notify_on_friend_post();
+
+-- ============================================================
+-- 10-f) notifications insert → send-push Edge Function 호출
+--   report-alert 트리거와 동일한 pg_net 패턴.
+--   예외 흡수 — 푸시 발송 실패가 알림 저장을 막으면 안 된다.
+--
+--   선행 조건:
+--     ① supabase functions deploy send-push
+--     ② (시크릿 없음 — service_role은 SUPABASE_SERVICE_ROLE_KEY 자동 주입)
+-- ============================================================
+create or replace function public.notify_send_push()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  perform net.http_post(
+    url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
+    ),
+    body := jsonb_build_object(
+      'type', 'INSERT',
+      'table', 'notifications',
+      'schema', 'public',
+      'record', to_jsonb(new),
+      'old_record', null
+    )
+  );
+  return new;
+exception when others then
+  return new; -- 푸시 실패가 알림 저장을 막으면 안 된다
+end;
+$$;
+
+drop trigger if exists notifications_push on public.notifications;
+create trigger notifications_push
+  after insert on public.notifications
+  for each row execute function public.notify_send_push();
