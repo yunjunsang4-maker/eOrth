@@ -1764,6 +1764,7 @@ const ko = {
     captureTitle: '지금 이 순간',
     placeholder: '지금 느낌을 한 줄로 남겨보세요',
     addPhoto: '사진',
+    takePhoto: '촬영',
     save: '저장',
     saved: '✨ 순간이 저장됐어요',
     notifTitle: '여행 중이네요! ✨',

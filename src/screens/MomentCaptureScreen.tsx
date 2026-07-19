@@ -13,8 +13,27 @@ import * as Location from 'expo-location';
 import { useMoments } from '../store/momentStore';
 import { useToast } from '../store/toastStore';
 import { locateCountry } from '../utils/countryLocate';
+import CameraCaptureModal from '../components/CameraCaptureModal';
 
 const MOMENT_MEDIA_DIR = 'moments/';
+
+// documentDirectory로 복사해 OS 캐시 정리 후에도 사진 유지(persistRecordPhotos 동일 패턴).
+// 복사 실패 시 원본 URI 반환(기존 컨벤션) — 앨범 선택·카메라 촬영 공용.
+async function persistMomentPhoto(srcUri: string): Promise<string> {
+  try {
+    const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const dir = `${base}${MOMENT_MEDIA_DIR}`;
+      try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
+      const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
+      const to = `${dir}moment-${Date.now()}.${ext}`;
+      await FileSystem.copyAsync({ from: srcUri, to });
+      return to;
+    }
+  } catch { /* 복사 실패 → 원본 URI 유지 */ }
+  return srcUri;
+}
 
 const MOODS = ['😊', '🥹', '😮', '😌', '🤩', '😭'];
 
@@ -28,6 +47,7 @@ export default function MomentCaptureScreen() {
   const [text, setText] = useState('');
   const [mood, setMood] = useState<string | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [cameraVisible, setCameraVisible] = useState(false);
   // 위치는 비동기로 채운다 — 실패해도 저장에 지장 없음(오프라인 필수 동작)
   const [geo, setGeo] = useState<{ code?: string; name?: string; region?: string }>({});
 
@@ -102,22 +122,12 @@ export default function MomentCaptureScreen() {
       quality: 0.8,
     });
     if (result.canceled || !result.assets[0]) return;
-    const srcUri = result.assets[0].uri;
-    // documentDirectory로 복사해 OS 캐시 정리 후에도 사진 유지(persistRecordPhotos 동일 패턴)
-    try {
-      const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
-      const base = FileSystem.documentDirectory;
-      if (base) {
-        const dir = `${base}${MOMENT_MEDIA_DIR}`;
-        try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
-        const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
-        const to = `${dir}moment-${Date.now()}.${ext}`;
-        await FileSystem.copyAsync({ from: srcUri, to });
-        setPhotoUri(to);
-        return;
-      }
-    } catch { /* 복사 실패 → 원본 URI 유지(기존 컨벤션) */ }
-    setPhotoUri(srcUri);
+    setPhotoUri(await persistMomentPhoto(result.assets[0].uri));
+  };
+
+  // 카메라 촬영 — launchCameraAsync는 SDK54/새 아키텍처에서 셔터가 먹통이라 CameraCaptureModal(expo-camera) 사용
+  const handleCameraCapture = async (uri: string) => {
+    setPhotoUri(await persistMomentPhoto(uri));
   };
 
   const save = () => {
@@ -164,8 +174,13 @@ export default function MomentCaptureScreen() {
             <TouchableOpacity style={st.chip} onPress={pickPhoto}>
               {photoUri
                 ? <Image source={{ uri: photoUri }} style={st.thumb} />
-                : <Text style={st.chipText}>📷 {t('moments.addPhoto')}</Text>}
+                : <Text style={st.chipText}>🖼️ {t('moments.addPhoto')}</Text>}
             </TouchableOpacity>
+            {!photoUri && (
+              <TouchableOpacity style={st.chip} onPress={() => setCameraVisible(true)}>
+                <Text style={st.chipText}>📷 {t('moments.takePhoto')}</Text>
+              </TouchableOpacity>
+            )}
             {geo.name ? (
               <View style={st.chip}>
                 <Text style={st.chipText}>📍 {geo.region || geo.name}</Text>
@@ -181,6 +196,12 @@ export default function MomentCaptureScreen() {
           </View>
         </View>
       </KeyboardAvoidingView>
+      {/* 인앱 카메라 — 한 장 찍으면 onCapture 후 자동 닫힘 */}
+      <CameraCaptureModal
+        visible={cameraVisible}
+        onClose={() => setCameraVisible(false)}
+        onCapture={handleCameraCapture}
+      />
     </View>
   );
 }

@@ -1763,6 +1763,7 @@ const en = {
     captureTitle: 'This moment',
     placeholder: 'Capture how you feel in one line',
     addPhoto: 'Photo',
+    takePhoto: 'Camera',
     save: 'Save',
     saved: '✨ Moment saved',
     notifTitle: 'You are traveling! ✨',
