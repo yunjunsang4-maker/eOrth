@@ -546,6 +546,7 @@ const ko = {
     territoryDisplayA11y: '영토 표시 설정',
     selectCountry: '국가를 선택하세요',
     selectCountrySub: '지역별로 기록할 수 있는 국가입니다',
+    countrySearchPh: '국가 검색',
     viewVisitedCountries: '방문한 나라 보기',
     visitedCountries: '방문한 나라',
     countriesCount: '{{count}}개국',

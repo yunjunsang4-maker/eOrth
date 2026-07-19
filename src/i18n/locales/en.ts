@@ -545,6 +545,7 @@ const en = {
     territoryDisplayA11y: 'Territory display settings',
     selectCountry: 'Select a country',
     selectCountrySub: 'Countries you can record by region',
+    countrySearchPh: 'Search country',
     viewVisitedCountries: 'View visited countries',
     visitedCountries: 'Visited countries',
     countriesCount: '{{count}} countries',

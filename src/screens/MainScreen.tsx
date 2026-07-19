@@ -550,6 +550,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');
   const [regionCountry, setRegionCountry] = useState<string | null>(null); // ISO3 코드
+  // 국가 선택 그리드는 7개+돋보기만 노출 — 전체 목록(26개국)은 검색 시트에서 (사용자 확정 디자인)
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
+  const [countryPickerSearch, setCountryPickerSearch] = useState('');
   // 대륙(국가 지역) 화면 검색/필터
   const [regionSearch, setRegionSearch] = useState('');
   const [popularActive, setPopularActive] = useState(false); // "인기명소 모아보기" — 눌러야 도시 선/강조 표시
@@ -1144,7 +1147,8 @@ export default function MainScreen({ navigation, route }: Props) {
             <Text style={styles.countryGridTitle}>{t('main.selectCountry')}</Text>
             <Text style={styles.countryGridSub}>{t('main.selectCountrySub')}</Text>
             <View style={styles.countryGridList}>
-              {REGION_COUNTRIES.map(c => (
+              {/* 7개 국가 + 8번째 칸은 돋보기(전체 목록 시트) — 사용자 확정 디자인 */}
+              {REGION_COUNTRIES.slice(0, 7).map(c => (
                 <TouchableOpacity
                   key={c.code}
                   style={styles.countryGridItem}
@@ -1155,9 +1159,60 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.countryGridName}>{c.name}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={[styles.countryGridItem, styles.countryGridSearchItem]}
+                activeOpacity={0.7}
+                onPress={() => { setCountryPickerSearch(''); setCountryPickerVisible(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('main.selectCountry')}
+              >
+                <SearchLineIcon size={30} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {/* ── 전체 국가 목록 시트 (돋보기) ── */}
+        <Modal
+          visible={countryPickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setCountryPickerVisible(false)}
+        >
+          <View style={styles.countryPickerOverlay} accessibilityViewIsModal>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCountryPickerVisible(false)} />
+            <View style={styles.countryPickerSheet}>
+              <View style={styles.countryPickerHandle} />
+              <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
+              <TextInput
+                style={styles.countryPickerInput}
+                placeholder={t('main.countrySearchPh')}
+                placeholderTextColor="#5a5a68"
+                value={countryPickerSearch}
+                onChangeText={setCountryPickerSearch}
+              />
+              <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
+                {REGION_COUNTRIES
+                  .filter(c => !countryPickerSearch.trim() || c.name.includes(countryPickerSearch.trim()))
+                  .map(c => (
+                    <TouchableOpacity
+                      key={c.code}
+                      style={styles.countryPickerRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setCountryPickerVisible(false);
+                        setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false);
+                      }}
+                    >
+                      <Text style={styles.countryPickerFlag}>{c.flag}</Text>
+                      <Text style={styles.countryPickerName}>{c.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+              <View style={{ height: insets.bottom + 16 }} />
+            </View>
+          </View>
+        </Modal>
       </View>
 
       {/* 스냅 버튼(SNAP)은 CustomTabBar 레이어의 RecordFab 로 이동 (탭 바 위 우측에 떠 있음) */}
@@ -2240,6 +2295,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  // 8번째 칸(돋보기) — 아이콘만 중앙 배치, 타일 높이는 국기+이름 타일과 맞춤
+  countryGridSearchItem: {
+    justifyContent: 'center',
+    minHeight: 76,
+  },
+  // 전체 국가 목록 시트
+  countryPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  countryPickerSheet: {
+    backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopWidth: 1, borderColor: '#2E2E3B', paddingHorizontal: 16, paddingTop: 10,
+  },
+  countryPickerHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2E2E3B', alignSelf: 'center', marginBottom: 12 },
+  countryPickerTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  countryPickerInput: {
+    backgroundColor: '#211b2e', borderWidth: 1, borderColor: '#2E2E3B', borderRadius: 12,
+    color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 8,
+  },
+  countryPickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1A1A26',
+  },
+  countryPickerFlag: { fontSize: 24 },
+  countryPickerName: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 
   globeSettingsBtn: {
     position: 'absolute',
