@@ -1221,7 +1221,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 입력 중 이탈 방지 (취소/뒤로가기/제스처) — 저장 시엔 건너뜀
   // 최신 입력 여부는 ref로 참조 → 리스너는 1회만 등록 (키 입력마다 재구독 방지)
   const hasInput =
-    selectedCountries.length > 0 || medias.length > 0 || photoTexts.some(t => t.trim().length > 0) ||
+    selectedCountries.length > 0 || medias.length > 0 || photoTexts.some(text => text.trim().length > 0) ||
     rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
     !!budget || !!weather || !!flightType;
   const hasInputRef = useRef(hasInput);
