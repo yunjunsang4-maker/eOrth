@@ -43,6 +43,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   THA: { pattaya: 'ChonBuri', banglamung: 'ChonBuri' },
   MYS: { kotakinabalu: 'Sabah', johorbahru: 'Johor', johorbaharu: 'Johor', langkawi: 'Kedah' },
   VNM: { nhatrang: 'KhánhHòa', hoian: 'QuảngNam', halong: 'QuảngNinh', halongbay: 'QuảngNinh', phuquoc: 'KiênGiang' },
+  SAU: { riyadh: 'ArRiyad', jeddah: 'Makkah', jiddah: 'Makkah', mecca: 'Makkah', medina: 'AlMadinah', alula: 'AlMadinah' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
