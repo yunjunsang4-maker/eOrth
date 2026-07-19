@@ -244,7 +244,8 @@ var CITY_TO_PROV = {
   MYS:{kotakinabalu:'Sabah',johorbahru:'Johor',johorbaharu:'Johor',langkawi:'Kedah',penang:'PulauPinang',malacca:'Melaka','코타키나발루':'Sabah','조호르바루':'Johor','랑카위':'Kedah','페낭':'PulauPinang','말라카':'Melaka','쿠알라룸푸르':'KualaLumpur'},
   VNM:{nhatrang:'KhánhHòa',hoian:'QuảngNam',halong:'QuảngNinh',halongbay:'QuảngNinh',phuquoc:'KiênGiang','나트랑':'KhánhHòa','호이안':'QuảngNam','하롱베이':'QuảngNinh','푸꾸옥':'KiênGiang'},
   SAU:{riyadh:'ArRiyad',jeddah:'Makkah',jiddah:'Makkah',mecca:'Makkah',makkahalmukarramah:'Makkah',medina:'AlMadinah',alula:'AlMadinah','리야드':'ArRiyad','제다':'Makkah','메카':'Makkah','메디나':'AlMadinah','알울라':'AlMadinah'},
-  MAR:{marrakech:'Marrakech-Tensift-AlHaouz',marrakesh:'Marrakech-Tensift-AlHaouz',casablanca:'GrandCasablanca',fes:'Fès-Boulemane',fez:'Fès-Boulemane',chefchaouen:'Tanger-Tétouan','마라케시':'Marrakech-Tensift-AlHaouz','카사블랑카':'GrandCasablanca','페스':'Fès-Boulemane','셰프샤우엔':'Tanger-Tétouan'}
+  MAR:{marrakech:'Marrakech-Tensift-AlHaouz',marrakesh:'Marrakech-Tensift-AlHaouz',casablanca:'GrandCasablanca',fes:'Fès-Boulemane',fez:'Fès-Boulemane',chefchaouen:'Tanger-Tétouan','마라케시':'Marrakech-Tensift-AlHaouz','카사블랑카':'GrandCasablanca','페스':'Fès-Boulemane','셰프샤우엔':'Tanger-Tétouan'},
+  EGY:{giza:'AlJizah',luxor:'AlUqsur',aswancity:'Aswan',hurghada:'AlBahralAhmar',alghurdaqah:'AlBahralAhmar',cairo:'AlQahirah',alexandria:'AlIskandariyah','기자':'AlJizah','룩소르':'AlUqsur','아스완':'Aswan','후르가다':'AlBahralAhmar','카이로':'AlQahirah','알렉산드리아':'AlIskandariyah'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -517,7 +518,8 @@ function render(geo){
     VNM:['HàNội','ĐàNẵng','HồChíMinh','NhaTrang','HoiAn','HaLong','PhuQuoc'],
     SAU:['Riyadh','Jeddah','Mecca','Medina','AlUla'],
     ARE:['Dubai','AbuDhabi','Sharjah'],
-    MAR:['Marrakech','Casablanca','Fes','Chefchaouen']
+    MAR:['Marrakech','Casablanca','Fes','Chefchaouen'],
+    EGY:['AlQahirah','AlIskandariyah','Giza','Luxor','AswanCity','Hurghada']
   };
   highlight=HL[CODE]||[];
 
