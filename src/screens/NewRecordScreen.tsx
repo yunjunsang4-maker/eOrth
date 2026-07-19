@@ -1944,7 +1944,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         initialEnd={autoLoadEnd}
         startLabel={t('newRecord.startLabel')}
         endLabel={t('newRecord.endLabel')}
-        recordedDates={recordedDates}
         onConfirm={(s, e) => {
           setAutoLoadStart(s);
           setAutoLoadEnd(e);
