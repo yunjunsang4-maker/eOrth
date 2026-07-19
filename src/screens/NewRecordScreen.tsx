@@ -588,7 +588,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   }, [allMoments, selectedCountries, startDate, endDate]);
 
   const [calendarVisible, setCalendarVisible] = useState(false);
-  const [memo,            setMemo]            = useState(editRecord?.memo ?? '');
+  // memo state 제거 — 사진별 글(photoTexts)이 본문을 대체하고 저장 시 대표 글을 memo로 복사함
   const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
   // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 친구만 기본
   const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
@@ -1140,6 +1140,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         ? editRecord!.representativePhoto
         : await toRepHiRes(representativePhoto || undefined);
 
+      // 사진별 글 저장 + 하위 호환: 대표 사진의 글을 memo로 복사
+      // (피드 미리보기·검색·백업이 memo를 읽으므로 대표 글을 채워 둠)
+      const repIndex = Math.max(0, medias.indexOf(representativePhoto ?? ''));
+
       const payload = {
         country: `${first.flag} ${first.name}`,
         countryName: first.name,
@@ -1157,7 +1161,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         content: title || (selectedCountries.length === 1
           ? t('newRecord.defaultTitleOne', { country: first.name })
           : t('newRecord.defaultTitleMany', { country: first.name, count: selectedCountries.length - 1 })),
-        memo,
+        photoTexts,
+        memo: photoTexts[repIndex] ?? '',
         rating: firstRating,
         companions: selectedCompanions,
         companionFriends,
@@ -1216,7 +1221,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 입력 중 이탈 방지 (취소/뒤로가기/제스처) — 저장 시엔 건너뜀
   // 최신 입력 여부는 ref로 참조 → 리스너는 1회만 등록 (키 입력마다 재구독 방지)
   const hasInput =
-    selectedCountries.length > 0 || medias.length > 0 || memo.trim().length > 0 ||
+    selectedCountries.length > 0 || medias.length > 0 || photoTexts.some(t => t.trim().length > 0) ||
     rating > 0 || selectedCompanions.length > 0 || keywords.length > 0 ||
     !!budget || !!weather || !!flightType;
   const hasInputRef = useRef(hasInput);
@@ -1598,24 +1603,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   </View>
                   <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
                 </TouchableOpacity>
-              </View>
-
-              {/* 글 (공통·선택) */}
-              <View style={s.fieldBlock}>
-                <View style={s.fieldLabelRow}>
-                  <Text style={s.fieldLabelReq}>{t('newRecord.textLabel')}</Text>
-                </View>
-                <TextInput
-                  style={[s.fieldInput, s.memoInput]}
-                  placeholder={t('newRecord.textPlaceholder')}
-                  placeholderTextColor={COLORS.textMuted}
-                  value={memo}
-                  onChangeText={setMemo}
-                  multiline
-                  textAlignVertical="top"
-                  maxLength={1000}
-                />
-                <Text style={s.charCount}>{memo.length}/1000</Text>
               </View>
 
               {/* ── 동행자 선택 ── */}
