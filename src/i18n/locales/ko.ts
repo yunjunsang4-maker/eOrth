@@ -867,6 +867,9 @@ const ko = {
     sectionPhoto: '사진',
     sectionCountry: '국가 선택',
     sectionTripInfo: '여행 정보',
+    boxRequired: '필수 여행 정보',
+    boxOptional: '선택 여행 정보',
+    boxOptionalCount: '{{count}}개 입력됨',
   },
   blog: {
     noFollowedFriends: '아직 팔로우한 친구가 없어요',

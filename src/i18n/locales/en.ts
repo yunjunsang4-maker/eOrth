@@ -866,6 +866,9 @@ const en = {
     sectionPhoto: 'Photos',
     sectionCountry: 'Country',
     sectionTripInfo: 'Trip info',
+    boxRequired: 'Required trip info',
+    boxOptional: 'Optional trip info',
+    boxOptionalCount: '{{count}} filled',
   },
   blog: {
     noFollowedFriends: "You haven't followed any friends yet",

@@ -293,7 +293,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const scrollRef = useRef<ScrollView>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   // 섹션 Y 좌표 캐시 (저장 바 스크롤 이동용)
-  const sectionYRef = useRef<{ photo: number; country: number; info: number }>({ photo: 0, country: 0, info: 0 });
+  const sectionYRef = useRef<{ photo: number; country: number; required: number }>({ photo: 0, country: 0, required: 0 });
+  // 접이식 박스 상태 — 신규 작성: country 먼저, 편집: 전부 접힘
+  const [openBox, setOpenBox] = useState<'country' | 'required' | 'optional' | null>(
+    () => (editRecord ? null : 'country')
+  );
+  const toggleBox = (box: 'country' | 'required' | 'optional') => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setOpenBox(prev => (prev === box ? null : box));
+  };
 
   // Step 1 - 국가 (복수 선택)
   const MAX_COUNTRIES = 10;
@@ -303,9 +311,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       ? editRecord.countries ?? [{ flag: editRecord.countryFlag, name: editRecord.countryName }]
       : []
   );
-  // 국가 섹션 접힘 상태 — 국가가 이미 있으면(편집 모드 등) 접힌 칩으로 시작, 없으면 펼침
-  // (selectedCountries가 위에서 선언되므로 TDZ 문제 없음)
-  const [countryExpanded, setCountryExpanded] = useState(() => selectedCountries.length === 0);
   const [selectedRegion, setSelectedRegion] = useState<{ name: string; nameEn: string } | null>(
     editRecord?.regionName ? { name: editRecord.regionName, nameEn: editRecord.regionNameEn ?? '' } : null
   );
@@ -353,7 +358,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       if (mapped && !selectedCountries.some(c => c.name === mapped.name)) {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setSelectedCountries(prev => [...prev, mapped]);
-        setCountryExpanded(false); // 지구본 등 경유 진입도 검색 선택과 동일하게 칩으로 접힘
+        setOpenBox(null); // 지구본 등 경유 진입 시 박스 접힘
       }
       if (params.selectedCountry.region) {
         setSelectedRegion({
@@ -1066,12 +1071,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
   );
 
-  const missing = (): { key: 'photo' | 'country' | 'info'; msg: string } | null => {
+  const missing = (): { key: 'photo' | 'country' | 'required'; msg: string } | null => {
     if (medias.length === 0) return { key: 'photo', msg: t('newRecord.missPhoto') };
     if (!representativePhoto) return { key: 'photo', msg: t('newRecord.missRepPhoto') };
     if (selectedCountries.length === 0) return { key: 'country', msg: t('newRecord.missCountry') };
-    if (selectedCompanions.length === 0) return { key: 'info', msg: t('newRecord.missCompanion') };
-    if (!allRatingsFilled) return { key: 'info', msg: isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating') };
+    if (selectedCompanions.length === 0) return { key: 'required', msg: t('newRecord.missCompanion') };
+    if (!allRatingsFilled) return { key: 'required', msg: isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating') };
     return null;
   };
 
@@ -1249,7 +1254,17 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const miss = missing();
     if (miss) {
       showHint(miss.msg);
-      scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
+      // 미충족 박스 자동 펼침 후 다음 프레임에 scrollTo (박스 펼침으로 y가 바뀌므로)
+      if (miss.key === 'country' || miss.key === 'required') {
+        const targetBox = miss.key === 'country' ? 'country' : 'required';
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setOpenBox(targetBox);
+        setTimeout(() => {
+          scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
+        }, 0);
+      } else {
+        scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
+      }
       return;
     }
     // 저장 플래그는 doSave가 직접 관리한다 (다국가 다이얼로그 취소 시 플래그 리셋 불필요)
@@ -1269,6 +1284,37 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       return [...prev, tag];
     });
     setKeywordQuery('');
+  };
+
+  // summary 헬퍼 — 박스 A
+  const countrySummary = (): string => {
+    if (selectedCountries.length === 0) return '';
+    if (selectedCountries.length === 1) return `${selectedCountries[0].flag} ${selectedCountries[0].name}`;
+    return `${selectedCountries[0].flag} ${selectedCountries[0].name} 외 ${selectedCountries.length - 1}개국`;
+  };
+
+  // summary 헬퍼 — 박스 B (날짜·동행자·별점)
+  const requiredSummary = (): string => {
+    const parts: string[] = [];
+    if (startDate && endDate) {
+      const sd = `${String(startDate.getMonth()+1).padStart(2,'0')}.${String(startDate.getDate()).padStart(2,'0')}`;
+      const ed = `${String(endDate.getMonth()+1).padStart(2,'0')}.${String(endDate.getDate()).padStart(2,'0')}`;
+      parts.push(sd === ed ? sd : `${sd}~${ed}`);
+    }
+    if (selectedCompanions.length > 0) parts.push(companionLabel(selectedCompanions[0]) + (selectedCompanions.length > 1 ? ` 외 ${selectedCompanions.length-1}` : ''));
+    if (rating > 0) parts.push(`★${rating.toFixed(1)}`);
+    return parts.join(' · ');
+  };
+
+  // summary 헬퍼 — 박스 C (선택 입력 항목 수)
+  const optionalFilledCount = (): number => {
+    let n = 0;
+    if (budget) n++;
+    if (weather) n++;
+    if (flightType) n++;
+    if (keywords.length > 0) n++;
+    if (visibility !== 'neighbors') n++;
+    return n;
   };
 
   // ─── 렌더 ───
@@ -1389,309 +1435,302 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             </View>
           </View>
 
-          {/* ══════════════════ ② 국가 섹션 ══════════════════ */}
+          {/* ══════════════════ ② 박스 A: 국가 선택 ══════════════════ */}
           <View
-            style={{ marginTop: 24 }}
             onLayout={(e) => { sectionYRef.current.country = e.nativeEvent.layout.y; }}
           >
-            <Text style={s.sectionLabel}>{t('newRecord.sectionCountry')}</Text>
-
-            {/* 국가가 선택됐고 접혀 있으면 요약 칩만 표시 */}
-            {selectedCountries.length > 0 && !countryExpanded ? (
-              <View style={s.countryCollapseRow}>
-                {selectedCountries.map(c => (
-                  <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
-                    <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
-                  </View>
-                ))}
-                <TouchableOpacity
-                  onPress={() => setCountryExpanded(true)}
-                  style={[s.countryChangeBtn, { borderColor: skinAccent.tint(0.4) }]}
-                  activeOpacity={0.75}
-                >
-                  <Text style={[s.countryChangeBtnTxt, { color: skinAccent.accent }]}>{t('newRecord.countryChange')}</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View>
-                {/* 선택된 국가 목록 */}
-                {selectedCountries.length === 1 && (
-                  <View style={s.selectedChipsWrap}>
-                    {selectedCountries.map((c) => (
-                      <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
-                        <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
-                        <TouchableOpacity
-                          onPress={() => handleRemoveCountry(c.name)}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Text style={s.countryChipRemove}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {selectedCountries.length >= 2 && (
-                  <View style={{ marginBottom: 12 }}>
-                    <DraggableCountryList
-                      countries={selectedCountries}
-                      onReorder={handleReorder}
-                      onRemove={handleRemoveCountry}
-                      onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
-                    />
-                    <Text style={s.draggableHelperText}>
-                      {t('newRecord.dragCountryHint')}
-                    </Text>
-                  </View>
-                )}
-
-                {/* 국내 지역 선택 */}
-                {(isDomesticSelected || isStaySelected) && homeRegions.length > 0 && (
-                  <View style={{ marginBottom: 12 }}>
-                    <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                      <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
-                        {homeRegions.map((r) => {
-                          const active = selectedRegion?.name === r.name;
-                          return (
-                            <TouchableOpacity
-                              key={r.name}
-                              style={[s.regionPickChip, active && [s.regionPickChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
-                              onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
-                              activeOpacity={0.75}
-                            >
-                              <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                      </View>
-                    </ScrollView>
-                  </View>
-                )}
-
-                {/* 검색창 */}
-                <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
-                  <View style={s.searchRow}>
-                    <SearchIcon size={16} color={COLORS.textDim} />
-                    <TextInput
-                      style={s.searchInput}
-                      placeholder={selectedCountries.length > 0
-                        ? t('newRecord.searchMore')
-                        : t('newRecord.searchCountry')}
-                      placeholderTextColor={COLORS.textMuted}
-                      value={countrySearch}
-                      onChangeText={setCountrySearch}
-                    />
-                    {countrySearch.length > 0 && (
+            <CollapsibleBox
+              title={t('newRecord.sectionCountry')}
+              summary={countrySummary()}
+              expanded={openBox === 'country'}
+              onToggle={() => toggleBox('country')}
+            >
+              {/* 선택된 국가 목록 */}
+              {selectedCountries.length === 1 && (
+                <View style={s.selectedChipsWrap}>
+                  {selectedCountries.map((c) => (
+                    <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+                      <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
                       <TouchableOpacity
-                        onPress={() => setCountrySearch('')}
-                        activeOpacity={0.7}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        onPress={() => handleRemoveCountry(c.name)}
+                        hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
                       >
-                        <Text style={s.clearBtnTxt}>✕</Text>
+                        <Text style={s.countryChipRemove}>✕</Text>
                       </TouchableOpacity>
-                    )}
-                  </View>
-                </View>
-
-                {/* 검색 결과 */}
-                {countrySearch.length >= 1 && (
-                  <View style={s.countryResultBox}>
-                    <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                      {groupedCountries.length === 0 ? (
-                        <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
-                      ) : (
-                        groupedCountries.map(({ continent, countries }) => (
-                          <View key={continent}>
-                            <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
-                            {countries.map(c => {
-                              const isSelected = selectedCountries.some(sc => sc.name === c.name);
-                              return (
-                                <TouchableOpacity
-                                  key={c.name}
-                                  style={[s.countryItem, isSelected && [s.countryItemSelected, { backgroundColor: skinAccent.tint(0.08) }]]}
-                                  onPress={() => {
-                                    if (isSelected) {
-                                      handleRemoveCountry(c.name);
-                                    } else if (selectedCountries.length < MAX_COUNTRIES) {
-                                      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                                      setSelectedCountries(prev => {
-                                        const next = [...prev, { flag: c.flag, name: c.name }];
-                                        // 첫 국가 선택 시 섹션 접기
-                                        if (prev.length === 0) setCountryExpanded(false);
-                                        return next;
-                                      });
-                                    }
-                                  }}
-                                >
-                                  <Text style={s.countryIcon}>{c.flag}</Text>
-                                  <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
-                                  {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
-                                </TouchableOpacity>
-                              );
-                            })}
-                          </View>
-                        ))
-                      )}
-                    </ScrollView>
-                  </View>
-                )}
-
-                {/* 안내 문구 */}
-                {selectedCountries.length === 0 && countrySearch.length === 0 && (
-                  <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
-                )}
-
-                {/* 선택 완료 확인 */}
-                {selectedCountries.length > 0 && countrySearch.length === 0 && (
-                  <View style={[s.selectedBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
-                    <Text style={[s.selectedBadgeTxt, { color: skinAccent.accent }]}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
-                  </View>
-                )}
-              </View>
-            )}
-
-            {/* 순간 참고 서랍 — 국가 섹션 하단 */}
-            <MomentDrawer moments={matchedMoments} />
-          </View>
-
-          {/* ══════════════════ ③ 여행 정보 섹션 ══════════════════ */}
-          <View
-            style={{ marginTop: 24 }}
-            onLayout={(e) => { sectionYRef.current.info = e.nativeEvent.layout.y; }}
-          >
-            <Text style={s.sectionLabel}>{t('newRecord.sectionTripInfo')}</Text>
-
-            <View style={s.step3Wrap}>
-              {/* 국가별 탭 (2개국 이상) */}
-              {isMultiCountry && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.countryTabScroll} contentContainerStyle={s.countryTabContent}>
-                  {selectedCountries.map((c, idx) => (
-                    <TouchableOpacity
-                      key={c.name}
-                      style={[s.countryTab, idx === activeCountryIdx && [s.countryTabActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
-                      onPress={() => switchCountry(idx)}
-                      activeOpacity={0.75}
-                    >
-                      <Text style={[s.countryTabText, idx === activeCountryIdx && [s.countryTabTextActive, { color: skinAccent.accent }]]}>{c.flag} {c.name}</Text>
-                    </TouchableOpacity>
+                    </View>
                   ))}
-                </ScrollView>
+                </View>
               )}
 
-              {/* 날짜 (국가별) */}
-              <View style={s.fieldBlock}>
-                <View style={s.perCountryLabelRow}>
-                  <Text style={s.fieldLabelReq}>{t('newRecord.date')}</Text>
-                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
-                  {isMultiCountry && (
-                    <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
+              {selectedCountries.length >= 2 && (
+                <View style={{ marginBottom: 12 }}>
+                  <DraggableCountryList
+                    countries={selectedCountries}
+                    onReorder={handleReorder}
+                    onRemove={handleRemoveCountry}
+                    onDragStateChange={(isDragging) => setScrollEnabled(!isDragging)}
+                  />
+                  <Text style={s.draggableHelperText}>
+                    {t('newRecord.dragCountryHint')}
+                  </Text>
+                </View>
+              )}
+
+              {/* 국내 지역 선택 */}
+              {(isDomesticSelected || isStaySelected) && homeRegions.length > 0 && (
+                <View style={{ marginBottom: 12 }}>
+                  <Text style={s.regionPickLabel}>{t('newRecord.domesticRegionLabel')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 8, paddingRight: 8 }}>
+                      {homeRegions.map((r) => {
+                        const active = selectedRegion?.name === r.name;
+                        return (
+                          <TouchableOpacity
+                            key={r.name}
+                            style={[s.regionPickChip, active && [s.regionPickChipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+                            onPress={() => setSelectedRegion(active ? null : { name: r.name, nameEn: r.nameEn })}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[s.regionPickChipText, active && [s.regionPickChipTextActive, { color: skinAccent.accent }]]}>{r.name}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  </ScrollView>
+                </View>
+              )}
+
+              {/* 검색창 */}
+              <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
+                <View style={s.searchRow}>
+                  <SearchIcon size={16} color={COLORS.textDim} />
+                  <TextInput
+                    style={s.searchInput}
+                    placeholder={selectedCountries.length > 0
+                      ? t('newRecord.searchMore')
+                      : t('newRecord.searchCountry')}
+                    placeholderTextColor={COLORS.textMuted}
+                    value={countrySearch}
+                    onChangeText={setCountrySearch}
+                  />
+                  {countrySearch.length > 0 && (
+                    <TouchableOpacity
+                      onPress={() => setCountrySearch('')}
+                      activeOpacity={0.7}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={s.clearBtnTxt}>✕</Text>
+                    </TouchableOpacity>
                   )}
                 </View>
-                <TouchableOpacity
-                  style={s.dateBtn}
-                  onPress={() => setCalendarVisible(true)}
-                  activeOpacity={0.85}
-                >
-                  <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
-                    <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
-                  </View>
-                  <Text style={s.dateBtnArrow}>→</Text>
-                  <View style={s.dateBtnCol}>
-                    <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
-                    <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
-                  </View>
-                  <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
-                </TouchableOpacity>
               </View>
 
-              {/* ── 동행자 선택 ── */}
-              <View style={s.companionSection}>
-                <View style={s.fieldLabelRow}>
-                  <Text style={s.companionSectionLabel}>{t('newRecord.companionSelect')}</Text>
-                  <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
+              {/* 검색 결과 */}
+              {countrySearch.length >= 1 && (
+                <View style={s.countryResultBox}>
+                  <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                    {groupedCountries.length === 0 ? (
+                      <Text style={s.noResultText}>{t('newRecord.noResult')}</Text>
+                    ) : (
+                      groupedCountries.map(({ continent, countries }) => (
+                        <View key={continent}>
+                          <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
+                          {countries.map(c => {
+                            const isSelected = selectedCountries.some(sc => sc.name === c.name);
+                            return (
+                              <TouchableOpacity
+                                key={c.name}
+                                style={[s.countryItem, isSelected && [s.countryItemSelected, { backgroundColor: skinAccent.tint(0.08) }]]}
+                                onPress={() => {
+                                  if (isSelected) {
+                                    handleRemoveCountry(c.name);
+                                  } else if (selectedCountries.length < MAX_COUNTRIES) {
+                                    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                                    setSelectedCountries(prev => [...prev, { flag: c.flag, name: c.name }]);
+                                  }
+                                }}
+                              >
+                                <Text style={s.countryIcon}>{c.flag}</Text>
+                                <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                                {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      ))
+                    )}
+                  </ScrollView>
                 </View>
-                {/* 컴팩트 칩 */}
-                <View style={s.companionChipWrap}>
-                  {DEFAULT_COMPANIONS.map(comp => {
-                    const isActive = selectedCompanions.includes(comp);
-                    const iconColor = isActive ? skinAccent.accent : COLORS.textDim;
-                    const COMP_ICONS: Record<string, React.ReactNode> = {
-                      '혼자': <SoloIcon color={iconColor} />,
-                      '친구': <FriendIcon color={iconColor} />,
-                      '연인': <CoupleIcon color={iconColor} />,
-                      '가족': <FamilyIcon color={iconColor} />,
-                      '부모님': <ParentIcon color={iconColor} />,
-                      '형제': <SiblingIcon color={iconColor} />,
-                    };
-                    return (
+              )}
+
+              {/* 안내 문구 */}
+              {selectedCountries.length === 0 && countrySearch.length === 0 && (
+                <Text style={s.stepHint}>{t('newRecord.countryHint')}</Text>
+              )}
+
+              {/* 선택 완료 확인 */}
+              {selectedCountries.length > 0 && countrySearch.length === 0 && (
+                <View style={[s.selectedBadge, { backgroundColor: skinAccent.tint(0.12) }]}>
+                  <Text style={[s.selectedBadgeTxt, { color: skinAccent.accent }]}>✓ {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}{selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}</Text>
+                </View>
+              )}
+
+              {/* 순간 참고 서랍 — 박스 A 하단 */}
+              <MomentDrawer moments={matchedMoments} />
+            </CollapsibleBox>
+          </View>
+
+          {/* ══════════════════ ③ 박스 B: 필수 여행 정보 ══════════════════ */}
+          <View
+            onLayout={(e) => { sectionYRef.current.required = e.nativeEvent.layout.y; }}
+          >
+            <CollapsibleBox
+              title={t('newRecord.boxRequired')}
+              summary={requiredSummary()}
+              expanded={openBox === 'required'}
+              onToggle={() => toggleBox('required')}
+            >
+              <View style={s.step3Wrap}>
+                {/* 국가별 탭 (2개국 이상) */}
+                {isMultiCountry && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.countryTabScroll} contentContainerStyle={s.countryTabContent}>
+                    {selectedCountries.map((c, idx) => (
                       <TouchableOpacity
-                        key={comp}
-                        style={[s.companionChip, isActive && [s.companionChipActive, { backgroundColor: skinAccent.pill, borderColor: skinAccent.accent }]]}
-                        onPress={() => toggleCompanion(comp)}
+                        key={c.name}
+                        style={[s.countryTab, idx === activeCountryIdx && [s.countryTabActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
+                        onPress={() => switchCountry(idx)}
                         activeOpacity={0.75}
                       >
-                        <View style={s.companionChipIconWrap}>{COMP_ICONS[comp]}</View>
-                        <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{companionLabel(comp)}</Text>
+                        <Text style={[s.countryTabText, idx === activeCountryIdx && [s.countryTabTextActive, { color: skinAccent.accent }]]}>{c.flag} {c.name}</Text>
                       </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                {/* 선택된 앱 친구 칩 */}
-                {companionFriends.length > 0 && (
-                  <View style={s.customChipRow}>
-                    {companionFriends.map(friend => (
-                      <View key={friend} style={[s.friendChip, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]}>
-                        <View style={[s.friendChipAvatar, { backgroundColor: skinAccent.tint(0.3) }]}>
-                          <Text style={[s.friendChipAvatarTxt, { color: skinAccent.accent }]}>{friend[0]}</Text>
-                        </View>
-                        <Text style={s.friendChipName}>{friend}</Text>
-                        <TouchableOpacity
-                          onPress={() => removeCompanionFriend(friend)}
-                          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
-                        >
-                          <Text style={s.customChipX}>✕</Text>
-                        </TouchableOpacity>
-                      </View>
                     ))}
-                  </View>
+                  </ScrollView>
                 )}
-                {/* 앱 친구 추가 버튼 */}
-                <TouchableOpacity
-                  style={s.addFriendBtn}
-                  onPress={() => setFriendPickerVisible(true)}
-                  activeOpacity={0.75}
-                >
-                  <FriendIcon color={skinAccent.accent} />
-                  <Text style={s.addFriendTxt}>{t('newRecord.addAppFriend')}</Text>
-                  {companionFriends.length > 0 && (
-                    <View style={[s.addFriendBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
-                      <Text style={[s.addFriendBadgeTxt, { color: skinAccent.accent }]}>{companionFriends.length}</Text>
-                    </View>
-                  )}
-                </TouchableOpacity>
-              </View>
 
-              {/* 별점 (국가별) */}
-              <View style={s.fieldBlock}>
-                <View style={s.ratingLabelRow}>
+                {/* 날짜 (국가별) */}
+                <View style={s.fieldBlock}>
                   <View style={s.perCountryLabelRow}>
-                    <Text style={s.fieldLabelReq}>{t('newRecord.ratingLabel')}</Text>
+                    <Text style={s.fieldLabelReq}>{t('newRecord.date')}</Text>
                     <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
                     {isMultiCountry && (
                       <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
                     )}
                   </View>
-                  {rating > 0
-                    ? <Text style={[s.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)} / 5.0</Text>
-                    : <Text style={s.ratingScoreEmpty}>{t('newRecord.ratingEmpty')}</Text>}
+                  <TouchableOpacity
+                    style={s.dateBtn}
+                    onPress={() => setCalendarVisible(true)}
+                    activeOpacity={0.85}
+                  >
+                    <View style={s.dateBtnCol}>
+                      <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
+                      <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
+                    </View>
+                    <Text style={s.dateBtnArrow}>→</Text>
+                    <View style={s.dateBtnCol}>
+                      <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
+                      <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
+                    </View>
+                    <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>
+                  </TouchableOpacity>
                 </View>
-                <View style={s.ratingCard}>
-                  {renderStars()}
+
+                {/* ── 동행자 선택 ── */}
+                <View style={s.companionSection}>
+                  <View style={s.fieldLabelRow}>
+                    <Text style={s.companionSectionLabel}>{t('newRecord.companionSelect')}</Text>
+                    <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
+                  </View>
+                  {/* 컴팩트 칩 */}
+                  <View style={s.companionChipWrap}>
+                    {DEFAULT_COMPANIONS.map(comp => {
+                      const isActive = selectedCompanions.includes(comp);
+                      const iconColor = isActive ? skinAccent.accent : COLORS.textDim;
+                      const COMP_ICONS: Record<string, React.ReactNode> = {
+                        '혼자': <SoloIcon color={iconColor} />,
+                        '친구': <FriendIcon color={iconColor} />,
+                        '연인': <CoupleIcon color={iconColor} />,
+                        '가족': <FamilyIcon color={iconColor} />,
+                        '부모님': <ParentIcon color={iconColor} />,
+                        '형제': <SiblingIcon color={iconColor} />,
+                      };
+                      return (
+                        <TouchableOpacity
+                          key={comp}
+                          style={[s.companionChip, isActive && [s.companionChipActive, { backgroundColor: skinAccent.pill, borderColor: skinAccent.accent }]]}
+                          onPress={() => toggleCompanion(comp)}
+                          activeOpacity={0.75}
+                        >
+                          <View style={s.companionChipIconWrap}>{COMP_ICONS[comp]}</View>
+                          <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{companionLabel(comp)}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  {/* 선택된 앱 친구 칩 */}
+                  {companionFriends.length > 0 && (
+                    <View style={s.customChipRow}>
+                      {companionFriends.map(friend => (
+                        <View key={friend} style={[s.friendChip, { backgroundColor: skinAccent.accentDeep, borderColor: skinAccent.accent }]}>
+                          <View style={[s.friendChipAvatar, { backgroundColor: skinAccent.tint(0.3) }]}>
+                            <Text style={[s.friendChipAvatarTxt, { color: skinAccent.accent }]}>{friend[0]}</Text>
+                          </View>
+                          <Text style={s.friendChipName}>{friend}</Text>
+                          <TouchableOpacity
+                            onPress={() => removeCompanionFriend(friend)}
+                            hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                          >
+                            <Text style={s.customChipX}>✕</Text>
+                          </TouchableOpacity>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {/* 앱 친구 추가 버튼 */}
+                  <TouchableOpacity
+                    style={s.addFriendBtn}
+                    onPress={() => setFriendPickerVisible(true)}
+                    activeOpacity={0.75}
+                  >
+                    <FriendIcon color={skinAccent.accent} />
+                    <Text style={s.addFriendTxt}>{t('newRecord.addAppFriend')}</Text>
+                    {companionFriends.length > 0 && (
+                      <View style={[s.addFriendBadge, { backgroundColor: skinAccent.tint(0.15) }]}>
+                        <Text style={[s.addFriendBadgeTxt, { color: skinAccent.accent }]}>{companionFriends.length}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                </View>
+
+                {/* 별점 (국가별) */}
+                <View style={s.fieldBlock}>
+                  <View style={s.ratingLabelRow}>
+                    <View style={s.perCountryLabelRow}>
+                      <Text style={s.fieldLabelReq}>{t('newRecord.ratingLabel')}</Text>
+                      <Text style={[s.reqTag, { color: skinAccent.accent }]}>✱</Text>
+                      {isMultiCountry && (
+                        <Text style={[s.perCountryHint, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]}>{selectedCountries[activeCountryIdx]?.flag} {selectedCountries[activeCountryIdx]?.name}</Text>
+                      )}
+                    </View>
+                    {rating > 0
+                      ? <Text style={[s.ratingScore, { color: skinAccent.accent }]}>{rating.toFixed(1)} / 5.0</Text>
+                      : <Text style={s.ratingScoreEmpty}>{t('newRecord.ratingEmpty')}</Text>}
+                  </View>
+                  <View style={s.ratingCard}>
+                    {renderStars()}
+                  </View>
                 </View>
               </View>
+            </CollapsibleBox>
+          </View>
 
+          {/* ══════════════════ ④ 박스 C: 선택 여행 정보 ══════════════════ */}
+          <CollapsibleBox
+            title={t('newRecord.boxOptional')}
+            summary={optionalFilledCount() > 0 ? t('newRecord.boxOptionalCount', { count: optionalFilledCount() }) : undefined}
+            expanded={openBox === 'optional'}
+            onToggle={() => toggleBox('optional')}
+          >
+            <View style={s.step3Wrap}>
               {/* 공개 범위 (공통) */}
               <View style={s.fieldBlock}>
                 <View style={s.fieldLabelRow}>
@@ -1713,12 +1752,6 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                   })}
                 </View>
               </View>
-
-              {/* ── 선택 항목 구분선 ── */}
-              <View style={s.companionDivider} />
-
-              {/* 안내 */}
-              <Text style={s.optNoticeText}>{t('newRecord.optionalNotice')}</Text>
 
               {/* 예산 */}
               <View style={s.optRow}>
@@ -1846,7 +1879,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <Text style={s.kwHint}>{t('newRecord.keywordHint')}</Text>
               </View>
             </View>
-          </View>
+          </CollapsibleBox>
 
           {/* 하단 저장 바 높이만큼 여백 확보 */}
           <View style={{ height: 80 }} />
@@ -1940,6 +1973,42 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       />
 
     </SafeAreaView>
+  );
+}
+
+// ─── 접이식 섹션 박스 (이 화면 전용) ───
+function CollapsibleBox({
+  title,
+  summary,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <View style={s.cBox}>
+      <TouchableOpacity
+        style={s.cBoxHeader}
+        onPress={onToggle}
+        activeOpacity={0.8}
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={s.cBoxTitle}>{title}</Text>
+          {!expanded && !!summary && (
+            <Text style={s.cBoxSummary} numberOfLines={1}>{summary}</Text>
+          )}
+        </View>
+        <Text style={s.cBoxChevron}>{expanded ? '▴' : '▾'}</Text>
+      </TouchableOpacity>
+      {expanded && <View style={s.cBoxBody}>{children}</View>}
+    </View>
   );
 }
 
@@ -2650,6 +2719,43 @@ const s = StyleSheet.create({
     marginTop: 4,
     marginBottom: 12,
     paddingHorizontal: 4,
+  },
+
+  // ── 접이식 박스 ──
+  cBox: {
+    backgroundColor: '#17131f',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.card,
+    marginHorizontal: 0,
+    marginTop: 10,
+    overflow: 'hidden',
+  },
+  cBoxHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+  },
+  cBoxTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: COLORS.purpleNeon,
+    letterSpacing: 0.6,
+  },
+  cBoxSummary: {
+    fontSize: 11,
+    color: COLORS.textDim,
+    marginTop: 2,
+  },
+  cBoxChevron: {
+    fontSize: 14,
+    color: COLORS.purpleNeon,
+    marginLeft: 8,
+  },
+  cBoxBody: {
+    paddingHorizontal: 14,
+    paddingBottom: 16,
+    paddingTop: 4,
   },
 });
 
