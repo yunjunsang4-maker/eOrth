@@ -1625,7 +1625,9 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           await apiBlock(p.id); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
           blockBackfillDoneRef.current.add(b.handle!); // 성공한 항목만 제외
         } catch {
-          // 실패 항목은 done에 추가하지 않아 다음 렌더(재마운트·재연결)에서 재시도
+          // 네트워크 실패도 이번 세션에서는 재시도하지 않음 — blockedUsers 변경마다
+          // 실패 항목이 API를 반복 호출하는 폭주 방지. 앱 재시작 시 ref가 리셋돼 재도전.
+          blockBackfillDoneRef.current.add(b.handle!);
         }
       }
     })();
