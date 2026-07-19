@@ -249,7 +249,8 @@ var CITY_TO_PROV = {
   TUN:{carthage:'Tunis',sidibousaid:'Tunis',eljem:'Mahdia',tozeurcity:'Tozeur','카르타고':'Tunis','시디부사이드':'Tunis','엘젬':'Mahdia','엘 젬':'Mahdia','토주르':'Tozeur','튀니스':'Tunis'},
   ZAF:{capetown:'WesternCape',johannesburg:'Gauteng',pretoria:'Gauteng',tshwane:'Gauteng',cityofcapetown:'WesternCape',cityofjohannesburg:'Gauteng',cityoftshwane:'Gauteng','케이프타운':'WesternCape','요하네스버그':'Gauteng','프리토리아':'Gauteng'},
   MEX:{cancun:'QuintanaRoo',benitojuarez:'QuintanaRoo',playadelcarmen:'QuintanaRoo',solidaridad:'QuintanaRoo',tulum:'QuintanaRoo',guadalajara:'Jalisco',oaxacacity:'Oaxaca',oaxacadejuarez:'Oaxaca',guanajuatocity:'Guanajuato',mexicocity:'DistritoFederal',cdmx:'DistritoFederal','칸쿤':'QuintanaRoo','플라야델카르멘':'QuintanaRoo','플라야 델 카르멘':'QuintanaRoo','툴룸':'QuintanaRoo','과달라하라':'Jalisco','오아하카':'Oaxaca','과나후아토':'Guanajuato','멕시코시티':'DistritoFederal'},
-  CAN:{vancouver:'BritishColumbia',greatervancouver:'BritishColumbia',toronto:'Ontario',montreal:'Québec',niagarafalls:'Ontario',niagara:'Ontario',quebeccity:'Québec','밴쿠버':'BritishColumbia','토론토':'Ontario','몬트리올':'Québec','나이아가라폭포':'Ontario','나이아가라 폭포':'Ontario','나이아가라':'Ontario','퀘벡':'Québec','퀘백':'Québec'}
+  CAN:{vancouver:'BritishColumbia',greatervancouver:'BritishColumbia',toronto:'Ontario',montreal:'Québec',niagarafalls:'Ontario',niagara:'Ontario',quebeccity:'Québec','밴쿠버':'BritishColumbia','토론토':'Ontario','몬트리올':'Québec','나이아가라폭포':'Ontario','나이아가라 폭포':'Ontario','나이아가라':'Ontario','퀘벡':'Québec','퀘백':'Québec'},
+  BRA:{riodejaneirocity:'RiodeJaneiro',saopaulocity:'SãoPaulo',salvador:'Bahia',manaus:'Amazonas',fozdoiguacu:'Paraná',iguazufalls:'Paraná',iguacufalls:'Paraná','리우데자네이루':'RiodeJaneiro','상파울루':'SãoPaulo','살바도르':'Bahia','마나우스':'Amazonas','포스두이구아수':'Paraná','포스 두 이구아수':'Paraná','이과수폭포':'Paraná','이과수 폭포':'Paraná','이과수':'Paraná'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -527,7 +528,8 @@ function render(geo){
     TUN:['Tunis','Carthage','SidiBouSaid','ElJem','TozeurCity'],
     ZAF:['CapeTown','Johannesburg','Pretoria'],
     MEX:['DistritoFederal','Cancun','PlayaDelCarmen','Tulum','Guadalajara','OaxacaCity','GuanajuatoCity'],
-    CAN:['Vancouver','Toronto','Montreal','NiagaraFalls','QuebecCity']
+    CAN:['Vancouver','Toronto','Montreal','NiagaraFalls','QuebecCity'],
+    BRA:['RioDeJaneiroCity','SaoPauloCity','FozDoIguacu','Salvador','Manaus','IguazuFalls']
   };
   highlight=HL[CODE]||[];
 
