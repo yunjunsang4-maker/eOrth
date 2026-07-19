@@ -583,6 +583,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       // representativePhoto(고해상도)는 medias uri와 다를 수 있으므로 우선순위를 Source에 둔다.
       const repUri = editRecord.representativePhotoSource ?? editRecord.representativePhoto ?? '';
       const repIdx = repUri ? Math.max(0, (editRecord.medias ?? []).indexOf(repUri)) : 0;
+      // 대표 사진 매칭 실패(-1) 시 첫 사진(0번)에 시드 — 의도된 폴백
       if (base.length > 0) base[repIdx] = editRecord.memo;
     }
     return base;
@@ -643,8 +644,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         setLoadingMedia(true);
         const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
         setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
-        // 추가된 사진 수만큼 빈 글 슬롯 append
-        setPhotoTexts(prev => [...prev, ...compressed.map(() => '')]);
+        // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
+        setPhotoTexts((prev) => {
+          const addedCount = Math.max(0, Math.min(compressed.length, maxRecordPhotos - prev.length));
+          return [...prev, ...Array(addedCount).fill('')];
+        });
       }
     } catch (e: any) {
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
@@ -1091,8 +1095,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
-      // 추가된 사진 수만큼 빈 글 슬롯 append (confirmMediaPickerSelection)
-      setPhotoTexts((prev) => [...prev, ...resolvedUris.map(() => '')]);
+      // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
+      setPhotoTexts((prev) => {
+        const addedCount = Math.max(0, Math.min(resolvedUris.length, maxRecordPhotos - prev.length));
+        return [...prev, ...Array(addedCount).fill('')];
+      });
 
       // 모달에는 이미 가져올 수 있는 사진만 담겼으므로, 제외 안내는 모달 열기 전 집계분을 쓴다
       if (resolvedUris.length === 0) {
@@ -1206,8 +1213,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
-      // 추가된 사진 수만큼 빈 글 슬롯 append (loadMediaByDate)
-      setPhotoTexts((prev) => [...prev, ...resolvedUris.map(() => '')]);
+      // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
+      setPhotoTexts((prev) => {
+        const addedCount = Math.max(0, Math.min(resolvedUris.length, maxRecordPhotos - prev.length));
+        return [...prev, ...Array(addedCount).fill('')];
+      });
 
       // 전부 이미 추가된 사진(중복 제거로 0장)이면 실패처럼 보이지 않게 구분 안내
       if (resolvedUris.length === 0) {
