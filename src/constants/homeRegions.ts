@@ -41,6 +41,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   PRT: { lisboncity: 'Lisboa', lisbon: 'Lisboa', portocity: 'Porto', sintra: 'Lisboa', lagos: 'Faro', cabodaroca: 'Lisboa', colares: 'Lisboa' },
   NLD: { amsterdam: 'Noord-Holland', rotterdam: 'Zuid-Holland', zaanseschans: 'Noord-Holland', zaanstad: 'Noord-Holland', thehague: 'Zuid-Holland', denhaag: 'Zuid-Holland', sgravenhage: 'Zuid-Holland' },
   THA: { pattaya: 'ChonBuri', banglamung: 'ChonBuri' },
+  MYS: { kotakinabalu: 'Sabah', johorbahru: 'Johor', johorbaharu: 'Johor', langkawi: 'Kedah' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
