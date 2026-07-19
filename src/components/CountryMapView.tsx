@@ -234,7 +234,8 @@ var CITY_TO_PROV = {
   ESP:{granada:'Andalucía',malaga:'Andalucía',sevilla:'Andalucía',seville:'Andalucía',barcelona:'Cataluña',madrid:'ComunidaddeMadrid',valencia:'ComunidadValenciana',bilbao:'PaísVasco','그라나다':'Andalucía','말라가':'Andalucía','세비야':'Andalucía','바르셀로나':'Cataluña','마드리드':'ComunidaddeMadrid','발렌시아':'ComunidadValenciana','빌바오':'PaísVasco'},
   GBR:{london:'England',birmingham:'England',manchester:'England',liverpool:'England',leeds:'England',edinburgh:'Scotland',glasgow:'Scotland',cardiff:'Wales',belfast:'NorthernIreland',oxford:'England',bristol:'England','런던':'England','버밍엄':'England','맨체스터':'England','리버풀':'England','리즈':'England','에든버러':'Scotland','글래스고':'Scotland','카디프':'Wales','벨파스트':'NorthernIreland','옥스퍼드':'England','브리스톨':'England'},
   FRA:{paris:'Île-de-France',nice:"Provence-Alpes-Côted'Azur",lyon:'Auvergne-Rhône-Alpes',marseille:"Provence-Alpes-Côted'Azur",bordeaux:'Nouvelle-Aquitaine',strasbourg:'GrandEst',toulouse:'Occitanie',lille:'Hauts-de-France',nantes:'PaysdelaLoire',montpellier:'Occitanie',cannes:"Provence-Alpes-Côted'Azur",'파리':'Île-de-France','니스':"Provence-Alpes-Côted'Azur",'리옹':'Auvergne-Rhône-Alpes','마르세유':"Provence-Alpes-Côted'Azur",'보르도':'Nouvelle-Aquitaine','스트라스부르':'GrandEst','툴루즈':'Occitanie','릴':'Hauts-de-France','낭트':'PaysdelaLoire','몽펠리에':'Occitanie','칸':"Provence-Alpes-Côted'Azur"},
-  ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'}
+  ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'},
+  TUR:{cappadocia:'Nevsehir',pamukkale:'Denizli',fethiye:'Mugla','카파도키아':'Nevsehir','파묵칼레':'Denizli','페티예':'Mugla'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -496,7 +497,8 @@ function render(geo){
     ESP:['Madrid','Barcelona','Sevilla','Granada','M\\xe1laga','Valencia','Bilbao','ComunidaddeMadrid','IslasBaleares'],
     GBR:['London','Birmingham','Manchester','Liverpool','Leeds','Edinburgh','Glasgow','Cardiff','Belfast','Oxford','Bristol'],
     FRA:['Paris','Nice','Lyon','Marseille','Bordeaux','Strasbourg','Toulouse','Lille','Nantes','Montpellier','Cannes'],
-    ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa','Turin','Bologna','Genoa','Palermo','Bari']
+    ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa','Turin','Bologna','Genoa','Palermo','Bari'],
+    TUR:['Istanbul','Antalya','Ankara','Cappadocia','Pamukkale','Fethiye']
   };
   highlight=HL[CODE]||[];
 
