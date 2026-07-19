@@ -8,7 +8,6 @@ import {
   ScrollView,
   TextInput,  Alert,
   Switch,
-  Platform,
   Modal,
   ActivityIndicator,
 } from 'react-native';
@@ -169,6 +168,10 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   };
   const appleLinked = signUpMethod === 'apple';
 
+  // 이메일 변경 모달 상태 (iOS·Android 공용) + 본인 확인용 현재 비밀번호(재인증)
+  const [isEmailModalVisible, setIsEmailModalVisible] = useState(false);
+  const [emailDraft, setEmailDraft] = useState('');
+  const [emailCurrentPassword, setEmailCurrentPassword] = useState('');
   // 이메일 변경 제출 중 중복 방지
   const [emailSubmitting, setEmailSubmitting] = useState(false);
 
@@ -189,22 +192,46 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [deleteSocialConfirm, setDeleteSocialConfirm] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false); // 서버 신청 중 중복 제출 방지
 
-  // 실제 이메일 변경: auth에 변경을 요청하면 새 주소로 인증 메일이 가고, 링크 확인 후 변경이 완료된다.
+  // 실제 이메일 변경: 본인 확인(현재 비밀번호 재인증) 후 auth에 변경을 요청하면
+  // 새 주소로 인증 메일이 가고, 링크 확인 후 변경이 완료된다.
   // (즉시 로컬 표시만 바꾸면 로그인 이메일과 어긋난다 — 인증 완료 후 위 useEffect가 표시를 동기화)
-  const submitEmailChange = async (newEmail: string) => {
-    if (emailSubmitting) return; // 수정3: 중복 제출 방지
+  const submitEmailChange = async () => {
+    if (emailSubmitting) return; // 중복 제출 방지
+    const newEmail = emailDraft.trim().toLowerCase();
+    const trimmedPassword = emailCurrentPassword.trim();
+
     if (!EMAIL_INPUT_RE.test(newEmail)) {
       Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.emailInvalidMsg'));
       return;
     }
-    if (!isSupabaseConfigured) {
-      // 서버 미설정(로컬 모드): 기존 로컬 표시 변경 유지
-      setSignUpEmail(newEmail);
-      Alert.alert(t('accountSettings.emailChangedTitle'), t('accountSettings.emailChangedMsg', { email: newEmail }));
+    if (!trimmedPassword) {
+      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordEmpty'));
       return;
     }
+
+    if (!isSupabaseConfigured) {
+      // 서버 미설정(로컬 모드): 실제 계정이 없으므로 로컬 표시만 변경
+      setSignUpEmail(newEmail);
+      Alert.alert(t('accountSettings.emailChangedTitle'), t('accountSettings.emailChangedMsg', { email: newEmail }), [
+        { text: t('common.confirm'), onPress: () => closeEmailModal() },
+      ]);
+      return;
+    }
+
     setEmailSubmitting(true);
     try {
+      // 본인 확인 — Supabase updateUser는 기존 비밀번호를 확인하지 않으므로
+      // 현재 이메일+현재 비밀번호로 재로그인해 본인 확인을 대신한다(같은 계정이라 세션 영향 없음).
+      const email = (await getAuthEmail()) ?? signUpEmail;
+      if (!email) {
+        Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
+        return;
+      }
+      const verify = await signInWithEmail(email.toLowerCase(), trimmedPassword);
+      if (!verify.ok) {
+        Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+        return;
+      }
       const result = await requestEmailChange(newEmail);
       if (!result.ok) {
         Alert.alert(t('accountSettings.errorTitle'), result.error ?? t('login.genericError'));
@@ -212,7 +239,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       }
       Alert.alert(
         t('accountSettings.emailChangeSentTitle'),
-        t('accountSettings.emailChangeSentMsg', { email: newEmail })
+        t('accountSettings.emailChangeSentMsg', { email: newEmail }),
+        [{ text: t('common.confirm'), onPress: () => closeEmailModal() }]
       );
     } finally {
       setEmailSubmitting(false);
@@ -224,37 +252,16 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.socialEmailNoChange'));
       return;
     }
+    // iOS·Android 공용 모달로 통일 (기존 iOS 전용 Alert.prompt 대체)
+    setEmailDraft('');
+    setEmailCurrentPassword('');
+    setIsEmailModalVisible(true);
+  };
 
-    if (Platform.OS === 'ios') {
-      Alert.prompt(
-        t('accountSettings.emailChangeTitle'),
-        t('accountSettings.emailChangePrompt'),
-        [
-          { text: t('common.cancel'), style: 'cancel' },
-          {
-            text: t('common.change'),
-            onPress: (value: string | undefined) => {
-              const trimmed = (value ?? '').trim();
-              if (!trimmed) {
-                Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.emailEmpty'));
-                return;
-              }
-              void submitEmailChange(trimmed);
-            },
-          },
-        ],
-        'plain-text',
-        signUpEmail,
-        'email-address'
-      );
-    } else {
-      // Android: TextInput이 포함된 Alert 대신 별도 안내
-      Alert.alert(
-        t('accountSettings.emailChangeTitle'),
-        t('accountSettings.emailChangeAndroidMsg'),
-        [{ text: t('common.confirm') }]
-      );
-    }
+  const closeEmailModal = () => {
+    setIsEmailModalVisible(false);
+    setEmailDraft('');
+    setEmailCurrentPassword('');
   };
 
   const handlePasswordChange = () => {
@@ -629,6 +636,82 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 onPress={submitGender}
               >
                 <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── 이메일 변경 모달 (iOS·Android 공용) ── */}
+      <Modal
+        visible={isEmailModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={closeEmailModal}
+      >
+        <View style={styles.modalOverlay} accessibilityViewIsModal>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>{t('accountSettings.emailChangeTitle')}</Text>
+            <Text style={styles.modalDesc}>{t('accountSettings.emailModalDesc')}</Text>
+
+            {/* 새 이메일 주소 */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t('accountSettings.newEmailLabel')}</Text>
+              <TextInput
+                style={[
+                  styles.modalInput,
+                  emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && styles.modalInputError,
+                ]}
+                placeholder={t('accountSettings.newEmailPlaceholder')}
+                placeholderTextColor={COLORS.textMuted}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                value={emailDraft}
+                onChangeText={setEmailDraft}
+              />
+              {emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && (
+                <Text style={styles.inputErrorText}>{t('accountSettings.emailInvalidMsg')}</Text>
+              )}
+            </View>
+
+            {/* 본인 확인: 현재 비밀번호 (재인증) */}
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
+              <TextInput
+                style={styles.modalInput}
+                placeholder={t('accountSettings.currentPasswordPlaceholder')}
+                placeholderTextColor={COLORS.textMuted}
+                secureTextEntry
+                value={emailCurrentPassword}
+                onChangeText={setEmailCurrentPassword}
+              />
+            </View>
+
+            {/* 버튼 그룹 */}
+            <View style={styles.modalBtnGroup}>
+              <TouchableOpacity
+                style={[styles.modalBtn, styles.modalBtnCancel]}
+                activeOpacity={0.7}
+                onPress={closeEmailModal}
+              >
+                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.modalBtn,
+                  styles.modalBtnSubmit,
+                  (emailSubmitting || !EMAIL_INPUT_RE.test(emailDraft.trim()) || !emailCurrentPassword) && styles.modalBtnDisabled,
+                ]}
+                activeOpacity={0.7}
+                disabled={emailSubmitting || !EMAIL_INPUT_RE.test(emailDraft.trim()) || !emailCurrentPassword}
+                onPress={submitEmailChange}
+              >
+                {emailSubmitting ? (
+                  <ActivityIndicator size="small" color={COLORS.bg} />
+                ) : (
+                  <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
