@@ -40,7 +40,7 @@ import { currencyForCountryName } from '../constants/countryCurrency';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
-import MomentDrawer from '../components/moments/MomentDrawer';
+import MomentListSheet from '../components/moments/MomentListSheet';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -599,6 +599,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   }, [allMoments, selectedCountries, startDate, endDate]);
 
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   // memo state 제거 — 사진별 글(photoTexts)이 본문을 대체하고 저장 시 대표 글을 memo로 복사함
   const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
   // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 친구만 기본
@@ -1331,7 +1332,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           <Text style={s.cancelTxt}>{t('common.cancel')}</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>{isEdit ? t('newRecord.editTitle') : t('newRecord.newTitle')}</Text>
-        <View style={{ width: 44 }} />
+        {/* ✨ 여행 기억 — 선택한 국가·날짜에 매칭되는 순간 목록 (참고용) */}
+        <TouchableOpacity
+          style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
+          onPress={() => setMomentSheetVisible(true)}
+          accessibilityRole="button"
+          accessibilityLabel={t('moments.sheetTitle')}
+        >
+          <Text style={{ fontSize: 16 }}>✨</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Android: edge-to-edge(SDK54)에서 adjustResize가 무력화될 수 있어 'height'로 스크롤 영역을 직접 축소 */}
@@ -1569,8 +1578,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
               )}
 
-              {/* 순간 참고 서랍 — 박스 A 하단 */}
-              <MomentDrawer moments={matchedMoments} />
+              {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
             </CollapsibleBox>
           </View>
 
@@ -1912,6 +1920,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onClose={() => setCalendarVisible(false)}
         recordedDates={recordedDates}
         recordedRanges={recordedRanges}
+      />
+
+      {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={matchedMoments}
+        tripTitle={countrySummary()}
       />
 
       {/* 🔒 비공개 친구 선택 모달 */}
