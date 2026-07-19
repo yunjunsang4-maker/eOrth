@@ -41,10 +41,16 @@ export default function MomentListSheet({
         <FlatList
           data={sorted}
           keyExtractor={(m) => m.id}
-          contentContainerStyle={{ padding: 16 }}
+          contentContainerStyle={{ padding: 16, flexGrow: 1 }}
           renderItem={({ item }) => (
             <MomentCard moment={item} onLongPress={() => confirmDelete(item)} />
           )}
+          ListEmptyComponent={
+            <View style={st.emptyWrap}>
+              <Text style={st.emptyEmoji}>✨</Text>
+              <Text style={st.emptyText}>{t('moments.empty')}</Text>
+            </View>
+          }
         />
       </View>
     </Modal>
@@ -59,4 +65,7 @@ const st = StyleSheet.create({
   closeBtnWrapper: { position: 'absolute', right: 16 },
   closeBtn: { color: '#A1A1B0', fontSize: 14 },
   subtitle: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', marginTop: 4, marginBottom: 8 },
+  emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+  emptyEmoji: { fontSize: 34, opacity: 0.6 },
+  emptyText: { color: '#A1A1B0', fontSize: 13, textAlign: 'center' },
 });

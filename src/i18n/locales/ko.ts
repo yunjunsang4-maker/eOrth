@@ -1775,6 +1775,7 @@ const ko = {
     deleteConfirm: '삭제',
     settingsLabel: '여행 중 순간 기록 알림',
     settingsDesc: '해외 여행 중 순간 메모 알림을 띄워요',
+    empty: '아직 이 여행에서 남긴 순간이 없어요',
   },
 } as const;
 

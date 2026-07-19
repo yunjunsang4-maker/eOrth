@@ -1774,6 +1774,7 @@ const en = {
     deleteConfirm: 'Delete',
     settingsLabel: 'Travel moment reminder',
     settingsDesc: 'Show a reminder to capture moments while abroad',
+    empty: 'No moments captured on this trip yet',
   },
 } as const;
 
