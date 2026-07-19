@@ -48,6 +48,7 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   EGY: { giza: 'AlJizah', luxor: 'AlUqsur', aswancity: 'Aswan', hurghada: 'AlBahralAhmar', alghurdaqah: 'AlBahralAhmar' },
   TUN: { carthage: 'Tunis', sidibousaid: 'Tunis', eljem: 'Mahdia', tozeurcity: 'Tozeur' },
   ZAF: { capetown: 'WesternCape', johannesburg: 'Gauteng', pretoria: 'Gauteng', tshwane: 'Gauteng' },
+  MEX: { cancun: 'QuintanaRoo', benitojuarez: 'QuintanaRoo', playadelcarmen: 'QuintanaRoo', solidaridad: 'QuintanaRoo', tulum: 'QuintanaRoo', guadalajara: 'Jalisco', oaxacacity: 'Oaxaca', oaxacadejuarez: 'Oaxaca', guanajuatocity: 'Guanajuato' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {

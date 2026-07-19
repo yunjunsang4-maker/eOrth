@@ -247,7 +247,8 @@ var CITY_TO_PROV = {
   MAR:{marrakech:'Marrakech-Tensift-AlHaouz',marrakesh:'Marrakech-Tensift-AlHaouz',casablanca:'GrandCasablanca',fes:'Fès-Boulemane',fez:'Fès-Boulemane',chefchaouen:'Tanger-Tétouan','마라케시':'Marrakech-Tensift-AlHaouz','카사블랑카':'GrandCasablanca','페스':'Fès-Boulemane','셰프샤우엔':'Tanger-Tétouan'},
   EGY:{giza:'AlJizah',luxor:'AlUqsur',aswancity:'Aswan',hurghada:'AlBahralAhmar',alghurdaqah:'AlBahralAhmar',cairo:'AlQahirah',alexandria:'AlIskandariyah','기자':'AlJizah','룩소르':'AlUqsur','아스완':'Aswan','후르가다':'AlBahralAhmar','카이로':'AlQahirah','알렉산드리아':'AlIskandariyah'},
   TUN:{carthage:'Tunis',sidibousaid:'Tunis',eljem:'Mahdia',tozeurcity:'Tozeur','카르타고':'Tunis','시디부사이드':'Tunis','엘젬':'Mahdia','엘 젬':'Mahdia','토주르':'Tozeur','튀니스':'Tunis'},
-  ZAF:{capetown:'WesternCape',johannesburg:'Gauteng',pretoria:'Gauteng',tshwane:'Gauteng',cityofcapetown:'WesternCape',cityofjohannesburg:'Gauteng',cityoftshwane:'Gauteng','케이프타운':'WesternCape','요하네스버그':'Gauteng','프리토리아':'Gauteng'}
+  ZAF:{capetown:'WesternCape',johannesburg:'Gauteng',pretoria:'Gauteng',tshwane:'Gauteng',cityofcapetown:'WesternCape',cityofjohannesburg:'Gauteng',cityoftshwane:'Gauteng','케이프타운':'WesternCape','요하네스버그':'Gauteng','프리토리아':'Gauteng'},
+  MEX:{cancun:'QuintanaRoo',benitojuarez:'QuintanaRoo',playadelcarmen:'QuintanaRoo',solidaridad:'QuintanaRoo',tulum:'QuintanaRoo',guadalajara:'Jalisco',oaxacacity:'Oaxaca',oaxacadejuarez:'Oaxaca',guanajuatocity:'Guanajuato',mexicocity:'DistritoFederal',cdmx:'DistritoFederal','칸쿤':'QuintanaRoo','플라야델카르멘':'QuintanaRoo','플라야 델 카르멘':'QuintanaRoo','툴룸':'QuintanaRoo','과달라하라':'Jalisco','오아하카':'Oaxaca','과나후아토':'Guanajuato','멕시코시티':'DistritoFederal'}
 };
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
@@ -523,7 +524,8 @@ function render(geo){
     MAR:['Marrakech','Casablanca','Fes','Chefchaouen'],
     EGY:['AlQahirah','AlIskandariyah','Giza','Luxor','AswanCity','Hurghada'],
     TUN:['Tunis','Carthage','SidiBouSaid','ElJem','TozeurCity'],
-    ZAF:['CapeTown','Johannesburg','Pretoria']
+    ZAF:['CapeTown','Johannesburg','Pretoria'],
+    MEX:['DistritoFederal','Cancun','PlayaDelCarmen','Tulum','Guadalajara','OaxacaCity','GuanajuatoCity']
   };
   highlight=HL[CODE]||[];
 
