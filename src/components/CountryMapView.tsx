@@ -505,6 +505,7 @@ function render(geo){
   // 메인 지도 — 채움 + 스케일 경계 스트로크(어긋난 인접 경계를 하나로 합침)
   var mainGrp=drawGroup(g, mainFeatures, path, 'm');
   pathElements=mainGrp.fill;
+  reorderEmph(); // 초기 렌더에도 강조 피처 z-순서 적용 (도시 최상위 등)
 
   if(CODE==='USA'&&insetFeatures.length>0){
     // 인셋도 '보이는 영역(VH)' 기준으로 배치 — 본토 중앙 정렬에 맞춰 탭 바 위로
@@ -589,6 +590,24 @@ function updateMap() {
     var sel = insetPathElements[key];
     if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', regionPointer);
   });
+
+  reorderEmph();
+}
+
+// 강조 스트로크(활성 기록·인기명소 주·도시·검색)가 있는 피처를 맨 위로 올린다.
+// 그리기 순서가 면적 큰 순이라, 강조된 큰 주(이스탄불 등)의 외곽선을 나중에 그려진
+// 더 작은 이웃 주의 어두운 경계선이 덮어 '선이 끊겨' 보이는 문제 방지.
+// 올리는 순서 = 최종 z-순서: 활성 < 인기 주 < 도시 피처 < 검색 강조.
+function reorderEmph(){
+  if(!pathElements) return;
+  pathElements.filter(function(d){ return !!activeRecordFor(d.properties.NAME_1||''); }).raise();
+  if(showPopular){
+    pathElements.filter(function(d){ var n=d.properties.NAME_1||''; return highlight.indexOf(n)>=0 && !isCity(n); }).raise();
+  }
+  pathElements.filter(function(d){ return isCity(d.properties.NAME_1||''); }).raise(); // 도시는 항상 최상위(주에 가려짐 방지)
+  if(searchedRegion){
+    pathElements.filter(function(d){ return (d.properties.NAME_1||'')===searchedRegion; }).raise();
+  }
 }
 
 function handleNativeMessage(e){
