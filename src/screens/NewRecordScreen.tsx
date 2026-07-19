@@ -293,7 +293,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const scrollRef = useRef<ScrollView>(null);
   const [scrollEnabled, setScrollEnabled] = useState(true);
   // 섹션 Y 좌표 캐시 (저장 바 스크롤 이동용)
-  const sectionYRef = useRef<{ photo: number; country: number; required: number }>({ photo: 0, country: 0, required: 0 });
+  const sectionYRef = useRef<{ photo: number; country: number; required: number; optional: number }>({ photo: 0, country: 0, required: 0, optional: 0 });
   // 접이식 박스 상태 — 신규 작성: country 먼저, 편집: 전부 접힘
   const [openBox, setOpenBox] = useState<'country' | 'required' | 'optional' | null>(
     () => (editRecord ? null : 'country')
@@ -1254,14 +1254,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const miss = missing();
     if (miss) {
       showHint(miss.msg);
-      // 미충족 박스 자동 펼침 후 다음 프레임에 scrollTo (박스 펼침으로 y가 바뀌므로)
+      // 미충족 박스 자동 펼침 후 LayoutAnimation 완료 후 scrollTo (LayoutAnimation ~300ms)
       if (miss.key === 'country' || miss.key === 'required') {
         const targetBox = miss.key === 'country' ? 'country' : 'required';
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setOpenBox(targetBox);
         setTimeout(() => {
           scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
-        }, 0);
+        }, 350);
       } else {
         scrollRef.current?.scrollTo({ y: sectionYRef.current[miss.key], animated: true });
       }
@@ -1290,7 +1290,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const countrySummary = (): string => {
     if (selectedCountries.length === 0) return '';
     if (selectedCountries.length === 1) return `${selectedCountries[0].flag} ${selectedCountries[0].name}`;
-    return `${selectedCountries[0].flag} ${selectedCountries[0].name} 외 ${selectedCountries.length - 1}개국`;
+    return t('newRecord.countryOthers', { name: `${selectedCountries[0].flag} ${selectedCountries[0].name}`, count: selectedCountries.length - 1 });
   };
 
   // summary 헬퍼 — 박스 B (날짜·동행자·별점)
@@ -1724,12 +1724,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           </View>
 
           {/* ══════════════════ ④ 박스 C: 선택 여행 정보 ══════════════════ */}
-          <CollapsibleBox
-            title={t('newRecord.boxOptional')}
-            summary={optionalFilledCount() > 0 ? t('newRecord.boxOptionalCount', { count: optionalFilledCount() }) : undefined}
-            expanded={openBox === 'optional'}
-            onToggle={() => toggleBox('optional')}
+          <View
+            onLayout={(e) => { sectionYRef.current.optional = e.nativeEvent.layout.y; }}
           >
+            <CollapsibleBox
+              title={t('newRecord.boxOptional')}
+              summary={optionalFilledCount() > 0 ? t('newRecord.boxOptionalCount', { count: optionalFilledCount() }) : undefined}
+              expanded={openBox === 'optional'}
+              onToggle={() => toggleBox('optional')}
+            >
             <View style={s.step3Wrap}>
               {/* 공개 범위 (공통) */}
               <View style={s.fieldBlock}>
@@ -1879,7 +1882,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <Text style={s.kwHint}>{t('newRecord.keywordHint')}</Text>
               </View>
             </View>
-          </CollapsibleBox>
+            </CollapsibleBox>
+          </View>
 
           {/* 하단 저장 바 높이만큼 여백 확보 */}
           <View style={{ height: 80 }} />
@@ -2472,22 +2476,9 @@ const s = StyleSheet.create({
   },
   addFriendBadgeTxt: { fontSize: 11, color: COLORS.purpleNeon, fontWeight: '700' },
 
-  companionDivider: {
-    height: 1,
-    backgroundColor: COLORS.divider,
-    marginVertical: 20,
-  },
-
   // Step 5에서도 쓰는 칩 (날씨·비행·키워드)
 
   // ── Step 5 ──
-
-  // 안내 텍스트
-  optNoticeText: {
-    fontSize: 12,
-    color: COLORS.textDim,
-    textAlign: 'center',
-  },
 
   // 공통 옵션 행
   optRow: {

@@ -750,6 +750,7 @@ const en = {
     dragCountryHint: 'Drag to reorder countries. (The first country becomes the main one)',
     defaultTitleOne: '{{country}} trip',
     defaultTitleMany: 'Trip to {{country}} & {{count}} more',
+    countryOthers: '{{name}} +{{count}} more',
     domesticRegionLabel: 'Region — trip cards are grouped by region',
     calRecordedLegend: 'Dates you already have records for this country',
     splitAskTitle: 'Trip cards',

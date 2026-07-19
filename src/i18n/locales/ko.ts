@@ -751,6 +751,7 @@ const ko = {
     dragCountryHint: '드래그하여 국가 순서를 변경할 수 있습니다. (첫 번째 국가가 대표 국가가 됩니다)',
     defaultTitleOne: '{{country}} 여행 기록',
     defaultTitleMany: '{{country}} 외 {{count}}개국 여행 기록',
+    countryOthers: '{{name}} 외 {{count}}개국',
     domesticRegionLabel: '지역 선택 — 여행 카드가 지역별로 구분돼요',
     calRecordedLegend: '이 국가에 이미 기록이 있는 날짜예요',
     splitAskTitle: '여행 카드 만들기',
