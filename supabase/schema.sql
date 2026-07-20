@@ -514,6 +514,25 @@ create policy "comments_select_visible" on public.comments
     )
   );
 
+-- 좋아요/댓글 '쓰기'도 차단·가시성 게이트 — 3)의 insert_own(본인 행 검사만)은 차단당한
+-- 사용자가 캐시된 피드 등으로 알고 있는 post id에 좋아요·댓글을 삽입해 작성자에게 알림을
+-- 유발할 수 있었다(2026-07-20 감사 H1). 대상 게시물이 '내게 보이는 글'일 때만 삽입 허용.
+-- exists 서브쿼리에 posts RLS(posts_select)가 그대로 적용되므로 차단·가시성 판정이 항상
+-- 최종 select 정책과 일치한다. (3)의 정책을 같은 이름으로 교체 — posts 최종 정책 정의 이후)
+drop policy if exists "likes_insert_own" on public.post_likes;
+create policy "likes_insert_own" on public.post_likes
+  for insert to authenticated with check (
+    user_id = auth.uid()
+    and exists (select 1 from public.posts p where p.id = post_likes.post_id)
+  );
+
+drop policy if exists "comments_insert_own" on public.comments;
+create policy "comments_insert_own" on public.comments
+  for insert to authenticated with check (
+    author_id = auth.uid()
+    and exists (select 1 from public.posts p where p.id = comments.post_id)
+  );
+
 -- DM: 차단 관계면 스레드 생성·메시지 전송·조회를 모두 차단
 drop policy if exists "threads_select_participant" on public.dm_threads;
 create policy "threads_select_participant" on public.dm_threads
@@ -1108,6 +1127,18 @@ create policy "push_tokens_all_own" on public.push_tokens
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+-- 계정 전환 시 같은 기기 토큰이 이전 계정 소유로 남는 것 회수(2026-07-20 감사 H2).
+-- 클라이언트 unregister가 오프라인 등으로 실패해도, 다음에 이 기기에서 로그인한 계정이
+-- 등록 시점에 이 RPC로 소유권을 가져가 이전 계정으로의 푸시 발송을 끊는다.
+-- RLS는 본인 행만 지울 수 있으므로 definer 함수로 우회 — 삭제 대상은 '정확히 이 토큰' 행뿐이라
+-- 임의 사용자가 남의 토큰 목록을 조회·삭제하는 데 쓸 수 없다(토큰 문자열 자체가 기기 비밀).
+create or replace function public.claim_push_token(p_token text)
+returns void language sql security definer set search_path = public as $$
+  delete from public.push_tokens where token = p_token and user_id <> auth.uid();
+$$;
+revoke all on function public.claim_push_token(text) from public;
+grant execute on function public.claim_push_token(text) to authenticated;
+
 -- ============================================================
 -- 10-b) notifications 타입 확장 — like / comment / friend_post 추가
 --   post_id: 좋아요·댓글·친구 기록 알림에서 해당 게시물 id (딥링크용).
@@ -1141,8 +1172,9 @@ begin
   select author_id into post_author
     from public.posts where id = new.post_id;
 
-  -- 자기 글 좋아요는 알림 없음
-  if post_author is null or post_author = new.user_id then
+  -- 자기 글 좋아요는 알림 없음 + 차단 관계면 알림 자체를 만들지 않음(정책 교체 전 잔존 행 방어 포함)
+  if post_author is null or post_author = new.user_id
+     or public.is_blocked_between(post_author, new.user_id) then
     return null;
   end if;
 
@@ -1173,8 +1205,9 @@ begin
   select author_id into post_author
     from public.posts where id = new.post_id;
 
-  -- 자기 글에 자기 댓글은 알림 없음
-  if post_author is null or post_author = new.author_id then
+  -- 자기 글에 자기 댓글은 알림 없음 + 차단 관계면 알림 자체를 만들지 않음
+  if post_author is null or post_author = new.author_id
+     or public.is_blocked_between(post_author, new.author_id) then
     return null;
   end if;
 
@@ -1217,6 +1250,9 @@ begin
   from public.neighbors n
   where n.status = 'accepted'
     and (n.requester_id = new.author_id or n.addressee_id = new.author_id)
+    -- 차단 관계 제외 — 차단 시 neighbors 행이 트리거로 삭제되지만, 삭제 실패/타이밍 잔존 방어
+    -- (is_blocked_between은 대칭 판정이라 한쪽이 작성자면 그대로 쓸 수 있다)
+    and not public.is_blocked_between(n.requester_id, n.addressee_id)
   on conflict (user_id, actor_id, type) do update
     set created_at = now(), read = false, post_id = excluded.post_id;
 

@@ -12,11 +12,16 @@
 import { Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, isSupabaseConfigured } from './supabase';
 import type { NotifPrefKey } from '../store/settingsStore';
 
 // push_tokens 테이블에 저장할 prefs 구조 (Edge Function이 이 키로 필터)
 export type PushPrefs = Partial<Record<NotifPrefKey, boolean>>;
+
+// 마지막으로 서버에 등록한 토큰 캐시 — 계정 전환 시 getExpoPushTokenAsync가 실패해도
+// (오프라인 등) 이 값으로 이전 계정 토큰 행을 지울 수 있게 한다(감사 H2).
+const LAST_TOKEN_KEY = '@eorth/lastPushToken';
 
 // projectId — app.json extra.eas.projectId 경로
 const PROJECT_ID = (Constants.expoConfig?.extra as any)?.eas?.projectId as string | undefined;
@@ -54,6 +59,13 @@ export async function registerPushToken(prefs: PushPrefs): Promise<boolean> {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return false;
 
+    // 이전 계정이 이 기기 토큰을 소유 중이면 회수 — 계정 전환 시 unregister가 실패했어도
+    // 이전 계정으로 푸시가 가는 것을 여기서 끊는다. (RPC 미배포 등 실패는 무해화 — upsert는 진행)
+    await supabase.rpc('claim_push_token', { p_token: token }).then(
+      () => {},
+      () => {},
+    );
+
     await supabase
       .from('push_tokens')
       .upsert(
@@ -65,6 +77,8 @@ export async function registerPushToken(prefs: PushPrefs): Promise<boolean> {
         },
         { onConflict: 'user_id,token' },
       );
+    // 등록 성공한 토큰을 로컬에 캐시 — 이후 unregister의 getToken 실패 폴백용
+    await AsyncStorage.setItem(LAST_TOKEN_KEY, token).catch(() => {});
     return true;
   } catch {
     // 오프라인 등 실패 — 무해화
@@ -79,18 +93,21 @@ export async function registerPushToken(prefs: PushPrefs): Promise<boolean> {
 export async function unregisterPushToken(): Promise<void> {
   if (!isSupabaseConfigured || !supabase) return;
   try {
-    const token = await getToken();
+    // getToken 실패 시 마지막 등록 토큰 캐시로 폴백 — 실패하면 이전 계정 행이 남아
+    // 이 기기로 이전 계정 푸시가 계속 오는 문제(감사 H2)의 1차 방어선
+    const token = (await getToken()) ?? (await AsyncStorage.getItem(LAST_TOKEN_KEY).catch(() => null));
     if (!token) return;
 
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    await supabase
+    const { error } = await supabase
       .from('push_tokens')
       .delete()
       .match({ user_id: user.id, token });
+    if (!error) await AsyncStorage.removeItem(LAST_TOKEN_KEY).catch(() => {});
   } catch {
-    // 오프라인 등 실패 — 무해화
+    // 오프라인 등 실패 — 무해화 (다음 계정 로그인 시 claim_push_token RPC가 회수)
   }
 }
 
