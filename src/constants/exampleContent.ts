@@ -14,7 +14,7 @@ export const EXAMPLE_FEED_RECORD: TravelRecord = {
   countryFlag: '🇺🇸',
   date: '2026.05.20',
   timestamp: new Date('2026-05-20').getTime(),
-  content: '뉴욕에서의 하루 ☀️ 오늘 걸은 만큼 지도가 채워졌어요. 피드 기록은 이렇게 사진과 글로 남겨요.',
+  content: '뉴욕에서의 하루 ☀️ 여행한 만큼 지구본이 채워져요. 피드 기록은 이렇게 사진과 글로 남겨요.',
   viewType: 'feed',
   medias: [asUri(require('../../assets/example/feed1.jpg'))],
   visibility: 'neighbors',
