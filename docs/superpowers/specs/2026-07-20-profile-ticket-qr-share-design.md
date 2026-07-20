@@ -20,9 +20,11 @@
 ## 컴포넌트 구조
 
 ### 진입점 — `ProfileScreen.tsx` 통계 행
-`statsRow`에 세 번째 셀 "마이" 추가. 숫자 대신 아이콘(✈️/티켓)을 얹은 pressable,
-기존 `StatCard`와 같은 시각 리듬. 탭 → `ProfileTicketModal` 오픈. i18n: ko `마이`
-/ en `My`.
+`statsRow`에 세 번째 셀 "마이" 추가. 숫자 자리에 **티켓 아이콘**(`assets/ticket.png`
+— 51×51 RGBA 흰색 글리프, 다크 배경에 흰색으로 표시)을 얹은 pressable, 기존
+`StatCard`와 같은 시각 리듬. `Image source={require('../../assets/ticket.png')}`로
+표시(`tintColor` 불필요 — 이미 흰색). 탭 → `ProfileTicketModal` 오픈. i18n: ko
+`마이` / en `My`.
 
 ### 새 파일 — `src/components/ProfileTicketModal.tsx`
 Props: `visible`, `onClose`, 프로필 데이터(`handle`, `name`, `photo`,
