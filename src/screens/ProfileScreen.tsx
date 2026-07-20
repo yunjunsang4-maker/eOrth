@@ -54,6 +54,7 @@ import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
 import { StayPromptModal } from '../components/record/StayPromptModal';
 import { shouldNudgeEnd } from '../utils/stayMachine';
+import ProfileTicketModal from '../components/ProfileTicketModal';
 
 // 안드로이드 구아키텍처에서 LayoutAnimation 활성화 (신아키텍처/iOS는 기본 동작, 호출은 안전)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -107,13 +108,15 @@ const StatCard = ({
   value,
   label,
   onPress,
+  icon,
 }: {
-  value: string;
+  value?: string;
   label: string;
   onPress?: () => void;
+  icon?: React.ReactNode; // 숫자 대신 표시할 아이콘("마이" 셀 티켓 아이콘)
 }) => (
   <LiquidPressable onPress={onPress} intensity={0.06} style={styles.statCol}>
-    <Text style={styles.statValue}>{value}</Text>
+    {icon ?? <Text style={styles.statValue}>{value}</Text>}
     <Text style={styles.statLabel} {...andFitText}>{label}</Text>
   </LiquidPressable>
 );
@@ -1318,6 +1321,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
   const [badgeListVisible, setBadgeListVisible] = useState(false);
+  const [ticketVisible, setTicketVisible] = useState(false);
 
   // ── 프로필 튜토리얼(코치마크) — 계정당 프로필 탭 첫 진입 시 1회 ──
   const avatarRef = useRef<any>(null);
@@ -1947,6 +1951,11 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(neighborCount)} label={t('profile.neighbors')} onPress={() => navigation.navigate('FollowerList')} />
+              <StatCard
+                icon={<Image source={require('../../assets/ticket.png')} style={styles.statTicketIcon} />}
+                label={t('profile.myTicket')}
+                onPress={() => setTicketVisible(true)}
+              />
             </View>
           </View>
         </View>
@@ -2221,6 +2230,21 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         />
       )}
 
+      {/* 마이 티켓 모달 */}
+      <ProfileTicketModal
+        visible={ticketVisible}
+        onClose={() => setTicketVisible(false)}
+        handle={handle}
+        name={profileName}
+        photo={profilePhoto}
+        homeLabel={(() => {
+          const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
+          return `${home.flag} ${home.name}`;
+        })()}
+        tripCount={displayTrips.length}
+        neighborCount={neighborCount}
+      />
+
       {/* 배지 전체 목록 모달 */}
       <BadgeListModal
         visible={badgeListVisible}
@@ -2404,6 +2428,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     marginTop: 4, // 숫자~라벨 ≈10px
     lineHeight: 16,
+  },
+  statTicketIcon: {
+    width: 24,
+    height: 26,
+    resizeMode: 'contain',
   },
 
   // 구분선
