@@ -476,7 +476,7 @@ function FeedCard({
                   </>
               : <Text style={s.countryTag} {...andFitText}>{item.country}</Text>
             }
-            <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>
+            {!item.isExample && <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>}
           </View>
         </View>
 
@@ -722,7 +722,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
             </View>
             <View>
               <Text style={[sc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </TouchableOpacity>
           <View style={sc.snapBadge}>
@@ -969,7 +969,7 @@ function BlogCard({
             </View>
             <View>
               <Text style={[bc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </TouchableOpacity>
 
@@ -1279,7 +1279,7 @@ function AlbumCard({
                       <Text style={ab.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                     </>
               )}
-              <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </View>
         </TouchableOpacity>
@@ -1629,7 +1629,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
       {/* 프레임과 아이디 사이: 방문국가(좌) + 올린시간(우, 보라) — 시안처럼 같은 행 */}
       <View style={d.cutMetaTopRow}>
         <Text style={d.cutMetaCountry} numberOfLines={1}>{placeLabel}</Text>
-        <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+        {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
       </View>
       <View style={d.cutMetaRow}>
         <TouchableOpacity
@@ -1967,7 +1967,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
         <View style={d.jourFooter}>
           {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
-          <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          {!item.isExample && <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
           <View style={d.jourFooterRow}>
             <TouchableOpacity
               style={d.jourHandleBtn}
@@ -2018,7 +2018,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
-          <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
         </View>
         {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
         {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
