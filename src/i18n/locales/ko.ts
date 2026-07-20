@@ -516,6 +516,7 @@ const ko = {
     delete: '삭제',
     traveling: '{{flag}} {{name}} 여행 중',
     tripCount: '여행 수',
+    myTicket: '마이',
     following: '팔로잉',
     followers: '팔로워',
     neighbors: '이웃',
@@ -532,6 +533,11 @@ const ko = {
     mergeDone: '카드를 합쳤어요',
     emptyTitle: '아직 여행 기록이 없어요',
     emptyDesc: '지구본에서 나라를 눌러 첫 기록을 남겨보세요',
+  },
+  profileTicket: {
+    save: '이미지 저장',
+    share: '공유',
+    closeA11y: '티켓 닫기',
   },
   main: {
     notifA11y: '알림',

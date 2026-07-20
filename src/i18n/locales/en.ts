@@ -515,6 +515,7 @@ const en = {
     delete: 'Delete',
     traveling: 'Traveling in {{name}} {{flag}}',
     tripCount: 'Trips',
+    myTicket: 'My',
     following: 'Following',
     followers: 'Followers',
     neighbors: 'Neighbors',
@@ -531,6 +532,11 @@ const en = {
     mergeDone: 'Cards merged',
     emptyTitle: 'No travel records yet',
     emptyDesc: 'Tap a country on the globe to leave your first record',
+  },
+  profileTicket: {
+    save: 'Save image',
+    share: 'Share',
+    closeA11y: 'Close ticket',
   },
   main: {
     notifA11y: 'Notifications',
