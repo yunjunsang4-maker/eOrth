@@ -936,7 +936,7 @@ function SnapStoryViewer({
                     <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
                   )}
                 </View>
-                <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
+                {!s.isExample && <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>}
               </View>
             </TouchableOpacity>
             {!s.isExample && (
@@ -1754,7 +1754,7 @@ export default function PostDetailScreen() {
                         </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
-                          <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+                          {!record.isExample && <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>}
                         </View>
                       </View>
                     </TouchableOpacity>
