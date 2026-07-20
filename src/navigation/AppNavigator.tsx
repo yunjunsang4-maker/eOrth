@@ -240,7 +240,7 @@ export default function AppNavigator() {
         <Stack.Screen name="FriendProfile" component={FriendProfileScreen} />
         <Stack.Screen name="FollowingList" component={FollowingListScreen} />
         <Stack.Screen name="FollowerList" component={FollowerListScreen} />
-        <Stack.Screen name="ProfileTicket" component={ProfileTicketScreen} />
+        <Stack.Screen name="ProfileTicket" component={ProfileTicketScreen} options={{ presentation: 'modal' }} />
         <Stack.Screen name="UserFollowList" component={UserFollowListScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="StatsDetail" component={StatsDetailScreen} />
