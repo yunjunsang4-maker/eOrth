@@ -500,10 +500,14 @@ create policy "posts_select" on public.posts
   );
 
 -- comments: 글 가시성은 posts와 동일 규칙으로 판정 — 차단·서로이웃 포함.
+-- + 댓글 '작성자'와의 차단도 판정(2026-07-20) — 제3자의 글에 남긴 댓글이 차단 관계
+--   양쪽에게 서로 보이던 틈을 서버에서 차단(그 전까지는 차단한 쪽만 클라이언트
+--   이름 매칭으로 걸렀고, 차단당한 쪽에는 그대로 보였다).
 drop policy if exists "comments_select_visible" on public.comments;
 create policy "comments_select_visible" on public.comments
   for select to authenticated using (
-    exists (
+    not public.is_blocked_between(auth.uid(), comments.author_id)
+    and exists (
       select 1 from public.posts p
       where p.id = comments.post_id
         and not public.is_blocked_between(auth.uid(), p.author_id)
