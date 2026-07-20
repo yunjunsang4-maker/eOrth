@@ -86,6 +86,22 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   }
 }
 
+/** 내 계정 생성일(profiles.created_at) — 마이 티켓 'eOrth 가입 날' 표시용. 실패 시 null */
+export async function getMyJoinedAt(): Promise<string | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data } = await withTimeout(
+      supabase.from('profiles').select('created_at').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
+    return (data as { created_at?: string } | null)?.created_at ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 내 프로필 조회 + 서버 도달 여부.
  * reached=false 면 네트워크/타임아웃으로 "신규인지 기존인지" 판정 불가 → 호출부가 오라우팅을 피할 수 있다.

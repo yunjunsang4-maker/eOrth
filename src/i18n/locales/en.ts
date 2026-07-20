@@ -537,6 +537,12 @@ const en = {
     save: 'Save image',
     share: 'Share',
     closeA11y: 'Close ticket',
+    favTitle: "{{handle}}'s favorite trip",
+    noFav: 'No rated trips yet',
+    mate: 'Mates',
+    companion: 'Companions',
+    recentCountry: 'Recent country',
+    joinedAt: 'Joined eOrth',
   },
   main: {
     notifA11y: 'Notifications',

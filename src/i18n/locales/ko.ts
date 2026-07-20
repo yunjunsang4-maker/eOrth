@@ -538,6 +538,12 @@ const ko = {
     save: '이미지 저장',
     share: '공유',
     closeA11y: '티켓 닫기',
+    favTitle: '{{handle}}님의 최애 여행지',
+    noFav: '별점을 남긴 여행이 아직 없어요',
+    mate: '메이트',
+    companion: '동행자',
+    recentCountry: '최근 방문 나라',
+    joinedAt: 'eOrth 가입 날',
   },
   main: {
     notifA11y: '알림',

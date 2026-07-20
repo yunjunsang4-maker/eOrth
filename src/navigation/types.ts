@@ -120,6 +120,8 @@ export type RootStackParamList = {
   } | undefined;
   FollowingList: undefined;
   FollowerList: undefined;
+  // 마이 티켓 — 프로필 QR 공유 보딩패스 (통계는 프로필 화면 계산값을 그대로 전달)
+  ProfileTicket: { tripCount: number; neighborCount: number };
   // 타인 프로필의 팔로워/팔로잉 목록 (조회 전용)
   UserFollowList: { userId: string; mode: 'followers' | 'following' };
   EditProfile: undefined;
