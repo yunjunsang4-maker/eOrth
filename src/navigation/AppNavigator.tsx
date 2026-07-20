@@ -240,7 +240,28 @@ export default function AppNavigator() {
         <Stack.Screen name="FriendProfile" component={FriendProfileScreen} />
         <Stack.Screen name="FollowingList" component={FollowingListScreen} />
         <Stack.Screen name="FollowerList" component={FollowerListScreen} />
-        <Stack.Screen name="ProfileTicket" component={ProfileTicketScreen} options={{ presentation: 'modal' }} />
+        <Stack.Screen
+          name="ProfileTicket"
+          component={ProfileTicketScreen}
+          options={{
+            // 전역 cardStyleInterpolator가 가로 슬라이드를 강제하므로(178행) 화면 전용으로
+            // 세로 슬라이드를 지정해야 바텀시트처럼 아래에서 올라온다. 제스처도 세로(아래로 닫기).
+            presentation: 'modal',
+            gestureDirection: 'vertical',
+            cardStyleInterpolator: ({ current, layouts }) => ({
+              cardStyle: {
+                transform: [
+                  {
+                    translateY: current.progress.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [layouts.screen.height, 0],
+                    }),
+                  },
+                ],
+              },
+            }),
+          }}
+        />
         <Stack.Screen name="UserFollowList" component={UserFollowListScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="StatsDetail" component={StatsDetailScreen} />
