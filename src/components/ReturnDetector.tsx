@@ -7,7 +7,7 @@
  * - 체크 주기는 SnapDetector와 동일(앱 포그라운드 복귀 + 최소 4시간 간격).
  * App.tsx에서 SnapDetector 옆에 마운트.
  */
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Notifications from 'expo-notifications';
@@ -23,11 +23,12 @@ import i18n from '../i18n';
 
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4시간마다 체크
 const ABROAD_LAST_KEY = '@eorth/returnDetect/abroadLast'; // 직전 해외 여부 영속 키
+// 스로틀 기준 시각 — 컴포넌트 ref가 아니라 모듈 스코프에 둬서 리마운트에도 4시간 간격이 유지되게 함
+let lastCheckAt = 0;
 
 export default function ReturnDetector() {
   const { homeCountryCode, notifPrefs } = useSettings();
   const { activeStayGroup } = useRecords();
-  const lastCheckRef = useRef(0);
 
   // 진행 중(active) 체류국 ISO2 코드
   const stayCountryCode = useMemo(() => {
@@ -43,8 +44,8 @@ export default function ReturnDetector() {
 
     const check = async () => {
       const now = Date.now();
-      if (now - lastCheckRef.current < CHECK_INTERVAL) return;
-      lastCheckRef.current = now;
+      if (now - lastCheckAt < CHECK_INTERVAL) return;
+      lastCheckAt = now;
 
       const { countryCode } = await detectCurrentCountry();
       if (!countryCode) return;

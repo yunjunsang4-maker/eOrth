@@ -68,8 +68,9 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
         ) : (
           <>
             <Text style={st.countText}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
-            {blockedUsers.map((user) => (
-              <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}`} style={st.userCard}>
+            {blockedUsers.map((user, idx) => (
+              // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
+              <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`} style={st.userCard}>
                 {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
                 <View style={st.avatarWrap}>
                   <PersonIcon size={24} color="#A0A0B0" />

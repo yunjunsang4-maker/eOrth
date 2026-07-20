@@ -1523,6 +1523,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
+    tripRestoreEpochRef.current += 1; // in-flight 복원 async 무효화 (감사 M1)
     setTripRestoreNonce((n) => n + 1);
   };
 
@@ -1738,15 +1739,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
   // 계정 전환(resetRecords) 시 nonce 증가로 새 계정에 대해 재시도한다.
   const tripRestoreTriedRef = useRef(false);
+  // 계정 세대(epoch) — resetRecords/rearm마다 증가. in-flight 복원 async가 계정 전환을
+  // 가로질러 이전 계정의 백업을 새 계정 상태에 적용하거나(카드 혼입), tried를 선점해
+  // 새 계정 복원을 스킵시키는 경합 방지(2026-07-20 감사 M1).
+  const tripRestoreEpochRef = useRef(0);
   const [tripRestoreNonce, setTripRestoreNonce] = useState(0);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
+    const epoch = tripRestoreEpochRef.current; // 이 시도가 속한 계정 세대
     (async () => {
       // 로그인 전(세션 없음)에는 '시도'로 치지 않는다 — 스토어는 로그인 전에 마운트되므로
       // 여기서 tried 처리하면 로그인 후 복원이 영영 안 돌고, 백업이 열리면서 빈 tripGroups가
       // 서버 백업을 덮어써 카드가 전부 사라진다(베타 실사고, 2026-07-10).
       // 로그인 완료 후에는 useAccountBoundary가 rearmTripRestore()로 재시도시킨다.
       const uid = await getMyUserId().catch(() => null);
+      if (epoch !== tripRestoreEpochRef.current) return; // 계정 전환됨 — 이 시도 폐기
       if (!uid || tripRestoreTriedRef.current) return;
       tripRestoreTriedRef.current = true;
       if (tripGroupsRef.current.length > 0) {
@@ -1755,6 +1762,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const backup = await fetchTripState();
+        if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 이전 계정 백업 미적용
         if (backup && backup.groups.length > 0) {
           setTripGroups((prev) =>
             prev.length > 0
@@ -1768,7 +1776,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } finally {
-        tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+        // 전환된 세대의 잔존 async가 새 계정의 백업 잠금을 조기 해제하지 않게 세대 일치 시에만
+        if (epoch === tripRestoreEpochRef.current) {
+          tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+        }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1779,6 +1790,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const rearmTripRestore = useCallback(() => {
     tripRestoreTriedRef.current = false;
     tripBackupReadyRef.current = false;
+    tripRestoreEpochRef.current += 1; // in-flight 복원 async 무효화 (감사 M1)
     setTripRestoreNonce((n) => n + 1);
   }, []);
 

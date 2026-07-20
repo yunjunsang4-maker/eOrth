@@ -70,6 +70,7 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
       const localById = new Map(local.map((m) => [m.id, m]));
       // 서버에만 있는 항목을 추가, 로컬에 있는 항목은 로컬값 그대로 유지
       const merged = [...local];
+      const addedIds = new Set<string>(); // 서버본 자체에 중복 id가 있어도 1회만 추가
       for (const r of remote) {
         // 서버 데이터 방어: id·createdAt 타입 + 내용(텍스트 또는 무드) 존재 검증 후 추가
         if (
@@ -81,7 +82,8 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
           typeof (r as any).createdAt !== 'number' ||
           (!(r as any).text && !(r as any).mood)
         ) continue;
-        if (!localById.has((r as any).id)) {
+        if (!localById.has((r as any).id) && !addedIds.has((r as any).id)) {
+          addedIds.add((r as any).id);
           merged.push(r as TravelMoment); // photoUri 없는 채로 추가
         }
       }

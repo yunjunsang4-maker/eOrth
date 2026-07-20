@@ -125,9 +125,8 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   };
 
   const openSettings = () => {
-    // Linking.openSettings()는 iOS/Android 모두 동작 — 'app-settings:' openURL 분기는
-    // 실패 시 미처리 promise rejection을 냈다(catch 없음)
-    Linking.openSettings();
+    // Linking.openSettings()는 iOS/Android 모두 동작. 실패는 무해화(미처리 rejection 방지)
+    Linking.openSettings().catch(() => {});
   };
 
   return (

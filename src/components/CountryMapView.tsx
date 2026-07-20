@@ -268,12 +268,17 @@ function resolveProvince(query){
   if(alias[q]) return alias[q];
   if(alias[qn]) return alias[qn];
   var all=(mainFeatures||[]).concat(insetFeatures||[]);
-  var match=null;
+  // 정확 일치 > 접두 일치 > 부분 일치 순으로 랭킹 — 짧은 검색어가 엉뚱한 지역의 부분 문자열에
+  // 먼저 걸리는 오매칭 방지 (예: 목록 앞쪽 지역명 중간에 우연히 포함되는 경우)
+  var match=null, best=0;
   for(var i=0;i<all.length;i++){
     var p=all[i].properties||{};
-    var nl=p.NL_NAME_1||'', en=p.NAME_1||'';
-    if(nl && nl.indexOf(q)>=0){match=en;break;}
-    if(en && qn.length>=2 && normEn(en).indexOf(qn)>=0){match=en;break;}
+    var nl=p.NL_NAME_1||'', en=p.NAME_1||'', ne=normEn(en);
+    var score=0;
+    if((nl && nl===q) || (ne && ne===qn)) score=3;
+    else if((nl && nl.indexOf(q)===0) || (qn.length>=2 && ne.indexOf(qn)===0)) score=2;
+    else if((nl && nl.indexOf(q)>=0) || (qn.length>=2 && ne.indexOf(qn)>=0)) score=1;
+    if(score>best){best=score;match=en;if(score===3)break;}
   }
   if(!match) return null;
   // 매칭된 게 도시 피처면 그 도시가 속한 주로 치환
@@ -319,19 +324,25 @@ function applyProvince(prov){
   updateMap();
 }
 // 로컬 매칭 실패 시 OSM(Nominatim) 지오코딩 폴백 — 인기명소가 아닌 시도 검색되게
-var ISO2={JPN:'jp',CHN:'cn',USA:'us',DEU:'de',ESP:'es',GBR:'gb',FRA:'fr',ITA:'it'};
+var ISO2={JPN:'jp',CHN:'cn',USA:'us',DEU:'de',ESP:'es',GBR:'gb',FRA:'fr',ITA:'it',
+  TUR:'tr',GRC:'gr',AUT:'at',PRT:'pt',NLD:'nl',THA:'th',MYS:'my',VNM:'vn',SAU:'sa',
+  ARE:'ae',MAR:'ma',EGY:'eg',TUN:'tn',ZAF:'za',MEX:'mx',CAN:'ca',BRA:'br',COL:'co'};
 var geoCache={};
 function geocodeFallback(query){
   if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip('검색 결과 없음'); return; }
   var cc=ISO2[CODE]||'';
   var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
-  fetch(url).then(function(r){return r.json();}).then(function(arr){
+  // 8초 타임아웃 — 느린 네트워크에서 무한정 무응답으로 보이지 않게 중단 후 오류 안내
+  var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
+  var timer=ctrl?setTimeout(function(){try{ctrl.abort();}catch(e){}},8000):null;
+  fetch(url, ctrl?{signal:ctrl.signal}:{}).then(function(r){return r.json();}).then(function(arr){
+    if(timer)clearTimeout(timer);
     var prov=null;
     if(arr&&arr.length){var lon=parseFloat(arr[0].lon),lat=parseFloat(arr[0].lat); if(!isNaN(lon)&&!isNaN(lat)) prov=provinceAt([lon,lat]);}
     geoCache[query]=prov;
     if(prov) applyProvince(prov);
     else setRegionChip('검색 결과 없음');
-  }).catch(function(){ setRegionChip('검색 오류 · 네트워크를 확인하세요'); });
+  }).catch(function(){ if(timer)clearTimeout(timer); setRegionChip('검색 오류 · 네트워크를 확인하세요'); });
 }
 // 검색 실행
 function doSearch(query){

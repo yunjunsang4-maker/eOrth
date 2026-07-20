@@ -241,7 +241,8 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions }: { items: { ur
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / slideW);
+          // 오버스크롤/빠른 스와이프로 범위 밖 인덱스가 되면 인디케이터·사진별 글이 꺼진다 — 클램프
+          const idx = Math.min(items.length - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / slideW)));
           setActiveIdx(idx);
         }}
         style={{ width: slideW, height: containerH }}
