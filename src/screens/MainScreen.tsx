@@ -1189,7 +1189,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={0.8}
                   onPress={() => setRegionSearch('')}
                 >
-                  <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
+                  <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
                 </TouchableOpacity>
               </LinearGradient>
               {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
@@ -1354,7 +1354,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   onPress={() => { setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false); }}
                 >
                   <Text style={styles.countryGridFlag}>{c.flag}</Text>
-                  <Text style={styles.countryGridName}>{c.name}</Text>
+                  <Text style={styles.countryGridName}>{countryEn(c.name)}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
@@ -1391,7 +1391,7 @@ export default function MainScreen({ navigation, route }: Props) {
               />
               <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
                 {REGION_COUNTRIES
-                  .filter(c => !countryPickerSearch.trim() || c.name.includes(countryPickerSearch.trim()))
+                  .filter(c => { const q = countryPickerSearch.trim(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q.toLowerCase()); })
                   .map(c => (
                     <TouchableOpacity
                       key={c.code}
@@ -1403,7 +1403,7 @@ export default function MainScreen({ navigation, route }: Props) {
                       }}
                     >
                       <Text style={styles.countryPickerFlag}>{c.flag}</Text>
-                      <Text style={styles.countryPickerName}>{c.name}</Text>
+                      <Text style={styles.countryPickerName}>{countryEn(c.name)}</Text>
                     </TouchableOpacity>
                   ))}
               </ScrollView>
@@ -1476,7 +1476,7 @@ export default function MainScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.countryFlag}>{c.flag}</Text>
                 <View style={styles.countryInfo}>
-                  <Text style={styles.countryName}>{c.name}</Text>
+                  <Text style={styles.countryName}>{countryEn(c.name)}</Text>
                   <Text style={styles.countryVisits} {...andFitText}>{t('main.visitsCountSuffix', { count: c.visits })}</Text>
                 </View>
                 <Text style={styles.chevron}>›</Text>
