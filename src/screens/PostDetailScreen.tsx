@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
+import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { WebView } from 'react-native-webview';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
@@ -1257,7 +1258,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -1393,7 +1394,7 @@ export default function PostDetailScreen() {
     viewType === 'cut' ? t('postDetail.typeCut') :
     viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
   const headerTitleText = record.countryName
-    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
+    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${countryLabel(record.countryName, i18n.language)}`
     : typeLabel;
   // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
   // 피드에서 photoTexts가 있으면 memo는 대표 글 복사본이라 캐러셀에서 표시됨 → bodyText 숨김
@@ -1574,21 +1575,21 @@ export default function PostDetailScreen() {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.country}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{countryTagLabel(record.country, i18n.language)}</Text>
         </View>
       ) : null;
     }
     if (record.countries.length <= 3) {
       return record.countries.map((c, i) => (
         <View key={i} style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {c.name}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {countryLabel(c.name, i18n.language)}</Text>
         </View>
       ));
     }
     return (
       <>
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {record.countries[0].name}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {countryLabel(record.countries[0].name, i18n.language)}</Text>
         </View>
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
           <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>+{record.countries.length - 1}</Text>
