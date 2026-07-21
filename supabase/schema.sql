@@ -564,7 +564,8 @@ language sql security definer set search_path = public as $$
     group by p.author_id
   ),
   cmut as (
-    select c.cid, count(*)::int as mutual_count
+    -- distinct: neighbors에 양방향 행이 생기는 레이스에도 같은 공통 메이트를 두 번 세지 않게
+    select c.cid, count(distinct mm.mate_id)::int as mutual_count
     from cand c
     join my_mates mm on true
     join public.neighbors n2 on n2.status = 'accepted'
