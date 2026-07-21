@@ -50,6 +50,7 @@ import { supabase } from '../services/supabase';
 import { exchangeAuthCode, wasIntentionalSignOut } from '../services/auth';
 import { emitToast } from '../store/toastStore';
 import { parseAppLink, openAppLink } from '../utils/appLinks';
+import { savePendingInvite } from '../utils/pendingInvite';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -144,8 +145,13 @@ export default function AppNavigator() {
           ).catch(() => {});
         } else if (attempts > 0) {
           setTimeout(() => tryGo(attempts - 1), 800);
+        } else if (link.type === 'profile') {
+          // attempts 소진 = 미인증(로그인/온보딩 전) — 초대 링크를 버리지 않고 보관.
+          // 온보딩 완료 후 첫 메인 진입(MainScreen)에서 메이트 연결 넛지로 소비된다(원샷·7일 만료).
+          // 수신 즉시가 아니라 소진 시점에 저장하는 이유: 콜드 스타트의 로그인 유저는
+          // 재시도 중 Main에 진입해 정상 직행하므로, 그 경우 넛지가 중복되지 않게 한다.
+          savePendingInvite(link.handle);
         }
-        // attempts 소진 = 미인증으로 간주 → 딥링크 무시
       };
       tryGo(6);
     };
