@@ -1235,7 +1235,7 @@ const ko = {
     declineRequestA11y: '{{name}}님의 팔로우 요청 거절',
     suggestedFriends: '추천 메이트',
     overlapSection: '여행이 겹치는 사람',
-    overlapReason: '함께 다녀온 나라 {{count}}곳',
+    overlapReason: '나와 겹치는 나라 {{count}}곳',
     inviteCardTitle: '아직 겹치는 사람이 적어요',
     inviteCardBody: '지인을 eOrth로 초대해 함께 여행을 기록해요',
     inviteCta: '초대하기',
