@@ -232,7 +232,7 @@ export default function StatsDetailScreen() {
       const yearStr = firstRecord.date ? firstRecord.date.split('.')[0] : (firstRecord.startDate ? firstRecord.startDate.split('.')[0] : '');
       if (yearStr && yearStr.length === 4) {
         firstTravelYear = t('statsDetail.yearN', { n: yearStr });
-        firstTravelLoc = firstRecord.countryName || (firstRecord.countries?.[0]?.name) || '';
+        firstTravelLoc = countryLabel(firstRecord.countryName || (firstRecord.countries?.[0]?.name) || '', i18n.language);
       }
     }
 
@@ -275,7 +275,7 @@ export default function StatsDetailScreen() {
       .map((year) => {
         const visits = yearlyCounts[year];
         const countriesSet = yearlyVisitedCountries[year] || new Set<string>();
-        const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).join(', ') : '';
+        const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).map((c) => countryLabel(c, i18n.language)).join(', ') : '';
         return {
           label: t('statsDetail.yearN', { n: year }),
           value: t('statsDetail.visitsN', { n: visits }),
@@ -327,7 +327,7 @@ export default function StatsDetailScreen() {
 
     const regionItems: Item[] = ['아시아', '유럽', '아메리카', '오세아니아', '아프리카'].map((cont) => {
       const count = continentCountries[cont].size;
-      const countriesListStr = Array.from(continentCountries[cont]).slice(0, 5).join(' · ') + (continentCountries[cont].size > 5 ? t('statsDetail.moreN', { n: continentCountries[cont].size - 5 }) : '');
+      const countriesListStr = Array.from(continentCountries[cont]).slice(0, 5).map((c) => countryLabel(c, i18n.language)).join(' · ') + (continentCountries[cont].size > 5 ? t('statsDetail.moreN', { n: continentCountries[cont].size - 5 }) : '');
       return {
         label: continentName(cont),
         value: t('statsDetail.countriesN', { n: count }),
