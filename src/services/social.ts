@@ -304,6 +304,43 @@ export async function fetchTravelOverlap(limit = 10): Promise<TravelOverlapRow[]
   }
 }
 
+// ─── 추천 메이트(여행 DNA) ───
+// mate_suggestions RPC — 나라 겹침+여행 스타일+함께 아는 메이트 합산 랭킹.
+// extraCountries: 로컬 여행기록카드·미발행·나만보기 나라(내 매칭 입력 전용, 타인에게 비노출).
+// 부가 기능 — 실패 시 빈 배열(섹션 미표시).
+export interface MateSuggestionRow {
+  authorId: string;
+  handle: string;
+  emoji: string | null;
+  profilePhoto: string | null;
+  sharedCount: number;
+  sampleCountries: string[]; // country_name(한글, 예: '일본')
+  mutualCount: number;
+  styleScore: number;
+  totalScore: number;
+}
+
+export async function fetchMateSuggestions(limit = 10, extraCountries: string[] = []): Promise<MateSuggestionRow[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.rpc('mate_suggestions', { match_limit: limit, extra_countries: extraCountries });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      authorId: r.author_id,
+      handle: r.handle,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      sharedCount: r.shared_count,
+      sampleCountries: r.sample_countries ?? [],
+      mutualCount: r.mutual_count ?? 0,
+      styleScore: r.style_score ?? 0,
+      totalScore: r.total_score ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ─── 좋아요 ───
 export async function likePost(postId: string): Promise<void> {
   if (!supabase || !postId) return;
