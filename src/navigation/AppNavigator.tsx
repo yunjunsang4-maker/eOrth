@@ -248,6 +248,8 @@ export default function AppNavigator() {
             // 세로 슬라이드를 지정해야 바텀시트처럼 아래에서 올라온다. 제스처도 세로(아래로 닫기).
             presentation: 'modal',
             gestureDirection: 'vertical',
+            // 닫기 버튼 없이 스와이프로만 닫는 화면 — 화면 어디서든 아래로 끌면 닫히게 인식 범위 확장
+            gestureResponseDistance: 1000,
             cardStyleInterpolator: ({ current, layouts }) => ({
               cardStyle: {
                 transform: [

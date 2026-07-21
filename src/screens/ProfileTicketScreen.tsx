@@ -9,7 +9,6 @@ import { captureRef } from 'react-native-view-shot';
 import * as MediaLibrary from 'expo-media-library';
 import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
-import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { getMyJoinedAt } from '../services/profile';
@@ -258,18 +257,8 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         <View style={st.bottomNotch} />
       </View>
 
-      {/* 상단 오버레이 — 뒤로가기 + 저장·공유 (캡처 대상 밖) */}
+      {/* 상단 오버레이 — 저장·공유 (캡처 대상 밖). 닫기는 아래로 스와이프 제스처 전용 */}
       <View style={[st.topBar, { top: insets.top + 20 }]} pointerEvents="box-none">
-        <TouchableOpacity
-          onPress={() => navigation.goBack()}
-          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-          accessibilityRole="button"
-          accessibilityLabel={t('profileTicket.closeA11y')}
-        >
-          <Svg width={14} height={24} viewBox="0 0 14 24" fill="none">
-            <SvgPath d="M12 2L3 12L12 22" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
-          </Svg>
-        </TouchableOpacity>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <TouchableOpacity
             style={[st.actionBtn, !hasHandle && st.actionDisabled]}
@@ -356,7 +345,7 @@ const st = StyleSheet.create({
   // ── 상단 오버레이 ──
   topBar: {
     position: 'absolute', left: TICKET_MARGIN + 16, right: TICKET_MARGIN + 16,
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center',
   },
   actionBtn: {
     width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.22)',
