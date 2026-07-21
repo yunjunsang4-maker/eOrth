@@ -55,7 +55,7 @@ const userLink = (code: string) => `eorth://user/${code}`;
 const USER_LINK_RE = /eorth:\/\/user\/(.+)$/i; // 대소문자 무관(이전 eOrth 링크 호환)
 
 // ─────────────────────────────────────────────
-// 검색/추천 결과 친구 타입
+// 검색/추천 결과 메이트 타입
 // ─────────────────────────────────────────────
 interface ContactFriend {
   id: string;
@@ -63,13 +63,13 @@ interface ContactFriend {
   initial: string;
   username: string;
   countries: number;
-  followers?: number;     // 이웃 수
+  followers?: number;     // 메이트 수
   photo?: string | null; // 프로필 사진 URL (있으면 아바타로 표시)
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
 }
 
 // ─────────────────────────────────────────────
-// 친구 아이템 (검색 결과·추천 친구 공통)
+// 메이트 아이템 (검색 결과·추천 메이트 공통)
 // ─────────────────────────────────────────────
 function FriendItem({
   item,
@@ -79,8 +79,8 @@ function FriendItem({
   onPress,
 }: {
   item: ContactFriend;
-  following: boolean; // 이미 이웃(서로이웃) 상태
-  requested: boolean; // 이웃 신청을 보내고 수락 대기 중인 상태
+  following: boolean; // 이미 메이트(서로메이트) 상태
+  requested: boolean; // 메이트 신청을 보내고 수락 대기 중인 상태
   onToggle: () => void;
   onPress?: () => void;
 }) {
@@ -157,7 +157,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     const q = route.params?.initialQuery;
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
-  // 이웃 상태는 store 공유 — 친구 프로필·이웃 목록·프로필 카운트와 동기화
+  // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
   const { records, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked } = useRecords();
   // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
   const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
@@ -198,7 +198,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     });
   }, [navigation]);
 
-  // 이웃 해제 시 목록에 표시된 이웃 수 낙관적 반영 (서버 재조회 없이 ±1)
+  // 메이트 해제 시 목록에 표시된 메이트 수 낙관적 반영 (서버 재조회 없이 ±1)
   // 신청은 수락 전까지 pending이라 카운트는 건드리지 않고, 해제(-1)만 반영한다.
   const bumpFollowerCount = (id: string, delta: number) => {
     const adjust = (list: ContactFriend[]) =>
@@ -290,7 +290,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
-  // 추천 친구 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
+  // 추천 메이트 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
   const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -365,10 +365,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 차단한 사용자는 검색·추천 결과에서 제외 (노출·재팔로우 방지)
   const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
   const displayList = remoteResults.filter(notBlocked);
-  // 추천 친구 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
+  // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
   const visibleSuggestions = suggestions.filter(notBlocked);
 
-  // 친구 행 렌더(검색결과·추천 친구 공통) — 중복 제거
+  // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거
   const renderRows = (list: ContactFriend[]) =>
     list.map((item, idx) => (
       <React.Fragment key={item.id}>
@@ -487,7 +487,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      {/* ── 친구 리스트 ── */}
+      {/* ── 메이트 리스트 ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.scrollContent}
@@ -508,7 +508,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             )}
           </>
         ) : visibleSuggestions.length > 0 ? (
-          /* 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자 */
+          /* 추천 메이트 — 내가 팔로우한 사람들이 팔로우하는 사용자 */
           <>
             <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
             {renderRows(visibleSuggestions)}
@@ -870,7 +870,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // 친구 아이템
+  // 메이트 아이템
   friendItem: {
     flexDirection: 'row',
     alignItems: 'center',

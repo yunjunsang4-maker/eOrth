@@ -247,7 +247,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup } = useRecords();
-  // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
+  // 동행자 값(혼자/메이트…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
       case '혼자': return t('newRecord.compSolo');
@@ -259,7 +259,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       default: return c;
     }
   };
-  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
 
   // ─── 편집 모드 ───
@@ -567,7 +567,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   // 비공개 대상 전체 설정(전체 비공개) / 전체 해제 — 한 번에 목록을 통째로 교체해
-  // 개별 친구 체크 상태까지 즉시 동기화한다.
+  // 개별 메이트 체크 상태까지 즉시 동기화한다.
   const setMediaPrivacyAll = (mediaIdx: number, friends: string[]) => {
     setMediaPrivacy(prev => ({ ...prev, [mediaIdx]: friends }));
   };
@@ -603,7 +603,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   // memo state 제거 — 사진별 글(photoTexts)이 본문을 대체하고 저장 시 대표 글을 memo로 복사함
   const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
-  // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 친구만 기본
+  // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 메이트만 기본
   const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
 
   // ── 국가별 데이터 관리 (2개국 이상 선택 시) ──
@@ -1533,7 +1533,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       );
                     })}
                   </View>
-                  {/* 선택된 앱 친구 칩 */}
+                  {/* 선택된 앱 메이트 칩 */}
                   {companionFriends.length > 0 && (
                     <View style={s.customChipRow}>
                       {companionFriends.map(friend => (
@@ -1552,7 +1552,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       ))}
                     </View>
                   )}
-                  {/* 앱 친구 추가 버튼 */}
+                  {/* 앱 메이트 추가 버튼 */}
                   <TouchableOpacity
                     style={s.addFriendBtn}
                     onPress={() => setFriendPickerVisible(true)}
@@ -1795,7 +1795,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         tripTitle={countrySummary()}
       />
 
-      {/* 🔒 비공개 친구 선택 모달 */}
+      {/* 🔒 비공개 메이트 선택 모달 */}
       <PrivacyModal
         visible={privacyModalIndex !== null}
         selectedFriends={privacyModalIndex !== null ? (mediaPrivacy[privacyModalIndex] || []) : []}
@@ -1805,7 +1805,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onClose={() => setPrivacyModalIndex(null)}
       />
 
-      {/* 앱 친구 선택 모달 */}
+      {/* 앱 메이트 선택 모달 */}
       <FriendPickerModal
         visible={friendPickerVisible}
         friends={friendNames}
@@ -2288,7 +2288,7 @@ const s = StyleSheet.create({
   },
   customChipX:   { fontSize: 12, color: 'rgba(255,255,255,0.6)' },
 
-  // 앱 친구 칩
+  // 앱 메이트 칩
   friendChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2312,7 +2312,7 @@ const s = StyleSheet.create({
   friendChipAvatarTxt: { fontSize: 11, color: COLORS.purpleNeon, fontWeight: '700' },
   friendChipName: { fontSize: 13, color: COLORS.white, fontWeight: '600' },
 
-  // 앱 친구 추가 버튼
+  // 앱 메이트 추가 버튼
   addFriendBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2597,6 +2597,6 @@ const s = StyleSheet.create({
 
 // 드래그 앤 드롭 리스트(국가/사진)는 components/record/DraggableLists 로 분리
 
-// ─── 앱 친구 선택 모달 스타일 ───
-// 앱 친구 선택 모달은 components/record/FriendPickerModal 로 분리
+// ─── 앱 메이트 선택 모달 스타일 ───
+// 앱 메이트 선택 모달은 components/record/FriendPickerModal 로 분리
 // 미디어 선택 모달은 components/record/MediaPickerModal 로 분리

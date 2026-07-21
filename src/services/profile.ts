@@ -20,7 +20,7 @@ export interface ProfileRow {
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
-  stay_country?: string | null; // 장기체류 국가 ISO 코드 — 이웃에게만 공개(public_profiles 조건부 노출)
+  stay_country?: string | null; // 장기체류 국가 ISO 코드 — 메이트에게만 공개(public_profiles 조건부 노출)
   stay_status?: string | null;  // 'active' | null
 }
 
@@ -122,7 +122,7 @@ export async function getMyProfileStatus(): Promise<{ reached: boolean; profile:
   }
 }
 
-/** 핸들(아이디)로 사용자 검색 (친구 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
+/** 핸들(아이디)로 사용자 검색 (메이트 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
   // '@아이디' 형태 입력 허용 (QR 스캔과 동일하게 앞의 @ 제거)
@@ -141,7 +141,7 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
 }
 
 /**
- * 여러 사용자의 방문 국가 수 일괄 조회 (친구 찾기 결과 표시용)
+ * 여러 사용자의 방문 국가 수 일괄 조회 (메이트 찾기 결과 표시용)
  * profile_country_counts RPC(SECURITY DEFINER)로 비공개 제외 게시물의 distinct country_name 집계.
  * 반환: { [userId]: 방문국수 }. 미설정/실패/데이터 없음이면 빈 객체.
  */
@@ -160,9 +160,9 @@ export async function getCountryCounts(ids: string[]): Promise<Record<string, nu
 }
 
 /**
- * 여러 사용자의 이웃 수 일괄 조회 (친구 찾기 결과 표시용)
- * neighbor_counts RPC로 이웃(서로이웃) 수 집계 (N명을 1쿼리로).
- * 반환: { [userId]: 이웃수 }. 미설정/실패/데이터 없음이면 빈 객체.
+ * 여러 사용자의 메이트 수 일괄 조회 (메이트 찾기 결과 표시용)
+ * neighbor_counts RPC로 메이트(서로메이트) 수 집계 (N명을 1쿼리로).
+ * 반환: { [userId]: 메이트수 }. 미설정/실패/데이터 없음이면 빈 객체.
  */
 export async function getFollowerCounts(ids: string[]): Promise<Record<string, number>> {
   if (!supabase || ids.length === 0) return {};

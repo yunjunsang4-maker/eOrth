@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import type { PostComment } from '../store/recordStore';
 
-// ─── 이웃 (서로이웃) ───
+// ─── 메이트 (서로메이트) ───
 export interface NeighborProfile {
   id: string;
   handle: string | null;
@@ -18,7 +18,7 @@ export interface NeighborProfile {
   photo: string | null; // 아바타 URL
 }
 
-// 이웃신청 — 상대가 이미 나에게 pending이면 자동 수락(양쪽 신청 → 즉시 서로이웃)
+// 메이트신청 — 상대가 이미 나에게 pending이면 자동 수락(양쪽 신청 → 즉시 서로메이트)
 export async function requestNeighbor(targetId: string): Promise<void> {
   if (!supabase || !targetId) return;
   const uid = await getMyUserId();
@@ -58,7 +58,7 @@ export async function declineNeighbor(requesterId: string): Promise<void> {
   if (error) throw error;
 }
 
-// 이웃 끊기 — accepted 관계 삭제 (양쪽 방향 어느 행이든)
+// 메이트 끊기 — accepted 관계 삭제 (양쪽 방향 어느 행이든)
 export async function removeNeighbor(otherId: string): Promise<void> {
   if (!supabase || !otherId) return;
   const uid = await getMyUserId();
@@ -70,7 +70,7 @@ export async function removeNeighbor(otherId: string): Promise<void> {
   if (error) throw error;
 }
 
-// 내 이웃 목록 (오류 시 null → 로컬 캐시 유지)
+// 내 메이트 목록 (오류 시 null → 로컬 캐시 유지)
 export async function fetchNeighbors(): Promise<NeighborProfile[] | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
@@ -84,7 +84,7 @@ export async function fetchNeighbors(): Promise<NeighborProfile[] | null> {
   } catch { return null; }
 }
 
-// 타인 프로필의 이웃 목록 (오류 시 null)
+// 타인 프로필의 메이트 목록 (오류 시 null)
 export async function fetchNeighborsOf(userId: string): Promise<NeighborProfile[] | null> {
   if (!supabase || !userId) return null;
   try {
@@ -96,7 +96,7 @@ export async function fetchNeighborsOf(userId: string): Promise<NeighborProfile[
   } catch { return null; }
 }
 
-// 이웃 수 (오류 시 null)
+// 메이트 수 (오류 시 null)
 export async function fetchNeighborCount(userId: string): Promise<number | null> {
   if (!supabase || !userId) return null;
   try {
@@ -107,7 +107,7 @@ export async function fetchNeighborCount(userId: string): Promise<number | null>
   } catch { return null; }
 }
 
-// 공유 기록 수 (visibility='neighbors' 글 집계) — 비이웃 프로필 여행수 스탯 동기화용. 오류 시 null
+// 공유 기록 수 (visibility='neighbors' 글 집계) — 비메이트 프로필 여행수 스탯 동기화용. 오류 시 null
 export async function fetchPostCount(userId: string): Promise<number | null> {
   if (!supabase || !userId) return null;
   try {
@@ -178,7 +178,7 @@ export async function blockUser(targetId: string): Promise<void> {
   if (!uid || uid === targetId) return;
   const { error } = await supabase.from('blocks').insert({ blocker_id: uid, blocked_id: targetId });
   if (error && error.code !== '23505') throw error; // 이미 차단(중복)만 정상 취급
-  // 차단 시 이웃 관계도 정리 (서로 이웃 목록에 남지 않게). 실패해도 차단 자체는 유효.
+  // 차단 시 메이트 관계도 정리 (서로 메이트 목록에 남지 않게). 실패해도 차단 자체는 유효.
   await supabase.from('neighbors')
     .delete()
     .or(`and(requester_id.eq.${uid},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${uid})`);
@@ -192,8 +192,8 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── 알림 (이웃) ───
-// notifications 테이블은 이웃 신청/수락 시 채워진다.
+// ─── 알림 (메이트) ───
+// notifications 테이블은 메이트 신청/수락 시 채워진다.
 export type NeighborNotificationType = 'neighbor_request' | 'neighbor_accept';
 export interface NeighborNotification {
   id: string;
@@ -247,14 +247,14 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   }
 }
 
-// ─── 추천 친구 ───
-// friend_suggestions RPC(SECURITY DEFINER) — 내 이웃들이 이웃 맺은 사용자.
+// ─── 추천 메이트 ───
+// friend_suggestions RPC(SECURITY DEFINER) — 내 메이트들이 메이트 맺은 사용자.
 export interface FriendSuggestion {
   id: string;
   handle: string | null;
   emoji: string | null;
   profilePhoto: string | null;
-  mutualCount: number; // 나와 함께 아는(내 이웃 중 이 사람과 이웃인) 수
+  mutualCount: number; // 나와 함께 아는(내 메이트 중 이 사람과 메이트인) 수
 }
 
 export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSuggestion[]> {

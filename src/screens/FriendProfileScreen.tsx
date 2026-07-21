@@ -77,11 +77,11 @@ export default function FriendProfileScreen({
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   // handle 파라미터 없이 진입해도(댓글·알림 등 userId만 전달) 프로필 로드 후 본인 판정이 되도록
-  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 이웃신청 버튼·차단 메뉴가 뜬다
+  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 메이트신청 버튼·차단 메뉴가 뜬다
   const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [neighborCount, setNeighborCount] = useState(0);
-  // 여행수(기록 수) — 서버 동기화값. 비이웃은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.
+  // 여행수(기록 수) — 서버 동기화값. 비메이트은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.
   const [postCount, setPostCount] = useState<number | null>(null);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
@@ -103,12 +103,12 @@ export default function FriendProfileScreen({
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
-  // 진입 시 이웃·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
-  // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 이웃 상태가 낡아 있는 문제 방지
+  // 진입 시 메이트·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
+  // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 메이트 상태가 낡아 있는 문제 방지
   const { refreshNeighbors } = useRecords();
   useEffect(() => { refreshNeighbors(); }, [refreshNeighbors]);
 
-  // 당겨서 새로고침 — 프로필·글·이웃 수 재조회
+  // 당겨서 새로고침 — 프로필·글·메이트 수 재조회
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -144,7 +144,7 @@ export default function FriendProfileScreen({
   // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,
   // 없으면 최근 공개 글(created_at desc)의 국가로 폴백.
   const friendLocation = useMemo(() => {
-    // 체류 중(이웃 조건부 노출) — 거주국 표시보다 우선
+    // 체류 중(메이트 조건부 노출) — 거주국 표시보다 우선
     if (profileRow?.stay_status === 'active' && profileRow?.stay_country) {
       const info = countryInfoFromCode(profileRow.stay_country.toUpperCase());
       return t('stay.stayingIn', { flag: info.countryFlag, name: info.countryName });
@@ -222,7 +222,7 @@ export default function FriendProfileScreen({
   const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
 
-  // 이웃·차단은 store 공유 상태 — 이웃 목록/프로필 카운트와 동기화된다
+  // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
   const { neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
@@ -231,9 +231,9 @@ export default function FriendProfileScreen({
   const requested = !!realId && isNeighborRequested(realId);
   const neighborState: 'none' | 'requested' | 'neighbor' =
     neighborNow ? 'neighbor' : requested ? 'requested' : 'none';
-  // 비이웃 잠금 — 여행기록은 이웃 전용. 카운트만 노출하고 아카이브는 잠금 안내로 대체.
+  // 비메이트 잠금 — 여행기록은 메이트 전용. 카운트만 노출하고 아카이브는 잠금 안내로 대체.
   const locked = !isSelf && !neighborNow;
-  // 여행수 스탯 — 타인은 서버 동기화값 우선(비이웃도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
+  // 여행수 스탯 — 타인은 서버 동기화값 우선(비메이트도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
   const tripStatValue = isSelf ? display.trips.length : (postCount ?? display.trips.length);
   const onNeighborPress = () => {
     if (!realId) return;
@@ -364,7 +364,7 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 통계 — 여행수·이웃 2개. 이웃 탭 → 이웃 목록(조회 전용) */}
+            {/* 통계 — 여행수·메이트 2개. 메이트 탭 → 메이트 목록(조회 전용) */}
             <View style={pv.statsRow}>
               <StatCard value={String(tripStatValue)} label={t('profile.tripCount')} />
               <StatCard
@@ -376,7 +376,7 @@ export default function FriendProfileScreen({
           </View>
         </View>
 
-        {/* ── 이웃신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
+        {/* ── 메이트신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
         {!isSelf && (
           <>
             <View style={s.actionRow}>
@@ -393,7 +393,7 @@ export default function FriendProfileScreen({
                       : t('friends.neighborRequest')}
                 </Text>
               </TouchableOpacity>
-              {/* DM — 이웃일 때만 노출. 비이웃은 DM 불가(이웃 버튼이 폭을 채움) */}
+              {/* DM — 메이트일 때만 노출. 비메이트은 DM 불가(메이트 버튼이 폭을 채움) */}
               {neighborNow && (
                 <TouchableOpacity
                   style={s.dmBtn}
@@ -421,7 +421,7 @@ export default function FriendProfileScreen({
           /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
         ) : locked ? (
-          /* ── 비이웃 잠금 안내 — 카운트만 노출, 아카이브는 지구본+자물쇠 + 문구로 대체 ── */
+          /* ── 비메이트 잠금 안내 — 카운트만 노출, 아카이브는 지구본+자물쇠 + 문구로 대체 ── */
           <>
             <View style={s.divider} />
             <View style={s.lockedBox}>
@@ -611,7 +611,7 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 23, fontFamily: 'Inter_800ExtraBold', color: COLORS.white },
   archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
-  // 비이웃 잠금 안내 — 인스타 비공개 계정 스타일(아이콘 1개 + 문구)
+  // 비메이트 잠금 안내 — 인스타 비공개 계정 스타일(아이콘 1개 + 문구)
   lockedBox: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 32 },
   lockedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 16 },
   lockedDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', marginTop: 6, lineHeight: 18 },

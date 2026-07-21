@@ -1,5 +1,5 @@
 // 미디어 비공개(mediaPrivacy)를 뷰어 기준으로 해석하는 순수 함수.
-// mediaPrivacy: 미디어 원본 index → 그 사진을 비공개할 친구 이름 목록.
+// mediaPrivacy: 미디어 원본 index → 그 사진을 비공개할 메이트 이름 목록.
 // viewer=null = 작성자/전체공개 시점(가림 없음).
 
 export interface PrivacyRecord {
@@ -38,7 +38,7 @@ export function visibleRepresentative(record: PrivacyRecord, viewer: string | nu
   return vis[0];
 }
 
-// 블로그·스트립(cut)은 사진/블록 개별이 아니라 '기록 전체' 비공개다(mediaPrivacy[0]=대상 친구).
+// 블로그·스트립(cut)은 사진/블록 개별이 아니라 '기록 전체' 비공개다(mediaPrivacy[0]=대상 메이트).
 // 현재 뷰어가 그 대상에 포함되면 기록 전체를 숨겨야 한다(피드에서 제외). 피드(feed)는 사진 단위
 // 비공개라 여기서 숨기지 않는다. viewer=null(작성자/전체공개)은 숨김 없음.
 export function isPostHiddenForViewer(

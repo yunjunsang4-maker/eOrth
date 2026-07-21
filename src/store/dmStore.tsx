@@ -22,7 +22,7 @@ const mustUpload = async (u: string): Promise<string> => {
 };
 const mustUploadMaybe = async (u?: string): Promise<string | undefined> => (u ? mustUpload(u) : u);
 
-// 신규 사용자는 빈 상태로 시작 — 실제 친구를 추가/대화하면서 채워진다 (데모 시드 제거)
+// 신규 사용자는 빈 상태로 시작 — 실제 메이트를 추가/대화하면서 채워진다 (데모 시드 제거)
 const INITIAL_FRIENDS: Friend[] = [];
 const INITIAL_CONVERSATIONS: Record<string, Message[]> = {};
 

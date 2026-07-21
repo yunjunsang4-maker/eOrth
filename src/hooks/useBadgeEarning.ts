@@ -30,7 +30,7 @@ export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = 
     return n;
   }, [commentsByPost, handle]);
 
-  // 데이터 자동 판정 (외부 옵션: 생일·이웃·댓글·공유·접속·설치 등)
+  // 데이터 자동 판정 (외부 옵션: 생일·메이트·댓글·공유·접속·설치 등)
   // 보관(archived) 기록도 포함 — 보관해도 배지 진행 유지.
   const dataEarnedBadgeIds = useMemo(
     () => computeEarnedBadgeIds(records, badges, {

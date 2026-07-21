@@ -214,7 +214,7 @@ function mapRowToRecord(row: any): TravelRecord {
 //    관계 후보를 여러 개 찾아 PGRST201(모호) 오류를 낸다 (실서버 확인됨).
 const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles:public_profiles!posts_author_id_fkey(handle, emoji, profile_photo, handle_font)';
 
-// 피드: 남들의 공개/친구 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
+// 피드: 남들의 공개/메이트 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
 export async function fetchFeed(): Promise<TravelRecord[]> {
   if (!supabase) return [];
   const uid = await getMyUserId();
@@ -294,11 +294,11 @@ export async function fetchPostById(postId: string): Promise<TravelRecord | null
   }
 }
 
-// 특정 사용자의 공개 글 (친구 프로필용)
+// 특정 사용자의 공개 글 (메이트 프로필용)
 export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
   if (!supabase || !userId) return [];
   try {
-    // 이웃 공개(neighbors) 글만 — 실제 접근 판정은 RLS(are_neighbors)가 하고, private은 제외.
+    // 메이트 공개(neighbors) 글만 — 실제 접근 판정은 RLS(are_neighbors)가 하고, private은 제외.
     const { data, error } = await supabase
       .from('posts')
       .select(POST_SELECT)

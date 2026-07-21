@@ -78,7 +78,7 @@ export default function AppNavigator() {
   const tRef = useRef(t);
   tRef.current = t;
 
-  // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
+  // 딥링크: eorth://user/<handle> → 메이트찾기 화면을 해당 핸들로 검색 상태로 연다
   useEffect(() => {
     const handleUrl = async (url: string | null) => {
       if (!url) return;
@@ -129,7 +129,7 @@ export default function AppNavigator() {
         return;
       }
 
-      // eorth://profile|user/<handle> → 해당 프로필 화면으로 직행 (조회 실패 시 친구찾기 폴백)
+      // eorth://profile|user/<handle> → 해당 프로필 화면으로 직행 (조회 실패 시 메이트찾기 폴백)
       // eorth://post/<id> → 해당 게시물 상세로 직행
       const link = parseAppLink(trimmed);
       if (!link) return;

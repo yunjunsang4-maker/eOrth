@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Ellipse, Line, Path, Rect } from 'react-native-svg';
 
-// 지구본 + 자물쇠 아이콘 — 비이웃 프로필 잠금 안내용.
+// 지구본 + 자물쇠 아이콘 — 비메이트 프로필 잠금 안내용.
 // 지구본(위경도 격자 원)을 옅게 그리고, 중앙에 자물쇠를 또렷하게 얹어 '잠긴 여행기록'을 표현.
 export default function GlobeLockIcon({
   size = 72,

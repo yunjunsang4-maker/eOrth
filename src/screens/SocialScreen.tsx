@@ -104,7 +104,7 @@ function ShareBottomSheet({
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { neighbors } = useRecords();
-  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지·사진 반영
+  // 공유 대상은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거) — 프로필 이모지·사진 반영
   const shareFriends = neighbors.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
   }));
@@ -219,7 +219,7 @@ function ShareBottomSheet({
           </View>
         )}
 
-        {/* 친구 선택 — View 오버레이 (Modal 아님) */}
+        {/* 메이트 선택 — View 오버레이 (Modal 아님) */}
         {friendPickerVisible && (
           <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
             <View style={ss.friendPickerCard}>
@@ -1531,7 +1531,7 @@ const ab = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────
-// 친구 피드
+// 메이트 피드
 // ─────────────────────────────────────────────
 // ── 몰입형 스크롤링: 카드 등장 애니메이션 래퍼 ──
 // ─────────────────────────────────────────────
@@ -2286,7 +2286,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
   const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
-  // 빈 피드 기본 콘텐츠 — 추천 친구 (팔로우할 사람이 생기면 피드가 채워진다)
+  // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
@@ -2324,7 +2324,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  // 빠른공유 친구는 이웃(neighbors)에서 — 대화량 많은 순 상위 3명.
+  // 빠른공유 메이트는 메이트(neighbors)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
     () => neighbors
@@ -2460,7 +2460,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       .filter(
         (r) =>
           r.visibility === 'neighbors' &&
-          // 사진첩(과거 여행 불러오기)은 게시물이 아니라 앨범 — 이웃 프로필·여행 카드에서만
+          // 사진첩(과거 여행 불러오기)은 게시물이 아니라 앨범 — 메이트 프로필·여행 카드에서만
           // 보이고 소셜 피드 스트림에는 흐르지 않는다 (b84d93a로 friends 승격되며 피드
           // 공개범위 조건을 충족하게 된 부작용 차단).
           r.viewType !== 'album' &&
@@ -2712,7 +2712,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             ))}
           </View>
           {isEmptyFeed && (
-            /* 빈 피드 기본 콘텐츠 — 예시 카드 아래에 배치: 안내 + 기록 유도 CTA + 추천 친구 + 친구 찾기 보조 링크 */
+            /* 빈 피드 기본 콘텐츠 — 예시 카드 아래에 배치: 안내 + 기록 유도 CTA + 추천 메이트 + 메이트 찾기 보조 링크 */
             <View style={s.emptyWrap}>
               <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
               {/* 주 CTA: 첫 기록 남기기 */}
@@ -2760,7 +2760,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                 )}
                 <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
               </TouchableOpacity>
-              {/* 추천 친구 (보조) */}
+              {/* 추천 메이트 (보조) */}
               {suggested.length > 0 && (
                 <>
                   <Text style={s.emptySuggestTitle}>{t('social.emptySuggestTitle')}</Text>
@@ -2788,7 +2788,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   ))}
                 </>
               )}
-              {/* 친구찾기 보조 링크 (덜 강조) */}
+              {/* 메이트찾기 보조 링크 (덜 강조) */}
               <TouchableOpacity
                 style={s.emptyCtaLink}
                 activeOpacity={0.75}
@@ -2986,7 +2986,7 @@ const s = StyleSheet.create({
     borderColor: '#0A0A0F',
   },
 
-  // 친구 피드
+  // 메이트 피드
   friendsScroll: {
     paddingHorizontal: Spacing[6],
     paddingTop: Spacing[4],
@@ -3162,7 +3162,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing[8],
   },
-  // 빈 피드 기본 콘텐츠 (추천 친구 + CTA)
+  // 빈 피드 기본 콘텐츠 (추천 메이트 + CTA)
   emptyWrap: {
     paddingHorizontal: 20,
     paddingBottom: 8,
@@ -3483,7 +3483,7 @@ const ss = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // 친구 선택 모달
+  // 메이트 선택 모달
   friendPickerCard: {
     backgroundColor: 'rgba(20,20,32,0.7)',
     borderRadius: 20,

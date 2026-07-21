@@ -67,7 +67,7 @@ const PROFILE_TUTORIAL_KEY = '@eorth/profileTutorialSeen';
 let lastFollowerCountCache = 0;
 
 // 리퀴드 글래스 카드 재정렬용 부드러운 스프링 레이아웃 전환
-// (이웃 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
+// (메이트 카드가 순간이동하지 않고 새 위치로 출렁이며 이동)
 const LIQUID_LAYOUT = {
   duration: 340,
   create: { type: LayoutAnimation.Types.easeInEaseOut, property: LayoutAnimation.Properties.opacity },
@@ -1544,7 +1544,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
       newOrder.splice(targetIdx, 0, removed);
       const ids = newOrder.map((t) => t.id);
 
-      // 이웃 카드들은 LayoutAnimation으로 새 위치까지 출렁이며 이동,
+      // 메이트 카드들은 LayoutAnimation으로 새 위치까지 출렁이며 이동,
       // 끌던 카드는 새 자리(targetIdx)에서 손가락 위치 → 슬롯으로 스프링 정착
       LayoutAnimation.configureNext(LIQUID_LAYOUT);
       setCardOrder(ids);
@@ -1601,7 +1601,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const [staySheetVisible, setStaySheetVisible] = useState(false);
   const stayActive = activeStayGroup?.stay?.status === 'active';
 
-  // 이웃 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
+  // 메이트 수 — 백엔드(supabase)에서 로드. 미연결 시 0.
   // 리마운트 시 0으로 깜빡이지 않게 마지막 값을 모듈 캐시에서 복원, 오류(null)면 이전 값 유지
   const [neighborCount, setNeighborCount] = useState(lastFollowerCountCache);
   const followerAliveRef = useRef(true);
@@ -1617,7 +1617,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   }, []);
   useEffect(() => { loadNeighborCount(); }, [loadNeighborCount]);
 
-  // 당겨서 새로고침 — 이웃 수 + 이웃 목록을 서버 기준으로 재조회
+  // 당겨서 새로고침 — 메이트 수 + 메이트 목록을 서버 기준으로 재조회
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

@@ -363,7 +363,7 @@ export default function DMScreen({ navigation, route }: Props) {
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
     const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;
     dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record, replyTo });
-    markBadgesEarned([73]); // 친구에게 첫 DM 전송 → 배지 73(행동 기반, 영구)
+    markBadgesEarned([73]); // 메이트에게 첫 DM 전송 → 배지 73(행동 기반, 영구)
     if (replyTarget) setReplyTarget(null);
     setAttachMenuOpen(false);
   };

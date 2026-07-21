@@ -438,7 +438,7 @@ export default function TripDetailScreen() {
 
   const handleRecordPress = (rec: TravelRecord) => {
     // 타인 기록은 전부 게시물 상세로 — TripRecord는 소유자 편집 UI가 섞여 있고,
-    // 스토어에 없는 글이라 record 폴백을 함께 넘긴다 (친구 프로필의 기존 동작과 동일)
+    // 스토어에 없는 글이라 record 폴백을 함께 넘긴다 (메이트 프로필의 기존 동작과 동일)
     if (isGuest) {
       navigation.navigate('PostDetail', { postId: rec.id, record: rec });
       return;

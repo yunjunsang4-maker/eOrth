@@ -663,10 +663,10 @@ function SnapStoryViewer({
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
   const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked } = useRecords();
-  // ── 공유 시트 (인스타식: 친구 DM으로 보내기 + 외부 공유) ──
+  // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
-  // 대화량 많은 친구 순 — 소셜 피드 빠른공유와 동일 기준
+  // 대화량 많은 메이트 순 — 소셜 피드 빠른공유와 동일 기준
   const shareFriends = useMemo(
     () => neighbors
       .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' }))
@@ -1030,7 +1030,7 @@ function SnapStoryViewer({
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(postLink(currentSnap.remoteId ?? currentSnap.id)); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
-  // 공유 아이콘 → 인스타처럼 시트에서 친구 DM 전송 또는 외부 공유를 고른다
+  // 공유 아이콘 → 인스타처럼 시트에서 메이트 DM 전송 또는 외부 공유를 고른다
   const handleSharePost = () => { setMenuVisible(false); setShareSheetOpen(true); };
   const handleShareExternal = () => {
     setShareSheetOpen(false);
@@ -1209,7 +1209,7 @@ function SnapStoryViewer({
         </TouchableOpacity>
       </Modal>
 
-      {/* 공유 시트 — 친구 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
+      {/* 공유 시트 — 메이트 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
       <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
@@ -1611,7 +1611,7 @@ export default function PostDetailScreen() {
     return (
       <SnapStoryViewer
         initialPostId={postId}
-        // 친구 스냅은 feedPosts에 있다 — records만 넘기면 친구 스냅을 열 때 내 스토리가
+        // 메이트 스냅은 feedPosts에 있다 — records만 넘기면 메이트 스냅을 열 때 내 스토리가
         // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스+동일 필터.
         records={snapRecords}
         navigation={navigation}
@@ -1698,9 +1698,9 @@ export default function PostDetailScreen() {
                 const postDisplayName = isMyPost
                   ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
-                // 작성자 uuid — 이웃 관계 판정은 반드시 uuid 기준
+                // 작성자 uuid — 메이트 관계 판정은 반드시 uuid 기준
                 const authorId = typeof record.authorId === 'string' && record.authorId ? record.authorId : null;
-                // 이웃 3상태: 이웃 / 신청됨 / 없음 — 스토어 판정 사용
+                // 메이트 3상태: 메이트 / 신청됨 / 없음 — 스토어 판정 사용
                 const neighborState: 'neighbor' | 'requested' | 'none' = authorId
                   ? (isNeighbor(authorId) ? 'neighbor' : isNeighborRequested(authorId) ? 'requested' : 'none')
                   : 'none';
@@ -1713,7 +1713,7 @@ export default function PostDetailScreen() {
                 const onNeighborPress = () => {
                   if (!authorId) return;
                   buzz('light');
-                  // 없음→신청, 신청됨→취소, 이웃→끊기
+                  // 없음→신청, 신청됨→취소, 메이트→끊기
                   if (neighborState === 'neighbor') removeNeighbor(authorId);
                   else if (neighborState === 'requested') cancelNeighborRequest(authorId);
                   else requestNeighbor(authorId);
@@ -3184,7 +3184,7 @@ const viewerS = StyleSheet.create({
   },
 });
 
-// ─── 스냅 공유 시트 (친구 DM 전송 + 외부 공유) 스타일 ───
+// ─── 스냅 공유 시트 (메이트 DM 전송 + 외부 공유) 스타일 ───
 const shareS = StyleSheet.create({
   sheet: {
     backgroundColor: '#1A1A28',

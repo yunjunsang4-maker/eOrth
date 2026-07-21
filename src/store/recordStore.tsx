@@ -197,7 +197,7 @@ export interface FollowedFriend {
   currentCountry: string | null;
   currentCountryFlag: string | null;
   followedAt: number;
-  isMutual?: boolean; // 맞팔(서로 팔로우) 여부 — '친구 수' 배지(78·81·82·83) 판정용
+  isMutual?: boolean; // 맞팔(서로 팔로우) 여부 — '메이트 수' 배지(78·81·82·83) 판정용
 }
 
 export interface PostComment {
@@ -260,7 +260,7 @@ interface RecordContextType {
   acceptNeighbor: (requesterId: string) => void;
   declineNeighbor: (requesterId: string) => void;
   removeNeighbor: (idOrUsername: string) => void;
-  // 내가 보낸 대기 중 이웃신청의 대상 id (서버 상태, 비영속)
+  // 내가 보낸 대기 중 메이트신청의 대상 id (서버 상태, 비영속)
   outgoingNeighborRequests: string[];
   isNeighbor: (id: string) => boolean;
   isNeighborRequested: (targetId: string) => boolean;
@@ -306,7 +306,7 @@ interface RecordContextType {
   // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
   currentViewer: string | null;
   setCurrentViewer: (name: string | null) => void;
-  // 백엔드 피드(남들의 공개/친구 글). Supabase 미설정 시 항상 빈 배열.
+  // 백엔드 피드(남들의 공개/메이트 글). Supabase 미설정 시 항상 빈 배열.
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
@@ -364,7 +364,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     !!s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS;
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [neighbors, setNeighbors] = useState<FollowedFriend[]>(INITIAL_NEIGHBORS);
-  // 내가 보낸 대기 중 이웃신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
+  // 내가 보낸 대기 중 메이트신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
   const [outgoingNeighborRequests, setOutgoingNeighborRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
@@ -1089,8 +1089,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
-    // 차단하면 이웃에서도 제거 — 화면별 처리 불일치 방지 (이웃 아니면 no-op)
-    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (이웃 항목의 username은 handle과 동일 값)
+    // 차단하면 메이트에서도 제거 — 화면별 처리 불일치 방지 (메이트 아니면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (메이트 항목의 username은 handle과 동일 값)
     const nb = neighbors.find((f) =>
       (!!user.id && f.id === user.id) ||
       (!!f.username && (f.username === user.handle || f.username === user.name))
@@ -1176,8 +1176,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const sameNeighbor = (f: FollowedFriend, key: string) =>
     f.id === key || (!!f.username && f.username === key);
 
-  // 이웃신청 — 낙관적으로 '신청됨'(대기) 목록에 추가. 수락 전까지 이웃 목록엔 넣지 않는다.
-  // (상대도 나에게 신청해 둔 상태면 service가 자동 수락 → refreshNeighbors가 이웃으로 반영)
+  // 메이트신청 — 낙관적으로 '신청됨'(대기) 목록에 추가. 수락 전까지 메이트 목록엔 넣지 않는다.
+  // (상대도 나에게 신청해 둔 상태면 service가 자동 수락 → refreshNeighbors가 메이트으로 반영)
   const requestNeighbor = (targetId: string) => {
     if (!targetId) return;
     setOutgoingNeighborRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
@@ -1202,7 +1202,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 받은 신청 수락 → 이웃이 됨(refreshNeighbors로 목록 반영)
+  // 받은 신청 수락 → 메이트이 됨(refreshNeighbors로 목록 반영)
   const acceptNeighbor = (requesterId: string) => {
     if (!requesterId) return;
     if (isSupabaseConfigured) {
@@ -1217,7 +1217,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (isSupabaseConfigured) apiDeclineNeighbor(requesterId).catch(notifySyncError);
   };
 
-  // 이웃 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
+  // 메이트 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
   const removeNeighbor = (idOrUsername: string) => {
     const target = neighbors.find((f) => sameNeighbor(f, idOrUsername));
     setNeighbors((prev) => prev.filter((f) => (target ? f !== target : !sameNeighbor(f, idOrUsername))));
@@ -1230,7 +1230,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     [neighbors]
   );
 
-  // '신청됨' 판정 — 이미 이웃이면(수락됨) 신청 상태로 보지 않는다
+  // '신청됨' 판정 — 이미 메이트이면(수락됨) 신청 상태로 보지 않는다
   const isNeighborRequested = useCallback(
     (targetId: string) =>
       outgoingNeighborRequests.includes(targetId) && !neighbors.some((f) => f.id === targetId),
@@ -1411,7 +1411,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       content: data.title,
       likes: 0, comments: 0, liked: false,
       isMyPost: true,
-      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 이웃 프로필·피드에서
+      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 메이트 프로필·피드에서
       // 과거 여행이 전혀 안 보여 "기록이 있는데 안 보인다"는 혼란을 낳았다.
       visibility: 'neighbors',
       timestamp: Date.now(),
@@ -1527,7 +1527,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripRestoreNonce((n) => n + 1);
   };
 
-  // 백엔드 피드 새로고침 (남들의 공개/친구 글 + 내 좋아요 표시)
+  // 백엔드 피드 새로고침 (남들의 공개/메이트 글 + 내 좋아요 표시)
   const refreshFeed = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
@@ -1557,8 +1557,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 이웃 목록을 백엔드 기준으로 동기화
-  // 서버가 연속으로 빈 이웃 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
+  // 메이트 목록을 백엔드 기준으로 동기화
+  // 서버가 연속으로 빈 메이트 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
   const emptyNeighborStreakRef = useRef(0);
   const refreshNeighbors = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -1570,7 +1570,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!list) return; // 오류 시 로컬 유지
     setNeighbors((prev) => {
       // 토큰 갱신 직후 RLS가 순간적으로 빈 목록을 줄 수 있다 — 첫 빈 응답은 유지,
-      // 연속 2회 빈 응답이면 실제 전체 이웃 해제로 보고 수용(유령 이웃 잔존 방지).
+      // 연속 2회 빈 응답이면 실제 전체 메이트 해제로 보고 수용(유령 메이트 잔존 방지).
       if (list.length === 0 && prev.length > 0) {
         emptyNeighborStreakRef.current += 1;
         if (emptyNeighborStreakRef.current < 2) return prev;
@@ -1589,13 +1589,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           currentCountry: ex?.currentCountry ?? null,
           currentCountryFlag: ex?.currentCountryFlag ?? null,
           followedAt: ex?.followedAt ?? 0,
-          isMutual: true, // 서로이웃은 모두 대칭
+          isMutual: true, // 서로메이트은 모두 대칭
         };
       });
     });
   }, []);
 
-  // 앱 시작/복원 후 피드·이웃 1회 로드
+  // 앱 시작/복원 후 피드·메이트 1회 로드
   useEffect(() => {
     if (hydrated) {
       refreshFeed();

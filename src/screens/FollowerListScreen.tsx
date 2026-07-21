@@ -54,12 +54,12 @@ const COLORS = {
 export default function FollowerListScreen({ navigation }: RootStackScreenProps<'FollowerList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  // 이웃 관계 액션은 store 경유 — store의 이웃 목록·배지와 동기화
+  // 메이트 관계 액션은 store 경유 — store의 메이트 목록·배지와 동기화
   const { removeNeighbor, acceptNeighbor, declineNeighbor, isBlocked } = useRecords();
   const [followers, setFollowers] = useState<NeighborProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false); // 오류 ↔ "이웃 없음" 구분
-  // 받은 이웃신청 (비공개 계정일 때 쌓임) — 수락/거절
+  const [loadError, setLoadError] = useState(false); // 오류 ↔ "메이트 없음" 구분
+  // 받은 메이트신청 (비공개 계정일 때 쌓임) — 수락/거절
   const [requests, setRequests] = useState<IncomingNeighborRequest[]>([]);
   const [processingId, setProcessingId] = useState<string | null>(null); // 중복 탭 방지
 
@@ -72,7 +72,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     });
   };
 
-  // ✕ 버튼 — 이웃 끊기 (확인 1번 → store가 서버 neighbors 삭제 → 목록 반영)
+  // ✕ 버튼 — 메이트 끊기 (확인 1번 → store가 서버 neighbors 삭제 → 목록 반영)
   const [removingId, setRemovingId] = useState<string | null>(null);
   const handleRemoveNeighbor = (neighbor: NeighborProfile) => {
     if (removingId) return;
@@ -96,7 +96,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     ]);
   };
 
-  // 이웃은 store에도 있지만 신청 섹션 병합·최신 서버값을 위해 진입 시 백엔드에서 조회한다.
+  // 메이트은 store에도 있지만 신청 섹션 병합·최신 서버값을 위해 진입 시 백엔드에서 조회한다.
   useFocusEffect(
     useCallback(() => {
       let alive = true;
@@ -117,7 +117,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
     }, [isBlocked])
   );
 
-  // 신청 수락 → 요청자가 이웃이 되므로 이웃 목록에 즉시 반영
+  // 신청 수락 → 요청자가 메이트이 되므로 메이트 목록에 즉시 반영
   const handleAccept = (req: IncomingNeighborRequest) => {
     if (processingId) return;
     buzz('light');
@@ -168,7 +168,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ── 받은 이웃신청 (비공개 계정) — 수락/거절 ── */}
+          {/* ── 받은 메이트신청 (비공개 계정) — 수락/거절 ── */}
           {requests.length > 0 && (
             <>
               <Text style={styles.sectionLabel}>{t('friends.neighborRequestsN', { count: requests.length })}</Text>
@@ -238,12 +238,12 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                     </View>
                   )}
 
-                  {/* 정보 — 모든 이웃은 서로이웃이라 별도 표시 없음 */}
+                  {/* 정보 — 모든 메이트은 서로메이트이라 별도 표시 없음 */}
                   <View style={styles.infoWrap}>
                     <Text style={styles.username}>@{name}</Text>
                   </View>
 
-                  {/* DM + ✕(이웃 끊기) */}
+                  {/* DM + ✕(메이트 끊기) */}
                   <TouchableOpacity
                     style={styles.actionBtn}
                     onPress={(e) => { e.stopPropagation?.(); openDM(follower); }}
@@ -337,7 +337,7 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.purpleNeon,
   },
-  // ── 받은 이웃신청 ──
+  // ── 받은 메이트신청 ──
   sectionLabel: {
     fontSize: 13,
     fontWeight: '600',

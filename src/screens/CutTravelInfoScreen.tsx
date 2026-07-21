@@ -232,7 +232,7 @@ function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose, 
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
 
-// ─── 비공개 친구 선택 모달 (블로그와 동일) ───
+// ─── 비공개 메이트 선택 모달 (블로그와 동일) ───
 function PrivacyModal({
   visible,
   selectedFriends,
@@ -278,7 +278,7 @@ function PrivacyModal({
             </View>
           </View>
 
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {/* 전체 비공개 — 모든 메이트에게 비공개 (맨 위 옵션) */}
           {allFriends.length > 0 && (() => {
             const allPrivate = selectedFriends.length === allFriends.length;
             return (
@@ -308,7 +308,7 @@ function PrivacyModal({
             </TouchableOpacity>
           )}
 
-          {/* 친구 목록 */}
+          {/* 메이트 목록 */}
           <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
             {allFriends.map(friend => {
               const isSelected = selectedFriends.includes(friend);
@@ -349,7 +349,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { addRecord, addTripGroup, neighbors, records } = useRecords();
-  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
@@ -925,7 +925,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         recordedDates={recordedDates}
       />
 
-      {/* 앱 친구 선택 모달 */}
+      {/* 앱 메이트 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
         <View style={fp.overlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />

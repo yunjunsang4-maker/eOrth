@@ -25,7 +25,7 @@ export interface SelectedCountryParam {
   regionEn?: string;
 }
 
-/** DM 화면으로 전달되는 친구 정보 */
+/** DM 화면으로 전달되는 메이트 정보 */
 export interface DMFriendParam {
   name: string;
   handle: string;

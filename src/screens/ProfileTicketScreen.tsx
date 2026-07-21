@@ -1,7 +1,7 @@
 // 프로필 "마이" 티켓 — 보딩패스 형태의 전용 화면(iPhone 17 - 103/102 시안).
 // 상단 보라: 최근 여행지(국가·기간·별점), 하단 흰색: 아이디·통계·QR.
 // 티켓 또는 하단 "내 티켓 공유하기" 버튼을 누르면 티켓을 이미지로 캡처해 시스템 공유한다.
-// QR은 eorth://user/<handle> — 친구찾기 스캐너(USER_LINK_RE)와 호환.
+// QR은 eorth://user/<handle> — 메이트찾기 스캐너(USER_LINK_RE)와 호환.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -144,7 +144,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
     return latest ? enName(latest.ko) : '—';
   }, [myRecords]);
 
-  // 동행자 — 기록들에 태그된 친구의 누적 고유 수
+  // 동행자 — 기록들에 태그된 메이트의 누적 고유 수
   const companionCount = useMemo(() => {
     const set = new Set<string>();
     myRecords.forEach(r => r.companionFriends?.forEach(f => set.add(f)));

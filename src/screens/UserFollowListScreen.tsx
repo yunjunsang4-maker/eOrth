@@ -26,7 +26,7 @@ const COLORS = {
   textMuted:  '#4A4A59',
 };
 
-// 타인 프로필의 이웃 목록 — 조회 전용(관리 버튼 없음), 행 탭 → 해당 프로필로 이동. mode는 무시(대칭 모델)
+// 타인 프로필의 메이트 목록 — 조회 전용(관리 버튼 없음), 행 탭 → 해당 프로필로 이동. mode는 무시(대칭 모델)
 export default function UserFollowListScreen({ navigation, route }: RootStackScreenProps<'UserFollowList'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();

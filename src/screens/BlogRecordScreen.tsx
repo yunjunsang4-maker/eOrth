@@ -337,7 +337,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       default: return '';
     }
   };
-  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
 
   // ─── 편집 모드 ───
@@ -993,7 +993,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const togglePrivateFriend = (friend: string) => {
     setPrivateFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
   };
-  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 친구 체크 상태까지 즉시 동기화
+  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 메이트 체크 상태까지 즉시 동기화
   const setPrivateFriendsAll = (friends: string[]) => setPrivateFriends(friends);
   // ─── 별점 (0.5 단위) ───
   const STAR_SIZE = 28;
@@ -1760,7 +1760,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </View>
             )}
 
-            {/* 앱 친구 선택 오버레이 (여행정보 패널 위에 표시) */}
+            {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}
             {friendPickerVisible && (
               <View style={st.calOverlay}>
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
@@ -2275,7 +2275,7 @@ function PanelRow({ label, icon, labelText, required, children }: {
   );
 }
 
-// ─── 비공개 친구 선택 모달 ───
+// ─── 비공개 메이트 선택 모달 ───
 function PrivacyModal({
   visible,
   selectedFriends,
@@ -2331,7 +2331,7 @@ function PrivacyModal({
             </View>
           </View>
 
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {/* 전체 비공개 — 모든 메이트에게 비공개 (맨 위 옵션) */}
           {allFriends.length > 0 && (() => {
             const allPrivate = selectedFriends.length === allFriends.length;
             return (
@@ -2365,7 +2365,7 @@ function PrivacyModal({
             </TouchableOpacity>
           )}
 
-          {/* 친구 목록 */}
+          {/* 메이트 목록 */}
           <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
             {allFriends.map(friend => {
               const isSelected = selectedFriends.includes(friend);
@@ -2752,7 +2752,7 @@ const st = StyleSheet.create({
   currModalCode: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' as const, width: 44 },
   currModalName: { flex: 1, color: C.white, fontSize: 14 },
 
-  // 앱 친구 관련
+  // 앱 메이트 관련
   friendChip: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
   friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
   friendChipAvatarTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },

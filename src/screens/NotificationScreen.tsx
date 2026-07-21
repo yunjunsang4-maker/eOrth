@@ -50,7 +50,7 @@ interface Noti {
   postId?: string;     // 댓글·좋아요·추억 리마인드 → 게시물 이동용
   userId?: string;     // 팔로우·기록 시작 → 프로필 이동용
   userName?: string;
-  goRequests?: boolean; // 이웃신청 알림 → 수락/거절 가능한 이웃 목록 화면으로 이동
+  goRequests?: boolean; // 메이트신청 알림 → 수락/거절 가능한 메이트 목록 화면으로 이동
 }
 
 // 게시물로 이동하는 카테고리
@@ -83,7 +83,7 @@ export default function NotificationScreen({ navigation }: Props) {
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
-  // 이웃 알림 — 서버 notifications 테이블(이웃신청/수락 트리거로 쌓임)에서 로드
+  // 메이트 알림 — 서버 notifications 테이블(메이트신청/수락 트리거로 쌓임)에서 로드
   const [followNotis, setFollowNotis] = useState<Noti[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const aliveRef = useRef(true);
@@ -92,7 +92,7 @@ export default function NotificationScreen({ navigation }: Props) {
     if (!isSupabaseConfigured) return;
     const rows = await fetchNeighborNotifications();
     if (!aliveRef.current) return;
-    // 이웃신청/수락별 문구 키 — 모두 '이웃' 카테고리로 묶어 표시
+    // 메이트신청/수락별 문구 키 — 모두 '메이트' 카테고리로 묶어 표시
     const textKey: Record<string, string> = {
       neighbor_request: 'misc.neighborRequestText',
       neighbor_accept: 'misc.neighborAcceptText',
@@ -121,12 +121,12 @@ export default function NotificationScreen({ navigation }: Props) {
     try { await loadFollowNotis(); } finally { if (aliveRef.current) setRefreshing(false); }
   }, [loadFollowNotis]);
 
-  // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 이웃·기록 → 프로필
+  // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 메이트·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
   const openNoti = (n: Noti) => {
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
-    // 이웃 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
+    // 메이트 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
     if (n.category === 'follow' && !n.read && n.id.startsWith('fol-')) {
       markNotificationsRead([n.id.slice(4)]);
       setFollowNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
@@ -138,7 +138,7 @@ export default function NotificationScreen({ navigation }: Props) {
         Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
     } else if (n.goRequests) {
-      // 이웃신청 → 수락/거절할 수 있는 이웃 목록 화면으로
+      // 메이트신청 → 수락/거절할 수 있는 메이트 목록 화면으로
       navigation.navigate('FollowerList');
     } else {
       navigation.navigate('FriendProfile', { userId: n.userId ?? null, username: n.userName ?? '', handle: n.userName || undefined });
@@ -151,7 +151,7 @@ export default function NotificationScreen({ navigation }: Props) {
   const dateStr = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
 
   // '추억 리마인드' — 내 기록 중 오늘과 같은 월·일(과거 연도)인 여행을 'N년 전 오늘' 알림으로 만든다.
-  // 상대방이 필요한 좋아요·댓글·이웃과 달리 내 데이터만으로 생성 가능.
+  // 상대방이 필요한 좋아요·댓글·메이트과 달리 내 데이터만으로 생성 가능.
   const memoryNotis = useMemo<Noti[]>(() => {
     const today = new Date();
     const mm = today.getMonth();

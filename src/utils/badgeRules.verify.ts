@@ -153,21 +153,21 @@ const catalog: BadgeCatalogEntry[] = [
   assert(computeEarnedBadgeIds(likes, catalog).has(76), '좋아요 100 → 76 획득');
   assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', likes: 99 }], catalog).has(76), '좋아요 99 → 76 미획득');
 
-  // 앱 친구 동행: 1회 → 84, 3회 → 85
+  // 앱 메이트 동행: 1회 → 84, 3회 → 85
   const comp = (friends: string[]): BadgeStatRecord => ({ isMyPost: true, countryName: '일본', companionFriends: friends });
   assert(computeEarnedBadgeIds([comp(['민지'])], catalog).has(84) && !computeEarnedBadgeIds([comp(['민지'])], catalog).has(85), '동행 1회 → 84 O, 85 X');
   const three = [comp(['민지']), comp(['하윤']), comp(['도이'])];
   assert(computeEarnedBadgeIds(three, catalog).has(85), '동행 3회 → 85 획득');
   // companionFriends 없으면 미획득
-  assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', companions: ['혼자'] }], catalog).has(84), '동행친구 없으면 84 미획득');
+  assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', companions: ['혼자'] }], catalog).has(84), '동행메이트 없으면 84 미획득');
 
-  // 같은 친구 5회 → 77
+  // 같은 메이트 5회 → 77
   const sameFive = Array.from({ length: 5 }, () => comp(['민지']));
-  assert(computeTravelStats(sameFive).maxSameFriendCompanions === 5, '같은 친구 5회 집계');
-  assert(computeEarnedBadgeIds(sameFive, catalog).has(77), '같은 친구 5회 → 77 획득');
-  // 서로 다른 친구 5회(각 1회) → 77 미획득
+  assert(computeTravelStats(sameFive).maxSameFriendCompanions === 5, '같은 메이트 5회 집계');
+  assert(computeEarnedBadgeIds(sameFive, catalog).has(77), '같은 메이트 5회 → 77 획득');
+  // 서로 다른 메이트 5회(각 1회) → 77 미획득
   const diffFive = ['a', 'b', 'c', 'd', 'e'].map((f) => comp([f]));
-  assert(!computeEarnedBadgeIds(diffFive, catalog).has(77), '다른 친구 각 1회 → 77 미획득');
+  assert(!computeEarnedBadgeIds(diffFive, catalog).has(77), '다른 메이트 각 1회 → 77 미획득');
 
   // 댓글 50개 → 75 (옵션 전달)
   assert(computeEarnedBadgeIds([], catalog, { commentsWritten: 50 }).has(75), '댓글 50개 → 75 획득');
