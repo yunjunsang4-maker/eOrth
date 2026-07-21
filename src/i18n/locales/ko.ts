@@ -1238,7 +1238,7 @@ const ko = {
     inviteBtn: '초대',
     inviteMore: '더보기 ({{count}}명)',
     inviteNameA11y: '{{name}}님 초대하기',
-    inviteMessage: '여행 기록 앱 eOrth에서 함께해요! 가입하고 @{{handle}} 검색해서 친구 추가해줘 🌍{{link}}',
+    inviteMessage: '여행 기록 앱 eOrth에서 함께해요! 가입하고 @{{handle}} 검색해서 메이트 추가해줘 🌍{{link}}',
     registerMyPhone: '내 번호를 등록하면 친구가 나를 찾을 수 있어요',
     managePhoneReg: '내 번호 등록 관리 (등록됨)',
     registerMyPhoneA11y: '내 번호 등록 관리',
