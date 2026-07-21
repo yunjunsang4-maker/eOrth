@@ -104,7 +104,7 @@ const WEATHER_OPTIONS = [
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
 const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'neighbors', label: '🏡 이웃만' },
+  { value: 'neighbors', label: '🏡 메이트만' },
   { value: 'private',   label: '🔒 나만 보기' },
 ];
 // 글자 크기 라벨 → i18n 키 (FONT_SIZE_OPTIONS.size 기준, 라벨은 UI 문구라 번역)

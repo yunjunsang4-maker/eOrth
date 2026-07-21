@@ -46,7 +46,7 @@ const WEATHER_OPTIONS = [
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
 const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'neighbors', label: '🏡 이웃만' },
+  { value: 'neighbors', label: '🏡 메이트만' },
   { value: 'private',   label: '🔒 나만 보기' },
 ];
 const OTHER_CURRENCIES = [
