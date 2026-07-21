@@ -2413,8 +2413,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
   statTicketIcon: {
-    width: 24,
-    height: 26,
+    width: 30,
+    height: 30,
     resizeMode: 'contain',
   },
 
