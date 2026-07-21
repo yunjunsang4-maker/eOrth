@@ -21,10 +21,132 @@
 
 ## File Structure
 
+**선행(QR 커스텀·QR 카드 제거 — Task 0·0B):**
+- **Modify** `src/screens/PremiumScreen.tsx` — 프리미엄 혜택에서 QR 커스텀 항목 제거
+- **Modify** `src/screens/SettingsScreen.tsx` — 설정의 QR 디자인 행 제거
+- **Delete** `src/constants/qrDesigns.ts` — QR 프리셋 상수(제거 후 미참조)
+- **Modify** `src/screens/FriendSearchScreen.tsx` — QR 카드·스캔 모달·디자인 모달·관련 상태/핸들러/import/스타일 제거
+
+**발견 허브(Task 1~7):**
 - **Modify** `supabase/schema.sql` — `travel_overlap_suggestions` 함수 + `idx_posts_author_country` 인덱스 추가
 - **Modify** `src/services/social.ts` — `TravelOverlapRow` 타입 + `fetchTravelOverlap()` 추가
 - **Modify** `src/i18n/locales/ko.ts`, `src/i18n/locales/en.ts` — `friends` 네임스페이스에 6개 키
 - **Modify** `src/screens/FriendSearchScreen.tsx` — `ContactFriend` 확장, `FriendItem` 겹침 이유 렌더, 겹침 로드 effect, 리스트 섹션 재구성, `InviteCard` 컴포넌트·스타일
+
+**실행 순서:** Task 0 → 0B → 1 → 2 → 3 → 4 → 5 → 6 → 7
+
+> QR 커스텀 관련 i18n 키(`settings.qrDesign`/`qrDesignMsg`, `premium.benefitQr*`, `friends.qrDesignTitle`/`qrDesignA11y`, 스캔 관련 `comp2.qrScan*`·`friends.scanHint`/`ownCode` 등)와 `settingsStore.qrDesign` 영속 필드는 **무해한 데드로 남긴다**(키셋 파리티·영속 스키마 churn 회피 — 후속 정리 가능). `qrDesigns.ts`만 삭제(미참조).
+
+---
+
+### Task 0: 프리미엄 QR 커스텀 혜택 제거
+
+**Files:**
+- Modify: `src/screens/PremiumScreen.tsx` (혜택 배열 ~61, import ~10)
+- Modify: `src/screens/SettingsScreen.tsx` (QR 디자인 행 ~368-378)
+
+- [ ] **Step 1: PremiumScreen 혜택 항목 + import 제거**
+
+`src/screens/PremiumScreen.tsx`의 `benefits` 배열에서 아래 줄 삭제:
+```tsx
+    { icon: <TargetIcon size={22} />,   title: t('premium.benefitQrTitle'),     desc: t('premium.benefitQrDesc') },
+```
+import 줄(~10)에서 `TargetIcon` 제거(이 혜택에만 쓰임 — 확인됨). 예:
+```tsx
+  StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, MegaphoneIcon,
+```
+
+- [ ] **Step 2: SettingsScreen QR 디자인 행 제거**
+
+`label: t('settings.qrDesign')`인 행 객체(~368-378 전체) 삭제:
+```tsx
+            {
+              // 개별 QR 디자인 — 구현됨. 메이트찾기 QR 카드의 🎨 버튼에서 프리셋 선택(프리미엄)
+              icon: <TargetIcon size={22} />,
+              label: t('settings.qrDesign'),
+              badge: isPremium ? undefined : t('settings.premiumBadge'),
+              onPress: () =>
+                isPremium
+                  ? Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg'))
+                  : navigation.navigate('Premium'),
+            },
+```
+Run: `grep -nE "TargetIcon" src/screens/SettingsScreen.tsx` — 다른 행에서도 쓰면 import 유지, 이 행에만 쓰였으면 import에서 `TargetIcon` 제거.
+
+- [ ] **Step 3: tsc**
+
+Run: `npx tsc --noEmit`
+Expected: exit 0.
+
+- [ ] **Step 4: 커밋**
+
+```bash
+git add src/screens/PremiumScreen.tsx src/screens/SettingsScreen.tsx
+git commit -m "chore(premium): QR 커스텀 혜택 제거(프리미엄·설정)
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 0B: 메이트찾기 QR 전면 제거 (QR 카드·스캔·디자인 모달)
+
+**Files:**
+- Modify: `src/screens/FriendSearchScreen.tsx`
+- Delete: `src/constants/qrDesigns.ts`
+
+> **유지(삭제 금지):** `Share` import, `userLink`(~54), `const myCode = handle`(~232), `handleShareMe`(~286), `skinAccent`, `insets`, `handle` — 이후 발견 허브 InviteCard/공유가 재사용.
+
+- [ ] **Step 1: JSX 제거**
+
+`src/screens/FriendSearchScreen.tsx`에서 아래 3개 블록 삭제:
+- QR 카드 블록: `{/* ── QR 카드 ── */}` `<View style={s.qrCard}>` … `</View>`(~399-467)
+- QR 스캔 모달: `{/* QR 스캔 모달 */}` `<Modal visible={scannerVisible} …>` … `</Modal>`(~525-548)
+- QR 디자인 모달: `{/* 개별 QR 디자인 선택 모달 …*/}` `<Modal visible={qrDesignVisible} …>` … `</Modal>`(~550-591)
+
+- [ ] **Step 2: 상태·핸들러 제거**
+
+- `scannerVisible`/`camPermission`/`scannedRef`/`lastInvalidToast`(~226-229)
+- `openScanner`(~234-241), `handleBarcode`(~243-283)
+- `qrDesignVisible`(~143), `myQrDesign`(~145)
+- `useSettings` 구조분해에서 `isPremium, qrDesign, setQrDesign` 제거 → `const { handle } = useSettings();`
+
+- [ ] **Step 3: 스캔/디자인 전용 import 제거 (확인됨)**
+
+- `import { CameraView, useCameraPermissions } from 'expo-camera';`(~3) 삭제
+- `import QRCode from 'react-native-qrcode-svg';`(~19) 삭제
+- `import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';`(~24) 삭제
+- react-native import에서 `Pressable`(~16) 제거
+- profile import(~29)에서 `getProfileByHandle` 제거
+- `const USER_LINK_RE = …`(~55) 삭제
+
+- [ ] **Step 4: 스타일 제거 (`const s = StyleSheet.create` 내)**
+
+삭제: `qrCard, qrCardTop, qrCodeWrap, qrPlaceholder, qrPlaceholderText, qrLogoWrap, qrLogoText, qrLogoTextDark, qrDesignBtn, qrDesignBtnTxt, qrBtnRow, inlineScanBtn, inlineScanBtnText, inlineShareBtn, inlineShareBtnText, inlineBtnDisabled, qdOverlay, qdCard, qdTitle, qdGrid, qdItem, qdItemOn, qdPreview, qdLabel, qdLabelOn, qdClose, qdCloseTxt, profileInfo, profileName, profileUsername, profileCountries, scanRoot, scanOverlay, scanFrame, scanHint, scanClose, scanCloseText`
+
+- [ ] **Step 5: qrDesigns.ts 삭제**
+
+```bash
+git rm src/constants/qrDesigns.ts
+```
+
+- [ ] **Step 6: tsc + 잔여 확인**
+
+Run: `npx tsc --noEmit`
+Expected: exit 0.
+Run: `grep -nE "qrDesign|QRCode|scanner|CameraView|s\.qrCard|myQrDesign|USER_LINK_RE|getProfileByHandle" src/screens/FriendSearchScreen.tsx`
+Expected: 출력 없음.
+
+- [ ] **Step 7: 커밋**
+
+```bash
+git add src/screens/FriendSearchScreen.tsx src/constants/qrDesigns.ts
+git commit -m "feat(friends): 메이트찾기 QR 전면 제거(카드·스캔·디자인)
+
+프로필 공유는 마이 티켓 QR·발견 허브 초대로 이관. handleShareMe/myCode는 유지.
+
+Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>"
+```
 
 ---
 
@@ -537,6 +659,8 @@ Expected: `OK`.
 ---
 
 ## Self-Review 결과
+
+**선행(QR 제거) 커버리지:** 프리미엄 QR 커스텀 혜택 → Task 0 ✓ / 메이트찾기 QR 카드·스캔·디자인 → Task 0B ✓ / `qrDesigns.ts` 삭제 → Task 0B Step 5 ✓. **의존성:** Task 0B는 `myCode`·`handleShareMe`·`userLink`를 반드시 유지해야 Task 6의 InviteCard가 동작(명시됨). QR 카드 제거로 화면 상단은 검색창만 남고, 프로필 공유 진입점은 InviteCard(Task 6)와 마이 티켓으로 이관됨.
 
 **Spec coverage:**
 - RPC(1.1) → Task 1 ✓ / public_profiles 확인(1.2) → Task 1 Step 3 ✓
