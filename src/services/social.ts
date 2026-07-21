@@ -311,6 +311,41 @@ export async function fetchMateSuggestions(limit = 10, extraCountries: string[] 
   }
 }
 
+// 특정 유저와의 여행 겹침(타인 프로필 "나와 겹치는 나라" 줄). 실패 시 null(줄 미표시).
+export async function fetchOverlapWith(targetId: string, extraCountries: string[] = []): Promise<{ sharedCount: number; sampleCountries: string[] } | null> {
+  if (!supabase || !targetId) return null;
+  try {
+    const { data, error } = await supabase.rpc('overlap_with', { target: targetId, extra_countries: extraCountries });
+    if (error || !data) return null;
+    const row = (data as any[])[0];
+    if (!row) return null;
+    return { sharedCount: row.shared_count ?? 0, sampleCountries: row.sample_countries ?? [] };
+  } catch { return null; }
+}
+
+// 나라별 화면 "이 나라 다녀온 사람". 실패 시 빈 배열(섹션 미표시).
+export interface CountryVisitor {
+  authorId: string;
+  handle: string;
+  emoji: string | null;
+  profilePhoto: string | null;
+  visitPosts: number;
+}
+export async function fetchCountryVisitors(countryName: string, limit = 12): Promise<CountryVisitor[]> {
+  if (!supabase || !countryName) return [];
+  try {
+    const { data, error } = await supabase.rpc('country_visitors', { target_country: countryName, match_limit: limit });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      authorId: r.author_id,
+      handle: r.handle,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      visitPosts: r.visit_posts ?? 0,
+    }));
+  } catch { return []; }
+}
+
 // ─── 좋아요 ───
 export async function likePost(postId: string): Promise<void> {
   if (!supabase || !postId) return;

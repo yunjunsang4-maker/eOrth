@@ -1513,6 +1513,7 @@ const ko = {
     contents: '목차 · Contents',
     noNews: '새로운 소식이 없어요',
     countryVisitCount: '회 방문',
+    countryVisitorsTitle: '이 나라 다녀온 사람',
     countryTotalDays: '전체 일수',
     countryAvgRating: '평균 별점',
     photoCountN: '사진 {{count}}장',

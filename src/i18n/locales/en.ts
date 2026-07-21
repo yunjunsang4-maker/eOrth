@@ -1512,6 +1512,7 @@ const en = {
     contents: 'Contents',
     noNews: 'No new news',
     countryVisitCount: 'visits',
+    countryVisitorsTitle: "Travelers who've been here",
     countryTotalDays: 'total days',
     countryAvgRating: 'avg rating',
     photoCountN: '{{count}} photos',
