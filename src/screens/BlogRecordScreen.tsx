@@ -1265,15 +1265,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
-          {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (참고용) */}
-          <TouchableOpacity
-            style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
-            onPress={() => setMomentSheetVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel={t('moments.sheetTitle')}
-          >
-            <Text style={{ fontSize: 16 }}>✨</Text>
-          </TouchableOpacity>
+          {/* ✨ 여행 기억 버튼은 국가표시 행 오른쪽 끝으로 이동(헤더 제목과 겹침 방지) */}
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}
             style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
@@ -1314,8 +1306,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
           showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-          {/* 국가 */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
+          {/* 국가 + 여행 기억(✨) — ✨는 국가표시 열에 맞춰 오른쪽 끝에 배치(헤더 제목 겹침 방지) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
@@ -1324,9 +1316,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               </Text>
             </TouchableOpacity>
             {countryRequired && <View style={st.requiredDot} />}
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={() => setMomentSheetVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('moments.sheetTitle')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ fontSize: 18 }}>✨</Text>
+            </TouchableOpacity>
           </View>
-
-          {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
 
           {/* 제목 */}
           <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
