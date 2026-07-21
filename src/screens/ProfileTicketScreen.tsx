@@ -246,11 +246,11 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
               <Text style={st.statLabel}>{t('profile.tripCount')}</Text>
               <Text style={st.statValue}>{tripCount}</Text>
             </View>
-            <View style={[st.statCol, { alignItems: 'center' }]}>
+            <View style={st.statCol}>
               <Text style={st.statLabel}>{t('profileTicket.mate')}</Text>
               <Text style={st.statValue}>{neighborCount}</Text>
             </View>
-            <View style={[st.statCol, { alignItems: 'flex-end' }]}>
+            <View style={st.statCol}>
               <Text style={st.statLabel}>{t('profileTicket.companion')}</Text>
               <Text style={st.statValue}>{companionCount}</Text>
             </View>
@@ -355,7 +355,7 @@ const st = StyleSheet.create({
   white: { flex: 1, paddingHorizontal: 28, paddingTop: 24 },
   name: { color: '#0A0A0F', fontSize: 26, fontWeight: '900' },
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 26 },
-  statCol: { minWidth: 64 },
+  statCol: { minWidth: 64, alignItems: 'center' }, // 라벨 아래 숫자를 가운데 정렬
   statLabel: { color: '#9CA3AF', fontSize: 13, fontWeight: '600' },
   statValue: { color: '#0A0A0F', fontSize: 24, fontWeight: '900', marginTop: 6 },
   subRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24 },
