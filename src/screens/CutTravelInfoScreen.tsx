@@ -5,7 +5,7 @@ import {
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import { continentLabel } from '../utils/countryLabel';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
@@ -683,7 +683,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
-                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
@@ -1060,7 +1060,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                       activeOpacity={0.75}
                     >
                       <Text style={ct.flag}>{c.flag}</Text>
-                      <Text style={ct.name}>{c.name}</Text>
+                      <Text style={ct.name}>{countryLabel(c.name, i18n.language)}</Text>
                       {selectedCountries.some(p => p.name === c.name) && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
                     </TouchableOpacity>
                   ))}

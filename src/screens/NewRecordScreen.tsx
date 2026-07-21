@@ -19,7 +19,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
-import { continentLabel } from '../utils/countryLabel';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
@@ -1318,7 +1318,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.selectedChipsWrap}>
                   {selectedCountries.map((c) => (
                     <View key={c.name} style={[s.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
-                      <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {c.name}</Text>
+                      <Text style={[s.countryChipText, { color: skinAccent.accent }]}>{c.flag} {countryLabel(c.name, i18n.language)}</Text>
                       <TouchableOpacity
                         onPress={() => handleRemoveCountry(c.name)}
                         hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
@@ -1419,7 +1419,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                                 }}
                               >
                                 <Text style={s.countryIcon}>{c.flag}</Text>
-                                <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                                <Text style={[s.countryName, isSelected && [s.countryNameSelected, { color: skinAccent.accent }]]}>{countryLabel(c.name, i18n.language)}</Text>
                                 {isSelected && <Text style={[s.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
                               </TouchableOpacity>
                             );
@@ -1468,7 +1468,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                         onPress={() => switchCountry(idx)}
                         activeOpacity={0.75}
                       >
-                        <Text style={[s.countryTabText, idx === activeCountryIdx && [s.countryTabTextActive, { color: skinAccent.accent }]]}>{c.flag} {c.name}</Text>
+                        <Text style={[s.countryTabText, idx === activeCountryIdx && [s.countryTabTextActive, { color: skinAccent.accent }]]}>{c.flag} {countryLabel(c.name, i18n.language)}</Text>
                       </TouchableOpacity>
                     ))}
                   </ScrollView>

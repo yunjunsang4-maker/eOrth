@@ -1319,7 +1319,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
-                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
@@ -1852,7 +1852,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && [st.countryItemActive, { backgroundColor: skinAccent.tint(0.1) }]]}
                     onPress={() => toggleCountry(country)}>
                     <Text style={st.countryItemText}>
-                      {country.flag} {country.name}
+                      {country.flag} {countryLabel(country.name, i18n.language)}
                       {selectedCountries.some(p => p.name === country.name) ? '  ✓' : ''}
                     </Text>
                   </TouchableOpacity>
