@@ -20,6 +20,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { countryLabel } from '../utils/countryLabel';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import CameraCaptureModal from '../components/CameraCaptureModal';
@@ -292,7 +293,7 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
@@ -1888,7 +1889,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                           {isCurrent && <Text style={[st.draftCurrentBadge, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.15) }]}>{t('blog.editing')}</Text>}
                         </View>
                         <View style={st.draftItemMeta}>
-                          {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {draft.countryName}</Text> : null}
+                          {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {countryLabel(draft.countryName, i18n.language)}</Text> : null}
                           <Text style={st.draftItemDate}>{dateLabel}</Text>
                           <Text style={st.draftExpiry}>{draftDaysLeft(draft.timestamp)}</Text>
                         </View>

@@ -25,6 +25,7 @@ import { collectRecordedDateKeys } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
+import { countryLabel } from '../utils/countryLabel';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -55,7 +56,7 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, records } = useRecords();
@@ -443,7 +444,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                             }}
                           >
                             <Text style={st.countryIcon}>{c.flag}</Text>
-                            <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                            <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{countryLabel(c.name, i18n.language)}</Text>
                             {isSelected && <Text style={[st.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
                           </TouchableOpacity>
                         );

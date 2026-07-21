@@ -14,6 +14,7 @@ import {
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
+import { countryLabel } from '../utils/countryLabel';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
@@ -64,7 +65,7 @@ export default function FriendProfileScreen({
   navigation,
   route,
 }: RootStackScreenProps<'FriendProfile'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
@@ -153,8 +154,8 @@ export default function FriendProfileScreen({
       return `${info.countryFlag} ${info.countryName}`;
     }
     const recent = sourcePosts.find((p) => p.countryName);
-    return recent?.countryName ? `${recent.countryFlag || '📍'} ${recent.countryName}` : '';
-  }, [sourcePosts, profileRow?.stay_status, profileRow?.stay_country, profileRow?.country, t]);
+    return recent?.countryName ? `${recent.countryFlag || '📍'} ${countryLabel(recent.countryName ?? '', i18n.language)}` : '';
+  }, [sourcePosts, profileRow?.stay_status, profileRow?.stay_country, profileRow?.country, t, i18n.language]);
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {

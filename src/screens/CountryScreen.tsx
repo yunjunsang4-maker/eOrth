@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon } from '../components/icons';
@@ -32,7 +33,7 @@ const tripDays = (start?: string, end?: string): number => {
 };
 
 export default function CountryScreen({ navigation, route }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
@@ -58,7 +59,7 @@ export default function CountryScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.countryFlag}>{country.flag}</Text>
-          <Text style={styles.countryName}>{country.name}</Text>
+          <Text style={styles.countryName}>{countryLabel(country.name, i18n.language)}</Text>
         </View>
         <View style={{ width: 44 }} />
       </View>
@@ -104,7 +105,7 @@ export default function CountryScreen({ navigation, route }: Props) {
           <Text style={styles.sectionTitle}>{t('friends.travelRecords')}</Text>
           {countryRecords.length === 0 ? (
             <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-              이 국가의 여행 기록이 아직 없어요
+              {t('main.countryNoRecords')}
             </Text>
           ) : countryRecords.map((rec) => {
             const days = tripDays(rec.startDate, rec.endDate);

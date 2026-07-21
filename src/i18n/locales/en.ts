@@ -546,6 +546,8 @@ const en = {
     joinedAt: 'Joined eOrth',
   },
   main: {
+    visitsCountSuffix: '{{count}} visits',
+    countryNoRecords: 'No travel records for this country yet',
     notifA11y: 'Notifications',
     toggleGlobe: 'Globe',
     toggleRegion: 'Continents',
@@ -1349,6 +1351,7 @@ const en = {
     fullDate: '{{y}}/{{m}}/{{d}} ({{wd}})',
   },
   imports: {
+    photosFound: '📷 {{count}} photos found',
     noticeTitle: 'Notice',
     icTitle: 'Your record is complete!',
     icTripMulti: '{{flag}} {{name}} and {{count}} more trips',
@@ -1571,6 +1574,7 @@ const en = {
     percentN: '{{n}}%',
   },
   trip: {
+    autoDateHint: '📅 This trip period ({{range}}) will be applied automatically.',
     back: 'Back',
     delete: 'Delete',
     recordsCount: '{{n}} records',

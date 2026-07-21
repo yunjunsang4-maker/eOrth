@@ -24,6 +24,7 @@ import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
+import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
@@ -226,7 +227,7 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -565,12 +566,12 @@ export default function TripDetailScreen() {
           <View style={s.fmCard}>
             <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
             <Text style={s.fmSub}>
-              {trip.country ? t('trip.recordFormatPromptCountry', { country: trip.country }) : t('trip.recordFormatPrompt')}
+              {trip.country ? t('trip.recordFormatPromptCountry', { country: countryTagLabel(trip.country, i18n.language) }) : t('trip.recordFormatPrompt')}
             </Text>
             {/* 기간이 정해진 여행이면 작성 화면에 이 여행 날짜가 자동 적용된다(국가+날짜로 그룹화되어 이 카드에 묶임) */}
             {tripPeriod.startDate ? (
               <Text style={s.fmHint}>
-                📅 이 여행 기간({tripDateRange})이 자동으로 적용돼요.
+                {t('trip.autoDateHint', { range: tripDateRange })}
               </Text>
             ) : null}
             <View style={s.fmGrid}>

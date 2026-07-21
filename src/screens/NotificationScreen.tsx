@@ -12,6 +12,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { fetchNeighborNotifications, markNotificationsRead } from '../services/social';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSkinAccent } from '../constants/skinTheme';
+import { countryLabel } from '../utils/countryLabel';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -76,7 +77,7 @@ function fmtAgo(ts: number, tr: TFunction): string {
 // 단, '추억 리마인드(N년 전 오늘)'는 내 기록만으로 만들 수 있어 컴포넌트에서 계산한다(memoryNotis).
 
 export default function NotificationScreen({ navigation }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
   const { records, isMuted, isBlocked } = useRecords();
   const { markBadgesEarned } = useSettings();
@@ -167,7 +168,8 @@ export default function NotificationScreen({ navigation }: Props) {
         if (m - 1 !== mm || d !== dd) return; // 오늘과 같은 월·일만
         const yearsAgo = today.getFullYear() - y;
         if (yearsAgo <= 0) return; // 과거 연도만
-        const place = r.countryName || r.countries?.[0]?.name || t('misc.tripDefault');
+        const placeRaw = r.countryName || r.countries?.[0]?.name;
+        const place = placeRaw ? countryLabel(placeRaw, i18n.language) : t('misc.tripDefault');
         out.push({
           id: `mem-${r.id}`,
           category: 'memory',

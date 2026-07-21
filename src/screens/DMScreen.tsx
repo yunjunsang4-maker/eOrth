@@ -32,6 +32,8 @@ import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
+import { countryTagLabel } from '../utils/countryLabel';
+import i18n from '../i18n';
 
 const { width: SW } = Dimensions.get('window');
 
@@ -55,7 +57,7 @@ type Props = RootStackScreenProps<'DM'>;
 
 // ─── 형식별 기록 버블 ───
 function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boolean; onPress: () => void }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const vt = rec.viewType;
 
   // ── 피드 / 네컷: 인스타 스타일 ──
@@ -71,7 +73,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
         )}
         <View style={rc.feedBottom}>
           <View style={rc.feedHeader}>
-            <Text style={rc.feedCountry}>{rec.country}</Text>
+            <Text style={rc.feedCountry}>{countryTagLabel(rec.country, i18n.language)}</Text>
             <Text style={rc.feedDate}>{rec.date}</Text>
           </View>
           <Text style={rc.feedContent} numberOfLines={2}>{rec.content}</Text>
@@ -93,7 +95,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
           <Text style={rc.blogPreview} numberOfLines={3}>{rec.blogPreview}</Text>
         ) : null}
         <View style={rc.blogFooter}>
-          <Text style={rc.blogCountry}>{rec.country}</Text>
+          <Text style={rc.blogCountry}>{countryTagLabel(rec.country, i18n.language)}</Text>
           <Text style={rc.blogReadMore}>{t('dm.readMore')}</Text>
         </View>
       </TouchableOpacity>
@@ -124,7 +126,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
         </View>
         <View style={rc.albumBottom}>
           <Text style={rc.albumBadge}>{t('postDetail.typeAlbum')}</Text>
-          <Text style={rc.albumCountry}>{rec.country}</Text>
+          <Text style={rc.albumCountry}>{countryTagLabel(rec.country, i18n.language)}</Text>
           <Text style={rc.albumDate}>{rec.date}</Text>
         </View>
       </TouchableOpacity>
@@ -156,7 +158,7 @@ function RecordBubble({ rec, isMine, onPress }: { rec: SharedRecord; isMine: boo
         </View>
         <View style={rc.snapBottom}>
           <Text style={rc.snapCaption} numberOfLines={1}>{rec.snapCaption || rec.content}</Text>
-          <Text style={rc.snapMeta}>{rec.country} · {rec.date}</Text>
+          <Text style={rc.snapMeta}>{countryTagLabel(rec.country, i18n.language)} · {rec.date}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -191,7 +193,7 @@ function replyPreviewText(m: Message, tr: TFunction): string {
       r.viewType === 'blog' ? tr('postDetail.typeBlog') :
       r.viewType === 'album' ? tr('postDetail.typeAlbum') :
       r.viewType === 'snap' ? tr('postDetail.typeSnap') : tr('dm.travelRecord');
-    return `${label} · ${r.country}`;
+    return `${label} · ${countryTagLabel(r.country, i18n.language)}`;
   }
   return m.text;
 }

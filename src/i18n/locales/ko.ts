@@ -547,6 +547,8 @@ const ko = {
     joinedAt: 'eOrth 가입 날',
   },
   main: {
+    visitsCountSuffix: '{{count}}회 방문',
+    countryNoRecords: '이 국가의 여행 기록이 아직 없어요',
     notifA11y: '알림',
     toggleGlobe: '지구본',
     toggleRegion: '대륙',
@@ -1350,6 +1352,7 @@ const ko = {
     fullDate: '{{y}}년 {{m}}월 {{d}}일 ({{wd}})',
   },
   imports: {
+    photosFound: '📷 사진 {{count}}장 발견',
     noticeTitle: '알림',
     icTitle: '기록이 완성됐어요!',
     icTripMulti: '{{flag}} {{name}} 외 {{count}}개 여행',
@@ -1572,6 +1575,7 @@ const ko = {
     percentN: '{{n}}%',
   },
   trip: {
+    autoDateHint: '📅 이 여행 기간({{range}})이 자동으로 적용돼요.',
     back: '뒤로 가기',
     delete: '삭제',
     recordsCount: '{{n}}개의 기록',

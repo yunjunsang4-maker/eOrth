@@ -17,6 +17,7 @@ import { useToast } from '../store/toastStore';
 import { TrashIcon, LandscapeIcon, PersonIcon, ArchiveIcon } from '../components/icons';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
+import { countryTagLabel } from '../utils/countryLabel';
 
 const C = {
   bg: '#0A0A0F',
@@ -43,7 +44,7 @@ function ArchivedCard({
   onUnarchive: (id: string) => void;
   onDelete: (id: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [menuVisible, setMenuVisible] = useState(false);
 
   // 실제 사진 표시 — 형식별 커버 우선순위 (없을 때만 자리표시자)
@@ -82,7 +83,7 @@ function ArchivedCard({
         <View style={s.userInfo}>
           <Text style={s.userName}>{item.user.name}</Text>
           <View style={s.metaRow}>
-            <Text style={s.countryTag}>{item.country}</Text>
+            <Text style={s.countryTag}>{countryTagLabel(item.country, i18n.language)}</Text>
             <Text style={s.typeTag}>
               {item.viewType === 'blog' ? t('main.formatBlog') : item.viewType === 'snap' ? t('main.formatSnap') : item.viewType === 'cut' ? t('main.formatCut') : item.viewType === 'album' ? t('main.formatAlbum') : t('main.formatFeed')}
             </Text>

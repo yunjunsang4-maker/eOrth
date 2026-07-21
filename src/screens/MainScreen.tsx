@@ -347,11 +347,14 @@ export default function MainScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
   const { records, tripGroups } = useRecords();
   // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
-  const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {
-    if (rec.regionName) return i18n.language === 'en' && rec.regionNameEn ? rec.regionNameEn : rec.regionName;
-    const ko = rec.countryName || '';
+  // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
+  const countryEn = (ko: string): string => {
     if (i18n.language !== 'en' || !ko) return ko;
     return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
+  };
+  const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {
+    if (rec.regionName) return i18n.language === 'en' && rec.regionNameEn ? rec.regionNameEn : rec.regionName;
+    return countryEn(rec.countryName || '');
   };
 
   // ── 튜토리얼(코치마크) ──
@@ -1474,7 +1477,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 <Text style={styles.countryFlag}>{c.flag}</Text>
                 <View style={styles.countryInfo}>
                   <Text style={styles.countryName}>{c.name}</Text>
-                  <Text style={styles.countryVisits} {...andFitText}>{c.visits}회 방문</Text>
+                  <Text style={styles.countryVisits} {...andFitText}>{t('main.visitsCountSuffix', { count: c.visits })}</Text>
                 </View>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
@@ -1776,7 +1779,7 @@ export default function MainScreen({ navigation, route }: Props) {
                             onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
                           >
                             <View style={[dsm.countryDot, { backgroundColor: dotColor }]} />
-                            <Text style={dsm.countryName} numberOfLines={1}>{ko}</Text>
+                            <Text style={dsm.countryName} numberOfLines={1}>{countryEn(ko)}</Text>
                             <Svg width={12} height={8} viewBox="0 0 12 8">
                               <SvgPath d="M1 1.5 6 6.5 11 1.5" stroke="#8B8B91" strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                             </Svg>

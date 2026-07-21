@@ -5,6 +5,7 @@ import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { GlassButton } from '../ui';
 import type { StayType } from '../../utils/stayMachine';
+import { countryLabel } from '../../utils/countryLabel';
 
 const TYPES: { value: StayType; key: string }[] = [
   { value: 'exchange', key: 'stay.typeExchange' },
@@ -20,7 +21,7 @@ export function StayPromptModal({ countryName, onTravel, onStay, onClose }: {
   onStay: (type: StayType) => void; // "장기체류" + 유형 선택
   onClose: () => void;         // 바깥 탭/뒤로가기 — 여행과 동일 취급은 호출측 결정
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [pickType, setPickType] = useState(false);
   const visible = !!countryName;
   // 새 국가로 다시 열릴 때 유형 선택 단계 초기화
@@ -31,7 +32,7 @@ export function StayPromptModal({ countryName, onTravel, onStay, onClose }: {
         <View style={s.card}>
           {!pickType ? (
             <>
-              <Text style={s.title}>{t('stay.promptTitle', { country: countryName ?? '' })}</Text>
+              <Text style={s.title}>{t('stay.promptTitle', { country: countryLabel(countryName ?? '', i18n.language) })}</Text>
               <Text style={s.desc}>{t('stay.promptDesc')}</Text>
               <GlassButton label={t('stay.chooseTravel')} onPress={onTravel} style={{ marginTop: 16 }} />
               <GlassButton label={t('stay.chooseStay')} onPress={() => setPickType(true)} style={{ marginTop: 10 }} />
