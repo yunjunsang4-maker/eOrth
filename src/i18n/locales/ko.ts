@@ -1767,7 +1767,7 @@ const ko = {
     toastNeighborRemoved: '{{name}}님과 메이트를 끊었어요',
     toastNotEorthQR: 'eOrth QR 코드가 아니에요',
     toastSearching: '@{{handle}} 검색 중...',
-    shareMeMessage: 'eOrth에서 저를 친구로 추가해보세요!\n{{link}}',
+    shareMeMessage: 'eOrth에서 저를 메이트로 추가해보세요!\n{{link}}',
     shareProfileMsg: '@{{username}}의 eOrth 프로필을 확인해보세요!\neorth://profile/{{username}}',
     shareProfileTitle: 'eOrth 프로필 공유',
     fontDefault: '기본',

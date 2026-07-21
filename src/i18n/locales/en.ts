@@ -1766,7 +1766,7 @@ const en = {
     toastNeighborRemoved: 'Removed {{name}} as a mate',
     toastNotEorthQR: 'Not an eOrth QR code',
     toastSearching: 'Searching @{{handle}}...',
-    shareMeMessage: 'Add me as a friend on eOrth!\n{{link}}',
+    shareMeMessage: 'Add me as a mate on eOrth!\n{{link}}',
     shareProfileMsg: "Check out @{{username}}'s eOrth profile!\neorth://profile/{{username}}",
     shareProfileTitle: 'Share eOrth profile',
     fontDefault: 'Default',
