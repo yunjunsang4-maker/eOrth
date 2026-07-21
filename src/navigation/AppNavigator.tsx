@@ -257,6 +257,9 @@ export default function AppNavigator() {
                     translateY: current.progress.interpolate({
                       inputRange: [0, 1],
                       outputRange: [layouts.screen.height, 0],
+                      // clamp: 위로 스와이프(progress>1) 시 외삽으로 티켓이 위로 밀려 올라가는 것 방지.
+                      // 아래로 스와이프 닫기(progress 1→0)는 그대로 동작.
+                      extrapolate: 'clamp',
                     }),
                   },
                 ],
