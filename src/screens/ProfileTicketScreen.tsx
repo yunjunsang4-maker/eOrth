@@ -12,6 +12,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { getMyJoinedAt } from '../services/profile';
 import { KO_TO_EN } from './MainScreen';
+import { getCapitalByKo } from '../constants/capitals';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const userLink = (code: string) => `eorth://user/${code}`;
@@ -23,11 +24,14 @@ const parseD = (s?: string | null): Date | null => {
   return isNaN(d.getTime()) ? null : d;
 };
 const fmtYMD = (d: Date) => `${two(d.getFullYear() % 100)}.${two(d.getMonth() + 1)}.${two(d.getDate())}`;
-// 시안 표기: 시작 YY.MM.DD + 줄바꿈 + ~종료(같은 달이면 일만, 다르면 MM.DD)
+// 시안 표기: 시작 YY.MM.DD + 줄바꿈 + ~종료(항상 두 줄로 '기간' 표시).
+// 종료가 없으면 시작과 동일하게 취급. 같은 달이면 종료는 일(DD)만, 같은 해면 MM.DD, 아니면 YY.MM.DD.
 const fmtRange = (start: Date, end: Date | null): string => {
-  if (!end || fmtYMD(start) === fmtYMD(end)) return fmtYMD(start);
-  const sameMonth = start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth();
-  return `${fmtYMD(start)}\n~${sameMonth ? two(end.getDate()) : `${two(end.getMonth() + 1)}.${two(end.getDate())}`}`;
+  const e = end ?? start;
+  const sameYear = start.getFullYear() === e.getFullYear();
+  const sameMonth = sameYear && start.getMonth() === e.getMonth();
+  const endStr = sameMonth ? two(e.getDate()) : sameYear ? `${two(e.getMonth() + 1)}.${two(e.getDate())}` : fmtYMD(e);
+  return `${fmtYMD(start)}\n~${endStr}`;
 };
 // 한글 국가명 → 영문 (KO_TO_EN 세계 맵, 대한민국은 별도 — AlbumCreateScreen과 동일 규칙)
 const enName = (ko: string) => (ko === '대한민국' ? 'South Korea' : KO_TO_EN[ko] ?? ko);
@@ -157,6 +161,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
   }, [installedAt]);
 
   const dateLabel = best ? fmtRange(best.startD ?? new Date(best.ts), best.endD ?? null) : '';
+  const capital = best ? getCapitalByKo(best.countryKo) : null; // 국기 대신 표시할 수도(없으면 국기 폴백)
 
   const capture = async (): Promise<string | null> => {
     try {
@@ -223,7 +228,9 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
               <View style={st.favMetaRow}>
                 <Text style={st.favDate}>{dateLabel}</Text>
                 <View style={st.favBar} />
-                <Text style={st.favFlag}>{best.flag}</Text>
+                {capital
+                  ? <Text style={st.favCapital} numberOfLines={1} adjustsFontSizeToFit>{capital.toUpperCase()}</Text>
+                  : <Text style={st.favFlag}>{best.flag}</Text>}
               </View>
               <Text style={st.favRating}>{best.rating.toFixed(1)}</Text>
               <View style={st.starRow}>
@@ -355,6 +362,7 @@ const st = StyleSheet.create({
   favDate: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20 },
   favBar: { width: 4, height: 44, backgroundColor: '#FFFFFF', borderRadius: 2 },
   favFlag: { fontSize: 26 },
+  favCapital: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.5, maxWidth: 150 }, // 국기 대신 수도(시안 BERN)
   favRating: { color: '#FFFFFF', fontSize: 44, fontWeight: '900', marginTop: 16, lineHeight: 48 },
   starRow: { flexDirection: 'row', gap: 7, marginTop: 4 },
   star: { fontSize: 19 },
