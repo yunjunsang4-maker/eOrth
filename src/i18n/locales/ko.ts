@@ -1464,6 +1464,8 @@ const ko = {
     cta: '첫 기록 남기기',
     official: 'eOrth 공식',
     feedHint: '이렇게 기록을 남겨보세요',
+    exampleFeedContent: '뉴욕에서의 하루 ☀️ 여행한 만큼 지구본이 채워져요. 피드 기록은 이렇게 사진과 글로 남겨요.',
+    exampleSnapContent: '스냅은 여행 중 순간을 한 장으로 — 이렇게 보여요',
     featGlobeTitle: '지구본에 내 여행을 색칠',
     featGlobeDesc: '다녀온 나라가 지구본에 물들어요',
     featStatsTitle: '여행 통계 한눈에',

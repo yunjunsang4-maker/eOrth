@@ -2547,14 +2547,18 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   const isEmptyFeed = allVisible.length === 0;
 
+  // 예시 콘텐츠 글은 언어에 맞춰 번역(t 사용) — 원본 상수는 한글이라 여기서 오버라이드
+  const exampleFeed = useMemo(() => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent') }), [t]);
+  const exampleSnap = useMemo(() => ({ ...EXAMPLE_SNAP, content: t('socialEmpty.exampleSnapContent') }), [t]);
+
   // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링 소개
-  const snapDisplay = snapItems.length === 0 ? [{ ...EXAMPLE_SNAP, _hasUnviewed: true }] : snapItems;
+  const snapDisplay = snapItems.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : snapItems;
 
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
     // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
     const feedSource = isEmptyFeed
-      ? [EXAMPLE_FEED_RECORD, { _featureCard: true, id: 'feature-card' }]
+      ? [exampleFeed, { _featureCard: true, id: 'feature-card' }]
       : timelineWithAds;
     const cols: any[][] = [[], []];
     const h = [0, 0];
@@ -2568,7 +2572,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [isEmptyFeed, timelineWithAds, diaryCardMode]);
+  }, [isEmptyFeed, timelineWithAds, diaryCardMode, exampleFeed]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({

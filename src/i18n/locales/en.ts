@@ -1463,6 +1463,8 @@ const en = {
     cta: 'Create your first record',
     official: 'eOrth Official',
     feedHint: 'Try recording like this',
+    exampleFeedContent: 'A day in New York ☀️ Your globe fills up the more you travel. Feed records capture moments like this in photos and words.',
+    exampleSnapContent: 'Snaps capture a travel moment in a single shot — like this.',
     featGlobeTitle: 'Color your globe',
     featGlobeDesc: 'Countries you visit light up your globe',
     featStatsTitle: 'Travel stats at a glance',
