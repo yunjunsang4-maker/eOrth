@@ -44,7 +44,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { handle, installedAt } = useSettings();
-  const { records } = useRecords();
+  const { records, tripGroups } = useRecords();
   const { tripCount, neighborCount } = route.params;
   const ticketRef = useRef<View>(null);
   const hasHandle = !!handle;
@@ -63,30 +63,61 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
     [records],
   );
 
-  // 최애 여행지 — 별점 최고(동점 시 최신). 다국가 기록은 국가별 별점을 각각 후보로.
+  // 최애 여행지 — 여행 카드(TripGroup) 기준. 카드의 별점 = 소속 기록들의 해당 국가 별점 최댓값,
+  // 별점 없는 카드는 0점으로 취급해 그대로 후보에 남긴다(전부 0점이면 최신 여행 카드 = 최근 여행).
+  // 선정: 별점 최고 → 동점 시 최신. 여행 카드가 하나도 없으면 개별 기록 폴백. 체류 카드는 제외.
   const best = useMemo(() => {
-    type Cand = { countryKo: string; flag: string; rating: number; start?: string; end?: string; ts: number };
+    type Cand = { countryKo: string; flag: string; rating: number; startD?: Date; endD?: Date; ts: number };
+    const byId = new Map(myRecords.map(r => [r.id, r]));
     const cands: Cand[] = [];
-    for (const r of myRecords) {
-      const push = (countryKo: string, flag: string, rating?: number, start?: string, end?: string) => {
-        if (!countryKo || !rating || rating <= 0) return;
-        cands.push({ countryKo, flag, rating, start, end, ts: r.timestamp });
-      };
-      const pcd = r.perCountryData;
-      if (pcd && Object.keys(pcd).length > 0) {
-        for (const [cn, d] of Object.entries(pcd)) {
-          const flag = r.countries?.find(c => c.name === cn)?.flag ?? r.countryFlag;
-          push(cn, flag, d.rating ?? r.rating, d.startDate, d.endDate);
+
+    for (const g of tripGroups) {
+      if (g.stay) continue; // 장기체류 카드는 여행이 아님
+      const recs = g.records.map(id => byId.get(id)).filter((r): r is NonNullable<typeof r> => !!r);
+      const cover = byId.get(g.coverRecordId);
+      const countryKo = g.countryName || cover?.countryName || recs[0]?.countryName || '';
+      if (!countryKo) continue;
+      const flag = g.countryFlag || cover?.countryFlag || recs[0]?.countryFlag || '🌍';
+
+      let rating = 0;
+      let startD: Date | undefined;
+      let endD: Date | undefined;
+      let ts = g.createdAt instanceof Date ? g.createdAt.getTime() : 0;
+      for (const r of recs) {
+        const d = r.perCountryData?.[countryKo];
+        rating = Math.max(rating, d?.rating ?? (r.countryName === countryKo ? r.rating ?? 0 : 0));
+        const s = parseD(d?.startDate) ?? new Date(r.timestamp);
+        const e = parseD(d?.endDate) ?? s;
+        if (!startD || s < startD) startD = s;
+        if (!endD || e > endD) endD = e;
+        if (r.timestamp > ts) ts = r.timestamp;
+      }
+      // 기록에서 기간을 못 얻으면 카드 표시 날짜(YYYY.MM.DD) 폴백
+      if (!startD) startD = parseD(g.date) ?? undefined;
+      cands.push({ countryKo, flag, rating, startD, endD, ts });
+    }
+
+    // 여행 카드가 없으면 개별 기록 폴백 (별점 없으면 0점)
+    if (cands.length === 0) {
+      for (const r of myRecords) {
+        const pcd = r.perCountryData;
+        if (pcd && Object.keys(pcd).length > 0) {
+          for (const [cn, d] of Object.entries(pcd)) {
+            const flag = r.countries?.find(c => c.name === cn)?.flag ?? r.countryFlag;
+            const s = parseD(d.startDate) ?? new Date(r.timestamp);
+            cands.push({ countryKo: cn, flag, rating: d.rating ?? r.rating ?? 0, startD: s, endD: parseD(d.endDate) ?? s, ts: r.timestamp });
+          }
+        } else if (r.countryName) {
+          cands.push({ countryKo: r.countryName, flag: r.countryFlag, rating: r.rating ?? 0, ts: r.timestamp });
         }
-      } else {
-        push(r.countryName, r.countryFlag, r.rating);
       }
     }
+
     return cands.reduce<Cand | null>(
       (acc, c) => (!acc || c.rating > acc.rating || (c.rating === acc.rating && c.ts > acc.ts) ? c : acc),
       null,
     );
-  }, [myRecords]);
+  }, [myRecords, tripGroups]);
 
   // 최근 방문 나라 — 최신 기록의 국가(다국가면 마지막 국가)
   const recentCountry = useMemo(() => {
@@ -118,7 +149,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
     return () => { cancelled = true; };
   }, [installedAt]);
 
-  const dateLabel = best ? fmtRange(parseD(best.start) ?? new Date(best.ts), parseD(best.end)) : '';
+  const dateLabel = best ? fmtRange(best.startD ?? new Date(best.ts), best.endD ?? null) : '';
 
   const capture = async (): Promise<string | null> => {
     try {
