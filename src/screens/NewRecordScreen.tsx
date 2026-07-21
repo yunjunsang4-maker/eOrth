@@ -19,6 +19,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import { continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
@@ -243,7 +244,7 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 
 // ─── 메인 컴포넌트 ───
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup } = useRecords();
   // 동행자 값(혼자/친구…)은 저장 키라 유지하고 표시만 번역
@@ -1401,7 +1402,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     ) : (
                       groupedCountries.map(({ continent, countries }) => (
                         <View key={continent}>
-                          <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
+                          <Text style={[s.continentHeader, { color: skinAccent.accent }]}>{continentLabel(continent, i18n.language)}</Text>
                           {countries.map(c => {
                             const isSelected = selectedCountries.some(sc => sc.name === c.name);
                             return (

@@ -25,7 +25,7 @@ import { collectRecordedDateKeys } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
-import { countryLabel } from '../utils/countryLabel';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -431,7 +431,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 ) : (
                   groupedCountries.map(({ continent, countries }) => (
                     <View key={continent}>
-                      <Text style={[st.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
+                      <Text style={[st.continentHeader, { color: skinAccent.accent }]}>{continentLabel(continent, i18n.language)}</Text>
                       {countries.map(c => {
                         const isSelected = selectedCountry?.name === c.name;
                         return (

@@ -2,6 +2,19 @@
 // 로직/그룹핑은 항상 한글 원본을 쓰고, 표시 지점에서만 이 헬퍼를 통과시킨다.
 import { KO_TO_EN } from '../screens/MainScreen';
 
+// 대륙 한글명 → 영문 (국가 선택 목록의 대륙 그룹 헤더 등). CONTINENT_ORDER의 6개 + 통합 '아메리카' 포함.
+const CONTINENT_EN: Record<string, string> = {
+  '아시아': 'Asia', '유럽': 'Europe', '북아메리카': 'North America', '남아메리카': 'South America',
+  '아메리카': 'Americas', '아프리카': 'Africa', '오세아니아': 'Oceania',
+};
+
+/** 한글 대륙명 → 현재 언어 표기. lang!=='en'이면 원본(한글) 그대로. */
+export function continentLabel(ko: string | undefined | null, lang: string): string {
+  if (!ko) return '';
+  if (lang !== 'en') return ko;
+  return CONTINENT_EN[ko] ?? ko;
+}
+
 /** 한글 국가명 → 현재 언어 표기. lang!=='en'이면 원본(한글) 그대로. */
 export function countryLabel(ko: string | undefined | null, lang: string): string {
   if (!ko) return '';

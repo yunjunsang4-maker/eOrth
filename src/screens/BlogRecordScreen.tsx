@@ -20,7 +20,7 @@ import {
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { countryLabel } from '../utils/countryLabel';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
 import CameraCaptureModal from '../components/CameraCaptureModal';
@@ -1846,7 +1846,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <ScrollView showsVerticalScrollIndicator={false}>
             {groupedCountries.map(g => (
               <View key={g.continent}>
-                <Text style={st.continentLabel}>{g.continent}</Text>
+                <Text style={st.continentLabel}>{continentLabel(g.continent, i18n.language)}</Text>
                 {g.countries.map(country => (
                   <TouchableOpacity key={country.name}
                     style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && [st.countryItemActive, { backgroundColor: skinAccent.tint(0.1) }]]}

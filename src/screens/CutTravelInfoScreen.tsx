@@ -5,6 +5,7 @@ import {
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
@@ -345,7 +346,7 @@ function PrivacyModal({
 }
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { addRecord, addTripGroup, neighbors, records } = useRecords();
   // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
@@ -1050,7 +1051,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             <ScrollView style={{ maxHeight: 420, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
               {groupedCountries.map(g => (
                 <View key={g.continent}>
-                  <Text style={ct.continent}>{g.continent}</Text>
+                  <Text style={ct.continent}>{continentLabel(g.continent, i18n.language)}</Text>
                   {g.countries.map(c => (
                     <TouchableOpacity
                       key={c.name}
