@@ -727,6 +727,8 @@ const ko = {
     startLabel: '시작일',
     endLabel: '종료일',
     selectPhotos: '사진 선택',
+    selectPhotosDateSub: '{{range}} · 사진첩에 담을 사진을 골라주세요',
+    privacyNotice: '🔒 사진첩은 소셜과 지구본·대륙에 나타나지 않아요.\n오직 내 프로필의 여행기록카드로만 보관돼요.',
     limitedTxt: '💡 선택한 사진만 보여요 — "모든 사진 허용" 시 더 많은 사진을 볼 수 있어요.',
     selectAll: '전체 선택',
     selectAllDay: '이 날 전체 선택',

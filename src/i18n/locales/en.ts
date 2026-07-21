@@ -726,6 +726,8 @@ const en = {
     startLabel: 'Start date',
     endLabel: 'End date',
     selectPhotos: 'Select photos',
+    selectPhotosDateSub: '{{range}} · Pick photos to add to your album',
+    privacyNotice: "🔒 Albums don't appear in social, globe, or continent views.\nThey're kept only in your profile's travel cards.",
     limitedTxt: '💡 Only selected photos are shown — allow "All Photos" to see more.',
     selectAll: 'Select all',
     selectAllDay: 'Select this day',

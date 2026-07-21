@@ -474,7 +474,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
           <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2) }]}>
             <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
-              🔒 사진첩은 소셜과 지구본·대륙에 나타나지 않아요.{'\n'}오직 내 프로필의 여행기록카드로만 보관돼요.
+              {t('album.privacyNotice')}
             </Text>
           </View>
           <View style={{ height: 40 }} />
@@ -502,7 +502,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <Text style={st.closeTxt}>←</Text>
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
-        <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
+        <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
           {visiblePhotos.length > 0 && (
