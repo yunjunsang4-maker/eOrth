@@ -27,6 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -1315,7 +1316,7 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.r
 type ProfileScreenProps = TabScreenProps<'ProfileTab'> & { pushed?: boolean; onBack?: () => void };
 export default function ProfileScreen({ navigation, route, pushed, onBack }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 섹션 링크·부제 등 강조를 스킨색으로
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
   const [photoViewerVisible, setPhotoViewerVisible] = useState(false);
@@ -1932,14 +1933,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
                     // 체류 진행 중 — "🇯🇵 일본 체류 중" (여행 중보다 우선)
                     if (stayActive && activeStayGroup?.countryName) {
-                      return t('stay.stayingIn', { flag: activeStayGroup.countryFlag || '📍', name: activeStayGroup.countryName });
+                      return t('stay.stayingIn', { flag: activeStayGroup.countryFlag || '📍', name: countryLabel(activeStayGroup.countryName, i18n.language) });
                     }
                     const visit = COUNTRY_DATA[currentVisitedCountryCode];
                     // 알려진 국가이고 거주국과 다를 때만 '여행 중' (그 외엔 거주국 표시 — 허위 '일본' 폴백 제거)
                     if (arrivalDetect && currentVisitedCountryCode && currentVisitedCountryCode !== homeCountryCode && visit) {
-                      return t('profile.traveling', { flag: visit.flag, name: visit.name });
+                      return t('profile.traveling', { flag: visit.flag, name: countryLabel(visit.name, i18n.language) });
                     }
-                    return `${home.flag} ${home.name}`;
+                    return `${home.flag} ${countryLabel(home.name, i18n.language)}`;
                   })()}
                 </Text>
               </TouchableOpacity>

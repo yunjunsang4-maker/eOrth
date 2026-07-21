@@ -1573,6 +1573,8 @@ const en = {
   trip: {
     back: 'Back',
     delete: 'Delete',
+    recordsCount: '{{n}} records',
+    moduleRecordsN: '{{n}} records',
     noticeTitle: 'Notice',
     recordDeleteTitle: 'Delete record',
     albumDeletePhotoTitle: 'Delete photo',

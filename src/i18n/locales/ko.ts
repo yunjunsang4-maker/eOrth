@@ -1574,6 +1574,8 @@ const ko = {
   trip: {
     back: '뒤로 가기',
     delete: '삭제',
+    recordsCount: '{{n}}개의 기록',
+    moduleRecordsN: '{{n}}개 기록',
     noticeTitle: '알림',
     recordDeleteTitle: '기록 삭제',
     albumDeletePhotoTitle: '사진 삭제',
