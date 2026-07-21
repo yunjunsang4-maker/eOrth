@@ -40,7 +40,7 @@ import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
-import { fetchFriendSuggestions, type FriendSuggestion } from '../services/social';
+import { fetchFriendSuggestions, type FriendSuggestion, fetchMateSuggestions, type MateSuggestionRow } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryEnglishName } from '../constants/countries';
@@ -2285,13 +2285,28 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let alive = true;
     fetchFriendSuggestions(5).then((list) => { if (alive) setSuggested(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // 피드 추천 메이트 카드(여행 DNA) — 진입 시 1회, 실패/빈 결과면 카드 미삽입
+  const [mateSuggestions, setMateSuggestions] = useState<MateSuggestionRow[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const localCountries = Array.from(new Set([
+        ...records.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
+        ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+      ]));
+      const rows = await fetchMateSuggestions(3, localCountries);
+      if (alive && rows.length > 0) setMateSuggestions(rows);
+    })();
     return () => { alive = false; };
   }, []);
   // 당겨서 새로고침 → 백엔드 피드 갱신
@@ -2545,6 +2560,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return out;
   }, [timelineItems, isPremium]);
 
+  // 추천 메이트 카드 — 2번째 항목 뒤 1개. 광고 시스템과 독립(발견 기능이라 프리미엄에도 노출)
+  const timelineWithMate = useMemo(() => {
+    if (mateSuggestions.length === 0 || timelineWithAds.length < 2) return timelineWithAds;
+    const out = [...timelineWithAds];
+    out.splice(2, 0, { _mateSlot: true, id: 'mate-slot' } as any);
+    return out;
+  }, [timelineWithAds, mateSuggestions.length]);
+
   const isEmptyFeed = allVisible.length === 0;
 
   // 예시 콘텐츠 글은 언어에 맞춰 번역(t 사용) — 원본 상수는 한글이라 여기서 오버라이드
@@ -2559,7 +2582,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
     const feedSource = isEmptyFeed
       ? [exampleFeed, { _featureCard: true, id: 'feature-card' }]
-      : timelineWithAds;
+      : timelineWithMate;
     const cols: any[][] = [[], []];
     const h = [0, 0];
     feedSource.forEach((item) => {
@@ -2567,12 +2590,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
       cols[c].push(item);
       h[c] += item._adSlot
         ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
-        : item._featureCard
-          ? 260 // 기능 소개 카드 고정 추정치
-          : estDiaryHeight(item, diaryCardMode);
+        : item._mateSlot
+          ? 82 + mateSuggestions.length * 44 // 추천 메이트 카드: 패딩+제목+CTA ≈82 + 행당 44
+          : item._featureCard
+            ? 260 // 기능 소개 카드 고정 추정치
+            : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [isEmptyFeed, timelineWithAds, diaryCardMode, exampleFeed]);
+  }, [isEmptyFeed, timelineWithMate, diaryCardMode, exampleFeed, mateSuggestions.length]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -2659,6 +2684,39 @@ function FriendsTab({ navigation }: { navigation: any }) {
                 {columns[ci].map((item: any) => {
                   if (item._featureCard) {
                     return <FeatureShowcaseCard key={item.id} onPremiumPress={() => navigation.navigate('Premium')} />;
+                  }
+                  if (item._mateSlot) {
+                    return (
+                      <View key={item.id} style={s.mateCard}>
+                        <Text style={s.mateCardTitle}>{t('friends.suggestedFriends')}</Text>
+                        {mateSuggestions.map((m) => (
+                          <TouchableOpacity
+                            key={m.authorId}
+                            style={s.mateCardRow}
+                            activeOpacity={0.75}
+                            onPress={() => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
+                          >
+                            <View style={s.mateCardAvatar}>
+                              {m.profilePhoto ? (
+                                <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
+                              ) : (
+                                <PersonIcon size={18} color="#A0A0B0" />
+                              )}
+                            </View>
+                            <Text style={s.mateCardHandle} numberOfLines={1}>{m.handle}</Text>
+                          </TouchableOpacity>
+                        ))}
+                        <TouchableOpacity
+                          style={s.mateCardCta}
+                          activeOpacity={0.85}
+                          onPress={() => navigation.navigate('FriendSearch')}
+                          accessibilityRole="button"
+                          accessibilityLabel={t('social.adInviteCta')}
+                        >
+                          <Text style={s.mateCardCtaTxt}>{t('social.adInviteCta')}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
                   }
                   if (item._adSlot) {
                     return (
@@ -3232,6 +3290,16 @@ const s = StyleSheet.create({
     color: C.dim,
     textDecorationLine: 'underline',
   },
+
+  // 피드 추천 메이트 카드 (여행 DNA)
+  mateCard: { backgroundColor: '#2E2E3B', borderRadius: 16, padding: 14, marginBottom: 14 },
+  mateCardTitle: { fontSize: 13, fontWeight: '700', color: '#BF85FC', marginBottom: 10 },
+  mateCardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  mateCardAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1A1A26', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  mateCardAvatarImg: { width: 32, height: 32 },
+  mateCardHandle: { flex: 1, fontSize: 13, color: '#FFFFFF' },
+  mateCardCta: { marginTop: 8, height: 34, borderRadius: 999, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center' },
+  mateCardCtaTxt: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });
 
 // ─────────────────────────────────────────────
