@@ -256,7 +256,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     (async () => {
       try {
         const localCountries = Array.from(new Set([
-          ...records.filter((r) => r.isMyPost && r.countryName).map((r) => r.countryName as string),
+          // isMyPost !== false: undefined는 내 기록(레거시 포함) — store의 내 기록 판정과 동일 기준
+          ...records.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
           ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
         ]));
         const rows = await fetchMateSuggestions(10, localCountries);
