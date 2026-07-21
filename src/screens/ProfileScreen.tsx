@@ -322,6 +322,18 @@ function BadgeListModal({
     onClose();
   };
 
+  // 핸들·헤더(비스크롤 영역)를 아래로 끌면 닫힌다. onMove만 반응하므로 버튼 탭은 그대로 통과하고,
+  // ScrollView와 영역이 겹치지 않아 스크롤 제스처가 씹히지 않는다.
+  // PanResponder는 최초 렌더 클로저를 박제하므로 최신 handleClose를 ref로 참조한다.
+  const closeRef = useRef(handleClose);
+  closeRef.current = handleClose;
+  const dragToClose = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_e, g) => g.dy > 6 && g.dy > Math.abs(g.dx),
+      onPanResponderRelease: (_e, g) => { if (g.dy > 50) closeRef.current(); },
+    })
+  ).current;
+
   return (
     <Modal
       visible={visible}
@@ -330,9 +342,11 @@ function BadgeListModal({
       onRequestClose={handleClose}
     >
       <View style={blStyles.root} accessibilityViewIsModal>
+        {/* 핸들·헤더를 아래로 끌면 닫힌다(스크롤 영역과 분리) */}
+        <View {...dragToClose.panHandlers}>
         {/* 핸들 바 */}
         <View style={blStyles.handle} />
-        
+
         <View style={blStyles.header}>
           <Text style={blStyles.title}>{t('profile.badgeCollection')}</Text>
           <Text style={[blStyles.subtitle, { color: skinAccent.accent }]}>
@@ -349,6 +363,7 @@ function BadgeListModal({
               {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
+        </View>
         </View>
 
         <View style={blStyles.binderWrapper}>
