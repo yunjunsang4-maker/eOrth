@@ -537,6 +537,7 @@ const ko = {
   profileTicket: {
     save: '이미지 저장',
     share: '공유',
+    shareCta: '내 티켓 공유하기',
     closeA11y: '티켓 닫기',
     favTitle: '{{handle}}님의 최근 여행지',
     noFav: '아직 여행 기록이 없어요',

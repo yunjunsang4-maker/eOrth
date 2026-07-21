@@ -1,12 +1,11 @@
-// 프로필 "마이" 티켓 — 보딩패스 형태의 전용 화면(iPhone 17 - 103 시안).
-// 상단 보라: 최애 여행지(별점 최고 기록의 국가·기간·별점), 하단 흰색: 아이디·통계·QR.
-// 티켓 카드(ticketRef)를 이미지로 캡처해 갤러리 저장 / 시스템 공유한다.
+// 프로필 "마이" 티켓 — 보딩패스 형태의 전용 화면(iPhone 17 - 103/102 시안).
+// 상단 보라: 최근 여행지(국가·기간·별점), 하단 흰색: 아이디·통계·QR.
+// 티켓 또는 하단 "내 티켓 공유하기" 버튼을 누르면 티켓을 이미지로 캡처해 시스템 공유한다.
 // QR은 eorth://user/<handle> — 친구찾기 스캐너(USER_LINK_RE)와 호환.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
-import * as MediaLibrary from 'expo-media-library';
 import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
@@ -167,19 +166,6 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
     }
   };
 
-  const handleSave = async () => {
-    const uri = await capture();
-    if (!uri) { Alert.alert(t('comp.viewerSaveFail')); return; }
-    try {
-      const perm = await MediaLibrary.requestPermissionsAsync(true);
-      if (!perm.granted) { Alert.alert(t('comp.viewerSaveFail')); return; }
-      await MediaLibrary.saveToLibraryAsync(uri);
-      Alert.alert(t('comp.viewerSaved'));
-    } catch {
-      Alert.alert(t('comp.viewerSaveFail'));
-    }
-  };
-
   const handleShare = async () => {
     const uri = await capture();
     if (!uri) { Alert.alert(t('comp.viewerSaveFail')); return; }
@@ -206,11 +192,12 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         />
       ))}
 
-      {/* 티켓 카드 — 캡처 대상 */}
+      {/* 티켓 카드 — 캡처 대상. 티켓 아무 곳이나 눌러도 공유 */}
+      <TouchableOpacity style={st.ticketTap} activeOpacity={0.96} disabled={!hasHandle} onPress={handleShare}>
       <View
         ref={ticketRef}
         collapsable={false}
-        style={[st.ticket, { marginTop: 0, marginBottom: Math.max(insets.bottom, 12) + 8 }]}
+        style={[st.ticket, { marginTop: 0 }]}
       >
         {/* 상단 보라 — 최근 여행지. 상태바 뒤까지 채우도록 paddingTop에 safe-area 반영 */}
         <View style={[st.purple, { paddingTop: insets.top + 52 }]}>
@@ -292,42 +279,33 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
           </View>
         </View>
 
-        {/* 하단 중앙 노치(보딩패스 반원 컷) */}
+        {/* 하단 중앙 노치(보딩패스 반타원 컷) */}
         <View style={st.bottomNotch} />
       </View>
+      </TouchableOpacity>
 
-      {/* 상단 오버레이 — 저장·공유 (캡처 대상 밖). 닫기는 아래로 스와이프 제스처 전용 */}
-      <View style={[st.topBar, { top: insets.top + 20 }]} pointerEvents="box-none">
-        <View style={{ flexDirection: 'row', gap: 10 }}>
-          <TouchableOpacity
-            style={[st.actionBtn, !hasHandle && st.actionDisabled]}
-            disabled={!hasHandle}
-            onPress={handleSave}
-            accessibilityRole="button"
-            accessibilityLabel={t('profileTicket.save')}
-          >
-            <Text style={st.actionGlyph}>↓</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[st.actionBtn, !hasHandle && st.actionDisabled]}
-            disabled={!hasHandle}
-            onPress={handleShare}
-            accessibilityRole="button"
-            accessibilityLabel={t('profileTicket.share')}
-          >
-            <Text style={st.actionGlyph}>↗</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* 하단 공유 버튼(캡처 대상 밖) — 시안 iPhone 17-102. 닫기는 아래로 스와이프 제스처 */}
+      <TouchableOpacity
+        style={[st.shareBar, { paddingBottom: insets.bottom + 14 }]}
+        activeOpacity={0.7}
+        disabled={!hasHandle}
+        onPress={handleShare}
+        accessibilityRole="button"
+        accessibilityLabel={t('profileTicket.shareCta')}
+      >
+        <Text style={[st.shareText, !hasHandle && st.actionDisabled]}>{t('profileTicket.shareCta')}</Text>
+      </TouchableOpacity>
     </View>
   );
 }
 
 const st = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
+  ticketTap: { flex: 1 }, // 티켓 탭 영역(내부 View가 캡처 대상)
   ticket: {
     flex: 1,
     marginHorizontal: TICKET_MARGIN,
+    marginBottom: 10, // 노치 아래 다크 여백(공유 버튼과의 간격)
     // 상단 보라가 화면 맨 위(상태바 뒤)까지 채워지도록 top은 각지게 flush, 하단만 라운드(시안: 보라 rect y=-22)
     borderBottomLeftRadius: 15,
     borderBottomRightRadius: 15,
@@ -384,15 +362,8 @@ const st = StyleSheet.create({
     width: NOTCH_D, height: NOTCH_D, borderRadius: NOTCH_D / 2, backgroundColor: BG,
     transform: [{ scaleX: NOTCH_W / NOTCH_D }],
   },
-  // ── 상단 오버레이 ──
-  topBar: {
-    position: 'absolute', left: TICKET_MARGIN + 16, right: TICKET_MARGIN + 16,
-    flexDirection: 'row', justifyContent: 'flex-end', alignItems: 'center',
-  },
-  actionBtn: {
-    width: 34, height: 34, borderRadius: 17, backgroundColor: 'rgba(255,255,255,0.22)',
-    alignItems: 'center', justifyContent: 'center',
-  },
+  // ── 하단 공유 버튼 ──
+  shareBar: { alignItems: 'center', justifyContent: 'center', paddingTop: 18 },
+  shareText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   actionDisabled: { opacity: 0.4 },
-  actionGlyph: { color: '#FFFFFF', fontSize: 17, fontWeight: '800' },
 });

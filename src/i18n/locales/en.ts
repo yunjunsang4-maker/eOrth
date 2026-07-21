@@ -536,6 +536,7 @@ const en = {
   profileTicket: {
     save: 'Save image',
     share: 'Share',
+    shareCta: 'Share my ticket',
     closeA11y: 'Close ticket',
     favTitle: "{{handle}}'s recent trip",
     noFav: 'No trips yet',
