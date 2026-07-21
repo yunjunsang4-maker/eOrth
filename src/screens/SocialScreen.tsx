@@ -44,6 +44,7 @@ import { fetchFriendSuggestions, type FriendSuggestion } from '../services/socia
 import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryEnglishName } from '../constants/countries';
+import { countryLabel as locCountry, countryTagLabel } from '../utils/countryLabel';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
@@ -99,7 +100,7 @@ function ShareBottomSheet({
   postId?: string;
   navigation: any;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { neighbors } = useRecords();
@@ -273,7 +274,7 @@ function CommentBottomSheet({
   commentText: string;
   setCommentText: (t: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -387,7 +388,7 @@ function FeedCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const menuBtnRef = useRef<View>(null);
@@ -468,13 +469,13 @@ function FeedCard({
             {item.countries && item.countries.length > 0
               ? item.countries.length <= 3
                 ? item.countries.map((c: { flag: string; name: string }, idx: number) => (
-                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
+                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
                   ))
                 : <>
-                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
                     <Text style={s.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                   </>
-              : <Text style={s.countryTag} {...andFitText}>{item.country}</Text>
+              : <Text style={s.countryTag} {...andFitText}>{countryTagLabel(item.country, i18n.language)}</Text>
             }
             {!item.isExample && <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>}
           </View>
@@ -692,6 +693,7 @@ function FeedCard({
 // 스냅 카드 (BeReal 스타일)
 // ─────────────────────────────────────────────
 function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id: string) => void; navigation: any }) {
+  const { i18n } = useTranslation();
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
@@ -759,7 +761,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
           {/* 국가 뱃지 */}
           {item.countryFlag && (
             <View style={sc.countryBadge}>
-              <Text style={sc.countryBadgeText}>{item.countryFlag} {item.countryName}</Text>
+              <Text style={sc.countryBadgeText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
             </View>
           )}
 
@@ -908,7 +910,7 @@ function BlogCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -1077,12 +1079,12 @@ function BlogCard({
           {item.countries ? (
             item.countries.slice(0, 3).map((c: any, i: number) => (
               <View key={i} style={bc.countryTag}>
-                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {c.name}</Text>
+                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
               </View>
             ))
           ) : (
             <View style={bc.countryTag}>
-              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {item.countryName}</Text>
+              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
             </View>
           )}
           {item.countries && item.countries.length > 3 && (
@@ -1205,7 +1207,7 @@ function AlbumCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -1272,10 +1274,10 @@ function AlbumCard({
               {item.countries && (
                 item.countries.length <= 3
                   ? item.countries.map((c: any, i: number) => (
-                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
+                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
                     ))
                   : <>
-                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
                       <Text style={ab.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                     </>
               )}
@@ -1566,7 +1568,7 @@ const tiltFor = (id: string): number => {
 };
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
@@ -1616,7 +1618,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 // 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
 // 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
 function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const skinAccent = useSkinAccent();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
@@ -1807,7 +1809,7 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
 }
 
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
@@ -2279,7 +2281,7 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 const DiaryCardMemo = React.memo(DiaryCard);
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
@@ -2847,7 +2849,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // ─────────────────────────────────────────────
 export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <View style={s.container}>
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
