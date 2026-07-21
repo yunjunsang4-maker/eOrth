@@ -340,6 +340,14 @@ const st = StyleSheet.create({
     // paddingTop은 인라인으로 insets.top + 52 지정(상태바 + 저장·공유 오버레이 자리)
     paddingBottom: 26,
     paddingHorizontal: 24,
+    // 시안(filter4_d): 보라 경계에 아래로 지는 그림자로 흰색과의 입체 경계.
+    // zIndex로 흰색 섹션 위에 올려 그림자가 흰색에 덮이지 않게 한다.
+    zIndex: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.22,
+    shadowRadius: 6,
+    elevation: 8,
   },
   favTitle: { color: LILAC, fontSize: 13, fontWeight: '600' },
   favCountry: { color: '#FFFFFF', fontSize: 52, fontWeight: '900', letterSpacing: 1, marginTop: 8 },
