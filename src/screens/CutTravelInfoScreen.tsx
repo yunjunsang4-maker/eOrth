@@ -635,15 +635,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
         <View style={st.headerRight}>
-          {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (참고용) */}
-          <TouchableOpacity
-            style={{ width: 44, alignItems: 'flex-end', padding: 4 }}
-            onPress={() => setMomentSheetVisible(true)}
-            accessibilityRole="button"
-            accessibilityLabel={t('moments.sheetTitle')}
-          >
-            <Text style={{ fontSize: 16 }}>✨</Text>
-          </TouchableOpacity>
+          {/* ✨ 여행 기억 버튼은 국가 필드로 이동(중앙정렬 제목과 겹침 방지) */}
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
             style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.35) }]]}
@@ -679,7 +671,21 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 국가 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
+            <View style={st.labelRow}>
+              <Text style={st.label}>{t('cutInfo.country')}</Text>
+              <Text style={[st.req, { color: skinAccent.accent }]}>✱</Text>
+              <View style={{ flex: 1 }} />
+              {/* ✨ 여행 기억 — 국가표시 열 오른쪽 끝 */}
+              <TouchableOpacity
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ fontSize: 18 }}>✨</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
@@ -1085,7 +1091,7 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   cancel: { fontSize: 16, color: C.textDim },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white },
+  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white, position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
