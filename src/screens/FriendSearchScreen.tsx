@@ -19,6 +19,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { andFitText } from '../utils/fitText';
+import { countryLabel } from '../utils/countryLabel';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
 import { fetchFriendSuggestions } from '../services/social';
@@ -57,6 +58,8 @@ interface ContactFriend {
   followers?: number;     // 메이트 수
   photo?: string | null; // 프로필 사진 URL (있으면 아바타로 표시)
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
+  sharedCount?: number;       // 여행겹침 행일 때만
+  sharedCountries?: string[]; // 겹친 나라 샘플(한글 country_name)
 }
 
 // ─────────────────────────────────────────────
@@ -75,7 +78,7 @@ function FriendItem({
   onToggle: () => void;
   onPress?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
   // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
@@ -94,8 +97,14 @@ function FriendItem({
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>
-            {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
-            {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
+            {item.sharedCountries && item.sharedCountries.length > 0
+              ? `${t('friends.overlapReason', { count: item.sharedCount ?? item.sharedCountries.length })} · ${item.sharedCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}`
+              : (
+                  <>
+                    {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
+                    {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
+                  </>
+                )}
           </Text>
         </View>
       </View>
