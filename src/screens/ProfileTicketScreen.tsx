@@ -362,7 +362,7 @@ const st = StyleSheet.create({
   favCountry: { color: '#FFFFFF', fontSize: 52, fontWeight: '900', letterSpacing: 1, marginTop: 8 },
   favMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 16, marginTop: 14 },
   favDate: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', textAlign: 'center', lineHeight: 20 },
-  favBar: { width: 4, height: 44, backgroundColor: '#FFFFFF', borderRadius: 2 },
+  favBar: { width: 4, height: 40, backgroundColor: '#FFFFFF', borderRadius: 0, alignSelf: 'center' }, // 각진 막대, 세로 중앙 고정
   favFlag: { fontSize: 26 },
   favCapital: { color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.5, maxWidth: 150 }, // 국기 대신 수도(시안 BERN)
   favRating: { color: '#FFFFFF', fontSize: 44, fontWeight: '900', marginTop: 16, lineHeight: 48 },
