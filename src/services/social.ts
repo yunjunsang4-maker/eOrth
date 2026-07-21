@@ -274,6 +274,36 @@ export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSugge
   }
 }
 
+// ─── 여행 겹침 추천 ───
+// travel_overlap_suggestions RPC — auth.uid()로 본인 판정, 클라 uid 불필요.
+// 부가 기능 — 실패 시 빈 배열(섹션 미표시).
+export interface TravelOverlapRow {
+  authorId: string;
+  handle: string;
+  emoji: string | null;
+  profilePhoto: string | null;
+  sharedCount: number;
+  sampleCountries: string[]; // country_name(한글, 예: '일본')
+}
+
+export async function fetchTravelOverlap(limit = 10): Promise<TravelOverlapRow[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.rpc('travel_overlap_suggestions', { match_limit: limit });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      authorId: r.author_id,
+      handle: r.handle,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      sharedCount: r.shared_count,
+      sampleCountries: r.sample_countries ?? [],
+    }));
+  } catch {
+    return [];
+  }
+}
+
 // ─── 좋아요 ───
 export async function likePost(postId: string): Promise<void> {
   if (!supabase || !postId) return;
