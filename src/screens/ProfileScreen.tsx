@@ -27,7 +27,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
-import { countryLabel } from '../utils/countryLabel';
+import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { PersonIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
@@ -758,7 +758,7 @@ function AvatarActionSheet({
   onChangePhoto: () => void;
   onDeletePhoto: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -881,6 +881,7 @@ function OrderableList({
   records: TripItem[];
   onReorder: (newRecords: TripItem[]) => void;
 }) {
+  const { i18n } = useTranslation();
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const dragOffset = useRef(new Animated.Value(0)).current;
   const activeIdxRef = useRef<number | null>(null);
@@ -932,7 +933,7 @@ function OrderableList({
           >
             <Text style={orderSt.emoji}>{record.emoji}</Text>
             <View style={orderSt.info}>
-              <Text style={orderSt.name}>{record.country}</Text>
+              <Text style={orderSt.name}>{countryTagLabel(record.country, i18n.language)}</Text>
             </View>
             <DragHandle
               onStart={() => handleDragStart(idx)}
@@ -1192,7 +1193,7 @@ function GroupMergeModal({
   onClose: () => void;
   onSave: (title: string, coverRecordId: string, ordered: TripItem[]) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent();
   const [title, setTitle] = useState('');
   const [cover, setCover] = useState(selectedRecords[0]?.id ?? '');
@@ -1277,7 +1278,7 @@ function GroupMergeModal({
                     )}
                   </View>
                   <Text style={gmSt.thumbLabel} numberOfLines={1}>
-                    {record.country.split(' ').slice(1).join(' ')}
+                    {countryLabel(record.country.split(' ').slice(1).join(' '), i18n.language)}
                   </Text>
                   {cover !== record.id && (
                     <Text style={[gmSt.setAsLabel, { color: skinAccent.accent }]}>{t('profile.setAsCover')}</Text>

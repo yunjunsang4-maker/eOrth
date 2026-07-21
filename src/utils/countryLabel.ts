@@ -8,3 +8,16 @@ export function countryLabel(ko: string | undefined | null, lang: string): strin
   if (lang !== 'en') return ko;
   return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
 }
+
+/**
+ * "🇯🇵 일본"처럼 [국기 + 한글국가명] 결합 문자열의 이름 부분만 현지화(국기는 유지).
+ * 국기가 없으면 전체를 국가명으로 취급. record.country 표시용.
+ */
+export function countryTagLabel(tag: string | undefined | null, lang: string): string {
+  if (!tag) return '';
+  const sp = tag.indexOf(' ');
+  if (sp <= 0) return countryLabel(tag, lang);
+  const flag = tag.slice(0, sp);
+  const name = tag.slice(sp + 1).trim();
+  return `${flag} ${countryLabel(name, lang)}`;
+}
