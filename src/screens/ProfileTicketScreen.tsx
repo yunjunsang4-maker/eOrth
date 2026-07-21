@@ -354,7 +354,7 @@ const st = StyleSheet.create({
   // ── 하단 흰색 ──
   white: { flex: 1, paddingHorizontal: 28, paddingTop: 24 },
   name: { color: '#0A0A0F', fontSize: 26, fontWeight: '900' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 26 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 48 }, // 아이디와 통계 블록 사이 간격(전체 통계를 아래로)
   statCol: { minWidth: 64, alignItems: 'center' }, // 라벨 아래 숫자를 가운데 정렬
   statLabel: { color: '#9CA3AF', fontSize: 13, fontWeight: '600' },
   statValue: { color: '#0A0A0F', fontSize: 24, fontWeight: '900', marginTop: 6 },
