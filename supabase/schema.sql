@@ -607,6 +607,60 @@ language sql security definer set search_path = public as $$
 $$;
 grant execute on function public.mate_suggestions(int, text[]) to authenticated;
 
+-- ─────────────────────────────────────────────
+-- 특정 유저와의 여행 겹침(타인 프로필 "나와 겹치는 나라 N곳" 줄).
+--   extra_countries는 호출자 로컬 나라 보강(내 매칭 입력 전용).
+-- ─────────────────────────────────────────────
+create or replace function public.overlap_with(target uuid, extra_countries text[] default '{}')
+returns table (shared_count int, sample_countries text[])
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  my_countries as (
+    select p.country_name from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and p.country_name is not null and p.country_name <> ''
+    union
+    select c from unnest(extra_countries) as c where c is not null and c <> ''
+  ),
+  shared as (
+    select distinct p.country_name
+    from public.posts p
+    where p.author_id = target and p.visibility <> 'private'
+      and p.country_name in (select country_name from my_countries)
+  )
+  select count(*)::int as shared_count,
+         coalesce((array_agg(s.country_name))[1:3], '{}'::text[]) as sample_countries
+  from shared s;
+$$;
+grant execute on function public.overlap_with(uuid, text[]) to authenticated;
+
+-- ─────────────────────────────────────────────
+-- 나라별 화면 "이 나라 다녀온 사람" — 비공개 아닌 게시물 보유 유저(본인·차단 제외,
+--   메이트 포함: 발견이 아닌 사실 나열 목적). 게시물 수 내림차순.
+--   파라미터명 target_country: public_profiles.country 컬럼과의 모호성 회피.
+-- ─────────────────────────────────────────────
+create or replace function public.country_visitors(target_country text, match_limit int default 12)
+returns table (author_id uuid, handle text, emoji text, profile_photo text, visit_posts int)
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  v as (
+    select p.author_id, count(*)::int as visit_posts
+    from public.posts p, me
+    where p.visibility <> 'private'
+      and p.country_name = target_country
+      and p.author_id <> me.uid
+    group by p.author_id
+  )
+  select v.author_id, pp.handle, pp.emoji, pp.profile_photo, v.visit_posts
+  from v
+  join public.public_profiles pp on pp.id = v.author_id
+  cross join me
+  where not public.is_blocked_between(me.uid, v.author_id)
+  order by v.visit_posts desc, pp.handle
+  limit greatest(1, least(match_limit, 50));
+$$;
+grant execute on function public.country_visitors(text, int) to authenticated;
+
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
 drop policy if exists "posts_select" on public.posts;
