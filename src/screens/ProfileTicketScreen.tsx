@@ -210,10 +210,10 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
       <View
         ref={ticketRef}
         collapsable={false}
-        style={[st.ticket, { marginTop: insets.top + 8, marginBottom: Math.max(insets.bottom, 12) + 8 }]}
+        style={[st.ticket, { marginTop: 0, marginBottom: Math.max(insets.bottom, 12) + 8 }]}
       >
-        {/* 상단 보라 — 최애 여행지 */}
-        <View style={st.purple}>
+        {/* 상단 보라 — 최근 여행지. 상태바 뒤까지 채우도록 paddingTop에 safe-area 반영 */}
+        <View style={[st.purple, { paddingTop: insets.top + 52 }]}>
           <Text style={st.favTitle}>{t('profileTicket.favTitle', { handle: handle || 'eorth' })}</Text>
           {best ? (
             <>
@@ -328,7 +328,9 @@ const st = StyleSheet.create({
   ticket: {
     flex: 1,
     marginHorizontal: TICKET_MARGIN,
-    borderRadius: 15,
+    // 상단 보라가 화면 맨 위(상태바 뒤)까지 채워지도록 top은 각지게 flush, 하단만 라운드(시안: 보라 rect y=-22)
+    borderBottomLeftRadius: 15,
+    borderBottomRightRadius: 15,
     backgroundColor: '#FFFFFF',
     overflow: 'hidden', // 양옆·하단 노치 원을 반원으로 클립
   },
@@ -338,7 +340,7 @@ const st = StyleSheet.create({
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     alignItems: 'center',
-    paddingTop: 64, // 상단 오버레이(뒤로가기·저장·공유) 자리
+    // paddingTop은 인라인으로 insets.top + 52 지정(상태바 + 저장·공유 오버레이 자리)
     paddingBottom: 26,
     paddingHorizontal: 24,
   },
