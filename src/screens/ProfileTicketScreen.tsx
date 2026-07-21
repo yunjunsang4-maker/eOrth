@@ -96,8 +96,9 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
       for (const r of recs) {
         const d = r.perCountryData?.[countryKo];
         rating = Math.max(rating, d?.rating ?? (r.countryName === countryKo ? r.rating ?? 0 : 0));
-        const s = parseD(d?.startDate) ?? new Date(r.timestamp);
-        const e = parseD(d?.endDate) ?? s;
+        // 실제 여행 기간: perCountryData(다국가) → 기록 top-level startDate/endDate → date → 최후에 생성시각
+        const s = parseD(d?.startDate ?? r.startDate ?? r.date) ?? new Date(r.timestamp);
+        const e = parseD(d?.endDate ?? r.endDate ?? r.date) ?? s;
         if (!startD || s < startD) startD = s;
         if (!endD || e > endD) endD = e;
         if (r.timestamp > ts) ts = r.timestamp;
@@ -114,11 +115,12 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         if (pcd && Object.keys(pcd).length > 0) {
           for (const [cn, d] of Object.entries(pcd)) {
             const flag = r.countries?.find(c => c.name === cn)?.flag ?? r.countryFlag;
-            const s = parseD(d.startDate) ?? new Date(r.timestamp);
-            cands.push({ countryKo: cn, flag, rating: d.rating ?? r.rating ?? 0, startD: s, endD: parseD(d.endDate) ?? s, ts: r.timestamp });
+            const s = parseD(d.startDate ?? r.startDate ?? r.date) ?? new Date(r.timestamp);
+            cands.push({ countryKo: cn, flag, rating: d.rating ?? r.rating ?? 0, startD: s, endD: parseD(d.endDate ?? r.endDate ?? r.date) ?? s, ts: r.timestamp });
           }
         } else if (r.countryName) {
-          cands.push({ countryKo: r.countryName, flag: r.countryFlag, rating: r.rating ?? 0, ts: r.timestamp });
+          const s = parseD(r.startDate ?? r.date) ?? new Date(r.timestamp);
+          cands.push({ countryKo: r.countryName, flag: r.countryFlag, rating: r.rating ?? 0, startD: s, endD: parseD(r.endDate ?? r.date) ?? s, ts: r.timestamp });
         }
       }
     }
