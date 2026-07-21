@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Dimensions } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -16,8 +16,11 @@ import type { RootStackScreenProps } from '../navigation/types';
 
 // 스플래시 영상 — expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
 const SPLASH_VIDEO = require('../../assets/splash.mp4');
-// 영상 길이 ≈ 5.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
-const MAX_SPLASH_MS = 6000;
+const { width: SW, height: SH } = Dimensions.get('window');
+const SPLASH_SCALE = 0.85; // 화면 대비 영상 표시 크기 — 살짝 축소해 중앙에 배치
+const SPLASH_RATE = 1.5; // 재생 배속 — 빠르게
+// 영상 길이 ≈ 5.0초 / 배속 ≈ 3.4초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
+const MAX_SPLASH_MS = 5000;
 
 type Props = RootStackScreenProps<'Splash'>;
 
@@ -30,6 +33,7 @@ export default function SplashScreen({ navigation }: Props) {
   const player = useVideoPlayer(SPLASH_VIDEO, (p) => {
     p.loop = false;
     p.muted = true; // 스플래시는 무음 재생
+    p.playbackRate = SPLASH_RATE; // 빠르게
     p.play();
   });
 
@@ -106,8 +110,8 @@ export default function SplashScreen({ navigation }: Props) {
     <View style={styles.container}>
       <VideoView
         player={player}
-        style={StyleSheet.absoluteFill}
-        contentFit="cover"
+        style={styles.video}
+        contentFit="contain"
         nativeControls={false}
       />
     </View>
@@ -118,5 +122,11 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#000000', // 영상 배경(우주 검정)과 동일한 백드롭
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  video: {
+    width: SW * SPLASH_SCALE,
+    height: SH * SPLASH_SCALE,
   },
 });
