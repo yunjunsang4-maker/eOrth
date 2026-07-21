@@ -244,11 +244,11 @@ export default function AppNavigator() {
           name="ProfileTicket"
           component={ProfileTicketScreen}
           options={{
-            // 전역 cardStyleInterpolator가 가로 슬라이드를 강제하므로(178행) 화면 전용으로
-            // 세로 슬라이드를 지정해야 바텀시트처럼 아래에서 올라온다. 제스처도 세로(아래로 닫기).
+            // 탑시트: 위에서 아래로 내려오고, 위로 스와이프하면 닫힌다(vertical-inverted).
+            // 전역 cardStyleInterpolator(가로 슬라이드)를 화면 전용 세로 인터폴레이터로 덮어쓴다.
             presentation: 'modal',
-            gestureDirection: 'vertical',
-            // 닫기 버튼 없이 스와이프로만 닫는 화면 — 화면 어디서든 아래로 끌면 닫히게 인식 범위 확장
+            gestureDirection: 'vertical-inverted',
+            // 닫기 버튼 없이 스와이프로만 닫는 화면 — 화면 어디서든 위로 끌면 닫히게 인식 범위 확장
             gestureResponseDistance: 1000,
             cardStyleInterpolator: ({ current, layouts }) => ({
               cardStyle: {
@@ -256,9 +256,10 @@ export default function AppNavigator() {
                   {
                     translateY: current.progress.interpolate({
                       inputRange: [0, 1],
-                      outputRange: [layouts.screen.height, 0],
-                      // clamp: 위로 스와이프(progress>1) 시 외삽으로 티켓이 위로 밀려 올라가는 것 방지.
-                      // 아래로 스와이프 닫기(progress 1→0)는 그대로 동작.
+                      // 화면 위(-height)에서 시작해 0으로 내려온다(탑시트)
+                      outputRange: [-layouts.screen.height, 0],
+                      // clamp: 아래로 과도하게 스와이프(progress>1) 시 외삽으로 밀려 내려가는 것 방지.
+                      // 위로 스와이프 닫기(progress 1→0)는 그대로 동작.
                       extrapolate: 'clamp',
                     }),
                   },
