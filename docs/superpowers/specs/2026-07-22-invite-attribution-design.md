@@ -16,7 +16,7 @@
 - ts는 저장 시점 `Date.now()`
 
 ### AppNavigator — 미인증 수신 시 보관
-- 기존 profile 링크 분기(`tryGo`)에서: **수신 즉시** 미인증(navigationRef 루트에 'Main' 없음)이면 `savePendingInvite(handle)` 후 기존 재시도 로직은 그대로 진행(재시도 중 인증되면 정상 이동 — 이 경우 보관본은 Main 소비 시점에 "이미 메이트면 무시" 가드로 무해)
+- 기존 profile 링크 분기(`tryGo`)에서: **재시도 소진 시점**(6회×800ms ≈ 4.8초 후에도 Main 미진입 = 확실히 미인증)에 `savePendingInvite(handle)`. 수신 즉시 저장하지 않는 이유: 콜드 스타트의 로그인 유저는 재시도 중 Main에 진입해 정상 직행하므로, 즉시 저장하면 직행과 넛지가 중복된다(구현 시 확정된 결정)
 - 인증 상태 수신이면 저장하지 않음(기존 동작 그대로)
 
 ### MainScreen — 온보딩 완료 후 소비 넛지
