@@ -13,6 +13,7 @@ import {
   PanResponder,
   Platform,
   Image,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -55,6 +56,9 @@ import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions } from '../constants/homeRegions';
 import type { TabScreenProps } from '../navigation/types';
+import { consumePendingInvite } from '../utils/pendingInvite';
+import { getProfileByHandle } from '../services/profile';
+import { isSupabaseConfigured } from '../services/supabase';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -346,7 +350,7 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
-  const { records, tripGroups } = useRecords();
+  const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested } = useRecords();
   // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
   // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
   const countryEn = (ko: string): string => {
@@ -506,7 +510,41 @@ export default function MainScreen({ navigation, route }: Props) {
     dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
     tutorialSeen, setTutorialSeen,
+    handle,
   } = useSettings();
+
+  // 초대 귀속 소비 — 미인증 상태에서 받은 초대 딥링크(pendingInvite)를 온보딩 완료 후
+  // 첫 메인 진입에서 메이트 연결 넛지로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const invHandle = await consumePendingInvite();
+      if (!alive || !invHandle) return;
+      // 본인 초대(내 링크)면 무시
+      if (handle && invHandle.toLowerCase() === handle.toLowerCase()) return;
+      const p = await getProfileByHandle(invHandle);
+      if (!alive || !p) return; // 미가입·조회 실패 — 조용히 폐기
+      // 이미 메이트/신청중이면 넛지 불필요
+      if (isNeighbor(p.id) || isNeighborRequested(p.id)) return;
+      Alert.alert(
+        t('friends.inviteNudgeTitle'),
+        t('friends.inviteNudgeMsg', { handle: p.handle || invHandle }),
+        [
+          { text: t('friends.inviteNudgeLater'), style: 'cancel' },
+          {
+            text: t('friends.inviteNudgeSend'),
+            onPress: () => {
+              requestNeighbor(p.id);
+              navigation.navigate('FriendProfile', { userId: p.id, username: p.handle || invHandle });
+            },
+          },
+        ]
+      );
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
 
