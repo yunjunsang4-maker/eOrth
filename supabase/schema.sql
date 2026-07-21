@@ -188,6 +188,7 @@ create unique index if not exists uq_posts_author_client
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);
+create index if not exists idx_posts_author_country on public.posts (author_id, country_name);
 
 alter table public.posts enable row level security;
 
@@ -349,6 +350,12 @@ $$;
 grant execute on function public.profile_country_counts(uuid[]) to authenticated;
 
 -- ============================================================
+-- 3-b-2) RPC: 여행 겹침 추천 → travel_overlap_suggestions
+--   함수 본문이 is_blocked_between·are_neighbors(4-b)를 참조하므로
+--   (check_function_bodies 기본 on에서 검증) 해당 함수는 4-b 섹션 아래에 정의한다.
+-- ============================================================
+
+-- ============================================================
 -- 3-c) RPC: 친구 찾기 결과의 서로이웃 수 → neighbor_counts
 --   neighbors 테이블 정의(4-b) 이후에 만들어야 하므로(함수 본문이 테이블을 참조),
 --   해당 함수는 neighbors 테이블 아래(4-b)에 정의한다.
@@ -486,6 +493,54 @@ create policy "neighbors_update_addressee" on public.neighbors
 drop policy if exists "neighbors_delete_own" on public.neighbors;
 create policy "neighbors_delete_own" on public.neighbors
   for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
+
+-- ─────────────────────────────────────────────
+-- 여행 겹침 추천: 나와 방문국(비공개 아닌 게시물)이 겹치는 다른 사용자를
+--   겹친 나라 수로 랭킹. 본인·차단(양방향)·기존메이트·신청중은 제외.
+--   프라이버시 모델은 profile_country_counts와 동일(visibility<>'private').
+--   (3-b-2 예고 위치 참조 — is_blocked_between·are_neighbors 정의 이후라 여기에 둔다.)
+-- ─────────────────────────────────────────────
+create or replace function public.travel_overlap_suggestions(match_limit int default 10)
+returns table (
+  author_id uuid, handle text, emoji text, profile_photo text,
+  shared_count int, sample_countries text[]
+)
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  my_countries as (
+    select distinct p.country_name
+    from public.posts p, me
+    where p.author_id = me.uid
+      and p.visibility <> 'private'
+      and p.country_name is not null and p.country_name <> ''
+  ),
+  shared as (
+    select p.author_id,
+           count(distinct p.country_name)::int as shared_count,
+           (array_agg(distinct p.country_name))[1:3] as sample_countries
+    from public.posts p, me
+    where p.author_id <> me.uid
+      and p.visibility <> 'private'
+      and p.country_name in (select country_name from my_countries)
+    group by p.author_id
+  )
+  select s.author_id, pp.handle, pp.emoji, pp.profile_photo,
+         s.shared_count, s.sample_countries
+  from shared s
+  join public.public_profiles pp on pp.id = s.author_id
+  cross join me
+  where not public.is_blocked_between(me.uid, s.author_id)
+    and not public.are_neighbors(me.uid, s.author_id)
+    and not exists (
+      select 1 from public.neighbors n
+      where ((n.requester_id = me.uid and n.addressee_id = s.author_id)
+          or (n.requester_id = s.author_id and n.addressee_id = me.uid))
+        and n.status = 'pending'
+    )
+  order by s.shared_count desc, pp.handle
+  limit greatest(1, least(match_limit, 50));
+$$;
+grant execute on function public.travel_overlap_suggestions(int) to authenticated;
 
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
