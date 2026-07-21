@@ -18,9 +18,9 @@ import type { RootStackScreenProps } from '../navigation/types';
 const SPLASH_VIDEO = require('../../assets/splash.mp4');
 const { width: SW, height: SH } = Dimensions.get('window');
 const SPLASH_SCALE = 0.85; // 화면 대비 영상 표시 크기 — 살짝 축소해 중앙에 배치
-const SPLASH_RATE = 1.5; // 재생 배속 — 빠르게
-// 영상 길이 ≈ 5.0초 / 배속 ≈ 3.4초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
-const MAX_SPLASH_MS = 5000;
+const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
+// 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
+const MAX_SPLASH_MS = 4000;
 
 type Props = RootStackScreenProps<'Splash'>;
 
