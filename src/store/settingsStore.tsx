@@ -142,7 +142,7 @@ interface SettingsContextType {
   // 스트립 로고 제거(프리미엄) — 프리미엄 중에도 로고를 남기고 싶으면 끌 수 있는 선택 토글
   stripLogoRemoval: boolean;
   setStripLogoRemoval: (v: boolean) => void;
-  // 개별 QR 디자인(프리미엄) — QR_DESIGNS의 id (constants/qrDesigns.ts)
+  // (폐지된 기능) 개별 QR 디자인 — 2026-07-22 QR 커스텀 제거로 미사용, 영속 하위호환용으로만 유지
   qrDesign: string;
   setQrDesign: (v: string) => void;
   // 메인 튜토리얼(코치마크)을 이미 봤는지 — 유저당 1회 자동 표시 게이트 (백업 포함)
