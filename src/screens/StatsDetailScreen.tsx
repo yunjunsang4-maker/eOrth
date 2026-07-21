@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import Svg, {
   Image as SvgImage,
   Path as SvgPath,
@@ -120,7 +121,7 @@ const HERO_GLOBE_TRANSFORM = `translate(${HERO_CX} ${HERO_CY}) scale(${HERO_MAP_
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // 지구본 스킨 연동 — aurora는 시안의 라벤더→보라 유지, 커스텀 스킨(cyan/mint)만
@@ -355,9 +356,9 @@ export default function StatsDetailScreen() {
     const countriesItems: Item[] = Object.keys(countryVisits)
       .map((name) => {
         const cInfo = countryVisits[name];
-        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).join(' · ') : name;
+        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).join(' · ') : countryLabel(name, i18n.language);
         return {
-          label: `${cInfo.flag} ${name}`,
+          label: `${cInfo.flag} ${countryLabel(name, i18n.language)}`,
           value: t('statsDetail.visitsN', { n: cInfo.count }),
           sub: citiesStr,
           visits: cInfo.count, // for sorting
@@ -487,14 +488,14 @@ export default function StatsDetailScreen() {
           title: t('statsDetail.ratingTitle'),
           hero: { cycle: [
             { label: t('statsDetail.heroAvgRating'), value: t('statsDetail.starN', { n: avgRating }) },
-            { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+            { label: t('statsDetail.hlTopRated'), value: topRated ? countryLabel(topRated.country, i18n.language) : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
             { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
           ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxRatingDist'), rows: ratingItems.map((i) => ({ label: i.label, value: i.value, sub: t('statsDetail.percentN', { n: i.sub }) })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
-              { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
-              { label: t('statsDetail.hlRecentRated'), value: recentRated ? recentRated.country : '-', sub: recentRated ? `★ ${recentRated.rating}` : '' },
+              { label: t('statsDetail.hlTopRated'), value: topRated ? countryLabel(topRated.country, i18n.language) : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+              { label: t('statsDetail.hlRecentRated'), value: recentRated ? countryLabel(recentRated.country, i18n.language) : '-', sub: recentRated ? `★ ${recentRated.rating}` : '' },
               { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
             ] },
           ],
@@ -670,7 +671,7 @@ export default function StatsDetailScreen() {
                     </View>
                     {box.trips.map((tp, i) => (
                       <View key={i} style={s.tripRow}>
-                        <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
+                        <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{countryLabel(tp.country, i18n.language)}</Text>
                         <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
                         <Text style={[s.tripCell, s.tripColPeriod, s.tableValue, { color: pointColor }]} numberOfLines={1}>{tp.period}</Text>
                         <Text style={[s.tripCell, s.tripColRecords, s.tableValue, { color: pointColor }]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>

@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
@@ -288,7 +289,7 @@ const RATING_GLOBE_Y = (193 - RATING_GLOBE_R) * OS;           // 상단
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
   const { profilePhoto, globeSkin, homeCountryCode } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
@@ -966,7 +967,7 @@ export default function StatsScreen() {
                     numberOfLines={1}
                     {...andFitText}
                   >
-                    {c.name}
+                    {countryLabel(c.name, i18n.language)}
                   </Text>
                   <Text style={[styles.arcVisits, { color: globePalette[0] }, small && styles.arcVisitsSmall]} {...andFitText}>
                     {t('stats.visitsUnit', { count: c.visits })}
