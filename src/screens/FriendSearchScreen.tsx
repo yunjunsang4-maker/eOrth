@@ -22,7 +22,7 @@ import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
-import { fetchFriendSuggestions, fetchTravelOverlap } from '../services/social';
+import { fetchMateSuggestions } from '../services/social';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -60,6 +60,8 @@ interface ContactFriend {
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
   sharedCount?: number;       // 여행겹침 행일 때만
   sharedCountries?: string[]; // 겹친 나라 샘플(한글 country_name)
+  mutualCount?: number;       // 함께 아는 메이트 수(여행 DNA)
+  styleScore?: number;        // 여행 스타일 점수(여행 DNA)
 }
 
 // ─────────────────────────────────────────────
@@ -99,12 +101,16 @@ function FriendItem({
           <Text style={s.friendCountries} {...andFitText}>
             {item.sharedCountries && item.sharedCountries.length > 0
               ? `${t('friends.overlapReason', { count: item.sharedCount ?? item.sharedCountries.length })} · ${item.sharedCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}`
-              : (
-                  <>
-                    {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
-                    {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
-                  </>
-                )}
+              : item.mutualCount && item.mutualCount > 0
+                ? t('friends.mutualReason', { count: item.mutualCount })
+                : item.styleScore && item.styleScore > 0
+                  ? t('friends.styleReason')
+                  : (
+                      <>
+                        {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
+                        {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
+                      </>
+                    )}
           </Text>
         </View>
       </View>
@@ -168,7 +174,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
-  const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked } = useRecords();
+  const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
   // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
   const [myId, setMyId] = useState<string | null>(null);
@@ -241,62 +247,34 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
-  // 추천 메이트 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
+  // 추천 메이트(여행 DNA) — 진입 시 1회 로드. 로컬 여행기록카드·미발행·나만보기 나라도
+  // extra_countries로 보강(내 매칭 입력 전용 — 타인에게 비노출)
   const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let alive = true;
     (async () => {
       try {
-        const rows = await fetchFriendSuggestions(10);
+        const localCountries = Array.from(new Set([
+          ...records.filter((r) => r.isMyPost && r.countryName).map((r) => r.countryName as string),
+          ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+        ]));
+        const rows = await fetchMateSuggestions(10, localCountries);
         if (!alive || rows.length === 0) return;
-        const ids = rows.map((r) => r.id);
-        const [counts, fcounts] = await Promise.all([getCountryCounts(ids), getFollowerCounts(ids)]);
-        if (!alive) return;
-        setSuggestions(
-          rows.map((r) => ({
-            id: r.id,
-            name: r.handle || t('friends.travelerDefault'),
-            initial: (r.handle || '?').slice(0, 1),
-            username: r.handle || '',
-            countries: counts[r.id] ?? 0,
-            followers: fcounts[r.id] ?? 0,
-            photo: r.profilePhoto,
-            emoji: r.emoji,
-          }))
-        );
-      } catch {
-        /* 추천은 부가 기능 — 실패 시 섹션 미표시 */
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-  // 여행이 겹치는 사람 — 진입 시 1회 로드(부가 기능, 실패 시 섹션 미표시)
-  const [overlap, setOverlap] = useState<ContactFriend[]>([]);
-  useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    let alive = true;
-    (async () => {
-      try {
-        const rows = await fetchTravelOverlap(10);
-        if (!alive || rows.length === 0) return;
-        setOverlap(
-          rows.map((r) => ({
-            id: r.authorId,
-            name: r.handle || t('friends.travelerDefault'),
-            initial: (r.handle || '?').slice(0, 1),
-            username: r.handle || '',
-            countries: 0,
-            photo: r.profilePhoto,
-            emoji: r.emoji,
-            sharedCount: r.sharedCount,
-            sharedCountries: r.sampleCountries,
-          }))
-        );
-      } catch {
-        /* 부가 기능 — 실패 시 섹션 미표시 */
-      }
+        setSuggestions(rows.map((r) => ({
+          id: r.authorId,
+          name: r.handle || t('friends.travelerDefault'),
+          initial: (r.handle || '?').slice(0, 1),
+          username: r.handle || '',
+          countries: 0,
+          photo: r.profilePhoto,
+          emoji: r.emoji,
+          sharedCount: r.sharedCount,
+          sharedCountries: r.sampleCountries,
+          mutualCount: r.mutualCount,
+          styleScore: r.styleScore,
+        })));
+      } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
     })();
     return () => { alive = false; };
   }, []);
@@ -346,10 +324,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
   const displayList = remoteResults.filter(notBlocked);
   // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
-  const visibleOverlap = overlap.filter(notBlocked);
-  const overlapIds = new Set(visibleOverlap.map((o) => o.id));
-  // 여행겹침에 이미 뜬 유저는 친구의친구에서 제외(겹침이 더 강한 신호)
-  const visibleSuggestions = suggestions.filter(notBlocked).filter((s0) => !overlapIds.has(s0.id));
+  const visibleSuggestions = suggestions.filter(notBlocked);
 
   // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거
   const renderRows = (list: ContactFriend[]) =>
@@ -422,22 +397,16 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           </>
         ) : (
           <>
-            {visibleOverlap.length > 0 && (
-              <>
-                <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.overlapSection')}</Text>
-                {renderRows(visibleOverlap)}
-              </>
-            )}
             {visibleSuggestions.length > 0 && (
               <>
                 <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
                 {renderRows(visibleSuggestions)}
               </>
             )}
-            {(visibleOverlap.length + visibleSuggestions.length) < 3 && myCode ? (
+            {(visibleSuggestions.length < 3) && myCode ? (
               <InviteCard onInvite={handleShareMe} accent={skinAccent.accentDeep} />
             ) : null}
-            {visibleOverlap.length === 0 && visibleSuggestions.length === 0 && (
+            {visibleSuggestions.length === 0 && (
               <Text style={s.emptyText}>{t('friends.coldStartNudge')}</Text>
             )}
           </>

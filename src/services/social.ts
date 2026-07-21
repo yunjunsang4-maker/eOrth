@@ -274,36 +274,6 @@ export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSugge
   }
 }
 
-// ─── 여행 겹침 추천 ───
-// travel_overlap_suggestions RPC — auth.uid()로 본인 판정, 클라 uid 불필요.
-// 부가 기능 — 실패 시 빈 배열(섹션 미표시).
-export interface TravelOverlapRow {
-  authorId: string;
-  handle: string;
-  emoji: string | null;
-  profilePhoto: string | null;
-  sharedCount: number;
-  sampleCountries: string[]; // country_name(한글, 예: '일본')
-}
-
-export async function fetchTravelOverlap(limit = 10): Promise<TravelOverlapRow[]> {
-  if (!supabase) return [];
-  try {
-    const { data, error } = await supabase.rpc('travel_overlap_suggestions', { match_limit: limit });
-    if (error || !data) return [];
-    return (data as any[]).map((r) => ({
-      authorId: r.author_id,
-      handle: r.handle,
-      emoji: r.emoji ?? null,
-      profilePhoto: r.profile_photo ?? null,
-      sharedCount: r.shared_count,
-      sampleCountries: r.sample_countries ?? [],
-    }));
-  } catch {
-    return [];
-  }
-}
-
 // ─── 추천 메이트(여행 DNA) ───
 // mate_suggestions RPC — 나라 겹침+여행 스타일+함께 아는 메이트 합산 랭킹.
 // extraCountries: 로컬 여행기록카드·미발행·나만보기 나라(내 매칭 입력 전용, 타인에게 비노출).
