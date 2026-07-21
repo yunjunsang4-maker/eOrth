@@ -29,7 +29,7 @@ import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon, CompassIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
-  TrashIcon, StarIcon, TargetIcon, StickerIcon, PaletteIcon,
+  TrashIcon, StarIcon, StickerIcon, PaletteIcon,
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { GLOBE_SKINS } from '../constants/globeSkins';
@@ -364,16 +364,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               value: t(currentFont.labelKey),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
               onPress: openFontPicker,
-            },
-            {
-              // 개별 QR 디자인 — 구현됨. 메이트찾기 QR 카드의 🎨 버튼에서 프리셋 선택(프리미엄)
-              icon: <TargetIcon size={22} />,
-              label: t('settings.qrDesign'),
-              badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () =>
-                isPremium
-                  ? Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg'))
-                  : navigation.navigate('Premium'),
             },
             // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
             isPremium

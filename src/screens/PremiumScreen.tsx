@@ -7,7 +7,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import {
-  StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, TargetIcon, MegaphoneIcon,
+  StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, MegaphoneIcon,
 } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -58,7 +58,6 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
     { icon: <GalleryIcon size={22} />,  title: t('premium.benefitBackupTitle'), desc: t('premium.benefitBackupDesc') },
     { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),   desc: t('premium.benefitLogoDesc') },
     { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'),  desc: t('premium.benefitFrameDesc') },
-    { icon: <TargetIcon size={22} />,   title: t('premium.benefitQrTitle'),     desc: t('premium.benefitQrDesc') },
   ];
 
   const handleSubscribe = () => {
