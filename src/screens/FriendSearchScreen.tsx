@@ -125,7 +125,7 @@ type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // QR 카드·검색 결과·스캔 프레임을 스킨 강조색으로
+  const skinAccent = useSkinAccent(); // 검색 결과·버튼을 스킨 강조색으로
   const insets = useSafeAreaInsets();
   const { handle } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
@@ -202,7 +202,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 내 코드(공유용) — 반드시 고유 식별자인 핸들만 사용
   const myCode = handle;
 
-  // ── 내 코드 공유 (발견 허브 초대 카드가 사용 예정) ──
+  // ── 내 코드 공유 ──
+  // 현재 미사용(QR 카드 제거로 호출부 사라짐) — 발견 허브 초대 카드가 곧 호출 예정, lint 정리 금지
   const handleShareMe = () => {
     if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
     Share.share({
@@ -364,7 +365,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             {renderRows(visibleSuggestions)}
           </>
         ) : (
-          /* 추천이 없을 때 — 검색/QR 안내 */
+          /* 추천이 없을 때 — 아이디 검색 안내 */
           <Text style={s.emptyText}>{t('friends.findByIdHint')}</Text>
         )}
         <View style={{ height: 40 }} />
