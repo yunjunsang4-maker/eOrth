@@ -128,6 +128,28 @@ function FriendItem({
 }
 
 // ─────────────────────────────────────────────
+// 초대 카드 — 겹침·추천이 희소할 때 노출, 기존 공유(handleShareMe) 재사용
+// ─────────────────────────────────────────────
+function InviteCard({ onInvite, accent }: { onInvite: () => void; accent: string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={s.inviteCard}>
+      <Text style={s.inviteCardTitle}>{t('friends.inviteCardTitle')}</Text>
+      <Text style={s.inviteCardBody}>{t('friends.inviteCardBody')}</Text>
+      <TouchableOpacity
+        style={[s.inviteCardBtn, { backgroundColor: accent }]}
+        activeOpacity={0.85}
+        onPress={onInvite}
+        accessibilityRole="button"
+        accessibilityLabel={t('friends.inviteCta')}
+      >
+        <Text style={s.inviteCardBtnText}>{t('friends.inviteCta')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
 type Props = RootStackScreenProps<'FriendSearch'>;
@@ -211,8 +233,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 내 코드(공유용) — 반드시 고유 식별자인 핸들만 사용
   const myCode = handle;
 
-  // ── 내 코드 공유 ──
-  // 현재 미사용(QR 카드 제거로 호출부 사라짐) — 발견 허브 초대 카드가 곧 호출 예정, lint 정리 금지
+  // ── 내 코드 공유 — 초대 카드에서 호출 ──
   const handleShareMe = () => {
     if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
     Share.share({
@@ -325,7 +346,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
   const displayList = remoteResults.filter(notBlocked);
   // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
-  const visibleSuggestions = suggestions.filter(notBlocked);
+  const visibleOverlap = overlap.filter(notBlocked);
+  const overlapIds = new Set(visibleOverlap.map((o) => o.id));
+  // 여행겹침에 이미 뜬 유저는 친구의친구에서 제외(겹침이 더 강한 신호)
+  const visibleSuggestions = suggestions.filter(notBlocked).filter((s0) => !overlapIds.has(s0.id));
 
   // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거
   const renderRows = (list: ContactFriend[]) =>
@@ -396,15 +420,27 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               renderRows(displayList)
             )}
           </>
-        ) : visibleSuggestions.length > 0 ? (
-          /* 추천 메이트 — 내가 팔로우한 사람들이 팔로우하는 사용자 */
-          <>
-            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
-            {renderRows(visibleSuggestions)}
-          </>
         ) : (
-          /* 추천이 없을 때 — 아이디 검색 안내 */
-          <Text style={s.emptyText}>{t('friends.findByIdHint')}</Text>
+          <>
+            {visibleOverlap.length > 0 && (
+              <>
+                <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.overlapSection')}</Text>
+                {renderRows(visibleOverlap)}
+              </>
+            )}
+            {visibleSuggestions.length > 0 && (
+              <>
+                <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
+                {renderRows(visibleSuggestions)}
+              </>
+            )}
+            {(visibleOverlap.length + visibleSuggestions.length) < 3 && myCode ? (
+              <InviteCard onInvite={handleShareMe} accent={skinAccent.accentDeep} />
+            ) : null}
+            {visibleOverlap.length === 0 && visibleSuggestions.length === 0 && (
+              <Text style={s.emptyText}>{t('friends.coldStartNudge')}</Text>
+            )}
+          </>
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -554,4 +590,20 @@ const s = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
   },
+
+  // 초대 카드
+  inviteCard: {
+    marginTop: 20,
+    marginHorizontal: 4,
+    padding: 18,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.divider,
+    alignItems: 'center',
+  },
+  inviteCardTitle: { color: C.white, fontSize: 15, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
+  inviteCardBody: { color: C.dim, fontSize: 13, lineHeight: 18, marginBottom: 14, textAlign: 'center' },
+  inviteCardBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
+  inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '700' },
 });
