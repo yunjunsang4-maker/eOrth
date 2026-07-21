@@ -1236,6 +1236,8 @@ const ko = {
     suggestedFriends: '추천 메이트',
     overlapSection: '여행이 겹치는 사람',
     overlapReason: '나와 겹치는 나라 {{count}}곳',
+    mutualReason: '함께 아는 메이트 {{count}}명',
+    styleReason: '여행 스타일이 비슷해요',
     inviteCardTitle: '아직 겹치는 사람이 적어요',
     inviteCardBody: '지인을 eOrth로 초대해 함께 여행을 기록해요',
     inviteCta: '초대하기',

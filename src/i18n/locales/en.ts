@@ -1235,6 +1235,8 @@ const en = {
     suggestedFriends: 'Suggested mates',
     overlapSection: 'People who share your travels',
     overlapReason: '{{count}} countries in common',
+    mutualReason: '{{count}} mutual mates',
+    styleReason: 'Similar travel style',
     inviteCardTitle: 'Not many overlaps yet',
     inviteCardBody: 'Invite friends to eOrth and log trips together',
     inviteCta: 'Invite',
