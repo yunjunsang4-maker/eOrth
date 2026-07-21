@@ -63,9 +63,9 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
     [records],
   );
 
-  // 최애 여행지 — 여행 카드(TripGroup) 기준. 카드의 별점 = 소속 기록들의 해당 국가 별점 최댓값,
-  // 별점 없는 카드는 0점으로 취급해 그대로 후보에 남긴다(전부 0점이면 최신 여행 카드 = 최근 여행).
-  // 선정: 별점 최고 → 동점 시 최신. 여행 카드가 하나도 없으면 개별 기록 폴백. 체류 카드는 제외.
+  // 최근 여행지 — 여행 카드(TripGroup) 기준. 가장 최신 여행 카드를 선정(ts 최대).
+  // 카드의 별점 = 소속 기록들의 해당 국가 별점 최댓값(없으면 0점), 기간 = 기록들의 시작~종료 합집합.
+  // 여행 카드가 하나도 없으면 개별 기록 폴백. 체류 카드는 제외.
   const best = useMemo(() => {
     type Cand = { countryKo: string; flag: string; rating: number; startD?: Date; endD?: Date; ts: number };
     const byId = new Map(myRecords.map(r => [r.id, r]));
@@ -113,8 +113,9 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
       }
     }
 
+    // 가장 최신 여행 = ts(가장 나중 기록/생성 시각)가 가장 큰 후보
     return cands.reduce<Cand | null>(
-      (acc, c) => (!acc || c.rating > acc.rating || (c.rating === acc.rating && c.ts > acc.ts) ? c : acc),
+      (acc, c) => (!acc || c.ts > acc.ts ? c : acc),
       null,
     );
   }, [myRecords, tripGroups]);
