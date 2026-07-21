@@ -1,6 +1,7 @@
 // 국가명 현지화 — 데이터는 한글 국가명으로 저장되므로, 영어 모드에서 화면 표시용으로만 영문 변환.
 // 로직/그룹핑은 항상 한글 원본을 쓰고, 표시 지점에서만 이 헬퍼를 통과시킨다.
 import { KO_TO_EN } from '../screens/MainScreen';
+import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 
 // 대륙 한글명 → 영문 (국가 선택 목록의 대륙 그룹 헤더 등). CONTINENT_ORDER의 6개 + 통합 '아메리카' 포함.
 const CONTINENT_EN: Record<string, string> = {
@@ -19,6 +20,7 @@ export function continentLabel(ko: string | undefined | null, lang: string): str
 export function countryLabel(ko: string | undefined | null, lang: string): string {
   if (!ko) return '';
   if (lang !== 'en') return ko;
+  if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
   return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
 }
 

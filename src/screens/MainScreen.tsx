@@ -31,6 +31,7 @@ const SheetBackdrop = ({ pointerEvents }: { pointerEvents?: 'none' }) =>
     />
   );
 import { useTranslation } from 'react-i18next';
+import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
@@ -350,6 +351,7 @@ export default function MainScreen({ navigation, route }: Props) {
   // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
   const countryEn = (ko: string): string => {
     if (i18n.language !== 'en' || !ko) return ko;
+    if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
     return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
   };
   const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {

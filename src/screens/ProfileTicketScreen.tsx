@@ -12,6 +12,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { getMyJoinedAt } from '../services/profile';
 import { KO_TO_EN } from './MainScreen';
+import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import { getCapitalByKo } from '../constants/capitals';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -34,7 +35,7 @@ const fmtRange = (start: Date, end: Date | null): string => {
   return `${fmtYMD(start)}\n~${endStr}`;
 };
 // 한글 국가명 → 영문 (KO_TO_EN 세계 맵, 대한민국은 별도 — AlbumCreateScreen과 동일 규칙)
-const enName = (ko: string) => (ko === '대한민국' ? 'South Korea' : KO_TO_EN[ko] ?? ko);
+const enName = (ko: string) => (SHORT_COUNTRY_EN[ko] ?? (ko === '대한민국' ? 'South Korea' : KO_TO_EN[ko] ?? ko));
 
 const SCREEN_W = Dimensions.get('window').width;
 const TICKET_MARGIN = 14;
