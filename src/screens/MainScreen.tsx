@@ -13,7 +13,6 @@ import {
   PanResponder,
   Platform,
   Image,
-  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -58,6 +57,7 @@ import { getCountryRegionOptions } from '../constants/homeRegions';
 import type { TabScreenProps } from '../navigation/types';
 import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
+import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
 import { isSupabaseConfigured } from '../services/supabase';
 
 const { height, width } = Dimensions.get('window');
@@ -514,7 +514,8 @@ export default function MainScreen({ navigation, route }: Props) {
   } = useSettings();
 
   // 초대 귀속 소비 — 미인증 상태에서 받은 초대 딥링크(pendingInvite)를 온보딩 완료 후
-  // 첫 메인 진입에서 메이트 연결 넛지로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)
+  // 첫 메인 진입에서 메이트 연결 넛지(커스텀 모달)로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)
+  const [inviteNudge, setInviteNudge] = useState<InviteNudgeTarget | null>(null);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let alive = true;
@@ -527,20 +528,7 @@ export default function MainScreen({ navigation, route }: Props) {
       if (!alive || !p) return; // 미가입·조회 실패 — 조용히 폐기
       // 이미 메이트/신청중이면 넛지 불필요
       if (isNeighbor(p.id) || isNeighborRequested(p.id)) return;
-      Alert.alert(
-        t('friends.inviteNudgeTitle'),
-        t('friends.inviteNudgeMsg', { handle: p.handle || invHandle }),
-        [
-          { text: t('friends.inviteNudgeLater'), style: 'cancel' },
-          {
-            text: t('friends.inviteNudgeSend'),
-            onPress: () => {
-              requestNeighbor(p.id);
-              navigation.navigate('FriendProfile', { userId: p.id, username: p.handle || invHandle });
-            },
-          },
-        ]
-      );
+      if (alive) setInviteNudge({ userId: p.id, handle: p.handle || invHandle, photo: p.profile_photo });
     })();
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -2006,6 +1994,19 @@ export default function MainScreen({ navigation, route }: Props) {
 
       {/* ── 광고(스폰서) 패키지 카드 ── */}
       <SponsoredPackageCard pkg={selectedAd} onClose={() => setSelectedAd(null)} />
+
+      {/* ── 초대 귀속 넛지 — 초대 딥링크로 온 신규 유저에게 메이트 연결 제안 ── */}
+      <InviteNudgeModal
+        target={inviteNudge}
+        onClose={() => setInviteNudge(null)}
+        onSend={() => {
+          const inv = inviteNudge;
+          setInviteNudge(null);
+          if (!inv) return;
+          requestNeighbor(inv.userId);
+          navigation.navigate('FriendProfile', { userId: inv.userId, username: inv.handle });
+        }}
+      />
 
     </LinearGradient>
   );
