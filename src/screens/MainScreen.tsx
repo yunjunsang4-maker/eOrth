@@ -344,8 +344,15 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { records, tripGroups } = useRecords();
+  // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
+  const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {
+    if (rec.regionName) return i18n.language === 'en' && rec.regionNameEn ? rec.regionNameEn : rec.regionName;
+    const ko = rec.countryName || '';
+    if (i18n.language !== 'en' || !ko) return ko;
+    return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
+  };
 
   // ── 튜토리얼(코치마크) ──
   // 측정 대상: 지구본(WebView) / 모드 토글 / 지구본 설정 버튼 / 스냅 버튼 / FAB. measureInWindow를 쓰므로 any로 둔다.
@@ -1533,7 +1540,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.countryRecordDate}>{rec.date}</Text>
                   {!!rec.rating && <Text style={styles.countryRecordRating}>{'★'.repeat(rec.rating)}</Text>}
                 </View>
-                <Text style={styles.countryRecordCity}>{rec.regionName || rec.countryName}</Text>
+                <Text style={styles.countryRecordCity}>{recPlace(rec)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -1641,7 +1648,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rrItemTitle} numberOfLines={1}>
-                        {rec.regionName || rec.countryName}
+                        {recPlace(rec)}
                       </Text>
                       <Text style={styles.rrItemDate}>{rec.date}</Text>
                     </View>

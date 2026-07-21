@@ -14,6 +14,7 @@ import {
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
+import { buildRegionEnMap, regionLabel } from '../utils/regionLabel';
 import Svg, {
   Image as SvgImage,
   Path as SvgPath,
@@ -160,6 +161,8 @@ export default function StatsDetailScreen() {
 
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
+  // KO→EN 지역명 맵 (영어 모드에서 도시/지역명 영문화용)
+  const regionMap = useMemo(() => buildRegionEnMap(records), [records]);
 
   // Compute stats dynamically based on statType and myRecords
   const content = useMemo<DetailContent>(() => {
@@ -356,7 +359,7 @@ export default function StatsDetailScreen() {
     const countriesItems: Item[] = Object.keys(countryVisits)
       .map((name) => {
         const cInfo = countryVisits[name];
-        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).join(' · ') : countryLabel(name, i18n.language);
+        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).map((c) => regionLabel(c, i18n.language, regionMap)).join(' · ') : countryLabel(name, i18n.language);
         return {
           label: `${cInfo.flag} ${countryLabel(name, i18n.language)}`,
           value: t('statsDetail.visitsN', { n: cInfo.count }),
@@ -502,7 +505,7 @@ export default function StatsDetailScreen() {
         };
       }
     }
-  }, [statType, myRecords, homeNames, t, continentName]);
+  }, [statType, myRecords, homeNames, t, continentName, regionMap, i18n.language]);
 
   // 지구본 히어로에 스포트라이트되는 항목 — 자동 순환(페이드 아웃→교체→페이드 인)
   const cycleItems = content.hero.cycle;
@@ -672,7 +675,7 @@ export default function StatsDetailScreen() {
                     {box.trips.map((tp, i) => (
                       <View key={i} style={s.tripRow}>
                         <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{countryLabel(tp.country, i18n.language)}</Text>
-                        <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
+                        <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{regionLabel(tp.city, i18n.language, regionMap)}</Text>
                         <Text style={[s.tripCell, s.tripColPeriod, s.tableValue, { color: pointColor }]} numberOfLines={1}>{tp.period}</Text>
                         <Text style={[s.tripCell, s.tripColRecords, s.tableValue, { color: pointColor }]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>
                       </View>

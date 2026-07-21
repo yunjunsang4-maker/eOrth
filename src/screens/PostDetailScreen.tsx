@@ -607,7 +607,7 @@ function SnapStoryViewer({
   archiveRecord: (id: string) => void;
   markSnapViewed: (id: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -951,7 +951,7 @@ function SnapStoryViewer({
           {s.snapDetectedCountry && (
             <View style={storyS.locationBadge}>
               <PinIcon size={13} color="#FFFFFF" />
-              <Text style={storyS.locationText}>{s.snapDetectedCountry}{s.regionName ? ` · ${s.regionName}` : ''}</Text>
+              <Text style={storyS.locationText}>{countryLabel(s.snapDetectedCountry, i18n.language)}{s.regionName ? ` · ${i18n.language === 'en' && s.regionNameEn ? s.regionNameEn : s.regionName}` : ''}</Text>
             </View>
           )}
           {s.snapCaption ? <Text style={storyS.caption}>{s.snapCaption}</Text> : null}
