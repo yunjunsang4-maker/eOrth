@@ -22,7 +22,7 @@ import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
-import { fetchFriendSuggestions } from '../services/social';
+import { fetchFriendSuggestions, fetchTravelOverlap } from '../services/social';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -246,6 +246,35 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         );
       } catch {
         /* 추천은 부가 기능 — 실패 시 섹션 미표시 */
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+  // 여행이 겹치는 사람 — 진입 시 1회 로드(부가 기능, 실패 시 섹션 미표시)
+  const [overlap, setOverlap] = useState<ContactFriend[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      try {
+        const rows = await fetchTravelOverlap(10);
+        if (!alive || rows.length === 0) return;
+        setOverlap(
+          rows.map((r) => ({
+            id: r.authorId,
+            name: r.handle || t('friends.travelerDefault'),
+            initial: (r.handle || '?').slice(0, 1),
+            username: r.handle || '',
+            countries: 0,
+            photo: r.profilePhoto,
+            emoji: r.emoji,
+            sharedCount: r.sharedCount,
+            sharedCountries: r.sampleCountries,
+          }))
+        );
+      } catch {
+        /* 부가 기능 — 실패 시 섹션 미표시 */
       }
     })();
     return () => { alive = false; };
