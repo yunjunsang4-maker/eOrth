@@ -370,9 +370,12 @@ const st = StyleSheet.create({
   brBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   qrHint: { fontSize: 13, color: '#888888', textAlign: 'center', paddingHorizontal: 8 },
   // ── 하단 노치 ──
+  // 정원을 반으로 자르면 반구(둥근 돔)처럼 보여, 가로로 늘린 타원(scaleX)의 윗부분만 노출해
+  // 얕고 넓은 '반타원' 컷을 만든다. 노출 높이 = height + bottom(음수) ≈ 24px, 폭 ≈ 56*3=168px.
   bottomNotch: {
-    position: 'absolute', bottom: -34, alignSelf: 'center',
-    width: 68, height: 68, borderRadius: 34, backgroundColor: BG,
+    position: 'absolute', bottom: -32, alignSelf: 'center',
+    width: 56, height: 56, borderRadius: 28, backgroundColor: BG,
+    transform: [{ scaleX: 3 }],
   },
   // ── 상단 오버레이 ──
   topBar: {
