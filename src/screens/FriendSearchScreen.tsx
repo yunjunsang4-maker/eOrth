@@ -98,8 +98,8 @@ function FriendItem({
         )}
       </View>
       <View style={s.friendInfo}>
-        {/* 닉네임 폐지 — 아이디(@handle) 한 줄만 표시 */}
-        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>@{item.username}</Text>
+        {/* 닉네임 폐지 — 아이디 한 줄만 표시(@ 접두 없음) */}
+        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>{item.username}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>
@@ -436,8 +436,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
           {/* 오른쪽: 프로필 정보 */}
           <View style={s.profileInfo}>
+            {/* 아이디 한 줄만 표시(@ 접두 없음) — 닉네임 폐지로 이름=아이디라 @handle 중복 줄 제거 */}
             <Text style={s.profileName} numberOfLines={1}>{handle}</Text>
-            <Text style={[s.profileUsername, { color: skinAccent.accent }]} numberOfLines={1}>@{handle}</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{t('friends.countriesVisitedN', { count: myCountryCount })}</Text></View>
           </View>
         </View>
