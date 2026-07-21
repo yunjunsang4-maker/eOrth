@@ -22,7 +22,7 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchNeighborCount, fetchPostCount, reportPostToServer } from '../services/social';
+import { fetchNeighborCount, fetchPostCount, fetchOverlapWith, reportPostToServer } from '../services/social';
 import GlobeLockIcon from '../components/GlobeLockIcon';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
@@ -72,7 +72,7 @@ export default function FriendProfileScreen({
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
   const { handle: myHandle, profilePhoto: myPhoto, bio: myBio, homeCountryCode: myHomeCountryCode } = useSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
-  const { records: myRecords } = useRecords();
+  const { records: myRecords, tripGroups } = useRecords();
 
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
@@ -235,6 +235,23 @@ export default function FriendProfileScreen({
   const locked = !isSelf && !neighborNow;
   // 여행수 스탯 — 타인은 서버 동기화값 우선(비메이트도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
   const tripStatValue = isSelf ? display.trips.length : (postCount ?? display.trips.length);
+  // 나와 겹치는 나라(여행 DNA 맥락 진입점) — 로컬 여행기록카드·미발행·나만보기 나라도 반영
+  const [overlap, setOverlap] = useState<{ sharedCount: number; sampleCountries: string[] } | null>(null);
+  useEffect(() => {
+    if (isSelf || !realId || !isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const localCountries = Array.from(new Set([
+        ...myRecords.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
+        ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+      ]));
+      const res = await fetchOverlapWith(realId, localCountries);
+      if (alive && res) setOverlap(res);
+    })();
+    return () => { alive = false; };
+    // myRecords/tripGroups는 진입 시점 스냅샷이면 충분 — 의존성에 넣으면 로컬 기록 갱신마다 RPC 재호출
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelf, realId]);
   const onNeighborPress = () => {
     if (!realId) return;
     if (neighborState === 'none') requestNeighbor(realId);
@@ -364,6 +381,12 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
+            {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
+            {!isSelf && !!overlap && overlap.sharedCount > 0 && (
+              <Text style={[s.overlapLine, { color: skinAccent.accent }]} numberOfLines={1}>
+                🌍 {t('friends.overlapReason', { count: overlap.sharedCount })} · {overlap.sampleCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}
+              </Text>
+            )}
             {/* 통계 — 여행수·메이트 2개. 메이트 탭 → 메이트 목록(조회 전용) */}
             <View style={pv.statsRow}>
               <StatCard value={String(tripStatValue)} label={t('profile.tripCount')} />
@@ -550,6 +573,8 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
+  // 나와 겹치는 나라 줄 — 색은 skinAccent.accent 인라인으로 덮음(스킨 관례)
+  overlapLine: { fontSize: 12, color: COLORS.accent, marginTop: 4 },
 
   // ── 헤더 ──
   header: {
