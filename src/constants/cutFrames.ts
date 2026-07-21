@@ -279,3 +279,18 @@ export const CUT_FRAMES: CutFrame[] = [...BASIC, ...THEME];
 
 export const getCutFrame = (id: string): CutFrame | undefined =>
   CUT_FRAMES.find((f) => f.id === id);
+
+// 프레임 이름 영문 표기 — 데이터(name)는 한글 유지, 표시만 영어 모드에서 치환.
+const FRAME_NAME_EN: Record<string, string> = {
+  '2컷 가로': '2 Cuts (H)', '2컷 세로': '2 Cuts (V)', '3컷 세로': '3 Cuts (V)',
+  '4컷 세로': '4 Cuts (V)', '4컷 가로': '4 Cuts (H)', '4컷': '4 Cuts',
+  '6컷 세로': '6 Cuts (V)', '9컷': '9 Cuts', '필름 세로': 'Film (V)', '필름 가로': 'Film (H)',
+  '4컷 콤팩트': '4 Cuts Compact', '4컷 엇갈림': '4 Cuts Staggered',
+  '모노 필름 (세로)': 'Mono Film (V)', '나이트 콘택트': 'Night Contact',
+};
+
+/** 프레임 이름 → 현재 언어 표기. lang!=='en'이면 원본(한글) 그대로. */
+export function frameLabel(name: string, lang: string): string {
+  if (lang !== 'en' || !name) return name;
+  return FRAME_NAME_EN[name] ?? name;
+}
