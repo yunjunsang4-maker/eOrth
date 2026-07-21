@@ -40,6 +40,13 @@ const PURPLE = '#7C3AED';
 const LILAC = '#CA82FF';
 const STAR_YELLOW = '#FFBC00';
 
+// 하단 노치 — 시안(iPhone 17-103) 외곽 path 기준: 폭≈123·깊이≈32(티켓 폭의 약 33%)의 얕은 반타원.
+// 정원 diameter=64를 가로로 늘려(scaleX) 타원을 만들고, 그 윗절반(깊이 32)만 노출한다.
+const TICKET_W = SCREEN_W - TICKET_MARGIN * 2;
+const NOTCH_DEPTH = 32;
+const NOTCH_W = TICKET_W * 0.33;
+const NOTCH_D = NOTCH_DEPTH * 2; // 정원 지름(윗절반이 깊이가 됨)
+
 export default function ProfileTicketScreen({ navigation, route }: RootStackScreenProps<'ProfileTicket'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
@@ -369,13 +376,11 @@ const st = StyleSheet.create({
   brBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   brBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   qrHint: { fontSize: 13, color: '#888888', textAlign: 'center', paddingHorizontal: 8 },
-  // ── 하단 노치 ──
-  // 정원을 반으로 자르면 반구(둥근 돔)처럼 보여, 가로로 늘린 타원(scaleX)의 윗부분만 노출해
-  // 얕고 넓은 '반타원' 컷을 만든다. 노출 높이 = height + bottom(음수) ≈ 24px, 폭 ≈ 56*3=168px.
+  // ── 하단 노치 ── (시안 비율: 폭 NOTCH_W·깊이 NOTCH_DEPTH의 얕은 반타원)
   bottomNotch: {
-    position: 'absolute', bottom: -32, alignSelf: 'center',
-    width: 56, height: 56, borderRadius: 28, backgroundColor: BG,
-    transform: [{ scaleX: 3 }],
+    position: 'absolute', bottom: -NOTCH_DEPTH, alignSelf: 'center',
+    width: NOTCH_D, height: NOTCH_D, borderRadius: NOTCH_D / 2, backgroundColor: BG,
+    transform: [{ scaleX: NOTCH_W / NOTCH_D }],
   },
   // ── 상단 오버레이 ──
   topBar: {
