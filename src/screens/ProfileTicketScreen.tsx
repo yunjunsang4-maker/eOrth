@@ -3,7 +3,7 @@
 // 티켓 또는 하단 "내 티켓 공유하기" 버튼을 누르면 티켓을 이미지로 캡처해 시스템 공유한다.
 // QR은 eorth://user/<handle> — 친구찾기 스캐너(USER_LINK_RE)와 호환.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
@@ -178,6 +178,18 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
 
   const starCount = best ? Math.round(best.rating) : 0;
 
+  // 티켓 탭 → 위로 올라가며 하단 공유 버튼 노출(시안 iPhone 17-102). 다시 탭하면 내려감.
+  const [revealed, setRevealed] = useState(false);
+  const revealAnim = useRef(new Animated.Value(0)).current;
+  const RISE = 64 + insets.bottom; // 버튼이 들어갈 만큼 티켓이 올라가는 거리
+  const toggleReveal = () => {
+    const to = revealed ? 0 : 1;
+    setRevealed(!revealed);
+    Animated.timing(revealAnim, { toValue: to, duration: 260, useNativeDriver: true }).start();
+  };
+  const ticketTranslate = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -RISE] });
+  const btnTranslate = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
+
   return (
     <View style={st.root}>
       {/* 별 배경 */}
@@ -192,8 +204,9 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         />
       ))}
 
-      {/* 티켓 카드 — 캡처 대상. 티켓 아무 곳이나 눌러도 공유 */}
-      <TouchableOpacity style={st.ticketTap} activeOpacity={0.96} disabled={!hasHandle} onPress={handleShare}>
+      {/* 티켓 카드 — 캡처 대상. 탭하면 위로 올라가며 하단 공유 버튼이 나타남 */}
+      <Animated.View style={[st.ticketTap, { transform: [{ translateY: ticketTranslate }] }]}>
+      <TouchableOpacity style={{ flex: 1 }} activeOpacity={0.98} disabled={!hasHandle} onPress={toggleReveal}>
       <View
         ref={ticketRef}
         collapsable={false}
@@ -283,18 +296,24 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         <View style={st.bottomNotch} />
       </View>
       </TouchableOpacity>
+      </Animated.View>
 
-      {/* 하단 공유 버튼(캡처 대상 밖) — 시안 iPhone 17-102. 닫기는 아래로 스와이프 제스처 */}
-      <TouchableOpacity
-        style={[st.shareBar, { paddingBottom: insets.bottom + 14 }]}
-        activeOpacity={0.7}
-        disabled={!hasHandle}
-        onPress={handleShare}
-        accessibilityRole="button"
-        accessibilityLabel={t('profileTicket.shareCta')}
+      {/* 하단 공유 버튼(캡처 대상 밖) — 티켓 탭 시 나타남(시안 iPhone 17-102) */}
+      <Animated.View
+        pointerEvents={revealed ? 'auto' : 'none'}
+        style={[st.shareBarWrap, { paddingBottom: insets.bottom + 14, opacity: revealAnim, transform: [{ translateY: btnTranslate }] }]}
       >
-        <Text style={[st.shareText, !hasHandle && st.actionDisabled]}>{t('profileTicket.shareCta')}</Text>
-      </TouchableOpacity>
+        <TouchableOpacity
+          activeOpacity={0.7}
+          disabled={!hasHandle}
+          onPress={handleShare}
+          hitSlop={{ top: 10, bottom: 10, left: 40, right: 40 }}
+          accessibilityRole="button"
+          accessibilityLabel={t('profileTicket.shareCta')}
+        >
+          <Text style={[st.shareText, !hasHandle && st.actionDisabled]}>{t('profileTicket.shareCta')}</Text>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -362,8 +381,8 @@ const st = StyleSheet.create({
     width: NOTCH_D, height: NOTCH_D, borderRadius: NOTCH_D / 2, backgroundColor: BG,
     transform: [{ scaleX: NOTCH_W / NOTCH_D }],
   },
-  // ── 하단 공유 버튼 ──
-  shareBar: { alignItems: 'center', justifyContent: 'center', paddingTop: 18 },
+  // ── 하단 공유 버튼(티켓 탭 시 노출) ──
+  shareBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 18 },
   shareText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },
   actionDisabled: { opacity: 0.4 },
 });
