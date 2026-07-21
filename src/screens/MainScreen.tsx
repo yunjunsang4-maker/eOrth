@@ -1354,7 +1354,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   onPress={() => { setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false); }}
                 >
                   <Text style={styles.countryGridFlag}>{c.flag}</Text>
-                  <Text style={styles.countryGridName}>{countryEn(c.name)}</Text>
+                  <Text style={styles.countryGridName} numberOfLines={1} {...andFitText}>{countryEn(c.name)}</Text>
                 </TouchableOpacity>
               ))}
               <TouchableOpacity
