@@ -518,7 +518,7 @@ const en = {
     myTicket: 'My',
     following: 'Following',
     followers: 'Followers',
-    mates: 'Mates',
+    neighbors: 'Mates',
     seeAll: 'See all',
     archiveCount: 'Travel record cards: {{count}}',
     mergeCards: 'Merge cards',
