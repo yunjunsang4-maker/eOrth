@@ -350,7 +350,7 @@ $$;
 grant execute on function public.profile_country_counts(uuid[]) to authenticated;
 
 -- ============================================================
--- 3-b-2) RPC: 여행 겹침 추천 → travel_overlap_suggestions
+-- 3-b-2) RPC: 추천 메이트(여행 DNA) → mate_suggestions
 --   함수 본문이 is_blocked_between·are_neighbors(4-b)를 참조하므로
 --   (check_function_bodies 기본 on에서 검증) 해당 함수는 4-b 섹션 아래에 정의한다.
 -- ============================================================
@@ -495,52 +495,116 @@ create policy "neighbors_delete_own" on public.neighbors
   for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
 
 -- ─────────────────────────────────────────────
--- 여행 겹침 추천: 나와 방문국(비공개 아닌 게시물)이 겹치는 다른 사용자를
---   겹친 나라 수로 랭킹. 본인·차단(양방향)·기존메이트·신청중은 제외.
---   프라이버시 모델은 profile_country_counts와 동일(visibility<>'private').
---   (3-b-2 예고 위치 참조 — is_blocked_between·are_neighbors 정의 이후라 여기에 둔다.)
+-- 추천 메이트(여행 DNA): 나라 겹침·여행 스타일(동행/기록형식)·함께 아는 메이트를
+--   합산한 total_score로 랭킹. extra_countries는 호출자 로컬(미발행·나만보기·
+--   여행기록카드) 나라를 "내 매칭 입력"에만 보강 — 타인에게 비노출.
+--   후보 프라이버시는 기존과 동일(visibility<>'private'만 집계).
+--   점수: 나라 least(n,5)*10 + 동행 least(n,3)*5 + 형식 least(n,2)*7 + 메이트 least(n,3)*7
 -- ─────────────────────────────────────────────
-create or replace function public.travel_overlap_suggestions(match_limit int default 10)
+drop function if exists public.travel_overlap_suggestions(int);
+create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
 returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
-  shared_count int, sample_countries text[]
+  shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int
 )
 language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
   my_countries as (
-    select distinct p.country_name
-    from public.posts p, me
-    where p.author_id = me.uid
-      and p.visibility <> 'private'
+    select p.country_name from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
       and p.country_name is not null and p.country_name <> ''
+    union
+    select c from unnest(extra_countries) as c where c is not null and c <> ''
   ),
-  shared as (
-    select p.author_id,
+  my_comps as (
+    select distinct comp
+    from public.posts p, me, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
+    ) as comp
+    where p.author_id = me.uid and p.visibility <> 'private'
+  ),
+  my_vts as (
+    select distinct p.view_type from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private' and p.view_type is not null
+  ),
+  my_mates as (
+    select case when n.requester_id = me.uid then n.addressee_id else n.requester_id end as mate_id
+    from public.neighbors n, me
+    where n.status = 'accepted' and (n.requester_id = me.uid or n.addressee_id = me.uid)
+  ),
+  cand as (
+    select p.author_id as cid from public.posts p, me
+    where p.author_id <> me.uid and p.visibility <> 'private'
+    group by p.author_id
+  ),
+  cshared as (
+    select p.author_id as cid,
            count(distinct p.country_name)::int as shared_count,
            (array_agg(distinct p.country_name))[1:3] as sample_countries
-    from public.posts p, me
-    where p.author_id <> me.uid
-      and p.visibility <> 'private'
+    from public.posts p
+    where p.visibility <> 'private'
       and p.country_name in (select country_name from my_countries)
+      and p.author_id in (select cid from cand)
     group by p.author_id
+  ),
+  ccomp as (
+    select p.author_id as cid, count(distinct comp)::int as shared_comps
+    from public.posts p, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
+    ) as comp
+    where p.visibility <> 'private' and p.author_id in (select cid from cand)
+      and comp in (select comp from my_comps)
+    group by p.author_id
+  ),
+  cvt as (
+    select p.author_id as cid, count(distinct p.view_type)::int as shared_vts
+    from public.posts p
+    where p.visibility <> 'private' and p.author_id in (select cid from cand)
+      and p.view_type in (select view_type from my_vts)
+    group by p.author_id
+  ),
+  cmut as (
+    select c.cid, count(*)::int as mutual_count
+    from cand c
+    join my_mates mm on true
+    join public.neighbors n2 on n2.status = 'accepted'
+      and ((n2.requester_id = mm.mate_id and n2.addressee_id = c.cid)
+        or (n2.addressee_id = mm.mate_id and n2.requester_id = c.cid))
+    group by c.cid
+  ),
+  scored as (
+    select c.cid,
+      coalesce(s.shared_count, 0) as shared_count,
+      coalesce(s.sample_countries, '{}'::text[]) as sample_countries,
+      coalesce(m.mutual_count, 0) as mutual_count,
+      (least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7) as style_score,
+      (least(coalesce(s.shared_count,0),5)*10
+       + least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7
+       + least(coalesce(m.mutual_count,0),3)*7) as total_score
+    from cand c
+    left join cshared s on s.cid = c.cid
+    left join ccomp cc on cc.cid = c.cid
+    left join cvt cv on cv.cid = c.cid
+    left join cmut m on m.cid = c.cid
   )
-  select s.author_id, pp.handle, pp.emoji, pp.profile_photo,
-         s.shared_count, s.sample_countries
-  from shared s
-  join public.public_profiles pp on pp.id = s.author_id
+  select sc.cid, pp.handle, pp.emoji, pp.profile_photo,
+         sc.shared_count, sc.sample_countries, sc.mutual_count, sc.style_score, sc.total_score
+  from scored sc
+  join public.public_profiles pp on pp.id = sc.cid
   cross join me
-  where not public.is_blocked_between(me.uid, s.author_id)
-    and not public.are_neighbors(me.uid, s.author_id)
+  where sc.total_score > 0
+    and not public.is_blocked_between(me.uid, sc.cid)
+    and not public.are_neighbors(me.uid, sc.cid)
     and not exists (
       select 1 from public.neighbors n
-      where ((n.requester_id = me.uid and n.addressee_id = s.author_id)
-          or (n.requester_id = s.author_id and n.addressee_id = me.uid))
+      where ((n.requester_id = me.uid and n.addressee_id = sc.cid)
+          or (n.requester_id = sc.cid and n.addressee_id = me.uid))
         and n.status = 'pending'
     )
-  order by s.shared_count desc, pp.handle
+  order by sc.total_score desc, pp.handle
   limit greatest(1, least(match_limit, 50));
 $$;
-grant execute on function public.travel_overlap_suggestions(int) to authenticated;
+grant execute on function public.mate_suggestions(int, text[]) to authenticated;
 
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
