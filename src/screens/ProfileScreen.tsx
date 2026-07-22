@@ -116,7 +116,10 @@ const StatCard = ({
   icon?: React.ReactNode; // 숫자 대신 표시할 아이콘("마이" 셀 티켓 아이콘)
 }) => (
   <LiquidPressable onPress={onPress} intensity={0.06} style={styles.statCol}>
-    {icon ?? <Text style={styles.statValue}>{value}</Text>}
+    {/* 값(숫자)·아이콘(티켓)을 같은 높이 슬롯에서 중앙정렬 → 아래 라벨 열이 3칸 모두 맞도록 */}
+    <View style={styles.statValueSlot}>
+      {icon ?? <Text style={styles.statValue}>{value}</Text>}
+    </View>
     <Text style={styles.statLabel} {...andFitText}>{label}</Text>
   </LiquidPressable>
 );
@@ -2401,6 +2404,12 @@ const styles = StyleSheet.create({
   },
   // 각 묶음: 숫자(위)+라벨(아래) 가운데 정렬
   statCol: {
+    alignItems: 'center',
+  },
+  // 값/아이콘 높이 슬롯 — 숫자(26)·티켓 아이콘(30) 높이차로 라벨이 어긋나던 것 정렬
+  statValueSlot: {
+    height: 30,
+    justifyContent: 'center',
     alignItems: 'center',
   },
   avatarRing: {
