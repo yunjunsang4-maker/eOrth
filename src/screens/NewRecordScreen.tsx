@@ -994,6 +994,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       return;
     }
     // 지구본 대표 충돌: 활성화된 단일국가에 대표사진을 지정했고 현재 국가 대표와 다르면 유지/바꾸기 확인
+    // (취소 버튼 없음 — 저장 버튼을 눌러 진입했으므로 유지/바꾸기 중 하나로 반드시 저장)
     if (
       countryActivated && singleCountryName && representativePhoto &&
       representativePhoto !== getCountryPhoto(singleCountryName)
@@ -1045,7 +1046,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       });
 
       // 활성화된 나라에서 대표 미지정이면 카드 커버용으로 첫 사진을 대표로 사용
-      const effectiveRep = representativePhoto || (countryActivated ? medias[0] : representativePhoto);
+      const effectiveRep = representativePhoto || (countryActivated ? medias[0] : undefined);
 
       // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지).
       // 편집에서 대표가 안 바뀌었으면 기존 고해상도를 유지한다 — 이번 세션엔 원본 매핑이 없어
@@ -1116,6 +1117,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           if (coverActionRef.current === 'replace') {
             if (firstRepHiRes) setCountryCover(singleCountryName, recId, firstRepHiRes);
           } else if (preCover) {
+            // preCover가 null이면 addRecord 후 getCountryPhotoRecord가 새 기록을 자동 선택 — 핀 고정 불가(레이스, 허용)
             setCountryCover(singleCountryName, preCover.recordId, preCover.uri); // 유지(기존 고정)
           }
         }
