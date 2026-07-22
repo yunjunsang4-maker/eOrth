@@ -1948,6 +1948,8 @@ function buildNeonTexture(){
   if(c.width !== W){ c.width = W; c.height = H; }
   var ctx=c.getContext('2d');
   ctx.clearRect(0,0,W,H);
+  // 벡터 대륙 활성: 본체 텍스처의 육지를 비워 순수 보라 행성으로 → 육지는 벡터 대륙(buildVectorLandPOC)이 담당
+  if(POC_VECTOR_LAND){ return new THREE.CanvasTexture(c); }
   var proj=d3.geoEquirectangular().scale(H/Math.PI).translate([W/2,H/2]);
   var path=d3.geoPath().projection(proj).context(ctx);
 
@@ -2111,8 +2113,8 @@ async function init(){
     },
     vertexShader: NEON_VS, fragmentShader: NEON_FS, transparent: true,
   });
-  // 512등분 — 128등분 다면체의 패싯 위에 얹히던 채움 가장자리가 진짜 구면에 근접 → 벡터선과 일치(흐트러짐 제거)
-  globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,512,256), material);
+  // 벡터 대륙 전환으로 본체는 매끈한 보라 행성일 뿐(육지 가장자리 없음) → 저세분으로 복귀(성능)
+  globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,128,128), material);
   globe.add(globeMesh);
   if (pendingNeonSkin) applyNeonSkin(pendingNeonSkin);
   if (POC_VECTOR_LAND) { // [POC 1단계] 벡터 대륙 검증 오버레이 — 10m 나라별 폴리곤 로드해 현실적 굴곡 확인
@@ -2400,6 +2402,16 @@ function buildFatPolylines(lines, R){
 // ── [POC 1단계] 벡터 대륙(일체형) — 나라 몇 개를 삼각분할 채움 + 곡면 세분 + 같은 링 테두리로 렌더.
 // 검증 목적: (1) 유리룩 (2) 채움-선 정렬 (3) 곡면 밀착(세분으로 구 안쪽 꺼짐·본체 뚫림 방지).
 // 날짜변경선 없는 테스트 나라만. 민트색이라 기존 보라 래스터와 구분됨.
+// 벡터 대륙 유리 재질 — 나라색(aColor)+투명도(aAlpha; 비방문 0.2=본체 비침) · 구면 법선 조명+글로시(NEON 육지 룩 이식)
+var NEON_LAND_VS =
+  'attribute vec3 aColor; attribute float aAlpha; varying vec3 vN; varying vec3 vCol; varying float vA;' +
+  'void main(){ vN=normalize(normalMatrix*normalize(position)); vCol=aColor; vA=aAlpha; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
+var NEON_LAND_FS =
+  'precision highp float; varying vec3 vN; varying vec3 vCol; varying float vA;' +
+  'void main(){ vec3 N=normalize(vN); vec3 L=normalize(vec3(-0.55,-0.5,0.78)); float diff=clamp(dot(N,L),0.0,1.0);' +
+  ' vec3 col=vCol*mix(0.85,1.0,diff);' +
+  ' float gloss=pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),16.0); col+=vec3(1.0)*gloss*0.22;' +
+  ' gl_FragColor=vec4(col, vA); }';
 var POC_VECTOR_LAND = true;
 var POC_COUNTRIES = ['Australia','Japan','New Zealand','Madagascar','Brazil'];
 var pocLandMesh=null, pocOutline=null, countries10mData=null;
@@ -2408,50 +2420,86 @@ function buildVectorLandPOC(){
   if(!srcData || typeof THREE.ShapeUtils==='undefined') return;
   if(pocLandMesh){ globe.remove(pocLandMesh); if(pocLandMesh.geometry)pocLandMesh.geometry.dispose(); if(pocLandMesh.material)pocLandMesh.material.dispose(); pocLandMesh=null; }
   if(pocOutline){ globe.remove(pocOutline); pocOutline=null; }
-  var feats = srcData.features.filter(function(f){ return f.properties && POC_COUNTRIES.indexOf(f.properties.name)!==-1; });
+  var feats = srcData.features; // [2단계] 전 나라 렌더 (POC_COUNTRIES 필터 제거)
   if(!feats.length) return;
-  var R = 1.0015; // 본체(1.0) 살짝 위
-  var pos=[];
-  function pushV(p){ var v=geoToVec3N(p[0], p[1], R); pos.push(v.x, v.y, v.z); }
+  var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화(6°)해도 사지타가 본체 아래로 안 꺼지도록 여유 확대
+  var pos=[], colArr=[], alphaArr=[];
+  var curCol=[1,1,1], curA=0.2; // 나라별 색/투명도 (feats 루프에서 설정)
+  function pushV(p){ var v=geoToVec3N(p[0], p[1], R); pos.push(v.x, v.y, v.z); colArr.push(curCol[0],curCol[1],curCol[2]); alphaArr.push(curA); }
   function segDeg(a,b){ var dx=a[0]-b[0], dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
   function mid(a,b){ return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
-  // 삼각형 최대 변이 4°를 넘으면 중점 세분(경위도) 후 구면 매핑 → 큰 삼각형이 구 안쪽으로 꺼지지 않게
+  // crack-free 적응 세분 — 세분 여부를 '변 길이'로만 판단(삼각형이 아니라). 공유 변은 양쪽이 같은 길이라
+  // 항상 같게 쪼개짐 → T-정션(틈=확대 시 상처선) 없음. 6° 넘는 변만 이등분(긴 변만 → 성능도 유리).
+  var TH=6;
   function emitTri(a,b,c,depth){
-    var span=Math.max(segDeg(a,b), segDeg(b,c), segDeg(c,a));
-    if(depth<=0 || span<4){ pushV(a); pushV(b); pushV(c); return; }
-    var ab=mid(a,b), bc=mid(b,c), ca=mid(c,a);
-    emitTri(a,ab,ca,depth-1); emitTri(ab,b,bc,depth-1); emitTri(ca,bc,c,depth-1); emitTri(ab,bc,ca,depth-1);
+    var sab=segDeg(a,b)>TH, sbc=segDeg(b,c)>TH, sca=segDeg(c,a)>TH;
+    if(depth<=0 || (!sab&&!sbc&&!sca)){ pushV(a); pushV(b); pushV(c); return; }
+    var n=(sab?1:0)+(sbc?1:0)+(sca?1:0);
+    if(n===3){
+      var ab=mid(a,b), bc=mid(b,c), ca=mid(c,a);
+      emitTri(a,ab,ca,depth-1); emitTri(ab,b,bc,depth-1); emitTri(ca,bc,c,depth-1); emitTri(ab,bc,ca,depth-1);
+    } else if(n===1){
+      if(sab){ var m=mid(a,b); emitTri(a,m,c,depth-1); emitTri(m,b,c,depth-1); }
+      else if(sbc){ var m2=mid(b,c); emitTri(b,m2,a,depth-1); emitTri(m2,c,a,depth-1); }
+      else { var m3=mid(c,a); emitTri(c,m3,b,depth-1); emitTri(m3,a,b,depth-1); }
+    } else { // n===2 — 긴 두 변만 이등분(3분할)
+      if(!sca){ var p=mid(a,b), q=mid(b,c); emitTri(a,p,c,depth-1); emitTri(p,b,q,depth-1); emitTri(p,q,c,depth-1); }
+      else if(!sab){ var p2=mid(b,c), q2=mid(c,a); emitTri(b,p2,a,depth-1); emitTri(p2,c,q2,depth-1); emitTri(p2,q2,a,depth-1); }
+      else { var p3=mid(c,a), q3=mid(a,b); emitTri(c,p3,b,depth-1); emitTri(p3,a,q3,depth-1); emitTri(p3,q3,b,depth-1); }
+    }
   }
+  // 날짜변경선(±180) 안전: 연속 점 간 경도 점프가 180 넘으면 ±360 unwrap → 평면 삼각분할이 지구 반대편으로 튀지 않게.
+  // geoToVec3N은 주기함수라 unwrap된 >180/<-180 경도도 올바른 3D 위치로 매핑됨.
+  function unwrapRing(r){
+    var out=[[r[0][0], r[0][1]]], prev=r[0][0];
+    for(var i=1;i<r.length;i++){ var lon=r[i][0]; while(lon-prev>180)lon-=360; while(lon-prev<-180)lon+=360; out.push([lon, r[i][1]]); prev=lon; }
+    return out;
+  }
+  function ringCenterLon(r){ var s=0; for(var i=0;i<r.length;i++) s+=r[i][0]; return s/r.length; }
+  function prepRing(raw){ var r=raw.slice(); if(r.length>1 && r[0][0]===r[r.length-1][0] && r[0][1]===r[r.length-1][1]) r.pop(); return unwrapRing(r); }
   function addPoly(rings){
-    var outer=rings[0].slice();
-    if(outer.length>1 && outer[0][0]===outer[outer.length-1][0] && outer[0][1]===outer[outer.length-1][1]) outer.pop();
+    var outer=prepRing(rings[0]); var oc=ringCenterLon(outer);
     var contour=outer.map(function(p){ return new THREE.Vector2(p[0],p[1]); });
     var holes=[]; var all=outer.slice();
     for(var h=1;h<rings.length;h++){
-      var hr=rings[h].slice();
-      if(hr.length>1 && hr[0][0]===hr[hr.length-1][0] && hr[0][1]===hr[hr.length-1][1]) hr.pop();
+      var hr=prepRing(rings[h]);
+      var shift=Math.round((oc-ringCenterLon(hr))/360)*360; // 홀 프레임을 외곽 중심에 맞춤
+      if(shift) for(var k=0;k<hr.length;k++) hr[k][0]+=shift;
       holes.push(hr.map(function(p){ return new THREE.Vector2(p[0],p[1]); }));
       all=all.concat(hr);
     }
     var faces=THREE.ShapeUtils.triangulateShape(contour, holes); // [[a,b,c],...] indices into outer+holes
-    for(var t=0;t<faces.length;t++){ var fa=faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 5); }
+    for(var t=0;t<faces.length;t++){ var fa=faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
   }
   feats.forEach(function(f){
     var g=f.geometry; if(!g) return;
+    // 유리 육지: 비방문=흰색 α0.2(본체 비침), 방문=활성색 불투명 (buildNeonTexture 채움 규칙과 동일)
+    var nm=f.properties && f.properties.name, v=nm?visitedMap[nm]:null;
+    if(v){ var c=new THREE.Color(v.color||globeDefaultColor); curCol=[c.r,c.g,c.b]; curA=1.0; }
+    else { curCol=[1,1,1]; curA=0.2; }
     if(g.type==='Polygon') addPoly(g.coordinates);
     else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ addPoly(poly); });
   });
   var geo=new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-  var mat=new THREE.MeshBasicMaterial({ color:new THREE.Color('#19FF8C'), transparent:true, opacity:0.5, side:THREE.DoubleSide, depthWrite:false });
+  geo.setAttribute('aColor', new THREE.Float32BufferAttribute(colArr,3));
+  geo.setAttribute('aAlpha', new THREE.Float32BufferAttribute(alphaArr,1));
+  var mat=new THREE.ShaderMaterial({ vertexShader:NEON_LAND_VS, fragmentShader:NEON_LAND_FS, transparent:true, depthWrite:false, side:THREE.DoubleSide });
   var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false; mesh.renderOrder=1;
   globe.add(mesh); pocLandMesh=mesh;
   // 테두리 — 같은 나라 링에서 굵은 라인(동일 정점) → 채움과 완벽 일치
   var outline=buildFatWorldLines({ features: feats }, R);
-  outline.userData.mat.uniforms.uOpacity.value=0.95;
+  outline.userData.mat.uniforms.uOpacity.value=0.6;
   outline.visible=true;
   outline.children[0].renderOrder=2;
   globe.add(outline); pocOutline=outline;
+}
+// 벡터 대륙 테두리 줌 페이드 — 확대 안 했을 땐(오버뷰) 테두리 안 빛나게, 줌 1.2~2.2에서 페이드인.
+function updateVectorLandOutline(){
+  if(!pocOutline || !pocOutline.userData.mat) return;
+  var op=smoothstep01(1.2, 2.2, currentZoom)*0.6;
+  pocOutline.userData.mat.uniforms.uOpacity.value=op;
+  pocOutline.visible=op>0.01;
 }
 function buildWorldLinesMerged(world, R){
   var pos=[];
@@ -2664,7 +2712,7 @@ function updateRegion(){
   tex.offset.set(-u0*360/span, -v0*180/span);
   if(!regionMesh){
     regionMat=new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:0, depthWrite:false });
-    regionMesh=new THREE.Mesh(new THREE.SphereGeometry(1.0006, 512, 256), regionMat); // 512등분 — 딥줌 채움 가장자리를 진짜 구면에 근접시켜 선과 일치
+    regionMesh=new THREE.Mesh(new THREE.SphereGeometry(1.0006, 128, 128), regionMat); // 저세분 복귀(벡터 대륙 전환 예정, 지역창 곧 제거)
     regionMesh.renderOrder=-1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
     globe.add(regionMesh);
   } else {
@@ -2819,10 +2867,13 @@ function animate(){
   renderer.render(scene, camera);
   updateAdMarkers();
   updateLabels();      // 지역명 라벨(나라·도시)
-  maybeSwapLOD();      // 확대 임계 넘으면 50m 재텍스처
-  updateVectorLines(); // 벡터 국경(딥줌 선명)·주/도 지역구분선 페이드
-  updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
-  updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
+  if(!POC_VECTOR_LAND){ // 벡터 대륙 활성: 래스터 LOD·지역창·구 벡터선 전부 불필요(이중 렌더 제거 → 성능)
+    maybeSwapLOD();      // 확대 임계 넘으면 50m 재텍스처
+    updateVectorLines(); // 벡터 국경(딥줌 선명)·주/도 지역구분선 페이드
+    updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
+    updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
+  }
+  else updateVectorLandOutline(); // 벡터 대륙 테두리 줌 페이드(오버뷰선 안 빛남)
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -2831,7 +2882,8 @@ function handleMsg(msg){
     visitedMap={};
     msg.countries.forEach(function(c){ visitedMap[c.nameEn]={ color:c.color||null }; });
     if(msg.defaultColor) globeDefaultColor=msg.defaultColor;
-    if(worldData && material){
+    if(POC_VECTOR_LAND){ buildVectorLandPOC(); } // 벡터 대륙 재색칠(방문색 반영)
+    else if(worldData && material){
       regionC.span=0; // 방문색 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
       material.uniforms.uLand.value=tex;
