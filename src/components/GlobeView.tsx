@@ -2342,7 +2342,7 @@ function updateVectorLines(){
   // 벡터 국경 — 1.35배부터 등장, 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8)
   var vb=smoothstep01(1.35, 2.0, z)*0.9;
   var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
-  var t10=borders10Lines ? smoothstep01(4.5, 5.8, z) : 0;
+  var t10=borders10Lines ? smoothstep01(3.5, 4.5, z) : 0;
   if(vb>0 && !vecBorders110 && world110Data && zoomSettled()){
     vecBorders110=buildWorldLinesMerged(world110Data, 1.0008); globe.add(vecBorders110);
   }
