@@ -266,9 +266,11 @@ Step 2에서 가장 깊은 줌에도 잔여 시차가 눈에 띄면 Task 5(C 하
 
 `buildRegionTexture()`는 `destination-in`(10m 마스크) 후 `source-over`로 복귀하고 끝난다(약 2455행). 선은 별도 벡터(`borders10Group`)로만 그려진다.
 
-- [ ] **Step 2: 지역 캔버스에 10m 국경선 흰 스트로크 굽기**
+- [ ] **Step 2: 지역 캔버스에 10m 국경선 흰 스트로크 굽기 (벡터 borders10과 동일 소스)**
 
-`buildRegionTexture()`의 마스크 복귀(`ctx.globalCompositeOperation='source-over';` 약 2455행) 직후, 반환(`var tex=...` 약 2457행) 직전에 아래를 삽입한다. 육지 폴리곤(50m/110m src)의 외곽선을 흰색으로 스트로크한다 — 이미 위에서 `src`와 `path`가 정의되어 있으므로 재사용.
+`buildRegionTexture()`의 `if(land10){…}` 마스크 블록 종료(`}` 약 2456행) 직후, 반환(`var tex=...` 약 2457행) 직전에 아래를 삽입한다.
+
+**중요 — 원본 해상도 일치:** 채움은 `land10`(10m) 마스크로 잘려 있으므로, 구워지는 선도 반드시 벡터 `borders10Group`과 같은 소스인 **`borders10Lines`(10m 해안+국경)**여야 채움 가장자리와 선이 정확히 겹친다. `src.features`(50m 국가 폴리곤)를 스트로크하면 해안선 모양(50m)이 마스크(10m)와 달라 "선이 뜨는" 증상이 재발하므로 쓰지 않는다. `borders10Lines`는 폴리라인 배열(`lines[i]`=좌표 배열)이라 `path(f)`가 아니라 수동 `moveTo/lineTo`로 그린다. 창 밖 라인은 `land10[i].b`와 동일한 bounds-스킵 패턴으로 건너뛴다(라인 경계 1회 캐시 `bl.__b`).
 
 old_string:
 ```
@@ -282,10 +284,28 @@ new_string:
     ctx.fill();
     ctx.globalCompositeOperation='source-over';
   }
-  // C 하이브리드: 채움과 동일 투영(proj)·동일 캔버스에 국경선을 구워 딥줌 시차 제거.
-  // 마스크(destination-in) 이후라 육지 밖으로 선이 새지 않는다. 벡터 borders10은 이 구간에서 페이드아웃.
-  ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=2.5; ctx.lineJoin='round'; ctx.lineCap='round';
-  src.features.forEach(function(f){ ctx.beginPath(); path(f); ctx.stroke(); });
+  // C 하이브리드: 10m 국경/해안선(벡터 borders10과 동일 소스)을 같은 proj·같은 캔버스에 구워
+  // 딥줌 시차를 원천 제거. 마스크(destination-in) 이후 source-over라 채움 위에 얹힌다.
+  // 벡터 borders10Group은 지역창 활성 시 페이드아웃(updateVectorLines)해 이중 표시 방지.
+  if(borders10Lines){
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    for(var bi=0;bi<borders10Lines.length;bi++){
+      var bl=borders10Lines[bi];
+      if(!bl.__b){ // 라인 경계 1회 캐시 — 창 밖 라인 스킵(land10[i].b와 동일 패턴)
+        var mnx=180,mny=90,mxx=-180,mxy=-90;
+        for(var bk=0;bk<bl.length;bk++){ var pk=bl[bk]; if(pk[0]<mnx)mnx=pk[0]; if(pk[0]>mxx)mxx=pk[0]; if(pk[1]<mny)mny=pk[1]; if(pk[1]>mxy)mxy=pk[1]; }
+        bl.__b=[mnx,mny,mxx,mxy];
+      }
+      var bb=bl.__b;
+      if(bb[2]<wMinLon||bb[0]>wMaxLon||bb[3]<wMinLat||bb[1]>wMaxLat) continue; // 창 밖 스킵
+      for(var bj=0;bj<bl.length;bj++){
+        var bp=proj(bl[bj]);
+        if(bj===0) ctx.moveTo(bp[0],bp[1]); else ctx.lineTo(bp[0],bp[1]);
+      }
+    }
+    ctx.stroke();
+  }
   var tex=new THREE.CanvasTexture(c);
 ```
 
