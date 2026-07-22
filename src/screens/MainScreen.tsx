@@ -59,6 +59,7 @@ import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
 import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
 import { isSupabaseConfigured } from '../services/supabase';
+import { koAliases, matchesCountry } from '../utils/countryMatch';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -291,15 +292,7 @@ export const KO_TO_EN: Record<string, string> = {
 // 기록에 두 표기가 섞여 있어(badgeRules도 동일 보정) 이름 비교는 반드시 별칭 집합으로 한다 —
 // 아니면 국내 기록의 대표 사진이 지구본에 안 뜨고, '한국' 기록만 있는 사용자는 지구본을
 // 탭해도 기존 기록 시트 대신 "새 기록 추가"가 뜬다.
-const koAliases = (name?: string | null): string[] =>
-  name === '대한민국' || name === '한국' ? ['대한민국', '한국'] : name ? [name] : [];
-const matchesCountry = (
-  r: { countryName?: string; countries?: { name: string }[] },
-  name: string
-): boolean => {
-  const set = koAliases(name);
-  return set.includes(r.countryName ?? '') || !!r.countries?.some((c) => set.includes(c.name));
-};
+// → koAliases / matchesCountry 는 src/utils/countryMatch.ts 에서 import (recordStore 공유)
 
 type Props = TabScreenProps<'MainTab'>;
 
