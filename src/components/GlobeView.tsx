@@ -2415,8 +2415,11 @@ var NEON_LAND_FS =
 var POC_VECTOR_LAND = true;
 var POC_COUNTRIES = ['Australia','Japan','New Zealand','Madagascar','Brazil'];
 var pocLandMesh=null, pocOutline=null, countries10mData=null;
-function buildVectorLandPOC(){
-  var srcData = countries10mData || world50Data || worldData; // 현실적 굴곡: 10m 나라별 폴리곤 우선
+var pocColorAttr=null, pocAlphaAttr=null, pocRanges=null; // 방문색 in-place 갱신용(나라별 정점 범위)
+var VECTOR_LOD_AT=1.4, vectorLOD=null; // 줌 LOD: <1.4 코어스(110m·가벼움), ≥1.4 파인(10m·디테일)
+function buildVectorLandPOC(level){
+  level = level || ((countries10mData && currentZoom>=VECTOR_LOD_AT) ? 'fine' : 'coarse');
+  var srcData = (level==='fine') ? countries10mData : worldData; // LOD: 줌아웃=110m(가벼움), 줌인=10m(디테일)
   if(!srcData || typeof THREE.ShapeUtils==='undefined') return;
   if(pocLandMesh){ globe.remove(pocLandMesh); if(pocLandMesh.geometry)pocLandMesh.geometry.dispose(); if(pocLandMesh.material)pocLandMesh.material.dispose(); pocLandMesh=null; }
   if(pocOutline){ globe.remove(pocOutline); pocOutline=null; }
@@ -2471,19 +2474,24 @@ function buildVectorLandPOC(){
     var faces=THREE.ShapeUtils.triangulateShape(contour, holes); // [[a,b,c],...] indices into outer+holes
     for(var t=0;t<faces.length;t++){ var fa=faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
   }
+  pocRanges=[];
   feats.forEach(function(f){
     var g=f.geometry; if(!g) return;
     // 유리 육지: 비방문=흰색 α0.2(본체 비침), 방문=활성색 불투명 (buildNeonTexture 채움 규칙과 동일)
     var nm=f.properties && f.properties.name, v=nm?visitedMap[nm]:null;
     if(v){ var c=new THREE.Color(v.color||globeDefaultColor); curCol=[c.r,c.g,c.b]; curA=1.0; }
     else { curCol=[1,1,1]; curA=0.2; }
+    var vStart=pos.length/3;
     if(g.type==='Polygon') addPoly(g.coordinates);
     else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ addPoly(poly); });
+    if(nm) pocRanges.push({ name:nm, start:vStart, count:pos.length/3-vStart }); // 나라별 정점 범위(색 갱신용)
   });
   var geo=new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
-  geo.setAttribute('aColor', new THREE.Float32BufferAttribute(colArr,3));
-  geo.setAttribute('aAlpha', new THREE.Float32BufferAttribute(alphaArr,1));
+  pocColorAttr=new THREE.Float32BufferAttribute(colArr,3);
+  pocAlphaAttr=new THREE.Float32BufferAttribute(alphaArr,1);
+  geo.setAttribute('aColor', pocColorAttr);
+  geo.setAttribute('aAlpha', pocAlphaAttr);
   var mat=new THREE.ShaderMaterial({ vertexShader:NEON_LAND_VS, fragmentShader:NEON_LAND_FS, transparent:true, depthWrite:false, side:THREE.DoubleSide });
   var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false; mesh.renderOrder=1;
   globe.add(mesh); pocLandMesh=mesh;
@@ -2493,6 +2501,13 @@ function buildVectorLandPOC(){
   outline.visible=true;
   outline.children[0].renderOrder=2;
   globe.add(outline); pocOutline=outline;
+  vectorLOD=level;
+}
+// 줌 LOD 전환 — settle 후에만 재빌드(코어스↔파인). 10m 미로드면 코어스 유지.
+function maybeSwapVectorLOD(){
+  if(!pocLandMesh || !zoomSettled()) return;
+  var want=(countries10mData && currentZoom>=VECTOR_LOD_AT) ? 'fine' : 'coarse';
+  if(want!==vectorLOD) buildVectorLandPOC(want);
 }
 // 벡터 대륙 테두리 줌 페이드 — 확대 안 했을 땐(오버뷰) 테두리 안 빛나게, 줌 1.2~2.2에서 페이드인.
 function updateVectorLandOutline(){
@@ -2500,6 +2515,18 @@ function updateVectorLandOutline(){
   var op=smoothstep01(1.2, 2.2, currentZoom)*0.6;
   pocOutline.userData.mat.uniforms.uOpacity.value=op;
   pocOutline.visible=op>0.01;
+}
+// 방문색 in-place 갱신 — 전 나라 재삼각분할 없이 색/투명도 속성만 교체(끊김 제거).
+function updateVectorLandColors(){
+  if(!pocColorAttr || !pocRanges) return;
+  var ca=pocColorAttr.array, aa=pocAlphaAttr.array;
+  for(var i=0;i<pocRanges.length;i++){
+    var r=pocRanges[i], v=visitedMap[r.name], cr,cg,cb,al;
+    if(v){ var c=new THREE.Color(v.color||globeDefaultColor); cr=c.r; cg=c.g; cb=c.b; al=1.0; }
+    else { cr=1; cg=1; cb=1; al=0.2; }
+    for(var k=0;k<r.count;k++){ var vi=r.start+k; ca[vi*3]=cr; ca[vi*3+1]=cg; ca[vi*3+2]=cb; aa[vi]=al; }
+  }
+  pocColorAttr.needsUpdate=true; pocAlphaAttr.needsUpdate=true;
 }
 function buildWorldLinesMerged(world, R){
   var pos=[];
@@ -2873,7 +2900,7 @@ function animate(){
     updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
     updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
   }
-  else updateVectorLandOutline(); // 벡터 대륙 테두리 줌 페이드(오버뷰선 안 빛남)
+  else { updateVectorLandOutline(); maybeSwapVectorLOD(); } // 테두리 줌페이드 + LOD 전환(코어스↔파인)
 }
 
 // RN → WebView 메시지 (setTheme은 theme.neon(스킨 팔레트)만 반영 — 나머지 네온 룩은 고정)
@@ -2882,7 +2909,7 @@ function handleMsg(msg){
     visitedMap={};
     msg.countries.forEach(function(c){ visitedMap[c.nameEn]={ color:c.color||null }; });
     if(msg.defaultColor) globeDefaultColor=msg.defaultColor;
-    if(POC_VECTOR_LAND){ buildVectorLandPOC(); } // 벡터 대륙 재색칠(방문색 반영)
+    if(POC_VECTOR_LAND){ if(pocLandMesh) updateVectorLandColors(); else buildVectorLandPOC(); } // 방문색: 메시 있으면 색만 갱신(끊김 제거)
     else if(worldData && material){
       regionC.span=0; // 방문색 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       var tex=buildNeonTexture(), old=material.uniforms.uLand.value;
@@ -2896,11 +2923,11 @@ function handleMsg(msg){
     if(worldData) buildAdMarkers(pendingSponsored);
   } else if(msg.type==='world50m' && msg.topo){
     // 딥줌 LOD 데이터 도착 — 디코드 후 다음 maybeSwapLOD에서 교체
-    try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); if(POC_VECTOR_LAND && !countries10mData) buildVectorLandPOC(); } // 50m 도착 → (10m 아직이면) POC 재생성
+    try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); } // 벡터 대륙은 110m/10m만 사용(50m는 미사용)
     catch(err){ world50Requested=false; }
   } else if(msg.type==='countries10m' && msg.topo){
     // 10m 나라별 폴리곤 도착 → 벡터 대륙(일체형) 현실적 굴곡으로 재생성
-    try { countries10mData = topoDecode(JSON.parse(msg.topo), 'countries'); if(POC_VECTOR_LAND) buildVectorLandPOC(); }
+    try { countries10mData = topoDecode(JSON.parse(msg.topo), 'countries'); if(POC_VECTOR_LAND) maybeSwapVectorLOD(); } // 줌인 상태면 파인(10m)으로 전환
     catch(err){}
   } else if(msg.type==='admin1Lines' && msg.lines){
     // 주/도 지역구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
