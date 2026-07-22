@@ -40,6 +40,7 @@ const enName = (ko: string) => (SHORT_COUNTRY_EN[ko] ?? (ko === '대한민국' ?
 
 const SCREEN_W = Dimensions.get('window').width;
 const TICKET_MARGIN = 14;
+const BACKDROP = '#0A0B0F'; // 탭(공유 버튼 노출) 시 채우는 검은 배경 — 공유하기 가시성 확보
 const PURPLE = '#7C3AED';
 const LILAC = '#CA82FF';
 const STAR_YELLOW = '#FFBC00';
@@ -222,7 +223,11 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
 
   return (
     <View style={st.root}>
-      {/* 배경은 프로필 탭(투명 오버레이) — 카드 실루엣 밖·파인 노치로 그대로 비친다 */}
+      {/* 평소엔 투명(프로필 탭 비침). 탭해서 공유 버튼이 뜨면 검은 배경을 페이드인해 가시성 확보 */}
+      <Animated.View
+        pointerEvents="none"
+        style={[StyleSheet.absoluteFill, { backgroundColor: BACKDROP, opacity: revealAnim }]}
+      />
 
       {/* 티켓 카드 — 캡처 대상. 탭하면 위로 올라가며 하단 공유 버튼이 나타남 */}
       <Animated.View style={[st.ticketTap, { transform: [{ translateY: ticketTranslate }] }]}>
