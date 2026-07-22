@@ -234,25 +234,27 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             disabled={!masterEnabled}
           />
           <ToggleRow
-            icon={<HomeIcon size={20} />}
-            label={t('notifSettings.returnLabel')}
-            description={t('notifSettings.returnDesc')}
-            value={returnDetect}
-            onValueChange={(v) => setNotifPref('returnDetect', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
-
-        {/* ── 스냅 알림 ── */}
-        <SectionLabel label={t('notifSettings.sectionSnap')} />
-        <View style={styles.card}>
-          <ToggleRow
             icon={<BellIcon size={20} />}
             label={t('notifSettings.snapLabel')}
             description={t('notifSettings.snapDesc')}
             value={snapEnabled}
             onValueChange={setSnapEnabled}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<Text style={{ fontSize: 18 }}>✨</Text>}
+            label={t('moments.settingsLabel')}
+            description={t('moments.settingsDesc')}
+            value={travelMoment}
+            onValueChange={(v) => setNotifPref('travelMoment', v)}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<HomeIcon size={20} />}
+            label={t('notifSettings.returnLabel')}
+            description={t('notifSettings.returnDesc')}
+            value={returnDetect}
+            onValueChange={(v) => setNotifPref('returnDetect', v)}
             disabled={!masterEnabled}
             isLast
           />
@@ -267,14 +269,6 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description={t('notifSettings.memoryDesc')}
             value={memoryRemind}
             onValueChange={(v) => setNotifPref('memoryRemind', v)}
-            disabled={!masterEnabled}
-          />
-          <ToggleRow
-            icon={<Text style={{ fontSize: 18 }}>✨</Text>}
-            label={t('moments.settingsLabel')}
-            description={t('moments.settingsDesc')}
-            value={travelMoment}
-            onValueChange={(v) => setNotifPref('travelMoment', v)}
             disabled={!masterEnabled}
             isLast
           />

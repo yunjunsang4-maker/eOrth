@@ -1825,6 +1825,11 @@ const ko = {
     nudgeLater: '나중에',
     nudgeEnable: '켜기',
   },
+  arrivalDetect: {
+    notifTitle: '{{country}} 여행 중 ✈️',
+    notifBody: '이번 여행을 이어스로 남겨보세요',
+    abroad: '해외',
+  },
 } as const;
 
 export default ko;

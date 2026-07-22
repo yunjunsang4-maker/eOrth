@@ -1824,6 +1824,11 @@ const en = {
     nudgeLater: 'Later',
     nudgeEnable: 'Turn on',
   },
+  arrivalDetect: {
+    notifTitle: 'Traveling in {{country}} ✈️',
+    notifBody: 'Capture this trip in eOrth',
+    abroad: 'abroad',
+  },
 } as const;
 
 export default en;

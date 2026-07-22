@@ -183,6 +183,8 @@ export default function AppNavigator() {
           navigate('SnapRecord'); // 여행 중 스냅 유도 알림 → 스냅 기록
         } else if (d.type === 'moment') {
           navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
+        } else if (d.type === 'arrival') {
+          navigate('NewRecord'); // 해외 도착 알림 → 기록 작성
         } else if (d.postId) {
           openAppLink({ type: 'post', id: String(d.postId) }, navigate).catch(() => {});
         } else if (d.actorId) {

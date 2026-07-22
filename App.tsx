@@ -27,6 +27,7 @@ import AppStateSync from './src/components/AppStateSync';
 import PushTokenSync from './src/components/PushTokenSync';
 import ReturnDetector from './src/components/ReturnDetector';
 import ReturnDetectNudge from './src/components/ReturnDetectNudge';
+import ArrivalNotifier from './src/components/ArrivalNotifier';
 
 export default function App() {
   // 알림 탭 → 화면 이동 (snap / moment 분기)
@@ -135,6 +136,7 @@ export default function App() {
                     <StatusBar style="light" backgroundColor="#0A0118" translucent />
                     <SnapDetector />
                     <MomentNotifier />
+                    <ArrivalNotifier />
                     <ReturnDetector />
                     <ReturnDetectNudge />
                     <ProfileSync />
