@@ -412,6 +412,8 @@ const ko = {
     friendTripDesc: '팔로우하는 메이트가 여행 기록을 올렸을 때',
     likesLabel: '좋아요 · 댓글',
     likesDesc: '내 기록에 좋아요나 댓글이 달렸을 때',
+    messagesLabel: '메시지',
+    messagesDesc: '새 다이렉트 메시지(DM)가 도착했을 때',
     newFollowerLabel: '새 팔로워',
     newFollowerDesc: '누군가 나를 팔로우했을 때',
     sectionTravelDetect: '여행 감지 알림',

@@ -9,7 +9,7 @@ import {
   Switch,  Linking,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
+import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
@@ -87,6 +87,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   const masterEnabled = notifPrefs.master;
   const friendTrip = notifPrefs.friendTrip;
   const likes = notifPrefs.likes;
+  const messages = notifPrefs.messages;
   const newFollower = notifPrefs.newFollower;
   const returnDetect = notifPrefs.returnDetect;
   const memoryRemind = notifPrefs.memoryRemind;
@@ -200,6 +201,14 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             description={t('notifSettings.likesDesc')}
             value={likes}
             onValueChange={(v) => setNotifPref('likes', v)}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<ChatIcon size={20} />}
+            label={t('notifSettings.messagesLabel')}
+            description={t('notifSettings.messagesDesc')}
+            value={messages}
+            onValueChange={(v) => setNotifPref('messages', v)}
             disabled={!masterEnabled}
           />
           <ToggleRow

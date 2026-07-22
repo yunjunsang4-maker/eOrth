@@ -14,6 +14,7 @@ const PREF_KEY: Record<string, string> = {
   like: 'likes',
   comment: 'likes', // 좋아요·댓글·답글은 같은 'likes' 토글
   reply: 'likes',
+  dm: 'messages',
   neighbor_request: 'newFollower',
   neighbor_accept: 'newFollower',
   friend_post: 'friendTrip',
@@ -127,6 +128,98 @@ async function sendChunk(
   return json?.data ?? {};
 }
 
+// ── DM 백그라운드 푸시 (내용 숨김) ──────────────────────────────────────────
+// dm_messages insert 트리거가 { type:'dm', message_id } 로 직접 호출한다.
+// notifications 테이블을 거치지 않아(발신자당 collapse 회피) 메시지별로 발송하며,
+// message_id로 dm_messages를 재조회해 실존·최신성을 검증(위조/재전송 방어).
+async function handleDm(messageId: string): Promise<Response> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (!supabaseUrl || !serviceKey) return new Response('server_misconfigured', { status: 500 });
+  const admin = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+  // ① 메시지 재조회 — 없거나 5분 초과면 무시
+  const { data: msg } = await admin
+    .from('dm_messages')
+    .select('id, thread_id, sender_id, created_at')
+    .eq('id', messageId)
+    .maybeSingle();
+  if (!msg) return new Response('ignored', { status: 200 });
+  if (Date.now() - new Date(msg.created_at).getTime() > 5 * 60 * 1000) {
+    return new Response('ignored', { status: 200 });
+  }
+
+  // ② 수신자 = 스레드의 상대방
+  const { data: thread } = await admin
+    .from('dm_threads')
+    .select('user_a, user_b')
+    .eq('id', msg.thread_id)
+    .maybeSingle();
+  if (!thread) return new Response('ignored', { status: 200 });
+  const recipient = thread.user_a === msg.sender_id ? thread.user_b : thread.user_a;
+  if (!recipient || recipient === msg.sender_id) return new Response('ignored', { status: 200 });
+
+  // ③ 발신자 핸들
+  let senderHandle = '';
+  try {
+    const { data: sender } = await admin.from('profiles').select('handle').eq('id', msg.sender_id).maybeSingle();
+    senderHandle = sender?.handle ?? '';
+  } catch {
+    // 조회 실패 시 빈 핸들
+  }
+
+  // ④ 수신자 토큰 + prefs
+  const { data: tokens, error: tokensError } = await admin
+    .from('push_tokens')
+    .select('token, prefs')
+    .eq('user_id', recipient);
+  if (tokensError) return new Response('db_error', { status: 500 });
+  if (!tokens || tokens.length === 0) return new Response('no_tokens', { status: 200 });
+
+  // ⑤ prefs 게이트 + 내용 숨김 메시지 빌드
+  const name = senderHandle ? `@${senderHandle}` : '누군가';
+  const messages: ExpoPushMessage[] = [];
+  const validTokens: string[] = [];
+  for (const row of tokens) {
+    const prefs = (row.prefs as Record<string, unknown>) ?? {};
+    if (!isPushAllowed(prefs, 'dm')) continue;
+    if (!row.token || !row.token.startsWith('ExponentPushToken[')) continue;
+    messages.push({
+      to: row.token,
+      title: 'eOrth',
+      body: `${name}님이 메시지를 보냈어요`, // 내용(본문)은 숨김
+      sound: 'default',
+      data: { type: 'dm', handle: senderHandle },
+    });
+    validTokens.push(row.token);
+  }
+  if (messages.length === 0) return new Response('all_filtered', { status: 200 });
+
+  // ⑥ 청크 발송 + 만료 토큰 정리
+  const staleTokens: string[] = [];
+  for (let i = 0; i < messages.length; i += CHUNK_SIZE) {
+    const chunk = messages.slice(i, i + CHUNK_SIZE);
+    const chunkTokens = validTokens.slice(i, i + CHUNK_SIZE);
+    let receipts: Record<string, ExpoPushReceipt> = {};
+    try {
+      receipts = await sendChunk(chunk);
+    } catch (e) {
+      console.error('dm_send_chunk_error', e instanceof Error ? e.message : e);
+      continue;
+    }
+    const receiptArr = Object.values(receipts);
+    for (let j = 0; j < receiptArr.length; j++) {
+      const r = receiptArr[j];
+      if (r?.status === 'error' && r?.details?.error === 'DeviceNotRegistered') staleTokens.push(chunkTokens[j]);
+    }
+  }
+  if (staleTokens.length > 0) {
+    const { error } = await admin.from('push_tokens').delete().eq('user_id', recipient).in('token', staleTokens);
+    if (error) console.error('dm_stale_token_delete_error', error.message);
+  }
+  return new Response('ok', { status: 200 });
+}
+
 // ── 메인 핸들러 ─────────────────────────────────────────────────────────────
 Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return new Response('method_not_allowed', { status: 405 });
@@ -137,6 +230,10 @@ Deno.serve(async (req: Request) => {
   let payloadType: string | null = null;
   try {
     const body = await req.json();
+    // DM 직접 호출 경로 — notifications 테이블 미경유(발신자당 collapse 회피). message_id 재조회로 위조 방지.
+    if (body?.type === 'dm' && body?.message_id) {
+      return await handleDm(String(body.message_id));
+    }
     if (body?.type !== 'INSERT' || body?.table !== 'notifications') {
       return new Response('ignored', { status: 200 });
     }

@@ -1489,3 +1489,47 @@ drop trigger if exists notifications_push on public.notifications;
 create trigger notifications_push
   after insert on public.notifications
   for each row execute function public.notify_send_push();
+
+-- ============================================================
+-- 10-g) DM 새 메시지 → send-push 직접 호출(내용 숨김 백그라운드 푸시)
+--   notifications 테이블을 거치지 않는다: (수신자·행위자·type) 유일 인덱스 collapse로
+--   발신자당 최초 1회만 푸시되는 문제를 피해 메시지별로 발송한다.
+--   위조/재전송 방어는 send-push가 message_id로 dm_messages를 재조회해 처리.
+--   본인/차단 관계면 호출을 생략(불필요 발송 절감). report-alert와 동일한 pg_net 패턴.
+--   Authorization의 anon key는 앱 번들에 포함되는 공개 키(Edge Function 기본 JWT 검증 통과용).
+-- ============================================================
+create or replace function public.notify_on_dm()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  recipient uuid;
+begin
+  select case when t.user_a = new.sender_id then t.user_b else t.user_a end
+    into recipient
+    from public.dm_threads t where t.id = new.thread_id;
+
+  if recipient is null or recipient = new.sender_id
+     or public.is_blocked_between(recipient, new.sender_id) then
+    return new;
+  end if;
+
+  perform net.http_post(
+    url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
+    ),
+    body := jsonb_build_object('type', 'dm', 'message_id', new.id)
+  );
+  return new;
+exception when others then
+  return new; -- 푸시 실패가 메시지 저장을 막으면 안 된다
+end;
+$$;
+
+drop trigger if exists trg_notify_dm on public.dm_messages;
+create trigger trg_notify_dm
+  after insert on public.dm_messages
+  for each row execute function public.notify_on_dm();

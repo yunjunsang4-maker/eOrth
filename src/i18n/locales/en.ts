@@ -411,6 +411,8 @@ const en = {
     friendTripDesc: 'When a mate you follow posts a travel record',
     likesLabel: 'Likes · comments',
     likesDesc: 'When someone likes or comments on your record',
+    messagesLabel: 'Messages',
+    messagesDesc: 'When a new direct message (DM) arrives',
     newFollowerLabel: 'New follower',
     newFollowerDesc: 'When someone follows you',
     sectionTravelDetect: 'Travel detection',

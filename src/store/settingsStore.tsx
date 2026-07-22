@@ -24,10 +24,10 @@ export function genHandle(): string {
 }
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
-  | 'master' | 'friendTrip' | 'likes' | 'newFollower'
+  | 'master' | 'friendTrip' | 'likes' | 'messages' | 'newFollower'
   | 'returnDetect' | 'memoryRemind' | 'marketing' | 'travelMoment';
 const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
-  master: true, friendTrip: true, likes: true, newFollower: true,
+  master: true, friendTrip: true, likes: true, messages: true, newFollower: true,
   returnDetect: false, memoryRemind: true, marketing: false, travelMoment: true,
 };
 
