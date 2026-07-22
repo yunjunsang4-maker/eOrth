@@ -1818,7 +1818,7 @@ const en = {
   },
   returnDetect: {
     notifTitle: 'Welcome home! 🏠',
-    notifBody: 'How was your trip? Capture it as a record',
+    notifBody: 'How was your trip? Capture it in eOrth',
     nudgeTitle: 'Turn on return detection?',
     nudgeBody: "We'll remind you to journal when you get back home from a trip.",
     nudgeLater: 'Later',
