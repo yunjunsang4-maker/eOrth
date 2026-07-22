@@ -64,7 +64,7 @@ function buildMessage(
 
   switch (notif.type) {
     case 'like':
-      body = `${name}님이 회원님의 여행을 좋아해요 ❤️`;
+      body = `${name}님이 회원님의 여행을 좋아해요`;
       break;
     case 'comment':
       body = `${name}님이 댓글을 남겼어요 💬`;
