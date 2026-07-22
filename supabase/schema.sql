@@ -1327,7 +1327,7 @@ alter table public.notifications add column if not exists post_id uuid reference
 -- 타입 제약을 확장된 목록으로 교체 (drop → recreate, idempotent)
 alter table public.notifications drop constraint if exists notifications_type_check;
 alter table public.notifications add constraint notifications_type_check
-  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'friend_post'));
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post'));
 
 -- uq_notifications_actor_type 유일 인덱스:
 -- like/comment는 같은 게시물에 대한 중복 알림을 막지 않는다(like는 1인당 1개라 자연 방지;
@@ -1371,28 +1371,37 @@ create trigger trg_notify_like after insert on public.post_likes
   for each row execute function public.notify_on_like();
 
 -- ============================================================
--- 10-d) 댓글 알림 저장 트리거
---   comments insert 시 → 게시물 작성자(본인 제외)에게 type='comment' 알림.
---   join 경로: comments.post_id → posts.author_id
+-- 10-d) 댓글/답글 알림 저장 트리거
+--   최상위 댓글(parent_id null) → 게시물 작성자에게 type='comment' 알림.
+--   답글(parent_id 있음)      → 부모 댓글 작성자에게 type='reply' 알림.
+--   (게시물 작성자에게 답글 중복 알림은 보내지 않는다 — 각자 관련 알림만 받게)
 -- ============================================================
 create or replace function public.notify_on_comment()
 returns trigger language plpgsql security definer set search_path = public as $$
 declare
-  post_author uuid;
+  target uuid;
+  ntype  text;
 begin
-  select author_id into post_author
-    from public.posts where id = new.post_id;
+  if new.parent_id is not null then
+    -- 답글 → 부모 댓글 작성자에게
+    select author_id into target from public.comments where id = new.parent_id;
+    ntype := 'reply';
+  else
+    -- 최상위 댓글 → 게시물 작성자에게
+    select author_id into target from public.posts where id = new.post_id;
+    ntype := 'comment';
+  end if;
 
-  -- 자기 글에 자기 댓글은 알림 없음 + 차단 관계면 알림 자체를 만들지 않음
-  if post_author is null or post_author = new.author_id
-     or public.is_blocked_between(post_author, new.author_id) then
+  -- 대상이 없거나 본인 행위(자기 글/자기 댓글)면 알림 없음 + 차단 관계면 생성하지 않음
+  if target is null or target = new.author_id
+     or public.is_blocked_between(target, new.author_id) then
     return null;
   end if;
 
-  -- 댓글은 여러 번 올 수 있어 uq_notifications_actor_type 인덱스 충돌 가능.
-  -- on conflict do update로 가장 최근 댓글 알림만 유지(timestamp 갱신).
+  -- 댓글/답글은 여러 번 올 수 있어 uq_notifications_actor_type 인덱스 충돌 가능.
+  -- on conflict do update로 (대상,행위자,타입)별 가장 최근 알림만 유지(timestamp 갱신).
   insert into public.notifications (user_id, actor_id, type, post_id)
-    values (post_author, new.author_id, 'comment', new.post_id)
+    values (target, new.author_id, ntype, new.post_id)
     on conflict (user_id, actor_id, type) do update
       set created_at = now(), read = false, post_id = excluded.post_id;
   return null;
