@@ -179,6 +179,10 @@ export default function AppNavigator() {
         if (d.type === 'dm' && d.handle) {
           const h = String(d.handle);
           navigate('DM', { friend: { name: h, handle: h, emoji: '💬' } });
+        } else if (d.type === 'snap') {
+          navigate('SnapRecord'); // 여행 중 스냅 유도 알림 → 스냅 기록
+        } else if (d.type === 'moment') {
+          navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
         } else if (d.postId) {
           openAppLink({ type: 'post', id: String(d.postId) }, navigate).catch(() => {});
         } else if (d.actorId) {
