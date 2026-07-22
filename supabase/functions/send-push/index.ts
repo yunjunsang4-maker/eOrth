@@ -70,10 +70,10 @@ function buildMessage(
       body = `${name}님이 댓글을 남겼어요 💬`;
       break;
     case 'neighbor_request':
-      body = `${name}님이 이웃신청을 보냈어요`;
+      body = `${name}님이 메이트 신청을 보냈어요`;
       break;
     case 'neighbor_accept':
-      body = `${name}님이 이웃신청을 수락했어요`;
+      body = `${name}님이 메이트 신청을 수락했어요`;
       break;
     case 'friend_post':
       body = `${name}님이 새 여행 기록을 올렸어요 ✈️`;
