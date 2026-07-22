@@ -11,6 +11,7 @@ import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type Publ
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
+import { koAliases, matchesCountry } from '../utils/countryMatch';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
@@ -140,6 +141,8 @@ export interface TravelRecord {
   regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)
   isExample?: boolean;                // eOrth 공식 예시 콘텐츠 — 상호작용 비활성·공식 배지·프로필 이동 차단
 }
+
+export interface CountryCover { recordId: string; uri: string }
 
 // ─────────────────────────────────────────────
 // 여행 묶음 타입
@@ -302,6 +305,10 @@ interface RecordContextType {
     mediaAssetIds?: Record<string, string>;
     mediaTimes?: Record<string, number>;
   }) => TravelRecord; // 생성된 record 반환 (저장 직후 상세 이동용)
+  countryCovers: Record<string, CountryCover>;
+  getCountryPhoto: (countryName: string) => string | null;
+  getCountryPhotoRecord: (countryName: string) => CountryCover | null;
+  setCountryCover: (countryName: string, recordId: string, uri: string) => void;
   resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
   // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
   currentViewer: string | null;
@@ -339,6 +346,8 @@ interface RecordPersistPayload {
   // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
   // 구형(국가명→카드 id 맵만)일 수 있어 복원 시 정규화한다
   tripSessionGroups?: TripSession | Record<string, string> | null;
+  // 국가별 대표사진 핀 — 나중에 추가됨, 과거 저장본엔 없을 수 있음
+  countryCovers?: Record<string, CountryCover>;
 }
 
 // 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
@@ -354,6 +363,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
+  const [countryCovers, setCountryCovers] = useState<Record<string, CountryCover>>({});
   // 해외 여행 세션 — 위치(기록 국가)가 거주국가와 달라지는 순간 열리고 귀국까지 유지.
   // groups: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
   // 안전판: 마지막 활동(lastActiveAt) 후 30일 지나면 만료 — 귀국 신호를 못 받은 채
@@ -423,6 +433,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
       setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
+      if (p.countryCovers && typeof p.countryCovers === 'object') setCountryCovers(p.countryCovers as Record<string, CountryCover>);
       // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
       const rawSession = p.tripSessionGroups ?? null;
       const normalized: TripSession | null = !rawSession
@@ -434,8 +445,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession, countryCovers],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -1509,6 +1520,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setArchivedIds([]);
     setBlockedUsers([]);
     setTripGroups([]);
+    setCountryCovers({});
     setDrafts([]);
     setNeighbors(INITIAL_NEIGHBORS);
     setCommentsByPost(INITIAL_COMMENTS);
@@ -1794,10 +1806,43 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripRestoreNonce((n) => n + 1);
   }, []);
 
+  // ── 국가 대표사진 ──
+  // 국가의 대표사진 '기록'을 찾는다: 핀 우선(핀 기록이 살아있을 때만), 없으면 기존 최신순 폴백.
+  const getCountryPhotoRecord = useCallback((countryName: string): CountryCover | null => {
+    for (const a of koAliases(countryName)) {
+      const pin = countryCovers[a];
+      if (pin && records.some((r) => r.id === pin.recordId)) return pin; // 핀 유효
+    }
+    const aliases = koAliases(countryName);
+    const matchingRecords = records.filter((r) => matchesCountry(r, countryName));
+    for (const r of matchingRecords) {
+      for (const a of aliases) {
+        if (r.perCountryData?.[a]?.representativePhoto) return { recordId: r.id, uri: r.perCountryData[a]!.representativePhoto! };
+      }
+      if (aliases.includes(r.countryName ?? '') && r.representativePhoto) return { recordId: r.id, uri: r.representativePhoto };
+      if (r.viewType === 'cut' && r.cutPhoto?.previewUri) return { recordId: r.id, uri: r.cutPhoto.previewUri };
+      if (r.viewType === 'snap' && r.snapBackUri) return { recordId: r.id, uri: r.snapBackUri };
+      if (r.medias && r.medias.length > 0) return { recordId: r.id, uri: r.medias[0] };
+    }
+    return null;
+  }, [countryCovers, records]);
+
+  const getCountryPhoto = useCallback(
+    (countryName: string): string | null => getCountryPhotoRecord(countryName)?.uri ?? null,
+    [getCountryPhotoRecord],
+  );
+
+  // 국가 대표사진 핀 설정. 키는 대표 별칭 하나로 저장.
+  const setCountryCover = useCallback((countryName: string, recordId: string, uri: string) => {
+    const key = koAliases(countryName)[0] ?? countryName;
+    if (!key || !recordId || !uri) return;
+    setCountryCovers((prev) => ({ ...prev, [key]: { recordId, uri } }));
+  }, []);
+
   // ── 앱 상태 통합 백업(user_app_state) — 기록 부가상태 스냅샷 ──
   // 기록 본문은 posts, 여행카드는 user_trip_state가 담당하므로 여기선 부가상태만.
   const exportLocalStateBackup = (): Record<string, unknown> => ({
-    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds,
+    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds, countryCovers,
   });
   const applyLocalStateBackup = (b: Record<string, unknown>) => {
     const v = b as any;
@@ -1806,6 +1851,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(v.reportedPostIds)) setReportedPostIds(v.reportedPostIds);
     if (Array.isArray(v.mutedHandles)) setMutedHandles(v.mutedHandles);
     if (Array.isArray(v.viewedSnapIds)) setViewedSnapIds(v.viewedSnapIds);
+    if (v.countryCovers) setCountryCovers(v.countryCovers as Record<string, CountryCover>);
   };
 
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
@@ -1866,7 +1912,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );
