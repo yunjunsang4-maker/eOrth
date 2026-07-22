@@ -62,7 +62,9 @@ export default function SnapDetector() {
           }
         }
       } else {
-        // 본국 복귀 시 리셋
+        // 본국 복귀 시 리셋 + 아직 안 뜬 예약(follow-up) 알림 취소
+        // (해외 감지 후 1~3시간 안에 귀국하면 집인데도 예약분이 뜨던 문제 방지)
+        if (hasSentRef.current) cancelScheduledSnapNotifications();
         hasSentRef.current = false;
       }
     };
