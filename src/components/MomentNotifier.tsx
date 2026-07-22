@@ -17,11 +17,12 @@ const LOCATION_CHECK_INTERVAL = 4 * 60 * 60 * 1000;
 
 export default function MomentNotifier() {
   const { t } = useTranslation();
-  const { homeCountryCode, notifPrefs } = useSettings();
+  const { homeCountryCode, arrivalDetect, notifPrefs } = useSettings();
   const { activeStayGroup } = useRecords();
   const lastLocCheckRef = useRef(0);
   const abroadRef = useRef<boolean | null>(null); // 마지막 위치 판정 캐시
   const checkingRef = useRef(false); // check() 병렬 실행 방지
+  const armedRef = useRef(false); // 도착 순간 1회 건너뛴 뒤 게시 준비됨(도착 알림과 겹침 방지)
 
   // 진행 중 체류국은 해외로 치지 않는다 (SnapDetector와 동일 규칙)
   const stayCountryCode = useMemo(() => {
@@ -40,6 +41,7 @@ export default function MomentNotifier() {
     // 거주국·체류국이 바뀌면 직전 판정은 무효 — 다음 check에서 재판정
     abroadRef.current = null;
     lastLocCheckRef.current = 0;
+    armedRef.current = false;
 
     const check = async () => {
       if (checkingRef.current) return;
@@ -54,11 +56,16 @@ export default function MomentNotifier() {
           // countryCode를 못 얻으면 직전 판정 유지(오프라인 대응)
         }
         if (abroadRef.current === true) {
-          if (!(await isMomentNotificationPresented())) {
+          // 도착 알림(arrivalDetect)이 켜져 있으면 '도착 순간'(첫 감지) 한 번은 게시를 건너뛴다 —
+          // 도착 알림과 동시에 뜨지 않게 하고, 다음 포그라운드부터 순간 기억 알림을 유지한다.
+          if (arrivalDetect && !armedRef.current) {
+            armedRef.current = true;
+          } else if (!(await isMomentNotificationPresented())) {
             const ok = await requestNotificationPermission();
             if (ok) await postMomentNotification(t('moments.notifTitle'), t('moments.notifBody'));
           }
         } else if (abroadRef.current === false) {
+          armedRef.current = false; // 귀국 → 리셋(다음 여행에서 다시 도착 순간 스킵)
           await dismissMomentNotification(); // 귀국 → 제거
         }
       } finally {
@@ -69,7 +76,7 @@ export default function MomentNotifier() {
     const sub = AppState.addEventListener('change', (s) => { if (s === 'active') check(); });
     check(); // 앱 실행 시 1회
     return () => sub.remove();
-  }, [notifPrefs.master, notifPrefs.travelMoment, homeCountryCode, stayCountryCode, t]);
+  }, [notifPrefs.master, notifPrefs.travelMoment, arrivalDetect, homeCountryCode, stayCountryCode, t]);
 
   return null; // UI 없음
 }

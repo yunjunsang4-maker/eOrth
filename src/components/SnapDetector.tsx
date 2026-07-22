@@ -20,7 +20,7 @@ import {
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4시간마다 체크
 
 export default function SnapDetector() {
-  const { homeCountryCode, snapEnabled, notifPrefs } = useSettings();
+  const { homeCountryCode, snapEnabled, arrivalDetect, notifPrefs } = useSettings();
   const { activeStayGroup } = useRecords();
   const lastCheckRef = useRef(0);
   const hasSentRef = useRef(false);
@@ -52,11 +52,14 @@ export default function SnapDetector() {
 
       if (isAbroad(countryCode, homeCountryCode, stayCountryCode)) {
         if (!hasSentRef.current) {
-          // 처음 해외 감지 → 즉시 알림
+          // 처음 해외 감지
           const hasPermission = await requestNotificationPermission();
           if (hasPermission) {
-            await sendSnapNotification(countryName || undefined);
-            // 이후 랜덤 알림 예약 (1~3시간 후)
+            // 도착 알림(arrivalDetect)이 켜져 있으면 '도착 순간'은 도착 알림이 담당 —
+            // 즉시 스냅은 생략해 겹치지 않게 하고, 스냅은 1~3시간 뒤 지연분으로만 온다.
+            if (!arrivalDetect) {
+              await sendSnapNotification(countryName || undefined);
+            }
             await scheduleRandomSnapNotification(countryName || undefined, 60, 180);
             hasSentRef.current = true;
           }
@@ -78,7 +81,7 @@ export default function SnapDetector() {
     check();
 
     return () => subscription.remove();
-  }, [snapEnabled, notifPrefs.master, homeCountryCode, stayCountryCode]);
+  }, [snapEnabled, arrivalDetect, notifPrefs.master, homeCountryCode, stayCountryCode]);
 
   return null; // UI 없음
 }
