@@ -433,7 +433,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
       setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
-      if (p.countryCovers && typeof p.countryCovers === 'object') setCountryCovers(p.countryCovers as Record<string, CountryCover>);
+      if (p.countryCovers && typeof p.countryCovers === 'object' && !Array.isArray(p.countryCovers)) setCountryCovers(p.countryCovers as Record<string, CountryCover>);
       // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
       const rawSession = p.tripSessionGroups ?? null;
       const normalized: TripSession | null = !rawSession
