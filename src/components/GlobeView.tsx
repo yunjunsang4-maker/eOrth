@@ -2115,6 +2115,10 @@ async function init(){
   globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,512,256), material);
   globe.add(globeMesh);
   if (pendingNeonSkin) applyNeonSkin(pendingNeonSkin);
+  if (POC_VECTOR_LAND) { // [POC 1단계] 벡터 대륙 검증 오버레이 — 10m 나라별 폴리곤 로드해 현실적 굴곡 확인
+    buildVectorLandPOC();
+    if(!countries10mData && window.ReactNativeWebView){ window.ReactNativeWebView.postMessage(JSON.stringify({ type:'need10mCountries' })); }
+  }
 
   resize();
   if (pendingSponsored) buildAdMarkers(pendingSponsored);
@@ -2392,6 +2396,62 @@ function buildFatPolylines(lines, R){
   var grp=new THREE.Group(); grp.add(mesh);
   grp.userData.mat=mat; grp.visible=false;
   return grp;
+}
+// ── [POC 1단계] 벡터 대륙(일체형) — 나라 몇 개를 삼각분할 채움 + 곡면 세분 + 같은 링 테두리로 렌더.
+// 검증 목적: (1) 유리룩 (2) 채움-선 정렬 (3) 곡면 밀착(세분으로 구 안쪽 꺼짐·본체 뚫림 방지).
+// 날짜변경선 없는 테스트 나라만. 민트색이라 기존 보라 래스터와 구분됨.
+var POC_VECTOR_LAND = true;
+var POC_COUNTRIES = ['Australia','Japan','New Zealand','Madagascar','Brazil'];
+var pocLandMesh=null, pocOutline=null, countries10mData=null;
+function buildVectorLandPOC(){
+  var srcData = countries10mData || world50Data || worldData; // 현실적 굴곡: 10m 나라별 폴리곤 우선
+  if(!srcData || typeof THREE.ShapeUtils==='undefined') return;
+  if(pocLandMesh){ globe.remove(pocLandMesh); if(pocLandMesh.geometry)pocLandMesh.geometry.dispose(); if(pocLandMesh.material)pocLandMesh.material.dispose(); pocLandMesh=null; }
+  if(pocOutline){ globe.remove(pocOutline); pocOutline=null; }
+  var feats = srcData.features.filter(function(f){ return f.properties && POC_COUNTRIES.indexOf(f.properties.name)!==-1; });
+  if(!feats.length) return;
+  var R = 1.0015; // 본체(1.0) 살짝 위
+  var pos=[];
+  function pushV(p){ var v=geoToVec3N(p[0], p[1], R); pos.push(v.x, v.y, v.z); }
+  function segDeg(a,b){ var dx=a[0]-b[0], dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
+  function mid(a,b){ return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
+  // 삼각형 최대 변이 4°를 넘으면 중점 세분(경위도) 후 구면 매핑 → 큰 삼각형이 구 안쪽으로 꺼지지 않게
+  function emitTri(a,b,c,depth){
+    var span=Math.max(segDeg(a,b), segDeg(b,c), segDeg(c,a));
+    if(depth<=0 || span<4){ pushV(a); pushV(b); pushV(c); return; }
+    var ab=mid(a,b), bc=mid(b,c), ca=mid(c,a);
+    emitTri(a,ab,ca,depth-1); emitTri(ab,b,bc,depth-1); emitTri(ca,bc,c,depth-1); emitTri(ab,bc,ca,depth-1);
+  }
+  function addPoly(rings){
+    var outer=rings[0].slice();
+    if(outer.length>1 && outer[0][0]===outer[outer.length-1][0] && outer[0][1]===outer[outer.length-1][1]) outer.pop();
+    var contour=outer.map(function(p){ return new THREE.Vector2(p[0],p[1]); });
+    var holes=[]; var all=outer.slice();
+    for(var h=1;h<rings.length;h++){
+      var hr=rings[h].slice();
+      if(hr.length>1 && hr[0][0]===hr[hr.length-1][0] && hr[0][1]===hr[hr.length-1][1]) hr.pop();
+      holes.push(hr.map(function(p){ return new THREE.Vector2(p[0],p[1]); }));
+      all=all.concat(hr);
+    }
+    var faces=THREE.ShapeUtils.triangulateShape(contour, holes); // [[a,b,c],...] indices into outer+holes
+    for(var t=0;t<faces.length;t++){ var fa=faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 5); }
+  }
+  feats.forEach(function(f){
+    var g=f.geometry; if(!g) return;
+    if(g.type==='Polygon') addPoly(g.coordinates);
+    else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ addPoly(poly); });
+  });
+  var geo=new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
+  var mat=new THREE.MeshBasicMaterial({ color:new THREE.Color('#19FF8C'), transparent:true, opacity:0.5, side:THREE.DoubleSide, depthWrite:false });
+  var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false; mesh.renderOrder=1;
+  globe.add(mesh); pocLandMesh=mesh;
+  // 테두리 — 같은 나라 링에서 굵은 라인(동일 정점) → 채움과 완벽 일치
+  var outline=buildFatWorldLines({ features: feats }, R);
+  outline.userData.mat.uniforms.uOpacity.value=0.95;
+  outline.visible=true;
+  outline.children[0].renderOrder=2;
+  globe.add(outline); pocOutline=outline;
 }
 function buildWorldLinesMerged(world, R){
   var pos=[];
@@ -2784,8 +2844,12 @@ function handleMsg(msg){
     if(worldData) buildAdMarkers(pendingSponsored);
   } else if(msg.type==='world50m' && msg.topo){
     // 딥줌 LOD 데이터 도착 — 디코드 후 다음 maybeSwapLOD에서 교체
-    try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); }
+    try { world50Data = topoDecode(JSON.parse(msg.topo), 'countries'); if(POC_VECTOR_LAND && !countries10mData) buildVectorLandPOC(); } // 50m 도착 → (10m 아직이면) POC 재생성
     catch(err){ world50Requested=false; }
+  } else if(msg.type==='countries10m' && msg.topo){
+    // 10m 나라별 폴리곤 도착 → 벡터 대륙(일체형) 현실적 굴곡으로 재생성
+    try { countries10mData = topoDecode(JSON.parse(msg.topo), 'countries'); if(POC_VECTOR_LAND) buildVectorLandPOC(); }
+    catch(err){}
   } else if(msg.type==='admin1Lines' && msg.lines){
     // 주/도 지역구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
     try { admin1Lines = JSON.parse(msg.lines); }
@@ -2911,6 +2975,12 @@ export default function GlobeView({
       // 딥줌 지역(region) 텍스처의 10m 육지 마스크 요청 — 최심 줌 접근 시에만 lazy 전송
       const { LAND_10M_JSON } = require('../data/vendorLand10m');
       webViewRef.current?.postMessage(JSON.stringify({ type: 'land10m', rings: LAND_10M_JSON }));
+      return; // 내부 신호
+    }
+    if (data?.type === 'need10mCountries') {
+      // 10m 나라별 폴리곤(일체형 벡터 대륙 채움+테두리) 요청 — 딥줌 진입 시 lazy 전송
+      const { COUNTRIES_10M_TOPO } = require('../data/vendorCountries10m');
+      webViewRef.current?.postMessage(JSON.stringify({ type: 'countries10m', topo: COUNTRIES_10M_TOPO }));
       return; // 내부 신호
     }
     onMessage?.(e);
