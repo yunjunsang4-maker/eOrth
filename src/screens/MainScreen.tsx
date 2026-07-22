@@ -59,7 +59,7 @@ import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
 import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
 import { isSupabaseConfigured } from '../services/supabase';
-import { koAliases, matchesCountry } from '../utils/countryMatch';
+import { matchesCountry } from '../utils/countryMatch';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -343,7 +343,7 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
-  const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested } = useRecords();
+  const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested, getCountryPhoto } = useRecords();
   // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
   // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
   const countryEn = (ko: string): string => {
@@ -616,32 +616,6 @@ export default function MainScreen({ navigation, route }: Props) {
       });
     });
     return nameSet;
-  }, [records]);
-
-  // 특정 국가의 대표 사진 찾기 (records만 읽으므로 useCallback으로 안정화 → visitedCountries memo가 매 렌더 재계산되지 않음)
-  const getCountryPhoto = useCallback((countryName: string) => {
-    const aliases = koAliases(countryName); // '한국'/'대한민국' 혼재 기록 모두 매칭
-    const matchingRecords = records.filter(r => matchesCountry(r, countryName));
-    for (const r of matchingRecords) {
-      for (const a of aliases) {
-        if (r.perCountryData?.[a]?.representativePhoto) {
-          return r.perCountryData[a].representativePhoto;
-        }
-      }
-      if (aliases.includes(r.countryName ?? '') && r.representativePhoto) {
-        return r.representativePhoto;
-      }
-      if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
-        return r.cutPhoto.previewUri;
-      }
-      if (r.viewType === 'snap' && r.snapBackUri) {
-        return r.snapBackUri;
-      }
-      if (r.medias && r.medias.length > 0) {
-        return r.medias[0];
-      }
-    }
-    return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
   }, [records]);
 
   // 지구본(WebView)은 file:// 이미지를 직접 못 그려서, 대표 사진을 작은 data URI(base64)로 변환해 캐시
