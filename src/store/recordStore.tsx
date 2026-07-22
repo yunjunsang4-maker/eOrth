@@ -965,6 +965,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         .filter((g) => g.records.length > 0)
     );
     setCountryCovers((prev) => {
+      if (!Object.values(prev).some((v) => v.recordId === id)) return prev;
       const next: Record<string, CountryCover> = {};
       for (const [k, v] of Object.entries(prev)) if (v.recordId !== id) next[k] = v;
       return next;
