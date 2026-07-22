@@ -246,7 +246,7 @@ const DEFAULT_COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님',
 export default function NewRecordScreen({ navigation, route }: RootStackScreenProps<'NewRecord'>) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
-  const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup } = useRecords();
+  const { addRecord, updateRecord, addTripGroup, neighbors, records, activeStayGroup, getCountryPhoto, getCountryPhotoRecord, setCountryCover } = useRecords();
   // 동행자 값(혼자/메이트…)은 저장 키라 유지하고 표시만 번역
   const companionLabel = (c: string) => {
     switch (c) {
@@ -453,6 +453,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 저장 중복 클릭 방지
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+  const coverActionRef = useRef<'keep' | 'replace'>('keep');
 
   // 원본 uri 배열 → 이미 추가된 것·중복을 제거한 뒤 압축본 반환 + (압축본→원본) 매핑 기록.
   // 압축본 URI는 매번 달라 중복 비교가 안 되므로 반드시 '원본' 기준으로 dedup 한다.
@@ -958,9 +959,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     idx === activeCountryIdx ? rating > 0 : (perCountryStore.current[c.name]?.rating ?? 0) > 0
   );
 
+  // 단일 국가 신규 기록에서, 그 나라가 이미 사진으로 활성화돼 있으면 대표사진 강제 해제 + 저장 시 확인
+  const singleCountryName = selectedCountries.length === 1 ? selectedCountries[0].name : null;
+  const countryActivated = !isEdit && !!singleCountryName && !!getCountryPhoto(singleCountryName);
+
   const missing = (): { key: 'photo' | 'country' | 'required'; msg: string } | null => {
     if (medias.length === 0) return { key: 'photo', msg: t('newRecord.missPhoto') };
-    if (!representativePhoto) return { key: 'photo', msg: t('newRecord.missRepPhoto') };
+    if (!representativePhoto && !countryActivated) return { key: 'photo', msg: t('newRecord.missRepPhoto') };
     if (selectedCountries.length === 0) return { key: 'country', msg: t('newRecord.missCountry') };
     if (selectedCompanions.length === 0) return { key: 'required', msg: t('newRecord.missCompanion') };
     if (!allRatingsFilled) return { key: 'required', msg: isMultiCountry ? t('newRecord.missAllCountryRatings') : t('newRecord.missRating') };
@@ -988,6 +993,22 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       );
       return;
     }
+    // 지구본 대표 충돌: 활성화된 단일국가에 대표사진을 지정했고 현재 국가 대표와 다르면 유지/바꾸기 확인
+    if (
+      countryActivated && singleCountryName && representativePhoto &&
+      representativePhoto !== getCountryPhoto(singleCountryName)
+    ) {
+      Alert.alert(
+        t('newRecord.coverConflictTitle'),
+        t('newRecord.coverConflictBody', { country: singleCountryName }),
+        [
+          { text: t('newRecord.coverKeep'), onPress: () => { coverActionRef.current = 'keep'; doSave(false); } },
+          { text: t('newRecord.coverReplace'), onPress: () => { coverActionRef.current = 'replace'; doSave(false); } },
+        ]
+      );
+      return;
+    }
+    coverActionRef.current = 'keep';
     await doSave(false);
   };
 
@@ -1023,6 +1044,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         }
       });
 
+      // 활성화된 나라에서 대표 미지정이면 카드 커버용으로 첫 사진을 대표로 사용
+      const effectiveRep = representativePhoto || (countryActivated ? medias[0] : representativePhoto);
+
       // 지도 대표 사진만 원본 기반 고해상도로 교체 (일반 미디어는 1600 유지).
       // 편집에서 대표가 안 바뀌었으면 기존 고해상도를 유지한다 — 이번 세션엔 원본 매핑이 없어
       // toRepHiRes가 압축본(1600)을 그대로 돌려줘 지도 커버 화질이 떨어지기 때문.
@@ -1031,11 +1055,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         representativePhoto === editRecord.representativePhotoSource;
       const firstRepHiRes = repUnchanged
         ? editRecord!.representativePhoto
-        : await toRepHiRes(representativePhoto || undefined);
+        : await toRepHiRes(effectiveRep || undefined);
 
       // 사진별 글 저장 + 하위 호환: 대표 사진의 글을 memo로 복사
       // (피드 미리보기·검색·백업이 memo를 읽으므로 대표 글을 채워 둠)
-      const repIndex = Math.max(0, medias.indexOf(representativePhoto ?? ''));
+      const repIndex = Math.max(0, medias.indexOf(effectiveRep ?? ''));
 
       const payload = {
         country: `${first.flag} ${first.name}`,
@@ -1049,7 +1073,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         regionNameEn: selectedRegion?.nameEn || undefined,
         perCountryData: Object.keys(pcd).length > 0 ? pcd : undefined,
         representativePhoto: firstRepHiRes,
-        representativePhotoSource: representativePhoto || undefined, // 편집 재진입 매칭용 (medias 항목 URI)
+        representativePhotoSource: effectiveRep || undefined, // 편집 재진입 매칭용 (medias 항목 URI)
         date: firstStart,
         content: title || (selectedCountries.length === 1
           ? t('newRecord.defaultTitleOne', { country: first.name })
@@ -1074,6 +1098,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         // 작성자·형식은 유지하고 내용(공개 범위 포함)만 갱신
         updateRecord(editRecord.id, payload);
       } else {
+        // (핀) 활성화된 단일국가면 addRecord 전 현재 대표를 캡처(새 기록이 최신순으로 잡히기 전)
+        const preCover = countryActivated && singleCountryName ? getCountryPhotoRecord(singleCountryName) : null;
+
         const recId = addRecord(
           {
             user: { name: '', emoji: '✈️', handle: '' }, // addRecord가 로그인 사용자로 채움
@@ -1083,6 +1110,16 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           // 나누기 모드에선 자동 그룹(대표국 1장) 대신 아래에서 국가별 카드를 직접 만든다
           { linkTrip: !splitByCountry }
         );
+
+        // (핀) 지구본 국가 대표사진 반영
+        if (countryActivated && singleCountryName) {
+          if (coverActionRef.current === 'replace') {
+            if (firstRepHiRes) setCountryCover(singleCountryName, recId, firstRepHiRes);
+          } else if (preCover) {
+            setCountryCover(singleCountryName, preCover.recordId, preCover.uri); // 유지(기존 고정)
+          }
+        }
+
         if (splitByCountry) {
           // 같은 기록 하나를 국가별 여행 카드로 — 날짜는 국가별, 커버는 공용 대표사진.
           // session: 여행 중 작성(실시간)이면 카드가 세션에 등록돼 이후 그 국가의 스냅이 합류한다
