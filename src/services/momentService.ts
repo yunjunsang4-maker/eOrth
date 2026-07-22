@@ -6,6 +6,9 @@ import * as Notifications from 'expo-notifications';
 export const MOMENT_NOTIF_ID = 'travel-moment-ongoing';
 
 export async function postMomentNotification(title: string, body: string): Promise<void> {
+  // 게시 전 기존 여행 기억 알림을 먼저 제거 → iOS 등에서 identifier 교체가 불안정해도
+  // 알림창에 항상 1개만 남는다(앱 재실행/재게시 시 쌓임 방지).
+  try { await Notifications.dismissNotificationAsync(MOMENT_NOTIF_ID); } catch { /* 없으면 무시 */ }
   await Notifications.scheduleNotificationAsync({
     identifier: MOMENT_NOTIF_ID, // 같은 id로 게시하면 교체되어 중복 알림이 쌓이지 않는다
     content: {
