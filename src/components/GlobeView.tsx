@@ -2359,7 +2359,7 @@ function updateVectorLines(){
   if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
   if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
   // 지역창이 켜질수록 벡터 10m선은 물러난다 — 지역 텍스처에 구운 선과 이중으로 겹치지 않게.
-  var regFade=(typeof regionMat!=='undefined' && regionMat) ? regionMat.opacity : 0;
+  var regFade=regionMat ? regionMat.opacity : 0;
   if(borders10Group){ var o3=0.92*t10*(1-regFade); borders10Group.userData.mat.opacity=o3; borders10Group.visible=o3>0.01; }
   // 주/도 지역구분선 — 3.0~4.2 페이드인 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a=smoothstep01(3.0, 4.2, z)*0.45;
@@ -2471,9 +2471,12 @@ function buildRegionTexture(lonC, latC, span){
       }
       var bb=bl.__b;
       if(bb[2]<wMinLon||bb[0]>wMaxLon||bb[3]<wMinLat||bb[1]>wMaxLat) continue; // 창 밖 스킵
+      var pbp=null;
       for(var bj=0;bj<bl.length;bj++){
         var bp=proj(bl[bj]);
-        if(bj===0) ctx.moveTo(bp[0],bp[1]); else ctx.lineTo(bp[0],bp[1]);
+        // 세그먼트가 캔버스 반폭 이상 점프하면(±180 랩) 끊는다 — 가로 줄무늬 방지
+        if(bj===0 || (pbp && Math.abs(bp[0]-pbp[0])>S/2)) ctx.moveTo(bp[0],bp[1]); else ctx.lineTo(bp[0],bp[1]);
+        pbp=bp;
       }
     }
     ctx.stroke();
