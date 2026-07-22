@@ -2339,7 +2339,7 @@ var borders10Lines=null, borders10Group=null, borders10Requested=false; // 10m �
 function updateVectorLines(){
   if(!globeMesh) return;
   var z=currentZoom;
-  // 벡터 국경 — 1.35배부터 등장, 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8)
+  // 벡터 국경 — 1.35배부터 등장, 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(3.5~4.5, 지역창 활성과 정합)
   var vb=smoothstep01(1.35, 2.0, z)*0.9;
   var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
   var t10=borders10Lines ? smoothstep01(3.5, 4.5, z) : 0;
