@@ -292,7 +292,7 @@ export const KO_TO_EN: Record<string, string> = {
 // 기록에 두 표기가 섞여 있어(badgeRules도 동일 보정) 이름 비교는 반드시 별칭 집합으로 한다 —
 // 아니면 국내 기록의 대표 사진이 지구본에 안 뜨고, '한국' 기록만 있는 사용자는 지구본을
 // 탭해도 기존 기록 시트 대신 "새 기록 추가"가 뜬다.
-// → koAliases / matchesCountry 는 src/utils/countryMatch.ts 에서 import (recordStore 공유)
+// → matchesCountry 는 src/utils/countryMatch.ts 에서 import (recordStore 공유)
 
 type Props = TabScreenProps<'MainTab'>;
 
