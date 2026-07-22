@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Alert, Linking } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -157,6 +158,45 @@ export default function AppNavigator() {
     };
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     Linking.getInitialURL().then(handleUrl).catch(() => {});
+    return () => sub.remove();
+  }, []);
+
+  // 푸시 알림 탭 → 관련 화면으로 이동
+  //   dm → 해당 대화, like/comment/reply/friend_post → 게시물, 메이트 → 프로필.
+  //   인증되어 Main에 진입한 뒤에만 이동(콜드 스타트는 최대 ~6.4초 재시도). 동일 알림 중복 처리 방지.
+  useEffect(() => {
+    const processed = new Set<string>();
+    const routeFromData = (data: unknown) => {
+      const d = (data ?? {}) as Record<string, unknown>;
+      const go = (attempts: number) => {
+        const authed = navigationRef.current?.getRootState?.()?.routes?.some((r) => r.name === 'Main');
+        if (!authed || !navigationRef.current?.isReady()) {
+          if (attempts > 0) setTimeout(() => go(attempts - 1), 800);
+          return;
+        }
+        const navigate = (name: string, params?: object) =>
+          (navigationRef.current?.navigate as (n: string, p?: object) => void)?.(name, params);
+        if (d.type === 'dm' && d.handle) {
+          const h = String(d.handle);
+          navigate('DM', { friend: { name: h, handle: h, emoji: '💬' } });
+        } else if (d.postId) {
+          openAppLink({ type: 'post', id: String(d.postId) }, navigate).catch(() => {});
+        } else if (d.actorId) {
+          navigate('FriendProfile', { userId: String(d.actorId) });
+        }
+      };
+      go(8);
+    };
+    const routeFromResponse = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const id = response.notification?.request?.identifier;
+      if (id) { if (processed.has(id)) return; processed.add(id); }
+      routeFromData(response.notification?.request?.content?.data);
+    };
+    // 앱 실행 중(포그라운드/백그라운드) 탭
+    const sub = Notifications.addNotificationResponseReceivedListener(routeFromResponse);
+    // 콜드 스타트: 앱이 꺼진 상태에서 푸시 탭으로 실행된 경우
+    Notifications.getLastNotificationResponseAsync().then(routeFromResponse).catch(() => {});
     return () => sub.remove();
   }, []);
 
