@@ -2111,7 +2111,8 @@ async function init(){
     },
     vertexShader: NEON_VS, fragmentShader: NEON_FS, transparent: true,
   });
-  globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,128,128), material);
+  // 512등분 — 128등분 다면체의 패싯 위에 얹히던 채움 가장자리가 진짜 구면에 근접 → 벡터선과 일치(흐트러짐 제거)
+  globeMesh = new THREE.Mesh(new THREE.SphereGeometry(1,512,256), material);
   globe.add(globeMesh);
   if (pendingNeonSkin) applyNeonSkin(pendingNeonSkin);
 
@@ -2179,6 +2180,7 @@ window.addEventListener('wheel', function(e){ e.preventDefault(); targetZoom*=Ma
 function resize(){
   var w=window.innerWidth, h=window.innerHeight;
   renderer.setSize(w,h);
+  var _r=fatRes(); for(var _i=0; fatMats && _i<fatMats.length; _i++){ fatMats[_i].uniforms.uResolution.value.set(_r[0],_r[1]); fatMats[_i].uniforms.uWidth.value=FATLINE_CSS_W*Math.min(window.devicePixelRatio||1,2); }
   var aspect=w/h, R=1.0;
   // 기본 크기: 디스크 지름 = 화면 폭의 ~85%(좌우 여백, 사진과 동일). 화면 세로 정중앙. 확대는 줌으로만.
   var halfV = R / (0.85 * aspect);            // 폭 기준 → 세로로 긴 화면에서도 폭을 안 넘침
@@ -2292,6 +2294,105 @@ function geoToVec3N(lon, lat, r){
 }
 // ── 벡터 구분선 오버레이 — 텍스처에 구운 선은 딥줌에서 흐려지므로(텍셀 확대),
 // 확대할수록 구 표면 위 LineSegments(벡터, 항상 선명)가 페이드인해 대신한다 ──
+// ── 굵은 벡터 라인(Line2 방식) — LineBasicMaterial은 모바일 GL에서 1px 고정이라 얇다.
+// 각 세그먼트를 리본(quad)으로 만들고 클립공간에서 화면폭만큼 좌우로 밀어 두께를 준다.
+// 정사영이라 w=1 → 원근 보정 단순. DPI 대응(uResolution=드로잉버퍼 px, uWidth=cssW*pr).
+var FATLINE_CSS_W = 1.3; // 화면 기준 선 두께(css px) — 육안 튜닝값
+var fatMats = [];
+function fatRes(){ return [renderer.domElement.width||window.innerWidth, renderer.domElement.height||window.innerHeight]; }
+var FATLINE_VS =
+  'attribute vec3 aStart; attribute vec3 aEnd; attribute float aSide; attribute float aPos;' +
+  'uniform vec2 uResolution; uniform float uWidth;' +
+  'void main(){' +
+  ' vec4 cs = projectionMatrix * modelViewMatrix * vec4(aStart,1.0);' +
+  ' vec4 ce = projectionMatrix * modelViewMatrix * vec4(aEnd,1.0);' +
+  ' float aspect = uResolution.x / uResolution.y;' +
+  ' vec2 dir = (ce.xy/ce.w) - (cs.xy/cs.w); dir.x *= aspect;' +
+  ' float L = length(dir); dir = L>0.0 ? dir/L : vec2(1.0,0.0);' +
+  ' vec2 perp = vec2(-dir.y, dir.x); perp.x /= aspect;' +
+  ' vec4 clip = (aPos < 0.5) ? cs : ce;' +
+  ' clip.xy += perp * aSide * (uWidth / uResolution.y) * clip.w;' +
+  ' gl_Position = clip;' +
+  '}';
+var FATLINE_FS =
+  'precision mediump float; uniform vec3 uColor; uniform float uOpacity;' +
+  'void main(){ if(uOpacity<=0.001) discard; gl_FragColor = vec4(uColor, uOpacity); }';
+function makeFatMat(col){
+  var r=fatRes();
+  var m=new THREE.ShaderMaterial({
+    uniforms:{
+      uResolution:{ value:new THREE.Vector2(r[0],r[1]) },
+      uWidth:{ value: FATLINE_CSS_W * Math.min(window.devicePixelRatio||1,2) },
+      uColor:{ value:new THREE.Color(col) },
+      uOpacity:{ value:0 }
+    },
+    vertexShader:FATLINE_VS, fragmentShader:FATLINE_FS,
+    transparent:true, depthWrite:false, side:THREE.DoubleSide
+  });
+  fatMats.push(m);
+  return m;
+}
+// buildWorldLinesMerged과 동일 입력(GeoJSON) → 세그먼트마다 4정점 리본 quad. 반지름 R.
+function buildFatWorldLines(world, R){
+  var starts=[], ends=[], sides=[], poss=[], idx=[]; var vi=0;
+  function seg(a,b){
+    for(var k=0;k<4;k++){ starts.push(a.x,a.y,a.z); ends.push(b.x,b.y,b.z); }
+    poss.push(0,0,1,1); sides.push(-1,1,-1,1);
+    idx.push(vi,vi+1,vi+2, vi+2,vi+1,vi+3); vi+=4;
+  }
+  function addRing(coords){
+    if(coords.length<2) return;
+    var prev=null;
+    for(var i=0;i<coords.length;i++){
+      var v=geoToVec3N(coords[i][0], coords[i][1], R);
+      if(prev) seg(prev, v);
+      prev=v;
+    }
+  }
+  world.features.forEach(function(f){
+    var g=f.geometry; if(!g) return;
+    if(g.type==='Polygon') g.coordinates.forEach(addRing);
+    else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ poly.forEach(addRing); });
+  });
+  var geo=new THREE.BufferGeometry();
+  var sAttr=new THREE.Float32BufferAttribute(starts,3);
+  geo.setAttribute('aStart', sAttr);
+  geo.setAttribute('position', sAttr); // 컬링/기본 요구 대비(같은 버퍼 공유)
+  geo.setAttribute('aEnd', new THREE.Float32BufferAttribute(ends,3));
+  geo.setAttribute('aPos', new THREE.Float32BufferAttribute(poss,1));
+  geo.setAttribute('aSide', new THREE.Float32BufferAttribute(sides,1));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx),1));
+  var mat=makeFatMat('#FFFFFF');
+  var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false;
+  var grp=new THREE.Group(); grp.add(mesh);
+  grp.userData.mat=mat; grp.visible=false;
+  return grp;
+}
+// buildPolylinesMerged의 굵은 라인 버전 — 입력은 폴리라인 배열(lines[i]=좌표 배열).
+function buildFatPolylines(lines, R){
+  var starts=[], ends=[], sides=[], poss=[], idx=[]; var vi=0;
+  function seg(a,b){
+    for(var k=0;k<4;k++){ starts.push(a.x,a.y,a.z); ends.push(b.x,b.y,b.z); }
+    poss.push(0,0,1,1); sides.push(-1,1,-1,1);
+    idx.push(vi,vi+1,vi+2, vi+2,vi+1,vi+3); vi+=4;
+  }
+  for(var i=0;i<lines.length;i++){
+    var ln=lines[i], prev=null;
+    for(var j=0;j<ln.length;j++){ var v=geoToVec3N(ln[j][0], ln[j][1], R); if(prev) seg(prev,v); prev=v; }
+  }
+  var geo=new THREE.BufferGeometry();
+  var sAttr=new THREE.Float32BufferAttribute(starts,3);
+  geo.setAttribute('aStart', sAttr); geo.setAttribute('position', sAttr);
+  geo.setAttribute('aEnd', new THREE.Float32BufferAttribute(ends,3));
+  geo.setAttribute('aPos', new THREE.Float32BufferAttribute(poss,1));
+  geo.setAttribute('aSide', new THREE.Float32BufferAttribute(sides,1));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx),1));
+  var mat=makeFatMat('#FFFFFF');
+  var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false;
+  var grp=new THREE.Group(); grp.add(mesh);
+  grp.userData.mat=mat; grp.visible=false;
+  return grp;
+}
 function buildWorldLinesMerged(world, R){
   var pos=[];
   function addRing(coords){
@@ -2338,27 +2439,25 @@ function updateVectorLines(){
   var z=currentZoom;
   // 벡터 국경 — 저줌(0.9)부터 등장, 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(3.5~4.5, 지역창 활성과 정합)
   // 텍스처 구운 스트로크 제거로, 오버뷰~중간 확대 국경도 이 벡터가 전담(래스터 블러 없음).
-  var vb=smoothstep01(0.9, 1.4, z)*0.95;
+  // 상한 0.6 = 굵은 흰 리본이 너무 밝지 않게(딥줌 구운 선 0.55와 톤 정합). 육안 튜닝값.
+  var vb=smoothstep01(0.9, 1.4, z)*0.6;
   var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
-  var t10=borders10Lines ? smoothstep01(3.5, 4.5, z) : 0;
+  var t10=land10 ? smoothstep01(3.5, 4.5, z) : 0; // 딥줌 해안선은 채움 마스크와 '동일한' land10에서 → 정점 일치
   if(vb>0 && !vecBorders110 && world110Data && zoomSettled()){
-    vecBorders110=buildWorldLinesMerged(world110Data, 1.0008); globe.add(vecBorders110);
+    vecBorders110=buildFatWorldLines(world110Data, 1.0); globe.add(vecBorders110); // R=1.0에 굽고 스케일로 채움 반지름 추종
   }
   if(t>0 && !vecBorders50 && world50Data && zoomSettled()){
-    vecBorders50=buildWorldLinesMerged(world50Data, 1.0008); globe.add(vecBorders50);
+    vecBorders50=buildFatWorldLines(world50Data, 1.0); globe.add(vecBorders50);
   }
-  if(z>2.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView){
-    borders10Requested=true;
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needBorders10m' }));
+  // 딥줌 해안선: 지역창 채움 마스크(land10)와 '동일한 링'으로 굵은 벡터 생성 → 채움 테두리와 정점 일치.
+  // (land10은 needLand10m로 이미 로드됨 — 채움과 선이 같은 데이터라 확대해도 어긋나지 않음.)
+  if(t10>0 && !borders10Group && land10 && zoomSettled()){
+    borders10Group=buildFatPolylines(land10.map(function(x){return x.r;}), 1.0); globe.add(borders10Group);
   }
-  if(t10>0 && !borders10Group && borders10Lines && zoomSettled()){
-    borders10Group=buildPolylinesMerged(borders10Lines, 1.0009); globe.add(borders10Group);
-  }
-  if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
-  if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
-  // 지역창이 켜질수록 벡터 10m선은 물러난다 — 지역 텍스처에 구운 선과 이중으로 겹치지 않게.
-  var regFade=regionMat ? regionMat.opacity : 0;
-  if(borders10Group){ var o3=0.92*t10*(1-regFade); borders10Group.userData.mat.opacity=o3; borders10Group.visible=o3>0.01; }
+  if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.uniforms.uOpacity.value=o1; vecBorders110.visible=o1>0.01; }
+  if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.uniforms.uOpacity.value=o2; vecBorders50.visible=o2>0.01; }
+  // 딥줌 해안선(land10) — 채움 마스크와 동일 데이터라 정확히 일치. 밝기 0.6 통일.
+  if(borders10Group){ var o3=0.6*t10; borders10Group.userData.mat.uniforms.uOpacity.value=o3; borders10Group.visible=o3>0.01; }
   // 주/도 지역구분선 — 3.0~4.2 페이드인 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a=smoothstep01(3.0, 4.2, z)*0.45;
   if(a>0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView){
@@ -2366,9 +2465,16 @@ function updateVectorLines(){
     window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needAdmin1' }));
   }
   if(a>0 && admin1Lines && !admin1Group && zoomSettled()){
-    admin1Group=buildPolylinesMerged(admin1Lines, 1.0008); globe.add(admin1Group);
+    admin1Group=buildPolylinesMerged(admin1Lines, 1.0); globe.add(admin1Group);
   }
   if(admin1Group){ admin1Group.userData.mat.opacity=a; admin1Group.visible=a>0.01; }
+  // 선-채움 정확 일치: 선을 '그 순간 보이는 채움' 반지름에 맞춘다(정사영 반경 시차 제거).
+  // 본체(1.0)보다 살짝 위(z-파이팅 방지)에서 시작해 지역창 페이드(regFade)만큼 1.0006으로 따라감.
+  var _rf=regionMat?regionMat.opacity:0, lineScale=1.0002+0.0004*_rf;
+  if(vecBorders110) vecBorders110.scale.setScalar(lineScale);
+  if(vecBorders50) vecBorders50.scale.setScalar(lineScale);
+  if(borders10Group) borders10Group.scale.setScalar(lineScale);
+  if(admin1Group) admin1Group.scale.setScalar(lineScale);
 }
 
 // ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
@@ -2454,31 +2560,8 @@ function buildRegionTexture(lonC, latC, span){
     ctx.fill();
     ctx.globalCompositeOperation='source-over';
   }
-  // C 하이브리드: 10m 국경/해안선(벡터 borders10과 동일 소스)을 같은 proj·같은 캔버스에 구워
-  // 딥줌 시차를 원천 제거. 마스크(destination-in) 이후 source-over라 채움 위에 얹힌다.
-  // 벡터 borders10Group은 지역창 활성 시 페이드아웃(updateVectorLines)해 이중 표시 방지.
-  if(borders10Lines){
-    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round';
-    ctx.beginPath();
-    for(var bi=0;bi<borders10Lines.length;bi++){
-      var bl=borders10Lines[bi];
-      if(!bl.__b){ // 라인 경계 1회 캐시 — 창 밖 라인 스킵(land10[i].b와 동일 패턴)
-        var mnx=180,mny=90,mxx=-180,mxy=-90;
-        for(var bk=0;bk<bl.length;bk++){ var pk=bl[bk]; if(pk[0]<mnx)mnx=pk[0]; if(pk[0]>mxx)mxx=pk[0]; if(pk[1]<mny)mny=pk[1]; if(pk[1]>mxy)mxy=pk[1]; }
-        bl.__b=[mnx,mny,mxx,mxy];
-      }
-      var bb=bl.__b;
-      if(bb[2]<wMinLon||bb[0]>wMaxLon||bb[3]<wMinLat||bb[1]>wMaxLat) continue; // 창 밖 스킵
-      var pbp=null;
-      for(var bj=0;bj<bl.length;bj++){
-        var bp=proj(bl[bj]);
-        // 세그먼트가 캔버스 반폭 이상 점프하면(±180 랩) 끊는다 — 가로 줄무늬 방지
-        if(bj===0 || (pbp && Math.abs(bp[0]-pbp[0])>S/2)) ctx.moveTo(bp[0],bp[1]); else ctx.lineTo(bp[0],bp[1]);
-        pbp=bp;
-      }
-    }
-    ctx.stroke();
-  }
+  // 국경/해안선은 지역 텍스처에 굽지 않는다 — 굵은 벡터 라인(buildFatPolylines)이 전 구간 전담.
+  // (지역창은 고해상 '채움'만 담당: 모자이크 제거. 선은 항상 벡터라 확대·재빌드 타이밍과 무관하게 확실히 표시.)
   var tex=new THREE.CanvasTexture(c);
   tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter; tex.generateMipmaps=true;
   tex.wrapS=THREE.ClampToEdgeWrapping; tex.wrapT=THREE.ClampToEdgeWrapping;
@@ -2521,7 +2604,7 @@ function updateRegion(){
   tex.offset.set(-u0*360/span, -v0*180/span);
   if(!regionMesh){
     regionMat=new THREE.MeshBasicMaterial({ map:tex, transparent:true, opacity:0, depthWrite:false });
-    regionMesh=new THREE.Mesh(new THREE.SphereGeometry(1.0006, 128, 128), regionMat);
+    regionMesh=new THREE.Mesh(new THREE.SphereGeometry(1.0006, 512, 256), regionMat); // 512등분 — 딥줌 채움 가장자리를 진짜 구면에 근접시켜 선과 일치
     regionMesh.renderOrder=-1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
     globe.add(regionMesh);
   } else {
@@ -2708,8 +2791,8 @@ function handleMsg(msg){
     try { admin1Lines = JSON.parse(msg.lines); }
     catch(err){ admin1Requested=false; }
   } else if(msg.type==='borders10m' && msg.lines){
-    // 10m 최정밀 구분선 데이터 도착 — 벡터 그룹 생성 + 지역 창에 구운 선 반영(C 하이브리드)
-    try { borders10Lines = JSON.parse(msg.lines); regionC.span=0; } // 도착 → 다음 settle에 지역 창 재빌드(구운 선 반영, 국경선 실종 과도기 방지)
+    // 10m 최정밀 구분선 데이터 도착 — 다음 updateVectorLines에서 굵은 벡터 그룹 생성
+    try { borders10Lines = JSON.parse(msg.lines); }
     catch(err){ borders10Requested=false; }
   } else if(msg.type==='land10m' && msg.rings){
     // 10m 육지 마스크 도착 — 링별 bbox 사전계산(지역 텍스처 창 밖 스킵용)
