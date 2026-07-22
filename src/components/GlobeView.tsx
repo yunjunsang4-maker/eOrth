@@ -2349,7 +2349,7 @@ function updateVectorLines(){
   if(t>0 && !vecBorders50 && world50Data && zoomSettled()){
     vecBorders50=buildWorldLinesMerged(world50Data, 1.0008); globe.add(vecBorders50);
   }
-  if(z>3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView){
+  if(z>2.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView){
     borders10Requested=true;
     window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needBorders10m' }));
   }
