@@ -1820,6 +1820,10 @@ const ko = {
   returnDetect: {
     notifTitle: '어서 오세요! 🏠',
     notifBody: '여행은 어떠셨나요? 이번 여행을 기록으로 남겨보세요',
+    nudgeTitle: '귀국 감지를 켜볼까요?',
+    nudgeBody: '여행을 마치고 거주국으로 돌아오면 기록을 남기라고 알려드려요.',
+    nudgeLater: '나중에',
+    nudgeEnable: '켜기',
   },
 } as const;
 
