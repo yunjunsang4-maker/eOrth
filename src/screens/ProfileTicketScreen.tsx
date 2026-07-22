@@ -3,10 +3,11 @@
 // 티켓 또는 하단 "내 티켓 공유하기" 버튼을 누르면 티켓을 이미지로 캡처해 시스템 공유한다.
 // QR은 eorth://user/<handle> — 메이트찾기 스캐너(USER_LINK_RE)와 호환.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
+import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -39,17 +40,17 @@ const enName = (ko: string) => (SHORT_COUNTRY_EN[ko] ?? (ko === '대한민국' ?
 
 const SCREEN_W = Dimensions.get('window').width;
 const TICKET_MARGIN = 14;
-const BG = '#0A0B0F';
 const PURPLE = '#7C3AED';
 const LILAC = '#CA82FF';
 const STAR_YELLOW = '#FFBC00';
 
-// 하단 노치 — 시안(iPhone 17-103) 외곽 path 기준: 폭≈123·깊이≈32(티켓 폭의 약 33%)의 얕은 반타원.
-// 정원 diameter=64를 가로로 늘려(scaleX) 타원을 만들고, 그 윗절반(깊이 32)만 노출한다.
+// 티켓 흰 카드 실루엣(react-native-svg Path)으로 노치를 '진짜 구멍'으로 판다 —
+// 화면이 프로필 탭 위 투명 오버레이라, 파인 노치·카드 바깥으로 프로필 탭이 그대로 비친다.
 const TICKET_W = SCREEN_W - TICKET_MARGIN * 2;
-const NOTCH_DEPTH = 32;
-const NOTCH_W = TICKET_W * 0.33;
-const NOTCH_D = NOTCH_DEPTH * 2; // 정원 지름(윗절반이 깊이가 됨)
+const CARD_R = 15;              // 카드 하단 라운드(st.ticket borderBottomRadius와 동일)
+const SIDE_NOTCH_R = 14;        // 절취선 좌우 반원 노치 반지름(구 st.notch 지름 28의 절반)
+const NOTCH_DEPTH = 32;         // 하단 중앙 노치 깊이
+const NOTCH_W = TICKET_W * 0.33; // 하단 중앙 노치 폭(시안: 티켓 폭의 약 33%)
 
 export default function ProfileTicketScreen({ navigation, route }: RootStackScreenProps<'ProfileTicket'>) {
   const { t } = useTranslation();
@@ -60,13 +61,10 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
   const ticketRef = useRef<View>(null);
   const hasHandle = !!handle;
 
-  // 별 배경 점 — 마운트 시 1회 생성
-  const stars = useMemo(
-    () => Array.from({ length: 46 }, () => ({
-      x: Math.random(), y: Math.random(), r: 0.5 + Math.random() * 0.6, o: 0.25 + Math.random() * 0.35,
-    })),
-    [],
-  );
+  // SVG 흰 카드 실루엣 좌표 측정 — 카드 높이·보라 높이·절취선 Y는 flex 레이아웃에 따라 달라지므로 onLayout으로 잰다.
+  const [ticketH, setTicketH] = useState(0);   // 티켓 전체 높이
+  const [purpleH, setPurpleH] = useState(0);   // 상단 보라 높이(절취선 Y 기준점)
+  const [perfMidY, setPerfMidY] = useState(0); // 절취선 중심 Y — st.white 기준(카드 기준은 purpleH + perfMidY)
 
   // 내 기록(예시 제외)
   const myRecords = useMemo(
@@ -198,19 +196,33 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
   const ticketTranslate = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [0, -RISE] });
   const btnTranslate = revealAnim.interpolate({ inputRange: [0, 1], outputRange: [24, 0] });
 
+  // 흰 카드 실루엣 Path(시계방향 외곽선, y-down): 상단 각짐(보라가 덮음) → 우측 노치 → 우하 라운드
+  //  → 하단 중앙 노치 → 좌하 라운드 → 좌측 노치. 오목 노치는 sweep=0, 볼록 코너는 sweep=1.
+  // 파인 노치·카드 바깥으로 투명 화면(=프로필 탭)이 비친다.
+  const cardCenterX = TICKET_W / 2;
+  const perfY = purpleH + perfMidY; // 카드 기준 절취선 중심 Y
+  const cardPath =
+    ticketH > 0 && perfY > SIDE_NOTCH_R
+      ? [
+          'M0,0',
+          `H${TICKET_W}`,
+          `V${perfY - SIDE_NOTCH_R}`,
+          `A${SIDE_NOTCH_R},${SIDE_NOTCH_R} 0 0 0 ${TICKET_W},${perfY + SIDE_NOTCH_R}`, // 우측 노치(오목)
+          `V${ticketH - CARD_R}`,
+          `A${CARD_R},${CARD_R} 0 0 1 ${TICKET_W - CARD_R},${ticketH}`,                 // 우하 라운드
+          `H${cardCenterX + NOTCH_W / 2}`,
+          `A${NOTCH_W / 2},${NOTCH_DEPTH} 0 0 0 ${cardCenterX - NOTCH_W / 2},${ticketH}`, // 하단 중앙 노치(오목)
+          `H${CARD_R}`,
+          `A${CARD_R},${CARD_R} 0 0 1 0,${ticketH - CARD_R}`,                            // 좌하 라운드
+          `V${perfY + SIDE_NOTCH_R}`,
+          `A${SIDE_NOTCH_R},${SIDE_NOTCH_R} 0 0 0 0,${perfY - SIDE_NOTCH_R}`,            // 좌측 노치(오목)
+          'Z',
+        ].join(' ')
+      : null;
+
   return (
     <View style={st.root}>
-      {/* 별 배경 */}
-      {stars.map((s, i) => (
-        <View
-          key={i}
-          pointerEvents="none"
-          style={{
-            position: 'absolute', left: s.x * SCREEN_W, top: s.y * Dimensions.get('window').height,
-            width: s.r * 2, height: s.r * 2, borderRadius: s.r, backgroundColor: '#FFFFFF', opacity: s.o,
-          }}
-        />
-      ))}
+      {/* 배경은 프로필 탭(투명 오버레이) — 카드 실루엣 밖·파인 노치로 그대로 비친다 */}
 
       {/* 티켓 카드 — 캡처 대상. 탭하면 위로 올라가며 하단 공유 버튼이 나타남 */}
       <Animated.View style={[st.ticketTap, { transform: [{ translateY: ticketTranslate }] }]}>
@@ -219,9 +231,25 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         ref={ticketRef}
         collapsable={false}
         style={[st.ticket, { marginTop: 0 }]}
+        onLayout={(e: LayoutChangeEvent) => setTicketH(e.nativeEvent.layout.height)}
       >
+        {/* 흰 카드 실루엣 — 노치가 파인 SVG. 콘텐츠 View들은 이 위에 투명 배경으로 올라간다 */}
+        {cardPath && (
+          <Svg
+            pointerEvents="none"
+            style={StyleSheet.absoluteFill}
+            width={TICKET_W}
+            height={ticketH}
+          >
+            <Path d={cardPath} fill="#FFFFFF" />
+          </Svg>
+        )}
+
         {/* 상단 보라 — 최근 여행지. 상태바 뒤까지 채우도록 paddingTop에 safe-area 반영 */}
-        <View style={[st.purple, { paddingTop: insets.top + 52 }]}>
+        <View
+          style={[st.purple, { paddingTop: insets.top + 52 }]}
+          onLayout={(e: LayoutChangeEvent) => setPurpleH(e.nativeEvent.layout.height)}
+        >
           <Text style={st.favTitle}>{t('profileTicket.favTitle', { handle: handle || 'eorth' })}</Text>
           {best ? (
             <>
@@ -279,13 +307,14 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
 
           <View style={{ flex: 1 }} />
 
-          {/* 절취선 + 양옆 반원 노치 */}
-          <View style={st.perforationWrap}>
-            <View style={[st.notch, { left: -TICKET_MARGIN }]} />
+          {/* 절취선 — 양옆 반원 노치는 흰 카드 SVG 실루엣이 판다(여기선 Y만 측정) */}
+          <View
+            style={st.perforationWrap}
+            onLayout={(e: LayoutChangeEvent) => setPerfMidY(e.nativeEvent.layout.y + e.nativeEvent.layout.height / 2)}
+          >
             <View style={st.dashRow}>
               {Array.from({ length: 40 }).map((_, i) => <View key={i} style={st.dash} />)}
             </View>
-            <View style={[st.notch, { right: -TICKET_MARGIN }]} />
           </View>
 
           {/* QR — 모서리 브래킷 프레임 */}
@@ -301,9 +330,6 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
             </View>
           </View>
         </View>
-
-        {/* 하단 중앙 노치(보딩패스 반타원 컷) */}
-        <View style={st.bottomNotch} />
       </View>
       </TouchableOpacity>
       </Animated.View>
@@ -329,17 +355,14 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
 }
 
 const st = StyleSheet.create({
-  root: { flex: 1, backgroundColor: BG },
+  root: { flex: 1, backgroundColor: 'transparent' }, // 배경 = 프로필 탭(투명 오버레이)
   ticketTap: { flex: 1 }, // 티켓 탭 영역(내부 View가 캡처 대상)
   ticket: {
     flex: 1,
     marginHorizontal: TICKET_MARGIN,
-    marginBottom: 10, // 노치 아래 다크 여백(공유 버튼과의 간격)
-    // 상단 보라가 화면 맨 위(상태바 뒤)까지 채워지도록 top은 각지게 flush, 하단만 라운드(시안: 보라 rect y=-22)
-    borderBottomLeftRadius: 15,
-    borderBottomRightRadius: 15,
-    backgroundColor: '#FFFFFF',
-    overflow: 'hidden', // 양옆·하단 노치 원을 반원으로 클립
+    marginBottom: 10, // 카드 하단과 공유 버튼 사이 간격
+    // 흰 카드 채움·라운드·노치는 SVG 실루엣(cardPath)이 그린다. 컨테이너는 투명.
+    backgroundColor: 'transparent',
   },
   // ── 상단 보라 ──
   purple: {
@@ -384,7 +407,6 @@ const st = StyleSheet.create({
   perforationWrap: { height: 28, justifyContent: 'center', marginHorizontal: -28 },
   dashRow: { flexDirection: 'row', overflow: 'hidden', marginHorizontal: 28 },
   dash: { width: 5, height: 1.6, backgroundColor: '#0A0A0F', marginRight: 4 },
-  notch: { position: 'absolute', width: 28, height: 28, borderRadius: 14, backgroundColor: BG },
   // ── QR ──
   qrArea: { alignItems: 'center', paddingTop: 14, paddingBottom: 56 },
   qrFrame: { padding: 12, alignItems: 'center', justifyContent: 'center', minWidth: 148, minHeight: 148 },
@@ -394,12 +416,6 @@ const st = StyleSheet.create({
   brBL: { bottom: 0, left: 0, borderBottomWidth: 3, borderLeftWidth: 3 },
   brBR: { bottom: 0, right: 0, borderBottomWidth: 3, borderRightWidth: 3 },
   qrHint: { fontSize: 13, color: '#888888', textAlign: 'center', paddingHorizontal: 8 },
-  // ── 하단 노치 ── (시안 비율: 폭 NOTCH_W·깊이 NOTCH_DEPTH의 얕은 반타원)
-  bottomNotch: {
-    position: 'absolute', bottom: -NOTCH_DEPTH, alignSelf: 'center',
-    width: NOTCH_D, height: NOTCH_D, borderRadius: NOTCH_D / 2, backgroundColor: BG,
-    transform: [{ scaleX: NOTCH_W / NOTCH_D }],
-  },
   // ── 하단 공유 버튼(티켓 탭 시 노출) ──
   shareBarWrap: { position: 'absolute', left: 0, right: 0, bottom: 0, alignItems: 'center', paddingTop: 18 },
   shareText: { color: '#FFFFFF', fontSize: 16, fontWeight: '800' },

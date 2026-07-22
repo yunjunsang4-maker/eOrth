@@ -298,7 +298,9 @@ export default function AppNavigator() {
           options={{
             // 탑시트: 위에서 아래로 내려오고, 위로 스와이프하면 닫힌다(vertical-inverted).
             // 전역 cardStyleInterpolator(가로 슬라이드)를 화면 전용 세로 인터폴레이터로 덮어쓴다.
-            presentation: 'modal',
+            // transparentModal: 뒤 화면(프로필 탭)을 계속 렌더 — 티켓 카드 실루엣 밖·파인 노치로 프로필이 비친다.
+            presentation: 'transparentModal',
+            cardStyle: { backgroundColor: 'transparent' },
             gestureDirection: 'vertical-inverted',
             // 닫기 버튼 없이 스와이프로만 닫는 화면 — 화면 어디서든 위로 끌면 닫히게 인식 범위 확장
             gestureResponseDistance: 1000,
