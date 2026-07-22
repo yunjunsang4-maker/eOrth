@@ -1809,11 +1809,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // ── 국가 대표사진 ──
   // 국가의 대표사진 '기록'을 찾는다: 핀 우선(핀 기록이 살아있을 때만), 없으면 기존 최신순 폴백.
   const getCountryPhotoRecord = useCallback((countryName: string): CountryCover | null => {
-    for (const a of koAliases(countryName)) {
+    const aliases = koAliases(countryName);
+    for (const a of aliases) {
       const pin = countryCovers[a];
       if (pin && records.some((r) => r.id === pin.recordId)) return pin; // 핀 유효
     }
-    const aliases = koAliases(countryName);
     const matchingRecords = records.filter((r) => matchesCountry(r, countryName));
     for (const r of matchingRecords) {
       for (const a of aliases) {
@@ -1851,7 +1851,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(v.reportedPostIds)) setReportedPostIds(v.reportedPostIds);
     if (Array.isArray(v.mutedHandles)) setMutedHandles(v.mutedHandles);
     if (Array.isArray(v.viewedSnapIds)) setViewedSnapIds(v.viewedSnapIds);
-    if (v.countryCovers) setCountryCovers(v.countryCovers as Record<string, CountryCover>);
+    if (v.countryCovers && typeof v.countryCovers === 'object' && !Array.isArray(v.countryCovers)) setCountryCovers(v.countryCovers as Record<string, CountryCover>);
   };
 
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
