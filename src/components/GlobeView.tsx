@@ -2344,17 +2344,17 @@ function updateVectorLines(){
   var t=world50Data ? smoothstep01(1.9, 2.6, z) : 0;
   var t10=borders10Lines ? smoothstep01(4.5, 5.8, z) : 0;
   if(vb>0 && !vecBorders110 && world110Data && zoomSettled()){
-    vecBorders110=buildWorldLinesMerged(world110Data, 1.002); globe.add(vecBorders110);
+    vecBorders110=buildWorldLinesMerged(world110Data, 1.0008); globe.add(vecBorders110);
   }
   if(t>0 && !vecBorders50 && world50Data && zoomSettled()){
-    vecBorders50=buildWorldLinesMerged(world50Data, 1.002); globe.add(vecBorders50);
+    vecBorders50=buildWorldLinesMerged(world50Data, 1.0008); globe.add(vecBorders50);
   }
   if(z>3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView){
     borders10Requested=true;
     window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needBorders10m' }));
   }
   if(t10>0 && !borders10Group && borders10Lines && zoomSettled()){
-    borders10Group=buildPolylinesMerged(borders10Lines, 1.0025); globe.add(borders10Group);
+    borders10Group=buildPolylinesMerged(borders10Lines, 1.0009); globe.add(borders10Group);
   }
   if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
   if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
@@ -2366,7 +2366,7 @@ function updateVectorLines(){
     window.ReactNativeWebView.postMessage(JSON.stringify({ type:'needAdmin1' }));
   }
   if(a>0 && admin1Lines && !admin1Group && zoomSettled()){
-    admin1Group=buildPolylinesMerged(admin1Lines, 1.001); globe.add(admin1Group);
+    admin1Group=buildPolylinesMerged(admin1Lines, 1.0008); globe.add(admin1Group);
   }
   if(admin1Group){ admin1Group.userData.mat.opacity=a; admin1Group.visible=a>0.01; }
 }
