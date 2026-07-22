@@ -2358,7 +2358,9 @@ function updateVectorLines(){
   }
   if(vecBorders110){ var o1=vb*(vecBorders50 ? (1-t) : 1); vecBorders110.userData.mat.opacity=o1; vecBorders110.visible=o1>0.01; }
   if(vecBorders50){ var o2=vb*t*(borders10Group ? (1-t10) : 1); vecBorders50.userData.mat.opacity=o2; vecBorders50.visible=o2>0.01; }
-  if(borders10Group){ var o3=0.92*t10; borders10Group.userData.mat.opacity=o3; borders10Group.visible=o3>0.01; }
+  // 지역창이 켜질수록 벡터 10m선은 물러난다 — 지역 텍스처에 구운 선과 이중으로 겹치지 않게.
+  var regFade=(typeof regionMat!=='undefined' && regionMat) ? regionMat.opacity : 0;
+  if(borders10Group){ var o3=0.92*t10*(1-regFade); borders10Group.userData.mat.opacity=o3; borders10Group.visible=o3>0.01; }
   // 주/도 지역구분선 — 3.0~4.2 페이드인 (데이터는 처음 필요 시 RN에 lazy 요청)
   var a=smoothstep01(3.0, 4.2, z)*0.45;
   if(a>0 && !admin1Lines && !admin1Requested && window.ReactNativeWebView){
@@ -2453,6 +2455,28 @@ function buildRegionTexture(lonC, latC, span){
     }
     ctx.fill();
     ctx.globalCompositeOperation='source-over';
+  }
+  // C 하이브리드: 10m 국경/해안선(벡터 borders10과 동일 소스)을 같은 proj·같은 캔버스에 구워
+  // 딥줌 시차를 원천 제거. 마스크(destination-in) 이후 source-over라 채움 위에 얹힌다.
+  // 벡터 borders10Group은 지역창 활성 시 페이드아웃(updateVectorLines)해 이중 표시 방지.
+  if(borders10Lines){
+    ctx.strokeStyle='rgba(255,255,255,0.55)'; ctx.lineWidth=2; ctx.lineJoin='round'; ctx.lineCap='round';
+    ctx.beginPath();
+    for(var bi=0;bi<borders10Lines.length;bi++){
+      var bl=borders10Lines[bi];
+      if(!bl.__b){ // 라인 경계 1회 캐시 — 창 밖 라인 스킵(land10[i].b와 동일 패턴)
+        var mnx=180,mny=90,mxx=-180,mxy=-90;
+        for(var bk=0;bk<bl.length;bk++){ var pk=bl[bk]; if(pk[0]<mnx)mnx=pk[0]; if(pk[0]>mxx)mxx=pk[0]; if(pk[1]<mny)mny=pk[1]; if(pk[1]>mxy)mxy=pk[1]; }
+        bl.__b=[mnx,mny,mxx,mxy];
+      }
+      var bb=bl.__b;
+      if(bb[2]<wMinLon||bb[0]>wMaxLon||bb[3]<wMinLat||bb[1]>wMaxLat) continue; // 창 밖 스킵
+      for(var bj=0;bj<bl.length;bj++){
+        var bp=proj(bl[bj]);
+        if(bj===0) ctx.moveTo(bp[0],bp[1]); else ctx.lineTo(bp[0],bp[1]);
+      }
+    }
+    ctx.stroke();
   }
   var tex=new THREE.CanvasTexture(c);
   tex.minFilter=THREE.LinearMipmapLinearFilter; tex.magFilter=THREE.LinearFilter; tex.generateMipmaps=true;
