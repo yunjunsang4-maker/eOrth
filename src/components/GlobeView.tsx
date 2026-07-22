@@ -2710,8 +2710,8 @@ function handleMsg(msg){
     try { admin1Lines = JSON.parse(msg.lines); }
     catch(err){ admin1Requested=false; }
   } else if(msg.type==='borders10m' && msg.lines){
-    // 10m 최정밀 구분선 데이터 도착 — 다음 updateVectorLines에서 그룹 생성
-    try { borders10Lines = JSON.parse(msg.lines); }
+    // 10m 최정밀 구분선 데이터 도착 — 벡터 그룹 생성 + 지역 창에 구운 선 반영(C 하이브리드)
+    try { borders10Lines = JSON.parse(msg.lines); regionC.span=0; } // 도착 → 다음 settle에 지역 창 재빌드(구운 선 반영, 국경선 실종 과도기 방지)
     catch(err){ borders10Requested=false; }
   } else if(msg.type==='land10m' && msg.rings){
     // 10m 육지 마스크 도착 — 링별 bbox 사전계산(지역 텍스처 창 밖 스킵용)
