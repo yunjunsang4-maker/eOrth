@@ -926,6 +926,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       );
       linkRecordToTrip(updated);
     }
+    setCountryCovers((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(prev)) {
+        if (v.recordId === id) {
+          const newUri = changes.representativePhoto;
+          if (typeof newUri === 'string' && newUri && newUri !== v.uri) { next[k] = { recordId: id, uri: newUri }; changed = true; }
+        }
+      }
+      return changed ? next : prev;
+    });
     if (isSupabaseConfigured) {
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes })).catch(notifySyncError);
       // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
@@ -953,6 +964,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         })
         .filter((g) => g.records.length > 0)
     );
+    setCountryCovers((prev) => {
+      const next: Record<string, CountryCover> = {};
+      for (const [k, v] of Object.entries(prev)) if (v.recordId !== id) next[k] = v;
+      return next;
+    });
     if (isSupabaseConfigured && target) {
       if (target.remoteId) deletePost(target.remoteId).catch(notifySyncError);
       // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약
