@@ -2374,7 +2374,7 @@ function updateVectorLines(){
 // ── 딥줌 지역(region) 텍스처 — 보이는 창만 고해상 재투영해 채움 경계도 선명하게(구글맵 타일 방식).
 // 전역 8192 텍스처는 ~90배 줌에서 텍셀이 화면 수십 px로 늘어나 경계가 뭉개지던 원인.
 // 채움은 50m 국가 폴리곤(색) + 10m 육지 마스크(destination-in) → 10m 벡터 선과 경계 일치 ──
-var REGION_AT=5; // 전역 텍스처 LOD 재생성을 없앤 대신 지역 창이 더 일찍 채움을 이어받는다
+var REGION_AT=3.5; // 지역 창을 더 일찍 켜 모자이크 밴드(줌 2.6~4.5) 제거 — 활성 z>=3.15, land10m 요청 z>2.45
 // 지역 창은 텍스처 교체가 아니라 '오버레이 구'로 얹고 opacity 보간 — 켜지고 꺼질 때 스르륵 페이드.
 // 전역 텍스처(셰이더 uLand)는 아예 건드리지 않아 활성색이 순간적으로 꺼지는 일이 없다.
 var regionActive=false, regionMesh=null, regionMat=null, regionOpTarget=0;
