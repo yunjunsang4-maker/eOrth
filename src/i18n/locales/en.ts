@@ -712,6 +712,7 @@ const en = {
     saveFailTitle: 'Save failed',
     saveFailMsg: 'A problem occurred while creating the album.',
     saving: 'Creating your album…',
+    savingN: 'Saving photos {{done}}/{{total}}',
     closeA11y: 'Close',
     sub: 'Set a date range to load photos taken during that period.\nPick up to {{max}} photos to build your own album.',
     country: 'Country',

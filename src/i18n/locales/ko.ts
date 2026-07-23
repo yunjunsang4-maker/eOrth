@@ -713,6 +713,7 @@ const ko = {
     saveFailTitle: '저장 실패',
     saveFailMsg: '사진첩을 만드는 중 문제가 발생했어요.',
     saving: '사진첩을 만들고 있어요…',
+    savingN: '사진 저장 중 {{done}}/{{total}}',
     closeA11y: '닫기',
     sub: '기간을 설정하면 그 기간에 찍은 사진을 불러와요.\n최대 {{max}}장을 골라 나만의 사진첩을 만들 수 있어요.',
     country: '국가',

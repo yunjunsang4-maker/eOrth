@@ -123,6 +123,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const [title, setTitle] = useState('');
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null); // 사진 복사 진행(n/총)
 
   // 썸네일 위치 조정 — 어떤 사진에 대한 조정값인지 uri로 묶어 커버가 바뀌면 무시되게 한다
   const [coverAdjust, setCoverAdjust] = useState<{ uri: string; t: CutTransform } | null>(null);
@@ -307,7 +308,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         ...picked.filter((p) => p.uri === cover),
         ...picked.filter((p) => p.uri !== cover),
       ];
-      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items);
+      setSaveProgress({ done: 0, total: items.length });
+      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items, (done, total) => setSaveProgress({ done, total }));
       if (copied.length === 0) throw new Error('copy failed');
       // iCloud 오프로드 등으로 복사에 실패한 장수 — 조용히 빠지면 "사진이 왜 없지" 혼란이 생긴다
       const failCount = items.length - copied.length;
@@ -370,6 +372,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
       setSaving(false);
+      setSaveProgress(null);
       Alert.alert(t('album.saveFailTitle'), t('album.saveFailMsg'));
     }
   };
@@ -378,7 +381,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
         <ActivityIndicator color={skinAccent.accent} size="large" />
-        <Text style={st.savingText}>{t('album.saving')}</Text>
+        <Text style={st.savingText}>
+          {saveProgress && saveProgress.total > 0
+            ? t('album.savingN', { done: saveProgress.done, total: saveProgress.total })
+            : t('album.saving')}
+        </Text>
       </LinearGradient>
     );
   }
