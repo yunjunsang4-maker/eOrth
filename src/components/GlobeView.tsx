@@ -2459,9 +2459,43 @@ function buildVectorLandPOC(level){
     return out;
   }
   function ringCenterLon(r){ var s=0; for(var i=0;i<r.length;i++) s+=r[i][0]; return s/r.length; }
-  function prepRing(raw){ var r=raw.slice(); if(r.length>1 && r[0][0]===r[r.length-1][0] && r[0][1]===r[r.length-1][1]) r.pop(); return unwrapRing(r); }
+  function prepRing(raw){
+    var r=raw.slice();
+    if(r.length>1 && r[0][0]===r[r.length-1][0] && r[0][1]===r[r.length-1][1]) r.pop();
+    var u=unwrapRing(r);
+    var net=u[u.length-1][0]-u[0][0];
+    if(Math.abs(net)>=270){
+      // 극을 감싸는 링(남극 본토): 시임(시작/끝)을 ±180 hop 지점으로 재배치 —
+      // 해안이 시임 자오선을 '한 번만' 지나게 해서 unwrap 폴리곤의 자기겹침을 없앤다.
+      // 데이터 원래 시작점(남극반도 끝)에 시임을 두면 반도 동/서 해안이 시작·끝 프레임에
+      // 갈라져 평면 폴리곤이 6°가량 자기겹침 → 웨델해가 육지로 채워지는 반원 아티팩트.
+      var bi=0, bd=0;
+      for(var i=0;i<r.length;i++){ var d=Math.abs(r[i][0]-r[(i+1)%r.length][0]); if(d>bd){ bd=d; bi=(i+1)%r.length; } }
+      if(bd>180) u=unwrapRing(r.slice(bi).concat(r.slice(0,bi)));
+    }
+    return u;
+  }
+  // 극 폐합 — 남극 본토처럼 극을 한 바퀴 감싸는 링은 데이터에 ±180 절단·-90 엣지가 없어
+  // unwrap 후 시작·끝 경도가 ±360 벌어진다. 그대로 평면 삼각분할하면 암묵 폐합 엣지가
+  // 해안 위도에서 대륙을 가로지르고 극 쪽이 뚫린다(남극 구멍+원형 절단선 아티팩트).
+  // 폐합 해안 구간(끝점→시작점의 한바퀴 프레임 복제)을 명시한 뒤 극(-90)으로 내려 닫는다.
+  // 세로 이음 두 개가 '같은 자오선'(시작점 경도)에 오는 것이 핵심 — 시작/끝 경도에 그대로
+  // 이으면 net(≈361°)-360° 만큼의 쐐기 기둥이 이중 커버·바다 침범(남극반도 옆 반원 얼룩)된다.
+  // (-90 엣지는 구면에서 한 점으로 수렴 — emitTri 세분을 거쳐 극 부채꼴로 무해하게 채워짐)
+  function closePoleRing(r){
+    var net=r[r.length-1][0]-r[0][0];
+    if(Math.abs(net)<270) return r; // 일반 링(net≈0)은 그대로
+    var s=0; for(var i=0;i<r.length;i++) s+=r[i][1];
+    var pole=(s<0)?-90:90;
+    var sign=(net>0)?1:-1;
+    var fx=r[0][0]+360*sign; // 시작점의 물리적 동일 경도(한 바퀴 반대편 프레임)
+    r.push([fx, r[0][1]]);   // 폐합 해안 구간 명시(시작점 복제)
+    r.push([fx, pole]);
+    r.push([r[0][0], pole]);
+    return r;
+  }
   function addPoly(rings){
-    var outer=prepRing(rings[0]); var oc=ringCenterLon(outer);
+    var outer=closePoleRing(prepRing(rings[0])); var oc=ringCenterLon(outer);
     var contour=outer.map(function(p){ return new THREE.Vector2(p[0],p[1]); });
     var holes=[]; var all=outer.slice();
     for(var h=1;h<rings.length;h++){
