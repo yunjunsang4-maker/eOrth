@@ -57,7 +57,7 @@ const ALL_BADGES: Badge[] = [
   // 여행 마일스톤 배지 (35 ~ 61)
   { id: 35, emoji: '🚶', name: '초보 여행자', desc: '3개국 방문 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/traveler-lv1.png') },
   { id: 36, emoji: '🏃', name: '신흥 탐험가', desc: '5개국 방문 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/traveler-lv2.png') },
-  { id: 37, emoji: '🗺️', name: '네이션 컬렉터', desc: '10개국 방문 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 37, emoji: '🗺️', name: '네이션 컬렉터', desc: '10개국 방문 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/traveler-lv3.png') },
   { id: 38, emoji: '🌎', name: '글로벌 트래블러', desc: '20개국 방문 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 39, emoji: '🪐', name: '월드 마스터', desc: '30개국 방문 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 40, emoji: '👾', name: '세계 정복자', desc: '50개국 방문 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
