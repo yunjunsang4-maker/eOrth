@@ -1785,7 +1785,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <Text style={st.panelDoneText}>{t('common.done')}</Text>
             </TouchableOpacity>
 
-            {/* 캘린더 — 공용 CalendarBottomSheet (자체 Modal+오버레이 포함) */}
+            {/* 캘린더 — 공용 CalendarBottomSheet. 여행정보 패널이 이미 Modal이라 asOverlay로 렌더 (iOS Modal-in-Modal 회피) */}
             <CalendarBottomSheet
               visible={calendarVisible}
               initialStart={startDateObj}
@@ -1795,6 +1795,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               recordedDates={recordedDates}
               recordedRanges={recordedRanges}
               onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
+              asOverlay
             />
 
             {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}

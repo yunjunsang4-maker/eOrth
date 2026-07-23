@@ -38,6 +38,7 @@ export function CalendarBottomSheet({
   recordedDates,
   recordedRanges,
   onSelectRecordedTrip,
+  asOverlay,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -52,6 +53,8 @@ export function CalendarBottomSheet({
   recordedRanges?: Map<string, RecordedRange>;
   /** 밴드(기존 여행)를 탭했을 때 호출 — 신규 작성 시에만 전달. 있으면 탭 즉시 이 콜백으로 동기화한다 */
   onSelectRecordedTrip?: (recordId: string, start: Date, end: Date) => void;
+  /** true면 Modal 대신 절대배치 오버레이로 렌더 — 이미 Modal 안인 화면(블로그 여행정보 패널)에서 iOS Modal-in-Modal 문제 회피 */
+  asOverlay?: boolean;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -138,9 +141,9 @@ export function CalendarBottomSheet({
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={calS.overlay} accessibilityViewIsModal>
+  // 시트 본체 — Modal 래핑과 오버레이 모드가 공유
+  const body = (
+      <View style={[calS.overlay, asOverlay && StyleSheet.absoluteFillObject]} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
@@ -237,6 +240,13 @@ export function CalendarBottomSheet({
           </TouchableOpacity>
         </Animated.View>
       </View>
+  );
+
+  // 오버레이 모드: 이미 Modal 안인 호출처(블로그 패널)용 — visible일 때만 절대배치로 덮는다
+  if (asOverlay) return visible ? body : null;
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      {body}
     </Modal>
   );
 }
