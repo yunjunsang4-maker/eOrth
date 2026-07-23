@@ -17,7 +17,6 @@ import type { RootStackScreenProps } from '../navigation/types';
 // 스플래시 영상 — expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
 const SPLASH_VIDEO = require('../../assets/splash.mp4');
 const { width: SW, height: SH } = Dimensions.get('window');
-const SPLASH_SCALE = 0.85; // 화면 대비 영상 표시 크기 — 살짝 축소해 중앙에 배치
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
 // 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
 const MAX_SPLASH_MS = 4000;
@@ -111,7 +110,7 @@ export default function SplashScreen({ navigation }: Props) {
       <VideoView
         player={player}
         style={styles.video}
-        contentFit="contain"
+        contentFit="cover"
         nativeControls={false}
       />
     </View>
@@ -126,7 +125,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   video: {
-    width: SW * SPLASH_SCALE,
-    height: SH * SPLASH_SCALE,
+    // 전체 화면을 꽉 채운다(cover) — 배경이 화면 끝까지 덮이도록. 넘치는 부분만 크롭.
+    width: SW,
+    height: SH,
   },
 });
