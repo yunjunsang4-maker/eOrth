@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { usePersistence, STORE_KEYS } from './persist';
+import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
 
@@ -323,7 +324,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLanguage(p.language ?? 'ko');
       setHandle(p.handle);
       setBio(p.bio);
-      setProfilePhoto(p.profilePhoto);
+      // 로컬 file:// 프로필 사진은 iOS 재설치 시 컨테이너 경로가 바뀜 — 현재 경로로 복구 (원격 URL은 그대로)
+      setProfilePhoto(p.profilePhoto ? remapDocUri(p.profilePhoto) : p.profilePhoto);
       setHandleLastChanged(p.handleLastChanged);
       setHandleChosen(p.handleChosen ?? false);
       setSignUpMethod(p.signUpMethod);
