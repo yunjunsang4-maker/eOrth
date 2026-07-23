@@ -27,7 +27,7 @@ import { useSettings } from '../store/settingsStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon } from '../components/icons';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon } from '../components/icons';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
@@ -35,7 +35,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
 
-const { width: SW } = Dimensions.get('window');
+const { width: SW, height: SH } = Dimensions.get('window');
 
 const C = {
   bg: '#0A0A0F',
@@ -238,9 +238,10 @@ function splitByQuery(text: string, query: string): { t: string; hit: boolean }[
 }
 
 // ─── 왼쪽 스와이프 → 답글 / 롱프레스 → 메뉴 ───
-function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onLongPress: () => void; children: React.ReactNode }) {
+function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onLongPress: (rect: { x: number; y: number; w: number; h: number }) => void; children: React.ReactNode }) {
   const tx = useRef(new Animated.Value(0)).current;
   const triggered = useRef(false);
+  const rowRef = useRef<any>(null); // 롱프레스 시 말풍선 화면 위치 측정용(컨텍스트 메뉴 배치)
 
   const pan = Gesture.Pan()
     .runOnJS(true)
@@ -266,7 +267,12 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
     .minDuration(350)
     .onStart(() => {
       buzz('light');
-      onLongPress();
+      // 눌린 말풍선의 화면상 위치를 재서 그 주변에 컨텍스트 메뉴를 띄운다
+      if (rowRef.current?.measureInWindow) {
+        rowRef.current.measureInWindow((x: number, y: number, w: number, h: number) => onLongPress({ x, y, w, h }));
+      } else {
+        onLongPress({ x: 0, y: 0, w: 0, h: 0 });
+      }
     });
 
   const composed = Gesture.Race(pan, longPress);
@@ -283,7 +289,7 @@ function SwipeRow({ onReply, onLongPress, children }: { onReply: () => void; onL
         <Animated.View style={[st.swipeIcon, { opacity: iconOpacity }]} pointerEvents="none">
           <Text style={st.swipeIconText}>↩</Text>
         </Animated.View>
-        <Animated.View style={{ transform: [{ translateX: tx }] }}>
+        <Animated.View ref={rowRef} style={{ transform: [{ translateX: tx }] }}>
           {children}
         </Animated.View>
       </View>
@@ -327,7 +333,24 @@ export default function DMScreen({ navigation, route }: Props) {
   const [replyTarget, setReplyTarget] = useState<Message | null>(null);
   const [viewerUri, setViewerUri] = useState<string | null>(null);
   const [menuMsg, setMenuMsg] = useState<Message | null>(null);
+  // 롱프레스한 메시지의 화면 위치 — 컨텍스트 메뉴를 그 주변에 배치하기 위함
+  const [menuRect, setMenuRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
+  // 헤더 바텀시트 애니메이션 — 배경 딤은 '제자리 페이드', 시트만 슬라이드업.
+  // (기존 animationType="slide"는 풀스크린 딤까지 통째로 올라와 검은 화면이 딸려 올라오는 거슬림이 있었음)
+  const headerSheetAnim = useRef(new Animated.Value(0)).current; // 0=닫힘, 1=열림
+  const [headerSheetMounted, setHeaderSheetMounted] = useState(false);
+  useEffect(() => {
+    if (headerMenuOpen) {
+      setHeaderSheetMounted(true);
+      Animated.timing(headerSheetAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    } else if (headerSheetMounted) {
+      Animated.timing(headerSheetAnim, { toValue: 0, duration: 170, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setHeaderSheetMounted(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [headerMenuOpen]);
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showScrollDown, setShowScrollDown] = useState(false);
@@ -561,7 +584,7 @@ export default function DMScreen({ navigation, route }: Props) {
         <Text style={st.dateSepText}>{label}</Text>
       </View>
     )}
-    <SwipeRow onReply={() => setReplyTarget(item)} onLongPress={() => setMenuMsg(item)}>
+    <SwipeRow onReply={() => setReplyTarget(item)} onLongPress={(rect) => { setMenuRect(rect); setMenuMsg(item); }}>
     <View style={[st.msgRow, item.isMine && st.msgRowMine, groupedWithNext && st.msgRowGrouped]}>
       {!item.isMine && (
         groupedWithNext
@@ -896,33 +919,63 @@ export default function DMScreen({ navigation, route }: Props) {
         </TouchableOpacity>
       </Modal>
 
-      {/* 메시지 롱프레스 메뉴 */}
-      <Modal visible={!!menuMsg} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setMenuMsg(null)}>
-        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setMenuMsg(null)} accessibilityViewIsModal>
-          <View style={st.sheet}>
-            <View style={st.sheetHandle} />
-            <TouchableOpacity style={st.sheetItem} onPress={handleReplyFromMenu}>
-              <Text style={st.sheetIcon}>↩</Text>
-              <Text style={st.sheetText}>{t('dm.reply')}</Text>
-            </TouchableOpacity>
-            {menuMsg?.type === 'text' && (
-              <TouchableOpacity style={st.sheetItem} onPress={handleCopy}>
-                <Text style={st.sheetIcon}>📋</Text>
-                <Text style={st.sheetText}>{t('dm.copy')}</Text>
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={st.sheetItem} onPress={handleDelete}>
-              <Text style={st.sheetIcon}>🗑</Text>
-              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.delete')}</Text>
-            </TouchableOpacity>
-          </View>
+      {/* 메시지 롱프레스 컨텍스트 메뉴 — 눌린 메시지 강조(주변 딤) + 그 근처에 세로 옵션 (아이메시지풍) */}
+      <Modal visible={!!menuMsg} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuMsg(null)}>
+        <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuMsg(null)} accessibilityViewIsModal>
+          {/* 눌린 메시지 행 위·아래만 딤 → 그 행(실제 메시지)만 밝게 강조되어 보인다 */}
+          {menuRect && <View pointerEvents="none" style={[st.ctxDim, { top: 0, height: Math.max(0, menuRect.y) }]} />}
+          {menuRect && <View pointerEvents="none" style={[st.ctxDim, { top: menuRect.y + menuRect.h, bottom: 0 }]} />}
+          {menuRect && menuMsg && (() => {
+            // 답장(항상) + 복사(텍스트만) + 삭제(내 메시지만) — 상대 메시지엔 삭제 없음
+            const itemCount = 1 + (menuMsg.type === 'text' ? 1 : 0) + (menuMsg.isMine ? 1 : 0);
+            const menuH = itemCount * 46 + 12;
+            const gap = 10;
+            const below = menuRect.y + menuRect.h + gap + menuH < SH - 40;
+            const pos = {
+              top: below ? menuRect.y + menuRect.h + gap : Math.max(60, menuRect.y - gap - menuH),
+              ...(menuMsg.isMine ? { right: 14 } : { left: 14 }),
+            };
+            return (
+              <View style={[st.ctxMenu, pos]}>
+                <TouchableOpacity style={st.ctxItem} onPress={handleReplyFromMenu} activeOpacity={0.7}>
+                  <View style={st.ctxIconWrap}><ReplyIcon size={19} color={C.white} /></View>
+                  <Text style={st.ctxText}>{t('dm.reply')}</Text>
+                </TouchableOpacity>
+                {menuMsg.type === 'text' && (
+                  <>
+                    <View style={st.ctxDivider} />
+                    <TouchableOpacity style={st.ctxItem} onPress={handleCopy} activeOpacity={0.7}>
+                      <View style={st.ctxIconWrap}><CopyIcon size={19} color={C.white} /></View>
+                      <Text style={st.ctxText}>{t('dm.copy')}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+                {menuMsg.isMine && (
+                  <>
+                    <View style={st.ctxDivider} />
+                    <TouchableOpacity style={st.ctxItem} onPress={handleDelete} activeOpacity={0.7}>
+                      <View style={st.ctxIconWrap}><TrashIcon size={19} color="#FF6B6B" /></View>
+                      <Text style={[st.ctxText, { color: '#FF6B6B' }]}>{t('dm.delete')}</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            );
+          })()}
         </TouchableOpacity>
       </Modal>
 
-      {/* 헤더 메뉴: 대화 비우기 / 나가기 */}
-      <Modal visible={headerMenuOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setHeaderMenuOpen(false)}>
-        <TouchableOpacity style={st.sheetOverlay} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal>
-          <View style={st.sheet}>
+      {/* 헤더 메뉴: 대화 비우기 / 나가기 — 딤은 제자리 페이드, 시트만 슬라이드업 */}
+      <Modal visible={headerSheetMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setHeaderMenuOpen(false)}>
+        <View style={StyleSheet.absoluteFill}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
+          />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal />
+          <Animated.View
+            style={[st.sheet, st.sheetAnchor, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [240, 0] }) }] }]}
+          >
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleClearConversation}>
               <Text style={st.sheetIcon}>🧹</Text>
@@ -932,8 +985,8 @@ export default function DMScreen({ navigation, route }: Props) {
               <Text style={st.sheetIcon}>🚪</Text>
               <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.leave')}</Text>
             </TouchableOpacity>
-          </View>
-        </TouchableOpacity>
+          </Animated.View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1045,17 +1098,27 @@ const st = StyleSheet.create({
   scrollDownIcon: { fontSize: 18, color: C.accent, fontWeight: '700' },
 
   // 액션 시트 (롱프레스/헤더 메뉴 공용)
-  sheetOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingBottom: 34, paddingTop: 8, paddingHorizontal: 12,
   },
+  sheetAnchor: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   sheetHandle: {
     width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted,
     alignSelf: 'center', marginBottom: 8,
   },
   sheetItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12 },
   sheetIcon: { fontSize: 18, width: 24, textAlign: 'center' },
+  // 메시지 롱프레스 컨텍스트 메뉴
+  ctxDim: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
+  ctxMenu: {
+    position: 'absolute', minWidth: 190, backgroundColor: '#2E2E3B', borderRadius: 16, paddingVertical: 6,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.4, shadowRadius: 16, elevation: 16,
+  },
+  ctxItem: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, paddingHorizontal: 16 },
+  ctxIconWrap: { width: 22, alignItems: 'center', justifyContent: 'center' },
+  ctxText: { fontSize: 15, color: C.white, fontWeight: '600' },
+  ctxDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginHorizontal: 8 },
   sheetText: { fontSize: 15, color: C.white, fontWeight: '600' },
 
   // 날짜 구분 헤더
