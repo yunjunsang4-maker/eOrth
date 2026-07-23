@@ -25,7 +25,7 @@ const ALL_BADGES: Badge[] = [
   { id: 7, emoji: '🦁', name: '아프리카에서의 첫발', desc: '아프리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
 
   // 여행 동행 & 스타일 배지 (9 ~ 15)
-  { id: 9, emoji: '🎒', name: '혼자만의 감성을 즐기는 유형인가요?', desc: '홀로 여행', earned: true, glow: 'rgba(255,100,100,0.5)' },
+  { id: 9, emoji: '🎒', name: '혼자만의 감성을 즐기는 유형인가요?', desc: '홀로 여행', earned: true, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/solo-travel.png') },
   { id: 10, emoji: '💑', name: '여행에서 안 싸웠길 바래요^^', desc: '커플 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
   { id: 11, emoji: '👵', name: '당신의 첫 효도인가요?', desc: '부모님 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
   { id: 12, emoji: '🤝', name: '여행을 계획한 메이트에게 불평하지 마세요.', desc: '메이트 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
