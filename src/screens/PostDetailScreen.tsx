@@ -1694,11 +1694,13 @@ export default function PostDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
-            <Text style={s.backIcon}>‹</Text>
-          </TouchableOpacity>
+          <View style={s.headerSide}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
+              <Text style={s.backIcon}>‹</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 8 }]}>
             {viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 && (
               <TouchableOpacity
                 onPress={() => setFontScale((p) => (p >= 1.4 ? 0.85 : p + 0.15))}
@@ -2349,13 +2351,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 10,
     borderBottomWidth: 1, borderBottomColor: C.cardBorder,
   },
+  // 좌(뒤로가기)·우(메뉴) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
+  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   backBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: C.card,
     alignItems: 'center', justifyContent: 'center',
   },
   backIcon: { fontSize: 22, color: C.white, marginTop: -1 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: C.white },
+  headerTitle: { flexShrink: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.white, marginHorizontal: 8 },
   menuBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: C.card,
