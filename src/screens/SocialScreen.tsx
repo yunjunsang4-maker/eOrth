@@ -1824,6 +1824,21 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font);
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  // 메뉴 바텀시트 애니메이션 — 배경 딤은 '제자리 페이드', 시트만 슬라이드업.
+  // (animationType="slide"는 풀스크린 딤까지 통째로 올라와 검은 화면이 딸려 올라오는 거슬림이 있었음)
+  const menuAnim = useRef(new Animated.Value(0)).current; // 0=닫힘, 1=열림
+  const [menuMounted, setMenuMounted] = useState(false);
+  useEffect(() => {
+    if (menuVisible) {
+      setMenuMounted(true);
+      Animated.timing(menuAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    } else if (menuMounted) {
+      Animated.timing(menuAnim, { toValue: 0, duration: 170, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setMenuMounted(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuVisible]);
 
   const onMore = () => { if (item.isExample) return; setMenuVisible(true); };
 
@@ -2069,10 +2084,16 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
-      <Modal visible={menuVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)} />
-          <View style={ss.sheet}>
+      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+        <View style={{ flex: 1 }}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
+          />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <Animated.View
+            style={[ss.sheet, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
+          >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
               {menuOptions.map((opt, i) => (
@@ -2092,7 +2113,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             <TouchableOpacity style={ss.cancelCard} activeOpacity={0.7} onPress={() => setMenuVisible(false)}>
               <Text style={ss.cancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
       <ReportModal
