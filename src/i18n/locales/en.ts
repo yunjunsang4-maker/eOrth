@@ -796,6 +796,8 @@ const en = {
     cloudNote: "\n\n{{count}} photos stored in iCloud can't be auto-loaded — please get them via 'Select from gallery' below.",
     truncatedNote: "\n\nThere were many photos in this period, so only the latest 500 were checked. Add any missing ones via 'Select from gallery'.",
     cloudDownloading: 'Downloading from iCloud {{done}}/{{total}}…',
+    importingPhotos: 'Importing photos…',
+    importingPhotosN: 'Importing photos {{done}}/{{total}}',
     cloudCancelA11y: 'Cancel iCloud download',
     allDuplicateMsg: 'All photos from this period are already added.',
     limitedAccessTitle: 'Limited photo access',

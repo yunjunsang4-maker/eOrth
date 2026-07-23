@@ -11,6 +11,7 @@ import {
   Dimensions,
   PanResponder,
   ActivityIndicator,
+  Modal,
   Linking,
   Alert,
   LayoutAnimation,
@@ -457,11 +458,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // 원본 uri 배열 → 이미 추가된 것·중복을 제거한 뒤 압축본 반환 + (압축본→원본) 매핑 기록.
   // 압축본 URI는 매번 달라 중복 비교가 안 되므로 반드시 '원본' 기준으로 dedup 한다.
-  const addNewOriginals = async (originals: string[], currentMedias: string[]): Promise<string[]> => {
+  const addNewOriginals = async (originals: string[], currentMedias: string[], onProgress?: (done: number, total: number) => void): Promise<string[]> => {
     const addedOriginals = new Set(currentMedias.map(u => originalUriMapRef.current[u] ?? u));
     const uniqueFresh = Array.from(new Set(originals.filter(o => !addedOriginals.has(o))))
       .slice(0, maxRecordPhotos - currentMedias.length);
-    const compressed = await compressImages(uniqueFresh);
+    const compressed = await compressImages(uniqueFresh, undefined, undefined, onProgress);
     compressed.forEach((u, i) => { if (u !== uniqueFresh[i]) originalUriMapRef.current[u] = uniqueFresh[i]; });
     return compressed;
   };
@@ -481,7 +482,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       });
       if (!result.canceled && result.assets) {
         setLoadingMedia(true);
-        const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias);
+        setMediaProgress({ done: 0, total: result.assets.length });
+        const compressed = await addNewOriginals(result.assets.map(a => a.uri), medias, (done, total) => setMediaProgress({ done, total }));
         setMedias(prev => [...prev, ...compressed].slice(0, maxRecordPhotos));
         // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
         setPhotoTexts((prev) => {
@@ -493,6 +495,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.loadPhotoFailMsg'));
     } finally {
       setLoadingMedia(false);
+      setMediaProgress(null);
     }
   };
 
@@ -877,6 +880,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // ── 미디어 로딩 상태 ──
   const [loadingMedia,            setLoadingMedia]            = useState(false);
+  const [mediaProgress,           setMediaProgress]           = useState<{ done: number; total: number } | null>(null); // 사진 처리 진행 개수(n/총)
 
   // ── 미디어 선택 모달 (상한 초과 시) ──
   const [mediaPickerVisible,  setMediaPickerVisible]  = useState(false);
@@ -974,13 +978,14 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     const selectedAssets = mediaPickerAssets.filter(a => mediaPickerSelected.has(a.id));
     setMediaPickerVisible(false);
     setLoadingMedia(true);
+    setMediaProgress({ done: 0, total: selectedAssets.length });
 
     try {
       // 모달의 사진은 대부분 이미 확보된 로컬본이지만, iCloud분이 섞였을 수 있어 2차 시도 포함
       const { ok: localOk, cloud } = await resolveImportable(selectedAssets);
       const cloudOk = await downloadCloudAssets(cloud);
       const ok = [...localOk, ...cloudOk];
-      const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias);
+      const resolvedUris = await addNewOriginals(ok.map((p) => p.uri), medias, (done, total) => setMediaProgress({ done, total }));
 
       setMedias((prev) => [...prev, ...resolvedUris].slice(0, maxRecordPhotos));
       // medias 상한(slice)과 동일한 개수만 추가 — 두 배열 길이 어긋남 방지
@@ -999,6 +1004,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       Alert.alert(t('newRecord.loadFailTitle'), e?.message ?? t('newRecord.galleryLoadFailMsg'));
     } finally {
       setLoadingMedia(false);
+      setMediaProgress(null);
     }
   };
 
@@ -1345,14 +1351,19 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
             />
 
-            {loadingMedia && (
-              <View style={{ marginTop: 12, marginVertical: 12, alignItems: 'center', gap: 6 }}>
-                <ActivityIndicator color={skinAccent.accent} size="large" />
-                {cloudProgress && (
-                  <>
-                    <Text style={s.cloudProgressText}>
-                      {t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })}
-                    </Text>
+            {/* 사진 가져오는 중 — 화면 전체 블로킹 오버레이(진행 개수 표시)로 '되고 있나' 헷갈림 방지 */}
+            <Modal visible={loadingMedia} transparent animationType="fade" statusBarTranslucent>
+              <View style={s.importOverlay}>
+                <View style={s.importCard}>
+                  <ActivityIndicator color={skinAccent.accent} size="large" />
+                  <Text style={s.importText}>
+                    {cloudProgress
+                      ? t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })
+                      : mediaProgress && mediaProgress.total > 0
+                        ? t('newRecord.importingPhotosN', { done: mediaProgress.done, total: mediaProgress.total })
+                        : t('newRecord.importingPhotos')}
+                  </Text>
+                  {cloudProgress && (
                     <TouchableOpacity
                       style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
                       onPress={() => { cloudCancelRef.current = true; }}
@@ -1362,10 +1373,10 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     >
                       <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
                     </TouchableOpacity>
-                  </>
-                )}
+                  )}
+                </View>
               </View>
-            )}
+            </Modal>
 
             {/* 갤러리 선택 버튼은 사진 있을 때만 표시 */}
             {medias.length > 0 && (
@@ -2580,6 +2591,30 @@ const s = StyleSheet.create({
   cloudProgressText: {
     fontSize: 12,
     color: COLORS.textDim,
+  },
+  // 사진 가져오는 중 블로킹 오버레이
+  importOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  importCard: {
+    minWidth: 200,
+    paddingVertical: 24,
+    paddingHorizontal: 28,
+    borderRadius: 18,
+    backgroundColor: '#1A0A2E',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.25)',
+    alignItems: 'center',
+    gap: 12,
+  },
+  importText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textAlign: 'center',
   },
   // 국내 지역 선택 칩
   regionPickLabel: {
