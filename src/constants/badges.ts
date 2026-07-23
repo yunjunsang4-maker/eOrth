@@ -17,7 +17,7 @@ export interface Badge {
 const ALL_BADGES: Badge[] = [
   // 대륙 & 첫 방문 배지 (1 ~ 7)
   { id: 1, emoji: '🛫', name: '역사적인 당신의 첫 발자취!', desc: '첫 기록', earned: true, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/first-record.png') },
-  { id: 2, emoji: '🌏', name: '아시아에서의 첫발!', desc: '아시아 첫방문', earned: true, glow: 'rgba(47,217,244,0.6)' },
+  { id: 2, emoji: '🌏', name: '아시아에서의 첫발!', desc: '아시아 첫방문', earned: true, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/asia-first.png') },
   { id: 3, emoji: '🇪🇺', name: '유럽에서의 첫발!', desc: '유럽 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
   { id: 4, emoji: '🍁', name: '북미에서의 첫발!', desc: '북아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
   { id: 5, emoji: '🌴', name: '남미에서의 첫발!', desc: '남아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
