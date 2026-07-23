@@ -1808,6 +1808,33 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
   );
 }
 
+// 스트립 카드 사진 영역 — 상세(PostDetail·TripRecord)와 동일한 공용 캔버스(CutPhotoCanvas)로
+// 라이브 합성해 프레임 로고·문구·날짜 스탬프·사진 조정값까지 그대로 반영한다.
+// (기존 CutGridPreview는 배경+사진 슬롯만 그려 로고/스탬프가 소셜 카드에서 누락됐었음)
+function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
+  const [w, setW] = useState(0);
+  const frame = getCutFrame(cutPhoto.frameId);
+  const aspect = (frame && (CUT_LAYOUTS as any)[frame.layout]?.aspect) || 0.7;
+  return (
+    // aspect로 자리를 먼저 잡아 폭 측정 전(w=0)에도 마소너리 높이가 튀지 않게 한다
+    <View style={{ width: '100%', aspectRatio: aspect }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      {w > 0 && (
+        <CutPhotoCanvas
+          frameId={cutPhoto.frameId}
+          photos={cutPhoto.photos}
+          transforms={cutPhoto.transforms}
+          width={w}
+          bgOverride={cutPhoto.frameColor}
+          bgImageOverride={cutPhoto.frameImage}
+          capture
+          showLogo={!cutPhoto.noLogo}
+          stamp={cutPhoto.stamp}
+        />
+      )}
+    </View>
+  );
+}
+
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
   const { records } = useRecords();
@@ -1934,9 +1961,12 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     const photos: string[] = item.cutPhoto?.photos || [];
     const hasGrid = photos.some(Boolean) && (item.cutPhoto?.frameId || item.cutPhoto?.layout);
     if (hasGrid) {
+      // 프레임이 확인되면 상세와 동일한 캔버스로(로고·문구·날짜·조정값 반영),
+      // frameId가 없는 레거시(layout만 저장)는 기존 격자 미리보기 유지
+      const hasFrame = !!(item.cutPhoto?.frameId && getCutFrame(item.cutPhoto.frameId));
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          <CutGridPreview cutPhoto={item.cutPhoto} />
+          {hasFrame ? <CutCanvasPreview cutPhoto={item.cutPhoto} /> : <CutGridPreview cutPhoto={item.cutPhoto} />}
           {cutMeta}
         </DiaryTappable>
       );
