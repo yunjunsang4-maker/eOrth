@@ -129,7 +129,8 @@ export function CalendarBottomSheet({
       date.setHours(0, 0, 0, 0);
       cells.push(date);
     }
-    while (cells.length % 7 !== 0) cells.push(null);
+    // 항상 6주(42칸)로 패딩 — 월 전환 시 4~6주 차이로 시트 높이가 출렁이는 것 방지
+    while (cells.length < 42) cells.push(null);
     return cells;
   }, [viewYear, viewMonth]);
 
