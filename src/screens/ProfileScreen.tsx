@@ -26,8 +26,6 @@ import type { ImageSourcePropType } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
-// 여행 카드 커버 썸네일 전용 — 디스크·메모리 캐시 + 부드러운 페이드로 재방문 시 즉시 표시
-import { Image as ExpoImage } from 'expo-image';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
@@ -2086,7 +2084,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
             {displayTrips[0].coverUri ? (
               <>
-                <ExpoImage source={{ uri: displayTrips[0].coverUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} cachePolicy="memory-disk" />
+                <Image source={{ uri: displayTrips[0].coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                 <LinearGradient
                   colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
                   style={StyleSheet.absoluteFill}
@@ -2165,7 +2163,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
                 {trip.coverUri ? (
                   <>
-                    <ExpoImage source={{ uri: trip.coverUri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} cachePolicy="memory-disk" />
+                    <Image source={{ uri: trip.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
                     <LinearGradient
                       colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
                       style={StyleSheet.absoluteFill}
