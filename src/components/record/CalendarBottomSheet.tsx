@@ -186,19 +186,19 @@ export function CalendarBottomSheet({
                   onPress={() => handleDayPress(date)}
                   activeOpacity={0.7}
                   style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
-                    band && [calS.recordBand, { backgroundColor: skinAccent.tint(0.20) }],
-                    bandLeftRound && calS.recordBandLeft,
-                    bandRightRound && calS.recordBandRight,
                     inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
                     isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
                     isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
                   ]}
                 >
-                  {band && isTripStart && (
-                    <View style={[calS.tripEdge, calS.tripEdgeLeft, { backgroundColor: skinAccent.accent }]} pointerEvents="none" />
-                  )}
-                  {band && isTripEnd && (
-                    <View style={[calS.tripEdge, calS.tripEdgeRight, { backgroundColor: skinAccent.accent }]} pointerEvents="none" />
+                  {band && (
+                    <View
+                      pointerEvents="none"
+                      style={[calS.bandSeg, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.55) },
+                        bandLeftRound && calS.bandSegLeft,
+                        bandRightRound && calS.bandSegRight,
+                      ]}
+                    />
                   )}
                   {band && isTripStart && !!band.countryLabel && (
                     <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
@@ -326,14 +326,22 @@ const calS = StyleSheet.create({
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
   recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
-  // 기존 여행 밴드 — 셀 전체를 채워 인접일이 이어져 보이게 한다
-  recordBand: {},
-  recordBandLeft:  { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
-  recordBandRight: { borderTopRightRadius: 10, borderBottomRightRadius: 10 },
-  // 여행 시작/끝 강조선 (레이아웃에 영향 없게 절대배치)
-  tripEdge:      { position: 'absolute', top: 6, bottom: 6, width: 2, borderRadius: 1 },
-  tripEdgeLeft:  { left: 0 },
-  tripEdgeRight: { right: 0 },
+  // 기존 여행 캡슐 밴드 — 기간을 타원(스타디움)형 테두리로 감싼다.
+  // 중간 셀은 위·아래 선만 이어지고, 시작/끝(또는 주 경계)에서 반원 캡으로 닫힌다.
+  bandSeg: {
+    position: 'absolute', left: 0, right: 0, top: 5, bottom: 5,
+    borderTopWidth: 1.5, borderBottomWidth: 1.5,
+  },
+  bandSegLeft: {
+    borderLeftWidth: 1.5,
+    borderTopLeftRadius: 999, borderBottomLeftRadius: 999,
+    marginLeft: 1,
+  },
+  bandSegRight: {
+    borderRightWidth: 1.5,
+    borderTopRightRadius: 999, borderBottomRightRadius: 999,
+    marginRight: 1,
+  },
   // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
   countryChip: {
     position: 'absolute', top: -7, left: 2, zIndex: 5,
