@@ -15,6 +15,7 @@ import { koAliases, matchesCountry } from '../utils/countryMatch';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
+import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
 import type { StayType, StayStatus } from '../utils/stayMachine';
 import { decideOnVisitedChange, type StaySnapshot } from '../utils/stayMachine';
 import {
@@ -411,19 +412,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
           // 비교가 안 되므로 문자열로 확인한다(런타임엔 존재).
           const legacy = r.visibility as string;
-          return legacy === 'public' || legacy === 'friends'
+          const vis = legacy === 'public' || legacy === 'friends'
             ? { ...r, visibility: 'neighbors' as const }
             : r;
+          // iOS 재설치/재빌드로 컨테이너 경로(UUID)가 바뀐 사진 URI 복구 —
+          // 파일은 새 컨테이너의 Documents로 이관돼 있으므로 경로만 재조립하면 다시 뜬다
+          return remapRecordDocUris(vis);
         })
       );
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
         Array.isArray(p.tripGroups)
-          ? p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+          ? p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt), coverUri: remapDocUri(g.coverUri) }))
           : []
       );
-      setDrafts(Array.isArray(p.drafts) ? p.drafts : []);
+      setDrafts(Array.isArray(p.drafts) ? p.drafts.map((d) => remapRecordDocUris(d)) : []);
       setNeighbors(
         Array.isArray(p.neighbors)
           ? p.neighbors
@@ -433,7 +437,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
       setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
-      if (p.countryCovers && typeof p.countryCovers === 'object' && !Array.isArray(p.countryCovers)) setCountryCovers(p.countryCovers as Record<string, CountryCover>);
+      if (p.countryCovers && typeof p.countryCovers === 'object' && !Array.isArray(p.countryCovers)) {
+        // 지구본 대표사진도 documentDirectory 절대경로 — 컨테이너 변경분 복구
+        const covers = p.countryCovers as Record<string, CountryCover>;
+        setCountryCovers(
+          Object.fromEntries(Object.entries(covers).map(([k, v]) => [k, { ...v, uri: remapDocUri(v.uri) }]))
+        );
+      }
       // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
       const rawSession = p.tripSessionGroups ?? null;
       const normalized: TripSession | null = !rawSession
