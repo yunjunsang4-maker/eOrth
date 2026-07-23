@@ -138,7 +138,7 @@ const ALL_BADGES: Badge[] = [
 
   // 동행 추가 배지 (123~124) — 여행 동행 & 스타일 그룹에 함께 표시됨
   { id: 123, emoji: '👨‍👩‍👧‍👦', name: '가족과 함께라면 어디든', desc: '가족 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/family-travel.png') },
-  { id: 124, emoji: '🧑‍🤝‍🧑', name: '우애가 돈독하시네요!', desc: '형제 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 124, emoji: '🧑‍🤝‍🧑', name: '우애가 돈독하시네요!', desc: '형제 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/sibling-travel.png') },
 
   // 국가별 여러 지역 방문 추가 배지 (125~) — '국가 & 지역 탐방' 그룹에 함께 표시됨
   { id: 125, emoji: '🇩🇪', name: '독일투어', desc: '독일 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
