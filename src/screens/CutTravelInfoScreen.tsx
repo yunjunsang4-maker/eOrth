@@ -9,7 +9,8 @@ import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
-import { collectRecordedDateKeys, toRecordedDateKey } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
@@ -120,115 +121,6 @@ const visibilityLabel = (v: Visibility, tr: TFunction) => {
   }
 };
 
-// ─── 기간 선택 캘린더 ───
-const DOW_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
-const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
-const firstDow = (y: number, m: number) => new Date(y, m, 1).getDay();
-
-function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose, recordedDates }: {
-  visible: boolean;
-  initialStart: Date | null;
-  initialEnd: Date | null;
-  onConfirm: (start: Date, end: Date) => void;
-  onClose: () => void;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
-  recordedDates?: Set<string>;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const base = initialStart ?? new Date();
-  const [vy, setVy] = useState(base.getFullYear());
-  const [vm, setVm] = useState(base.getMonth());
-  const [start, setStart] = useState<Date | null>(initialStart);
-  const [end, setEnd] = useState<Date | null>(initialEnd);
-
-  useEffect(() => {
-    if (visible) {
-      const b = initialStart ?? new Date();
-      setVy(b.getFullYear()); setVm(b.getMonth());
-      setStart(initialStart); setEnd(initialEnd);
-    }
-  }, [visible]);
-
-  if (!visible) return null;
-
-  const prevMonth = () => { if (vm === 0) { setVy(vy - 1); setVm(11); } else setVm(vm - 1); };
-  const nextMonth = () => { if (vm === 11) { setVy(vy + 1); setVm(0); } else setVm(vm + 1); };
-
-  const pick = (day: number) => {
-    const d = new Date(vy, vm, day);
-    if (!start || (start && end)) { setStart(d); setEnd(null); }
-    else if (d.getTime() < start.getTime()) { setEnd(start); setStart(d); }
-    else setEnd(d);
-  };
-  const inRange = (day: number) => {
-    if (!start) return false;
-    const d = new Date(vy, vm, day).getTime();
-    const s = start.getTime(); const e = (end ?? start).getTime();
-    return d >= Math.min(s, e) && d <= Math.max(s, e);
-  };
-  const isEdge = (day: number) => {
-    const d = new Date(vy, vm, day).getTime();
-    return (!!start && d === start.getTime()) || (!!end && d === end.getTime());
-  };
-
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstDow(vy, vm); i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth(vy, vm); day++) cells.push(day);
-
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={cal.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <View style={cal.sheet}>
-          <View style={cal.handle} />
-          <View style={cal.navRow}>
-            <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>‹</Text>
-            </TouchableOpacity>
-            <Text style={cal.ymLabel}>{t('cutInfo.yearMonth', { y: vy, m: vm + 1 })}</Text>
-            <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>›</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={cal.dowRow}>
-            {DOW_KEYS.map((dk, i) => (
-              <Text key={dk} style={[cal.dow, i === 0 && { color: '#FF6B6B' }, i === 6 && { color: '#6BA3FF' }]}>{t(dk)}</Text>
-            ))}
-          </View>
-          <View style={cal.grid}>
-            {cells.map((day, idx) => day === null ? (
-              <View key={`b${idx}`} style={cal.cell} />
-            ) : (
-              <TouchableOpacity key={day} style={cal.cell} onPress={() => pick(day)} activeOpacity={0.7}>
-                <View style={[cal.dayWrap, inRange(day) && [cal.dayInRange, { backgroundColor: skinAccent.tint(0.18) }], isEdge(day) && [cal.dayEdge, { backgroundColor: skinAccent.accentDeep }]]}>
-                  <Text style={[cal.dayTxt, isEdge(day) && cal.dayEdgeTxt]}>{day}</Text>
-                  {!!recordedDates?.has(toRecordedDateKey(new Date(vy, vm, day))) && (
-                    <View style={[cal.recordDot, { backgroundColor: isEdge(day) ? '#FFFFFF' : skinAccent.accent }]} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {!!recordedDates && recordedDates.size > 0 && (
-            <View style={cal.legendRow}>
-              <View style={[cal.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
-              <Text style={cal.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={[cal.confirmBtn, { backgroundColor: skinAccent.accentDeep }, !start && cal.confirmBtnDisabled]}
-            disabled={!start}
-            onPress={() => { if (start) { onConfirm(start, end ?? start); onClose(); } }}
-            activeOpacity={0.85}
-          >
-            <Text style={cal.confirmTxt}>{t('common.confirm')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
 
@@ -396,6 +288,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     [records, selectedCountries]
   );
 
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
+
   // ─── 메타 상태 (피드와 동일) ───
   const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
   const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
@@ -464,6 +359,45 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 캘린더에서 기존 여행 밴드를 탭하면 그 여행 정보를 폼에 채운다.
+  // 사진(cutPhoto)·글(memo)은 콘텐츠 필드이므로 건드리지 않는다.
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    // 국가 — 다국가 배열 우선, 없으면 대표 국가 1개
+    const matched = (src.countries ?? [{ flag: src.countryFlag, name: src.countryName }])
+      .map(c => COUNTRIES.find(k => k.name === c.name))
+      .filter((c): c is Country => !!c);
+    if (matched.length) setSelectedCountries(matched);
+    // 지역
+    setSelectedRegion(src.regionName ? { name: src.regionName, nameEn: src.regionNameEn ?? '' } : null);
+    // 기간 — 탭한 밴드 기간으로 동기화
+    setStartDate(start);
+    setEndDate(end);
+    // 별점
+    setRating(src.rating ?? 0);
+    // 동행자
+    setCompanions(src.companions ?? []);
+    setCompanionFriends(src.companionFriends ?? []);
+    // 공개범위
+    setVisibility(src.visibility ?? 'neighbors');
+    // 예산·통화 — 소스에 예산이 있을 때만 통화까지 복사(자동추천 차단), 없으면 국가 기반 자동추천 유지
+    if (src.budget) {
+      setBudget(String(src.budget.amount));
+      setCurrency(src.budget.currency);
+      currencyTouchedRef.current = true;
+    } else {
+      setBudget('');
+      currencyTouchedRef.current = false;
+    }
+    // 날씨·항공·태그
+    setWeather(src.weather ?? '');
+    setFlightType(src.flightType ?? '');
+    setKeywords(src.keywords ?? []);
+    // 캘린더 닫고 폼 복귀
+    setCalendarVisible(false);
+  };
 
   const toggleCompanion = (c: string) =>
     setCompanions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
@@ -916,14 +850,21 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       </KeyboardAvoidingView>
 
       {/* 캘린더 */}
-      <RangeCalendar
-        visible={calendarVisible}
-        initialStart={startDate}
-        initialEnd={endDate}
-        onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
-        onClose={() => setCalendarVisible(false)}
-        recordedDates={recordedDates}
-      />
+      {(() => {
+        const todayInit = new Date(); todayInit.setHours(0, 0, 0, 0);
+        return (
+          <CalendarBottomSheet
+            visible={calendarVisible}
+            initialStart={startDate ?? todayInit}
+            initialEnd={endDate ?? startDate ?? todayInit}
+            onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
+            onClose={() => setCalendarVisible(false)}
+            recordedDates={recordedDates}
+            recordedRanges={recordedRanges}
+            onSelectRecordedTrip={applySourceRecord}
+          />
+        );
+      })()}
 
       {/* 앱 메이트 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
@@ -1188,29 +1129,6 @@ const st = StyleSheet.create({
   kwHint: { color: C.textMuted, fontSize: 11, marginTop: 6 },
 });
 
-const cal = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
-  navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, marginBottom: 12 },
-  navArrow: { color: C.purpleNeon, fontSize: 26, fontWeight: '700', paddingHorizontal: 10 },
-  ymLabel: { color: C.white, fontSize: 16, fontWeight: '700' },
-  dowRow: { flexDirection: 'row', marginBottom: 6 },
-  dow: { flex: 1, textAlign: 'center', color: C.textDim, fontSize: 12, fontWeight: '600' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  dayWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  dayInRange: { backgroundColor: 'rgba(191,133,252,0.18)', borderRadius: 8 },
-  dayEdge: { backgroundColor: C.purpleDeep, borderRadius: 18 },
-  dayTxt: { color: C.white, fontSize: 14 },
-  dayEdgeTxt: { color: C.white, fontWeight: '700' },
-  recordDot: { position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 2 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 },
-  legendTxt: { fontSize: 11, color: C.textDim },
-  confirmBtn: { marginTop: 14, backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  confirmBtnDisabled: { opacity: 0.4 },
-  confirmTxt: { color: C.white, fontSize: 15, fontWeight: '700' },
-});
 
 const fp = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
