@@ -1015,6 +1015,43 @@ export const CommentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false
 //   Section 8 — Missing UI icons (emoji → SVG)
 // ══════════════════════════════════════════════════════════════════════
 
+// 답장 — 뒤로 향하는 화살표(리플라이). DM 메시지 롱프레스 메뉴 등.
+export const ReplyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Path
+      d="M40 26 L16 50 L40 74"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M16 50 H54 C69 50 80 61 80 76 V80"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {dot && <Circle cx={82} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+// 복사 — 겹친 두 페이지(카피). DM 메시지 롱프레스 메뉴 등.
+export const CopyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Rect x={34} y={34} width={46} height={50} rx={9} stroke={color ?? COLORS.purpleMid} strokeWidth={8} fill="none" />
+    <Path
+      d="M22 62 V24 C22 19 26 15 31 15 H60"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+    {dot && <Circle cx={82} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
 export const PencilIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
   <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
     <Defs>
