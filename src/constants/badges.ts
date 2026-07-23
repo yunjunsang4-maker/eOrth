@@ -76,7 +76,7 @@ const ALL_BADGES: Badge[] = [
   { id: 54, emoji: '💎', name: '저희의 워너비이십니다.', desc: '매달 여행', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 55, emoji: '🕰️', name: '잊지말아줘요..', desc: '1년전 오늘 기록 조회', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 56, emoji: '🌱', name: '배지 입문', desc: '배지 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/badge-lv1.png') },
-  { id: 57, emoji: '📂', name: '배지 수집가', desc: '배지 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 57, emoji: '📂', name: '배지 수집가', desc: '배지 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/badge-lv2.png') },
   { id: 58, emoji: '🔥', name: '배지 매니아', desc: '배지 30개 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 59, emoji: '🎓', name: '배지 마스터', desc: '배지 50개 달성 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 60, emoji: '🏆', name: '배지 챔피언', desc: '배지 100개 달성 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
