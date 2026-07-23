@@ -55,16 +55,27 @@ export function collectRecordedDateKeys(
   return out;
 }
 
+/** 밴드(기존 여행) 한 칸의 메타 — 캘린더 렌더링·탭 동기화에서 사용 */
+export type RecordedRange = { start: Date; end: Date; recordId: string; countryLabel: string };
+
+/** 기록의 국가 라벨 — 단일이면 국가명, 다국가면 '일본 외 2' */
+const countryLabelOf = (r: TravelRecord): string => {
+  const names = (r.countries?.map(c => c.name).filter(Boolean) as string[] | undefined) ?? [];
+  if (names.length === 0 && r.countryName) names.push(r.countryName);
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  return `${names[0]} 외 ${names.length - 1}`;
+};
+
 /**
- * 기록이 있는 날 → 그 기록의 전체 기간 맵('YYYY-MM-DD' → {start, end}). 국가 구별 없음.
- * 달력에서 점 찍힌 날을 탭하면 해당 기록의 기간을 통째로 선택하는 용도.
- * 겹치는 기록이 있으면 먼저 만난 기록의 기간을 유지한다.
+ * 기록이 있는 날 → 그 기록의 전체 기간·recordId·국가라벨 맵('YYYY-MM-DD' → RecordedRange).
+ * 국가 구별 없음. 겹치는 기록이 있으면 먼저 만난 기록을 유지한다.
  */
 export function collectRecordedRanges(
   records: TravelRecord[],
   excludeId?: string,
-): Map<string, { start: Date; end: Date }> {
-  const out = new Map<string, { start: Date; end: Date }>();
+): Map<string, RecordedRange> {
+  const out = new Map<string, RecordedRange>();
   for (const r of records) {
     if (excludeId && r.id === excludeId) continue;
     if (r.isMyPost === false || r.isDraft) continue;
@@ -73,9 +84,10 @@ export function collectRecordedRanges(
     if (!start || !end) continue;
     const days = Math.round((end.getTime() - start.getTime()) / 86400000);
     if (days < 0 || days > 400) continue;
+    const meta: RecordedRange = { start, end, recordId: r.id, countryLabel: countryLabelOf(r) };
     for (let i = 0; i <= days; i++) {
       const key = toRecordedDateKey(new Date(start.getFullYear(), start.getMonth(), start.getDate() + i));
-      if (!out.has(key)) out.set(key, { start, end });
+      if (!out.has(key)) out.set(key, meta);
     }
   }
   return out;
