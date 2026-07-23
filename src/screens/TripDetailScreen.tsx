@@ -401,15 +401,12 @@ export default function TripDetailScreen() {
 
   useEffect(() => {
     Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    moduleAnims.forEach((anim, i) => {
-      Animated.spring(anim, {
-        toValue: 1,
-        delay: 150 + i * 110,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    });
+    // 모듈은 순차(스태거) 없이 한 번에 부드럽게 페이드 인 — 하나씩 뜨는 거슬림 제거
+    Animated.parallel(
+      moduleAnims.map((anim) =>
+        Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true })
+      )
+    ).start();
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
@@ -681,14 +678,9 @@ export default function TripDetailScreen() {
             }).slice(0, 3);
             // 스냅·피드·블로그·스트립은 좁은 카드로 가로 스와이프(옆 카드가 보임), 앨범만 전체 폭
             const cardW = m.vt === 'album' ? SWIPE_CARD_W : SNAP_CARD_W;
+            // 순차 슬라이드 제거 — 모든 모듈이 동시에 부드럽게 페이드 인만 한다
             const animStyle = {
               opacity: moduleAnims[idx],
-              transform: [{
-                translateX: moduleAnims[idx].interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [even ? -48 : 48, 0],
-                }),
-              }],
             };
             return (
               <Animated.View key={m.vt} style={[s.moduleWrap, animStyle]}>
