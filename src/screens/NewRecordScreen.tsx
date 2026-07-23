@@ -833,10 +833,15 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     // 동행
     setSelectedCompanions(src.companions ?? []);
     setCompanionFriends(src.companionFriends ?? []);
-    // 예산·통화 — 자동 통화추천을 멈추기 위해 touched 처리
-    setBudget(src.budget ? String(src.budget.amount) : '');
-    setCurrency(src.budget?.currency ?? 'KRW');
-    currencyTouchedRef.current = true;
+    // 예산·통화 — 소스에 예산이 있을 때만 통화까지 복사(자동추천 차단), 없으면 국가 기반 자동추천 유지
+    if (src.budget) {
+      setBudget(String(src.budget.amount));
+      setCurrency(src.budget.currency);
+      currencyTouchedRef.current = true;
+    } else {
+      setBudget('');
+      currencyTouchedRef.current = false;
+    }
     // 날씨·항공·태그·공개범위
     setWeather(src.weather ?? '');
     setFlightType(src.flightType ?? '');
