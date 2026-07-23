@@ -10,6 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSkinAccent } from '../../constants/skinTheme';
+import type { RecordedRange } from '../../utils/recordedDates';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
@@ -36,6 +37,7 @@ export function CalendarBottomSheet({
   endLabel,
   recordedDates,
   recordedRanges,
+  onSelectRecordedTrip,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -44,10 +46,12 @@ export function CalendarBottomSheet({
   onClose: () => void;
   startLabel?: string;
   endLabel?: string;
-  /** 'YYYY-MM-DD' 키 집합 — 이미 기록이 있는 날짜(점 표시). utils/recordedDates 참조 */
+  /** 'YYYY-MM-DD' 키 집합 — 이미 기록이 있는 날짜(점 표시, 밴드 미제공 시 폴백). utils/recordedDates 참조 */
   recordedDates?: Set<string>;
-  /** 'YYYY-MM-DD' → 그 기록의 전체 기간. 점 찍힌 날을 탭하면 기간이 통째로 선택된다(시작 선택 시에만) */
-  recordedRanges?: Map<string, { start: Date; end: Date }>;
+  /** 'YYYY-MM-DD' → 그 기록의 기간·recordId·국가라벨. 있으면 밴드로 렌더링된다 */
+  recordedRanges?: Map<string, RecordedRange>;
+  /** 밴드(기존 여행)를 탭했을 때 호출 — 신규 작성 시에만 전달. 있으면 탭 즉시 이 콜백으로 동기화한다 */
+  onSelectRecordedTrip?: (recordId: string, start: Date, end: Date) => void;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -86,10 +90,14 @@ export function CalendarBottomSheet({
   };
 
   const handleDayPress = (date: Date) => {
+    const range = recordedRanges?.get(toDateKey(date));
+    // 신규 작성: 밴드(기존 여행) 탭 → 여행 정보 동기화 후 상위에서 시트 닫음
+    if (range && onSelectRecordedTrip) {
+      onSelectRecordedTrip(range.recordId, range.start, range.end);
+      return;
+    }
     if (!selectingEnd) {
-      // 기록이 있는 날을 시작 선택으로 탭하면 그 기록의 기간을 통째로 선택.
-      // 종료일 선택 중(selectingEnd)에는 일반 탭으로 취급 — 커스텀 기간 지정을 막지 않는다.
-      const range = recordedRanges?.get(toDateKey(date));
+      // 편집/앨범 모드: 밴드 탭 시 기간만 통째 선택 (기존 동작 유지)
       if (range) {
         setTempStart(range.start); setTempEnd(range.end); setSelectingEnd(false);
         return;
@@ -165,18 +173,38 @@ export function CalendarBottomSheet({
               const isEnd   = isRangeEnd(date);
               const inRange = isInRange(date);
               const isEdge  = isStart || isEnd;
-              const hasRecord = !!recordedDates?.has(toDateKey(date));
+              const key = toDateKey(date);
+              const band = recordedRanges?.get(key);
+              const isTripStart = !!band && isSameDay(date, band.start);
+              const isTripEnd   = !!band && isSameDay(date, band.end);
+              const bandLeftRound  = !!band && (isTripStart || dow === 0);
+              const bandRightRound = !!band && (isTripEnd   || dow === 6);
+              const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
               return (
                 <TouchableOpacity
-                  key={toDateKey(date)}
+                  key={key}
                   onPress={() => handleDayPress(date)}
                   activeOpacity={0.7}
                   style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
+                    band && [calS.recordBand, { backgroundColor: skinAccent.tint(0.20) }],
+                    bandLeftRound && calS.recordBandLeft,
+                    bandRightRound && calS.recordBandRight,
                     inRange && !isEdge && [calS.inRange, { backgroundColor: skinAccent.tint(0.18) }],
                     isStart && [calS.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
                     isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
                   ]}
                 >
+                  {band && isTripStart && (
+                    <View style={[calS.tripEdge, calS.tripEdgeLeft, { backgroundColor: skinAccent.accent }]} />
+                  )}
+                  {band && isTripEnd && (
+                    <View style={[calS.tripEdge, calS.tripEdgeRight, { backgroundColor: skinAccent.accent }]} />
+                  )}
+                  {band && isTripStart && !!band.countryLabel && (
+                    <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
+                      <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
+                    </View>
+                  )}
                   <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                     <Text style={[calS.dayText,
                       isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
@@ -184,7 +212,7 @@ export function CalendarBottomSheet({
                       dow===6 && !isEdge && calS.saturdayText,
                       isEdge && calS.edgeText,
                     ]}>{date.getDate()}</Text>
-                    {hasRecord && <View style={[calS.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />}
+                    {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
                   </View>
                 </TouchableOpacity>
               );
@@ -298,6 +326,20 @@ const calS = StyleSheet.create({
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
   recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
+  // 기존 여행 밴드 — 셀 전체를 채워 인접일이 이어져 보이게 한다
+  recordBand: {},
+  recordBandLeft:  { borderTopLeftRadius: 10, borderBottomLeftRadius: 10 },
+  recordBandRight: { borderTopRightRadius: 10, borderBottomRightRadius: 10 },
+  // 여행 시작/끝 강조선 (레이아웃에 영향 없게 절대배치)
+  tripEdge:      { position: 'absolute', top: 6, bottom: 6, width: 2, borderRadius: 1 },
+  tripEdgeLeft:  { left: 0 },
+  tripEdgeRight: { right: 0 },
+  // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
+  countryChip: {
+    position: 'absolute', top: -7, left: 2, zIndex: 5,
+    maxWidth: CELL_SIZE + 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+  },
+  countryChipText: { fontSize: 9, fontWeight: '700', color: '#0A0A0F' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
   legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
 
