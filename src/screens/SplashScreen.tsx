@@ -32,6 +32,9 @@ export default function SplashScreen({ navigation }: Props) {
   const player = useVideoPlayer(SPLASH_VIDEO, (p) => {
     p.loop = false;
     p.muted = true; // 스플래시는 무음 재생
+    // 기본 'auto'는 초기화 시점에 오디오 세션(포커스)을 가져가 백그라운드 음악·영상을
+    // 멈추게 한다 — 무음 스플래시는 다른 앱 오디오와 섞여도 되므로 포커스를 잡지 않는다.
+    p.audioMixingMode = 'mixWithOthers';
     p.playbackRate = SPLASH_RATE; // 빠르게
     p.play();
   });
@@ -110,7 +113,7 @@ export default function SplashScreen({ navigation }: Props) {
       <VideoView
         player={player}
         style={styles.video}
-        contentFit="cover"
+        contentFit="contain"
         nativeControls={false}
       />
     </View>
@@ -125,7 +128,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   video: {
-    // 전체 화면을 꽉 채운다(cover) — 배경이 화면 끝까지 덮이도록. 넘치는 부분만 크롭.
+    // contain: cover는 세로가 긴 화면에서 좌우를 크롭해 피사체가 화면 밖으로 넘쳤음.
+    // 영상 배경(우주 검정)이 백드롭 #000과 같아 여백이 티 나지 않고 피사체만 온전히 담긴다.
     width: SW,
     height: SH,
   },
