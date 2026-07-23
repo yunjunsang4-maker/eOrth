@@ -27,7 +27,8 @@ import CameraCaptureModal from '../components/CameraCaptureModal';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
-import { collectRecordedDateKeys } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
@@ -382,6 +383,9 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name), editRecord?.id),
     [records, selectedCountries, editRecord?.id]
   );
+
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙, 편집 중 기록 제외)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records, editRecord?.id), [records, editRecord?.id]);
 
   // useMoments — 서랍용 훅 (matchedMoments useMemo는 startDate/endDate state 이후에 위치)
   const { moments: allMoments } = useMoments();
@@ -969,6 +973,41 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setEndDateObj(end);
     setStartDate(fmtDate(start));
     setEndDate(fmtDate(end));
+  };
+
+  // ─── 기존 여행 밴드 탭 → 블로그 폼 자동 채움 (신규 작성 시에만 onSelectRecordedTrip으로 전달) ───
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    // 국가 — 다국가 배열 우선, 없으면 대표 국가 1개
+    const countries = (src.countries ?? (src.countryName ? [{ flag: src.countryFlag, name: src.countryName }] : []))
+      .map((c: { flag: string; name: string }) => COUNTRIES.find(k => k.name === c.name))
+      .filter((c): c is Country => !!c);
+    if (countries.length > 0) setSelectedCountries(countries);
+    // 지역
+    setSelectedRegion(src.regionName ? { name: src.regionName, nameEn: src.regionNameEn ?? '' } : null);
+    // 기간 — handleCalendarConfirm 재사용으로 문자열·Date 상태 동시 갱신
+    handleCalendarConfirm(start, end);
+    // 평점
+    setRating(src.rating ?? 0);
+    // 동행
+    setCompanions(src.companions ?? []);
+    setCompanionFriends(src.companionFriends ?? []);
+    // 예산·통화 — 소스에 예산이 있을 때만 통화까지 복사(자동추천 차단), 없으면 국가 기반 자동추천 유지
+    if (src.budget) {
+      setBudget(String(src.budget.amount));
+      chooseCurrency(src.budget.currency); // currencyTouchedRef 처리 포함
+    } else {
+      setBudget('');
+      currencyTouchedRef.current = false;
+    }
+    // 날씨·항공·태그·공개범위
+    setWeather(src.weather ?? '');
+    setFlightType(src.flightType ?? '');
+    setKeywords(src.keywords ?? []);
+    setVisibility(src.visibility ?? 'neighbors');
+    // 캘린더 닫고 폼 복귀
+    setCalendarVisible(false);
   };
 
   // ─── 키워드 ───
@@ -1746,19 +1785,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               <Text style={st.panelDoneText}>{t('common.done')}</Text>
             </TouchableOpacity>
 
-            {/* 캘린더 오버레이 (여행정보 패널 위에 표시) */}
-            {calendarVisible && (
-              <View style={st.calOverlay}>
-                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCalendarVisible(false)} />
-                <BlogCalendarSheet
-                  initialStart={startDateObj}
-                  initialEnd={endDateObj}
-                  onConfirm={handleCalendarConfirm}
-                  onClose={() => setCalendarVisible(false)}
-                  recordedDates={recordedDates}
-                />
-              </View>
-            )}
+            {/* 캘린더 — 공용 CalendarBottomSheet (자체 Modal+오버레이 포함) */}
+            <CalendarBottomSheet
+              visible={calendarVisible}
+              initialStart={startDateObj}
+              initialEnd={endDateObj}
+              onConfirm={handleCalendarConfirm}
+              onClose={() => setCalendarVisible(false)}
+              recordedDates={recordedDates}
+              recordedRanges={recordedRanges}
+              onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
+            />
 
             {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}
             {friendPickerVisible && (
@@ -2772,190 +2809,6 @@ const st = StyleSheet.create({
   // 토스트
   toast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,50,0.95)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
   toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
-});
-
-// ─── 날짜 유틸 ───
-const toDateKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
-const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
-
-// ─── 캘린더 바텀시트 ───
-const CAL_CELL = Math.floor((SCREEN_W - 32 - 12) / 7);
-
-function BlogCalendarSheet({
-  initialStart, initialEnd, onConfirm, onClose, recordedDates,
-}: {
-  initialStart: Date;
-  initialEnd: Date;
-  onConfirm: (start: Date, end: Date) => void;
-  onClose: () => void;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
-  recordedDates?: Set<string>;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const weekDays = [t('blog.week0'), t('blog.week1'), t('blog.week2'), t('blog.week3'), t('blog.week4'), t('blog.week5'), t('blog.week6')];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [viewYear, setViewYear]         = useState(initialStart.getFullYear());
-  const [viewMonth, setViewMonth]       = useState(initialStart.getMonth());
-  const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
-  const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
-  const [selectingEnd, setSelectingEnd] = useState(false);
-
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
-  };
-  const handleNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
-  };
-
-  const handleDayPress = (date: Date) => {
-    if (!selectingEnd) {
-      setTempStart(date); setTempEnd(null); setSelectingEnd(true);
-    } else {
-      if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
-      else { setTempEnd(date); setSelectingEnd(false); }
-    }
-  };
-
-  const handleConfirm = () => {
-    const s = tempStart ?? today;
-    const e = tempEnd ?? s;
-    onConfirm(s, e);
-    onClose();
-  };
-
-  const buildGrid = useCallback(() => {
-    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const cells: (Date | null)[] = [];
-    for (let i = 0; i < firstDay; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(viewYear, viewMonth, d);
-      date.setHours(0, 0, 0, 0);
-      cells.push(date);
-    }
-    while (cells.length % 7 !== 0) cells.push(null);
-    return cells;
-  }, [viewYear, viewMonth]);
-
-  const grid = buildGrid();
-  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
-  const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
-  const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
-  const MONTH_NAMES  = [t('blog.month0'), t('blog.month1'), t('blog.month2'), t('blog.month3'), t('blog.month4'), t('blog.month5'), t('blog.month6'), t('blog.month7'), t('blog.month8'), t('blog.month9'), t('blog.month10'), t('blog.month11')];
-  const fmtSel = (d: Date | null) =>
-    d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
-
-  return (
-    <View style={calSt.sheet} onStartShouldSetResponder={() => true}>
-      <View style={calSt.handle} />
-      <View style={[calSt.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
-        <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>{t('blog.departDate')}</Text>
-          <Text style={[calSt.selectedDate, !selectingEnd && [calSt.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
-        </View>
-        <Text style={calSt.selectedArrow}>→</Text>
-        <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>{t('blog.arriveDate')}</Text>
-          <Text style={[calSt.selectedDate, selectingEnd && [calSt.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
-        </View>
-      </View>
-      <View style={calSt.monthNav}>
-        <TouchableOpacity onPress={handlePrevMonth} style={calSt.navBtn}><Text style={[calSt.navArrow, { color: skinAccent.accent }]}>‹</Text></TouchableOpacity>
-        <Text style={calSt.monthTitle}>{t('blog.monthTitle', { year: viewYear, month: MONTH_NAMES[viewMonth] })}</Text>
-        <TouchableOpacity onPress={handleNextMonth} style={calSt.navBtn}><Text style={[calSt.navArrow, { color: skinAccent.accent }]}>›</Text></TouchableOpacity>
-      </View>
-      <View style={calSt.weekRow}>
-        {weekDays.map((d, i) => (
-          <Text key={d} style={[calSt.weekDay, { width: CAL_CELL }, i===0 && calSt.sundayText, i===6 && calSt.saturdayText]}>{d}</Text>
-        ))}
-      </View>
-      <View style={calSt.grid}>
-        {grid.map((date, idx) => {
-          if (!date) return <View key={`e-${idx}`} style={{ width: CAL_CELL, height: CAL_CELL }} />;
-          const dow = date.getDay();
-          const isToday = isSameDay(date, today);
-          const isStart = isRangeStart(date);
-          const isEnd   = isRangeEnd(date);
-          const inRange = isInRange(date);
-          const isEdge  = isStart || isEnd;
-          return (
-            <TouchableOpacity
-              key={toDateKey(date)}
-              onPress={() => handleDayPress(date)}
-              activeOpacity={0.7}
-              style={[calSt.dayCell, { width: CAL_CELL, height: CAL_CELL },
-                inRange && !isEdge && [calSt.inRange, { backgroundColor: skinAccent.tint(0.18) }],
-                isStart && [calSt.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
-                isEnd   && [calSt.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
-              ]}
-            >
-              <View style={[calSt.dayInner, isEdge && [calSt.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
-                <Text style={[calSt.dayText,
-                  isToday && !isEdge && [calSt.todayText, { color: skinAccent.accent }],
-                  dow===0 && !isEdge && calSt.sundayText,
-                  dow===6 && !isEdge && calSt.saturdayText,
-                  isEdge && calSt.edgeText,
-                ]}>{date.getDate()}</Text>
-                {!!recordedDates?.has(toDateKey(date)) && (
-                  <View style={[calSt.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {!!recordedDates && recordedDates.size > 0 && (
-        <View style={calSt.legendRow}>
-          <View style={[calSt.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
-          <Text style={calSt.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
-        </View>
-      )}
-      <TouchableOpacity style={[calSt.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
-        <Text style={calSt.confirmText}>{t('common.confirm')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const calSt = StyleSheet.create({
-  sheet: { backgroundColor: '#1E1E2E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingBottom: 36 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', marginTop: 12, marginBottom: 16 },
-  selectedRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(191,133,252,0.08)', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 16 },
-  selectedItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  selectedLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  selectedDate: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
-  selectedDateActive: { color: '#BF85FC' },
-  selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 4 },
-  navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
-  monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  weekRow: { flexDirection: 'row', marginBottom: 4 },
-  weekDay: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.45)', paddingVertical: 6 },
-  sundayText: { color: '#FF3B30' },
-  saturdayText: { color: '#5AC8FA' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { alignItems: 'center', justifyContent: 'center' },
-  dayInner: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17 },
-  dayText: { fontSize: 14, color: '#FFFFFF' },
-  todayText: { color: '#BF85FC', fontWeight: '700' },
-  inRange: { backgroundColor: 'rgba(191,133,252,0.18)' },
-  rangeStartCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopLeftRadius: 17, borderBottomLeftRadius: 17 },
-  rangeEndCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopRightRadius: 17, borderBottomRightRadius: 17 },
-  edgeCircle: { backgroundColor: '#BF85FC' },
-  edgeText: { color: '#FFFFFF', fontWeight: '700' },
-  recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
-  legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
-  confirmBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
-  confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
 });
 
 const pm = StyleSheet.create({
