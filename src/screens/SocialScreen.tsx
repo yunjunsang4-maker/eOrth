@@ -1816,21 +1816,38 @@ function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
   const frame = getCutFrame(cutPhoto.frameId);
   const aspect = (frame && (CUT_LAYOUTS as any)[frame.layout]?.aspect) || 0.7;
   return (
-    // aspect로 자리를 먼저 잡아 폭 측정 전(w=0)에도 마소너리 높이가 튀지 않게 한다
+    // aspect로 자리를 먼저 잡아 폭 측정 전(w=0)에도 마소너리 높이가 튀지 않게 한다.
     <View style={{ width: '100%', aspectRatio: aspect }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-      {w > 0 && (
-        <CutPhotoCanvas
-          frameId={cutPhoto.frameId}
-          photos={cutPhoto.photos}
-          transforms={cutPhoto.transforms}
-          width={w}
-          bgOverride={cutPhoto.frameColor}
-          bgImageOverride={cutPhoto.frameImage}
-          capture
-          showLogo={!cutPhoto.noLogo}
-          stamp={cutPhoto.stamp}
-        />
-      )}
+      {/*
+        래스터화(shouldRasterizeIOS/renderToHardwareTextureAndroid): 카드 tilt 회전 아래에서
+        캔버스를 먼저 비트맵으로 굽고 회전 시 이중선형 보간으로 샘플링해 사진·슬롯 경계의
+        계단현상을 없앤다(내용이 정적이라 캐시 비용 미미).
+        단, 보간은 비트맵 '내부'에만 적용되고 비트맵 가장자리는 여전히 하드엣지로 회전되므로,
+        래스터화 레이어 경계와 캔버스 최외곽 테두리가 겹치면 프레임 테두리 계단이 그대로 남는다.
+        → margin:-1+padding:1 투명 블리드 링으로 캔버스의 모든 가장자리를 비트맵 내부로 밀어 넣는다.
+        collapsable={false}: iOS 새 아키텍처의 뷰 플래트닝이 이 래퍼를 없애면서
+        shouldRasterizeIOS가 무시되는 것을 방지(Fabric formsView 판정에 raster prop이 없음).
+      */}
+      <View
+        collapsable={false}
+        style={{ margin: -1, padding: 1 }}
+        shouldRasterizeIOS
+        renderToHardwareTextureAndroid
+      >
+        {w > 0 && (
+          <CutPhotoCanvas
+            frameId={cutPhoto.frameId}
+            photos={cutPhoto.photos}
+            transforms={cutPhoto.transforms}
+            width={w}
+            bgOverride={cutPhoto.frameColor}
+            bgImageOverride={cutPhoto.frameImage}
+            capture
+            showLogo={!cutPhoto.noLogo}
+            stamp={cutPhoto.stamp}
+          />
+        )}
+      </View>
     </View>
   );
 }
