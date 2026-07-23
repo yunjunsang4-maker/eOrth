@@ -29,7 +29,7 @@ import * as Haptics from 'expo-haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
 import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
@@ -1842,25 +1842,27 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
   ]);
 
-  const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = variant === 'archived'
+  // 메뉴 아이콘은 앱 공용 SVG 아이콘 사용(이모지 대신) — 상세화면(PostDetail) 메뉴와 통일
+  const menuOptions: { key: string; icon: React.ReactNode; label: string; danger?: boolean; onPress: () => void }[] = variant === 'archived'
     ? [
-        { key: 'unarchive', icon: '↩️', label: t('misc.unarchive'), onPress: () => onUnarchive?.(item.id) },
-        { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
+        { key: 'unarchive', icon: <ArchiveIcon size={18} color="#fff" />, label: t('misc.unarchive'), onPress: () => onUnarchive?.(item.id) },
+        { key: 'delete', icon: <TrashIcon size={18} color="#FF3B30" />, label: t('social.delete'), danger: true, onPress: confirmDelete },
       ]
     : isMy
     ? [
-        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'visibility', icon: item.visibility === 'private' ? '🏡' : '🔒',
+        { key: 'share', icon: <ShareSvgIcon size={18} color="#fff" />, label: t('social.share'), onPress: handleShare },
+        { key: 'visibility',
+          icon: item.visibility === 'private' ? <GlobeIcon size={18} color="#fff" /> : <LockClosedIcon size={18} color="#fff" />,
           label: t(item.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate'),
           onPress: () => onToggleVisibility(item.id) },
-        { key: 'archive', icon: '📦', label: t('social.archive'), onPress: () => onArchive(item.id) },
-        { key: 'edit', icon: '✏️', label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
-        { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
+        { key: 'archive', icon: <ArchiveIcon size={18} color="#fff" />, label: t('social.archive'), onPress: () => onArchive(item.id) },
+        { key: 'edit', icon: <PencilIcon size={18} color="#fff" />, label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
+        { key: 'delete', icon: <TrashIcon size={18} color="#FF3B30" />, label: t('social.delete'), danger: true, onPress: confirmDelete },
       ]
     : [
-        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
-        { key: 'report', icon: '🚨', label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
+        { key: 'share', icon: <ShareSvgIcon size={18} color="#fff" />, label: t('social.share'), onPress: handleShare },
+        { key: 'block', icon: <BlockIcon size={18} color="#FF3B30" />, label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
+        { key: 'report', icon: <MegaphoneIcon size={18} color="#FF3B30" />, label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
   const meta = mode === 'full'
@@ -2081,7 +2083,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
                     activeOpacity={0.7}
                     onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}
                   >
-                    <Text style={[s.menuItemIcon, { fontSize: 18, width: 24, textAlign: 'center' }]}>{opt.icon}</Text>
+                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>{opt.icon}</View>
                     <Text style={[s.menuItemText, { fontSize: 15 }, opt.danger && s.menuItemDanger]}>{opt.label}</Text>
                   </TouchableOpacity>
                 </View>
