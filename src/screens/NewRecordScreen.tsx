@@ -804,6 +804,48 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [keywords,   setKeywords]   = useState<string[]>(editRecord?.keywords ?? []);
   const [keywordQuery, setKeywordQuery] = useState('');
 
+  // 캘린더에서 기존 여행 밴드를 탭하면 그 여행 정보를 신규 폼에 채운다.
+  // 사진(medias)·사진별 글(photoTexts)·제목/본문(content)·대표사진은 비운 채 유지한다.
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    // 국가 — 다국가 배열 우선, 없으면 대표 국가 1개
+    const countries = src.countries ?? (src.countryName ? [{ flag: src.countryFlag, name: src.countryName }] : []);
+    setSelectedCountries(countries);
+    setActiveCountryIdx(0);
+    // 국가별 날짜·별점 시드 (다국가 기록 전환용)
+    if (src.perCountryData) {
+      for (const [name, d] of Object.entries(src.perCountryData)) {
+        perCountryStore.current[name] = {
+          startDate: parseDotDate(d.startDate),
+          endDate: parseDotDate(d.endDate),
+          rating: d.rating ?? 0,
+        };
+      }
+    }
+    // 대표(첫) 국가 데이터로 활성 폼 채움 — 시드 있으면 그 값, 없으면 탭한 밴드 기간
+    const firstName = countries[0]?.name;
+    const pcd = firstName ? perCountryStore.current[firstName] : null;
+    if (pcd) { setStartDate(pcd.startDate); setEndDate(pcd.endDate); setRating(pcd.rating); }
+    else     { setStartDate(start); setEndDate(end); setRating(src.rating ?? 0); }
+    // 지역
+    setSelectedRegion(src.regionName ? { name: src.regionName, nameEn: src.regionNameEn ?? '' } : null);
+    // 동행
+    setSelectedCompanions(src.companions ?? []);
+    setCompanionFriends(src.companionFriends ?? []);
+    // 예산·통화 — 자동 통화추천을 멈추기 위해 touched 처리
+    setBudget(src.budget ? String(src.budget.amount) : '');
+    setCurrency(src.budget?.currency ?? 'KRW');
+    currencyTouchedRef.current = true;
+    // 날씨·항공·태그·공개범위
+    setWeather(src.weather ?? '');
+    setFlightType(src.flightType ?? '');
+    setKeywords(src.keywords ?? []);
+    setVisibility(src.visibility ?? 'neighbors');
+    // 캘린더 닫고 폼 복귀
+    setCalendarVisible(false);
+  };
+
   const CURRENCIES     = ['KRW', 'JPY', 'USD'];
   // OTHER_CURRENCIES 목록은 components/record/CurrencyPickerModal 로 이동
   // 라벨 이모지 제거 — 버튼에 SVG 날씨 아이콘(WEATHER_ICON_MAP)이 이미 있어 이중 표시였음
@@ -1824,6 +1866,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onClose={() => setCalendarVisible(false)}
         recordedDates={recordedDates}
         recordedRanges={recordedRanges}
+        onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
       />
 
       {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
