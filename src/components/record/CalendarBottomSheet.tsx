@@ -195,10 +195,10 @@ export function CalendarBottomSheet({
                   ]}
                 >
                   {band && isTripStart && (
-                    <View style={[calS.tripEdge, calS.tripEdgeLeft, { backgroundColor: skinAccent.accent }]} />
+                    <View style={[calS.tripEdge, calS.tripEdgeLeft, { backgroundColor: skinAccent.accent }]} pointerEvents="none" />
                   )}
                   {band && isTripEnd && (
-                    <View style={[calS.tripEdge, calS.tripEdgeRight, { backgroundColor: skinAccent.accent }]} />
+                    <View style={[calS.tripEdge, calS.tripEdgeRight, { backgroundColor: skinAccent.accent }]} pointerEvents="none" />
                   )}
                   {band && isTripStart && !!band.countryLabel && (
                     <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
