@@ -22,6 +22,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -227,26 +228,32 @@ const TRIP_GRADIENT_COLORS: Record<string, [string, string]> = {
 
 // ─── 배지 하이라이트 아이템 (리퀴드 구이 서클) ───
 let badgeRingSeq = 0; // SVG 그라데이션 id 충돌 방지용 (인스턴스별 고유 id)
-const BadgeHighlightItem = ({ emoji, name, glow, earned = true }: { emoji: string; name: string; glow?: string; earned?: boolean }) => {
+const BadgeHighlightItem = ({ emoji, image, name, glow, earned = true }: { emoji: string; image?: ImageSourcePropType; name: string; glow?: string; earned?: boolean }) => {
   const ringId = React.useMemo(() => 'badgeRing' + (badgeRingSeq++), []);
   return (
     <LiquidPressable style={[badgeHL.item, !earned && { opacity: 0.6 }]} intensity={0.1}>
-      {/* 배지 원 — Ellipse 2989 채움 + 유리 그라데이션 테두리(stroke만 → 안쪽엔 영향 없음) */}
-      <View style={badgeHL.circle}>
-        {earned ? (
-          <Text style={badgeHL.emoji}>{emoji}</Text>
+      {/* 배지 원 — 커스텀 이미지 배지는 자체 테두리가 있어 유리 링·회색 채움 없이 이미지만 렌더 */}
+      <View style={[badgeHL.circle, !!image && badgeHL.circleImage]}>
+        {image ? (
+          <Image source={image} style={badgeHL.badgeImg} resizeMode="contain" />
         ) : (
-          <Text style={badgeHL.lockIcon}>🔒</Text>
+          <>
+            {earned ? (
+              <Text style={badgeHL.emoji}>{emoji}</Text>
+            ) : (
+              <Text style={badgeHL.lockIcon}>🔒</Text>
+            )}
+            <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+                </SvgLinearGradient>
+              </Defs>
+              <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+            </Svg>
+          </>
         )}
-        <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Defs>
-            <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
-              <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
-        </Svg>
       </View>
     </LiquidPressable>
   );
@@ -406,31 +413,37 @@ function BadgeListModal({
                             onPress={() => handleBadgePress(badge)}
                           >
                             {isEarned ? (
-                              /* 획득한 메탈릭 코인 */
+                              /* 획득한 메탈릭 코인 — 커스텀 이미지 배지는 자체 코인 디자인이라 이미지만 렌더 */
                               <View style={blStyles.coinWrapper}>
-                                <LinearGradient
-                                  colors={metallicColors}
-                                  start={{ x: 0, y: 0 }}
-                                  end={{ x: 1, y: 1 }}
-                                  style={blStyles.coinBorder}
-                                >
-                                  <LinearGradient
-                                    colors={['#1E1B13', '#3A3525']}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={blStyles.coinInner}
-                                  >
-                                    <Text style={blStyles.coinEmoji}>{badge.emoji}</Text>
-                                  </LinearGradient>
-                                </LinearGradient>
-                                {/* 메탈릭 광택 */}
-                                <LinearGradient
-                                  colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
-                                  start={{ x: 0.1, y: 0.1 }}
-                                  end={{ x: 0.9, y: 0.9 }}
-                                  style={blStyles.coinShine}
-                                  pointerEvents="none"
-                                />
+                                {badge.image ? (
+                                  <Image source={badge.image} style={blStyles.coinImg} resizeMode="contain" />
+                                ) : (
+                                  <>
+                                    <LinearGradient
+                                      colors={metallicColors}
+                                      start={{ x: 0, y: 0 }}
+                                      end={{ x: 1, y: 1 }}
+                                      style={blStyles.coinBorder}
+                                    >
+                                      <LinearGradient
+                                        colors={['#1E1B13', '#3A3525']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 1 }}
+                                        style={blStyles.coinInner}
+                                      >
+                                        <Text style={blStyles.coinEmoji}>{badge.emoji}</Text>
+                                      </LinearGradient>
+                                    </LinearGradient>
+                                    {/* 메탈릭 광택 */}
+                                    <LinearGradient
+                                      colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                                      start={{ x: 0.1, y: 0.1 }}
+                                      end={{ x: 0.9, y: 0.9 }}
+                                      style={blStyles.coinShine}
+                                      pointerEvents="none"
+                                    />
+                                  </>
+                                )}
                                 {/* 선택 체크 뱃지 */}
                                 {isSelected && (
                                   <View style={[blStyles.checkBadge, { backgroundColor: skinAccent.accent }]}>
@@ -493,28 +506,34 @@ function BadgeListModal({
                 <TouchableOpacity activeOpacity={1} style={blStyles.zoomCard}>
                   {isEarned ? (
                     <View style={blStyles.zoomCoinWrapper}>
-                      <LinearGradient
-                        colors={metallicColors}
-                        start={{ x: 0, y: 0 }}
-                        end={{ x: 1, y: 1 }}
-                        style={blStyles.zoomCoinBorder}
-                      >
-                        <LinearGradient
-                          colors={['#1E1B13', '#3A3525']}
-                          start={{ x: 0, y: 0 }}
-                          end={{ x: 1, y: 1 }}
-                          style={blStyles.zoomCoinInner}
-                        >
-                          <Text style={blStyles.zoomCoinEmoji}>{enlargedBadge.emoji}</Text>
-                        </LinearGradient>
-                      </LinearGradient>
-                      <LinearGradient
-                        colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
-                        start={{ x: 0.1, y: 0.1 }}
-                        end={{ x: 0.9, y: 0.9 }}
-                        style={blStyles.zoomCoinShine}
-                        pointerEvents="none"
-                      />
+                      {enlargedBadge.image ? (
+                        <Image source={enlargedBadge.image} style={blStyles.zoomCoinImg} resizeMode="contain" />
+                      ) : (
+                        <>
+                          <LinearGradient
+                            colors={metallicColors}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={blStyles.zoomCoinBorder}
+                          >
+                            <LinearGradient
+                              colors={['#1E1B13', '#3A3525']}
+                              start={{ x: 0, y: 0 }}
+                              end={{ x: 1, y: 1 }}
+                              style={blStyles.zoomCoinInner}
+                            >
+                              <Text style={blStyles.zoomCoinEmoji}>{enlargedBadge.emoji}</Text>
+                            </LinearGradient>
+                          </LinearGradient>
+                          <LinearGradient
+                            colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                            start={{ x: 0.1, y: 0.1 }}
+                            end={{ x: 0.9, y: 0.9 }}
+                            style={blStyles.zoomCoinShine}
+                            pointerEvents="none"
+                          />
+                        </>
+                      )}
                     </View>
                   ) : (
                     <View style={blStyles.zoomEmptyHole}>
@@ -2001,7 +2020,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               const badge = BADGES.find(b => b.id === id);
               if (!badge) return null;
               return (
-                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
+                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
               );
             })}
           </ScrollView>
@@ -2709,6 +2728,9 @@ const badgeHL = StyleSheet.create({
   lockIcon: {
     fontSize: 22,
   },
+  // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
+  circleImage: { backgroundColor: 'transparent' },
+  badgeImg: { width: 64, height: 64 },
 });
 
 // ─── 배지 전체 목록 모달 스타일 ───
@@ -2808,6 +2830,7 @@ const blStyles = StyleSheet.create({
   coinEmoji: {
     fontSize: 26,
   },
+  coinImg: { width: 66, height: 66 },
   coinShine: {
     position: 'absolute',
     top: 0,
@@ -2969,6 +2992,7 @@ const blStyles = StyleSheet.create({
   zoomCoinEmoji: {
     fontSize: 64,
   },
+  zoomCoinImg: { width: 150, height: 150 },
   zoomCoinShine: {
     position: 'absolute',
     top: 0,

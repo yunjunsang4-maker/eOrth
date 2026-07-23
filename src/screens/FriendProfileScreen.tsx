@@ -469,7 +469,7 @@ export default function FriendProfileScreen({
                   contentContainerStyle={pv.badgeScrollContent}
                 >
                   {friendBadges.map((badge) => (
-                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
+                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badge.name} glow={badge.glow} earned />
                   ))}
                 </ScrollView>
               </>

@@ -1,6 +1,8 @@
 // ─── 배지 데이터 (전 화면 공용) ───
 // 조건 로직은 utils/badgeRules, 표시는 ProfileScreen, 전역 판정은 hooks/useBadgeEarning에서 사용.
 
+import type { ImageSourcePropType } from 'react-native';
+
 export interface Badge {
   id: number;
   emoji: string;
@@ -8,12 +10,13 @@ export interface Badge {
   desc: string;
   earned: boolean; // static 기본값(데이터 판정 대상은 무시됨)
   glow: string;
+  image?: ImageSourcePropType; // 커스텀 디자인 배지 — 있으면 이모지 대신 이미지로 렌더 (자체 테두리 포함)
 }
 
 // 전체 카탈로그(숨김 포함). 정의는 지우지 않고 남겨 둔다 — 숨김 해제 시 그대로 복귀.
 const ALL_BADGES: Badge[] = [
   // 대륙 & 첫 방문 배지 (1 ~ 7)
-  { id: 1, emoji: '🛫', name: '역사적인 당신의 첫 발자취!', desc: '첫 기록', earned: true, glow: 'rgba(47,217,244,0.6)' },
+  { id: 1, emoji: '🛫', name: '역사적인 당신의 첫 발자취!', desc: '첫 기록', earned: true, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/first-record.png') },
   { id: 2, emoji: '🌏', name: '아시아에서의 첫발!', desc: '아시아 첫방문', earned: true, glow: 'rgba(47,217,244,0.6)' },
   { id: 3, emoji: '🇪🇺', name: '유럽에서의 첫발!', desc: '유럽 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
   { id: 4, emoji: '🍁', name: '북미에서의 첫발!', desc: '북아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
