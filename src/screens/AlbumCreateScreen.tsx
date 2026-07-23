@@ -21,7 +21,7 @@ import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../c
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
 import { SearchIcon } from '../components/icons';
-import { collectRecordedDateKeys } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
@@ -86,6 +86,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     () => collectRecordedDateKeys(records, selectedCountry ? [selectedCountry.name] : []),
     [records, selectedCountry]
   );
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
 
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
@@ -128,6 +130,18 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   const cover = coverUri && selected.includes(coverUri) ? coverUri : selected[0];
   const activeAdjust = coverAdjust && coverAdjust.uri === cover ? coverAdjust.t : null;
+
+  // 캘린더에서 기존 여행 밴드를 탭하면 그 여행의 국가·기간을 폼에 채운다 (사진첩은 국가 1개)
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    const srcName = src.countries?.[0]?.name ?? src.countryName;
+    const matched = COUNTRIES.find(c => c.name === srcName);
+    if (matched) setSelectedCountry(matched);
+    setStartDate(start);
+    setEndDate(end);
+    setCalendarVisible(false);
+  };
 
   // ── 갤러리에서 기간 내 사진 페이지 로드 ──
   const fetchPage = async (after?: string) => {
@@ -489,6 +503,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
           onClose={() => setCalendarVisible(false)}
           recordedDates={recordedDates}
+          recordedRanges={recordedRanges}
+          onSelectRecordedTrip={applySourceRecord}
         />
       </LinearGradient>
     );
