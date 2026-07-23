@@ -460,9 +460,11 @@ export default function TripDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-          <Text style={s.backIcon}>←</Text>
-        </TouchableOpacity>
+        <View style={s.headerSide}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+            <Text style={s.backIcon}>←</Text>
+          </TouchableOpacity>
+        </View>
         <View style={s.headerCenter}>
           {isEditing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -481,15 +483,15 @@ export default function TripDetailScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={s.headerTitle}>{titleToDisplay}</Text>
+            <Text style={s.headerTitle} numberOfLines={1}>{titleToDisplay}</Text>
           )}
         </View>
         {/* ☰ 편집 메뉴 — 타인 여행(게스트)은 편집 대상이 없어 숨김.
             테두리 없는 투명 스페이서로 폭만 유지해 제목 중앙 정렬은 그대로 둔다 */}
         {isGuest ? (
-          <View style={{ width: 38, height: 38 }} />
+          <View style={s.headerSide} />
         ) : (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 6 }]}>
             {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
             <TouchableOpacity
               style={s.backBtn}
@@ -1094,8 +1096,10 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   backIcon: { fontSize: 17, color: COLORS.white },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3 },
+  // 좌(뒤로가기)·우(✨·☰) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
+  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3, textAlign: 'center' },
   headerInput: {
     fontSize: 15,
     fontWeight: '700',
