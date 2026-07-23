@@ -2,8 +2,8 @@ import React from 'react';
 import { Image, View } from 'react-native';
 import { PersonIcon } from './icons';
 
-// eOrth 앱 아이콘 — 공식 예시 아바타용
-const APP_LOGO = require('../../assets/icon.png');
+// eOrth 공식 예시 아바타 이미지(지구본) — 소셜 예시 기록의 '이어스' 프로필 사진
+const APP_LOGO = require('../../assets/example-avatar.png');
 
 // 작성자 아바타 내부 표시: 프로필 사진이 있으면 원형 이미지, 없으면 프로필 탭과 동일한 사람 실루엣.
 // 부모(원형 컨테이너) 안에 들어가는 inner 노드만 렌더한다(컨테이너 배경/테두리는 그대로 링으로 보임).
@@ -22,11 +22,10 @@ export default function AuthorAvatar({
   isExample?: boolean;
 }) {
   if (isExample) {
-    // 아이콘 내부 여백 때문에 작아 보여, 원보다 크게 그린 뒤 원으로 잘라 로고를 키운다.
-    const z = Math.round(size * 1.35);
+    // 예시 아바타는 원형 구성 이미지라 원을 꽉 채워 '중앙 정렬'(확대/크롭 없이 1:1).
     return (
-      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }}>
-        <Image source={APP_LOGO} style={{ width: z, height: z }} resizeMode="cover" />
+      <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
+        <Image source={APP_LOGO} style={{ width: size, height: size }} resizeMode="cover" />
       </View>
     );
   }
