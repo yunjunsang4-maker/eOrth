@@ -54,7 +54,7 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
   const benefits = [
     { icon: <MegaphoneIcon size={22} />, title: t('premium.benefitAdsTitle'),   desc: t('premium.benefitAdsDesc') },
     { icon: <LanguageIcon size={22} />, title: t('premium.benefitFontTitle'),   desc: t('premium.benefitFontDesc') },
-    { icon: <GalleryIcon size={22} />,  title: t('premium.benefitPhotosTitle'), desc: t('premium.benefitPhotosDesc') },
+    // (2026-07) 사진 제한 상향은 프리미엄 혜택에서 제외 — benefitPhotos 행 제거. 사진첩 '원본 백업'은 유지.
     { icon: <GalleryIcon size={22} />,  title: t('premium.benefitBackupTitle'), desc: t('premium.benefitBackupDesc') },
     { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),   desc: t('premium.benefitLogoDesc') },
     { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'),  desc: t('premium.benefitFrameDesc') },
