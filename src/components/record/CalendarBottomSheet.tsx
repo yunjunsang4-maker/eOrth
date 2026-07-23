@@ -131,6 +131,7 @@ export function CalendarBottomSheet({
   }, [viewYear, viewMonth]);
 
   const grid = buildGrid();
+  const daysInViewMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
@@ -176,9 +177,16 @@ export function CalendarBottomSheet({
               const key = toDateKey(date);
               const band = recordedRanges?.get(key);
               const isTripStart = !!band && isSameDay(date, band.start);
-              const isTripEnd   = !!band && isSameDay(date, band.end);
-              const bandLeftRound  = !!band && (isTripStart || dow === 0);
-              const bandRightRound = !!band && (isTripEnd   || dow === 6);
+              // 인접일이 같은 여행인지 — Date 생성자가 월 경계를 자동 롤오버하므로 전/다음달 날짜도 정확히 조회된다
+              const prevSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() - 1)))?.recordId === band.recordId;
+              const nextSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() + 1)))?.recordId === band.recordId;
+              const isMonthFirst = date.getDate() === 1;
+              const isMonthLast  = date.getDate() === daysInViewMonth;
+              // 캡(반원)으로 닫는 지점: 옆날이 같은 여행이 아닐 때(시작/끝·다른 여행과 인접)·주 경계·월 경계
+              const bandLeftRound  = !!band && (!prevSame || dow === 0 || isMonthFirst);
+              const bandRightRound = !!band && (!nextSame || dow === 6 || isMonthLast);
+              // 국가 칩: 여행 시작일, 또는 지난달부터 이어진 여행의 이번 달 첫 칸
+              const showChip = !!band && !!band.countryLabel && (isTripStart || (isMonthFirst && prevSame));
               const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
               return (
                 <TouchableOpacity
@@ -200,7 +208,7 @@ export function CalendarBottomSheet({
                       ]}
                     />
                   )}
-                  {band && isTripStart && !!band.countryLabel && (
+                  {band && showChip && (
                     <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
                       <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
                     </View>
@@ -335,12 +343,12 @@ const calS = StyleSheet.create({
   bandSegLeft: {
     borderLeftWidth: 1.5,
     borderTopLeftRadius: 999, borderBottomLeftRadius: 999,
-    marginLeft: 1,
+    marginLeft: 3, // 인접한 다른 여행 캡슐과 시각적으로 분리(양쪽 합 6px 간격)
   },
   bandSegRight: {
     borderRightWidth: 1.5,
     borderTopRightRadius: 999, borderBottomRightRadius: 999,
-    marginRight: 1,
+    marginRight: 3,
   },
   // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
   countryChip: {
