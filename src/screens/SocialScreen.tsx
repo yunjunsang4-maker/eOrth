@@ -2358,6 +2358,90 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 // 피드 카드 — props가 안정적일 때 리렌더를 건너뛰도록 memo화 (스크롤·다른 글 변경 시 불필요 렌더 방지)
 export const DiaryCardMemo = React.memo(DiaryCard);
 
+// 피드 추천 메이트 카드(여행 DNA) — 네온 글로우 글래스.
+// 반투명 유리 매트(별 배경이 비침) + 보라 그라데이션 테두리(SVG stroke, 빈피드 CTA와 동일 기법)
+// + iOS 글로우 그림자 + 추천 근거 서브라인(겹치는 나라·함께 아는 메이트) + 그라데이션 CTA.
+// 실블러(BlurView)는 대면적 안드 비용·no-op 함정 때문에 쓰지 않는다.
+function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
+  suggestions: MateSuggestionRow[];
+  onPressUser: (m: MateSuggestionRow) => void;
+  onPressCta: () => void;
+}) {
+  const { t } = useTranslation();
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={s.mateCard}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize((p) => (p.w === width && p.h === height ? p : { w: width, h: height }));
+      }}
+    >
+      {/* 그라데이션 테두리 — 새 아키텍처 RNSVG 터치 삼킴 방지: View(pointerEvents=none)로 감싼다 */}
+      {size.w > 0 && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width={size.w} height={size.h}>
+            <SvgDefs>
+              <SvgLinearGradient id="mateCardBorderGrad" x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor="#BF85FC" stopOpacity="0.9" />
+                <SvgStop offset="0.5" stopColor="#BF85FC" stopOpacity="0.12" />
+                <SvgStop offset="1" stopColor="#6B21A8" stopOpacity="0.7" />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <Rect
+              x={0.5}
+              y={0.5}
+              width={size.w - 1}
+              height={size.h - 1}
+              rx={15.5}
+              ry={15.5}
+              fill="none"
+              stroke="url(#mateCardBorderGrad)"
+              strokeWidth={1}
+            />
+          </Svg>
+        </View>
+      )}
+      <Text style={s.mateCardTitle}>✦ {t('social.mateSuggestTitle')}</Text>
+      {suggestions.map((m) => {
+        // 왜 추천됐는지 근거를 보여준다 — 데이터 없으면 서브라인 생략
+        const sub = [
+          m.sharedCount > 0 ? t('social.mateOverlapN', { count: m.sharedCount }) : null,
+          m.mutualCount > 0 ? t('social.mutualN', { count: m.mutualCount }) : null,
+        ].filter(Boolean).join(' · ');
+        return (
+          <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
+            <View style={s.mateCardAvatarRing}>
+              <View style={s.mateCardAvatar}>
+                {m.profilePhoto ? (
+                  <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
+                ) : (
+                  <PersonIcon size={16} color="#A0A0B0" />
+                )}
+              </View>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.mateCardHandle} numberOfLines={1}>{m.handle}</Text>
+              {!!sub && <Text style={s.mateCardSub} numberOfLines={1}>{sub}</Text>}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPressCta}
+        accessibilityRole="button"
+        accessibilityLabel={t('social.adInviteCta')}
+        style={s.mateCardCtaWrap}
+      >
+        <LinearGradient colors={['#BF85FC', '#6B21A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mateCardCta}>
+          <Text style={s.mateCardCtaTxt}>{t('social.adInviteCta')} →</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
@@ -2686,7 +2770,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       h[c] += item._adSlot
         ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
         : item._mateSlot
-          ? 82 + mateSuggestions.length * 44 // 추천 메이트 카드: 패딩+제목+CTA ≈82 + 행당 44
+          ? 102 + mateSuggestions.length * 48 // 추천 메이트 카드: 패딩+제목+CTA ≈102 + 행당 48(링 아바타+서브라인)
           : item._featureCard
             ? 260 // 기능 소개 카드 고정 추정치
             : estDiaryHeight(item, diaryCardMode);
@@ -2782,35 +2866,12 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   }
                   if (item._mateSlot) {
                     return (
-                      <View key={item.id} style={s.mateCard}>
-                        <Text style={s.mateCardTitle}>{t('friends.suggestedFriends')}</Text>
-                        {mateSuggestions.map((m) => (
-                          <TouchableOpacity
-                            key={m.authorId}
-                            style={s.mateCardRow}
-                            activeOpacity={0.75}
-                            onPress={() => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
-                          >
-                            <View style={s.mateCardAvatar}>
-                              {m.profilePhoto ? (
-                                <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
-                              ) : (
-                                <PersonIcon size={18} color="#A0A0B0" />
-                              )}
-                            </View>
-                            <Text style={s.mateCardHandle} numberOfLines={1}>{m.handle}</Text>
-                          </TouchableOpacity>
-                        ))}
-                        <TouchableOpacity
-                          style={s.mateCardCta}
-                          activeOpacity={0.85}
-                          onPress={() => navigation.navigate('FriendSearch')}
-                          accessibilityRole="button"
-                          accessibilityLabel={t('social.adInviteCta')}
-                        >
-                          <Text style={s.mateCardCtaTxt}>{t('social.adInviteCta')}</Text>
-                        </TouchableOpacity>
-                      </View>
+                      <MateSuggestCard
+                        key={item.id}
+                        suggestions={mateSuggestions}
+                        onPressUser={(m) => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
+                        onPressCta={() => navigation.navigate('FriendSearch')}
+                      />
                     );
                   }
                   if (item._adSlot) {
@@ -3387,14 +3448,28 @@ const s = StyleSheet.create({
     textDecorationLine: 'underline',
   },
 
-  // 피드 추천 메이트 카드 (여행 DNA)
-  mateCard: { backgroundColor: '#2E2E3B', borderRadius: 16, padding: 14, marginBottom: 14 },
-  mateCardTitle: { fontSize: 13, fontWeight: '700', color: '#BF85FC', marginBottom: 10 },
-  mateCardRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  mateCardAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: '#1A1A26', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  mateCardAvatarImg: { width: 32, height: 32 },
-  mateCardHandle: { flex: 1, fontSize: 13, color: '#FFFFFF' },
-  mateCardCta: { marginTop: 8, height: 34, borderRadius: 999, backgroundColor: '#6B21A8', alignItems: 'center', justifyContent: 'center' },
+  // 피드 추천 메이트 카드 (여행 DNA) — 네온 글로우 글래스
+  // 반투명 배경으로 별 배경이 비치는 유리 느낌 + iOS 보라 글로우(안드는 elevation 색 지정 불가라 생략)
+  mateCard: {
+    backgroundColor: 'rgba(46,46,59,0.55)',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#BF85FC',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  mateCardTitle: { fontSize: 13, fontWeight: '800', color: '#BF85FC', marginBottom: 10, letterSpacing: 0.2 },
+  mateCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  // 아바타 네온 링 — 얇은 보라 테두리 안에 아바타
+  mateCardAvatarRing: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(191,133,252,0.5)', alignItems: 'center', justifyContent: 'center' },
+  mateCardAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1A1A26', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  mateCardAvatarImg: { width: 30, height: 30 },
+  mateCardHandle: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  mateCardSub: { fontSize: 10.5, color: '#A1A1B0', marginTop: 1 },
+  mateCardCtaWrap: { marginTop: 10, borderRadius: 999, overflow: 'hidden' },
+  mateCardCta: { height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   mateCardCtaTxt: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });
 

@@ -651,6 +651,8 @@ const ko = {
     adInviteTitle: '함께 떠날 메이트를 찾아보세요',
     adInviteBody: '아이디 검색과 QR로 메이트를 추가하고\n서로의 여행을 구경해요',
     adInviteCta: '메이트 찾기',
+    mateSuggestTitle: '함께 떠날 메이트',
+    mateOverlapN: '겹치는 나라 {{count}}곳',
     linkCopiedToast: '링크가 복사되었어요!',
     reportReceivedToast: '신고가 접수되었어요',
     archivedToast: '게시물이 보관되었어요',

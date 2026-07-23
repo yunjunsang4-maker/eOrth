@@ -650,6 +650,8 @@ const en = {
     adInviteTitle: 'Find mates to travel with',
     adInviteBody: 'Add mates by ID or QR\nand explore each other\'s trips',
     adInviteCta: 'Find mates',
+    mateSuggestTitle: 'Mates to travel with',
+    mateOverlapN: '{{count}} countries in common',
     linkCopiedToast: 'Link copied!',
     reportReceivedToast: 'Your report has been submitted',
     archivedToast: 'Post archived',
