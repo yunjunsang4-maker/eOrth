@@ -53,7 +53,7 @@ import BlogPin from '../components/BlogPin';
 import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
 
-const APP_LOGO = require('../../assets/icon.png');
+const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
@@ -1586,7 +1586,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
       >
         <View style={[d.metaAvatar, onLight && d.metaAvatarLight, item.isExample && { overflow: 'hidden' }]}>
           {item.isExample ? (
-            <Image source={APP_LOGO} style={{ width: 24, height: 24 }} resizeMode="cover" />
+            <Image source={APP_LOGO} style={{ width: 18, height: 18 }} resizeMode="cover" />
           ) : isMyPost && globalProfilePhoto ? (
             <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : item.user.photo ? (
@@ -1808,7 +1808,7 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
@@ -1842,9 +1842,17 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
   ]);
 
-  const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = isMy
+  const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = variant === 'archived'
+    ? [
+        { key: 'unarchive', icon: '↩️', label: t('misc.unarchive'), onPress: () => onUnarchive?.(item.id) },
+        { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
+      ]
+    : isMy
     ? [
         { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
+        { key: 'visibility', icon: item.visibility === 'private' ? '🏡' : '🔒',
+          label: t(item.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate'),
+          onPress: () => onToggleVisibility(item.id) },
         { key: 'archive', icon: '📦', label: t('social.archive'), onPress: () => onArchive(item.id) },
         { key: 'edit', icon: '✏️', label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
         { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
@@ -2095,7 +2103,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
 }
 
 // 높이 추정 (2단 균형 분배용)
-const estDiaryHeight = (item: any, mode: string): number => {
+export const estDiaryHeight = (item: any, mode: string): number => {
   const vt = item.viewType || 'feed';
   let h = 200;
   if (vt === 'cut') {
@@ -2278,14 +2286,14 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 // 피드 카드 — props가 안정적일 때 리렌더를 건너뛰도록 memo화 (스크롤·다른 글 변경 시 불필요 렌더 방지)
-const DiaryCardMemo = React.memo(DiaryCard);
+export const DiaryCardMemo = React.memo(DiaryCard);
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2435,13 +2443,29 @@ function FriendsTab({ navigation }: { navigation: any }) {
   }, []);
 
   const handleArchive = (id: string) => {
-    archiveRecord(id);
-    showToast(t('social.archivedToast'));
+    Alert.alert(
+      t('social.archiveConfirmTitle'),
+      t('social.archiveConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.archive'), onPress: () => { archiveRecord(id); showToast(t('social.archivedToast')); } },
+      ]
+    );
   };
 
   const handleDelete = (id: string) => {
     deleteRecord(id);
     showToast(t('social.deletedToast'));
+  };
+
+  // 내 게시물 공개범위 토글 (이웃 공개 ↔ 비공개). updateRecord가 로컬·영속·백엔드 동기화까지 처리.
+  // 피드에서 비공개로 바꾸면 필터에서 빠져 카드가 곧바로 사라진다(의도된 피드백).
+  const handleToggleVisibility = (id: string) => {
+    const rec = records.find((r) => r.id === id);
+    if (!rec) return;
+    const next = rec.visibility === 'private' ? 'neighbors' : 'private';
+    updateRecord(id, { visibility: next });
+    showToast(t(next === 'private' ? 'social.madePrivateToast' : 'social.madePublicToast'));
   };
 
   // 차단(확인 다이얼로그 경유)
@@ -2451,13 +2475,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   // 메모이즈된 카드(DiaryCardMemo)에 넘길 콜백을 안정적인 ref로 박제 — 매 렌더 최신 함수를 가리키되
   // 콜백 ref 자체는 불변 → 카드 props가 안정되어 React.memo가 불필요 리렌더를 건너뛴다.
-  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
-  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
+  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleToggleVisibility, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
+  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleToggleVisibility, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
   const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
   const cbReport     = useCallback((id: string, reason?: string) => fnRef.current.reportPost(id, reason), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
   const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
   const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string; id?: string }) => fnRef.current.handleBlock(user), []);
+  const cbToggleVisibility = useCallback((id: string) => fnRef.current.handleToggleVisibility(id), []);
   const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
   const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
   const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
@@ -2644,7 +2669,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     <View style={s.storyAvatarWrap}>
                       <View style={[s.storyAvatar, snap.isExample && { overflow: 'hidden' }]}>
                         {snap.isExample ? (
-                          <Image source={APP_LOGO} style={{ width: 70, height: 70 }} resizeMode="cover" />
+                          <Image source={APP_LOGO} style={{ width: 52, height: 52 }} resizeMode="cover" />
                         ) : (snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : snap.user.photo ? (
@@ -2740,6 +2765,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       onDelete={cbDelete}
                       onBlock={cbBlock}
                       onReport={cbReport}
+                      onToggleVisibility={cbToggleVisibility}
                       onQuickStart={cbQuickStart}
                       onQuickMove={cbQuickMove}
                       onQuickEnd={cbQuickEnd}

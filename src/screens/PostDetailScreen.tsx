@@ -35,7 +35,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -45,7 +45,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
 
-const APP_LOGO = require('../../assets/icon.png');
+const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
@@ -921,7 +921,7 @@ function SnapStoryViewer({
             >
               <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { overflow: 'hidden' }]}>
                 {s.isExample ? (
-                  <Image source={APP_LOGO} style={{ width: 52, height: 52 }} resizeMode="cover" />
+                  <Image source={APP_LOGO} style={{ width: 40, height: 40 }} resizeMode="cover" />
                 ) : s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
@@ -1047,8 +1047,14 @@ function SnapStoryViewer({
     setTimeout(() => setToastMsg(''), 2000);
   };
   const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
-  // 보관하기 — 일반 게시물 메뉴(handleArchive)와 동일 UX: 토스트 후 닫기
-  const handleArchive = () => { setMenuVisible(false); archiveRecord(currentSnap.id); setToastMsg(t('social.archivedToast')); setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000); };
+  // 보관하기 — 일반 게시물 메뉴(handleArchive)와 동일 UX: 확인 후 토스트·닫기
+  const handleArchive = () => {
+    setMenuVisible(false);
+    Alert.alert(t('social.archiveConfirmTitle'), t('social.archiveConfirmMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('postDetail.archiveAction'), onPress: () => { archiveRecord(currentSnap.id); setToastMsg(t('social.archivedToast')); setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000); } },
+    ]);
+  };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
   // 시안(Group.svg): 두 줄 텍스트가 든 말풍선 아웃라인 — 스냅 스토리 전용 댓글 아이콘
@@ -1264,7 +1270,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1441,6 +1447,8 @@ export default function PostDetailScreen() {
 
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = record?.isMyPost === true;
+  // 보관된 게시물이면 상세 ⋯ 메뉴를 '보관 해제 / 삭제'만 노출한다
+  const isArchived = !!record?.id && archivedIds.includes(record.id);
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const shareId = record?.remoteId ?? postId;
@@ -1505,9 +1513,38 @@ export default function PostDetailScreen() {
 
   const handleArchive = () => {
     setMenuVisible(false);
-    archiveRecord(record.id);
-    setToastMsg(t('social.archivedToast'));
+    Alert.alert(
+      t('social.archiveConfirmTitle'),
+      t('social.archiveConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('postDetail.archiveAction'),
+          onPress: () => {
+            archiveRecord(record.id);
+            setToastMsg(t('social.archivedToast'));
+            setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000);
+          },
+        },
+      ]
+    );
+  };
+
+  // 보관 해제 — 보관된 게시물 상세 메뉴에서. 해제 후 목록(보관함)으로 돌아간다.
+  const handleUnarchive = () => {
+    setMenuVisible(false);
+    unarchiveRecord(record.id);
+    setToastMsg(t('misc.unarchivedToast'));
     setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000);
+  };
+
+  // 내 게시물 공개범위 토글 (이웃 공개 ↔ 비공개). updateRecord가 로컬·영속·백엔드 동기화까지 처리.
+  const handleToggleVisibility = () => {
+    setMenuVisible(false);
+    const next = record.visibility === 'private' ? 'neighbors' : 'private';
+    updateRecord(record.id, { visibility: next });
+    setToastMsg(t(next === 'private' ? 'social.madePrivateToast' : 'social.madePublicToast'));
+    setTimeout(() => setToastMsg(''), 2000);
   };
 
   const handleDelete = () => {
@@ -1734,7 +1771,7 @@ export default function PostDetailScreen() {
                     >
                       <View style={[s.avatar, record.isExample && { overflow: 'hidden' }]}>
                         {record.isExample ? (
-                          <Image source={APP_LOGO} style={{ width: 59, height: 59 }} resizeMode="cover" />
+                          <Image source={APP_LOGO} style={{ width: 42, height: 42 }} resizeMode="cover" />
                         ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (
@@ -2144,6 +2181,21 @@ export default function PostDetailScreen() {
           onPress={() => setMenuVisible(false)}
         >
           <View style={s.menuCard}>
+            {isArchived ? (
+              /* 보관된 게시물 — 보관 해제 / 삭제만 노출 */
+              <>
+                <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
+                  <ArchiveIcon size={16} color="#fff" />
+                  <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
+                </TouchableOpacity>
+                <View style={s.menuSectionDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
+                  <TrashIcon size={16} color="#FF3B30" />
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+            <>
             {/* 공통 메뉴 */}
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
               <LinkIcon size={16} color="#fff" />
@@ -2169,6 +2221,13 @@ export default function PostDetailScreen() {
 
             {isMyPost ? (
               <>
+                <View style={s.menuDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleToggleVisibility} activeOpacity={0.7}>
+                  {record.visibility === 'private'
+                    ? <GlobeIcon size={16} color="#fff" />
+                    : <LockClosedIcon size={16} color="#fff" />}
+                  <Text style={s.menuItemText}>{t(record.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate')}</Text>
+                </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <ArchiveIcon size={16} color="#fff" />
@@ -2209,6 +2268,8 @@ export default function PostDetailScreen() {
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
                 </TouchableOpacity>
               </>
+            )}
+            </>
             )}
           </View>
         </TouchableOpacity>
