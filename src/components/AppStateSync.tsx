@@ -30,7 +30,7 @@ export default function AppStateSync() {
     settings: exportSettingsBackup(),
     records: exportLocalStateBackup(),
     cardOrder,
-    moments: exportMomentsBackup(), // 텍스트/메타만, photoUri 제외
+    moments: exportMomentsBackup(), // 텍스트/메타 + photoUrl(사진 서버 백업), 로컬 photoUri 제외
   };
   const json = JSON.stringify(payload);
   const payloadRef = useRef(payload);

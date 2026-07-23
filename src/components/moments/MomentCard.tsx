@@ -30,7 +30,10 @@ export default function MomentCard({
     >
       <View style={st.topRow}>
         {moment.mood ? <Text style={st.mood}>{moment.mood}</Text> : null}
-        {moment.photoUri ? <Image source={{ uri: moment.photoUri }} style={st.thumb} /> : null}
+        {/* 로컬 사진 우선, 없으면(재설치 복원 등) 서버 백업본(photoUrl)으로 폴백 */}
+        {(moment.photoUri || moment.photoUrl) ? (
+          <Image source={{ uri: moment.photoUri || moment.photoUrl }} style={st.thumb} />
+        ) : null}
       </View>
       {/* 무드만 있는 순간은 빈 텍스트 줄을 그리지 않는다 */}
       {moment.text ? (
