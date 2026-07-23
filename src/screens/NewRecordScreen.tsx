@@ -842,11 +842,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
       setBudget('');
       currencyTouchedRef.current = false;
     }
-    // 날씨·항공·태그·공개범위
+    // 날씨·항공·태그
     setWeather(src.weather ?? '');
     setFlightType(src.flightType ?? '');
     setKeywords(src.keywords ?? []);
-    setVisibility(src.visibility ?? 'neighbors');
+    // 공개범위(visibility)는 소스 여행에서 상속하지 않는다 — 이건 '이 글을 누구에게 보일지'라는
+    // 게시물별 공유 결정이지 여행 메타데이터가 아니다. 소스가 비공개 앨범(가져온 사진첩=private)이면
+    // 새 피드 글이 조용히 private으로 저장돼 소셜 피드에서 사라지던 버그를 유발했다. 현재 선택값(기본 neighbors) 유지.
     // 캘린더 닫고 폼 복귀
     setCalendarVisible(false);
   };
