@@ -1367,7 +1367,7 @@ const ko = {
     fullDate: '{{y}}년 {{m}}월 {{d}}일 ({{wd}})',
   },
   imports: {
-    photosFound: '📷 사진 {{count}}장 발견',
+    photosFound: '사진 {{count}}장 발견',
     noticeTitle: '알림',
     icTitle: '기록이 완성됐어요!',
     icTripMulti: '{{flag}} {{name}} 외 {{count}}개 여행',

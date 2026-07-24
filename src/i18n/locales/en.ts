@@ -1366,7 +1366,7 @@ const en = {
     fullDate: '{{y}}/{{m}}/{{d}} ({{wd}})',
   },
   imports: {
-    photosFound: '📷 {{count}} photos found',
+    photosFound: '{{count}} photos found',
     noticeTitle: 'Notice',
     icTitle: 'Your record is complete!',
     icTripMulti: '{{flag}} {{name}} and {{count}} more trips',

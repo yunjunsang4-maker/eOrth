@@ -21,6 +21,8 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
   Rect as SvgRect,
+  Path as SvgPath,
+  Circle as SvgCircle,
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
@@ -237,16 +239,108 @@ function FlagChip({ flag, name }: { flag: string; name: string }) {
   );
 }
 
-// 시안의 CTA — 이중 그라데이션 링(#FF14E4→#00D8F3) 필 버튼.
-// 바깥 링 1.5px + 안쪽 링(6pt 인셋) 1px·40% 불투명, 채움 없음(유리 위 텍스트만).
-function ImportCtaButton({ label, onPress }: { label: string; onPress: () => void }) {
+// 사진 장수 앞 카메라 아이콘 — 선(outline) 스타일. 앱 CameraIcon은 꽉 찬 실루엣이라
+// 회색으로 써도 이모지처럼 보여서, 얇은 스트로크로 UI 아이콘답게 다시 그린다.
+function PhotoCountIcon({ size = 14, color }: { size?: number; color: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgPath
+        d="M4.5 8h2.2l1.1-1.7A1 1 0 0 1 8.6 6h6.8a1 1 0 0 1 .8.3L17.3 8h2.2A1.5 1.5 0 0 1 21 9.5v8A1.5 1.5 0 0 1 19.5 19h-15A1.5 1.5 0 0 1 3 17.5v-8A1.5 1.5 0 0 1 4.5 8Z"
+        stroke={color} strokeWidth={1.6} strokeLinejoin="round"
+      />
+      <SvgCircle cx={12} cy={13} r={3.2} stroke={color} strokeWidth={1.6} />
+    </Svg>
+  );
+}
+
+// 결과 여행 카드 — 마운트 시 스태거 페이드·슬라이드인, 선택 체크박스는 그라데이션 필로 스프링.
+function TripCard({
+  trip, index, selected, onPress, lang,
+}: {
+  trip: ScannedTrip;
+  index: number;
+  selected: boolean;
+  onPress: () => void;
+  lang: string;
+}) {
+  const { t } = useTranslation();
+  const enter = useRef(new Animated.Value(0)).current;
+  const check = useRef(new Animated.Value(selected ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 420,
+      delay: Math.min(index, 8) * 60, // 최대 8장까지만 지연 누적(그 이상은 동시)
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+  }, [enter, index]);
+
+  useEffect(() => {
+    Animated.spring(check, { toValue: selected ? 1 : 0, friction: 6, tension: 140, useNativeDriver: true }).start();
+  }, [selected, check]);
+
+  return (
+    <Animated.View
+      style={{ opacity: enter, transform: [{ translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }] }}
+    >
+      <TouchableOpacity
+        style={[styles.tripCard, selected && styles.tripCardSelected]}
+        onPress={onPress}
+        activeOpacity={0.9}
+      >
+        <Image source={{ uri: trip.medias[0] }} style={styles.cardImage} />
+        <View style={styles.cardInfo}>
+          <View style={styles.cardHeaderRow}>
+            <View style={styles.countryBadge}>
+              <Text style={styles.countryText}>{countryTagLabel(trip.country, lang)}</Text>
+            </View>
+            <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+              <Animated.View
+                style={[
+                  styles.checkFill,
+                  { opacity: check, transform: [{ scale: check.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }] },
+                ]}
+              >
+                <LinearGradient
+                  colors={['#FF14E4', '#00D8F3']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={StyleSheet.absoluteFill}
+                />
+                <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
+              </Animated.View>
+            </View>
+          </View>
+          <Text style={styles.cardTitle}>{trip.title}</Text>
+          <Text style={styles.cardDate}>{trip.startDate} ~ {trip.endDate.substring(5)}</Text>
+          <View style={styles.cardFooter}>
+            <PhotoCountIcon size={14} color={Colors.textSecondary} />
+            <Text style={styles.photoCountText}>{t('imports.photosFound', { count: trip.photoCount })}</Text>
+          </View>
+        </View>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
+// 우리 CTA 디자인 — 이중 그라데이션 링(#FF14E4→#00D8F3) 유리 필 버튼.
+// 바깥 링 1.5px + 안쪽 링(6pt 인셋) + 네온 블룸(3겹) + 위쪽 밝은 유리 명암.
+// gid: 한 화면에서 여러 번 쓰일 때 SVG 그라데이션 id 충돌을 막는 접두어.
+function ImportCtaButton({
+  label, onPress, gid = 'importCta', disabled = false, loading = false,
+}: { label: string; onPress: () => void; gid?: string; disabled?: boolean; loading?: boolean }) {
   const [w, setW] = useState(0);
   const H = 64;
   return (
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={onPress}
-      style={styles.ctaWrap}
+      disabled={disabled || loading}
+      style={[styles.ctaWrap, disabled && styles.ctaWrapDisabled]}
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
     >
       {w > 0 && (() => {
@@ -260,18 +354,18 @@ function ImportCtaButton({ label, onPress }: { label: string; onPress: () => voi
             pointerEvents="none"
           >
             <SvgDefs>
-              <SvgLinearGradient id="importCtaRing" x1="0.055" y1="0.184" x2="0.563" y2="2.363">
+              <SvgLinearGradient id={`${gid}Ring`} x1="0.055" y1="0.184" x2="0.563" y2="2.363">
                 <SvgStop offset="0" stopColor="#FF14E4" />
                 <SvgStop offset="1" stopColor="#00D8F3" />
               </SvgLinearGradient>
               {/* 유리 볼록면 — 위쪽 밝고 아래로 가라앉는 내부 명암 */}
-              <SvgLinearGradient id="importCtaFill" x1="0" y1="0" x2="0" y2="1">
+              <SvgLinearGradient id={`${gid}Fill`} x1="0" y1="0" x2="0" y2="1">
                 <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.07} />
                 <SvgStop offset="0.45" stopColor="#FFFFFF" stopOpacity={0.02} />
                 <SvgStop offset="1" stopColor="#000000" stopOpacity={0.15} />
               </SvgLinearGradient>
               {/* 위쪽 절반에만 걸리는 얇은 하이라이트 */}
-              <SvgLinearGradient id="importCtaTopHi" x1="0" y1="0" x2="0" y2="1">
+              <SvgLinearGradient id={`${gid}TopHi`} x1="0" y1="0" x2="0" y2="1">
                 <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.45} />
                 <SvgStop offset="0.4" stopColor="#FFFFFF" stopOpacity={0} />
               </SvgLinearGradient>
@@ -279,39 +373,43 @@ function ImportCtaButton({ label, onPress }: { label: string; onPress: () => voi
             {/* 네온 블룸 — 같은 그라데이션을 넓고 흐리게 겹쳐 번짐을 만든다 */}
             <SvgRect
               x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
-              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.06} strokeWidth={11}
+              fill="none" stroke={`url(#${gid}Ring)`} strokeOpacity={0.06} strokeWidth={11}
             />
             <SvgRect
               x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
-              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.1} strokeWidth={6.5}
+              fill="none" stroke={`url(#${gid}Ring)`} strokeOpacity={0.1} strokeWidth={6.5}
             />
             <SvgRect
               x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
-              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.18} strokeWidth={3.5}
+              fill="none" stroke={`url(#${gid}Ring)`} strokeOpacity={0.18} strokeWidth={3.5}
             />
             {/* 내부 유리 명암 채움 */}
             <SvgRect
               x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
-              fill="url(#importCtaFill)"
+              fill={`url(#${gid}Fill)`}
             />
             {/* 본체 이중 링 */}
             <SvgRect
               x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
-              fill="none" stroke="url(#importCtaRing)" strokeWidth={1.5}
+              fill="none" stroke={`url(#${gid}Ring)`} strokeWidth={1.5}
             />
             <SvgRect
               x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
-              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.4} strokeWidth={1}
+              fill="none" stroke={`url(#${gid}Ring)`} strokeOpacity={0.4} strokeWidth={1}
             />
             {/* 위쪽 하이라이트 — 안쪽 필 상단에 빛이 맺힌 느낌 */}
             <SvgRect
               x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
-              fill="none" stroke="url(#importCtaTopHi)" strokeWidth={1}
+              fill="none" stroke={`url(#${gid}TopHi)`} strokeWidth={1}
             />
           </Svg>
         );
       })()}
-      <Text style={styles.ctaText}>{label}</Text>
+      {loading ? (
+        <ActivityIndicator color="#FFFFFF" size="small" />
+      ) : (
+        <Text style={styles.ctaText}>{label}</Text>
+      )}
     </TouchableOpacity>
   );
 }
@@ -611,6 +709,7 @@ export default function TravelImportScreen({ navigation }: Props) {
   };
 
   const toggleSelect = (id: string) => {
+    Haptics.selectionAsync().catch(() => {});
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
     );
@@ -687,13 +786,15 @@ export default function TravelImportScreen({ navigation }: Props) {
         bounces={canScroll}
       >
 
-        {/* Header */}
-        <View style={styles.header}>
+        {/* Header — 결과 화면에서는 부제를 숨기고 아래 결과 문구와 간격을 벌린다 */}
+        <View style={[styles.header, showResults && styles.headerResults]}>
           <Text style={styles.stepText}>Final step</Text>
-          <Text style={styles.title}>{t('imports.tiTitle')}</Text>
-          <Text style={styles.subtitle}>
-            내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해{'\n'}다녀온 해외여행을 자동으로 찾아드려요.
-          </Text>
+          <Text style={[styles.title, showResults && styles.titleResults]}>{t('imports.tiTitle')}</Text>
+          {!showResults && (
+            <Text style={styles.subtitle}>
+              내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해{'\n'}다녀온 해외여행을 자동으로 찾아드려요.
+            </Text>
+          )}
         </View>
 
         {!scanFinished && !scanning ? (
@@ -797,7 +898,7 @@ export default function TravelImportScreen({ navigation }: Props) {
             </Text>
             <Text style={styles.resultDesc}>{t('imports.selectTripsDesc')}</Text>
             {isLimited && (
-              <Text style={[styles.resultDesc, { color: Colors.primary, marginTop: -8 }]}>
+              <Text style={[styles.resultDesc, { color: '#EC34F7', marginTop: -8 }]}>
                 {t('imports.limitedHint')}
               </Text>
             )}
@@ -809,40 +910,22 @@ export default function TravelImportScreen({ navigation }: Props) {
                 onPress={() => { setMergeIds([]); setMergeVisible(true); }}
                 activeOpacity={0.85}
               >
-                <Text style={styles.mergeBtnTxt}>🧩 {t('comp2.importMerge')}</Text>
+                <Text style={styles.mergeBtnTxt}>{t('comp2.importMerge')}</Text>
                 <Text style={styles.mergeBtnSub}>{t('imports.mergeSub')}</Text>
               </TouchableOpacity>
             )}
 
             <View style={styles.listWrap}>
-              {scannedTrips.map((trip) => {
-                const isSelected = selectedIds.includes(trip.id);
-                return (
-                  <TouchableOpacity
-                    key={trip.id}
-                    style={[styles.tripCard, isSelected && styles.tripCardSelected]}
-                    onPress={() => toggleSelect(trip.id)}
-                    activeOpacity={0.9}
-                  >
-                    <Image source={{ uri: trip.medias[0] }} style={styles.cardImage} />
-                    <View style={styles.cardInfo}>
-                      <View style={styles.cardHeaderRow}>
-                        <View style={styles.countryBadge}>
-                          <Text style={styles.countryText}>{countryTagLabel(trip.country, i18n.language)}</Text>
-                        </View>
-                        <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                          {isSelected && <Text style={styles.checkmark}>✓</Text>}
-                        </View>
-                      </View>
-                      <Text style={styles.cardTitle}>{trip.title}</Text>
-                      <Text style={styles.cardDate}>{trip.startDate} ~ {trip.endDate.substring(5)}</Text>
-                      <View style={styles.cardFooter}>
-                        <Text style={styles.photoCountText}>{t('imports.photosFound', { count: trip.photoCount })}</Text>
-                      </View>
-                    </View>
-                  </TouchableOpacity>
-                );
-              })}
+              {scannedTrips.map((trip, index) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  index={index}
+                  selected={selectedIds.includes(trip.id)}
+                  onPress={() => toggleSelect(trip.id)}
+                  lang={i18n.language}
+                />
+              ))}
             </View>
           </View>
         )}
@@ -878,7 +961,19 @@ export default function TravelImportScreen({ navigation }: Props) {
                       </Text>
                     </View>
                     <View style={[styles.checkbox, on && styles.checkboxSelected]}>
-                      {on && <Text style={styles.checkmark}>✓</Text>}
+                      {on && (
+                        <View style={styles.checkFill}>
+                          <LinearGradient
+                            colors={['#FF14E4', '#00D8F3']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={StyleSheet.absoluteFill}
+                          />
+                          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                            <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                          </Svg>
+                        </View>
+                      )}
                     </View>
                   </TouchableOpacity>
                 );
@@ -895,7 +990,7 @@ export default function TravelImportScreen({ navigation }: Props) {
                 disabled={mergeIds.length < 2}
                 activeOpacity={0.85}
               >
-                <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.mgOkGrad}>
+                <LinearGradient colors={['#FF14E4', '#00D8F3']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.mgOkGrad}>
                   <Text style={styles.mgOkTxt}>
                     {mergeIds.length < 2 ? t('imports.mergeSelect2') : t('imports.mergeN', { count: mergeIds.length })}
                   </Text>
@@ -907,26 +1002,19 @@ export default function TravelImportScreen({ navigation }: Props) {
       </Modal>
 
       {scanFinished && scannedTrips.length > 0 && (
-        /* Floating Bottom Bar for importing */
+        /* Floating Bottom Bar for importing — 우리 CTA 디자인(유리 그라데이션 링) */
         <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.importBtn, selectedIds.length === 0 && styles.importBtnDisabled]}
-            disabled={selectedIds.length === 0 || isImporting}
+          <ImportCtaButton
+            gid="importBottomCta"
+            disabled={selectedIds.length === 0}
+            loading={isImporting}
             onPress={handleImport}
-            activeOpacity={0.8}
-          >
-            {isImporting ? (
-              <ActivityIndicator color="#FFFFFF" size="small" />
-            ) : (
-              <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.importBtnGrad}>
-                <Text style={styles.importBtnText}>
-                  {selectedIds.length > 0
-                    ? t('imports.importSelectedN', { count: selectedIds.length })
-                    : t('imports.selectTripsToImport')}
-                </Text>
-              </LinearGradient>
-            )}
-          </TouchableOpacity>
+            label={
+              selectedIds.length > 0
+                ? t('imports.importSelectedN', { count: selectedIds.length })
+                : t('imports.selectTripsToImport')
+            }
+          />
         </View>
       )}
     </View>
@@ -944,6 +1032,10 @@ const styles = StyleSheet.create({
   header: {
     marginBottom: 0,
   },
+  // 결과 화면: 부제가 없으므로 헤더-결과 문구 사이를 넉넉히 벌린다
+  headerResults: {
+    marginBottom: Spacing[6],
+  },
   stepText: {
     fontSize: 14,
     fontFamily: Typography.fontFamily.bold,
@@ -956,6 +1048,10 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     letterSpacing: -0.5,
     marginBottom: Spacing[3],
+  },
+  // 결과 화면: 아래에 결과 제목이 붙으므로 타이틀 자체 하단 여백은 없앤다
+  titleResults: {
+    marginBottom: 0,
   },
   subtitle: {
     fontSize: 13,
@@ -1094,6 +1190,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: Spacing[3],
   },
+  ctaWrapDisabled: {
+    opacity: 0.45,
+  },
   ctaText: {
     color: '#FFFFFF',
     fontSize: 17,
@@ -1214,10 +1313,10 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xl,
     fontFamily: Typography.fontFamily.bold,
     color: Colors.textPrimary,
-    marginBottom: 4,
+    marginBottom: Spacing[2],
   },
   accentText: {
-    color: Colors.primary,
+    color: '#EC34F7',
   },
   resultDesc: {
     fontSize: Typography.fontSize.sm,
@@ -1231,9 +1330,9 @@ const styles = StyleSheet.create({
 
   /* 여행 합치기 */
   mergeBtn: {
-    backgroundColor: 'rgba(123, 97, 255, 0.1)',
+    backgroundColor: 'rgba(236, 52, 247, 0.08)',
     borderWidth: 1,
-    borderColor: 'rgba(123, 97, 255, 0.35)',
+    borderColor: 'rgba(236, 52, 247, 0.35)',
     borderRadius: BorderRadius.lg,
     paddingVertical: 12,
     paddingHorizontal: 14,
@@ -1271,7 +1370,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.03)',
     marginBottom: 8,
   },
-  mgItemOn: { borderColor: '#7B61FF', backgroundColor: 'rgba(123, 97, 255, 0.08)' },
+  mgItemOn: { borderColor: '#EC34F7', backgroundColor: 'rgba(236, 52, 247, 0.08)' },
   mgItemDisabled: { opacity: 0.35 },
   mgThumb: { width: 52, height: 52, borderRadius: 10, backgroundColor: '#2A2735' },
   mgItemTitle: { color: '#FFFFFF', fontSize: 15, fontWeight: '700', marginBottom: 2 },
@@ -1297,8 +1396,8 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   tripCardSelected: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(123, 97, 255, 0.04)',
+    borderColor: '#EC34F7',
+    backgroundColor: 'rgba(236, 52, 247, 0.06)',
   },
   cardImage: {
     width: '100%',
@@ -1313,16 +1412,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing[2],
   },
+  // 스캔 화면 '발견한 나라' 칩과 동일한 스타일(국기 + 이름 + 얇은 테두리)로 통일
   countryBadge: {
     backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: BorderRadius.full,
   },
   countryText: {
     color: Colors.textPrimary,
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.semiBold,
   },
   checkbox: {
     width: 24,
@@ -1332,15 +1434,16 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   checkboxSelected: {
-    backgroundColor: Colors.primary,
-    borderColor: Colors.primary,
+    borderColor: '#EC34F7',
   },
-  checkmark: {
-    color: Colors.white,
-    fontSize: 14,
-    fontWeight: 'bold',
+  // 선택 시 채워지는 그라데이션 필(체크 포함) — 스프링으로 등장
+  checkFill: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   cardTitle: {
     fontSize: Typography.fontSize.base,
@@ -1356,8 +1459,8 @@ const styles = StyleSheet.create({
   },
   cardFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    gap: 5,
     borderTopWidth: 1,
     borderColor: 'rgba(255,255,255,0.04)',
     paddingTop: Spacing[3],
@@ -1375,25 +1478,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: Spacing[6],
-    paddingBottom: 48,
+    paddingBottom: 36, // CTA 자체 marginBottom(12) + 36 = 기존 하단 여백(48)과 동일
     paddingTop: Spacing[4],
     backgroundColor: 'rgba(10,11,15,0.95)',
   },
-  importBtn: {
-    width: '100%',
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
-  },
+  // 합치기 모달 확인 버튼의 비활성 상태에서만 사용
   importBtnDisabled: {
     opacity: 0.5,
-  },
-  importBtnGrad: {
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  importBtnText: {
-    color: Colors.white,
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
   },
 });
