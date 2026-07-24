@@ -18,7 +18,6 @@ import {
   INTRO_ARC_3,
   INTRO_CONTINENTS_A,
   INTRO_CONTINENTS_B,
-  INTRO_WIREFRAME,
   INTRO4_ARC_1,
   INTRO4_ARC_2,
 } from '../data/introGlobePaths';
@@ -209,27 +208,71 @@ export function IntroVisual2() {
   );
 }
 
-// ── 3페이지: 와이어프레임 구체 (시안 66, 중심 ≈201.8, 389) ──
+// ── 3페이지: 업적 배지 콜라주 (시안 iPhone 17 - 66, node 91:31) ──
+// 에나멜 핀 배지 3종 + 은은한 와이어프레임 코인 2종 + 궤도 링을 시안 절대좌표
+// (absoluteBoundingBox, 402 기준)대로 배치하고, 각기 다른 주기·위상으로 둥둥 떠다니게 한다.
+// 스프라이트 제작: 피그마 3x 렌더에서 추출 — 배지는 밝은 림 볼록껍질 마스크로 배경 제거,
+// 코인·링은 벡터 SVG를 크롬 헤드리스로 투명 래스터화(assets/intro3/*).
+const I3_PLANE = require('../../assets/intro3/badge-plane.png');
+const I3_PASSPORT = require('../../assets/intro3/badge-passport.png');
+const I3_PEOPLE = require('../../assets/intro3/badge-people.png');
+const I3_COIN_LG = require('../../assets/intro3/coin-globe-lg.png');
+const I3_COIN_SM = require('../../assets/intro3/coin-globe-sm.png');
+const I3_RING = require('../../assets/intro3/orbit-ring.png');
+
+// 둥둥 뜨는 스프라이트 — 세로 왕복 + 미세 회전 흔들림(sine ease). delay로 위상을 엇갈려
+// 배지들이 서로 독립적으로 떠 있는 느낌을 낸다. cx/cy는 시안(402 기준) 중심 좌표.
+function FloatingSprite({ source, cx, cy, w, h, baseRotate = 0, amp = 6, wobble = 1.2, duration = 4200, delay = 0 }: {
+  source: any; cx: number; cy: number; w: number; h: number;
+  baseRotate?: number; amp?: number; wobble?: number; duration?: number; delay?: number;
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.sequence([
+      Animated.delay(delay),
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(t, { toValue: 1, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+          Animated.timing(t, { toValue: 0, duration, easing: Easing.inOut(Easing.sin), useNativeDriver: true }),
+        ])
+      ),
+    ]);
+    anim.start();
+    return () => anim.stop();
+  }, [t, delay, duration]);
+  const ty = t.interpolate({ inputRange: [0, 1], outputRange: [amp * DS, -amp * DS] });
+  const rot = t.interpolate({ inputRange: [0, 1], outputRange: [`${baseRotate - wobble}deg`, `${baseRotate + wobble}deg`] });
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: (cx - w / 2) * DS,
+        top: (cy - h / 2) * DS,
+        width: w * DS,
+        height: h * DS,
+        transform: [{ translateY: ty }, { rotate: rot }],
+      }}
+    >
+      <Image source={source} style={{ width: w * DS, height: h * DS }} resizeMode="stretch" />
+    </Animated.View>
+  );
+}
+
 export function IntroVisual3() {
   const H = 700 * DS;
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
+    // overflow hidden: 링·비행기 배지가 화면 밖으로 걸치므로 이웃 슬라이드 침범 방지
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
       <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          <SvgLinearGradient id="wire1" x1="201.81" y1="260.01" x2="201.81" y2="518.34" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#E0C9FF" />
-            <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="wire2" x1="201.81" y1="260.01" x2="201.77" y2="491.89" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#666666" />
-            <SvgStop offset="1" stopColor="#000000" />
-          </SvgLinearGradient>
-        </SvgDefs>
         <SideGlows purpleCx={65.5} purpleCy={225} />
-        <SvgCircle cx={200.5} cy={389.5} r={148.5} fill="#FFFFFF" fillOpacity={0.03} />
-        <SvgPath d={INTRO_WIREFRAME} fill="url(#wire2)" fillOpacity={0.2} />
-        <SvgPath d={INTRO_WIREFRAME} fill="url(#wire1)" fillOpacity={0.2} />
       </Svg>
+      {/* z순서 = 시안 레이어 순서: 코인들 → 사람들 → 비행기 → 궤도 링 → 중앙 여권 배지 */}
+      <FloatingSprite source={I3_COIN_LG} cx={132.5} cy={428.5} w={192} h={192} amp={4} wobble={0.8} duration={5200} delay={600} />
+      <FloatingSprite source={I3_COIN_SM} cx={302.5} cy={243.5} w={110} h={110} amp={4} wobble={0.8} duration={4600} delay={1400} />
+      <FloatingSprite source={I3_PEOPLE} cx={317.6} cy={505.3} w={181} h={164.7} amp={6} wobble={1.4} duration={4400} delay={900} />
+      <FloatingSprite source={I3_PLANE} cx={85} cy={170.5} w={181} h={143} amp={6} wobble={1.4} duration={3800} delay={0} />
+      <FloatingSprite source={I3_RING} cx={203} cy={359.4} w={364} h={46.9} baseRotate={-36.9} amp={3} wobble={0.5} duration={4800} delay={300} />
+      <FloatingSprite source={I3_PASSPORT} cx={209} cy={345.5} w={232} h={233} amp={7} wobble={1} duration={4200} delay={1100} />
     </View>
   );
 }
