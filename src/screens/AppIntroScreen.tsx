@@ -7,9 +7,12 @@ import {
   Dimensions,
   FlatList,
   Pressable,
+  Animated,
+  Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
+import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
 import Svg, {
   Defs as SvgDefs,
@@ -65,6 +68,60 @@ function MarkedTitle({ raw }: { raw: string }) {
   );
 }
 
+// 페이지 닷 — 활성 시 스프링으로 7→16pt 늘어나며 마젠타로 차오름 (레이아웃 속성이라 JS 드라이버)
+function PageDot({ active }: { active: boolean }) {
+  const a = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(a, { toValue: active ? 1 : 0, useNativeDriver: false, speed: 16, bounciness: 7 }).start();
+  }, [active, a]);
+  return (
+    <Animated.View
+      style={[
+        styles.dot,
+        {
+          width: a.interpolate({ inputRange: [0, 1], outputRange: [7, 16] }),
+          backgroundColor: a.interpolate({ inputRange: [0, 1], outputRange: ['#3D3D55', '#EC34F7'] }),
+        },
+      ]}
+    />
+  );
+}
+
+// 텍스트 블록 — 페이지 활성화 시 step 라벨→타이틀→서브타이틀이 순서대로 올라오며 페이드인.
+// 비활성화되면 리셋해 뒤로 갔다 재진입해도 다시 연출된다.
+function SlideTextBlock({ active, stepNo, titleKey, subtitleKey }: { active: boolean; stepNo: number; titleKey: string; subtitleKey: string }) {
+  const { t } = useTranslation();
+  const vals = useRef([new Animated.Value(0), new Animated.Value(0), new Animated.Value(0)]).current;
+  useEffect(() => {
+    if (active) {
+      vals.forEach((v) => v.setValue(0));
+      Animated.stagger(
+        120,
+        vals.map((v) => Animated.timing(v, { toValue: 1, duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }))
+      ).start();
+    } else {
+      vals.forEach((v) => v.setValue(0));
+    }
+  }, [active, vals]);
+  const rise = (v: Animated.Value) => ({
+    opacity: v,
+    transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }],
+  });
+  return (
+    <View style={styles.textBlock}>
+      <Animated.View style={rise(vals[0])}>
+        <Text style={styles.stepLabel}>{`step 0${stepNo}`}</Text>
+      </Animated.View>
+      <Animated.View style={rise(vals[1])}>
+        <MarkedTitle raw={t(titleKey)} />
+      </Animated.View>
+      <Animated.View style={rise(vals[2])}>
+        <Text style={styles.subtitle}>{t(subtitleKey)}</Text>
+      </Animated.View>
+    </View>
+  );
+}
+
 export default function AppIntroScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
@@ -72,6 +129,7 @@ export default function AppIntroScreen({ navigation }: Props) {
   const flatListRef = useRef<FlatList>(null);
 
   const goNext = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     if (activeIdx < SLIDES.length - 1) {
       setActiveIdx(activeIdx + 1);
     } else {
@@ -84,12 +142,43 @@ export default function AppIntroScreen({ navigation }: Props) {
     flatListRef.current?.scrollToIndex({ index: activeIdx, animated: true });
   }, [activeIdx]);
 
+  // 다음 버튼 지연 활성화 — 페이지 도착 후 1.5초간 비활성(흐림)으로 두어
+  // 사용자가 콘텐츠를 그냥 넘기지 않고 보게 한다. 활성화 시 페이드인.
+  const NEXT_DELAY_MS = 1500;
+  const [nextReady, setNextReady] = useState(false);
+  const readyAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    setNextReady(false);
+    readyAnim.setValue(0);
+    const timer = setTimeout(() => {
+      setNextReady(true);
+      Haptics.selectionAsync().catch(() => {});
+      Animated.timing(readyAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    }, NEXT_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [activeIdx, readyAnim]);
+
+  // 마지막 페이지 CTA 강조 — 버튼 활성화 시 유리 스타일 → 마젠타 필로 차오르며 스케일 팝.
+  // 색 애니메이션이라 JS 드라이버(별도 노드) 사용 — 네이티브 opacity 노드와 분리.
+  const isLast = activeIdx === SLIDES.length - 1;
+  const cta = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    if (isLast && nextReady) {
+      Animated.timing(cta, { toValue: 1, duration: 450, easing: Easing.out(Easing.cubic), useNativeDriver: false }).start();
+    } else if (!isLast) {
+      cta.setValue(0);
+    }
+  }, [isLast, nextReady, cta]);
+  const ctaScale = cta.interpolate({ inputRange: [0, 0.55, 1], outputRange: [1, 1.05, 1] });
+  const ctaBg = cta.interpolate({ inputRange: [0, 1], outputRange: ['rgba(236,52,247,0)', 'rgba(236,52,247,1)'] });
+
   // 뒤로 가기 — 오른쪽 플링 제스처. 스크롤 자체는 잠가서(전 슬라이드 상시 마운트로 요소가
   // 즉시 보이고) 전진 방향으로는 어떤 끌림도 생기지 않는다. 전진은 다음 버튼으로만.
   const backFling = Gesture.Fling()
     .runOnJS(true)
     .direction(Directions.RIGHT)
     .onStart(() => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
       setActiveIdx((cur) => Math.max(0, cur - 1));
     });
 
@@ -98,12 +187,8 @@ export default function AppIntroScreen({ navigation }: Props) {
     return (
       <View style={styles.slide}>
         <V active={index === activeIdx} />
-        {/* 텍스트 블록 — 하단 정렬 (시안: step 라벨 + 제목 + 설명) */}
-        <View style={styles.textBlock}>
-          <Text style={styles.stepLabel}>{`step 0${index + 1}`}</Text>
-          <MarkedTitle raw={t(item.titleKey)} />
-          <Text style={styles.subtitle}>{t(item.subtitleKey)}</Text>
-        </View>
+        {/* 텍스트 블록 — 하단 정렬, 활성화 시 스태거 등장 */}
+        <SlideTextBlock active={index === activeIdx} stepNo={index + 1} titleKey={item.titleKey} subtitleKey={item.subtitleKey} />
       </View>
     );
   };
@@ -135,7 +220,7 @@ export default function AppIntroScreen({ navigation }: Props) {
       {/* 상단 페이지 닷 — 시안: 활성 16×7 마젠타 필, 비활성 7×7 #3D3D55 */}
       <View style={[styles.dotsRow, { top: insets.top + 16 }]} pointerEvents="none">
         {SLIDES.map((s, i) => (
-          <View key={s.id} style={[styles.dot, i === activeIdx && styles.dotActive]} />
+          <PageDot key={s.id} active={i === activeIdx} />
         ))}
       </View>
 
@@ -146,7 +231,12 @@ export default function AppIntroScreen({ navigation }: Props) {
         pointerEvents="none"
       />
       <View style={[styles.bottomArea, { paddingBottom: insets.bottom + 24 }]}>
-        <Pressable style={styles.nextBtn} onPress={goNext}>
+        {/* 지연 활성화 — 준비 전엔 흐리게 + 터치 무시, 준비되면 페이드인.
+            마지막 페이지에선 활성화와 함께 마젠타 필 + 스케일 팝(CTA 강조) */}
+        <Animated.View style={{ opacity: readyAnim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 1] }) }}>
+        <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
+        <Pressable style={styles.nextBtn} onPress={goNext} disabled={!nextReady}>
+          <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 29, backgroundColor: ctaBg }]} />
           <Text style={styles.nextBtnLabel}>
             {activeIdx === SLIDES.length - 1 ? t('appIntro.getStarted') : t('common.next')}
           </Text>
@@ -163,6 +253,8 @@ export default function AppIntroScreen({ navigation }: Props) {
             </Svg>
           </View>
         </Pressable>
+        </Animated.View>
+        </Animated.View>
       </View>
     </View>
   );
