@@ -11,8 +11,18 @@ import {
   Image,
   Platform,
   Modal,
+  Dimensions,
+  Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import Svg, {
+  Defs as SvgDefs,
+  LinearGradient as SvgLinearGradient,
+  Stop as SvgStop,
+  Rect as SvgRect,
+} from 'react-native-svg';
+import StarFieldBackground from '../components/StarFieldBackground';
+import { IntroAmbient } from './introVisuals';
 import * as MediaLibrary from 'expo-media-library';
 import * as Location from 'expo-location';
 import { useTranslation } from 'react-i18next';
@@ -48,10 +58,6 @@ const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제�
 const periodRangeText = (p: ScanPeriodOption, tr: TFunction) => (p.years ? tr('imports.periodRecentYears', { years: p.years }) : tr('imports.periodAllRange'));
 const periodLabel = (p: ScanPeriodOption, tr: TFunction) =>
   p.key === '1y' ? tr('imports.period1y') : p.key === '3y' ? tr('imports.period3y') : tr('imports.periodAll');
-const scanNote = (p: ScanPeriodOption, tr: TFunction) =>
-  Platform.OS === 'ios'
-    ? (p.years ? tr('imports.analyzeRecentYears', { years: p.years }) : tr('imports.analyzeAll'))
-    : tr('imports.analyzeAndroid', { range: periodRangeText(p, tr) });
 const scanSubNote = (p: ScanPeriodOption, tr: TFunction) =>
   Platform.OS === 'ios'
     ? tr('imports.analyzingPeriodIos', { range: periodRangeText(p, tr) })
@@ -76,6 +82,206 @@ const parseExifDate = (exif: any): number | null => {
 };
 
 type Props = RootStackScreenProps<'TravelImport'>;
+
+// 시안(130:1137)의 중앙 오브 비주얼 — 애니메이션을 위해 z순서대로 레이어 분해한
+// 투명 스프라이트(모두 같은 402×404 캔버스 래스터라 absoluteFill 중첩 시 위치 일치).
+// 재생성: scripts/build-import-orb-layers.js
+const ORB_SPHERE = require('../../assets/import-orb/sphere.png');
+const ORB_VR_BACK = require('../../assets/import-orb/vrings-back.png');
+const ORB_CROSS = require('../../assets/import-orb/cross.png');
+const ORB_VR_FRONT = require('../../assets/import-orb/vrings-front.png');
+const ORB_HRINGS = require('../../assets/import-orb/hrings.png');
+const ORB_DOT = require('../../assets/import-orb/dot.png');
+const SCREEN_W = Dimensions.get('window').width;
+const ORB_W = SCREEN_W;
+const ORB_H = SCREEN_W * (1212 / 1206);
+const ORB_PT = ORB_W / 402; // 시안 pt → 화면 px 배율
+
+// ── 오브 애니메이션 유틸 ──
+// 단일 선형 루프 + 사인 보간 테이블 — sequence/loop의 JS 경계에서 생기는 툭툭 끊김 방지
+const WAVE_N = 33;
+function sineLoop(v: Animated.Value, amp: number, center = 0, phase = 0) {
+  const inp: number[] = [], out: number[] = [];
+  for (let i = 0; i < WAVE_N; i++) {
+    const t = i / (WAVE_N - 1);
+    inp.push(t);
+    out.push(center + amp * Math.sin(2 * Math.PI * (t + phase)));
+  }
+  return v.interpolate({ inputRange: inp, outputRange: out });
+}
+// 십자선 순찰 — 우/상/좌/하 4구간, 각 구간에서 sin²(0→진폭→0)으로 나갔다 돌아온다.
+// 구간 양끝 속도 0이라 중앙에서 잠깐 머무는 스캐너 리듬이 된다.
+function patrolWave(v: Animated.Value, axis: 'x' | 'y', amp: number) {
+  const inp: number[] = [], out: number[] = [];
+  const SEG = 16;
+  for (let s = 0; s < 4; s++) {
+    for (let i = s === 0 ? 0 : 1; i <= SEG; i++) {
+      const t = (s + i / SEG) / 4;
+      const bump = Math.sin(Math.PI * (i / SEG)) ** 2;
+      let val = 0;
+      if (axis === 'x') val = s === 0 ? amp * bump : s === 2 ? -amp * bump : 0;
+      else val = s === 1 ? -amp * bump : s === 3 ? amp * bump : 0;
+      inp.push(t);
+      out.push(val);
+    }
+  }
+  return v.interpolate({ inputRange: inp, outputRange: out });
+}
+
+// 분석 효과 오브 — 링은 축 방향 회전 투영(scale 진동), 보라 원은 십자선 왕복 순찰
+function ImportOrbVisual() {
+  const spinV = useRef(new Animated.Value(0)).current; // 세로 링
+  const spinH = useRef(new Animated.Value(0)).current; // 가로 링
+  const walk = useRef(new Animated.Value(0)).current;  // 보라 원 순찰
+
+  useEffect(() => {
+    const mk = (v: Animated.Value, duration: number) =>
+      Animated.loop(
+        Animated.timing(v, { toValue: 1, duration, easing: Easing.linear, useNativeDriver: true })
+      );
+    const anims = [mk(spinV, 5600), mk(spinH, 7200), mk(walk, 9600)];
+    anims.forEach((a) => a.start());
+    return () => anims.forEach((a) => a.stop());
+  }, [spinV, spinH, walk]);
+
+  // 세로 링: 세로축 회전의 좌우 폭 투영, 가로 링: 가로축 회전의 상하 폭 투영
+  const vScaleX = sineLoop(spinV, 0.16, 1);
+  const hScaleY = sineLoop(spinH, 0.16, 1, 0.4);
+
+  // 보라 원: 십자선 끝(±160pt)까지 왕복. 스프라이트에 박힌 기본 위치를 정적 래퍼로
+  // 십자 교점에 되돌린 뒤 대칭 순찰시킨다. 오프셋은 래스터 실측값(scripts/measure-orb-dot.js).
+  const AMP = 160 * ORB_PT;
+  const dotX = patrolWave(walk, 'x', AMP);
+  const dotY = patrolWave(walk, 'y', AMP);
+
+  return (
+    <View style={styles.orbWrap}>
+      <Image source={ORB_SPHERE} style={styles.orbLayer} />
+      <Animated.Image source={ORB_VR_BACK} style={[styles.orbLayer, { transform: [{ scaleX: vScaleX }] }]} />
+      <Image source={ORB_CROSS} style={styles.orbLayer} />
+      <Animated.Image source={ORB_VR_FRONT} style={[styles.orbLayer, { transform: [{ scaleX: vScaleX }] }]} />
+      <Animated.Image source={ORB_HRINGS} style={[styles.orbLayer, { transform: [{ scaleY: hScaleY }] }]} />
+      <View style={[styles.orbLayer, { transform: [{ translateX: -46.53 * ORB_PT }, { translateY: 0.54 * ORB_PT }] }]}>
+        <Animated.Image
+          source={ORB_DOT}
+          style={[styles.orbLayer, { transform: [{ translateX: dotX }, { translateY: dotY }] }]}
+        />
+      </View>
+    </View>
+  );
+}
+
+// 분석 기간 칩 — 상단좌측이 밝고 하단우측으로 어두워지는 그라데이션 테두리(입체감).
+function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boolean; idSuffix: string; onPress: () => void }) {
+  const [w, setW] = useState(0);
+  const H = 25;
+  const gid = `periodChipRing_${idSuffix}`;
+  return (
+    <TouchableOpacity
+      style={[styles.periodChip, on && styles.periodChipOn]}
+      onPress={onPress}
+      activeOpacity={0.8}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+    >
+      {w > 0 && (
+        <Svg width={w} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <SvgDefs>
+            <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+              <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
+              <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
+              <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
+              <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
+            </SvgLinearGradient>
+          </SvgDefs>
+          <SvgRect
+            x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
+            fill="none" stroke={`url(#${gid})`} strokeWidth={1}
+          />
+        </Svg>
+      )}
+      <Text style={styles.periodTxt}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+// 시안의 CTA — 이중 그라데이션 링(#FF14E4→#00D8F3) 필 버튼.
+// 바깥 링 1.5px + 안쪽 링(6pt 인셋) 1px·40% 불투명, 채움 없음(유리 위 텍스트만).
+function ImportCtaButton({ label, onPress }: { label: string; onPress: () => void }) {
+  const [w, setW] = useState(0);
+  const H = 64;
+  return (
+    <TouchableOpacity
+      activeOpacity={0.85}
+      onPress={onPress}
+      style={styles.ctaWrap}
+      onLayout={(e) => setW(e.nativeEvent.layout.width)}
+    >
+      {w > 0 && (() => {
+        // 글로우가 링 밖으로 번지도록 버튼보다 큰 캔버스에 그린다 (absoluteFill이면 잘림)
+        const PAD = 14;
+        return (
+          <Svg
+            width={w + PAD * 2}
+            height={H + PAD * 2}
+            style={{ position: 'absolute', top: -PAD, left: -PAD }}
+            pointerEvents="none"
+          >
+            <SvgDefs>
+              <SvgLinearGradient id="importCtaRing" x1="0.055" y1="0.184" x2="0.563" y2="2.363">
+                <SvgStop offset="0" stopColor="#FF14E4" />
+                <SvgStop offset="1" stopColor="#00D8F3" />
+              </SvgLinearGradient>
+              {/* 유리 볼록면 — 위쪽 밝고 아래로 가라앉는 내부 명암 */}
+              <SvgLinearGradient id="importCtaFill" x1="0" y1="0" x2="0" y2="1">
+                <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.07} />
+                <SvgStop offset="0.45" stopColor="#FFFFFF" stopOpacity={0.02} />
+                <SvgStop offset="1" stopColor="#000000" stopOpacity={0.15} />
+              </SvgLinearGradient>
+              {/* 위쪽 절반에만 걸리는 얇은 하이라이트 */}
+              <SvgLinearGradient id="importCtaTopHi" x1="0" y1="0" x2="0" y2="1">
+                <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.45} />
+                <SvgStop offset="0.4" stopColor="#FFFFFF" stopOpacity={0} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            {/* 네온 블룸 — 같은 그라데이션을 넓고 흐리게 겹쳐 번짐을 만든다 */}
+            <SvgRect
+              x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
+              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.06} strokeWidth={11}
+            />
+            <SvgRect
+              x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
+              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.1} strokeWidth={6.5}
+            />
+            <SvgRect
+              x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
+              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.18} strokeWidth={3.5}
+            />
+            {/* 내부 유리 명암 채움 */}
+            <SvgRect
+              x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
+              fill="url(#importCtaFill)"
+            />
+            {/* 본체 이중 링 */}
+            <SvgRect
+              x={PAD + 0.75} y={PAD + 0.75} width={w - 1.5} height={H - 1.5} rx={(H - 1.5) / 2}
+              fill="none" stroke="url(#importCtaRing)" strokeWidth={1.5}
+            />
+            <SvgRect
+              x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
+              fill="none" stroke="url(#importCtaRing)" strokeOpacity={0.4} strokeWidth={1}
+            />
+            {/* 위쪽 하이라이트 — 안쪽 필 상단에 빛이 맺힌 느낌 */}
+            <SvgRect
+              x={PAD + 6.5} y={PAD + 7.5} width={w - 13} height={H - 15} rx={(H - 15) / 2}
+              fill="none" stroke="url(#importCtaTopHi)" strokeWidth={1}
+            />
+          </Svg>
+        );
+      })()}
+      <Text style={styles.ctaText}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
 
 export default function TravelImportScreen({ navigation }: Props) {
   const { t, i18n } = useTranslation();
@@ -439,66 +645,65 @@ export default function TravelImportScreen({ navigation }: Props) {
     outputRange: [0.6, 0.3, 0],
   });
 
+  // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.
+  // 컨텐츠가 화면에 다 들어오면 스크롤을 잠근다(작은 기기에서만 스크롤 허용).
+  const showResults = scanFinished && scannedTrips.length > 0;
+  const [viewportH, setViewportH] = useState(0);
+  const [contentH, setContentH] = useState(0);
+  const canScroll = contentH > viewportH + 1;
+
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
-      <ScrollView contentContainerStyle={[styles.scroll, { paddingTop: insets.top + 32 }]} showsVerticalScrollIndicator={false}>
+    <View style={styles.container}>
+      <StarFieldBackground opacity={0.5} />
+      <IntroAmbient />
+      <ScrollView
+        contentContainerStyle={[
+          styles.scroll,
+          { paddingTop: insets.top + 14, paddingBottom: showResults ? 140 : insets.bottom + 24 },
+        ]}
+        showsVerticalScrollIndicator={false}
+        onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
+        onContentSizeChange={(_, h) => setContentH(h)}
+        scrollEnabled={canScroll}
+        bounces={canScroll}
+      >
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.stepText}>STEP 2 / 2</Text>
+          <Text style={styles.stepText}>Final step</Text>
           <Text style={styles.title}>{t('imports.tiTitle')}</Text>
           <Text style={styles.subtitle}>
-            내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해{'\n'}다녀온 해외 여행을 자동으로 찾아드려요.
+            내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해{'\n'}다녀온 해외여행을 자동으로 찾아드려요.
           </Text>
         </View>
 
         {!scanFinished && !scanning ? (
-          /* Permission Request View */
-          <View style={styles.centerArea}>
-            <View style={styles.globeGlowWrap}>
-              <View style={styles.glowBg} />
-              <LinearGradient
-                colors={['#4A2FCB', '#7B61FF', '#C084FC']}
-                style={styles.mockGlobe}
-              >
-                <Text style={styles.mockGlobeEmoji}>📸</Text>
-              </LinearGradient>
-            </View>
+          /* Permission Request View — 시안 130:1137 */
+          <View style={styles.initialArea}>
+            <ImportOrbVisual />
 
             {/* 분석 기간 선택 */}
             <View style={styles.periodSection}>
               <Text style={styles.periodTitle}>{t('imports.analyzePeriod')}</Text>
               <View style={styles.periodRow}>
-                {SCAN_PERIODS.map((p) => {
-                  const on = period.key === p.key;
-                  return (
-                    <TouchableOpacity
-                      key={p.key}
-                      style={[styles.periodChip, on && styles.periodChipOn]}
-                      onPress={() => setPeriod(p)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={[styles.periodTxt, on && styles.periodTxtOn]}>{periodLabel(p, t)}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
+                {SCAN_PERIODS.map((p) => (
+                  <PeriodChip
+                    key={p.key}
+                    label={periodLabel(p, t)}
+                    on={period.key === p.key}
+                    idSuffix={p.key}
+                    onPress={() => setPeriod(p)}
+                  />
+                ))}
               </View>
-              <Text style={styles.periodHint}>⏱ {t('comp2.importPeriodHint')}</Text>
+              <Text style={styles.periodHint}>{t('comp2.importPeriodHint')}</Text>
             </View>
 
-            <TouchableOpacity style={styles.permissionBtn} onPress={requestPermission}>
-              <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
-                <Text style={styles.btnText}>{t('imports.grantGalleryFind')}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
+            <ImportCtaButton label={t('imports.grantGalleryFind')} onPress={requestPermission} />
 
             <TouchableOpacity style={styles.skipBtn} onPress={goMainWithTutorial}>
               <Text style={styles.skipText}>{t('imports.skipManual')}</Text>
             </TouchableOpacity>
-
-            <View style={styles.noteBox}>
-              <Text style={styles.noteText}>{scanNote(period, t)}</Text>
-            </View>
           </View>
         ) : scanning ? (
           /* Scanning View */
@@ -689,39 +894,59 @@ export default function TravelImportScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
       )}
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#0A0B0F',
   },
   scroll: {
     paddingHorizontal: Spacing[6],
-    paddingBottom: 140,
   },
   header: {
-    marginBottom: Spacing[8],
+    marginBottom: 0,
   },
   stepText: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.primary,
-    letterSpacing: 2,
-    marginBottom: Spacing[2],
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: '#EC34F7',
+    marginBottom: Spacing[1],
   },
   title: {
-    fontSize: Typography.fontSize['3xl'],
+    fontSize: 28,
     fontFamily: Typography.fontFamily.bold,
-    color: Colors.textPrimary,
-    marginBottom: Spacing[2],
+    color: '#FFFFFF',
+    letterSpacing: -0.5,
+    marginBottom: Spacing[3],
   },
   subtitle: {
-    fontSize: Typography.fontSize.sm,
+    fontSize: 13,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
-    lineHeight: 20,
+    color: 'rgba(255,255,255,0.6)',
+    lineHeight: 18,
+  },
+
+  /* 시안 초기 화면 — 오브 비주얼 + 기간 칩 + CTA */
+  orbWrap: {
+    width: ORB_W,
+    height: ORB_H,
+    marginTop: -Spacing[2],
+    marginBottom: -Spacing[1],
+  },
+  orbLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+  },
+
+  initialArea: {
+    alignItems: 'center',
+    width: '100%',
   },
 
   /* Center Area */
@@ -781,69 +1006,64 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   skipText: {
-    color: Colors.textMuted,
-    fontSize: Typography.fontSize.sm,
+    color: 'rgba(255,255,255,0.4)',
+    fontSize: 13,
     fontFamily: Typography.fontFamily.medium,
   },
 
-  /* 분석 기간 선택 */
+  /* 분석 기간 선택 — 시안 칩: 93×25 r12.5, 활성 #751AAD 30% / 비활성 white 21% */
   periodSection: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: Spacing[5],
+    marginBottom: Spacing[8],
   },
   periodTitle: {
-    color: Colors.textSecondary,
-    fontSize: Typography.fontSize.sm,
-    fontFamily: Typography.fontFamily.medium,
-    marginBottom: Spacing[2],
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 15,
+    fontFamily: Typography.fontFamily.semiBold,
+    marginBottom: Spacing[4],
   },
   periodRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 14,
   },
   periodChip: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: BorderRadius.full,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    minWidth: 93,
+    height: 25,
+    paddingHorizontal: 14,
+    borderRadius: 12.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.21)',
   },
   periodChipOn: {
-    borderColor: '#7B61FF',
-    backgroundColor: 'rgba(123, 97, 255, 0.18)',
+    backgroundColor: 'rgba(117,26,173,0.30)',
   },
   periodTxt: {
-    color: Colors.textSecondary,
-    fontSize: Typography.fontSize.sm,
+    color: '#FFFFFF',
+    fontSize: 12,
     fontFamily: Typography.fontFamily.medium,
-  },
-  periodTxtOn: {
-    color: Colors.white,
-    fontFamily: Typography.fontFamily.semiBold,
   },
   periodHint: {
-    color: Colors.textMuted,
-    fontSize: Typography.fontSize.xs,
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
     fontFamily: Typography.fontFamily.regular,
-    marginTop: Spacing[2],
-  },
-  noteBox: {
     marginTop: Spacing[4],
-    backgroundColor: 'rgba(191, 133, 252, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(191, 133, 252, 0.2)',
-    borderRadius: BorderRadius.lg,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-  },
-  noteText: {
-    color: '#BF85FC',
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
-    lineHeight: 18,
     textAlign: 'center',
+  },
+
+  /* CTA — 그라데이션 링 필 버튼 */
+  ctaWrap: {
+    width: '100%',
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: Spacing[3],
+  },
+  ctaText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontFamily: Typography.fontFamily.bold,
   },
   scanSubNote: {
     color: Colors.textMuted,
@@ -1072,7 +1292,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[6],
     paddingBottom: 48,
     paddingTop: Spacing[4],
-    backgroundColor: 'rgba(10,1,24,0.95)',
+    backgroundColor: 'rgba(10,11,15,0.95)',
   },
   importBtn: {
     width: '100%',
