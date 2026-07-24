@@ -1484,6 +1484,7 @@ const en = {
     title: 'Post a record and it appears here for mates',
     cta: 'Create your first record',
     official: 'eOrth Official',
+    officialSuffix: 'Official', // feature card badge — follows the 'eOrth' wordmark
     feedHint: 'Try recording like this',
     exampleFeedContent: 'A day in New York ☀️ Your globe fills up the more you travel. Feed records capture moments like this in photos and words.',
     exampleSnapContent: 'Snaps capture a travel moment in a single shot — like this.',

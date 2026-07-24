@@ -2190,7 +2190,7 @@ export const estDiaryHeight = (item: any, mode: string): number => {
 const d = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
-  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
+  // 예시 콘텐츠 공식 배지 — 피드/스냅 예시용. 기능 소개 카드 배지는 Figma 시안(흰 pill + Gilroy 'eOrth')이라 별도다.
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
 
   // 공식 예시 콘텐츠 배지
@@ -2772,7 +2772,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
         : item._mateSlot
           ? 102 + mateSuggestions.length * 48 // 추천 메이트 카드: 패딩+제목+CTA ≈102 + 행당 48(링 아바타+서브라인)
           : item._featureCard
-            ? 260 // 기능 소개 카드 고정 추정치
+            ? 233 // 기능 소개 카드 — 카드 폭 166 ÷ 시안 비율 0.713
             : estDiaryHeight(item, diaryCardMode);
     });
     return cols;

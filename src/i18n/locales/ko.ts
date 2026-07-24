@@ -1485,6 +1485,7 @@ const ko = {
     title: '기록을 남기면 여기서 메이트와 나눠져요',
     cta: '첫 기록 남기기',
     official: 'eOrth 공식',
+    officialSuffix: '공식', // 기능 소개 카드 배지 — 'eOrth'(Gilroy) 뒤에 붙는 말
     feedHint: '이렇게 기록을 남겨보세요',
     exampleFeedContent: '뉴욕에서의 하루 ☀️ 여행한 만큼 지구본이 채워져요. 피드 기록은 이렇게 사진과 글로 남겨요.',
     exampleSnapContent: '스냅은 여행 중 순간을 한 장으로 — 이렇게 보여요',
