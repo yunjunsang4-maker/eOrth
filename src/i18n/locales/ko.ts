@@ -1688,6 +1688,7 @@ const ko = {
     coachSkip: '건너뛰기',
     coachStart: '시작하기',
     coachNext: '다음',
+    coachPrev: '이전',
     sponsorCta: '패키지 보러가기 →',
     sponsorDisclaimer: '제휴 링크 · 구매 시 일정 수수료를 받을 수 있어요',
     cutAdjustTitle: '사진 위치 조정',

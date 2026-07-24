@@ -1687,6 +1687,7 @@ const en = {
     coachSkip: 'Skip',
     coachStart: 'Get Started',
     coachNext: 'Next',
+    coachPrev: 'Back',
     sponsorCta: 'View package →',
     sponsorDisclaimer: 'Affiliate link · we may earn a commission on purchases',
     cutAdjustTitle: 'Adjust photo position',

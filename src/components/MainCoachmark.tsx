@@ -9,8 +9,14 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import Svg, { Path as SvgPath, Rect as SvgRect, Mask as SvgMask, Defs as SvgDefs } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+
+const AnimatedRect = Animated.createAnimatedComponent(SvgRect);
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -30,7 +36,6 @@ export interface CoachStep {
   // 원형일 때 정확한 원(윈도우 좌표). 지정 시 rect 중심 추정 대신 이 값을 사용한다.
   circleWin?: { cx: number; cy: number; r: number };
   // 말풍선을 강조 요소 기준 자동 배치 대신 화면 하단에서 이만큼 띄워 고정(윈도우 px).
-  // 하단(스냅·FAB)처럼 박스를 강조 위쪽으로 올려야 할 때 사용.
   tipBottom?: number;
   // 말풍선을 강조 요소 "아래쪽"에 배치(화면 상단 요소가 가려지지 않게). 예: 프로필 아바타.
   tipBelow?: boolean;
@@ -42,32 +47,61 @@ interface Props {
   visible: boolean;
   steps: CoachStep[];
   onClose: () => void;
-  // 현재 단계가 바뀔 때 호출(밝게 둘 하단 버튼 동기화 등에 사용).
   onStepChange?: (step: CoachStep) => void;
 }
 
 const PAD = 8; // 강조 구멍 여백
-const DIM = 'rgba(0,0,0,0.78)';
+const DIM = '#000000';
+const DIM_OP = 0.78;
+const TOOLTIP_BG = 'rgba(18,16,26,0.96)'; // 딥다크 글래스 말풍선
+const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
+
+// 진행 점 — 활성 시 스프링으로 늘어나며 강조색으로 물든다(온보딩 PageDot 언어)
+function StepDot({ active, color }: { active: boolean; color: string }) {
+  const a = useRef(new Animated.Value(active ? 1 : 0)).current;
+  useEffect(() => {
+    Animated.spring(a, { toValue: active ? 1 : 0, friction: 7, tension: 120, useNativeDriver: false }).start();
+  }, [active, a]);
+  return (
+    <Animated.View
+      style={{
+        height: 7,
+        borderRadius: 3.5,
+        width: a.interpolate({ inputRange: [0, 1], outputRange: [7, 18] }),
+        backgroundColor: a.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255,255,255,0.25)', color] }),
+      }}
+    />
+  );
+}
+
+type Geom = { x: number; y: number; w: number; h: number; r: number };
 
 /**
  * 메인 화면 단계별 튜토리얼(코치마크) 오버레이.
  *
- * 각 step의 rect 둘레로 4개의 어둡게 처리한 사각형을 깔아 "구멍(스포트라이트)"을 만들고,
- * 보라 네온 링과 설명 말풍선을 그린다. rect가 null인 step은 화면 중앙에 안내 카드만 표시한다.
- * 배경 탭 또는 "다음" 버튼으로 진행, "건너뛰기"로 종료.
+ * SVG 마스크로 어둡게 처리한 오버레이에 둥근 구멍(스포트라이트)을 뚫고, 그 구멍을 단계 간
+ * 부드럽게 이동·리사이즈(item 9)한다. 스킨색 네온 링 + 딥다크 글래스 말풍선(그라데이션 테두리·
+ * 강조 요소를 가리키는 꼬리·내용 스태거 등장). 진입/종료 페이드, 이전/다음/우상단 X, 햅틱 지원.
  */
-const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
-
 export default function MainCoachmark({ visible, steps, onClose, onStepChange }: Props) {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // 스포트라이트 링·툴팁 강조를 스킨색으로
+  const insets = useSafeAreaInsets();
+  const skinAccent = useSkinAccent();
   const [idx, setIdx] = useState(0);
 
-  // 강조 링 맥동(pulse) 애니메이션 — 설명 중인 UI를 시선이 가도록 강조
-  const pulse = useRef(new Animated.Value(0)).current;
+  const [rendered, setRendered] = useState(visible);
+  const mount = useRef(new Animated.Value(0)).current;   // 진입/종료 페이드
+  const trans = useRef(new Animated.Value(1)).current;   // 말풍선 크로스페이드 + 내용 스태거
+  const pulse = useRef(new Animated.Value(0)).current;   // 링 맥동
 
-  // 오버레이 루트의 윈도우 위치/크기. step.rect(measureInWindow 결과)에서 이 값을 빼야
-  // 화면 트리 내 절대 좌표와 정확히 일치한다(상태바 등 상수 오프셋 상쇄).
+  // 스포트라이트 지오메트리(둥근 사각형으로 통일 — 원은 rx=반지름) — 단계 간 애니메이션
+  const gx = useRef(new Animated.Value(0)).current;
+  const gy = useRef(new Animated.Value(0)).current;
+  const gw = useRef(new Animated.Value(0)).current;
+  const gh = useRef(new Animated.Value(0)).current;
+  const gr = useRef(new Animated.Value(0)).current;
+  const geomInit = useRef(false);
+
   const rootRef = useRef<View>(null);
   const [origin, setOrigin] = useState({ x: 0, y: 0 });
   const [rootSize, setRootSize] = useState({ w: SCREEN_W, h: SCREEN_H });
@@ -87,247 +121,244 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
     }
   };
 
-  // 다시 열릴 때마다 첫 단계부터
+  // 진입/종료 페이드 + 열릴 때 첫 단계로(지오메트리 스냅 리셋)
   useEffect(() => {
-    if (visible) setIdx(0);
+    if (visible) {
+      setRendered(true);
+      setIdx(0);
+      trans.setValue(1);
+      geomInit.current = false;
+      Animated.timing(mount, { toValue: 1, duration: 260, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+    } else if (rendered) {
+      Animated.timing(mount, { toValue: 0, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(
+        ({ finished }) => { if (finished) setRendered(false); }
+      );
+    }
   }, [visible]);
 
-  // 현재 단계 변경을 상위로 알림(밝게 둘 하단 버튼 동기화)
   useEffect(() => {
     if (visible) onStepChange?.(steps[Math.min(idx, steps.length - 1)]);
   }, [idx, visible, steps]);
 
-  // 표시되는 동안 맥동 루프 실행
+  // 맥동 루프(지오메트리와 같은 뷰에 얹히므로 JS 드라이버)
   useEffect(() => {
-    if (!visible) return;
+    if (!rendered) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
       ])
     );
     loop.start();
     return () => loop.stop();
-  }, [visible]);
-
-  if (!visible || steps.length === 0) return null;
+  }, [rendered]);
 
   const step = steps[Math.min(idx, steps.length - 1)];
-  const isLast = idx >= steps.length - 1;
 
-  const next = () => {
-    if (isLast) onClose();
-    else setIdx((i) => i + 1);
+  // 스텝 → 통일 지오메트리(둥근 사각형). rect 없거나 미측정이면 null(구멍 없음).
+  const computeGeom = (s?: CoachStep): Geom | null => {
+    if (!s || !s.rect || !measured) return null;
+    if (s.shape === 'circle') {
+      const c = s.circleWin
+        ? { cx: s.circleWin.cx - origin.x, cy: s.circleWin.cy - origin.y, r: s.circleWin.r }
+        : {
+            cx: s.rect.x - origin.x + s.rect.width / 2,
+            cy: s.rect.y - origin.y + s.rect.height / 2,
+            r: Math.min(s.rect.width, s.rect.height) * 0.46,
+          };
+      return { x: c.cx - c.r, y: c.cy - c.r, w: c.r * 2, h: c.r * 2, r: c.r };
+    }
+    const x = s.rect.x - origin.x - PAD;
+    const y = s.rect.y - origin.y - PAD;
+    const w = s.rect.width + PAD * 2;
+    const h = s.rect.height + PAD * 2;
+    return { x, y, w, h, r: Math.min(Math.min(w, h) / 2, 40) };
   };
 
-  // 윈도우 좌표 → 오버레이 로컬 좌표로 변환. 측정 전(measured=false)이거나 rect 없으면 전체 딤만.
-  const rect = step.rect && measured ? step.rect : null;
+  // 지오메트리 애니메이션 — 단계가 바뀌면 구멍이 다음 요소로 부드럽게 이동·리사이즈
+  useEffect(() => {
+    if (!rendered) return;
+    const g = computeGeom(step);
+    if (!g) {
+      Animated.timing(gw, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+      Animated.timing(gh, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+      return;
+    }
+    if (!geomInit.current) {
+      gx.setValue(g.x); gy.setValue(g.y); gw.setValue(g.w); gh.setValue(g.h); gr.setValue(g.r);
+      geomInit.current = true;
+    } else {
+      const d = 380;
+      const ez = Easing.inOut(Easing.cubic);
+      Animated.parallel([
+        Animated.timing(gx, { toValue: g.x, duration: d, easing: ez, useNativeDriver: false }),
+        Animated.timing(gy, { toValue: g.y, duration: d, easing: ez, useNativeDriver: false }),
+        Animated.timing(gw, { toValue: g.w, duration: d, easing: ez, useNativeDriver: false }),
+        Animated.timing(gh, { toValue: g.h, duration: d, easing: ez, useNativeDriver: false }),
+        Animated.timing(gr, { toValue: g.r, duration: d, easing: ez, useNativeDriver: false }),
+      ]).start();
+    }
+  }, [idx, rendered, measured, origin.x, origin.y, rootSize.w, rootSize.h]);
+
+  if (!rendered || steps.length === 0) return null;
+
+  const isLast = idx >= steps.length - 1;
+
+  // 단계 전환 — 말풍선 크로스페이드(구멍/링은 지오메트리로 글라이드), 햅틱
+  const animateTo = (target: number) => {
+    Haptics.selectionAsync().catch(() => {});
+    Animated.timing(trans, { toValue: 0, duration: 130, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(() => {
+      setIdx(target);
+      Animated.timing(trans, { toValue: 1, duration: 220, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+    });
+  };
+  const next = () => {
+    if (isLast) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+      onClose();
+    } else {
+      animateTo(idx + 1);
+    }
+  };
+  const prev = () => { if (idx > 0) animateTo(idx - 1); };
+
+  // 말풍선 위치·꼬리 기준 지오메트리(현재 단계 실측값)
+  const geom = computeGeom(step);
   const isCircle = step.shape === 'circle';
+  const box = geom ? { y: geom.y, h: geom.h } : null;
 
-  // 사각형 스포트라이트
-  const hole =
-    rect && !isCircle
-      ? {
-          x: rect.x - origin.x - PAD,
-          y: rect.y - origin.y - PAD,
-          w: rect.width + PAD * 2,
-          h: rect.height + PAD * 2,
-        }
-      : null;
-
-  // 강조 도형이 실제 UI 모양(알약·원형 버튼)에 꼭 맞게 감싸도록 모서리 반경을 요소 크기에 맞춘다.
-  // (작은/정사각 요소는 완전 둥글게 → 박스 같은 "선" 느낌 제거). 큰 카드는 40으로 상한.
-  const holeRadius = hole ? Math.min(Math.min(hole.w, hole.h) / 2, 40) : 0;
-
-  // 원형 스포트라이트 (지구본 등). circleWin이 있으면 그 값을, 없으면 rect 중심을 사용.
-  const circle =
-    rect && isCircle
-      ? step.circleWin
-        ? {
-            cx: step.circleWin.cx - origin.x,
-            cy: step.circleWin.cy - origin.y,
-            r: step.circleWin.r,
-          }
-        : {
-            cx: rect.x - origin.x + rect.width / 2,
-            cy: rect.y - origin.y + rect.height / 2,
-            r: Math.min(rect.width, rect.height) * 0.46,
-          }
-      : null;
-
-  // 말풍선 배치 기준 박스 (사각이면 hole, 원이면 원의 바운딩 박스)
-  const box = hole
-    ? { y: hole.y, h: hole.h }
-    : circle
-    ? { y: circle.cy - circle.r, h: circle.r * 2 }
-    : null;
-
-  // 말풍선 세로 위치
   let tipStyle: { top?: number; bottom?: number };
+  let arrowDir: 'up' | 'down' | null = null;
   if (step.tipBottom != null) {
-    // 스텝이 명시한 하단 오프셋으로 고정 (강조 요소 위쪽으로 박스를 올릴 때)
     tipStyle = { bottom: step.tipBottom };
-  } else if (step.tipBelow && (circle || box)) {
-    // 강조 요소 바로 아래에 배치 (상단 요소가 말풍선에 가려지지 않게)
-    const anchorBottom = circle ? circle.cy + circle.r : box!.y + box!.h;
-    const top = Math.min(anchorBottom + 16, rootSize.h - TIP_MIN);
-    tipStyle = { top };
-  } else if (circle) {
-    // 지구본: 말풍선을 지구본 상단에 겹쳐 배치 — 하단(스냅·FAB)과 겹치지 않도록 위쪽 고정
-    const top = Math.min(Math.max(circle.cy - circle.r, 24), rootSize.h - TIP_MIN);
-    tipStyle = { top };
+    arrowDir = 'down';
+  } else if (step.tipBelow && box) {
+    tipStyle = { top: Math.min(box.y + box.h + 16, rootSize.h - TIP_MIN) };
+    arrowDir = 'up';
+  } else if (isCircle && box) {
+    tipStyle = { top: Math.min(Math.max(box.y, 24), rootSize.h - TIP_MIN) };
+    arrowDir = null;
   } else if (box) {
-    // 박스 위/아래 중 공간이 충분한 쪽, 둘 다 좁으면 중앙쯤에 겹쳐 배치
     const spaceAbove = box.y;
     const spaceBelow = rootSize.h - (box.y + box.h);
     if (spaceBelow >= TIP_MIN) {
       tipStyle = { top: box.y + box.h + 14 };
+      arrowDir = 'up';
     } else if (spaceAbove >= TIP_MIN) {
       tipStyle = { bottom: rootSize.h - box.y + 14 };
+      arrowDir = 'down';
     } else {
-      const top = Math.min(Math.max(box.y + box.h / 2 - 90, 24), rootSize.h - TIP_MIN);
-      tipStyle = { top };
+      tipStyle = { top: Math.min(Math.max(box.y + box.h / 2 - 90, 24), rootSize.h - TIP_MIN) };
+      arrowDir = null;
     }
   } else {
     tipStyle = { top: rootSize.h * 0.42 };
+    arrowDir = null;
   }
 
-  // Modal을 쓰지 않고 같은 화면 트리 안에 절대 위치로 렌더한다.
+  const elemCx = geom ? geom.x + geom.w / 2 : rootSize.w / 2;
+  const tipW = rootSize.w - 48;
+  const arrowX = Math.max(18, Math.min(tipW - 36, elemCx - 24 - 9));
+
+  // 그라데이션 테두리 색 — 스킨의 네온 링 그라데이션(없으면 버튼 그라데이션)
+  const borderGrad = skinAccent.ringGradient ?? skinAccent.btnGradient;
+
+  // 내용 스태거 — trans(0→1)에 서로 다른 시작점을 줘 제목→설명→푸터 순으로 슬라이드 인
+  const titleY = trans.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
+  const descY = trans.interpolate({ inputRange: [0, 0.18, 1], outputRange: [14, 14, 0] });
+  const footerY = trans.interpolate({ inputRange: [0, 0.34, 1], outputRange: [18, 18, 0] });
+
   return (
     <View ref={rootRef} onLayout={onRootLayout} style={styles.root} pointerEvents="box-none">
-      <View style={StyleSheet.absoluteFill}>
-        {/* 배경 탭은 아래 UI 터치만 차단(진행 X). 다음 단계는 "다음" 버튼으로만 */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: mount }]}>
+        {/* 배경 탭은 아래 UI 터치만 차단(진행 X) */}
         <Pressable style={StyleSheet.absoluteFill} onPress={() => {}} />
 
-        {hole ? (
-          <>
-            {/* 구멍 둘레 4분할 딤 처리 (탭은 뒤 Pressable로 통과) */}
-            <View pointerEvents="none" style={[styles.dim, { top: 0, left: 0, right: 0, height: Math.max(0, hole.y) }]} />
-            <View pointerEvents="none" style={[styles.dim, { top: hole.y + hole.h, left: 0, right: 0, bottom: 0 }]} />
-            <View pointerEvents="none" style={[styles.dim, { top: hole.y, left: 0, width: Math.max(0, hole.x), height: hole.h }]} />
-            <View pointerEvents="none" style={[styles.dim, { top: hole.y, left: hole.x + hole.w, right: 0, height: hole.h }]} />
-            {/* 강조 글로우 헤일로 (맥동) — 요소 모양에 맞춘 반경 */}
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.halo,
-                { borderColor: skinAccent.tint(0.45), shadowColor: skinAccent.accent },
-                {
-                  top: hole.y,
-                  left: hole.x,
-                  width: hole.w,
-                  height: hole.h,
-                  borderRadius: holeRadius,
-                  opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] }),
-                  transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.06] }) }],
-                },
-              ]}
-            />
-            {/* 강조 링 — 요소 모양에 맞춘 반경 */}
-            <View
-              pointerEvents="none"
-              style={[
-                styles.ring,
-                { borderColor: skinAccent.accent, shadowColor: skinAccent.accent },
-                { top: hole.y, left: hole.x, width: hole.w, height: hole.h, borderRadius: holeRadius },
-              ]}
-            />
-          </>
-        ) : circle ? (
-          <>
-            {/* 원형 딤(도넛): 큰 원형 테두리로 원 바깥 전체를 어둡게, 안쪽 원만 투명 */}
-            {(() => {
-              const D = Math.ceil(Math.hypot(rootSize.w, rootSize.h)) * 2 + 40; // 화면 어디서든 모서리까지 덮을 큰 지름
-              const bw = D / 2 - circle.r; // 도넛 두께(= 바깥반지름 - 구멍반지름)
-              return (
-                <View
-                  pointerEvents="none"
-                  style={{
-                    position: 'absolute',
-                    left: circle.cx - D / 2,
-                    top: circle.cy - D / 2,
-                    width: D,
-                    height: D,
-                    borderRadius: D / 2,
-                    borderWidth: bw,
-                    borderColor: DIM,
-                    backgroundColor: 'transparent',
-                  }}
-                />
-              );
-            })()}
-            {/* 원형 글로우 헤일로 (맥동) */}
-            <Animated.View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: circle.cx - circle.r,
-                top: circle.cy - circle.r,
-                width: circle.r * 2,
-                height: circle.r * 2,
-                borderRadius: circle.r,
-                borderWidth: 4,
-                borderColor: skinAccent.tint(0.45),
-                shadowColor: skinAccent.accent,
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 1,
-                shadowRadius: 18,
-                elevation: 10,
-                opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] }),
-                transform: [{ scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [1, 1.04] }) }],
-              }}
-            />
-            {/* 원형 강조 링 */}
-            <View
-              pointerEvents="none"
-              style={{
-                position: 'absolute',
-                left: circle.cx - circle.r,
-                top: circle.cy - circle.r,
-                width: circle.r * 2,
-                height: circle.r * 2,
-                borderRadius: circle.r,
-                borderWidth: 2.5,
-                borderColor: skinAccent.accent,
-                shadowColor: skinAccent.accent,
-                shadowOffset: { width: 0, height: 0 },
-                shadowOpacity: 0.95,
-                shadowRadius: 12,
-                elevation: 8,
-              }}
-            />
-          </>
-        ) : (
-          // rect 없는 안내 단계: 화면 전체 딤
-          <View pointerEvents="none" style={[styles.dim, StyleSheet.absoluteFillObject]} />
-        )}
+        {/* 딤 + 둥근 구멍 (SVG 마스크로 원/사각 통일, 지오메트리 애니메이션) */}
+        <Svg width={rootSize.w} height={rootSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+          <SvgDefs>
+            <SvgMask id="coachHole">
+              <SvgRect x={0} y={0} width={rootSize.w} height={rootSize.h} fill="#FFFFFF" />
+              <AnimatedRect x={gx} y={gy} width={gw} height={gh} rx={gr} ry={gr} fill="#000000" />
+            </SvgMask>
+          </SvgDefs>
+          <SvgRect
+            x={0} y={0} width={rootSize.w} height={rootSize.h}
+            fill={DIM} fillOpacity={DIM_OP} mask="url(#coachHole)"
+          />
+        </Svg>
 
-        {/* 설명 말풍선 */}
-        <View style={[styles.tooltip, { borderColor: skinAccent.tint(0.45) }, tipStyle]}>
-          <Text style={styles.title}>{step.title}</Text>
-          <Text style={styles.desc}>{step.desc}</Text>
+        {/* 강조 글로우 헤일로 (맥동) — 구멍과 함께 글라이드 */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.halo,
+            {
+              borderColor: skinAccent.tint(0.45),
+              shadowColor: skinAccent.accent,
+              left: gx, top: gy, width: gw, height: gh, borderRadius: gr,
+              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] }),
+            },
+          ]}
+        />
+        {/* 강조 링 */}
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.ring,
+            { borderColor: skinAccent.accent, shadowColor: skinAccent.accent, left: gx, top: gy, width: gw, height: gh, borderRadius: gr },
+          ]}
+        />
 
-          <View style={styles.footer}>
-            {/* 단계 표시 점 */}
-            <View style={styles.dots}>
-              {steps.map((_, i) => (
-                <View key={i} style={[styles.dot, i === idx && [styles.dotActive, { backgroundColor: skinAccent.accent }]]} />
-              ))}
+        {/* 설명 말풍선 — 크로스페이드 + 그라데이션 테두리 + 꼬리 + 내용 스태거 */}
+        <Animated.View style={[styles.tooltipPos, tipStyle, { opacity: trans }]}>
+          {arrowDir === 'up' && <View style={[styles.arrowUp, { left: arrowX }]} />}
+          {arrowDir === 'down' && <View style={[styles.arrowDown, { left: arrowX }]} />}
+          <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tipBorder}>
+            <View style={styles.tipInner}>
+              <Animated.Text style={[styles.title, { transform: [{ translateY: titleY }] }]}>{step.title}</Animated.Text>
+              <Animated.Text style={[styles.desc, { transform: [{ translateY: descY }] }]}>{step.desc}</Animated.Text>
+
+              <Animated.View style={[styles.footer, { transform: [{ translateY: footerY }] }]}>
+                <View style={styles.dots}>
+                  {steps.map((_, i) => (
+                    <StepDot key={i} active={i === idx} color={skinAccent.accent} />
+                  ))}
+                </View>
+
+                <View style={styles.actions}>
+                  {idx > 0 && (
+                    <TouchableOpacity onPress={prev} activeOpacity={0.8} style={styles.prevBtn}>
+                      <Text style={styles.prevTxt}>{t('comp.coachPrev')}</Text>
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={next} activeOpacity={0.85} style={styles.nextBtn}>
+                    <LinearGradient
+                      colors={skinAccent.btnGradient}
+                      start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                      style={styles.nextGrad}
+                    >
+                      <Text style={styles.nextTxt}>{isLast ? t('comp.coachStart') : t('comp.coachNext')}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </Animated.View>
             </View>
+          </LinearGradient>
+        </Animated.View>
 
-            <View style={styles.actions}>
-              {!isLast && (
-                <TouchableOpacity onPress={onClose} activeOpacity={0.7} style={styles.skipBtn}>
-                  <Text style={styles.skipTxt}>{t('comp.coachSkip')}</Text>
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={next} activeOpacity={0.85} style={[styles.nextBtn, { backgroundColor: skinAccent.accent }]}>
-                <Text style={styles.nextTxt}>{isLast ? t('comp.coachStart') : t('comp.coachNext')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </View>
+        {/* 상시 종료 X */}
+        <TouchableOpacity
+          onPress={onClose}
+          activeOpacity={0.8}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          style={[styles.closeBtn, { top: insets.top + 10 }]}
+        >
+          <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+            <SvgPath d="M6 6l12 12M18 6L6 18" stroke="#FFFFFF" strokeWidth={2} strokeLinecap="round" />
+          </Svg>
+        </TouchableOpacity>
+      </Animated.View>
     </View>
   );
 }
@@ -338,16 +369,9 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     elevation: 9999,
   },
-  dim: {
-    position: 'absolute',
-    backgroundColor: DIM,
-  },
   halo: {
     position: 'absolute',
-    borderRadius: 18,
     borderWidth: 4,
-    borderColor: 'rgba(191,133,252,0.45)',
-    shadowColor: '#BF85FC',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 1,
     shadowRadius: 18,
@@ -355,29 +379,68 @@ const styles = StyleSheet.create({
   },
   ring: {
     position: 'absolute',
-    borderRadius: 14,
     borderWidth: 2.5,
-    borderColor: '#BF85FC',
-    shadowColor: '#BF85FC',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.95,
     shadowRadius: 12,
     elevation: 8,
   },
-  tooltip: {
+  closeBtn: {
+    position: 'absolute',
+    right: 16,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tooltipPos: {
     position: 'absolute',
     left: 24,
     right: 24,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 18,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.35)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 16,
-    elevation: 12,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.5,
+    shadowRadius: 18,
+    elevation: 14,
+  },
+  tipBorder: {
+    borderRadius: 20,
+    padding: 1.4, // 그라데이션 테두리 두께
+  },
+  tipInner: {
+    borderRadius: 18.6,
+    backgroundColor: TOOLTIP_BG,
+    padding: 20,
+  },
+  arrowUp: {
+    position: 'absolute',
+    top: -9,
+    zIndex: 1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderBottomWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: TOOLTIP_BG,
+  },
+  arrowDown: {
+    position: 'absolute',
+    bottom: -9,
+    zIndex: 1,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 9,
+    borderRightWidth: 9,
+    borderTopWidth: 10,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderTopColor: TOOLTIP_BG,
   },
   title: {
     color: '#FFFFFF',
@@ -386,7 +449,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   desc: {
-    color: '#A1A1B0',
+    color: '#B4B4C2',
     fontSize: 14,
     lineHeight: 21,
     marginBottom: 18,
@@ -399,40 +462,35 @@ const styles = StyleSheet.create({
   dots: {
     flexDirection: 'row',
     gap: 6,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-  },
-  dotActive: {
-    backgroundColor: '#BF85FC',
-    width: 18,
+    alignItems: 'center',
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  skipBtn: {
+  prevBtn: {
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
-  skipTxt: {
-    color: '#A1A1B0',
+  prevTxt: {
+    color: '#B4B4C2',
     fontSize: 14,
     fontWeight: '600',
   },
   nextBtn: {
-    backgroundColor: '#7B61FF',
     borderRadius: 999,
-    paddingHorizontal: 22,
+    overflow: 'hidden',
+  },
+  nextGrad: {
+    paddingHorizontal: 24,
     paddingVertical: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   nextTxt: {
     color: '#FFFFFF',
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '800',
   },
 });

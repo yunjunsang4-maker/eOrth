@@ -1,24 +1,61 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { requestNotificationPermission } from '../services/snapService';
+import StarFieldBackground from '../components/StarFieldBackground';
+import { IntroAmbient } from './introVisuals';
+import ImportCtaButton from '../components/ImportCtaButton';
 import type { RootStackScreenProps } from '../navigation/types';
+
+// 완료 화면에서 가져온 나라 국기 칩 — 순차로 톡 튀어오르며 나타난다(스프링).
+function FlagChip({ flag, name, delay }: { flag: string; name: string; delay: number }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, { toValue: 1, friction: 6, tension: 90, delay, useNativeDriver: true }).start();
+  }, [anim, delay]);
+  return (
+    <Animated.View
+      style={[
+        st.flagChip,
+        { opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] }) }] },
+      ]}
+    >
+      <Text style={st.flagChipEmoji}>{flag}</Text>
+      <Text style={st.flagChipName} numberOfLines={1}>{name}</Text>
+    </Animated.View>
+  );
+}
 
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets();
   const { tripCount, photoCount, countries } = route.params;
 
-  // 진입 시 체크 아이콘 스케일/페이드 인
+  // 진입 시 체크 아이콘 스케일/페이드 인 + 링 버스트(리플)
   const checkScale = useRef(new Animated.Value(0.6)).current;
   const checkOpacity = useRef(new Animated.Value(0)).current;
   const bodyOpacity = useRef(new Animated.Value(0)).current;
+  const burstScale = useRef(new Animated.Value(0.4)).current;
+  const burstOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
     Animated.sequence([
       Animated.parallel([
         Animated.spring(checkScale, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
         Animated.timing(checkOpacity, { toValue: 1, duration: 300, useNativeDriver: true }),
+        // 링 버스트 — 체크 뒤로 한 번 퍼지며 사라지는 축하 리플
+        Animated.sequence([
+          Animated.timing(burstOpacity, { toValue: 0.5, duration: 120, useNativeDriver: true }),
+          Animated.parallel([
+            Animated.timing(burstScale, { toValue: 2, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+            Animated.timing(burstOpacity, { toValue: 0, duration: 700, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+          ]),
+        ]),
       ]),
       Animated.timing(bodyOpacity, { toValue: 1, duration: 350, useNativeDriver: true }),
     ]).start();
@@ -43,39 +80,54 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
   };
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
+    <View style={st.container}>
+      <StarFieldBackground opacity={0.5} />
+      <IntroAmbient />
+
       <View style={st.content}>
-        <Animated.View
-          style={[st.checkWrap, { opacity: checkOpacity, transform: [{ scale: checkScale }] }]}
-        >
+        <Animated.View style={[st.checkWrap, { opacity: checkOpacity, transform: [{ scale: checkScale }] }]}>
           <View style={st.checkGlow} />
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.checkCircle}>
-            <Text style={st.checkMark}>✓</Text>
+          <Animated.View
+            style={[st.burstRing, { opacity: burstOpacity, transform: [{ scale: burstScale }] }]}
+            pointerEvents="none"
+          />
+          <LinearGradient
+            colors={['#FF14E4', '#00D8F3']}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+            style={st.checkCircle}
+          >
+            <Svg width={52} height={52} viewBox="0 0 24 24" fill="none">
+              <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+            </Svg>
           </LinearGradient>
         </Animated.View>
 
-        <Animated.View style={{ opacity: bodyOpacity, alignItems: 'center' }}>
+        <Animated.View style={{ opacity: bodyOpacity, alignItems: 'center', width: '100%' }}>
           <Text style={st.title}>{t('imports.icTitle')}</Text>
           <Text style={st.tripLine}>{tripLine}</Text>
           <Text style={st.photoLine}>
             {t('imports.icPhotoPrefix')}<Text style={st.accent}>{t('imports.icPhotoCountN', { count: photoCount })}</Text>{t('imports.icPhotoSuffix')}
           </Text>
+
+          {countries.length > 0 && (
+            <View style={st.flagWrap}>
+              {countries.map((c, i) => (
+                <FlagChip key={`${c.flag}-${c.name}-${i}`} flag={c.flag} name={c.name} delay={500 + i * 90} />
+              ))}
+            </View>
+          )}
         </Animated.View>
       </View>
 
-      <Animated.View style={[st.bottom, { opacity: bodyOpacity }]}>
-        <TouchableOpacity style={st.primaryBtn} onPress={startEorth} activeOpacity={0.85}>
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={st.primaryGrad}>
-            <Text style={st.primaryTxt}>{t('imports.icStart')}</Text>
-          </LinearGradient>
-        </TouchableOpacity>
+      <Animated.View style={[st.bottom, { opacity: bodyOpacity, paddingBottom: insets.bottom + 24 }]}>
+        <ImportCtaButton gid="importDoneCta" label={t('imports.icStart')} onPress={startEorth} />
       </Animated.View>
-    </LinearGradient>
+    </View>
   );
 }
 
 const st = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#0A0B0F' },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   checkWrap: {
     width: 140,
@@ -89,7 +141,15 @@ const st = StyleSheet.create({
     width: 140,
     height: 140,
     borderRadius: 70,
-    backgroundColor: 'rgba(123, 97, 255, 0.18)',
+    backgroundColor: 'rgba(236, 52, 247, 0.16)',
+  },
+  burstRing: {
+    position: 'absolute',
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    borderWidth: 2,
+    borderColor: 'rgba(0, 216, 243, 0.9)',
   },
   checkCircle: {
     width: 100,
@@ -97,19 +157,28 @@ const st = StyleSheet.create({
     borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#7B61FF',
+    shadowColor: '#EC34F7',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.85,
-    shadowRadius: 20,
+    shadowRadius: 22,
     elevation: 10,
   },
-  checkMark: { color: '#FFFFFF', fontSize: 52, fontWeight: '800', lineHeight: 58 },
   title: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginBottom: 16 },
-  tripLine: { color: '#BF85FC', fontSize: 17, fontWeight: '700', marginBottom: 6 },
-  photoLine: { color: '#A1A1B0', fontSize: 15, fontWeight: '500' },
+  tripLine: { color: '#EC34F7', fontSize: 17, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
+  photoLine: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '500', textAlign: 'center' },
   accent: { color: '#FFFFFF', fontWeight: '700' },
-  bottom: { paddingHorizontal: 24, paddingBottom: 48 },
-  primaryBtn: { width: '100%', borderRadius: 999, overflow: 'hidden', marginBottom: 8 },
-  primaryGrad: { paddingVertical: 18, alignItems: 'center' },
-  primaryTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+
+  // 가져온 나라 국기 칩
+  flagWrap: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 8, marginTop: 22,
+  },
+  flagChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 5,
+    paddingLeft: 8, paddingRight: 12, paddingVertical: 5, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  flagChipEmoji: { fontSize: 15 },
+  flagChipName: { color: '#FFFFFF', fontSize: 12, fontWeight: '500', maxWidth: 120 },
+
+  bottom: { paddingHorizontal: 24 },
 });
