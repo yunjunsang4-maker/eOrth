@@ -25,7 +25,7 @@ export interface SelectedCountryParam {
   regionEn?: string;
 }
 
-/** DM 화면으로 전달되는 친구 정보 */
+/** DM 화면으로 전달되는 메이트 정보 */
 export interface DMFriendParam {
   name: string;
   handle: string;
@@ -120,6 +120,8 @@ export type RootStackParamList = {
   } | undefined;
   FollowingList: undefined;
   FollowerList: undefined;
+  // 마이 티켓 — 프로필 QR 공유 보딩패스 (통계는 프로필 화면 계산값을 그대로 전달)
+  ProfileTicket: { tripCount: number; neighborCount: number };
   // 타인 프로필의 팔로워/팔로잉 목록 (조회 전용)
   UserFollowList: { userId: string; mode: 'followers' | 'following' };
   EditProfile: undefined;
@@ -143,6 +145,7 @@ export type RootStackParamList = {
     selectedCountry?: SelectedCountryParam;
   } | undefined;
   AlbumCreate: { selectedCountry?: SelectedCountryParam; tripGroupId?: string } | undefined; // tripGroupId: 여행 상세에서 진입 시 그 카드에 연결(카드당 앨범 1개)
+  MomentCapture: undefined;
 };
 
 // ─── 화면 Props 헬퍼 ───

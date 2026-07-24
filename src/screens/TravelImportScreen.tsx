@@ -21,6 +21,7 @@ import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { countryTagLabel } from '../utils/countryLabel';
 import { locateCountry } from '../utils/countryLocate';
 import { requestNotificationPermission } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -77,7 +78,7 @@ const parseExifDate = (exif: any): number | null => {
 type Props = RootStackScreenProps<'TravelImport'>;
 
 export default function TravelImportScreen({ navigation }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { homeCountryCode } = useSettings();
 
@@ -587,7 +588,7 @@ export default function TravelImportScreen({ navigation }: Props) {
                     <View style={styles.cardInfo}>
                       <View style={styles.cardHeaderRow}>
                         <View style={styles.countryBadge}>
-                          <Text style={styles.countryText}>{trip.country}</Text>
+                          <Text style={styles.countryText}>{countryTagLabel(trip.country, i18n.language)}</Text>
                         </View>
                         <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                           {isSelected && <Text style={styles.checkmark}>✓</Text>}
@@ -596,7 +597,7 @@ export default function TravelImportScreen({ navigation }: Props) {
                       <Text style={styles.cardTitle}>{trip.title}</Text>
                       <Text style={styles.cardDate}>{trip.startDate} ~ {trip.endDate.substring(5)}</Text>
                       <View style={styles.cardFooter}>
-                        <Text style={styles.photoCountText}>📷 사진 {trip.photoCount}장 발견</Text>
+                        <Text style={styles.photoCountText}>{t('imports.photosFound', { count: trip.photoCount })}</Text>
                       </View>
                     </View>
                   </TouchableOpacity>

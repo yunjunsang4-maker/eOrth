@@ -31,7 +31,10 @@ create table if not exists public.profiles (
   gender        text,
   profile_photo text,
   created_at    timestamptz not null default now(),
-  updated_at    timestamptz not null default now()
+  updated_at    timestamptz not null default now(),
+  -- 장기체류: 진행 중 체류 국가(ISO)와 상태. 이웃 프로필 위치 표시용(public_profiles 뷰 공개).
+  stay_country  text,                              -- ISO 국가 코드 (예: 'KR')
+  stay_status   text                               -- 'active' | null
 );
 
 -- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
@@ -39,6 +42,10 @@ alter table public.profiles add column if not exists country text;
 
 -- 아이디 표시 폰트(프리미엄 기능) — 타인 화면(프로필·피드)에서도 렌더돼야 하므로 공개 컬럼
 alter table public.profiles add column if not exists handle_font text;
+
+-- (2026-07-16) 장기체류 — 진행 중 체류의 국가(ISO)와 상태. 이웃 프로필 위치 표시용.
+alter table public.profiles add column if not exists stay_country text;
+alter table public.profiles add column if not exists stay_status text; -- 'active' | null
 
 -- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
 -- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
@@ -181,6 +188,7 @@ create unique index if not exists uq_posts_author_client
 create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);
+create index if not exists idx_posts_author_country on public.posts (author_id, country_name);
 
 alter table public.posts enable row level security;
 
@@ -342,6 +350,12 @@ $$;
 grant execute on function public.profile_country_counts(uuid[]) to authenticated;
 
 -- ============================================================
+-- 3-b-2) RPC: 추천 메이트(여행 DNA) → mate_suggestions
+--   함수 본문이 is_blocked_between·are_neighbors(4-b)를 참조하므로
+--   (check_function_bodies 기본 on에서 검증) 해당 함수는 4-b 섹션 아래에 정의한다.
+-- ============================================================
+
+-- ============================================================
 -- 3-c) RPC: 친구 찾기 결과의 서로이웃 수 → neighbor_counts
 --   neighbors 테이블 정의(4-b) 이후에 만들어야 하므로(함수 본문이 테이블을 참조),
 --   해당 함수는 neighbors 테이블 아래(4-b)에 정의한다.
@@ -480,6 +494,173 @@ drop policy if exists "neighbors_delete_own" on public.neighbors;
 create policy "neighbors_delete_own" on public.neighbors
   for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
 
+-- ─────────────────────────────────────────────
+-- 추천 메이트(여행 DNA): 나라 겹침·여행 스타일(동행/기록형식)·함께 아는 메이트를
+--   합산한 total_score로 랭킹. extra_countries는 호출자 로컬(미발행·나만보기·
+--   여행기록카드) 나라를 "내 매칭 입력"에만 보강 — 타인에게 비노출.
+--   후보 프라이버시는 기존과 동일(visibility<>'private'만 집계).
+--   점수: 나라 least(n,5)*10 + 동행 least(n,3)*5 + 형식 least(n,2)*7 + 메이트 least(n,3)*7
+-- ─────────────────────────────────────────────
+drop function if exists public.travel_overlap_suggestions(int);
+create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
+returns table (
+  author_id uuid, handle text, emoji text, profile_photo text,
+  shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int
+)
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  my_countries as (
+    select p.country_name from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and p.country_name is not null and p.country_name <> ''
+    union
+    select c from unnest(extra_countries) as c where c is not null and c <> ''
+  ),
+  my_comps as (
+    select distinct comp
+    from public.posts p, me, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
+    ) as comp
+    where p.author_id = me.uid and p.visibility <> 'private'
+  ),
+  my_vts as (
+    select distinct p.view_type from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private' and p.view_type is not null
+  ),
+  my_mates as (
+    select case when n.requester_id = me.uid then n.addressee_id else n.requester_id end as mate_id
+    from public.neighbors n, me
+    where n.status = 'accepted' and (n.requester_id = me.uid or n.addressee_id = me.uid)
+  ),
+  cand as (
+    select p.author_id as cid from public.posts p, me
+    where p.author_id <> me.uid and p.visibility <> 'private'
+    group by p.author_id
+  ),
+  cshared as (
+    select p.author_id as cid,
+           count(distinct p.country_name)::int as shared_count,
+           (array_agg(distinct p.country_name))[1:3] as sample_countries
+    from public.posts p
+    where p.visibility <> 'private'
+      and p.country_name in (select country_name from my_countries)
+      and p.author_id in (select cid from cand)
+    group by p.author_id
+  ),
+  ccomp as (
+    select p.author_id as cid, count(distinct comp)::int as shared_comps
+    from public.posts p, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
+    ) as comp
+    where p.visibility <> 'private' and p.author_id in (select cid from cand)
+      and comp in (select comp from my_comps)
+    group by p.author_id
+  ),
+  cvt as (
+    select p.author_id as cid, count(distinct p.view_type)::int as shared_vts
+    from public.posts p
+    where p.visibility <> 'private' and p.author_id in (select cid from cand)
+      and p.view_type in (select view_type from my_vts)
+    group by p.author_id
+  ),
+  cmut as (
+    -- distinct: neighbors에 양방향 행이 생기는 레이스에도 같은 공통 메이트를 두 번 세지 않게
+    select c.cid, count(distinct mm.mate_id)::int as mutual_count
+    from cand c
+    join my_mates mm on true
+    join public.neighbors n2 on n2.status = 'accepted'
+      and ((n2.requester_id = mm.mate_id and n2.addressee_id = c.cid)
+        or (n2.addressee_id = mm.mate_id and n2.requester_id = c.cid))
+    group by c.cid
+  ),
+  scored as (
+    select c.cid,
+      coalesce(s.shared_count, 0) as shared_count,
+      coalesce(s.sample_countries, '{}'::text[]) as sample_countries,
+      coalesce(m.mutual_count, 0) as mutual_count,
+      (least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7) as style_score,
+      (least(coalesce(s.shared_count,0),5)*10
+       + least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7
+       + least(coalesce(m.mutual_count,0),3)*7) as total_score
+    from cand c
+    left join cshared s on s.cid = c.cid
+    left join ccomp cc on cc.cid = c.cid
+    left join cvt cv on cv.cid = c.cid
+    left join cmut m on m.cid = c.cid
+  )
+  select sc.cid, pp.handle, pp.emoji, pp.profile_photo,
+         sc.shared_count, sc.sample_countries, sc.mutual_count, sc.style_score, sc.total_score
+  from scored sc
+  join public.public_profiles pp on pp.id = sc.cid
+  cross join me
+  where sc.total_score > 0
+    and not public.is_blocked_between(me.uid, sc.cid)
+    and not public.are_neighbors(me.uid, sc.cid)
+    and not exists (
+      select 1 from public.neighbors n
+      where ((n.requester_id = me.uid and n.addressee_id = sc.cid)
+          or (n.requester_id = sc.cid and n.addressee_id = me.uid))
+        and n.status = 'pending'
+    )
+  order by sc.total_score desc, pp.handle
+  limit greatest(1, least(match_limit, 50));
+$$;
+grant execute on function public.mate_suggestions(int, text[]) to authenticated;
+
+-- ─────────────────────────────────────────────
+-- 특정 유저와의 여행 겹침(타인 프로필 "나와 겹치는 나라 N곳" 줄).
+--   extra_countries는 호출자 로컬 나라 보강(내 매칭 입력 전용).
+-- ─────────────────────────────────────────────
+create or replace function public.overlap_with(target uuid, extra_countries text[] default '{}')
+returns table (shared_count int, sample_countries text[])
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  my_countries as (
+    select p.country_name from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and p.country_name is not null and p.country_name <> ''
+    union
+    select c from unnest(extra_countries) as c where c is not null and c <> ''
+  ),
+  shared as (
+    select distinct p.country_name
+    from public.posts p
+    where p.author_id = target and p.visibility <> 'private'
+      and p.country_name in (select country_name from my_countries)
+  )
+  select count(*)::int as shared_count,
+         coalesce((array_agg(s.country_name))[1:3], '{}'::text[]) as sample_countries
+  from shared s;
+$$;
+grant execute on function public.overlap_with(uuid, text[]) to authenticated;
+
+-- ─────────────────────────────────────────────
+-- 나라별 화면 "이 나라 다녀온 사람" — 비공개 아닌 게시물 보유 유저(본인·차단 제외,
+--   메이트 포함: 발견이 아닌 사실 나열 목적). 게시물 수 내림차순.
+--   파라미터명 target_country: public_profiles.country 컬럼과의 모호성 회피.
+-- ─────────────────────────────────────────────
+create or replace function public.country_visitors(target_country text, match_limit int default 12)
+returns table (author_id uuid, handle text, emoji text, profile_photo text, visit_posts int)
+language sql security definer set search_path = public as $$
+  with me as (select auth.uid() as uid),
+  v as (
+    select p.author_id, count(*)::int as visit_posts
+    from public.posts p, me
+    where p.visibility <> 'private'
+      and p.country_name = target_country
+      and p.author_id <> me.uid
+    group by p.author_id
+  )
+  select v.author_id, pp.handle, pp.emoji, pp.profile_photo, v.visit_posts
+  from v
+  join public.public_profiles pp on pp.id = v.author_id
+  cross join me
+  where not public.is_blocked_between(me.uid, v.author_id)
+  order by v.visit_posts desc, pp.handle
+  limit greatest(1, least(match_limit, 50));
+$$;
+grant execute on function public.country_visitors(text, int) to authenticated;
+
 -- posts: 차단 관계면 공개글이라도 안 보이게 (본인 글은 is_blocked_between(me,me)=false 라 영향 없음)
 -- + neighbors 가시성 글은 서로이웃(또는 본인)만 볼 수 있다.
 drop policy if exists "posts_select" on public.posts;
@@ -493,10 +674,14 @@ create policy "posts_select" on public.posts
   );
 
 -- comments: 글 가시성은 posts와 동일 규칙으로 판정 — 차단·서로이웃 포함.
+-- + 댓글 '작성자'와의 차단도 판정(2026-07-20) — 제3자의 글에 남긴 댓글이 차단 관계
+--   양쪽에게 서로 보이던 틈을 서버에서 차단(그 전까지는 차단한 쪽만 클라이언트
+--   이름 매칭으로 걸렀고, 차단당한 쪽에는 그대로 보였다).
 drop policy if exists "comments_select_visible" on public.comments;
 create policy "comments_select_visible" on public.comments
   for select to authenticated using (
-    exists (
+    not public.is_blocked_between(auth.uid(), comments.author_id)
+    and exists (
       select 1 from public.posts p
       where p.id = comments.post_id
         and not public.is_blocked_between(auth.uid(), p.author_id)
@@ -505,6 +690,25 @@ create policy "comments_select_visible" on public.comments
           or (p.visibility = 'neighbors' and public.are_neighbors(auth.uid(), p.author_id))
         )
     )
+  );
+
+-- 좋아요/댓글 '쓰기'도 차단·가시성 게이트 — 3)의 insert_own(본인 행 검사만)은 차단당한
+-- 사용자가 캐시된 피드 등으로 알고 있는 post id에 좋아요·댓글을 삽입해 작성자에게 알림을
+-- 유발할 수 있었다(2026-07-20 감사 H1). 대상 게시물이 '내게 보이는 글'일 때만 삽입 허용.
+-- exists 서브쿼리에 posts RLS(posts_select)가 그대로 적용되므로 차단·가시성 판정이 항상
+-- 최종 select 정책과 일치한다. (3)의 정책을 같은 이름으로 교체 — posts 최종 정책 정의 이후)
+drop policy if exists "likes_insert_own" on public.post_likes;
+create policy "likes_insert_own" on public.post_likes
+  for insert to authenticated with check (
+    user_id = auth.uid()
+    and exists (select 1 from public.posts p where p.id = post_likes.post_id)
+  );
+
+drop policy if exists "comments_insert_own" on public.comments;
+create policy "comments_insert_own" on public.comments
+  for insert to authenticated with check (
+    author_id = auth.uid()
+    and exists (select 1 from public.posts p where p.id = comments.post_id)
   );
 
 -- DM: 차단 관계면 스레드 생성·메시지 전송·조회를 모두 차단
@@ -590,6 +794,18 @@ language sql stable security definer set search_path = public as $$
   from unnest(ids) as u;
 $$;
 grant execute on function public.neighbor_counts(uuid[]) to authenticated;
+
+-- 여러 사용자의 공유 기록 수(visibility='neighbors' 글)를 한 번에 집계 — 비이웃 프로필의 여행수 스탯 표시용.
+-- 이웃수(neighbor_counts)와 동일하게 집계값만 반환하는 공개 통계(개별 글 노출 없음). RLS 우회 위해 security definer.
+create or replace function public.post_counts(ids uuid[])
+returns table (user_id uuid, post_count int)
+language sql stable security definer set search_path = public as $$
+  select u as user_id,
+    (select count(*) from public.posts p
+      where p.author_id = u and p.visibility = 'neighbors')::int
+  from unnest(ids) as u;
+$$;
+grant execute on function public.post_counts(uuid[]) to authenticated;
 
 -- 이전 follows 모델의 잔여 함수 정리 (재실행 안전)
 -- follows/follow_requests 테이블이 마이그레이션용으로 임시 유지된 경우, 거기 붙은
@@ -692,7 +908,11 @@ create or replace view public.public_profiles
            when public.are_neighbors(auth.uid(), profiles.id)
            then country
            else null
-         end as country
+         end as country,
+         -- (2026-07-16) 장기체류 — 위치 정보라 본인·이웃(서로이웃)에게만 노출, 그 외 null.
+         -- (위 country(거주국)와 동일한 이웃 조건부 정책 + 본인 예외)
+         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_country else null end as stay_country,
+         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_status else null end as stay_status
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 -- 재정의 이후에도 anon 회수 보장 (definer 뷰 — 비로그인 노출 방지, 1) 섹션 주석 참조)
@@ -974,10 +1194,12 @@ create policy "feedback_insert_own" on public.feedback
 --   배포: supabase functions deploy delete-account  (Edge Function도 함께 배포할 것)
 -- ============================================================
 alter table public.profiles add column if not exists deletion_requested_at timestamptz;
+alter table public.profiles add column if not exists deletion_reason text;
 
 -- 탈퇴 신청 — 이미 신청돼 있으면 최초 신청 시각 유지(중복 신청으로 유예가 연장되지 않게).
 -- 신청 시각을 반환해 클라이언트가 로컬 캐시와 동기화한다.
-create or replace function public.request_account_deletion()
+-- p_reason: 탈퇴 사유 문자열 (기본값 null, 없는 인자로 호출된 구버전 클라이언트와 호환).
+create or replace function public.request_account_deletion(p_reason text default null)
 returns timestamptz
 language plpgsql security definer set search_path = public as $$
 declare ts timestamptz;
@@ -986,12 +1208,13 @@ begin
     raise exception 'not_authenticated';
   end if;
   update public.profiles
-     set deletion_requested_at = coalesce(deletion_requested_at, now())
+     set deletion_requested_at = coalesce(deletion_requested_at, now()),
+         deletion_reason       = coalesce(deletion_reason, p_reason)
    where id = auth.uid()
    returning deletion_requested_at into ts;
   return ts;
 end; $$;
-grant execute on function public.request_account_deletion() to authenticated;
+grant execute on function public.request_account_deletion(text) to authenticated;
 
 -- 탈퇴 신청 취소(계정 복구)
 create or replace function public.cancel_account_deletion()
@@ -1042,3 +1265,271 @@ end; $$;
 
 -- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
 revoke all on function public.purge_expired_deletion_requests(int) from public, anon, authenticated;
+
+-- ============================================================
+-- 10) 원격 푸시 알림 인프라
+--     a) push_tokens — Expo 푸시 토큰 + 알림 수신 설정
+--     b) notifications 타입·컬럼 확장 (like, comment, friend_post)
+--     c) 좋아요 알림 저장 트리거
+--     d) 댓글 알림 저장 트리거
+--     e) 친구 새 기록 알림 저장 트리거 (이웃 대상 bulk insert)
+--     f) notifications insert → send-push Edge Function 호출 트리거
+-- ============================================================
+
+-- ============================================================
+-- 10-a) push_tokens
+--   PK(user_id, token): 사용자가 여러 기기를 등록할 수 있음.
+--   prefs jsonb: 앱에서 저장한 notifPrefs(master·likes·comments·newFollower·friendTrip·marketing).
+--               없는 키 = 기본값(아래 Edge Function 규칙 참조).
+-- ============================================================
+create table if not exists public.push_tokens (
+  user_id    uuid not null references public.profiles(id) on delete cascade,
+  token      text not null,
+  platform   text,                        -- 'ios' | 'android'
+  prefs      jsonb not null default '{}', -- notifPrefs 사본 (클라이언트가 함께 upsert)
+  updated_at timestamptz not null default now(),
+  primary key (user_id, token)
+);
+create index if not exists idx_push_tokens_user on public.push_tokens (user_id);
+
+drop trigger if exists trg_push_tokens_updated on public.push_tokens;
+create trigger trg_push_tokens_updated before update on public.push_tokens
+  for each row execute function public.set_updated_at();
+
+alter table public.push_tokens enable row level security;
+
+-- 본인 토큰만 insert/upsert/update/delete/select (service_role은 RLS 우회)
+drop policy if exists "push_tokens_all_own" on public.push_tokens;
+create policy "push_tokens_all_own" on public.push_tokens
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+-- 계정 전환 시 같은 기기 토큰이 이전 계정 소유로 남는 것 회수(2026-07-20 감사 H2).
+-- 클라이언트 unregister가 오프라인 등으로 실패해도, 다음에 이 기기에서 로그인한 계정이
+-- 등록 시점에 이 RPC로 소유권을 가져가 이전 계정으로의 푸시 발송을 끊는다.
+-- RLS는 본인 행만 지울 수 있으므로 definer 함수로 우회 — 삭제 대상은 '정확히 이 토큰' 행뿐이라
+-- 임의 사용자가 남의 토큰 목록을 조회·삭제하는 데 쓸 수 없다(토큰 문자열 자체가 기기 비밀).
+create or replace function public.claim_push_token(p_token text)
+returns void language sql security definer set search_path = public as $$
+  delete from public.push_tokens where token = p_token and user_id <> auth.uid();
+$$;
+revoke all on function public.claim_push_token(text) from public;
+grant execute on function public.claim_push_token(text) to authenticated;
+
+-- ============================================================
+-- 10-b) notifications 타입 확장 — like / comment / friend_post 추가
+--   post_id: 좋아요·댓글·친구 기록 알림에서 해당 게시물 id (딥링크용).
+--   기존 neighbor_request/neighbor_accept는 post_id null.
+-- ============================================================
+alter table public.notifications add column if not exists post_id uuid references public.posts(id) on delete cascade;
+
+-- 타입 제약을 확장된 목록으로 교체 (drop → recreate, idempotent)
+alter table public.notifications drop constraint if exists notifications_type_check;
+alter table public.notifications add constraint notifications_type_check
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post'));
+
+-- uq_notifications_actor_type 유일 인덱스:
+-- like/comment는 같은 게시물에 대한 중복 알림을 막지 않는다(like는 1인당 1개라 자연 방지;
+-- comment는 여러 번 가능하므로 post_id 포함 유일 인덱스로 교체).
+-- 기존 인덱스(user_id, actor_id, type)는 neighbor_*에서 유용하므로 유지하되
+-- 좋아요·댓글은 트리거에서 (user_id, actor_id, type, post_id) 조합으로 on conflict 처리.
+-- → 인덱스는 그대로 두고, 아래 트리거에서 on conflict(user_id, actor_id, type) do update만
+--   neighbor_*에 적용하고 like/comment/friend_post는 insert(중복 허용, 단 like는 별도 방어).
+
+-- ============================================================
+-- 10-c) 좋아요 알림 저장 트리거
+--   post_likes insert 시 → 게시물 작성자(본인 제외)에게 type='like' 알림.
+--   join 경로: post_likes.post_id → posts.author_id
+-- ============================================================
+create or replace function public.notify_on_like()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  post_author uuid;
+begin
+  select author_id into post_author
+    from public.posts where id = new.post_id;
+
+  -- 자기 글 좋아요는 알림 없음 + 차단 관계면 알림 자체를 만들지 않음(정책 교체 전 잔존 행 방어 포함)
+  if post_author is null or post_author = new.user_id
+     or public.is_blocked_between(post_author, new.user_id) then
+    return null;
+  end if;
+
+  -- (user_id=수신자, actor_id=행위자, type, post_id) 복합 충돌 처리:
+  -- 같은 (수신자, 행위자, type, post_id) 중복 방지 — post_likes PK가 (post_id, user_id)라
+  -- 한 사람이 같은 글에 좋아요를 두 번 누를 수 없으므로 사실상 중복 없음.
+  insert into public.notifications (user_id, actor_id, type, post_id)
+    values (post_author, new.user_id, 'like', new.post_id)
+    on conflict (user_id, actor_id, type) do update
+      set created_at = now(), read = false, post_id = excluded.post_id;
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_like on public.post_likes;
+create trigger trg_notify_like after insert on public.post_likes
+  for each row execute function public.notify_on_like();
+
+-- ============================================================
+-- 10-d) 댓글/답글 알림 저장 트리거
+--   최상위 댓글(parent_id null) → 게시물 작성자에게 type='comment' 알림.
+--   답글(parent_id 있음)      → 부모 댓글 작성자에게 type='reply' 알림.
+--   (게시물 작성자에게 답글 중복 알림은 보내지 않는다 — 각자 관련 알림만 받게)
+-- ============================================================
+create or replace function public.notify_on_comment()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  target uuid;
+  ntype  text;
+begin
+  if new.parent_id is not null then
+    -- 답글 → 부모 댓글 작성자에게
+    select author_id into target from public.comments where id = new.parent_id;
+    ntype := 'reply';
+  else
+    -- 최상위 댓글 → 게시물 작성자에게
+    select author_id into target from public.posts where id = new.post_id;
+    ntype := 'comment';
+  end if;
+
+  -- 대상이 없거나 본인 행위(자기 글/자기 댓글)면 알림 없음 + 차단 관계면 생성하지 않음
+  if target is null or target = new.author_id
+     or public.is_blocked_between(target, new.author_id) then
+    return null;
+  end if;
+
+  -- 댓글/답글은 여러 번 올 수 있어 uq_notifications_actor_type 인덱스 충돌 가능.
+  -- on conflict do update로 (대상,행위자,타입)별 가장 최근 알림만 유지(timestamp 갱신).
+  insert into public.notifications (user_id, actor_id, type, post_id)
+    values (target, new.author_id, ntype, new.post_id)
+    on conflict (user_id, actor_id, type) do update
+      set created_at = now(), read = false, post_id = excluded.post_id;
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_comment on public.comments;
+create trigger trg_notify_comment after insert on public.comments
+  for each row execute function public.notify_on_comment();
+
+-- ============================================================
+-- 10-e) 친구 새 기록 알림 — posts insert 시 이웃들에게 type='friend_post' 알림
+--   visibility 'neighbors'(또는 'public') 게시물만 대상.
+--   bulk insert ... select — 이웃 수가 많아도 N 쿼리 없이 1 쿼리로 처리.
+-- ============================================================
+create or replace function public.notify_on_friend_post()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  -- private 게시물은 이웃에게도 알림 안 함
+  if new.visibility = 'private' then
+    return null;
+  end if;
+
+  -- accepted 이웃 전원에게 알림 삽입 (on conflict: 같은 작성자의 이전 friend_post 알림 갱신)
+  insert into public.notifications (user_id, actor_id, type, post_id)
+  select
+    case
+      when n.requester_id = new.author_id then n.addressee_id
+      else n.requester_id
+    end as user_id,
+    new.author_id,
+    'friend_post',
+    new.id
+  from public.neighbors n
+  where n.status = 'accepted'
+    and (n.requester_id = new.author_id or n.addressee_id = new.author_id)
+    -- 차단 관계 제외 — 차단 시 neighbors 행이 트리거로 삭제되지만, 삭제 실패/타이밍 잔존 방어
+    -- (is_blocked_between은 대칭 판정이라 한쪽이 작성자면 그대로 쓸 수 있다)
+    and not public.is_blocked_between(n.requester_id, n.addressee_id)
+  on conflict (user_id, actor_id, type) do update
+    set created_at = now(), read = false, post_id = excluded.post_id;
+
+  return null;
+end; $$;
+
+drop trigger if exists trg_notify_friend_post on public.posts;
+create trigger trg_notify_friend_post after insert on public.posts
+  for each row execute function public.notify_on_friend_post();
+
+-- ============================================================
+-- 10-f) notifications insert → send-push Edge Function 호출
+--   report-alert 트리거와 동일한 pg_net 패턴.
+--   예외 흡수 — 푸시 발송 실패가 알림 저장을 막으면 안 된다.
+--
+--   선행 조건:
+--     ① supabase functions deploy send-push
+--     ② (시크릿 없음 — service_role은 SUPABASE_SERVICE_ROLE_KEY 자동 주입)
+-- ============================================================
+create or replace function public.notify_send_push()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+begin
+  perform net.http_post(
+    url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
+    ),
+    body := jsonb_build_object(
+      'type', 'INSERT',
+      'table', 'notifications',
+      'schema', 'public',
+      'record', to_jsonb(new),
+      'old_record', null
+    )
+  );
+  return new;
+exception when others then
+  return new; -- 푸시 실패가 알림 저장을 막으면 안 된다
+end;
+$$;
+
+drop trigger if exists notifications_push on public.notifications;
+create trigger notifications_push
+  after insert on public.notifications
+  for each row execute function public.notify_send_push();
+
+-- ============================================================
+-- 10-g) DM 새 메시지 → send-push 직접 호출(내용 숨김 백그라운드 푸시)
+--   notifications 테이블을 거치지 않는다: (수신자·행위자·type) 유일 인덱스 collapse로
+--   발신자당 최초 1회만 푸시되는 문제를 피해 메시지별로 발송한다.
+--   위조/재전송 방어는 send-push가 message_id로 dm_messages를 재조회해 처리.
+--   본인/차단 관계면 호출을 생략(불필요 발송 절감). report-alert와 동일한 pg_net 패턴.
+--   Authorization의 anon key는 앱 번들에 포함되는 공개 키(Edge Function 기본 JWT 검증 통과용).
+-- ============================================================
+create or replace function public.notify_on_dm()
+returns trigger
+language plpgsql
+security definer set search_path = ''
+as $$
+declare
+  recipient uuid;
+begin
+  select case when t.user_a = new.sender_id then t.user_b else t.user_a end
+    into recipient
+    from public.dm_threads t where t.id = new.thread_id;
+
+  if recipient is null or recipient = new.sender_id
+     or public.is_blocked_between(recipient, new.sender_id) then
+    return new;
+  end if;
+
+  perform net.http_post(
+    url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/send-push',
+    headers := jsonb_build_object(
+      'Content-Type', 'application/json',
+      'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
+    ),
+    body := jsonb_build_object('type', 'dm', 'message_id', new.id)
+  );
+  return new;
+exception when others then
+  return new; -- 푸시 실패가 메시지 저장을 막으면 안 된다
+end;
+$$;
+
+drop trigger if exists trg_notify_dm on public.dm_messages;
+create trigger trg_notify_dm
+  after insert on public.dm_messages
+  for each row execute function public.notify_on_dm();

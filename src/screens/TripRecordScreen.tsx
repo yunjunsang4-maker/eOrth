@@ -27,6 +27,7 @@ import {
   moveSection, removePhotosAt, movePhotosToSection, groupUrisByDay,
 } from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, CommentIcon } from '../components/icons';
@@ -34,7 +35,7 @@ import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
@@ -72,7 +73,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   // ── 사진첩(앨범) 사진 추가/삭제/이동 + 섹션 관리 ──
   // updateRecord가 로컬 영속 복사 + 서버(updatePost) 동기화까지 처리한다.
   const medias = record.medias ?? [];
-  // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
+  // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
   const { isPremium } = useSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
   const sections = record.albumSections && record.albumSections.length > 0
@@ -232,6 +233,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
   const handleAlbumDragState = (dragging: boolean) => {
     setScrollEnabled(!dragging);
+    // 드래그 중엔 화면 뒤로가기 스와이프(iOS 왼쪽 엣지 pan)를 끈다 — 왼쪽 사진을 옆으로 끌 때
+    // 재정렬 대신 화면이 뒤로 밀리던 제스처 충돌 방지. 드래그는 400ms 정지 후 시작되므로
+    // 이 시점엔 아직 가로 이동 전이라 스와이프를 안전하게 비활성화할 수 있다.
+    navigation.setOptions({ gestureEnabled: !dragging });
     if (dragging) {
       dragPageYRef.current = null;
       if (autoScrollTimerRef.current) clearInterval(autoScrollTimerRef.current);
@@ -401,7 +406,13 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
             <Text style={styles.backIcon}>←</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle}>{record.countryFlag ?? ''} {record.countryName ?? record.country ?? ''}</Text>
+          <View style={styles.headerTitleWrap}>
+            <Text style={styles.headerTitle} numberOfLines={1}>{record.countryFlag ?? ''} {record.countryName ? countryLabel(record.countryName, i18n.language) : (record.country ?? '')}</Text>
+            {/* 사진첩(앨범) 총 사진 수 — 스크롤 없이 상단에서 바로 확인 */}
+            {isAlbum && (
+              <Text style={styles.headerCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
+            )}
+          </View>
           <TouchableOpacity onPress={() => setMenuVisible(true)} style={styles.menuBtn}>
             <Text style={styles.menuIcon}>⋯</Text>
           </TouchableOpacity>
@@ -446,7 +457,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           {/* 사진첩(앨범)은 사진 모음이라 좋아요·댓글 등 게시물 요소를 표시하지 않는다 */}
           {isAlbum ? (
             <>
-              <Text style={styles.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias?.length ?? 0 })}</Text>
+              <Text style={styles.albumCount}>{t('postDetail.albumPhotoCountMax', { count: record.medias?.length ?? 0, max: albumMax })}</Text>
               {/* 순서변경 안내 — 버튼이 없어 발견이 어려운 꾹 누르기 드래그 제스처를 알려준다 (첫 성공 후 숨김) */}
               {(record.medias?.length ?? 0) > 1 && !selecting && !reorderHintSeen && (
                 <Text style={styles.albumHint}>{t('trip.albumReorderHint')}</Text>
@@ -925,12 +936,22 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     lineHeight: 22,
   },
+  headerTitleWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   headerTitle: {
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    flex: 1,
     textAlign: 'center',
+  },
+  headerCount: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#A1A1B0',
+    marginTop: 2,
   },
   menuBtn: {
     width: 36,

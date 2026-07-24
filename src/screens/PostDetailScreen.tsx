@@ -24,6 +24,7 @@ import {
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
+import { countryLabel, countryTagLabel } from '../utils/countryLabel';
 import { WebView } from 'react-native-webview';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import Reanimated, {
@@ -34,7 +35,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -43,6 +44,8 @@ import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
+
+const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
@@ -54,6 +57,7 @@ import { buzz } from '../utils/haptics';
 import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/social';
 import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
+import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -211,7 +215,7 @@ const companionIcon = (name: string): React.ReactNode => {
 };
 
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
-const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void }) => {
+const SlideImageViewerDetail = ({ items, onImagePress, captions }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[] }) => {
   const skinAccent = useSkinAccent();
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
@@ -238,7 +242,8 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         onMomentumScrollEnd={(e) => {
-          const idx = Math.round(e.nativeEvent.contentOffset.x / slideW);
+          // 오버스크롤/빠른 스와이프로 범위 밖 인덱스가 되면 인디케이터·사진별 글이 꺼진다 — 클램프
+          const idx = Math.min(items.length - 1, Math.max(0, Math.round(e.nativeEvent.contentOffset.x / slideW)));
           setActiveIdx(idx);
         }}
         style={{ width: slideW, height: containerH }}
@@ -264,6 +269,12 @@ const SlideImageViewerDetail = ({ items, onImagePress }: { items: { uri: string;
           ))}
         </View>
       )}
+      {/* 사진별 글 — captions[activeIdx]가 있을 때만 표시 */}
+      {captions && captions[activeIdx] ? (
+        <Text style={{ color: '#E8E8F0', fontSize: 14, lineHeight: 21, marginTop: 10, paddingHorizontal: 4 }}>
+          {captions[activeIdx]}
+        </Text>
+      ) : null}
     </View>
   );
 };
@@ -586,16 +597,17 @@ function SnapViewerModal({
 }
 
 function SnapStoryViewer({
-  initialPostId, records, navigation, toggleLike, deleteRecord, markSnapViewed,
+  initialPostId, records, navigation, toggleLike, deleteRecord, archiveRecord, markSnapViewed,
 }: {
   initialPostId: string;
   records: TravelRecord[];
   navigation: any;
   toggleLike: (id: string) => void;
   deleteRecord: (id: string) => void;
+  archiveRecord: (id: string) => void;
   markSnapViewed: (id: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -643,18 +655,18 @@ function SnapStoryViewer({
   const currentSnap = currentStory?.snaps[Math.min(localIdx, (currentStory?.snaps.length || 1) - 1)];
   // 스냅 열람 시 viewed 처리 — 스냅 id가 바뀔 때만 실행(snapViewed 변경으로 인한 재실행 방지)
   useEffect(() => {
-    if (currentSnap && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
+    if (currentSnap && !currentSnap.isExample && !currentSnap.isMyPost && !currentSnap.snapViewed) markSnapViewed(currentSnap.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id]);
 
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors } = useRecords();
-  // ── 공유 시트 (인스타식: 친구 DM으로 보내기 + 외부 공유) ──
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked } = useRecords();
+  // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
-  // 대화량 많은 친구 순 — 소셜 피드 빠른공유와 동일 기준
+  // 대화량 많은 메이트 순 — 소셜 피드 빠른공유와 동일 기준
   const shareFriends = useMemo(
     () => neighbors
       .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: '🧳' }))
@@ -786,7 +798,14 @@ function SnapStoryViewer({
 
   if (!currentSnap || stories.length === 0) return null;
 
-  const comments = commentsByPost[currentSnap.id] ?? [];
+  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
+  const rawSnapComments = commentsByPost[currentSnap.id] ?? [];
+  const comments = rawSnapComments
+    .filter((c: any) => !isBlocked({ name: c.name }))
+    .map((c: any) => ({
+      ...c,
+      replies: c.replies ? c.replies.filter((r: any) => !isBlocked({ name: r.name })) : c.replies,
+    }));
   const totalComments = comments.reduce((sum: number, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = currentSnap.isMyPost === true;
 
@@ -887,31 +906,43 @@ function SnapStoryViewer({
             })}
           </View>
           <View style={storyS.topRow}>
-            {/* 프로필 사진·아이디 탭 → 프로필 화면 (내 스냅이면 내 프로필로) */}
+            {/* 프로필 사진·아이디 탭 → 프로필 화면 (내 스냅이면 내 프로필로, 예시는 이동 금지) */}
             <TouchableOpacity
               style={storyS.authorTap}
-              activeOpacity={0.7}
+              activeOpacity={s.isExample ? 1 : 0.7}
               accessibilityRole="button"
               accessibilityLabel={s.isMyPost === true ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
               onPress={() => {
+                if (s.isExample) return;
                 navigation.navigate('FriendProfile', s.isMyPost === true
                   ? { userId: s.authorId ?? s.id, username: myHandle || s.user.name, handle: myHandle }
                   : { userId: s.authorId ?? s.id, username: s.user.name, handle: s.user.handle });
               }}
             >
-              <View style={storyS.avatarRing}><View style={storyS.avatar}>
-                {s.isMyPost === true && myPhoto ? (
+              <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { overflow: 'hidden' }]}>
+                {s.isExample ? (
+                  <Image source={APP_LOGO} style={{ width: 40, height: 40 }} resizeMode="cover" />
+                ) : s.isMyPost === true && myPhoto ? (
                   <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
                   <PersonIcon size={22} color="#A0A0B0" />
                 )}
               </View></View>
               <View style={storyS.userInfo}>
-                <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
-                <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
+                  {s.isExample ? (
+                    <Text style={storyS.officialBadge}>{t('socialEmpty.official')}</Text>
+                  ) : (
+                    <Text style={[storyS.handle, handleFontStyle(s.isMyPost === true ? (myPremium ? myHandleFont : null) : s.user.font)]}>@{s.isMyPost === true ? (myHandle || s.user.handle) : s.user.handle}</Text>
+                  )}
+                </View>
+                {!s.isExample && <Text style={storyS.timeText}>{timeAgo(s.timestamp)}</Text>}
               </View>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            {!s.isExample && (
+              <TouchableOpacity onPress={() => setMenuVisible(true)} style={storyS.moreBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.more')}><Text style={storyS.moreBtnText}>···</Text></TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => navigation.goBack()} style={storyS.closeBtn} accessibilityRole="button" accessibilityLabel={t('common.close')}><Text style={storyS.closeBtnText}>✕</Text></TouchableOpacity>
           </View>
         </LinearGradient>
@@ -920,7 +951,7 @@ function SnapStoryViewer({
           {s.snapDetectedCountry && (
             <View style={storyS.locationBadge}>
               <PinIcon size={13} color="#FFFFFF" />
-              <Text style={storyS.locationText}>{s.snapDetectedCountry}{s.regionName ? ` · ${s.regionName}` : ''}</Text>
+              <Text style={storyS.locationText}>{countryLabel(s.snapDetectedCountry, i18n.language)}{s.regionName ? ` · ${i18n.language === 'en' && s.regionNameEn ? s.regionNameEn : s.regionName}` : ''}</Text>
             </View>
           )}
           {s.snapCaption ? <Text style={storyS.caption}>{s.snapCaption}</Text> : null}
@@ -933,31 +964,46 @@ function SnapStoryViewer({
                   <Text style={storyS.actionLabel}>{s.snapViewers?.length ?? 0}</Text>
                 </TouchableOpacity>
                 <View style={{ flex: 1 }} />
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                  <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
-                  <SendPlaneSvg size={22} />
-                </TouchableOpacity>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
+                    <CommentSvg size={22} color="#fff" />
+                    {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  </TouchableOpacity>
+                )}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                    <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                  </TouchableOpacity>
+                )}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}>
+                    <SendPlaneSvg size={22} />
+                  </TouchableOpacity>
+                )}
               </>
             ) : (
               /* 타인이 올린 스냅 */
               <>
-                <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
-                  <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
-                  <CommentSvg size={22} color="#fff" />
-                  {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                  <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.replyWrap} activeOpacity={0.8} onPress={() => { setReplyBarOpen(true); setTimeout(() => replyInputRef.current?.focus(), 100); }} accessibilityRole="button" accessibilityLabel={t('postDetail.sendMessageA11y')}>
+                    <View style={storyS.replyInput} pointerEvents="none"><Text style={storyS.replyPlaceholder}>{t('postDetail.sendMessagePlaceholder')}</Text></View>
+                  </TouchableOpacity>
+                )}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={openCommentSheet} accessibilityRole="button" accessibilityLabel={t('postDetail.commentA11y')}>
+                    <CommentSvg size={22} color="#fff" />
+                    {sTotalComments > 0 && (<View style={[storyS.commentCountBadge, { backgroundColor: skinAccent.accent }]}><Text style={storyS.commentCountText}>{sTotalComments}</Text></View>)}
+                  </TouchableOpacity>
+                )}
+                {/* 예시 스냅은 좋아요·공유 아이콘 모두 숨김 (댓글·답장도 위에서 숨김) */}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={() => toggleLike(s.id)} accessibilityRole="button" accessibilityLabel={s.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                    <Text style={[storyS.actionIcon, s.liked && { color: '#FF6B9D' }]}>{s.liked ? '♥' : '♡'}</Text>
+                  </TouchableOpacity>
+                )}
+                {!s.isExample && (
+                  <TouchableOpacity style={storyS.actionBtn} onPress={handleSharePost} accessibilityRole="button" accessibilityLabel={t('postDetail.shareA11y')}><SendPlaneSvg size={22} /></TouchableOpacity>
+                )}
               </>
             )}
           </View>
@@ -984,7 +1030,7 @@ function SnapStoryViewer({
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const handleCopyLink = async () => { setMenuVisible(false); await Clipboard.setStringAsync(postLink(currentSnap.remoteId ?? currentSnap.id)); setToastMsg(t('social.linkCopiedToast')); setTimeout(() => setToastMsg(''), 2000); };
-  // 공유 아이콘 → 인스타처럼 시트에서 친구 DM 전송 또는 외부 공유를 고른다
+  // 공유 아이콘 → 인스타처럼 시트에서 메이트 DM 전송 또는 외부 공유를 고른다
   const handleSharePost = () => { setMenuVisible(false); setShareSheetOpen(true); };
   const handleShareExternal = () => {
     setShareSheetOpen(false);
@@ -1001,6 +1047,14 @@ function SnapStoryViewer({
     setTimeout(() => setToastMsg(''), 2000);
   };
   const handleDelete = () => { setMenuVisible(false); Alert.alert(t('postDetail.deletePostTitle'), t('postDetail.deletePostMsg'), [{ text: t('common.cancel'), style: 'cancel' }, { text: t('postDetail.delete'), style: 'destructive', onPress: () => { deleteRecord(currentSnap.id); navigation.goBack(); } }]); };
+  // 보관하기 — 일반 게시물 메뉴(handleArchive)와 동일 UX: 확인 후 토스트·닫기
+  const handleArchive = () => {
+    setMenuVisible(false);
+    Alert.alert(t('social.archiveConfirmTitle'), t('social.archiveConfirmMsg'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('postDetail.archiveAction'), onPress: () => { archiveRecord(currentSnap.id); setToastMsg(t('social.archivedToast')); setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000); } },
+    ]);
+  };
   const handleReport = () => { setMenuVisible(false); setReportVisible(true); };
 
   // 시안(Group.svg): 두 줄 텍스트가 든 말풍선 아웃라인 — 스냅 스토리 전용 댓글 아이콘
@@ -1143,7 +1197,11 @@ function SnapStoryViewer({
               <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
             </TouchableOpacity>
             {isMyPost ? (
-              <><View style={s.menuSectionDivider} />
+              <><View style={s.menuDivider} />
+              <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
+                <ArchiveIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('postDetail.archiveAction')}</Text>
+              </TouchableOpacity>
+              <View style={s.menuSectionDivider} />
               <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
                 <TrashIcon size={16} color="#FF3B30" /><Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
               </TouchableOpacity></>
@@ -1157,7 +1215,7 @@ function SnapStoryViewer({
         </TouchableOpacity>
       </Modal>
 
-      {/* 공유 시트 — 친구 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
+      {/* 공유 시트 — 메이트 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
       <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
@@ -1206,13 +1264,13 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1236,7 +1294,14 @@ export default function PostDetailScreen() {
     [records, feedPosts, archivedIds, reportedPostIds, currentViewer, isBlocked, globalHandle]
   );
 
-  const comments = commentsByPost[postId] ?? [];
+  // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
+  const rawComments = commentsByPost[postId] ?? [];
+  const comments = rawComments
+    .filter((c) => !isBlocked({ name: c.name }))
+    .map((c) => ({
+      ...c,
+      replies: c.replies ? c.replies.filter((r) => !isBlocked({ name: r.name })) : c.replies,
+    }));
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
   const [showTravelInfo, setShowTravelInfo] = useState(false);
@@ -1275,6 +1340,8 @@ export default function PostDetailScreen() {
   const storeRecord = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
   const rawRecord = storeRecord ?? fallbackRecord ?? undefined;
   const handleToggleLike = () => {
+    // 예시 콘텐츠는 서버 호출 금지
+    if (rawRecord?.isExample) return;
     if (storeRecord) {
       toggleLike(postId);
       return;
@@ -1297,8 +1364,9 @@ export default function PostDetailScreen() {
     }
   };
   // 백엔드 게시물이면 댓글을 서버에서 불러온다 (로컬 글은 remoteId 없음 → 무동작)
+  // 예시 콘텐츠(isExample)는 서버 글이 아니므로 조회 생략
   useEffect(() => {
-    if (!rawRecord?.remoteId) return;
+    if (!rawRecord?.remoteId || rawRecord?.isExample) return;
     setCommentsLoading(true);
     refreshComments(postId, rawRecord.remoteId).finally(() => setCommentsLoading(false));
     // postId/remoteId가 바뀔 때만 댓글 재조회 (refreshComments는 스토어 액션)
@@ -1332,10 +1400,13 @@ export default function PostDetailScreen() {
     viewType === 'cut' ? t('postDetail.typeCut') :
     viewType === 'snap' ? t('postDetail.typeSnap') : t('postDetail.typeFeed');
   const headerTitleText = record.countryName
-    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${record.countryName}`
+    ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${countryLabel(record.countryName, i18n.language)}`
     : typeLabel;
   // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
-  const bodyText = record.memo || record.content || '';
+  // 피드에서 photoTexts가 있으면 memo는 대표 글 복사본이라 캐러셀에서 표시됨 → bodyText 숨김
+  const bodyText = (viewType === 'feed' && record.photoTexts && record.photoTexts.length > 0)
+    ? ''
+    : (record.memo || record.content || '');
   const bodyLong = bodyText.trim().length > 150;
 
   const addComment = () => {
@@ -1376,6 +1447,8 @@ export default function PostDetailScreen() {
 
   const totalComments = comments.reduce((sum, c) => sum + 1 + (c.replies?.length || 0), 0);
   const isMyPost = record?.isMyPost === true;
+  // 보관된 게시물이면 상세 ⋯ 메뉴를 '보관 해제 / 삭제'만 노출한다
+  const isArchived = !!record?.id && archivedIds.includes(record.id);
 
   // 링크에는 서버 id(remoteId)를 우선 사용 — 로컬 id는 받은 쪽 기기에서 조회 불가
   const shareId = record?.remoteId ?? postId;
@@ -1440,9 +1513,38 @@ export default function PostDetailScreen() {
 
   const handleArchive = () => {
     setMenuVisible(false);
-    archiveRecord(record.id);
-    setToastMsg(t('social.archivedToast'));
+    Alert.alert(
+      t('social.archiveConfirmTitle'),
+      t('social.archiveConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('postDetail.archiveAction'),
+          onPress: () => {
+            archiveRecord(record.id);
+            setToastMsg(t('social.archivedToast'));
+            setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000);
+          },
+        },
+      ]
+    );
+  };
+
+  // 보관 해제 — 보관된 게시물 상세 메뉴에서. 해제 후 목록(보관함)으로 돌아간다.
+  const handleUnarchive = () => {
+    setMenuVisible(false);
+    unarchiveRecord(record.id);
+    setToastMsg(t('misc.unarchivedToast'));
     setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1000);
+  };
+
+  // 내 게시물 공개범위 토글 (이웃 공개 ↔ 비공개). updateRecord가 로컬·영속·백엔드 동기화까지 처리.
+  const handleToggleVisibility = () => {
+    setMenuVisible(false);
+    const next = record.visibility === 'private' ? 'neighbors' : 'private';
+    updateRecord(record.id, { visibility: next });
+    setToastMsg(t(next === 'private' ? 'social.madePrivateToast' : 'social.madePublicToast'));
+    setTimeout(() => setToastMsg(''), 2000);
   };
 
   const handleDelete = () => {
@@ -1464,8 +1566,26 @@ export default function PostDetailScreen() {
     setReportVisible(true);
   };
 
+  // 수정 6: 타인 게시물 차단 — SocialScreen과 동일한 UX (confirmBlock Alert + blockedToast + goBack)
+  const handleBlockAuthor = () => {
+    setMenuVisible(false);
+    const authorUser = {
+      name: record.user.name,
+      emoji: record.user.emoji ?? '🧳',
+      handle: record.user.handle,
+      id: typeof record.authorId === 'string' ? record.authorId : undefined,
+    };
+    confirmBlock(authorUser.handle ?? authorUser.name, () => {
+      blockUser(authorUser);
+      setToastMsg(t('social.blockedToast'));
+      setTimeout(() => { setToastMsg(''); navigation.goBack(); }, 1200);
+    }, t);
+  };
+
   // 더블탭: 좋아요(이미 좋아요면 유지) + 하트 버스트 애니메이션
+  // 예시 콘텐츠는 좋아요 비활성
   const triggerLikeBurst = () => {
+    if (record.isExample) return;
     if (!record.liked) handleToggleLike();
     buzz('light');
     setHeartBurst(true);
@@ -1492,21 +1612,21 @@ export default function PostDetailScreen() {
     if (!record.countries || record.countries.length === 0) {
       return record.country ? (
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.country}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{countryTagLabel(record.country, i18n.language)}</Text>
         </View>
       ) : null;
     }
     if (record.countries.length <= 3) {
       return record.countries.map((c, i) => (
         <View key={i} style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {c.name}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{c.flag} {countryLabel(c.name, i18n.language)}</Text>
         </View>
       ));
     }
     return (
       <>
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
-          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {record.countries[0].name}</Text>
+          <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>{record.countries[0].flag} {countryLabel(record.countries[0].name, i18n.language)}</Text>
         </View>
         <View style={[s.countryTag, { backgroundColor: skinAccent.tint(0.12) }]}>
           <Text style={[s.countryTagText, { color: skinAccent.accent }]} {...andFitText}>+{record.countries.length - 1}</Text>
@@ -1521,15 +1641,20 @@ export default function PostDetailScreen() {
 
   // ── 스냅: 인스타 스토리 스타일 전체화면 ──
   if (viewType === 'snap') {
+    // 예시 스냅은 snapViewerRecords(store 필터링 목록)에 없으므로 rawRecord를 단독으로 넘긴다
+    const snapRecords = rawRecord?.isExample
+      ? [rawRecord]
+      : snapViewerRecords;
     return (
       <SnapStoryViewer
         initialPostId={postId}
-        // 친구 스냅은 feedPosts에 있다 — records만 넘기면 친구 스냅을 열 때 내 스토리가
+        // 메이트 스냅은 feedPosts에 있다 — records만 넘기면 메이트 스냅을 열 때 내 스토리가
         // 재생되거나(내 스냅 존재 시) 뷰어가 열리자마자 닫힌다. 소셜 탭 스토리 링과 동일 소스+동일 필터.
-        records={snapViewerRecords}
+        records={snapRecords}
         navigation={navigation}
         toggleLike={toggleLike}
         deleteRecord={deleteRecord}
+        archiveRecord={archiveRecord}
         markSnapViewed={markSnapViewed}
       />
     );
@@ -1569,11 +1694,13 @@ export default function PostDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <View style={[s.header, { paddingTop: insets.top + 8 }]}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
-            <Text style={s.backIcon}>‹</Text>
-          </TouchableOpacity>
+          <View style={s.headerSide}>
+            <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
+              <Text style={s.backIcon}>‹</Text>
+            </TouchableOpacity>
+          </View>
           <Text style={s.headerTitle} numberOfLines={1}>{headerTitleText}</Text>
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 8 }]}>
             {viewType === 'blog' && record.blogBlocks && record.blogBlocks.length > 0 && (
               <TouchableOpacity
                 onPress={() => setFontScale((p) => (p >= 1.4 ? 0.85 : p + 0.15))}
@@ -1584,9 +1711,11 @@ export default function PostDetailScreen() {
                 <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
-              <Text style={s.menuDots}>···</Text>
-            </TouchableOpacity>
+            {!record.isExample && (
+              <TouchableOpacity onPress={() => setMenuVisible(true)} style={s.menuBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.menuA11y')}>
+                <Text style={s.menuDots}>···</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
 
@@ -1608,9 +1737,9 @@ export default function PostDetailScreen() {
                 const postDisplayName = isMyPost
                   ? `@${globalHandle}`
                   : (record.user.name ? record.user.name : `@${record.user.handle}`);
-                // 작성자 uuid — 이웃 관계 판정은 반드시 uuid 기준
+                // 작성자 uuid — 메이트 관계 판정은 반드시 uuid 기준
                 const authorId = typeof record.authorId === 'string' && record.authorId ? record.authorId : null;
-                // 이웃 3상태: 이웃 / 신청됨 / 없음 — 스토어 판정 사용
+                // 메이트 3상태: 메이트 / 신청됨 / 없음 — 스토어 판정 사용
                 const neighborState: 'neighbor' | 'requested' | 'none' = authorId
                   ? (isNeighbor(authorId) ? 'neighbor' : isNeighborRequested(authorId) ? 'requested' : 'none')
                   : 'none';
@@ -1623,7 +1752,7 @@ export default function PostDetailScreen() {
                 const onNeighborPress = () => {
                   if (!authorId) return;
                   buzz('light');
-                  // 없음→신청, 신청됨→취소, 이웃→끊기
+                  // 없음→신청, 신청됨→취소, 메이트→끊기
                   if (neighborState === 'neighbor') removeNeighbor(authorId);
                   else if (neighborState === 'requested') cancelNeighborRequest(authorId);
                   else requestNeighbor(authorId);
@@ -1632,17 +1761,20 @@ export default function PostDetailScreen() {
                   <View style={s.userRow}>
                     <TouchableOpacity
                       style={s.authorTouch}
-                      activeOpacity={0.7}
+                      activeOpacity={record.isExample ? 1 : 0.7}
                       accessibilityRole="button"
                       accessibilityLabel={isMyPost ? t('postDetail.myProfileA11y') : t('postDetail.authorProfileA11y')}
                       onPress={() => {
+                        if (record.isExample) return;
                         navigation.navigate('FriendProfile', isMyPost
                           ? { userId: record.authorId ?? record.id, username: globalHandle || record.user.name, handle: globalHandle }
                           : { userId: record.authorId ?? record.id, username: record.user.name, handle: record.user.handle });
                       }}
                     >
-                      <View style={s.avatar}>
-                        {isMyPost && globalProfilePhoto ? (
+                      <View style={[s.avatar, record.isExample && { overflow: 'hidden' }]}>
+                        {record.isExample ? (
+                          <Image source={APP_LOGO} style={{ width: 42, height: 42 }} resizeMode="cover" />
+                        ) : isMyPost && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 42, height: 42, borderRadius: 21 }} />
                         ) : record.user.photo ? (
                           <Image source={{ uri: record.user.photo }} style={{ width: 42, height: 42, borderRadius: 21 }} />
@@ -1652,17 +1784,24 @@ export default function PostDetailScreen() {
                       </View>
                       <View style={s.userInfo}>
                         {/* 아이디 폰트(프리미엄) — 내 글은 내 설정값, 타인 글은 서버 handle_font */}
-                        <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
+                          {record.isExample ? (
+                            <Text style={s.officialBadge}>{t('socialEmpty.official')}</Text>
+                          ) : (
+                            <Text style={[s.userName, handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : record.user.font)]}>{postDisplayName}</Text>
+                          )}
+                        </View>
                         <View style={s.userMeta}>
                           {renderCountries()}
-                          <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>
+                          {!record.isExample && <Text style={s.dateMeta}>{timeAgo(record.timestamp)}</Text>}
                         </View>
                       </View>
                     </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
                       <Text style={[s.ratingStars, { color: skinAccent.accent }]}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
                     )}
-                    {!isMyPost && authorId && (
+                    {!isMyPost && authorId && !record.isExample && (
                       <TouchableOpacity
                         style={[s.followBtn, { backgroundColor: skinAccent.accent }, neighborState !== 'none' && s.followingBtn]}
                         onPress={onNeighborPress}
@@ -1765,6 +1904,7 @@ export default function PostDetailScreen() {
                       <SlideImageViewerDetail
                         items={record.medias.map((uri) => ({ uri }))}
                         onImagePress={(uris, i) => handleMediaTap(() => openFullImage(uris, i))}
+                        captions={record.photoTexts}
                       />
                       {companionsOverlay}
                       {heartOverlay}
@@ -1790,15 +1930,17 @@ export default function PostDetailScreen() {
                     </LinearGradient>
                   )}
 
-                  <Text
-                    style={[
-                      s.content,
-                      { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
-                    ]}
-                    numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
-                  >
-                    {bodyText}
-                  </Text>
+                  {bodyText ? (
+                    <Text
+                      style={[
+                        s.content,
+                        { marginBottom: bodyLong && !bodyExpanded ? 2 : (bodyText.trim().length > 50 ? 4 : 0) },
+                      ]}
+                      numberOfLines={bodyLong && !bodyExpanded ? 6 : undefined}
+                    >
+                      {bodyText}
+                    </Text>
+                  ) : null}
                   {bodyLong && !bodyExpanded && (
                     <TouchableOpacity onPress={() => setBodyExpanded(true)} accessibilityRole="button" accessibilityLabel={t('postDetail.bodyMoreA11y')}>
                       <Text style={[s.moreBtn, { color: skinAccent.accent }]}>{t('postDetail.more')}</Text>
@@ -1875,19 +2017,21 @@ export default function PostDetailScreen() {
           {viewType !== 'album' && (<>
           <View style={s.statsRow}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Text style={[s.statIcon, record.liked && { color: C.red }]}>
                   {record.liked ? '♥' : '♡'}
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
+              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
                 <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
               </TouchableOpacity>
             </View>
-            <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
-              <CommentSvg />
-              <Text style={s.statCount}>{totalComments}</Text>
-            </TouchableOpacity>
+            {!record.isExample && (
+              <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
+                <CommentSvg />
+                <Text style={s.statCount}>{totalComments}</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* ── 구분선 ── */}
@@ -1992,8 +2136,8 @@ export default function PostDetailScreen() {
             </TouchableOpacity>
           </View>
         )}
-        {/* ── 댓글 입력 (앨범 제외) ── */}
-        {viewType !== 'album' && (
+        {/* ── 댓글 입력 (앨범 및 예시 콘텐츠 제외) ── */}
+        {viewType !== 'album' && !record.isExample && (
         <View style={s.inputBar}>
           <TextInput
             ref={commentInputRef}
@@ -2039,6 +2183,21 @@ export default function PostDetailScreen() {
           onPress={() => setMenuVisible(false)}
         >
           <View style={s.menuCard}>
+            {isArchived ? (
+              /* 보관된 게시물 — 보관 해제 / 삭제만 노출 */
+              <>
+                <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
+                  <ArchiveIcon size={16} color="#fff" />
+                  <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
+                </TouchableOpacity>
+                <View style={s.menuSectionDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleDelete} activeOpacity={0.7}>
+                  <TrashIcon size={16} color="#FF3B30" />
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('postDetail.deleteAction')}</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+            <>
             {/* 공통 메뉴 */}
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
               <LinkIcon size={16} color="#fff" />
@@ -2064,6 +2223,13 @@ export default function PostDetailScreen() {
 
             {isMyPost ? (
               <>
+                <View style={s.menuDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleToggleVisibility} activeOpacity={0.7}>
+                  {record.visibility === 'private'
+                    ? <GlobeIcon size={16} color="#fff" />
+                    : <LockClosedIcon size={16} color="#fff" />}
+                  <Text style={s.menuItemText}>{t(record.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate')}</Text>
+                </TouchableOpacity>
                 <View style={s.menuDivider} />
                 <TouchableOpacity style={s.menuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <ArchiveIcon size={16} color="#fff" />
@@ -2097,7 +2263,15 @@ export default function PostDetailScreen() {
                   <MegaphoneIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
+                {/* 수정 6: 타인 게시물 차단 — SocialScreen과 동일 패턴 */}
+                <View style={s.menuDivider} />
+                <TouchableOpacity style={s.menuItem} onPress={handleBlockAuthor} activeOpacity={0.7}>
+                  <PersonIcon size={16} color="#FF3B30" />
+                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.blockTitle')}</Text>
+                </TouchableOpacity>
               </>
+            )}
+            </>
             )}
           </View>
         </TouchableOpacity>
@@ -2168,6 +2342,8 @@ export default function PostDetailScreen() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
+  officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
 
   // ── 헤더 ──
   header: {
@@ -2175,13 +2351,15 @@ const s = StyleSheet.create({
     paddingHorizontal: 20, paddingBottom: 10,
     borderBottomWidth: 1, borderBottomColor: C.cardBorder,
   },
+  // 좌(뒤로가기)·우(메뉴) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
+  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
   backBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: C.card,
     alignItems: 'center', justifyContent: 'center',
   },
   backIcon: { fontSize: 22, color: C.white, marginTop: -1 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: C.white },
+  headerTitle: { flexShrink: 1, textAlign: 'center', fontSize: 16, fontWeight: '700', color: C.white, marginHorizontal: 8 },
   menuBtn: {
     width: 38, height: 38, borderRadius: 19,
     backgroundColor: C.card,
@@ -2505,6 +2683,8 @@ const blogS = StyleSheet.create({
 // ── 모먼트 스토리 스타일 ──
 // ── 스냅 스토리 전체화면 스타일 ──
 const storyS = StyleSheet.create({
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드와 동일 룩, 스토리 헤더에선 살짝 크게
+  officialBadge: { alignSelf: 'center', fontSize: 12, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   container: {
     flex: 1,
     backgroundColor: '#000',
@@ -3069,7 +3249,7 @@ const viewerS = StyleSheet.create({
   },
 });
 
-// ─── 스냅 공유 시트 (친구 DM 전송 + 외부 공유) 스타일 ───
+// ─── 스냅 공유 시트 (메이트 DM 전송 + 외부 공유) 스타일 ───
 const shareS = StyleSheet.create({
   sheet: {
     backgroundColor: '#1A1A28',

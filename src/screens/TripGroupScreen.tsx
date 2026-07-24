@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
+import { countryLabel } from '../utils/countryLabel';
 
 type RouteParams = {
   TripGroup: { groupId: string };
@@ -37,11 +38,12 @@ function CountryDivider({ flag, name }: { flag: string; name: string }) {
 
 // ─── 피드 카드 ───
 function FeedCard({ record }: { record: TravelRecord }) {
+  const { i18n } = useTranslation();
   return (
     <View style={st.feedCard}>
       <View style={st.feedCardHeader}>
         <Text style={st.feedFlag}>{record.countryFlag}</Text>
-        <Text style={st.feedCountry}>{record.countryName}</Text>
+        <Text style={st.feedCountry}>{countryLabel(record.countryName, i18n.language)}</Text>
         <Text style={st.feedDate}>{record.date}</Text>
       </View>
       {/* 이미지 영역 */}

@@ -153,21 +153,21 @@ const catalog: BadgeCatalogEntry[] = [
   assert(computeEarnedBadgeIds(likes, catalog).has(76), '좋아요 100 → 76 획득');
   assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', likes: 99 }], catalog).has(76), '좋아요 99 → 76 미획득');
 
-  // 앱 친구 동행: 1회 → 84, 3회 → 85
+  // 앱 메이트 동행: 1회 → 84, 3회 → 85
   const comp = (friends: string[]): BadgeStatRecord => ({ isMyPost: true, countryName: '일본', companionFriends: friends });
   assert(computeEarnedBadgeIds([comp(['민지'])], catalog).has(84) && !computeEarnedBadgeIds([comp(['민지'])], catalog).has(85), '동행 1회 → 84 O, 85 X');
   const three = [comp(['민지']), comp(['하윤']), comp(['도이'])];
   assert(computeEarnedBadgeIds(three, catalog).has(85), '동행 3회 → 85 획득');
   // companionFriends 없으면 미획득
-  assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', companions: ['혼자'] }], catalog).has(84), '동행친구 없으면 84 미획득');
+  assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', companions: ['혼자'] }], catalog).has(84), '동행메이트 없으면 84 미획득');
 
-  // 같은 친구 5회 → 77
+  // 같은 메이트 5회 → 77
   const sameFive = Array.from({ length: 5 }, () => comp(['민지']));
-  assert(computeTravelStats(sameFive).maxSameFriendCompanions === 5, '같은 친구 5회 집계');
-  assert(computeEarnedBadgeIds(sameFive, catalog).has(77), '같은 친구 5회 → 77 획득');
-  // 서로 다른 친구 5회(각 1회) → 77 미획득
+  assert(computeTravelStats(sameFive).maxSameFriendCompanions === 5, '같은 메이트 5회 집계');
+  assert(computeEarnedBadgeIds(sameFive, catalog).has(77), '같은 메이트 5회 → 77 획득');
+  // 서로 다른 메이트 5회(각 1회) → 77 미획득
   const diffFive = ['a', 'b', 'c', 'd', 'e'].map((f) => comp([f]));
-  assert(!computeEarnedBadgeIds(diffFive, catalog).has(77), '다른 친구 각 1회 → 77 미획득');
+  assert(!computeEarnedBadgeIds(diffFive, catalog).has(77), '다른 메이트 각 1회 → 77 미획득');
 
   // 댓글 50개 → 75 (옵션 전달)
   assert(computeEarnedBadgeIds([], catalog, { commentsWritten: 50 }).has(75), '댓글 50개 → 75 획득');
@@ -196,13 +196,13 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds([], catalog, { installedAt: LAUNCH + 40 * DAY }).has(116), '출시 40일 후 설치 → 116 미획득');
   assert(!computeEarnedBadgeIds([], catalog, {}).has(116), '설치일 없음 → 116 미획득');
 
-  // 이웃 수(78·81·82·83)
+  // 메이트 수(78·81·82·83)
   const friends = (n: number) => computeEarnedBadgeIds([], catalog, { neighborCount: n });
-  assert(friends(1).has(81) && !friends(1).has(82), '이웃 1명 → 81 O, 82 X');
-  assert(friends(10).has(82) && !friends(10).has(78), '이웃 10명 → 82 O, 78 X');
-  assert(friends(50).has(78) && !friends(50).has(83), '이웃 50명 → 78 O, 83 X');
-  assert(friends(100).has(83), '이웃 100명 → 83 획득');
-  assert(!friends(0).has(81), '이웃 0명 → 81 미획득');
+  assert(friends(1).has(81) && !friends(1).has(82), '메이트 1명 → 81 O, 82 X');
+  assert(friends(10).has(82) && !friends(10).has(78), '메이트 10명 → 82 O, 78 X');
+  assert(friends(50).has(78) && !friends(50).has(83), '메이트 50명 → 78 O, 83 X');
+  assert(friends(100).has(83), '메이트 100명 → 83 획득');
+  assert(!friends(0).has(81), '메이트 0명 → 81 미획득');
 }
 
 // ── 만능 기록자(69) — 피드·블로그·스트립·스냅 각각 1개 이상 ──
@@ -1142,9 +1142,11 @@ const catalog: BadgeCatalogEntry[] = [
     { isMyPost: true, countryName: '독일' },
   ];
   const earned = computeEarnedBadgeIds(recs, catalog);
-  // 1,2,3,9,10,11,12,35,52,8(static) = 10개 → 56(>=5),57(>=10) 켜짐
+  // 1,2,3,9,10,11,12,35,8(static) = 9개 → 56(>=5)만 켜짐.
+  // 52(별점 마스터)는 점등되지만 출시 축소로 숨김이라 메타 카운트에서 제외된다.
+  assert(earned.has(52), '별점 5점 → 52 자체는 점등(규칙 유지)');
   assert(earned.has(56), '배지 5개 달성(56) 획득');
-  assert(earned.has(57), '배지 10개 달성(57) 획득');
+  assert(!earned.has(57), '숨김 배지(52) 카운트 제외 → 9개라 배지 10개(57) 미획득');
   assert(!earned.has(58), '배지 30개(58)는 미획득');
 }
 
@@ -1157,14 +1159,54 @@ const catalog: BadgeCatalogEntry[] = [
   ];
   assert(!computeEarnedBadgeIds(recs, emptyCat).has(56), '데이터 4개뿐 → 56 미획득');
 
-  // 행동 배지 55를 이미 획득 → 5개째 → 56 점등
-  assert(computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [55] }).has(56), '데이터4 + 영구획득(55) = 5개 → 56 획득');
+  // 노출 배지 99(크리스마스)를 이미 획득 → 5개째 → 56 점등
+  assert(computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [99] }).has(56), '데이터4 + 영구획득(99) = 5개 → 56 획득');
+
+  // 숨김 배지는 영구 획득분이어도 메타 카운트에서 제외 (55는 출시 축소로 숨김)
+  assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [55] }).has(56), '숨김 배지(55)는 카운트 제외 → 4개라 56 미획득');
 
   // 메타 id는 카운트에서 제외(메타를 alreadyEarned로 줘도 카운트 안 늘어남)
   assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [56, 57, 58] }).has(56), '메타 id만 추가 → 데이터 4개라 56 미획득');
 
   // 중복 방지: 이미 데이터로 켜진 id를 또 줘도 1개로만 카운트
   assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [1, 2, 9, 10] }).has(56), '데이터와 겹치는 id 중복 → 여전히 4개 → 56 미획득');
+}
+
+// ── 거주국 동적 제외(homeCountryName) ──
+{
+  // 기본: 대한민국 + 일본 기록, 거주국 대한민국 → 대한민국 제외, 일본만 포함
+  const twoCountries: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsWithHome = computeTravelStats(twoCountries, { homeCountryName: '대한민국' });
+  assert(!statsWithHome.countries.has('대한민국'), '거주국(대한민국)은 countries에서 제외');
+  assert(statsWithHome.countries.has('일본'), '비거주국(일본)은 countries에 포함');
+  assert(!statsWithHome.diaryCountries.has('대한민국'), '거주국(대한민국)은 diaryCountries에서 제외');
+  assert(statsWithHome.diaryCountries.has('일본'), '비거주국(일본)은 diaryCountries에 포함');
+
+  // 별칭: 기록 국가명 '한국', 거주국 '대한민국' → '한국'도 제외
+  const korAlias: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '한국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsAlias = computeTravelStats(korAlias, { homeCountryName: '대한민국' });
+  assert(!statsAlias.countries.has('한국'), '별칭 한국도 거주국(대한민국)으로 제외');
+  assert(statsAlias.countries.has('일본'), '별칭 제외 후 일본은 포함');
+
+  // 별칭 역방향: 거주국 '한국', 기록 '대한민국' → '대한민국'도 제외
+  const korAlias2: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', viewType: 'feed' },
+    { isMyPost: true, countryName: '일본', viewType: 'feed' },
+  ];
+  const statsAlias2 = computeTravelStats(korAlias2, { homeCountryName: '한국' });
+  assert(!statsAlias2.countries.has('대한민국'), '거주국 한국 → 대한민국도 제외');
+  assert(statsAlias2.countries.has('일본'), '역방향 별칭 후 일본은 포함');
+
+  // 옵션 없음(하위 호환): 둘 다 포함
+  const statsNoOpt = computeTravelStats(twoCountries);
+  assert(statsNoOpt.countries.has('대한민국'), '옵션 없으면 대한민국 그대로 포함(하위 호환)');
+  assert(statsNoOpt.countries.has('일본'), '옵션 없으면 일본도 그대로 포함(하위 호환)');
 }
 
 console.log(failures === 0 ? '\n✅ 모든 검증 통과' : `\n❌ ${failures}건 실패`);

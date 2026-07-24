@@ -56,3 +56,4 @@ cg_tmp.js
 
 # Supabase CLI 로컬 캐시(링크 정보 등) — 커밋 금지
 supabase/.temp/
+scripts/geo-tmp/

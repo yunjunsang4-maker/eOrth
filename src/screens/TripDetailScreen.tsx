@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -24,6 +24,10 @@ import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
+import { countryTagLabel } from '../utils/countryLabel';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, tripPeriodOf, countryNameToCode } from '../utils/momentMatch';
+import MomentListSheet from '../components/moments/MomentListSheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -223,7 +227,7 @@ type RouteParams = {
 };
 
 export default function TripDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -233,11 +237,26 @@ export default function TripDetailScreen() {
   const { records, tripGroups, updateTripGroup, updateRecord, archiveRecord, deleteRecord, deleteTripGroup, archivedIds } = useRecords();
 
   const currentGroup = tripGroups.find((g) => g.id === trip.id);
+
+  // 이 여행 기간에 캡처한 순간들 — 국가코드 + 소속 기록들의 날짜 범위로 매칭 (ProfileScreen과 동일 규칙)
+  const { moments } = useMoments();
+  const tripMoments = useMemo(() => {
+    const fullRecs = trip.records
+      .map((r) => records.find((x) => x.id === r.id))
+      .filter(Boolean) as TravelRecord[];
+    const period = tripPeriodOf(fullRecs);
+    return matchMoments(moments, {
+      countryCode: countryNameToCode(trip.country),
+      startMs: period?.startMs,
+      endMs: period?.endMs,
+    });
+  }, [moments, trip, records]);
   const titleToDisplay = currentGroup ? currentGroup.title : trip.title;
 
   const [isEditing, setIsEditing] = useState(false);
   const [editedTitle, setEditedTitle] = useState(titleToDisplay);
   const [menuVisible, setMenuVisible] = useState(false); // 우측 상단 ☰ 편집 메뉴
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트
   const [thumbPickerVisible, setThumbPickerVisible] = useState(false); // 썸네일 사진 선택
   const [pendingThumb, setPendingThumb] = useState<string | null>(null); // 조정 대기 중인 새 썸네일
   const [adjustVisible, setAdjustVisible] = useState(false); // 노출 영역 조정 모달
@@ -382,15 +401,12 @@ export default function TripDetailScreen() {
 
   useEffect(() => {
     Animated.timing(headerAnim, { toValue: 1, duration: 400, useNativeDriver: true }).start();
-    moduleAnims.forEach((anim, i) => {
-      Animated.spring(anim, {
-        toValue: 1,
-        delay: 150 + i * 110,
-        tension: 50,
-        friction: 8,
-        useNativeDriver: true,
-      }).start();
-    });
+    // 모듈은 순차(스태거) 없이 한 번에 부드럽게 페이드 인 — 하나씩 뜨는 거슬림 제거
+    Animated.parallel(
+      moduleAnims.map((anim) =>
+        Animated.timing(anim, { toValue: 1, duration: 380, useNativeDriver: true })
+      )
+    ).start();
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
@@ -419,7 +435,7 @@ export default function TripDetailScreen() {
 
   const handleRecordPress = (rec: TravelRecord) => {
     // 타인 기록은 전부 게시물 상세로 — TripRecord는 소유자 편집 UI가 섞여 있고,
-    // 스토어에 없는 글이라 record 폴백을 함께 넘긴다 (친구 프로필의 기존 동작과 동일)
+    // 스토어에 없는 글이라 record 폴백을 함께 넘긴다 (메이트 프로필의 기존 동작과 동일)
     if (isGuest) {
       navigation.navigate('PostDetail', { postId: rec.id, record: rec });
       return;
@@ -441,9 +457,11 @@ export default function TripDetailScreen() {
     <View style={s.container}>
       {/* 헤더 */}
       <Animated.View style={[s.header, { opacity: headerAnim, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
-          <Text style={s.backIcon}>←</Text>
-        </TouchableOpacity>
+        <View style={s.headerSide}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('trip.back')}>
+            <Text style={s.backIcon}>←</Text>
+          </TouchableOpacity>
+        </View>
         <View style={s.headerCenter}>
           {isEditing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
@@ -462,21 +480,32 @@ export default function TripDetailScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <Text style={s.headerTitle}>{titleToDisplay}</Text>
+            <Text style={s.headerTitle} numberOfLines={1}>{titleToDisplay}</Text>
           )}
         </View>
         {/* ☰ 편집 메뉴 — 타인 여행(게스트)은 편집 대상이 없어 숨김.
             테두리 없는 투명 스페이서로 폭만 유지해 제목 중앙 정렬은 그대로 둔다 */}
         {isGuest ? (
-          <View style={{ width: 38, height: 38 }} />
+          <View style={s.headerSide} />
         ) : (
-          <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
-            <View style={s.menuBars}>
-              <View style={s.menuBar} />
-              <View style={s.menuBar} />
-              <View style={s.menuBar} />
-            </View>
-          </TouchableOpacity>
+          <View style={[s.headerSide, { justifyContent: 'flex-end', gap: 6 }]}>
+            {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 보기 (내 여행에만 표시) */}
+            <TouchableOpacity
+              style={s.backBtn}
+              onPress={() => setMomentSheetVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('moments.sheetTitle')}
+            >
+              <Text style={{ fontSize: 16 }}>✨</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.backBtn} onPress={() => setMenuVisible(true)} accessibilityRole="button" accessibilityLabel={t('trip.editMenuA11y')}>
+              <View style={s.menuBars}>
+                <View style={s.menuBar} />
+                <View style={s.menuBar} />
+                <View style={s.menuBar} />
+              </View>
+            </TouchableOpacity>
+          </View>
         )}
       </Animated.View>
 
@@ -522,18 +551,26 @@ export default function TripDetailScreen() {
         </TouchableOpacity>
       </Modal>
 
+      {/* ✨ 여행 기억 — 이 여행 기간에 캡처한 순간 목록 */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={tripMoments}
+        tripTitle={`${trip.countryFlag} ${titleToDisplay}`}
+      />
+
       {/* 기록 추가 — 형식 선택 모달 */}
       <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
         <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
           <View style={s.fmCard}>
             <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
             <Text style={s.fmSub}>
-              {trip.country ? t('trip.recordFormatPromptCountry', { country: trip.country }) : t('trip.recordFormatPrompt')}
+              {trip.country ? t('trip.recordFormatPromptCountry', { country: countryTagLabel(trip.country, i18n.language) }) : t('trip.recordFormatPrompt')}
             </Text>
             {/* 기간이 정해진 여행이면 작성 화면에 이 여행 날짜가 자동 적용된다(국가+날짜로 그룹화되어 이 카드에 묶임) */}
             {tripPeriod.startDate ? (
               <Text style={s.fmHint}>
-                📅 이 여행 기간({tripDateRange})이 자동으로 적용돼요.
+                {t('trip.autoDateHint', { range: tripDateRange })}
               </Text>
             ) : null}
             <View style={s.fmGrid}>
@@ -615,7 +652,7 @@ export default function TripDetailScreen() {
           <Text style={s.heroDate}>{tripDateRange}</Text>
           <View style={[s.heroPill, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}>
             {/* trip.records는 파라미터 스냅샷이라 삭제가 반영되지 않음 — 모듈 목록과 같은 실측 기준 사용 */}
-            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{matchedRecords.length}개의 기록</Text>
+            <Text style={[s.heroPillText, { color: skinAccent.accent }]} {...andFitText}>{t('trip.recordsCount', { n: matchedRecords.length })}</Text>
           </View>
         </Animated.View>
 
@@ -641,14 +678,9 @@ export default function TripDetailScreen() {
             }).slice(0, 3);
             // 스냅·피드·블로그·스트립은 좁은 카드로 가로 스와이프(옆 카드가 보임), 앨범만 전체 폭
             const cardW = m.vt === 'album' ? SWIPE_CARD_W : SNAP_CARD_W;
+            // 순차 슬라이드 제거 — 모든 모듈이 동시에 부드럽게 페이드 인만 한다
             const animStyle = {
               opacity: moduleAnims[idx],
-              transform: [{
-                translateX: moduleAnims[idx].interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [even ? -48 : 48, 0],
-                }),
-              }],
             };
             return (
               <Animated.View key={m.vt} style={[s.moduleWrap, animStyle]}>
@@ -688,7 +720,7 @@ export default function TripDetailScreen() {
                     </View>
                     <View style={s.moduleMetaRow}>
                       <View style={[s.moduleDataLine, { backgroundColor: m.config.accent + '45' }]} />
-                      <Text style={[s.moduleCount, { color: m.config.accent }]} {...andFitText}>{m.items.length}개 기록</Text>
+                      <Text style={[s.moduleCount, { color: m.config.accent }]} {...andFitText}>{t('trip.moduleRecordsN', { n: m.items.length })}</Text>
                     </View>
                   </View>
 
@@ -1056,8 +1088,10 @@ const s = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   backIcon: { fontSize: 17, color: COLORS.white },
-  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3 },
+  // 좌(뒤로가기)·우(✨·☰) 동일 폭 → 가운데 제목이 버튼 개수와 무관하게 항상 화면 중앙
+  headerSide: { flex: 1, flexDirection: 'row', alignItems: 'center' },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, flexShrink: 1 },
+  headerTitle: { fontSize: 17, fontWeight: '700', color: COLORS.white, letterSpacing: -0.3, textAlign: 'center' },
   headerInput: {
     fontSize: 15,
     fontWeight: '700',

@@ -3,16 +3,21 @@ import { AppState, View } from 'react-native';
 import { isOnline, onReconnect } from '../utils/connectivity';
 import type { BlogBlock, BlogCategory } from '../types/blogBlocks';
 import { useSettings } from './settingsStore';
-import { usePersistence, STORE_KEYS } from './persist';
+import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persist';
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
+import i18n from '../i18n';
 import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type PublishMediaOptions } from '../services/posts';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
+import { koAliases, matchesCountry } from '../utils/countryMatch';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
+import { remapDocUri, remapRecordDocUris } from '../utils/remapDocumentUris';
+import type { StayType, StayStatus } from '../utils/stayMachine';
+import { decideOnVisitedChange, type StaySnapshot } from '../utils/stayMachine';
 import {
   requestNeighbor as apiRequestNeighbor,
   cancelNeighborRequest as apiCancelNeighborRequest,
@@ -84,6 +89,9 @@ export interface TravelRecord {
   companions?: string[];
   companionFriends?: string[];
   medias?: string[];
+  // 사진별 글 — medias와 index가 짝인 병렬 배열(빈 글은 ''). 피드 한 화면 개편(2026-07-19)부터 사용.
+  // 사진 추가·삭제·재정렬 시 반드시 medias와 함께 조작할 것. 옛 기록엔 없음(단일 memo 렌더 유지).
+  photoTexts?: string[];
   // 사진첩(앨범) 섹션 — medias의 연속 구간 분할({id,title,count}[]). utils/albumSections 참조
   albumSections?: { id: string; title: string; count: number }[];
   // 사진첩 부가 메타 — uri 키라 순서변경/삭제에 안전 (삭제 시 고아 항목은 무해)
@@ -132,11 +140,24 @@ export interface TravelRecord {
   };
   regionName?: string;                // 예: "도쿄" (대륙 기록 시 사용)
   regionNameEn?: string;              // 예: "Tokyo" (대륙 기록 시 사용)
+  isExample?: boolean;                // eOrth 공식 예시 콘텐츠 — 상호작용 비활성·공식 배지·프로필 이동 차단
 }
+
+export interface CountryCover { recordId: string; uri: string }
 
 // ─────────────────────────────────────────────
 // 여행 묶음 타입
 // ─────────────────────────────────────────────
+
+// 체류(장기체류) 메타 — 있으면 이 TripGroup은 여행 카드가 아니라 체류 카드다.
+export interface TripGroupStayMeta {
+  type: StayType;
+  status: StayStatus;
+  startedAt: string;    // YYYY.MM.DD (체류 시작일)
+  endedAt?: string;     // 종료일 (미종료면 없음)
+  lastActiveAt: number; // 마지막으로 체류국에 있던 시각(ms) — 60일 넛지 판정용
+}
+
 export interface TripGroup {
   id: string;
   title: string;
@@ -151,6 +172,7 @@ export interface TripGroup {
   date?: string;           // YYYY.MM.DD
   // 국내(거주국가) 카드의 지역 구분 — "제주 여행"과 "서울 여행"을 다른 카드로
   regionName?: string;
+  stay?: TripGroupStayMeta; // 있으면 체류 카드
 }
 
 // ─────────────────────────────────────────────
@@ -179,7 +201,7 @@ export interface FollowedFriend {
   currentCountry: string | null;
   currentCountryFlag: string | null;
   followedAt: number;
-  isMutual?: boolean; // 맞팔(서로 팔로우) 여부 — '친구 수' 배지(78·81·82·83) 판정용
+  isMutual?: boolean; // 맞팔(서로 팔로우) 여부 — '메이트 수' 배지(78·81·82·83) 판정용
 }
 
 export interface PostComment {
@@ -242,7 +264,7 @@ interface RecordContextType {
   acceptNeighbor: (requesterId: string) => void;
   declineNeighbor: (requesterId: string) => void;
   removeNeighbor: (idOrUsername: string) => void;
-  // 내가 보낸 대기 중 이웃신청의 대상 id (서버 상태, 비영속)
+  // 내가 보낸 대기 중 메이트신청의 대상 id (서버 상태, 비영속)
   outgoingNeighborRequests: string[];
   isNeighbor: (id: string) => boolean;
   isNeighborRequested: (targetId: string) => boolean;
@@ -259,6 +281,14 @@ interface RecordContextType {
   deleteTripGroup: (id: string) => void;
   updateTripGroup: (id: string, changes: Partial<Omit<TripGroup, 'id' | 'createdAt'>>) => void;
   mergeTripGroups: (targetId: string, sourceIds: string[]) => void;
+  // 장기체류
+  activeStayGroup: TripGroup | null;
+  startStay: (countryName: string, type: StayType) => void;
+  endStay: (groupId: string) => void;
+  absorbIntoStay: (recordId: string, recDate?: string) => void;
+  // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
+  stayPromptCountry: string | null;
+  setStayPromptCountry: React.Dispatch<React.SetStateAction<string | null>>;
   markSnapViewed: (id: string) => void;
   viewedSnapIds: string[]; // 내가 본 타인 스냅(remoteId) — 안 본 링 판정용(영속)
   // 임시저장
@@ -276,11 +306,15 @@ interface RecordContextType {
     mediaAssetIds?: Record<string, string>;
     mediaTimes?: Record<string, number>;
   }) => TravelRecord; // 생성된 record 반환 (저장 직후 상세 이동용)
+  countryCovers: Record<string, CountryCover>;
+  getCountryPhoto: (countryName: string) => string | null;
+  getCountryPhotoRecord: (countryName: string) => CountryCover | null;
+  setCountryCover: (countryName: string, recordId: string, uri: string) => void;
   resetRecords: () => void; // 모든 데이터를 첫 실행 상태(시드)로 되돌림
   // 소셜 미리보기 뷰어 — null=작성자/전체공개 시점. 비영구(저장 안 함).
   currentViewer: string | null;
   setCurrentViewer: (name: string | null) => void;
-  // 백엔드 피드(남들의 공개/친구 글). Supabase 미설정 시 항상 빈 배열.
+  // 백엔드 피드(남들의 공개/메이트 글). Supabase 미설정 시 항상 빈 배열.
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
@@ -313,6 +347,8 @@ interface RecordPersistPayload {
   // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
   // 구형(국가명→카드 id 맵만)일 수 있어 복원 시 정규화한다
   tripSessionGroups?: TripSession | Record<string, string> | null;
+  // 국가별 대표사진 핀 — 나중에 추가됨, 과거 저장본엔 없을 수 있음
+  countryCovers?: Record<string, CountryCover>;
 }
 
 // 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
@@ -328,6 +364,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
+  const [countryCovers, setCountryCovers] = useState<Record<string, CountryCover>>({});
   // 해외 여행 세션 — 위치(기록 국가)가 거주국가와 달라지는 순간 열리고 귀국까지 유지.
   // groups: { [국가명]: 여행카드 id }. 같은 세션·같은 국가는 같은 카드, 새 국가는 새 카드. 영속.
   // 안전판: 마지막 활동(lastActiveAt) 후 30일 지나면 만료 — 귀국 신호를 못 받은 채
@@ -338,7 +375,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     !!s && Date.now() - s.lastActiveAt <= TRIP_SESSION_MAX_IDLE_MS;
   const [drafts, setDrafts] = useState<TravelRecord[]>([]);
   const [neighbors, setNeighbors] = useState<FollowedFriend[]>(INITIAL_NEIGHBORS);
-  // 내가 보낸 대기 중 이웃신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
+  // 내가 보낸 대기 중 메이트신청 대상 id — 서버가 원본, 세션 내 공유용(비영속)
   const [outgoingNeighborRequests, setOutgoingNeighborRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
@@ -347,6 +384,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
   const [currentViewer, setCurrentViewer] = useState<string | null>(null);
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
+  // 피드 캐시 복원 race 가드 — 서버 refreshFeed가 먼저 성공했으면 캐시(구본)로 덮어쓰지 않는다
+  const feedFreshRef = useRef(false);
+  // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
+  const [stayPromptCountry, setStayPromptCountry] = useState<string | null>(null);
+
+  // 피드 캐시 복원 (마운트 1회) — 오프라인 재시작 시 마지막 피드를 즉시 표시.
+  // 온라인이면 곧이어 refreshFeed가 최신으로 교체한다(캐시 선표시 → 체감 로딩 개선).
+  useEffect(() => {
+    (async () => {
+      const cached = await loadEnvelope<TravelRecord[]>(STORE_KEYS.feedCache);
+      if (!cached || !Array.isArray(cached) || cached.length === 0) return;
+      if (feedFreshRef.current) return; // 서버 피드가 이미 도착 — 구본으로 덮지 않음
+      setFeedPosts((prev) => (prev.length > 0 ? prev : cached));
+    })();
+  }, []);
 
   const hydrated = usePersistence<RecordPersistPayload>(
     STORE_KEYS.records,
@@ -360,19 +412,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
           // 비교가 안 되므로 문자열로 확인한다(런타임엔 존재).
           const legacy = r.visibility as string;
-          return legacy === 'public' || legacy === 'friends'
+          const vis = legacy === 'public' || legacy === 'friends'
             ? { ...r, visibility: 'neighbors' as const }
             : r;
+          // iOS 재설치/재빌드로 컨테이너 경로(UUID)가 바뀐 사진 URI 복구 —
+          // 파일은 새 컨테이너의 Documents로 이관돼 있으므로 경로만 재조립하면 다시 뜬다
+          return remapRecordDocUris(vis);
         })
       );
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
         Array.isArray(p.tripGroups)
-          ? p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+          ? p.tripGroups.map((g) => ({ ...g, createdAt: new Date(g.createdAt), coverUri: remapDocUri(g.coverUri) }))
           : []
       );
-      setDrafts(Array.isArray(p.drafts) ? p.drafts : []);
+      setDrafts(Array.isArray(p.drafts) ? p.drafts.map((d) => remapRecordDocUris(d)) : []);
       setNeighbors(
         Array.isArray(p.neighbors)
           ? p.neighbors
@@ -382,6 +437,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       setReportedPostIds(p.reportedPostIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
       setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
+      if (p.countryCovers && typeof p.countryCovers === 'object' && !Array.isArray(p.countryCovers)) {
+        // 지구본 대표사진도 documentDirectory 절대경로 — 컨테이너 변경분 복구
+        const covers = p.countryCovers as Record<string, CountryCover>;
+        setCountryCovers(
+          Object.fromEntries(Object.entries(covers).map(([k, v]) => [k, { ...v, uri: remapDocUri(v.uri) }]))
+        );
+      }
       // 세션 복원 — 구형(맵만 저장)은 새 형태로 감싸고, 30일 무활동이면 만료 처리
       const rawSession = p.tripSessionGroups ?? null;
       const normalized: TripSession | null = !rawSession
@@ -393,8 +455,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession, countryCovers],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -509,6 +571,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // 진행 중(active) 체류국의 실시간 기록 → 체류 카드에 직접 합류 + 활동 시각 갱신
+    const stayG = tripGroupsRef.current.find(
+      (g) => g.stay && g.stay.status === 'active' && g.countryName === country
+    );
+    if (stayG && country !== homeCountryName) {
+      if (!stayG.records.includes(rec.id)) {
+        const grow = (list: TripGroup[]) => list.map((g) =>
+          g.id === stayG.id
+            ? { ...g, records: [...g.records, rec.id], coverRecordId: g.coverRecordId || rec.id,
+                stay: { ...g.stay!, lastActiveAt: Date.now(),
+                  startedAt: (() => { const d = rec.startDate || rec.date; return d && d < g.stay!.startedAt ? d : g.stay!.startedAt; })() } }
+            : g);
+        setTripGroups((prev) => grow(prev));
+        tripGroupsRef.current = grow(tripGroupsRef.current);
+      }
+      return;
+    }
+
     // 국내(거주국가) 실시간 기록 — 진행 중이던 해외 세션이 있으면 귀국으로 보고 종료.
     // 단, 위치 감지 실패로 거주국가로 '폴백'된 기록(스냅 등)은 실제 귀국이 아닐 수 있어
     // 세션을 끊지 않는다 (여행 중 지하철 스냅 한 장이 여행 카드를 갈라놓는 것 방지).
@@ -546,15 +626,123 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     tripSessionRef.current = opened;
   };
 
-  // 도착 감지로 위치가 거주국가로 돌아오면(해외→국내 전환) 여행 세션 종료.
-  // 값 '전환'만 신호로 쓴다 — 감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐.
+  // ─── 장기체류(Stay) ───
+  // 진행 중(active/paused) 체류 카드 — 동시에 최대 1개 (ended는 제외)
+  const activeStayGroup = tripGroups.find((g) => g.stay && g.stay.status !== 'ended') ?? null;
+
+  // 체류 시작 — 체류 카드 생성(active) + 세션을 이 카드로 등록해 체류국 기록이 합류하게 한다
+  const startStay = (countryName: string, type: StayType) => {
+    // 진행 중 체류가 이미 있으면 무시 — 동시 체류는 1개(프롬프트/감지 이벤트 중복 발화 방어)
+    if (tripGroupsRef.current.some((g) => g.stay && g.stay.status !== 'ended')) return;
+    const today = new Date();
+    const ymd = `${today.getFullYear()}.${String(today.getMonth() + 1).padStart(2, '0')}.${String(today.getDate()).padStart(2, '0')}`;
+    const meta = COUNTRIES.find((c) => c.name === countryName);
+    const ng: TripGroup = {
+      id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      title: `${countryName} 체류`,
+      records: [],
+      coverRecordId: '',
+      createdAt: new Date(),
+      countryName,
+      countryFlag: meta?.flag,
+      date: ymd,
+      stay: { type, status: 'active', startedAt: ymd, lastActiveAt: Date.now() },
+    };
+    setTripGroups((prev) => [ng, ...prev]);
+    tripGroupsRef.current = [ng, ...tripGroupsRef.current];
+    const opened: TripSession = { groups: { ...(tripSessionRef.current?.groups ?? {}), [countryName]: ng.id }, lastActiveAt: Date.now() };
+    setTripSession(opened);
+    tripSessionRef.current = opened;
+  };
+
+  // 체류 종료 — status='ended', endedAt=마지막 체류국 기록일(기록 없으면 시작일)
+  const endStay = (groupId: string) => {
+    const apply = (list: TripGroup[]) => list.map((g) => {
+      if (g.id !== groupId || !g.stay) return g;
+      const dates = g.records
+        .map((id) => records.find((r) => r.id === id))
+        .map((r) => r && (r.endDate || r.startDate || r.date))
+        .filter(Boolean) as string[];
+      const endedAt = dates.sort().slice(-1)[0] || g.stay.startedAt;
+      return { ...g, stay: { ...g.stay, status: 'ended' as StayStatus, endedAt } };
+    });
+    setTripGroups(apply);
+    tripGroupsRef.current = apply(tripGroupsRef.current);
+    // 종료된 체류 카드로 새 기록이 합류하지 않게 세션 매핑 제거
+    const cur = tripSessionRef.current;
+    if (cur) {
+      const entries = Object.entries(cur.groups).filter(([, gid]) => gid !== groupId);
+      const next = entries.length > 0 ? { groups: Object.fromEntries(entries), lastActiveAt: cur.lastActiveAt } : null;
+      setTripSession(next);
+      tripSessionRef.current = next;
+    }
+  };
+
+  // import 흡수 등 — 체류 카드에 기록을 붙이고 시작일을 그 기록 날짜로 당긴다(백데이팅).
+  // lastActiveAt은 건드리지 않는다(현재 체류 중이라 넛지는 now 기준 유지).
+  const absorbIntoStay = (recordId: string, recDate?: string) => {
+    const apply = (list: TripGroup[]) => list.map((g) => {
+      if (!g.stay || g.stay.status === 'ended') return g;
+      const records2 = g.records.includes(recordId) ? g.records : [...g.records, recordId];
+      const started = (recDate && recDate < g.stay.startedAt) ? recDate : g.stay.startedAt;
+      return { ...g, records: records2, coverRecordId: g.coverRecordId || recordId, stay: { ...g.stay, startedAt: started } };
+    });
+    setTripGroups(apply);
+    tripGroupsRef.current = apply(tripGroupsRef.current);
+  };
+
+  // 국가명 → ISO 코드 (COUNTRIES term의 첫 토큰이 소문자 iso2)
+  const codeOfCountryName = (name: string | undefined | null): string | null => {
+    if (!name) return null;
+    const c = COUNTRIES.find((x) => x.name === name);
+    return c ? c.term.split(' ')[0].toUpperCase() : null;
+  };
+
+  // 도착 감지 — 위치 전환 시 여행 세션 종료(귀국) + 체류 일시정지/재개 + 새 해외국 프롬프트.
+  // 값 '전환'만 신호로 쓴다(감지 미사용 시 기본값이 거주국가라 상시 비교는 오탐).
   const prevVisitedRef = useRef(currentVisitedCountryCode);
   useEffect(() => {
     const prev = prevVisitedRef.current;
     prevVisitedRef.current = currentVisitedCountryCode;
     if (prev === currentVisitedCountryCode) return;
+
+    // 귀국(해외→거주국 전환) → 여행 세션 종료 (기존 동작 유지)
     if (currentVisitedCountryCode === homeCountryCode && prev !== homeCountryCode) {
       setTripSession(null);
+      tripSessionRef.current = null;
+    }
+
+    // 체류 일시정지/재개/새 해외국 판정 (ended 체류는 snapshot으로 만들지 않는다)
+    const stayGroup = tripGroupsRef.current.find((g) => g.stay && g.stay.status !== 'ended');
+    const snap: StaySnapshot | null = stayGroup
+      ? { countryCode: codeOfCountryName(stayGroup.countryName) ?? '', status: stayGroup.stay!.status, lastActiveAt: stayGroup.stay!.lastActiveAt }
+      : null;
+    const d = decideOnVisitedChange({ visitedCountryCode: currentVisitedCountryCode, homeCountryCode, stay: snap });
+
+    if ((d.pauseStay || d.resumeStay) && stayGroup) {
+      const apply = (list: TripGroup[]) => list.map((g) =>
+        g.id === stayGroup.id
+          ? { ...g, stay: { ...g.stay!, status: (d.resumeStay ? 'active' : 'paused') as StayStatus, lastActiveAt: d.resumeStay ? Date.now() : g.stay!.lastActiveAt } }
+          : g);
+      setTripGroups((prev2) => apply(prev2));
+      tripGroupsRef.current = apply(tripGroupsRef.current);
+      // 재개: 귀국 때 지워진 세션에 체류 카드를 다시 등록 — 재전환 시 프롬프트 재노출 방지·세션 일관성 유지
+      if (d.resumeStay && stayGroup.countryName) {
+        const restored: TripSession = {
+          groups: { ...(tripSessionRef.current?.groups ?? {}), [stayGroup.countryName]: stayGroup.id },
+          lastActiveAt: Date.now(),
+        };
+        setTripSession(restored);
+        tripSessionRef.current = restored;
+        emitToast(i18n.t('stay.resumeToast', { country: stayGroup.countryName }));
+      }
+    }
+
+    // 새 해외국(거주국·체류국 아님) → 여행/장기체류 프롬프트 요청 (이미 그 나라 여행 세션이 있으면 생략)
+    if (d.isNewAbroadCountry) {
+      const visitName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === currentVisitedCountryCode.toUpperCase())?.name ?? null;
+      const alreadyTravel = !!(tripSessionRef.current && visitName && tripSessionRef.current.groups[visitName]);
+      if (visitName && !alreadyTravel) setStayPromptCountry(visitName);
     }
   }, [currentVisitedCountryCode, homeCountryCode]);
 
@@ -748,6 +936,17 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       );
       linkRecordToTrip(updated);
     }
+    setCountryCovers((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(prev)) {
+        if (v.recordId === id) {
+          const newUri = changes.representativePhoto;
+          if (typeof newUri === 'string' && newUri && newUri !== v.uri) { next[k] = { recordId: id, uri: newUri }; changed = true; }
+        }
+      }
+      return changed ? next : prev;
+    });
     if (isSupabaseConfigured) {
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes })).catch(notifySyncError);
       // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
@@ -775,6 +974,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         })
         .filter((g) => g.records.length > 0)
     );
+    setCountryCovers((prev) => {
+      if (!Object.values(prev).some((v) => v.recordId === id)) return prev;
+      const next: Record<string, CountryCover> = {};
+      for (const [k, v] of Object.entries(prev)) if (v.recordId !== id) next[k] = v;
+      return next;
+    });
     if (isSupabaseConfigured && target) {
       if (target.remoteId) deletePost(target.remoteId).catch(notifySyncError);
       // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약
@@ -922,8 +1127,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       if (dup) return prev;
       return [...prev, { ...user, blockedAt: Date.now() }];
     });
-    // 차단하면 이웃에서도 제거 — 화면별 처리 불일치 방지 (이웃 아니면 no-op)
-    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (이웃 항목의 username은 handle과 동일 값)
+    // 차단하면 메이트에서도 제거 — 화면별 처리 불일치 방지 (메이트 아니면 no-op)
+    // id 우선, 없으면 handle → 표시이름 순으로 매칭 (메이트 항목의 username은 handle과 동일 값)
     const nb = neighbors.find((f) =>
       (!!user.id && f.id === user.id) ||
       (!!f.username && (f.username === user.handle || f.username === user.name))
@@ -950,9 +1155,31 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   };
 
   const unblockUser = (nameOrHandle: string) => {
-    const target = blockedUsers.find((b) => b.name === nameOrHandle || b.handle === nameOrHandle);
-    setBlockedUsers((prev) => prev.filter((b) => b.name !== nameOrHandle && b.handle !== nameOrHandle));
-    if (isSupabaseConfigured && target?.id) apiUnblock(target.id).catch(notifySyncError);
+    // 수정 5: 정확히 하나의 대상만 제거 — handle 일치 우선, 없으면 name 일치 첫 항목
+    const target =
+      blockedUsers.find((b) => b.handle && b.handle === nameOrHandle) ??
+      blockedUsers.find((b) => b.name === nameOrHandle);
+    if (!target) return;
+    setBlockedUsers((prev) => {
+      let removed = false;
+      return prev.filter((b) => {
+        if (!removed && b === target) { removed = true; return false; }
+        return true;
+      });
+    });
+    // 수정 1: id 없고 handle 있으면 getProfileByHandle로 uuid 조회 후 서버 해제
+    if (isSupabaseConfigured) {
+      if (target.id) {
+        apiUnblock(target.id).catch(notifySyncError);
+      } else if (target.handle) {
+        getProfileByHandle(target.handle)
+          .then((p) => {
+            if (!p?.id) return;
+            apiUnblock(p.id).catch(notifySyncError);
+          })
+          .catch(notifySyncError);
+      }
+    }
   };
 
   // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
@@ -987,8 +1214,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const sameNeighbor = (f: FollowedFriend, key: string) =>
     f.id === key || (!!f.username && f.username === key);
 
-  // 이웃신청 — 낙관적으로 '신청됨'(대기) 목록에 추가. 수락 전까지 이웃 목록엔 넣지 않는다.
-  // (상대도 나에게 신청해 둔 상태면 service가 자동 수락 → refreshNeighbors가 이웃으로 반영)
+  // 메이트신청 — 낙관적으로 '신청됨'(대기) 목록에 추가. 수락 전까지 메이트 목록엔 넣지 않는다.
+  // (상대도 나에게 신청해 둔 상태면 service가 자동 수락 → refreshNeighbors가 메이트으로 반영)
   const requestNeighbor = (targetId: string) => {
     if (!targetId) return;
     setOutgoingNeighborRequests((prev) => (prev.includes(targetId) ? prev : [...prev, targetId]));
@@ -1013,7 +1240,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 받은 신청 수락 → 이웃이 됨(refreshNeighbors로 목록 반영)
+  // 받은 신청 수락 → 메이트이 됨(refreshNeighbors로 목록 반영)
   const acceptNeighbor = (requesterId: string) => {
     if (!requesterId) return;
     if (isSupabaseConfigured) {
@@ -1028,7 +1255,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (isSupabaseConfigured) apiDeclineNeighbor(requesterId).catch(notifySyncError);
   };
 
-  // 이웃 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
+  // 메이트 끊기 — 로컬 목록에서 제거 + 서버 accepted 관계 삭제
   const removeNeighbor = (idOrUsername: string) => {
     const target = neighbors.find((f) => sameNeighbor(f, idOrUsername));
     setNeighbors((prev) => prev.filter((f) => (target ? f !== target : !sameNeighbor(f, idOrUsername))));
@@ -1041,7 +1268,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     [neighbors]
   );
 
-  // '신청됨' 판정 — 이미 이웃이면(수락됨) 신청 상태로 보지 않는다
+  // '신청됨' 판정 — 이미 메이트이면(수락됨) 신청 상태로 보지 않는다
   const isNeighborRequested = useCallback(
     (targetId: string) =>
       outgoingNeighborRequests.includes(targetId) && !neighbors.some((f) => f.id === targetId),
@@ -1222,7 +1449,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       content: data.title,
       likes: 0, comments: 0, liked: false,
       isMyPost: true,
-      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 이웃 프로필·피드에서
+      // 다른 기록 작성 경로와 동일한 기본 공개범위 — private이면 메이트 프로필·피드에서
       // 과거 여행이 전혀 안 보여 "기록이 있는데 안 보인다"는 혼란을 낳았다.
       visibility: 'neighbors',
       timestamp: Date.now(),
@@ -1320,6 +1547,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setArchivedIds([]);
     setBlockedUsers([]);
     setTripGroups([]);
+    setCountryCovers({});
     setDrafts([]);
     setNeighbors(INITIAL_NEIGHBORS);
     setCommentsByPost(INITIAL_COMMENTS);
@@ -1334,17 +1562,22 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
+    tripRestoreEpochRef.current += 1; // in-flight 복원 async 무효화 (감사 M1)
     setTripRestoreNonce((n) => n + 1);
   };
 
-  // 백엔드 피드 새로고침 (남들의 공개/친구 글 + 내 좋아요 표시)
+  // 백엔드 피드 새로고침 (남들의 공개/메이트 글 + 내 좋아요 표시)
   const refreshFeed = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
       // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
       const [posts, likedIds] = await withTimeout(Promise.all([fetchFeed(), fetchMyLikedPostIds()]), 12000);
       const likedSet = new Set(likedIds);
-      setFeedPosts(posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) })));
+      const fresh = posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
+      feedFreshRef.current = true; // 이후 도착하는 캐시 복원이 구본으로 덮지 않게
+      setFeedPosts(fresh);
+      // 피드 캐시 영속화 — 오프라인 재시작 시 마지막 피드 표시용(최대 100개, 실패 무시)
+      saveEnvelope(STORE_KEYS.feedCache, fresh.slice(0, 100));
     } catch {
       // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
       emitToast('피드를 불러오지 못했어요. 네트워크를 확인해 주세요.');
@@ -1363,8 +1596,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // 이웃 목록을 백엔드 기준으로 동기화
-  // 서버가 연속으로 빈 이웃 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
+  // 메이트 목록을 백엔드 기준으로 동기화
+  // 서버가 연속으로 빈 메이트 목록을 준 횟수 — refreshNeighbors의 일시 빈 응답 필터용
   const emptyNeighborStreakRef = useRef(0);
   const refreshNeighbors = useCallback(async () => {
     if (!isSupabaseConfigured) return;
@@ -1376,7 +1609,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!list) return; // 오류 시 로컬 유지
     setNeighbors((prev) => {
       // 토큰 갱신 직후 RLS가 순간적으로 빈 목록을 줄 수 있다 — 첫 빈 응답은 유지,
-      // 연속 2회 빈 응답이면 실제 전체 이웃 해제로 보고 수용(유령 이웃 잔존 방지).
+      // 연속 2회 빈 응답이면 실제 전체 메이트 해제로 보고 수용(유령 메이트 잔존 방지).
       if (list.length === 0 && prev.length > 0) {
         emptyNeighborStreakRef.current += 1;
         if (emptyNeighborStreakRef.current < 2) return prev;
@@ -1395,13 +1628,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           currentCountry: ex?.currentCountry ?? null,
           currentCountryFlag: ex?.currentCountryFlag ?? null,
           followedAt: ex?.followedAt ?? 0,
-          isMutual: true, // 서로이웃은 모두 대칭
+          isMutual: true, // 서로메이트은 모두 대칭
         };
       });
     });
   }, []);
 
-  // 앱 시작/복원 후 피드·이웃 1회 로드
+  // 앱 시작/복원 후 피드·메이트 1회 로드
   useEffect(() => {
     if (hydrated) {
       refreshFeed();
@@ -1410,21 +1643,32 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }, [hydrated, refreshFeed, refreshNeighbors]);
 
   // 과거(id 없이 저장된) 차단 항목 uuid 백필 — handle로 프로필을 찾아 id를 채우고
-  // 서버 blocks에도 반영한다(RLS 차단 필터 동작). 앱 세션당 1회만 시도.
-  const blockBackfillRef = useRef(false);
+  // 서버 blocks에도 반영한다(RLS 차단 필터 동작).
+  // 수정 2(백필): ref를 boolean 대신 '성공한 handle Set'으로 — 실패 항목은 다음 기회에 재시도.
+  const blockBackfillDoneRef = useRef<Set<string>>(new Set());
   useEffect(() => {
-    if (!hydrated || !isSupabaseConfigured || blockBackfillRef.current) return;
-    blockBackfillRef.current = true;
-    const targets = blockedUsers.filter((b) => !b.id && b.handle);
+    if (!hydrated || !isSupabaseConfigured) return;
+    const targets = blockedUsers.filter((b) => !b.id && b.handle && !blockBackfillDoneRef.current.has(b.handle!));
     if (targets.length === 0) return;
     (async () => {
       for (const b of targets) {
-        const p = await getProfileByHandle(b.handle!);
-        if (!p?.id) continue; // 탈퇴/핸들 변경 등 — 로컬 차단만 유지
-        setBlockedUsers((prev) =>
-          prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
-        );
-        apiBlock(p.id).catch(() => {}); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+        try {
+          const p = await getProfileByHandle(b.handle!);
+          if (!p?.id) {
+            // 탈퇴/핸들 변경 등 — 로컬 차단만 유지, 재시도 방지를 위해 done에 추가
+            blockBackfillDoneRef.current.add(b.handle!);
+            continue;
+          }
+          setBlockedUsers((prev) =>
+            prev.map((x) => (x.handle === b.handle && !x.id ? { ...x, id: p.id } : x))
+          );
+          await apiBlock(p.id); // 백필은 조용히(사용자 액션이 아니므로 실패 토스트 없음)
+          blockBackfillDoneRef.current.add(b.handle!); // 성공한 항목만 제외
+        } catch {
+          // 네트워크 실패도 이번 세션에서는 재시도하지 않음 — blockedUsers 변경마다
+          // 실패 항목이 API를 반복 호출하는 폭주 방지. 앱 재시작 시 ref가 리셋돼 재도전.
+          blockBackfillDoneRef.current.add(b.handle!);
+        }
       }
     })();
   }, [hydrated, blockedUsers]);
@@ -1522,6 +1766,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           coverUri: g.coverUri,
           date: g.date,
           regionName: g.regionName,
+          stay: g.stay,
         })),
         session: tripSession,
       });
@@ -1533,15 +1778,21 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 로컬 카드가 있으면 로컬이 원본이므로 절대 덮어쓰지 않는다.
   // 계정 전환(resetRecords) 시 nonce 증가로 새 계정에 대해 재시도한다.
   const tripRestoreTriedRef = useRef(false);
+  // 계정 세대(epoch) — resetRecords/rearm마다 증가. in-flight 복원 async가 계정 전환을
+  // 가로질러 이전 계정의 백업을 새 계정 상태에 적용하거나(카드 혼입), tried를 선점해
+  // 새 계정 복원을 스킵시키는 경합 방지(2026-07-20 감사 M1).
+  const tripRestoreEpochRef = useRef(0);
   const [tripRestoreNonce, setTripRestoreNonce] = useState(0);
   useEffect(() => {
     if (!hydrated || !isSupabaseConfigured || tripRestoreTriedRef.current) return;
+    const epoch = tripRestoreEpochRef.current; // 이 시도가 속한 계정 세대
     (async () => {
       // 로그인 전(세션 없음)에는 '시도'로 치지 않는다 — 스토어는 로그인 전에 마운트되므로
       // 여기서 tried 처리하면 로그인 후 복원이 영영 안 돌고, 백업이 열리면서 빈 tripGroups가
       // 서버 백업을 덮어써 카드가 전부 사라진다(베타 실사고, 2026-07-10).
       // 로그인 완료 후에는 useAccountBoundary가 rearmTripRestore()로 재시도시킨다.
       const uid = await getMyUserId().catch(() => null);
+      if (epoch !== tripRestoreEpochRef.current) return; // 계정 전환됨 — 이 시도 폐기
       if (!uid || tripRestoreTriedRef.current) return;
       tripRestoreTriedRef.current = true;
       if (tripGroupsRef.current.length > 0) {
@@ -1550,11 +1801,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       }
       try {
         const backup = await fetchTripState();
+        if (epoch !== tripRestoreEpochRef.current) return; // 전환됨 — 이전 계정 백업 미적용
         if (backup && backup.groups.length > 0) {
           setTripGroups((prev) =>
             prev.length > 0
               ? prev
-              : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) }))
+              : backup.groups.map((g) => ({ ...g, createdAt: new Date(g.createdAt) } as TripGroup))
           );
           setTripSession((prev) => {
             if (prev) return prev;
@@ -1563,7 +1815,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } finally {
-        tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+        // 전환된 세대의 잔존 async가 새 계정의 백업 잠금을 조기 해제하지 않게 세대 일치 시에만
+        if (epoch === tripRestoreEpochRef.current) {
+          tripBackupReadyRef.current = true; // 복원 시도 완료(성공/실패 무관) 후에만 백업 허용
+        }
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1574,13 +1829,47 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const rearmTripRestore = useCallback(() => {
     tripRestoreTriedRef.current = false;
     tripBackupReadyRef.current = false;
+    tripRestoreEpochRef.current += 1; // in-flight 복원 async 무효화 (감사 M1)
     setTripRestoreNonce((n) => n + 1);
+  }, []);
+
+  // ── 국가 대표사진 ──
+  // 국가의 대표사진 '기록'을 찾는다: 핀 우선(핀 기록이 살아있을 때만), 없으면 기존 최신순 폴백.
+  const getCountryPhotoRecord = useCallback((countryName: string): CountryCover | null => {
+    const aliases = koAliases(countryName);
+    for (const a of aliases) {
+      const pin = countryCovers[a];
+      if (pin && records.some((r) => r.id === pin.recordId)) return pin; // 핀 유효
+    }
+    const matchingRecords = records.filter((r) => matchesCountry(r, countryName));
+    for (const r of matchingRecords) {
+      for (const a of aliases) {
+        if (r.perCountryData?.[a]?.representativePhoto) return { recordId: r.id, uri: r.perCountryData[a]!.representativePhoto! };
+      }
+      if (aliases.includes(r.countryName ?? '') && r.representativePhoto) return { recordId: r.id, uri: r.representativePhoto };
+      if (r.viewType === 'cut' && r.cutPhoto?.previewUri) return { recordId: r.id, uri: r.cutPhoto.previewUri };
+      if (r.viewType === 'snap' && r.snapBackUri) return { recordId: r.id, uri: r.snapBackUri };
+      if (r.medias && r.medias.length > 0) return { recordId: r.id, uri: r.medias[0] };
+    }
+    return null;
+  }, [countryCovers, records]);
+
+  const getCountryPhoto = useCallback(
+    (countryName: string): string | null => getCountryPhotoRecord(countryName)?.uri ?? null,
+    [getCountryPhotoRecord],
+  );
+
+  // 국가 대표사진 핀 설정. 키는 대표 별칭 하나로 저장.
+  const setCountryCover = useCallback((countryName: string, recordId: string, uri: string) => {
+    const key = koAliases(countryName)[0] ?? countryName;
+    if (!key || !recordId || !uri) return;
+    setCountryCovers((prev) => ({ ...prev, [key]: { recordId, uri } }));
   }, []);
 
   // ── 앱 상태 통합 백업(user_app_state) — 기록 부가상태 스냅샷 ──
   // 기록 본문은 posts, 여행카드는 user_trip_state가 담당하므로 여기선 부가상태만.
   const exportLocalStateBackup = (): Record<string, unknown> => ({
-    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds,
+    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds, countryCovers,
   });
   const applyLocalStateBackup = (b: Record<string, unknown>) => {
     const v = b as any;
@@ -1589,6 +1878,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(v.reportedPostIds)) setReportedPostIds(v.reportedPostIds);
     if (Array.isArray(v.mutedHandles)) setMutedHandles(v.mutedHandles);
     if (Array.isArray(v.viewedSnapIds)) setViewedSnapIds(v.viewedSnapIds);
+    if (v.countryCovers && typeof v.countryCovers === 'object' && !Array.isArray(v.countryCovers)) setCountryCovers(v.countryCovers as Record<string, CountryCover>);
   };
 
   // 예약 글의 여행 카드 연결 — 작성 시가 아니라 발행 시점(예약 시각 도달)에 연결한다.
@@ -1649,7 +1939,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

@@ -3,6 +3,7 @@
 // 순수 함수로 작성 → 화면과 독립적으로 테스트 가능.
 
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
+import { HIDDEN_BADGE_IDS } from '../constants/badges';
 
 // 판정에 필요한 최소 필드만 받는다(TravelRecord와 느슨하게 호환).
 export interface BadgeStatRecord {
@@ -12,7 +13,7 @@ export interface BadgeStatRecord {
   rating?: number;
   weather?: string;            // 날씨 ('비'·'눈' 등) — 101·102용
   companions?: string[];
-  companionFriends?: string[]; // 함께한 앱 친구 이름들 (77·84·85용)
+  companionFriends?: string[]; // 함께한 앱 메이트 이름들 (77·84·85용)
   likes?: number;              // 받은 좋아요 수 (76용)
   medias?: string[];
   startDate?: string;
@@ -33,10 +34,11 @@ export interface BadgeCatalogEntry {
 // 기록 외부의 사용자 데이터(설정 등)를 판정에 함께 넘길 때 사용.
 export interface BadgeComputeOptions {
   birthday?: string; // 'YYYY-MM-DD' (생일 여행 배지 판정용)
+  homeCountryName?: string; // 현재 거주국 이름 — 방문국 집계에서 동적 제외(거주국은 '방문'이 아님)
   // 이미 영구 획득한 배지 id (행동 배지 55, 과거 획득분 등). 메타 배지(개수 달성) 카운트에 합산된다.
   alreadyEarnedIds?: number[];
   commentsWritten?: number; // 내가 작성한 댓글 수 (75 댓글 요정용)
-  neighborCount?: number; // 이웃(서로이웃) 수 (78·81·82·83용)
+  neighborCount?: number; // 메이트(서로메이트) 수 (78·81·82·83용)
   sharesSent?: number;        // 게시물 공유(보낸) 누적 횟수 (74용)
   loginStreak?: number;       // 앱 연속 접속 일수 (112·113·114용)
   daysSinceInstall?: number;  // 앱 설치 후 경과 일수 (115용)
@@ -139,8 +141,8 @@ export const DATA_DRIVEN_BADGE_IDS = new Set<number>([
   88, 89, 90,                     // 스냅: 스트릭(7일) / 야행성(2~5시) / 일출(5~7시)
   97, 98, 99, 101, 102, 103, 104, // 기록 습관: 연속30 / 1·1 / 12·25 / 비10 / 눈5 / 별점5×10 / 별점1×3
   69,                             // 만능 기록자(피드·블로그·스트립·스냅 각 1개+)
-  74, 75, 76, 77, 84, 85,         // 소셜: 공유10 / 댓글50 / 좋아요100 / 같은친구5 / 동행1 / 동행3
-  78, 81, 82, 83,                 // 맞팔 친구 수: 50 / 1 / 10 / 100
+  74, 75, 76, 77, 84, 85,         // 소셜: 공유10 / 댓글50 / 좋아요100 / 같은메이트5 / 동행1 / 동행3
+  78, 81, 82, 83,                 // 맞팔 메이트 수: 50 / 1 / 10 / 100
   112, 113, 114,                  // 앱 연속 접속: 30 / 50 / 100일
   115, 116,                       // eOrth 1주년(설치 1년) / 얼리어답터(출시 첫 달 가입)
   118, 119, 120, 121,             // 시즌: 벚꽃 / 옥토버페스트 / 카니발 / 오로라
@@ -294,8 +296,8 @@ export interface TravelStats {
   cutFrames: Set<string>;      // 스트립에서 사용한 서로 다른 프레임(frameId) 집합
   viewTypesUsed: Set<string>;  // 사용한 뷰 형식 집합(feed/blog/cut/snap/album) — 69용
   likesReceived: number;            // 내 기록이 받은 좋아요 합계 (76용)
-  companionFriendRecordCount: number; // 앱 친구와 동행한 기록 수 (84·85용)
-  maxSameFriendCompanions: number;    // 같은 친구와 동행한 최다 기록 수 (77용)
+  companionFriendRecordCount: number; // 앱 메이트와 동행한 기록 수 (84·85용)
+  maxSameFriendCompanions: number;    // 같은 메이트와 동행한 최다 기록 수 (77용)
   maxDiaryStreak: number;       // 기록(피드·블로그·스트립)을 연속한 최대 일수 (97용)
   hasNewYearDayRecord: boolean; // 1월 1일 기록이 있는가 (98용)
   hasChristmasRecord: boolean;  // 12월 25일 기록이 있는가 (99용)
@@ -381,6 +383,14 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   // '같은 여행지|같은 월일' → 방문 연도 집합. 1년 차이(연속 연도)가 있으면 33 점등.
   const annualVisits = new Map<string, Set<number>>();
 
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = new Set<string>();
+  if (options?.homeCountryName) {
+    homeNames.add(options.homeCountryName);
+    if (options.homeCountryName === '대한민국') homeNames.add('한국');
+    if (options.homeCountryName === '한국') homeNames.add('대한민국');
+  }
+
   for (const r of mine) {
     const rep = parseDate(r.startDate) ?? parseDate(r.date); // 이 기록의 대표 날짜
     const isDiary = DIARY_VIEW_TYPES.has(r.viewType ?? 'feed'); // 피드·블로그·스트립만 '기록'으로 인정
@@ -409,6 +419,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     if (r.countries) for (const c of r.countries) if (c?.name) names.add(c.name);
     let isIsland = false;
     for (const n of names) {
+      if (homeNames.has(n)) continue; // 거주국 제외
       countries.add(n);
       if (isDiary) diaryCountries.add(n); // 형식 기록으로 방문한 국가
       const cont = NAME_TO_CONTINENT[n];
@@ -501,7 +512,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     }
     if (r.companions) for (const comp of r.companions) companions.add(comp);
 
-    // 소셜: 받은 좋아요 합산(76), 앱 친구 동행 집계(84·85·77)
+    // 소셜: 받은 좋아요 합산(76), 앱 메이트 동행 집계(84·85·77)
     likesReceived += r.likes ?? 0;
     if (r.companionFriends && r.companionFriends.length > 0) {
       companionFriendRecordCount += 1;
@@ -518,7 +529,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   }
 
 
-  // 같은 친구와 동행한 최다 기록 수 (77)
+  // 같은 메이트와 동행한 최다 기록 수 (77)
   let maxSameFriendCompanions = 0;
   for (const c of friendCompanionCounts.values()) maxSameFriendCompanions = Math.max(maxSameFriendCompanions, c);
 
@@ -769,13 +780,13 @@ export function computeEarnedBadgeIds(
   on(74, (options?.sharesSent ?? 0) >= 10);        // 공유왕: 게시물 공유 10회
   on(75, (options?.commentsWritten ?? 0) >= 50);   // 댓글 요정: 댓글 50개 작성
   on(76, s.likesReceived >= 100);                  // 인싸 여행러: 좋아요 100개 받기
-  on(77, s.maxSameFriendCompanions >= 5);          // 여행 메이트: 같은 친구와 동행 5회
-  on(84, s.companionFriendRecordCount >= 1);       // 첫 동행: 앱 친구 동행 1회
-  on(85, s.companionFriendRecordCount >= 3);       // 동행 메이트: 앱 친구 동행 3회
+  on(77, s.maxSameFriendCompanions >= 5);          // 여행 메이트: 같은 메이트와 동행 5회
+  on(84, s.companionFriendRecordCount >= 1);       // 첫 동행: 앱 메이트 동행 1회
+  on(85, s.companionFriendRecordCount >= 3);       // 동행 메이트: 앱 메이트 동행 3회
 
-  // ── 이웃 수 ──
+  // ── 메이트 수 ──
   const neighborCount = options?.neighborCount ?? 0;
-  on(81, neighborCount >= 1);    // 첫 친구
+  on(81, neighborCount >= 1);    // 첫 메이트
   on(82, neighborCount >= 10);   // 인싸의 시작
   on(78, neighborCount >= 50);   // 소셜 나비
   on(83, neighborCount >= 100);  // 인맥왕
@@ -799,11 +810,12 @@ export function computeEarnedBadgeIds(
   }
 
   // ── 메타 배지: 데이터/static 획득 + 이미 영구 획득(행동 배지 등)을 합쳐 판정(메타 자신은 제외) ──
+  // 출시 축소로 숨긴 배지는 사용자에게 보이지 않으므로 개수에 넣지 않는다(숨김 해제 시 자동 합산 복귀).
   const metaIds = new Set(Object.keys(META_BADGE_THRESHOLDS).map(Number));
   const countSet = new Set<number>();
-  for (const id of earned) if (!metaIds.has(id)) countSet.add(id);
+  for (const id of earned) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
   if (options?.alreadyEarnedIds) {
-    for (const id of options.alreadyEarnedIds) if (!metaIds.has(id)) countSet.add(id);
+    for (const id of options.alreadyEarnedIds) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
   }
   const total = countSet.size;
   for (const [idStr, threshold] of Object.entries(META_BADGE_THRESHOLDS)) {

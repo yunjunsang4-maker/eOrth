@@ -13,6 +13,8 @@ import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { getMaxRecordPhotos } from '../constants/limits';
 import { useSettings } from '../store/settingsStore';
+import { classifyImportTarget } from '../utils/importRouting';
+import { COUNTRIES } from '../constants/countries';
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
@@ -46,9 +48,9 @@ const CARD_ASPECT = CARD_W / CARD_H;
 export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
   const { t } = useTranslation();
   const { trips } = route.params as { trips: ImportTrip[] };
-  const { addImportedAlbum, addTripGroup } = useRecords();
+  const { addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
   const insets = useSafeAreaInsets();
-  const { isPremium } = useSettings();
+  const { isPremium, homeCountryCode } = useSettings();
   const maxPhotosPerTrip = getMaxRecordPhotos(isPremium); // 기록당 사진 상한 공유 (프리미엄 100장)
 
   const [index, setIndex] = useState(0);
@@ -122,6 +124,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       let photoCount = 0;
       const countries: { flag: string; name: string }[] = [];
       const trFn = t; // 아래 루프의 t(여행)가 번역 함수 t를 가리므로 별칭 사용
+      const homeCountryName = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
+      const stayCountryName = activeStayGroup?.stay?.status !== 'ended' ? (activeStayGroup?.countryName ?? null) : null;
       for (const t of trips) {
         const uris = selected[t.id] ?? [];
         if (uris.length === 0) continue; // 선택 0장 → 카드 생성 안 함
@@ -163,11 +167,19 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
           albumSections: autoSections,
         }).id;
-        // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
-        addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
-        tripCount += 1;
-        photoCount += copied.length;
-        countries.push({ flag: t.countryFlag, name: t.countryName });
+        // 진행 중 체류국 사진이면 체류 카드로 흡수(백데이팅), 제3국이면 별도 여행 카드
+        const target = classifyImportTarget(t.countryName, homeCountryName, stayCountryName);
+        if (target === 'stay') {
+          absorbIntoStay(recId, t.startDate);
+          photoCount += copied.length;
+        } else if (target === 'trip') {
+          // 제목에 국기를 넣지 않는다 — 프로필 카드가 `${countryFlag} ${title}`로 렌더링해 중복됨
+          addTripGroup({ title: t.title, records: [recId], coverRecordId: recId });
+          tripCount += 1;
+          photoCount += copied.length;
+          countries.push({ flag: t.countryFlag, name: t.countryName });
+        }
+        // 'skip'(거주국)은 clusterForeignTrips가 이미 제외 — 방어적으로 무시
       }
       navigation.reset({
         index: 1,

@@ -13,7 +13,7 @@ import { captureRef } from 'react-native-view-shot';
 import CutPhotoCanvas, { cutHasBottomBand, type CutStamp } from '../components/CutPhotoCanvas';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustModal';
-import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame } from '../constants/cutFrames';
+import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame, frameLabel } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -50,7 +50,7 @@ const CUSTOM_ROWS: string[][] = [
 ];
 
 export default function CutRecordScreen({ navigation, route }: RootStackScreenProps<'CutRecord'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 활성 탭·칩 강조를 스킨색으로
   const selectedCountry = route.params?.selectedCountry ?? null;
   // 스트립 로고 제거(프리미엄) — 프리미엄이고 설정 토글이 켜져 있을 때만 로고 미포함
@@ -392,7 +392,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                   width={tw}
                   capture
                 />
-                <Text style={st.catLabel} numberOfLines={1}>{f.name}</Text>
+                <Text style={st.catLabel} numberOfLines={1}>{frameLabel(f.name, i18n.language)}</Text>
               </TouchableOpacity>
             );
           })}

@@ -31,6 +31,7 @@ const SheetBackdrop = ({ pointerEvents }: { pointerEvents?: 'none' }) =>
     />
   );
 import { useTranslation } from 'react-i18next';
+import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
@@ -51,8 +52,14 @@ import { getSponsoredMarkerItems, getSponsoredByCountryEn, type SponsoredPackage
 import { useRecords } from '../store/recordStore';
 import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { useSettings, type MapDisplayMode, type SkinColorSet } from '../store/settingsStore';
+import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
+import { getCountryRegionOptions } from '../constants/homeRegions';
 import type { TabScreenProps } from '../navigation/types';
+import { consumePendingInvite } from '../utils/pendingInvite';
+import { getProfileByHandle } from '../services/profile';
+import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
+import { isSupabaseConfigured } from '../services/supabase';
+import { matchesCountry } from '../utils/countryMatch';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -85,6 +92,25 @@ const REGION_COUNTRIES = [
   { code: 'GBR', flag: '🇬🇧', name: '영국' },
   { code: 'FRA', flag: '🇫🇷', name: '프랑스' },
   { code: 'ITA', flag: '🇮🇹', name: '이탈리아' },
+  // 2026-07-20 확장 18개국 (인기 여행국 30위 기반, 사용자 확정)
+  { code: 'TUR', flag: '🇹🇷', name: '튀르키예' },
+  { code: 'GRC', flag: '🇬🇷', name: '그리스' },
+  { code: 'AUT', flag: '🇦🇹', name: '오스트리아' },
+  { code: 'PRT', flag: '🇵🇹', name: '포르투갈' },
+  { code: 'NLD', flag: '🇳🇱', name: '네덜란드' },
+  { code: 'THA', flag: '🇹🇭', name: '태국' },
+  { code: 'MYS', flag: '🇲🇾', name: '말레이시아' },
+  { code: 'VNM', flag: '🇻🇳', name: '베트남' },
+  { code: 'SAU', flag: '🇸🇦', name: '사우디아라비아' },
+  { code: 'ARE', flag: '🇦🇪', name: '아랍에미리트' },
+  { code: 'MAR', flag: '🇲🇦', name: '모로코' },
+  { code: 'EGY', flag: '🇪🇬', name: '이집트' },
+  { code: 'TUN', flag: '🇹🇳', name: '튀니지' },
+  { code: 'ZAF', flag: '🇿🇦', name: '남아프리카공화국' },
+  { code: 'MEX', flag: '🇲🇽', name: '멕시코' },
+  { code: 'CAN', flag: '🇨🇦', name: '캐나다' },
+  { code: 'BRA', flag: '🇧🇷', name: '브라질' },
+  { code: 'COL', flag: '🇨🇴', name: '콜롬비아' },
 ];
 
 // ─── 영토 표시 설정 버튼 아이콘 (스킨색 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
@@ -121,10 +147,11 @@ const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) 
   </Svg>
 );
 
-const ISO3_TO_KO: Record<string, string> = {
-  JPN: '일본', CHN: '중국', USA: '미국', DEU: '독일',
-  ESP: '스페인', GBR: '영국', FRA: '프랑스', ITA: '이탈리아',
-};
+// REGION_COUNTRIES에서 파생 — 국가 추가 시 목록 한 곳만 고치면 됨.
+// (하드코딩 8개국이던 시절, 신규 국가에서 국가 칩이 ISO3로 뜨고 지역 활성색이 안 그려지는 버그가 있었음)
+const ISO3_TO_KO: Record<string, string> = Object.fromEntries(
+  REGION_COUNTRIES.map((c) => [c.code, c.name])
+);
 
 const VISITED_COUNTRIES = [
   { flag: '🇯🇵', name: '일본', visits: 5 },
@@ -245,6 +272,7 @@ export const KO_TO_EN: Record<string, string> = {
   '남아프리카공화국':'South Africa','대한민국':'South Korea','남수단':'South Sudan',
   '스페인':'Spain','스리랑카':'Sri Lanka','수단':'Sudan',
   '스웨덴':'Sweden','스위스':'Switzerland','시리아':'Syria',
+  '홍콩':'Hong Kong','마카오':'Macau', // 중국에서 분리한 별도 지역
   '대만':'Taiwan','타지키스탄':'Tajikistan','탄자니아':'Tanzania',
   '태국':'Thailand','토고':'Togo','튀니지':'Tunisia',
   '튀르키예':'Turkey','투르크메니스탄':'Turkmenistan',
@@ -264,15 +292,7 @@ export const KO_TO_EN: Record<string, string> = {
 // 기록에 두 표기가 섞여 있어(badgeRules도 동일 보정) 이름 비교는 반드시 별칭 집합으로 한다 —
 // 아니면 국내 기록의 대표 사진이 지구본에 안 뜨고, '한국' 기록만 있는 사용자는 지구본을
 // 탭해도 기존 기록 시트 대신 "새 기록 추가"가 뜬다.
-const koAliases = (name?: string | null): string[] =>
-  name === '대한민국' || name === '한국' ? ['대한민국', '한국'] : name ? [name] : [];
-const matchesCountry = (
-  r: { countryName?: string; countries?: { name: string }[] },
-  name: string
-): boolean => {
-  const set = koAliases(name);
-  return set.includes(r.countryName ?? '') || !!r.countries?.some((c) => set.includes(c.name));
-};
+// → matchesCountry 는 src/utils/countryMatch.ts 에서 import (recordStore 공유)
 
 type Props = TabScreenProps<'MainTab'>;
 
@@ -322,8 +342,19 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
 
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
-  const { records, tripGroups } = useRecords();
+  const { t, i18n } = useTranslation();
+  const { records, tripGroups, requestNeighbor, isNeighbor, isNeighborRequested, getCountryPhoto } = useRecords();
+  // 기록의 지역/국가명 현지화 — 영어 모드면 지역은 regionNameEn, 국가는 KO_TO_EN(로컬)
+  // 한글 국가명 → 영어(영어 모드). MainScreen은 countryLabel util을 import하면 순환이라 로컬 KO_TO_EN 사용
+  const countryEn = (ko: string): string => {
+    if (i18n.language !== 'en' || !ko) return ko;
+    if (SHORT_COUNTRY_EN[ko]) return SHORT_COUNTRY_EN[ko]; // 미국→U.S, 영국→U.K
+    return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
+  };
+  const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {
+    if (rec.regionName) return i18n.language === 'en' && rec.regionNameEn ? rec.regionNameEn : rec.regionName;
+    return countryEn(rec.countryName || '');
+  };
 
   // ── 튜토리얼(코치마크) ──
   // 측정 대상: 지구본(WebView) / 모드 토글 / 지구본 설정 버튼 / 스냅 버튼 / FAB. measureInWindow를 쓰므로 any로 둔다.
@@ -468,9 +499,33 @@ export default function MainScreen({ navigation, route }: Props) {
     countryDisplayModes, setCountryDisplayModes,
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
+    taggedRegions, setTaggedRegions,
+    dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
     tutorialSeen, setTutorialSeen,
+    handle,
   } = useSettings();
+
+  // 초대 귀속 소비 — 미인증 상태에서 받은 초대 딥링크(pendingInvite)를 온보딩 완료 후
+  // 첫 메인 진입에서 메이트 연결 넛지(커스텀 모달)로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)
+  const [inviteNudge, setInviteNudge] = useState<InviteNudgeTarget | null>(null);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const invHandle = await consumePendingInvite();
+      if (!alive || !invHandle) return;
+      // 본인 초대(내 링크)면 무시
+      if (handle && invHandle.toLowerCase() === handle.toLowerCase()) return;
+      const p = await getProfileByHandle(invHandle);
+      if (!alive || !p) return; // 미가입·조회 실패 — 조용히 폐기
+      // 이미 메이트/신청중이면 넛지 불필요
+      if (isNeighbor(p.id) || isNeighborRequested(p.id)) return;
+      if (alive) setInviteNudge({ userId: p.id, handle: p.handle || invHandle, photo: p.profile_photo });
+    })();
+    return () => { alive = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [displaySettingsVisible, setDisplaySettingsVisible] = useState(false);
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
 
@@ -530,6 +585,9 @@ export default function MainScreen({ navigation, route }: Props) {
   // 지구본/대륙 전환
   const [viewMode, setViewMode] = useState<'globe' | 'region'>('globe');
   const [regionCountry, setRegionCountry] = useState<string | null>(null); // ISO3 코드
+  // 국가 선택 그리드는 7개+돋보기만 노출 — 전체 목록(26개국)은 검색 시트에서 (사용자 확정 디자인)
+  const [countryPickerVisible, setCountryPickerVisible] = useState(false);
+  const [countryPickerSearch, setCountryPickerSearch] = useState('');
   // 대륙(국가 지역) 화면 검색/필터
   const [regionSearch, setRegionSearch] = useState('');
   const [popularActive, setPopularActive] = useState(false); // "인기명소 모아보기" — 눌러야 도시 선/강조 표시
@@ -558,32 +616,6 @@ export default function MainScreen({ navigation, route }: Props) {
       });
     });
     return nameSet;
-  }, [records]);
-
-  // 특정 국가의 대표 사진 찾기 (records만 읽으므로 useCallback으로 안정화 → visitedCountries memo가 매 렌더 재계산되지 않음)
-  const getCountryPhoto = useCallback((countryName: string) => {
-    const aliases = koAliases(countryName); // '한국'/'대한민국' 혼재 기록 모두 매칭
-    const matchingRecords = records.filter(r => matchesCountry(r, countryName));
-    for (const r of matchingRecords) {
-      for (const a of aliases) {
-        if (r.perCountryData?.[a]?.representativePhoto) {
-          return r.perCountryData[a].representativePhoto;
-        }
-      }
-      if (aliases.includes(r.countryName ?? '') && r.representativePhoto) {
-        return r.representativePhoto;
-      }
-      if (r.viewType === 'cut' && r.cutPhoto?.previewUri) {
-        return r.cutPhoto.previewUri;
-      }
-      if (r.viewType === 'snap' && r.snapBackUri) {
-        return r.snapBackUri;
-      }
-      if (r.medias && r.medias.length > 0) {
-        return r.medias[0];
-      }
-    }
-    return null; // 실제 기록 사진이 없으면 사진 없음(색상 모드) — 가짜 stock 이미지 제거
   }, [records]);
 
   // 지구본(WebView)은 file:// 이미지를 직접 못 그려서, 대표 사진을 작은 data URI(base64)로 변환해 캐시
@@ -675,14 +707,94 @@ export default function MainScreen({ navigation, route }: Props) {
       }
     });
 
+    // 소급 태깅 지역 병합 — 기록 유래 지역이 우선, 태그는 nameEn 미중복분만 추가.
+    // 태그 지역의 사진은 이 국가 기록의 대표사진 폴백(없으면 undefined → 색 모드).
+    const tagged = taggedRegions[regionCountry] || [];
+    if (tagged.length > 0) {
+      let countryPhoto: string | undefined;
+      for (const r of records) {
+        if (r.viewType === 'snap') continue;
+        const matchCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
+        if (!matchCountry) continue;
+        countryPhoto = r.perCountryData?.[countryKo]?.representativePhoto
+          || (r.countryName === countryKo ? r.representativePhoto : undefined)
+          || (r.viewType === 'cut' ? r.cutPhoto?.previewUri : undefined)
+          || (r.medias && r.medias.length > 0 ? r.medias[0] : undefined);
+        if (countryPhoto) break;
+      }
+      tagged.forEach(tr => {
+        if (regionsMap.has(tr.nameEn)) return;
+        const key = `${regionCountry}|${tr.nameEn}`;
+        regionsMap.set(tr.nameEn, {
+          name: tr.name,
+          nameEn: tr.nameEn,
+          key,
+          photo: countryPhoto,
+          mode: regionDisplayModes[key] || undefined,
+          color: regionColors[key] || undefined,
+        });
+      });
+    }
+
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, regionDisplayModes, regionColors]);
+  }, [records, regionCountry, regionDisplayModes, regionColors, taggedRegions]);
+
+  // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
+  const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
+  const [regionTagSearch, setRegionTagSearch] = useState('');
+  const [regionTagSelection, setRegionTagSelection] = useState<Set<string>>(new Set());
+  // 선택 가능한 지역 목록 — 인기명소 도시(상단 고정) + 광역
+  const regionTagOptions = useMemo(
+    () => (regionCountry ? getCountryRegionOptions(regionCountry) : { provinces: [], cities: [] }),
+    [regionCountry],
+  );
+  // 이 국가의 지구본 기록 수 (스냅 제외 — 대륙 활성화 규칙과 동일 기준)
+  const regionCountryRecordCount = useMemo(() => {
+    if (!regionCountry) return 0;
+    const countryKo = ISO3_TO_KO[regionCountry];
+    if (!countryKo) return 0;
+    return records.filter(r =>
+      r.viewType !== 'snap' && (r.countryName === countryKo || r.countries?.some(c => c.name === countryKo)),
+    ).length;
+  }, [records, regionCountry]);
+  const showRegionTagChip =
+    !!regionCountry && regionCountryRecordCount > 0 && recordedRegions.length === 0
+    && !dismissedRegionTagChips.includes(regionCountry);
+  const openRegionTagSheet = useCallback(() => {
+    if (!regionCountry) return;
+    setRegionTagSelection(new Set((taggedRegions[regionCountry] || []).map(t => t.nameEn)));
+    setRegionTagSearch('');
+    setRegionTagSheetVisible(true);
+  }, [regionCountry, taggedRegions]);
+  const saveRegionTags = useCallback(() => {
+    if (!regionCountry) return;
+    const all = [...regionTagOptions.cities, ...regionTagOptions.provinces];
+    const list: TaggedRegion[] = all
+      .filter(o => regionTagSelection.has(o.nameEn))
+      .map(o => ({ name: o.name, nameEn: o.nameEn }));
+    setTaggedRegions(prev => {
+      const next = { ...prev };
+      if (list.length === 0) delete next[regionCountry];
+      else next[regionCountry] = list;
+      return next;
+    });
+    setRegionTagSheetVisible(false);
+  }, [regionCountry, regionTagOptions, regionTagSelection, setTaggedRegions]);
+  // 시트 내 검색 필터 (한글명·영문명 모두 매칭)
+  const regionTagFilter = useCallback((list: { name: string; nameEn: string }[]) => {
+    const q = regionTagSearch.trim();
+    if (!q) return list;
+    const ql = q.toLowerCase();
+    return list.filter(o => o.name.includes(q) || o.nameEn.toLowerCase().includes(ql));
+  }, [regionTagSearch]);
 
   // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거
   // (영속화 이후 누적 방지. 변경 없으면 같은 참조 반환 → 불필요한 저장/렌더 없음)
   useEffect(() => {
     const validRegions = new Set<string>();
     records.forEach(r => { if (r.regionNameEn) validRegions.add(r.regionNameEn); });
+    // 소급 태깅 지역의 색/모드 설정도 유효 — 태그가 살아있는 동안 지역별 설정이 지워지지 않게 포함
+    Object.values(taggedRegions).forEach(list => list.forEach(tr => validRegions.add(tr.nameEn)));
     const prune = <T,>(obj: Record<string, T>, valid: Set<string>): Record<string, T> => {
       const remove = Object.keys(obj).filter(k => !valid.has(k));
       if (remove.length === 0) return obj;
@@ -705,7 +817,26 @@ export default function MainScreen({ navigation, route }: Props) {
     setCountryDisplayModes(prev => prune(prev, visitedNameSet));
     setRegionDisplayModes(prev => pruneRegion(prev));
     setRegionColors(prev => pruneRegion(prev));
-  }, [records, visitedNameSet, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors]);
+    // 소급 태깅·칩 닫음 목록 정리 — 그 국가 기록(스냅 제외)이 전부 사라지면 함께 제거
+    const recordedCountryKos = new Set<string>();
+    records.forEach(r => {
+      if (r.viewType === 'snap') return;
+      if (r.countryName) recordedCountryKos.add(r.countryName);
+      r.countries?.forEach(c => recordedCountryKos.add(c.name));
+    });
+    const hasCountryRecord = (iso3: string) => recordedCountryKos.has(ISO3_TO_KO[iso3] || '');
+    setTaggedRegions(prev => {
+      const remove = Object.keys(prev).filter(k => !hasCountryRecord(k));
+      if (remove.length === 0) return prev;
+      const next = { ...prev };
+      remove.forEach(k => delete next[k]);
+      return next;
+    });
+    setDismissedRegionTagChips(prev => {
+      const next = prev.filter(hasCountryRecord);
+      return next.length === prev.length ? prev : next;
+    });
+  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -1053,7 +1184,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={0.8}
                   onPress={() => setRegionSearch('')}
                 >
-                  <Text style={styles.regionChipText}>{ISO3_TO_KO[regionCountry] || regionCountry}</Text>
+                  <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
                 </TouchableOpacity>
               </LinearGradient>
               {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
@@ -1088,6 +1219,91 @@ export default function MainScreen({ navigation, route }: Props) {
                 showPopular={popularActive}
               />
             </View>
+            {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
+            {showRegionTagChip && (
+              <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 148, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
+                  <TouchableOpacity activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
+                      {t('main.regionTagChip', { count: regionCountryRecordCount })}
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    hitSlop={{ top: 8, bottom: 8, left: 4, right: 8 }}
+                    onPress={() => setDismissedRegionTagChips(prev => (regionCountry && !prev.includes(regionCountry) ? [...prev, regionCountry] : prev))}
+                    accessibilityRole="button"
+                    accessibilityLabel={t('main.regionTagDismissA11y')}
+                  >
+                    <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginLeft: 10, padding: 4 }}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+            {/* 방문 지역 선택 시트 (소급 태깅) */}
+            <Modal visible={regionTagSheetVisible} transparent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
+              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                <TouchableOpacity
+                  style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
+                  activeOpacity={1}
+                  onPress={() => setRegionTagSheetVisible(false)}
+                />
+                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%' }}>
+                  <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
+                  <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
+                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
+                    {t('main.regionTagSub', { country: ISO3_TO_KO[regionCountry] || '' })}
+                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 }}>
+                    <SearchLineIcon size={18} color="#A9A9A9" />
+                    <TextInput
+                      style={{ flex: 1, color: '#FFFFFF', fontSize: 14, paddingVertical: 10, marginLeft: 8 }}
+                      value={regionTagSearch}
+                      onChangeText={setRegionTagSearch}
+                      placeholder={t('main.regionTagSearchPh')}
+                      placeholderTextColor="#7A7A88"
+                    />
+                  </View>
+                  <ScrollView style={{ flexGrow: 0 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+                    {([
+                      ['main.regionTagPopular', regionTagFilter(regionTagOptions.cities)],
+                      ['main.regionTagProvinces', regionTagFilter(regionTagOptions.provinces)],
+                    ] as const).map(([labelKey, list]) => (
+                      list.length === 0 ? null : (
+                        <View key={labelKey}>
+                          <Text style={{ color: '#A1A1B0', fontSize: 12, fontWeight: '600', marginTop: 12, marginBottom: 2 }}>{t(labelKey)}</Text>
+                          {list.map(o => {
+                            const sel = regionTagSelection.has(o.nameEn);
+                            return (
+                              <TouchableOpacity
+                                key={o.nameEn}
+                                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(255,255,255,0.07)' }}
+                                activeOpacity={0.7}
+                                onPress={() => setRegionTagSelection(prev => {
+                                  const next = new Set(prev);
+                                  if (next.has(o.nameEn)) next.delete(o.nameEn); else next.add(o.nameEn);
+                                  return next;
+                                })}
+                              >
+                                <View style={{ width: 22, height: 22, borderRadius: 11, borderWidth: 1.5, borderColor: sel ? skinAccent.accent : 'rgba(255,255,255,0.3)', backgroundColor: sel ? skinAccent.accent : 'transparent', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                  {sel && <Text style={{ color: '#0A0A0F', fontSize: 13, fontWeight: '800' }}>✓</Text>}
+                                </View>
+                                <Text style={{ color: '#FFFFFF', fontSize: 15 }}>{o.name}</Text>
+                              </TouchableOpacity>
+                            );
+                          })}
+                        </View>
+                      )
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity style={{ marginTop: 14, borderRadius: 14, overflow: 'hidden' }} activeOpacity={0.85} onPress={saveRegionTags}>
+                    <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={{ paddingVertical: 14, alignItems: 'center' }}>
+                      <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('main.regionTagSave', { count: regionTagSelection.size })}</Text>
+                    </LinearGradient>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
             <TouchableOpacity
               style={styles.regionBackBtn}
@@ -1124,7 +1340,8 @@ export default function MainScreen({ navigation, route }: Props) {
             <Text style={styles.countryGridTitle}>{t('main.selectCountry')}</Text>
             <Text style={styles.countryGridSub}>{t('main.selectCountrySub')}</Text>
             <View style={styles.countryGridList}>
-              {REGION_COUNTRIES.map(c => (
+              {/* 7개 국가 + 8번째 칸은 돋보기(전체 목록 시트) — 사용자 확정 디자인 */}
+              {REGION_COUNTRIES.slice(0, 7).map(c => (
                 <TouchableOpacity
                   key={c.code}
                   style={styles.countryGridItem}
@@ -1132,12 +1349,63 @@ export default function MainScreen({ navigation, route }: Props) {
                   onPress={() => { setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false); }}
                 >
                   <Text style={styles.countryGridFlag}>{c.flag}</Text>
-                  <Text style={styles.countryGridName}>{c.name}</Text>
+                  <Text style={styles.countryGridName} numberOfLines={1} {...andFitText}>{countryEn(c.name)}</Text>
                 </TouchableOpacity>
               ))}
+              <TouchableOpacity
+                style={[styles.countryGridItem, styles.countryGridSearchItem]}
+                activeOpacity={0.7}
+                onPress={() => { setCountryPickerSearch(''); setCountryPickerVisible(true); }}
+                accessibilityRole="button"
+                accessibilityLabel={t('main.selectCountry')}
+              >
+                <SearchLineIcon size={30} color="rgba(255,255,255,0.6)" />
+              </TouchableOpacity>
             </View>
           </View>
         )}
+
+        {/* ── 전체 국가 목록 시트 (돋보기) ── */}
+        <Modal
+          visible={countryPickerVisible}
+          transparent
+          animationType="slide"
+          onRequestClose={() => setCountryPickerVisible(false)}
+        >
+          <View style={styles.countryPickerOverlay} accessibilityViewIsModal>
+            <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCountryPickerVisible(false)} />
+            <View style={styles.countryPickerSheet}>
+              <View style={styles.countryPickerHandle} />
+              <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
+              <TextInput
+                style={styles.countryPickerInput}
+                placeholder={t('main.countrySearchPh')}
+                placeholderTextColor="#5a5a68"
+                value={countryPickerSearch}
+                onChangeText={setCountryPickerSearch}
+              />
+              <ScrollView style={{ maxHeight: height * 0.45 }} keyboardShouldPersistTaps="handled">
+                {REGION_COUNTRIES
+                  .filter(c => { const q = countryPickerSearch.trim(); return !q || c.name.includes(q) || countryEn(c.name).toLowerCase().includes(q.toLowerCase()); })
+                  .map(c => (
+                    <TouchableOpacity
+                      key={c.code}
+                      style={styles.countryPickerRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        setCountryPickerVisible(false);
+                        setRegionCountry(c.code); setRegionSearch(''); setPopularActive(false);
+                      }}
+                    >
+                      <Text style={styles.countryPickerFlag}>{c.flag}</Text>
+                      <Text style={styles.countryPickerName}>{countryEn(c.name)}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </ScrollView>
+              <View style={{ height: insets.bottom + 16 }} />
+            </View>
+          </View>
+        </Modal>
       </View>
 
       {/* 스냅 버튼(SNAP)은 CustomTabBar 레이어의 RecordFab 로 이동 (탭 바 위 우측에 떠 있음) */}
@@ -1203,8 +1471,8 @@ export default function MainScreen({ navigation, route }: Props) {
               >
                 <Text style={styles.countryFlag}>{c.flag}</Text>
                 <View style={styles.countryInfo}>
-                  <Text style={styles.countryName}>{c.name}</Text>
-                  <Text style={styles.countryVisits} {...andFitText}>{c.visits}회 방문</Text>
+                  <Text style={styles.countryName}>{countryEn(c.name)}</Text>
+                  <Text style={styles.countryVisits} {...andFitText}>{t('main.visitsCountSuffix', { count: c.visits })}</Text>
                 </View>
                 <Text style={styles.chevron}>›</Text>
               </TouchableOpacity>
@@ -1270,7 +1538,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.countryRecordDate}>{rec.date}</Text>
                   {!!rec.rating && <Text style={styles.countryRecordRating}>{'★'.repeat(rec.rating)}</Text>}
                 </View>
-                <Text style={styles.countryRecordCity}>{rec.regionName || rec.countryName}</Text>
+                <Text style={styles.countryRecordCity}>{recPlace(rec)}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -1378,7 +1646,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     )}
                     <View style={{ flex: 1 }}>
                       <Text style={styles.rrItemTitle} numberOfLines={1}>
-                        {rec.regionName || rec.countryName}
+                        {recPlace(rec)}
                       </Text>
                       <Text style={styles.rrItemDate}>{rec.date}</Text>
                     </View>
@@ -1506,7 +1774,7 @@ export default function MainScreen({ navigation, route }: Props) {
                             onPress={() => setEditingCountryColor(isEditing ? null : nameEn)}
                           >
                             <View style={[dsm.countryDot, { backgroundColor: dotColor }]} />
-                            <Text style={dsm.countryName} numberOfLines={1}>{ko}</Text>
+                            <Text style={dsm.countryName} numberOfLines={1}>{countryEn(ko)}</Text>
                             <Svg width={12} height={8} viewBox="0 0 12 8">
                               <SvgPath d="M1 1.5 6 6.5 11 1.5" stroke="#8B8B91" strokeWidth={1.4} fill="none" strokeLinecap="round" strokeLinejoin="round" />
                             </Svg>
@@ -1575,7 +1843,17 @@ export default function MainScreen({ navigation, route }: Props) {
 
                 {/* 지역별 개별 설정 */}
                 <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
-                  <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
+                    {/* 방문 지역 소급 태깅 편집 — 표시 설정을 유지·닫고 태깅 시트를 연다 */}
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      onPress={() => { confirmDisplaySettings(); setTimeout(openRegionTagSheet, 300); }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Text style={{ color: skinAccent.accent, fontSize: 13, fontWeight: '600' }}>{t('main.regionTagEdit')} ›</Text>
+                    </TouchableOpacity>
+                  </View>
                   {recordedRegions.length === 0 ? (
                     <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
                       기록된 지역이 없습니다.
@@ -1683,6 +1961,19 @@ export default function MainScreen({ navigation, route }: Props) {
 
       {/* ── 광고(스폰서) 패키지 카드 ── */}
       <SponsoredPackageCard pkg={selectedAd} onClose={() => setSelectedAd(null)} />
+
+      {/* ── 초대 귀속 넛지 — 초대 딥링크로 온 신규 유저에게 메이트 연결 제안 ── */}
+      <InviteNudgeModal
+        target={inviteNudge}
+        onClose={() => setInviteNudge(null)}
+        onSend={() => {
+          const inv = inviteNudge;
+          setInviteNudge(null);
+          if (!inv) return;
+          requestNeighbor(inv.userId);
+          navigation.navigate('FriendProfile', { userId: inv.userId, username: inv.handle });
+        }}
+      />
 
     </LinearGradient>
   );
@@ -2220,6 +2511,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
   },
+  // 8번째 칸(돋보기) — 아이콘만 중앙 배치, 타일 높이는 국기+이름 타일과 맞춤
+  countryGridSearchItem: {
+    justifyContent: 'center',
+    minHeight: 76,
+  },
+  // 전체 국가 목록 시트
+  countryPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  countryPickerSheet: {
+    backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
+    borderTopWidth: 1, borderColor: '#2E2E3B', paddingHorizontal: 16, paddingTop: 10,
+  },
+  countryPickerHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#2E2E3B', alignSelf: 'center', marginBottom: 12 },
+  countryPickerTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  countryPickerInput: {
+    backgroundColor: '#211b2e', borderWidth: 1, borderColor: '#2E2E3B', borderRadius: 12,
+    color: '#FFFFFF', paddingHorizontal: 12, paddingVertical: 10, fontSize: 14, marginBottom: 8,
+  },
+  countryPickerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#1A1A26',
+  },
+  countryPickerFlag: { fontSize: 24 },
+  countryPickerName: { color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
 
   globeSettingsBtn: {
     position: 'absolute',

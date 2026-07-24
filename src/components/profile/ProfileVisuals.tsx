@@ -5,6 +5,7 @@
  */
 import React from 'react';
 import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
+import type { ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
@@ -137,25 +138,32 @@ export const StatCard = ({ value, label, onPress }: {
 
 // ─── 배지 하이라이트 — ProfileScreen의 유리 디자인과 동일 (Ellipse 2989 채움 + 유리 그라데이션 테두리) ───
 let pvBadgeRingSeq = 0; // SVG 그라데이션 id 충돌 방지용 (인스턴스별 고유 id)
-export const BadgeHighlightItem = ({ emoji, earned = true }: { emoji: string; name?: string; glow?: string; earned?: boolean }) => {
+export const BadgeHighlightItem = ({ emoji, image, earned = true }: { emoji: string; image?: ImageSourcePropType; name?: string; glow?: string; earned?: boolean }) => {
   const ringId = React.useMemo(() => 'pvBadgeRing' + (pvBadgeRingSeq++), []);
   return (
     <LiquidPressable style={[pv.badgeItem, !earned && { opacity: 0.6 }]} intensity={0.1}>
-      <View style={pv.badgeCircle}>
-        {earned ? (
-          <Text style={pv.badgeEmoji}>{emoji}</Text>
+      {/* 커스텀 이미지 배지는 자체 테두리가 있어 유리 링·회색 채움 없이 이미지만 렌더 */}
+      <View style={[pv.badgeCircle, !!image && pv.badgeCircleImage]}>
+        {image ? (
+          <Image source={image} style={pv.badgeImg} resizeMode="contain" />
         ) : (
-          <Text style={pv.badgeLock}>🔒</Text>
+          <>
+            {earned ? (
+              <Text style={pv.badgeEmoji}>{emoji}</Text>
+            ) : (
+              <Text style={pv.badgeLock}>🔒</Text>
+            )}
+            <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Defs>
+                <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+                  <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+                </SvgLinearGradient>
+              </Defs>
+              <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+            </Svg>
+          </>
         )}
-        <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-          <Defs>
-            <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
-              <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
-              <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
-            </SvgLinearGradient>
-          </Defs>
-          <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
-        </Svg>
       </View>
     </LiquidPressable>
   );
@@ -247,6 +255,9 @@ export const pv = StyleSheet.create({
   },
   badgeEmoji: { fontSize: 24 },
   badgeLock: { fontSize: 22 },
+  // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
+  badgeCircleImage: { backgroundColor: 'transparent' },
+  badgeImg: { width: 64, height: 64 },
   gridHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
   gridHeaderTitle: { fontSize: 24, fontWeight: '700', color: '#FFFFFF' },
   tripCount: { fontSize: 12, color: '#A1A1B0' },

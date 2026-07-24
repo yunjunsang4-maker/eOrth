@@ -21,10 +21,11 @@ import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../c
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
 import { SearchIcon } from '../components/icons';
-import { collectRecordedDateKeys } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -55,11 +56,11 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, records } = useRecords();
-  // 사진 상한 — 프리미엄이면 100장(기록 사진 혜택과 동일), 아니면 30장
+  // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
   const { isPremium } = useSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
 
@@ -85,6 +86,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     () => collectRecordedDateKeys(records, selectedCountry ? [selectedCountry.name] : []),
     [records, selectedCountry]
   );
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
 
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
@@ -120,6 +123,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const [title, setTitle] = useState('');
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null); // 사진 복사 진행(n/총)
 
   // 썸네일 위치 조정 — 어떤 사진에 대한 조정값인지 uri로 묶어 커버가 바뀌면 무시되게 한다
   const [coverAdjust, setCoverAdjust] = useState<{ uri: string; t: CutTransform } | null>(null);
@@ -127,6 +131,18 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   const cover = coverUri && selected.includes(coverUri) ? coverUri : selected[0];
   const activeAdjust = coverAdjust && coverAdjust.uri === cover ? coverAdjust.t : null;
+
+  // 캘린더에서 기존 여행 밴드를 탭하면 그 여행의 국가·기간을 폼에 채운다 (사진첩은 국가 1개)
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    const srcName = src.countries?.[0]?.name ?? src.countryName;
+    const matched = COUNTRIES.find(c => c.name === srcName);
+    if (matched) setSelectedCountry(matched);
+    setStartDate(start);
+    setEndDate(end);
+    setCalendarVisible(false);
+  };
 
   // ── 갤러리에서 기간 내 사진 페이지 로드 ──
   const fetchPage = async (after?: string) => {
@@ -292,7 +308,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         ...picked.filter((p) => p.uri === cover),
         ...picked.filter((p) => p.uri !== cover),
       ];
-      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items);
+      setSaveProgress({ done: 0, total: items.length });
+      const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(albumId, items, (done, total) => setSaveProgress({ done, total }));
       if (copied.length === 0) throw new Error('copy failed');
       // iCloud 오프로드 등으로 복사에 실패한 장수 — 조용히 빠지면 "사진이 왜 없지" 혼란이 생긴다
       const failCount = items.length - copied.length;
@@ -355,6 +372,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
       setSaving(false);
+      setSaveProgress(null);
       Alert.alert(t('album.saveFailTitle'), t('album.saveFailMsg'));
     }
   };
@@ -363,7 +381,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return (
       <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
         <ActivityIndicator color={skinAccent.accent} size="large" />
-        <Text style={st.savingText}>{t('album.saving')}</Text>
+        <Text style={st.savingText}>
+          {saveProgress && saveProgress.total > 0
+            ? t('album.savingN', { done: saveProgress.done, total: saveProgress.total })
+            : t('album.saving')}
+        </Text>
       </LinearGradient>
     );
   }
@@ -430,7 +452,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 ) : (
                   groupedCountries.map(({ continent, countries }) => (
                     <View key={continent}>
-                      <Text style={[st.continentHeader, { color: skinAccent.accent }]}>{continent}</Text>
+                      <Text style={[st.continentHeader, { color: skinAccent.accent }]}>{continentLabel(continent, i18n.language)}</Text>
                       {countries.map(c => {
                         const isSelected = selectedCountry?.name === c.name;
                         return (
@@ -443,7 +465,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                             }}
                           >
                             <Text style={st.countryIcon}>{c.flag}</Text>
-                            <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{c.name}</Text>
+                            <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{countryLabel(c.name, i18n.language)}</Text>
                             {isSelected && <Text style={[st.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
                           </TouchableOpacity>
                         );
@@ -473,7 +495,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
           <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2) }]}>
             <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
-              🔒 사진첩은 소셜과 지구본·대륙에 나타나지 않아요.{'\n'}오직 내 프로필의 여행기록카드로만 보관돼요.
+              {t('album.privacyNotice')}
             </Text>
           </View>
           <View style={{ height: 40 }} />
@@ -488,6 +510,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
           onClose={() => setCalendarVisible(false)}
           recordedDates={recordedDates}
+          recordedRanges={recordedRanges}
+          onSelectRecordedTrip={applySourceRecord}
         />
       </LinearGradient>
     );
@@ -501,7 +525,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <Text style={st.closeTxt}>←</Text>
         </TouchableOpacity>
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
-        <Text style={st.sub}>{fmtDate(startDate)} ~ {fmtDate(endDate)} · 사진첩에 담을 사진을 골라주세요</Text>
+        <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
           {visiblePhotos.length > 0 && (

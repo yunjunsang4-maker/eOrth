@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Alert, Linking } from 'react-native';
+import * as Notifications from 'expo-notifications';
 import { useTranslation } from 'react-i18next';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
@@ -26,6 +27,7 @@ import ArchivedPostsScreen from '../screens/ArchivedPostsScreen';
 import FriendProfileScreen from '../screens/FriendProfileScreen';
 import FollowingListScreen from '../screens/FollowingListScreen';
 import FollowerListScreen from '../screens/FollowerListScreen';
+import ProfileTicketScreen from '../screens/ProfileTicketScreen';
 import UserFollowListScreen from '../screens/UserFollowListScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
 import StatsDetailScreen from '../screens/StatsDetailScreen';
@@ -38,6 +40,7 @@ import CutRecordScreen from '../screens/CutRecordScreen';
 import CutTravelInfoScreen from '../screens/CutTravelInfoScreen';
 import NaverBlogImportScreen from '../screens/NaverBlogImportScreen';
 import SnapRecordScreen from '../screens/SnapRecordScreen';
+import MomentCaptureScreen from '../screens/MomentCaptureScreen';
 import AlbumCreateScreen from '../screens/AlbumCreateScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
@@ -48,6 +51,7 @@ import { supabase } from '../services/supabase';
 import { exchangeAuthCode, wasIntentionalSignOut } from '../services/auth';
 import { emitToast } from '../store/toastStore';
 import { parseAppLink, openAppLink } from '../utils/appLinks';
+import { savePendingInvite } from '../utils/pendingInvite';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -76,7 +80,7 @@ export default function AppNavigator() {
   const tRef = useRef(t);
   tRef.current = t;
 
-  // 딥링크: eorth://user/<handle> → 친구찾기 화면을 해당 핸들로 검색 상태로 연다
+  // 딥링크: eorth://user/<handle> → 메이트찾기 화면을 해당 핸들로 검색 상태로 연다
   useEffect(() => {
     const handleUrl = async (url: string | null) => {
       if (!url) return;
@@ -127,7 +131,7 @@ export default function AppNavigator() {
         return;
       }
 
-      // eorth://profile|user/<handle> → 해당 프로필 화면으로 직행 (조회 실패 시 친구찾기 폴백)
+      // eorth://profile|user/<handle> → 해당 프로필 화면으로 직행 (조회 실패 시 메이트찾기 폴백)
       // eorth://post/<id> → 해당 게시물 상세로 직행
       const link = parseAppLink(trimmed);
       if (!link) return;
@@ -142,13 +146,63 @@ export default function AppNavigator() {
           ).catch(() => {});
         } else if (attempts > 0) {
           setTimeout(() => tryGo(attempts - 1), 800);
+        } else if (link.type === 'profile') {
+          // attempts 소진 = 미인증(로그인/온보딩 전) — 초대 링크를 버리지 않고 보관.
+          // 온보딩 완료 후 첫 메인 진입(MainScreen)에서 메이트 연결 넛지로 소비된다(원샷·7일 만료).
+          // 수신 즉시가 아니라 소진 시점에 저장하는 이유: 콜드 스타트의 로그인 유저는
+          // 재시도 중 Main에 진입해 정상 직행하므로, 그 경우 넛지가 중복되지 않게 한다.
+          savePendingInvite(link.handle);
         }
-        // attempts 소진 = 미인증으로 간주 → 딥링크 무시
       };
       tryGo(6);
     };
     const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
     Linking.getInitialURL().then(handleUrl).catch(() => {});
+    return () => sub.remove();
+  }, []);
+
+  // 푸시 알림 탭 → 관련 화면으로 이동
+  //   dm → 해당 대화, like/comment/reply/friend_post → 게시물, 메이트 → 프로필.
+  //   인증되어 Main에 진입한 뒤에만 이동(콜드 스타트는 최대 ~6.4초 재시도). 동일 알림 중복 처리 방지.
+  useEffect(() => {
+    const processed = new Set<string>();
+    const routeFromData = (data: unknown) => {
+      const d = (data ?? {}) as Record<string, unknown>;
+      const go = (attempts: number) => {
+        const authed = navigationRef.current?.getRootState?.()?.routes?.some((r) => r.name === 'Main');
+        if (!authed || !navigationRef.current?.isReady()) {
+          if (attempts > 0) setTimeout(() => go(attempts - 1), 800);
+          return;
+        }
+        const navigate = (name: string, params?: object) =>
+          (navigationRef.current?.navigate as (n: string, p?: object) => void)?.(name, params);
+        if (d.type === 'dm' && d.handle) {
+          const h = String(d.handle);
+          navigate('DM', { friend: { name: h, handle: h, emoji: '💬' } });
+        } else if (d.type === 'snap') {
+          navigate('SnapRecord'); // 여행 중 스냅 유도 알림 → 스냅 기록
+        } else if (d.type === 'moment') {
+          navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
+        } else if (d.type === 'arrival') {
+          navigate('NewRecord'); // 해외 도착 알림 → 기록 작성
+        } else if (d.postId) {
+          openAppLink({ type: 'post', id: String(d.postId) }, navigate).catch(() => {});
+        } else if (d.actorId) {
+          navigate('FriendProfile', { userId: String(d.actorId) });
+        }
+      };
+      go(8);
+    };
+    const routeFromResponse = (response: Notifications.NotificationResponse | null) => {
+      if (!response) return;
+      const id = response.notification?.request?.identifier;
+      if (id) { if (processed.has(id)) return; processed.add(id); }
+      routeFromData(response.notification?.request?.content?.data);
+    };
+    // 앱 실행 중(포그라운드/백그라운드) 탭
+    const sub = Notifications.addNotificationResponseReceivedListener(routeFromResponse);
+    // 콜드 스타트: 앱이 꺼진 상태에서 푸시 탭으로 실행된 경우
+    Notifications.getLastNotificationResponseAsync().then(routeFromResponse).catch(() => {});
     return () => sub.remove();
   }, []);
 
@@ -238,6 +292,36 @@ export default function AppNavigator() {
         <Stack.Screen name="FriendProfile" component={FriendProfileScreen} />
         <Stack.Screen name="FollowingList" component={FollowingListScreen} />
         <Stack.Screen name="FollowerList" component={FollowerListScreen} />
+        <Stack.Screen
+          name="ProfileTicket"
+          component={ProfileTicketScreen}
+          options={{
+            // 탑시트: 위에서 아래로 내려오고, 위로 스와이프하면 닫힌다(vertical-inverted).
+            // 전역 cardStyleInterpolator(가로 슬라이드)를 화면 전용 세로 인터폴레이터로 덮어쓴다.
+            // transparentModal: 뒤 화면(프로필 탭)을 계속 렌더 — 티켓 카드 실루엣 밖·파인 노치로 프로필이 비친다.
+            presentation: 'transparentModal',
+            cardStyle: { backgroundColor: 'transparent' },
+            gestureDirection: 'vertical-inverted',
+            // 닫기 버튼 없이 스와이프로만 닫는 화면 — 화면 어디서든 위로 끌면 닫히게 인식 범위 확장
+            gestureResponseDistance: 1000,
+            cardStyleInterpolator: ({ current, layouts }) => ({
+              cardStyle: {
+                transform: [
+                  {
+                    translateY: current.progress.interpolate({
+                      inputRange: [0, 1],
+                      // 화면 위(-height)에서 시작해 0으로 내려온다(탑시트)
+                      outputRange: [-layouts.screen.height, 0],
+                      // clamp: 아래로 과도하게 스와이프(progress>1) 시 외삽으로 밀려 내려가는 것 방지.
+                      // 위로 스와이프 닫기(progress 1→0)는 그대로 동작.
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ],
+              },
+            }),
+          }}
+        />
         <Stack.Screen name="UserFollowList" component={UserFollowListScreen} />
         <Stack.Screen name="EditProfile" component={EditProfileScreen} />
         <Stack.Screen name="StatsDetail" component={StatsDetailScreen} />
@@ -300,6 +384,16 @@ export default function AppNavigator() {
           name="SnapRecord"
           component={SnapRecordScreen}
           options={{ presentation: 'modal', gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="MomentCapture"
+          component={MomentCaptureScreen}
+          options={{
+            presentation: 'transparentModal',
+            animation: 'slide_from_bottom',
+            headerShown: false,
+            cardStyle: { backgroundColor: 'transparent' },
+          }}
         />
         <Stack.Screen
           name="AlbumCreate"

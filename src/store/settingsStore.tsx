@@ -1,7 +1,9 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from 'react';
 import { View } from 'react-native';
 import { usePersistence, STORE_KEYS } from './persist';
+import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
+import { HIDDEN_BADGE_IDS } from '../constants/badges';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -23,12 +25,18 @@ export function genHandle(): string {
 }
 // 알림 설정 토글 키 (영속)
 export type NotifPrefKey =
-  | 'master' | 'friendTrip' | 'likes' | 'newFollower'
-  | 'returnDetect' | 'memoryRemind' | 'marketing';
+  | 'master' | 'friendTrip' | 'likes' | 'messages' | 'newFollower'
+  | 'returnDetect' | 'memoryRemind' | 'marketing' | 'travelMoment';
 const DEFAULT_NOTIF_PREFS: Record<NotifPrefKey, boolean> = {
-  master: true, friendTrip: true, likes: true, newFollower: true,
-  returnDetect: false, memoryRemind: true, marketing: false,
+  master: true, friendTrip: true, likes: true, messages: true, newFollower: true,
+  returnDetect: false, memoryRemind: true, marketing: false, travelMoment: true,
 };
+
+// 소급 태깅한 방문 지역 항목 (대륙 지도 NAME_1 기준)
+export interface TaggedRegion {
+  name: string;   // 표시용 한글 지명 (NL_NAME_1)
+  nameEn: string; // 대륙 지도 매칭 키 (NAME_1)
+}
 
 // 스킨별로 저장하는 활성화 색 묶음 — 스킨 전환 시 저장/복원 (스킨마다 개별색 기억)
 export interface SkinColorSet {
@@ -98,6 +106,12 @@ interface SettingsContextType {
   // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
   regionColors: Record<string, string>;
   setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 소급 태깅한 방문 지역 (키: ISO3) — 지구본 기록만 있는 국가의 대륙 지역 활성화용
+  taggedRegions: Record<string, TaggedRegion[]>;
+  setTaggedRegions: React.Dispatch<React.SetStateAction<Record<string, TaggedRegion[]>>>;
+  // '방문 지역 추가' 안내 칩을 닫은 국가(ISO3) 목록 — 닫으면 그 국가는 다시 안 띄움
+  dismissedRegionTagChips: string[];
+  setDismissedRegionTagChips: React.Dispatch<React.SetStateAction<string[]>>;
   // 스킨별 색 저장소 — 스킨 전환 시 이전 스킨의 색(기본·국가·지역)을 보관하고 대상 스킨의 색을 복원
   skinColorStore: Record<string, SkinColorSet>;
   setSkinColorStore: React.Dispatch<React.SetStateAction<Record<string, SkinColorSet>>>;
@@ -129,12 +143,15 @@ interface SettingsContextType {
   // 스트립 로고 제거(프리미엄) — 프리미엄 중에도 로고를 남기고 싶으면 끌 수 있는 선택 토글
   stripLogoRemoval: boolean;
   setStripLogoRemoval: (v: boolean) => void;
-  // 개별 QR 디자인(프리미엄) — QR_DESIGNS의 id (constants/qrDesigns.ts)
+  // (폐지된 기능) 개별 QR 디자인 — 2026-07-22 QR 커스텀 제거로 미사용, 영속 하위호환용으로만 유지
   qrDesign: string;
   setQrDesign: (v: string) => void;
   // 메인 튜토리얼(코치마크)을 이미 봤는지 — 유저당 1회 자동 표시 게이트 (백업 포함)
   tutorialSeen: boolean;
   setTutorialSeen: (v: boolean) => void;
+  // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
+  stayNudgeDismissedFor: string | null;
+  setStayNudgeDismissedFor: (v: string | null) => void;
   resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
   // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
   // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
@@ -171,6 +188,8 @@ interface SettingsPersistPayload {
   regionGlobalMode?: 'color' | 'photo';
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
+  taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
+  dismissedRegionTagChips?: string[]; // 방문 지역 칩 닫은 국가 (과거 저장본엔 없음)
   skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
@@ -184,6 +203,7 @@ interface SettingsPersistPayload {
   stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
   qrDesign?: string; // 개별 QR 디자인 id (프리미엄)
   tutorialSeen?: boolean; // 메인 튜토리얼 1회 표시 여부
+  stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
 
 const SettingsContext = createContext<SettingsContextType | null>(null);
@@ -224,6 +244,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
+  const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
+  const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
   // 스킨 전환: 아이콘 팔레트 동기화 + 현재 스킨의 색을 저장하고 대상 스킨에 저장된 색(없으면 그 스킨 기본색)을 복원
   const setGlobeSkinThemed = useCallback((s: string) => {
@@ -253,6 +275,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
   const [qrDesign, setQrDesign] = useState('default'); // 개별 QR 디자인 — 기본(보라)
   const [tutorialSeen, setTutorialSeen] = useState(false); // 메인 튜토리얼 1회 표시 여부
+  const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
 
@@ -279,7 +302,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const isStartupSeed =
       Object.keys(prev).length === 0 && now - providerMountedAtRef.current < 15000;
     if (!isStartupSeed) {
-      setPendingBadgeToasts((q) => [...q, ...newly]);
+      // 출시 축소로 숨긴 배지는 획득 사실만 저장하고 토스트는 띄우지 않는다(안 보이는 배지 알림 방지)
+      const toastable = newly.filter((id) => !HIDDEN_BADGE_IDS.has(id));
+      if (toastable.length > 0) setPendingBadgeToasts((q) => [...q, ...toastable]);
     }
   }, []);
 
@@ -299,7 +324,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLanguage(p.language ?? 'ko');
       setHandle(p.handle);
       setBio(p.bio);
-      setProfilePhoto(p.profilePhoto);
+      // 로컬 file:// 프로필 사진은 iOS 재설치 시 컨테이너 경로가 바뀜 — 현재 경로로 복구 (원격 URL은 그대로)
+      setProfilePhoto(p.profilePhoto ? remapDocUri(p.profilePhoto) : p.profilePhoto);
       setHandleLastChanged(p.handleLastChanged);
       setHandleChosen(p.handleChosen ?? false);
       setSignUpMethod(p.signUpMethod);
@@ -317,6 +343,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
       setRegionDisplayModes(p.regionDisplayModes ?? {});
       setRegionColors(p.regionColors ?? {});
+      setTaggedRegions(p.taggedRegions ?? {});
+      setDismissedRegionTagChips(p.dismissedRegionTagChips ?? []);
       setSkinColorStore(p.skinColorStore ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
@@ -330,6 +358,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setStripLogoRemoval(p.stripLogoRemoval ?? true);
       setQrDesign(p.qrDesign ?? 'default');
       setTutorialSeen(p.tutorialSeen ?? false);
+      setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
     () => ({
       showCounts,
@@ -358,6 +387,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      taggedRegions,
+      dismissedRegionTagChips,
       skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
@@ -371,6 +402,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       stripLogoRemoval,
       qrDesign,
       tutorialSeen,
+      stayNudgeDismissedFor,
     }),
     [
       showCounts,
@@ -399,6 +431,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      taggedRegions,
+      dismissedRegionTagChips,
       skinColorStore,
       representativeBadgeIds,
       badgeEarnedAt,
@@ -412,6 +446,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       stripLogoRemoval,
       qrDesign,
       tutorialSeen,
+      stayNudgeDismissedFor,
     ],
   );
 
@@ -458,6 +493,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionGlobalMode('color');
     setRegionDisplayModes({});
     setRegionColors({});
+    setTaggedRegions({});
+    setDismissedRegionTagChips([]);
     setSkinColorStore({});
     setRepresentativeBadgeIds([]);
     setBadgeEarnedAt({});
@@ -472,6 +509,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setStripLogoRemoval(true);
     setQrDesign('default');
     setTutorialSeen(false);
+    setStayNudgeDismissedFor(null);
     visitRecordedRef.current = false;
   };
 
@@ -481,6 +519,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
+    taggedRegions, dismissedRegionTagChips,
     representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
     notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
     tutorialSeen,
@@ -501,6 +540,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
     if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(v.regionDisplayModes);
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(v.regionColors);
+    if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(v.taggedRegions);
+    if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
     if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(v.skinColorStore);
     if (Array.isArray(v.representativeBadgeIds)) setRepresentativeBadgeIds(v.representativeBadgeIds);
     if (v.badgeEarnedAt && typeof v.badgeEarnedAt === 'object') setBadgeEarnedAt(v.badgeEarnedAt);
@@ -578,6 +619,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionDisplayModes,
         regionColors,
         setRegionColors,
+        taggedRegions,
+        setTaggedRegions,
+        dismissedRegionTagChips,
+        setDismissedRegionTagChips,
         skinColorStore,
         setSkinColorStore,
         representativeBadgeIds,
@@ -602,6 +647,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setQrDesign,
         tutorialSeen,
         setTutorialSeen,
+        stayNudgeDismissedFor,
+        setStayNudgeDismissedFor,
         resetSettings,
         exportSettingsBackup,
         applySettingsBackup,

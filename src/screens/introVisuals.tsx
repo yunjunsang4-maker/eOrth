@@ -1,27 +1,13 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, AppState } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Dimensions, AppState, Animated, Easing, Image } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
-  Path as SvgPath,
   Circle as SvgCircle,
   Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
   RadialGradient as SvgRadialGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
-import { EorthLogo } from '../components/EorthLogo';
-import { PersonIcon } from '../components/icons';
-import {
-  INTRO_ARC_1,
-  INTRO_ARC_2,
-  INTRO_ARC_3,
-  INTRO_CONTINENTS_A,
-  INTRO_CONTINENTS_B,
-  INTRO_WIREFRAME,
-  INTRO4_ARC_1,
-  INTRO4_ARC_2,
-} from '../data/introGlobePaths';
 
 const { width: SW } = Dimensions.get('window');
 export const DS = SW / 402; // 시안(402×874) 배율
@@ -83,234 +69,256 @@ function SideGlows({ purpleCx = 6.5, purpleCy = 247 }: { purpleCx?: number; purp
   );
 }
 
-// ── 1페이지: 궤도 호 + 링 노드 + 지구본(대륙 도트) + eorth 워드마크 (시안 64) ──
-export function IntroVisual1() {
+// ── 1페이지: 다크 지구본 + eOrth 워드마크 (시안 iPhone 17 - 64, node 115:68) ──
+// 지구본(구체+유리 대륙+워드마크, 문양 제거판)과 보라 림 크레센트를 시안에서 추출한 3x
+// 스프라이트로 배치(assets/intro1/*). 하단 보라 글로우는 IntroAmbient가 담당.
+// 애니메이션 3종: ①무중력 부유(사인 테이블 네이티브 루프, Y·X 비정수배 주기 리사주+0.5° 틸트)
+// ②활성화 시 등장(스케일 0.94→1 + 페이드, 600ms ease-out) ③림 글로우 펄스(3.6s 숨쉬기).
+const I1_GLOBE = require('../../assets/intro1/globe.png');
+const I1_RIM = require('../../assets/intro1/rim.png');
+
+export function IntroVisual1({ active = true }: { active?: boolean }) {
   const H = 700 * DS;
+  const GW = 363 * DS, GH = 371 * DS;
+  const enter = useRef(new Animated.Value(0)).current;
+  const t = useRef(new Animated.Value(0)).current;   // 부유 Y·틸트 위상
+  const tx = useRef(new Animated.Value(0)).current;  // 부유 X 위상(주기 ×1.37)
+  const pt = useRef(new Animated.Value(0)).current;  // 림 펄스 위상
+  useEffect(() => {
+    const a1 = Animated.loop(Animated.timing(t, { toValue: 1, duration: 6400, easing: Easing.linear, useNativeDriver: true }));
+    const a2 = Animated.loop(Animated.timing(tx, { toValue: 1, duration: 8800, easing: Easing.linear, useNativeDriver: true }));
+    const a3 = Animated.loop(Animated.timing(pt, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: true }));
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [t, tx, pt]);
+  useEffect(() => {
+    if (active) {
+      Animated.timing(enter, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
+  }, [active, enter]);
+  const wy = sineWave(7 * DS, 0);
+  const wx = sineWave(4.5 * DS, 0.25);
+  const wr = sineWave(0.9, 0);
+  const wp = sineWave(0.45, -0.25); // 0에서 시작해 0.9까지 차오르는 숨쉬기(+0.45 오프셋)
+  const ty = t.interpolate({ inputRange: wy.input, outputRange: wy.output });
+  const txv = tx.interpolate({ inputRange: wx.input, outputRange: wx.output });
+  const rot = t.interpolate({ inputRange: wr.input, outputRange: wr.output.map((v) => `${v}deg`) });
+  const scale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  const pulseOp = pt.interpolate({ inputRange: wp.input, outputRange: wp.output.map((v) => 0.45 + v) });
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
-      <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          <SvgLinearGradient id="introArc1" x1="201.5" y1="282.18" x2="200.93" y2="372.88" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introArc2" x1="202.5" y1="201" x2="202.5" y2="398.86" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introArc3" x1="197.5" y1="109" x2="197.5" y2="306.86" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingTop" x1="177.58" y1="144" x2="231.75" y2="182.68" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingL" x1="80.03" y1="185" x2="122.24" y2="215.14" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingR" x1="286.03" y1="182" x2="328.24" y2="212.14" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingLL" x1="28.92" y1="266" x2="61.28" y2="289.11" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingRR" x1="341.92" y1="266" x2="374.28" y2="289.11" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introGlobeRing" x1="179.85" y1="392" x2="246.38" y2="547.08" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#666666" stopOpacity={0} />
-            <SvgStop offset="1" stopColor="#C982FF" />
-          </SvgLinearGradient>
-        </SvgDefs>
-
-        <SvgPath d={INTRO_ARC_3} stroke="url(#introArc3)" strokeWidth={5} strokeOpacity={0.2} fill="none" />
-        <SvgPath d={INTRO_ARC_2} stroke="url(#introArc2)" strokeWidth={5} strokeOpacity={0.15} fill="none" />
-        <SvgPath d={INTRO_ARC_1} stroke="url(#introArc1)" strokeWidth={6} strokeOpacity={0.3} fill="none" />
-
-        <SvgCircle cx={201} cy={387} r={135} fill="#FFFFFF" fillOpacity={0.03} />
-        <SvgPath d={INTRO_CONTINENTS_A} fill="#FFFFFF" fillOpacity={0.08} />
-        <SvgPath d={INTRO_CONTINENTS_B} fill="#FFFFFF" fillOpacity={0.08} />
-        <SvgCircle cx={199.527} cy={391.527} r={147.402} stroke="url(#introGlobeRing)" strokeWidth={2.25} fill="none" />
-
-        <SvgCircle cx={204.5} cy={182.5} r={37.5} fill="#D9D9D9" fillOpacity={0.03} stroke="url(#introRingTop)" strokeWidth={2} />
-        <SvgCircle cx={101} cy={215} r={30} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={101} cy={215} r={30} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={101} cy={215} r={29} stroke="url(#introRingL)" strokeWidth={2} strokeOpacity={0.5} fill="none" />
-        <SvgCircle cx={307} cy={212} r={30} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={307} cy={212} r={29} stroke="url(#introRingR)" strokeWidth={2} strokeOpacity={0.5} fill="none" />
-        <SvgCircle cx={45} cy={289} r={23} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={45} cy={289} r={23} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={45} cy={289} r={22.25} stroke="url(#introRingLL)" strokeWidth={1.5} strokeOpacity={0.2} fill="none" />
-        <SvgCircle cx={358} cy={289} r={23} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={358} cy={289} r={23} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={358} cy={289} r={22.25} stroke="url(#introRingRR)" strokeWidth={1.5} strokeOpacity={0.2} fill="none" />
-      </Svg>
-
-      {/* eorth 워드마크 — 지구본 중앙 (시안: 글리프 원 중심 178.6, 405.2) */}
-      <View style={{ position: 'absolute', left: 142 * DS, top: 384 * DS }}>
-        <EorthLogo width={104 * DS} />
-      </View>
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
+      {/* 시안 bbox (20,174,349.7×356.4) 중심 (194.9,352.2), 스프라이트는 이펙트 여백 포함 363×371pt.
+          림은 같은 컨테이너 안에서 본편과 완전 동기화된 채 opacity만 펄스 */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: (194.9 - 363 / 2) * DS,
+          top: (352.2 - 371 / 2) * DS,
+          width: GW,
+          height: GH,
+          opacity: enter,
+          transform: [{ scale }, { translateY: ty }, { translateX: txv }, { rotate: rot }],
+        }}
+      >
+        <Image source={I1_GLOBE} style={{ width: GW, height: GH }} resizeMode="stretch" />
+        <Animated.Image
+          source={I1_RIM}
+          style={{ position: 'absolute', left: 0, top: 0, width: GW, height: GH, opacity: pulseOp }}
+          resizeMode="stretch"
+        />
+      </Animated.View>
     </View>
   );
 }
 
-// ── 2페이지: 별하늘 + 보라/흰 글로우만 (시안 65) ──
+// ── 2페이지: 여행 기록 카드 콜라주 밴드 (시안 iPhone 17 - 65 (1)) ──
+// 밴드 PNG(1073×433)는 시안(402 기준) 좌표와 1:1 스케일. 시안 크롭은 밴드의 두 번째
+// 필름 스트립(PNG x≈620)이 화면 x200에 오는 위치 — 이때 좌측 저널(-112)·좌측 폴라로이드(51)·
+// 우측 폴라로이드(360)가 시안과 일치한다. 필름 스트립 상단 y113에서 테이프 여유(≈21)를 뺀
+// y92가 밴드 상단. 같은 밴드 두 장을 이어붙여 한 장 폭만큼 왼쪽→오른쪽 등속 이동 후 리셋
+// = 이음새 없는 무한 마퀴.
+const INTRO2_BAND = require('../../assets/intro2-band.png');
+const BAND_W = 1073;
+const BAND_H = 433;
+const BAND_LEFT = -420; // 시안 크롭 기준 초기 위치(시안 단위)
+const BAND_TOP = 92;
+const BAND_LOOP_MS = 55000; // 한 바퀴(밴드 한 장 폭) 시간 — 약 20pt/s로 '천천히'
+
 export function IntroVisual2() {
   const H = 700 * DS;
+  const W = BAND_W * DS;
+  // 0→1 = 오른쪽으로 밴드 한 장 폭 이동. 두 장이 이어져 있어 리셋 순간에도 화면이 동일 → 무한 반복.
+  const loop = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(loop, { toValue: 1, duration: BAND_LOOP_MS, easing: Easing.linear, useNativeDriver: true })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [loop]);
+  const tx = loop.interpolate({ inputRange: [0, 1], outputRange: [0, W] });
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
+    // overflow hidden: 밴드가 슬라이드 폭을 좌우로 크게 넘으므로
+    // 클리핑하지 않으면 FlatList의 1·3단계 슬라이드 위까지 밴드가 그려진다.
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
       <Svg width={SW} height={H} viewBox="0 0 402 700">
         <SideGlows purpleCx={6.5} purpleCy={247} />
       </Svg>
+      {/* 시작 위치가 시안 크롭이 되도록 한 장 폭만큼 왼쪽에서 출발(두 번째 장이 시안 위치) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: (BAND_LEFT - BAND_W) * DS,
+          top: BAND_TOP * DS,
+          flexDirection: 'row',
+          transform: [{ translateX: tx }],
+        }}
+      >
+        <Image source={INTRO2_BAND} style={{ width: W, height: BAND_H * DS }} resizeMode="stretch" />
+        <Image source={INTRO2_BAND} style={{ width: W, height: BAND_H * DS }} resizeMode="stretch" />
+      </Animated.View>
     </View>
   );
 }
 
-// ── 3페이지: 와이어프레임 구체 (시안 66, 중심 ≈201.8, 389) ──
+// ── 3페이지: 업적 배지 콜라주 (시안 iPhone 17 - 66, node 91:31) ──
+// 에나멜 핀 배지 3종 + 은은한 와이어프레임 코인 2종 + 궤도 링을 시안 절대좌표
+// (absoluteBoundingBox, 402 기준)대로 배치하고, 각기 다른 주기·위상으로 둥둥 떠다니게 한다.
+// 스프라이트 제작: 피그마 3x 렌더에서 추출 — 배지는 밝은 림 볼록껍질 마스크로 배경 제거,
+// 코인·링은 벡터 SVG를 크롬 헤드리스로 투명 래스터화(assets/intro3/*).
+const I3_PLANE = require('../../assets/intro3/badge-plane.png');
+const I3_PASSPORT = require('../../assets/intro3/badge-passport.png');
+const I3_PEOPLE = require('../../assets/intro3/badge-people.png');
+const I3_COIN_LG = require('../../assets/intro3/coin-globe-lg.png');
+const I3_COIN_SM = require('../../assets/intro3/coin-globe-sm.png');
+const I3_RING = require('../../assets/intro3/orbit-ring.png');
+
+// 둥둥 뜨는 스프라이트 — 세로 사인파 왕복 + 미세 회전, ampX>0이면 가로 왕복을 다른
+// 주기(×1.37)로 겹쳐 리사주 궤적(불규칙 부유·입체감). cx/cy는 시안(402 기준) 중심 좌표.
+// 구현: '선형 타이밍 1개의 네이티브 무한 루프' + 사인 보간 테이블 — sequence/loop 조합처럼
+// 구간 경계마다 JS 왕복이 없어서(완전 네이티브) JS 스레드가 바빠도 끊김(툭툭)이 없다.
+// delay는 위상(phase)으로 재해석 — 시작부터 이어지는 곡선 위에서 출발해 도입도 매끄럽다.
+const WAVE_SAMPLES = 33;
+function sineWave(amp: number, phase: number): { input: number[]; output: number[] } {
+  const input: number[] = [], output: number[] = [];
+  for (let i = 0; i < WAVE_SAMPLES; i++) {
+    const p = i / (WAVE_SAMPLES - 1);
+    input.push(p);
+    output.push(Math.sin(2 * Math.PI * (p + phase)) * amp);
+  }
+  return { input, output };
+}
+function FloatingSprite({ source, cx, cy, w, h, baseRotate = 0, amp = 6, ampX = 0, wobble = 1.2, duration = 4200, delay = 0, phase }: {
+  source: any; cx: number; cy: number; w: number; h: number;
+  baseRotate?: number; amp?: number; ampX?: number; wobble?: number; duration?: number; delay?: number;
+  phase?: number; // 0~1 — 사인 곡선 시작 위상. 지정 시 delay보다 우선(요소 간 확실한 분산용)
+}) {
+  const t = useRef(new Animated.Value(0)).current;
+  const tx = useRef(new Animated.Value(0)).current;
+  const cycleY = duration * 2;
+  const cycleX = Math.round(duration * 2 * 1.37);
+  useEffect(() => {
+    const a1 = Animated.loop(
+      Animated.timing(t, { toValue: 1, duration: cycleY, easing: Easing.linear, useNativeDriver: true })
+    );
+    a1.start();
+    let a2: Animated.CompositeAnimation | undefined;
+    if (ampX > 0) {
+      a2 = Animated.loop(
+        Animated.timing(tx, { toValue: 1, duration: cycleX, easing: Easing.linear, useNativeDriver: true })
+      );
+      a2.start();
+    }
+    return () => { a1.stop(); a2?.stop(); };
+  }, [t, tx, cycleY, cycleX, ampX]);
+  const phaseY = phase ?? (delay % cycleY) / cycleY;
+  const phaseX = phase != null ? phase * 1.7 : (delay % cycleX) / cycleX;
+  const wy = sineWave(-amp * DS, phaseY);
+  const wr = sineWave(wobble, phaseY);
+  const wx = sineWave(ampX * DS, phaseX + 0.25); // X는 Y와 90° 어긋난 위상에서 출발
+  const ty = t.interpolate({ inputRange: wy.input, outputRange: wy.output });
+  const txv = tx.interpolate({ inputRange: wx.input, outputRange: wx.output });
+  const rot = t.interpolate({ inputRange: wr.input, outputRange: wr.output.map((v) => `${baseRotate + v}deg`) });
+  return (
+    <Animated.View
+      style={{
+        position: 'absolute',
+        left: (cx - w / 2) * DS,
+        top: (cy - h / 2) * DS,
+        width: w * DS,
+        height: h * DS,
+        transform: [{ translateY: ty }, { translateX: txv }, { rotate: rot }],
+      }}
+    >
+      <Image source={source} style={{ width: w * DS, height: h * DS }} resizeMode="stretch" />
+    </Animated.View>
+  );
+}
+
 export function IntroVisual3() {
   const H = 700 * DS;
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
+    // overflow hidden: 링·비행기 배지가 화면 밖으로 걸치므로 이웃 슬라이드 침범 방지
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
       <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          <SvgLinearGradient id="wire1" x1="201.81" y1="260.01" x2="201.81" y2="518.34" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#E0C9FF" />
-            <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="wire2" x1="201.81" y1="260.01" x2="201.77" y2="491.89" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#666666" />
-            <SvgStop offset="1" stopColor="#000000" />
-          </SvgLinearGradient>
-        </SvgDefs>
         <SideGlows purpleCx={65.5} purpleCy={225} />
-        <SvgCircle cx={200.5} cy={389.5} r={148.5} fill="#FFFFFF" fillOpacity={0.03} />
-        <SvgPath d={INTRO_WIREFRAME} fill="url(#wire2)" fillOpacity={0.2} />
-        <SvgPath d={INTRO_WIREFRAME} fill="url(#wire1)" fillOpacity={0.2} />
       </Svg>
+      {/* z순서 = 시안 레이어 순서: 코인들 → 사람들 → 비행기 → 궤도 링 → 중앙 여권 배지.
+          phase를 원둘레에 고르게 분산 — 서로 완전히 다른 시점에 오르내려 따로 노는 느낌 */}
+      <FloatingSprite source={I3_COIN_LG} cx={132.5} cy={428.5} w={192} h={192} amp={4} wobble={0.8} duration={5200} phase={0.3} />
+      <FloatingSprite source={I3_COIN_SM} cx={302.5} cy={243.5} w={110} h={110} amp={4} wobble={0.8} duration={4600} phase={0.45} />
+      <FloatingSprite source={I3_PEOPLE} cx={317.6} cy={505.3} w={181} h={164.7} amp={6} wobble={1.4} duration={4400} phase={0.62} />
+      <FloatingSprite source={I3_PLANE} cx={85} cy={170.5} w={181} h={143} amp={6} wobble={1.4} duration={3800} phase={0} />
+      <FloatingSprite source={I3_RING} cx={203} cy={359.4} w={364} h={46.9} baseRotate={-36.9} amp={3} wobble={0.5} duration={4800} phase={0.15} />
+      <FloatingSprite source={I3_PASSPORT} cx={209} cy={345.5} w={232} h={233} amp={7} wobble={1} duration={4200} phase={0.8} />
     </View>
   );
 }
 
-// ── 4페이지: 동심 보라 링 + 아바타 노드 + DM 말풍선 (시안 67) ──
-// 시안의 아바타 사진은 샘플 이미지라 PersonIcon 플레이스홀더로 대체.
-function AvatarNode({ cx, cy, glowR, innerR, ringW, iconSize }: { cx: number; cy: number; glowR: number; innerR: number; ringW: number; iconSize: number }) {
-  const size = glowR * 2 * DS;
-  return (
-    <View style={{ position: 'absolute', left: cx * DS - size / 2, top: cy * DS - size / 2, width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Svg width={size} height={size}>
-        <SvgDefs>
-          <SvgLinearGradient id="avatarRing" x1="50%" y1="0%" x2="66%" y2="100%">
-            <SvgStop offset="0" stopColor="#00D8F3" />
-            <SvgStop offset="1" stopColor="#EC34F7" />
-          </SvgLinearGradient>
-        </SvgDefs>
-        <SvgCircle cx={size / 2} cy={size / 2} r={glowR * DS} fill="#E7AFFF" fillOpacity={0.2} />
-        <SvgCircle cx={size / 2} cy={size / 2} r={glowR * DS - 0.5} stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={1} fill="none" />
-        <SvgCircle cx={size / 2} cy={size / 2} r={innerR * DS} fill="#17121F" />
-        <SvgCircle cx={size / 2} cy={size / 2} r={innerR * DS} stroke="url(#avatarRing)" strokeWidth={ringW} fill="none" />
-      </Svg>
-      <View style={{ position: 'absolute' }}>
-        <PersonIcon size={iconSize} color="#A0A0B0" />
-      </View>
-    </View>
-  );
-}
-
-// DM 말풍선 — 시안 샘플 문구(장식용) 그대로
-function ChatBubble({ x, y, w, handle, msg, time, dot }: { x: number; y: number; w: number; handle: string; msg: string; time: string; dot?: boolean }) {
-  return (
-    <View style={[bubbleStyles.wrap, { left: x * DS, top: y * DS, width: w * DS }]}>
-      <View style={bubbleStyles.avatar}>
-        <Svg width={26} height={26}>
-          <SvgDefs>
-            <SvgLinearGradient id="bubbleRing" x1="50%" y1="0%" x2="66%" y2="100%">
-              <SvgStop offset="0" stopColor="#00D8F3" />
-              <SvgStop offset="1" stopColor="#EC34F7" />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgCircle cx={13} cy={13} r={12} fill="#17121F" stroke="url(#bubbleRing)" strokeWidth={1.3} />
-        </Svg>
-        <View style={{ position: 'absolute', left: 6, top: 6 }}>
-          <PersonIcon size={14} color="#A0A0B0" />
-        </View>
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={bubbleStyles.handle} numberOfLines={1}>{handle}</Text>
-        <Text style={bubbleStyles.msg} numberOfLines={1}>{msg}</Text>
-      </View>
-      <View style={bubbleStyles.right}>
-        {dot && <View style={bubbleStyles.unreadDot} />}
-        <Text style={bubbleStyles.time}>{time}</Text>
-      </View>
-    </View>
-  );
-}
-
-const bubbleStyles = StyleSheet.create({
-  wrap: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(217,217,217,0.06)',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  avatar: { width: 26, height: 26 },
-  handle: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', marginBottom: 2 },
-  msg: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
-  right: { alignItems: 'flex-end', gap: 4 },
-  unreadDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: '#00D8F3' },
-  time: { color: 'rgba(255,255,255,0.4)', fontSize: 8 },
-});
+// ── 4페이지: 보라 행성 + 프사 아바타 + DM 말풍선 (시안 iPhone 17 - 67, node 97:49) ──
+// 행성 동심 링은 시안 좌표가 기존 렌더와 동일해 유지. 아바타 5종·말풍선 3종은
+// 피그마 SVG(사진 임베디드)를 크롬 헤드리스로 3x 투명 래스터화한 스프라이트(assets/intro4/*)를
+// 시안 절대좌표에 배치하고, 각기 다른 주기·위상·진폭으로 불규칙하게 떠다니게 해 입체감을 준다.
+const I4_ORB = require('../../assets/intro4/orb-bg.png');
+const I4_SPOT = require('../../assets/intro4/spot.png');
+const I4_BUBBLE1 = require('../../assets/intro4/bubble1.png');
+const I4_BUBBLE2 = require('../../assets/intro4/bubble2.png');
+const I4_BUBBLE3 = require('../../assets/intro4/bubble3.png');
+const I4_AVA_LG = require('../../assets/intro4/avatar-lg.png');
+const I4_AVA_R = require('../../assets/intro4/avatar-r.png');
+const I4_AVA_L = require('../../assets/intro4/avatar-l.png');
+const I4_AVA_PR = require('../../assets/intro4/avatar-plain-r.png');
+const I4_AVA_PL = require('../../assets/intro4/avatar-plain-l.png');
 
 export function IntroVisual4() {
   const H = 700 * DS;
   return (
     <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
-      <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          {/* 중앙 보라 코어 — 시안 블러 원 근사 */}
-          <SvgRadialGradient id="core1" cx="50%" cy="50%" r="50%">
-            <SvgStop offset="0" stopColor="#9E39B9" stopOpacity={0.48} />
-            <SvgStop offset="0.65" stopColor="#9E39B9" stopOpacity={0.35} />
-            <SvgStop offset="1" stopColor="#9E39B9" stopOpacity={0} />
-          </SvgRadialGradient>
-          <SvgRadialGradient id="core2" cx="50%" cy="50%" r="50%">
-            <SvgStop offset="0" stopColor="#C321EF" stopOpacity={0.62} />
-            <SvgStop offset="0.6" stopColor="#C321EF" stopOpacity={0.5} />
-            <SvgStop offset="1" stopColor="#C321EF" stopOpacity={0} />
-          </SvgRadialGradient>
-        </SvgDefs>
-        {/* 동심 링 — 바깥→안 (시안 위치·색 그대로, 블러는 근사) */}
-        <SvgCircle cx={201.5} cy={377.5} r={177.5} fill="#E7AFFF" fillOpacity={0.1} />
-        <SvgPath d={INTRO4_ARC_1} stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={1} fill="none" />
-        <SvgCircle cx={202.5} cy={343.5} r={113.5} fill="#E7AFFF" fillOpacity={0.1} />
-        <SvgPath d={INTRO4_ARC_2} stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={1} fill="none" />
-        <SvgCircle cx={205.5} cy={322.5} r={76.5} fill="#E7AFFF" fillOpacity={0.1} />
-        <SvgCircle cx={205.5} cy={322.5} r={76.18} stroke="#FFFFFF" strokeOpacity={0.3} strokeWidth={0.65} fill="none" />
-        <SvgCircle cx={205} cy={322} r={62.72} fill="#512072" />
-        <SvgCircle cx={205} cy={322} r={62.61} stroke="#D981FF" strokeOpacity={0.1} strokeWidth={0.22} fill="none" />
-        <SvgCircle cx={206} cy={311.6} r={52} fill="url(#core1)" />
-        <SvgCircle cx={205.9} cy={308.7} r={38} fill="url(#core2)" />
-      </Svg>
+      {/* 행성 오브 배경 — 시안 배경 타원 7종(링·코어·글로우·입자 아크)을 통째로 추출한 스프라이트.
+          시안 bbox (24,200,355×355) 중심 (201.5,377.5), 스프라이트는 블러 여백 포함 367pt. */}
+      <Image
+        source={I4_ORB}
+        style={{ position: 'absolute', left: (201.5 - 367 / 2) * DS, top: (377.5 - 367 / 2) * DS, width: 367 * DS, height: 367 * DS }}
+        resizeMode="stretch"
+      />
 
-      {/* 아바타 노드 — 중앙 대형 + 좌우 중형/소형 (시안 좌표) */}
-      <AvatarNode cx={197} cy={497} glowR={60} innerR={37} ringW={3.6} iconSize={34} />
-      <AvatarNode cx={56} cy={373} glowR={28} innerR={20.5} ringW={2.3} iconSize={20} />
-      <AvatarNode cx={348} cy={372} glowR={28} innerR={20.5} ringW={2.3} iconSize={20} />
-      <AvatarNode cx={92} cy={450} glowR={34} innerR={24.8} ringW={3} iconSize={24} />
-      <AvatarNode cx={314} cy={449} glowR={34} innerR={24.8} ringW={3} iconSize={24} />
-
-      {/* DM 말풍선 — 시안 샘플 */}
-      <ChatBubble x={19} y={108} w={206} handle="@wwaveran.kr" msg="청도는 뭐가 아쉬웠어?" time="36초전" />
-      <ChatBubble x={68} y={152} w={297} handle="@sangminjang" msg="그때 거기 어디야?" time="36초전" dot />
+      {/* 프사 아바타·말풍선 — 시안 절대좌표 중심 배치, z순서 = 시안 레이어 순서.
+          amp/ampX/주기/지연을 요소마다 다르게 = 불규칙 부유(입체감). 스프라이트 자연 크기는
+          이펙트 여백 포함이라 bbox보다 약간 큼 → bbox 중심에 중심 정렬. */}
+      <FloatingSprite source={I4_BUBBLE1} cx={121.9} cy={133.1} w={209} h={53} amp={5} ampX={3} wobble={0} duration={5000} phase={0.55} />
+      <FloatingSprite source={I4_AVA_PR} cx={308.9} cy={444.2} w={79} h={79} amp={4} ampX={2} wobble={0.8} duration={4400} phase={0.12} />
+      <FloatingSprite source={I4_AVA_PL} cx={97.1} cy={445.2} w={79} h={79} amp={4} ampX={2} wobble={0.8} duration={5800} phase={0.68} />
+      <FloatingSprite source={I4_AVA_LG} cx={198.2} cy={496.7} w={134} h={134} amp={6} ampX={3} wobble={0.9} duration={4600} phase={0.35} />
+      <FloatingSprite source={I4_AVA_R} cx={341.3} cy={370.7} w={65} h={65} amp={5} ampX={4} wobble={1} duration={3900} phase={0.85} />
+      <FloatingSprite source={I4_AVA_L} cx={62.7} cy={371.7} w={65} h={65} amp={5} ampX={4} wobble={1} duration={5200} phase={0.25} />
+      {/* 흰 스팟 글로우 — 시안 z순서상 아바타 위, 말풍선 아래 (bbox 중심 141.2,463.3) */}
+      <Image
+        source={I4_SPOT}
+        style={{ position: 'absolute', left: (141.2 - 44) * DS, top: (463.3 - 44.5) * DS, width: 88 * DS, height: 89 * DS }}
+        resizeMode="stretch"
+      />
+      <FloatingSprite source={I4_BUBBLE3} cx={117} cy={308.4} w={189} h={50} amp={4} ampX={3} wobble={0} duration={5600} phase={0.42} />
+      <FloatingSprite source={I4_BUBBLE2} cx={229.6} cy={217.8} w={306} h={76} amp={7} ampX={4} wobble={0} duration={4200} phase={0} />
     </View>
   );
 }
@@ -330,8 +338,12 @@ export function IntroVisual5({ active = true }: { active?: boolean }) {
   const fadeV = 70 * DS; // 상·하 가장자리 페이드 폭
   const fadeH = 44 * DS; // 좌·우 가장자리 페이드 폭
   const player = useVideoPlayer(INTRO5_VIDEO, (p) => {
-    p.loop = true;
+    p.loop = false; // 반복 없이 마지막(완성된 로고) 프레임에서 멈춘다
     p.muted = true;
+    // 기본 'auto'는 초기화 시점에 오디오 세션(포커스)을 가져가 백그라운드 음악·영상을
+    // 멈추게 한다 — 무음 인트로 영상은 다른 앱 오디오와 섞여도 되므로 포커스를 잡지 않는다.
+    // (SplashScreen과 동일한 조치)
+    p.audioMixingMode = 'mixWithOthers';
   });
   // FlatList가 슬라이드를 미리 마운트하므로 여기서 재생하지 않고,
   // 5페이지가 실제 활성화되는 순간 처음부터 재생 (미리 재생돼 중간부터 보이는 문제 방지)
@@ -348,6 +360,8 @@ export function IntroVisual5({ active = true }: { active?: boolean }) {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active' && active) {
         try {
+          // 이미 끝까지 재생돼 마지막 프레임에 멈춘 상태면 재개하지 않는다(처음부터 다시 도는 것 방지)
+          if (player.duration > 0 && player.currentTime >= player.duration - 0.05) return;
           player.play();
         } catch {
           // 플레이어가 이미 해제된 경우 무시

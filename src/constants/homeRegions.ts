@@ -2,7 +2,7 @@
 // 한국은 시/도 프리셋(koreaRegions), 그 외 국가는 대륙 지도와 동일한 GADM Level-1 데이터(countryGeo)에서
 // 지역 목록을 뽑는다. nameEn(NAME_1)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
 import { KOREA_REGIONS, normalizeKoreaRegion } from './koreaRegions';
-import COUNTRY_GEO from '../data/countryGeo';
+import { getCountryGeo } from '../data/countryGeo';
 
 export interface HomeRegion {
   name: string;   // 표시·저장용 한글 표기 (예: '교토부', '캘리포니아')
@@ -13,6 +13,11 @@ export interface HomeRegion {
 const ISO2_TO_GEO: Record<string, string> = {
   JP: 'JPN', CN: 'CHN', US: 'USA', DE: 'DEU',
   ES: 'ESP', GB: 'GBR', FR: 'FRA', IT: 'ITA',
+  // 2026-07-20 확장 18개국
+  TR: 'TUR', GR: 'GRC', AT: 'AUT', PT: 'PRT', NL: 'NLD',
+  TH: 'THA', MY: 'MYS', VN: 'VNM', SA: 'SAU', AE: 'ARE',
+  MA: 'MAR', EG: 'EGY', TN: 'TUN', ZA: 'ZAF',
+  MX: 'MEX', CA: 'CAN', BR: 'BRA', CO: 'COL',
 };
 
 // 발음 구별 기호 제거(Ōsaka→Osaka) — GPS 도시명과 GADM 영문명 표기차 흡수
@@ -30,12 +35,50 @@ const CITY_TO_PROV: Record<string, Record<string, string>> = {
   GBR: { london: 'England', birmingham: 'England', manchester: 'England', liverpool: 'England', leeds: 'England', edinburgh: 'Scotland', glasgow: 'Scotland', cardiff: 'Wales', belfast: 'NorthernIreland', oxford: 'England', bristol: 'England' },
   FRA: { paris: 'Île-de-France', nice: "Provence-Alpes-Côted'Azur", lyon: 'Auvergne-Rhône-Alpes', marseille: "Provence-Alpes-Côted'Azur", bordeaux: 'Nouvelle-Aquitaine', strasbourg: 'GrandEst', toulouse: 'Occitanie', lille: 'Hauts-de-France', nantes: 'PaysdelaLoire', montpellier: 'Occitanie', cannes: "Provence-Alpes-Côted'Azur" },
   ITA: { rome: 'Lazio', milan: 'Lombardia', florence: 'Toscana', venice: 'Veneto', naples: 'Campania', verona: 'Veneto', pisa: 'Toscana', turin: 'Piemonte', bologna: 'Emilia-Romagna', genoa: 'Liguria', palermo: 'Sicily', bari: 'Apulia' },
+  TUR: { cappadocia: 'Nevsehir', pamukkale: 'Denizli', fethiye: 'Mugla' },
+  GRC: { athens: 'Attica', santorini: 'Aegean', thira: 'Aegean', mykonos: 'Aegean', meteora: 'ThessalyandCentralGreece', kalambaka: 'ThessalyandCentralGreece', zakynthos: 'Peloponnese,WesternGreeceand' },
+  AUT: { salzburgcity: 'Salzburg', hallstatt: 'Oberösterreich', innsbruck: 'Tirol', vienna: 'Wien' },
+  PRT: { lisboncity: 'Lisboa', lisbon: 'Lisboa', portocity: 'Porto', sintra: 'Lisboa', lagos: 'Faro', cabodaroca: 'Lisboa', colares: 'Lisboa' },
+  NLD: { amsterdam: 'Noord-Holland', rotterdam: 'Zuid-Holland', zaanseschans: 'Noord-Holland', zaanstad: 'Noord-Holland', thehague: 'Zuid-Holland', denhaag: 'Zuid-Holland', sgravenhage: 'Zuid-Holland' },
+  THA: { pattaya: 'ChonBuri', banglamung: 'ChonBuri' },
+  MYS: { kotakinabalu: 'Sabah', johorbahru: 'Johor', johorbaharu: 'Johor', langkawi: 'Kedah' },
+  VNM: { nhatrang: 'KhánhHòa', hoian: 'QuảngNam', halong: 'QuảngNinh', halongbay: 'QuảngNinh', phuquoc: 'KiênGiang' },
+  SAU: { riyadh: 'ArRiyad', jeddah: 'Makkah', jiddah: 'Makkah', mecca: 'Makkah', medina: 'AlMadinah', alula: 'AlMadinah' },
+  MAR: { marrakech: 'Marrakech-Tensift-AlHaouz', marrakesh: 'Marrakech-Tensift-AlHaouz', casablanca: 'GrandCasablanca', fes: 'Fès-Boulemane', fez: 'Fès-Boulemane', chefchaouen: 'Tanger-Tétouan' },
+  EGY: { giza: 'AlJizah', luxor: 'AlUqsur', aswancity: 'Aswan', hurghada: 'AlBahralAhmar', alghurdaqah: 'AlBahralAhmar' },
+  TUN: { carthage: 'Tunis', sidibousaid: 'Tunis', eljem: 'Mahdia', tozeurcity: 'Tozeur' },
+  ZAF: { capetown: 'WesternCape', johannesburg: 'Gauteng', pretoria: 'Gauteng', tshwane: 'Gauteng' },
+  MEX: { cancun: 'QuintanaRoo', benitojuarez: 'QuintanaRoo', playadelcarmen: 'QuintanaRoo', solidaridad: 'QuintanaRoo', tulum: 'QuintanaRoo', guadalajara: 'Jalisco', oaxacacity: 'Oaxaca', oaxacadejuarez: 'Oaxaca', guanajuatocity: 'Guanajuato' },
+  CAN: { vancouver: 'BritishColumbia', greatervancouver: 'BritishColumbia', toronto: 'Ontario', montreal: 'Québec', niagarafalls: 'Ontario', quebeccity: 'Québec' },
+  BRA: { riodejaneirocity: 'RiodeJaneiro', saopaulocity: 'SãoPaulo', salvador: 'Bahia', manaus: 'Amazonas', fozdoiguacu: 'Paraná', iguazufalls: 'Paraná' },
+  COL: { medellin: 'Antioquia', cartagena: 'Bolívar', cartagenadeindias: 'Bolívar', cali: 'ValledelCauca', santiagodecali: 'ValledelCauca', salento: 'Quindío' },
 };
 
 const isCityFeature = (geoKey: string, nameEn: string): boolean => {
   const prov = CITY_TO_PROV[geoKey]?.[fold(nameEn).replace(/[\s\-'’.]/g, '')];
   return !!prov && prov !== nameEn;
 };
+
+/**
+ * 대륙 지도 국가(ISO3 geoKey)의 선택 가능한 지역 목록 — 광역(주)과 인기명소 도시를 분리해 반환.
+ * 방문 지역 소급 태깅 시트 등 UI 선택용. nameEn은 대륙 지도 활성화 키(NAME_1)와 동일.
+ */
+export function getCountryRegionOptions(geoKey: string): { provinces: HomeRegion[]; cities: HomeRegion[] } {
+  const features: any[] = getCountryGeo(geoKey)?.features ?? [];
+  const seen = new Set<string>();
+  const provinces: HomeRegion[] = [];
+  const cities: HomeRegion[] = [];
+  for (const f of features) {
+    const nameEn = f?.properties?.NAME_1;
+    if (!nameEn || seen.has(nameEn)) continue;
+    seen.add(nameEn);
+    const item = { name: f?.properties?.NL_NAME_1 || nameEn, nameEn };
+    (isCityFeature(geoKey, nameEn) ? cities : provinces).push(item);
+  }
+  provinces.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  cities.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  return { provinces, cities };
+}
 
 // countryGeo 파싱 결과 캐시 — 국가당 1회만 추출
 const regionCache: Record<string, HomeRegion[]> = {};
@@ -53,7 +96,7 @@ export function getHomeRegions(countryCode?: string | null): HomeRegion[] {
   if (!geoKey) return [];
   if (regionCache[geoKey]) return regionCache[geoKey];
 
-  const features: any[] = COUNTRY_GEO[geoKey]?.features ?? [];
+  const features: any[] = getCountryGeo(geoKey)?.features ?? [];
   const seen = new Set<string>();
   const regions: HomeRegion[] = [];
   for (const f of features) {

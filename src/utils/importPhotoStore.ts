@@ -91,7 +91,8 @@ export async function bakeCoverCrop(
  */
 export async function copyTripOriginals(
   tripId: string,
-  items: PhotoRef[]
+  items: PhotoRef[],
+  onProgress?: (done: number, total: number) => void,
 ): Promise<{ uris: string[]; firstItemCopied: boolean; srcIndexes: number[] }> {
    
   const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
@@ -114,6 +115,7 @@ export async function copyTripOriginals(
   // 첫 항목(커버)의 복사 성공 여부 — 실패 장을 건너뛰면 배열이 당겨져서, 호출부가
   // copied[0]을 커버로 간주하고 커버용 크롭을 '다른 사진'에 굽는 사고를 막는 데 쓴다.
   let firstItemCopied = false;
+  onProgress?.(0, items.length);
   for (let i = 0; i < items.length; i++) {
     const it = items[i];
     try {
@@ -131,6 +133,7 @@ export async function copyTripOriginals(
     } catch {
       // 이 장은 건너뜀
     }
+    onProgress?.(i + 1, items.length);
   }
   return { uris: out, firstItemCopied, srcIndexes };
 }

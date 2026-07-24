@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 import {
   View,
   Text,
@@ -11,24 +10,19 @@ import {
   TextInput,
   Animated,
   ActivityIndicator,
-  Modal,
   Share,
-  Pressable,
 } from 'react-native';
 
-import QRCode from 'react-native-qrcode-svg';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon, PersonIcon } from '../components/icons';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
-import { QR_DESIGNS, getQrDesign } from '../constants/qrDesigns';
 import { useRecords } from '../store/recordStore';
-import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { andFitText } from '../utils/fitText';
+import { countryLabel } from '../utils/countryLabel';
 import { isSupabaseConfigured } from '../services/supabase';
-import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts, getProfileByHandle } from '../services/profile';
-import { fetchFriendSuggestions } from '../services/social';
-import { computeTravelStats } from '../utils/badgeRules';
+import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
+import { fetchMateSuggestions } from '../services/social';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -39,7 +33,6 @@ import type { RootStackScreenProps } from '../navigation/types';
 const C = {
   bg: '#0A0A0F',
   card: '#2E2E3B',
-  qrCard: '#1E1E2E',
   accent: '#BF85FC',
   accentDark: '#6B21A8',
   dim: '#A1A1B0',
@@ -52,10 +45,9 @@ const C = {
 // 딥링크 (app.json scheme: "eorth" 와 일치) — 생성/공유/파싱을 한 곳에서 관리
 // ─────────────────────────────────────────────
 const userLink = (code: string) => `eorth://user/${code}`;
-const USER_LINK_RE = /eorth:\/\/user\/(.+)$/i; // 대소문자 무관(이전 eOrth 링크 호환)
 
 // ─────────────────────────────────────────────
-// 검색/추천 결과 친구 타입
+// 검색/추천 결과 메이트 타입
 // ─────────────────────────────────────────────
 interface ContactFriend {
   id: string;
@@ -63,13 +55,17 @@ interface ContactFriend {
   initial: string;
   username: string;
   countries: number;
-  followers?: number;     // 이웃 수
+  followers?: number;     // 메이트 수
   photo?: string | null; // 프로필 사진 URL (있으면 아바타로 표시)
   emoji?: string | null;  // 프로필 이모지 (사진 없을 때)
+  sharedCount?: number;       // 여행겹침 행일 때만
+  sharedCountries?: string[]; // 겹친 나라 샘플(한글 country_name)
+  mutualCount?: number;       // 함께 아는 메이트 수(여행 DNA)
+  styleScore?: number;        // 여행 스타일 점수(여행 DNA)
 }
 
 // ─────────────────────────────────────────────
-// 친구 아이템 (검색 결과·추천 친구 공통)
+// 메이트 아이템 (검색 결과·추천 메이트 공통)
 // ─────────────────────────────────────────────
 function FriendItem({
   item,
@@ -79,12 +75,12 @@ function FriendItem({
   onPress,
 }: {
   item: ContactFriend;
-  following: boolean; // 이미 이웃(서로이웃) 상태
-  requested: boolean; // 이웃 신청을 보내고 수락 대기 중인 상태
+  following: boolean; // 이미 메이트(서로메이트) 상태
+  requested: boolean; // 메이트 신청을 보내고 수락 대기 중인 상태
   onToggle: () => void;
   onPress?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
   // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
@@ -98,13 +94,23 @@ function FriendItem({
         )}
       </View>
       <View style={s.friendInfo}>
-        {/* 닉네임 폐지 — 아이디(@handle) 한 줄만 표시 */}
-        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>@{item.username}</Text>
+        {/* 닉네임 폐지 — 아이디 한 줄만 표시(@ 접두 없음) */}
+        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>{item.username}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>
-            {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
-            {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
+            {item.sharedCountries && item.sharedCountries.length > 0
+              ? `${t('friends.overlapReason', { count: item.sharedCount ?? item.sharedCountries.length })} · ${item.sharedCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}`
+              : item.mutualCount && item.mutualCount > 0
+                ? t('friends.mutualReason', { count: item.mutualCount })
+                : item.styleScore && item.styleScore > 0
+                  ? t('friends.styleReason')
+                  : (
+                      <>
+                        {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
+                        {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
+                      </>
+                    )}
           </Text>
         </View>
       </View>
@@ -128,28 +134,38 @@ function FriendItem({
 }
 
 // ─────────────────────────────────────────────
+// 초대 카드 — 겹침·추천이 희소할 때 노출, 기존 공유(handleShareMe) 재사용
+// ─────────────────────────────────────────────
+function InviteCard({ onInvite, accent }: { onInvite: () => void; accent: string }) {
+  const { t } = useTranslation();
+  return (
+    <View style={s.inviteCard}>
+      <Text style={s.inviteCardTitle}>{t('friends.inviteCardTitle')}</Text>
+      <Text style={s.inviteCardBody}>{t('friends.inviteCardBody')}</Text>
+      <TouchableOpacity
+        style={[s.inviteCardBtn, { backgroundColor: accent }]}
+        activeOpacity={0.85}
+        onPress={onInvite}
+        accessibilityRole="button"
+        accessibilityLabel={t('friends.inviteCta')}
+      >
+        <Text style={s.inviteCardBtnText}>{t('friends.inviteCta')}</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 메인 화면
 // ─────────────────────────────────────────────
 type Props = RootStackScreenProps<'FriendSearch'>;
 
 export default function FriendSearchScreen({ navigation, route }: Props) {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // QR 카드·검색 결과·스캔 프레임을 스킨 강조색으로
+  const skinAccent = useSkinAccent(); // 검색 결과·버튼을 스킨 강조색으로
   const insets = useSafeAreaInsets();
-  const { handle, isPremium, qrDesign, setQrDesign } = useSettings();
+  const { handle } = useSettings();
   const [query, setQuery] = useState(route.params?.initialQuery ?? '');
-
-  // 개별 QR 디자인(프리미엄) — 프리셋 선택 모달
-  const [qrDesignVisible, setQrDesignVisible] = useState(false);
-  // 해지 시 기본 디자인으로(잠금), 선택값은 보존 → 재구독 시 복원
-  const myQrDesign = getQrDesign(isPremium ? qrDesign : null);
-  const openQrDesign = () => {
-    if (!isPremium) {
-      navigation.navigate('Premium'); // 잠금 → 페이월로 유도
-      return;
-    }
-    setQrDesignVisible(true);
-  };
 
   // 딥링크(eorth://user/<handle>)로 진입/재진입 시 검색어 자동 채움
   // ts를 의존성에 포함해 같은 핸들로 다시 들어와도(파라미터 값 동일) 재채움되게 함
@@ -157,10 +173,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     const q = route.params?.initialQuery;
     if (q) setQuery(q);
   }, [route.params?.initialQuery, route.params?.ts]);
-  // 이웃 상태는 store 공유 — 친구 프로필·이웃 목록·프로필 카운트와 동기화
-  const { records, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked } = useRecords();
-  // 내 방문 국가 수 (ProfileScreen과 동일한 통계 계산 사용)
-  const myCountryCount = useMemo(() => computeTravelStats(records).countryCount, [records]);
+  // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
+  const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
   // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
   const [myId, setMyId] = useState<string | null>(null);
@@ -198,7 +212,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     });
   }, [navigation]);
 
-  // 이웃 해제 시 목록에 표시된 이웃 수 낙관적 반영 (서버 재조회 없이 ±1)
+  // 메이트 해제 시 목록에 표시된 메이트 수 낙관적 반영 (서버 재조회 없이 ±1)
   // 신청은 수락 전까지 pending이라 카운트는 건드리지 않고, 해제(-1)만 반영한다.
   const bumpFollowerCount = (id: string, delta: number) => {
     const adjust = (list: ContactFriend[]) =>
@@ -222,67 +236,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }
   };
 
-  // ── QR 스캔 ──
-  const [scannerVisible, setScannerVisible] = useState(false);
-  const [camPermission, requestCamPermission] = useCameraPermissions();
-  const scannedRef = useRef(false);
-  const lastInvalidToast = useRef(0);
-
-  // 내 코드(공유/QR용) — 반드시 고유 식별자인 핸들만 사용(닉네임은 고유성이 없어 스캔 시 오검색)
+  // 내 코드(공유용) — 반드시 고유 식별자인 핸들만 사용
   const myCode = handle;
 
-  const openScanner = async () => {
-    if (!camPermission?.granted) {
-      const res = await requestCamPermission();
-      if (!res.granted) { showPermissionDeniedAlert(t('permission.camera')); return; }
-    }
-    scannedRef.current = false;
-    setScannerVisible(true);
-  };
-
-  const handleBarcode = ({ data }: { data: string }) => {
-    if (scannedRef.current) return;
-    const m = USER_LINK_RE.exec((data || '').trim());
-    if (!m) {
-      // eOrth 코드가 아니면 계속 스캔하되, 안내는 2초에 한 번만 (연속 스캔 스팸 방지)
-      const now = Date.now();
-      if (now - lastInvalidToast.current > 2000) {
-        lastInvalidToast.current = now;
-        showToast(t('comp2.toastNotEorthQR'));
-      }
-      return;
-    }
-    const scanned = decodeURIComponent(m[1]).replace(/^@/, '');
-    // 본인 QR이면 검색하지 않고 계속 스캔(스캔하면 본인이 결과에서 빠져 "결과 없음"만 뜨던 문제 방지)
-    if (handle && scanned.toLowerCase() === handle.toLowerCase()) {
-      const now = Date.now();
-      if (now - lastInvalidToast.current > 2000) {
-        lastInvalidToast.current = now;
-        showToast(t('friends.ownCode'));
-      }
-      return;
-    }
-    scannedRef.current = true;
-    setScannerVisible(false);
-    // 정확 일치 프로필이 있으면 프로필로 직행, 없으면(미설정 포함) 검색으로 폴백
-    if (isSupabaseConfigured) {
-      showToast(t('comp2.toastSearching', { handle: scanned }));
-      getProfileByHandle(scanned)
-        .then((p) => {
-          if (p) {
-            navigation.navigate('FriendProfile', { userId: p.id, username: p.handle || scanned, handle: p.handle ?? undefined });
-          } else {
-            setQuery(scanned); // 정확 일치 없음 → 부분 일치 검색 결과 표시
-          }
-        })
-        .catch(() => setQuery(scanned));
-    } else {
-      setQuery(scanned);
-      showToast(t('comp2.toastSearching', { handle: scanned }));
-    }
-  };
-
-  // ── 내 코드 공유 ──
+  // ── 내 코드 공유 — 초대 카드에서 호출 ──
   const handleShareMe = () => {
     if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
     Share.share({
@@ -290,33 +247,35 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
-  // 추천 친구 (내가 팔로우한 사람들이 팔로우하는 사용자) — 진입 시 1회 로드
+  // 추천 메이트(여행 DNA) — 진입 시 1회 로드. 로컬 여행기록카드·미발행·나만보기 나라도
+  // extra_countries로 보강(내 매칭 입력 전용 — 타인에게 비노출)
   const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let alive = true;
     (async () => {
       try {
-        const rows = await fetchFriendSuggestions(10);
+        const localCountries = Array.from(new Set([
+          // isMyPost !== false: undefined는 내 기록(레거시 포함) — store의 내 기록 판정과 동일 기준
+          ...records.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
+          ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+        ]));
+        const rows = await fetchMateSuggestions(10, localCountries);
         if (!alive || rows.length === 0) return;
-        const ids = rows.map((r) => r.id);
-        const [counts, fcounts] = await Promise.all([getCountryCounts(ids), getFollowerCounts(ids)]);
-        if (!alive) return;
-        setSuggestions(
-          rows.map((r) => ({
-            id: r.id,
-            name: r.handle || t('friends.travelerDefault'),
-            initial: (r.handle || '?').slice(0, 1),
-            username: r.handle || '',
-            countries: counts[r.id] ?? 0,
-            followers: fcounts[r.id] ?? 0,
-            photo: r.profilePhoto,
-            emoji: r.emoji,
-          }))
-        );
-      } catch {
-        /* 추천은 부가 기능 — 실패 시 섹션 미표시 */
-      }
+        setSuggestions(rows.map((r) => ({
+          id: r.authorId,
+          name: r.handle || t('friends.travelerDefault'),
+          initial: (r.handle || '?').slice(0, 1),
+          username: r.handle || '',
+          countries: 0,
+          photo: r.profilePhoto,
+          emoji: r.emoji,
+          sharedCount: r.sharedCount,
+          sharedCountries: r.sampleCountries,
+          mutualCount: r.mutualCount,
+          styleScore: r.styleScore,
+        })));
+      } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
     })();
     return () => { alive = false; };
   }, []);
@@ -365,10 +324,10 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 차단한 사용자는 검색·추천 결과에서 제외 (노출·재팔로우 방지)
   const notBlocked = (f: ContactFriend) => !isBlocked({ name: f.name, handle: f.username });
   const displayList = remoteResults.filter(notBlocked);
-  // 추천 친구 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
+  // 추천 메이트 (팔로우한 뒤에도 '팔로잉' 상태로 남겨 되돌리기 가능)
   const visibleSuggestions = suggestions.filter(notBlocked);
 
-  // 친구 행 렌더(검색결과·추천 친구 공통) — 중복 제거
+  // 메이트 행 렌더(검색결과·추천 메이트 공통) — 중복 제거
   const renderRows = (list: ContactFriend[]) =>
     list.map((item, idx) => (
       <React.Fragment key={item.id}>
@@ -396,76 +355,6 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
 
       <Animated.View style={{ flex: 1, opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
 
-      {/* ── QR 카드 ── */}
-      <View style={s.qrCard}>
-        <View style={s.qrCardTop}>
-          {/* 왼쪽: QR 코드 — 핸들(아이디) 있을 때만 실제 코드 표시 */}
-          <View style={s.qrCodeWrap}>
-            {myCode ? (
-              <>
-                <QRCode
-                  value={userLink(myCode)}
-                  size={120}
-                  color={myQrDesign.fg}
-                  backgroundColor={myQrDesign.bg}
-                  enableLinearGradient={!!myQrDesign.gradient}
-                  linearGradient={myQrDesign.gradient}
-                  logo={undefined}
-                  quietZone={8} // 어두운 카드 위 인식용 여백(밝은 테두리) — 스캐너 필수 요건
-                />
-                <View style={[s.qrLogoWrap, { backgroundColor: myQrDesign.bg }]}>
-                  <Text style={[s.qrLogoText, myQrDesign.light && s.qrLogoTextDark]}>eOrth</Text>
-                </View>
-                {/* 개별 QR 디자인(프리미엄) — 프리셋 선택 */}
-                <TouchableOpacity
-                  style={s.qrDesignBtn}
-                  activeOpacity={0.8}
-                  onPress={openQrDesign}
-                  accessibilityRole="button"
-                  accessibilityLabel={t('friends.qrDesignA11y')}
-                >
-                  <Text style={s.qrDesignBtnTxt}>{isPremium ? '🎨' : '🔒'}</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <View style={s.qrPlaceholder}>
-                <Text style={s.qrPlaceholderText}>{t('friends.qrHint')}</Text>
-              </View>
-            )}
-          </View>
-
-          {/* 오른쪽: 프로필 정보 */}
-          <View style={s.profileInfo}>
-            <Text style={s.profileName} numberOfLines={1}>{handle}</Text>
-            <Text style={[s.profileUsername, { color: skinAccent.accent }]} numberOfLines={1}>@{handle}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><GlobeIcon size={12} color="#A1A1B0" /><Text style={s.profileCountries}>{t('friends.countriesVisitedN', { count: myCountryCount })}</Text></View>
-          </View>
-        </View>
-
-        {/* 액션 버튼 — 카드 하단 전체 폭 */}
-        <View style={s.qrBtnRow}>
-          <TouchableOpacity
-            style={[s.inlineScanBtn, { backgroundColor: skinAccent.accentDeep }]}
-            activeOpacity={0.85}
-            onPress={openScanner}
-            accessibilityRole="button"
-            accessibilityLabel={t('comp2.qrScanA11y')}
-          >
-            <Text style={s.inlineScanBtnText}>📷 {t('comp2.qrScan')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.inlineShareBtn, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, !myCode && s.inlineBtnDisabled]}
-            activeOpacity={0.85}
-            onPress={handleShareMe}
-            disabled={!myCode}
-            accessibilityRole="button"
-            accessibilityLabel={t('friends.shareCodeA11y')}
-          >
-            <Text style={[s.inlineShareBtnText, { color: skinAccent.accent }]}>↗ {t('comp2.shareShort')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-
       {/* ── 검색창 ── */}
       <View style={s.searchWrap}>
         <SearchIcon size={16} color="#A1A1B0" />
@@ -487,7 +376,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
         )}
       </View>
 
-      {/* ── 친구 리스트 ── */}
+      {/* ── 메이트 리스트 ── */}
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.scrollContent}
@@ -507,88 +396,26 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               renderRows(displayList)
             )}
           </>
-        ) : visibleSuggestions.length > 0 ? (
-          /* 추천 친구 — 내가 팔로우한 사람들이 팔로우하는 사용자 */
-          <>
-            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
-            {renderRows(visibleSuggestions)}
-          </>
         ) : (
-          /* 추천이 없을 때 — 검색/QR 안내 */
-          <Text style={s.emptyText}>{t('friends.findByIdHint')}</Text>
+          <>
+            {visibleSuggestions.length > 0 && (
+              <>
+                <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
+                {renderRows(visibleSuggestions)}
+              </>
+            )}
+            {(visibleSuggestions.length < 3) && myCode ? (
+              <InviteCard onInvite={handleShareMe} accent={skinAccent.accentDeep} />
+            ) : null}
+            {visibleSuggestions.length === 0 && (
+              <Text style={s.emptyText}>{t('friends.coldStartNudge')}</Text>
+            )}
+          </>
         )}
         <View style={{ height: 40 }} />
       </ScrollView>
 
       </Animated.View>
-
-      {/* QR 스캔 모달 */}
-      <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
-        <View style={s.scanRoot} accessibilityViewIsModal>
-          <CameraView
-            style={StyleSheet.absoluteFill}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={handleBarcode}
-          />
-          {/* 가이드 프레임 */}
-          <View style={s.scanOverlay} pointerEvents="none">
-            <View style={[s.scanFrame, { borderColor: skinAccent.accent }]} />
-            <Text style={s.scanHint}>{t('friends.scanHint')}</Text>
-          </View>
-          <TouchableOpacity
-            style={[s.scanClose, { top: insets.top + 12 }]}
-            onPress={() => setScannerVisible(false)}
-            accessibilityRole="button"
-            accessibilityLabel={t('comp2.qrScanCloseA11y')}
-          >
-            <Text style={s.scanCloseText}>✕</Text>
-          </TouchableOpacity>
-        </View>
-      </Modal>
-
-      {/* 개별 QR 디자인 선택 모달 (프리미엄) — 프리셋별 실제 QR 미리보기 */}
-      <Modal
-        visible={qrDesignVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setQrDesignVisible(false)}
-      >
-        <Pressable style={s.qdOverlay} onPress={() => setQrDesignVisible(false)}>
-          <Pressable style={s.qdCard} onPress={() => {}}>
-            <Text style={s.qdTitle}>{t('friends.qrDesignTitle')}</Text>
-            <View style={s.qdGrid}>
-              {QR_DESIGNS.map((d) => {
-                const selected = qrDesign === d.id;
-                return (
-                  <TouchableOpacity
-                    key={d.id}
-                    style={[s.qdItem, selected && s.qdItemOn, selected && { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}
-                    activeOpacity={0.8}
-                    onPress={() => { setQrDesign(d.id); setQrDesignVisible(false); }}
-                  >
-                    <View style={[s.qdPreview, { backgroundColor: d.bg }]}>
-                      <QRCode
-                        value={myCode ? userLink(myCode) : 'eorth'}
-                        size={52}
-                        color={d.fg}
-                        backgroundColor={d.bg}
-                        enableLinearGradient={!!d.gradient}
-                        linearGradient={d.gradient}
-                        quietZone={4}
-                      />
-                    </View>
-                    <Text style={[s.qdLabel, selected && s.qdLabelOn, selected && { color: skinAccent.accent }]} numberOfLines={1}>{t(d.labelKey)}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-            <TouchableOpacity style={s.qdClose} activeOpacity={0.7} onPress={() => setQrDesignVisible(false)}>
-              <Text style={s.qdCloseTxt}>{t('common.cancel')}</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
       {/* 팔로우/검색 피드백 토스트 */}
       <Toast visible={toastVisible} message={toastMessage} />
@@ -625,211 +452,6 @@ const s = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '700',
-    color: C.white,
-  },
-
-  // QR 카드
-  qrCard: {
-    backgroundColor: C.qrCard,
-    borderRadius: 20,
-    marginHorizontal: 20,
-    marginBottom: 16,
-    padding: 20,
-    gap: 16,
-  },
-  qrCardTop: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  qrCodeWrap: {
-    width: 120,
-    height: 120,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrPlaceholder: {
-    width: 120,
-    height: 120,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
-    borderStyle: 'dashed',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-  },
-  qrPlaceholderText: {
-    fontSize: 13,
-    color: C.dim,
-    textAlign: 'center',
-    lineHeight: 18,
-  },
-  qrLogoWrap: {
-    position: 'absolute',
-    backgroundColor: '#0A0A0F',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
-  },
-  qrLogoText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: C.white,
-  },
-  qrLogoTextDark: { color: '#0A0A0F' }, // 밝은 배경(클래식) 디자인용
-  qrDesignBtn: {
-    position: 'absolute',
-    right: -10,
-    bottom: -10,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.35)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  qrDesignBtnTxt: { fontSize: 14 },
-
-  // 개별 QR 디자인 선택 모달
-  qdOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10,10,15,0.85)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
-  qdCard: {
-    width: '100%',
-    maxWidth: 360,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 16,
-    padding: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-  },
-  qdTitle: { fontSize: 16, fontWeight: '700', color: C.white, marginBottom: 14 },
-  qdGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
-  qdItem: {
-    width: 90,
-    alignItems: 'center',
-    gap: 6,
-    padding: 8,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.1)',
-  },
-  qdItemOn: { borderColor: C.accent, backgroundColor: 'rgba(191,133,252,0.12)' },
-  qdPreview: {
-    width: 64,
-    height: 64,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
-  },
-  qdLabel: { fontSize: 10, color: C.dim },
-  qdLabelOn: { color: C.accent, fontWeight: '700' },
-  qdClose: {
-    marginTop: 14,
-    height: 44,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  qdCloseTxt: { fontSize: 14, fontWeight: '600', color: C.dim },
-  profileInfo: {
-    flex: 1,
-    gap: 4,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: C.white,
-  },
-  profileUsername: {
-    fontSize: 14,
-    color: C.accent,
-  },
-  profileCountries: {
-    fontSize: 12,
-    color: C.dim,
-  },
-  qrBtnRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  inlineScanBtn: {
-    flex: 1,
-    backgroundColor: C.accentDark,
-    borderRadius: 12,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  inlineScanBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.white,
-  },
-  inlineShareBtn: {
-    flex: 1,
-    backgroundColor: 'rgba(191,133,252,0.15)',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-    borderRadius: 12,
-    paddingVertical: 11,
-    alignItems: 'center',
-  },
-  inlineShareBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: C.accent,
-  },
-  inlineBtnDisabled: {
-    opacity: 0.4,
-  },
-
-  // QR 스캔 모달
-  scanRoot: {
-    flex: 1,
-    backgroundColor: '#000',
-  },
-  scanOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scanFrame: {
-    width: 240,
-    height: 240,
-    borderRadius: 24,
-    borderWidth: 3,
-    borderColor: C.accent,
-    backgroundColor: 'transparent',
-  },
-  scanHint: {
-    marginTop: 20,
-    fontSize: 14,
-    color: C.white,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  scanClose: {
-    position: 'absolute',
-    right: 20,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scanCloseText: {
-    fontSize: 20,
     color: C.white,
   },
 
@@ -870,7 +492,7 @@ const s = StyleSheet.create({
     marginBottom: 12,
   },
 
-  // 친구 아이템
+  // 메이트 아이템
   friendItem: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -938,4 +560,20 @@ const s = StyleSheet.create({
     textAlign: 'center',
     marginTop: 40,
   },
+
+  // 초대 카드
+  inviteCard: {
+    marginTop: 20,
+    marginHorizontal: 4,
+    padding: 18,
+    borderRadius: 16,
+    backgroundColor: C.card,
+    borderWidth: 1,
+    borderColor: C.divider,
+    alignItems: 'center',
+  },
+  inviteCardTitle: { color: C.white, fontSize: 15, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
+  inviteCardBody: { color: C.dim, fontSize: 13, lineHeight: 18, marginBottom: 14, textAlign: 'center' },
+  inviteCardBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
+  inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '700' },
 });

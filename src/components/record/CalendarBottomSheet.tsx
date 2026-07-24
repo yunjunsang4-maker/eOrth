@@ -10,6 +10,7 @@ import {
   Dimensions,
 } from 'react-native';
 import { useSkinAccent } from '../../constants/skinTheme';
+import type { RecordedRange } from '../../utils/recordedDates';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
@@ -35,6 +36,9 @@ export function CalendarBottomSheet({
   startLabel,
   endLabel,
   recordedDates,
+  recordedRanges,
+  onSelectRecordedTrip,
+  asOverlay,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -43,8 +47,14 @@ export function CalendarBottomSheet({
   onClose: () => void;
   startLabel?: string;
   endLabel?: string;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시). utils/recordedDates 참조 */
+  /** 'YYYY-MM-DD' 키 집합 — 이미 기록이 있는 날짜(점 표시, 밴드 미제공 시 폴백). utils/recordedDates 참조 */
   recordedDates?: Set<string>;
+  /** 'YYYY-MM-DD' → 그 기록의 기간·recordId·국가라벨. 있으면 밴드로 렌더링된다 */
+  recordedRanges?: Map<string, RecordedRange>;
+  /** 밴드(기존 여행)를 탭했을 때 호출 — 신규 작성 시에만 전달. 있으면 탭 즉시 이 콜백으로 동기화한다 */
+  onSelectRecordedTrip?: (recordId: string, start: Date, end: Date) => void;
+  /** true면 Modal 대신 절대배치 오버레이로 렌더 — 이미 Modal 안인 화면(블로그 여행정보 패널)에서 iOS Modal-in-Modal 문제 회피 */
+  asOverlay?: boolean;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -83,7 +93,18 @@ export function CalendarBottomSheet({
   };
 
   const handleDayPress = (date: Date) => {
+    const range = recordedRanges?.get(toDateKey(date));
+    // 신규 작성: 밴드(기존 여행) 탭 → 여행 정보 동기화 후 상위에서 시트 닫음
+    if (range && onSelectRecordedTrip) {
+      onSelectRecordedTrip(range.recordId, range.start, range.end);
+      return;
+    }
     if (!selectingEnd) {
+      // 편집/앨범 모드: 밴드 탭 시 기간만 통째 선택 (기존 동작 유지)
+      if (range) {
+        setTempStart(range.start); setTempEnd(range.end); setSelectingEnd(false);
+        return;
+      }
       setTempStart(date); setTempEnd(null); setSelectingEnd(true);
     } else {
       if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
@@ -108,20 +129,22 @@ export function CalendarBottomSheet({
       date.setHours(0, 0, 0, 0);
       cells.push(date);
     }
-    while (cells.length % 7 !== 0) cells.push(null);
+    // 항상 6주(42칸)로 패딩 — 월 전환 시 4~6주 차이로 시트 높이가 출렁이는 것 방지
+    while (cells.length < 42) cells.push(null);
     return cells;
   }, [viewYear, viewMonth]);
 
   const grid = buildGrid();
+  const daysInViewMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
   const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
   const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
   const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
   const fmtSel = (d: Date | null) =>
     d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
 
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={calS.overlay} accessibilityViewIsModal>
+  // 시트 본체 — Modal 래핑과 오버레이 모드가 공유
+  const body = (
+      <View style={[calS.overlay, asOverlay && StyleSheet.absoluteFillObject]} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
         <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
@@ -155,10 +178,23 @@ export function CalendarBottomSheet({
               const isEnd   = isRangeEnd(date);
               const inRange = isInRange(date);
               const isEdge  = isStart || isEnd;
-              const hasRecord = !!recordedDates?.has(toDateKey(date));
+              const key = toDateKey(date);
+              const band = recordedRanges?.get(key);
+              const isTripStart = !!band && isSameDay(date, band.start);
+              // 인접일이 같은 여행인지 — Date 생성자가 월 경계를 자동 롤오버하므로 전/다음달 날짜도 정확히 조회된다
+              const prevSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() - 1)))?.recordId === band.recordId;
+              const nextSame = !!band && recordedRanges?.get(toDateKey(new Date(viewYear, viewMonth, date.getDate() + 1)))?.recordId === band.recordId;
+              const isMonthFirst = date.getDate() === 1;
+              const isMonthLast  = date.getDate() === daysInViewMonth;
+              // 캡(반원)으로 닫는 지점: 옆날이 같은 여행이 아닐 때(시작/끝·다른 여행과 인접)·주 경계·월 경계
+              const bandLeftRound  = !!band && (!prevSame || dow === 0 || isMonthFirst);
+              const bandRightRound = !!band && (!nextSame || dow === 6 || isMonthLast);
+              // 국가 칩: 여행 시작일, 또는 지난달부터 이어진 여행의 이번 달 첫 칸
+              const showChip = !!band && !!band.countryLabel && (isTripStart || (isMonthFirst && prevSame));
+              const hasDot = !band && !!recordedDates?.has(key); // 밴드 없을 때만 점 폴백
               return (
                 <TouchableOpacity
-                  key={toDateKey(date)}
+                  key={key}
                   onPress={() => handleDayPress(date)}
                   activeOpacity={0.7}
                   style={[calS.dayCell, { width: CELL_SIZE, height: CELL_SIZE },
@@ -167,6 +203,20 @@ export function CalendarBottomSheet({
                     isEnd   && [calS.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
                   ]}
                 >
+                  {band && (
+                    <View
+                      pointerEvents="none"
+                      style={[calS.bandSeg, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.55) },
+                        bandLeftRound && calS.bandSegLeft,
+                        bandRightRound && calS.bandSegRight,
+                      ]}
+                    />
+                  )}
+                  {band && showChip && (
+                    <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
+                      <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
+                    </View>
+                  )}
                   <View style={[calS.dayInner, isEdge && [calS.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
                     <Text style={[calS.dayText,
                       isToday && !isEdge && [calS.todayText, { color: skinAccent.accent }],
@@ -174,7 +224,7 @@ export function CalendarBottomSheet({
                       dow===6 && !isEdge && calS.saturdayText,
                       isEdge && calS.edgeText,
                     ]}>{date.getDate()}</Text>
-                    {hasRecord && <View style={[calS.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />}
+                    {hasDot && <View style={[calS.recordDot, { backgroundColor: skinAccent.accent }]} />}
                   </View>
                 </TouchableOpacity>
               );
@@ -191,6 +241,13 @@ export function CalendarBottomSheet({
           </TouchableOpacity>
         </Animated.View>
       </View>
+  );
+
+  // 오버레이 모드: 이미 Modal 안인 호출처(블로그 패널)용 — visible일 때만 절대배치로 덮는다
+  if (asOverlay) return visible ? body : null;
+  return (
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+      {body}
     </Modal>
   );
 }
@@ -288,6 +345,28 @@ const calS = StyleSheet.create({
   edgeText: { color: '#FFFFFF', fontWeight: '700' },
   // 기록 있음 점 — 날짜 숫자 아래 4px 점
   recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
+  // 기존 여행 캡슐 밴드 — 기간을 타원(스타디움)형 테두리로 감싼다.
+  // 중간 셀은 위·아래 선만 이어지고, 시작/끝(또는 주 경계)에서 반원 캡으로 닫힌다.
+  bandSeg: {
+    position: 'absolute', left: 0, right: 0, top: 5, bottom: 5,
+    borderTopWidth: 1.5, borderBottomWidth: 1.5,
+  },
+  bandSegLeft: {
+    borderLeftWidth: 1.5,
+    borderTopLeftRadius: 999, borderBottomLeftRadius: 999,
+    marginLeft: 3, // 인접한 다른 여행 캡슐과 시각적으로 분리(양쪽 합 6px 간격)
+  },
+  bandSegRight: {
+    borderRightWidth: 1.5,
+    borderTopRightRadius: 999, borderBottomRightRadius: 999,
+    marginRight: 3,
+  },
+  // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
+  countryChip: {
+    position: 'absolute', top: -7, left: 2, zIndex: 5,
+    maxWidth: CELL_SIZE + 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+  },
+  countryChipText: { fontSize: 9, fontWeight: '700', color: '#0A0A0F' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
   legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
 

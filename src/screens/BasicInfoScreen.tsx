@@ -13,10 +13,14 @@ import {
   Modal,
   FlatList,
   Alert,
+  Switch,
 } from 'react-native';
+import { useRecords } from '../store/recordStore';
+import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
+import { useSkinAccent } from '../constants/skinTheme';
 import { isHandleAvailable } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -60,11 +64,20 @@ const isValidBirthday = (v: string) => {
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 
+const STAY_TYPES: { value: StayType; key: string }[] = [
+  { value: 'exchange', key: 'stay.typeExchange' },
+  { value: 'language', key: 'stay.typeLanguage' },
+  { value: 'intern', key: 'stay.typeIntern' },
+  { value: 'workingHoliday', key: 'stay.typeWorkingHoliday' },
+  { value: 'other', key: 'stay.typeOther' },
+];
+
 type Props = RootStackScreenProps<'BasicInfo'>;
 
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const {
     setProfilePhoto,
     profilePhoto,
@@ -80,6 +93,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setHandle: setStoreHandle,
     setHandleChosen,
   } = useSettings();
+  const { startStay } = useRecords();
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
   // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능
   const [handle, setHandle] = useState(storeHandle || '');
@@ -92,6 +106,10 @@ export default function BasicInfoScreen({ navigation }: Props) {
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  const [stayOn, setStayOn] = useState(false);
+  const [stayCountry, setStayCountry] = useState<Country | null>(null);
+  const [stayType, setStayType] = useState<StayType>('exchange');
+  const [stayCountryModalVisible, setStayCountryModalVisible] = useState(false);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -151,10 +169,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setStoreBirthday(birthday);
     setStoreGender(gender);
     setStoreLanguage(language);
+    if (stayOn && stayCountry) startStay(stayCountry.name, stayType);
     navigation.navigate('TravelImport');
   };
 
-  const canContinue = HANDLE_RE.test(handle.trim()) && isValidBirthday(birthday) && gender !== '';
+  const canContinue = HANDLE_RE.test(handle.trim()) && isValidBirthday(birthday) && gender !== '' && (!stayOn || !!stayCountry);
 
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
@@ -304,6 +323,34 @@ export default function BasicInfoScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
 
+          {/* 장기체류 */}
+          <View style={styles.inputSection}>
+            <View style={styles.stayToggleRow}>
+              <Text style={styles.inputLabel}>{t('basicInfo.stayToggle')}</Text>
+              <Switch value={stayOn} onValueChange={setStayOn}
+                trackColor={{ false: '#3A3A46', true: skinAccent.accent }} thumbColor="#FFFFFF" />
+            </View>
+            {stayOn && (
+              <>
+                <TouchableOpacity style={styles.inputWrapper} activeOpacity={0.8}
+                  onPress={() => { setCountrySearch(''); setStayCountryModalVisible(true); }}>
+                  <Text style={[styles.input, { paddingVertical: 16 }]}>
+                    {stayCountry ? `${stayCountry.flag} ${stayCountry.name}` : t('basicInfo.stayCountryPlaceholder')}
+                  </Text>
+                  <Text style={styles.charCount}>{t('common.change')}</Text>
+                </TouchableOpacity>
+                <View style={styles.stayTypeRow}>
+                  {STAY_TYPES.map((ty) => (
+                    <TouchableOpacity key={ty.value} onPress={() => setStayType(ty.value)}
+                      style={[styles.stayTypeChip, stayType === ty.value && styles.stayTypeChipOn]} activeOpacity={0.8}>
+                      <Text style={[styles.stayTypeChipTxt, stayType === ty.value && styles.stayTypeChipTxtOn]}>{t(ty.key)}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+          </View>
+
         </ScrollView>
 
         {/* Bottom CTA */}
@@ -347,6 +394,41 @@ export default function BasicInfoScreen({ navigation }: Props) {
               >
                 <Text style={styles.modalItemText}>{item.flag} {item.name}</Text>
                 {codeOf(item) === codeOf(selectedCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
+              </TouchableOpacity>
+            )}
+          />
+        </View>
+      </Modal>
+
+      <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
+        <View style={styles.modalRoot} accessibilityViewIsModal>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{t('basicInfo.stayCountryLabel')}</Text>
+            <TouchableOpacity onPress={() => setStayCountryModalVisible(false)}>
+              <Text style={styles.modalClose}>{t('common.close')}</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={styles.modalSearch}
+            placeholder={t('basicInfo.residenceSearchPlaceholder')}
+            placeholderTextColor={Colors.textMuted}
+            value={countrySearch}
+            onChangeText={setCountrySearch}
+            autoFocus
+          />
+          <FlatList
+            data={(countrySearch.trim()
+              ? COUNTRIES.filter((c) => c.name.includes(countrySearch) || c.term.toLowerCase().includes(countrySearch.toLowerCase()))
+              : COUNTRIES).filter((c) => codeOf(c) !== codeOf(selectedCountry))}
+            keyExtractor={(c) => c.term}
+            keyboardShouldPersistTaps="handled"
+            renderItem={({ item }) => (
+              <TouchableOpacity
+                style={styles.modalItem}
+                onPress={() => { setStayCountry(item); setStayCountryModalVisible(false); setCountrySearch(''); }}
+              >
+                <Text style={styles.modalItemText}>{item.flag} {item.name}</Text>
+                {stayCountry && codeOf(item) === codeOf(stayCountry) && <Text style={styles.modalItemCheck}>✓</Text>}
               </TouchableOpacity>
             )}
           />
@@ -507,6 +589,14 @@ const styles = StyleSheet.create({
   },
 
   // Tags style removed
+
+  // Stay
+  stayToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  stayTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
+  stayTypeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)' },
+  stayTypeChipOn: { borderColor: '#BF85FC', backgroundColor: 'rgba(191,133,252,0.18)' },
+  stayTypeChipTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '600' },
+  stayTypeChipTxtOn: { color: '#FFFFFF' },
 
   // Bottom
   bottomCTA: {

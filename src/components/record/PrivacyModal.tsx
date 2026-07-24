@@ -13,7 +13,7 @@ import { LockClosedIcon as SvgLockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
- * 사진별 비공개 대상(친구) 선택 모달 — NewRecordScreen 전용.
+ * 사진별 비공개 대상(메이트) 선택 모달 — NewRecordScreen 전용.
  * (NewRecordScreen 에서 분리)
  */
 export function PrivacyModal({
@@ -71,14 +71,14 @@ export function PrivacyModal({
             </View>
           </View>
 
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
+          {/* 전체 비공개 — 모든 메이트에게 비공개 (맨 위 옵션) */}
           {allFriends.length > 0 && (() => {
             const allPrivate = selectedFriends.length === allFriends.length;
             return (
               <TouchableOpacity
                 style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
                 onPress={() => {
-                  // 한 번에 전체 설정/해제 → 개별 친구 체크 상태도 즉시 동기화
+                  // 한 번에 전체 설정/해제 → 개별 메이트 체크 상태도 즉시 동기화
                   onSetAll(allPrivate ? [] : [...allFriends]);
                 }}
                 activeOpacity={0.7}
@@ -108,7 +108,7 @@ export function PrivacyModal({
             </TouchableOpacity>
           )}
 
-          {/* 친구 목록 */}
+          {/* 메이트 목록 */}
           <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
             {allFriends.map(friend => {
               const isSelected = selectedFriends.includes(friend);

@@ -21,14 +21,15 @@ import {
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
-import Svg, { Path } from 'react-native-svg';
+import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import QuickShareOverlay, { type CardRect } from '../components/QuickShareOverlay';
 import { useDM } from '../store/dmStore';
 import { hitTestTarget, buildSharedRecord, type TargetRect } from '../store/dmShareLogic';
 import * as Haptics from 'expo-haptics';
 import { setTabBarHidden } from '../components/tabBarVisibility';
+import { requestOpenRecordFab } from '../components/recordFabState';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, ShareIcon as ShareSvgIcon, TrashIcon, GalleryIcon, PersonIcon, GlobeIcon, LockClosedIcon, ArchiveIcon, PencilIcon, BlockIcon, MegaphoneIcon } from '../components/icons';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import type { TabScreenProps } from '../navigation/types';
@@ -39,10 +40,11 @@ import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
-import { fetchFriendSuggestions, type FriendSuggestion } from '../services/social';
+import { fetchFriendSuggestions, type FriendSuggestion, fetchMateSuggestions, type MateSuggestionRow } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryEnglishName } from '../constants/countries';
+import { countryLabel as locCountry, countryTagLabel } from '../utils/countryLabel';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
@@ -50,11 +52,15 @@ import { useSkinAccent } from '../constants/skinTheme';
 import BlogPin from '../components/BlogPin';
 import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
+
+const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
 import * as Clipboard from 'expo-clipboard';
 import { handleBlock as confirmBlock, handleReport as openReport } from '../utils/reportAndBlock';
 import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
+import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
+import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const SCREEN_W_SOCIAL = Dimensions.get('window').width;
@@ -94,11 +100,11 @@ function ShareBottomSheet({
   postId?: string;
   navigation: any;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { neighbors } = useRecords();
-  // 공유 대상은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거) — 프로필 이모지·사진 반영
+  // 공유 대상은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거) — 프로필 이모지·사진 반영
   const shareFriends = neighbors.map((f) => ({
     id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
   }));
@@ -213,7 +219,7 @@ function ShareBottomSheet({
           </View>
         )}
 
-        {/* 친구 선택 — View 오버레이 (Modal 아님) */}
+        {/* 메이트 선택 — View 오버레이 (Modal 아님) */}
         {friendPickerVisible && (
           <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
             <View style={ss.friendPickerCard}>
@@ -268,7 +274,7 @@ function CommentBottomSheet({
   commentText: string;
   setCommentText: (t: string) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <Modal
       visible={visible}
@@ -382,7 +388,7 @@ function FeedCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const menuBtnRef = useRef<View>(null);
@@ -449,7 +455,7 @@ function FeedCard({
           activeOpacity={0.7}
         >
           <View style={s.feedAvatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} />
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={44} emojiSize={22} isExample={item.isExample} />
           </View>
         </TouchableOpacity>
         <View style={s.userInfo}>
@@ -463,15 +469,15 @@ function FeedCard({
             {item.countries && item.countries.length > 0
               ? item.countries.length <= 3
                 ? item.countries.map((c: { flag: string; name: string }, idx: number) => (
-                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
+                    <Text key={idx} style={s.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
                   ))
                 : <>
-                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                    <Text style={s.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
                     <Text style={s.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                   </>
-              : <Text style={s.countryTag} {...andFitText}>{item.country}</Text>
+              : <Text style={s.countryTag} {...andFitText}>{countryTagLabel(item.country, i18n.language)}</Text>
             }
-            <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>
+            {!item.isExample && <Text style={s.dateMeta}>{timeAgo(item.timestamp)}</Text>}
           </View>
         </View>
 
@@ -609,14 +615,14 @@ function FeedCard({
       </View>
 
       {/* 사진 영역 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
         <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photoPlaceholder}>
           <Text style={{ fontSize: 48, opacity: 0.4 }}>🌄</Text>
         </LinearGradient>
       </TouchableOpacity>
 
       {/* 본문 */}
-      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
         <View style={s.cardBody}>
           <Text style={s.content}>{item.content}</Text>
         </View>
@@ -687,6 +693,7 @@ function FeedCard({
 // 스냅 카드 (BeReal 스타일)
 // ─────────────────────────────────────────────
 function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id: string) => void; navigation: any }) {
+  const { i18n } = useTranslation();
   const { showCounts } = useSettings();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
   const [commentSheetVisible, setCommentSheetVisible] = useState(false);
@@ -704,7 +711,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
   })();
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
       <View style={sc.card}>
         {/* 헤더 */}
         <View style={sc.header}>
@@ -717,7 +724,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
             </View>
             <View>
               <Text style={[sc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={sc.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </TouchableOpacity>
           <View style={sc.snapBadge}>
@@ -754,7 +761,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
           {/* 국가 뱃지 */}
           {item.countryFlag && (
             <View style={sc.countryBadge}>
-              <Text style={sc.countryBadgeText}>{item.countryFlag} {item.countryName}</Text>
+              <Text style={sc.countryBadgeText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
             </View>
           )}
 
@@ -903,7 +910,7 @@ function BlogCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -951,7 +958,7 @@ function BlogCard({
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
       <View style={bc.card}>
         {/* 블로그 헤더 */}
         <View style={bc.header}>
@@ -960,11 +967,11 @@ function BlogCard({
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }} activeOpacity={0.7}
           >
             <View style={bc.avatar}>
-              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} />
+              <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={32} emojiSize={14} isExample={item.isExample} />
             </View>
             <View>
               <Text style={[bc.userName, nameFontStyle]}>{item.user.handle}</Text>
-              <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={bc.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </TouchableOpacity>
 
@@ -1072,12 +1079,12 @@ function BlogCard({
           {item.countries ? (
             item.countries.slice(0, 3).map((c: any, i: number) => (
               <View key={i} style={bc.countryTag}>
-                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {c.name}</Text>
+                <Text style={bc.countryTagText} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
               </View>
             ))
           ) : (
             <View style={bc.countryTag}>
-              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {item.countryName}</Text>
+              <Text style={bc.countryTagText} {...andFitText}>{item.countryFlag} {locCountry(item.countryName, i18n.language)}</Text>
             </View>
           )}
           {item.countries && item.countries.length > 3 && (
@@ -1200,7 +1207,7 @@ function AlbumCard({
   activeMenuId: string | null;
   onOpenMenu: (id: string | null) => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { showCounts } = useSettings();
   const nameFontStyle = usePostNameFont(item);
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -1250,7 +1257,7 @@ function AlbumCard({
   };
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id })}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined })}>
     <View style={ab.card}>
       {/* 헤더 */}
       <View style={ab.header}>
@@ -1259,7 +1266,7 @@ function AlbumCard({
           style={ab.userRow} activeOpacity={0.7}
         >
           <View style={ab.avatar}>
-            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} />
+            <AuthorAvatar photo={item.user.photo} emoji={item.user.emoji} size={38} emojiSize={18} isExample={item.isExample} />
           </View>
           <View>
             <Text style={[ab.userName, nameFontStyle]}>{item.user.handle}</Text>
@@ -1267,14 +1274,14 @@ function AlbumCard({
               {item.countries && (
                 item.countries.length <= 3
                   ? item.countries.map((c: any, i: number) => (
-                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {c.name}</Text>
+                      <Text key={i} style={ab.countryTag} {...andFitText}>{c.flag} {locCountry(c.name, i18n.language)}</Text>
                     ))
                   : <>
-                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {item.countries[0].name}</Text>
+                      <Text style={ab.countryTag} {...andFitText}>{item.countries[0].flag} {locCountry(item.countries[0].name, i18n.language)}</Text>
                       <Text style={ab.countryTag} {...andFitText}>+{item.countries.length - 1}</Text>
                     </>
               )}
-              <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>
+              {!item.isExample && <Text style={ab.date}>{timeAgo(item.timestamp)}</Text>}
             </View>
           </View>
         </TouchableOpacity>
@@ -1524,7 +1531,7 @@ const ab = StyleSheet.create({
 });
 
 // ─────────────────────────────────────────────
-// 친구 피드
+// 메이트 피드
 // ─────────────────────────────────────────────
 // ── 몰입형 스크롤링: 카드 등장 애니메이션 래퍼 ──
 // ─────────────────────────────────────────────
@@ -1561,7 +1568,7 @@ const tiltFor = (id: string): number => {
 };
 
 function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayName = isMyPost
@@ -1574,11 +1581,13 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
     <View style={d.meta}>
       <TouchableOpacity
         style={d.metaUser}
-        activeOpacity={0.7}
-        onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+        activeOpacity={item.isExample ? 1 : 0.7}
+        onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
       >
-        <View style={[d.metaAvatar, onLight && d.metaAvatarLight]}>
-          {isMyPost && globalProfilePhoto ? (
+        <View style={[d.metaAvatar, onLight && d.metaAvatarLight, item.isExample && { overflow: 'hidden' }]}>
+          {item.isExample ? (
+            <Image source={APP_LOGO} style={{ width: 18, height: 18 }} resizeMode="cover" />
+          ) : isMyPost && globalProfilePhoto ? (
             <Image source={{ uri: globalProfilePhoto }} style={{ width: 18, height: 18, borderRadius: 9 }} />
           ) : item.user.photo ? (
             <Image source={{ uri: item.user.photo }} style={{ width: 18, height: 18, borderRadius: 9 }} />
@@ -1586,15 +1595,22 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
             <PersonIcon size={12} color="#A0A0B0" />
           )}
         </View>
-        <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
+        {/* 예시 콘텐츠는 @핸들 대신 'eOrth 공식' 필 배지만 표시 (기능 소개 카드와 동일 룩) */}
+        {item.isExample ? (
+          <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>
+        ) : (
+          <Text style={[d.metaHandle, onLight && d.metaTextLight, nameFontStyle]} numberOfLines={1}>{displayName}</Text>
+        )}
       </TouchableOpacity>
-      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+      <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
         <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
         {showCounts && item.likes > 0 && <Text style={[d.metaCount, onLight && d.metaTextLight]}>{item.likes}</Text>}
       </TouchableOpacity>
-      <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-        <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
-      </TouchableOpacity>
+      {!item.isExample && (
+        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+          <Text style={[d.more, onLight && d.metaTextLight]}>⋯</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -1602,7 +1618,7 @@ function DiaryMeta({ item, navigation, toggleLike, onMore, showCounts, onLight }
 // 스트립(네컷) 카드 전용 푸터 — 시안(Group 2085664520): 프로필사진 없이 @아이디, 프레임과 아이디 사이에 방문국가.
 // 카드가 반투명 라이트(어두운 배경 위)라 글자는 밝은색.
 function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { handle: globalHandle, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const skinAccent = useSkinAccent();
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
@@ -1615,23 +1631,29 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
       {/* 프레임과 아이디 사이: 방문국가(좌) + 올린시간(우, 보라) — 시안처럼 같은 행 */}
       <View style={d.cutMetaTopRow}>
         <Text style={d.cutMetaCountry} numberOfLines={1}>{placeLabel}</Text>
-        <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+        {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
       </View>
       <View style={d.cutMetaRow}>
         <TouchableOpacity
           style={d.cutMetaIdBtn}
-          activeOpacity={0.7}
-          onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+          activeOpacity={item.isExample ? 1 : 0.7}
+          onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
         >
-          <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
+          {item.isExample ? (
+            <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>
+          ) : (
+            <Text style={[d.cutMetaHandle, nameFontStyle]} numberOfLines={1}>@{displayHandle}</Text>
+          )}
         </TouchableOpacity>
-        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => toggleLike(item.id)} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+        <TouchableOpacity style={d.metaLike} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={() => { if (item.isExample) return; toggleLike(item.id); }} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
           <Text style={[d.heart, item.liked && d.heartOn]}>{item.liked ? '♥' : '♡'}</Text>
           {showCounts && item.likes > 0 && <Text style={d.metaCount}>{item.likes}</Text>}
         </TouchableOpacity>
-        <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-          <Text style={d.more}>⋯</Text>
-        </TouchableOpacity>
+        {!item.isExample && (
+          <TouchableOpacity hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} onPress={onMore} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+            <Text style={d.more}>⋯</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -1786,15 +1808,59 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
   );
 }
 
-function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
-  const { t } = useTranslation();
+// 스트립 카드 사진 영역 — 상세(PostDetail·TripRecord)와 동일한 공용 캔버스(CutPhotoCanvas)로
+// 라이브 합성해 프레임 로고·문구·날짜 스탬프·사진 조정값까지 그대로 반영한다.
+// (기존 CutGridPreview는 배경+사진 슬롯만 그려 로고/스탬프가 소셜 카드에서 누락됐었음)
+function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
+  const [w, setW] = useState(0);
+  const frame = getCutFrame(cutPhoto.frameId);
+  const aspect = (frame && (CUT_LAYOUTS as any)[frame.layout]?.aspect) || 0.7;
+  return (
+    // aspect로 자리를 먼저 잡아 폭 측정 전(w=0)에도 마소너리 높이가 튀지 않게 한다.
+    <View style={{ width: '100%', aspectRatio: aspect }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
+      {/*
+        래스터화(shouldRasterizeIOS/renderToHardwareTextureAndroid): 카드 tilt 회전 아래에서
+        캔버스를 먼저 비트맵으로 굽고 회전 시 이중선형 보간으로 샘플링해 사진·슬롯 경계의
+        계단현상을 없앤다(내용이 정적이라 캐시 비용 미미).
+        단, 보간은 비트맵 '내부'에만 적용되고 비트맵 가장자리는 여전히 하드엣지로 회전되므로,
+        래스터화 레이어 경계와 캔버스 최외곽 테두리가 겹치면 프레임 테두리 계단이 그대로 남는다.
+        → margin:-1+padding:1 투명 블리드 링으로 캔버스의 모든 가장자리를 비트맵 내부로 밀어 넣는다.
+        collapsable={false}: iOS 새 아키텍처의 뷰 플래트닝이 이 래퍼를 없애면서
+        shouldRasterizeIOS가 무시되는 것을 방지(Fabric formsView 판정에 raster prop이 없음).
+      */}
+      <View
+        collapsable={false}
+        style={{ margin: -1, padding: 1 }}
+        shouldRasterizeIOS
+        renderToHardwareTextureAndroid
+      >
+        {w > 0 && (
+          <CutPhotoCanvas
+            frameId={cutPhoto.frameId}
+            photos={cutPhoto.photos}
+            transforms={cutPhoto.transforms}
+            width={w}
+            bgOverride={cutPhoto.frameColor}
+            bgImageOverride={cutPhoto.frameImage}
+            capture
+            showLogo={!cutPhoto.noLogo}
+            stamp={cutPhoto.stamp}
+          />
+        )}
+      </View>
+    </View>
+  );
+}
+
+function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
+  const { t, i18n } = useTranslation();
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
   const vt = item.viewType || 'feed';
-  const open = () => navigation.navigate('PostDetail', { postId: item.id });
+  const open = () => navigation.navigate('PostDetail', { postId: item.id, record: item.isExample ? item : undefined });
   // 두 번 연속 탭 → 좋아요 (이미 좋아요면 유지)
-  const like = () => { if (!item.liked) toggleLike(item.id); };
+  const like = () => { if (item.isExample || item.liked) return; toggleLike(item.id); };
   const tilt = tiltFor(item.id);
   const isMy = item.isMyPost ?? false;
   // 게시자 아이디 + 프리미엄 폰트 (내 글=내 설정값, 타인=프로필 조인 값)
@@ -1802,8 +1868,23 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
   const postHandleFont = handleFontStyle(isMy ? (isPremium ? myHandleFont : null) : item.user.font);
   const [reportVisible, setReportVisible] = useState(false);
   const [menuVisible, setMenuVisible] = useState(false);
+  // 메뉴 바텀시트 애니메이션 — 배경 딤은 '제자리 페이드', 시트만 슬라이드업.
+  // (animationType="slide"는 풀스크린 딤까지 통째로 올라와 검은 화면이 딸려 올라오는 거슬림이 있었음)
+  const menuAnim = useRef(new Animated.Value(0)).current; // 0=닫힘, 1=열림
+  const [menuMounted, setMenuMounted] = useState(false);
+  useEffect(() => {
+    if (menuVisible) {
+      setMenuMounted(true);
+      Animated.timing(menuAnim, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+    } else if (menuMounted) {
+      Animated.timing(menuAnim, { toValue: 0, duration: 170, useNativeDriver: true }).start(({ finished }) => {
+        if (finished) setMenuMounted(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuVisible]);
 
-  const onMore = () => setMenuVisible(true);
+  const onMore = () => { if (item.isExample) return; setMenuVisible(true); };
 
   const handleShare = async () => {
     const text = (item.content || item.memo || '').trim();
@@ -1820,17 +1901,27 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
   ]);
 
-  const menuOptions: { key: string; icon: string; label: string; danger?: boolean; onPress: () => void }[] = isMy
+  // 메뉴 아이콘은 앱 공용 SVG 아이콘 사용(이모지 대신) — 상세화면(PostDetail) 메뉴와 통일
+  const menuOptions: { key: string; icon: React.ReactNode; label: string; danger?: boolean; onPress: () => void }[] = variant === 'archived'
     ? [
-        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'archive', icon: '📦', label: t('social.archive'), onPress: () => onArchive(item.id) },
-        { key: 'edit', icon: '✏️', label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
-        { key: 'delete', icon: '🗑', label: t('social.delete'), danger: true, onPress: confirmDelete },
+        { key: 'unarchive', icon: <ArchiveIcon size={18} color="#fff" />, label: t('misc.unarchive'), onPress: () => onUnarchive?.(item.id) },
+        { key: 'delete', icon: <TrashIcon size={18} color="#FF3B30" />, label: t('social.delete'), danger: true, onPress: confirmDelete },
+      ]
+    : isMy
+    ? [
+        { key: 'share', icon: <ShareSvgIcon size={18} color="#fff" />, label: t('social.share'), onPress: handleShare },
+        { key: 'visibility',
+          icon: item.visibility === 'private' ? <GlobeIcon size={18} color="#fff" /> : <LockClosedIcon size={18} color="#fff" />,
+          label: t(item.visibility === 'private' ? 'social.makePublic' : 'social.makePrivate'),
+          onPress: () => onToggleVisibility(item.id) },
+        { key: 'archive', icon: <ArchiveIcon size={18} color="#fff" />, label: t('social.archive'), onPress: () => onArchive(item.id) },
+        { key: 'edit', icon: <PencilIcon size={18} color="#fff" />, label: t('social.edit'), onPress: () => navigation.navigate('NewRecord', { editRecord: records.find((r) => r.id === item.id) ?? item }) },
+        { key: 'delete', icon: <TrashIcon size={18} color="#FF3B30" />, label: t('social.delete'), danger: true, onPress: confirmDelete },
       ]
     : [
-        { key: 'share', icon: '↗', label: t('social.share'), onPress: handleShare },
-        { key: 'block', icon: '⛔', label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
-        { key: 'report', icon: '🚨', label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
+        { key: 'share', icon: <ShareSvgIcon size={18} color="#fff" />, label: t('social.share'), onPress: handleShare },
+        { key: 'block', icon: <BlockIcon size={18} color="#FF3B30" />, label: t('social.block'), danger: true, onPress: () => onBlock({ name: item.user.name, emoji: item.user.emoji, handle: item.user.handle, id: item.authorId }) },
+        { key: 'report', icon: <MegaphoneIcon size={18} color="#FF3B30" />, label: t('social.report'), danger: true, onPress: () => setReportVisible(true) },
       ];
 
   const meta = mode === 'full'
@@ -1887,9 +1978,12 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     const photos: string[] = item.cutPhoto?.photos || [];
     const hasGrid = photos.some(Boolean) && (item.cutPhoto?.frameId || item.cutPhoto?.layout);
     if (hasGrid) {
+      // 프레임이 확인되면 상세와 동일한 캔버스로(로고·문구·날짜·조정값 반영),
+      // frameId가 없는 레거시(layout만 저장)는 기존 격자 미리보기 유지
+      const hasFrame = !!(item.cutPhoto?.frameId && getCutFrame(item.cutPhoto.frameId));
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          <CutGridPreview cutPhoto={item.cutPhoto} />
+          {hasFrame ? <CutCanvasPreview cutPhoto={item.cutPhoto} /> : <CutGridPreview cutPhoto={item.cutPhoto} />}
           {cutMeta}
         </DiaryTappable>
       );
@@ -1947,23 +2041,29 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {!!excerpt && <Text style={d.jourBody} numberOfLines={3}>{excerpt}</Text>}
         <View style={d.jourFooter}>
           {/* 시안: 구분선 아래 보라색 올린 시간 → @아이디(좌) + 하트·더보기(우) */}
-          <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          {!item.isExample && <Text style={[d.jourTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
           <View style={d.jourFooterRow}>
             <TouchableOpacity
               style={d.jourHandleBtn}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+              activeOpacity={item.isExample ? 1 : 0.7}
+              onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
             >
-              <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+              {item.isExample ? (
+                <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>
+              ) : (
+                <Text style={[d.jourHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+              )}
             </TouchableOpacity>
             <View style={d.jourFooterRight}>
-              <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+              <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.jourLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
                 <Text style={[d.jourHeart, item.liked && d.jourHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
                 {showCounts && item.likes > 0 && <Text style={d.jourLikeCount}>{item.likes}</Text>}
               </TouchableOpacity>
-              <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-                <Text style={d.jourMore}>⋯</Text>
-              </TouchableOpacity>
+              {!item.isExample && (
+                <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+                  <Text style={d.jourMore}>⋯</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         </View>
@@ -1992,7 +2092,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
-          <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>
+          {!item.isExample && <Text style={[d.cutMetaTime, { color: skinAccent.accent }]} numberOfLines={1}>{timeAgo(item.timestamp)}</Text>}
         </View>
         {/* 시안(Group 2085664521): 그 아래 게시물 글 한 줄 */}
         {!!caption && <Text style={[d.polaCap, { fontFamily: SERIF }]} numberOfLines={1} ellipsizeMode="tail">{caption}</Text>}
@@ -2000,19 +2100,25 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         <View style={d.polaMetaRow}>
           <TouchableOpacity
             style={d.polaHandleBtn}
-            activeOpacity={0.7}
-            onPress={() => navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle })}
+            activeOpacity={item.isExample ? 1 : 0.7}
+            onPress={() => { if (item.isExample) return; navigation.navigate('FriendProfile', { userId: item.authorId ?? item.id, username: item.user.name, handle: item.user.handle }); }}
           >
-            <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+            {item.isExample ? (
+              <Text style={d.officialBadge}>{t('socialEmpty.official')}</Text>
+            ) : (
+              <Text style={[d.polaHandle, postHandleFont]} numberOfLines={1}>@{postHandle}</Text>
+            )}
           </TouchableOpacity>
           <View style={d.polaMetaRight}>
-            <TouchableOpacity onPress={() => toggleLike(item.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
+            <TouchableOpacity onPress={() => { if (item.isExample) return; toggleLike(item.id); }} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} style={d.polaLikeBtn} accessibilityRole="button" accessibilityLabel={t('social.likeA11y')}>
               <Text style={[d.polaHeart, item.liked && d.polaHeartOn]}>{item.liked ? '♥' : '♡'}</Text>
               {showCounts && item.likes > 0 && <Text style={d.polaLikeCount}>{item.likes}</Text>}
             </TouchableOpacity>
-            <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-              <Text style={d.polaMore}>⋯</Text>
-            </TouchableOpacity>
+            {!item.isExample && (
+              <TouchableOpacity onPress={onMore} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
+                <Text style={d.polaMore}>⋯</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </View>
@@ -2025,10 +2131,16 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
-      <Modal visible={menuVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setMenuVisible(false)} />
-          <View style={ss.sheet}>
+      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+        <View style={{ flex: 1 }}>
+          <Animated.View
+            pointerEvents="none"
+            style={[StyleSheet.absoluteFill, { backgroundColor: '#000', opacity: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [0, 0.6] }) }]}
+          />
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
+          <Animated.View
+            style={[ss.sheet, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
+          >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
               {menuOptions.map((opt, i) => (
@@ -2039,7 +2151,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
                     activeOpacity={0.7}
                     onPress={() => { setMenuVisible(false); setTimeout(opt.onPress, 280); }}
                   >
-                    <Text style={[s.menuItemIcon, { fontSize: 18, width: 24, textAlign: 'center' }]}>{opt.icon}</Text>
+                    <View style={{ width: 24, alignItems: 'center', justifyContent: 'center' }}>{opt.icon}</View>
                     <Text style={[s.menuItemText, { fontSize: 15 }, opt.danger && s.menuItemDanger]}>{opt.label}</Text>
                   </TouchableOpacity>
                 </View>
@@ -2048,7 +2160,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
             <TouchableOpacity style={ss.cancelCard} activeOpacity={0.7} onPress={() => setMenuVisible(false)}>
               <Text style={ss.cancelText}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         </View>
       </Modal>
       <ReportModal
@@ -2061,7 +2173,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
 }
 
 // 높이 추정 (2단 균형 분배용)
-const estDiaryHeight = (item: any, mode: string): number => {
+export const estDiaryHeight = (item: any, mode: string): number => {
   const vt = item.viewType || 'feed';
   let h = 200;
   if (vt === 'cut') {
@@ -2078,6 +2190,10 @@ const estDiaryHeight = (item: any, mode: string): number => {
 const d = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
+  // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
+  officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
+
+  // 공식 예시 콘텐츠 배지
 
   // 더블탭 하트 팝
   tapWrap: { position: 'relative' },
@@ -2240,18 +2356,119 @@ function ImmersiveCard({ children, index }: { children: React.ReactNode; index: 
 }
 
 // 피드 카드 — props가 안정적일 때 리렌더를 건너뛰도록 memo화 (스크롤·다른 글 변경 시 불필요 렌더 방지)
-const DiaryCardMemo = React.memo(DiaryCard);
+export const DiaryCardMemo = React.memo(DiaryCard);
+
+// 피드 추천 메이트 카드(여행 DNA) — 네온 글로우 글래스.
+// 반투명 유리 매트(별 배경이 비침) + 보라 그라데이션 테두리(SVG stroke, 빈피드 CTA와 동일 기법)
+// + iOS 글로우 그림자 + 추천 근거 서브라인(겹치는 나라·함께 아는 메이트) + 그라데이션 CTA.
+// 실블러(BlurView)는 대면적 안드 비용·no-op 함정 때문에 쓰지 않는다.
+function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
+  suggestions: MateSuggestionRow[];
+  onPressUser: (m: MateSuggestionRow) => void;
+  onPressCta: () => void;
+}) {
+  const { t } = useTranslation();
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  return (
+    <View
+      style={s.mateCard}
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setSize((p) => (p.w === width && p.h === height ? p : { w: width, h: height }));
+      }}
+    >
+      {/* 그라데이션 테두리 — 새 아키텍처 RNSVG 터치 삼킴 방지: View(pointerEvents=none)로 감싼다 */}
+      {size.w > 0 && (
+        <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+          <Svg width={size.w} height={size.h}>
+            <SvgDefs>
+              <SvgLinearGradient id="mateCardBorderGrad" x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor="#BF85FC" stopOpacity="0.9" />
+                <SvgStop offset="0.5" stopColor="#BF85FC" stopOpacity="0.12" />
+                <SvgStop offset="1" stopColor="#6B21A8" stopOpacity="0.7" />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <Rect
+              x={0.5}
+              y={0.5}
+              width={size.w - 1}
+              height={size.h - 1}
+              rx={15.5}
+              ry={15.5}
+              fill="none"
+              stroke="url(#mateCardBorderGrad)"
+              strokeWidth={1}
+            />
+          </Svg>
+        </View>
+      )}
+      <Text style={s.mateCardTitle}>✦ {t('social.mateSuggestTitle')}</Text>
+      {suggestions.map((m) => {
+        // 왜 추천됐는지 근거를 보여준다 — 데이터 없으면 서브라인 생략
+        const sub = [
+          m.sharedCount > 0 ? t('social.mateOverlapN', { count: m.sharedCount }) : null,
+          m.mutualCount > 0 ? t('social.mutualN', { count: m.mutualCount }) : null,
+        ].filter(Boolean).join(' · ');
+        return (
+          <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
+            <View style={s.mateCardAvatarRing}>
+              <View style={s.mateCardAvatar}>
+                {m.profilePhoto ? (
+                  <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
+                ) : (
+                  <PersonIcon size={16} color="#A0A0B0" />
+                )}
+              </View>
+            </View>
+            <View style={{ flex: 1, minWidth: 0 }}>
+              <Text style={s.mateCardHandle} numberOfLines={1}>{m.handle}</Text>
+              {!!sub && <Text style={s.mateCardSub} numberOfLines={1}>{sub}</Text>}
+            </View>
+          </TouchableOpacity>
+        );
+      })}
+      <TouchableOpacity
+        activeOpacity={0.85}
+        onPress={onPressCta}
+        accessibilityRole="button"
+        accessibilityLabel={t('social.adInviteCta')}
+        style={s.mateCardCtaWrap}
+      >
+        <LinearGradient colors={['#BF85FC', '#6B21A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mateCardCta}>
+          <Text style={s.mateCardCtaTxt}>{t('social.adInviteCta')} →</Text>
+        </LinearGradient>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
 function FriendsTab({ navigation }: { navigation: any }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds } = useRecords();
-  // 빈 피드 기본 콘텐츠 — 추천 친구 (팔로우할 사람이 생기면 피드가 채워진다)
+  // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
+  const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let alive = true;
     fetchFriendSuggestions(5).then((list) => { if (alive) setSuggested(list); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  // 피드 추천 메이트 카드(여행 DNA) — 진입 시 1회, 실패/빈 결과면 카드 미삽입
+  const [mateSuggestions, setMateSuggestions] = useState<MateSuggestionRow[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const localCountries = Array.from(new Set([
+        ...records.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
+        ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+      ]));
+      const rows = await fetchMateSuggestions(3, localCountries);
+      if (alive && rows.length > 0) setMateSuggestions(rows);
+    })();
     return () => { alive = false; };
   }, []);
   // 당겨서 새로고침 → 백엔드 피드 갱신
@@ -2284,7 +2501,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  // 빠른공유 친구는 이웃(neighbors)에서 — 대화량 많은 순 상위 3명.
+  // 빠른공유 메이트는 메이트(neighbors)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
     () => neighbors
@@ -2380,13 +2597,29 @@ function FriendsTab({ navigation }: { navigation: any }) {
   }, []);
 
   const handleArchive = (id: string) => {
-    archiveRecord(id);
-    showToast(t('social.archivedToast'));
+    Alert.alert(
+      t('social.archiveConfirmTitle'),
+      t('social.archiveConfirmMsg'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('social.archive'), onPress: () => { archiveRecord(id); showToast(t('social.archivedToast')); } },
+      ]
+    );
   };
 
   const handleDelete = (id: string) => {
     deleteRecord(id);
     showToast(t('social.deletedToast'));
+  };
+
+  // 내 게시물 공개범위 토글 (이웃 공개 ↔ 비공개). updateRecord가 로컬·영속·백엔드 동기화까지 처리.
+  // 피드에서 비공개로 바꾸면 필터에서 빠져 카드가 곧바로 사라진다(의도된 피드백).
+  const handleToggleVisibility = (id: string) => {
+    const rec = records.find((r) => r.id === id);
+    if (!rec) return;
+    const next = rec.visibility === 'private' ? 'neighbors' : 'private';
+    updateRecord(id, { visibility: next });
+    showToast(t(next === 'private' ? 'social.madePrivateToast' : 'social.madePublicToast'));
   };
 
   // 차단(확인 다이얼로그 경유)
@@ -2396,13 +2629,14 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
   // 메모이즈된 카드(DiaryCardMemo)에 넘길 콜백을 안정적인 ref로 박제 — 매 렌더 최신 함수를 가리키되
   // 콜백 ref 자체는 불변 → 카드 props가 안정되어 React.memo가 불필요 리렌더를 건너뛴다.
-  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
-  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
+  const fnRef = useRef({ toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleToggleVisibility, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel });
+  fnRef.current = { toggleLike, reportPost, handleArchive, handleDelete, handleBlock, handleToggleVisibility, handleQuickStart, handleQuickMove, handleQuickEnd, handleQuickCancel };
   const cbToggleLike = useCallback((id: string) => fnRef.current.toggleLike(id), []);
   const cbReport     = useCallback((id: string, reason?: string) => fnRef.current.reportPost(id, reason), []);
   const cbArchive    = useCallback((id: string) => fnRef.current.handleArchive(id), []);
   const cbDelete     = useCallback((id: string) => fnRef.current.handleDelete(id), []);
   const cbBlock      = useCallback((user: { name: string; emoji: string; handle?: string; id?: string }) => fnRef.current.handleBlock(user), []);
+  const cbToggleVisibility = useCallback((id: string) => fnRef.current.handleToggleVisibility(id), []);
   const cbQuickStart = useCallback((item: any, rect: any) => fnRef.current.handleQuickStart(item, rect), []);
   const cbQuickMove  = useCallback((px: number, py: number) => fnRef.current.handleQuickMove(px, py), []);
   const cbQuickEnd   = useCallback((px: number, py: number) => fnRef.current.handleQuickEnd(px, py), []);
@@ -2420,7 +2654,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       .filter(
         (r) =>
           r.visibility === 'neighbors' &&
-          // 사진첩(과거 여행 불러오기)은 게시물이 아니라 앨범 — 이웃 프로필·여행 카드에서만
+          // 사진첩(과거 여행 불러오기)은 게시물이 아니라 앨범 — 메이트 프로필·여행 카드에서만
           // 보이고 소셜 피드 스트림에는 흐르지 않는다 (b84d93a로 friends 승격되며 피드
           // 공개범위 조건을 충족하게 된 부작용 차단).
           r.viewType !== 'album' &&
@@ -2505,19 +2739,44 @@ function FriendsTab({ navigation }: { navigation: any }) {
     return out;
   }, [timelineItems, isPremium]);
 
+  // 추천 메이트 카드 — 2번째 항목 뒤 1개. 광고 시스템과 독립(발견 기능이라 프리미엄에도 노출)
+  const timelineWithMate = useMemo(() => {
+    if (mateSuggestions.length === 0 || timelineWithAds.length < 2) return timelineWithAds;
+    const out = [...timelineWithAds];
+    out.splice(2, 0, { _mateSlot: true, id: 'mate-slot' } as any);
+    return out;
+  }, [timelineWithAds, mateSuggestions.length]);
+
+  const isEmptyFeed = allVisible.length === 0;
+
+  // 예시 콘텐츠 글은 언어에 맞춰 번역(t 사용) — 원본 상수는 한글이라 여기서 오버라이드
+  const exampleFeed = useMemo(() => ({ ...EXAMPLE_FEED_RECORD, content: t('socialEmpty.exampleFeedContent') }), [t]);
+  const exampleSnap = useMemo(() => ({ ...EXAMPLE_SNAP, content: t('socialEmpty.exampleSnapContent') }), [t]);
+
+  // 스냅이 하나도 없으면 eOrth 데모 스냅으로 스냅 링 소개
+  const snapDisplay = snapItems.length === 0 ? [{ ...exampleSnap, _hasUnviewed: true }] : snapItems;
+
   // 높이 추정 기반 2단 균형 분배 (광고 슬롯은 variant별 고정 추정치)
   const columns = useMemo(() => {
+    // 빈 피드 — eOrth 공식 예시(예시 기록 + 기능 소개 카드)로 첫인상을 채운다
+    const feedSource = isEmptyFeed
+      ? [exampleFeed, { _featureCard: true, id: 'feature-card' }]
+      : timelineWithMate;
     const cols: any[][] = [[], []];
     const h = [0, 0];
-    timelineWithAds.forEach((item) => {
+    feedSource.forEach((item) => {
       const c = h[0] <= h[1] ? 0 : 1;
       cols[c].push(item);
       h[c] += item._adSlot
         ? 190 // 폴라로이드 광고 카드 (스티커는 오버레이라 높이 미차지)
-        : estDiaryHeight(item, diaryCardMode);
+        : item._mateSlot
+          ? 102 + mateSuggestions.length * 48 // 추천 메이트 카드: 패딩+제목+CTA ≈102 + 행당 48(링 아바타+서브라인)
+          : item._featureCard
+            ? 260 // 기능 소개 카드 고정 추정치
+            : estDiaryHeight(item, diaryCardMode);
     });
     return cols;
-  }, [timelineWithAds, diaryCardMode]);
+  }, [isEmptyFeed, timelineWithMate, diaryCardMode, exampleFeed, mateSuggestions.length]);
 
   // 헤더 패럴랙스 (몰입형 스크롤링)
   const headerScale = scrollY.interpolate({
@@ -2547,23 +2806,25 @@ function FriendsTab({ navigation }: { navigation: any }) {
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
-        {snapItems.length > 0 && (
+        {snapDisplay.length > 0 && (
           <View style={s.storySection}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.storyScroll}>
-              {snapItems.map(snap => (
+              {snapDisplay.map(snap => (
                 <TouchableOpacity
                   key={snap.id}
                   style={s.storyItem}
                   activeOpacity={0.8}
-                  onPress={() => navigation.navigate('PostDetail', { postId: snap.id })}
+                  onPress={() => navigation.navigate('PostDetail', { postId: snap.id, record: snap.isExample ? snap : undefined })}
                 >
                   <LinearGradient
                     colors={snap._hasUnviewed ? (skinAccent.ringGradient ?? ['#22D3EE', '#A855F7', '#D946EF']) : ['#3A3A4A', '#3A3A4A']}
                     style={s.storyRing}
                   >
                     <View style={s.storyAvatarWrap}>
-                      <View style={s.storyAvatar}>
-                        {(snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
+                      <View style={[s.storyAvatar, snap.isExample && { overflow: 'hidden' }]}>
+                        {snap.isExample ? (
+                          <Image source={APP_LOGO} style={{ width: 52, height: 52 }} resizeMode="cover" />
+                        ) : (snap.isMyPost || snap.user.handle === globalHandle) && globalProfilePhoto ? (
                           <Image source={{ uri: globalProfilePhoto }} style={{ width: 52, height: 52, borderRadius: 26 }} />
                         ) : snap.user.photo ? (
                           <Image source={{ uri: snap.user.photo }} style={{ width: 52, height: 52, borderRadius: 26 }} />
@@ -2596,50 +2857,23 @@ function FriendsTab({ navigation }: { navigation: any }) {
 
         {/* 여행 다이어리 — 피드·블로그·앨범·네컷 2단 매거진 배치 */}
         <View style={s.friendsScroll}>
-          {allVisible.length === 0 && (
-            /* 빈 피드 기본 콘텐츠 — 안내 + 추천 친구 + 친구 찾기 CTA */
-            <View style={s.emptyWrap}>
-              <Text style={s.emptyText}>{t('social.emptyText')}</Text>
-              {suggested.length > 0 && (
-                <>
-                  <Text style={s.emptySuggestTitle}>{t('social.emptySuggestTitle')}</Text>
-                  {suggested.map((f) => (
-                    <TouchableOpacity
-                      key={f.id}
-                      style={s.suggestRow}
-                      activeOpacity={0.75}
-                      onPress={() => navigation.navigate('FriendProfile', { userId: f.id, username: f.handle || '', handle: f.handle || undefined })}
-                    >
-                      {f.profilePhoto ? (
-                        <Image source={{ uri: f.profilePhoto }} style={s.suggestAvatarImg} />
-                      ) : (
-                        <View style={s.suggestAvatar}>
-                          <PersonIcon size={20} color="#A0A0B0" />
-                        </View>
-                      )}
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.suggestHandle}>@{f.handle || ''}</Text>
-                        {f.mutualCount > 0 && (
-                          <Text style={s.suggestMeta}>{t('social.mutualN', { count: f.mutualCount })}</Text>
-                        )}
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </>
-              )}
-              <TouchableOpacity
-                style={[s.emptyCta, { backgroundColor: skinAccent.accentDeep }]}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate('FriendSearch')}
-              >
-                <Text style={s.emptyCtaText}>{t('social.emptyCtaFindFriends')}</Text>
-              </TouchableOpacity>
-            </View>
-          )}
           <View style={d.masonry}>
             {[0, 1].map((ci) => (
               <View key={ci} style={d.col}>
                 {columns[ci].map((item: any) => {
+                  if (item._featureCard) {
+                    return <FeatureShowcaseCard key={item.id} onPremiumPress={() => navigation.navigate('Premium')} />;
+                  }
+                  if (item._mateSlot) {
+                    return (
+                      <MateSuggestCard
+                        key={item.id}
+                        suggestions={mateSuggestions}
+                        onPressUser={(m) => navigation.navigate('FriendProfile', { userId: m.authorId, username: m.handle || '', handle: m.handle || undefined })}
+                        onPressCta={() => navigation.navigate('FriendSearch')}
+                      />
+                    );
+                  }
                   if (item._adSlot) {
                     return (
                       <FeedAdCard
@@ -2662,6 +2896,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                       onDelete={cbDelete}
                       onBlock={cbBlock}
                       onReport={cbReport}
+                      onToggleVisibility={cbToggleVisibility}
                       onQuickStart={cbQuickStart}
                       onQuickMove={cbQuickMove}
                       onQuickEnd={cbQuickEnd}
@@ -2691,6 +2926,93 @@ function FriendsTab({ navigation }: { navigation: any }) {
               </View>
             ))}
           </View>
+          {isEmptyFeed && (
+            /* 빈 피드 기본 콘텐츠 — 예시 카드 아래에 배치: 안내 + 기록 유도 CTA + 추천 메이트 + 메이트 찾기 보조 링크 */
+            <View style={s.emptyWrap}>
+              <Text style={s.emptyText}>{t('socialEmpty.title')}</Text>
+              {/* 주 CTA: 첫 기록 남기기 */}
+              <TouchableOpacity
+                style={[s.emptyCta, { backgroundColor: skinAccent.pill, shadowColor: skinAccent.accent }]}
+                activeOpacity={0.85}
+                onLayout={(e) => {
+                  const { width, height } = e.nativeEvent.layout;
+                  setCtaSize((p) => (p.w === width && p.h === height ? p : { w: width, h: height }));
+                }}
+                onPress={() => {
+                  // 메인(지구본) 탭으로 이동한 뒤 RecordFab의 기록 형식 메뉴를 펼친다.
+                  requestOpenRecordFab();
+                  navigation.navigate('MainTab');
+                }}
+              >
+                {/* 통계탭 연도별 방문 통계 박스(GradientHalfCard)와 동일한 #CECFCD 대각선 그라데이션 테두리(stroke만) */}
+                {ctaSize.w > 0 && (
+                  <Svg
+                    style={StyleSheet.absoluteFill}
+                    width={ctaSize.w}
+                    height={ctaSize.h}
+                    pointerEvents="none"
+                  >
+                    <SvgDefs>
+                      <SvgLinearGradient id="ctaBorderGrad" x1="0" y1="0" x2="1" y2="1">
+                        <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                        <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity="0" />
+                        <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity="0" />
+                        <SvgStop offset="1" stopColor="#CECFCD" stopOpacity="0.45" />
+                      </SvgLinearGradient>
+                    </SvgDefs>
+                    <Rect
+                      x={0.5}
+                      y={0.5}
+                      width={ctaSize.w - 1}
+                      height={ctaSize.h - 1}
+                      rx={ctaSize.h / 2 - 0.5}
+                      ry={ctaSize.h / 2 - 0.5}
+                      fill="none"
+                      stroke="url(#ctaBorderGrad)"
+                      strokeWidth={1}
+                    />
+                  </Svg>
+                )}
+                <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
+              </TouchableOpacity>
+              {/* 추천 메이트 (보조) */}
+              {suggested.length > 0 && (
+                <>
+                  <Text style={s.emptySuggestTitle}>{t('social.emptySuggestTitle')}</Text>
+                  {suggested.map((f) => (
+                    <TouchableOpacity
+                      key={f.id}
+                      style={s.suggestRow}
+                      activeOpacity={0.75}
+                      onPress={() => navigation.navigate('FriendProfile', { userId: f.id, username: f.handle || '', handle: f.handle || undefined })}
+                    >
+                      {f.profilePhoto ? (
+                        <Image source={{ uri: f.profilePhoto }} style={s.suggestAvatarImg} />
+                      ) : (
+                        <View style={s.suggestAvatar}>
+                          <PersonIcon size={20} color="#A0A0B0" />
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.suggestHandle}>@{f.handle || ''}</Text>
+                        {f.mutualCount > 0 && (
+                          <Text style={s.suggestMeta}>{t('social.mutualN', { count: f.mutualCount })}</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </>
+              )}
+              {/* 메이트찾기 보조 링크 (덜 강조) */}
+              <TouchableOpacity
+                style={s.emptyCtaLink}
+                activeOpacity={0.75}
+                onPress={() => navigation.navigate('FriendSearch')}
+              >
+                <Text style={s.emptyCtaLinkText}>{t('social.emptyCtaFindFriends')}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
           <View style={{ height: 100 }} />
         </View>
       </Animated.ScrollView>
@@ -2746,7 +3068,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
 // ─────────────────────────────────────────────
 export default function SocialScreen({ navigation }: TabScreenProps<'SocialTab'>) {
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <View style={s.container}>
       {/* 별 배경 (Stars.svg) — 콘텐츠 뒤에 깔린다 */}
@@ -2879,7 +3201,7 @@ const s = StyleSheet.create({
     borderColor: '#0A0A0F',
   },
 
-  // 친구 피드
+  // 메이트 피드
   friendsScroll: {
     paddingHorizontal: Spacing[6],
     paddingTop: Spacing[4],
@@ -3055,7 +3377,7 @@ const s = StyleSheet.create({
     textAlign: 'center',
     marginTop: Spacing[8],
   },
-  // 빈 피드 기본 콘텐츠 (추천 친구 + CTA)
+  // 빈 피드 기본 콘텐츠 (추천 메이트 + CTA)
   emptyWrap: {
     paddingHorizontal: 20,
     paddingBottom: 8,
@@ -3097,16 +3419,58 @@ const s = StyleSheet.create({
     marginTop: 1,
   },
   emptyCta: {
+    // 하단 탭의 활성 알약과 동일한 디자인: 보라 알약 + 밝은(#CECFCD) 테두리 + 보라 글로우
     marginTop: 18,
-    borderRadius: 22,
-    paddingVertical: 13,
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 24,
+    alignSelf: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.5,
+    shadowRadius: 12,
+    elevation: 6,
   },
   emptyCtaText: {
     fontSize: 14,
     fontWeight: '700',
     color: '#FFFFFF',
   },
+  emptyCtaLink: {
+    marginTop: 14,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  emptyCtaLinkText: {
+    fontSize: 13,
+    color: C.dim,
+    textDecorationLine: 'underline',
+  },
+
+  // 피드 추천 메이트 카드 (여행 DNA) — 네온 글로우 글래스
+  // 반투명 배경으로 별 배경이 비치는 유리 느낌 + iOS 보라 글로우(안드는 elevation 색 지정 불가라 생략)
+  mateCard: {
+    backgroundColor: 'rgba(46,46,59,0.55)',
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    shadowColor: '#BF85FC',
+    shadowOpacity: 0.28,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  mateCardTitle: { fontSize: 13, fontWeight: '800', color: '#BF85FC', marginBottom: 10, letterSpacing: 0.2 },
+  mateCardRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 6 },
+  // 아바타 네온 링 — 얇은 보라 테두리 안에 아바타
+  mateCardAvatarRing: { width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(191,133,252,0.5)', alignItems: 'center', justifyContent: 'center' },
+  mateCardAvatar: { width: 30, height: 30, borderRadius: 15, backgroundColor: '#1A1A26', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  mateCardAvatarImg: { width: 30, height: 30 },
+  mateCardHandle: { fontSize: 13, fontWeight: '600', color: '#FFFFFF' },
+  mateCardSub: { fontSize: 10.5, color: '#A1A1B0', marginTop: 1 },
+  mateCardCtaWrap: { marginTop: 10, borderRadius: 999, overflow: 'hidden' },
+  mateCardCta: { height: 36, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
+  mateCardCtaTxt: { fontSize: 13, fontWeight: '700', color: '#FFFFFF' },
 });
 
 // ─────────────────────────────────────────────
@@ -3358,7 +3722,7 @@ const ss = StyleSheet.create({
     color: '#FFFFFF',
   },
 
-  // 친구 선택 모달
+  // 메이트 선택 모달
   friendPickerCard: {
     backgroundColor: 'rgba(20,20,32,0.7)',
     borderRadius: 20,

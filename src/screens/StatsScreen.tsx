@@ -1,4 +1,4 @@
-import React, { useRef, useState, useCallback, useEffect, useId } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useId, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -17,6 +17,7 @@ import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
@@ -25,6 +26,7 @@ import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, {
+  Image as SvgImage,
   Path as SvgPath,
   Circle as SvgCircle,
   Rect as SvgRect,
@@ -34,7 +36,6 @@ import Svg, {
   LinearGradient as SvgLinearGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
-import { STATS_GLOBE_PATH } from '../data/statsGlobePath';
 import { useSettings } from '../store/settingsStore';
 import { PersonIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
@@ -200,6 +201,7 @@ const ORBIT_H = Math.ceil(312 * OS);
 const ORBIT_CX = ARC_W / 2;
 const ORBIT_CY = 196.2 * OS;
 const ORBIT_R = 160.2 * OS;
+const ORBIT_LIFT = 12; // 랭킹 노드·궤도선을 함께 위로 살짝 올리는 오프셋(px)
 // 노드 — [cx, cy, r] (시안 좌표), 순위 낮을수록 링이 옅어진다
 const NODE_GEO: [number, number, number][] = [
   [168, 36, 35.5],
@@ -208,7 +210,6 @@ const NODE_GEO: [number, number, number][] = [
   [23, 127, 23],
   [312, 127, 23],
 ];
-const NODE_RING_OPACITY = [1, 0.5, 0.5, 0.2, 0.2];
 // ── 궤도 캐러셀(이스터에그) — 별점 원판을 꾹 누른 채 좌우 드래그로 랭킹 노드 회전 ──
 // 슬롯을 좌→우 순서로 정렬하고 각 슬롯의 (궤도 중심 기준) 각도·반지름을 구해 원호를 따라 보간.
 // 맨 오른쪽→맨 왼쪽 랩 구간은 아래쪽 큰 호를 한 바퀴 돌아 넘어간다(행성 궤도 느낌).
@@ -270,15 +271,28 @@ const ORBIT_PATH = (() => {
   const x2 = ORBIT_CX + ORBIT_R * Math.sin(ORBIT_SPAN);
   return `M ${x1} ${y1} A ${ORBIT_R} ${ORBIT_R} 0 0 1 ${x2} ${y1}`;
 })();
+// 궤도 곡선 PNG — Figma 시안(Ellipse 3073 (1)) 소프트 아치. ORBIT_PATH 아치 바운딩 박스에 정렬(노드와 동일 위치 통과).
+const ORBIT_LINE_IMG = require('../../assets/statsOrbitLine.png');
+const ORBIT_IMG_HALF_W = ORBIT_R * Math.sin(ORBIT_SPAN);       // 아치 반폭(끝점 x)
+const ORBIT_IMG_X = ORBIT_CX - ORBIT_IMG_HALF_W;               // 좌측 끝
+const ORBIT_IMG_Y = ORBIT_CY - ORBIT_R;                        // 아치 정점(top)
+const ORBIT_IMG_W = ORBIT_IMG_HALF_W * 2;                      // 전체 폭
+const ORBIT_IMG_H = ORBIT_R * (1 - Math.cos(ORBIT_SPAN));      // 정점→끝점 높이
+// 별점 지구본 emblem(디스크+격자) — Figma 시안(Group 2085664602) PNG. 맨뒤 원판/격자 문양 공용.
+const RATING_GLOBE_IMG = require('../../assets/statsRatingGlobe.png');
+const RATING_GLOBE_R = 120;                                    // emblem 반지름(살짝 키움: 108.5→120)
+const RATING_GLOBE_D = RATING_GLOBE_R * 2 * OS;                // emblem 지름
+const RATING_GLOBE_X = (168.46 - RATING_GLOBE_R) * OS;         // 좌측(중심 168.46,193)
+const RATING_GLOBE_Y = (193 - RATING_GLOBE_R) * OS;           // 상단
 // 지구본 문양(2겹)은 시안 원본 격자 패스(data/statsGlobePath)를 라벤더→보라 그라데이션으로 그린다
 
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
   const insets = useSafeAreaInsets();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
-  const { profilePhoto, globeSkin } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
+  const { profilePhoto, globeSkin, homeCountryCode } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
   const neonRing = (skinAccent.ringGradient ?? ['#00D7F3', '#FD07E0']) as [string, string];
@@ -478,6 +492,18 @@ export default function StatsScreen() {
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
 
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = useMemo(() => {
+    const s = new Set<string>();
+    const name = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name;
+    if (name) {
+      s.add(name);
+      if (name === '대한민국') s.add('한국');
+      if (name === '한국') s.add('대한민국');
+    }
+    return s;
+  }, [homeCountryCode]);
+
   // 1. World Explorations Hero Stats
   const visitedCountriesSet = new Set<string>();
   const visitedCountriesList: { name: string; flag: string }[] = [];
@@ -486,12 +512,14 @@ export default function StatsScreen() {
   myRecords.forEach((r) => {
     if (r.countries && r.countries.length > 0) {
       r.countries.forEach((c) => {
+        if (homeNames.has(c.name)) return; // 거주국 제외
         if (!visitedCountriesSet.has(c.name)) {
           visitedCountriesSet.add(c.name);
           visitedCountriesList.push({ name: c.name, flag: c.flag });
         }
       });
     } else if (r.countryName) {
+      if (homeNames.has(r.countryName)) return; // 거주국 제외
       if (!visitedCountriesSet.has(r.countryName)) {
         visitedCountriesSet.add(r.countryName);
         visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
@@ -832,56 +860,20 @@ export default function StatsScreen() {
         <View style={styles.orbitSection}>
           {/* 장식 레이어 — 별점 스택(1겹 유리→2겹 지구본→3겹 유리) + 배경 구 + 궤도 곡선 */}
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
-            {/* 맨뒤 유리 원판(배경 구) — 블러 + 흰3% 틴트 + 메뉴탭바와 동일한 #CECFCD 그라데이션 테두리 */}
+            {/* 맨뒤 유리 원판(배경 구) — Figma 시안(Group 2085664602) 지구본 emblem PNG. 블러 컨테이너 위 옅게(0.2) 깔려 배경 구 역할 */}
             <View style={styles.ratingDiskBack}>
               <BlurView intensity={16} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
               <View style={styles.ratingDiskBackTint} />
               <Svg width={217 * OS} height={217 * OS} style={StyleSheet.absoluteFill}>
-                <SvgDefs>
-                  {/* 프로스트 매트 — 뒤가 비어 블러가 안 보이는 맨뒤 판에 유리 광택을 얹어 흐릿한 느낌을 냄 */}
-                  <SvgRadialGradient id="ratingDiskBackFrost" cx="42%" cy="38%" r="65%">
-                    <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.06} />
-                    <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity={0} />
-                  </SvgRadialGradient>
-                  {/* 좌상단→우하단 대각선. 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
-                  <SvgLinearGradient id="ratingDiskBackBorder" x1="0" y1="0" x2="1" y2="1">
-                    <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
-                    <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity={0} />
-                    <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity={0} />
-                    <SvgStop offset="1" stopColor="#CECFCD" stopOpacity={0.45} />
-                  </SvgLinearGradient>
-                </SvgDefs>
-                {/* 프로스트 광택(테두리보다 뒤) */}
-                <SvgCircle
-                  cx={(217 * OS) / 2}
-                  cy={(217 * OS) / 2}
-                  r={(217 * OS) / 2 - 0.75}
-                  fill="url(#ratingDiskBackFrost)"
-                />
-                <SvgCircle
-                  cx={(217 * OS) / 2}
-                  cy={(217 * OS) / 2}
-                  r={(217 * OS) / 2 - 0.75}
-                  fill="none"
-                  stroke="url(#ratingDiskBackBorder)"
-                  strokeWidth={1.5}
-                />
+                <SvgImage href={RATING_GLOBE_IMG} x={0} y={0} width={217 * OS} height={217 * OS} preserveAspectRatio="xMidYMid meet" />
               </Svg>
             </View>
             {/* 궤도 곡선 — 스펙: border 4px + border-image(180deg 흰0.3 0%→회0 57.93%) + backdrop-filter blur(4px).
                 translateY -6로 살짝 위. backdrop-filter는 SVG 스트로크에 못 걸어 같은 그라데이션의 옅은 소프트 1겹으로 근사 */}
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
-              <SvgDefs>
-                <SvgLinearGradient id="statsOrbitLine" x1="0" y1={22 * OS} x2="0" y2={206 * OS} gradientUnits="userSpaceOnUse">
-                  <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.3} />
-                  <SvgStop offset="0.5793" stopColor="#999999" stopOpacity={0} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgG translateY={-6} opacity={0.3}>
-                {/* backdrop blur(4px) 근사 — 4px 선 양옆으로 ~2px 번짐 */}
-                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeOpacity={0.38} strokeWidth={8} strokeLinecap="round" fill="none" />
-                {/* border 4px solid */}
-                <SvgPath d={ORBIT_PATH} stroke="url(#statsOrbitLine)" strokeWidth={4} strokeLinecap="round" fill="none" />
+              {/* 궤도 곡선 — Figma 시안(Ellipse 3073 (1)) PNG. 아치 바운딩 박스에 정렬해 노드와 동일 위치를 통과 */}
+              <SvgG translateY={-6 - ORBIT_LIFT}>
+                <SvgImage href={ORBIT_LINE_IMG} x={ORBIT_IMG_X} y={ORBIT_IMG_Y} width={ORBIT_IMG_W} height={ORBIT_IMG_H} preserveAspectRatio="none" />
               </SvgG>
             </Svg>
             {/* 1겹 — 지구본 뒤 유리 원판 (스펙: #FFFFFF08(3%) + backdrop blur 4.17px) */}
@@ -894,26 +886,10 @@ export default function StatsScreen() {
               <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
               <View style={styles.ratingDisk3Tint} />
             </View>
-            {/* 2겹 지구본 문양 — 시안 원본 격자 패스(라벤더→보라 그라데이션). 판 위에 그려 문양 유지 */}
+            {/* 지구본 문양 — Figma 시안(Group 2085664602) PNG. 유리판 위, 맨뒤 원판과 동심·동일 크기(217*OS)로 또렷한 emblem */}
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
-              <SvgDefs>
-                <SvgLinearGradient id="statsGlobeGrid" x1="168.46" y1="98.65" x2="168.46" y2="287.4" gradientUnits="userSpaceOnUse">
-                  <SvgStop offset="0" stopColor="#E0C9FF" />
-                  <SvgStop offset="1" stopColor="#7C3AED" stopOpacity={0.2} />
-                </SvgLinearGradient>
-              </SvgDefs>
-              <SvgG scale={OS} opacity={0.6}>
-                <SvgPath d={STATS_GLOBE_PATH} fill="url(#statsGlobeGrid)" fillOpacity={0.28} />
-              </SvgG>
+              <SvgImage href={RATING_GLOBE_IMG} x={RATING_GLOBE_X} y={RATING_GLOBE_Y} width={RATING_GLOBE_D} height={RATING_GLOBE_D} preserveAspectRatio="xMidYMid meet" />
             </Svg>
-            {/* 문양 살짝 번지게 — 새 아키텍처에서 SVG 필터가 안 먹어, 문양 위에 얇은 네이티브 블러를 얹어 격자를 부드럽게 */}
-            <BlurView
-              intensity={16}
-              tint="dark"
-              experimentalBlurMethod="dimezisBlurView"
-              style={styles.globeGridBlur}
-              pointerEvents="none"
-            />
             {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽) */}
             <Svg width={170 * OS} height={170 * OS} style={styles.ratingDisk3BorderBox} pointerEvents="none">
               <SvgDefs>
@@ -973,7 +949,7 @@ export default function StatsScreen() {
             const { x: gx, y: gy, gr, opacity } = pos;
             const size = gr * 2 * OS;
             const left = gx * OS - size / 2;
-            const top = gy * OS - size / 2;
+            const top = gy * OS - size / 2 - ORBIT_LIFT;
             const big = gr >= 33;   // 상단 대형 슬롯 부근
             const small = gr <= 26; // 가장자리 소형 슬롯 부근
             return (
@@ -991,13 +967,14 @@ export default function StatsScreen() {
                     numberOfLines={1}
                     {...andFitText}
                   >
-                    {c.name}
+                    {countryLabel(c.name, i18n.language)}
                   </Text>
                   <Text style={[styles.arcVisits, { color: globePalette[0] }, small && styles.arcVisitsSmall]} {...andFitText}>
                     {t('stats.visitsUnit', { count: c.visits })}
                   </Text>
                 </View>
-                {/* 노드 링 — 개별 마젠타→시안 그라데이션 스트로크, 순위별 불투명도 1/0.5/0.2 */}
+                {/* 노드 링 — 개별 마젠타→시안 그라데이션 스트로크. 위치별 불투명도(가운데 1 / 양옆 첫번째=2위 0.5 / 양끝=6위 0.2).
+                    순위(i)가 아니라 현재 위치(big/small)를 기준 — 캐러셀 회전 시 좌우 짝이 맞게 */}
                 <View style={StyleSheet.absoluteFill} pointerEvents="none">
                   <Svg width={size} height={size}>
                     <SvgDefs>
@@ -1011,7 +988,7 @@ export default function StatsScreen() {
                       cy={size / 2}
                       r={size / 2 - 0.5}
                       stroke={`url(#arcNodeRing${i})`}
-                      strokeOpacity={NODE_RING_OPACITY[Math.min(i, 4)]}
+                      strokeOpacity={big ? 1 : small ? 0.2 : 0.5}
                       strokeWidth={1}
                       fill="none"
                     />
