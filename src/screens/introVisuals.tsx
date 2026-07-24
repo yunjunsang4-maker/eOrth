@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, Dimensions, AppState } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, Dimensions, AppState, Animated, Easing, Image } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
@@ -159,14 +159,52 @@ export function IntroVisual1() {
   );
 }
 
-// ── 2페이지: 별하늘 + 보라/흰 글로우만 (시안 65) ──
+// ── 2페이지: 여행 기록 카드 콜라주 밴드 (시안 iPhone 17 - 65 (1)) ──
+// 밴드 PNG(1073×433)는 시안(402 기준) 좌표와 1:1 스케일. 시안 크롭은 밴드의 두 번째
+// 필름 스트립(PNG x≈620)이 화면 x200에 오는 위치 — 이때 좌측 저널(-112)·좌측 폴라로이드(51)·
+// 우측 폴라로이드(360)가 시안과 일치한다. 필름 스트립 상단 y113에서 테이프 여유(≈21)를 뺀
+// y92가 밴드 상단. 같은 밴드 두 장을 이어붙여 한 장 폭만큼 왼쪽→오른쪽 등속 이동 후 리셋
+// = 이음새 없는 무한 마퀴.
+const INTRO2_BAND = require('../../assets/intro2-band.png');
+const BAND_W = 1073;
+const BAND_H = 433;
+const BAND_LEFT = -420; // 시안 크롭 기준 초기 위치(시안 단위)
+const BAND_TOP = 92;
+const BAND_LOOP_MS = 55000; // 한 바퀴(밴드 한 장 폭) 시간 — 약 20pt/s로 '천천히'
+
 export function IntroVisual2() {
   const H = 700 * DS;
+  const W = BAND_W * DS;
+  // 0→1 = 오른쪽으로 밴드 한 장 폭 이동. 두 장이 이어져 있어 리셋 순간에도 화면이 동일 → 무한 반복.
+  const loop = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    const anim = Animated.loop(
+      Animated.timing(loop, { toValue: 1, duration: BAND_LOOP_MS, easing: Easing.linear, useNativeDriver: true })
+    );
+    anim.start();
+    return () => anim.stop();
+  }, [loop]);
+  const tx = loop.interpolate({ inputRange: [0, 1], outputRange: [0, W] });
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
+    // overflow hidden: 밴드가 슬라이드 폭을 좌우로 크게 넘으므로
+    // 클리핑하지 않으면 FlatList의 1·3단계 슬라이드 위까지 밴드가 그려진다.
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
       <Svg width={SW} height={H} viewBox="0 0 402 700">
         <SideGlows purpleCx={6.5} purpleCy={247} />
       </Svg>
+      {/* 시작 위치가 시안 크롭이 되도록 한 장 폭만큼 왼쪽에서 출발(두 번째 장이 시안 위치) */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: (BAND_LEFT - BAND_W) * DS,
+          top: BAND_TOP * DS,
+          flexDirection: 'row',
+          transform: [{ translateX: tx }],
+        }}
+      >
+        <Image source={INTRO2_BAND} style={{ width: W, height: BAND_H * DS }} resizeMode="stretch" />
+        <Image source={INTRO2_BAND} style={{ width: W, height: BAND_H * DS }} resizeMode="stretch" />
+      </Animated.View>
     </View>
   );
 }
