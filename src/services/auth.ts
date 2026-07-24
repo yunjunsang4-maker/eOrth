@@ -13,6 +13,7 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { GoogleSignin, isSuccessResponse, isErrorWithCode, statusCodes } from '@react-native-google-signin/google-signin';
 import * as Crypto from 'expo-crypto';
 import { withTimeout } from '../utils/withTimeout';
+import i18n from '../i18n';
 import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
 
 // 인증 네트워크 호출 타임아웃(ms) — 응답이 없을 때 무한 대기를 막는다.
@@ -31,28 +32,31 @@ export interface AuthResult {
   error?: string;
 }
 
-// Supabase 영문 에러 → 한글 안내
-const ERROR_KO: { match: string; message: string }[] = [
-  { match: 'Invalid login credentials', message: '이메일 또는 비밀번호가 올바르지 않아요.' },
-  { match: 'User already registered', message: '이미 가입된 이메일이에요. 로그인해주세요.' },
-  { match: 'already been registered', message: '이미 사용 중인 이메일이에요.' },
-  { match: 'Email not confirmed', message: '이메일 인증이 완료되지 않았어요.\n받은 편지함을 확인해주세요.' },
-  { match: 'Password should be at least', message: '비밀번호는 6자 이상이어야 해요.' },
-  { match: 'Unable to validate email address', message: '올바른 이메일 형식이 아니에요.' },
-  { match: 'For security purposes', message: '잠시 후 다시 시도해주세요.' },
+// Supabase 영문 에러 → 현재 앱 언어 안내(i18n) — 문구는 locales의 authErr.* 참조
+const ERROR_KEYS: { match: string; key: string }[] = [
+  { match: 'Invalid login credentials', key: 'authErr.invalidCred' },
+  { match: 'User already registered', key: 'authErr.alreadyRegistered' },
+  { match: 'already been registered', key: 'authErr.emailInUse' },
+  { match: 'Email not confirmed', key: 'authErr.emailNotConfirmed' },
+  { match: 'Password should be at least', key: 'authErr.pwTooShort' },
+  { match: 'Unable to validate email address', key: 'authErr.invalidEmail' },
+  { match: 'For security purposes', key: 'authErr.tooMany' },
   // PKCE: 메일 링크를 요청한 기기가 아닌 곳(재설치 포함)에서 열면 code verifier가 없어 실패한다
-  { match: 'code verifier', message: '메일을 요청했던 기기·앱에서 링크를 열어주세요.\n(다른 기기라면 메일을 다시 요청해주세요.)' },
-  { match: 'Network request failed', message: '네트워크 연결을 확인해주세요.' },
-  { match: 'timeout', message: '응답이 지연되고 있어요.\n네트워크를 확인한 뒤 다시 시도해주세요.' },
+  { match: 'code verifier', key: 'authErr.codeVerifier' },
+  { match: 'Network request failed', key: 'authErr.network' },
+  { match: 'timeout', key: 'authErr.timeout' },
 ];
 
 function toKoMessage(raw: string): string {
-  const found = ERROR_KO.find((e) => raw.includes(e.match));
-  return found ? found.message : `로그인 처리 중 문제가 발생했어요.\n(${raw})`;
+  const found = ERROR_KEYS.find((e) => raw.includes(e.match));
+  return found ? i18n.t(found.key) : i18n.t('authErr.generic', { raw });
 }
 
+// 자주 쓰는 고정 안내 — 언어 전환을 따라가도록 호출 시점에 조회
+const msgNotConfigured = () => i18n.t('authErr.notConfigured');
+
 export async function signUpWithEmail(email: string, password: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     // emailRedirectTo: 인증 메일 링크 클릭 시 앱으로 복귀(eorth://email-confirm)해 자동 로그인/온보딩으로 이어진다.
     const { data, error } = await withTimeout(supabase.auth.signUp({
@@ -70,7 +74,7 @@ export async function signUpWithEmail(email: string, password: string): Promise<
 }
 
 export async function signInWithEmail(email: string, password: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { error } = await withTimeout(supabase.auth.signInWithPassword({ email, password }), AUTH_TIMEOUT_MS);
     if (error) return { ok: false, error: toKoMessage(error.message) };
@@ -92,7 +96,7 @@ const IDENTIFIER_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *   (엣지 함수 미배포 시 아이디 로그인은 실패하며 이메일 로그인은 계속 동작한다.)
  */
 export async function signInWithIdentifier(identifier: string, password: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   const id = identifier.trim();
   if (IDENTIFIER_EMAIL_RE.test(id)) {
     return signInWithEmail(id.toLowerCase(), password);
@@ -105,7 +109,7 @@ export async function signInWithIdentifier(identifier: string, password: string)
     if (error) return { ok: false, error: toKoMessage(error.message || 'Network request failed') };
     // 계정 존재 여부 노출 방지: 아이디 없음/비번 틀림 모두 동일한 일반 메시지로 처리
     if (!data?.ok || !data?.session?.access_token || !data?.session?.refresh_token) {
-      return { ok: false, error: '아이디 또는 비밀번호가 올바르지 않아요.' };
+      return { ok: false, error: i18n.t('authErr.idOrPwWrong') };
     }
     const { error: setErr } = await supabase.auth.setSession({
       access_token: data.session.access_token,
@@ -120,7 +124,7 @@ export async function signInWithIdentifier(identifier: string, password: string)
 
 /** 가입 인증 메일 재전송 (Confirm email 활성화 시) */
 export async function resendEmailConfirmation(email: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { error } = await supabase.auth.resend({ type: 'signup', email });
     if (error) return { ok: false, error: toKoMessage(error.message) };
@@ -137,7 +141,7 @@ const resetPasswordRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', pat
 const emailConfirmRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'email-confirm' });
 
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     // redirectTo 를 앱 딥링크로 지정 → 메일 링크 클릭 시 앱으로 복귀해 새 비밀번호를 설정할 수 있다.
     const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: resetPasswordRedirect });
@@ -150,7 +154,7 @@ export async function sendPasswordReset(email: string): Promise<AuthResult> {
 
 /** 메일 링크의 code 를 세션으로 교환 (비밀번호 재설정·이메일 인증 공용) */
 export async function exchangeAuthCode(code: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { error } = await withTimeout(supabase.auth.exchangeCodeForSession(code), AUTH_TIMEOUT_MS);
     if (error) return { ok: false, error: toKoMessage(error.message) };
@@ -165,7 +169,7 @@ export async function exchangeAuthCode(code: string): Promise<AuthResult> {
  * (Supabase 기본 설정은 기존·새 주소 양쪽 확인(Secure email change)일 수 있음 — 안내 문구는 일반형 유지)
  */
 export async function requestEmailChange(newEmail: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { error } = await withTimeout(
       supabase.auth.updateUser(
@@ -183,7 +187,7 @@ export async function requestEmailChange(newEmail: string): Promise<AuthResult> 
 
 /** 새 비밀번호로 변경 (복구 세션 또는 로그인 상태에서 호출) */
 export async function updatePassword(newPassword: string): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { error } = await supabase.auth.updateUser({ password: newPassword });
     if (error) return { ok: false, error: toKoMessage(error.message) };
@@ -203,7 +207,7 @@ const oauthRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'auth
  *           ② Supabase > Providers > Apple 활성 + Client IDs에 번들 ID(com.yunjunsang.eorth) 등록
  */
 async function signInWithAppleNative(): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     // 리플레이 방지 nonce — Apple 요청에는 SHA256 해시를 싣고, Supabase 검증에는 원문을 넘긴다
     const rawNonce = Crypto.randomUUID();
@@ -215,7 +219,7 @@ async function signInWithAppleNative(): Promise<AuthResult> {
       ],
       nonce: hashedNonce,
     });
-    if (!credential.identityToken) return { ok: false, error: 'Apple 인증 토큰을 받지 못했어요.' };
+    if (!credential.identityToken) return { ok: false, error: i18n.t('authErr.appleTokenMissing') };
     const { error } = await withTimeout(
       supabase.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken, nonce: rawNonce }),
       AUTH_TIMEOUT_MS,
@@ -267,7 +271,7 @@ function ensureGoogleConfigured() {
  * Play 서비스가 없는 기기면 기존 웹 OAuth로 자동 폴백해 로그인이 막히지 않게 한다.
  */
 async function signInWithGoogleNative(): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) return signInWithProviderWeb('google');
   try {
     ensureGoogleConfigured();
@@ -277,7 +281,7 @@ async function signInWithGoogleNative(): Promise<AuthResult> {
     const response = await GoogleSignin.signIn();
     if (!isSuccessResponse(response)) return { ok: false, cancelled: true };
     const idToken = response.data.idToken;
-    if (!idToken) return { ok: false, error: 'Google 인증 토큰을 받지 못했어요.' };
+    if (!idToken) return { ok: false, error: i18n.t('authErr.googleTokenMissing') };
     const nonce = extractNonceFromIdToken(idToken);
     const { error } = await withTimeout(
       supabase.auth.signInWithIdToken({ provider: 'google', token: idToken, ...(nonce ? { nonce } : {}) }),
@@ -301,7 +305,7 @@ async function signInWithGoogleNative(): Promise<AuthResult> {
  * 그 외/폴백은 Supabase OAuth(PKCE) + 인앱 브라우저.
  */
 export async function signInWithProvider(provider: 'google' | 'apple'): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   if (provider === 'apple' && Platform.OS === 'ios') return signInWithAppleNative();
   if (provider === 'google') return signInWithGoogleNative();
   return signInWithProviderWeb(provider);
@@ -312,7 +316,7 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
  * Redirect URL에 위 딥링크를 등록해야 한다.
  */
 async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<AuthResult> {
-  if (!supabase) return { ok: false, error: 'Supabase가 설정되지 않았어요.' };
+  if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
       provider,
@@ -324,7 +328,7 @@ async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<Auth
         queryParams: provider === 'google' ? { prompt: 'select_account' } : undefined,
       },
     });
-    if (error || !data?.url) return { ok: false, error: toKoMessage(error?.message || '로그인 URL 생성 실패') };
+    if (error || !data?.url) return { ok: false, error: toKoMessage(error?.message || i18n.t('authErr.oauthUrlFailed')) };
 
     // CSRF 방어 심화: 인증 시작 URL의 state 를 보관해 콜백 state 와 대조(PKCE code_verifier와 별개 이중 방어)
     const expectedState = new URL(data.url).searchParams.get('state');
@@ -337,14 +341,14 @@ async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<Auth
     const cbUrl = new URL(result.url);
     // state 불일치(콜백 가로채기 의심)면 코드 교환을 중단한다
     if (expectedState && cbUrl.searchParams.get('state') !== expectedState) {
-      return { ok: false, error: '인증 상태 검증에 실패했어요. 다시 시도해주세요.' };
+      return { ok: false, error: i18n.t('authErr.stateMismatch') };
     }
     // 공급자/Supabase 구간에서 실패하면 code 대신 error 파라미터가 담겨 돌아온다 — 실제 원인을 그대로 보여준다
     const cbErr = cbUrl.searchParams.get('error_description') || cbUrl.searchParams.get('error');
     if (cbErr) return { ok: false, error: toKoMessage(cbErr) };
     // PKCE: 콜백 URL의 code 를 세션으로 교환
     const code = cbUrl.searchParams.get('code');
-    if (!code) return { ok: false, error: '인증 코드를 받지 못했어요.' };
+    if (!code) return { ok: false, error: i18n.t('authErr.noAuthCode') };
     const { error: exErr } = await withTimeout(supabase.auth.exchangeCodeForSession(code), AUTH_TIMEOUT_MS);
     if (exErr) return { ok: false, error: toKoMessage(exErr.message) };
     return { ok: true };

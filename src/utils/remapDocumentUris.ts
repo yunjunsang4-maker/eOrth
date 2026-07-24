@@ -80,6 +80,37 @@ export function remapRecordDocUris<T extends TravelRecord>(rec: T): T {
     }
   }
 
+  // 블로그 블록(사진·사진묶음·영상+썸네일)도 documentDirectory 절대경로일 수 있다 — 함께 복구
+  let blogBlocks = rec.blogBlocks;
+  if (blogBlocks?.length) {
+    let bbChanged = false;
+    const next = blogBlocks.map((b) => {
+      if (b.type === 'image' && b.uri) {
+        const u = remapDocUri(b.uri);
+        if (u !== b.uri) { bbChanged = true; return { ...b, uri: u }; }
+        return b;
+      }
+      if (b.type === 'images' && b.items?.length) {
+        let itChanged = false;
+        const items = b.items.map((it) => {
+          const u = remapDocUri(it.uri);
+          if (u !== it.uri) { itChanged = true; return { ...it, uri: u }; }
+          return it;
+        });
+        if (itChanged) { bbChanged = true; return { ...b, items }; }
+        return b;
+      }
+      if (b.type === 'video' && b.uri) {
+        const u = remapDocUri(b.uri);
+        const th = b.thumbnail ? remapDocUri(b.thumbnail) : b.thumbnail;
+        if (u !== b.uri || th !== b.thumbnail) { bbChanged = true; return { ...b, uri: u, thumbnail: th }; }
+        return b;
+      }
+      return b;
+    });
+    if (bbChanged) blogBlocks = next;
+  }
+
   let perCountryData = rec.perCountryData;
   if (perCountryData) {
     let pcdChanged = false;
@@ -98,6 +129,7 @@ export function remapRecordDocUris<T extends TravelRecord>(rec: T): T {
   }
 
   const changed =
+    blogBlocks !== rec.blogBlocks ||
     medias !== rec.medias ||
     representativePhoto !== rec.representativePhoto ||
     representativePhotoSource !== rec.representativePhotoSource ||
@@ -112,6 +144,7 @@ export function remapRecordDocUris<T extends TravelRecord>(rec: T): T {
   if (!changed) return rec;
   return {
     ...rec,
+    blogBlocks,
     medias,
     representativePhoto,
     representativePhotoSource,

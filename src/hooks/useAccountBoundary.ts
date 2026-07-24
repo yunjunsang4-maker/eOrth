@@ -64,10 +64,15 @@ export function useAccountBoundary(): () => Promise<void> {
     // 경계 처리 시작 — 복원이 끝나기 전의 로컬 상태(빈/이전 계정)가 서버 백업을
     // 덮어쓰지 못하게 백업을 잠근다. 처리 끝에서 다시 연다.
     setAppStateBackupArmed(false);
+    // 예외로 중단돼도 백업을 다시 열어도 안전한 상태인지 — 같은 계정 재진입(로컬이 원본)이면 true.
+    // 계정 전환/새 기기 복원 '도중' 실패는 잠금을 유지한다(부분 복원 상태가 서버 백업을 덮지 않게).
+    // 과거엔 catch에서 아무것도 안 해 예외 한 번에 그 세션 내내 백업이 무음으로 중단됐다.
+    let armSafeOnError = false;
     try {
       const uid = await getMyUserId();
       if (!uid) return;
       const last = await AsyncStorage.getItem(LAST_UID_KEY);
+      armSafeOnError = !last || last === uid; // 전환이 아니면 로컬이 원본 — 실패해도 백업 재개 안전
       if (last && last !== uid) {
         // 계정 전환(다른 계정): 이전 계정 로컬 제거 후 새 계정 데이터를 서버에서 복원.
         // 푸시 토큰 삭제 — 세션이 살아있는 이 시점에 실행해야 RLS가 통과된다(클리어 후엔 권한 없음).
@@ -86,6 +91,7 @@ export function useAccountBoundary(): () => Promise<void> {
         }
         await restoreAppState(); // 새 계정의 설정·부가상태 복원 (리셋 직후라 로컬이 빈 상태)
         await hydrateMyRecords();
+        armSafeOnError = true; // 전환 복원 완료 — 이후 실패는 백업 재개 안전
       } else if (last !== uid) {
         // 새 기기/이 설치 최초 진입(last=null): 로컬을 지우지 않는다(이 사용자의 로컬 초안 보존).
         // 기존 사용자가 새 기기에서 로그인할 때 빈 로컬이 서버 프로필을 덮어쓰는 것을 막기 위해,
@@ -112,7 +118,10 @@ export function useAccountBoundary(): () => Promise<void> {
       setAppStateBackupArmed(true);
       await AsyncStorage.setItem(LAST_UID_KEY, uid);
     } catch {
-      // 경계 처리 실패해도 로그인/진입 자체는 계속 진행
+      // 경계 처리 실패해도 로그인/진입 자체는 계속 진행.
+      // 같은 계정 재진입(또는 복원 완료 후) 실패라면 백업 잠금은 풀어 둔다 —
+      // 안 풀면 이 세션의 설정·부가상태 변경이 서버에 전혀 백업되지 않는다.
+      if (armSafeOnError) setAppStateBackupArmed(true);
     }
   };
 }

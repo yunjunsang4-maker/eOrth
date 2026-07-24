@@ -404,16 +404,8 @@ export default function MainScreen({ navigation, route }: Props) {
         measure(snapAnchorRef), // 숨김 앵커 → 스냅 버튼 실제 위치
       ]);
       if (cancelled) return;
-      // FAB(+) 는 CustomTabBar 레이어(탭 바 위)로 이동해 ref 측정이 불가하다.
-      // 위치가 결정적이라 RecordFab 와 동일한 상수로 강조 영역을 계산한다.
       const WIN_W = Dimensions.get('window').width;
       const FAB_BTN = 56;
-      const fab: CoachRect = {
-        x: WIN_W / 2 - FAB_BTN / 2,
-        y: height - ((insets.bottom || 0) + 73) - FAB_BTN, // 하단 중앙, 탭 바 위 겹침
-        width: FAB_BTN,
-        height: FAB_BTN,
-      };
       const SNAP_BTN = 60;
       // 측정 성공 시 실제 위치, 실패 시 상수 폴백
       const snap: CoachRect = snapMeasured ?? {
@@ -421,6 +413,18 @@ export default function MainScreen({ navigation, route }: Props) {
         y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,
+      };
+      // FAB(+) 는 CustomTabBar 레이어(탭 바 위)로 이동해 ref 측정이 불가하다.
+      // 스냅 앵커가 실측됐으면 거기서 유도한다 — 둘 다 bottom 고정 상수라
+      // fabY = snapY + (129-73) + (60-56) = snapY + 60. 이렇게 하면 window 높이 오차
+      // (안드로이드 내비바 등)가 스냅과 똑같이 상쇄된다. 실측 실패 시에만 상수 폴백.
+      const fab: CoachRect = {
+        x: WIN_W / 2 - FAB_BTN / 2,
+        y: snapMeasured
+          ? snapMeasured.y + 60
+          : height - ((insets.bottom || 0) + 73) - FAB_BTN, // 하단 중앙, 탭 바 위 겹침
+        width: FAB_BTN,
+        height: FAB_BTN,
       };
       // 하단 버튼(스냅·FAB)을 강조하는 단계의 말풍선은 가장 높은 하단 버튼(스냅) 위로 올린다.
       // 스냅·FAB는 탭 바 위 오버레이(말풍선보다 앞 레이어)라, 겹치면 버튼이 말풍선을 가리기 때문.

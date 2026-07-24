@@ -89,7 +89,7 @@ const s = StyleSheet.create({
   card: { width: '100%', aspectRatio: 0.713, borderRadius: 16, overflow: 'hidden', backgroundColor: '#0A0A0F' },
   img: { width: '100%', height: '66.85%' }, // 242/362
 
-  band: { flex: 1, backgroundColor: 'rgba(217,217,217,0.2)', paddingHorizontal: 13, paddingTop: 11 }, // 20·17 → 12.9·10.9
+  band: { flex: 1, backgroundColor: 'rgba(217,217,217,0.2)', paddingHorizontal: 13, paddingTop: 10 }, // 20·17 → 12.9·10.9 (프리미엄 4줄이 클리핑되지 않게 1dp 당김)
 
   badge: {
     alignSelf: 'flex-start',

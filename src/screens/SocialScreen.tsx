@@ -2699,7 +2699,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
   }, [allVisible, globalHandle, viewedSnapIds]);
   // 피드·블로그·앨범·네컷(스냅 제외)을 시간순으로 섞어 2단 매거진으로 배치 (스냅은 상단 스토리 라인)
   const timelineItems = useMemo(
-    () => allVisible.filter((r) => r.viewType !== 'snap').sort((a, b) => b.timestamp - a.timestamp),
+    () => allVisible.filter((r) => r.viewType !== 'snap').sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0)),
     [allVisible]
   );
 

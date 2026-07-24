@@ -1854,6 +1854,34 @@ const ko = {
     notifBody: '이번 여행을 이어스로 남겨보세요',
     abroad: '해외',
   },
+  // 스토어 공용(recordStore 등) — 화면 밖(토스트·자동 생성 데이터)에서 쓰는 문구
+  store: {
+    syncFailed: '서버 동기화에 실패했어요. 네트워크를 확인해 주세요.',
+    feedLoadFailed: '피드를 불러오지 못했어요. 네트워크를 확인해 주세요.',
+    tripTitle: '{{name}} 여행',
+    stayTitle: '{{name}} 체류',
+  },
+  // 인증 오류 안내 (services/auth.ts)
+  authErr: {
+    notConfigured: 'Supabase가 설정되지 않았어요.',
+    invalidCred: '이메일 또는 비밀번호가 올바르지 않아요.',
+    alreadyRegistered: '이미 가입된 이메일이에요. 로그인해주세요.',
+    emailInUse: '이미 사용 중인 이메일이에요.',
+    emailNotConfirmed: '이메일 인증이 완료되지 않았어요.\n받은 편지함을 확인해주세요.',
+    pwTooShort: '비밀번호는 6자 이상이어야 해요.',
+    invalidEmail: '올바른 이메일 형식이 아니에요.',
+    tooMany: '잠시 후 다시 시도해주세요.',
+    codeVerifier: '메일을 요청했던 기기·앱에서 링크를 열어주세요.\n(다른 기기라면 메일을 다시 요청해주세요.)',
+    network: '네트워크 연결을 확인해주세요.',
+    timeout: '응답이 지연되고 있어요.\n네트워크를 확인한 뒤 다시 시도해주세요.',
+    generic: '로그인 처리 중 문제가 발생했어요.\n({{raw}})',
+    idOrPwWrong: '아이디 또는 비밀번호가 올바르지 않아요.',
+    appleTokenMissing: 'Apple 인증 토큰을 받지 못했어요.',
+    googleTokenMissing: 'Google 인증 토큰을 받지 못했어요.',
+    oauthUrlFailed: '로그인 URL 생성 실패',
+    stateMismatch: '인증 상태 검증에 실패했어요. 다시 시도해주세요.',
+    noAuthCode: '인증 코드를 받지 못했어요.',
+  },
 } as const;
 
 export default ko;

@@ -481,7 +481,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const makeTripGroup = (country: string, rec: TravelRecord, regionName?: string): TripGroup => ({
     id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     // 국내 지역 카드는 "제주 여행"처럼 지역명으로 (국가 단위와 구분)
-    title: `${regionName ?? country} 여행`,
+    title: i18n.t('store.tripTitle', { name: regionName ?? country }),
     records: [rec.id],
     coverRecordId: rec.id,
     createdAt: new Date(),
@@ -639,7 +639,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const meta = COUNTRIES.find((c) => c.name === countryName);
     const ng: TripGroup = {
       id: `grp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      title: `${countryName} 체류`,
+      title: i18n.t('store.stayTitle', { name: countryName }),
       records: [],
       coverRecordId: '',
       createdAt: new Date(),
@@ -793,7 +793,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     const now = Date.now();
     if (now - lastSyncErrorRef.current < 4000) return; // 4초 내 중복 억제
     lastSyncErrorRef.current = now;
-    emitToast('서버 동기화에 실패했어요. 네트워크를 확인해 주세요.');
+    emitToast(i18n.t('store.syncFailed'));
   }, []);
 
   // 백엔드 발행: 사진 업로드 후 posts insert → 받은 remoteId를 로컬 레코드에 연결.
@@ -801,6 +801,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const publishAttemptRef = useRef<Set<string>>(new Set());
   // 발행(업로드) 진행 중 삭제/수정 경합 대응 — remoteId 부착 전 삭제는 여기 기록해 완료 시점에 서버에서도 지운다.
   const pendingDeleteRef = useRef<Set<string>>(new Set());
+  // 발행 진행 중 '사용자 수정'이 있었던 기록 — 완료 시점에 최신 내용으로 서버를 한 번 더 갱신한다.
+  // (live !== rec 같은 객체 identity 비교는 persistRecordPhotos의 로컬 URI 교체까지 수정으로
+  // 오탐해, 사진 있는 글 대부분이 발행 직후 전 장을 재업로드하고 첫 업로드본을 고아로 남겼다)
+  const pendingEditRef = useRef<Set<string>>(new Set());
   const recordsLiveRef = useRef(records);
   recordsLiveRef.current = records;
   // 사진첩 발행/수정 공통 옵션 — 화질(비프리미엄=압축) + 업로드 캐시 + 캐시 병합 콜백
@@ -831,6 +835,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         const live = recordsLiveRef.current.find((r) => r.id === rec.id);
         if (pendingDeleteRef.current.has(rec.id) || !live) {
           pendingDeleteRef.current.delete(rec.id);
+          pendingEditRef.current.delete(rec.id);
           deletePost(rid).catch(() => {});
           return;
         }
@@ -841,8 +846,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             r.id === rec.id ? { ...r, remoteId: rid, ...(quality ? { albumUploadQuality: quality } : {}) } : r
           )
         );
-        // 업로드 중 수정된 글 → 캡처본(구버전)이 insert됐으므로 최신 내용으로 서버 갱신
-        if (live !== rec) updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live)).catch(notifySyncError);
+        // 업로드 중 '사용자 수정'된 글 → 캡처본(구버전)이 insert됐으므로 최신 내용으로 서버 갱신.
+        // persistRecordPhotos의 로컬 URI 교체는 수정이 아니다(서버엔 이미 업로드본이 실림).
+        if (pendingEditRef.current.has(rec.id)) {
+          pendingEditRef.current.delete(rec.id);
+          updatePost(rid, { ...live, remoteId: rid }, albumPublishOpts(live)).catch(notifySyncError);
+        }
       })
       .catch(notifySyncError);
   };
@@ -949,6 +958,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
     if (isSupabaseConfigured) {
       if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes })).catch(notifySyncError);
+      // 발행(업로드) 진행 중 수정 — 완료 시점에 최신 내용으로 서버를 갱신하도록 예약
+      else if (cur && publishAttemptRef.current.has(id)) pendingEditRef.current.add(id);
       // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
       if (cur && updated) {
         const keep = new Set(collectRemoteMediaUrls(updated));
@@ -1182,10 +1193,13 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // 게시물/사용자가 차단 대상인지 — handle 우선, 표시이름 폴백(이름기반·과거 차단 호환)
+  // 게시물/사용자가 차단 대상인지 — handle 기준. 이름 폴백은 '핸들이 없는 구버전 차단 항목'에만
+  // 허용한다(핸들 있는 항목까지 이름을 보면 동명이인 사용자가 통째로 차단돼 보였다).
   const isBlocked = useCallback((user: { name?: string; handle?: string }) =>
     blockedUsers.some((b) =>
-      (b.handle && user.handle && b.handle === user.handle) || (!!user.name && b.name === user.name)
+      b.handle
+        ? (!!user.handle && b.handle === user.handle)
+        : (!!user.name && b.name === user.name)
     ), [blockedUsers]);
 
   // 게시물 신고 → 신고 목록에 추가(피드에서 숨김) + 서버 reports에 접수(운영자 확인용).
@@ -1402,6 +1416,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     if (!isSupabaseConfigured || !remoteId) return;
     const list = await fetchComments(remoteId);
     if (list === null) return; // 네트워크/서버 오류 — 로컬 댓글을 지우지 않고 유지
+    commentLikeStateRef.current = {}; // 서버 진실 도착 — 이전 낙관 상태 기준 연타 가드 리셋
     setCommentsByPost((prev) => {
       const local = prev[postId] ?? [];
       // 아직 서버 반영 전인 로컬 댓글(임시 id, uuid 아님)은 서버 목록 뒤에 보존 — 방금 단 댓글이 사라지지 않게
@@ -1559,6 +1574,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripSession(null);
     setViewedSnapIds([]);
     setOutgoingNeighborRequests([]);
+    // 세션 한정 ref들도 초기화 — 이전 계정의 좋아요/발행 상태가 새 계정으로 이월되지 않게
+    likeStateRef.current = {};
+    commentLikeStateRef.current = {};
+    publishAttemptRef.current.clear();
+    pendingDeleteRef.current.clear();
+    pendingEditRef.current.clear();
     // 여행카드 서버 백업/복원 재무장: 새 계정의 백업을 빈 값으로 덮어쓰기 전에 복원부터 다시 시도한다
     tripBackupReadyRef.current = false;
     tripRestoreTriedRef.current = false;
@@ -1576,11 +1597,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       const fresh = posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
       feedFreshRef.current = true; // 이후 도착하는 캐시 복원이 구본으로 덮지 않게
       setFeedPosts(fresh);
+      // 연타 가드 ref 리셋 — 서버 진실이 도착했으므로 이전 낙관 상태를 기준으로 쓰면
+      // 다른 기기에서 바뀐 좋아요가 첫 탭에 반대로 동작한다
+      likeStateRef.current = {};
       // 피드 캐시 영속화 — 오프라인 재시작 시 마지막 피드 표시용(최대 100개, 실패 무시)
       saveEnvelope(STORE_KEYS.feedCache, fresh.slice(0, 100));
     } catch {
       // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
-      emitToast('피드를 불러오지 못했어요. 네트워크를 확인해 주세요.');
+      emitToast(i18n.t('store.feedLoadFailed'));
     }
   }, []);
 
@@ -1735,6 +1759,30 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     });
     return () => { offReconnect(); sub.remove(); };
   }, [resyncUnpublished]);
+
+  // ─── 기존 기록 사진 소급 영속화 (앱 시작 후 1회) ───
+  // persistRecordPhotos가 blogBlocks를 처리하지 않던 시절 발행된 블로그 글은 사진·영상이
+  // 아직 OS 캐시 URI다 — 파일이 살아있는 동안 영속 폴더로 구조한다(캐시 정리 전이 골든타임).
+  // 이미 영속화된 기록은 persist가 전부 스킵해 변경 없이 끝난다(비용 무시 가능).
+  const photoRescueRanRef = useRef(false);
+  useEffect(() => {
+    if (!hydrated || photoRescueRanRef.current) return;
+    photoRescueRanRef.current = true;
+    const rescue = async (list: TravelRecord[], apply: (id: string, ch: Partial<TravelRecord>) => void) => {
+      for (const r of list) {
+        if (r.isMyPost === false || !r.blogBlocks?.length) continue;
+        const ch = await persistRecordPhotos(r).catch(() => ({} as Partial<TravelRecord>));
+        if (Object.keys(ch).length > 0) apply(r.id, ch);
+      }
+    };
+    rescue(recordsLiveRef.current, (id, ch) =>
+      setRecords((prev) => prev.map((r) => (r.id === id ? { ...r, ...ch } : r)))
+    );
+    rescue(drafts, (id, ch) =>
+      setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...ch } : d)))
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated]);
 
   // ─── 여행 카드·세션 서버 백업 (재설치/기기 변경 복원용) ───
   // 로컬이 원본, 서버는 백업본. 기록 참조는 remoteId(posts.id)로 변환해 저장한다.

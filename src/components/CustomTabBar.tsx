@@ -398,10 +398,12 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         </Svg>
       </View>
 
-      {/* 튜토리얼 딤 — 다른 구역(코치마크 딤 rgba0.78)과 동일한 어둠. 바만 덮고 FAB·스냅은 형제라 유지 */}
+      {/* 튜토리얼 딤 — 다른 구역(코치마크 딤 rgba0.78)과 동일한 어둠. 바만 덮고 FAB·스냅은 형제라 유지.
+          pointerEvents auto — 딤만 하고 차단을 안 하면 튜토리얼 도중 탭 전환이 그대로 됐다
+          (코치마크 차단막은 화면 안이라 내비게이터 오버레이인 탭 바를 못 막는다). */}
       {coachActive && (
         <View
-          pointerEvents="none"
+          pointerEvents="auto"
           style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.78)', borderRadius: BAR_R }]}
         />
       )}

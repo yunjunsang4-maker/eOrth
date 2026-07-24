@@ -1853,6 +1853,34 @@ const en = {
     notifBody: 'Capture this trip in eOrth',
     abroad: 'abroad',
   },
+  // Shared store strings (recordStore etc.) — used outside screens (toasts, generated data)
+  store: {
+    syncFailed: 'Server sync failed. Please check your network.',
+    feedLoadFailed: "Couldn't load the feed. Please check your network.",
+    tripTitle: '{{name}} Trip',
+    stayTitle: '{{name}} Stay',
+  },
+  // Auth error messages (services/auth.ts)
+  authErr: {
+    notConfigured: 'Supabase is not configured.',
+    invalidCred: 'Incorrect email or password.',
+    alreadyRegistered: 'This email is already registered. Please sign in.',
+    emailInUse: 'This email is already in use.',
+    emailNotConfirmed: 'Email not verified yet.\nPlease check your inbox.',
+    pwTooShort: 'Password must be at least 6 characters.',
+    invalidEmail: 'Invalid email format.',
+    tooMany: 'Please try again in a moment.',
+    codeVerifier: 'Open the link on the device/app that requested the email.\n(On a new device, request the email again.)',
+    network: 'Please check your network connection.',
+    timeout: 'The server is taking too long.\nCheck your network and try again.',
+    generic: 'Something went wrong while signing in.\n({{raw}})',
+    idOrPwWrong: 'Incorrect username or password.',
+    appleTokenMissing: "Couldn't get the Apple sign-in token.",
+    googleTokenMissing: "Couldn't get the Google sign-in token.",
+    oauthUrlFailed: 'Failed to create the sign-in URL',
+    stateMismatch: 'Auth state check failed. Please try again.',
+    noAuthCode: "Didn't receive an auth code.",
+  },
 } as const;
 
 export default en;

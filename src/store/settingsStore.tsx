@@ -575,12 +575,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(v.verifiedNaverBlogIds)) setVerifiedNaverBlogIds(v.verifiedNaverBlogIds);
     if (typeof v.handleLastChanged === 'number') setHandleLastChanged(v.handleLastChanged);
     if (typeof v.handleChosen === 'boolean') setHandleChosen(v.handleChosen);
-    // 탭별 튜토리얼 — 신형 우선, 없으면 구버전 백업(tutorialSeen=메인)에서 이관.
-    // "한 번 봤으면 계속 본 것"이라 덮어쓰지 않고 병합한다 — 이 기능 이전에 만들어진 백업이
-    // 복원되면서 이미 본 통계·프로필 튜토리얼이 되살아나는 걸 막는다.
+    // 탭별 튜토리얼 — 신형 백업(tutorialsSeen 있음)은 서버값을 그대로 쓴다:
+    // '튜토리얼 다시 보기'(리셋)도 백업에 실리므로, 병합(true 우선)하면 리셋이
+    // 재로그인/기기 이동 복원에서 되살아나 무력화된다. 구형 백업(tutorialSeen 불리언만,
+    // 이 기능 도입 전)만 병합해 이미 본 통계·프로필 기록이 지워지지 않게 한다.
     // (계정 전환은 resetSettings로 먼저 비워진 뒤 적용되므로 다른 계정 값이 섞이지 않는다)
     if (v.tutorialsSeen && typeof v.tutorialsSeen === 'object') {
-      setTutorialsSeen((prev) => ({ ...prev, ...v.tutorialsSeen }));
+      setTutorialsSeen({ ...(v.tutorialsSeen as TutorialsSeen) });
     } else if (typeof v.tutorialSeen === 'boolean') {
       setTutorialsSeen((prev) => ({ ...prev, main: prev.main || v.tutorialSeen }));
     }

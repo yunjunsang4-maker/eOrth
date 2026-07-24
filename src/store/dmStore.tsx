@@ -58,7 +58,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const { incrementShareSent } = useSettings();
   const [conversations, setConversations] = useState<Record<string, Message[]>>(INITIAL_CONVERSATIONS);
   const [friends] = useState<Friend[]>(INITIAL_FRIENDS);
-  // 대화별 읽음 지점(읽은 메시지 개수). 이 개수 이후의 '받은' 메시지가 안읽음이 된다
+  // 대화별 읽음 워터마크(마지막으로 읽은 시점의 createdAt ms). 이 시각 이후의 '받은' 메시지가
+  // 안읽음이 된다. 과거엔 '읽은 메시지 개수'였는데, loadHistory 병합·재정렬로 목록 길이/순서가
+  // 바뀌면 개수 기준 지점이 어긋나 배지 수가 틀렸다 — 시각 기준은 병합·삭제에 불변.
   const [readMarks, setReadMarks] = useState<Record<string, number>>({});
   // 내가 삭제/비운 서버 메시지(remoteId)를 영구 숨김 — loadHistory/실시간이 덮어써도 되살아나지 않게('나에게만 삭제')
   const [hiddenIds, setHiddenIds] = useState<Record<string, true>>({});
@@ -98,7 +100,20 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     (p) => {
       // payload 필드 가드 — 손상/구버전 payload로 throw하면 부분 복원 상태가 저장으로 덮어써진다
       if (p.conversations && typeof p.conversations === 'object') setConversations(p.conversations);
-      if (p.readMarks) setReadMarks(p.readMarks);
+      if (p.readMarks) {
+        // 구버전(읽은 개수) → 워터마크(ms) 이관: 개수 시절 값은 항상 작아(1e10 미만) 구분된다.
+        // 개수 n → 당시 목록의 n번째 메시지 createdAt. 목록·시각이 없으면 0(전부 안읽음 아님,
+        // 아래 unreadCount의 '내 마지막 발신' 폴백이 동작).
+        const conv = (p.conversations && typeof p.conversations === 'object') ? p.conversations : {};
+        const marks: Record<string, number> = {};
+        for (const [h, v] of Object.entries(p.readMarks)) {
+          if (typeof v !== 'number') continue;
+          if (v >= 1e10) { marks[h] = v; continue; } // 이미 워터마크
+          const list = (conv as Record<string, Message[]>)[h];
+          marks[h] = (v > 0 ? list?.[Math.min(v, list?.length ?? 0) - 1]?.createdAt : 0) ?? 0;
+        }
+        setReadMarks(marks);
+      }
       if (p.hiddenIds) { setHiddenIds(p.hiddenIds); hiddenIdsRef.current = p.hiddenIds; }
     },
     () => ({ conversations, readMarks, hiddenIds }),
@@ -275,12 +290,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       ...prev,
       [handle]: (prev[handle] ?? []).filter((m) => m.id !== messageId),
     }));
-    // 읽음 지점보다 앞(이미 읽은 구간)의 메시지를 지우면 지점도 한 칸 당긴다
-    setReadMarks((rm) => {
-      const mark = rm[handle];
-      if (mark === undefined || idx >= mark) return rm;
-      return { ...rm, [handle]: Math.max(0, mark - 1) };
-    });
+    // 읽음 워터마크는 시각 기준이라 삭제로 어긋나지 않는다 — 보정 불필요
   }, [conversations, hideRemoteIds]);
 
   const clearConversation = useCallback((handle: string) => {
@@ -292,28 +302,32 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
 
   const topFriends = useCallback((n: number) => pickTopFriends(friends, conversations, n), [friends, conversations]);
 
-  // 대화별 안읽음 수: 명시적 읽음 지점이 있으면 그 이후의 '받은' 메시지 수,
-  // 한 번도 열지 않았으면 내가 마지막으로 보낸 메시지 이후의 '받은' 메시지 수
+  // 대화별 안읽음 수: 읽음 워터마크(ms) 이후의 '받은' 메시지 수.
+  // 한 번도 열지 않았으면 내가 마지막으로 보낸 메시지 시각을 워터마크로 삼는다.
   const unreadCount = useCallback((handle: string) => {
     const msgs = conversations[handle] ?? [];
     if (msgs.length === 0) return 0;
-    let readLen = readMarks[handle];
-    if (readLen === undefined) {
-      let lastMine = -1;
+    let mark = readMarks[handle];
+    if (mark === undefined) {
+      mark = -1; // 내 발신이 없으면 받은 메시지 전부 안읽음
       for (let i = msgs.length - 1; i >= 0; i--) {
-        if (msgs[i].isMine) { lastMine = i; break; }
+        if (msgs[i].isMine) { mark = msgs[i].createdAt ?? 0; break; }
       }
-      readLen = lastMine + 1;
     }
     let count = 0;
-    for (let i = readLen; i < msgs.length; i++) {
-      if (!msgs[i].isMine) count++;
+    for (const m of msgs) {
+      if (!m.isMine && (m.createdAt ?? 0) > mark) count++;
     }
     return count;
   }, [conversations, readMarks]);
 
   const markRead = useCallback((handle: string) => {
-    setReadMarks((prev) => ({ ...prev, [handle]: conversations[handle]?.length ?? 0 }));
+    setReadMarks((prev) => {
+      // 목록의 최대 createdAt까지 읽음 — 시각 없는(구버전) 메시지뿐이면 현재 시각으로 마감
+      const msgs = conversations[handle] ?? [];
+      const top = msgs.reduce((mx, m) => Math.max(mx, m.createdAt ?? 0), 0);
+      return { ...prev, [handle]: top || Date.now() };
+    });
   }, [conversations]);
 
   const resetConversations = useCallback(() => {

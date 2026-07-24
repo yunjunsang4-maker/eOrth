@@ -1184,7 +1184,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             const d = pcd[c.name];
             addTripGroup(
               {
-                title: `${c.name} 여행`, // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
+                title: t('store.tripTitle', { name: c.name }), // 자동 그룹(linkRecordToTrip)과 동일한 이름 규칙
                 records: [recId],
                 coverRecordId: recId,
                 countryName: c.name,
