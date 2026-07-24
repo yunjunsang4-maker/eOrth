@@ -22,7 +22,7 @@ const ALL_BADGES: Badge[] = [
   { id: 4, emoji: '🍁', name: '북미에서의 첫발!', desc: '북아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/northamerica-first.png') },
   { id: 5, emoji: '🌴', name: '남미에서의 첫발!', desc: '남아메리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/southamerica-first.png') },
   { id: 6, emoji: '🦘', name: '오세아니아에서의 첫발!', desc: '오세아니아 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/oceania-first.png') },
-  { id: 7, emoji: '🦁', name: '아프리카에서의 첫발', desc: '아프리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)' },
+  { id: 7, emoji: '🦁', name: '아프리카에서의 첫발', desc: '아프리카 첫방문', earned: false, glow: 'rgba(47,217,244,0.6)', image: require('../../assets/badges/africa-first.png') },
 
   // 여행 동행 & 스타일 배지 (9 ~ 15)
   { id: 9, emoji: '🎒', name: '혼자만의 감성을 즐기는 유형인가요?', desc: '홀로 여행', earned: true, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/solo-travel.png') },
@@ -34,23 +34,23 @@ const ALL_BADGES: Badge[] = [
   { id: 15, emoji: '🚗', name: '가스는 잠궜죠?', desc: '30일 이상 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
 
   // 국가 & 지역 탐방 배지 (16 ~ 34)
-  { id: 16, emoji: '🇯🇵', name: '히사시부리!', desc: '일본 재방문', earned: true, glow: 'rgba(47,244,150,0.5)' },
-  { id: 17, emoji: '🍣', name: '열도에 새긴 발걸음', desc: '일본 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 16, emoji: '🇯🇵', name: '히사시부리!', desc: '일본 재방문', earned: true, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/hisashiburi.png') },
+  { id: 17, emoji: '🍣', name: '열도에 새긴 발걸음', desc: '일본 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/japan-regions.png') },
   { id: 18, emoji: '🥢', name: '젓가락만 챙기세요!', desc: '중국과 일본 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 19, emoji: '🇺🇸', name: '미주투어', desc: '미국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 20, emoji: '🇨🇳', name: '중국투어', desc: '중국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 19, emoji: '🇺🇸', name: '미주투어', desc: '미국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/usa-tour.png') },
+  { id: 20, emoji: '🇨🇳', name: '중국투어', desc: '중국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/china-tour.png') },
   { id: 21, emoji: '⛪', name: '당신은 종교대통합을 이뤘어요', desc: '각기 다른 종교국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 22, emoji: '🏝️', name: '섬 입문자', desc: '섬 3번 방문 (Lv.1)', earned: true, glow: 'rgba(47,244,150,0.5)' },
   { id: 23, emoji: '🛥️', name: '섬 탐험가', desc: '섬 5번 방문 (Lv.2)', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 24, emoji: '👑', name: '섬 정복자', desc: '섬 10번 방문 (Lv.3)', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 25, emoji: '🗽', name: '당신도 이제 뉴욕커', desc: '뉴욕 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 25, emoji: '🗽', name: '당신도 이제 뉴욕커', desc: '뉴욕 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/newyorker.png') },
   { id: 26, emoji: '🎲', name: '당신은 타짜인가요?', desc: '카지노 지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 27, emoji: '☯️', name: '동방의 수호자', desc: '한자 문화권 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 28, emoji: '🇬🇧', name: 'You can speak english, right?', desc: '영어권(미국,영국,호주,캐나다,뉴질랜드) 모두 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 29, emoji: '🐪', name: '오아시스는 찾으셨나요?', desc: '사막지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 30, emoji: '🥵', name: '데오드란트를 추천해 드릴까요?', desc: '열대지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 31, emoji: '🛂', name: '한국여권의 힘!', desc: '무비자 입국 가능 국가 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 32, emoji: '✈️', name: '월드투어는 성공적이었나요?', desc: '한번에 여러나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 32, emoji: '✈️', name: '월드투어는 성공적이었나요?', desc: '한번에 여러나라 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/world-tour.png') },
   { id: 33, emoji: '🌀', name: '이건 데자뷰?!', desc: '정확히 1년만에 같은 곳 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 34, emoji: '💖', name: '이 나라와 사랑에 빠지셨군요!', desc: '같은 나라 재방문 5회', earned: false, glow: 'rgba(47,244,150,0.5)' },
 
@@ -65,7 +65,7 @@ const ALL_BADGES: Badge[] = [
   { id: 42, emoji: '🧭', name: '국경없는 이방인', desc: '모든 대륙 1개국 이상 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 43, emoji: '🏆', name: '지구정복자', desc: '모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 44, emoji: '🗺️', name: '대륙 정복자', desc: '대륙 하나의 모든 국가 방문', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 45, emoji: '✍️', name: '여행 기록가', desc: '여행기록 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)' },
+  { id: 45, emoji: '✍️', name: '여행 기록가', desc: '여행기록 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/record-lv1.png') },
   { id: 46, emoji: '📖', name: '여행 일지 마스터', desc: '여행기록 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/journal-master.png') },
   { id: 48, emoji: '⭐', name: '별점 입문자', desc: '별점 1점 기록 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 49, emoji: '🌟', name: '별점 탐색자', desc: '별점 2점 기록 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
@@ -83,9 +83,9 @@ const ALL_BADGES: Badge[] = [
   { id: 61, emoji: '👑', name: '배지 레전드', desc: '배지 200개 달성 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
 
   // 시즌 & 기념일 배지 (63 ~ 65)
-  { id: 63, emoji: '🎍', name: '새해복 많이 받으세요!', desc: '해가 바뀌는 기간 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 64, emoji: '🥗', name: '다이어트는 성공하셨나요?', desc: '여름휴가 여행(7~8월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 65, emoji: '🧣', name: '당신은 겨울잠이 없군요', desc: '겨울휴가 여행(1~2월)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 63, emoji: '🎍', name: '새해복 많이 받으세요!', desc: '해가 바뀌는 기간 중 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/newyear.png') },
+  { id: 64, emoji: '🥗', name: '다이어트는 성공하셨나요?', desc: '여름휴가 여행(7~8월)', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/diet.png') },
+  { id: 65, emoji: '🧣', name: '당신은 겨울잠이 없군요', desc: '겨울휴가 여행(1~2월)', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/hibernation.png') },
 
   // 기록 형식 배지 (66 ~ 71)
   { id: 66, emoji: '📝', name: '블로그의 달인', desc: '블로그 형식 기록 10개 작성', earned: false, glow: 'rgba(47,217,244,0.6)' },
@@ -103,11 +103,11 @@ const ALL_BADGES: Badge[] = [
   { id: 77, emoji: '👥', name: '여행 메이트', desc: '같은 메이트와 동행기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 78, emoji: '🦋', name: '소셜 나비', desc: '메이트 50명 달성', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 80, emoji: '📥', name: '첫 공유받기', desc: '다른 사람이 내 게시물을 DM으로 공유', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 81, emoji: '👋', name: '첫 메이트', desc: '메이트 1명 달성 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 82, emoji: '🎉', name: '인싸의 시작', desc: '메이트 10명 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 81, emoji: '👋', name: '첫 메이트', desc: '메이트 1명 달성 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/mate-lv1.png') },
+  { id: 82, emoji: '🎉', name: '인싸의 시작', desc: '메이트 10명 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/mate-lv2.png') },
   { id: 83, emoji: '👑', name: '인맥왕', desc: '메이트 100명 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 84, emoji: '🤝', name: '첫 동행', desc: '앱 메이트와 동행기록 1회 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 85, emoji: '👫', name: '동행 메이트', desc: '앱 메이트와 동행기록 3회 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 84, emoji: '🤝', name: '첫 동행', desc: '앱 메이트와 동행기록 1회 (Lv.1)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/companion-lv1.png') },
+  { id: 85, emoji: '👫', name: '동행 메이트', desc: '앱 메이트와 동행기록 3회 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/companion-lv2.png') },
 
   // 스냅 특별 배지 (88 ~ 90)
   { id: 88, emoji: '🔥', name: '스냅 스트릭', desc: '7일 연속 스냅 기록', earned: false, glow: 'rgba(47,217,244,0.6)' },
@@ -116,21 +116,21 @@ const ALL_BADGES: Badge[] = [
 
   // 기록 습관 배지 (97 ~ 104)
   { id: 97, emoji: '💪', name: '꾸준함의 힘', desc: '30일 연속 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 98, emoji: '📅', name: '새해 첫 기록', desc: '1월 1일에 기록 작성', earned: false, glow: 'rgba(168,85,247,0.6)' },
-  { id: 99, emoji: '🎄', name: '크리스마스 트래블러', desc: '12월 25일에 여행 기록', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 98, emoji: '📅', name: '새해 첫 기록', desc: '1월 1일에 기록 작성', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/newyear-first.png') },
+  { id: 99, emoji: '🎄', name: '크리스마스 트래블러', desc: '12월 25일에 여행 기록', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/christmas.png') },
   { id: 101, emoji: '☔', name: '비 오는 날의 기록', desc: '날씨 \'비\'로 기록 10회', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 102, emoji: '❄️', name: '눈의 나라', desc: '날씨 \'눈\'으로 기록 5회', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 103, emoji: '🥰', name: '별점 후한 사람', desc: '별점 5점 기록 10개', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 104, emoji: '🧐', name: '까다로운 평론가', desc: '별점 1점 기록 3개', earned: false, glow: 'rgba(168,85,247,0.6)' },
 
   // 앱 활용 배지 (112 ~ 114)
-  { id: 112, emoji: '🏃', name: '꾸준한 여행자', desc: '앱 연속 접속 30일 (Lv.1)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 113, emoji: '💝', name: '충성 유저', desc: '앱 연속 접속 50일 (Lv.2)', earned: false, glow: 'rgba(255,100,100,0.5)' },
-  { id: 114, emoji: '🔥', name: 'eOrth 마니아', desc: '앱 연속 접속 100일 (Lv.3)', earned: false, glow: 'rgba(255,100,100,0.5)' },
+  { id: 112, emoji: '🏃', name: '꾸준한 여행자', desc: '앱 연속 접속 30일 (Lv.1)', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/loyalty-lv1.png') },
+  { id: 113, emoji: '💝', name: '충성 유저', desc: '앱 연속 접속 50일 (Lv.2)', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/loyalty-lv2.png') },
+  { id: 114, emoji: '🔥', name: 'eOrth 마니아', desc: '앱 연속 접속 100일 (Lv.3)', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/loyalty-lv3.png') },
 
   // 특별 & 시즌 배지 (115 ~ 121)
   { id: 115, emoji: '🎂', name: 'eOrth 1주년', desc: '앱 설치 후 1년 경과', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 116, emoji: '🚀', name: '얼리어답터', desc: '앱 출시 첫 달 가입', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 116, emoji: '🚀', name: '얼리어답터', desc: '앱 출시 첫 달 가입', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/early-adopter.png') },
   { id: 118, emoji: '🌸', name: '벚꽃 시즌', desc: '3~4월 일본 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 119, emoji: '🍺', name: '옥토버페스트', desc: '10월 독일 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
   { id: 120, emoji: '🎭', name: '카니발 참가자', desc: '2~3월 브라질 방문 기록', earned: false, glow: 'rgba(47,244,150,0.5)' },
@@ -141,11 +141,11 @@ const ALL_BADGES: Badge[] = [
   { id: 124, emoji: '🧑‍🤝‍🧑', name: '우애가 돈독하시네요!', desc: '형제 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/sibling-travel.png') },
 
   // 국가별 여러 지역 방문 추가 배지 (125~) — '국가 & 지역 탐방' 그룹에 함께 표시됨
-  { id: 125, emoji: '🇩🇪', name: '독일투어', desc: '독일 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 126, emoji: '🇪🇸', name: '스페인투어', desc: '스페인 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 127, emoji: '🇬🇧', name: '영국투어', desc: '영국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 128, emoji: '🇫🇷', name: '프랑스투어', desc: '프랑스 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
-  { id: 129, emoji: '🇮🇹', name: '이탈리아투어', desc: '이탈리아 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)' },
+  { id: 125, emoji: '🇩🇪', name: '독일투어', desc: '독일 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/germany-tour.png') },
+  { id: 126, emoji: '🇪🇸', name: '스페인투어', desc: '스페인 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/spain-tour.png') },
+  { id: 127, emoji: '🇬🇧', name: '영국투어', desc: '영국 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/uk-tour.png') },
+  { id: 128, emoji: '🇫🇷', name: '프랑스투어', desc: '프랑스 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/france-tour.png') },
+  { id: 129, emoji: '🇮🇹', name: '이탈리아투어', desc: '이탈리아 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/italy-tour.png') },
 ];
 
 // ─── 출시 축소: 잠시 숨김 처리한 배지 (eOrth_배지목록_정리본.xlsx, 2026-07-18 확정 46개만 노출) ───
