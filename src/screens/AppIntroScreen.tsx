@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -9,6 +9,7 @@ import {
   Pressable,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 import Svg, {
   Defs as SvgDefs,
@@ -72,13 +73,25 @@ export default function AppIntroScreen({ navigation }: Props) {
 
   const goNext = () => {
     if (activeIdx < SLIDES.length - 1) {
-      const nextIdx = activeIdx + 1;
-      setActiveIdx(nextIdx);
-      flatListRef.current?.scrollToIndex({ index: nextIdx, animated: true });
+      setActiveIdx(activeIdx + 1);
     } else {
       navigation.replace('Login');
     }
   };
+
+  // activeIdx 변경 시 해당 페이지로 애니메이션 이동(버튼 전진·플링 후진 공용)
+  useEffect(() => {
+    flatListRef.current?.scrollToIndex({ index: activeIdx, animated: true });
+  }, [activeIdx]);
+
+  // 뒤로 가기 — 오른쪽 플링 제스처. 스크롤 자체는 잠가서(전 슬라이드 상시 마운트로 요소가
+  // 즉시 보이고) 전진 방향으로는 어떤 끌림도 생기지 않는다. 전진은 다음 버튼으로만.
+  const backFling = Gesture.Fling()
+    .runOnJS(true)
+    .direction(Directions.RIGHT)
+    .onStart(() => {
+      setActiveIdx((cur) => Math.max(0, cur - 1));
+    });
 
   const renderSlide = ({ item, index }: { item: (typeof SLIDES)[number]; index: number }) => {
     const V = item.Visual;
@@ -100,19 +113,24 @@ export default function AppIntroScreen({ navigation }: Props) {
       <StarFieldBackground opacity={0.5} />
       <IntroAmbient />
 
-      {/* 슬라이드 (수동 스크롤 비활성 — 다음 버튼으로만 진행) */}
-      <FlatList
-        ref={flatListRef}
-        data={SLIDES}
-        horizontal
-        pagingEnabled
-        scrollEnabled={false}
-        showsHorizontalScrollIndicator={false}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSlide}
-        extraData={activeIdx}
-        style={styles.flatList}
-      />
+      {/* 슬라이드 — 뒤로는 오른쪽 플링으로 이동, 앞으로는 다음 버튼으로만(스크롤 잠금) */}
+      <GestureDetector gesture={backFling}>
+        <FlatList
+          ref={flatListRef}
+          data={SLIDES}
+          horizontal
+          pagingEnabled
+          scrollEnabled={false}
+          bounces={false}
+          overScrollMode="never"
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id}
+          renderItem={renderSlide}
+          extraData={activeIdx}
+          style={styles.flatList}
+          getItemLayout={(_, index) => ({ length: SW, offset: SW * index, index })}
+        />
+      </GestureDetector>
 
       {/* 상단 페이지 닷 — 시안: 활성 16×7 마젠타 필, 비활성 7×7 #3D3D55 */}
       <View style={[styles.dotsRow, { top: insets.top + 16 }]} pointerEvents="none">
