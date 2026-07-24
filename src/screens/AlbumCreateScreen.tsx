@@ -730,7 +730,6 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               setAdjustVisible(false);
             }}
             onCancel={() => setAdjustVisible(false)}
-            onChangePhoto={() => setAdjustVisible(false)}
           />
         </KeyboardAvoidingView>
       </Modal>

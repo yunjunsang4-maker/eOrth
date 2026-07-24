@@ -3,6 +3,7 @@ import {
   View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, Dimensions,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 
@@ -18,7 +19,7 @@ interface Props {
   initial?: CutTransform | null;
   onConfirm: (t: CutTransform) => void;
   onCancel: () => void;
-  onChangePhoto: () => void;
+  onChangePhoto?: () => void; // 미지정 시 '사진 변경' 버튼 숨김(취소와 동작이 같은 화면에서)
   onRemove?: () => void; // 슬롯 비우기(빈 칸으로)
 }
 
@@ -209,19 +210,31 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
           </GestureDetector>
           <Text style={s.hint}>{t('comp.cutAdjustHint')}</Text>
           <View style={s.btnRow}>
-            <TouchableOpacity onPress={onChangePhoto} style={s.btnGhost} activeOpacity={0.8}>
-              <Text style={s.btnGhostTxt}>{t('comp.changePhoto')}</Text>
-            </TouchableOpacity>
+            {onChangePhoto && (
+              <TouchableOpacity onPress={onChangePhoto} style={s.btnGlass} activeOpacity={0.85}>
+                <Text style={s.btnGlassTxt}>{t('comp.changePhoto')}</Text>
+              </TouchableOpacity>
+            )}
             {onRemove && (
-              <TouchableOpacity onPress={onRemove} style={s.btnDanger} activeOpacity={0.8}>
+              <TouchableOpacity onPress={onRemove} style={s.btnDanger} activeOpacity={0.85}>
                 <Text style={s.btnDangerTxt}>{t('comp.delete')}</Text>
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onCancel} style={s.btnGhost} activeOpacity={0.8}>
-              <Text style={s.btnGhostTxt}>{t('common.cancel')}</Text>
+            <TouchableOpacity onPress={onCancel} style={s.btnGlass} activeOpacity={0.85}>
+              <Text style={s.btnGlassTxt}>{t('common.cancel')}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={confirm} style={[s.btnPrimary, { backgroundColor: skinAccent.accentDeep }]} activeOpacity={0.85}>
-              <Text style={s.btnPrimaryTxt}>{t('common.confirm')}</Text>
+            <TouchableOpacity
+              onPress={confirm}
+              style={[s.btnPrimaryWrap, { shadowColor: skinAccent.accent }]}
+              activeOpacity={0.85}
+            >
+              <LinearGradient
+                colors={skinAccent.btnGradient}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={s.btnPrimaryGrad}
+              >
+                <Text style={s.btnPrimaryTxt}>{t('common.confirm')}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
         </View>
@@ -237,11 +250,27 @@ const s = StyleSheet.create({
   gridLineV: { position: 'absolute', top: 0, bottom: 0, width: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)' },
   gridLineH: { position: 'absolute', left: 0, right: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.25)' },
   hint: { color: '#A1A1B0', fontSize: 12 },
-  btnRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  btnGhost: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.25)' },
-  btnGhostTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
-  btnPrimary: { paddingHorizontal: 26, paddingVertical: 11, borderRadius: 22, backgroundColor: '#6B21A8' },
-  btnPrimaryTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
-  btnDanger: { paddingHorizontal: 18, paddingVertical: 11, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,59,48,0.5)' },
+  btnRow: { flexDirection: 'row', gap: 10, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' },
+  // 글래스 필 — 얇은 테두리 + 은은한 흰색 채움 (사진 변경·취소)
+  btnGlass: {
+    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)',
+  },
+  btnGlassTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
+  // 확인 — 스킨 그라데이션 + 소프트 글로우
+  btnPrimaryWrap: {
+    borderRadius: 999,
+    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 8,
+  },
+  btnPrimaryGrad: {
+    paddingHorizontal: 28, paddingVertical: 12, borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  btnPrimaryTxt: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
+  // 삭제 — 빨강 글래스
+  btnDanger: {
+    paddingHorizontal: 18, paddingVertical: 12, borderRadius: 999,
+    backgroundColor: 'rgba(255,59,48,0.12)', borderWidth: 1, borderColor: 'rgba(255,59,48,0.4)',
+  },
   btnDangerTxt: { color: '#FF3B30', fontSize: 14, fontWeight: '600' },
 });
