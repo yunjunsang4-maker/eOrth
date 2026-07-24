@@ -3,21 +3,11 @@ import { View, StyleSheet, Dimensions, AppState, Animated, Easing, Image } from 
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
-  Path as SvgPath,
   Circle as SvgCircle,
   Defs as SvgDefs,
-  LinearGradient as SvgLinearGradient,
   RadialGradient as SvgRadialGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
-import { EorthLogo } from '../components/EorthLogo';
-import {
-  INTRO_ARC_1,
-  INTRO_ARC_2,
-  INTRO_ARC_3,
-  INTRO_CONTINENTS_A,
-  INTRO_CONTINENTS_B,
-} from '../data/introGlobePaths';
 
 const { width: SW } = Dimensions.get('window');
 export const DS = SW / 402; // 시안(402×874) 배율
@@ -79,78 +69,64 @@ function SideGlows({ purpleCx = 6.5, purpleCy = 247 }: { purpleCx?: number; purp
   );
 }
 
-// ── 1페이지: 궤도 호 + 링 노드 + 지구본(대륙 도트) + eorth 워드마크 (시안 64) ──
-export function IntroVisual1() {
+// ── 1페이지: 다크 지구본 + eOrth 워드마크 (시안 iPhone 17 - 64, node 115:68) ──
+// 지구본(구체+유리 대륙+워드마크, 문양 제거판)과 보라 림 크레센트를 시안에서 추출한 3x
+// 스프라이트로 배치(assets/intro1/*). 하단 보라 글로우는 IntroAmbient가 담당.
+// 애니메이션 3종: ①무중력 부유(사인 테이블 네이티브 루프, Y·X 비정수배 주기 리사주+0.5° 틸트)
+// ②활성화 시 등장(스케일 0.94→1 + 페이드, 600ms ease-out) ③림 글로우 펄스(3.6s 숨쉬기).
+const I1_GLOBE = require('../../assets/intro1/globe.png');
+const I1_RIM = require('../../assets/intro1/rim.png');
+
+export function IntroVisual1({ active = true }: { active?: boolean }) {
   const H = 700 * DS;
+  const GW = 363 * DS, GH = 371 * DS;
+  const enter = useRef(new Animated.Value(0)).current;
+  const t = useRef(new Animated.Value(0)).current;   // 부유 Y·틸트 위상
+  const tx = useRef(new Animated.Value(0)).current;  // 부유 X 위상(주기 ×1.37)
+  const pt = useRef(new Animated.Value(0)).current;  // 림 펄스 위상
+  useEffect(() => {
+    const a1 = Animated.loop(Animated.timing(t, { toValue: 1, duration: 6400, easing: Easing.linear, useNativeDriver: true }));
+    const a2 = Animated.loop(Animated.timing(tx, { toValue: 1, duration: 8800, easing: Easing.linear, useNativeDriver: true }));
+    const a3 = Animated.loop(Animated.timing(pt, { toValue: 1, duration: 3000, easing: Easing.linear, useNativeDriver: true }));
+    a1.start(); a2.start(); a3.start();
+    return () => { a1.stop(); a2.stop(); a3.stop(); };
+  }, [t, tx, pt]);
+  useEffect(() => {
+    if (active) {
+      Animated.timing(enter, { toValue: 1, duration: 800, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    }
+  }, [active, enter]);
+  const wy = sineWave(7 * DS, 0);
+  const wx = sineWave(4.5 * DS, 0.25);
+  const wr = sineWave(0.9, 0);
+  const wp = sineWave(0.45, -0.25); // 0에서 시작해 0.9까지 차오르는 숨쉬기(+0.45 오프셋)
+  const ty = t.interpolate({ inputRange: wy.input, outputRange: wy.output });
+  const txv = tx.interpolate({ inputRange: wx.input, outputRange: wx.output });
+  const rot = t.interpolate({ inputRange: wr.input, outputRange: wr.output.map((v) => `${v}deg`) });
+  const scale = enter.interpolate({ inputRange: [0, 1], outputRange: [0.9, 1] });
+  const pulseOp = pt.interpolate({ inputRange: wp.input, outputRange: wp.output.map((v) => 0.45 + v) });
   return (
-    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H }} pointerEvents="none">
-      <Svg width={SW} height={H} viewBox="0 0 402 700">
-        <SvgDefs>
-          <SvgLinearGradient id="introArc1" x1="201.5" y1="282.18" x2="200.93" y2="372.88" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introArc2" x1="202.5" y1="201" x2="202.5" y2="398.86" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introArc3" x1="197.5" y1="109" x2="197.5" y2="306.86" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FFFFFF" />
-            <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingTop" x1="177.58" y1="144" x2="231.75" y2="182.68" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingL" x1="80.03" y1="185" x2="122.24" y2="215.14" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingR" x1="286.03" y1="182" x2="328.24" y2="212.14" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingLL" x1="28.92" y1="266" x2="61.28" y2="289.11" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introRingRR" x1="341.92" y1="266" x2="374.28" y2="289.11" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#FF14E4" />
-            <SvgStop offset="1" stopColor="#00D8F3" />
-          </SvgLinearGradient>
-          <SvgLinearGradient id="introGlobeRing" x1="179.85" y1="392" x2="246.38" y2="547.08" gradientUnits="userSpaceOnUse">
-            <SvgStop offset="0" stopColor="#666666" stopOpacity={0} />
-            <SvgStop offset="1" stopColor="#C982FF" />
-          </SvgLinearGradient>
-        </SvgDefs>
-
-        <SvgPath d={INTRO_ARC_3} stroke="url(#introArc3)" strokeWidth={5} strokeOpacity={0.2} fill="none" />
-        <SvgPath d={INTRO_ARC_2} stroke="url(#introArc2)" strokeWidth={5} strokeOpacity={0.15} fill="none" />
-        <SvgPath d={INTRO_ARC_1} stroke="url(#introArc1)" strokeWidth={6} strokeOpacity={0.3} fill="none" />
-
-        <SvgCircle cx={201} cy={387} r={135} fill="#FFFFFF" fillOpacity={0.03} />
-        <SvgPath d={INTRO_CONTINENTS_A} fill="#FFFFFF" fillOpacity={0.08} />
-        <SvgPath d={INTRO_CONTINENTS_B} fill="#FFFFFF" fillOpacity={0.08} />
-        <SvgCircle cx={199.527} cy={391.527} r={147.402} stroke="url(#introGlobeRing)" strokeWidth={2.25} fill="none" />
-
-        <SvgCircle cx={204.5} cy={182.5} r={37.5} fill="#D9D9D9" fillOpacity={0.03} stroke="url(#introRingTop)" strokeWidth={2} />
-        <SvgCircle cx={101} cy={215} r={30} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={101} cy={215} r={30} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={101} cy={215} r={29} stroke="url(#introRingL)" strokeWidth={2} strokeOpacity={0.5} fill="none" />
-        <SvgCircle cx={307} cy={212} r={30} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={307} cy={212} r={29} stroke="url(#introRingR)" strokeWidth={2} strokeOpacity={0.5} fill="none" />
-        <SvgCircle cx={45} cy={289} r={23} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={45} cy={289} r={23} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={45} cy={289} r={22.25} stroke="url(#introRingLL)" strokeWidth={1.5} strokeOpacity={0.2} fill="none" />
-        <SvgCircle cx={358} cy={289} r={23} fill="#D9D9D9" fillOpacity={0.03} />
-        <SvgCircle cx={358} cy={289} r={23} fill="#000000" fillOpacity={0.2} />
-        <SvgCircle cx={358} cy={289} r={22.25} stroke="url(#introRingRR)" strokeWidth={1.5} strokeOpacity={0.2} fill="none" />
-      </Svg>
-
-      {/* eorth 워드마크 — 지구본 중앙 (시안: 글리프 원 중심 178.6, 405.2) */}
-      <View style={{ position: 'absolute', left: 142 * DS, top: 384 * DS }}>
-        <EorthLogo width={104 * DS} />
-      </View>
+    <View style={{ position: 'absolute', top: 0, left: 0, width: SW, height: H, overflow: 'hidden' }} pointerEvents="none">
+      {/* 시안 bbox (20,174,349.7×356.4) 중심 (194.9,352.2), 스프라이트는 이펙트 여백 포함 363×371pt.
+          림은 같은 컨테이너 안에서 본편과 완전 동기화된 채 opacity만 펄스 */}
+      <Animated.View
+        style={{
+          position: 'absolute',
+          left: (194.9 - 363 / 2) * DS,
+          top: (352.2 - 371 / 2) * DS,
+          width: GW,
+          height: GH,
+          opacity: enter,
+          transform: [{ scale }, { translateY: ty }, { translateX: txv }, { rotate: rot }],
+        }}
+      >
+        <Image source={I1_GLOBE} style={{ width: GW, height: GH }} resizeMode="stretch" />
+        <Animated.Image
+          source={I1_RIM}
+          style={{ position: 'absolute', left: 0, top: 0, width: GW, height: GH, opacity: pulseOp }}
+          resizeMode="stretch"
+        />
+      </Animated.View>
     </View>
   );
 }
