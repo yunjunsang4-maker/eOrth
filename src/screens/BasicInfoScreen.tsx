@@ -14,24 +14,81 @@ import {
   FlatList,
   Alert,
   Switch,
+  ActivityIndicator,
 } from 'react-native';
+import Svg, {
+  Defs as SvgDefs,
+  LinearGradient as SvgLinearGradient,
+  Stop as SvgStop,
+  Rect as SvgRect,
+  Circle as SvgCircle,
+} from 'react-native-svg';
+import StarFieldBackground from '../components/StarFieldBackground';
+import { IntroAmbient } from './introVisuals';
 import { useRecords } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
 import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
-import { useSkinAccent } from '../constants/skinTheme';
 import { isHandleAvailable } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { PrimaryButton } from '../components/ui';
-import { PersonIcon, PencilIcon } from '../components/icons';
+import { PersonIcon, CameraIcon } from '../components/icons';
 import { COUNTRIES, type Country } from '../constants/countries';
 
 const codeOf = (c: Country) => c.term.split(' ')[0].toUpperCase();
+
+// 온보딩·로그인과 동일한 유리 필 버튼 — 흰 10% + #CECFCD 그라데이션 테두리
+function GlassButton({ label, onPress, disabled, loading, style }: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  loading?: boolean;
+  style?: any;
+}) {
+  const [btnW, setBtnW] = useState(0);
+  return (
+    <TouchableOpacity
+      style={[glassBtn.btn, disabled && { opacity: 0.4 }, style]}
+      onPress={onPress}
+      disabled={disabled || loading}
+      activeOpacity={0.85}
+      onLayout={(e) => setBtnW(Math.round(e.nativeEvent.layout.width))}
+    >
+      {loading ? (
+        <ActivityIndicator size="small" color="#FFFFFF" />
+      ) : (
+        <Text style={glassBtn.label}>{label}</Text>
+      )}
+      {btnW > 0 && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={btnW} height={56}>
+            <SvgDefs>
+              <SvgLinearGradient id="basicBtnRing" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={1} />
+                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect x={0.5} y={0.5} width={btnW - 1} height={55} rx={28} stroke="url(#basicBtnRing)" strokeWidth={1} fill="none" />
+          </Svg>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+const glassBtn = StyleSheet.create({
+  btn: {
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  label: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
+});
 
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
@@ -77,7 +134,6 @@ type Props = RootStackScreenProps<'BasicInfo'>;
 export default function BasicInfoScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const {
     setProfilePhoto,
     profilePhoto,
@@ -176,7 +232,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
   const canContinue = HANDLE_RE.test(handle.trim()) && isValidBirthday(birthday) && gender !== '' && (!stayOn || !!stayCountry);
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+    <View style={styles.container}>
+      <StarFieldBackground opacity={0.5} />
+      <IntroAmbient />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -203,20 +261,40 @@ export default function BasicInfoScreen({ navigation }: Props) {
             <Text style={styles.subtitle}>{t('basicInfo.subtitle')}</Text>
           </View>
 
-          {/* Avatar Placeholder */}
+          {/* 프로필 사진 — 앱 내(프로필 탭·프로필 편집)와 동일한 아바타 디자인
+              (글래스 틴트 오버레이 + 기본 프사 그라데이션 링 + 카메라 배지) */}
           <TouchableOpacity style={styles.avatarWrap} activeOpacity={0.8} onPress={pickImage}>
-            {photo ? (
-              <Image source={{ uri: photo }} style={styles.avatarImage} />
-            ) : (
-              <LinearGradient
-                colors={['#3B1E8E', '#7B61FF']}
-                style={styles.avatar}
-              >
-                <PersonIcon size={28} color="#FFFFFF" />
-              </LinearGradient>
-            )}
+            <View style={styles.avatarRing}>
+              {photo ? (
+                <Image source={{ uri: photo }} style={styles.avatarImage} />
+              ) : (
+                <View style={styles.avatarDefault}>
+                  <PersonIcon size={50} color="#A0A0B0" />
+                </View>
+              )}
+              <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
+                <SvgDefs>
+                  <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                    <SvgStop stopColor="#000000" stopOpacity="0" />
+                    <SvgStop offset="1" stopColor="#FFFFFF" />
+                  </SvgLinearGradient>
+                </SvgDefs>
+                <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
+              </Svg>
+              {!photo && (
+                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <SvgDefs>
+                    <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                      <SvgStop stopColor="#00D8F3" />
+                      <SvgStop offset="1" stopColor="#EC34F7" />
+                    </SvgLinearGradient>
+                  </SvgDefs>
+                  <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
+                </Svg>
+              )}
+            </View>
             <View style={styles.avatarEditBadge}>
-              <PencilIcon size={12} color="#A1A1B0" />
+              <CameraIcon size={14} color="#A1A1B0" />
             </View>
           </TouchableOpacity>
 
@@ -328,7 +406,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
             <View style={styles.stayToggleRow}>
               <Text style={styles.inputLabel}>{t('basicInfo.stayToggle')}</Text>
               <Switch value={stayOn} onValueChange={setStayOn}
-                trackColor={{ false: '#3A3A46', true: skinAccent.accent }} thumbColor="#FFFFFF" />
+                trackColor={{ false: '#3A3A46', true: '#EC34F7' }} thumbColor="#FFFFFF" />
             </View>
             {stayOn && (
               <>
@@ -353,9 +431,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
 
         </ScrollView>
 
-        {/* Bottom CTA */}
+        {/* Bottom CTA — 온보딩·로그인과 동일한 유리 필 버튼 */}
         <View style={styles.bottomCTA}>
-          <PrimaryButton
+          <GlassButton
             label={t('common.next')}
             onPress={handleFinish}
             disabled={!canContinue}
@@ -434,12 +512,12 @@ export default function BasicInfoScreen({ navigation }: Props) {
           />
         </View>
       </Modal>
-    </LinearGradient>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
+  container: { flex: 1, backgroundColor: '#0A0B0F' }, // 온보딩·로그인과 동일 배경
   keyboardView: { flex: 1 },
   scroll: {
     paddingHorizontal: Spacing[6],
@@ -452,9 +530,9 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.1)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: Spacing[4],
@@ -465,74 +543,89 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginTop: -2,
   },
+  // 온보딩 step 라벨과 동일한 톤 — 마젠타 액센트
   stepText: {
-    fontSize: Typography.fontSize.xs,
-    fontFamily: Typography.fontFamily.medium,
-    color: Colors.primary,
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#EC34F7',
     letterSpacing: 2,
     marginBottom: Spacing[2],
   },
   title: {
-    fontSize: Typography.fontSize['3xl'],
-    fontFamily: Typography.fontFamily.bold,
+    fontSize: 30,
+    fontWeight: '800',
     color: Colors.textPrimary,
+    letterSpacing: -0.5,
     marginBottom: Spacing[2],
   },
   subtitle: {
-    fontSize: Typography.fontSize.base,
+    fontSize: 14,
     fontFamily: Typography.fontFamily.regular,
-    color: Colors.textSecondary,
+    color: '#9E9CA1',
     lineHeight: 22,
   },
 
-  // Avatar
+  // Avatar — 앱 내(프로필 편집)와 동일 치수 (링 128 / 아바타 120 / 글래스 오버레이 110)
   avatarWrap: {
     alignSelf: 'center',
     marginBottom: Spacing[8],
     position: 'relative',
   },
-  avatarImage: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-  },
-  avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+  avatarRing: {
+    width: 128,
+    height: 128,
+    borderRadius: 64,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  avatarDefault: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: '#1F1F22',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  avatarInner: {
+    position: 'absolute',
+    top: 9,
+    left: 9,
+  },
   avatarEditBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: Colors.bgCard,
+    bottom: 4,
+    right: 4,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#2E2E3B',
     borderWidth: 2,
-    borderColor: Colors.bgDeep,
+    borderColor: '#0A0B0F',
     alignItems: 'center',
     justifyContent: 'center',
   },
 
-  // Input
+  // Input — 로그인 화면과 동일한 유리 입력
   inputSection: { marginBottom: Spacing[6] },
   inputLabel: {
     fontSize: Typography.fontSize.sm,
     fontFamily: Typography.fontFamily.semiBold,
-    color: Colors.textSecondary,
+    color: '#9E9CA1',
     marginBottom: Spacing[2],
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   inputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.1)',
     paddingHorizontal: Spacing[4],
   },
   input: {
@@ -569,14 +662,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    backgroundColor: Colors.bgCard,
+    backgroundColor: 'rgba(255,255,255,0.06)',
     borderRadius: BorderRadius.lg,
     borderWidth: 1,
-    borderColor: Colors.border,
+    borderColor: 'rgba(255,255,255,0.1)',
   },
   genderBtnActive: {
-    borderColor: Colors.primary,
-    backgroundColor: 'rgba(191,133,252,0.12)',
+    borderColor: 'rgba(236,52,247,0.6)',
+    backgroundColor: 'rgba(236,52,247,0.08)',
   },
   genderText: {
     fontSize: Typography.fontSize.base,
@@ -584,7 +677,7 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
   },
   genderTextActive: {
-    color: Colors.primary,
+    color: '#EC34F7',
     fontFamily: Typography.fontFamily.semiBold,
   },
 
@@ -594,7 +687,7 @@ const styles = StyleSheet.create({
   stayToggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stayTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 },
   stayTypeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.04)' },
-  stayTypeChipOn: { borderColor: '#BF85FC', backgroundColor: 'rgba(191,133,252,0.18)' },
+  stayTypeChipOn: { borderColor: 'rgba(236,52,247,0.7)', backgroundColor: 'rgba(236,52,247,0.14)' },
   stayTypeChipTxt: { color: '#A1A1B0', fontSize: 13, fontWeight: '600' },
   stayTypeChipTxtOn: { color: '#FFFFFF' },
 
@@ -607,17 +700,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing[6],
     paddingBottom: 48,
     paddingTop: Spacing[4],
-    backgroundColor: 'rgba(10,1,24,0.95)',
+    backgroundColor: 'rgba(10,11,15,0.95)',
   },
   doneBtn: { width: '100%' },
 
-  // Modal
-  modalRoot: { flex: 1, backgroundColor: '#0A0118', paddingTop: 60 },
+  // Modal — 유리 검색창 + 온보딩 배경
+  modalRoot: { flex: 1, backgroundColor: '#0A0B0F', paddingTop: 60 },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingBottom: Spacing[4] },
   modalTitle: { fontSize: Typography.fontSize.lg, fontFamily: Typography.fontFamily.bold, color: Colors.textPrimary },
-  modalClose: { fontSize: Typography.fontSize.base, color: Colors.primary, fontFamily: Typography.fontFamily.medium },
-  modalSearch: { marginHorizontal: Spacing[6], marginBottom: Spacing[3], backgroundColor: Colors.bgCard, borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: Colors.border, color: Colors.textPrimary, paddingHorizontal: Spacing[4], paddingVertical: 12, fontSize: Typography.fontSize.base },
-  modalItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border },
+  modalClose: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontFamily: Typography.fontFamily.medium },
+  modalSearch: { marginHorizontal: Spacing[6], marginBottom: Spacing[3], backgroundColor: 'rgba(255,255,255,0.06)', borderRadius: BorderRadius.lg, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)', color: Colors.textPrimary, paddingHorizontal: Spacing[4], paddingVertical: 12, fontSize: Typography.fontSize.base },
+  modalItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.08)' },
   modalItemText: { fontSize: Typography.fontSize.base, color: Colors.textPrimary, fontFamily: Typography.fontFamily.regular },
-  modalItemCheck: { fontSize: Typography.fontSize.base, color: Colors.primary, fontWeight: 'bold' },
+  modalItemCheck: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontWeight: 'bold' },
 });
