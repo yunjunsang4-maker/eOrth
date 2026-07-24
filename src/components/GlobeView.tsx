@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useEffect, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useAnimationsActive } from '../hooks/useAnimationsActive';
+import { subscribeCoachFreezeGlobe } from './coachOverlayState';
 import { THREE_SRC } from '../data/vendorThree';
 import { D3_SRC } from '../data/vendorD3';
 import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
@@ -3001,9 +3002,27 @@ export default function GlobeView({
 
   // 화면 밖(다른 탭)·백그라운드에선 WebGL 렌더 루프를 멈춰 발열을 줄인다 (보이는 화면은 동일)
   const animationsActive = useAnimationsActive();
+  const animationsActiveRef = useRef(animationsActive);
   useEffect(() => {
+    animationsActiveRef.current = animationsActive;
     webViewRef.current?.injectJavaScript(`window.__globePaused = ${animationsActive ? 'false' : 'true'}; true;`);
   }, [animationsActive]);
+
+  // 튜토리얼(코치마크)이 떠 있는 동안 렌더 루프를 재운다 — 오버레이 애니메이션과 WebGL이
+  // 프레임을 뺏는 걸 막는다. 리렌더 없이 주입만(html source 프롭 재생성 방지).
+  // 재개 신호가 유실돼도 WebView 안에서 스스로 풀리도록 워치독을 함께 심는다(지구본 멈춤 사고 방지).
+  useEffect(() => {
+    return subscribeCoachFreezeGlobe((freeze) => {
+      // 화면 밖(다른 탭·백그라운드)이면 이미 멈춰 있다 — 건드리지 않는다.
+      // (다른 화면의 튜토리얼 신호로 뒤에 있는 지구본이 되살아나 발열이 나는 걸 막는다)
+      if (!animationsActiveRef.current) return;
+      webViewRef.current?.injectJavaScript(
+        freeze
+          ? `window.__globePaused = true; clearTimeout(window.__gpT); window.__gpT = setTimeout(function(){ window.__globePaused = false; }, 120000); true;`
+          : `clearTimeout(window.__gpT); window.__globePaused = false; true;`
+      );
+    });
+  }, []);
 
   const payload = useMemo(() => JSON.stringify({
     type: 'setVisitedCountries',

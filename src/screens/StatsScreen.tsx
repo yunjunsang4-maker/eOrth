@@ -15,14 +15,12 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import { getCurrentSession } from '../services/auth';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, {
@@ -42,7 +40,6 @@ import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
-const STATS_TUTORIAL_KEY = '@eorth/statsTutorialSeen';
 
 // 헤더 'analysis' 워드마크 (analysis.svg) — 소셜 글자 본체(x-height ≈18.9, 자연 1:1)와 동일 크기로
 // analysis x-height(≈27.5/52)를 소셜과 같게: 52 × 18.9/27.5 ≈ 36
@@ -292,7 +289,7 @@ export default function StatsScreen() {
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const { records } = useRecords();
-  const { profilePhoto, globeSkin, homeCountryCode } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트)
+  const { profilePhoto, globeSkin, homeCountryCode, tutorialsSeen, markTutorialSeen } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트) + 튜토리얼 게이트
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
   const neonRing = (skinAccent.ringGradient ?? ['#00D7F3', '#FD07E0']) as [string, string];
@@ -452,41 +449,40 @@ export default function StatsScreen() {
       });
     });
 
+  // 계정당 1회 — 통계 탭에 처음 들어왔을 때만. 표시 여부는 설정 스토어가 계정별로 들고 있고
+  // (서버 백업 포함) 계정 전환 시 초기화되므로, 재로그인해도 다시 뜨지 않는다.
   useFocusEffect(
     useCallback(() => {
-      if (tutorialStarted.current) return;
+      if (tutorialStarted.current || tutorialsSeen.stats) return;
       tutorialStarted.current = true;
       let cancelled = false;
-      (async () => {
-        // 계정별 키 (로그인 세션 없으면 guest)
-        const session = await getCurrentSession();
-        const uid = session?.user?.id || 'guest';
-        const key = `${STATS_TUTORIAL_KEY}:${uid}`;
-        const seen = await AsyncStorage.getItem(key).catch(() => null);
-        if (seen || cancelled) return;
-        setTimeout(async () => {
-          if (cancelled) return;
-          const hero = await measure(heroRef);
-          setCoachSteps([
-            {
-              rect: null,
-              title: t('stats.coachTitle'),
-              desc: t('stats.coachDesc'),
-            },
-            {
-              rect: hero,
-              title: t('stats.coach2Title'),
-              desc: t('stats.coach2Desc'),
-            },
-          ]);
-          setCoachVisible(true);
-          AsyncStorage.setItem(key, '1').catch(() => {});
-        }, 450);
-      })();
+      const timer = setTimeout(async () => {
+        if (cancelled) return;
+        const hero = await measure(heroRef);
+        if (cancelled) return;
+        setCoachSteps([
+          {
+            rect: null,
+            title: t('stats.coachTitle'),
+            desc: t('stats.coachDesc'),
+          },
+          {
+            rect: hero,
+            title: t('stats.coach2Title'),
+            desc: t('stats.coach2Desc'),
+          },
+        ]);
+        setCoachVisible(true);
+        // 등장 애니메이션과 설정 컨텍스트 연쇄 리렌더가 겹치지 않게 지연 기록
+        setTimeout(() => markTutorialSeen('stats'), 900);
+      }, 450);
       return () => {
         cancelled = true;
+        clearTimeout(timer);
+        tutorialStarted.current = false; // 다시 들어올 때 재확인(설정에서 되살린 경우 대비)
       };
-    }, [])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialsSeen.stats])
   );
 
   // Filter to "my posts" (including seed data for demo consistency)

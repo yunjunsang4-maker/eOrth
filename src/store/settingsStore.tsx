@@ -17,6 +17,13 @@ export type Gender = 'male' | 'female' | '';
 // 앱 언어: 한국어 / 영어
 export type AppLanguage = 'ko' | 'en';
 
+/**
+ * 튜토리얼(코치마크)이 붙는 탭. 계정당 탭별 처음 들어갈 때 1회만 자동으로 뜬다.
+ * 설정 > '튜토리얼 보기'로 세 탭 모두 다시 볼 수 있다.
+ */
+export type TutorialKey = 'main' | 'stats' | 'profile';
+export type TutorialsSeen = Partial<Record<TutorialKey, boolean>>;
+
 // 기본 아이디(handle) 생성. 충돌 확률을 낮추기 위해 엔트로피를 늘린다(랜덤 2회 결합).
 // DB엔 handle UNIQUE 제약이 있어, 드문 충돌 시 ProfileSync가 재생성·재시도한다.
 export function genHandle(): string {
@@ -146,9 +153,11 @@ interface SettingsContextType {
   // (폐지된 기능) 개별 QR 디자인 — 2026-07-22 QR 커스텀 제거로 미사용, 영속 하위호환용으로만 유지
   qrDesign: string;
   setQrDesign: (v: string) => void;
-  // 메인 튜토리얼(코치마크)을 이미 봤는지 — 유저당 1회 자동 표시 게이트 (백업 포함)
-  tutorialSeen: boolean;
-  setTutorialSeen: (v: boolean) => void;
+  // 탭별 튜토리얼(코치마크)을 이미 봤는지 — 계정당 탭별 1회 자동 표시 게이트 (서버 백업 포함).
+  // 계정 전환 시 resetSettings로 비워지고, 재로그인 시 서버 백업에서 복원된다.
+  tutorialsSeen: TutorialsSeen;
+  markTutorialSeen: (k: TutorialKey) => void;
+  resetTutorialsSeen: () => void; // 설정의 '튜토리얼 보기' — 세 탭 모두 다시 보이게
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
@@ -202,7 +211,8 @@ interface SettingsPersistPayload {
   handleFont?: string | null; // 아이디 표시 폰트 id
   stripLogoRemoval?: boolean; // 스트립 로고 제거 토글 (프리미엄)
   qrDesign?: string; // 개별 QR 디자인 id (프리미엄)
-  tutorialSeen?: boolean; // 메인 튜토리얼 1회 표시 여부
+  tutorialSeen?: boolean; // (구버전) 메인 튜토리얼 1회 표시 여부 — tutorialsSeen.main으로 이관
+  tutorialsSeen?: TutorialsSeen; // 탭별 튜토리얼 표시 여부
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
 
@@ -274,10 +284,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [handleFont, setHandleFont] = useState<string | null>(null);
   const [stripLogoRemoval, setStripLogoRemoval] = useState(true); // 기본: 프리미엄이면 로고 제거
   const [qrDesign, setQrDesign] = useState('default'); // 개별 QR 디자인 — 기본(보라)
-  const [tutorialSeen, setTutorialSeen] = useState(false); // 메인 튜토리얼 1회 표시 여부
+  const [tutorialsSeen, setTutorialsSeen] = useState<TutorialsSeen>({}); // 탭별 튜토리얼 표시 여부(계정당)
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
+
+  // 탭별 튜토리얼 — 표시한 순간 기록(계정당 1회). 이미 true면 상태를 그대로 둬 불필요한 저장을 막는다.
+  const markTutorialSeen = useCallback((k: TutorialKey) => {
+    setTutorialsSeen((prev) => (prev[k] ? prev : { ...prev, [k]: true }));
+  }, []);
+  // 설정 > '튜토리얼 보기' — 메인은 즉시 재생하고, 통계·프로필은 다음 방문 때 다시 뜬다
+  const resetTutorialsSeen = useCallback(() => setTutorialsSeen({}), []);
 
   // 앱 시작(복원 완료) 시 1회: 오늘 접속을 반영해 연속 접속일을 갱신한다.
   const visitRecordedRef = useRef(false);
@@ -357,7 +374,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setHandleFont(p.handleFont ?? null);
       setStripLogoRemoval(p.stripLogoRemoval ?? true);
       setQrDesign(p.qrDesign ?? 'default');
-      setTutorialSeen(p.tutorialSeen ?? false);
+      // 구버전 저장본 마이그레이션 — tutorialSeen(메인 전용) → tutorialsSeen.main
+      setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
     () => ({
@@ -401,7 +419,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       handleFont,
       stripLogoRemoval,
       qrDesign,
-      tutorialSeen,
+      tutorialsSeen,
+      tutorialSeen: !!tutorialsSeen.main, // 구버전 앱 호환용으로 함께 저장
       stayNudgeDismissedFor,
     }),
     [
@@ -445,7 +464,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       handleFont,
       stripLogoRemoval,
       qrDesign,
-      tutorialSeen,
+      tutorialsSeen,
       stayNudgeDismissedFor,
     ],
   );
@@ -508,7 +527,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setHandleFont(null);
     setStripLogoRemoval(true);
     setQrDesign('default');
-    setTutorialSeen(false);
+    setTutorialsSeen({});
     setStayNudgeDismissedFor(null);
     visitRecordedRef.current = false;
   };
@@ -522,7 +541,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     taggedRegions, dismissedRegionTagChips,
     representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
     notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
-    tutorialSeen,
+    tutorialsSeen, tutorialSeen: !!tutorialsSeen.main,
   });
   const applySettingsBackup = (b: Record<string, unknown>) => {
     const v = b as any;
@@ -556,7 +575,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (Array.isArray(v.verifiedNaverBlogIds)) setVerifiedNaverBlogIds(v.verifiedNaverBlogIds);
     if (typeof v.handleLastChanged === 'number') setHandleLastChanged(v.handleLastChanged);
     if (typeof v.handleChosen === 'boolean') setHandleChosen(v.handleChosen);
-    if (typeof v.tutorialSeen === 'boolean') setTutorialSeen(v.tutorialSeen);
+    // 탭별 튜토리얼 — 신형 우선, 없으면 구버전 백업(tutorialSeen=메인)에서 이관.
+    // "한 번 봤으면 계속 본 것"이라 덮어쓰지 않고 병합한다 — 이 기능 이전에 만들어진 백업이
+    // 복원되면서 이미 본 통계·프로필 튜토리얼이 되살아나는 걸 막는다.
+    // (계정 전환은 resetSettings로 먼저 비워진 뒤 적용되므로 다른 계정 값이 섞이지 않는다)
+    if (v.tutorialsSeen && typeof v.tutorialsSeen === 'object') {
+      setTutorialsSeen((prev) => ({ ...prev, ...v.tutorialsSeen }));
+    } else if (typeof v.tutorialSeen === 'boolean') {
+      setTutorialsSeen((prev) => ({ ...prev, main: prev.main || v.tutorialSeen }));
+    }
   };
 
   // 복원 전에는 기본값이 잠깐 보이지 않도록 렌더를 막는다
@@ -645,8 +672,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setStripLogoRemoval,
         qrDesign,
         setQrDesign,
-        tutorialSeen,
-        setTutorialSeen,
+        tutorialsSeen,
+        markTutorialSeen,
+        resetTutorialsSeen,
         stayNudgeDismissedFor,
         setStayNudgeDismissedFor,
         resetSettings,

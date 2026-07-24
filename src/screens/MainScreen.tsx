@@ -1,5 +1,6 @@
 import React, { useState, useRef, useMemo, useEffect, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -387,15 +388,14 @@ export default function MainScreen({ navigation, route }: Props) {
       });
     });
 
-  // 기록 완성 화면에서 "튜토리얼 진행하기"로 들어온 경우 자동 시작
-  // 유저당 1회 — 이미 봤으면 자동 시작은 스킵하고, 설정의 '튜토리얼 보기'(replay)만 통과
-  useEffect(() => {
-    if (!route.params?.startTutorial) return;
-    if (tutorialSeen && route.params.startTutorial !== 'replay') {
-      navigation.setParams({ startTutorial: undefined });
-      return;
-    }
+  // 메인 튜토리얼 시작 — 강조할 요소들을 측정해 단계를 만들고 코치마크를 띄운다.
+  // 반환값은 취소 함수(효과의 cleanup으로 그대로 사용).
+  const coachRunRef = useRef(false); // 같은 화면 인스턴스에서 중복 실행 방지
+  const startCoach = (force = false) => {
+    if (coachRunRef.current && !force) return () => {};
+    coachRunRef.current = true;
     let cancelled = false;
+    let shown = false;
     const timer = setTimeout(async () => {
       const [globe, toggle, settings, snapMeasured] = await Promise.all([
         measure(globeRef),
@@ -453,14 +453,31 @@ export default function MainScreen({ navigation, route }: Props) {
         { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
       ]);
       setCoachVisible(true);
-      setTutorialSeen(true); // 유저당 1회 — 표시된 순간 본 것으로 기록(서버 백업 포함)
+      shown = true;
+      // 계정당 1회 기록 — 설정 컨텍스트를 구독하는 모든 탭 화면이 리렌더되므로,
+      // 오버레이 등장 애니메이션이 끝난 뒤로 미뤄 등장 프레임에 커밋이 겹치지 않게 한다.
+      setTimeout(() => markTutorialSeen('main'), 900);
       // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
-      navigation.setParams({ startTutorial: undefined });
+      if (route.params?.startTutorial) navigation.setParams({ startTutorial: undefined });
     }, 450);
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      // 띄우기 전에 취소됐다면(탭 전환 등) 다음 진입에서 다시 시도할 수 있게 되돌린다
+      if (!shown) coachRunRef.current = false;
     };
+  };
+
+  // 트리거 1 — 기록 완성 화면의 "튜토리얼 진행하기" 또는 설정의 '튜토리얼 보기'(replay).
+  // replay는 1회 게이트를 무시하고 강제 재생한다.
+  useEffect(() => {
+    const p = route.params?.startTutorial;
+    if (!p) return;
+    if (tutorialsSeen.main && p !== 'replay') {
+      navigation.setParams({ startTutorial: undefined });
+      return;
+    }
+    return startCoach(p === 'replay');
   }, [route.params?.startTutorial]);
 
   // 실제 미확인 알림 수에 연동돼야 함. 현재 알림 소스(NOTIS)가 비어 있어 기본은 점 없음.
@@ -502,9 +519,19 @@ export default function MainScreen({ navigation, route }: Props) {
     taggedRegions, setTaggedRegions,
     dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
-    tutorialSeen, setTutorialSeen,
+    tutorialsSeen, markTutorialSeen,
     handle,
   } = useSettings();
+
+  // 트리거 2 — 계정당 1회: 메인 탭에 처음 들어왔을 때 자동 시작.
+  // (기록 완성 화면에서 파라미터로 들어온 경우는 트리거 1이 처리하므로 여기선 비켜준다)
+  useFocusEffect(
+    useCallback(() => {
+      if (tutorialsSeen.main || route.params?.startTutorial) return;
+      return startCoach();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialsSeen.main, route.params?.startTutorial])
+  );
 
   // 초대 귀속 소비 — 미인증 상태에서 받은 초대 딥링크(pendingInvite)를 온보딩 완료 후
   // 첫 메인 진입에서 메이트 연결 넛지(커스텀 모달)로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)

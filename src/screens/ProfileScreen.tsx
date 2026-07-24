@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
   Text,
@@ -63,7 +62,6 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // 프로필 튜토리얼 1회 노출 플래그 키 (계정별)
-const PROFILE_TUTORIAL_KEY = '@eorth/profileTutorialSeen';
 // 팔로워 수 마지막 값 — 탭 리마운트 시 0에서 다시 세는 깜빡임 방지(세션 내 유지)
 let lastFollowerCountCache = 0;
 
@@ -1361,6 +1359,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   const [badgeListVisible, setBadgeListVisible] = useState(false);
 
   // ── 프로필 튜토리얼(코치마크) — 계정당 프로필 탭 첫 진입 시 1회 ──
+  // 표시 여부는 설정 스토어가 계정별로 들고 있고(서버 백업 포함) 계정 전환 시 초기화되므로,
+  // 재로그인해도 다시 뜨지 않는다. (아래 useSettings 구조분해보다 먼저 필요해 따로 읽는다)
+  const { tutorialsSeen, markTutorialSeen } = useSettings();
   const avatarRef = useRef<any>(null);
   const badgeRef = useRef<any>(null);
   const archiveRef = useRef<any>(null);
@@ -1386,66 +1387,65 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
   useFocusEffect(
     useCallback(() => {
-      if (tutorialStarted.current) return;
+      if (tutorialStarted.current || tutorialsSeen.profile) return;
       tutorialStarted.current = true;
       let cancelled = false;
-      (async () => {
-        const uid = (await getMyUserId().catch(() => null)) || 'guest';
-        const key = `${PROFILE_TUTORIAL_KEY}:${uid}`;
-        const seen = await AsyncStorage.getItem(key).catch(() => null);
-        if (seen || cancelled) return;
-        setTimeout(async () => {
-          if (cancelled) return;
-          const [avatar, badge, archive] = await Promise.all([
-            measureRect(avatarRef),
-            measureRect(badgeRef),
-            measureRect(archiveRef),
-          ]);
-          // 아바타는 원형이라 원형 스포트라이트로 강조
-          const avatarCircle = avatar
-            ? { cx: avatar.x + avatar.width / 2, cy: avatar.y + avatar.height / 2, r: Math.max(avatar.width, avatar.height) / 2 + 4 }
-            : undefined;
-          // 배지 강조 링은 배지(글로우 포함)를 넉넉히 감싸도록 측정값을 확장(특히 세로 여유).
-          const badgeRect: CoachRect | null = badge
-            ? { x: badge.x - 4, y: badge.y - 12, width: badge.width + 8, height: badge.height + 24 }
-            : null;
-          // 여행 기록 강조 링도 동일하게 넉넉히 확장.
-          const archiveRect: CoachRect | null = archive
-            ? { x: archive.x - 4, y: archive.y - 12, width: archive.width + 8, height: archive.height + 24 }
-            : null;
-          setCoachSteps([
-            {
-              rect: null,
-              title: t('profile.coach1Title'),
-              desc: t('profile.coach1Desc'),
-            },
-            {
-              rect: avatar,
-              shape: 'circle',
-              circleWin: avatarCircle,
-              tipBelow: true, // 아바타는 화면 상단이라 말풍선을 아래쪽에 둬 가리지 않게
-              title: t('profile.coach2Title'),
-              desc: t('profile.coach2Desc'),
-            },
-            {
-              rect: badgeRect,
-              title: t('profile.coach3Title'),
-              desc: t('profile.coach3Desc'),
-            },
-            {
-              rect: archiveRect,
-              title: t('profile.coach4Title'),
-              desc: t('profile.coach4Desc'),
-            },
-          ]);
-          setCoachVisible(true);
-          AsyncStorage.setItem(key, '1').catch(() => {});
-        }, 450);
-      })();
+      const timer = setTimeout(async () => {
+        if (cancelled) return;
+        const [avatar, badge, archive] = await Promise.all([
+          measureRect(avatarRef),
+          measureRect(badgeRef),
+          measureRect(archiveRef),
+        ]);
+        if (cancelled) return;
+        // 아바타는 원형이라 원형 스포트라이트로 강조
+        const avatarCircle = avatar
+          ? { cx: avatar.x + avatar.width / 2, cy: avatar.y + avatar.height / 2, r: Math.max(avatar.width, avatar.height) / 2 + 4 }
+          : undefined;
+        // 배지 강조 링은 배지(글로우 포함)를 넉넉히 감싸도록 측정값을 확장(특히 세로 여유).
+        const badgeRect: CoachRect | null = badge
+          ? { x: badge.x - 4, y: badge.y - 12, width: badge.width + 8, height: badge.height + 24 }
+          : null;
+        // 여행 기록 강조 링도 동일하게 넉넉히 확장.
+        const archiveRect: CoachRect | null = archive
+          ? { x: archive.x - 4, y: archive.y - 12, width: archive.width + 8, height: archive.height + 24 }
+          : null;
+        setCoachSteps([
+          {
+            rect: null,
+            title: t('profile.coach1Title'),
+            desc: t('profile.coach1Desc'),
+          },
+          {
+            rect: avatar,
+            shape: 'circle',
+            circleWin: avatarCircle,
+            tipBelow: true, // 아바타는 화면 상단이라 말풍선을 아래쪽에 둬 가리지 않게
+            title: t('profile.coach2Title'),
+            desc: t('profile.coach2Desc'),
+          },
+          {
+            rect: badgeRect,
+            title: t('profile.coach3Title'),
+            desc: t('profile.coach3Desc'),
+          },
+          {
+            rect: archiveRect,
+            title: t('profile.coach4Title'),
+            desc: t('profile.coach4Desc'),
+          },
+        ]);
+        setCoachVisible(true);
+        // 등장 애니메이션과 설정 컨텍스트 연쇄 리렌더가 겹치지 않게 지연 기록
+        setTimeout(() => markTutorialSeen('profile'), 900);
+      }, 450);
       return () => {
         cancelled = true;
+        clearTimeout(timer);
+        tutorialStarted.current = false; // 다시 들어올 때 재확인(설정에서 되살린 경우 대비)
       };
-    }, [])
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [tutorialsSeen.profile])
   );
 
   // 배지 획득 토스트를 누르면 openBadgeList 파라미터로 진입 → 배지 리스트 모달 자동 열기(1회).

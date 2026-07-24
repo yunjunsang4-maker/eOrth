@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,11 +12,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import Svg, { Path as SvgPath, Rect as SvgRect, Mask as SvgMask, Defs as SvgDefs } from 'react-native-svg';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-
-const AnimatedRect = Animated.createAnimatedComponent(SvgRect);
+import { setCoachFreezeGlobe } from './coachOverlayState';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -51,24 +50,43 @@ interface Props {
 }
 
 const PAD = 8; // 강조 구멍 여백
-const DIM = '#000000';
-const DIM_OP = 0.78;
+const DIM = 'rgba(0,0,0,0.78)';
+
+/**
+ * 스포트라이트 이동 연출 스위치.
+ *
+ * true  = 구멍이 다음 요소로 부드럽게 미끄러진다(디자인 기본).
+ *         이 구간에만 딤·링 두 뷰의 레이아웃이 매 프레임 갱신된다.
+ * false = 말풍선이 사라져 있는 사이에 즉시 이동한다. 전환 중 프레임마다 하는 일이 0이라
+ *         저사양 기기·지구본(WebGL) 위에서도 절대 끊기지 않는다.
+ *
+ * 실기기(지구본 WebGL 위 + 고해상도)에서 글라이드가 프레임을 못 맞춰 false로 둔다.
+ * 다시 켜보려면 true로만 바꾸면 된다.
+ */
+const SPOTLIGHT_GLIDE = false;
+
+/**
+ * 강조 링 맥동(숨쉬기) 스위치.
+ *
+ * 맥동은 튜토리얼이 떠 있는 내내 60fps로 도는 유일한 애니메이션이다. 네이티브 드라이버라
+ * JS 부하는 없지만, 지구본(WebGL) 위에서 큰 글로우 영역을 매 프레임 다시 합성하게 만든다.
+ * false면 글로우가 고정 밝기로 은은하게 켜져 있고(정지 화면), 오버레이가 하는 일이 0이 된다.
+ */
+const RING_PULSE = false;
 const TOOLTIP_BG = 'rgba(18,16,26,0.96)'; // 딥다크 글래스 말풍선
 const TIP_MIN = 160; // 말풍선이 들어갈 최소 세로 공간
 
-// 진행 점 — 활성 시 스프링으로 늘어나며 강조색으로 물든다(온보딩 PageDot 언어)
+// 진행 점 — 활성 시 길어지고 강조색으로 물든다(온보딩 PageDot 언어).
+// 상태 변경은 말풍선이 완전히 사라진 시점(trans=0)에 일어나 애니메이션 없이도 티가 나지 않는다.
+// (width 스프링은 JS 드라이버라 스포트라이트 이동과 겹치면 프레임마다 레이아웃을 다시 잡아 렉의 원인)
 function StepDot({ active, color }: { active: boolean; color: string }) {
-  const a = useRef(new Animated.Value(active ? 1 : 0)).current;
-  useEffect(() => {
-    Animated.spring(a, { toValue: active ? 1 : 0, friction: 7, tension: 120, useNativeDriver: false }).start();
-  }, [active, a]);
   return (
-    <Animated.View
+    <View
       style={{
         height: 7,
         borderRadius: 3.5,
-        width: a.interpolate({ inputRange: [0, 1], outputRange: [7, 18] }),
-        backgroundColor: a.interpolate({ inputRange: [0, 1], outputRange: ['rgba(255,255,255,0.25)', color] }),
+        width: active ? 18 : 7,
+        backgroundColor: active ? color : 'rgba(255,255,255,0.25)',
       }}
     />
   );
@@ -79,9 +97,15 @@ type Geom = { x: number; y: number; w: number; h: number; r: number };
 /**
  * 메인 화면 단계별 튜토리얼(코치마크) 오버레이.
  *
- * SVG 마스크로 어둡게 처리한 오버레이에 둥근 구멍(스포트라이트)을 뚫고, 그 구멍을 단계 간
- * 부드럽게 이동·리사이즈(item 9)한다. 스킨색 네온 링 + 딥다크 글래스 말풍선(그라데이션 테두리·
- * 강조 요소를 가리키는 꼬리·내용 스태거 등장). 진입/종료 페이드, 이전/다음/우상단 X, 햅틱 지원.
+ * 어둡게 처리한 오버레이에 둥근 구멍(스포트라이트)을 뚫고, 그 구멍을 단계 간 부드럽게
+ * 이동·리사이즈한다. 스킨색 네온 링 + 딥다크 글래스 말풍선(그라데이션 테두리·강조 요소를
+ * 가리키는 꼬리·내용 스태거 등장). 진입/종료 페이드, 이전/다음/우상단 X, 햅틱 지원.
+ *
+ * 성능 주의(렉 방지):
+ * - 딤은 "거대한 둥근 테두리 뷰" 한 장으로 구멍을 만든다. 전체화면 SVG 마스크는 프레임마다
+ *   오프스크린 합성이 일어나 지구본 WebView 위에서 심하게 끊긴다(사용 금지).
+ * - 맥동(pulse)은 반드시 useNativeDriver: true. 지오메트리(JS 드라이버)와는 뷰를 분리해
+ *   같은 뷰에서 두 드라이버가 섞이지 않게 한다.
  */
 export default function MainCoachmark({ visible, steps, onClose, onStepChange }: Props) {
   const { t } = useTranslation();
@@ -93,6 +117,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   const mount = useRef(new Animated.Value(0)).current;   // 진입/종료 페이드
   const trans = useRef(new Animated.Value(1)).current;   // 말풍선 크로스페이드 + 내용 스태거
   const pulse = useRef(new Animated.Value(0)).current;   // 링 맥동
+  const glow = useRef(new Animated.Value(1)).current;    // 이동 중 글로우 숨김(네이티브)
 
   // 스포트라이트 지오메트리(둥근 사각형으로 통일 — 원은 rx=반지름) — 단계 간 애니메이션
   const gx = useRef(new Animated.Value(0)).current;
@@ -127,26 +152,33 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
       setRendered(true);
       setIdx(0);
       trans.setValue(1);
+      glow.setValue(1);
       geomInit.current = false;
+      // 튜토리얼이 떠 있는 동안은 지구본(WebGL) 렌더 루프를 통째로 재운다.
+      // 오버레이 위/아래에서 60fps 두 개가 부딪히는 게 전환 버벅임의 가장 큰 원인이고,
+      // 자동회전은 45초/바퀴라 이 사이 멈춰 있어도 눈에 띄지 않는다.
+      setCoachFreezeGlobe(true);
       Animated.timing(mount, { toValue: 1, duration: 260, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
     } else if (rendered) {
+      setCoachFreezeGlobe(false);
       Animated.timing(mount, { toValue: 0, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(
         ({ finished }) => { if (finished) setRendered(false); }
       );
     }
+    return () => setCoachFreezeGlobe(false); // 어떤 경로로 사라져도 지구본이 멈춘 채 남지 않게
   }, [visible]);
 
   useEffect(() => {
     if (visible) onStepChange?.(steps[Math.min(idx, steps.length - 1)]);
   }, [idx, visible, steps]);
 
-  // 맥동 루프(지오메트리와 같은 뷰에 얹히므로 JS 드라이버)
+  // 맥동 루프 — 켤 경우 반드시 네이티브 드라이버(JS 드라이버면 튜토리얼 내내 JS 스레드가 60fps로 점유된다)
   useEffect(() => {
-    if (!rendered) return;
+    if (!rendered || !RING_PULSE) return;
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
-        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: false }),
+        Animated.timing(pulse, { toValue: 1, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
       ])
     );
     loop.start();
@@ -180,33 +212,79 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
     if (!rendered) return;
     const g = computeGeom(step);
     if (!g) {
-      Animated.timing(gw, { toValue: 0, duration: 250, useNativeDriver: false }).start();
-      Animated.timing(gh, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+      // 구멍 없는 단계(안내 카드만) — 글라이드 off면 즉시 닫는다
+      if (SPOTLIGHT_GLIDE) {
+        Animated.timing(gw, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+        Animated.timing(gh, { toValue: 0, duration: 250, useNativeDriver: false }).start();
+      } else {
+        gw.setValue(0); gh.setValue(0);
+      }
       return;
     }
-    if (!geomInit.current) {
+    if (!geomInit.current || !SPOTLIGHT_GLIDE) {
+      // 첫 표시 또는 글라이드 off — 즉시 이동(말풍선이 사라져 있는 사이라 점프가 티나지 않는다).
+      // 프레임마다 갱신되는 게 하나도 없어 전환 구간에 렉이 생길 여지가 없다.
       gx.setValue(g.x); gy.setValue(g.y); gw.setValue(g.w); gh.setValue(g.h); gr.setValue(g.r);
+      // 글로우는 애니메이션하지 않는다(항상 켜짐) — 헤일로는 위치·크기만 새 값으로 바뀌고,
+      // 그림자는 그 한 번만 다시 그려진다. 페이드시키면 iOS에서 프레임마다 블러를 다시 계산한다.
       geomInit.current = true;
     } else {
-      const d = 380;
+      const d = 280; // 이 구간만 JS 드라이버로 레이아웃이 움직인다 — 짧게 유지
       const ez = Easing.inOut(Easing.cubic);
+      // 이동 중에는 글로우(헤일로)를 접는다. 크기가 매 프레임 바뀌는 뷰의 그림자는 프레임마다
+      // 다시 그려져(iOS 오프스크린 / 안드로이드 elevation) 이동 구간 렉의 큰 원인이다.
+      // 접혀 있는 동안 헤일로는 그릴 필요가 없으므로 지오메트리도 애니메이션하지 않는다.
+      glow.setValue(0); // 보통은 animateTo에서 이미 접혀 있다(도착지 글로우가 먼저 번쩍이는 것 방지)
       Animated.parallel([
         Animated.timing(gx, { toValue: g.x, duration: d, easing: ez, useNativeDriver: false }),
         Animated.timing(gy, { toValue: g.y, duration: d, easing: ez, useNativeDriver: false }),
         Animated.timing(gw, { toValue: g.w, duration: d, easing: ez, useNativeDriver: false }),
         Animated.timing(gh, { toValue: g.h, duration: d, easing: ez, useNativeDriver: false }),
         Animated.timing(gr, { toValue: g.r, duration: d, easing: ez, useNativeDriver: false }),
-      ]).start();
+      ]).start(({ finished }) => {
+        if (!finished) return;
+        Animated.timing(glow, { toValue: 1, duration: 220, useNativeDriver: true }).start();
+      });
     }
   }, [idx, rendered, measured, origin.x, origin.y, rootSize.w, rootSize.h]);
+
+  // 딤 — 화면보다 훨씬 큰 "둥근 테두리" 뷰 한 장. 테두리 안쪽이 곧 구멍(스포트라이트)이다.
+  // 바깥 모서리의 둥근 부분이 화면 밖에 있도록 두께 B를 충분히 크게 잡는다(1.42×화면 필요).
+  // 뷰 1장이라 이음새/이중 겹침이 없고, SVG 마스크와 달리 오프스크린 합성이 없다.
+  // 보간 노드는 useMemo로 고정 — 렌더마다 새로 만들면 이동 중에 애니메이션 노드가 붙었다 떨어진다.
+  const B = Math.ceil(Math.max(rootSize.w, rootSize.h) * 1.6 + 240);
+  const dim = useMemo(
+    () => ({
+      x: gx.interpolate({ inputRange: [0, 1], outputRange: [-B, 1 - B] }),
+      y: gy.interpolate({ inputRange: [0, 1], outputRange: [-B, 1 - B] }),
+      w: gw.interpolate({ inputRange: [0, 1], outputRange: [B * 2, B * 2 + 1] }),
+      h: gh.interpolate({ inputRange: [0, 1], outputRange: [B * 2, B * 2 + 1] }),
+      r: gr.interpolate({ inputRange: [0, 1], outputRange: [B, B + 1] }),
+    }),
+    [B, gx, gy, gw, gh, gr]
+  );
+
+  // 말풍선 내용 스태거 — 렌더마다 재생성되지 않도록 고정
+  const tip = useMemo(
+    () => ({
+      titleY: trans.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }),
+      descY: trans.interpolate({ inputRange: [0, 0.18, 1], outputRange: [14, 14, 0] }),
+      footerY: trans.interpolate({ inputRange: [0, 0.34, 1], outputRange: [18, 18, 0] }),
+    }),
+    [trans]
+  );
 
   if (!rendered || steps.length === 0) return null;
 
   const isLast = idx >= steps.length - 1;
 
-  // 단계 전환 — 말풍선 크로스페이드(구멍/링은 지오메트리로 글라이드), 햅틱
+  // 단계 전환 — 말풍선 크로스페이드(스포트라이트는 그 사이 즉시 이동), 햅틱
   const animateTo = (target: number) => {
     Haptics.selectionAsync().catch(() => {});
+    // 글라이드 모드에서만 글로우를 미리 접는다(이동 중 헤일로는 애니메이션 대상이 아니라서).
+    // 글라이드 off면 글로우는 아예 애니메이션하지 않는다 — iOS에서 그림자(shadowRadius) 달린
+    // 뷰의 투명도 페이드는 프레임마다 오프스크린 렌더+블러라, 지구본만 한 헤일로에선 그 자체가 렉이다.
+    if (SPOTLIGHT_GLIDE) Animated.timing(glow, { toValue: 0, duration: 120, useNativeDriver: true }).start();
     Animated.timing(trans, { toValue: 0, duration: 130, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(() => {
       setIdx(target);
       Animated.timing(trans, { toValue: 1, duration: 220, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
@@ -263,50 +341,64 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   // 그라데이션 테두리 색 — 스킨의 네온 링 그라데이션(없으면 버튼 그라데이션)
   const borderGrad = skinAccent.ringGradient ?? skinAccent.btnGradient;
 
-  // 내용 스태거 — trans(0→1)에 서로 다른 시작점을 줘 제목→설명→푸터 순으로 슬라이드 인
-  const titleY = trans.interpolate({ inputRange: [0, 1], outputRange: [10, 0] });
-  const descY = trans.interpolate({ inputRange: [0, 0.18, 1], outputRange: [14, 14, 0] });
-  const footerY = trans.interpolate({ inputRange: [0, 0.34, 1], outputRange: [18, 18, 0] });
-
   return (
     <View ref={rootRef} onLayout={onRootLayout} style={styles.root} pointerEvents="box-none">
-      <Animated.View style={[StyleSheet.absoluteFill, { opacity: mount }]}>
+      {/* overflow hidden 필수 — 딤이 화면의 몇 배 크기(거대 테두리 뷰)라, 클리핑 없이는
+          진입 페이드·전환 때 화면 밖 영역까지 통째로 합성돼 GPU 픽셀 비용이 수십 배가 된다. */}
+      <Animated.View style={[StyleSheet.absoluteFill, { opacity: mount, overflow: 'hidden' }]}>
         {/* 배경 탭은 아래 UI 터치만 차단(진행 X) */}
         <Pressable style={StyleSheet.absoluteFill} onPress={() => {}} />
 
-        {/* 딤 + 둥근 구멍 (SVG 마스크로 원/사각 통일, 지오메트리 애니메이션) */}
-        <Svg width={rootSize.w} height={rootSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            <SvgMask id="coachHole">
-              <SvgRect x={0} y={0} width={rootSize.w} height={rootSize.h} fill="#FFFFFF" />
-              <AnimatedRect x={gx} y={gy} width={gw} height={gh} rx={gr} ry={gr} fill="#000000" />
-            </SvgMask>
-          </SvgDefs>
-          <SvgRect
-            x={0} y={0} width={rootSize.w} height={rootSize.h}
-            fill={DIM} fillOpacity={DIM_OP} mask="url(#coachHole)"
-          />
-        </Svg>
-
-        {/* 강조 글로우 헤일로 (맥동) — 구멍과 함께 글라이드 */}
+        {/* 딤 + 둥근 구멍 (원/사각 통일, 지오메트리 애니메이션) */}
         <Animated.View
           pointerEvents="none"
-          style={[
-            styles.halo,
-            {
-              borderColor: skinAccent.tint(0.45),
-              shadowColor: skinAccent.accent,
-              left: gx, top: gy, width: gw, height: gh, borderRadius: gr,
-              opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.85] }),
-            },
-          ]}
+          style={{
+            position: 'absolute',
+            left: dim.x,
+            top: dim.y,
+            width: dim.w,
+            height: dim.h,
+            borderRadius: dim.r,
+            borderWidth: B,
+            borderColor: DIM,
+            backgroundColor: 'transparent',
+          }}
         />
-        {/* 강조 링 */}
+
+        {/* 강조 글로우 헤일로 — 그림자(shadowRadius) 금지: iOS는 shadowPath 없는 그림자를
+            단계마다(지구본 단계는 화면 크기로) 오프스크린 블러로 다시 굽는다 → 그 자체가 히치.
+            대신 알파가 낮아지는 테두리 링을 겹쳐 네온 글로우를 흉내낸다(순수 합성, 블러 없음). */}
+        {geom && (
+          <>
+            {([
+              { o: 0, bw: 4, a: 0.45 },
+              { o: 5, bw: 6, a: 0.2 },
+              { o: 12, bw: 8, a: 0.09 },
+            ] as const).map(({ o, bw, a }) => (
+              <View
+                key={o}
+                pointerEvents="none"
+                style={{
+                  position: 'absolute',
+                  left: geom.x - o,
+                  top: geom.y - o,
+                  width: geom.w + o * 2,
+                  height: geom.h + o * 2,
+                  borderRadius: geom.r + o,
+                  borderWidth: bw,
+                  borderColor: skinAccent.tint(a),
+                }}
+              />
+            ))}
+          </>
+        )}
+        {/* 강조 링 — 구멍과 함께 글라이드. 글로우(그림자)는 위 헤일로가 전담하고 여기는 선만 그린다.
+            크기가 매 프레임 바뀌는 뷰에 그림자를 걸면 프레임마다 그림자를 다시 렌더한다. */}
         <Animated.View
           pointerEvents="none"
           style={[
             styles.ring,
-            { borderColor: skinAccent.accent, shadowColor: skinAccent.accent, left: gx, top: gy, width: gw, height: gh, borderRadius: gr },
+            { borderColor: skinAccent.accent, left: gx, top: gy, width: gw, height: gh, borderRadius: gr },
           ]}
         />
 
@@ -316,10 +408,10 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
           {arrowDir === 'down' && <View style={[styles.arrowDown, { left: arrowX }]} />}
           <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tipBorder}>
             <View style={styles.tipInner}>
-              <Animated.Text style={[styles.title, { transform: [{ translateY: titleY }] }]}>{step.title}</Animated.Text>
-              <Animated.Text style={[styles.desc, { transform: [{ translateY: descY }] }]}>{step.desc}</Animated.Text>
+              <Animated.Text style={[styles.title, { transform: [{ translateY: tip.titleY }] }]}>{step.title}</Animated.Text>
+              <Animated.Text style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
 
-              <Animated.View style={[styles.footer, { transform: [{ translateY: footerY }] }]}>
+              <Animated.View style={[styles.footer, { transform: [{ translateY: tip.footerY }] }]}>
                 <View style={styles.dots}>
                   {steps.map((_, i) => (
                     <StepDot key={i} active={i === idx} color={skinAccent.accent} />
@@ -369,21 +461,9 @@ const styles = StyleSheet.create({
     zIndex: 9999,
     elevation: 9999,
   },
-  halo: {
-    position: 'absolute',
-    borderWidth: 4,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 1,
-    shadowRadius: 18,
-    elevation: 10,
-  },
   ring: {
     position: 'absolute',
     borderWidth: 2.5,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.95,
-    shadowRadius: 12,
-    elevation: 8,
   },
   closeBtn: {
     position: 'absolute',
@@ -397,15 +477,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  // 그림자 없음 — 딤(78% 검정) 위라 검은 그림자는 어차피 보이지 않는데,
+  // 큰 블러 그림자를 단 채 투명도(크로스페이드)를 돌리면 페이드 프레임마다
+  // 오프스크린으로 그림자를 다시 그려 "글박스 뜰 때" 렉의 주범이 된다.
   tooltipPos: {
     position: 'absolute',
     left: 24,
     right: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.5,
-    shadowRadius: 18,
-    elevation: 14,
   },
   tipBorder: {
     borderRadius: 20,

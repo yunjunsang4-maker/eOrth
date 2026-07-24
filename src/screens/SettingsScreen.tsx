@@ -125,6 +125,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     handle,
     globeSkin, setGlobeSkin,
     resetSettings,
+    resetTutorialsSeen,
   } = useSettings();
   const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
@@ -344,10 +345,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               onPress: handleStayPress,
             },
             {
-              // 튜토리얼 다시 보기 — 'replay'는 tutorialSeen(1회 게이트)을 무시하고 강제 재생
+              // 튜토리얼 다시 보기 — 세 탭(메인·통계·프로필)의 1회 게이트를 모두 풀어준다.
+              // 메인은 'replay'로 지금 바로 재생하고, 통계·프로필은 그 탭에 다시 들어갈 때 뜬다.
               icon: <CompassIcon size={22} />,
               label: t('settings.viewTutorial'),
-              onPress: () => navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } }),
+              onPress: () => {
+                resetTutorialsSeen();
+                navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } });
+              },
             },
           ]}
         />
