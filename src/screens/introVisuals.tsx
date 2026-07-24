@@ -362,8 +362,12 @@ export function IntroVisual5({ active = true }: { active?: boolean }) {
   const fadeV = 70 * DS; // 상·하 가장자리 페이드 폭
   const fadeH = 44 * DS; // 좌·우 가장자리 페이드 폭
   const player = useVideoPlayer(INTRO5_VIDEO, (p) => {
-    p.loop = true;
+    p.loop = false; // 반복 없이 마지막(완성된 로고) 프레임에서 멈춘다
     p.muted = true;
+    // 기본 'auto'는 초기화 시점에 오디오 세션(포커스)을 가져가 백그라운드 음악·영상을
+    // 멈추게 한다 — 무음 인트로 영상은 다른 앱 오디오와 섞여도 되므로 포커스를 잡지 않는다.
+    // (SplashScreen과 동일한 조치)
+    p.audioMixingMode = 'mixWithOthers';
   });
   // FlatList가 슬라이드를 미리 마운트하므로 여기서 재생하지 않고,
   // 5페이지가 실제 활성화되는 순간 처음부터 재생 (미리 재생돼 중간부터 보이는 문제 방지)
@@ -380,6 +384,8 @@ export function IntroVisual5({ active = true }: { active?: boolean }) {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active' && active) {
         try {
+          // 이미 끝까지 재생돼 마지막 프레임에 멈춘 상태면 재개하지 않는다(처음부터 다시 도는 것 방지)
+          if (player.duration > 0 && player.currentTime >= player.duration - 0.05) return;
           player.play();
         } catch {
           // 플레이어가 이미 해제된 경우 무시
