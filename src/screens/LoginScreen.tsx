@@ -12,7 +12,16 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
+  Image,
 } from 'react-native';
+
+// 생성 이모티콘(AI 커스텀, 다크 보라 3D 글로시) — 시스템 이모지 대체
+const EMOJI_MAIL = require('../../assets/emoji/mail.png');
+const EMOJI_LOCK = require('../../assets/emoji/lock.png');
+const EMOJI_EYE_OPEN = require('../../assets/emoji/eye-open.png');
+const EMOJI_EYE_CLOSED = require('../../assets/emoji/eye-closed.png');
+const EMOJI_KEY = require('../../assets/emoji/key.png');
+const EMOJI_CHECK = require('../../assets/emoji/check.png');
 import { useTranslation } from 'react-i18next';
 import Svg, {
   Defs as SvgDefs,
@@ -478,7 +487,7 @@ export default function LoginScreen({ navigation }: Props) {
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>{isSignup ? t('login.email') : t('login.emailOrId')}</Text>
               <View style={[styles.inputBox, emailFocused && styles.inputBoxFocused]}>
-                <Text style={styles.inputIcon}>✉️</Text>
+                <Image source={EMOJI_MAIL} style={styles.inputIcon} />
                 <TextInput
                   style={styles.input}
                   placeholder={isSignup ? 'example@email.com' : t('login.emailOrIdPlaceholder')}
@@ -504,7 +513,7 @@ export default function LoginScreen({ navigation }: Props) {
             <View style={styles.fieldWrap}>
               <Text style={styles.fieldLabel}>{t('login.password')}</Text>
               <View style={[styles.inputBox, pwFocused && styles.inputBoxFocused]}>
-                <Text style={styles.inputIcon}>🔒</Text>
+                <Image source={EMOJI_LOCK} style={styles.inputIcon} />
                 <TextInput
                   ref={passwordRef}
                   style={styles.input}
@@ -531,7 +540,7 @@ export default function LoginScreen({ navigation }: Props) {
                   accessibilityRole="button"
                   accessibilityLabel={showPassword ? t('login.passwordHide') : t('login.passwordShow')}
                 >
-                  <Text style={styles.eyeIcon}>{showPassword ? '🙈' : '👁️'}</Text>
+                  <Image source={showPassword ? EMOJI_EYE_CLOSED : EMOJI_EYE_OPEN} style={styles.eyeIcon} />
                 </TouchableOpacity>
               </View>
               {isSignup && password.length > 0 && password.length < 6 && (
@@ -546,7 +555,7 @@ export default function LoginScreen({ navigation }: Props) {
                 <View style={[styles.inputBox, confirmFocused && styles.inputBoxFocused,
                   confirmPassword.length > 0 && confirmPassword !== password && styles.inputBoxError,
                 ]}>
-                  <Text style={styles.inputIcon}>🔑</Text>
+                  <Image source={EMOJI_KEY} style={styles.inputIcon} />
                   <TextInput
                     ref={confirmRef}
                     style={styles.input}
@@ -569,7 +578,7 @@ export default function LoginScreen({ navigation }: Props) {
                     accessibilityRole="button"
                     accessibilityLabel={showConfirm ? t('login.confirmHide') : t('login.confirmShow')}
                   >
-                    <Text style={styles.eyeIcon}>{showConfirm ? '🙈' : '👁️'}</Text>
+                    <Image source={showConfirm ? EMOJI_EYE_CLOSED : EMOJI_EYE_OPEN} style={styles.eyeIcon} />
                   </TouchableOpacity>
                 </View>
                 {confirmPassword.length > 0 && confirmPassword !== password && (
@@ -675,7 +684,7 @@ export default function LoginScreen({ navigation }: Props) {
                 <View style={[styles.fieldWrap, { width: '100%' }]}>
                   <Text style={styles.fieldLabel}>{t('login.resetEmailLabel')}</Text>
                   <View style={[styles.inputBox, forgotEmailFocused && styles.inputBoxFocused]}>
-                    <Text style={styles.inputIcon}>✉️</Text>
+                    <Image source={EMOJI_MAIL} style={styles.inputIcon} />
                     <TextInput
                       style={styles.input}
                       placeholder="example@email.com"
@@ -714,7 +723,7 @@ export default function LoginScreen({ navigation }: Props) {
             ) : (
               <View style={styles.modalBody}>
                 <View style={styles.successIconWrap}>
-                  <Text style={styles.successIcon}>✉️</Text>
+                  <Image source={EMOJI_MAIL} style={styles.successIcon} />
                 </View>
                 <Text style={styles.successTitle}>{t('login.resetSuccessTitle')}</Text>
                 <Text style={styles.successDesc}>
@@ -742,7 +751,7 @@ export default function LoginScreen({ navigation }: Props) {
           <View style={styles.loaderCard}>
             {authSuccess ? (
               <>
-                <Text style={styles.loaderEmoji}>✅</Text>
+                <Image source={EMOJI_CHECK} style={styles.loaderEmoji} />
                 <Text style={styles.loaderText}>{t('login.loginSuccess')}</Text>
               </>
             ) : (
@@ -842,11 +851,13 @@ const styles = StyleSheet.create({
     borderColor: '#FF6B6B',
   },
   inputIcon: {
-    fontSize: 16,
+    width: 19,
+    height: 19,
   },
   eyeIcon: {
-    fontSize: 18,
-    paddingLeft: Spacing[1],
+    width: 21,
+    height: 21,
+    marginLeft: Spacing[1],
   },
   input: {
     flex: 1,
@@ -1010,7 +1021,8 @@ const styles = StyleSheet.create({
     marginBottom: Spacing[2],
   },
   successIcon: {
-    fontSize: 28,
+    width: 34,
+    height: 34,
   },
   successTitle: {
     fontSize: Typography.fontSize.lg,
@@ -1047,7 +1059,8 @@ const styles = StyleSheet.create({
     gap: 16,
   },
   loaderEmoji: {
-    fontSize: 40,
+    width: 46,
+    height: 46,
   },
   loaderText: {
     fontSize: 15,
