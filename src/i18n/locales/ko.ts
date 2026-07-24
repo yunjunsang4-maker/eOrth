@@ -1393,6 +1393,13 @@ const ko = {
     galleryPermTarget: '갤러리',
     skipManual: '건너뛰기 (수동으로 기록하기)',
     analyzingMetadata: '갤러리 메타데이터 분석 중...',
+    // 단계별 분석 문구 (진행률 구간에 연동)
+    scanPhotos: '갤러리 사진을 훑는 중',
+    scanLocations: '촬영 위치를 읽는 중',
+    scanCountries: '어느 나라에서 찍었는지 확인하는 중',
+    scanGrouping: '여행으로 묶는 중',
+    scanAlmost: '거의 다 됐어요',
+    scanFoundCountries: '발견한 나라',
     noTripsFound: '해외 여행 사진을 찾지 못했어요',
     noTripsLimited: '선택한 사진만 분석했어요.\n설정 > 사진에서 "모든 사진 허용"으로 바꾸면\n과거 여행을 더 잘 찾을 수 있어요.',
     noTripsNoGps: '거주국가 밖에서 GPS가 기록된 사진이 없어요.\n사진에 위치 정보(GPS)가 있어야 분석할 수 있어요.',

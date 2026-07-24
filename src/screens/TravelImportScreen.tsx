@@ -15,6 +15,7 @@ import {
   Easing,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,
@@ -62,6 +63,16 @@ const scanSubNote = (p: ScanPeriodOption, tr: TFunction) =>
   Platform.OS === 'ios'
     ? tr('imports.analyzingPeriodIos', { range: periodRangeText(p, tr) })
     : tr('imports.analyzingPeriod', { range: periodRangeText(p, tr) });
+
+// 진행률 구간에 연동한 단계별 분석 문구.
+// startScan: 사진 페이지네이션(progress 0 고정) → GPS 추출(0~55) → 국가 판정(55~95) → 클러스터링(→100)
+const scanPhaseText = (progress: number, tr: TFunction) => {
+  if (progress <= 0) return tr('imports.scanPhotos');
+  if (progress < 55) return tr('imports.scanLocations');
+  if (progress < 95) return tr('imports.scanCountries');
+  if (progress < 100) return tr('imports.scanGrouping');
+  return tr('imports.scanAlmost');
+};
 
 // EXIF 촬영일(DateTimeOriginal)을 ms 타임스탬프로 파싱. 형식: "YYYY:MM:DD HH:MM:SS"
 // iOS는 exif['{Exif}'] 아래, Android는 flat 키로 들어온다. 파싱 실패 시 null → creationTime 폴백.
@@ -128,8 +139,9 @@ function patrolWave(v: Animated.Value, axis: 'x' | 'y', amp: number) {
   return v.interpolate({ inputRange: inp, outputRange: out });
 }
 
-// 분석 효과 오브 — 링은 축 방향 회전 투영(scale 진동), 보라 원은 십자선 왕복 순찰
-function ImportOrbVisual() {
+// 분석 효과 오브 — 링은 축 방향 회전 투영(scale 진동), 보라 원은 십자선 왕복 순찰.
+// width 미지정 시 화면 폭(초기 화면). 스캔 화면 등은 작은 width로 재사용한다.
+function ImportOrbVisual({ width = ORB_W }: { width?: number }) {
   const spinV = useRef(new Animated.Value(0)).current; // 세로 링
   const spinH = useRef(new Animated.Value(0)).current; // 가로 링
   const walk = useRef(new Animated.Value(0)).current;  // 보라 원 순찰
@@ -150,18 +162,20 @@ function ImportOrbVisual() {
 
   // 보라 원: 십자선 끝(±160pt)까지 왕복. 스프라이트에 박힌 기본 위치를 정적 래퍼로
   // 십자 교점에 되돌린 뒤 대칭 순찰시킨다. 오프셋은 래스터 실측값(scripts/measure-orb-dot.js).
-  const AMP = 160 * ORB_PT;
+  const pt = width / 402; // 시안 pt → 이 오브 크기 배율
+  const AMP = 160 * pt;
   const dotX = patrolWave(walk, 'x', AMP);
   const dotY = patrolWave(walk, 'y', AMP);
+  const wrap = { width, height: width * (1212 / 1206) };
 
   return (
-    <View style={styles.orbWrap}>
+    <View style={wrap}>
       <Image source={ORB_SPHERE} style={styles.orbLayer} />
       <Animated.Image source={ORB_VR_BACK} style={[styles.orbLayer, { transform: [{ scaleX: vScaleX }] }]} />
       <Image source={ORB_CROSS} style={styles.orbLayer} />
       <Animated.Image source={ORB_VR_FRONT} style={[styles.orbLayer, { transform: [{ scaleX: vScaleX }] }]} />
       <Animated.Image source={ORB_HRINGS} style={[styles.orbLayer, { transform: [{ scaleY: hScaleY }] }]} />
-      <View style={[styles.orbLayer, { transform: [{ translateX: -46.53 * ORB_PT }, { translateY: 0.54 * ORB_PT }] }]}>
+      <View style={[styles.orbLayer, { transform: [{ translateX: -46.53 * pt }, { translateY: 0.54 * pt }] }]}>
         <Animated.Image
           source={ORB_DOT}
           style={[styles.orbLayer, { transform: [{ translateX: dotX }, { translateY: dotY }] }]}
@@ -201,6 +215,25 @@ function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boole
       )}
       <Text style={styles.periodTxt}>{label}</Text>
     </TouchableOpacity>
+  );
+}
+
+// 스캔 중 발견된 나라 국기 칩 — 마운트 시 톡 튀어오르며 나타난다(스프링).
+function FlagChip({ flag, name }: { flag: string; name: string }) {
+  const anim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+    Animated.spring(anim, { toValue: 1, friction: 5, tension: 90, useNativeDriver: true }).start();
+  }, [anim]);
+  return (
+    <Animated.View
+      style={[
+        styles.flagChip,
+        { opacity: anim, transform: [{ scale: anim.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) }] },
+      ]}
+    >
+      <Text style={styles.flagChipEmoji}>{flag}</Text>
+      <Text style={styles.flagChipName} numberOfLines={1}>{name}</Text>
+    </Animated.View>
   );
 }
 
@@ -310,6 +343,25 @@ export default function TravelImportScreen({ navigation }: Props) {
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
   const [period, setPeriod] = useState<ScanPeriodOption>(SCAN_PERIODS[0]); // 분석 기간 (기본: 최근 1년)
 
+  // 스캔 중 실시간으로 발견한 해외 나라(중복 제외) — 국기 칩으로 톡톡 등장
+  const [discovered, setDiscovered] = useState<{ code: string; flag: string; name: string }[]>([]);
+  // 진행률을 부드럽게 뒤따르는 Animated 값 — 바 채움(width)과 % 카운트업에 함께 쓴다
+  const progressAnim = useRef(new Animated.Value(0)).current;
+  const [displayPct, setDisplayPct] = useState(0);
+  useEffect(() => {
+    const id = progressAnim.addListener(({ value }) => setDisplayPct(Math.round(value)));
+    return () => progressAnim.removeListener(id);
+  }, [progressAnim]);
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: progress,
+      duration: 450,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false, // width 보간이라 네이티브 드라이버 불가
+    }).start();
+  }, [progress, progressAnim]);
+  const barWidth = progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] });
+
   // 여행 합치기 (같은 국가가 여러 여행으로 나뉜 경우 — 예: 교환학생 거점 국가)
   const [mergeVisible, setMergeVisible] = useState(false);
   const [mergeIds, setMergeIds] = useState<string[]>([]);
@@ -325,38 +377,6 @@ export default function TravelImportScreen({ navigation }: Props) {
       );
     }
   }, [scannedTrips]);
-
-  // Animations
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const radarAnim = useRef(new Animated.Value(0)).current;
-  const radarAnim2 = useRef(new Animated.Value(0)).current;
-
-  // Pulse effect for the scanning button
-  useEffect(() => {
-    if (scanning) {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, { toValue: 1.1, duration: 800, useNativeDriver: true }),
-          Animated.timing(pulseAnim, { toValue: 1.0, duration: 800, useNativeDriver: true }),
-        ])
-      ).start();
-
-      Animated.loop(
-        Animated.timing(radarAnim, { toValue: 1, duration: 2000, useNativeDriver: true })
-      ).start();
-
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(1000),
-          Animated.timing(radarAnim2, { toValue: 1, duration: 2000, useNativeDriver: true })
-        ])
-      ).start();
-    } else {
-      pulseAnim.setValue(1);
-      radarAnim.setValue(0);
-      radarAnim2.setValue(0);
-    }
-  }, [scanning]);
 
   const requestPermission = async () => {
     try {
@@ -401,8 +421,12 @@ export default function TravelImportScreen({ navigation }: Props) {
     scanCancelRef.current = false;
     setScanning(true);
     setProgress(0);
+    progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
+    setDisplayPct(0);
+    setDiscovered([]);
     setScannedTrips([]);
     setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
+    const foundCodes = new Set<string>(); // 발견 나라 중복 방지(홈 국가 제외)
 
     // 기간 옵션에 따른 조회 시작점. 전체 스캔은 createdAfter 미적용.
     const CREATED_AFTER = period.years
@@ -528,6 +552,16 @@ export default function TravelImportScreen({ navigation }: Props) {
           countryName: cinfo.countryName,
           countryFlag: cinfo.countryFlag,
         });
+
+        // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출
+        if (geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
+          foundCodes.add(geo.code);
+          const flag = cinfo.countryFlag;
+          const name = cinfo.countryName;
+          const code = geo.code;
+          setDiscovered((prev) => (prev.some((d) => d.code === code) ? prev : [...prev, { code, flag, name }]));
+          Haptics.selectionAsync().catch(() => {});
+        }
       }
 
       // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
@@ -545,6 +579,7 @@ export default function TravelImportScreen({ navigation }: Props) {
 
       if (scanCancelRef.current) return;
       setProgress(100);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setTimeout(() => {
         if (scanCancelRef.current) return;
         setScanning(false);
@@ -570,6 +605,9 @@ export default function TravelImportScreen({ navigation }: Props) {
     setScanning(false);
     setScanFinished(false);
     setProgress(0);
+    progressAnim.setValue(0);
+    setDisplayPct(0);
+    setDiscovered([]);
   };
 
   const toggleSelect = (id: string) => {
@@ -626,25 +664,6 @@ export default function TravelImportScreen({ navigation }: Props) {
     navigation.navigate('ImportPhotoSelect', { trips });
   };
 
-  // Interpolations for Radar animation
-  const radarScale = radarAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.6, 1.4],
-  });
-  const radarOpacity = radarAnim.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.6, 0.3, 0],
-  });
-
-  const radarScale2 = radarAnim2.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.6, 1.4],
-  });
-  const radarOpacity2 = radarAnim2.interpolate({
-    inputRange: [0, 0.5, 1],
-    outputRange: [0.6, 0.3, 0],
-  });
-
   // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.
   // 컨텐츠가 화면에 다 들어오면 스크롤을 잠근다(작은 기기에서만 스크롤 허용).
   const showResults = scanFinished && scannedTrips.length > 0;
@@ -680,7 +699,9 @@ export default function TravelImportScreen({ navigation }: Props) {
         {!scanFinished && !scanning ? (
           /* Permission Request View — 시안 130:1137 */
           <View style={styles.initialArea}>
-            <ImportOrbVisual />
+            <View style={styles.orbWrap}>
+              <ImportOrbVisual />
+            </View>
 
             {/* 분석 기간 선택 */}
             <View style={styles.periodSection}>
@@ -706,27 +727,41 @@ export default function TravelImportScreen({ navigation }: Props) {
             </TouchableOpacity>
           </View>
         ) : scanning ? (
-          /* Scanning View */
-          <View style={styles.centerArea}>
-            <View style={styles.globeGlowWrap}>
-              <Animated.View style={[styles.radarRing, { transform: [{ scale: radarScale }], opacity: radarOpacity }]} />
-              <Animated.View style={[styles.radarRing, { transform: [{ scale: radarScale2 }], opacity: radarOpacity2 }]} />
-              <Animated.View style={[styles.mockGlobe, { transform: [{ scale: pulseAnim }] }]}>
+          /* Scanning View — 초기 화면과 동일한 전체 크기 오브 + 아래로 내린 안내/진행 */
+          <View style={styles.initialArea}>
+            <View style={styles.orbWrap}>
+              <ImportOrbVisual />
+            </View>
+
+            {/* 단계별 문구(진행률 연동) + 부드럽게 카운트업하는 % */}
+            <Text style={styles.scanText}>{scanPhaseText(progress, t)}</Text>
+            <Text style={styles.scanProgressText}>{displayPct}%</Text>
+            <Text style={styles.scanSubNote}>{scanSubNote(period, t)}</Text>
+
+            {/* 그라데이션 채움 + 진행 끝 발광 */}
+            <View style={styles.progressContainer}>
+              <Animated.View style={[styles.progressFill, { width: barWidth }]}>
                 <LinearGradient
-                  colors={['#3B1E8E', '#7B61FF']}
-                  style={StyleSheet.absoluteFillObject}
+                  colors={['#FF14E4', '#00D8F3']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.progressGrad}
                 />
-                <Text style={styles.mockGlobeEmoji}>🔍</Text>
+                <View style={styles.progressGlow} />
               </Animated.View>
             </View>
 
-            <Text style={styles.scanText}>{t('imports.analyzingMetadata')}</Text>
-            <Text style={styles.scanProgressText}>{progress}% 완료</Text>
-            <Text style={styles.scanSubNote}>{scanSubNote(period, t)}</Text>
-
-            <View style={styles.progressContainer}>
-              <View style={[styles.progressBar, { width: `${progress}%` }]} />
-            </View>
+            {/* 실시간 발견 나라 국기 칩 */}
+            {discovered.length > 0 && (
+              <View style={styles.foundWrap}>
+                <Text style={styles.foundLabel}>{t('imports.scanFoundCountries')}</Text>
+                <View style={styles.foundChips}>
+                  {discovered.map((d) => (
+                    <FlagChip key={d.code} flag={d.flag} name={d.name} />
+                  ))}
+                </View>
+              </View>
+            )}
 
             <TouchableOpacity style={styles.scanCancelBtn} onPress={cancelScan} activeOpacity={0.7}>
               <Text style={styles.scanCancelTxt}>{t('common.cancel')}</Text>
@@ -943,7 +978,6 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-
   initialArea: {
     alignItems: 'center',
     width: '100%',
@@ -1074,15 +1108,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
 
-  /* Scanning animation */
-  radarRing: {
-    position: 'absolute',
-    width: 200,
-    height: 200,
-    borderRadius: 100,
-    borderWidth: 2,
-    borderColor: '#7B61FF',
-  },
   scanText: {
     fontSize: Typography.fontSize.lg,
     fontFamily: Typography.fontFamily.bold,
@@ -1103,9 +1128,69 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     overflow: 'hidden',
   },
-  progressBar: {
+  progressFill: {
     height: '100%',
-    backgroundColor: Colors.primary,
+    borderRadius: 3,
+    justifyContent: 'center',
+  },
+  progressGrad: {
+    ...StyleSheet.absoluteFillObject,
+    borderRadius: 3,
+  },
+  // 진행 끝 발광 — 채움 오른쪽 끝에 맺히는 밝은 캡
+  progressGlow: {
+    position: 'absolute',
+    right: 0,
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    top: -2,
+    backgroundColor: '#00E5FF',
+    shadowColor: '#00E5FF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.9,
+    shadowRadius: 6,
+    elevation: 6,
+  },
+
+  // 실시간 발견 나라
+  foundWrap: {
+    width: '86%',
+    alignItems: 'center',
+    marginTop: Spacing[5],
+  },
+  foundLabel: {
+    color: 'rgba(255,255,255,0.5)',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    marginBottom: Spacing[2],
+  },
+  foundChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  flagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingLeft: 8,
+    paddingRight: 12,
+    paddingVertical: 5,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+  },
+  flagChipEmoji: {
+    fontSize: 15,
+  },
+  flagChipName: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontFamily: Typography.fontFamily.medium,
+    maxWidth: 120,
   },
   scanCancelBtn: {
     marginTop: 22,

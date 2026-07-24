@@ -1392,6 +1392,13 @@ const en = {
     galleryPermTarget: 'Gallery',
     skipManual: 'Skip (record manually)',
     analyzingMetadata: 'Analyzing gallery metadata...',
+    // Phase-aware scan copy (tied to progress ranges)
+    scanPhotos: 'Scanning your gallery',
+    scanLocations: 'Reading where each photo was taken',
+    scanCountries: 'Figuring out which countries',
+    scanGrouping: 'Grouping them into trips',
+    scanAlmost: 'Almost there',
+    scanFoundCountries: 'Countries found',
     noTripsFound: "Couldn't find any overseas trip photos",
     noTripsLimited: 'Only the selected photos were analyzed.\nSwitch to "All Photos" in Settings > Photos\nto find more past trips.',
     noTripsNoGps: 'No photos with GPS recorded outside your home country.\nPhotos need location info (GPS) to be analyzed.',
