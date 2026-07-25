@@ -20,9 +20,10 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { andFitText } from '../utils/fitText';
 import { countryLabel } from '../utils/countryLabel';
+import { COUNTRIES } from '../constants/countries';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
-import { fetchMateSuggestions } from '../services/social';
+import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -62,7 +63,25 @@ interface ContactFriend {
   sharedCountries?: string[]; // 겹친 나라 샘플(한글 country_name)
   mutualCount?: number;       // 함께 아는 메이트 수(여행 DNA)
   styleScore?: number;        // 여행 스타일 점수(여행 DNA)
+  matchScore?: number;        // 여행 DNA 종합 점수(mate_suggestions.total_score)
+  // 추천 섹션에서 온 행인지 — 검색 결과와 부가정보(방문국·메이트 수) 표기가 다르다.
+  // 추천 행은 방문국 수를 조회하지 않으므로 '방문 기록 없음'으로 오표기하면 안 된다.
+  fromSuggestion?: boolean;
 }
+
+// 한글 국가명 → 국기 이모지. 겹치는 나라 칩에 쓴다(RPC sample_countries는 한글명).
+const FLAG_BY_KO_NAME: Record<string, string> = {};
+for (const c of COUNTRIES) {
+  if (!FLAG_BY_KO_NAME[c.name]) FLAG_BY_KO_NAME[c.name] = c.flag;
+}
+FLAG_BY_KO_NAME['한국'] = FLAG_BY_KO_NAME['대한민국'] ?? '🇰🇷'; // 구 표기 별칭
+
+// 여행 DNA 점수 → 0~100 매칭률. RPC total_score는 상한이 고정되지 않아 실측 상한(10)으로 정규화한다.
+const MATCH_SCORE_FULL = 10;
+const matchPercent = (score?: number): number | null => {
+  if (!score || score <= 0) return null;
+  return Math.max(30, Math.min(99, Math.round((score / MATCH_SCORE_FULL) * 100)));
+};
 
 // ─────────────────────────────────────────────
 // 메이트 아이템 (검색 결과·추천 메이트 공통)
@@ -84,35 +103,71 @@ function FriendItem({
   const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
   // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
+
+  const shared = item.sharedCountries ?? [];
+  const pct = matchPercent(item.matchScore);
+  // 겹치는 나라 국기 칩 (최대 3개 + 나머지 개수)
+  const flags = shared.slice(0, 3).map((c) => ({
+    name: countryLabel(c, i18n.language),
+    flag: FLAG_BY_KO_NAME[c] ?? '',
+  }));
+  const extraFlagCount = Math.max(0, (item.sharedCount ?? shared.length) - flags.length);
+
+  // 추천 이유 한 줄 — 겹침 > 함께 아는 메이트 > 스타일 순.
+  // 근거가 없을 때: 검색 결과는 방문국·메이트 수를, 추천 행은 중립 문구를 쓴다
+  // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
+  const reasonText = shared.length > 0
+    ? t('friends.overlapReason', { count: item.sharedCount ?? shared.length })
+    : item.mutualCount && item.mutualCount > 0
+      ? t('friends.mutualReason', { count: item.mutualCount })
+      : item.styleScore && item.styleScore > 0
+        ? t('friends.styleReason')
+        : item.fromSuggestion
+          ? t('friends.suggestedReason')
+          : `${item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}${item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}`;
+
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
       <View style={s.avatar}>
         {item.photo && !imgError ? (
           <Image source={{ uri: item.photo }} style={s.avatarImg} onError={() => setImgError(true)} />
+        ) : item.emoji ? (
+          // 사진이 없어도 프로필 이모지가 있으면 그걸 쓴다 — 피드·프로필과 같은 표기
+          <Text style={s.avatarEmoji}>{item.emoji}</Text>
         ) : (
           <PersonIcon size={24} color="#A0A0B0" />
         )}
       </View>
       <View style={s.friendInfo}>
         {/* 닉네임 폐지 — 아이디 한 줄만 표시(@ 접두 없음) */}
-        <Text style={[s.friendUsername, { color: skinAccent.accent }]}>{item.username}</Text>
+        <View style={s.nameRow}>
+          <Text style={[s.friendUsername, { color: skinAccent.accent }]} numberOfLines={1}>{item.username}</Text>
+          {/* 여행 DNA 매칭률 — RPC가 주는 종합 점수를 드러낸다(지금까진 버려지고 있었다) */}
+          {pct != null && (
+            <View style={[s.matchBadge, { borderColor: skinAccent.tint(0.45), backgroundColor: skinAccent.tint(0.14) }]}>
+              <Text style={[s.matchBadgeTxt, { color: skinAccent.accent }]}>{t('friends.matchPercent', { pct })}</Text>
+            </View>
+          )}
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
           <GlobeIcon size={12} color="#A1A1B0" />
-          <Text style={s.friendCountries} {...andFitText}>
-            {item.sharedCountries && item.sharedCountries.length > 0
-              ? `${t('friends.overlapReason', { count: item.sharedCount ?? item.sharedCountries.length })} · ${item.sharedCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}`
-              : item.mutualCount && item.mutualCount > 0
-                ? t('friends.mutualReason', { count: item.mutualCount })
-                : item.styleScore && item.styleScore > 0
-                  ? t('friends.styleReason')
-                  : (
-                      <>
-                        {item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}
-                        {item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}
-                      </>
-                    )}
-          </Text>
+          <Text style={s.friendCountries} {...andFitText}>{reasonText}</Text>
         </View>
+        {/* 겹치는 나라를 국기 칩으로 — 한 줄 텍스트로 잘리던 것을 한눈에 */}
+        {flags.length > 0 && (
+          <View style={s.flagRow}>
+            {flags.map((f, i) => (
+              <View key={`${f.name}-${i}`} style={s.flagChip}>
+                <Text style={s.flagChipTxt}>{f.flag ? `${f.flag} ` : ''}{f.name}</Text>
+              </View>
+            ))}
+            {extraFlagCount > 0 && (
+              <View style={s.flagChip}>
+                <Text style={s.flagChipTxt}>+{extraFlagCount}</Text>
+              </View>
+            )}
+          </View>
+        )}
       </View>
       <TouchableOpacity
         style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
@@ -247,6 +302,18 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
     }).catch(() => {});
   };
 
+  // 받은 메이트 신청 수 — 이 화면은 신청을 '보내기'만 했고 받은 건 볼 수 없었다.
+  // 관계 맺기의 나머지 절반이라 배너로 노출하고, 처리는 기존 화면(FollowerList)에 맡긴다.
+  const [incomingCount, setIncomingCount] = useState(0);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    fetchIncomingNeighborRequests()
+      .then((rows) => { if (alive) setIncomingCount(rows.length); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   // 추천 메이트(여행 DNA) — 진입 시 1회 로드. 로컬 여행기록카드·미발행·나만보기 나라도
   // extra_countries로 보강(내 매칭 입력 전용 — 타인에게 비노출)
   const [suggestions, setSuggestions] = useState<ContactFriend[]>([]);
@@ -274,6 +341,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           sharedCountries: r.sampleCountries,
           mutualCount: r.mutualCount,
           styleScore: r.styleScore,
+          matchScore: r.totalScore,
+          fromSuggestion: true,
         })));
       } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
     })();
@@ -398,6 +467,22 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           </>
         ) : (
           <>
+            {/* 받은 메이트 신청 — 있으면 가장 먼저. 탭하면 수락/거절 화면으로 */}
+            {incomingCount > 0 && (
+              <TouchableOpacity
+                style={[s.requestBanner, { borderColor: skinAccent.tint(0.45), backgroundColor: skinAccent.tint(0.12) }]}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('FollowerList')}
+                accessibilityRole="button"
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={s.requestBannerTitle}>{t('friends.neighborRequestsN', { count: incomingCount })}</Text>
+                  <Text style={s.requestBannerBody}>{t('friends.incomingBannerBody')}</Text>
+                </View>
+                <Text style={[s.requestBannerArrow, { color: skinAccent.accent }]}>›</Text>
+              </TouchableOpacity>
+            )}
+
             {visibleSuggestions.length > 0 && (
               <>
                 <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('friends.suggestedFriends')}</Text>
@@ -407,9 +492,20 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             {(visibleSuggestions.length < 3) && myCode ? (
               <InviteCard onInvite={handleShareMe} accent={skinAccent.accentDeep} />
             ) : null}
-            {visibleSuggestions.length === 0 && (
+            {/* 추천이 없을 때는 초대 카드가 이미 안내 역할을 하므로 문구를 겹쳐 쓰지 않는다 */}
+            {visibleSuggestions.length === 0 && !myCode && (
               <Text style={s.emptyText}>{t('friends.coldStartNudge')}</Text>
             )}
+
+            {/* 이미 맺은 메이트로 가는 길 — '메이트찾기'에서 내 메이트 목록으로 갈 수 없었다 */}
+            <TouchableOpacity
+              style={s.myMatesLink}
+              activeOpacity={0.7}
+              onPress={() => navigation.navigate('FollowerList')}
+              accessibilityRole="button"
+            >
+              <Text style={[s.myMatesLinkTxt, { color: skinAccent.accent }]}>{t('friends.viewMyMates')}</Text>
+            </TouchableOpacity>
           </>
         )}
         <View style={{ height: 40 }} />
@@ -484,6 +580,43 @@ const s = StyleSheet.create({
     paddingHorizontal: 20,
   },
 
+  // 받은 신청 배너
+  requestBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 18,
+  },
+  requestBannerTitle: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: C.white,
+  },
+  requestBannerBody: {
+    fontSize: 12,
+    color: C.dim,
+    marginTop: 2,
+  },
+  requestBannerArrow: {
+    fontSize: 26,
+    fontWeight: '300',
+    lineHeight: 28,
+  },
+
+  // 내 메이트 목록 링크
+  myMatesLink: {
+    alignItems: 'center',
+    paddingVertical: 18,
+  },
+  myMatesLinkTxt: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
   // 섹션 라벨
   sectionLabel: {
     fontSize: 13,
@@ -511,6 +644,45 @@ const s = StyleSheet.create({
     width: 46,
     height: 46,
     borderRadius: 23,
+  },
+  avatarEmoji: {
+    fontSize: 24,
+  },
+
+  // 아이디 + 매칭률 배지 한 줄
+  nameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  matchBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  matchBadgeTxt: {
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  // 겹치는 나라 국기 칩
+  flagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginTop: 5,
+  },
+  flagChip: {
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  flagChipTxt: {
+    fontSize: 10,
+    color: '#C8C8D4',
+    fontWeight: '600',
   },
   friendInfo: {
     flex: 1,

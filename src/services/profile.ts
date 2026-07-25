@@ -5,7 +5,8 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
-import { supabase } from './supabase';
+import { supabase } from './supabase';
+import { sortByHandleRelevance, dedupeById } from '../utils/handleSearch';
 import { withTimeout } from '../utils/withTimeout';
 
 const READ_TIMEOUT_MS = 12000;
@@ -131,13 +132,22 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   // ilike 와일드카드(%·_)·이스케이프 문자를 리터럴로 취급 (검색어 오작동 방지)
   const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
   // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
-  const { data, error } = await supabase
-    .from('public_profiles')
-    .select('*')
-    .ilike('handle', `%${escaped}%`)
-    .limit(20);
-  if (error) throw error;
-  return (data as ProfileRow[]) ?? [];
+  //
+  // 정확 일치를 따로 조회해 합치는 이유: 부분 검색은 서버에서 limit으로 잘리므로, 흔한
+  // 문자열을 검색하면 정확히 그 아이디인 사람이 20건 밖으로 밀려 아예 안 보일 수 있다.
+  // (handle은 UNIQUE라 정확 일치는 최대 1건 — 비용이 사실상 없다)
+  const [exactRes, partialRes] = await Promise.all([
+    supabase.from('public_profiles').select('*').ilike('handle', escaped).limit(1),
+    supabase.from('public_profiles').select('*').ilike('handle', `%${escaped}%`).limit(20),
+  ]);
+  // 부분 검색 실패만 오류로 취급(기존 동작 유지). 정확 조회 실패는 부분 결과로 진행한다.
+  if (partialRes.error) throw partialRes.error;
+  const merged = dedupeById([
+    ...((exactRes.data as ProfileRow[]) ?? []),
+    ...((partialRes.data as ProfileRow[]) ?? []),
+  ]);
+  // 서버는 관련도 순서를 주지 않는다 — 정확 → 접두 → 부분 순으로 다시 세운다
+  return sortByHandleRelevance(merged, q);
 }
 
 /**
