@@ -519,17 +519,17 @@ function FeedCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>↗</Text>
+                  <ShareSvgIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.share')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>📦</Text>
+                  <ArchiveIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.archive')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>✏️</Text>
+                  <PencilIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.edit')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
@@ -578,7 +578,7 @@ function FeedCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>↗</Text>
+                  <ShareSvgIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.share')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -593,7 +593,7 @@ function FeedCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>⛔</Text>
+                  <BlockIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.block')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -605,7 +605,7 @@ function FeedCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>🚨</Text>
+                  <MegaphoneIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.report')}</Text>
                 </TouchableOpacity>
               </View>
@@ -1001,12 +1001,12 @@ function BlogCard({
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
                 <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
                   <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                    <Text style={s.menuItemIcon}>📦</Text>
+                    <ArchiveIcon size={16} color="#FFFFFF" />
                     <Text style={s.menuItemText}>{t('social.archive')}</Text>
                   </TouchableOpacity>
                   <View style={s.myMenuDivider} />
                   <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                    <Text style={s.menuItemIcon}>✏️</Text>
+                    <PencilIcon size={16} color="#FFFFFF" />
                     <Text style={s.menuItemText}>{t('social.modify')}</Text>
                   </TouchableOpacity>
                   <View style={s.myMenuDivider} />
@@ -1053,7 +1053,7 @@ function BlogCard({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={s.menuItemIcon}>⛔</Text>
+                    <BlockIcon size={16} color="#FF3B30" />
                     <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
                   </TouchableOpacity>
                   <View style={s.menuDivider} />
@@ -1065,7 +1065,7 @@ function BlogCard({
                     }}
                     activeOpacity={0.7}
                   >
-                    <Text style={s.menuItemIcon}>🚨</Text>
+                    <MegaphoneIcon size={16} color="#FF3B30" />
                     <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                   </TouchableOpacity>
                 </View>
@@ -1312,12 +1312,12 @@ function AlbumCard({
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
               <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>📦</Text>
+                  <ArchiveIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.archive')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
                 <TouchableOpacity style={s.myMenuItem} onPress={handleEdit} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>✏️</Text>
+                  <PencilIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.modify')}</Text>
                 </TouchableOpacity>
                 <View style={s.myMenuDivider} />
@@ -1364,7 +1364,7 @@ function AlbumCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>⛔</Text>
+                  <BlockIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.blockLong')}</Text>
                 </TouchableOpacity>
                 <View style={s.menuDivider} />
@@ -1376,7 +1376,7 @@ function AlbumCard({
                   }}
                   activeOpacity={0.7}
                 >
-                  <Text style={s.menuItemIcon}>🚨</Text>
+                  <MegaphoneIcon size={16} color="#FF3B30" />
                   <Text style={[s.menuItemText, s.menuItemDanger]}>{t('social.reportLong')}</Text>
                 </TouchableOpacity>
               </View>
@@ -3302,6 +3302,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     gap: 10,
   },
+  // (구) 이모지 아이콘 칸 — 메뉴는 앱 아이콘(SVG)으로 교체됨. 남은 이모지 목록(공유 시트 등)에만 쓰인다.
   menuItemIcon: {
     fontSize: 16,
   },
