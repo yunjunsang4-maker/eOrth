@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -57,25 +57,49 @@ import type { RootStackScreenProps } from '../navigation/types';
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
 // 사진 수 상한 없음: 기간 내 사진은 전부 스캔한다 (과거엔 maxAssets 상한 도달 시
 // 최신순 스캔이라 오래된 여행이 잘려 누락되는 문제가 있어 제거).
-type ScanPeriodKey = '1y' | '3y' | 'all';
+type ScanPeriodKey = 'since' | '1y' | '3y' | 'all';
 interface ScanPeriodOption {
   key: ScanPeriodKey;
   label: string;
   years: number | null; // null = 전체 기간
+  // 'since' 전용 — 이 시각 이후에 찍은 사진만 스캔(마지막 가져오기 시점 기준)
+  sinceTs?: number;
 }
-const SCAN_PERIODS: ScanPeriodOption[] = [
+const BASE_SCAN_PERIODS: ScanPeriodOption[] = [
   { key: '1y', label: '최근 1년', years: 1 },
   { key: '3y', label: '최근 3년', years: 3 },
   { key: 'all', label: '전체 스캔', years: null },
 ];
+// 재스캔 여유분 — 마지막 가져오기 직전에 찍은 사진이나, 경계에 걸친 여행이
+// 통째로 빠지지 않도록 조금 앞에서부터 훑는다.
+const RESCAN_OVERLAP_MS = 14 * 24 * 60 * 60 * 1000;
+// '지난 불러오기 이후' 옵션 (label은 비표시 필드 — 화면 라벨은 periodLabel의 i18n을 쓴다)
+const makeSincePeriod = (lastImportAt: number): ScanPeriodOption => ({
+  key: 'since',
+  label: 'since-last-import',
+  years: null,
+  sinceTs: Math.max(0, lastImportAt - RESCAN_OVERLAP_MS),
+});
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
 
 // 플랫폼별 안내 문구
 // iOS: GPS는 로컬 메타데이터로 읽으므로 iCloud 최적화 사진도 다운로드 없이 빠르게 분석
 // Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
-const periodRangeText = (p: ScanPeriodOption, tr: TFunction) => (p.years ? tr('imports.periodRecentYears', { years: p.years }) : tr('imports.periodAllRange'));
+const fmtYmd = (ts: number) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+};
+const periodRangeText = (p: ScanPeriodOption, tr: TFunction) =>
+  p.key === 'since' && p.sinceTs
+    ? tr('imports.periodSinceRange', { date: fmtYmd(p.sinceTs) })
+    : p.years
+      ? tr('imports.periodRecentYears', { years: p.years })
+      : tr('imports.periodAllRange');
 const periodLabel = (p: ScanPeriodOption, tr: TFunction) =>
-  p.key === '1y' ? tr('imports.period1y') : p.key === '3y' ? tr('imports.period3y') : tr('imports.periodAll');
+  p.key === 'since' ? tr('imports.periodSince')
+    : p.key === '1y' ? tr('imports.period1y')
+    : p.key === '3y' ? tr('imports.period3y')
+    : tr('imports.periodAll');
 const scanSubNote = (p: ScanPeriodOption, tr: TFunction) =>
   Platform.OS === 'ios'
     ? tr('imports.analyzingPeriodIos', { range: periodRangeText(p, tr) })
@@ -339,7 +363,7 @@ function TripCard({
 export default function TravelImportScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { homeCountryCode } = useSettings();
+  const { homeCountryCode, lastImportAt } = useSettings();
   // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
   const { records } = useRecords();
   const recordsRef = useRef(records);
@@ -365,7 +389,16 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const [scannedTrips, setScannedTrips] = useState<ScannedTrip[]>([]);
   const [isImporting] = useState(false);
   const [isLimited, setIsLimited] = useState(false); // 사진 권한이 'limited'(선택 사진만)인지
-  const [period, setPeriod] = useState<ScanPeriodOption>(SCAN_PERIODS[0]); // 분석 기간 (기본: 최근 1년)
+  // 분석 기간 목록 — 이전에 가져온 적이 있으면 '지난 불러오기 이후' 옵션을 맨 앞에 추가한다.
+  // 재스캔은 그 이후 사진만 보면 충분해 버킷 수(=좌표 조회 횟수)가 크게 줄어든다.
+  const scanPeriods = useMemo<ScanPeriodOption[]>(
+    () => (lastImportAt ? [makeSincePeriod(lastImportAt), ...BASE_SCAN_PERIODS] : BASE_SCAN_PERIODS),
+    [lastImportAt]
+  );
+  // 기본 선택: 재스캔이면 '지난 불러오기 이후', 첫 스캔이면 최근 1년
+  const [period, setPeriod] = useState<ScanPeriodOption>(() =>
+    lastImportAt ? makeSincePeriod(lastImportAt) : BASE_SCAN_PERIODS[0]
+  );
 
   // 스캔 중 실시간으로 발견한 해외 나라(중복 제외) — 국기 칩으로 톡톡 등장
   const [discovered, setDiscovered] = useState<{ code: string; flag: string; name: string }[]>([]);
@@ -458,7 +491,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     const foundCodes = new Set<string>(); // 발견 나라 중복 방지(홈 국가 제외)
 
     // 기간 옵션에 따른 조회 시작점. 전체 스캔은 createdAfter 미적용.
-    const CREATED_AFTER = period.years
+    const CREATED_AFTER = period.key === 'since' && period.sinceTs
+      ? period.sinceTs
+      : period.years
       ? Date.now() - period.years * 365 * 24 * 60 * 60 * 1000
       : undefined;
     const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
@@ -780,7 +815,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
             <View style={styles.periodSection}>
               <Text style={styles.periodTitle}>{t('imports.analyzePeriod')}</Text>
               <View style={styles.periodRow}>
-                {SCAN_PERIODS.map((p) => (
+                {scanPeriods.map((p) => (
                   <PeriodChip
                     key={p.key}
                     label={periodLabel(p, t)}

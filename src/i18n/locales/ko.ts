@@ -1380,6 +1380,8 @@ const ko = {
     icPhotoCountN: '{{count}}장',
     icPhotoSuffix: '을 추가했어요',
     icStart: '이어스 시작하기',
+    periodSince: '지난 불러오기 이후',
+    periodSinceRange: '{{date}} 이후',
     period1y: '최근 1년',
     period3y: '최근 3년',
     periodAll: '전체 스캔',

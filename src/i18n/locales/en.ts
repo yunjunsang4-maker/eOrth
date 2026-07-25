@@ -1379,6 +1379,8 @@ const en = {
     icPhotoCountN: '{{count}} photos',
     icPhotoSuffix: '',
     icStart: 'Start eOrth',
+    periodSince: 'Since last import',
+    periodSinceRange: 'Since {{date}}',
     period1y: 'Last 1 year',
     period3y: 'Last 3 years',
     periodAll: 'Full scan',

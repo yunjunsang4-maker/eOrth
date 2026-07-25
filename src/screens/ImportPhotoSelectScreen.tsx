@@ -87,7 +87,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   const { trips } = route.params as { trips: ImportTrip[] };
   const { addImportedAlbum, addTripGroup, activeStayGroup, absorbIntoStay } = useRecords();
   const insets = useSafeAreaInsets();
-  const { isPremium, homeCountryCode } = useSettings();
+  const { isPremium, homeCountryCode, setLastImportAt } = useSettings();
   const maxPhotosPerTrip = getMaxRecordPhotos(isPremium); // 기록당 사진 상한 공유 (프리미엄 100장)
 
   const [index, setIndex] = useState(0);
@@ -254,6 +254,10 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         }
         // 'skip'(거주국)은 clusterForeignTrips가 이미 제외 — 방어적으로 무시
       }
+      // 다음 재스캔의 기본 기간 기준점 — 실제로 사진이 들어온 경우에만 갱신한다.
+      // (0장이면 기준을 옮기면 안 된다. 사용자가 이번에 안 담은 사진들을 다음 스캔에서
+      //  기간 밖으로 밀어내 영영 못 찾게 되기 때문)
+      if (photoCount > 0) setLastImportAt(Date.now());
       navigation.reset({
         index: 1,
         routes: [
