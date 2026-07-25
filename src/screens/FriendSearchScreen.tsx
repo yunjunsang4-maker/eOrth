@@ -12,6 +12,7 @@ import {
   Share,
 } from 'react-native';
 
+import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, SearchIcon } from '../components/icons';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -85,6 +86,77 @@ const matchPercent = (score?: number): number | null => {
   if (!score || score <= 0) return null;
   return Math.max(30, Math.min(99, Math.round((score / MATCH_SCORE_FULL) * 100)));
 };
+
+// ─────────────────────────────────────────────
+// 메이트 신청 버튼 — 상태 3종을 시각적으로 구분한다.
+//   신청 가능: 스킨 그라데이션 필(네온 글로우) — 지금 누를 것
+//   신청됨   : 스킨색 아웃라인 고스트 — 되돌릴 수 있는 대기 상태
+//   메이트   : 무채색 고스트 — 완료돼 더 이상 유도하지 않음
+// 누를 때 살짝 눌리는 스프링(0.94)으로 촉감을 준다. 앱의 CTA 언어(둥근 필 + 그라데이션)를 따른다.
+// ─────────────────────────────────────────────
+function MateButton({
+  state,
+  label,
+  onPress,
+  accent,
+  gradient,
+  tint,
+}: {
+  state: 'idle' | 'requested' | 'mate';
+  label: string;
+  onPress: (e: any) => void;
+  accent: string;
+  gradient: [string, string];
+  tint: (a: number) => string;
+}) {
+  const press = useRef(new Animated.Value(0)).current;
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.94] });
+  const to = (v: number) =>
+    Animated.spring(press, { toValue: v, friction: 7, tension: 220, useNativeDriver: true }).start();
+
+  const ghost = state !== 'idle';
+  return (
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => to(1)}
+        onPressOut={() => to(0)}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        style={[
+          s.mateBtn,
+          ghost && {
+            borderWidth: 1,
+            borderColor: state === 'requested' ? tint(0.5) : 'rgba(255,255,255,0.16)',
+            backgroundColor: state === 'requested' ? tint(0.12) : 'rgba(255,255,255,0.06)',
+          },
+          // 신청 가능 상태만 네온 글로우 — 눈이 먼저 가야 할 버튼
+          !ghost && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+        ]}
+      >
+        {!ghost && (
+          <LinearGradient
+            colors={gradient}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={StyleSheet.absoluteFill}
+          />
+        )}
+        <Text
+          style={[
+            s.mateBtnTxt,
+            state === 'requested' && { color: accent },
+            state === 'mate' && { color: C.dim },
+          ]}
+          numberOfLines={1}
+        >
+          {label}
+        </Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
 
 // ─────────────────────────────────────────────
 // 메이트 아이템 (검색 결과·추천 메이트 공통)
@@ -164,21 +236,18 @@ function FriendItem({
           </View>
         )}
       </View>
-      <TouchableOpacity
-        style={[s.followBtn, !(following || requested) && { backgroundColor: skinAccent.accentDeep }, (following || requested) && s.followingBtn]}
+      <MateButton
+        state={following ? 'mate' : requested ? 'requested' : 'idle'}
+        label={following
+          ? t('friends.neighborActive')
+          : requested
+            ? t('friends.neighborRequested')
+            : t('friends.neighborRequest')}
         onPress={(e) => { e.stopPropagation?.(); onToggle(); }}
-        activeOpacity={0.8}
-        accessibilityRole="button"
-        accessibilityLabel={following ? t('friends.neighborActive') : t('friends.neighborRequest')}
-      >
-        <Text style={[s.followBtnText, (following || requested) && s.followingBtnText]}>
-          {following
-            ? t('friends.neighborActive')
-            : requested
-              ? t('friends.neighborRequested')
-              : t('friends.neighborRequest')}
-        </Text>
-      </TouchableOpacity>
+        accent={skinAccent.accent}
+        gradient={skinAccent.btnGradient}
+        tint={skinAccent.tint}
+      />
     </TouchableOpacity>
   );
 }
@@ -186,19 +255,34 @@ function FriendItem({
 // ─────────────────────────────────────────────
 // 초대 카드 — 겹침·추천이 희소할 때 노출, 기존 공유(handleShareMe) 재사용
 // ─────────────────────────────────────────────
-function InviteCard({ onInvite, accent }: { onInvite: () => void; accent: string }) {
+function InviteCard({
+  onInvite,
+  accent,
+  gradient,
+}: {
+  onInvite: () => void;
+  accent: string;
+  gradient: [string, string];
+}) {
   const { t } = useTranslation();
   return (
     <View style={s.inviteCard}>
       <Text style={s.inviteCardTitle}>{t('friends.inviteCardTitle')}</Text>
       <Text style={s.inviteCardBody}>{t('friends.inviteCardBody')}</Text>
+      {/* 화면의 유일한 주요 CTA — 행 버튼보다 크고 글로우도 진하게 둔다 */}
       <TouchableOpacity
-        style={[s.inviteCardBtn, { backgroundColor: accent }]}
-        activeOpacity={0.85}
+        style={[s.inviteCardBtn, { shadowColor: accent }]}
+        activeOpacity={0.88}
         onPress={onInvite}
         accessibilityRole="button"
         accessibilityLabel={t('friends.inviteCta')}
       >
+        <LinearGradient
+          colors={gradient}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={StyleSheet.absoluteFill}
+        />
         <Text style={s.inviteCardBtnText}>{t('friends.inviteCta')}</Text>
       </TouchableOpacity>
     </View>
@@ -485,7 +569,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
               </>
             )}
             {(visibleSuggestions.length < 3) && myCode ? (
-              <InviteCard onInvite={handleShareMe} accent={skinAccent.accentDeep} />
+              <InviteCard onInvite={handleShareMe} accent={skinAccent.accent} gradient={skinAccent.btnGradient} />
             ) : null}
             {/* 추천이 없을 때는 초대 카드가 이미 안내 역할을 하므로 문구를 겹쳐 쓰지 않는다 */}
             {visibleSuggestions.length === 0 && !myCode && (
@@ -493,14 +577,16 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
             )}
 
             {/* 이미 맺은 메이트로 가는 길 — '메이트찾기'에서 내 메이트 목록으로 갈 수 없었다 */}
-            <TouchableOpacity
-              style={s.myMatesLink}
-              activeOpacity={0.7}
-              onPress={() => navigation.navigate('FollowerList')}
-              accessibilityRole="button"
-            >
-              <Text style={[s.myMatesLinkTxt, { color: skinAccent.accent }]}>{t('friends.viewMyMates')}</Text>
-            </TouchableOpacity>
+            <View style={s.myMatesWrap}>
+              <TouchableOpacity
+                style={[s.myMatesBtn, { borderColor: skinAccent.tint(0.4) }]}
+                activeOpacity={0.8}
+                onPress={() => navigation.navigate('FollowerList')}
+                accessibilityRole="button"
+              >
+                <Text style={[s.myMatesLinkTxt, { color: skinAccent.accent }]}>{t('friends.viewMyMates')}</Text>
+              </TouchableOpacity>
+            </View>
           </>
         )}
         <View style={{ height: 40 }} />
@@ -602,10 +688,17 @@ const s = StyleSheet.create({
     lineHeight: 28,
   },
 
-  // 내 메이트 목록 링크
-  myMatesLink: {
+  // 내 메이트 목록 — 보조 액션이라 아웃라인 필(주요 CTA인 초대 버튼과 위계 구분)
+  myMatesWrap: {
     alignItems: 'center',
     paddingVertical: 18,
+  },
+  myMatesBtn: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+    backgroundColor: 'rgba(255,255,255,0.04)',
   },
   myMatesLinkTxt: {
     fontSize: 13,
@@ -686,23 +779,21 @@ const s = StyleSheet.create({
     marginTop: 2,
   },
 
-  // 팔로우 버튼
-  followBtn: {
-    backgroundColor: C.accentDark,
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
+  // 메이트 신청 버튼 — 완전한 필(pill). 그라데이션이 모서리를 넘지 않게 overflow hidden.
+  mateBtn: {
+    minWidth: 78,
+    height: 34,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  followingBtn: {
-    backgroundColor: C.gray,
-  },
-  followBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
+  mateBtnTxt: {
+    fontSize: 12.5,
+    fontWeight: '800',
     color: C.white,
-  },
-  followingBtnText: {
-    color: C.dim,
+    letterSpacing: 0.2,
   },
 
   // 구분선
@@ -733,6 +824,17 @@ const s = StyleSheet.create({
   },
   inviteCardTitle: { color: C.white, fontSize: 15, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
   inviteCardBody: { color: C.dim, fontSize: 13, lineHeight: 18, marginBottom: 14, textAlign: 'center' },
-  inviteCardBtn: { paddingHorizontal: 24, paddingVertical: 10, borderRadius: 999 },
-  inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '700' },
+  inviteCardBtn: {
+    paddingHorizontal: 26,
+    paddingVertical: 12,
+    borderRadius: 999,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowOpacity: 0.5,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 });
