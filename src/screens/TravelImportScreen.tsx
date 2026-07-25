@@ -32,10 +32,25 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryTagLabel } from '../utils/countryLabel';
+import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
+import {
+  bucketRanges,
+  probeOrder,
+  segmentsFromProbes,
+  fillCountries,
+  nextBoundaryProbe,
+  estimateProbeCount,
+  collectImportedAssetIds,
+  excludeImported,
+  overlapsImportedTrip,
+  MAX_BOUNDARY_STEPS,
+  type ProbePoint,
+} from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -76,23 +91,11 @@ const scanPhaseText = (progress: number, tr: TFunction) => {
   return tr('imports.scanAlmost');
 };
 
-// EXIF 촬영일(DateTimeOriginal)을 ms 타임스탬프로 파싱. 형식: "YYYY:MM:DD HH:MM:SS"
-// iOS는 exif['{Exif}'] 아래, Android는 flat 키로 들어온다. 파싱 실패 시 null → creationTime 폴백.
-// creationTime은 '기기 갤러리 추가 시각'이라 iCloud 복원·재저장 사진은 부정확 → EXIF를 1순위로 쓴다.
-const parseExifDate = (exif: any): number | null => {
-  if (!exif) return null;
-  const raw: unknown =
-    exif.DateTimeOriginal ??
-    exif['{Exif}']?.DateTimeOriginal ??
-    exif.DateTimeDigitized ??
-    exif['{Exif}']?.DateTimeDigitized ??
-    exif.DateTime;
-  if (typeof raw !== 'string') return null;
-  const m = raw.match(/^(\d{4}):(\d{2}):(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-  if (!m) return null;
-  const ts = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
-  return Number.isFinite(ts) ? ts : null;
-};
+// 촬영일은 asset.creationTime 단일 기준을 쓴다.
+// iOS는 PHAsset.creationDate, Android는 MediaStore DATE_TAKEN으로 둘 다 '촬영 시각'이며
+// getAssetsAsync가 공짜로 준다. 과거엔 EXIF DateTimeOriginal을 1순위로 파싱했지만, EXIF를
+// 읽으려면 사진마다 getAssetInfoAsync(원본 파일 열기)가 필요해 스캔이 느려지는 원인이었고,
+// 샘플링 도입 후에는 탐침한 사진만 EXIF를 갖게 돼 시각 기준이 뒤섞이는 문제도 있었다.
 
 type Props = RootStackScreenProps<'TravelImport'>;
 
@@ -290,12 +293,18 @@ function TripCard({
         onPress={onPress}
         activeOpacity={0.9}
       >
-        <Image source={{ uri: trip.medias[0] }} style={styles.cardImage} />
+        <AssetImage uri={trip.medias[0]} assetId={trip.photos[0]?.id} style={styles.cardImage} />
         <View style={styles.cardInfo}>
           <View style={styles.cardHeaderRow}>
             <View style={styles.countryBadge}>
               <Text style={styles.countryText}>{countryTagLabel(trip.country, lang)}</Text>
             </View>
+            {/* 같은 국가·기간의 기록이 이미 있는 여행 — 기본 선택에서 빠져 있고, 원하면 직접 선택 */}
+            {trip.alreadyImported && (
+              <View style={styles.importedBadge}>
+                <Text style={styles.importedBadgeTxt}>{t('imports.alreadyImported')}</Text>
+              </View>
+            )}
             <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
               <Animated.View
                 style={[
@@ -327,10 +336,14 @@ function TripCard({
   );
 }
 
-export default function TravelImportScreen({ navigation }: Props) {
+export default function TravelImportScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { homeCountryCode } = useSettings();
+  // 이미 가져온 사진·여행 판정용 — 앱 내에서 다시 불러오기를 열었을 때 중복 카드를 막는다
+  const { records } = useRecords();
+  const recordsRef = useRef(records);
+  recordsRef.current = records;
 
   // 과거 여행 불러오기를 건너뛰고(또는 결과 없이) 메인으로 갈 때도 튜토리얼(코치마크) 자동 실행
   // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
@@ -383,7 +396,8 @@ export default function TravelImportScreen({ navigation }: Props) {
     if (scannedTrips.length > 0) {
       setSelectedIds((prev) =>
         prev.length === 0
-          ? scannedTrips.map((t) => t.id)
+          // 첫 스캔 결과는 전체 선택 — 단 이미 가져온 여행은 빼 둔다(사용자가 원하면 직접 선택)
+          ? scannedTrips.filter((t) => !t.alreadyImported).map((t) => t.id)
           : prev.filter((id) => scannedTrips.some((t) => t.id === id))
       );
     }
@@ -421,12 +435,16 @@ export default function TravelImportScreen({ navigation }: Props) {
   //                (info.location = 사진 EXIF의 GPS, reverseGeocodeAsync는 좌표를 직접 받음).
   //   2) 스캔    : getAssetsAsync를 endCursor/hasNextPage로 페이지네이션. createdAfter로
   //                선택한 기간의 사진만 순회(creationTime 정렬, 사진 수 상한 없음).
-  //   3) GPS추출 : getAssetInfoAsync({shouldDownloadFromNetwork:false})로 위치 추출.
-  //                location은 PHAsset 로컬 DB 메타데이터라 iCloud 원본 다운로드 불필요
-  //                (iCloud 최적화 사진도 좌표는 기기에 남아 있음). 위경도가 유한한 숫자인 사진만 통과.
-  //   4) 국가판정: 좌표를 0.5도 버킷으로 캐싱, reverseGeocodeAsync를 순차(250ms 간격,
-  //                실패 시 500ms 후 1회 재시도)로 호출해 isoCountryCode 획득(레이트리밋 회피).
+  //   3) 샘플링  : ⚠️ 사진 1장마다 getAssetInfoAsync를 부르면 안 된다 — iOS 구현이 매번
+  //                원본 파일을 열어 EXIF를 파싱해(requestContentEditingInput + CIImage)
+  //                스캔 시간이 사진 개수에 비례해 폭증했다(2만 장 = 수십 초~수 분).
+  //                대신 촬영시각으로 12시간 버킷을 만들어 버킷당 1~3장만 좌표를 조회하고,
+  //                국가가 바뀌는 경계만 이분 탐색으로 좁힌 뒤 구간 국가를 전체에 채운다.
+  //                → 조회 횟수가 '사진 수'가 아니라 '기간'에 비례(utils/scanSampling.ts).
+  //   4) 국가판정: 좌표 → 오프라인 폴리곤(locateCountry) 1순위, 실패분만 reverseGeocodeAsync
+  //                폴백(0.5도 버킷 캐시, 250ms 간격, 실패 시 500ms 후 1회 재시도).
   //   5) 클러스터: clusterForeignTrips(scanned, homeCountryCode) → 거주국가 밖 + 7일 묶음.
+  //                구간 국가를 물려받으므로 GPS 없는 실내 사진도 여행에 포함된다.
   // ────────────────────────────────────────────────────────────────────────
   const startScan = async () => {
     scanCancelRef.current = false;
@@ -466,50 +484,27 @@ export default function TravelImportScreen({ navigation }: Props) {
       }
       if (assets.length === 0) throw new Error('No photos found in gallery');
 
+      // 촬영시각 오름차순 보장 — 버킷 분할·경계 탐색이 정렬을 전제로 한다
+      assets.sort((x, y) => (x.creationTime || 0) - (y.creationTime || 0));
+
+      // 이미 가져온 사진은 스캔 대상에서 제외 — 앱 내 재실행 시 같은 여행이 중복 카드로
+      // 또 만들어지는 것을 막고, 조회 대상이 줄어 재스캔도 빨라진다.
+      const importedIds = collectImportedAssetIds(recordsRef.current);
+      const scanTargets = excludeImported(assets, importedIds);
+      const skippedImported = assets.length - scanTargets.length;
+      assets.length = 0;
+      assets.push(...scanTargets);
+      if (assets.length === 0) throw new Error('No new photos to scan');
       const totalAssets = assets.length;
 
-      // ── 3) GPS 추출 (위치 권한과 무관, 로컬 메타데이터만 조회) ──
-      // asset.id를 끝까지 전달해야 저장 시 copyTripOriginals가 localUri(file://)를 얻어
-      // 복사할 수 있다 (iOS asset.uri는 ph:// 형식이라 직접 복사 불가).
-      const located: { id: string; uri: string; creationTime: number; lat: number; lon: number }[] = [];
-      // 병렬 10 — 로컬 DB 조회라 각 호출은 빠르지만, iCloud 최적화 사진이 많은 기기에서
-      // 50 병렬은 메타데이터 접근 메모리 피크가 커져 스캔 중 앱이 강제 종료(iOS jetsam)됐다.
-      // 10 + 배치 간 yield로 메모리 피크를 낮춘다(로컬 조회라 완주 시간 손실은 미미).
-      const chunkSize = 10;
-      for (let i = 0; i < totalAssets; i += chunkSize) {
-        if (scanCancelRef.current) return;
-        const chunk = assets.slice(i, i + chunkSize);
-        const results = await Promise.all(
-          chunk.map(async (asset) => {
-            try {
-              // location(GPS)은 PHAsset 로컬 DB 메타데이터라 iCloud 다운로드 불필요.
-              // shouldDownloadFromNetwork는 localUri/exif(원본 파일)에만 영향 → false로 두면
-              // iCloud 최적화 사진도 원본 다운로드 없이 즉시 좌표를 읽는다.
-              const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
-              // 촬영일: EXIF(DateTimeOriginal) 1순위 → 없으면 creationTime(기기 추가 시각) → 그것도 없으면 오늘.
-              // EXIF는 로컬 원본이 있을 때만 채워지므로 추가 다운로드 없이 정확도만 끌어올린다.
-              const creationTime = parseExifDate(info.exif) ?? (asset.creationTime || Date.now());
-              // 표시용 uri는 localUri(file://) 우선 — iOS ph://를 그대로 넘기면 선택 그리드가 검은 타일로 뜸
-              return { id: asset.id, uri: info.localUri || asset.uri, creationTime, location: info.location };
-            } catch {
-              return { id: asset.id, uri: asset.uri, creationTime: asset.creationTime || Date.now(), location: undefined as any };
-            }
-          })
-        );
-        for (const r of results) {
-          const lat = Number(r.location?.latitude);
-          const lon = Number(r.location?.longitude);
-          if (r.location && Number.isFinite(lat) && Number.isFinite(lon)) {
-            located.push({ id: r.id, uri: r.uri, creationTime: r.creationTime, lat, lon });
-          }
-        }
-        setProgress(Math.min(55, Math.round(((i + chunk.length) / totalAssets) * 55)));
-        // 배치 사이 한 틱 양보 — iOS가 이번 배치의 메타데이터 메모리를 회수(GC)할 틈을 주고
-        // 진행바 UI가 멈추지 않게 한다 (시간 비용은 사실상 0).
-        await sleep(0);
-      }
+      // ── 3) 시간 버킷 샘플링으로 좌표 조회 (핵심 최적화) ──
+      // getAssetInfoAsync 1회 = 원본 파일 I/O 1회라 호출 횟수 자체를 줄여야 한다.
+      // 버킷(12시간)마다 대표 1~3장만 조회하고, 좌표를 얻으면 그 버킷은 즉시 중단한다.
+      const buckets = bucketRanges(assets);
+      const probeBudget = estimateProbeCount(buckets.length);
+      let probesDone = 0;
 
-      // ── 4) 국가 판정 (0.5도 버킷 캐시 + 순차 호출 + 재시도로 레이트리밋 회피) ──
+      // 좌표 → 국가코드 (오프라인 폴리곤 1순위, 실패분만 지오코딩 폴백). 0.5도 버킷 캐시.
       const geocodeCache: Record<string, { code: string; name: string } | null> = {};
       const bucketKey = (lat: number, lon: number) =>
         `${Math.round(lat * 2) / 2}_${Math.round(lon * 2) / 2}`; // 0.5도 단위(국가 판정엔 충분)
@@ -522,69 +517,133 @@ export default function TravelImportScreen({ navigation }: Props) {
           : null;
       };
 
-      const scanned: ScannedPhoto[] = [];
-      let geocodedOk = 0;
-
-      for (let i = 0; i < located.length; i++) {
-        if (scanCancelRef.current) return;
-        const p = located[i];
-        setProgress(55 + Math.min(40, Math.round((i / Math.max(1, located.length)) * 40)));
-
-        const key = bucketKey(p.lat, p.lon);
+      const countryAt = async (lat: number, lon: number) => {
+        const key = bucketKey(lat, lon);
         let geo = geocodeCache[key];
         if (geo === undefined) {
-          // 1순위: 오프라인 point-in-polygon (즉시, 네트워크·레이트리밋 없음)
-          geo = locateCountry(p.lat, p.lon);
+          geo = locateCountry(lat, lon); // 오프라인 point-in-polygon (즉시)
           if (!geo) {
-            // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 폴백 — 전체의 극히 일부라 대기 비용 미미
+            // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 — 전체의 극히 일부
             try {
-              geo = await reverseOnce(p.lat, p.lon);
+              geo = await reverseOnce(lat, lon);
             } catch {
-              await sleep(500); // 실패 → 잠시 후 1회 재시도
-              try {
-                geo = await reverseOnce(p.lat, p.lon);
-              } catch {
-                geo = null;
-              }
+              await sleep(500);
+              try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
             }
-            await sleep(250); // 호출 간격(레이트리밋 회피). 오프라인/캐시 히트 시엔 대기 없음
+            await sleep(250); // 레이트리밋 회피 (캐시 히트·오프라인 성공 시엔 대기 없음)
           }
           geocodeCache[key] = geo;
         }
-        if (!geo) continue;
-        geocodedOk++;
+        return geo;
+      };
 
-        const cinfo = countryInfoFromCode(geo.code, geo.name);
-        scanned.push({
-          id: p.id,
-          uri: p.uri,
-          creationTime: p.creationTime,
-          countryCode: geo.code,
-          countryName: cinfo.countryName,
-          countryFlag: cinfo.countryFlag,
-        });
+      // 자산 1건의 좌표를 읽어 국가코드로 — localUri도 함께 회수해 저장 단계의 재조회를 줄인다
+      const localUriById = new Map<string, string>();
+      const probeCountry = async (index: number): Promise<string | null> => {
+        const asset = assets[index];
+        probesDone++;
+        // 진행률 0~80%는 샘플링 구간 (예산 초과 시 80에서 멈춰 있게)
+        setProgress(Math.min(80, Math.round((probesDone / Math.max(1, probeBudget)) * 80)));
+        try {
+          // location은 PHAsset 로컬 DB 값이라 iCloud 다운로드 불필요(shouldDownloadFromNetwork:false)
+          const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
+          if (info.localUri) localUriById.set(asset.id, info.localUri);
+          const lat = Number(info.location?.latitude);
+          const lon = Number(info.location?.longitude);
+          if (!info.location || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          const geo = await countryAt(lat, lon);
+          if (!geo) return null;
+          // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출
+          if (geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
+            foundCodes.add(geo.code);
+            const cinfo0 = countryInfoFromCode(geo.code, geo.name);
+            const code = geo.code;
+            setDiscovered((prev) =>
+              prev.some((d) => d.code === code)
+                ? prev
+                : [...prev, { code, flag: cinfo0.countryFlag, name: cinfo0.countryName }]
+            );
+            Haptics.selectionAsync().catch(() => {});
+          }
+          return geo.code;
+        } catch {
+          return null;
+        }
+      };
 
-        // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출
-        if (geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
-          foundCodes.add(geo.code);
-          const flag = cinfo.countryFlag;
-          const name = cinfo.countryName;
-          const code = geo.code;
-          setDiscovered((prev) => (prev.some((d) => d.code === code) ? prev : [...prev, { code, flag, name }]));
-          Haptics.selectionAsync().catch(() => {});
+      const probes: ProbePoint[] = [];
+      for (const b of buckets) {
+        if (scanCancelRef.current) return;
+        // 버킷에서 좌표가 나올 때까지 최대 3장 시도 (실내 사진만 있는 버킷은 미상 처리)
+        for (const idx of probeOrder(b.start, b.end)) {
+          const code = await probeCountry(idx);
+          probes.push({ index: idx, code });
+          if (code) break;
+        }
+        await sleep(0); // UI 양보 + iOS가 메타데이터 메모리를 회수할 틈
+      }
+
+      // ── 3-2) 국가 전환 경계를 이분 탐색으로 좁힌다 (출입국 날짜 정확도) ──
+      // 좌표를 얻은 탐침만 대상. 인접한 두 탐침의 국가가 다르면 그 사이를 최대 6회 조사한다.
+      const known = probes.filter((p) => p.code != null).sort((a2, b2) => a2.index - b2.index);
+      for (let k = 1; k < known.length; k++) {
+        if (scanCancelRef.current) return;
+        if (known[k].code === known[k - 1].code) continue;
+        let lo = known[k - 1].index;
+        let hi = known[k].index;
+        for (let step = 0; step < MAX_BOUNDARY_STEPS; step++) {
+          const mid = nextBoundaryProbe(lo, hi);
+          if (mid == null) break;
+          const code = await probeCountry(mid);
+          probes.push({ index: mid, code });
+          // 미상이면 더 좁힐 수 없다(어느 쪽인지 모름) → 중단
+          if (code == null) break;
+          if (code === known[k - 1].code) lo = mid;
+          else if (code === known[k].code) hi = mid;
+          else break; // 사이에 제3국 — 중간 경계로 두고 종료
         }
       }
 
+      // ── 4) 구간 확정 → 전체 사진에 국가 채우기 ──
+      // GPS가 없던 사진도 그 구간의 국가를 물려받는다(실내 사진 누락 해소).
+      const segments = segmentsFromProbes(probes, totalAssets);
+      const codes = fillCountries(totalAssets, segments);
+      setProgress(90);
+
+      const scanned: ScannedPhoto[] = [];
+      let geocodedOk = 0;
+      for (let i = 0; i < totalAssets; i++) {
+        const code = codes[i];
+        if (!code) continue;
+        geocodedOk++;
+        const asset = assets[i];
+        const cinfo = countryInfoFromCode(code);
+        scanned.push({
+          id: asset.id,
+          // 표시용 uri는 localUri(file://) 우선 — iOS ph://는 선택 그리드에서 검은 타일로 뜬다.
+          // 탐침하지 않은 사진은 ph:// 그대로지만, 선택 화면이 asset id로 썸네일을 만든다.
+          uri: localUriById.get(asset.id) || asset.uri,
+          localUri: localUriById.get(asset.id),
+          creationTime: asset.creationTime || Date.now(),
+          countryCode: code,
+          countryName: cinfo.countryName,
+          countryFlag: cinfo.countryFlag,
+        });
+      }
       // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
       const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
       const allTrips = clusterForeignTrips(scanned, homeCountryCode);
       // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
-      const trips = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
+      const sized = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
+      // 2차 방어선 — 자산 id로 못 거른 경우(다른 기기에서 가져옴·사진 재추가 등)를 위해
+      // 같은 국가 + 기간이 겹치는 기존 기록이 있으면 표시해 둔다(기본 선택에서 제외된다).
+      const importedAlbums = recordsRef.current.filter((r) => r.viewType === 'album');
+      const trips = sized.map((t) => ({ ...t, alreadyImported: overlapsImportedTrip(t, importedAlbums) }));
 
-      // 디버그 로그
-      console.log('[TravelImport] 총 스캔 사진:', totalAssets);
-      console.log('[TravelImport] location 있던 사진:', located.length);
-      console.log('[TravelImport] 지오코딩 성공:', geocodedOk);
+      // 디버그 로그 — 좌표 조회 횟수가 사진 수 대비 얼마나 줄었는지 확인용
+      console.log('[TravelImport] 총 스캔 사진:', totalAssets, '/ 버킷:', buckets.length, '/ 이미 가져와 제외:', skippedImported);
+      console.log('[TravelImport] 좌표 조회(getAssetInfoAsync):', probesDone, `(사진 대비 ${totalAssets ? Math.round((probesDone / totalAssets) * 100) : 0}%)`);
+      console.log('[TravelImport] 국가 확정 구간:', segments.length, '→ 국가 채워진 사진:', geocodedOk);
       console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
       console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
@@ -671,9 +730,9 @@ export default function TravelImportScreen({ navigation }: Props) {
       id: t.id,
       country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
       title: t.title, date: t.date, startDate: t.startDate, endDate: t.endDate,
-      photos: t.photos, // {id?,uri}[]
+      photos: t.photos, // {id?, uri, localUri?, creationTime?}[] — localUri는 저장 단계 재조회 생략용
     }));
-    navigation.navigate('ImportPhotoSelect', { trips });
+    navigation.navigate('ImportPhotoSelect', { trips, from: route.params?.from });
   };
 
   // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.
@@ -866,7 +925,7 @@ export default function TravelImportScreen({ navigation }: Props) {
                     disabled={disabled}
                     activeOpacity={0.85}
                   >
-                    <Image source={{ uri: t.medias[0] }} style={styles.mgThumb} />
+                    <AssetImage uri={t.medias[0]} assetId={t.photos[0]?.id} style={styles.mgThumb} />
                     <View style={{ flex: 1 }}>
                       <Text style={styles.mgItemTitle}>{t.countryFlag} {t.title}</Text>
                       <Text style={styles.mgItemDate}>
@@ -1314,6 +1373,20 @@ const styles = StyleSheet.create({
     marginBottom: Spacing[2],
   },
   // 스캔 화면 '발견한 나라' 칩과 동일한 스타일(국기 + 이름 + 얇은 테두리)로 통일
+  importedBadge: {
+    marginLeft: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.2)',
+  },
+  importedBadgeTxt: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#A1A1B0',
+  },
   countryBadge: {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,

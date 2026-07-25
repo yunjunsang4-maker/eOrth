@@ -33,7 +33,7 @@ function FlagChip({ flag, name, delay }: { flag: string; name: string; delay: nu
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
-  const { tripCount, photoCount, countries } = route.params;
+  const { tripCount, photoCount, countries, from } = route.params;
 
   // 진입 시 체크 아이콘 스케일/페이드 인 + 링 버스트(리플)
   const checkScale = useRef(new Animated.Value(0.6)).current;
@@ -72,6 +72,14 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
   // "이어스 시작하기" → 메인으로 이동하면서 MainTab에 startTutorial 플래그 전달 → 코치마크 튜토리얼 자동 시작
   // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
   const startEorth = async () => {
+    // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청·튜토리얼 없이
+    // 원래 보던 화면으로 돌아간다. 스택에 남은 불러오기 단계들은 함께 정리한다.
+    if (from === 'profile') {
+      // 스택 루트(Main)로 — 탭 상태는 그대로라 프로필 탭으로 돌아간다.
+      // (온보딩 경로는 아래 reset을 타야 한다: 그쪽 스택 루트는 Splash라 popToTop이 부적절)
+      navigation.popToTop();
+      return;
+    }
     await requestNotificationPermission().catch(() => {});
     navigation.reset({
       index: 0,

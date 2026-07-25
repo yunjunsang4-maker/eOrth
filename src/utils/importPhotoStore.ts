@@ -6,7 +6,58 @@ export function tripPhotoPath(base: string, tripId: string, index: number): stri
   return `${tripDir(base, tripId)}${index}.jpg`;
 }
 
-export interface PhotoRef { id?: string; uri: string }
+/**
+ * 제한 병렬 실행기 — items를 최대 limit개씩 동시에 처리한다.
+ * 각 작업의 실패는 호출부(worker)가 삼키는 것을 전제로 하며, 모든 항목이 정확히 1회 처리된다.
+ * (사진 복사처럼 '순서는 나중에 복원하되 대기 시간은 겹치고 싶은' 작업용)
+ */
+export async function runWithConcurrency(
+  count: number,
+  limit: number,
+  work: (index: number) => Promise<void>,
+): Promise<void> {
+  if (count <= 0) return;
+  let next = 0;
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, count)) }, async () => {
+    while (true) {
+      const i = next++;
+      if (i >= count) return;
+      await work(i);
+    }
+  });
+  await Promise.all(workers);
+}
+
+/**
+ * 병렬 복사 결과(인덱스별 성공 경로 또는 null) → 원본 순서를 지킨 목록.
+ * - uris: 성공한 복사본 경로(원본 순서)
+ * - srcIndexes: 각 uris 항목의 원본 인덱스 (호출부가 촬영일 등 원본 메타를 대응시킨다)
+ * - firstItemCopied: 0번(커버) 성공 여부. 실패 시 uris[0]은 '다른 사진'이므로
+ *   호출부가 커버 크롭을 굽지 않도록 알린다.
+ */
+export function compactCopyResults(copiedByIndex: (string | null)[]): {
+  uris: string[];
+  srcIndexes: number[];
+  firstItemCopied: boolean;
+} {
+  const uris: string[] = [];
+  const srcIndexes: number[] = [];
+  for (let i = 0; i < copiedByIndex.length; i++) {
+    const uri = copiedByIndex[i];
+    if (!uri) continue;
+    uris.push(uri);
+    srcIndexes.push(i);
+  }
+  return { uris, srcIndexes, firstItemCopied: copiedByIndex.length > 0 && copiedByIndex[0] != null };
+}
+
+export interface PhotoRef {
+  id?: string;
+  uri: string;
+  // 스캔 단계에서 이미 회수한 원본 file:// 경로. 있으면 getAssetInfoAsync를 건너뛴다
+  // (iOS에서 이 호출은 매번 원본 파일을 열어 EXIF까지 파싱하므로 장당 비용이 크다).
+  localUri?: string;
+}
 
 // 카드 썸네일 위치 조정값 (CutPhotoAdjustModal의 CutTransform과 동일 규약)
 // tx/ty는 프레임 가로/세로 대비 비율, scale은 배율(≥1)
@@ -108,32 +159,48 @@ export async function copyTripOriginals(
     // 이미 존재하면 무시
   }
 
-  const out: string[] = [];
-  // 복사 성공한 항목의 원본 인덱스 — 실패 장 스킵으로 배열이 당겨져도 호출부가
-  // 원본 메타(촬영일 등)를 복사본 URI에 정확히 대응시킬 수 있게 한다
-  const srcIndexes: number[] = [];
-  // 첫 항목(커버)의 복사 성공 여부 — 실패 장을 건너뛰면 배열이 당겨져서, 호출부가
-  // copied[0]을 커버로 간주하고 커버용 크롭을 '다른 사진'에 굽는 사고를 막는 데 쓴다.
-  let firstItemCopied = false;
+  // 파일명은 '원본 인덱스'로 짓는다 — 병렬 복사라 완료 순서가 뒤섞여도 경로가 겹치지 않는다.
+  const copiedByIndex = new Array<string | null>(items.length).fill(null);
+  let done = 0;
   onProgress?.(0, items.length);
-  for (let i = 0; i < items.length; i++) {
+
+  const copyOne = async (i: number) => {
     const it = items[i];
+    const to = tripPhotoPath(base, tripId, i);
+    // 1순위: 스캔 때 받아 둔 localUri (추가 조회 없음)
+    if (it.localUri) {
+      try {
+        await FileSystem.copyAsync({ from: it.localUri, to });
+        copiedByIndex[i] = to;
+        return;
+      } catch {
+        // 세션이 지나 경로가 만료됐을 수 있다 → 아래 정식 경로로 재시도
+      }
+    }
     try {
       let from = it.uri;
       if (it.id) {
+        // iCloud 원본은 여기서 내려받는다(shouldDownloadFromNetwork: true)
         const info = await MediaLibrary.getAssetInfoAsync(it.id, { shouldDownloadFromNetwork: true });
-        // 복사 가능한 file:// 경로 우선(localUri). 없으면 원본 갤러리 uri로 시도(실패 시 skip)
         from = (info.localUri || it.uri) as string;
       }
-      const to = tripPhotoPath(base, tripId, out.length);
       await FileSystem.copyAsync({ from, to });
-      out.push(to);
-      srcIndexes.push(i);
-      if (i === 0) firstItemCopied = true;
+      copiedByIndex[i] = to;
     } catch {
-      // 이 장은 건너뜀
+      // 이 장은 건너뜀 (iCloud 오프로드 실패 등)
     }
-    onProgress?.(i + 1, items.length);
-  }
-  return { uris: out, firstItemCopied, srcIndexes };
+  };
+
+  // 제한 병렬 — 순차 복사는 장당 (메타데이터 조회 + 원본 복사)를 직렬로 기다려 200장이면
+  // 수십 초가 걸렸다. 동시 4장이면 대기 시간이 겹쳐 2~4배 빨라지고, 메모리 피크는
+  // (동시 4 × 원본 1장)이라 iOS jetsam 위험도 낮다.
+  await runWithConcurrency(items.length, 4, async (i) => {
+    await copyOne(i);
+    done++;
+    onProgress?.(done, items.length);
+  });
+
+  // 원본 순서를 유지한 채 실패 장만 걸러낸다 (호출부가 srcIndexes로 원본 메타를 대응)
+  const { uris, srcIndexes, firstItemCopied } = compactCopyResults(copiedByIndex);
+  return { uris, firstItemCopied, srcIndexes };
 }

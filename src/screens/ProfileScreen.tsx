@@ -2032,15 +2032,27 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         <View ref={archiveRef} collapsable={false}>
           <View style={gridSt.gridHeaderRow}>
             <Text style={styles.sectionTitle}>Travel archive</Text>
-            {/* 카드 합치기 — 합칠 수 있는 카드(tripGroups)가 2장 이상일 때만 노출 */}
-            {(mergeMode || mergeableIds.size >= 2) && (
-              <TouchableOpacity
-                onPress={() => (mergeMode ? exitMergeMode() : setMergeMode(true))}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Text style={[styles.sectionLink, { color: skinAccent.accent }]}>{mergeMode ? t('profile.mergeCancel') : t('profile.mergeCards')}</Text>
-              </TouchableOpacity>
-            )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+              {/* 과거여행 불러오기 — 온보딩에서만 가능하던 것을 아카이브(결과가 쌓이는 자리)에서도 연다.
+                  합치기 모드에서는 숨긴다(그때는 카드 선택이 목적이라 이동하면 흐름이 끊긴다) */}
+              {!mergeMode && (
+                <TouchableOpacity
+                  onPress={() => navigation.navigate('TravelImport', { from: 'profile' })}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sectionLink, { color: skinAccent.accent }]}>{t('profile.importPastTrips')}</Text>
+                </TouchableOpacity>
+              )}
+              {/* 카드 합치기 — 합칠 수 있는 카드(tripGroups)가 2장 이상일 때만 노출 */}
+              {(mergeMode || mergeableIds.size >= 2) && (
+                <TouchableOpacity
+                  onPress={() => (mergeMode ? exitMergeMode() : setMergeMode(true))}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Text style={[styles.sectionLink, { color: skinAccent.accent }]}>{mergeMode ? t('profile.mergeCancel') : t('profile.mergeCards')}</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
           <Text style={[styles.archiveSubtitle, { color: skinAccent.accent }]}>
             {mergeMode ? t('profile.mergeGuide') : t('profile.archiveCount', { count: displayTrips.length })}
@@ -2052,6 +2064,21 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             <Text style={{ fontSize: 40 }}>🗺️</Text>
             <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '700' }}>{t('profile.emptyTitle')}</Text>
             <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center' }}>{t('profile.emptyDesc')}</Text>
+            {/* 갤러리에서 과거 여행을 찾아 아카이브를 채우는 지름길 —
+                온보딩에서 건너뛴 사용자를 여기서 회수한다 */}
+            <TouchableOpacity
+              onPress={() => navigation.navigate('TravelImport', { from: 'profile' })}
+              activeOpacity={0.85}
+              style={{ marginTop: 10, borderRadius: 999, overflow: 'hidden' }}
+            >
+              <LinearGradient
+                colors={skinAccent.btnGradient}
+                start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
+                style={{ paddingHorizontal: 22, paddingVertical: 11 }}
+              >
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{t('profile.importPastTripsCta')}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         )}
 

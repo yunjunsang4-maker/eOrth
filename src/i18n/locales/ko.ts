@@ -461,6 +461,8 @@ const ko = {
     savedToast: '프로필이 저장되었어요',
   },
   profile: {
+    importPastTrips: '불러오기',
+    importPastTripsCta: '과거 여행 불러오기',
     noticeTitle: '알림',
     badgeMaxAlert: '대표 배지는 최대 5개까지 선택할 수 있어요.',
     badgeCollection: '나의 배지 컬렉션',
@@ -1367,6 +1369,7 @@ const ko = {
     fullDate: '{{y}}년 {{m}}월 {{d}}일 ({{wd}})',
   },
   imports: {
+    alreadyImported: '이미 가져옴',
     photosFound: '사진 {{count}}장 발견',
     noticeTitle: '알림',
     icTitle: '기록이 완성됐어요!',

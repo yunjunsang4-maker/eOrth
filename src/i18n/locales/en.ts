@@ -460,6 +460,8 @@ const en = {
     savedToast: 'Your profile has been saved',
   },
   profile: {
+    importPastTrips: 'Import',
+    importPastTripsCta: 'Import past trips',
     noticeTitle: 'Notice',
     badgeMaxAlert: 'You can select up to 5 featured badges.',
     badgeCollection: 'My badge collection',
@@ -1366,6 +1368,7 @@ const en = {
     fullDate: '{{y}}/{{m}}/{{d}} ({{wd}})',
   },
   imports: {
+    alreadyImported: 'Already imported',
     photosFound: '{{count}} photos found',
     noticeTitle: 'Notice',
     icTitle: 'Your record is complete!',

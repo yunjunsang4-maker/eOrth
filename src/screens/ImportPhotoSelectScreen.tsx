@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
+  View, Text, StyleSheet, TouchableOpacity, FlatList,
   Dimensions, ActivityIndicator, Alert, ScrollView, Modal, Animated,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -19,6 +19,7 @@ import { COUNTRIES } from '../constants/countries';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
+import AssetImage from '../components/AssetImage';
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
@@ -50,7 +51,7 @@ const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
 
 // 사진 셀 — 선택 시 살짝 줌아웃되며 마젠타 프레임이 드러나고, 순번 배지가 스프링으로 팝인.
-function PhotoCell({ uri, order, onPress }: { uri: string; order: number; onPress: () => void }) {
+function PhotoCell({ uri, assetId, order, onPress }: { uri: string; assetId?: string; order: number; onPress: () => void }) {
   const on = order > 0;
   const scale = useRef(new Animated.Value(on ? 1 : 0)).current; // 0=미선택(꽉참), 1=선택(줌아웃)
   useEffect(() => {
@@ -61,7 +62,10 @@ function PhotoCell({ uri, order, onPress }: { uri: string; order: number; onPres
 
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={st.cellWrap}>
-      <Animated.Image source={{ uri }} style={[st.cell, { transform: [{ scale: imgScale }] }]} />
+      {/* ph:// 자가 복구를 위해 AssetImage 사용 — 스케일은 바깥 Animated.View가 담당 */}
+      <Animated.View style={{ transform: [{ scale: imgScale }] }}>
+        <AssetImage uri={uri} assetId={assetId} style={st.cell} />
+      </Animated.View>
       {on ? (
         <Animated.View style={[st.badgeOn, { transform: [{ scale: badgeScale }] }]}>
           <LinearGradient
@@ -216,6 +220,16 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
             count: g.uris.length,
           }));
         }
+        // 복사본 uri → 원본 갤러리 자산 id / 촬영시각.
+        // assetId는 "이 사진은 이미 가져왔다"는 근거가 되어, 앱 내에서 다시 스캔할 때
+        // 같은 여행이 중복 카드로 또 만들어지는 것을 막는다(사진첩 생성 화면과 동일 규약).
+        const mediaAssetIds: Record<string, string> = {};
+        const mediaTimes: Record<string, number> = {};
+        copied.forEach((uri, k) => {
+          const src = items[srcIndexes[k]] as TripPhoto | undefined;
+          if (src?.id) mediaAssetIds[uri] = src.id;
+          if (src?.creationTime) mediaTimes[uri] = src.creationTime;
+        });
         const recId = addImportedAlbum({
           country: t.country, countryName: t.countryName, countryFlag: t.countryFlag,
           date: t.date, startDate: t.startDate, endDate: t.endDate,
@@ -223,6 +237,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           // 날짜 정렬로 medias[0]이 커버가 아닐 수 있으므로 카드 썸네일용 대표를 명시
           representativePhoto: repUri ?? (firstItemCopied ? copied[0] : undefined),
           albumSections: autoSections,
+          mediaAssetIds,
+          mediaTimes,
         }).id;
         // 진행 중 체류국 사진이면 체류 카드로 흡수(백데이팅), 제3국이면 별도 여행 카드
         const target = classifyImportTarget(t.countryName, homeCountryName, stayCountryName);
@@ -242,7 +258,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         index: 1,
         routes: [
           { name: 'Main' },
-          { name: 'ImportComplete', params: { tripCount, photoCount, countries } },
+          { name: 'ImportComplete', params: { tripCount, photoCount, countries, from: route.params?.from } },
         ],
       });
     } catch {
@@ -322,7 +338,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         columnWrapperStyle={{ gap: 8 }}
         ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
         renderItem={({ item }) => (
-          <PhotoCell uri={item.uri} order={sel.indexOf(item.uri) + 1} onPress={() => toggle(item.uri)} />
+          <PhotoCell uri={item.uri} assetId={item.id} order={sel.indexOf(item.uri) + 1} onPress={() => toggle(item.uri)} />
         )}
       />
 
@@ -387,7 +403,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
                     }}
                     activeOpacity={0.85}
                   >
-                    <Image source={{ uri }} style={[st.pvThumb, on && st.pvThumbOn]} />
+                    <AssetImage uri={uri} assetId={trip.photos.find((p) => p.uri === uri)?.id} style={[st.pvThumb, on && st.pvThumbOn] as any} />
                     {on && (
                       <View style={st.pvThumbAdjustBadge}>
                         <Text style={st.pvThumbAdjustTxt}>{t('imports.adjust')}</Text>
