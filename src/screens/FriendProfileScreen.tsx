@@ -10,11 +10,14 @@ import {
   Alert,
   Share,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { countryLabel } from '../utils/countryLabel';
+import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
@@ -318,11 +321,18 @@ export default function FriendProfileScreen({
     }
   };
 
+  // 메뉴 아이콘 — 기본 이모지 대신 앱 아이콘 세트를 쓴다(게시물 메뉴 PostDetailScreen과 동일 규약:
+  // size 16, 일반 항목은 흰색 / 위험 항목은 빨강)
+  const MENU_ICON = 16;
   const MENU_NORMAL = [
-    { icon: '🔗', label: t('friends.copyProfileLink'), onPress: handleCopyLink },
-    { icon: '📤', label: t('friends.share'),          onPress: handleShare },
+    { key: 'link',  icon: <LinkIcon size={MENU_ICON} color={COLORS.white} />,  label: t('friends.copyProfileLink'), onPress: handleCopyLink },
+    { key: 'share', icon: <ShareIcon size={MENU_ICON} color={COLORS.white} />, label: t('friends.share'),           onPress: handleShare },
     {
-      icon:    notifMuted ? '🔔' : '🔕',
+      key:   'notif',
+      // 음소거 상태면 '알림 켜기'(종) / 아니면 '알림 끄기'(사선 종) — 누르면 될 결과를 보여준다
+      icon:  notifMuted
+        ? <BellIcon size={MENU_ICON} color={COLORS.white} />
+        : <BellOffIcon size={MENU_ICON} color={COLORS.white} slashBg={COLORS.menuBg} />,
       label:   notifMuted ? t('friends.notifOn') : t('friends.notifOff'),
       onPress: handleToggleNotif,
     },
@@ -330,7 +340,8 @@ export default function FriendProfileScreen({
 
   const MENU_DANGER = [
     {
-      icon: '⛔',
+      key: 'block',
+      icon: <BlockIcon size={MENU_ICON} color={COLORS.red} />,
       label: t('friends.blockAction'),
       onPress: () => {
         setMenuVisible(false);
@@ -342,7 +353,7 @@ export default function FriendProfileScreen({
         }, t);
       },
     },
-    { icon: '🚨', label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
+    { key: 'report', icon: <MegaphoneIcon size={MENU_ICON} color={COLORS.red} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
   // 내 프로필(내 게시물의 아이디 탭)이면 실제 프로필 탭 컴포넌트를 그대로 렌더한다 —
@@ -383,9 +394,13 @@ export default function FriendProfileScreen({
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
             {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
             {!isSelf && !!overlap && overlap.sharedCount > 0 && (
-              <Text style={[s.overlapLine, { color: skinAccent.accent }]} numberOfLines={1}>
-                🌍 {t('friends.overlapReason', { count: overlap.sharedCount })} · {overlap.sampleCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}
-              </Text>
+              // 앞 아이콘은 기본 이모지(🌍) 대신 앱 아이콘 — 메이트찾기의 같은 줄과 표현을 맞춘다
+              <View style={s.overlapRow}>
+                <GlobeIcon size={12} color={skinAccent.accent} />
+                <Text style={[s.overlapLine, { color: skinAccent.accent }]} numberOfLines={1}>
+                  {t('friends.overlapReason', { count: overlap.sharedCount })} · {overlap.sampleCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}
+                </Text>
+              </View>
             )}
             {/* 통계 — 여행수·메이트 2개. 메이트 탭 → 메이트 목록(조회 전용) */}
             <View style={pv.statsRow}>
@@ -403,24 +418,27 @@ export default function FriendProfileScreen({
         {!isSelf && (
           <>
             <View style={s.actionRow}>
-              <TouchableOpacity
-                style={[s.followBtn, neighborState === 'none' && { backgroundColor: skinAccent.accentDeep }, neighborState !== 'none' && s.followingBtn]}
+              {/* 메이트 상태에 따라 위계가 바뀐다 —
+                  아직 아님: 그라데이션(주요 CTA) / 신청중·메이트: 고스트(더 유도하지 않음) */}
+              <ProfileActionButton
+                variant={neighborState === 'none' ? 'primary' : 'ghost'}
+                label={neighborState === 'neighbor'
+                  ? t('friends.neighborActive')
+                  : neighborState === 'requested'
+                    ? t('friends.neighborRequested')
+                    : t('friends.neighborRequest')}
                 onPress={onNeighborPress}
-                activeOpacity={0.85}
-              >
-                <Text style={[s.followBtnText, neighborState !== 'none' && [s.followingBtnText, { color: skinAccent.accent }]]}>
-                  {neighborState === 'neighbor'
-                    ? t('friends.neighborActive')
-                    : neighborState === 'requested'
-                      ? t('friends.neighborRequested')
-                      : t('friends.neighborRequest')}
-                </Text>
-              </TouchableOpacity>
-              {/* DM — 메이트일 때만 노출. 비메이트은 DM 불가(메이트 버튼이 폭을 채움) */}
+                accent={skinAccent.accent}
+                gradient={skinAccent.btnGradient}
+                tint={skinAccent.tint}
+                style={{ flex: 1 }}
+              />
+              {/* DM — 메이트일 때만 노출. 비메이트은 DM 불가(메이트 버튼이 폭을 채움).
+                  메이트가 된 뒤에는 대화가 다음 행동이므로 메시지 쪽을 그라데이션으로 올린다 */}
               {neighborNow && (
-                <TouchableOpacity
-                  style={s.dmBtn}
-                  activeOpacity={0.85}
+                <ProfileActionButton
+                  variant="primary"
+                  label={t('friends.dmBtn')}
                   onPress={() => navigation.navigate('DM', {
                     friend: {
                       name: display.name,
@@ -430,11 +448,12 @@ export default function FriendProfileScreen({
                       id: realId ?? undefined,
                     },
                   })}
-                  accessibilityRole="button"
+                  accent={skinAccent.accent}
+                  gradient={skinAccent.btnGradient}
+                  tint={skinAccent.tint}
+                  style={{ minWidth: 110 }}
                   accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
-                >
-                  <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
-                </TouchableOpacity>
+                />
               )}
             </View>
           </>
@@ -523,9 +542,9 @@ export default function FriendProfileScreen({
       {menuVisible && (
         <View style={s.popupMenu}>
           {MENU_NORMAL.map((item, idx) => (
-            <View key={item.label}>
+            <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
-                <Text style={s.menuItemIcon}>{item.icon}</Text>
+                <View style={s.menuItemIcon}>{item.icon}</View>
                 <Text style={s.menuItemText}>{item.label}</Text>
               </TouchableOpacity>
               {idx < MENU_NORMAL.length - 1 && <View style={s.menuItemDivider} />}
@@ -533,9 +552,9 @@ export default function FriendProfileScreen({
           ))}
           <View style={s.menuSectionDivider} />
           {MENU_DANGER.map((item, idx) => (
-            <View key={item.label}>
+            <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
-                <Text style={s.menuItemIcon}>{item.icon}</Text>
+                <View style={s.menuItemIcon}>{item.icon}</View>
                 <Text style={[s.menuItemText, s.menuItemDanger]}>{item.label}</Text>
               </TouchableOpacity>
               {idx < MENU_DANGER.length - 1 && <View style={s.menuItemDivider} />}
@@ -562,6 +581,59 @@ export default function FriendProfileScreen({
   );
 }
 
+// ─── 프로필 액션 버튼 ───
+// 메이트찾기(FriendSearchScreen.MateButton)와 같은 언어: 완전한 필 + 스킨 그라데이션 + 네온 글로우.
+// 상태로 위계를 준다 — primary(지금 누를 것) / ghost(대기·완료) / soft(보조 액션).
+// 누를 때 0.96 스프링으로 촉감을 준다(리스트 버튼보다 크므로 축소폭은 작게).
+function ProfileActionButton({
+  variant,
+  label,
+  onPress,
+  accent,
+  gradient,
+  tint,
+  style,
+  accessibilityLabel,
+}: {
+  variant: 'primary' | 'ghost' | 'soft';
+  label: string;
+  onPress: () => void;
+  accent: string;
+  gradient: [string, string];
+  tint: (a: number) => string;
+  style?: object;
+  accessibilityLabel?: string;
+}) {
+  const press = useRef(new Animated.Value(0)).current;
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] });
+  const to = (v: number) =>
+    Animated.spring(press, { toValue: v, friction: 7, tension: 220, useNativeDriver: true }).start();
+
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => to(1)}
+        onPressOut={() => to(0)}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        style={[
+          s.actionBtn,
+          variant === 'primary' && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+          variant === 'ghost' && { borderWidth: 1, borderColor: tint(0.45), backgroundColor: tint(0.12) },
+          variant === 'soft' && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.06)' },
+        ]}
+      >
+        {variant === 'primary' && (
+          <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        )}
+        <Text style={[s.actionBtnTxt, variant === 'ghost' && { color: accent }]} numberOfLines={1}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 // ─── 배지 하이라이트 스타일 ───
 // ─── 스타일 ───
 const s = StyleSheet.create({
@@ -574,7 +646,8 @@ const s = StyleSheet.create({
     paddingBottom: 32,
   },
   // 나와 겹치는 나라 줄 — 색은 skinAccent.accent 인라인으로 덮음(스킨 관례)
-  overlapLine: { fontSize: 12, color: COLORS.accent, marginTop: 4 },
+  overlapRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  overlapLine: { fontSize: 12, color: COLORS.accent, flexShrink: 1 },
 
   // ── 헤더 ──
   header: {
@@ -604,22 +677,16 @@ const s = StyleSheet.create({
     gap: 8,
     marginBottom: 4,
   },
-  followBtn: {
-    flex: 1,
-    height: 44, borderRadius: 12,
-    backgroundColor: COLORS.accentDark,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  dmBtn: {
+  // 액션 버튼 — 완전한 필. 그라데이션이 모서리를 넘지 않게 overflow hidden.
+  actionBtn: {
+    height: 46,
+    borderRadius: 999,
     paddingHorizontal: 22,
-    height: 44, borderRadius: 12,
-    backgroundColor: COLORS.card,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  dmBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  followingBtn: { backgroundColor: COLORS.card },
-  followBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  followingBtnText: { color: COLORS.accent },
+  actionBtnTxt: { fontSize: 15, fontWeight: '800', color: COLORS.white, letterSpacing: 0.2 },
 
   // ── 구분선 ──
   divider: {
@@ -660,7 +727,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     height: 48, paddingHorizontal: 16, gap: 10,
   },
-  menuItemIcon: { fontSize: 16 },
+  menuItemIcon: { width: 18, alignItems: 'center', justifyContent: 'center' }, // 아이콘 폭 고정 → 라벨 시작점 정렬
   menuItemText: { fontSize: 14, color: COLORS.white, fontWeight: '500' },
   menuItemDanger: { color: COLORS.red },
   menuItemDivider: { height: 1, backgroundColor: COLORS.menuDivider },

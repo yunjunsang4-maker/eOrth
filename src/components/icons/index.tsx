@@ -280,6 +280,29 @@ export const BellIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, d
   </Svg>
 );
 
+// 알림 끔 — BellIcon과 같은 종 실루엣에 사선 하나(음소거 관례).
+// 사선은 종 색과 같은 색으로 긋고, 겹치는 자리에 배경색 테두리를 깔아 형태가 뭉개지지 않게 한다.
+export const BellOffIcon: React.FC<IconProps & { slashBg?: string }> = ({
+  size = 64, color, dot = false, dotColor = COLORS.dot, slashBg = '#12121A',
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 10c-3 0-5 2-5 5v3c-13 2-22 13-22 27v12c0 3-1 6-3 8l-4 5c-3 4 0 10 5 10h58c5 0 8-6 5-10l-4-5c-2-2-3-5-3-8V45c0-14-9-25-22-27v-3c0-3-2-5-5-5zm-7 78c0 4 3 7 7 7s7-3 7-7H41z" />
+    </G>
+    {/* 사선 — 바탕 테두리(굵게) 위에 본선(가늘게) */}
+    <Path d="M18 16L78 82" stroke={slashBg} strokeWidth={14} strokeLinecap="round" />
+    <Path d="M18 16L78 82" stroke={color ?? COLORS.purpleMid} strokeWidth={8} strokeLinecap="round" />
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
 // 검색 — 라인형 돋보기 (MynaUI search-line)
 export const SearchLineIcon: React.FC<IconProps> = ({ size = 24, color = '#A9A9A9' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
