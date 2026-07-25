@@ -45,6 +45,8 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
 import GrainOverlay from '../components/GrainOverlay';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
+import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive, setCoachBright } from '../components/coachOverlayState';
 import { EorthLogo } from '../components/EorthLogo';
 import { SegmentedToggle } from '../components/SegmentedToggle';
@@ -375,19 +377,6 @@ export default function MainScreen({ navigation, route }: Props) {
     return () => setCoachActive(false);
   }, [coachVisible]);
 
-  const measure = (ref: React.MutableRefObject<any>) =>
-    new Promise<CoachRect | null>((resolve) => {
-      const node = ref.current;
-      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
-      node.measureInWindow((x: number, y: number, width: number, height: number) => {
-        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) {
-          resolve(null);
-        } else {
-          resolve({ x, y, width, height });
-        }
-      });
-    });
-
   // 메인 튜토리얼 시작 — 강조할 요소들을 측정해 단계를 만들고 코치마크를 띄운다.
   // 반환값은 취소 함수(효과의 cleanup으로 그대로 사용).
   const coachRunRef = useRef(false); // 같은 화면 인스턴스에서 중복 실행 방지
@@ -396,14 +385,20 @@ export default function MainScreen({ navigation, route }: Props) {
     coachRunRef.current = true;
     let cancelled = false;
     let shown = false;
-    const timer = setTimeout(async () => {
+    (async () => {
+      traceStart('coach:main');
+      // 고정 지연(구 450ms) 대신 화면 전환이 실제로 끝나는 신호를 기다린다.
+      await whenReadyToMeasure();
+      if (cancelled) return;
+      traceStep('coach:main', 'waited');
       const [globe, toggle, settings, snapMeasured] = await Promise.all([
-        measure(globeRef),
-        measure(toggleRef),
-        measure(settingsRef),
-        measure(snapAnchorRef), // 숨김 앵커 → 스냅 버튼 실제 위치
+        measureWithRetry(globeRef),
+        measureWithRetry(toggleRef),
+        measureWithRetry(settingsRef),
+        measureWithRetry(snapAnchorRef), // 숨김 앵커 → 스냅 버튼 실제 위치
       ]);
       if (cancelled) return;
+      traceStep('coach:main', 'measured');
       const WIN_W = Dimensions.get('window').width;
       const FAB_BTN = 56;
       const SNAP_BTN = 60;
@@ -459,16 +454,18 @@ export default function MainScreen({ navigation, route }: Props) {
         { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
       ]);
       setCoachVisible(true);
+      // 커밋·페인트가 끝난 다음 프레임에 찍어야 '등장까지 걸린 시간'이 된다
+      requestAnimationFrame(() => traceEnd('coach:main', 'visible'));
       shown = true;
       // 계정당 1회 기록 — 설정 컨텍스트를 구독하는 모든 탭 화면이 리렌더되므로,
       // 오버레이 등장 애니메이션이 끝난 뒤로 미뤄 등장 프레임에 커밋이 겹치지 않게 한다.
       setTimeout(() => markTutorialSeen('main'), 900);
       // 재진입(탭 전환 후 복귀) 시 다시 뜨지 않도록 플래그 제거
       if (route.params?.startTutorial) navigation.setParams({ startTutorial: undefined });
-    }, 450);
+    })();
     return () => {
+      // 타이머가 사라졌으므로 취소는 이 플래그로만 한다. 각 await 뒤에서 확인한다.
       cancelled = true;
-      clearTimeout(timer);
       // 띄우기 전에 취소됐다면(탭 전환 등) 다음 진입에서 다시 시도할 수 있게 되돌린다
       if (!shown) coachRunRef.current = false;
     };
