@@ -221,6 +221,9 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   // 지오메트리 애니메이션 — 단계가 바뀌면 구멍이 다음 요소로 부드럽게 이동·리사이즈
   useEffect(() => {
     if (!rendered) return;
+    // 이 이펙트는 위의 'committed' 마크보다 뒤에 선언돼 있어, 여기서 쓰는 시간은 전부
+    // settled 구간에 잡힌다. geom-* 두 마크로 그 안에서 다시 갈라 본다.
+    traceStep('coach:step', 'geom-start');
     const g = computeGeom(step);
     if (!g) {
       // 구멍 없는 단계(안내 카드만) — 글라이드 off면 즉시 닫는다
@@ -230,6 +233,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
       } else {
         gw.setValue(0); gh.setValue(0);
       }
+      traceStep('coach:step', 'geom-done(empty)');
       return;
     }
     if (!geomInit.current || !SPOTLIGHT_GLIDE) {
@@ -239,6 +243,7 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
       // 글로우는 애니메이션하지 않는다(항상 켜짐) — 헤일로는 위치·크기만 새 값으로 바뀌고,
       // 그림자는 그 한 번만 다시 그려진다. 페이드시키면 iOS에서 프레임마다 블러를 다시 계산한다.
       geomInit.current = true;
+      traceStep('coach:step', 'geom-done');
     } else {
       const d = 280; // 이 구간만 JS 드라이버로 레이아웃이 움직인다 — 짧게 유지
       const ez = Easing.inOut(Easing.cubic);
@@ -258,22 +263,6 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
       });
     }
   }, [idx, rendered, measured, origin.x, origin.y, rootSize.w, rootSize.h]);
-
-  // 딤 — 화면보다 훨씬 큰 "둥근 테두리" 뷰 한 장. 테두리 안쪽이 곧 구멍(스포트라이트)이다.
-  // 바깥 모서리의 둥근 부분이 화면 밖에 있도록 두께 B를 충분히 크게 잡는다(1.42×화면 필요).
-  // 뷰 1장이라 이음새/이중 겹침이 없고, SVG 마스크와 달리 오프스크린 합성이 없다.
-  // 보간 노드는 useMemo로 고정 — 렌더마다 새로 만들면 이동 중에 애니메이션 노드가 붙었다 떨어진다.
-  const B = Math.ceil(Math.max(rootSize.w, rootSize.h) * 1.6 + 240);
-  const dim = useMemo(
-    () => ({
-      x: gx.interpolate({ inputRange: [0, 1], outputRange: [-B, 1 - B] }),
-      y: gy.interpolate({ inputRange: [0, 1], outputRange: [-B, 1 - B] }),
-      w: gw.interpolate({ inputRange: [0, 1], outputRange: [B * 2, B * 2 + 1] }),
-      h: gh.interpolate({ inputRange: [0, 1], outputRange: [B * 2, B * 2 + 1] }),
-      r: gr.interpolate({ inputRange: [0, 1], outputRange: [B, B + 1] }),
-    }),
-    [B, gx, gy, gw, gh, gr]
-  );
 
   // 말풍선 내용 스태거 — 렌더마다 재생성되지 않도록 고정
   const tip = useMemo(
@@ -321,6 +310,16 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
 
   // 말풍선 위치·꼬리 기준 지오메트리(현재 단계 실측값)
   const geom = computeGeom(step);
+  // 딤 배치용 정수 좌표 — 맞물리는 사각형 사이에 헤어라인 틈이 생기지 않게 경계를 정수로 맞춘다.
+  const hole = geom
+    ? {
+        x: Math.round(geom.x),
+        y: Math.round(geom.y),
+        w: Math.round(geom.w),
+        h: Math.round(geom.h),
+        r: Math.max(0, Math.round(geom.r)),
+      }
+    : null;
   const isCircle = step.shape === 'circle';
   const box = geom ? { y: geom.y, h: geom.h } : null;
 
@@ -368,21 +367,60 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
         {/* 배경 탭은 아래 UI 터치만 차단(진행 X) */}
         <Pressable style={StyleSheet.absoluteFill} onPress={() => {}} />
 
-        {/* 딤 + 둥근 구멍 (원/사각 통일, 지오메트리 애니메이션) */}
-        <Animated.View
-          pointerEvents="none"
-          style={{
-            position: 'absolute',
-            left: dim.x,
-            top: dim.y,
-            width: dim.w,
-            height: dim.h,
-            borderRadius: dim.r,
-            borderWidth: B,
-            borderColor: DIM,
-            backgroundColor: 'transparent',
-          }}
-        />
+        {/* 딤 + 둥근 구멍 — 구멍을 기준으로 화면을 네 개의 '민 사각형'으로 덮고,
+            구멍 둘레의 둥근 모서리만 작은 테두리 뷰 한 장으로 마감한다.
+            DIM이 반투명이라 겹치면 이음새가 진해지므로, 어떤 두 장도 겹치지 않게 배치한다.
+
+            (구) 화면 넓이의 약 30배(한 변 3,000dp 초과)에 테두리 반지름이 1,500dp대인
+            라운드 테두리 뷰 한 장으로 그렸다. 단계가 바뀔 때마다 그 거대한 경로를 다시
+            테셀레이션하느라 UI 스레드가 수백 ms 멈췄다 — 계측상 220ms짜리 네이티브
+            페이드인이 1,100ms 걸렸다(JS 스레드는 그 사이 자유로웠다). 이제 가장 큰 뷰가
+            화면 크기다.
+
+            ⚠️ 이 딤은 geom(단계별 실측값)으로 정적 배치된다. SPOTLIGHT_GLIDE를 다시 켜려면
+               네 사각형과 마감 테두리도 gx·gy·gw·gh·gr 애니메이션 노드로 구동해야 한다. */}
+        {hole ? (
+          <>
+            {/* 구멍의 '실제 사각 경계'에 정확히 맞물리는 네 장 — 겹침도 틈도 없다 */}
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: rootSize.w, height: Math.max(0, hole.y), backgroundColor: DIM }} />
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: hole.y + hole.h, width: rootSize.w, height: Math.max(0, rootSize.h - (hole.y + hole.h)), backgroundColor: DIM }} />
+            <View pointerEvents="none" style={{ position: 'absolute', left: 0, top: hole.y, width: Math.max(0, hole.x), height: hole.h, backgroundColor: DIM }} />
+            <View pointerEvents="none" style={{ position: 'absolute', left: hole.x + hole.w, top: hole.y, width: Math.max(0, rootSize.w - (hole.x + hole.w)), height: hole.h, backgroundColor: DIM }} />
+            {/* 네 귀퉁이 마감 — 사각 경계 안쪽이면서 둥근 구멍 바깥인 영역.
+                뷰의 테두리는 바깥쪽도 라운드라 한 장으로는 이 부분을 채울 수 없다.
+                그래서 귀퉁이마다 r×r 클리핑 창을 두고, 그 안에 '안쪽 반지름 = r'인
+                링을 넣어 필요한 부분만 보이게 한다. 링 바깥 반지름은 1.6r —
+                귀퉁이 꼭짓점까지 거리가 r√2≈1.414r이므로 여유 있게 덮는다. */}
+            {hole.r > 0 && ([
+              { k: 'tl', wx: hole.x,                   wy: hole.y,                   ox: -0.6, oy: -0.6 },
+              { k: 'tr', wx: hole.x + hole.w - hole.r, wy: hole.y,                   ox: -1.6, oy: -0.6 },
+              { k: 'bl', wx: hole.x,                   wy: hole.y + hole.h - hole.r, ox: -0.6, oy: -1.6 },
+              { k: 'br', wx: hole.x + hole.w - hole.r, wy: hole.y + hole.h - hole.r, ox: -1.6, oy: -1.6 },
+            ] as const).map(({ k, wx, wy, ox, oy }) => (
+              <View
+                key={k}
+                pointerEvents="none"
+                style={{ position: 'absolute', left: wx, top: wy, width: hole.r, height: hole.r, overflow: 'hidden' }}
+              >
+                <View
+                  style={{
+                    position: 'absolute',
+                    left: ox * hole.r,
+                    top: oy * hole.r,
+                    width: hole.r * 3.2,
+                    height: hole.r * 3.2,
+                    borderRadius: hole.r * 1.6,
+                    borderWidth: hole.r * 0.6,
+                    borderColor: DIM,
+                  }}
+                />
+              </View>
+            ))}
+          </>
+        ) : (
+          // 구멍 없는 단계(안내 카드만) — 화면 전체를 덮는다
+          <View pointerEvents="none" style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />
+        )}
 
         {/* 강조 글로우 헤일로 — 그림자(shadowRadius) 금지: iOS는 shadowPath 없는 그림자를
             단계마다(지구본 단계는 화면 크기로) 오프스크린 블러로 다시 굽는다 → 그 자체가 히치.
