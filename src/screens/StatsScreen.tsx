@@ -21,7 +21,9 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
-import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import MainCoachmark, { CoachStep } from '../components/MainCoachmark';
+import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
+import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import StarFieldBackground from '../components/StarFieldBackground';
 import Svg, {
   Image as SvgImage,
@@ -439,16 +441,6 @@ export default function StatsScreen() {
   const [coachSteps, setCoachSteps] = useState<CoachStep[]>([]);
   const tutorialStarted = useRef(false); // 같은 세션에서 포커스마다 재실행 방지
 
-  const measure = (ref: React.MutableRefObject<any>) =>
-    new Promise<CoachRect | null>((resolve) => {
-      const node = ref.current;
-      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
-      node.measureInWindow((x: number, y: number, width: number, height: number) => {
-        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
-        else resolve({ x, y, width, height });
-      });
-    });
-
   // 계정당 1회 — 통계 탭에 처음 들어왔을 때만. 표시 여부는 설정 스토어가 계정별로 들고 있고
   // (서버 백업 포함) 계정 전환 시 초기화되므로, 재로그인해도 다시 뜨지 않는다.
   useFocusEffect(
@@ -456,10 +448,15 @@ export default function StatsScreen() {
       if (tutorialStarted.current || tutorialsSeen.stats) return;
       tutorialStarted.current = true;
       let cancelled = false;
-      const timer = setTimeout(async () => {
+      (async () => {
+        traceStart('coach:stats');
+        // 고정 지연(구 450ms) 대신 화면 전환이 실제로 끝나는 신호를 기다린다.
+        await whenReadyToMeasure();
         if (cancelled) return;
-        const hero = await measure(heroRef);
+        traceStep('coach:stats', 'waited');
+        const hero = await measureWithRetry(heroRef);
         if (cancelled) return;
+        traceStep('coach:stats', 'measured');
         setCoachSteps([
           {
             rect: null,
@@ -475,12 +472,14 @@ export default function StatsScreen() {
           },
         ]);
         setCoachVisible(true);
+        // 커밋·페인트가 끝난 다음 프레임에 찍어야 '등장까지 걸린 시간'이 된다
+        requestAnimationFrame(() => traceEnd('coach:stats', 'visible'));
         // 등장 애니메이션과 설정 컨텍스트 연쇄 리렌더가 겹치지 않게 지연 기록
         setTimeout(() => markTutorialSeen('stats'), 900);
-      }, 450);
+      })();
       return () => {
+        // 타이머가 사라졌으므로 취소는 이 플래그로만 한다. 각 await 뒤에서 확인한다.
         cancelled = true;
-        clearTimeout(timer);
         tutorialStarted.current = false; // 다시 들어올 때 재확인(설정에서 되살린 경우 대비)
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
