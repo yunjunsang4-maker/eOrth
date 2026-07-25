@@ -16,6 +16,7 @@ import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { setCoachFreezeGlobe } from './coachOverlayState';
+import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -161,7 +162,8 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
       // 오버레이 위/아래에서 60fps 두 개가 부딪히는 게 전환 버벅임의 가장 큰 원인이고,
       // 자동회전은 45초/바퀴라 이 사이 멈춰 있어도 눈에 띄지 않는다.
       setCoachFreezeGlobe(true);
-      Animated.timing(mount, { toValue: 1, duration: 260, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+      // 등장 260→200ms. 튜토리얼이 뜨기까지의 체감 대기에 그대로 더해지는 구간이라 줄인다.
+      Animated.timing(mount, { toValue: 1, duration: 200, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
     } else if (rendered) {
       setCoachFreezeGlobe(false);
       Animated.timing(mount, { toValue: 0, duration: 220, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(
@@ -174,6 +176,12 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
   useEffect(() => {
     if (visible) onStepChange?.(steps[Math.min(idx, steps.length - 1)]);
   }, [idx, visible, steps]);
+
+  // 단계 전환 계측 — 이펙트는 커밋 완료 후 실행되므로 커밋 종료 시점의 근사치가 된다.
+  // animateTo가 traceStart를 부르지 않은 경우(첫 렌더 등)에는 traceStep이 조용히 무시된다.
+  useEffect(() => {
+    traceStep('coach:step', 'committed');
+  }, [idx]);
 
   // 맥동 루프 — 켤 경우 반드시 네이티브 드라이버(JS 드라이버면 튜토리얼 내내 JS 스레드가 60fps로 점유된다)
   useEffect(() => {
@@ -283,14 +291,22 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
 
   // 단계 전환 — 말풍선 크로스페이드(스포트라이트는 그 사이 즉시 이동), 햅틱
   const animateTo = (target: number) => {
+    // 전환 계측 — 한 그룹에 4개 지점을 찍는다. 각 지점의 '+Nms'가 곧 그 구간의 비용이다.
+    //   faded-out : 페이드아웃 실측(설계값 130ms). 크게 벗어나면 JS 스레드가 막혀 있다는 뜻
+    //   committed : 리액트 커밋 비용  ← 전환 렉의 원인을 가르는 핵심 숫자
+    //   settled   : 페이드인 실측(설계값 220ms)
+    traceStart('coach:step');
     Haptics.selectionAsync().catch(() => {});
     // 글라이드 모드에서만 글로우를 미리 접는다(이동 중 헤일로는 애니메이션 대상이 아니라서).
     // 글라이드 off면 글로우는 아예 애니메이션하지 않는다 — iOS에서 그림자(shadowRadius) 달린
     // 뷰의 투명도 페이드는 프레임마다 오프스크린 렌더+블러라, 지구본만 한 헤일로에선 그 자체가 렉이다.
     if (SPOTLIGHT_GLIDE) Animated.timing(glow, { toValue: 0, duration: 120, useNativeDriver: true }).start();
     Animated.timing(trans, { toValue: 0, duration: 130, easing: Easing.in(Easing.ease), useNativeDriver: true }).start(() => {
+      traceStep('coach:step', 'faded-out');
       setIdx(target);
-      Animated.timing(trans, { toValue: 1, duration: 220, easing: Easing.out(Easing.ease), useNativeDriver: true }).start();
+      Animated.timing(trans, { toValue: 1, duration: 220, easing: Easing.out(Easing.ease), useNativeDriver: true }).start(
+        ({ finished }) => { if (finished) traceEnd('coach:step', 'settled'); }
+      );
     });
   };
   const next = () => {
