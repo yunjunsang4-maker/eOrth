@@ -3,7 +3,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -14,7 +13,8 @@ import {
 } from 'react-native';
 
 import { useTranslation } from 'react-i18next';
-import { GlobeIcon, SearchIcon, PersonIcon } from '../components/icons';
+import { GlobeIcon, SearchIcon } from '../components/icons';
+import AuthorAvatar from '../components/AuthorAvatar';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
@@ -104,9 +104,6 @@ function FriendItem({
 }) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 아이디·팔로우 버튼을 스킨 강조색으로
-  // 사진 로드 실패 시 이니셜/이모지로 회귀 (깨진 이미지 방지)
-  const [imgError, setImgError] = useState(false);
-
   const shared = item.sharedCountries ?? [];
   const pct = matchPercent(item.matchScore);
   // 겹치는 나라 국기 칩 (최대 3개 + 나머지 개수)
@@ -132,14 +129,9 @@ function FriendItem({
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
       <View style={s.avatar}>
-        {item.photo && !imgError ? (
-          <Image source={{ uri: item.photo }} style={s.avatarImg} onError={() => setImgError(true)} />
-        ) : item.emoji ? (
-          // 사진이 없어도 프로필 이모지가 있으면 그걸 쓴다 — 피드·프로필과 같은 표기
-          <Text style={s.avatarEmoji}>{item.emoji}</Text>
-        ) : (
-          <PersonIcon size={24} color="#A0A0B0" />
-        )}
+        {/* 앱 공용 아바타 — 사진 없거나 로드 실패면 사람 실루엣(프로필 탭과 동일).
+            profiles.emoji는 스키마 기본값 '🧳'이 전 계정에 박혀 있어 폴백으로 쓰면 안 된다. */}
+        <AuthorAvatar photo={item.photo ?? undefined} size={46} />
       </View>
       <View style={s.friendInfo}>
         {/* 닉네임 폐지 — 아이디 한 줄만 표시(@ 접두 없음) */}
@@ -642,14 +634,6 @@ const s = StyleSheet.create({
     backgroundColor: '#1F1F22',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  avatarImg: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
-  },
-  avatarEmoji: {
-    fontSize: 24,
   },
 
   // 아이디 + 매칭률 배지 한 줄
