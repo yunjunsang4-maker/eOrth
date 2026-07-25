@@ -49,6 +49,8 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { andFitText } from '../utils/fitText';
 import { getMyUserId } from '../services/profile';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
+import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
+import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive } from '../components/coachOverlayState';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
@@ -1375,29 +1377,24 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
     return () => setCoachActive(false);
   }, [coachVisible]);
 
-  const measureRect = (ref: React.MutableRefObject<any>) =>
-    new Promise<CoachRect | null>((resolve) => {
-      const node = ref.current;
-      if (!node || typeof node.measureInWindow !== 'function') return resolve(null);
-      node.measureInWindow((x: number, y: number, width: number, height: number) => {
-        if ([x, y, width, height].some((v) => typeof v !== 'number' || Number.isNaN(v))) resolve(null);
-        else resolve({ x, y, width, height });
-      });
-    });
-
   useFocusEffect(
     useCallback(() => {
       if (tutorialStarted.current || tutorialsSeen.profile) return;
       tutorialStarted.current = true;
       let cancelled = false;
-      const timer = setTimeout(async () => {
+      (async () => {
+        traceStart('coach:profile');
+        // 고정 지연(구 450ms) 대신 화면 전환이 실제로 끝나는 신호를 기다린다.
+        await whenReadyToMeasure();
         if (cancelled) return;
+        traceStep('coach:profile', 'waited');
         const [avatar, badge, archive] = await Promise.all([
-          measureRect(avatarRef),
-          measureRect(badgeRef),
-          measureRect(archiveRef),
+          measureWithRetry(avatarRef),
+          measureWithRetry(badgeRef),
+          measureWithRetry(archiveRef),
         ]);
         if (cancelled) return;
+        traceStep('coach:profile', 'measured');
         // 아바타는 원형이라 원형 스포트라이트로 강조
         const avatarCircle = avatar
           ? { cx: avatar.x + avatar.width / 2, cy: avatar.y + avatar.height / 2, r: Math.max(avatar.width, avatar.height) / 2 + 4 }
@@ -1438,12 +1435,14 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           },
         ]);
         setCoachVisible(true);
+        // 커밋·페인트가 끝난 다음 프레임에 찍어야 '등장까지 걸린 시간'이 된다
+        requestAnimationFrame(() => traceEnd('coach:profile', 'visible'));
         // 등장 애니메이션과 설정 컨텍스트 연쇄 리렌더가 겹치지 않게 지연 기록
         setTimeout(() => markTutorialSeen('profile'), 900);
-      }, 450);
+      })();
       return () => {
+        // 타이머가 사라졌으므로 취소는 이 플래그로만 한다. 각 await 뒤에서 확인한다.
         cancelled = true;
-        clearTimeout(timer);
         tutorialStarted.current = false; // 다시 들어올 때 재확인(설정에서 되살린 경우 대비)
       };
       // eslint-disable-next-line react-hooks/exhaustive-deps
