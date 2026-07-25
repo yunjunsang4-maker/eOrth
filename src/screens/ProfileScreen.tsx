@@ -1413,6 +1413,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
         setCoachSteps([
           {
             rect: null,
+            // 제목 앞 아이콘 — 기본 이모지 대신 앱 아이콘
+            icon: <PersonIcon size={16} color={skinAccent.accent} />,
             title: t('profile.coach1Title'),
             desc: t('profile.coach1Desc'),
           },

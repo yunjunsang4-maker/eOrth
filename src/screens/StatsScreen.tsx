@@ -35,7 +35,7 @@ import Svg, {
   Stop as SvgStop,
 } from 'react-native-svg';
 import { useSettings } from '../store/settingsStore';
-import { PersonIcon } from '../components/icons';
+import { PersonIcon, ChartIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
 
@@ -463,6 +463,8 @@ export default function StatsScreen() {
         setCoachSteps([
           {
             rect: null,
+            // 제목 앞 아이콘 — 기본 이모지 대신 앱 아이콘(탭 바 Analysis와 같은 막대그래프)
+            icon: <ChartIcon size={16} color={skinAccent.accent} />,
             title: t('stats.coachTitle'),
             desc: t('stats.coachDesc'),
           },

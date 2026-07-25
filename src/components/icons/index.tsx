@@ -280,6 +280,34 @@ export const BellIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, d
   </Svg>
 );
 
+// 통계 — 막대그래프. 탭 바의 Analysis 아이콘과 같은 글리프를 공용 세트로 뺀 것
+// (튜토리얼 말풍선 등 탭 바 밖에서도 같은 표현을 쓰기 위함).
+export const ChartIcon: React.FC<IconProps> = ({ size = 24, color = '#FFFFFF' }) => {
+  const bars = [
+    { x: 1, h: 5 },   // 좌 → 우로 높낮이가 다른 5개 막대
+    { x: 5, h: 9 },
+    { x: 9, h: 7 },
+    { x: 13, h: 13 },
+    { x: 17, h: 9 },
+  ];
+  return (
+    <Svg width={size} height={(size * 14) / 18} viewBox="0 0 20 14" fill="none">
+      {bars.map((b) => (
+        <Rect
+          key={b.x}
+          x={b.x}
+          y={14 - b.h}
+          width={1.5}
+          height={b.h}
+          rx={0.4}
+          stroke={color}
+          strokeWidth={1}
+        />
+      ))}
+    </Svg>
+  );
+};
+
 // 알림 끔 — BellIcon과 같은 종 실루엣에 사선 하나(음소거 관례).
 // 사선은 종 색과 같은 색으로 긋고, 겹치는 자리에 배경색 테두리를 깔아 형태가 뭉개지지 않게 한다.
 export const BellOffIcon: React.FC<IconProps & { slashBg?: string }> = ({

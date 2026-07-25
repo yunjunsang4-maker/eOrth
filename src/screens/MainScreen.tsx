@@ -36,7 +36,7 @@ import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { NotificationBellIcon, SearchLineIcon } from '../components/icons';
+import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { getGlobeSkinTheme, GLOBE_SKINS } from '../constants/globeSkins';
 import { getSkinAccent } from '../constants/skinTheme';
@@ -448,12 +448,14 @@ export default function MainScreen({ navigation, route }: Props) {
           rect: globe,
           shape: 'circle', // 지구본은 원형으로 강조
           circleWin: globeCircle,
+          // 제목 앞 아이콘 — 기본 이모지 대신 앱 아이콘(스킨 강조색)
+          icon: <GlobeIcon size={16} color={skinAccent.accent} />,
           title: t('main.coachGlobeTitle'),
           desc: t('main.coachGlobeDesc'),
         },
         { rect: toggle, title: t('main.coachToggleTitle'), desc: t('main.coachToggleDesc') },
         { rect: settings, title: t('main.coachFormTitle'), desc: t('main.coachFormDesc') },
-        { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', title: t('main.coachSnapTitle'), desc: t('main.coachSnapDesc') },
+        { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', icon: <CameraIcon size={16} color={skinAccent.accent} />, title: t('main.coachSnapTitle'), desc: t('main.coachSnapDesc') },
         { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
       ]);
       setCoachVisible(true);

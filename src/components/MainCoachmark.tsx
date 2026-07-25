@@ -31,6 +31,9 @@ export interface CoachStep {
   rect: CoachRect | null;
   title: string;
   desc: string;
+  // 제목 앞 아이콘 — 기본 이모지 대신 앱 아이콘 세트를 쓰기 위한 슬롯.
+  // 호출부가 <GlobeIcon size={16} color={skinAccent.accent} /> 처럼 만들어 넘긴다.
+  icon?: React.ReactNode;
   shape?: 'rect' | 'circle'; // 기본 rect. circle이면 원형 스포트라이트(지구본 강조용).
   // 원형일 때 정확한 원(윈도우 좌표). 지정 시 rect 중심 추정 대신 이 값을 사용한다.
   circleWin?: { cx: number; cy: number; r: number };
@@ -408,7 +411,10 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
           {arrowDir === 'down' && <View style={[styles.arrowDown, { left: arrowX }]} />}
           <LinearGradient colors={borderGrad} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.tipBorder}>
             <View style={styles.tipInner}>
-              <Animated.Text style={[styles.title, { transform: [{ translateY: tip.titleY }] }]}>{step.title}</Animated.Text>
+              <Animated.View style={[styles.titleRow, { transform: [{ translateY: tip.titleY }] }]}>
+                {step.icon ? <View style={styles.titleIcon}>{step.icon}</View> : null}
+                <Text style={styles.title}>{step.title}</Text>
+              </Animated.View>
               <Animated.Text style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
 
               <Animated.View style={[styles.footer, { transform: [{ translateY: tip.footerY }] }]}>
@@ -520,11 +526,22 @@ const styles = StyleSheet.create({
     borderRightColor: 'transparent',
     borderTopColor: TOOLTIP_BG,
   },
+  // 제목 행 — 아이콘(선택) + 제목. 여백은 행이 갖고 제목은 줄바꿈만 담당한다.
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  titleIcon: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   title: {
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: '800',
-    marginBottom: 8,
+    flexShrink: 1, // 아이콘을 밀어내지 않고 제목만 줄어들게
   },
   desc: {
     color: '#B4B4C2',
