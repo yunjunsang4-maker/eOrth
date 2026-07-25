@@ -3,7 +3,9 @@
 // 순수 함수로 작성 → 화면과 독립적으로 테스트 가능.
 
 import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
-import { HIDDEN_BADGE_IDS } from '../constants/badges';
+// badges.ts가 아니라 badgeVisibility.ts에서 가져온다 — badges.ts에는 배지 이미지 require가
+// 40개 넘게 있어, 여기서 그걸 끌고 오면 이 순수 로직의 검증(npm test)이 node에서 못 돈다.
+import { HIDDEN_BADGE_IDS } from '../constants/badgeVisibility';
 
 // 판정에 필요한 최소 필드만 받는다(TravelRecord와 느슨하게 호환).
 export interface BadgeStatRecord {

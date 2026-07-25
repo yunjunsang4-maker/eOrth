@@ -2,6 +2,7 @@
 // 조건 로직은 utils/badgeRules, 표시는 ProfileScreen, 전역 판정은 hooks/useBadgeEarning에서 사용.
 
 import type { ImageSourcePropType } from 'react-native';
+import { HIDDEN_BADGE_IDS } from './badgeVisibility';
 
 export interface Badge {
   id: number;
@@ -77,7 +78,7 @@ const ALL_BADGES: Badge[] = [
   { id: 55, emoji: '🕰️', name: '잊지말아줘요..', desc: '1년전 오늘 기록 조회', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 56, emoji: '🌱', name: '배지 입문', desc: '배지 5개 달성 (Lv.1)', earned: true, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/badge-lv1.png') },
   { id: 57, emoji: '📂', name: '배지 수집가', desc: '배지 10개 달성 (Lv.2)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/badge-lv2.png') },
-  { id: 58, emoji: '🔥', name: '배지 매니아', desc: '배지 30개 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)' },
+  { id: 58, emoji: '🔥', name: '배지 매니아', desc: '배지 30개 달성 (Lv.3)', earned: false, glow: 'rgba(168,85,247,0.6)', image: require('../../assets/badges/badge-lv3.png') },
   { id: 59, emoji: '🎓', name: '배지 마스터', desc: '배지 50개 달성 (Lv.4)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 60, emoji: '🏆', name: '배지 챔피언', desc: '배지 100개 달성 (Lv.5)', earned: false, glow: 'rgba(168,85,247,0.6)' },
   { id: 61, emoji: '👑', name: '배지 레전드', desc: '배지 200개 달성 (Lv.6)', earned: false, glow: 'rgba(168,85,247,0.6)' },
@@ -148,21 +149,9 @@ const ALL_BADGES: Badge[] = [
   { id: 129, emoji: '🇮🇹', name: '이탈리아투어', desc: '이탈리아 여러지역 방문', earned: false, glow: 'rgba(47,244,150,0.5)', image: require('../../assets/badges/italy-tour.png') },
 ];
 
-// ─── 출시 축소: 잠시 숨김 처리한 배지 (eOrth_배지목록_정리본.xlsx, 2026-07-18 확정 46개만 노출) ───
-// 되살릴 때는 이 집합에서 id를 빼기만 하면 된다. 정의(ALL_BADGES)·판정 규칙(badgeRules)은 그대로 남아 있고,
-// 숨김 중 충족한 조건·행동 배지도 badgeEarnedAt에 계속 쌓이므로 해제 즉시 획득 상태로 복귀한다.
-export const HIDDEN_BADGE_IDS = new Set<number>([
-  14, 15,                                              // 동행/스타일: 당일치기 · 30일 이상
-  18, 21, 22, 23, 24, 26, 27, 28, 29, 30, 31, 33, 34,  // 국가&지역: 젓가락·종교·섬·카지노·한자·영어권·사막·열대·무비자·데자뷰·재방문5회
-  38, 39, 40, 41, 42, 43, 44,                          // 마일스톤: 20~100개국 · 모든 대륙 · 지구/대륙 정복
-  48, 49, 50, 51, 52, 53, 54, 55,                      // 마일스톤: 별점 1~5점 · 매분기 · 매달 · 1년전 기록 조회
-  59, 60, 61,                                          // 마일스톤: 배지 50·100·200개
-  66, 67, 68, 69, 70, 71,                              // 기록 형식 배지 전체
-  73, 74, 75, 76, 77, 78, 80, 83,                      // 소셜: DM·공유왕·댓글·좋아요·여행메이트·나비·공유받기·인맥왕
-  88, 89, 90,                                          // 스냅 특별 배지 전체
-  97, 101, 102, 103, 104,                              // 기록 습관: 연속30일 · 비 · 눈 · 별점5×10 · 별점1×3
-  115, 118, 119, 120, 121,                             // 특별&시즌: 1주년 · 벚꽃 · 옥토버페스트 · 카니발 · 오로라
-]);
+// 숨김 배지 목록은 badgeVisibility.ts에 있다 — 순수 로직(badgeRules)과 그 검증이
+// 이 파일의 이미지 require에 묶이지 않게 분리했다. 기존 import 경로 유지를 위해 여기서 다시 내보낸다.
+export { HIDDEN_BADGE_IDS };
 
 // 출시 노출 배지(46개) — 화면 표시·개수 집계는 전부 이 목록을 쓴다.
 export const BADGES: Badge[] = ALL_BADGES.filter((b) => !HIDDEN_BADGE_IDS.has(b.id));
