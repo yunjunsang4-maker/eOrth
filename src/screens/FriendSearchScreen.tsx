@@ -76,8 +76,11 @@ for (const c of COUNTRIES) {
 }
 FLAG_BY_KO_NAME['한국'] = FLAG_BY_KO_NAME['대한민국'] ?? '🇰🇷'; // 구 표기 별칭
 
-// 여행 DNA 점수 → 0~100 매칭률. RPC total_score는 상한이 고정되지 않아 실측 상한(10)으로 정규화한다.
-const MATCH_SCORE_FULL = 10;
+// 여행 DNA 점수 → 매칭률(%).
+// mate_suggestions.total_score는 가중치 상한의 합이 정확히 100이다(schema.sql):
+//   겹친 나라 min(n,5)*10=50 + 동행 min(n,3)*5=15 + 기록형식 min(n,2)*7=14 + 공통 메이트 min(n,3)*7=21
+// 따라서 점수를 그대로 %로 쓴다. 하한 30%는 표시용(한 곳만 겹쳐도 10%로 보이면 무의미).
+const MATCH_SCORE_FULL = 100;
 const matchPercent = (score?: number): number | null => {
   if (!score || score <= 0) return null;
   return Math.max(30, Math.min(99, Math.round((score / MATCH_SCORE_FULL) * 100)));
