@@ -3,8 +3,8 @@
 // 개발·preview·로컬에서는 반드시 테스트 ID를 쓴다. 실제 광고를 개발 중 클릭하면
 // 무효 트래픽으로 판정돼 AdMob 계정이 정지될 수 있다.
 //
-// 실제 단위 ID를 발급받으면 PROD_NATIVE_UNIT_ID만 교체하고
-// featureFlags.ADMOB_ENABLED를 true로 올린다.
+// 광고 단위 ID(이 파일)와 앱 ID(app.json의 iosAppId)는 별개다. 앱 ID는 Info.plist에
+// 박히므로 바꾸면 EAS 재빌드가 필요하고, 이 파일만 고치면 반영되지 않는다.
 import * as Updates from 'expo-updates';
 import { getGoogleMobileAds } from '../lib/googleMobileAds';
 
@@ -20,8 +20,9 @@ function getChannel(): string | null {
 // 실제 요청은 useFeedAdSource가 모듈 유무를 보고 막는다.
 const TEST_NATIVE_UNIT_ID = getGoogleMobileAds()?.TestIds.NATIVE ?? '';
 
-// AdMob 계정 발급 전까지는 테스트 ID를 그대로 둔다.
-const PROD_NATIVE_UNIT_ID = TEST_NATIVE_UNIT_ID;
+// 실제 네이티브 광고 단위 (AdMob 콘솔 발급). production 채널에서만 쓰인다 —
+// 개발 중 실제 광고를 클릭하면 무효 트래픽으로 계정이 정지될 수 있기 때문이다.
+const PROD_NATIVE_UNIT_ID = 'ca-app-pub-8527185933702377/3969196407';
 
 export const NATIVE_AD_UNIT_ID =
   getChannel() === 'production' ? PROD_NATIVE_UNIT_ID : TEST_NATIVE_UNIT_ID;

@@ -38,6 +38,7 @@ export const AFFILIATE_ADS_ENABLED = true;
 
 /**
  * AdMob 네이티브 광고 활성화 여부.
- * 실제 광고 단위 ID를 발급받기 전까지는 false로 잠근다 — 켜도 테스트 광고만 나온다.
+ * 실제 단위 ID 발급 완료(2026-07-27)로 활성화. 단, 실제 광고가 나가는 것은
+ * production 채널뿐이고 개발·베타 빌드는 adUnits.ts가 테스트 ID로 분기한다.
  */
-export const ADMOB_ENABLED = false;
+export const ADMOB_ENABLED = true;
