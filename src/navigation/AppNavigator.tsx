@@ -363,7 +363,9 @@ export default function AppNavigator() {
         <Stack.Screen
           name="BlogRecord"
           component={BlogRecordScreen}
-          options={{ presentation: 'modal' }}
+          // 작성 중 스와이프로 화면이 닫히면 쓰던 글이 날아간다 — 헤더 닫기 버튼으로만 나가게 한다
+          // (다른 작성 화면 CutRecord·CutTravelInfo·NewRecord와 동일 규칙)
+          options={{ presentation: 'modal', gestureEnabled: false }}
         />
         <Stack.Screen
           name="CutRecord"
@@ -398,7 +400,8 @@ export default function AppNavigator() {
         <Stack.Screen
           name="AlbumCreate"
           component={AlbumCreateScreen}
-          options={{ presentation: 'modal' }}
+          // 사진 고르는 중 스와이프로 닫히면 선택이 통째로 날아간다 — 닫기 버튼으로만 나가게 한다
+          options={{ presentation: 'modal', gestureEnabled: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>
