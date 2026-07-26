@@ -47,6 +47,17 @@ const dayLabel = (key: string): string => {
 const fmtDate = (d: Date) =>
   `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
 
+// 'YYYY.MM.DD' / 'YYYY-MM-DD' → 로컬 자정 Date.
+// new Date('YYYY-MM-DD')는 UTC 자정으로 읽혀 미주 등에서 하루 밀리므로 직접 파싱한다.
+const parseAlbumDate = (s?: string): Date | null => {
+  const m = s?.match(/^(\d{4})[.\-](\d{1,2})[.\-](\d{1,2})/);
+  return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null;
+};
+
+// 사진첩 액센트 — 여행기록카드에서 사진첩을 나타내는 주황과 같은 값
+// (TripDetailScreen COLORS.albumAccent). 두 화면에서 같은 것을 가리키므로 색도 같게 둔다.
+const ALBUM_ACCENT = '#FFA657';
+
 const { width } = Dimensions.get('window');
 const COL = 3;
 const CELL = Math.floor((width - 16 * 2 - 8 * (COL - 1)) / COL);
@@ -69,7 +80,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
-  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, records } = useRecords();
+  const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, updateRecord, records } = useRecords();
   // 사진첩 사진 상한 — 무료 100장 / 프리미엄 200장 (constants/limits.ts getMaxAlbumPhotos)
   const { isPremium } = useSettings();
   const albumMax = getMaxAlbumPhotos(isPremium);
@@ -98,6 +109,34 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   );
   // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
   const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
+
+  // ── 같은 여행에 사진첩을 두 번 만드는 것 방지 ──
+  // 기간이 하루라도 겹치고 국기가 같은 기존 사진첩을 찾는다. 사진첩은 지구본·통계에서 빠지도록
+  // countryName을 비워 두므로(아래 save 주석 참조) 국가 비교는 countryFlag로만 가능하다.
+  const overlappingAlbum = useMemo(() => {
+    if (!selectedCountry?.flag) return null;
+    const s = startDate.getTime();
+    const e = endDate.getTime();
+    return (
+      records.find((r) => {
+        if (r.viewType !== 'album' || r.countryFlag !== selectedCountry.flag) return false;
+        const rs = parseAlbumDate(r.startDate)?.getTime();
+        if (rs == null) return false;
+        const re = parseAlbumDate(r.endDate)?.getTime() ?? rs;
+        return rs <= e && re >= s; // 하루라도 겹치면 같은 여행으로 본다
+      }) ?? null
+    );
+  }, [records, selectedCountry, startDate, endDate]);
+
+  // 사진첩은 여행 카드당 하나(TripDetailScreen과 동일 정책)라, 겹치는 사진첩이 있으면
+  // 선택지 없이 그 사진첩에 이어 담는다. '새로 만들기'는 제공하지 않는다.
+  const appendTarget = overlappingAlbum;
+
+  // 이어 담기 모드에서 이미 그 사진첩에 들어간 원본 assetId — 목록에서 빼 중복 추가를 막는다
+  const appendedAssetIds = useMemo(() => {
+    if (!appendTarget) return null;
+    return new Set(Object.values(appendTarget.mediaAssetIds ?? {}));
+  }, [appendTarget]);
 
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
@@ -246,13 +285,17 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   const defaultTitle = selectedCountry ? `${selectedCountry.name} 사진첩` : `${fmtDate(startDate)} 사진첩`;
 
+  // 이어 담기 모드: 그 사진첩에 이미 들어간 사진은 목록에서 뺀다
+  const notAppended = appendedAssetIds
+    ? photos.filter((p) => !(p.id && appendedAssetIds.has(p.id)))
+    : photos;
   // 사진이 있는 날짜 목록(시간순). 선택은 uri 기준이라 필터와 무관하게 유지된다.
   const days = Array.from(
-    new Set(photos.map((p) => dayKey(p.creationTime)).filter((k): k is string => k !== null))
+    new Set(notAppended.map((p) => dayKey(p.creationTime)).filter((k): k is string => k !== null))
   ).sort();
   const byDay = dayFilter
-    ? photos.filter((p) => dayKey(p.creationTime) === dayFilter)
-    : photos;
+    ? notAppended.filter((p) => dayKey(p.creationTime) === dayFilter)
+    : notAppended;
   // GPS 필터 — 국가 밖으로 '판정된' 사진만 제외 (미판정·GPS 없음은 표시)
   const visiblePhotos = gpsOnly && countryFeature
     ? byDay.filter((p) => (p.id ? locCacheRef.current.get(p.id) !== false : true))
@@ -352,6 +395,33 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           count: g.uris.length,
         }));
       }
+
+      // ── 이어 담기: 새 카드를 만들지 않고 기존 사진첩 뒤에 사진만 붙인다 ──
+      // 기존 순서와 albumSections는 건드리지 않는다. 섹션은 TripRecordScreen에서 사용자가
+      // 이름을 바꾸거나 사진을 옮길 수 있는 값이라, 여기서 다시 짜면 정리해 둔 게 날아간다.
+      // 늘어난 장수는 normalizeSections가 마지막 섹션으로 흡수하므로 렌더도 어긋나지 않고,
+      // 날짜별로 다시 묶고 싶으면 사진첩 화면의 '일자별로 다시 구성'을 쓰면 된다.
+      if (appendTarget) {
+        const mergedStart = [appendTarget.startDate, fmtDate(startDate)]
+          .map(parseAlbumDate).filter((d): d is Date => !!d).sort((a, b) => +a - +b)[0];
+        const mergedEnd = [appendTarget.endDate, fmtDate(endDate)]
+          .map(parseAlbumDate).filter((d): d is Date => !!d).sort((a, b) => +b - +a)[0];
+        const merged = {
+          medias: [...(appendTarget.medias ?? []), ...copied],
+          mediaAssetIds: { ...(appendTarget.mediaAssetIds ?? {}), ...mediaAssetIds },
+          mediaTimes: { ...(appendTarget.mediaTimes ?? {}), ...mediaTimes },
+          // 담은 사진의 촬영일이 기존 기간 밖일 수 있어 기간을 합집합으로 넓힌다
+          startDate: mergedStart ? fmtDate(mergedStart) : appendTarget.startDate,
+          endDate: mergedEnd ? fmtDate(mergedEnd) : appendTarget.endDate,
+        };
+        updateRecord(appendTarget.id, merged);
+        if (failCount > 0) {
+          Alert.alert(t('album.noticeTitle'), t('album.icloudSkipped', { count: failCount }));
+        }
+        navigation.replace('TripRecord', { record: { ...appendTarget, ...merged }, viewType: 'album' });
+        return;
+      }
+
       const newRec = addImportedAlbum({
         // countryName/country는 비워둔다 — 채우면 지구본·대륙 활성화와 통계,
         // 다른 국가 카드의 기록 매칭에 잡힌다. 국기는 카드 표시 전용.
@@ -501,9 +571,28 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             <Text style={st.dateTxt}>{fmtDate(endDate)}</Text>
           </TouchableOpacity>
 
+          {/* 같은 기간·같은 국가에 사진첩이 이미 있으면 그 사진첩에 이어 담는다(카드당 사진첩 1개) */}
+          {overlappingAlbum && (
+            <View style={st.dupBox}>
+              <View style={st.dupHeadRow}>
+                <AlbumIcon size={14} color={ALBUM_ACCENT} />
+                <Text style={st.dupHead}>{t('album.dupTitle')}</Text>
+              </View>
+              <Text style={st.dupName} numberOfLines={1}>
+                {overlappingAlbum.countryFlag} {overlappingAlbum.content}
+              </Text>
+              <Text style={st.dupMeta}>
+                {overlappingAlbum.startDate} ~ {overlappingAlbum.endDate}
+                {'  ·  '}
+                {t('album.dupPhotoCount', { count: overlappingAlbum.medias?.length ?? 0 })}
+              </Text>
+              <Text style={st.dupHint}>{t('album.dupAppendHint')}</Text>
+            </View>
+          )}
+
           {/* 앱 기본 버튼(온보딩 '다음' 유리 필 디자인) — GlassButton */}
           <GlassButton
-            label={t('album.loadPhotos')}
+            label={appendTarget ? t('album.loadPhotosAppend') : t('album.loadPhotos')}
             onPress={startLoad}
             disabled={loading}
             loading={loading}
@@ -674,9 +763,26 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           accessibilityViewIsModal
         >
           <View style={st.pvSheet}>
-            <Text style={st.pvTitle}>{t('album.previewTitle')}</Text>
-            <Text style={st.pvSub}>{t('album.previewSub')}</Text>
+            <Text style={st.pvTitle}>{appendTarget ? t('album.appendTitle') : t('album.previewTitle')}</Text>
+            <Text style={st.pvSub}>{appendTarget ? t('album.appendSub') : t('album.previewSub')}</Text>
 
+            {/* 이어 담기 — 카드는 그대로 두고 사진만 붙으므로 제목·썸네일 선택 없이 확인만 */}
+            {appendTarget ? (
+              <View style={st.apBox}>
+                <Text style={st.apName} numberOfLines={1}>
+                  {appendTarget.countryFlag} {appendTarget.content}
+                </Text>
+                <Text style={st.apMeta}>
+                  {t('album.appendFrom', { count: appendTarget.medias?.length ?? 0 })}
+                  {'  →  '}
+                  <Text style={st.apMetaTo}>
+                    {t('album.appendTo', { count: (appendTarget.medias?.length ?? 0) + selected.length })}
+                  </Text>
+                </Text>
+                <Text style={st.apHint}>{t('album.appendKeepHint')}</Text>
+              </View>
+            ) : (
+            <>
             {/* 카드 예시 — 탭하면 노출 영역 조정 */}
             <TouchableOpacity style={st.pvCard} activeOpacity={0.9} onPress={() => cover && setAdjustVisible(true)}>
               {cover && (
@@ -726,6 +832,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 );
               })}
             </ScrollView>
+            </>
+            )}
 
             <View style={st.pvBtnRow}>
               <TouchableOpacity style={st.pvBackBtn} onPress={() => setPreviewVisible(false)} activeOpacity={0.85}>
@@ -733,7 +841,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               </TouchableOpacity>
               <TouchableOpacity style={st.pvOkBtn} onPress={save} activeOpacity={0.85}>
                 <LinearGradient colors={skinAccent.btnGradient} style={st.pvOkGrad}>
-                  <Text style={st.pvOkTxt}>{t('album.createNow')}</Text>
+                  <Text style={st.pvOkTxt}>{appendTarget ? t('album.appendNow') : t('album.createNow')}</Text>
                 </LinearGradient>
               </TouchableOpacity>
             </View>
@@ -822,6 +930,38 @@ const st = StyleSheet.create({
   loadBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 24 },
   loadGrad: { paddingVertical: 18, alignItems: 'center' },
   loadTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  // 기존 사진첩 안내 — 여행기록카드의 사진첩 액센트와 같은 주황(TripDetailScreen COLORS.albumAccent)
+  dupBox: {
+    marginTop: 20,
+    backgroundColor: 'rgba(255,166,87,0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,166,87,0.28)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  dupHeadRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
+  dupHead: { color: ALBUM_ACCENT, fontSize: 12, fontWeight: '700' },
+  dupName: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
+  dupMeta: { color: '#A1A1B0', fontSize: 11, marginTop: 3 },
+  dupHint: { color: '#7A7A89', fontSize: 11, marginTop: 10, lineHeight: 15 },
+
+  // 이어 담기 확인 박스 (미리보기 시트) — 제목·썸네일 대신 대상과 장수만.
+  // 같은 '기존 사진첩'을 가리키므로 기간 설정 화면의 안내 박스와 같은 주황을 쓴다.
+  apBox: {
+    borderWidth: 1,
+    borderColor: 'rgba(255,166,87,0.28)',
+    backgroundColor: 'rgba(255,166,87,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  apName: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  apMeta: { color: '#A1A1B0', fontSize: 12.5, marginTop: 6 },
+  apMetaTo: { color: ALBUM_ACCENT, fontWeight: '700' },
+  apHint: { color: '#7A7A89', fontSize: 11, marginTop: 10, lineHeight: 15 },
+
   // 자물쇠 + 문구를 한 덩어리로 묶어 박스 안 가운데에 놓는다.
   // 텍스트에 flex를 주면 남는 폭까지 늘어나 justifyContent가 무의미해지므로 주지 않는다.
   noteBox: {
