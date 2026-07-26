@@ -85,7 +85,7 @@ timelineWithAds  (기존 로직 무변경, adSlotIndex 필드만 추가)
 | 파일 | 책임 |
 |---|---|
 | `src/constants/adUnits.ts` | AdMob 앱·단위 ID의 채널별 분기 |
-| `src/lib/adCampaigns.ts` | Supabase 캠페인 조회, AsyncStorage 캐시, 클릭 집계 |
+| `src/services/adCampaigns.ts` | Supabase 캠페인 조회, AsyncStorage 캐시, 클릭 집계 |
 | `src/hooks/useFeedAdSource.ts` | 슬롯별 소스 결정과 AdMob 생명주기 |
 | `src/components/ads/adPolaroidStyles.ts` | 폴라로이드 스킨 공용 스타일 |
 | `src/components/ads/AffiliatePolaroidCard.tsx` | 제휴 카드 — 이미지·헤드라인·「광고」 배지·고지 문구 |
