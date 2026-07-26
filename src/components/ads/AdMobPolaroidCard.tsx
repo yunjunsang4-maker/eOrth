@@ -1,14 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
-import {
-  NativeAdView,
-  NativeAsset,
-  NativeAssetType,
-  NativeMediaView,
-  type NativeAd,
-} from 'react-native-google-mobile-ads';
+import type { NativeAd } from 'react-native-google-mobile-ads';
+import { getGoogleMobileAds } from '../../lib/googleMobileAds';
 import { polaroidStyles, SERIF } from './adPolaroidStyles';
+
+// 네이티브 모듈이 없는 바이너리에서는 null — top-level import를 쓰면 이 파일을
+// 불러오는 것만으로 앱이 부팅에 실패한다(googleMobileAds.ts 주석 참고).
+const ads = getGoogleMobileAds();
 
 // AdMob 네이티브 광고 카드 — 하우스·제휴 폴라로이드와 같은 스킨.
 //
@@ -26,6 +25,10 @@ interface Props {
 
 export default function AdMobPolaroidCard({ ad, tilt = -3 }: Props) {
   const { t } = useTranslation();
+
+  // 모듈이 없으면 admob 소스 자체가 만들어지지 않지만, 방어적으로 한 번 더 막는다.
+  if (!ads) return null;
+  const { NativeAdView, NativeAsset, NativeAssetType, NativeMediaView } = ads;
 
   return (
     <NativeAdView nativeAd={ad} style={[polaroidStyles.wrap, { transform: [{ rotate: `${tilt}deg` }] }]}>

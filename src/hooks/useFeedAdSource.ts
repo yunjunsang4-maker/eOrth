@@ -4,7 +4,8 @@
 // 훅이므로 리스트 map 안에서 직접 부를 수 없다 — FeedAdSlot 컴포넌트가 감싼다.
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { NativeAd } from 'react-native-google-mobile-ads';
+import type { NativeAd } from 'react-native-google-mobile-ads';
+import { getGoogleMobileAds } from '../lib/googleMobileAds';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { fetchAdCampaigns } from '../services/adCampaigns';
@@ -49,10 +50,13 @@ export function useFeedAdSource(slot: number): FeedAdSource {
   // 실제 요청 여부만 effect 내부 조건으로 제어한다(반환 분기는 아래에서 처리).
   useEffect(() => {
     if (!ADMOB_ENABLED || slot >= MAX_ADMOB_SLOTS) return;
+    // AdMob 네이티브 모듈이 없는 바이너리(구 dev client 등)면 하우스로 떨어진다.
+    const ads = getGoogleMobileAds();
+    if (!ads) return;
     let alive = true;
     let created: NativeAd | null = null;
 
-    NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
+    ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
       requestNonPersonalizedAdsOnly: true,   // ATT를 쓰지 않으므로 비개인화 고정
     })
       .then((ad) => {

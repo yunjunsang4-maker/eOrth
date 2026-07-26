@@ -6,7 +6,8 @@ import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
-import mobileAds from 'react-native-google-mobile-ads';
+import { getGoogleMobileAds } from './src/lib/googleMobileAds';
+import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -32,8 +33,10 @@ import ArrivalNotifier from './src/components/ArrivalNotifier';
 
 export default function App() {
   // 광고 SDK 초기화 — 실패해도 앱 흐름을 막지 않는다(광고는 부가 기능).
+  // 네이티브 모듈이 없는 바이너리에서는 getGoogleMobileAds()가 null이라 그냥 넘어간다.
   useEffect(() => {
-    mobileAds().initialize().catch(() => {});
+    if (!ADMOB_ENABLED) return;
+    getGoogleMobileAds()?.default().initialize().catch(() => {});
   }, []);
 
   // 알림 탭 → 화면 이동 (snap / moment 분기)
