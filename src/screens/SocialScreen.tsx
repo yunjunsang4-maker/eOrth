@@ -47,6 +47,7 @@ import { countryEnglishName } from '../constants/countries';
 import { countryLabel as locCountry, countryTagLabel } from '../utils/countryLabel';
 import StarFieldBackground from '../components/StarFieldBackground';
 import FeedAdCard, { type FeedAdVariant } from '../components/ads/FeedAdCard';
+import FeedAdSlot from '../components/ads/FeedAdSlot';
 import CutPhotoCanvas from '../components/CutPhotoCanvas';
 import { useSkinAccent } from '../constants/skinTheme';
 import BlogPin from '../components/BlogPin';
@@ -2728,6 +2729,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
         out.push({
           _adSlot: true,
           id: `ad-slot-${polaroidSlot}`,
+          adSlotIndex: polaroidSlot,          // ← 추가: FeedAdSlot이 소스를 고를 때 쓴다
           ad: getHouseAd(polaroidSlot),
           adVariant: 'polaroid' as FeedAdVariant,
           // 폴라로이드 기울기를 슬롯마다 살짝 다르게 (±3도 교차)
@@ -2876,12 +2878,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   }
                   if (item._adSlot) {
                     return (
-                      <FeedAdCard
+                      <FeedAdSlot
                         key={item.id}
-                        ad={item.ad as HouseAd}
-                        variant={item.adVariant}
-                        tilt={item.adTilt}
-                        onPress={() => { /* 광고 클릭 임시 비활성화 — 눌러도 이동 없음 */ }}
+                        slot={item.adSlotIndex as number}
+                        houseAd={item.ad as HouseAd}
+                        tilt={item.adTilt as number}
                       />
                     );
                   }

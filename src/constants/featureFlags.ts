@@ -29,3 +29,15 @@ export const SNS_SHARE_ENABLED = channel === 'production';
  * AdMob 등 외부 네트워크 연결 시 채널 조건(production)과 ATT/동의 처리를 함께 붙일 것.
  */
 export const FEED_ADS_ENABLED = true;
+
+/**
+ * 제휴(어필리에이트) 캠페인 광고 활성화 여부.
+ * 캠페인이 0건이면 자동으로 하우스 광고로 떨어지므로 전 채널 활성으로 둔다.
+ */
+export const AFFILIATE_ADS_ENABLED = true;
+
+/**
+ * AdMob 네이티브 광고 활성화 여부.
+ * 실제 광고 단위 ID를 발급받기 전까지는 false로 잠근다 — 켜도 테스트 광고만 나온다.
+ */
+export const ADMOB_ENABLED = false;
