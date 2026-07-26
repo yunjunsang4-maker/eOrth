@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useFeedAdSource } from '../../hooks/useFeedAdSource';
 import AffiliatePolaroidCard from './AffiliatePolaroidCard';
+import AdMobPolaroidCard from './AdMobPolaroidCard';
 import FeedAdCard from './FeedAdCard';
 import type { HouseAd } from '../../constants/houseAds';
 
@@ -31,6 +32,10 @@ export default function FeedAdSlot({ slot, houseAd, tilt }: Props) {
         onFallback={() => setDegraded(true)}
       />
     );
+  }
+
+  if (source.kind === 'admob') {
+    return <AdMobPolaroidCard ad={source.ad} tilt={tilt} />;
   }
 
   return (
