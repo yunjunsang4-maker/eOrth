@@ -30,6 +30,7 @@ import {
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon, CompassIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
   TrashIcon, StarIcon, StickerIcon, PaletteIcon,
+  LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { GLOBE_SKINS } from '../constants/globeSkins';
@@ -96,6 +97,7 @@ const SettingGroup = ({
             />
           ) : item.badge ? (
             <View style={[st.premiumBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+              <SvgLockClosedIcon size={9} color={skinAccent.accent} />
               <Text style={[st.premiumBadgeText, { color: skinAccent.accent }]}>{item.badge}</Text>
             </View>
           ) : item.value ? (
@@ -651,7 +653,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />
                   <Text style={st.skinRowLabel}>{t(s.labelKey)}</Text>
                   {locked ? (
-                    <Text style={st.skinLock}>🔒</Text>
+                    <View style={st.skinLock}><SvgLockClosedIcon size={14} color="#A1A1B0" /></View>
                   ) : selected ? (
                     <Text style={st.fontRowCheck}>✓</Text>
                   ) : null}
@@ -771,6 +773,9 @@ const st = StyleSheet.create({
     marginLeft: 52,
   },
   premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: 'rgba(107,33,168,0.2)',
     borderWidth: 1,
     borderColor: 'rgba(191,133,252,0.3)',
@@ -875,5 +880,5 @@ const st = StyleSheet.create({
   // 지구본 스킨 선택 모달
   skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
   skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
-  skinLock: { fontSize: 14, marginLeft: 10 },
+  skinLock: { marginLeft: 10 },
 });

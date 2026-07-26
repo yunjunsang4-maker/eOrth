@@ -105,13 +105,14 @@ const scanSubNote = (p: ScanPeriodOption, tr: TFunction) =>
     ? tr('imports.analyzingPeriodIos', { range: periodRangeText(p, tr) })
     : tr('imports.analyzingPeriod', { range: periodRangeText(p, tr) });
 
-// 진행률 구간에 연동한 단계별 분석 문구.
-// startScan: 사진 페이지네이션(progress 0 고정) → GPS 추출(0~55) → 국가 판정(55~95) → 클러스터링(→100)
+// 진행률 구간에 연동한 단계별 분석 문구 — 5단계를 20%씩 균등 분할한다.
+// 문구가 감성 카피라 실제 작업 단계(GPS 추출 0~55, 국가 판정 55~95, 클러스터링 →100)와는
+// 일부러 맞추지 않았다. 사용자가 체감하는 것은 "골고루 넘어가는 5단계"이므로 균등 구간이 낫다.
 const scanPhaseText = (progress: number, tr: TFunction) => {
-  if (progress <= 0) return tr('imports.scanPhotos');
-  if (progress < 55) return tr('imports.scanLocations');
-  if (progress < 95) return tr('imports.scanCountries');
-  if (progress < 100) return tr('imports.scanGrouping');
+  if (progress <= 20) return tr('imports.scanPhotos');
+  if (progress <= 40) return tr('imports.scanLocations');
+  if (progress <= 60) return tr('imports.scanCountries');
+  if (progress <= 80) return tr('imports.scanGrouping');
   return tr('imports.scanAlmost');
 };
 
@@ -369,9 +370,17 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const recordsRef = useRef(records);
   recordsRef.current = records;
 
-  // 과거 여행 불러오기를 건너뛰고(또는 결과 없이) 메인으로 갈 때도 튜토리얼(코치마크) 자동 실행
-  // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
-  const goMainWithTutorial = async () => {
+  // 앱 내(프로필)에서 들어온 재방문인지 — 온보딩 마지막 단계와 이탈 동작·문구가 다르다
+  const fromProfile = route.params?.from === 'profile';
+
+  // 불러오기를 그만두고 화면을 빠져나갈 때의 공통 동작.
+  // - 온보딩: 메인으로 리셋하며 튜토리얼(코치마크) 자동 실행 + 알림 권한을 한 번 요청(사용 중 뜬금 팝업 방지)
+  // - 프로필 진입: 이미 온보딩을 마친 기존 회원이므로 알림 권한·튜토리얼 없이 원래 보던 프로필로 복귀
+  const leaveImport = async () => {
+    if (fromProfile) {
+      navigation.goBack();
+      return;
+    }
     await requestNotificationPermission().catch(() => {});
     navigation.reset({
       index: 0,
@@ -830,8 +839,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
             <ImportCtaButton label={t('imports.grantGalleryFind')} onPress={requestPermission} style={styles.ctaMargin} />
 
-            <TouchableOpacity style={styles.skipBtn} onPress={goMainWithTutorial}>
-              <Text style={styles.skipText}>{t('imports.skipManual')}</Text>
+            <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
+              <Text style={styles.skipText}>{t(fromProfile ? 'imports.backToProfile' : 'imports.skipManual')}</Text>
             </TouchableOpacity>
           </View>
         ) : scanning ? (
@@ -888,14 +897,17 @@ export default function TravelImportScreen({ navigation, route }: Props) {
             <Text style={[styles.resultDesc, { textAlign: 'center', paddingHorizontal: 20 }]}>
               {isLimited ? t('imports.noTripsLimited') : t('imports.noTripsNoGps')}
             </Text>
-            <TouchableOpacity style={styles.permissionBtn} onPress={goMainWithTutorial}>
+            <TouchableOpacity style={styles.permissionBtn} onPress={leaveImport}>
               <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
-                <Text style={styles.btnText}>{t('imports.recordManually')}</Text>
+                <Text style={styles.btnText}>{t(fromProfile ? 'imports.backToProfile' : 'imports.recordManually')}</Text>
               </LinearGradient>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.skipBtn} onPress={goMainWithTutorial}>
-              <Text style={styles.skipText}>{t('imports.skip')}</Text>
-            </TouchableOpacity>
+            {/* 프로필 진입에선 두 버튼이 같은 동작(프로필 복귀)이라 보조 버튼을 감춘다 */}
+            {!fromProfile && (
+              <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
+                <Text style={styles.skipText}>{t('imports.skip')}</Text>
+              </TouchableOpacity>
+            )}
           </View>
         ) : (
           /* Scanned Suggested Trips List View */

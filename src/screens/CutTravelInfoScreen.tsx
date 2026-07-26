@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
+  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
@@ -11,6 +11,7 @@ import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
@@ -47,9 +48,10 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
-const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'neighbors', label: '🏡 메이트만' },
-  { value: 'private',   label: '🔒 나만 보기' },
+// 표시 문구는 visibilityLabel(), 아이콘은 visibilityIcon()이 담당한다 (동행자 칩과 동일 구조)
+const VISIBILITY_OPTIONS: { value: Visibility }[] = [
+  { value: 'neighbors' },
+  { value: 'private' },
 ];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
@@ -115,127 +117,24 @@ const weatherLabel = (v: string, tr: TFunction) => {
 const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
 const visibilityLabel = (v: Visibility, tr: TFunction) => {
   switch (v) {
-    case 'neighbors': return `🏡 ${tr('newRecord.visNeighbors')}`;
-    case 'private':   return `🔒 ${tr('newRecord.visPrivate')}`;
+    case 'neighbors': return tr('newRecord.visNeighbors');
+    case 'private':   return tr('newRecord.visPrivate');
     default: return '';
+  }
+};
+
+// 공개 범위 아이콘 — 기본 이모지(🏡/🔒)는 기기 폰트마다 모양·크기가 달라
+// 옆의 동행자 칩과 톤이 어긋났다. 제작 SVG 세트로 통일한다.
+const visibilityIcon = (v: Visibility, color: string): React.ReactNode => {
+  switch (v) {
+    case 'neighbors': return <FriendIcon size={16} color={color} />;
+    case 'private':   return <LockClosedIcon size={16} color={color} />;
+    default: return null;
   }
 };
 
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
-
-// ─── 비공개 메이트 선택 모달 (블로그와 동일) ───
-function PrivacyModal({
-  visible,
-  selectedFriends,
-  allFriends,
-  onToggle,
-  onSetAll,
-  onClose,
-}: {
-  visible: boolean;
-  selectedFriends: string[];
-  allFriends: string[];
-  onToggle: (friend: string) => void;
-  onSetAll: (friends: string[]) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const translateY = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 65, friction: 13 }).start();
-    } else {
-      Animated.timing(translateY, { toValue: 500, duration: 220, useNativeDriver: true }).start();
-    }
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
-          <View style={pm.handle} />
-
-          {/* 헤더 */}
-          <View style={pm.header}>
-            <View style={pm.headerLeft}>
-              <LockClosedIcon size={24} color="#A1A1B0" />
-              <View>
-                <Text style={pm.headerTitle}>{t('cutInfo.privacyTitle')}</Text>
-                <Text style={pm.headerDesc}>{t('cutInfo.privacyDesc')}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* 전체 비공개 — 모든 메이트에게 비공개 (맨 위 옵션) */}
-          {allFriends.length > 0 && (() => {
-            const allPrivate = selectedFriends.length === allFriends.length;
-            return (
-              <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
-                activeOpacity={0.7}
-              >
-                <View style={[pm.avatar, allPrivate && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                  <LockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('cutInfo.allPrivate')}</Text>
-                  <Text style={pm.allPrivateDesc}>{t('cutInfo.allPrivateDesc')}</Text>
-                </View>
-                <View style={[pm.checkbox, allPrivate && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
-                </View>
-              </TouchableOpacity>
-            );
-          })()}
-
-          {/* 전체 해제 버튼 */}
-          {selectedFriends.length > 0 && (
-            <TouchableOpacity style={[pm.clearAllBtn, { backgroundColor: skinAccent.tint(0.12) }]} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
-              <Text style={[pm.clearAllTxt, { color: skinAccent.accent }]}>{t('cutInfo.clearAll')}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 메이트 목록 */}
-          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
-            {allFriends.map(friend => {
-              const isSelected = selectedFriends.includes(friend);
-              return (
-                <TouchableOpacity
-                  key={friend}
-                  style={[pm.friendRow, isSelected && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                  onPress={() => onToggle(friend)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[pm.avatar, isSelected && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
-                  </View>
-                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
-                  <View style={[pm.checkbox, isSelected && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* 완료 버튼 */}
-          <TouchableOpacity style={[pm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
-            <Text style={pm.doneTxt}>
-              {selectedFriends.length > 0
-                ? t('cutInfo.privacyDoneN', { count: selectedFriends.length })
-                : t('cutInfo.setPublic')}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t, i18n } = useTranslation();
@@ -281,6 +180,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  // 검색어는 모달을 닫을 때 비운다 — 남겨두면 다음에 열었을 때 목록이 필터된 채로 떠서
+  // "국가가 몇 개 없다"고 오해하게 된다. 배경 탭·완료·뒤로가기 세 경로 모두 이걸 거친다.
+  const closeCountryModal = () => { setCountryModalVisible(false); setCountrySearch(''); };
 
   // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게
   const recordedDates = useMemo(
@@ -725,6 +627,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     onPress={() => setVisibility(opt.value)}
                     activeOpacity={0.75}
                   >
+                    <View style={st.compChipIcon}>{visibilityIcon(opt.value, isActive ? skinAccent.accent : C.textDim)}</View>
                     <Text style={[st.smallTxt, isActive && [st.smallTxtActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value, t)}</Text>
                   </TouchableOpacity>
                 );
@@ -899,7 +802,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </View>
       </Modal>
 
-      {/* 비공개 대상 선택 모달 (블로그와 동일) */}
+      {/* 비공개 대상 선택 — 피드·블로그와 같은 공용 시트, 설명 문구만 스트립용으로 */}
       <PrivacyModal
         visible={privacyVisible}
         selectedFriends={privateFriends}
@@ -907,6 +810,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriends}
         onClose={() => setPrivacyVisible(false)}
+        desc={t('cutInfo.privacyDesc')}
+        allPrivateDesc={t('cutInfo.allPrivateDesc')}
       />
 
       {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
@@ -971,15 +876,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       </Modal>
 
       {/* 국가 선택 모달 */}
-      <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
+      <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={closeCountryModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCountryModalVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeCountryModal} />
           <View style={ct.sheet}>
             <View style={ct.handle} />
             <View style={ct.titleRow}>
               <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>
               <TouchableOpacity
-                onPress={() => setCountryModalVisible(false)}
+                onPress={closeCountryModal}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 activeOpacity={0.7}
               >
@@ -992,25 +897,45 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 style={ct.searchInput}
                 value={countrySearch} onChangeText={setCountrySearch}
                 placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.textMuted}
-                autoFocus
+                returnKeyType="search"
               />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={ct.searchClear}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
+
+            {/* 몇 개 골랐는지 · 더 고를 수 있는지 — 목록만 보고는 알 수 없었다 */}
+            {selectedCountries.length > 0 && (
+              <Text style={ct.pickedCount}>
+                {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}
+                {selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}
+              </Text>
+            )}
+
             <ScrollView style={{ maxHeight: 420, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
               {groupedCountries.map(g => (
                 <View key={g.continent}>
                   <Text style={ct.continent}>{continentLabel(g.continent, i18n.language)}</Text>
-                  {g.countries.map(c => (
-                    <TouchableOpacity
-                      key={c.name}
-                      style={ct.item}
-                      onPress={() => toggleCountry(c)} // 복수 선택 — 모달은 배경 탭으로 닫는다
-                      activeOpacity={0.75}
-                    >
-                      <Text style={ct.flag}>{c.flag}</Text>
-                      <Text style={ct.name}>{countryLabel(c.name, i18n.language)}</Text>
-                      {selectedCountries.some(p => p.name === c.name) && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
-                    </TouchableOpacity>
-                  ))}
+                  {g.countries.map(c => {
+                    const picked = selectedCountries.some(p => p.name === c.name);
+                    // 최대치에 도달하면 미선택 국가는 탭해도 아무 일이 없었다 — 눌리지 않음을 눈으로 보여준다
+                    const blocked = !picked && selectedCountries.length >= MAX_COUNTRIES;
+                    return (
+                      <TouchableOpacity
+                        key={c.name}
+                        style={[ct.item, blocked && ct.itemBlocked]}
+                        disabled={blocked}
+                        onPress={() => toggleCountry(c)} // 복수 선택 — 모달은 배경 탭으로 닫는다
+                        activeOpacity={0.75}
+                      >
+                        <Text style={ct.flag}>{c.flag}</Text>
+                        <Text style={ct.name}>{countryLabel(c.name, i18n.language)}</Text>
+                        {picked && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               ))}
               {groupedCountries.length === 0 && (
@@ -1176,39 +1101,14 @@ const ct = StyleSheet.create({
   doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
+  searchClear: { color: C.textDim, fontSize: 13, fontWeight: '700' },
+  pickedCount: { color: C.textDim, fontSize: 11, paddingBottom: 6 },
   continent: { color: C.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingTop: 14, paddingBottom: 6 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  itemBlocked: { opacity: 0.35 },
   flag: { fontSize: 20 },
   name: { flex: 1, color: C.white, fontSize: 15 },
   check: { color: C.purpleNeon, fontSize: 15, fontWeight: '700' },
   empty: { color: C.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 30 },
 });
 
-// ─── 비공개 모달 스타일 (블로그 BlogRecordScreen의 pm과 동일) ───
-const pm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '80%' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 2 },
-  clearAllBtn: { alignSelf: 'flex-end', marginBottom: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(191,133,252,0.12)' },
-  clearAllTxt: { fontSize: 12, color: '#BF85FC', fontWeight: '600' },
-  listScroll: { maxHeight: 320 },
-  allPrivateRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-  allPrivateLabel: { fontSize: 15, color: '#FFFFFF', fontWeight: '700' },
-  allPrivateDesc: { fontSize: 12, color: '#8A8A99', marginTop: 2 },
-  friendRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 2 },
-  friendRowActive: { backgroundColor: 'rgba(107,33,168,0.15)' },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  avatarActive: { backgroundColor: 'rgba(107,33,168,0.4)' },
-  avatarTxt: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  friendName: { flex: 1, fontSize: 15, color: '#A1A1B0', fontWeight: '500' },
-  friendNameActive: { color: '#FFFFFF', fontWeight: '600' },
-  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#4A4A59', alignItems: 'center', justifyContent: 'center' },
-  checkboxActive: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
-  checkMark: { fontSize: 13, color: '#FFFFFF', fontWeight: '700' },
-  doneBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
-  doneTxt: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-});

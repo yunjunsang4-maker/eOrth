@@ -10,7 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { LiquidPressable, LiquidCardGlow } from '../LiquidEffects';
-import { PersonIcon } from '../icons';
+import { PersonIcon, LockClosedIcon } from '../icons';
 import { andFitText } from '../../utils/fitText';
 import { useSkinAccent } from '../../constants/skinTheme';
 
@@ -151,7 +151,7 @@ export const BadgeHighlightItem = ({ emoji, image, earned = true }: { emoji: str
             {earned ? (
               <Text style={pv.badgeEmoji}>{emoji}</Text>
             ) : (
-              <Text style={pv.badgeLock}>🔒</Text>
+              <LockClosedIcon size={22} color="#7A7A89" />
             )}
             <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
               <Defs>
@@ -254,7 +254,6 @@ export const pv = StyleSheet.create({
     justifyContent: 'center',
   },
   badgeEmoji: { fontSize: 24 },
-  badgeLock: { fontSize: 22 },
   // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
   badgeCircleImage: { backgroundColor: 'transparent' },
   badgeImg: { width: 64, height: 64 },

@@ -36,7 +36,7 @@ import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon } from '../components/icons';
+import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
 import { getGlobeSkinTheme, GLOBE_SKINS } from '../constants/globeSkins';
 import { getSkinAccent } from '../constants/skinTheme';
@@ -1763,7 +1763,7 @@ export default function MainScreen({ navigation, route }: Props) {
                         accessibilityLabel={t(s.labelKey)}
                       >
                         <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[dsm.skinCircle, selected && dsm.skinCircleActive]}>
-                          {locked && <Text style={dsm.skinLock}>🔒</Text>}
+                          {locked && <LockClosedIcon size={16} color="#FFFFFF" />}
                         </LinearGradient>
                         <Text style={[dsm.skinLabel, selected && dsm.skinLabelActive]} numberOfLines={1}>{t(s.labelKey)}</Text>
                       </TouchableOpacity>
@@ -2019,7 +2019,6 @@ const dsm = StyleSheet.create({
   skinItem: { alignItems: 'center', gap: 6, width: 60 },
   skinCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
   skinCircleActive: { borderColor: '#FFFFFF' },
-  skinLock: { fontSize: 16 },
   skinLabel: { color: '#9A9A9A', fontSize: 11 },
   skinLabelActive: { color: '#FFFFFF', fontWeight: '600' },
   paletteRow: { flexDirection: 'row', alignItems: 'center', gap: 7, flexWrap: 'wrap' },

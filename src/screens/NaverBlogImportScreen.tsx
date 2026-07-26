@@ -14,6 +14,7 @@ import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
+import { LockClosedIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
 import {
   isNaverBlogUrl,
@@ -287,7 +288,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
       {step === 'verify' && (
         <View style={st.inputContainer}>
           <View style={[st.iconWrap, { backgroundColor: C.purpleDeep }]}>
-            <Text style={st.iconText}>🔒</Text>
+            <LockClosedIcon size={32} color="#FFFFFF" />
           </View>
           <Text style={st.desc}>
             {t('imports.nvVerifyDesc')}

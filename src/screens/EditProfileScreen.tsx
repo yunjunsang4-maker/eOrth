@@ -12,7 +12,7 @@ import {
   Platform,
   Linking,
 } from 'react-native';
-import { CameraIcon, PersonIcon } from '../components/icons';
+import { CameraIcon, PersonIcon, LockClosedIcon } from '../components/icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';
 import * as ImagePicker from 'expo-image-picker';
@@ -238,14 +238,17 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
               {canChangeHandle && <Text style={s.charCount}>{handle.length}/30</Text>}
             </View>
             {!canChangeHandle && (
-              <Text style={s.lockNotice}>
-                {t('editProfile.lockNotice', {
-                  date: new Date(handleLastChanged! + TWO_WEEKS_MS).toLocaleDateString(
-                    i18n.language === 'ko' ? 'ko-KR' : 'en-US',
-                    { year: 'numeric', month: 'long', day: 'numeric' }
-                  ),
-                })}
-              </Text>
+              <View style={s.lockNoticeRow}>
+                <LockClosedIcon size={11} color="#FFB800" />
+                <Text style={s.lockNotice}>
+                  {t('editProfile.lockNotice', {
+                    date: new Date(handleLastChanged! + TWO_WEEKS_MS).toLocaleDateString(
+                      i18n.language === 'ko' ? 'ko-KR' : 'en-US',
+                      { year: 'numeric', month: 'long', day: 'numeric' }
+                    ),
+                  })}
+                </Text>
+              </View>
             )}
           </View>
 
@@ -465,10 +468,18 @@ const s = StyleSheet.create({
   inputDisabled: {
     color: '#4A4A59',
   },
-  lockNotice: {
-    fontSize: 11,
-    color: '#FFB800',
+  // 안내가 두 줄로 넘어갈 수 있어 아이콘은 첫 줄에 맞춰 위쪽 고정
+  lockNoticeRow: {
+    flexDirection: 'row',
+    gap: 5,
     marginTop: 6,
     marginLeft: 4,
+    paddingTop: 1,
+  },
+  lockNotice: {
+    flex: 1,
+    fontSize: 11,
+    color: '#FFB800',
+    lineHeight: 15,
   },
 });

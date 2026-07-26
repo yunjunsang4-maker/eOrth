@@ -16,6 +16,13 @@ import CutPhotoAdjustModal, { CutTransform } from '../components/CutPhotoAdjustM
 import { CUT_FRAMES, CUT_LAYOUTS, cutSlotCount, getCutFrame, frameLabel } from '../constants/cutFrames';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { useSettings } from '../store/settingsStore';
+import {
+  CalendarIcon as SvgCalendarIcon,
+  PencilIcon as SvgPencilIcon,
+  LockClosedIcon as SvgLockClosedIcon,
+  GalleryIcon as SvgGalleryIcon,
+} from '../components/icons';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
@@ -81,18 +88,19 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
 
   // ── 하단 여백 스탬프: 날짜(무료) + 문구·폰트(프리미엄) ──
   const bandLayout = cutHasBottomBand(frame.layout); // 하단 여백 있는 레이아웃에서만 노출
-  const [stampDateOn, setStampDateOn] = useState(false);
+  // 날짜 스탬프 — 예전엔 탭하면 '오늘'이 무조건 박혔다. 이제 달력에서 직접 고른다(null = 끄기)
+  const [stampDate, setStampDate] = useState<Date | null>(null);
+  const [dateSheetVisible, setDateSheetVisible] = useState(false);
   const [captionText, setCaptionText] = useState('');
   const [captionFont, setCaptionFont] = useState<string | null>(null);
   const [captionModalVisible, setCaptionModalVisible] = useState(false);
   const [captionDraft, setCaptionDraft] = useState('');
-  const todayStr = useMemo(() => {
-    const d = new Date();
-    return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
-  }, []);
+  const fmtStampDate = (d: Date) =>
+    `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, '0')}.${String(d.getDate()).padStart(2, '0')}`;
+  const stampDateStr = stampDate ? fmtStampDate(stampDate) : null;
   const stamp: CutStamp | undefined =
-    bandLayout && (stampDateOn || captionText)
-      ? { date: stampDateOn ? todayStr : undefined, text: captionText || undefined, fontId: captionFont || undefined }
+    bandLayout && (stampDateStr || captionText)
+      ? { date: stampDateStr ?? undefined, text: captionText || undefined, fontId: captionFont || undefined }
       : undefined;
   const openCaption = () => {
     if (!isPremium) {
@@ -118,7 +126,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     setCustomColorVisible(true);
   };
 
-  // 프레임 배경 사진(프리미엄) — 🖼️ 스와치로 갤러리에서 선택, 색 위에 cover로 깔림
+  // 프레임 배경 사진(프리미엄) — 갤러리 아이콘 스와치로 선택, 색 위에 cover로 깔림
   const [frameImage, setFrameImage] = useState<string | null>(null);
   const pickFrameImage = async () => {
     try {
@@ -296,22 +304,34 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         {bandLayout && (
           <View style={st.stampRow}>
             <TouchableOpacity
-              style={[st.stampChip, stampDateOn && [st.stampChipOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}
+              style={[st.stampChip, !!stampDateStr && [st.stampChipOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}
               activeOpacity={0.8}
-              onPress={() => setStampDateOn((v) => !v)}
+              onPress={() => setDateSheetVisible(true)}
             >
-              <Text style={[st.stampChipTxt, stampDateOn && [st.stampChipTxtOn, { color: skinAccent.accent }]]}>
-                📅 {t('cut.stampDate')}{stampDateOn ? ` · ${todayStr}` : ''}
+              <SvgCalendarIcon size={14} color={stampDateStr ? skinAccent.accent : C.dim} />
+              <Text style={[st.stampChipTxt, !!stampDateStr && [st.stampChipTxtOn, { color: skinAccent.accent }]]}>
+                {stampDateStr ?? t('cut.stampDate')}
               </Text>
+              {/* 날짜가 들어간 뒤엔 칩 탭이 '날짜 바꾸기'가 되므로, 끄기는 별도 ✕로 분리한다 */}
+              {!!stampDateStr && (
+                <TouchableOpacity
+                  onPress={() => setStampDate(null)}
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text style={[st.stampChipX, { color: skinAccent.accent }]}>✕</Text>
+                </TouchableOpacity>
+              )}
             </TouchableOpacity>
             <TouchableOpacity
               style={[st.stampChip, !!captionText && [st.stampChipOn, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.accent }]]}
               activeOpacity={0.8}
               onPress={openCaption}
             >
+              <SvgPencilIcon size={14} color={captionText ? skinAccent.accent : C.dim} />
               <Text style={[st.stampChipTxt, !!captionText && [st.stampChipTxtOn, { color: skinAccent.accent }]]} numberOfLines={1}>
-                ✏️ {captionText || t('cut.stampCaption')}{!isPremium ? ' 🔒' : ''}
+                {captionText || t('cut.stampCaption')}
               </Text>
+              {!isPremium && <SvgLockClosedIcon size={12} color={C.dim} />}
             </TouchableOpacity>
           </View>
         )}
@@ -352,7 +372,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                   end={{ x: 1, y: 1 }}
                   style={[st.swatch, st.customSwatch]}
                 >
-                  <Text style={st.customPlus}>{isPremium ? '＋' : '🔒'}</Text>
+                  {isPremium
+                    ? <Text style={st.customPlus}>＋</Text>
+                    : <SvgLockClosedIcon size={14} color={C.white} />}
                 </LinearGradient>
               )}
             </TouchableOpacity>
@@ -364,7 +386,9 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
                 </View>
               ) : (
                 <View style={[st.swatch, st.customSwatch, st.frameImgSwatch]}>
-                  <Text style={st.customPlus}>{isPremium ? '🖼️' : '🔒'}</Text>
+                  {isPremium
+                    ? <SvgGalleryIcon size={16} color={C.white} />
+                    : <SvgLockClosedIcon size={14} color={C.white} />}
                 </View>
               )}
             </TouchableOpacity>
@@ -453,6 +477,17 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* 날짜 스탬프 — 하루만 고르는 모드 */}
+      <CalendarBottomSheet
+        visible={dateSheetVisible}
+        singleDate
+        initialStart={stampDate ?? new Date()}
+        initialEnd={stampDate ?? new Date()}
+        startLabel={t('cut.stampDate')}
+        onConfirm={(d) => setStampDate(d)}
+        onClose={() => setDateSheetVisible(false)}
+      />
 
       {/* 문구 스탬프 모달 (프리미엄) — 문구 입력 + 폰트 선택 */}
       <Modal
@@ -587,12 +622,15 @@ const st = StyleSheet.create({
 
   // 하단 여백 스탬프 (날짜·문구)
   stampRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, marginBottom: 10, justifyContent: 'center' },
+  // 아이콘 + 라벨 한 줄 — 아이콘은 고정폭이므로 라벨만 줄어들며 말줄임되게 flexShrink를 준다
   stampChip: {
     maxWidth: '60%', paddingHorizontal: 14, paddingVertical: 7, borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    flexDirection: 'row', alignItems: 'center', gap: 5,
   },
   stampChipOn: { backgroundColor: 'rgba(191,133,252,0.18)', borderColor: C.purple },
-  stampChipTxt: { fontSize: 12, color: C.dim, fontWeight: '600' },
+  stampChipTxt: { fontSize: 12, color: C.dim, fontWeight: '600', flexShrink: 1 },
+  stampChipX: { fontSize: 11, fontWeight: '700' },
   stampChipTxtOn: { color: C.purple },
 
   // 문구 스탬프 모달

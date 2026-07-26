@@ -39,6 +39,7 @@ export function CalendarBottomSheet({
   recordedRanges,
   onSelectRecordedTrip,
   asOverlay,
+  singleDate,
 }: {
   visible: boolean;
   initialStart: Date;
@@ -55,6 +56,12 @@ export function CalendarBottomSheet({
   onSelectRecordedTrip?: (recordId: string, start: Date, end: Date) => void;
   /** true면 Modal 대신 절대배치 오버레이로 렌더 — 이미 Modal 안인 화면(블로그 여행정보 패널)에서 iOS Modal-in-Modal 문제 회피 */
   asOverlay?: boolean;
+  /**
+   * true면 기간이 아니라 '하루'만 고른다 — 헤더가 한 칸이 되고 탭 한 번으로 선택이 끝난다.
+   * (스트립 하단 날짜 스탬프처럼 단일 날짜만 필요한 곳용. 기본값은 기존 기간 선택 동작)
+   * onConfirm은 start === end로 호출된다.
+   */
+  singleDate?: boolean;
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
@@ -93,6 +100,11 @@ export function CalendarBottomSheet({
   };
 
   const handleDayPress = (date: Date) => {
+    // 단일 날짜 모드 — 시작=종료로 한 번에 확정. 기간 선택 단계(selectingEnd)로 넘어가지 않는다
+    if (singleDate) {
+      setTempStart(date); setTempEnd(date); setSelectingEnd(false);
+      return;
+    }
     const range = recordedRanges?.get(toDateKey(date));
     // 신규 작성: 밴드(기존 여행) 탭 → 여행 정보 동기화 후 상위에서 시트 닫음
     if (range && onSelectRecordedTrip) {
@@ -149,15 +161,25 @@ export function CalendarBottomSheet({
         <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
           <View style={[calS.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
-            <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{startLbl}</Text>
-              <Text style={[calS.selectedDate, !selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
-            </View>
-            <Text style={calS.selectedArrow}>→</Text>
-            <View style={calS.selectedItem}>
-              <Text style={calS.selectedLabel}>{endLbl}</Text>
-              <Text style={[calS.selectedDate, selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
-            </View>
+            {singleDate ? (
+              // 단일 날짜 — 시작→종료 두 칸 대신 한 칸만
+              <View style={calS.selectedItem}>
+                <Text style={calS.selectedLabel}>{startLbl}</Text>
+                <Text style={[calS.selectedDate, calS.selectedDateActive, { color: skinAccent.accent }]}>{fmtSel(tempStart)}</Text>
+              </View>
+            ) : (
+              <>
+                <View style={calS.selectedItem}>
+                  <Text style={calS.selectedLabel}>{startLbl}</Text>
+                  <Text style={[calS.selectedDate, !selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
+                </View>
+                <Text style={calS.selectedArrow}>→</Text>
+                <View style={calS.selectedItem}>
+                  <Text style={calS.selectedLabel}>{endLbl}</Text>
+                  <Text style={[calS.selectedDate, selectingEnd && [calS.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
+                </View>
+              </>
+            )}
           </View>
           <View style={calS.monthNav}>
             <TouchableOpacity onPress={handlePrevMonth} style={calS.navBtn}><Text style={[calS.navArrow, { color: skinAccent.accent }]}>‹</Text></TouchableOpacity>

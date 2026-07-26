@@ -20,7 +20,8 @@ import type { RootStackScreenProps } from '../navigation/types';
 import CutPhotoAdjustModal, { AdjustedCoverImage, type CutTransform } from '../components/CutPhotoAdjustModal';
 import { CalendarBottomSheet } from './NewRecordScreen';
 import { COUNTRIES, type Country, CONTINENT_ORDER } from '../constants/countries';
-import { SearchIcon } from '../components/icons';
+import { SearchIcon, AlbumIcon, PinIcon, GalleryIcon, LockClosedIcon } from '../components/icons';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
@@ -54,6 +55,15 @@ const CELL = Math.floor((width - 16 * 2 - 8 * (COL - 1)) / COL);
 const CARD_W = width - 40; // 시트 좌우 패딩 20×2
 const CARD_H = 180;
 const CARD_ASPECT = CARD_W / CARD_H;
+
+/** 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
+function CheckMark({ size = 13, color = '#FFFFFF' }: { size?: number; color?: string }) {
+  return (
+    <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+      <SvgPath d="M20 6L9 17l-5-5" stroke={color} strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
   const { t, i18n } = useTranslation();
@@ -398,7 +408,10 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('album.closeA11y')}>
             <Text style={st.closeTxt}>✕</Text>
           </TouchableOpacity>
-          <Text style={st.title}>📷 {t('comp2.albumCreateTitle')}</Text>
+          <View style={st.titleRow}>
+            <AlbumIcon size={22} color={skinAccent.accent} />
+            <Text style={st.title}>{t('comp2.albumCreateTitle')}</Text>
+          </View>
           <Text style={st.sub}>{t('album.sub', { max: albumMax })}</Text>
         </View>
 
@@ -466,7 +479,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                           >
                             <Text style={st.countryIcon}>{c.flag}</Text>
                             <Text style={[st.countryName, isSelected && [st.countryNameSelected, { color: skinAccent.accent }]]}>{countryLabel(c.name, i18n.language)}</Text>
-                            {isSelected && <Text style={[st.countryCheckMark, { color: skinAccent.accent }]}>✓</Text>}
+                            {isSelected && (
+                              <View style={st.countryCheckMark}>
+                                <CheckMark size={16} color={skinAccent.accent} />
+                              </View>
+                            )}
                           </TouchableOpacity>
                         );
                       })}
@@ -493,7 +510,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
             style={{ marginTop: 24 }}
           />
 
+          {/* 자물쇠는 문구에 이모지로 박지 않고 아이콘으로 — 아이콘+문구를 묶어 박스 가운데 정렬 */}
           <View style={[st.noteBox, { backgroundColor: skinAccent.tint(0.08), borderColor: skinAccent.tint(0.2) }]}>
+            <LockClosedIcon size={14} color={skinAccent.accent} />
             <Text style={[st.noteTxt, { color: skinAccent.accent }]}>
               {t('album.privacyNotice')}
             </Text>
@@ -546,8 +565,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
               onPress={() => setGpsOnly((v) => !v)}
               activeOpacity={0.75}
             >
+              <PinIcon size={12} color={gpsOnly ? skinAccent.accent : '#A1A1B0'} />
               <Text style={[st.gpsChipTxt, gpsOnly && { color: skinAccent.accent }]}>
-                📍 {t('album.gpsOnly', { country: selectedCountry?.name })}
+                {t('album.gpsOnly', { country: selectedCountry?.name })}
               </Text>
             </TouchableOpacity>
             {geoProgress && (
@@ -590,7 +610,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
       {photos.length === 0 ? (
         <View style={st.emptyWrap}>
-          <Text style={st.emptyEmoji}>🖼️</Text>
+          <View style={st.emptyIcon}><GalleryIcon size={40} color="#4A4A59" /></View>
           <Text style={st.emptyTitle}>{t('album.emptyTitle')}</Text>
           <Text style={st.emptySub}>{t('album.emptySub')}</Text>
         </View>
@@ -616,7 +636,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
                 style={{ width: CELL, height: CELL }}
               >
                 <Image source={{ uri: item.uri }} style={st.cell} />
-                <View style={[st.check, on && [st.checkOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>{on && <Text style={st.checkTxt}>✓</Text>}</View>
+                <View style={[st.check, on && [st.checkOn, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>{on && <CheckMark size={12} />}</View>
               </TouchableOpacity>
             );
           }}
@@ -746,13 +766,14 @@ const st = StyleSheet.create({
   closeBtn: { position: 'absolute', right: 16, padding: 8, zIndex: 2 },
   backBtn: { position: 'absolute', left: 16, padding: 8, zIndex: 2 },
   closeTxt: { color: '#A1A1B0', fontSize: 20, fontWeight: '600' },
-  title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 4 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  title: { color: '#FFFFFF', fontSize: 22, fontWeight: '800' },
   titleIndented: { marginLeft: 36 }, // 왼쪽 ← 버튼과 겹치지 않게 제목만 들여쓰기
 
   sub: { color: '#A1A1B0', fontSize: 13, lineHeight: 19 },
   counter: { color: '#BF85FC', fontSize: 13, fontWeight: '700', marginTop: 6 },
   selectAllTxt: { fontSize: 13, fontWeight: '700', marginTop: 6, textDecorationLine: 'underline' },
-  gpsChip: { borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  gpsChip: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
   gpsChipTxt: { fontSize: 12, color: '#A1A1B0', fontWeight: '600' },
   gpsProgress: { fontSize: 11, color: '#5A5A6E' },
   limitedTxt: { color: '#BF85FC', fontSize: 12, marginTop: 6 },
@@ -789,7 +810,7 @@ const st = StyleSheet.create({
   countryIcon: { fontSize: 22, marginRight: 14 },
   countryName: { fontSize: 15, color: '#FFFFFF' },
   countryNameSelected: { color: '#BF85FC', fontWeight: '600' },
-  countryCheckMark: { marginLeft: 'auto', fontSize: 16, fontWeight: '700', color: '#BF85FC' },
+  countryCheckMark: { marginLeft: 'auto' },
   noResultText: { color: '#A1A1B0', fontSize: 14, textAlign: 'center', marginVertical: 24 },
   dateBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12,
@@ -801,7 +822,11 @@ const st = StyleSheet.create({
   loadBtn: { borderRadius: 999, overflow: 'hidden', marginTop: 24 },
   loadGrad: { paddingVertical: 18, alignItems: 'center' },
   loadTxt: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
+  // 자물쇠 + 문구를 한 덩어리로 묶어 박스 안 가운데에 놓는다.
+  // 텍스트에 flex를 주면 남는 폭까지 늘어나 justifyContent가 무의미해지므로 주지 않는다.
   noteBox: {
+    flexDirection: 'row', gap: 8,
+    alignItems: 'center', justifyContent: 'center',
     marginTop: 20, backgroundColor: 'rgba(191, 133, 252, 0.08)',
     borderWidth: 1, borderColor: 'rgba(191, 133, 252, 0.2)',
     borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12,
@@ -823,7 +848,7 @@ const st = StyleSheet.create({
   checkOn: { backgroundColor: '#7B61FF', borderColor: '#7B61FF' },
   checkTxt: { color: '#FFFFFF', fontSize: 12, fontWeight: 'bold' },
   emptyWrap: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 120 },
-  emptyEmoji: { fontSize: 44, marginBottom: 12 },
+  emptyIcon: { marginBottom: 12 },
   emptyTitle: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginBottom: 4 },
   emptySub: { color: '#A1A1B0', fontSize: 13 },
   bottom: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, paddingBottom: 40, backgroundColor: 'rgba(10,1,24,0.95)' },

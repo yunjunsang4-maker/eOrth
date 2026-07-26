@@ -28,7 +28,7 @@ import { BlurView } from 'expo-blur';
 import Svg, { Path, Circle, Rect as SvgRect, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';
-import { PersonIcon } from '../components/icons';
+import { PersonIcon, LockClosedIcon } from '../components/icons';
 import GrainOverlay from '../components/GrainOverlay';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -241,7 +241,7 @@ const BadgeHighlightItem = ({ emoji, image, name, glow, earned = true }: { emoji
             {earned ? (
               <Text style={badgeHL.emoji}>{emoji}</Text>
             ) : (
-              <Text style={badgeHL.lockIcon}>🔒</Text>
+              <LockClosedIcon size={22} color="#7A7A89" />
             )}
             <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
               <Defs>
@@ -460,7 +460,7 @@ function BadgeListModal({
                                   end={{ x: 0, y: 1 }}
                                   style={blStyles.emptyHoleInner}
                                 >
-                                  <Text style={blStyles.lockIcon}>🔒</Text>
+                                  <View style={blStyles.lockIcon}><LockClosedIcon size={16} color="#FFFFFF" /></View>
                                 </LinearGradient>
                               </View>
                             )}
@@ -543,7 +543,7 @@ function BadgeListModal({
                         end={{ x: 0, y: 1 }}
                         style={blStyles.zoomEmptyHoleInner}
                       >
-                        <Text style={blStyles.zoomLockIcon}>🔒</Text>
+                        <View style={blStyles.zoomLockIcon}><LockClosedIcon size={40} color="#FFFFFF" /></View>
                       </LinearGradient>
                     </View>
                   )}
@@ -2753,9 +2753,6 @@ const badgeHL = StyleSheet.create({
   emoji: {
     fontSize: 24,
   },
-  lockIcon: {
-    fontSize: 22,
-  },
   // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
   circleImage: { backgroundColor: 'transparent' },
   badgeImg: { width: 64, height: 64 },
@@ -2914,7 +2911,6 @@ const blStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   lockIcon: {
-    fontSize: 16,
     opacity: 0.35,
   },
   cellName: {
@@ -3047,7 +3043,6 @@ const blStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   zoomLockIcon: {
-    fontSize: 40,
     opacity: 0.35,
   },
   zoomName: {

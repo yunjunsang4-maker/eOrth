@@ -16,7 +16,11 @@ import {
   Alert,
   LayoutAnimation,
   UIManager,
+  Animated,
+  Easing,
 } from 'react-native';
+import Svg, { Path as SvgPath, Circle as SvgCircle } from 'react-native-svg';
+import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
@@ -869,9 +873,11 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   ];
   const FLIGHT_OPTIONS  = ['직항', '경유'];
   const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
-  const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-    { value: 'neighbors', label: `🏡 ${t('newRecord.visNeighbors')}` },
-    { value: 'private',   label: `🔒 ${t('newRecord.visPrivate')}` },
+  // 아이콘은 동행자 칩과 동일한 제작 SVG 세트 — 기본 이모지(🏡/🔒)는 기기 폰트마다
+  // 모양·크기가 달라 옆 칩들과 톤이 어긋났다. 색은 선택 여부에 따라 호출부에서 넣는다.
+  const VISIBILITY_OPTIONS: { value: Visibility; label: string; icon: (color: string) => React.ReactNode }[] = [
+    { value: 'neighbors', label: t('newRecord.visNeighbors'), icon: (c) => <FriendIcon color={c} /> },
+    { value: 'private',   label: t('newRecord.visPrivate'),   icon: (c) => <LockClosedIcon size={16} color={c} /> },
   ];
   const KEYWORD_OPTIONS = ['#맛집','#쇼핑','#자연','#역사','#휴양','#액티비티','#도시','#힐링','#백패킹','#럭셔리'];
 
@@ -1708,6 +1714,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                 <View style={s.companionChipWrap}>
                   {VISIBILITY_OPTIONS.map(opt => {
                     const isActive = visibility === opt.value;
+                    const iconColor = isActive ? skinAccent.accent : COLORS.textDim;
                     return (
                       <TouchableOpacity
                         key={opt.value}
@@ -1715,6 +1722,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                         onPress={() => setVisibility(opt.value)}
                         activeOpacity={0.75}
                       >
+                        <View style={s.companionChipIconWrap}>{opt.icon(iconColor)}</View>
                         <Text style={[s.companionChipTxt, isActive && s.companionChipTxtActive]}>{opt.label}</Text>
                       </TouchableOpacity>
                     );
@@ -1939,6 +1947,101 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   );
 }
 
+// ─── 접이식 박스 헤더의 열기/닫기 인디케이터 — 여권 스탬프 ───
+// 기존엔 '▴/▾' 글리프를 14px Text로 찍었는데, 이 문자는 폰트가 그리는 잉크 영역이 글자 박스보다
+// 훨씬 작아(특히 안드로이드 Noto) 화면에선 몇 px짜리 삼각형으로만 보였다.
+// 여권 도장을 모티프로 바꿔 닫힘=점선 링(아직 안 찍힌 빈 도장) / 열림=실선 링+채움(찍힌 도장)으로
+// 대비를 주고, 펼치는 순간 살짝 커졌다 돌아오며 기우는 '쾅' 연출로 상태 변화를 분명히 한다.
+// Svg를 View(pointerEvents="none")로 감싸는 이유: 새 아키텍처에서 RNSVG가 터치를 삼켜
+// 도장을 정확히 눌렀을 때만 헤더 토글이 안 먹는 문제를 막는다.
+const STAMP = 28;      // 도장 지름(pt)
+const STAMP_R = 12.2;  // 링 반지름 — strokeWidth가 28pt 안에 온전히 들어오는 값
+
+function BoxChevron({ expanded }: { expanded: boolean }) {
+  const skinAccent = useSkinAccent();
+  const p = useRef(new Animated.Value(expanded ? 1 : 0)).current; // 0=닫힘, 1=열림
+  const pop = useRef(new Animated.Value(1)).current;              // 도장이 찍히는 순간의 스케일
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    // 첫 렌더에서는 p가 이미 맞는 값이라 애니메이션을 걸 필요가 없다.
+    // 자식 effect는 부모 effect보다 먼저 도는데, 이 화면의 부모 effect가 현재 위치로 국가를
+    // 프리필하는 비동기 호출을 띄운다. 마운트 때 굳이 애니메이션 3개를 돌려 그 시작을
+    // 늦출 이유가 없다.
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      return;
+    }
+
+    Animated.timing(p, {
+      toValue: expanded ? 1 : 0,
+      duration: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start();
+
+    // '쾅'은 펼칠 때만
+    if (expanded) {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+      pop.setValue(1);
+      Animated.sequence([
+        Animated.timing(pop, { toValue: 1.18, duration: 90, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+        Animated.spring(pop, { toValue: 1, friction: 4, tension: 140, useNativeDriver: true }),
+      ]).start();
+    }
+  }, [expanded, p, pop]);
+
+  const rotate = p.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '180deg'] });
+  const tilt = p.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '-10deg'] }); // 비스듬히 찍힌 도장
+  const closedOpacity = p.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
+
+  return (
+    <View style={s.cBoxChevron} pointerEvents="none">
+      {/* 도장 링 — 기울기는 링에만 준다 */}
+      <Animated.View style={[s.stampLayer, { transform: [{ scale: pop }, { rotate: tilt }] }]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: closedOpacity }]}>
+          <Svg width={STAMP} height={STAMP}>
+            <SvgCircle
+              cx={STAMP / 2}
+              cy={STAMP / 2}
+              r={STAMP_R}
+              stroke={skinAccent.tint(0.45)}
+              strokeWidth={1.4}
+              strokeDasharray="3 3"
+              fill={skinAccent.tint(0.07)}
+            />
+          </Svg>
+        </Animated.View>
+        <Animated.View style={[StyleSheet.absoluteFill, { opacity: p }]}>
+          <Svg width={STAMP} height={STAMP}>
+            <SvgCircle
+              cx={STAMP / 2}
+              cy={STAMP / 2}
+              r={STAMP_R}
+              stroke={skinAccent.accent}
+              strokeWidth={1.8}
+              fill={skinAccent.tint(0.22)}
+            />
+          </Svg>
+        </Animated.View>
+      </Animated.View>
+
+      {/* 셰브론 — 도장 기울기와 분리해 방향 지시가 흔들리지 않게 한다 */}
+      <Animated.View style={[s.stampLayer, { transform: [{ scale: pop }, { rotate }] }]}>
+        <Svg width={STAMP} height={STAMP} viewBox="0 0 24 24" fill="none">
+          <SvgPath
+            d="M8 10.5L12 14.5L16 10.5"
+            stroke={skinAccent.accent}
+            strokeWidth={2.4}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </Svg>
+      </Animated.View>
+    </View>
+  );
+}
+
 // ─── 접이식 섹션 박스 (이 화면 전용) ───
 function CollapsibleBox({
   title,
@@ -1968,7 +2071,7 @@ function CollapsibleBox({
             <Text style={s.cBoxSummary} numberOfLines={1}>{summary}</Text>
           )}
         </View>
-        <Text style={s.cBoxChevron}>{expanded ? '▴' : '▾'}</Text>
+        <BoxChevron expanded={expanded} />
       </TouchableOpacity>
       {expanded && <View style={s.cBoxBody}>{children}</View>}
     </View>
@@ -2707,10 +2810,19 @@ const s = StyleSheet.create({
     color: COLORS.textDim,
     marginTop: 2,
   },
+  // 여권 스탬프 — 헤더 padding 14와 합쳐 터치 영역이 충분히 넓다.
+  // 배경·테두리는 스킨 색을 따라야 해서 스타일이 아니라 SVG에서 그린다.
   cBoxChevron: {
-    fontSize: 14,
-    color: COLORS.purpleNeon,
+    width: STAMP,
+    height: STAMP,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginLeft: 8,
+  },
+  stampLayer: {
+    position: 'absolute',
+    width: STAMP,
+    height: STAMP,
   },
   cBoxBody: {
     paddingHorizontal: 14,
