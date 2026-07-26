@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NativeAd } from 'react-native-google-mobile-ads';
-import { getGoogleMobileAds } from '../lib/googleMobileAds';
+import { getGoogleMobileAds, ensureAdsInitialized } from '../lib/googleMobileAds';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { fetchAdCampaigns } from '../services/adCampaigns';
@@ -56,10 +56,17 @@ export function useFeedAdSource(slot: number): FeedAdSource {
     let alive = true;
     let created: NativeAd | null = null;
 
-    ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
-      requestNonPersonalizedAdsOnly: true,   // ATT를 쓰지 않으므로 비개인화 고정
-    })
+    // 초기화가 끝나기 전의 요청은 Google이 지원하지 않는다 — 앱 시작 직후 소셜 탭으로
+    // 바로 들어온 경우를 대비해 공유 초기화 Promise를 먼저 기다린다(이미 끝났으면 즉시 통과).
+    (ensureAdsInitialized() ?? Promise.resolve())
+      .then(() => {
+        if (!alive) return null;             // 기다리는 사이 언마운트됐으면 요청하지 않는다
+        return ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
+          requestNonPersonalizedAdsOnly: true, // ATT를 쓰지 않으므로 비개인화 고정
+        });
+      })
       .then((ad) => {
+        if (!ad) return;                     // 언마운트로 건너뛴 경우
         created = ad;
         if (__DEV__) console.log(`[AdMob] slot ${slot} 수신:`, ad.headline);
         if (alive) setNativeAd(ad);

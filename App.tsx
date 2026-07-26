@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
-import { getGoogleMobileAds } from './src/lib/googleMobileAds';
+import { ensureAdsInitialized } from './src/lib/googleMobileAds';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
@@ -36,9 +36,9 @@ export default function App() {
   // 네이티브 모듈이 없는 바이너리에서는 getGoogleMobileAds()가 null이라 그냥 넘어간다.
   useEffect(() => {
     if (!ADMOB_ENABLED) return;
-    const ads = getGoogleMobileAds();
-    if (__DEV__ && !ads) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요');
-    ads?.default().initialize()
+    const init = ensureAdsInitialized();
+    if (!init) { if (__DEV__) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요'); return; }
+    init
       .then(() => { if (__DEV__) console.log('[AdMob] SDK 초기화 완료'); })
       .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
   }, []);

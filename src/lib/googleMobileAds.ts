@@ -28,3 +28,21 @@ export function getGoogleMobileAds(): AdsModule | null {
 
 /** 이 바이너리에 AdMob 네이티브 모듈이 들어 있는지. */
 export const GOOGLE_MOBILE_ADS_AVAILABLE = getGoogleMobileAds() !== null;
+
+let initPromise: Promise<unknown> | null = null;
+
+/**
+ * SDK 초기화를 앱 전체에서 딱 한 번만 실행하고 그 Promise를 공유한다.
+ *
+ * Google은 초기화가 끝나기 전의 광고 요청을 지원하지 않는다. 앱 시작 직후 소셜 탭으로
+ * 바로 들어가면 초기화보다 요청이 먼저 나갈 수 있으므로, 요청하는 쪽에서 이 Promise를
+ * await 해야 한다. App.tsx는 앱 진입 시 미리 불러 워밍업만 한다.
+ *
+ * 네이티브 모듈이 없으면 null — 호출부는 광고를 건너뛴다.
+ */
+export function ensureAdsInitialized(): Promise<unknown> | null {
+  const ads = getGoogleMobileAds();
+  if (!ads) return null;
+  if (!initPromise) initPromise = ads.default().initialize();
+  return initPromise;
+}
