@@ -1357,32 +1357,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               privacyMarks={medias.map((_, idx) => (mediaPrivacy[idx]?.length ?? 0) > 0)}
             />
 
-            {/* 사진 가져오는 중 — 화면 전체 블로킹 오버레이(진행 개수 표시)로 '되고 있나' 헷갈림 방지 */}
-            <Modal visible={loadingMedia} transparent animationType="fade" statusBarTranslucent>
-              <View style={s.importOverlay}>
-                <View style={[s.importCard, { borderColor: skinAccent.tint(0.25) }]}>
-                  <ActivityIndicator color={skinAccent.accent} size="large" />
-                  <Text style={s.importText}>
-                    {cloudProgress
-                      ? t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })
-                      : mediaProgress && mediaProgress.total > 0
-                        ? t('newRecord.importingPhotosN', { done: mediaProgress.done, total: mediaProgress.total })
-                        : t('newRecord.importingPhotos')}
-                  </Text>
-                  {cloudProgress && (
-                    <TouchableOpacity
-                      style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
-                      onPress={() => { cloudCancelRef.current = true; }}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                      accessibilityLabel={t('newRecord.cloudCancelA11y')}
-                    >
-                      <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            </Modal>
+            {/* 사진 가져오는 중 오버레이는 화면 루트(SafeAreaView 끝)로 옮겼다 — 아래 주석 참고 */}
 
             {/* 갤러리 선택 버튼은 사진 있을 때만 표시 */}
             {medias.length > 0 && (
@@ -1942,6 +1917,38 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
         onConfirm={confirmMediaPickerSelection}
         onClose={() => setMediaPickerVisible(false)}
       />
+
+      {/* 사진 가져오는 중 — 화면 전체 블로킹 오버레이(진행 개수 표시)로 '되고 있나' 헷갈림 방지.
+          여기서 RN <Modal>을 쓰면 안 된다: 사진 피커(네이티브 모달)가 닫히는 애니메이션 도중에
+          이 모달이 뜨고, 사진이 적어 압축이 즉시 끝나면 곧바로 닫히면서 iOS의 present/dismiss가
+          엇갈린다. 그러면 보이지 않는 모달 껍데기가 화면에 남아 앱 전체 터치를 삼키고
+          (JS는 멀쩡해서 에러도 안 남는다) 앱을 완전히 껐다 켜야만 풀린다.
+          같은 화면 안의 절대위치 뷰로 그리면 네이티브 모달이 겹칠 일 자체가 없다. */}
+      {loadingMedia && (
+        <View style={s.importOverlay}>
+          <View style={[s.importCard, { borderColor: skinAccent.tint(0.25) }]}>
+            <ActivityIndicator color={skinAccent.accent} size="large" />
+            <Text style={s.importText}>
+              {cloudProgress
+                ? t('newRecord.cloudDownloading', { done: cloudProgress.done, total: cloudProgress.total })
+                : mediaProgress && mediaProgress.total > 0
+                  ? t('newRecord.importingPhotosN', { done: mediaProgress.done, total: mediaProgress.total })
+                  : t('newRecord.importingPhotos')}
+            </Text>
+            {cloudProgress && (
+              <TouchableOpacity
+                style={[s.cloudCancelBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.3) }]}
+                onPress={() => { cloudCancelRef.current = true; }}
+                activeOpacity={0.7}
+                accessibilityRole="button"
+                accessibilityLabel={t('newRecord.cloudCancelA11y')}
+              >
+                <Text style={[s.cloudCancelText, { color: skinAccent.accent }]}>{t('common.cancel')}</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
 
     </SafeAreaView>
   );
@@ -2697,9 +2704,12 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: COLORS.textDim,
   },
-  // 사진 가져오는 중 블로킹 오버레이
+  // 사진 가져오는 중 블로킹 오버레이 — Modal이 아니라 화면 루트를 덮는 절대위치 뷰다.
+  // (형제 중 마지막에 그려지지만 zIndex/elevation을 명시해 안드로이드에서도 위에 오게 한다)
   importOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 100,
+    elevation: 100,
     backgroundColor: 'rgba(0,0,0,0.6)',
     alignItems: 'center',
     justifyContent: 'center',
