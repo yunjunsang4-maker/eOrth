@@ -1533,3 +1533,63 @@ drop trigger if exists trg_notify_dm on public.dm_messages;
 create trigger trg_notify_dm
   after insert on public.dm_messages
   for each row execute function public.notify_on_dm();
+
+-- ============================================================
+-- 11) 피드 광고 캠페인 — 제휴(어필리에이트) 캠페인 원격 관리
+-- ============================================================
+-- 앱 업데이트 없이 캠페인을 교체·종료하기 위해 서버에서 관리한다.
+-- 국가 타겟팅(target_countries)은 서버가 아니라 클라이언트에서 필터링한다 —
+-- 사용자의 여행 국가를 서버로 보내지 않기 위함(개인정보처리방침 부담 회피).
+-- 따라서 조회는 활성 캠페인 전체를 내려주고, 매칭은 앱이 한다.
+
+create table if not exists public.ad_campaigns (
+  id                uuid primary key default gen_random_uuid(),
+  slug              text not null unique,
+  partner           text not null,               -- airalo / klook / coupang / getyourguide
+  headline_ko       text not null,
+  headline_en       text not null,
+  image_url         text not null,
+  click_url         text not null,
+  disclosure_ko     text,                        -- 제휴사 필수 고지 문구(쿠팡 등)
+  disclosure_en     text,
+  target_countries  text[] not null default '{}',-- ISO2 대문자. 빈 배열이면 전체 대상
+  locales           text[] not null default '{ko,en}',
+  weight            int  not null default 1,
+  starts_at         timestamptz,
+  ends_at           timestamptz,
+  active            boolean not null default true,
+  click_count       int  not null default 0,
+  created_at        timestamptz not null default now()
+);
+
+create index if not exists ad_campaigns_active_idx
+  on public.ad_campaigns (active, starts_at, ends_at);
+
+alter table public.ad_campaigns enable row level security;
+
+-- 조회: 활성이고 기간 내인 행만 누구나(비로그인 포함) 볼 수 있다.
+drop policy if exists ad_campaigns_select_active on public.ad_campaigns;
+create policy ad_campaigns_select_active on public.ad_campaigns
+  for select
+  using (
+    active = true
+    and (starts_at is null or starts_at <= now())
+    and (ends_at   is null or ends_at   >= now())
+  );
+
+-- 삽입·수정·삭제 정책 없음 → service_role(정책 우회)만 쓰기 가능.
+
+-- 클릭 집계: 익명 카운터. 사용자 식별자를 저장하지 않는다.
+-- (노출은 집계하지 않는다 — 스크롤마다 RPC가 나가고 방침에 항목이 늘어난다.)
+create or replace function public.log_ad_click(p_campaign_id uuid)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.ad_campaigns
+     set click_count = click_count + 1
+   where id = p_campaign_id;
+$$;
+
+grant execute on function public.log_ad_click(uuid) to anon, authenticated;
