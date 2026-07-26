@@ -2,6 +2,10 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
+// 프로필은 탭을 오갈 때마다 같은 사진을 다시 그린다. RN Image는 화면을 벗어나면
+// 디코딩 결과를 잃어 재진입 때마다 늦게 뜨므로, 메모리·디스크 캐시가 있는 expo-image를 쓴다.
+import { Image } from 'expo-image';
+import TripCoverImage from '../components/TripCoverImage';
 import {
   View,
   Text,
@@ -10,7 +14,6 @@ import {
   TouchableOpacity,
   Modal,
   TextInput,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -235,7 +238,7 @@ const BadgeHighlightItem = ({ emoji, image, name, glow, earned = true }: { emoji
       {/* 배지 원 — 커스텀 이미지 배지는 자체 테두리가 있어 유리 링·회색 채움 없이 이미지만 렌더 */}
       <View style={[badgeHL.circle, !!image && badgeHL.circleImage]}>
         {image ? (
-          <Image source={image} style={badgeHL.badgeImg} resizeMode="contain" />
+          <Image source={image} style={badgeHL.badgeImg} contentFit="contain" cachePolicy="memory-disk" />
         ) : (
           <>
             {earned ? (
@@ -416,7 +419,7 @@ function BadgeListModal({
                               /* 획득한 메탈릭 코인 — 커스텀 이미지 배지는 자체 코인 디자인이라 이미지만 렌더 */
                               <View style={blStyles.coinWrapper}>
                                 {badge.image ? (
-                                  <Image source={badge.image} style={blStyles.coinImg} resizeMode="contain" />
+                                  <Image source={badge.image} style={blStyles.coinImg} contentFit="contain" cachePolicy="memory-disk" />
                                 ) : (
                                   <>
                                     <LinearGradient
@@ -507,7 +510,7 @@ function BadgeListModal({
                   {isEarned ? (
                     <View style={blStyles.zoomCoinWrapper}>
                       {enlargedBadge.image ? (
-                        <Image source={enlargedBadge.image} style={blStyles.zoomCoinImg} resizeMode="contain" />
+                        <Image source={enlargedBadge.image} style={blStyles.zoomCoinImg} contentFit="contain" cachePolicy="memory-disk" />
                       ) : (
                         <>
                           <LinearGradient
@@ -648,7 +651,7 @@ function EditProfileModal({
           <View style={styles.modalAvatarSection}>
             <TouchableOpacity onPress={pickImage} activeOpacity={0.8} style={styles.modalAvatarWrap}>
               {photo ? (
-                <Image source={{ uri: photo }} style={[styles.modalAvatarImg, { borderColor: skinAccent.tint(0.5) }]} />
+                <Image source={{ uri: photo }} style={[styles.modalAvatarImg, { borderColor: skinAccent.tint(0.5) }]} cachePolicy="memory-disk" transition={120} />
               ) : (
                 <View style={[styles.modalAvatarPlaceholder, { borderColor: skinAccent.tint(0.5) }]}>
                   <PersonIcon size={50} color="#A0A0B0" />
@@ -1930,7 +1933,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           <LiquidPressable onPress={() => setActionSheetVisible(true)} intensity={0.08}>
             <View ref={avatarRef} collapsable={false} style={styles.avatarRing}>
                 {profilePhoto ? (
-                  <Image source={{ uri: profilePhoto }} style={styles.avatarImg} />
+                  <Image source={{ uri: profilePhoto }} style={styles.avatarImg} cachePolicy="memory-disk" transition={120} />
                 ) : (
                   <View style={styles.avatar}>
                     <PersonIcon size={50} color="#A0A0B0" />
@@ -1990,7 +1993,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(neighborCount)} label={t('profile.neighbors')} onPress={() => navigation.navigate('FollowerList')} />
               <StatCard
-                icon={<Image source={require('../../assets/ticket.png')} style={styles.statTicketIcon} />}
+                icon={<Image source={require('../../assets/ticket.png')} style={styles.statTicketIcon} contentFit="contain" cachePolicy="memory-disk" />}
                 label={t('profile.myTicket')}
                 onPress={() => navigation.navigate('ProfileTicket', { tripCount: displayTrips.length, neighborCount })}
               />
@@ -2112,7 +2115,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
             {displayTrips[0].coverUri ? (
               <>
-                <Image source={{ uri: displayTrips[0].coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                <TripCoverImage uri={displayTrips[0].coverUri} />
                 <LinearGradient
                   colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
                   style={StyleSheet.absoluteFill}
@@ -2191,7 +2194,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                 {/* 썸네일 사진(import 시 선택) — 있으면 사진 배경, 없으면 기존 이모지 */}
                 {trip.coverUri ? (
                   <>
-                    <Image source={{ uri: trip.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                    <TripCoverImage uri={trip.coverUri} />
                     <LinearGradient
                       colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']}
                       style={StyleSheet.absoluteFill}

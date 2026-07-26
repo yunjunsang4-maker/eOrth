@@ -4,7 +4,10 @@
  * (ProfileScreen의 인라인 정의를 그대로 옮긴 것)
  */
 import React from 'react';
-import { View, Text, Image, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Dimensions } from 'react-native';
+// 재진입마다 다시 디코딩되지 않도록 캐시가 있는 expo-image 사용 (ProfileScreen과 동일)
+import { Image } from 'expo-image';
+import TripCoverImage from '../TripCoverImage';
 import type { ImageSourcePropType } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -95,7 +98,7 @@ export const ProfileAvatar = ({ photo }: { photo?: string | null }) => {
   return (
     <View style={pv.avatarRing}>
       {photo ? (
-        <Image source={{ uri: photo }} style={pv.avatarImg} />
+        <Image source={{ uri: photo }} style={pv.avatarImg} cachePolicy="memory-disk" transition={120} />
       ) : (
         <View style={pv.avatar}>
           <PersonIcon size={50} color="#A0A0B0" />
@@ -145,7 +148,7 @@ export const BadgeHighlightItem = ({ emoji, image, earned = true }: { emoji: str
       {/* 커스텀 이미지 배지는 자체 테두리가 있어 유리 링·회색 채움 없이 이미지만 렌더 */}
       <View style={[pv.badgeCircle, !!image && pv.badgeCircleImage]}>
         {image ? (
-          <Image source={image} style={pv.badgeImg} resizeMode="contain" />
+          <Image source={image} style={pv.badgeImg} contentFit="contain" cachePolicy="memory-disk" />
         ) : (
           <>
             {earned ? (
@@ -189,7 +192,7 @@ export const TripCard = ({ trip, main, onPress }: { trip: TripCardData; main?: b
       <LinearGradient colors={grad} start={{ x: 0.5, y: 0 }} end={{ x: 0.5, y: 1 }} style={StyleSheet.absoluteFill} />
       {trip.coverUri ? (
         <>
-          <Image source={{ uri: trip.coverUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <TripCoverImage uri={trip.coverUri} />
           <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.45)']} style={StyleSheet.absoluteFill} />
           <View style={main ? thumbSt.mainEmojiWrap : thumbSt.gridEmojiWrap} />
         </>
