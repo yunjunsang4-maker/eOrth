@@ -73,7 +73,8 @@ export default function AffiliatePolaroidCard({ campaign, tilt = -3, onFallback 
           {headline}
         </Text>
         {!!disclosure && (
-          <Text style={s.disclosure} numberOfLines={2}>{disclosure}</Text>
+          // 법정 고지 문구라 잘리면 안 되므로 numberOfLines로 줄 수를 제한하지 않는다.
+          <Text style={s.disclosure}>{disclosure}</Text>
         )}
       </View>
     </TouchableOpacity>
@@ -88,8 +89,8 @@ const s = StyleSheet.create({
   // 제휴사 필수 고지 — 작지만 반드시 읽히는 크기를 유지한다.
   disclosure: {
     color: '#A1A1B0',
-    fontSize: 9,
-    lineHeight: 12,
+    fontSize: 10,
+    lineHeight: 13,
     paddingTop: 4,
   },
 });
