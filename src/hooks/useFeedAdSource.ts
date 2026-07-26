@@ -61,10 +61,15 @@ export function useFeedAdSource(slot: number): FeedAdSource {
     })
       .then((ad) => {
         created = ad;
+        if (__DEV__) console.log(`[AdMob] slot ${slot} 수신:`, ad.headline);
         if (alive) setNativeAd(ad);
         else ad.destroy();                   // 이미 언마운트됐으면 즉시 해제
       })
-      .catch(() => { /* 미필·네트워크 오류 → 하우스로 떨어진다 */ });
+      .catch((e) => {
+        // 미필·네트워크 오류 → 하우스로 떨어진다. 조용히 삼키면 검증 때 원인을 알 수 없어
+        // 개발 빌드에서만 사유를 남긴다(프로덕션 동작은 그대로).
+        if (__DEV__) console.log(`[AdMob] slot ${slot} 요청 실패:`, e?.message ?? e);
+      });
 
     // destroy를 빠뜨리면 네이티브 메모리가 샌다.
     return () => { alive = false; created?.destroy(); };

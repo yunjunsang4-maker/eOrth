@@ -36,7 +36,11 @@ export default function App() {
   // 네이티브 모듈이 없는 바이너리에서는 getGoogleMobileAds()가 null이라 그냥 넘어간다.
   useEffect(() => {
     if (!ADMOB_ENABLED) return;
-    getGoogleMobileAds()?.default().initialize().catch(() => {});
+    const ads = getGoogleMobileAds();
+    if (__DEV__ && !ads) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요');
+    ads?.default().initialize()
+      .then(() => { if (__DEV__) console.log('[AdMob] SDK 초기화 완료'); })
+      .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
   }, []);
 
   // 알림 탭 → 화면 이동 (snap / moment 분기)
