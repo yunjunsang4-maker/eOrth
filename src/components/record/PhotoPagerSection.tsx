@@ -5,6 +5,7 @@ import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions, Alert } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { LockClosedIcon } from '../icons';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 const SCREEN_W = Dimensions.get('window').width;
 const PAGE_W = SCREEN_W; // 화면 폭 전체(최대한 크게)
@@ -25,6 +26,7 @@ export default function PhotoPagerSection({
   privacyMarks?: boolean[];
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -40,9 +42,9 @@ export default function PhotoPagerSection({
 
   if (medias.length === 0) {
     return (
-      <TouchableOpacity style={st.empty} onPress={onAddPress} activeOpacity={0.8}
+      <TouchableOpacity style={[st.empty, { borderColor: skinAccent.accentDeep }]} onPress={onAddPress} activeOpacity={0.8}
         accessibilityRole="button" accessibilityLabel={t('newRecord.photoEmpty')}>
-        <Text style={st.emptyPlus}>＋</Text>
+        <Text style={[st.emptyPlus, { color: skinAccent.accent }]}>＋</Text>
         <Text style={st.emptyText}>{t('newRecord.photoEmpty')}</Text>
       </TouchableOpacity>
     );
@@ -69,12 +71,14 @@ export default function PhotoPagerSection({
         {/* n/N + 대표 배지 */}
         <View style={st.counter}><Text style={st.counterText}>{activeIdx + 1} / {medias.length}</Text></View>
         {isRep && (
-          <View style={st.repBadge}><Text style={st.repBadgeText}>{t('newRecord.repBadge')}</Text></View>
+          <View style={[st.repBadge, { backgroundColor: skinAccent.accent }]}>
+            <Text style={st.repBadgeText}>{t('newRecord.repBadge')}</Text>
+          </View>
         )}
         {/* 도트 인디케이터 */}
         <View style={st.dots}>
           {medias.map((_, i) => (
-            <View key={i} style={[st.dot, i === activeIdx && st.dotOn]} />
+            <View key={i} style={[st.dot, i === activeIdx && [st.dotOn, { backgroundColor: skinAccent.accent }]]} />
           ))}
         </View>
       </View>
@@ -83,26 +87,26 @@ export default function PhotoPagerSection({
       <View style={st.actionBar}>
         {/* 대표 버튼 — 활성이면 채워진 배지 스타일 */}
         <TouchableOpacity
-          style={[st.actionBtn, isRep && st.actionBtnActive]}
+          style={[st.actionBtn, isRep && [st.actionBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
           onPress={() => onSetRepresentative(activeIdx)}
           activeOpacity={0.75}
           accessibilityRole="button"
           accessibilityLabel={t('newRecord.repBadge')}
         >
-          <Text style={[st.actionBtnIcon, isRep && st.actionBtnIconActive]}>★</Text>
-          <Text style={[st.actionBtnText, isRep && st.actionBtnTextActive]}>{t('newRecord.repBadge')}</Text>
+          <Text style={[st.actionBtnIcon, isRep && { color: skinAccent.accent }]}>★</Text>
+          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]}>{t('newRecord.repBadge')}</Text>
         </TouchableOpacity>
 
         {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
         <TouchableOpacity
-          style={[st.actionBtn, hasPrivacy && st.actionBtnPrivacyActive]}
+          style={[st.actionBtn, hasPrivacy && [st.actionBtnPrivacyActive, { backgroundColor: skinAccent.tint(0.2), borderColor: skinAccent.accentDeep }]]}
           onPress={() => onPrivacyPress(activeIdx)}
           activeOpacity={0.75}
           accessibilityRole="button"
           accessibilityLabel={t('newRecord.actionPrivacy')}
         >
-          <LockClosedIcon size={13} color={hasPrivacy ? '#BF85FC' : '#A1A1B0'} />
-          <Text style={[st.actionBtnText, hasPrivacy && st.actionBtnTextPrivacy]}>{t('newRecord.actionPrivacy')}</Text>
+          <LockClosedIcon size={13} color={hasPrivacy ? skinAccent.accent : '#A1A1B0'} />
+          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
         {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}
@@ -129,7 +133,7 @@ export default function PhotoPagerSection({
 
       {/* 현재 사진의 글 */}
       <View style={st.captionBox}>
-        <Text style={st.captionLabel}>
+        <Text style={[st.captionLabel, { color: skinAccent.accent }]}>
           {t('newRecord.photoTextLabel', { n: activeIdx + 1, total: medias.length })}
         </Text>
         <TextInput
@@ -145,6 +149,8 @@ export default function PhotoPagerSection({
   );
 }
 
+// 보라 계열 값은 전부 지구본 스킨을 따라야 하므로 호출부에서 주입한다.
+// 여기 남은 #BF85FC·#6B21A8은 스킨을 못 읽는 경우의 폴백이다.
 const st = StyleSheet.create({
   empty: {
     height: 220, marginHorizontal: 16, borderRadius: 16, borderWidth: 1.5, borderStyle: 'dashed',

@@ -14,9 +14,11 @@ import { useTranslation } from 'react-i18next';
 import { FEATURE_SLIDES } from '../../constants/exampleContent';
 import { nextIndex } from '../../utils/carousel';
 import { useAnimationsActive } from '../../hooks/useAnimationsActive';
+import { useSkinAccent } from '../../constants/skinTheme';
 
 export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress?: () => void }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent();
   const [idx, setIdx] = useState(0);
   const active = useAnimationsActive();
   const count = FEATURE_SLIDES.length;
@@ -47,7 +49,7 @@ export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress
 
       {/* 하단 밴드 — 배지 pill + 제목 + 설명 */}
       <View style={s.band}>
-        <View style={[s.badge, isPremium && s.badgePremium]}>
+        <View style={[s.badge, isPremium && [s.badgePremium, { backgroundColor: skinAccent.accentDeep }]]}>
           {isPremium && slide.badgeKey ? (
             <Text style={[s.badgeSuffix, s.badgeSuffixPremium]}>{t(slide.badgeKey)}</Text>
           ) : (
@@ -61,7 +63,7 @@ export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress
         <Text style={s.title} {...fitOneLine}>{t(slide.titleKey)}</Text>
         <Text style={[s.desc, isPremium && s.descPremium]} {...fitOneLine}>{t(slide.descKey)}</Text>
         {isPremium && slide.ctaKey && (
-          <Text style={s.ctaHint} {...fitOneLine}>{t(slide.ctaKey)}</Text>
+          <Text style={[s.ctaHint, { color: skinAccent.accent }]} {...fitOneLine}>{t(slide.ctaKey)}</Text>
         )}
       </View>
 
@@ -100,6 +102,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 8,
     backgroundColor: '#FFFFFF',
   },
+  // 프리미엄 배지·CTA 색은 호출부에서 스킨으로 주입 — 여기 값은 폴백
   badgePremium: { backgroundColor: '#6B21A8' },
   badgeBrand: { fontFamily: 'Gilroy-Black', fontSize: 10.5, color: '#000000', includeFontPadding: false }, // 16.13 → 10.4
   badgeSuffix: { fontSize: 7.5, fontWeight: '800', color: '#000000', marginLeft: 2, includeFontPadding: false }, // 12 → 7.7

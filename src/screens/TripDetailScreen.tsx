@@ -77,38 +77,33 @@ const COLORS = {
   cutBg: 'rgba(134,255,188,0.06)',
 };
 
+// icon(이모지)은 쓰지 않는다 — 실제 렌더는 FormatIcon이 제작 SVG 아이콘으로 그린다
 const VIEW_CONFIG: Record<string, {
-  icon: string;
   name: string;
   accent: string;
   gradient: [string, string];
 }> = {
   feed: {
-    icon: '📸',
     name: '피드',
     accent: COLORS.feedAccent,
     gradient: ['rgba(191,133,252,0.12)', 'rgba(191,133,252,0.02)'],
   },
   blog: {
-    icon: '📝',
     name: '블로그',
     accent: COLORS.blogAccent,
     gradient: ['rgba(0,216,243,0.12)', 'rgba(0,216,243,0.02)'],
   },
   album: {
-    icon: '📷',
     name: '사진첩',
     accent: COLORS.albumAccent,
     gradient: ['rgba(255,166,87,0.12)', 'rgba(255,166,87,0.02)'],
   },
   snap: {
-    icon: '⚡',
     name: '스냅',
     accent: COLORS.snapAccent,
     gradient: ['rgba(255,214,10,0.12)', 'rgba(255,214,10,0.02)'],
   },
   cut: {
-    icon: '🎞️',
     name: '스트립',
     accent: COLORS.cutAccent,
     gradient: ['rgba(134,255,188,0.12)', 'rgba(134,255,188,0.02)'],

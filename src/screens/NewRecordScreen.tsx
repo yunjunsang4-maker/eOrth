@@ -1360,7 +1360,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
             {/* 사진 가져오는 중 — 화면 전체 블로킹 오버레이(진행 개수 표시)로 '되고 있나' 헷갈림 방지 */}
             <Modal visible={loadingMedia} transparent animationType="fade" statusBarTranslucent>
               <View style={s.importOverlay}>
-                <View style={s.importCard}>
+                <View style={[s.importCard, { borderColor: skinAccent.tint(0.25) }]}>
                   <ActivityIndicator color={skinAccent.accent} size="large" />
                   <Text style={s.importText}>
                     {cloudProgress
@@ -2056,6 +2056,8 @@ function CollapsibleBox({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  // 박스 제목도 지구본 스킨을 따라야 한다 — 예전엔 고정 보라라 cyan·mint 스킨에서 혼자 튀었다
+  const { accent } = useSkinAccent();
   return (
     <View style={s.cBox}>
       <TouchableOpacity
@@ -2066,7 +2068,7 @@ function CollapsibleBox({
         accessibilityState={{ expanded }}
       >
         <View style={{ flex: 1 }}>
-          <Text style={s.cBoxTitle}>{title}</Text>
+          <Text style={[s.cBoxTitle, { color: accent }]}>{title}</Text>
           {!expanded && !!summary && (
             <Text style={s.cBoxSummary} numberOfLines={1}>{summary}</Text>
           )}
@@ -2707,9 +2709,10 @@ const s = StyleSheet.create({
     paddingVertical: 24,
     paddingHorizontal: 28,
     borderRadius: 18,
-    backgroundColor: '#1A0A2E',
+    // 배경은 스킨과 무관한 어두운 패널색 — 테두리 색만 호출부에서 스킨으로 주입한다
+    backgroundColor: '#15151F',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
+    borderColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
     gap: 12,
   },
@@ -2802,7 +2805,7 @@ const s = StyleSheet.create({
   cBoxTitle: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.purpleNeon,
+    color: COLORS.purpleNeon, // 스킨을 못 읽는 경우의 폴백 — 실제 색은 호출부에서 주입
     letterSpacing: 0.6,
   },
   cBoxSummary: {
