@@ -500,6 +500,12 @@ async function buildTexture(srcOverride) {
     var flagImg = iso ? flagImageCache[iso] : null;
     var photoImg = visited.photo ? photoImageCache[visited.photo] : null;
 
+    // 유리(사진) 모드: 사진이 있는데 아직 디코드 전이면 이번 베이크에선 건너뛴다 —
+    // 활성색으로 먼저 칠했다가 사진으로 바뀌는 '색→사진 깜빡임'을 없앤다.
+    // (그동안은 미기록처럼 유리로 보이고, 디코드 완료 후 2차 베이크가 사진을 바로 얹는다.
+    //  커버 사진이 아예 없는 방문국은 색 채움이 영구 표현이라 즉시 그린다)
+    if (isGlass() && mode === 'photo' && visited.photo && !photoImg) return;
+
     if (mode === 'flag' && flagImg) {
       // 국기 모드: 각 폴리곤(영토)마다 개별적으로 국기 그리기
       var geom = f.geometry;
@@ -911,6 +917,10 @@ var glassPhotoAttr = null, glassRanges = null; // 방문 변경 시 aPhoto in-pl
 // 유리 메시 LOD — 네온(VECTOR_LOD_AT)과 동일 방식: 딥줌에서 10m 데이터로 메시·테두리·텍스처를
 // '함께' 재구축해 어느 줌에서도 벡터 일체형을 유지한다(래스터 지역 창으로 전환하지 않는다).
 var glassCountries10m = null, glassFineRequested = false, glassLOD = 'coarse', glassSwapBusy = false;
+// 이 방문국이 '텍스처에 그려져 있는가' — 메시 aPhoto와 베이크 스킵 규칙의 단일 기준.
+// 사진이 있는데 디코드 전이면 false(미기록처럼 유리 채움 유지 — 색→사진 깜빡임 방지),
+// 커버 사진이 아예 없으면 색 채움이 영구 표현이라 true.
+function glassTexReady(v) { return !!(v && (!v.photo || photoImageCache[v.photo])); }
 var GLASS_FINE_AT = 3.0; // zoomFactor 임계 — 이상이면 10m(파인) 메시
 function glassSrcData() { return (glassLOD === 'fine' && glassCountries10m) ? glassCountries10m : (world110Data || worldData); }
 function buildGlassLand(tex, srcData) {
@@ -1009,7 +1019,7 @@ function buildGlassLand(tex, srcData) {
   src.features.forEach(function(f) {
     var g = f.geometry; if (!g) return;
     var nm = f.properties && f.properties.name;
-    curPhoto = (nm && visitedMap[nm]) ? 1 : 0; // 방문국만 텍스처(사진/활성색) 샘플
+    curPhoto = (nm && glassTexReady(visitedMap[nm])) ? 1 : 0; // 텍스처에 그려진 방문국만 샘플
     var vStart = pos.length / 3;
     if (g.type === 'Polygon') addPoly(g.coordinates);
     else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { addPoly(poly); });
@@ -1069,7 +1079,7 @@ function updateGlassLandFlags() {
   var arr = glassPhotoAttr.array;
   for (var i = 0; i < glassRanges.length; i++) {
     var r = glassRanges[i];
-    var on = visitedMap[r.name] ? 1 : 0;
+    var on = glassTexReady(visitedMap[r.name]) ? 1 : 0; // 디코드 전 사진국은 유리 채움 유지
     for (var j = r.start; j < r.start + r.count; j++) arr[j] = on;
   }
   glassPhotoAttr.needsUpdate = true;
