@@ -4,6 +4,7 @@ import { usePersistence, STORE_KEYS } from './persist';
 import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
+import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -680,7 +681,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         installedAt,
         notifPrefs,
         setNotifPref,
-        isPremium,
+        // 출시 기념 무료 개방 중에는 저장값과 무관하게 항상 프리미엄으로 취급한다.
+        // (저장값 자체는 건드리지 않아 플래그를 내리면 원래 상태로 돌아온다)
+        isPremium: LAUNCH_FREE_PREMIUM || isPremium,
         setIsPremium,
         handleFont,
         setHandleFont,
