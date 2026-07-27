@@ -19,6 +19,7 @@ import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
 import { CommentIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
+import type { TripPrefillParam } from '../navigation/types';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
 import { bakeCoverCrop } from '../utils/importPhotoStore';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
@@ -405,15 +406,40 @@ export default function TripDetailScreen() {
   }, []);
 
   // 이 여행에 새 기록 추가 — 형식별 작성 화면으로 이동(같은 국가라 이 카드 목록에 자동 포함)
-  // 기간이 이미 정해진 여행이면 날짜(tripPeriod)를 함께 넘겨 작성 화면에서 자동 적용한다.
+  // 기간·필수(동행자·별점)·상세(경비·날씨·항공편·키워드) 정보를 기존 기록에서 모아 넘겨
+  // 작성 화면이 미리 채운다 — 같은 여행을 형식만 바꿔 이어 쓸 때 재입력이 없도록.
+  const buildTripPrefill = (): TripPrefillParam | undefined => {
+    // 필드별로 '가장 최근 기록'의 값을 쓴다 — 최신 기록이 그 여행의 최종 정보에 가장 가깝다
+    const src = [...matchedRecords].sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0));
+    const first = <T,>(get: (r: TravelRecord) => T | undefined | null, ok: (v: T) => boolean): T | undefined => {
+      for (const r of src) {
+        const v = get(r);
+        if (v != null && ok(v)) return v;
+      }
+      return undefined;
+    };
+    const prefill: TripPrefillParam = {
+      startDate: tripPeriod.startDate || undefined,
+      endDate: tripPeriod.endDate || undefined,
+      rating: first((r) => r.rating, (v) => v > 0),
+      companions: first((r) => r.companions, (v) => v.length > 0),
+      companionFriends: first((r) => r.companionFriends, (v) => v.length > 0),
+      budget: first((r) => r.budget, (v) => v.amount > 0),
+      weather: first((r) => r.weather, (v) => !!v),
+      flightType: first((r) => r.flightType, (v) => !!v),
+      keywords: first((r) => r.keywords, (v) => v.length > 0),
+    };
+    return Object.values(prefill).some((v) => v !== undefined) ? prefill : undefined;
+  };
+
   const handleAddRecord = (type: string) => {
     setFormatPickerVisible(false);
     const selectedCountry = { name: trip.country || '', flag: trip.countryFlag };
-    const tp = tripPeriod.startDate ? tripPeriod : undefined;
+    const tp = buildTripPrefill();
     const nav = navigation as any;
     switch (type) {
-      case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPeriod: tp }); break;
-      case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPeriod: tp }); break;
+      case 'blog':  nav.navigate('BlogRecord', { selectedCountry, tripPrefill: tp }); break;
+      case 'cut':   nav.navigate('CutRecord', { selectedCountry, tripPrefill: tp }); break;
       case 'snap':  nav.navigate('SnapRecord', { selectedCountry }); break;
       case 'album': {
         // 여행 카드당 사진첩 1개 — 이미 있으면 생성 대신 안내 (기존 사진첩에서 추가·정리)
@@ -424,7 +450,7 @@ export default function TripDetailScreen() {
         nav.navigate('AlbumCreate', { selectedCountry, tripGroupId: trip.id });
         break;
       }
-      default:      nav.navigate('NewRecord', { selectedCountry, tripPeriod: tp });
+      default:      nav.navigate('NewRecord', { selectedCountry, tripPrefill: tp });
     }
   };
 

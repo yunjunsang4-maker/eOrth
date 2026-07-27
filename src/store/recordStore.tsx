@@ -811,7 +811,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const albumPublishOpts = (rec: TravelRecord): PublishMediaOptions | undefined => {
     if (rec.viewType !== 'album') return undefined;
     return {
-      albumQuality: rec.albumUploadQuality ?? (isPremium ? 'original' : 'compressed'),
+      // (2026-07 수익구조 변경) 원본 백업은 프리미엄 혜택에서 빠졌다 — 전원 압축본.
+      // rec.albumUploadQuality가 명시된 기존 기록은 그대로 존중한다.
+      // 추후 앱내 재화로 해제할 때 이 자리에 조건을 다시 넣는다.
+      albumQuality: rec.albumUploadQuality ?? 'compressed',
       uploadCache: rec.uploadedMediaUrls,
       onUploaded: (map) =>
         setRecords((prev) =>

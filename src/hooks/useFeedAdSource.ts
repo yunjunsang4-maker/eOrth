@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { NativeAd } from 'react-native-google-mobile-ads';
 import { getGoogleMobileAds, ensureAdsInitialized } from '../lib/googleMobileAds';
+import { requestTrackingPermission } from '../lib/tracking';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { fetchAdCampaigns } from '../services/adCampaigns';
@@ -58,11 +59,14 @@ export function useFeedAdSource(slot: number): FeedAdSource {
 
     // 초기화가 끝나기 전의 요청은 Google이 지원하지 않는다 — 앱 시작 직후 소셜 탭으로
     // 바로 들어온 경우를 대비해 공유 초기화 Promise를 먼저 기다린다(이미 끝났으면 즉시 통과).
-    (ensureAdsInitialized() ?? Promise.resolve())
-      .then(() => {
+    // ATT 결과도 함께 기다린다 — 결정 전에 요청하면 그 회차가 동의와 무관하게 나간다.
+    Promise.all([ensureAdsInitialized() ?? Promise.resolve(), requestTrackingPermission()])
+      .then(([, trackingGranted]) => {
         if (!alive) return null;             // 기다리는 사이 언마운트됐으면 요청하지 않는다
         return ads.NativeAd.createForAdRequest(NATIVE_AD_UNIT_ID, {
-          requestNonPersonalizedAdsOnly: true, // ATT를 쓰지 않으므로 비개인화 고정
+          // 추적 동의를 받은 경우에만 개인화 광고. 거부·미결정·안드로이드 기본은 비개인화 —
+          // 동의 없이 개인화 광고를 내보내면 정책 위반이다.
+          requestNonPersonalizedAdsOnly: !trackingGranted,
         });
       })
       .then((ad) => {

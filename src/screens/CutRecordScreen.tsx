@@ -264,7 +264,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       // transforms(슬롯별 위치조정)를 함께 저장해야 피드·상세의 라이브 재합성에서 구도가 유지된다
       cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, frameImage: (isBasic && frameImage) || undefined, photos: photos as string[], transforms, previewUri, noLogo: hideLogo || undefined, stamp },
       selectedCountry: selectedCountry ?? undefined,
-      tripPeriod: route.params?.tripPeriod, // 여행 카드에서 추가 시 기간 자동 적용을 위해 전달
+      tripPrefill: route.params?.tripPrefill, // 여행 카드에서 추가 시 여행 정보(기간·동행자·별점·상세) 자동 적용을 위해 전달
     });
   };
 

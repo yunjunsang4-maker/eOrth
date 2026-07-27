@@ -42,3 +42,15 @@ export const AFFILIATE_ADS_ENABLED = true;
  * production 채널뿐이고 개발·베타 빌드는 adUnits.ts가 테스트 ID로 분기한다.
  */
 export const ADMOB_ENABLED = true;
+
+/**
+ * 출시 기념 프리미엄 전체 무료 개방.
+ *
+ * 수익 구조를 구독에서 앱내 재화로 바꾸는 중인데 재화 종류·가격이 아직 없다.
+ * 그동안 프리미엄 구조는 그대로 두고 혜택만 전원 개방한다.
+ *
+ * true인 동안 settingsStore가 내보내는 isPremium이 항상 true가 되므로
+ * 게이트 코드(18개 파일)를 건드리지 않아도 된다.
+ * 재화 시스템이 준비되면 이 값을 false로 내리고 게이트를 재화 보유 여부로 바꾼다.
+ */
+export const LAUNCH_FREE_PREMIUM = true;

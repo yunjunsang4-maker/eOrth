@@ -21,6 +21,7 @@ import {
   Easing,
   PanResponder,
   ActivityIndicator,
+  LayoutAnimation,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
@@ -42,6 +43,8 @@ import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
 import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
+import RatingStars from '../components/RatingStars';
+import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
 
@@ -214,20 +217,45 @@ const companionIcon = (name: string): React.ReactNode => {
   return map[name] || <FriendIcon />;
 };
 
+// ─── 좋아요 하트 (SVG) ───
+// 텍스트 글리프(♥/♡)는 폰트에 따라 모양·크기가 흔들려 SVG로 그린다.
+const HeartSvg = ({ filled, size = 22, color }: { filled: boolean; size?: number; color?: string }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24">
+    <SvgPath
+      d="M12 21c-.4 0-.8-.14-1.1-.4C5.9 16.3 2 12.8 2 8.9 2 5.9 4.4 3.5 7.4 3.5c1.7 0 3.4.8 4.6 2.2 1.2-1.4 2.9-2.2 4.6-2.2 3 0 5.4 2.4 5.4 5.4 0 3.9-3.9 7.4-8.9 11.7-.3.26-.7.4-1.1.4z"
+      fill={filled ? (color ?? C.red) : 'none'}
+      stroke={filled ? (color ?? C.red) : C.dim}
+      strokeWidth={1.7}
+    />
+  </Svg>
+);
+
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
-const SlideImageViewerDetail = ({ items, onImagePress, captions }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[] }) => {
+const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[]; fullBleed?: boolean }) => {
   const skinAccent = useSkinAccent();
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
-  const slideW = SCREEN_W - 40; // 본문 좌우 패딩(20+20)과 일치
-  // 각 사진의 원본 비율을 읽어 박스를 맞춤 (크롭 방지)
+  // fullBleed: 화면 폭 가득(엣지-투-엣지, 모서리 각지게) / 기본: 본문 좌우 패딩(20+20)과 일치
+  const slideW = fullBleed ? SCREEN_W : SCREEN_W - 40;
+  const imgRadius = fullBleed ? 0 : 8;
+  // 각 사진의 원본 비율을 읽어 박스를 맞춤 (크롭 방지).
+  // 전부 읽은 뒤 한 번에 반영한다 — 장마다 도착 순서대로 반영하면 컨테이너 높이가
+  // 여러 번 바뀌며 본문이 계단식으로 밀렸다(레이아웃 점프). 한 번의 변화도 부드럽게.
   useEffect(() => {
     let alive = true;
+    if (!items.length) return;
+    const acc: Record<number, number> = {};
+    let left = items.length;
+    const done = () => {
+      if (!alive) return;
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setRatios(acc);
+    };
     items.forEach((it, i) => {
       Image.getSize(
         it.uri,
-        (w, h) => { if (alive && w > 0) setRatios((p) => ({ ...p, [i]: h / w })); },
-        () => {},
+        (w, h) => { if (w > 0) acc[i] = h / w; if (--left === 0) done(); },
+        () => { if (--left === 0) done(); },
       );
     });
     return () => { alive = false; };
@@ -255,26 +283,40 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions }: { items: { ur
             onPress={() => onImagePress?.(items.map(it => it.uri), i)}
             style={{ width: slideW, height: containerH, alignItems: 'center', justifyContent: 'center' }}
           >
-            <Image source={{ uri: item.uri }} style={{ width: slideW, height: heightFor(i), borderRadius: 8 }} resizeMode="cover" />
+            <View style={{ width: slideW, height: heightFor(i), borderRadius: imgRadius, overflow: 'hidden' }}>
+              <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+              {/* 사진별 글 — 사진 밖 별도 텍스트였던 걸 사진 하단 그라데이션 위로 올려
+                  사진과 글이 한 덩어리로 읽히게 한다 */}
+              {captions && captions[i] ? (
+                <LinearGradient
+                  colors={['transparent', 'rgba(0,0,0,0.74)']}
+                  style={{ position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: 12, paddingTop: 28, paddingBottom: 10 }}
+                >
+                  <Text style={{ color: '#F4F4FA', fontSize: 13, lineHeight: 19 }} numberOfLines={4}>
+                    {captions[i]}
+                  </Text>
+                </LinearGradient>
+              ) : null}
+            </View>
           </TouchableOpacity>
         ))}
       </ScrollView>
       {items.length > 1 && (
-        <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 6, gap: 5 }}>
-          {items.map((_, i) => (
-            <View key={i} style={{
-              width: i === activeIdx ? 16 : 6, height: 6, borderRadius: 3,
-              backgroundColor: i === activeIdx ? skinAccent.accent : '#4A4A59',
-            }} />
-          ))}
-        </View>
+        <>
+          {/* 몇 번째 사진인지 — 점만으로는 5장 이상에서 위치가 안 읽힌다 */}
+          <View style={{ position: 'absolute', top: 10, right: 10, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 999, backgroundColor: 'rgba(0,0,0,0.55)' }}>
+            <Text style={{ color: '#FFFFFF', fontSize: 11, fontWeight: '600' }}>{activeIdx + 1}/{items.length}</Text>
+          </View>
+          <View style={{ flexDirection: 'row', justifyContent: 'center', paddingTop: 8, gap: 5 }}>
+            {items.map((_, i) => (
+              <View key={i} style={{
+                width: i === activeIdx ? 16 : 6, height: 6, borderRadius: 3,
+                backgroundColor: i === activeIdx ? skinAccent.accent : '#4A4A59',
+              }} />
+            ))}
+          </View>
+        </>
       )}
-      {/* 사진별 글 — captions[activeIdx]가 있을 때만 표시 */}
-      {captions && captions[activeIdx] ? (
-        <Text style={{ color: '#E8E8F0', fontSize: 14, lineHeight: 21, marginTop: 10, paddingHorizontal: 4 }}>
-          {captions[activeIdx]}
-        </Text>
-      ) : null}
     </View>
   );
 };
@@ -1304,7 +1346,8 @@ export default function PostDetailScreen() {
     }));
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
-  const [showTravelInfo, setShowTravelInfo] = useState(false);
+  // null = 자동: 채워진 항목이 2개 이하면 접을 이유가 없어 펼쳐서 시작, 3개 이상이면 접힘
+  const [travelInfoPref, setTravelInfoPref] = useState<boolean | null>(null);
   const [heartBurst, setHeartBurst] = useState(false);
   const [replyTo, setReplyTo] = useState<{ id: string; name: string } | null>(null);
   const [menuVisible, setMenuVisible] = useState(false);
@@ -1375,6 +1418,31 @@ export default function PostDetailScreen() {
   // 뷰어 시점에서 비공개 사진을 제거한 사본 — 내 글은 미리보기 뷰어, 타인 글은 나
   const record = rawRecord ? applyViewer(rawRecord, viewerFor(rawRecord)) : rawRecord;
 
+  // ⚠️ 훅은 아래 if (!record) early return보다 먼저 선언해야 한다 (rules-of-hooks)
+
+  // 스트립 풀스크린 목록 — 내 글이면 합성본 뒤에 슬롯 원본(낱장)을 붙여 확대해 볼 수 있게.
+  // 타인 글의 슬롯 원본 URI는 작성자 기기의 로컬 경로라 열리지 않으므로 합성본만 보여준다.
+  const cutViewerUris = useMemo(() => {
+    const p = record?.cutPhoto;
+    if (!p?.previewUri) return [] as string[];
+    const mine = record?.isMyPost === true || record?.user.handle === globalHandle;
+    return mine && p.photos && p.photos.length > 0 ? [p.previewUri, ...p.photos] : [p.previewUri];
+  }, [record, globalHandle]);
+
+  // 좋아요 버튼 스프링 — 탭 반응이 없으면 눌렸는지 애매하다
+  const likeScale = useRef(new Animated.Value(1)).current;
+  const springLike = () => {
+    likeScale.setValue(0.75);
+    Animated.spring(likeScale, { toValue: 1, friction: 3.5, tension: 220, useNativeDriver: true }).start();
+  };
+
+  // 진입 스태거 — 유저행→미디어→정보 순서로 살짝 튀며 등장(프리미엄 화면과 동일 재료)
+  const entUser = useEntranceAnimation(0);
+  const entMedia = useEntranceAnimation(70);
+  const entInfo = useEntranceAnimation(140);
+  // 스크롤 시작 후에만 헤더 구분선 표시 — 맨 위에서는 콘텐츠와 한 면처럼 떠 있게
+  const [scrolled, setScrolled] = useState(false);
+
   if (!record) {
     return (
       <View style={s.container}>
@@ -1402,6 +1470,9 @@ export default function PostDetailScreen() {
   const headerTitleText = record.countryName
     ? `${record.countryFlag ? record.countryFlag + ' ' : ''}${countryLabel(record.countryName, i18n.language)}`
     : typeLabel;
+  // 여행정보 펼침 여부 — 사용자가 토글했으면 그 값, 아니면 항목 수 기준 자동
+  const travelInfoCount = [record.startDate, record.weather, record.flightType, record.budget].filter(Boolean).length;
+  const travelInfoOpen = travelInfoPref ?? travelInfoCount <= 2;
   // 본문 텍스트(피드·앨범) — 일정 길이 이상이면 "더보기"로 접기
   // 피드에서 photoTexts가 있으면 memo는 대표 글 복사본이라 캐러셀에서 표시됨 → bodyText 숨김
   const bodyText = (viewType === 'feed' && record.photoTexts && record.photoTexts.length > 0)
@@ -1692,8 +1763,8 @@ export default function PostDetailScreen() {
 
   return (
     <View style={s.container}>
-      {/* 헤더 */}
-      <View style={[s.header, { paddingTop: insets.top + 8 }]}>
+      {/* 헤더 — 구분선은 스크롤을 시작한 뒤에만(맨 위에선 콘텐츠와 한 면처럼) */}
+      <View style={[s.header, { paddingTop: insets.top + 8, borderBottomColor: scrolled ? C.cardBorder : 'transparent' }]}>
           <View style={s.headerSide}>
             <TouchableOpacity onPress={() => navigation.goBack()} style={s.backBtn} accessibilityRole="button" accessibilityLabel={t('postDetail.back')}>
               <Text style={s.backIcon}>‹</Text>
@@ -1730,6 +1801,8 @@ export default function PostDetailScreen() {
           contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
           onScrollBeginDrag={() => setShowCompanions(false)}
+          onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
+          scrollEventThrottle={32}
         >
               {/* ── 유저 정보 + 이미지 + 본문 ── */}
               {(() => {
@@ -1758,7 +1831,7 @@ export default function PostDetailScreen() {
                   else requestNeighbor(authorId);
                 };
                 return (
-                  <View style={s.userRow}>
+                  <Animated.View style={[s.userRow, entUser]}>
                     <TouchableOpacity
                       style={s.authorTouch}
                       activeOpacity={record.isExample ? 1 : 0.7}
@@ -1799,7 +1872,14 @@ export default function PostDetailScreen() {
                       </View>
                     </TouchableOpacity>
                     {record.rating != null && record.rating > 0 && (
-                      <Text style={[s.ratingStars, { color: skinAccent.accent }]}>{'★'.repeat(record.rating)}{'☆'.repeat(5 - record.rating)}</Text>
+                      // 앱 공용 0.5 단위 별점 — 예전 '★'.repeat는 4.5점이 별 4개로 잘렸다
+                      <RatingStars
+                        score={record.rating}
+                        size={13}
+                        gap={2}
+                        fullColor={skinAccent.accent}
+                        emptyColor="rgba(255,255,255,0.18)"
+                      />
                     )}
                     {!isMyPost && authorId && !record.isExample && (
                       <TouchableOpacity
@@ -1813,7 +1893,7 @@ export default function PostDetailScreen() {
                         </Text>
                       </TouchableOpacity>
                     )}
-                  </View>
+                  </Animated.View>
                 );
               })()}
 
@@ -1857,14 +1937,26 @@ export default function PostDetailScreen() {
               ) : (
                 <>
                   {viewType === 'cut' && record.cutPhoto?.previewUri ? (
-                    /* 네컷: 합성 미리보기 이미지 */
-                    <View style={s.mediaWrap}>
-                      <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage([record.cutPhoto!.previewUri], 0))}>
-                        <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout)]} resizeMode="cover" />
-                      </TouchableOpacity>
+                    /* 네컷: 합성 미리보기 — '책상 위 인화지' 실물 연출(글로우+기울임+그림자) */
+                    <Animated.View style={[s.mediaWrap, entMedia]}>
+                      {/* 뒤 은은한 글로우 — 프레임색을 따라감(프레임 사진이면 스킨색) */}
+                      <LiquidCardGlow
+                        width={SCREEN_W - 40}
+                        height={cutFitStyle(record.cutPhoto!.layout).height}
+                        color={record.cutPhoto!.frameColor || skinAccent.accent}
+                        opacity={0.12}
+                      />
+                      {/* 기울임 계단현상은 래스터화+블리드 링 3종 세트로 방지 (SocialScreen 폴라로이드와 동일 기법) */}
+                      <View style={s.cutTiltWrap}>
+                        <View collapsable={false} style={{ margin: -1, padding: 1 }} shouldRasterizeIOS renderToHardwareTextureAndroid>
+                          <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage(cutViewerUris, 0))}>
+                            <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout)]} resizeMode="cover" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
                       {companionsOverlay}
                       {heartOverlay}
-                    </View>
+                    </Animated.View>
                   ) : viewType === 'album' && record.medias && record.medias.length > 0 ? (
                     /* 사진첩: 게시물이 아닌 앨범 — 전체 사진 그리드 + 장수 표기 (좋아요·댓글·여행정보 없음)
                        섹션(albumSections)이 있으면 섹션 제목별로 나눠 그린다 (보기 전용) */
@@ -1899,16 +1991,17 @@ export default function PostDetailScreen() {
                       <Text style={s.albumCount}>{t('postDetail.albumPhotoCount', { count: record.medias.length })}</Text>
                     </>
                   ) : record.medias && record.medias.length > 0 ? (
-                    /* 피드: 실제 첨부 사진 캐러셀 */
-                    <View style={s.mediaWrap}>
+                    /* 피드: 실제 첨부 사진 캐러셀 — 좌우 여백 없이 화면 폭 가득(엣지-투-엣지) */
+                    <Animated.View style={[s.mediaWrap, s.mediaFullBleed, entMedia]}>
                       <SlideImageViewerDetail
                         items={record.medias.map((uri) => ({ uri }))}
                         onImagePress={(uris, i) => handleMediaTap(() => openFullImage(uris, i))}
                         captions={record.photoTexts}
+                        fullBleed
                       />
                       {companionsOverlay}
                       {heartOverlay}
-                    </View>
+                    </Animated.View>
                   ) : (
                     /* 사진 없음: 그라데이션 placeholder */
                     <LinearGradient
@@ -1968,16 +2061,16 @@ export default function PostDetailScreen() {
             <TouchableOpacity
               style={[s.travelInfoBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.2) }]}
               activeOpacity={0.8}
-              onPress={() => setShowTravelInfo((v) => !v)}
+              onPress={() => setTravelInfoPref(!travelInfoOpen)}
             >
               <CalendarIcon size={14} color={skinAccent.accent} />
               <Text style={[s.travelInfoBtnText, { color: skinAccent.accent }]}>{t('postDetail.travelInfo')}</Text>
-              <Text style={[s.travelInfoArrow, { color: skinAccent.accent }]}>{showTravelInfo ? '▲' : '▼'}</Text>
+              <Text style={[s.travelInfoArrow, { color: skinAccent.accent }]}>{travelInfoOpen ? '▲' : '▼'}</Text>
             </TouchableOpacity>
           )}
 
           {/* ── 정보 칩들 ── */}
-          {viewType !== 'album' && showTravelInfo && (record.startDate || record.weather || record.budget || record.flightType) && (
+          {viewType !== 'album' && travelInfoOpen && (record.startDate || record.weather || record.budget || record.flightType) && (
             <View style={s.infoRow}>
               {record.startDate && record.endDate && (
                 <View style={s.infoChip}>
@@ -2015,12 +2108,12 @@ export default function PostDetailScreen() {
 
           {/* ── 좋아요 · 댓글 수 + 댓글 목록 (앨범은 사진 모음이라 소셜 요소 없음) ── */}
           {viewType !== 'album' && (<>
-          <View style={s.statsRow}>
+          <Animated.View style={[s.statsRow, entInfo]}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
-                <Text style={[s.statIcon, record.liked && { color: C.red }]}>
-                  {record.liked ? '♥' : '♡'}
-                </Text>
+              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); springLike(); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+                <Animated.View style={{ transform: [{ scale: likeScale }] }}>
+                  <HeartSvg filled={!!record.liked} />
+                </Animated.View>
               </TouchableOpacity>
               <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
                 <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
@@ -2032,7 +2125,7 @@ export default function PostDetailScreen() {
                 <Text style={s.statCount}>{totalComments}</Text>
               </TouchableOpacity>
             )}
-          </View>
+          </Animated.View>
 
           {/* ── 구분선 ── */}
           <View style={s.divider} />
@@ -2411,6 +2504,23 @@ const s = StyleSheet.create({
 
   // ── 실제 사진/네컷 영역 ──
   mediaWrap: { position: 'relative', marginBottom: 4 },
+  // 피드 캐러셀 — 스크롤 본문 패딩(20)을 상쇄해 화면 폭 가득 채운다
+  mediaFullBleed: { marginHorizontal: -20 },
+  // 스트립 기울임 — '책상 위 인화지'. 그림자는 iOS만(Android elevation은 투명 래퍼에서
+  // 사각 그림자가 그대로 드러난다 — 깊이감은 뒤 글로우가 대신한다)
+  cutTiltWrap: {
+    alignSelf: 'center',
+    transform: [{ rotate: '-1.5deg' }],
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.45,
+        shadowRadius: 16,
+      },
+      default: {},
+    }),
+  },
   // 사진첩(앨범) 그리드 — 본문 패딩(20+20) 안 3열
   albumGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2, marginBottom: 10 },
   albumGridImg: {
@@ -2474,7 +2584,8 @@ const s = StyleSheet.create({
   infoChip: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10,
-    backgroundColor: C.card, borderWidth: 1, borderColor: C.cardBorder,
+    // 매트 단색 대신 반투명 유리 톤 — 배경(우주 검정)이 살짝 비쳐 가볍게 보인다
+    backgroundColor: 'rgba(255,255,255,0.06)', borderWidth: 1, borderColor: 'rgba(255,255,255,0.10)',
   },
   companionIconWrap: { width: 16, height: 16, alignItems: 'center', justifyContent: 'center' },
   infoChipText: { fontSize: 12, color: C.dim },

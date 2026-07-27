@@ -2711,8 +2711,9 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const AD_FREQ = 5;
   const STICKER_OFFSET = 3; // i=3 → 4번째 게시물부터
   const timelineWithAds = useMemo(() => {
-    // 프리미엄 구독자는 광고 제거
-    if (!FEED_ADS_ENABLED || isPremium || timelineItems.length < 2) return timelineItems;
+    // (2026-07 수익구조 변경) 광고 제거는 프리미엄 혜택에서 빠졌다 — 전원 노출.
+    // 추후 앱내 재화 상품으로 되살릴 수 있다.
+    if (!FEED_ADS_ENABLED || timelineItems.length < 2) return timelineItems;
     const out: any[] = [];
     let polaroidSlot = 0;
     let stickerSlot = 0;
@@ -2739,7 +2740,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       }
     });
     return out;
-  }, [timelineItems, isPremium]);
+  }, [timelineItems]);
 
   // 추천 메이트 카드 — 2번째 항목 뒤 1개. 광고 시스템과 독립(발견 기능이라 프리미엄에도 노출)
   const timelineWithMate = useMemo(() => {

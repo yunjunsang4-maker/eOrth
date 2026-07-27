@@ -7,6 +7,7 @@ import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { ensureAdsInitialized } from './src/lib/googleMobileAds';
+import { prepareAdsTracking } from './src/lib/tracking';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
@@ -23,6 +24,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import BadgeToastHost from './src/components/BadgeToastHost';
 import BadgeEvaluator from './src/components/BadgeEvaluator';
 import DMToastHost from './src/components/DMToastHost';
+import NotiToastHost from './src/components/NotiToastHost';
 import ToastHost from './src/components/ToastHost';
 import ProfileSync from './src/components/ProfileSync';
 import AppStateSync from './src/components/AppStateSync';
@@ -39,7 +41,13 @@ export default function App() {
     const init = ensureAdsInitialized();
     if (!init) { if (__DEV__) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요'); return; }
     init
-      .then(() => { if (__DEV__) console.log('[AdMob] SDK 초기화 완료'); })
+      .then(() => {
+        if (__DEV__) console.log('[AdMob] SDK 초기화 완료');
+        // ATT 권한을 미리 요청 — 첫 광고 요청이 사용자 결정을 기다리지 않게 한다.
+        // (iOS는 SDK 초기화 후에 요청해야 IDFA가 정상 반영된다)
+        return prepareAdsTracking();
+      })
+      .then((granted) => { if (__DEV__) console.log('[ATT] 추적 허용:', granted); })
       .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
   }, []);
 
@@ -159,6 +167,7 @@ export default function App() {
                     <AppNavigator />
                     <BadgeToastHost />
                     <DMToastHost />
+                    <NotiToastHost />
                     <ToastHost />
                   </ToastProvider>
                 </DMProvider>

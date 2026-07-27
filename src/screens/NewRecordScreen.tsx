@@ -271,8 +271,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   // 소셜 피드 '편집'(editRecord) 또는 게시물 상세 '수정'(record)에서 기존 기록을 받아 미리 채운다
   const editRecord = route.params?.editRecord ?? route.params?.record;
   const isEdit = !!editRecord;
-  // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
-  const tripPeriod = route.params?.tripPeriod;
+  // 여행 카드에서 추가하면 그 여행의 정보(기간·동행자·별점·상세)를 받아 신규 작성 시 자동 적용한다
+  const tripPrefill = route.params?.tripPrefill;
   const parseDotDate = (s?: string): Date => {
     if (s) {
       // "2025.04.13" / "2025-4-5" 등 구분자(. - /)·비패딩 모두 직접 파싱.
@@ -582,9 +582,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
 
   // Step 3 - 제목 · 날짜 · 글 · 별점
   const todayInit = (() => { const d = new Date(); d.setHours(0,0,0,0); return d; })();
-  // 신규 작성이면 여행 카드에서 넘어온 기간(tripPeriod)을 기본 날짜로, 없으면 오늘
-  const newStartInit = tripPeriod?.startDate ? parseDotDate(tripPeriod.startDate) : todayInit;
-  const newEndInit = tripPeriod?.endDate ? parseDotDate(tripPeriod.endDate) : newStartInit;
+  // 신규 작성이면 여행 카드에서 넘어온 기간(tripPrefill)을 기본 날짜로, 없으면 오늘
+  const newStartInit = tripPrefill?.startDate ? parseDotDate(tripPrefill.startDate) : todayInit;
+  const newEndInit = tripPrefill?.endDate ? parseDotDate(tripPrefill.endDate) : newStartInit;
   const [title]                               = useState(editRecord?.content ?? '');
   const [startDate,       setStartDate]       = useState(
     editRecord ? parseDotDate(editFirstCountryData?.startDate ?? editRecord.startDate ?? editRecord.date) : newStartInit
@@ -610,7 +610,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   // memo state 제거 — 사진별 글(photoTexts)이 본문을 대체하고 저장 시 대표 글을 memo로 복사함
-  const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? 0);
+  const [rating,          setRating]          = useState(editFirstCountryData?.rating ?? editRecord?.rating ?? tripPrefill?.rating ?? 0);
   // 공개 범위 (공통) — 편집 시 기존 값 유지, 신규는 메이트만 기본
   const [visibility,      setVisibility]      = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
 
@@ -775,8 +775,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}`;
 
   // 동행자 (step 3)
-  const [selectedCompanions, setSelectedCompanions] = useState<string[]>(editRecord?.companions ?? []);
-  const [companionFriends,   setCompanionFriends]   = useState<string[]>(editRecord?.companionFriends ?? []);
+  const [selectedCompanions, setSelectedCompanions] = useState<string[]>(editRecord?.companions ?? tripPrefill?.companions ?? []);
+  const [companionFriends,   setCompanionFriends]   = useState<string[]>(editRecord?.companionFriends ?? tripPrefill?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
 
   const toggleCompanion = (comp: string) => {
@@ -792,10 +792,13 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   };
 
   // 선택 항목 (step 3)
-  const [budget,     setBudget]     = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
-  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? 'KRW');
-  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다 (편집 모드는 처음부터 수동 취급)
-  const currencyTouchedRef = useRef(isEdit);
+  const [budget,     setBudget]     = useState(
+    editRecord?.budget ? String(editRecord.budget.amount) : tripPrefill?.budget ? String(tripPrefill.budget.amount) : ''
+  );
+  const [currency,   setCurrency]   = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? 'KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
+  // (편집 모드·여행 카드 프리필로 통화가 이미 정해진 경우도 수동 취급)
+  const currencyTouchedRef = useRef(isEdit || !!tripPrefill?.budget);
   const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   // 대표(첫) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
   useEffect(() => {
@@ -806,9 +809,9 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
   }, [selectedCountries[0]?.name]);
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [weather,    setWeather]    = useState(editRecord?.weather ?? '');
-  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
-  const [keywords,   setKeywords]   = useState<string[]>(editRecord?.keywords ?? []);
+  const [weather,    setWeather]    = useState(editRecord?.weather ?? tripPrefill?.weather ?? '');
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? tripPrefill?.flightType ?? '');
+  const [keywords,   setKeywords]   = useState<string[]>(editRecord?.keywords ?? tripPrefill?.keywords ?? []);
   const [keywordQuery, setKeywordQuery] = useState('');
 
   // 캘린더에서 기존 여행 밴드를 탭하면 그 여행 정보를 신규 폼에 채운다.

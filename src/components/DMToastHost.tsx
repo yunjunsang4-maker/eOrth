@@ -52,19 +52,27 @@ export default function DMToastHost() {
             // 되도록 폴백한다 (기존엔 friend가 없으면 탭해도 아무 동작이 없었다).
             const friend = friends.find((f) => f.handle === h);
             const name = friend?.name ?? h;
-            const emoji = friend?.emoji ?? '💬';
-            pushToast(`${emoji} ${name}: ${previewOf(m, t)}`, () => {
-              navigationRef.current?.navigate('DM', {
-                friend: friend
-                  ? { name: friend.name, handle: friend.handle, emoji: friend.emoji, photo: friend.photo, online: friend.online }
-                  : { name: h, handle: h, emoji: '💬' },
-              });
-            });
+            // 아바타는 visual로 넘긴다 — 문구에 시스템 이모지를 끼워 넣던 방식은
+            // 알림 화면에서 걷어낸 규칙(사진 우선, 없으면 제작 실루엣)과 어긋난다
+            pushToast(
+              `${name}: ${previewOf(m, t)}`,
+              () => {
+                navigationRef.current?.navigate('DM', {
+                  friend: friend
+                    ? { name: friend.name, handle: friend.handle, emoji: friend.emoji, photo: friend.photo, online: friend.online }
+                    : { name: h, handle: h, emoji: '💬' },
+                });
+              },
+              { photo: friend?.photo, icon: 'comment' }
+            );
           }
         }
         seen[h] = msgs.length;
       }
     }
+    // t는 넣지 않는다 — 언어를 바꿀 때마다 이 effect가 다시 돌면 이미 알린 메시지를
+    // 다시 토스트로 띄운다(미리보기 문구는 표시 시점 언어면 충분).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversations, friends, entered, pushToast, isMuted, isBlocked]);
 
   return null;
