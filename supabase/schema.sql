@@ -537,7 +537,7 @@ language sql security definer set search_path = public as $$
   -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → 다음 후보로 넘어간다.
   -- 예외 블록(plpgsql)은 쓰지 않는다 — 행마다 서브트랜잭션이 생겨 느려진다.
   pub as (
-    select p.id, p.author_id, p.country_name, p.data,
+    select p.id as post_id, p.author_id, p.country_name, p.data,
            coalesce(
              case when p.data->>'startDate' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
                   then to_date(replace(replace(p.data->>'startDate', '.', '-'), '/', '-'), 'YYYY-MM-DD')
@@ -552,7 +552,7 @@ language sql security definer set search_path = public as $$
   -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 data->'countries' 배열도 펼쳐
   -- 다국가 여행이 누락되지 않게 한다(예전엔 대표 국가 1개만 셌다).
   pub_country as (
-    select x.author_id, x.data, x.trip_date, c.name
+    select x.post_id, x.author_id, x.data, x.trip_date, c.name
     from pub x
     cross join lateral (
       select x.country_name as name
@@ -611,17 +611,18 @@ language sql security definer set search_path = public as $$
   -- 나라는 기록의 대표 국가(country_name)를 쓴다. pub_country로 펼치면 다국가 기록에서
   -- 한 도시가 그 여행의 모든 나라와 짝지어져 없는 쌍이 생긴다.
   my_cities as (
-    select distinct x.country_name as country, x.data->>'regionName' as city
-    from pub x, me
-    where x.author_id = me.uid and coalesce(x.data->>'regionName', '') <> ''
-      and coalesce(x.country_name, '') <> ''
+    select distinct p.country_name as country, p.data->>'regionName' as city
+    from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and coalesce(p.data->>'regionName', '') <> ''
+      and coalesce(p.country_name, '') <> ''
   ),
   my_keywords as (
     select distinct kw
-    from pub x, me, jsonb_array_elements_text(
-      case when jsonb_typeof(x.data->'keywords') = 'array' then x.data->'keywords' else '[]'::jsonb end
+    from public.posts p, me, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'keywords') = 'array' then p.data->'keywords' else '[]'::jsonb end
     ) as kw
-    where x.author_id = me.uid and kw <> ''
+    where p.author_id = me.uid and p.visibility <> 'private' and kw <> ''
   ),
   my_seasons as (
     select distinct ps.name, ps.season
@@ -634,24 +635,28 @@ language sql security definer set search_path = public as $$
     where pc.author_id = me.uid and pc.trip_date >= current_date - interval '1 year'
   ),
   my_rating as (
-    select avg((pc.data->>'rating')::numeric) as r
-    from pub_country pc, me
+    select avg((p.data->>'rating')::numeric) as r
+    from pub_country pc
+    join public.posts p on p.id = pc.post_id
+    cross join me
     where pc.author_id = me.uid and pc.name in (select name from my_countries)
-      and (pc.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
+      and (p.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
   ),
   -- 예산은 같은 통화일 때만 비교한다(환율 정보가 없어 다른 통화는 비교 불가).
   -- 내가 가장 많이 쓴 통화 1개를 기준으로 삼는다.
   my_budget as (
-    select x.data->'budget'->>'currency' as cur, avg((x.data->'budget'->>'amount')::numeric) as amt
-    from pub x, me
-    where x.author_id = me.uid and (x.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
-      and coalesce(x.data->'budget'->>'currency','') <> ''
+    select p.data->'budget'->>'currency' as cur, avg((p.data->'budget'->>'amount')::numeric) as amt
+    from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and (p.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
+      and coalesce(p.data->'budget'->>'currency','') <> ''
     group by 1 order by count(*) desc limit 1
   ),
   my_flight as (
-    select x.data->>'flightType' as ft
-    from pub x, me
-    where x.author_id = me.uid and coalesce(x.data->>'flightType','') <> ''
+    select p.data->>'flightType' as ft
+    from public.posts p, me
+    where p.author_id = me.uid and p.visibility <> 'private'
+      and coalesce(p.data->>'flightType','') <> ''
     group by 1 order by count(*) desc limit 1
   ),
   my_mates as (
@@ -717,11 +722,12 @@ language sql security definer set search_path = public as $$
   -- 도시 — (나라, 도시)가 모두 같을 때만 겹침으로 센다. 편재 국가는 제외한다.
   -- my_cities가 (나라, 도시) distinct라 조인은 기록 1행당 최대 1건, 행이 불지 않는다.
   ccity_pairs as (
-    select distinct x.author_id as cid, x.country_name as country, x.data->>'regionName' as city
-    from pub x
-    join my_cities mc on mc.country = x.country_name and mc.city = x.data->>'regionName'
-    where x.author_id in (select cid from cand)
-      and x.country_name not in (select name from ubiquitous_countries)
+    select distinct p.author_id as cid, p.country_name as country, p.data->>'regionName' as city
+    from public.posts p
+    join my_cities mc on mc.country = p.country_name and mc.city = p.data->>'regionName'
+    where p.visibility <> 'private'
+      and p.author_id in (select cid from cand)
+      and p.country_name not in (select name from ubiquitous_countries)
   ),
   ccity as (
     select cp.cid,
@@ -751,38 +757,42 @@ language sql security definer set search_path = public as $$
     group by t.cid
   ),
   ckw as (
-    select x.author_id as cid,
+    select p.author_id as cid,
            count(distinct kw)::int as n,
            (array_agg(distinct kw))[1:3] as kws
-    from pub x, jsonb_array_elements_text(
-      case when jsonb_typeof(x.data->'keywords') = 'array' then x.data->'keywords' else '[]'::jsonb end
+    from public.posts p, jsonb_array_elements_text(
+      case when jsonb_typeof(p.data->'keywords') = 'array' then p.data->'keywords' else '[]'::jsonb end
     ) as kw
-    where x.author_id in (select cid from cand) and kw in (select kw from my_keywords)
-    group by x.author_id
+    where p.visibility <> 'private'
+      and p.author_id in (select cid from cand) and kw in (select kw from my_keywords)
+    group by p.author_id
   ),
   crating as (
-    select pc.author_id as cid, avg((pc.data->>'rating')::numeric) as r
+    select pc.author_id as cid, avg((p.data->>'rating')::numeric) as r
     from pub_country pc
+    join public.posts p on p.id = pc.post_id
     where pc.author_id in (select cid from cand)
       and pc.name in (select name from my_countries)
-      and (pc.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
+      and (p.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
     group by pc.author_id
   ),
   -- 내 기준 통화와 같은 기록만 집계 — 후보당 1행이 되도록 통화로 미리 걸러낸다
   cbudget as (
-    select x.author_id as cid, avg((x.data->'budget'->>'amount')::numeric) as amt
-    from pub x
-    where x.author_id in (select cid from cand)
-      and (x.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
-      and x.data->'budget'->>'currency' = (select cur from my_budget)
-    group by x.author_id
+    select p.author_id as cid, avg((p.data->'budget'->>'amount')::numeric) as amt
+    from public.posts p
+    where p.visibility <> 'private'
+      and p.author_id in (select cid from cand)
+      and (p.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
+      and p.data->'budget'->>'currency' = (select cur from my_budget)
+    group by p.author_id
   ),
   cflight as (
     select cid, ft from (
-      select x.author_id as cid, x.data->>'flightType' as ft,
-             row_number() over (partition by x.author_id order by count(*) desc) as rn
-      from pub x
-      where x.author_id in (select cid from cand) and coalesce(x.data->>'flightType','') <> ''
+      select p.author_id as cid, p.data->>'flightType' as ft,
+             row_number() over (partition by p.author_id order by count(*) desc) as rn
+      from public.posts p
+      where p.visibility <> 'private'
+        and p.author_id in (select cid from cand) and coalesce(p.data->>'flightType','') <> ''
       group by 1, 2
     ) t where rn = 1
   ),
