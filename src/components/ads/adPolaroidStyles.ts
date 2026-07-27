@@ -42,17 +42,30 @@ export const polaroidStyles = StyleSheet.create({
     justifyContent: 'center',
   },
   caption: { color: '#FFFFFF', fontSize: 12, paddingTop: 8 },
+  // 광고 표시(Ad attribution) 배지 — AdMob 네이티브 광고의 정책 필수 요소다.
+  //
+  // 두 가지 제약이 있다:
+  // 1) 최소 15x15 이상이어야 AdMob native ad validator가 인식한다(그 미만이면
+  //    "Ad attribution missing"으로 잡힌다). minWidth/minHeight로 못박는다.
+  // 2) SDK가 AdChoices 아이콘을 광고 우측 상단에 자동으로 얹으므로, 배지를 그쪽에
+  //    두면 서로 가린다. 그래서 좌측 상단에 둔다.
+  //    (AdChoices 위치는 adChoicesPlacement로 옮길 수도 있지만 그 enum은 패키지
+  //     index에서 export되지 않아 쓸 수 없다.)
   badge: {
     position: 'absolute',
     top: 8,
-    right: 8,
+    left: 8,
+    minWidth: 18,
+    minHeight: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: 'rgba(10,10,15,0.55)',
     borderRadius: 4,
-    paddingHorizontal: 5,
-    paddingVertical: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '700',
     color: '#FFFFFF',
     letterSpacing: 0.5,
