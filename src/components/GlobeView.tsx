@@ -136,6 +136,17 @@ var cfg = {
   gridOpacity: 0
 };
 
+// ── 유리 구슬(사진 지구본) — displayMode 'photo'일 때만 적용 ──
+// 시안: 연보라 아크릴/유리 구슬. 바다는 반투명(뒤 별밭이 비침), 미기록국은 연한 유리 양각,
+// 기록국은 유리 속에 박힌 사진 조각. 반사광은 씬 고정 구가 담당(회전 무관, 화면 고정).
+function isGlass() { return globeDisplayMode === 'photo'; }
+var GLASS_OCEAN_ALPHA = 0.10;                    // A안(버블). B안 비교값: 0.35 — 실기기 비교 후 확정
+var GLASS_OCEAN_RGB = '196,182,232';             // 바다(유리 몸체) 연보라 rgb
+var GLASS_LAND_FILL = 'rgba(219,206,245,0.22)';  // 미기록국 유리 양각 채움
+var GLASS_LAND_EDGE = 'rgba(255,255,255,0.55)';  // 미기록국 하이라이트 윤곽
+var GLASS_RIM = '#E8DDFF';                       // 림(유리 테두리) 대기광 색
+var GLASS_BACK_OPACITY = 0.12;                   // 유리 너머 뒷면 대륙 불투명도
+
 // --- Three.js setup ---
 var container = document.getElementById('canvas-container');
 var renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -371,6 +382,13 @@ async function buildTexture() {
   ctx.imageSmoothingEnabled = true;
   try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
 
+  if (isGlass()) {
+    // 유리 구슬: 바다 = 반투명 연보라 유리 몸체 — 알파가 살아야 뒤 별밭이 비친다.
+    // 남색 발광 블롭·톤 오버레이는 유리 톤을 탁하게 해 굽지 않는다(반사·림은 별도 구가 담당).
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')';
+    ctx.fillRect(0, 0, W, H);
+  } else {
   ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
 
@@ -414,10 +432,34 @@ async function buildTexture() {
   horizon.addColorStop(1, 'rgba(' + cfg.deepRGB + ',0.35)');
   ctx.fillStyle = horizon;
   ctx.fillRect(0, 0, W, H);
+  }
 
   var proj = d3.geoEquirectangular().scale(H / Math.PI).translate([W / 2, H / 2]);
   var path = d3.geoPath().projection(proj).context(ctx);
 
+  if (isGlass()) {
+    // 미기록국: 연한 유리 양각(시안 1·2) — 은은히 밝은 반투명 채움 + 흰 하이라이트 윤곽.
+    // 어두운 그림자 대신 흰 글로우를 살짝 얹어 유리 표면에 돋을새김된 느낌을 낸다.
+    worldData.features.forEach(function(f) {
+      if (visitedMap[f.properties.name || '']) return;
+      ctx.fillStyle = GLASS_LAND_FILL;
+      ctx.beginPath();
+      path(f);
+      ctx.fill();
+    });
+    ctx.strokeStyle = GLASS_LAND_EDGE;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = 'round';
+    ctx.shadowColor = 'rgba(255,255,255,0.35)';
+    ctx.shadowBlur = hiTex ? 0 : 4;
+    worldData.features.forEach(function(f) {
+      if (visitedMap[f.properties.name || '']) return;
+      ctx.beginPath();
+      path(f);
+      ctx.stroke();
+    });
+    ctx.shadowBlur = 0;
+  } else {
   ctx.shadowColor = '#000';
   ctx.shadowBlur = 4;
 
@@ -446,6 +488,7 @@ async function buildTexture() {
       ctx.stroke();
     }
   });
+  }
 
   // 방문 국가 활성화
   var pathForBounds = d3.geoPath().projection(proj);
@@ -557,10 +600,11 @@ async function buildTexture() {
         ctx.restore();
       });
 
-      // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신)
+      // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신).
+      // 유리 모드는 살짝 강화 — 유리에 박힌 사진 조각의 가장자리 느낌
       if (!hiTex) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = isGlass() ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = isGlass() ? 2 : 1.5;
         ctx.lineJoin = 'round';
         ctx.shadowColor = 'rgba(255,255,255,0.3)';
         ctx.shadowBlur = 3;
@@ -632,6 +676,8 @@ async function buildTexture() {
       ctx.fill();
     }
   }
+  // 유리 모드는 구름 생략 — 흰 안개가 유리 몸체를 탁하게 만든다
+  if (!isGlass()) {
   drawCloud(310,270,1.6,0.10,1); drawCloud(440,430,1.3,0.09,2);
   drawCloud(200,390,1.1,0.08,3); drawCloud(560,320,1.2,0.09,4);
   drawCloud(360,570,1.4,0.10,5); drawCloud(490,640,1.0,0.08,6);
@@ -645,6 +691,7 @@ async function buildTexture() {
   drawCloud(880,75,1.3,0.07,21); drawCloud(1180,85,1.4,0.08,22);
   drawCloud(1450,70,1.2,0.07,23); drawCloud(400,750,1.2,0.08,24);
   drawCloud(600,820,1.1,0.07,25); drawCloud(300,870,1.0,0.07,26);
+  }
 
   var canvasTex = new THREE.CanvasTexture(offscreen);
   canvasTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
@@ -685,6 +732,31 @@ function buildInnerGlow() {
     blending: THREE.NormalBlending,
   });
   return new THREE.Mesh(geo, mat);
+}
+
+// 유리 반사(스펙큘러) — globe가 아니라 scene에 얹는 구.
+// 회전과 무관하게 반사광이 화면에 고정된다(유리 구슬의 올바른 광학)이고,
+// 줌은 camera.zoom이라 구가 커지면 반사도 자동으로 따라 커진다.
+// 뷰 공간 노멀 기준: 우상단 큰 소프트 반사(시안 1의 창문 반사) + 좌하단 작은 보조 반사.
+function buildGlassSpecular() {
+  var mat = new THREE.ShaderMaterial({
+    vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
+    fragmentShader:
+      'varying vec3 vN;' +
+      'void main(){' +
+      '  float hi = pow(max(dot(vN, normalize(vec3(0.5, 0.62, 0.6))), 0.0), 14.0) * 0.5;' +
+      '  float lo = pow(max(dot(vN, normalize(vec3(-0.45, -0.55, 0.55))), 0.0), 26.0) * 0.2;' +
+      '  float a = hi + lo;' +
+      '  gl_FragColor = vec4(vec3(1.0, 0.985, 1.0), a);' +
+      '}',
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    side: THREE.FrontSide,
+  });
+  var mesh = new THREE.Mesh(new THREE.SphereGeometry(1.005, 64, 64), mat);
+  mesh.renderOrder = 3; // 텍스처·국경선 위에 마지막으로
+  return mesh;
 }
 
 function geoToVec3(lon, lat, r) {
@@ -789,6 +861,7 @@ var KO_NAMES = {
 };
 
 var globeMesh, atmosphere, borderGroup;
+var glassBackMat = null; // 유리 뒷면 구 재질 — LOD 텍스처 교체 시 map도 함께 갱신
 var worldData = null;
 
 async function init() {
@@ -809,10 +882,28 @@ async function init() {
     specular: new THREE.Color(0x000000),
     shininess: 0,
   });
+  // 유리 모드: 텍스처 알파(반투명 바다)가 살아야 뒤 별밭이 비친다
+  if (isGlass()) mat.transparent = true;
   globeMesh = new THREE.Mesh(geo, mat);
   globe.add(globeMesh);
 
-  atmosphere = buildAtmosphere(cfg.neonColor);
+  if (isGlass()) {
+    // 유리 너머 희미한 뒷면 대륙 — 같은 텍스처를 BackSide로 은은하게(구슬 리얼리즘의 핵심)
+    glassBackMat = new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      opacity: GLASS_BACK_OPACITY,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+    var backMesh = new THREE.Mesh(new THREE.SphereGeometry(0.997, 64, 64), glassBackMat);
+    backMesh.renderOrder = -2; // 본체보다 먼저 그려 항상 '뒤'로
+    globe.add(backMesh);
+    // 화면 고정 반사 — scene에 직접(회전 무관)
+    scene.add(buildGlassSpecular());
+  }
+
+  atmosphere = buildAtmosphere(isGlass() ? GLASS_RIM : cfg.neonColor);
   globe.add(atmosphere);
   globe.add(buildInnerGlow());
 
@@ -1371,9 +1462,12 @@ function buildRegionTexture(lonC, latC, span) {
     ctx.fill();
     ctx.globalCompositeOperation = 'source-over';
   }
-  // 바다 — 마스크로 뚫린 영역 뒤에 채움(classic은 불투명 구)
+  // 바다 — 마스크로 뚫린 영역 뒤에 채움. 유리 모드는 전역 텍스처와 같은 반투명 유리 톤
+  // (불투명 남색이면 딥줌 창 안에서만 유리가 사라져 톤이 어긋난다)
   ctx.globalCompositeOperation = 'destination-over';
-  ctx.fillStyle = cfg.oceanBase;
+  ctx.fillStyle = isGlass()
+    ? 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')'
+    : cfg.oceanBase;
   ctx.fillRect(0, 0, S, S);
   ctx.globalCompositeOperation = 'source-over';
   var tex = new THREE.CanvasTexture(c);
@@ -1640,6 +1734,8 @@ function applyTheme(t) {
     var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
     globeMesh.material.map = tex;
     globeMesh.material.needsUpdate = true;
+    // 유리 뒷면 구도 같은 텍스처를 쓴다 — 함께 갱신 안 하면 dispose된 옛 텍스처를 참조
+    if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
     if (old && old.dispose) old.dispose();
   });
   if (atmosphere) {
@@ -1647,7 +1743,7 @@ function applyTheme(t) {
     if (atmosphere.geometry) atmosphere.geometry.dispose();
     if (atmosphere.material) atmosphere.material.dispose();
   }
-  atmosphere = buildAtmosphere(cfg.neonColor);
+  atmosphere = buildAtmosphere(isGlass() ? GLASS_RIM : cfg.neonColor);
   globe.add(atmosphere);
   if (borderGroup) {
     globe.remove(borderGroup);
@@ -1681,6 +1777,8 @@ function handleVisitedMessage(msg) {
     });
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
+    // 런타임에 photo↔color가 바뀌는 경우(변형 전환은 리마운트라 드물지만) 유리 알파 반영
+    if (globeMesh) globeMesh.material.transparent = isGlass();
     if (worldData && globeMesh) {
       regionC.span = 0; // 방문색/모드 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       loadAllImages().then(function() {
@@ -1689,6 +1787,7 @@ function handleVisitedMessage(msg) {
         var old = globeMesh.material.map;
         globeMesh.material.map = tex;
         globeMesh.material.needsUpdate = true;
+        if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
         if (old && old.dispose) old.dispose();
       });
     }
