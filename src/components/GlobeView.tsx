@@ -373,7 +373,10 @@ async function loadAllImages() {
 }
 
 // Create texture from world GeoJSON
-async function buildTexture() {
+async function buildTexture(srcOverride) {
+  // 채움(사진 클립 경로)의 데이터 소스 — 유리 모드는 메시와 같은 LOD 데이터를 써야
+  // 블리드·경계가 정합한다(기본: 유리=glassSrcData(), 그 외=worldData)
+  var srcW = srcOverride || (isGlass() ? glassSrcData() : worldData);
   // 사진 모드는 작은 나라(폴리곤이 몇 텍셀뿐)도 선명하도록 텍스처를 2배(8192x4096)로 키운다.
   // 다른 모드(국기·색)는 메모리 절약 위해 4096x2048 유지. (2:1 등장방형 비율 유지 필수)
   var isPhotoMode = globeDisplayMode === 'photo';
@@ -455,7 +458,7 @@ async function buildTexture() {
   ctx.shadowBlur = 4;
 
   // 비방문 국가 먼저 그리기
-  worldData.features.forEach(function(f) {
+  srcW.features.forEach(function(f) {
     var nameEn = f.properties.name || '';
     var visited = visitedMap[nameEn];
     if (!visited) {
@@ -471,7 +474,7 @@ async function buildTexture() {
   ctx.strokeStyle = cfg.landColor;
   ctx.lineWidth = 5;
   ctx.lineJoin = 'round';
-  worldData.features.forEach(function(f) {
+  srcW.features.forEach(function(f) {
     var nameEn = f.properties.name || '';
     if (!visitedMap[nameEn]) {
       ctx.beginPath();
@@ -483,7 +486,7 @@ async function buildTexture() {
 
   // 방문 국가 활성화
   var pathForBounds = d3.geoPath().projection(proj);
-  worldData.features.forEach(function(f) {
+  srcW.features.forEach(function(f) {
     var nameEn = f.properties.name || '';
     var visited = visitedMap[nameEn];
     if (!visited) return;
@@ -902,10 +905,27 @@ var GLASS_LAND_FS =
   '}';
 var glassLandMesh = null, glassLandMat = null, glassOutline = null;
 var glassPhotoAttr = null, glassRanges = null; // 방문 변경 시 aPhoto in-place 갱신용(나라별 정점 범위)
-function buildGlassLand(tex) {
-  if (!worldData || typeof THREE.ShapeUtils === 'undefined') return;
+// 유리 메시 LOD — 네온(VECTOR_LOD_AT)과 동일 방식: 딥줌에서 10m 데이터로 메시·테두리·텍스처를
+// '함께' 재구축해 어느 줌에서도 벡터 일체형을 유지한다(래스터 지역 창으로 전환하지 않는다).
+var glassCountries10m = null, glassFineRequested = false, glassLOD = 'coarse', glassSwapBusy = false;
+var GLASS_FINE_AT = 3.0; // zoomFactor 임계 — 이상이면 10m(파인) 메시
+function glassSrcData() { return (glassLOD === 'fine' && glassCountries10m) ? glassCountries10m : (world110Data || worldData); }
+function buildGlassLand(tex, srcData) {
+  var src = srcData || worldData;
+  if (!src || typeof THREE.ShapeUtils === 'undefined') return;
   if (glassLandMesh) { globe.remove(glassLandMesh); if (glassLandMesh.geometry) glassLandMesh.geometry.dispose(); if (glassLandMesh.material) glassLandMesh.material.dispose(); glassLandMesh = null; }
-  if (glassOutline) { globe.remove(glassOutline); glassOutline = null; }
+  if (glassOutline) {
+    globe.remove(glassOutline);
+    glassOutline.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        var fx = fatMats.indexOf(o.material);
+        if (fx >= 0) fatMats.splice(fx, 1); // 리사이즈 갱신 목록에서도 제거(누수 방지)
+        o.material.dispose();
+      }
+    });
+    glassOutline = null;
+  }
   var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화해도 사지타가 본체 아래로 안 꺼지게
   var pos = [], uvs = [], photos = [];
   var curPhoto = 0; // 현재 나라의 텍스처 샘플 여부 (features 루프에서 설정)
@@ -983,7 +1003,7 @@ function buildGlassLand(tex) {
     for (var t = 0; t < faces.length; t++) { var fa = faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
   }
   glassRanges = [];
-  worldData.features.forEach(function(f) {
+  src.features.forEach(function(f) {
     var g = f.geometry; if (!g) return;
     var nm = f.properties && f.properties.name;
     curPhoto = (nm && visitedMap[nm]) ? 1 : 0; // 방문국만 텍스처(사진/활성색) 샘플
@@ -1011,9 +1031,34 @@ function buildGlassLand(tex) {
   mesh.frustumCulled = false; mesh.renderOrder = 1;
   globe.add(mesh); glassLandMesh = mesh;
   // 테두리 — 같은 데이터의 링에서 뽑아 채움과 완벽 일치. 불투명도는 updateBorderFade가 줌 연동
-  glassOutline = buildFatWorldLines(worldData, R);
+  glassOutline = buildFatWorldLines(src, R);
   glassOutline.children[0].renderOrder = 3;
   globe.add(glassOutline);
+}
+// 유리 메시 LOD 전환 — 딥줌에서 텍스처(사진 클립)와 메시·테두리를 '같은 10m 데이터'로
+// 함께 재구축한다. 래스터 지역 창으로 갈아타던 옛 경로가 최대 줌에서 깨져 보이던 원인.
+function maybeSwapGlassLOD() {
+  if (!isGlass() || !glassLandMesh || glassSwapBusy) return;
+  var zf = zoomFactor();
+  // 10m 데이터 선요청 — 임계 접근 시 lazy (RN이 needCountries10m을 처리)
+  if (zf > GLASS_FINE_AT * 0.8 && !glassCountries10m && !glassFineRequested && window.ReactNativeWebView) {
+    glassFineRequested = true;
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needCountries10m' }));
+  }
+  if (!zoomSettled()) return; // 재구축(무거움)은 핀치 종료 후에만
+  var want = (glassCountries10m && zf >= GLASS_FINE_AT) ? 'fine' : 'coarse';
+  if (want === glassLOD) return;
+  glassLOD = want;
+  glassSwapBusy = true;
+  var oldTex = glassLandMat ? glassLandMat.uniforms.uTex.value : null;
+  loadAllImages().then(function() {
+    return buildTexture(glassSrcData());
+  }).then(function(tex) {
+    buildGlassLand(tex, glassSrcData());
+    if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
+    if (oldTex && oldTex !== tex && oldTex.dispose) oldTex.dispose();
+    glassSwapBusy = false;
+  }).catch(function() { glassSwapBusy = false; });
 }
 // 방문 변경 시 aPhoto만 in-place 갱신 — 전 나라 재삼각분할 없이(네온 updateVectorLandColors와 동일 기법)
 function updateGlassLandFlags() {
@@ -1174,7 +1219,7 @@ async function init() {
     backMesh.renderOrder = -2; // 본체보다 먼저 그려 항상 '뒤'로
     globe.add(backMesh);
     // 일체형 벡터 대륙 + 동일 정점 테두리 — 채움과 선의 어긋남(깨짐) 원천 제거
-    buildGlassLand(texture);
+    buildGlassLand(texture, worldData);
     // 화면 고정 반사 — scene에 직접(회전 무관)
     scene.add(buildGlassSpecular());
   }
@@ -1580,13 +1625,12 @@ function updateBorderFade() {
   var zf = zoomFactor();
   // 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8) — 확대할수록 매끄럽게 선명해진다
   var t = world50Data ? smoothstep01(1.9, 2.6, zf) : 0;
-  var t10 = borders10Lines ? smoothstep01(4.5, 5.8, zf) : 0;
-  // 유리 모드: 일체형 팻라인이 구분선 담당 — 기본 크기 0, 확대 시 은은하게 페이드 인.
-  // 딥줌에선 10m 팻 구분선(t10)이 위에서 이어받으므로 함께 줄인다.
+  // 10m 래스터 쌍(정밀선+지역 창)은 비유리 전용 — 유리는 메시 LOD(10m 재구축)가 담당
+  var t10 = (!isGlass() && borders10Lines) ? smoothstep01(4.5, 5.8, zf) : 0;
+  // 유리 모드: 일체형 팻라인이 전 줌 구간의 구분선 — 기본 크기 0, 확대 시 은은하게.
+  // 딥줌에서도 물러나지 않는다(메시가 10m로 재구축될 때 테두리도 같은 데이터로 재구축됨)
   if (isGlass() && glassOutline && glassOutline.userData.mat) {
-    // 딥줌에선 10m 정밀선(t10)+지역 창(10m 마스크) 쌍이 이어받는다 — 110m 팻라인이
-    // 남아 있으면 10m 경계와 어긋나 '깨져' 보이므로 완전히 물러난다
-    var go = smoothstep01(1.5, 2.6, zf) * 0.5 * (1 - t10);
+    var go = smoothstep01(1.5, 2.6, zf) * 0.5;
     glassOutline.userData.mat.uniforms.uOpacity.value = go;
     glassOutline.visible = go > 0.01;
   }
@@ -1595,8 +1639,8 @@ function updateBorderFade() {
     borderGroup50 = buildBordersMerged(world50Data, cfg.borderColor);
     globe.add(borderGroup50);
   }
-  // 10m 데이터는 4배 이상 확대에 접근하면 미리 요청(lazy)
-  if (zf > 3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView) {
+  // 10m 데이터는 4배 이상 확대에 접근하면 미리 요청(lazy) — 유리는 안 쓴다(메시 LOD가 대신)
+  if (!isGlass() && zf > 3.8 && !borders10Lines && !borders10Requested && window.ReactNativeWebView) {
     borders10Requested = true;
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needBorders10m' }));
   }
@@ -2019,10 +2063,14 @@ function animate() {
   renderer.render(scene, camera);
   updateAdMarkers();   // 렌더 후(월드행렬 최신) 마커 위치 갱신
   updateLabels();      // 지역명 라벨(나라·도시) — 줌 단계별 등장
-  maybeSwapLOD();      // 확대 임계 넘으면 채움 텍스처를 50m로 교체
+  maybeSwapLOD();      // 확대 임계 넘으면 채움 텍스처를 50m로 교체(탭 판정·비유리 채움용)
+  maybeSwapGlassLOD(); // 유리: 딥줌에서 10m 메시·텍스처 동시 재구축(벡터 일체형 유지)
   updateBorderFade();  // 국경 110m↔50m↔10m 크로스페이드 + 주/도 지역구분선 페이드
-  updateRegion();      // 최심 줌: 보이는 창만 고해상 지역 텍스처(채움 경계 선명)
-  updateRegionFade();  // 지역 창 스르륵 페이드 인/아웃
+  if (!isGlass()) {
+    // 지역 창(래스터 정밀 채움)은 비유리 전용 — 유리는 모든 줌을 벡터 메시가 담당
+    updateRegion();
+    updateRegionFade();
+  }
 }
 
 window.addEventListener('resize', function() {
@@ -2142,6 +2190,16 @@ function handleVisitedMessage(msg) {
       world50Data = topoDecode(JSON.parse(msg.topo), 'countries');
     } catch (err) {
       world50Requested = false; // 실패 시 재요청 가능
+    }
+  } else if (msg.type === 'countries10m' && msg.topo) {
+    // 10m 나라별 폴리곤 도착 — 다음 maybeSwapGlassLOD에서 파인(10m) 메시로 전환.
+    // 국가명 정규화(init의 GEO_NAME_FIX와 동일) — 안 맞으면 방문국이 파인 전환 때 사진을 잃는다
+    try {
+      glassCountries10m = topoDecode(JSON.parse(msg.topo), 'countries');
+      var FIX10 = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
+      glassCountries10m.features.forEach(function(f) { var fx = FIX10[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
+    } catch (err) {
+      glassFineRequested = false;
     }
   } else if (msg.type === 'admin1Lines' && msg.lines) {
     // 주/도 지역구분선 데이터 도착 — 다음 updateBorderFade에서 그룹 생성
