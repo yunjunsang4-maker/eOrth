@@ -1554,6 +1554,8 @@ const ko = {
     recentNews: '최근 소식',
     contents: '목차 · Contents',
     noNews: '새로운 소식이 없어요',
+    noNewsHint: '메이트가 회원님의 기록에 좋아요·댓글을 남기거나\n새 여행을 올리면 여기에 모아드려요',
+    markAllRead: '모두 읽음',
     countryVisitCount: '회 방문',
     countryVisitorsTitle: '이 나라 다녀온 사람',
     countryTotalDays: '전체 일수',

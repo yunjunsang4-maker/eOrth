@@ -275,6 +275,24 @@ export async function fetchUnreadNotificationCount(): Promise<number> {
   }
 }
 
+// 실시간 알림 구독 — 내 알림 INSERT를 받아 배지·목록을 즉시 갱신한다.
+// (RLS가 본인 행만 전달하지만, 필터를 함께 걸어 불필요한 브로드캐스트를 줄인다)
+// 해제 함수 반환 — DM subscribeInbox와 동일 패턴.
+export function subscribeNotifications(userId: string, onInsert: () => void): () => void {
+  if (!supabase || !userId) return () => {};
+  const channel = supabase
+    .channel(`notif-${userId}`)
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+      () => onInsert()
+    )
+    .subscribe();
+  return () => {
+    try { supabase!.removeChannel(channel); } catch { /* 무시 */ }
+  };
+}
+
 // 알림 전체 읽음 처리 — 목록을 연 시점 기준. 실패해도 조용히 넘어간다(다음 진입 시 재시도).
 export async function markAllNotificationsRead(): Promise<void> {
   if (!supabase) return;

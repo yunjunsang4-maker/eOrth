@@ -22,7 +22,8 @@ import { andFitText } from '../utils/fitText';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
 import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
-import { fetchUnreadNotificationCount } from '../services/social';
+import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
+import { getMyUserId } from '../services/profile';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -525,6 +526,19 @@ export default function MainScreen({ navigation, route }: Props) {
       return () => { alive = false; };
     }, [])
   );
+  // 실시간 구독 — 앱을 켜둔 채로도 새 알림이 도착하면 배지가 바로 오른다
+  // (포커스 갱신만으로는 화면을 나갔다 와야 반영됐다)
+  useEffect(() => {
+    let unsub: (() => void) | null = null;
+    let alive = true;
+    getMyUserId().then((uid) => {
+      if (!alive || !uid) return;
+      unsub = subscribeNotifications(uid, () => {
+        fetchUnreadNotificationCount().then((n) => { if (alive) setUnreadAlerts(n); });
+      });
+    });
+    return () => { alive = false; unsub?.(); };
+  }, []);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드

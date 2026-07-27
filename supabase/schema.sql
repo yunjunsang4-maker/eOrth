@@ -1593,3 +1593,26 @@ as $$
 $$;
 
 grant execute on function public.log_ad_click(uuid) to anon, authenticated;
+
+-- ============================================================
+-- 11) 알림 보존 정리
+--   앱은 7일 지난 알림을 조회·집계에서 제외한다(클라이언트 NOTIFICATION_MAX_AGE_MS).
+--   서버 행은 그대로 쌓이므로 주기적으로 지운다 — 안 지우면 테이블·인덱스가 무한히
+--   커지고, 사용자당 행이 많아지면 unread count 집계도 느려진다.
+--   관리자/서비스롤이 실행하거나 pg_cron으로 스케줄:
+--     select cron.schedule('purge-notifications', '0 4 * * *', $$select public.purge_old_notifications()$$);
+-- ============================================================
+create or replace function public.purge_old_notifications(older_than interval default interval '30 days')
+returns integer language plpgsql security definer set search_path = public as $$
+declare
+  n integer := 0;
+begin
+  -- 클라이언트 표시 기준(7일)보다 넉넉히 잡는다 — 기준을 늘릴 여지를 남기고,
+  -- 읽지 않은 알림이 곧바로 사라져 사용자가 놓치는 일을 피한다.
+  delete from public.notifications where created_at < now() - older_than;
+  get diagnostics n = row_count;
+  return n;
+end; $$;
+
+-- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
+revoke all on function public.purge_old_notifications(interval) from public, anon, authenticated;

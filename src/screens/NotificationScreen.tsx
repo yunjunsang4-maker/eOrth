@@ -9,7 +9,7 @@ import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
-import { fetchAppNotifications, markNotificationsRead, type AppNotificationType } from '../services/social';
+import { fetchAppNotifications, markNotificationsRead, markAllNotificationsRead, type AppNotificationType } from '../services/social';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSkinAccent } from '../constants/skinTheme';
 import { countryLabel } from '../utils/countryLabel';
@@ -230,6 +230,18 @@ export default function NotificationScreen({ navigation }: Props) {
     // t·언어도 의존 — 빠지면 언어를 바꿔도 추억 알림 문구가 이전 언어로 남는다
   }, [records, t, i18n.language, memoryRead]);
 
+  // 모두 읽음 — 서버 일괄 처리 + 화면 즉시 반영(로컬 추억 알림도 함께).
+  // 하나씩 탭해야 배지가 내려가던 불편을 없앤다.
+  const unreadCount = useMemo(
+    () => [...serverNotis, ...memoryNotis].filter((n) => !n.read).length,
+    [serverNotis, memoryNotis]
+  );
+  const onMarkAllRead = useCallback(() => {
+    markAllNotificationsRead();
+    setServerNotis((prev) => prev.map((n) => ({ ...n, read: true })));
+    memoryNotis.forEach((n) => { if (!n.read) markMemoryRead(n.id); });
+  }, [memoryNotis, markMemoryRead]);
+
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
@@ -307,7 +319,20 @@ export default function NotificationScreen({ navigation }: Props) {
           <Text style={st.backIcon}>←</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('misc.notifTitle')}</Text>
-        <View style={{ width: 40 }} />
+        {/* 모두 읽음 — 안 읽은 게 있을 때만 노출(자리는 항상 차지해 제목이 안 흔들리게) */}
+        <View style={st.headerRight}>
+          {unreadCount > 0 && (
+            <TouchableOpacity
+              onPress={onMarkAllRead}
+              activeOpacity={0.7}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityRole="button"
+              accessibilityLabel={t('misc.markAllRead')}
+            >
+              <Text style={[st.markAll, { color: skinAccent.accent }]}>{t('misc.markAllRead')}</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       <ScrollView
@@ -329,8 +354,15 @@ export default function NotificationScreen({ navigation }: Props) {
         {loading && cats.length === 0 && (
           <ActivityIndicator style={{ paddingVertical: 40 }} color={skinAccent.accent} />
         )}
+        {/* 빈 상태 — 한 줄 텍스트 대신 '왜 비었고 무엇이 채우는지' 안내 */}
         {!loading && cats.length === 0 && (
-          <Text style={st.empty}>{t('misc.noNews')}</Text>
+          <View style={st.emptyWrap}>
+            <View style={[st.emptyIcon, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.tint(0.3) }]}>
+              <HeartIcon size={22} color={skinAccent.accent} />
+            </View>
+            <Text style={st.empty}>{t('misc.noNews')}</Text>
+            <Text style={st.emptyHint}>{t('misc.noNewsHint')}</Text>
+          </View>
         )}
 
         {cats.map((cat, i) => {
@@ -380,6 +412,8 @@ const st = StyleSheet.create({
   backBtn: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.card, borderRadius: 20 },
   backIcon: { fontSize: 20, color: COLORS.white },
   headerTitle: { fontSize: 17, fontWeight: 'bold', color: COLORS.white },
+  headerRight: { minWidth: 40, alignItems: 'flex-end' },
+  markAll: { fontSize: 12, fontWeight: '700' },
 
   scroll: { flex: 1 },
   content: { paddingHorizontal: 18, paddingTop: 16 },
@@ -391,7 +425,13 @@ const st = StyleSheet.create({
   date: { color: COLORS.textMuted, fontSize: 10 },
   rule: { height: 1, backgroundColor: COLORS.divider, marginVertical: 14 },
   contentsLabel: { color: COLORS.textMuted, fontSize: 9, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 10 },
-  empty: { color: COLORS.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 40 },
+  emptyWrap: { alignItems: 'center', paddingVertical: 44, gap: 10 },
+  emptyIcon: {
+    width: 52, height: 52, borderRadius: 26, borderWidth: 1,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  empty: { color: COLORS.white, fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  emptyHint: { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', lineHeight: 18, paddingHorizontal: 30 },
 
   // 목차 행
   catBlock: { marginBottom: 6 },

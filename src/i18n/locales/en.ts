@@ -1553,6 +1553,8 @@ const en = {
     recentNews: 'Recent news',
     contents: 'Contents',
     noNews: 'No new news',
+    noNewsHint: "Likes, comments, and your mates' new trips\nwill show up here",
+    markAllRead: 'Mark all read',
     countryVisitCount: 'visits',
     countryVisitorsTitle: "Travelers who've been here",
     countryTotalDays: 'total days',
