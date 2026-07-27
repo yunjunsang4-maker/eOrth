@@ -25,6 +25,7 @@ import { COUNTRIES } from '../constants/countries';
 import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
 import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
+import { matchPercent, pickReason } from '../utils/matchScore';
 import { buzz } from '../utils/haptics';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -65,6 +66,13 @@ interface ContactFriend {
   mutualCount?: number;       // 함께 아는 메이트 수(여행 DNA)
   styleScore?: number;        // 여행 스타일 점수(여행 DNA)
   matchScore?: number;        // 여행 DNA 종합 점수(mate_suggestions.total_score)
+  placeScore?: number;      // 축별 점수 — 추천 근거 문구 선택에 쓴다
+  recencyScore?: number;
+  seasonScore?: number;
+  interestScore?: number;
+  tasteScore?: number;
+  sharedCities?: string[];
+  sharedKeywords?: string[];
   // 추천 섹션에서 온 행인지 — 검색 결과와 부가정보(방문국·메이트 수) 표기가 다르다.
   // 추천 행은 방문국 수를 조회하지 않으므로 '방문 기록 없음'으로 오표기하면 안 된다.
   fromSuggestion?: boolean;
@@ -76,16 +84,6 @@ for (const c of COUNTRIES) {
   if (!FLAG_BY_KO_NAME[c.name]) FLAG_BY_KO_NAME[c.name] = c.flag;
 }
 FLAG_BY_KO_NAME['한국'] = FLAG_BY_KO_NAME['대한민국'] ?? '🇰🇷'; // 구 표기 별칭
-
-// 여행 DNA 점수 → 매칭률(%).
-// mate_suggestions.total_score는 가중치 상한의 합이 정확히 100이다(schema.sql):
-//   겹친 나라 min(n,5)*10=50 + 동행 min(n,3)*5=15 + 기록형식 min(n,2)*7=14 + 공통 메이트 min(n,3)*7=21
-// 따라서 점수를 그대로 %로 쓴다. 하한 30%는 표시용(한 곳만 겹쳐도 10%로 보이면 무의미).
-const MATCH_SCORE_FULL = 100;
-const matchPercent = (score?: number): number | null => {
-  if (!score || score <= 0) return null;
-  return Math.max(30, Math.min(99, Math.round((score / MATCH_SCORE_FULL) * 100)));
-};
 
 // ─────────────────────────────────────────────
 // 메이트 신청 버튼 — 상태 3종을 시각적으로 구분한다.
@@ -185,18 +183,25 @@ function FriendItem({
   }));
   const extraFlagCount = Math.max(0, (item.sharedCount ?? shared.length) - flags.length);
 
-  // 추천 이유 한 줄 — 겹침 > 함께 아는 메이트 > 스타일 순.
+  // 추천 이유 한 줄 — 가장 기여도 높은 축을 pickReason이 고른다(도시 > 나라 > 시의성 …).
   // 근거가 없을 때: 검색 결과는 방문국·메이트 수를, 추천 행은 중립 문구를 쓴다
   // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
-  const reasonText = shared.length > 0
-    ? t('friends.overlapReason', { count: item.sharedCount ?? shared.length })
-    : item.mutualCount && item.mutualCount > 0
-      ? t('friends.mutualReason', { count: item.mutualCount })
-      : item.styleScore && item.styleScore > 0
-        ? t('friends.styleReason')
-        : item.fromSuggestion
-          ? t('friends.suggestedReason')
-          : `${item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}${item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}`;
+  const reason = pickReason({
+    placeScore: item.placeScore ?? 0,
+    recencyScore: item.recencyScore ?? 0,
+    seasonScore: item.seasonScore ?? 0,
+    interestScore: item.interestScore ?? 0,
+    tasteScore: item.tasteScore ?? 0,
+    mutualCount: item.mutualCount ?? 0,
+    sharedCities: item.sharedCities ?? [],
+    sharedKeywords: item.sharedKeywords ?? [],
+    sharedCount: item.sharedCount ?? shared.length,
+  });
+  const reasonText = reason
+    ? t(reason.key, reason.params)
+    : item.fromSuggestion
+      ? t('friends.suggestedReason')
+      : `${item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}${item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}`;
 
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
@@ -421,6 +426,13 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           mutualCount: r.mutualCount,
           styleScore: r.styleScore,
           matchScore: r.totalScore,
+          placeScore: r.placeScore,
+          recencyScore: r.recencyScore,
+          seasonScore: r.seasonScore,
+          interestScore: r.interestScore,
+          tasteScore: r.tasteScore,
+          sharedCities: r.sharedCities,
+          sharedKeywords: r.sharedKeywords,
           fromSuggestion: true,
         })));
       } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
