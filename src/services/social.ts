@@ -358,6 +358,14 @@ export interface MateSuggestionRow {
   mutualCount: number;
   styleScore: number;
   totalScore: number;
+  // 축별 점수 — 어느 근거로 추천됐는지 문구를 만드는 데 쓴다(만점 100의 구성 요소)
+  placeScore: number;    // 나라(희소성) + 도시
+  recencyScore: number;  // 최근 1년 내 겹친 나라
+  seasonScore: number;   // 같은 나라·같은 계절
+  interestScore: number; // 키워드 겹침
+  tasteScore: number;    // 별점·예산·항공편
+  sharedCities: string[];   // 겹친 도시(최대 3)
+  sharedKeywords: string[]; // 겹친 키워드(최대 3)
 }
 
 export async function fetchMateSuggestions(limit = 10, extraCountries: string[] = []): Promise<MateSuggestionRow[]> {
@@ -370,11 +378,19 @@ export async function fetchMateSuggestions(limit = 10, extraCountries: string[] 
       handle: r.handle,
       emoji: r.emoji ?? null,
       profilePhoto: r.profile_photo ?? null,
-      sharedCount: r.shared_count,
+      sharedCount: r.shared_count ?? 0,
       sampleCountries: r.sample_countries ?? [],
       mutualCount: r.mutual_count ?? 0,
       styleScore: r.style_score ?? 0,
       totalScore: r.total_score ?? 0,
+      // 구버전 RPC(축별 점수 없음)에서도 앱이 깨지지 않게 전부 기본값을 둔다
+      placeScore: r.place_score ?? 0,
+      recencyScore: r.recency_score ?? 0,
+      seasonScore: r.season_score ?? 0,
+      interestScore: r.interest_score ?? 0,
+      tasteScore: r.taste_score ?? 0,
+      sharedCities: r.shared_cities ?? [],
+      sharedKeywords: r.shared_keywords ?? [],
     }));
   } catch {
     return [];
