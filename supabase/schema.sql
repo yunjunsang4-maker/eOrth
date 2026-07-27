@@ -536,8 +536,11 @@ language sql security definer set search_path = public as $$
   -- 거르고 to_date로 파싱한다(::date는 범위를 벗어나면 예외를 던져 전 사용자 조회가 죽는다,
   -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → 다음 후보로 넘어간다.
   -- 예외 블록(plpgsql)은 쓰지 않는다 — 행마다 서브트랜잭션이 생겨 느려진다.
+  -- 전역 1회 스캔. data 전체(본문·사진 URL·perCountryData 포함)를 들고 다니지 않는다 —
+  -- 나라 전개에 필요한 countries 배열만 남긴다. data가 필요한 계산은 작성자로 좁혀진 뒤
+  -- public.posts를 직접 읽는다.
   pub as (
-    select p.id as post_id, p.author_id, p.country_name, p.data,
+    select p.id as post_id, p.author_id, p.country_name,
            coalesce(
              case when p.data->>'startDate' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
                   then to_date(replace(replace(p.data->>'startDate', '.', '-'), '/', '-'), 'YYYY-MM-DD')
@@ -545,21 +548,21 @@ language sql security definer set search_path = public as $$
              case when p.data->>'date' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
                   then to_date(replace(replace(p.data->>'date', '.', '-'), '/', '-'), 'YYYY-MM-DD')
              end,
-             p.created_at::date) as trip_date
+             p.created_at::date) as trip_date,
+           case when jsonb_typeof(p.data->'countries') = 'array'
+                then p.data->'countries' else '[]'::jsonb end as countries
     from public.posts p
     where p.visibility <> 'private'
   ),
-  -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 data->'countries' 배열도 펼쳐
+  -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 countries 배열도 펼쳐
   -- 다국가 여행이 누락되지 않게 한다(예전엔 대표 국가 1개만 셌다).
   pub_country as (
-    select x.post_id, x.author_id, x.data, x.trip_date, c.name
+    select x.post_id, x.author_id, x.trip_date, c.name
     from pub x
     cross join lateral (
       select x.country_name as name
       union
-      select jsonb_array_elements(
-        case when jsonb_typeof(x.data->'countries') = 'array' then x.data->'countries' else '[]'::jsonb end
-      )->>'name'
+      select jsonb_array_elements(x.countries)->>'name'
     ) c
     where c.name is not null and c.name <> ''
   ),
