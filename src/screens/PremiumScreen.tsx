@@ -7,7 +7,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import {
-  StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, MegaphoneIcon,
+  StarIcon, LanguageIcon, StickerIcon, PaletteIcon,
 } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
@@ -53,12 +53,11 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
 
   // 혜택 목록 — 설정 프리미엄 그룹과 동일한 아이콘 사용
   const benefits = [
-    { icon: <MegaphoneIcon size={22} />, title: t('premium.benefitAdsTitle'),   desc: t('premium.benefitAdsDesc') },
-    { icon: <LanguageIcon size={22} />, title: t('premium.benefitFontTitle'),   desc: t('premium.benefitFontDesc') },
-    // (2026-07) 사진 제한 상향은 프리미엄 혜택에서 제외 — benefitPhotos 행 제거. 사진첩 '원본 백업'은 유지.
-    { icon: <GalleryIcon size={22} />,  title: t('premium.benefitBackupTitle'), desc: t('premium.benefitBackupDesc') },
-    { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),   desc: t('premium.benefitLogoDesc') },
-    { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'),  desc: t('premium.benefitFrameDesc') },
+    // (2026-07 수익구조 변경) 광고 제거·사진첩 원본 백업은 혜택에서 제외.
+    //  문구 키(benefitAds*, benefitBackup*)는 재화 도입 때 재사용하려고 남겨뒀다.
+    { icon: <LanguageIcon size={22} />, title: t('premium.benefitFontTitle'),  desc: t('premium.benefitFontDesc') },
+    { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),  desc: t('premium.benefitLogoDesc') },
+    { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'), desc: t('premium.benefitFrameDesc') },
   ];
 
   const handleSubscribe = () => {
@@ -84,7 +83,9 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
             <StarIcon size={40} />
           </View>
           <Text style={st.heroTitle}>{t('premium.paywallTitle')}</Text>
-          <Text style={st.heroSub}>{t('premium.paywallSubtitle')}</Text>
+          <Text style={st.heroSub}>
+            {LAUNCH_FREE_PREMIUM ? t('premium.launchFreeDesc') : t('premium.paywallSubtitle')}
+          </Text>
         </View>
 
         {/* 혜택 목록 */}
@@ -120,7 +121,11 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
         )}
 
         {/* CTA */}
-        {isPremium ? (
+        {LAUNCH_FREE_PREMIUM ? (
+          <View style={[st.ctaBtn, st.ctaActive, { borderColor: skinAccent.tint(0.35) }]}>
+            <Text style={st.ctaActiveText}>🎉 {t('premium.launchFreeTitle')}</Text>
+          </View>
+        ) : isPremium ? (
           <View style={[st.ctaBtn, st.ctaActive, { borderColor: skinAccent.tint(0.35) }]}>
             <Text style={st.ctaActiveText}>✓ {t('premium.paywallActive')}</Text>
           </View>

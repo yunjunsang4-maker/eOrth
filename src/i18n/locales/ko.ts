@@ -142,6 +142,8 @@ const ko = {
     paywallCta: '베타 체험 시작하기',
     paywallActive: '프리미엄 이용 중',
     paywallNote: '베타 기간에는 무료로 체험할 수 있어요.\n정식 출시 시 구독 상품으로 전환됩니다.',
+    launchFreeTitle: '출시 기념 전체 무료',
+    launchFreeDesc: '아래 기능을 지금은 모두 무료로 쓸 수 있어요.',
     benefitAdsTitle: '광고 없는 피드',
     benefitAdsDesc: '소셜 피드의 광고가 사라져요',
     benefitFontTitle: '아이디 폰트',

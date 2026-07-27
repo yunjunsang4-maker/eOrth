@@ -141,6 +141,8 @@ const en = {
     paywallCta: 'Start beta trial',
     paywallActive: 'Premium active',
     paywallNote: 'Free to try during the beta.\nWill become a subscription at official launch.',
+    launchFreeTitle: 'Free for launch',
+    launchFreeDesc: 'All features below are free to use right now.',
     benefitAdsTitle: 'Ad-free feed',
     benefitAdsDesc: 'No more ads in your social feed',
     benefitFontTitle: 'Handle fonts',
