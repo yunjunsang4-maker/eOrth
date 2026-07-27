@@ -144,6 +144,14 @@ const en = {
     launchFreeTitle: 'Free for launch',
     launchFreeDesc: 'All features below are free to use right now.',
     launchFreeNote: 'These benefits are free to celebrate launch.\nHow this works may change later.',
+    // 혜택 쇼케이스 카드 (PremiumScreen) — 카드 안에서 미리보기만 바꾼다
+    showcaseHintFont: 'Tap to try a typeface',
+    showcaseHintLogo: 'Tap the strip to remove the logo',
+    showcaseHintFrame: 'Tap a color to pick a frame',
+    showcaseLogoOn: 'With logo',
+    showcaseLogoOff: 'No logo',
+    showcaseStamp: 'Tokyo 2026', // 프레임 미리보기용 예시 스탬프 문구
+    applyCta: 'Apply in Settings',
     benefitAdsTitle: 'Ad-free feed',
     benefitAdsDesc: 'No more ads in your social feed',
     benefitFontTitle: 'Handle fonts',

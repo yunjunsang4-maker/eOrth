@@ -145,6 +145,14 @@ const ko = {
     launchFreeTitle: '출시 기념 전체 무료',
     launchFreeDesc: '아래 기능을 지금은 모두 무료로 쓸 수 있어요.',
     launchFreeNote: '지금은 출시 기념으로 혜택을 무료로 열어뒀어요.\n앞으로 이용 방식이 바뀔 수 있어요.',
+    // 혜택 쇼케이스 카드 (PremiumScreen) — 카드 안에서 미리보기만 바꾼다
+    showcaseHintFont: '탭해서 서체를 바꿔보세요',
+    showcaseHintLogo: '스트립을 탭해서 로고를 지워보세요',
+    showcaseHintFrame: '색을 탭해서 프레임을 골라보세요',
+    showcaseLogoOn: '로고 있음',
+    showcaseLogoOff: '로고 없음',
+    showcaseStamp: 'Tokyo 2026', // 프레임 미리보기용 예시 스탬프 문구
+    applyCta: '설정에서 적용하기',
     benefitAdsTitle: '광고 없는 피드',
     benefitAdsDesc: '소셜 피드의 광고가 사라져요',
     benefitFontTitle: '아이디 폰트',

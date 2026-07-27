@@ -1,24 +1,30 @@
 import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
-import {
-  StarIcon, LanguageIcon, StickerIcon, PaletteIcon,
-} from '../components/icons';
+import { StarIcon } from '../components/icons';
+import StarFieldBackground from '../components/StarFieldBackground';
+import FontShowcaseCard from '../components/premium/FontShowcaseCard';
+import LogoShowcaseCard from '../components/premium/LogoShowcaseCard';
+import FrameShowcaseCard from '../components/premium/FrameShowcaseCard';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 
-// 프리미엄 소개(페이월) — 혜택 6종 요약 + 구독 CTA.
-// 베타: CTA가 isPremium 로컬 토글을 켠다. RevenueCat 연동 시 구매 플로우 호출로 교체.
+// 제작 이모티콘 (assets/emoji) — 기본 시스템 이모지 대신 앱 전용 3D 이모티콘을 쓴다.
+// 열쇠 = 잠금 해제(전체 무료), 체크 = 이용 중. LoginScreen과 같은 자산 세트.
+const EMOJI_KEY = require('../../assets/emoji/key.png');
+const EMOJI_CHECK = require('../../assets/emoji/check.png');
+
+// 프리미엄 소개 — 혜택을 '읽는 목록'이 아니라 '만져보는 쇼케이스'로 보여준다.
+// 각 카드 안에서 서체·로고·프레임색을 바꿔볼 수 있고, 실제 적용은 하단 버튼으로 설정에서 한다.
+// 배경(별·글로우)·유리 재질·강조색은 앱 공통 시각 언어를 그대로 쓴다.
 const COLORS = {
   bg: '#0A0A0F',
   card: 'rgba(46,46,59,0.45)',
-  cardBorder: 'rgba(255,255,255,0.08)',
-  purpleNeon: '#BF85FC',
   white: '#FFFFFF',
   textDim: '#A1A1B0',
   textMuted: '#8B8B9E',
@@ -26,7 +32,7 @@ const COLORS = {
 
 export default function PremiumScreen({ navigation }: RootStackScreenProps<'Premium'>) {
   const { t } = useTranslation();
-  const skinAccent = useSkinAccent(); // 구독 버튼·테두리 강조를 스킨색으로
+  const skinAccent = useSkinAccent(); // 강조·테두리를 지구본 스킨색으로
   const { isPremium, setIsPremium } = useSettings();
   const { records, rebackupAlbumOriginals } = useRecords();
 
@@ -51,23 +57,25 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
     }
   };
 
-  // 혜택 목록 — 설정 프리미엄 그룹과 동일한 아이콘 사용
-  const benefits = [
-    // (2026-07 수익구조 변경) 광고 제거·사진첩 원본 백업은 혜택에서 제외.
-    //  문구 키(benefitAds*, benefitBackup*)는 재화 도입 때 재사용하려고 남겨뒀다.
-    { icon: <LanguageIcon size={22} />, title: t('premium.benefitFontTitle'),  desc: t('premium.benefitFontDesc') },
-    { icon: <StickerIcon size={22} />,  title: t('premium.benefitLogoTitle'),  desc: t('premium.benefitLogoDesc') },
-    { icon: <PaletteIcon size={22} />,  title: t('premium.benefitFrameTitle'), desc: t('premium.benefitFrameDesc') },
-  ];
-
   const handleSubscribe = () => {
     // 베타 체험 시작 — 결제(RevenueCat) 연동 시 구매 플로우로 교체
     setIsPremium(true);
     navigation.goBack();
   };
 
+  // 카드에서 고른 건 미리보기라 실제 적용은 설정에서 한다.
+  // 설정에서 들어온 경우엔 되돌아가기(스택에 Settings가 겹쳐 쌓이는 걸 막는다).
+  const handleApply = () => {
+    const routes = navigation.getState()?.routes ?? [];
+    const prev = routes[routes.length - 2];
+    if (prev?.name === 'Settings') navigation.goBack();
+    else navigation.navigate('Settings');
+  };
+
   return (
     <SafeAreaView style={st.safeArea}>
+      <StarFieldBackground opacity={0.5} />
+
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity style={st.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('settings.back')}>
@@ -79,27 +87,28 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {/* 히어로 */}
         <View style={st.hero}>
-          <View style={[st.heroIconWrap, { borderColor: skinAccent.tint(0.35) }]}>
+          <View style={[st.heroIconWrap, { borderColor: skinAccent.tint(0.35), backgroundColor: skinAccent.tint(0.14) }]}>
             <StarIcon size={40} />
           </View>
           <Text style={st.heroTitle}>{t('premium.paywallTitle')}</Text>
+
+          {/* 무료 개방 배지 — 이 화면의 주인공을 상단으로 올린다 */}
+          {LAUNCH_FREE_PREMIUM && (
+            <View style={[st.freeBadge, { borderColor: skinAccent.tint(0.4), backgroundColor: skinAccent.tint(0.16) }]}>
+              <Image source={EMOJI_KEY} style={st.badgeEmoji} />
+              <Text style={[st.freeBadgeTxt, { color: skinAccent.accent }]}>{t('premium.launchFreeTitle')}</Text>
+            </View>
+          )}
+
           <Text style={st.heroSub}>
             {LAUNCH_FREE_PREMIUM ? t('premium.launchFreeDesc') : t('premium.paywallSubtitle')}
           </Text>
         </View>
 
-        {/* 혜택 목록 */}
-        <View style={st.benefitList}>
-          {benefits.map((b) => (
-            <View key={b.title} style={st.benefitRow}>
-              <View style={st.benefitIcon}>{b.icon}</View>
-              <View style={st.benefitTextWrap}>
-                <Text style={st.benefitTitle}>{b.title}</Text>
-                <Text style={st.benefitDesc}>{b.desc}</Text>
-              </View>
-            </View>
-          ))}
-        </View>
+        {/* 혜택 쇼케이스 — 순차 등장 */}
+        <FontShowcaseCard delay={0} />
+        <LogoShowcaseCard delay={90} />
+        <FrameShowcaseCard delay={180} />
 
         {/* 압축본 사진첩을 원본으로 재백업 — 원본 백업이 혜택에서 빠진 동안은 숨긴다 */}
         {!LAUNCH_FREE_PREMIUM && isPremium && compressedAlbums > 0 && (
@@ -120,17 +129,25 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
           </TouchableOpacity>
         )}
 
-        {/* CTA */}
+        {/* CTA — 무료 개방 중에는 '구매' 대신 '적용하러 가기' */}
         {LAUNCH_FREE_PREMIUM ? (
-          <View style={[st.ctaBtn, st.ctaActive, { borderColor: skinAccent.tint(0.35) }]}>
-            <Text style={st.ctaActiveText}>🎉 {t('premium.launchFreeTitle')}</Text>
-          </View>
+          <TouchableOpacity activeOpacity={0.85} onPress={handleApply} style={st.ctaTop}>
+            <LinearGradient
+              colors={[skinAccent.accent, skinAccent.accentDeep]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={st.ctaBtn}
+            >
+              <Text style={st.ctaText}>{t('premium.applyCta')}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
         ) : isPremium ? (
-          <View style={[st.ctaBtn, st.ctaActive, { borderColor: skinAccent.tint(0.35) }]}>
-            <Text style={st.ctaActiveText}>✓ {t('premium.paywallActive')}</Text>
+          <View style={[st.ctaBtn, st.ctaActive, st.ctaTop, { borderColor: skinAccent.tint(0.35) }]}>
+            <Image source={EMOJI_CHECK} style={st.ctaEmoji} />
+            <Text style={[st.ctaActiveText, { color: skinAccent.accent }]}>{t('premium.paywallActive')}</Text>
           </View>
         ) : (
-          <TouchableOpacity activeOpacity={0.85} onPress={handleSubscribe}>
+          <TouchableOpacity activeOpacity={0.85} onPress={handleSubscribe} style={st.ctaTop}>
             <LinearGradient
               colors={[skinAccent.accent, skinAccent.accentDeep]}
               start={{ x: 0, y: 0 }}
@@ -167,19 +184,30 @@ const st = StyleSheet.create({
   scroll: { flex: 1 },
   content: { paddingHorizontal: 20, paddingBottom: 40 },
 
-  hero: { alignItems: 'center', marginTop: 8, marginBottom: 28 },
+  hero: { alignItems: 'center', marginTop: 8, marginBottom: 24 },
   heroIconWrap: {
     width: 76,
     height: 76,
     borderRadius: 38,
-    backgroundColor: 'rgba(107,33,168,0.25)',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.35)',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 16,
   },
-  heroTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.white, marginBottom: 6 },
+  heroTitle: { fontSize: 24, fontWeight: 'bold', color: COLORS.white, marginBottom: 10 },
+  freeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingLeft: 11,
+    paddingRight: 14,
+    paddingVertical: 7,
+    borderRadius: 999,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  badgeEmoji: { width: 18, height: 18 },
+  freeBadgeTxt: { fontSize: 13, fontWeight: '700' },
   heroSub: { fontSize: 13, color: COLORS.textDim, textAlign: 'center', lineHeight: 19 },
 
   backupBtn: {
@@ -193,26 +221,7 @@ const st = StyleSheet.create({
   backupBtnTxt: { fontSize: 14, fontWeight: '700' },
   backupHint: { fontSize: 11, color: COLORS.textMuted, marginTop: 4, paddingHorizontal: 16, textAlign: 'center' },
 
-  benefitList: {
-    backgroundColor: COLORS.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: COLORS.cardBorder,
-    paddingVertical: 6,
-    marginBottom: 24,
-  },
-  benefitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  benefitIcon: { width: 28, alignItems: 'center' },
-  benefitTextWrap: { flex: 1 },
-  benefitTitle: { fontSize: 14, fontWeight: '700', color: COLORS.white, marginBottom: 2 },
-  benefitDesc: { fontSize: 12, color: COLORS.textDim, lineHeight: 17 },
-
+  ctaTop: { marginTop: 10 },
   ctaBtn: {
     height: 54,
     borderRadius: 14,
@@ -221,11 +230,13 @@ const st = StyleSheet.create({
   },
   ctaText: { fontSize: 16, fontWeight: 'bold', color: COLORS.white },
   ctaActive: {
+    flexDirection: 'row',
+    gap: 8,
     backgroundColor: 'rgba(107,33,168,0.2)',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.35)',
   },
-  ctaActiveText: { fontSize: 15, fontWeight: '700', color: COLORS.purpleNeon },
+  ctaEmoji: { width: 20, height: 20 },
+  ctaActiveText: { fontSize: 15, fontWeight: '700' },
 
   footnote: { fontSize: 11, color: COLORS.textMuted, textAlign: 'center', marginTop: 14, lineHeight: 16 },
 });
