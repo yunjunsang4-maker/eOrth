@@ -792,12 +792,17 @@ function geoToVec3(lon, lat, r) {
 function buildBorders(world, hexColor) {
   var group = new THREE.Group();
   var R = 1.0015;
+  // 유리 모드: 국경은 은은한 연보라 헤어라인 — 시안(1·2)의 빈 유리엔 쨍한 흰 선이 없고,
+  // 사진 상태(시안 5)에서도 나라 조각은 얇고 부드러운 경계로만 구분된다
+  var bCol = isGlass() ? '#EFE8FF' : hexColor;
+  var bOpCore = isGlass() ? 0.30 : 0.95;
+  var bOpGlow = isGlass() ? 0.10 : 0.3;
   var matCore = new THREE.LineBasicMaterial({
-    color: new THREE.Color(hexColor), transparent: true, opacity: 0.95,
+    color: new THREE.Color(bCol), transparent: true, opacity: bOpCore,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   var matGlow = new THREE.LineBasicMaterial({
-    color: new THREE.Color(hexColor), transparent: true, opacity: 0.3,
+    color: new THREE.Color(bCol), transparent: true, opacity: bOpGlow,
     blending: THREE.AdditiveBlending, depthWrite: false,
   });
   function addRing(coords) {
@@ -821,7 +826,7 @@ function buildBorders(world, hexColor) {
   });
   // 크로스페이드용 — 재질은 그룹당 2개뿐이라 매 프레임 opacity 갱신이 저렴
   group.userData.mats = [matCore, matGlow];
-  group.userData.baseOp = [0.95, 0.3];
+  group.userData.baseOp = [bOpCore, bOpGlow];
   return group;
 }
 
@@ -1273,15 +1278,19 @@ function buildBordersMerged(world, hexColor) {
     if (geom.type === 'Polygon') geom.coordinates.forEach(addRing);
     else if (geom.type === 'MultiPolygon') geom.coordinates.forEach(function(poly) { poly.forEach(addRing); });
   });
-  var matCore = new THREE.LineBasicMaterial({ color: new THREE.Color(hexColor), transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false });
-  var matGlow = new THREE.LineBasicMaterial({ color: new THREE.Color(hexColor), transparent: true, opacity: 0.3, blending: THREE.AdditiveBlending, depthWrite: false });
+  // 유리 모드: buildBorders와 동일한 은은한 헤어라인 (LOD 전환 후에도 톤 일관)
+  var mCol = isGlass() ? '#EFE8FF' : hexColor;
+  var mOpCore = isGlass() ? 0.30 : 0.95;
+  var mOpGlow = isGlass() ? 0.10 : 0.3;
+  var matCore = new THREE.LineBasicMaterial({ color: new THREE.Color(mCol), transparent: true, opacity: mOpCore, blending: THREE.AdditiveBlending, depthWrite: false });
+  var matGlow = new THREE.LineBasicMaterial({ color: new THREE.Color(mCol), transparent: true, opacity: mOpGlow, blending: THREE.AdditiveBlending, depthWrite: false });
   var geoC = new THREE.BufferGeometry(); geoC.setAttribute('position', new THREE.Float32BufferAttribute(posCore, 3));
   var geoG = new THREE.BufferGeometry(); geoG.setAttribute('position', new THREE.Float32BufferAttribute(posGlow, 3));
   var grp = new THREE.Group();
   grp.add(new THREE.LineSegments(geoC, matCore));
   grp.add(new THREE.LineSegments(geoG, matGlow));
   grp.userData.mats = [matCore, matGlow];
-  grp.userData.baseOp = [0.95, 0.3];
+  grp.userData.baseOp = [mOpCore, mOpGlow];
   return grp;
 }
 function setGroupOp(g, k) {
