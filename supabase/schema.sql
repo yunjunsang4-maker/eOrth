@@ -495,76 +495,260 @@ create policy "neighbors_delete_own" on public.neighbors
   for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
 
 -- ─────────────────────────────────────────────
--- 추천 메이트(여행 DNA): 나라 겹침·여행 스타일(동행/기록형식)·함께 아는 메이트를
---   합산한 total_score로 랭킹. extra_countries는 호출자 로컬(미발행·나만보기·
---   여행기록카드) 나라를 "내 매칭 입력"에만 보강 — 타인에게 비노출.
---   후보 프라이버시는 기존과 동일(visibility<>'private'만 집계).
---   점수: 나라 least(n,5)*10 + 동행 least(n,3)*5 + 형식 least(n,2)*7 + 메이트 least(n,3)*7
+-- 추천 메이트(여행 DNA) — 희소성 기반 6개 축 점수. 만점 100(그대로 %로 표시).
+--
+-- 축 배점: 나라(희소성) 25 + 도시 15 + 시의성 15 + 시기 10 + 관심사 15 + 성향 10 + 공통메이트 10
+--
+-- 예전 설계에서 바뀐 점:
+--   · 나라를 '개수'가 아니라 '희소성 가중'으로 — 아이슬란드 겹침이 일본 겹침보다 값지다.
+--     정규화(내 나라들의 가중치 합으로 나눔)가 '많이 다닌 사람이 항상 유리'를 없앤다.
+--   · 기록형식·동행자 축 제거 — 2종만 겹쳐도 만점이라 사실상 전원이 받았고,
+--     변별에 기여하지 않으면서 점수를 상단에 뭉치게 하는 주범이었다.
+--
+-- 개인정보: visibility <> 'private' 기록만 사용. 날짜는 점수 계산에만 쓰고 반환하지 않는다.
+--   시기 비교는 월 단위(계절)까지만 — 일 단위 비교는 실시간 위치 추적으로 읽힐 수 있다.
+--
+-- 성능: 후보를 먼저 좁히고(1단계) 비싼 JSONB 추출은 그 후보에만 돌린다(2단계).
+--
+-- 반환 시그니처(9→16컬럼)가 바뀌어 create or replace만으로는 교체 불가(postgres가
+-- "cannot change return type of existing function"으로 거부) — 기존 mate_suggestions(int, text[])를
+-- 명시적으로 drop한 뒤 재정의한다. travel_overlap_suggestions(int)는 이전 리네이밍 잔재 정리용.
 -- ─────────────────────────────────────────────
 drop function if exists public.travel_overlap_suggestions(int);
+drop function if exists public.mate_suggestions(int, text[]);
 create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
 returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
-  shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int
+  shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
+  place_score int, recency_score int, season_score int, interest_score int, taste_score int,
+  shared_cities text[], shared_keywords text[]
 )
 language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
+
+  -- 공개 기록만. 여행 시작일이 없으면 작성 시각으로 대체한다.
+  pub as (
+    select p.id, p.author_id, p.country_name, p.data,
+           coalesce(nullif(p.data->>'startDate','')::date, p.created_at::date) as trip_date
+    from public.posts p
+    where p.visibility <> 'private'
+  ),
+  -- 나라 단위로 펼친다. country_name(대표 국가)에 더해 data->'countries' 배열도 펼쳐
+  -- 다국가 여행이 누락되지 않게 한다(예전엔 대표 국가 1개만 셌다).
+  pub_country as (
+    select x.author_id, x.data, x.trip_date, c.name
+    from pub x
+    cross join lateral (
+      select x.country_name as name
+      union
+      select jsonb_array_elements(
+        case when jsonb_typeof(x.data->'countries') = 'array' then x.data->'countries' else '[]'::jsonb end
+      )->>'name'
+    ) c
+    where c.name is not null and c.name <> ''
+  ),
+  -- 계절 판정 — 월 단위. 일 단위로 내려가지 않는다(개인정보 원칙).
+  pub_season as (
+    select pc.*,
+      case when extract(month from pc.trip_date) in (12,1,2) then 'winter'
+           when extract(month from pc.trip_date) between 3 and 5 then 'spring'
+           when extract(month from pc.trip_date) between 6 and 8 then 'summer'
+           else 'fall' end as season
+    from pub_country pc
+  ),
+
+  -- 나라별 방문 사용자 수 → 희소성 가중치.
+  -- 표본이 적으면(전체 20명 미만) 희소성은 신호가 아니라 노이즈라 균등 가중으로 폴백한다.
+  user_total as (select count(distinct author_id)::int as n from pub_country),
+  country_weight as (
+    select pc.name,
+           case when (select n from user_total) < 20 then 1.0
+                else 1.0 / ln(exp(1) + count(distinct pc.author_id))
+           end as w
+    from pub_country pc
+    group by pc.name
+  ),
+
+  -- 내 입력. extra_countries는 호출자 로컬(미발행·나만보기) 나라 보강 — 내 매칭 입력에만 쓰고
+  -- 타인에게 노출하지 않는다.
   my_countries as (
-    select p.country_name from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
-      and p.country_name is not null and p.country_name <> ''
+    select pc.name from pub_country pc, me where pc.author_id = me.uid
     union
     select c from unnest(extra_countries) as c where c is not null and c <> ''
   ),
-  my_comps as (
-    select distinct comp
-    from public.posts p, me, jsonb_array_elements_text(
-      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
-    ) as comp
-    where p.author_id = me.uid and p.visibility <> 'private'
+  my_cities as (
+    select distinct x.data->>'regionName' as city
+    from pub x, me
+    where x.author_id = me.uid and coalesce(x.data->>'regionName', '') <> ''
   ),
-  my_vts as (
-    select distinct p.view_type from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private' and p.view_type is not null
+  my_keywords as (
+    select distinct kw
+    from pub x, me, jsonb_array_elements_text(
+      case when jsonb_typeof(x.data->'keywords') = 'array' then x.data->'keywords' else '[]'::jsonb end
+    ) as kw
+    where x.author_id = me.uid and kw <> ''
+  ),
+  my_seasons as (
+    select distinct ps.name, ps.season
+    from pub_season ps, me where ps.author_id = me.uid
+  ),
+  -- 시의성: 최근 1년 내 다녀온 나라(날짜 자체는 반환하지 않는다)
+  my_recent as (
+    select distinct pc.name
+    from pub_country pc, me
+    where pc.author_id = me.uid and pc.trip_date >= current_date - interval '1 year'
+  ),
+  my_rating as (
+    select avg((pc.data->>'rating')::numeric) as r
+    from pub_country pc, me
+    where pc.author_id = me.uid and pc.name in (select name from my_countries)
+      and (pc.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
+  ),
+  -- 예산은 같은 통화일 때만 비교한다(환율 정보가 없어 다른 통화는 비교 불가).
+  -- 내가 가장 많이 쓴 통화 1개를 기준으로 삼는다.
+  my_budget as (
+    select x.data->'budget'->>'currency' as cur, avg((x.data->'budget'->>'amount')::numeric) as amt
+    from pub x, me
+    where x.author_id = me.uid and (x.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
+      and coalesce(x.data->'budget'->>'currency','') <> ''
+    group by 1 order by count(*) desc limit 1
+  ),
+  my_flight as (
+    select x.data->>'flightType' as ft
+    from pub x, me
+    where x.author_id = me.uid and coalesce(x.data->>'flightType','') <> ''
+    group by 1 order by count(*) desc limit 1
   ),
   my_mates as (
     select case when n.requester_id = me.uid then n.addressee_id else n.requester_id end as mate_id
     from public.neighbors n, me
     where n.status = 'accepted' and (n.requester_id = me.uid or n.addressee_id = me.uid)
   ),
+
+  -- 1단계: 후보 좁히기(싼 필터) — 나라가 겹치거나 공통 메이트가 있는 사람만, 최대 200명.
   cand as (
-    select p.author_id as cid from public.posts p, me
-    where p.author_id <> me.uid and p.visibility <> 'private'
-    group by p.author_id
+    select cid from (
+      select pc.author_id as cid
+      from pub_country pc, me
+      where pc.author_id <> me.uid and pc.name in (select name from my_countries)
+      union
+      select case when n2.requester_id = mm.mate_id then n2.addressee_id else n2.requester_id end as cid
+      from my_mates mm
+      join public.neighbors n2 on n2.status = 'accepted'
+        and (n2.requester_id = mm.mate_id or n2.addressee_id = mm.mate_id)
+    ) u, me
+    where u.cid <> me.uid
+    group by cid
+    limit 200
+  ),
+
+  -- 2단계: 후보에만 비싼 계산.
+  -- 나라 — (후보, 나라) 쌍을 먼저 distinct로 만든 뒤 가중치를 합한다.
+  -- (sum(distinct w)로 하면 가중치가 우연히 같은 두 나라가 하나로 합쳐진다)
+  my_weight_sum as (
+    select greatest(sum(cw.w), 0.0001) as s
+    from my_countries mc join country_weight cw on cw.name = mc.name
+  ),
+  cshared_pairs as (
+    select distinct pc.author_id as cid, pc.name
+    from pub_country pc
+    where pc.author_id in (select cid from cand)
+      and pc.name in (select name from my_countries)
   ),
   cshared as (
-    select p.author_id as cid,
-           count(distinct p.country_name)::int as shared_count,
-           (array_agg(distinct p.country_name))[1:3] as sample_countries
-    from public.posts p
-    where p.visibility <> 'private'
-      and p.country_name in (select country_name from my_countries)
-      and p.author_id in (select cid from cand)
-    group by p.author_id
+    select sp.cid,
+           count(*)::int as shared_count,
+           -- 희소한 나라를 앞에 둔다 — 근거 문구가 "아이슬란드"를 먼저 말하게
+           (array_agg(sp.name order by cw.w desc))[1:3] as sample_countries,
+           sum(cw.w) as shared_weight
+    from cshared_pairs sp
+    join country_weight cw on cw.name = sp.name
+    group by sp.cid
   ),
-  ccomp as (
-    select p.author_id as cid, count(distinct comp)::int as shared_comps
-    from public.posts p, jsonb_array_elements_text(
-      case when jsonb_typeof(p.data->'companions') = 'array' then p.data->'companions' else '[]'::jsonb end
-    ) as comp
-    where p.visibility <> 'private' and p.author_id in (select cid from cand)
-      and comp in (select comp from my_comps)
-    group by p.author_id
+  ccity as (
+    select x.author_id as cid,
+           count(distinct x.data->>'regionName')::int as n,
+           (array_agg(distinct x.data->>'regionName'))[1:3] as cities
+    from pub x
+    where x.author_id in (select cid from cand)
+      and x.data->>'regionName' in (select city from my_cities)
+    group by x.author_id
   ),
-  cvt as (
-    select p.author_id as cid, count(distinct p.view_type)::int as shared_vts
-    from public.posts p
-    where p.visibility <> 'private' and p.author_id in (select cid from cand)
-      and p.view_type in (select view_type from my_vts)
-    group by p.author_id
+  crecent as (
+    select pc.author_id as cid, count(distinct pc.name)::int as n
+    from pub_country pc
+    where pc.author_id in (select cid from cand)
+      and pc.name in (select name from my_recent)
+      and pc.trip_date >= current_date - interval '1 year'
+    group by pc.author_id
+  ),
+  -- 시기: 겹친 (나라, 계절) 쌍의 개수 — 같은 조합을 여러 번 갔다고 더 세지 않는다
+  cseason as (
+    select t.cid, count(*)::int as n
+    from (
+      select distinct ps.author_id as cid, ps.name, ps.season
+      from pub_season ps
+      join my_seasons ms on ms.name = ps.name and ms.season = ps.season
+      where ps.author_id in (select cid from cand)
+    ) t
+    group by t.cid
+  ),
+  ckw as (
+    select x.author_id as cid,
+           count(distinct kw)::int as n,
+           (array_agg(distinct kw))[1:3] as kws
+    from pub x, jsonb_array_elements_text(
+      case when jsonb_typeof(x.data->'keywords') = 'array' then x.data->'keywords' else '[]'::jsonb end
+    ) as kw
+    where x.author_id in (select cid from cand) and kw in (select kw from my_keywords)
+    group by x.author_id
+  ),
+  crating as (
+    select pc.author_id as cid, avg((pc.data->>'rating')::numeric) as r
+    from pub_country pc
+    where pc.author_id in (select cid from cand)
+      and pc.name in (select name from my_countries)
+      and (pc.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
+    group by pc.author_id
+  ),
+  -- 내 기준 통화와 같은 기록만 집계 — 후보당 1행이 되도록 통화로 미리 걸러낸다
+  cbudget as (
+    select x.author_id as cid, avg((x.data->'budget'->>'amount')::numeric) as amt
+    from pub x
+    where x.author_id in (select cid from cand)
+      and (x.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
+      and x.data->'budget'->>'currency' = (select cur from my_budget)
+    group by x.author_id
+  ),
+  cflight as (
+    select cid, ft from (
+      select x.author_id as cid, x.data->>'flightType' as ft,
+             row_number() over (partition by x.author_id order by count(*) desc) as rn
+      from pub x
+      where x.author_id in (select cid from cand) and coalesce(x.data->>'flightType','') <> ''
+      group by 1, 2
+    ) t where rn = 1
+  ),
+  -- 성향 3항목. 판정 불가한 항목은 '미충족'이 아니라 분모에서 뺀다
+  -- (예산을 아무도 안 적었다고 점수가 깎이면 안 된다).
+  ctaste as (
+    select c.cid,
+      ((case when (select r from my_rating) is not null and cr.r is not null then 1 else 0 end)
+       + (case when (select amt from my_budget) is not null and cb.amt is not null then 1 else 0 end)
+       + (case when (select ft from my_flight) is not null and cf.ft is not null then 1 else 0 end)) as denom,
+      ((case when (select r from my_rating) is not null and cr.r is not null
+                  and abs(cr.r - (select r from my_rating)) <= 1.0 then 1 else 0 end)
+       + (case when (select amt from my_budget) is not null and cb.amt is not null
+                  and cb.amt between (select amt from my_budget) / 2 and (select amt from my_budget) * 2
+                 then 1 else 0 end)
+       + (case when (select ft from my_flight) is not null and cf.ft = (select ft from my_flight)
+                 then 1 else 0 end)) as num
+    from cand c
+    left join crating cr on cr.cid = c.cid
+    left join cbudget cb on cb.cid = c.cid
+    left join cflight cf on cf.cid = c.cid
   ),
   cmut as (
-    -- distinct: neighbors에 양방향 행이 생기는 레이스에도 같은 공통 메이트를 두 번 세지 않게
     select c.cid, count(distinct mm.mate_id)::int as mutual_count
     from cand c
     join my_mates mm on true
@@ -573,36 +757,72 @@ language sql security definer set search_path = public as $$
         or (n2.addressee_id = mm.mate_id and n2.requester_id = c.cid))
     group by c.cid
   ),
+
   scored as (
     select c.cid,
       coalesce(s.shared_count, 0) as shared_count,
       coalesce(s.sample_countries, '{}'::text[]) as sample_countries,
+      coalesce(ci.cities, '{}'::text[]) as shared_cities,
+      coalesce(k.kws, '{}'::text[]) as shared_keywords,
       coalesce(m.mutual_count, 0) as mutual_count,
-      (least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7) as style_score,
-      (least(coalesce(s.shared_count,0),5)*10
-       + least(coalesce(cc.shared_comps,0),3)*5 + least(coalesce(cv.shared_vts,0),2)*7
-       + least(coalesce(m.mutual_count,0),3)*7) as total_score
+      -- 나라(희소성 정규화) 25 + 도시 15
+      (round(least(coalesce(s.shared_weight,0) / (select s from my_weight_sum), 1.0) * 25)
+       + round(least(coalesce(ci.n,0), 3) / 3.0 * 15))::int as place_score,
+      round(least(coalesce(r.n,0), 2) / 2.0 * 15)::int as recency_score,
+      round(least(coalesce(se.n,0), 2) / 2.0 * 10)::int as season_score,
+      round(least(coalesce(k.n,0), 3) / 3.0 * 15)::int as interest_score,
+      (case when coalesce(ct.denom,0) = 0 then 0
+            else round(ct.num::numeric / ct.denom * 10)::int end) as taste_score,
+      round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score
     from cand c
     left join cshared s on s.cid = c.cid
-    left join ccomp cc on cc.cid = c.cid
-    left join cvt cv on cv.cid = c.cid
+    left join ccity ci on ci.cid = c.cid
+    left join crecent r on r.cid = c.cid
+    left join cseason se on se.cid = c.cid
+    left join ckw k on k.cid = c.cid
+    left join ctaste ct on ct.cid = c.cid
     left join cmut m on m.cid = c.cid
+  ),
+  visible as (
+    select sc.*,
+      (sc.place_score + sc.recency_score + sc.season_score
+       + sc.interest_score + sc.taste_score + sc.mutual_score) as total_score
+    from scored sc, me
+    where not public.is_blocked_between(me.uid, sc.cid)
+      and not public.are_neighbors(me.uid, sc.cid)
+      and not exists (
+        select 1 from public.neighbors n
+        where ((n.requester_id = me.uid and n.addressee_id = sc.cid)
+            or (n.requester_id = sc.cid and n.addressee_id = me.uid))
+          and n.status = 'pending'
+      )
+  ),
+  ranked as (
+    select v.*,
+      row_number() over (order by v.total_score desc, v.cid) as by_score,
+      -- 다양성: 일자 기반 결정적 셔플. 매일 바뀌되 같은 날 재조회하면 같은 순서라
+      -- 스크롤·새로고침에 목록이 튀지 않는다.
+      row_number() over (order by md5(v.cid::text || current_date::text)) as by_shuffle
+    from visible v where v.total_score > 0
+  ),
+  picked as (
+    -- 상위 70%는 점수순, 나머지 30%는 셔플에서 채운다(신규·저활동 사용자 노출 기회)
+    select * from ranked where by_score <= greatest(1, (least(match_limit, 50) * 7) / 10)
+    union
+    select * from ranked
+    where by_score > greatest(1, (least(match_limit, 50) * 7) / 10)
+      and by_shuffle <= greatest(1, least(match_limit, 50) - (least(match_limit, 50) * 7) / 10)
   )
-  select sc.cid, pp.handle, pp.emoji, pp.profile_photo,
-         sc.shared_count, sc.sample_countries, sc.mutual_count, sc.style_score, sc.total_score
-  from scored sc
-  join public.public_profiles pp on pp.id = sc.cid
-  cross join me
-  where sc.total_score > 0
-    and not public.is_blocked_between(me.uid, sc.cid)
-    and not public.are_neighbors(me.uid, sc.cid)
-    and not exists (
-      select 1 from public.neighbors n
-      where ((n.requester_id = me.uid and n.addressee_id = sc.cid)
-          or (n.requester_id = sc.cid and n.addressee_id = me.uid))
-        and n.status = 'pending'
-    )
-  order by sc.total_score desc, pp.handle
+  select p.cid, pp.handle, pp.emoji, pp.profile_photo,
+         p.shared_count, p.sample_countries, p.mutual_count,
+         -- style_score는 구버전 앱 호환 — 관심사+성향으로 채운다
+         (p.interest_score + p.taste_score) as style_score,
+         p.total_score,
+         p.place_score, p.recency_score, p.season_score, p.interest_score, p.taste_score,
+         p.shared_cities, p.shared_keywords
+  from picked p
+  join public.public_profiles pp on pp.id = p.cid
+  order by p.total_score desc, pp.handle
   limit greatest(1, least(match_limit, 50));
 $$;
 grant execute on function public.mate_suggestions(int, text[]) to authenticated;
