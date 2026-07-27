@@ -713,19 +713,15 @@ async function buildTexture() {
   return canvasTex;
 }
 
-// 유리 몸체(바다) 전용 소형 텍스처 — 어두운 남보라 + 위 어둡고 아래로 연보라가 스미는
-// 세로 그라데이션(좌우 동일이라 이음새 없음). 육지는 벡터 메시가 그리므로 여기엔 없다.
+// 유리 몸체(바다) 전용 소형 텍스처 — 어두운 남보라 단색.
+// 상하 명암(위 어둡고 아래 밝음)은 여기(위도 기준 — 기울이면 따라 돎)가 아니라
+// 화면 고정 반사 구 셰이더(buildGlassSpecular의 grad 항)가 담당한다 — 시안처럼
+// 어느 각도로 돌려도 명암이 화면 기준으로 고정된다.
 function buildGlassOceanTexture() {
   var c = document.createElement('canvas');
   c.width = 1024; c.height = 512;
   var g = c.getContext('2d');
   g.fillStyle = 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')';
-  g.fillRect(0, 0, c.width, c.height);
-  var tone = g.createLinearGradient(0, 0, 0, c.height);
-  tone.addColorStop(0, 'rgba(8,6,18,0.45)');
-  tone.addColorStop(0.45, 'rgba(0,0,0,0)');
-  tone.addColorStop(1, 'rgba(150,132,205,0.20)');
-  g.fillStyle = tone;
   g.fillRect(0, 0, c.width, c.height);
   var tex = new THREE.CanvasTexture(c);
   tex.wrapS = THREE.RepeatWrapping;
@@ -779,15 +775,28 @@ function buildGlassSpecular() {
       'varying vec3 vN;' +
       'void main(){' +
       '  float f = 1.0 - max(vN.z, 0.0);' +
-      '  float ring = smoothstep(0.80, 0.95, f) * 0.85;' +
-      '  float body = pow(f, 2.3) * 0.16;' +
-      '  float hi  = pow(max(dot(vN, normalize(vec3(0.45, 0.55, 0.70))), 0.0), 5.0) * 0.34;' +
-      '  float hi2 = pow(max(dot(vN, normalize(vec3(0.60, 0.64, 0.48))), 0.0), 16.0) * 0.38;' +
-      '  float caustic = pow(f, 3.0) * smoothstep(0.10, 0.75, -vN.y) * 0.5;' +
-      '  float lo = pow(max(dot(vN, normalize(vec3(-0.5, -0.45, 0.6))), 0.0), 20.0) * 0.16;' +
-      '  float a = ring + body + hi + hi2 + lo + caustic;' +
-      '  vec3 col = mix(vec3(1.0, 0.985, 1.0), vec3(1.0, 0.90, 0.96), clamp(caustic * 2.0, 0.0, 1.0));' +
-      '  gl_FragColor = vec4(col, min(a, 0.9));' +
+      // ① 두꺼운 유리 렌즈 — 최외곽 밝은 링 + 어두운 틈(0.84~0.86 무광 구간) + 안쪽 보조 링(동심 2겹)
+      '  float ring1 = smoothstep(0.86, 0.94, f) * 0.9;' +
+      '  float ring2 = smoothstep(0.68, 0.75, f) * (1.0 - smoothstep(0.78, 0.84, f)) * 0.22;' +
+      // ③ 아래쪽 림이 위보다 확연히 밝다 — 바닥에 빛이 고이는 유리(커스틱과 이어짐)
+      '  float botW = 0.72 + 0.6 * smoothstep(0.0, 0.8, -vN.y);' +
+      '  float ring = (ring1 + ring2) * botW;' +
+      '  float body = pow(f, 2.3) * 0.14;' +
+      // ② 창문 반사 — 우상단 큰 곡면 사각형(중심축 C 기준 국소 좌표의 소프트 박스) + 중심 광
+      '  vec3 C = normalize(vec3(0.5, 0.6, 0.62));' +
+      '  vec3 U = normalize(cross(vec3(0.0, 1.0, 0.0), C));' +
+      '  vec3 Vx = cross(C, U);' +
+      '  float sx = dot(vN, U); float ty = dot(vN, Vx); float w = max(dot(vN, C), 0.0);' +
+      '  float win = (1.0 - smoothstep(0.16, 0.42, abs(sx))) * (1.0 - smoothstep(0.22, 0.50, abs(ty - 0.06))) * pow(w, 2.0) * 0.30;' +
+      '  float hi2 = pow(w, 18.0) * 0.20;' +
+      // ④ 화면 고정 상하 명암 — 아래로 갈수록 연보라빛이 스민다(회전·기울임 무관)
+      '  float grad = smoothstep(-0.2, 1.0, -vN.y) * 0.10;' +
+      '  float caustic = pow(f, 2.6) * smoothstep(0.10, 0.75, -vN.y) * 0.5;' +
+      '  float lo = pow(max(dot(vN, normalize(vec3(-0.5, -0.45, 0.6))), 0.0), 20.0) * 0.14;' +
+      '  float a = ring + body + win + hi2 + lo + caustic + grad;' +
+      '  vec3 col = mix(vec3(1.0, 0.985, 1.0), vec3(0.94, 0.88, 1.0), clamp(grad * 6.0, 0.0, 1.0));' +
+      '  col = mix(col, vec3(1.0, 0.90, 0.96), clamp(caustic * 2.0, 0.0, 1.0));' +
+      '  gl_FragColor = vec4(col, min(a, 0.92));' +
       '}',
     transparent: true,
     depthWrite: false,
