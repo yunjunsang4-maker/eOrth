@@ -18,7 +18,6 @@ import { saveEnvelope, loadEnvelope, STORE_KEYS } from '../store/persist';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon } from '../components/icons';
 import { useEntranceAnimation } from '../components/LiquidEffects';
-import { EXAMPLE_NOTIS } from '../constants/exampleContent';
 import type { TravelRecord } from '../store/recordStore';
 
 // 알림이 가리키는 게시물의 대표 사진 — 어느 기록에 대한 알림인지 한눈에 읽히게.
@@ -73,7 +72,6 @@ interface Noti {
   userName?: string;
   goRequests?: boolean; // 메이트신청 알림 → 수락/거절 가능한 메이트 목록 화면으로 이동
   groupIds?: string[];  // 묶인 알림들의 id — 대표를 탭하면 전부 읽음 처리
-  isExample?: boolean;  // eOrth 안내용 예시 알림 — 탭 이동·읽음 처리 없음
 }
 
 // 시간 구간 — 매거진 목차 안에서 '언제'를 읽히게 하는 소제목
@@ -188,8 +186,6 @@ export default function NotificationScreen({ navigation }: Props) {
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 메이트·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
   const openNoti = (n: Noti) => {
-    // 예시 알림은 가리킬 게시물·사용자가 없다 — 안내용이라 탭해도 아무 일도 하지 않는다
-    if (n.isExample) return;
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
     // 서버 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영).
@@ -310,26 +306,10 @@ export default function NotificationScreen({ navigation }: Props) {
     return out.sort((a, b) => b.createdAt - a.createdAt);
   }, [t]);
 
-  // 예시 알림 — 실제 알림이 하나도 없을 때만. 신규 사용자에게 "여기에 무엇이 쌓이는지" 보여준다.
-  // 상대 시각으로 만들어 며칠 뒤에도 '방금/시간 전'으로 자연스럽게 표시된다.
-  const exampleNotis = useMemo<Noti[]>(() => {
-    const now = Date.now();
-    return EXAMPLE_NOTIS.map((e) => ({
-      id: e.id,
-      category: e.category,
-      text: t(e.textKey),
-      read: false,
-      createdAt: now - e.minutesAgo * MIN,
-      isExample: true,
-    }));
-  }, [t]);
-
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
-    const real = [...memoryNotis, ...serverNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
-    // 로딩 중엔 예시를 넣지 않는다 — 실제 알림이 도착하며 예시가 사라지는 깜빡임 방지
-    const fresh = real.length === 0 && !loading ? exampleNotis : real;
+    const fresh = [...memoryNotis, ...serverNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
     groupNotis(fresh).forEach((n) => {
       if (!map.has(n.category)) map.set(n.category, []);
@@ -341,7 +321,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, [memoryNotis, serverNotis, groupNotis, exampleNotis, loading]);
+  }, [memoryNotis, serverNotis, groupNotis]);
 
   // 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
   // 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
@@ -392,15 +372,7 @@ export default function NotificationScreen({ navigation }: Props) {
           <NotiAvatar n={n} />
           <View style={st.barBody}>
             <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
-            <View style={st.barMeta}>
-              <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
-              {/* 예시 알림임을 분명히 — 실제 알림으로 오해하지 않게 */}
-              {n.isExample && (
-                <Text style={[st.exampleTag, { color: skinAccent.accent, borderColor: skinAccent.tint(0.35) }]}>
-                  {t('socialEmpty.official')}
-                </Text>
-              )}
-            </View>
+            <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
           </View>
           {/* 대상 게시물 미리보기 — 어느 기록에 대한 알림인지 즉시 읽힌다 */}
           {thumb ? <Image source={{ uri: thumb }} style={st.thumb} /> : null}
@@ -597,11 +569,6 @@ const st = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
   barBody: { flex: 1, gap: 3 },
-  barMeta: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  exampleTag: {
-    fontSize: 9, fontWeight: '700', letterSpacing: 0.3,
-    borderWidth: 1, borderRadius: 999, paddingHorizontal: 6, paddingVertical: 1,
-  },
   barText: { color: COLORS.white, fontSize: 12.5, lineHeight: 17 },
   barTextRead: { color: COLORS.textDim },
   barTime: { color: COLORS.textMuted, fontSize: 10 },

@@ -25,8 +25,6 @@ export const STORE_KEYS = {
   // 읽은 '추억 리마인드' 알림 id — 이 알림은 내 기록에서 매번 계산되는 로컬 알림이라
   // 서버 read 컬럼이 없다. 저장하지 않으면 탭해도 다음 진입에 다시 새 알림이 된다.
   memoryNotiRead: '@eorth/memoryNotiRead',
-  // 예시 알림 배너를 이 기기에서 보여줬는지 — 1회만 노출
-  exampleBannerShown: '@eorth/exampleBannerShown',
 } as const;
 
 interface Envelope<T> {
@@ -111,7 +109,6 @@ export function usePersistence<T>(
 
 /** 영속 데이터 전체 삭제 (설정 → 데이터 초기화 등에서 사용) */
 export async function clearPersistedStores(): Promise<void> {
-  // exampleBannerShown은 '이 기기에서 안내를 봤는가'라 계정 데이터가 아니다 — 함께 지우지 않는다
   await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead]);
 }
 
