@@ -550,6 +550,11 @@ const ko = {
     joinedAt: 'eOrth 가입 날',
   },
   main: {
+    // 국가 기록 바텀시트 — 헤더 요약 · 행 배지
+    countrySheetTrips: '여행 {{count}}회',
+    countrySheetDays: '{{count}}일',
+    countrySheetRecords: '기록 {{count}}',
+    countrySheetMorePlaces: '{{place}} 외 {{count}}곳',
     visitsCountSuffix: '{{count}}회 방문',
     countryNoRecords: '이 국가의 여행 기록이 아직 없어요',
     notifA11y: '알림',

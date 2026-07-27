@@ -549,6 +549,11 @@ const en = {
     joinedAt: 'Joined eOrth',
   },
   main: {
+    // 국가 기록 바텀시트 — 헤더 요약 · 행 배지
+    countrySheetTrips: '{{count}} trips',
+    countrySheetDays: '{{count}} days',
+    countrySheetRecords: '{{count}} records',
+    countrySheetMorePlaces: '{{place}} +{{count}}',
     visitsCountSuffix: '{{count}} visits',
     countryNoRecords: 'No travel records for this country yet',
     notifA11y: 'Notifications',

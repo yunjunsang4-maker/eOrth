@@ -14,10 +14,13 @@ import {
   PanResponder,
   Platform,
   Image,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { andFitText } from '../utils/fitText';
+import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
+import RatingStars from '../components/RatingStars';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -83,7 +86,8 @@ export const getSkinPalette = (skin: string): string[] => DS_PALETTES[skin] || D
 const NOISE_ACTIVE_COLORS = ['#E1CDFB', '#EB19D2'];
 const isNoiseColor = (c: string) => NOISE_ACTIVE_COLORS.indexOf(c) !== -1;
 const SHEET_HEIGHT = height * 0.6;
-const COUNTRY_SHEET_HEIGHT = height * 0.65;
+// 국가 시트는 내용만큼만 올라오고 이 값까지만 커진다(예전엔 기록이 하나여도 항상 65%였다)
+const COUNTRY_SHEET_MAX_H = height * 0.65;
 
 // ─── 대륙 모드 국가 목록 ───
 const REGION_COUNTRIES = [
@@ -233,6 +237,31 @@ const flagForCountry = (name: string): string =>
   COUNTRIES.find((c) => c.name === (name === '한국' ? '대한민국' : name))?.flag ??
   '🌍';
 
+
+// 국가 시트에 노출할 기록인지 판정.
+// 지구본 활성화 판정(handleGlobeMessage)과 시트 목록이 같은 기준을 쓰도록 한 곳에 모은다
+// — 예전엔 판정은 스냅을 빼고 목록은 포함해서, 시트가 열리는 조건과 내용이 어긋났다.
+//  · 스냅: 지구본을 활성화하지 않으므로 목록에서도 뺀다(여행 카드에도 안 묶여 이동 동선이 달랐다)
+//  · 초안 / 미래 예약: 아직 발행 전이라 완성된 기록처럼 보이면 안 된다
+const isCountrySheetRecord = (r: TravelRecord, now: number): boolean =>
+  r.viewType !== 'snap' && !r.isDraft && !(r.scheduledAt != null && r.scheduledAt > now);
+
+// 목록 정렬 키 — '여행한 날짜'. 저장 순(작성 시각)에 맡기면 과거 여행 회고를
+// 오늘 쓴 경우 최근 기록보다 위로 올라온다.
+const recordDateMs = (r: TravelRecord): number =>
+  parseDotDate(r.startDate) ?? parseDotDate(r.date) ?? r.timestamp ?? 0;
+
+// 기간 표기 — 하루면 날짜 하나, 같은 달이면 끝을 일(DD)만, 같은 해면 MM.DD, 해가 다르면 전체.
+const fmtPeriod = (startMs: number, endMs: number): string => {
+  const s = new Date(startMs);
+  const e = new Date(endMs);
+  const p = (n: number) => String(n).padStart(2, '0');
+  const full = (d: Date) => `${d.getFullYear()}.${p(d.getMonth() + 1)}.${p(d.getDate())}`;
+  if (startMs === endMs) return full(s);
+  if (s.getFullYear() !== e.getFullYear()) return `${full(s)} ~ ${full(e)}`;
+  if (s.getMonth() !== e.getMonth()) return `${full(s)} ~ ${p(e.getMonth() + 1)}.${p(e.getDate())}`;
+  return `${full(s)} ~ ${p(e.getDate())}`;
+};
 
 // 한국어 국가명 → GeoJSON 영문 이름 매핑 (GlobeView의 KO_NAMES 역방향)
 // 사진첩 국가(GPS) 필터도 이 표로 세계 GeoJSON 피처를 찾는다 (AlbumCreateScreen)
@@ -497,6 +526,8 @@ export default function MainScreen({ navigation, route }: Props) {
   const SHOW_VISITED_SHEET = false;
   const [selectedCountry, setSelectedCountry] = useState<string | null>(null);
   const [countrySheetOpen, setCountrySheetOpen] = useState(false);
+  // 국가 시트 하단 버튼 바의 실측 높이(스크롤 여백용). 측정 전에는 기존 고정값을 쓴다
+  const [countryBottomH, setCountryBottomH] = useState(84);
 
   // 기록형식 선택 모달
   const [formatModalVisible, setFormatModalVisible] = useState(false);
@@ -870,7 +901,11 @@ export default function MainScreen({ navigation, route }: Props) {
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
-  const countrySheetAnim = useRef(new Animated.Value(COUNTRY_SHEET_HEIGHT)).current;
+  const countrySheetAnim = useRef(new Animated.Value(COUNTRY_SHEET_MAX_H)).current;
+  // 시트 실측 높이 — 콘텐츠 양에 따라 달라지므로 닫기 애니메이션 거리로 쓴다
+  const countrySheetHRef = useRef(COUNTRY_SHEET_MAX_H);
+  // 시트가 완전히 닫힌 뒤 실행할 작업 — 다음 Modal을 여는 작업은 반드시 이 경로로
+  const afterCountrySheetCloseRef = useRef<(() => void) | null>(null);
   const countryOverlayAnim = useRef(new Animated.Value(0)).current;
 
   // FAB(기록 추가)는 CustomTabBar 레이어의 RecordFab 로 이동 (탭 바 위 겹침). 여기선 렌더하지 않음.
@@ -934,6 +969,9 @@ export default function MainScreen({ navigation, route }: Props) {
   const openCountrySheet = (countryName: string) => {
     setSelectedCountry(countryName);
     setCountrySheetOpen(true);
+    // 시트 높이가 나라마다 달라, 직전에 닫힌 높이에서 시작하면 새 시트가 살짝 보인 채로 뜬다.
+    // 항상 상한만큼 내린 지점(= 화면 밖)에서 출발시킨다.
+    countrySheetAnim.setValue(COUNTRY_SHEET_MAX_H);
     Animated.parallel([
       Animated.spring(countrySheetAnim, {
         toValue: 0,
@@ -952,7 +990,8 @@ export default function MainScreen({ navigation, route }: Props) {
   const closeCountrySheet = () => {
     Animated.parallel([
       Animated.timing(countrySheetAnim, {
-        toValue: COUNTRY_SHEET_HEIGHT,
+        // 내용에 따라 시트 높이가 달라지므로 실측값만큼 내려야 화면 밖으로 완전히 사라진다
+        toValue: countrySheetHRef.current,
         duration: 300,
         useNativeDriver: true,
       }),
@@ -964,8 +1003,119 @@ export default function MainScreen({ navigation, route }: Props) {
     ]).start(() => {
       setCountrySheetOpen(false);
       setSelectedCountry(null);
+      // 시트 Modal이 완전히 내려간 뒤 예약된 후속 작업(기록형식 모달 열기 등)을 실행.
+      // iOS는 Modal을 동시에 두 개 present할 수 없어, 닫히는 중에 다음 모달을 올리면
+      // present가 실패한다 — visible=false 반영과 네이티브 dismiss가 끝난 다음 틱까지 늦춘다.
+      const after = afterCountrySheetCloseRef.current;
+      afterCountrySheetCloseRef.current = null;
+      if (after) setTimeout(after, 80);
     });
   };
+
+  // 드래그로 닫기 — 여행 시트(sheetPan)와 같은 제스처를 국가 시트에도 준다.
+  // PanResponder는 useRef로 첫 렌더에 박제되므로, 매 렌더 새로 만들어지는 닫기 함수는
+  // 콜백 ref를 거쳐 호출한다(직접 캡처하면 옛 클로저에 묶인다).
+  const countryPanCb = useRef<{ close: () => void }>({ close: () => {} });
+  countryPanCb.current.close = closeCountrySheet;
+
+  const countrySheetPan = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponder: (_, g) => g.dy > 4,
+      onPanResponderMove: (_, g) => {
+        if (g.dy > 0) countrySheetAnim.setValue(g.dy);
+      },
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 80 || g.vy > 0.5) {
+          countryPanCb.current.close();
+        } else {
+          Animated.spring(countrySheetAnim, {
+            toValue: 0,
+            useNativeDriver: true,
+            tension: 60,
+            friction: 12,
+          }).start();
+        }
+      },
+    })
+  ).current;
+
+  // 국가 시트 목록 — 발행된 내 기록만, 여행 날짜 내림차순, 여행 카드 단위로 한 줄.
+  // 시트가 떠 있는 동안 매 렌더마다 전체 기록을 다시 훑지 않도록 메모한다.
+  const countrySheetItems = useMemo(() => {
+    if (!selectedCountry) return [];
+    const now = Date.now();
+    const visible = records
+      .filter((r) => isCountrySheetRecord(r, now) && matchesCountry(r, selectedCountry))
+      .sort((a, b) => recordDateMs(b) - recordDateMs(a));
+
+    // 기록 id → 여행 카드 id
+    const groupIdOf = new Map<string, string>();
+    tripGroups.forEach((g) => g.records.forEach((id) => groupIdOf.set(id, g.id)));
+
+    // 같은 여행 카드에 속한 기록끼리 묶는다. 탭하면 어느 기록이든 같은 카드로 가므로
+    // 예전처럼 기록 수만큼 같은 카드가 중복으로 뜨면 안 된다.
+    const byGroup = new Map<string, TravelRecord[]>();
+    for (const r of visible) {
+      const gid = groupIdOf.get(r.id);
+      if (!gid) continue;
+      const arr = byGroup.get(gid);
+      if (arr) arr.push(r);
+      else byGroup.set(gid, [r]);
+    }
+
+    // visible 순서대로 훑으며 카드는 첫 등장에서 한 번만 내보낸다(= 그 카드의 최신 기록 위치).
+    const emitted = new Set<string>();
+    const rows: { key: string; rec: TravelRecord; members: TravelRecord[] }[] = [];
+    for (const r of visible) {
+      const gid = groupIdOf.get(r.id);
+      if (!gid) {
+        rows.push({ key: r.id, rec: r, members: [r] }); // 카드에 안 묶인 낱개 기록
+        continue;
+      }
+      if (emitted.has(gid)) continue;
+      emitted.add(gid);
+      rows.push({ key: gid, rec: r, members: byGroup.get(gid) ?? [r] });
+    }
+
+    return rows.map(({ key, rec, members }) => {
+      // 기간·평점은 '이 나라에 속한' 같은 카드의 기록들에서만 뽑는다.
+      // 다국가 여행이면 다른 나라 구간 날짜까지 섞이면 안 되기 때문이다.
+      const period = tripPeriodOf(members);
+      const rated = members
+        .map((m) => m.rating)
+        .filter((v): v is number => typeof v === 'number' && v > 0);
+      // 묶인 기록들이 들른 지역 — 한 카드가 오사카·교토를 함께 담을 수 있다
+      const places = Array.from(
+        new Set(members.map((m) => m.regionName).filter((v): v is string => !!v))
+      );
+      return {
+        key,
+        rec,
+        members,
+        count: members.length,
+        places,
+        periodLabel: period ? fmtPeriod(period.startMs, period.endMs) : rec.date,
+        // 여행 일수 — 시작·종료 양끝을 포함해서 센다(당일치기 = 1일)
+        days: period ? Math.round((period.endMs - period.startMs) / 86400000) + 1 : 0,
+        rating: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : undefined,
+      };
+    });
+  }, [records, tripGroups, selectedCountry]);
+
+  // 국가 요약 — 여행 횟수 · 총 일수 · 평균 별점 (헤더에 한 줄로)
+  const countrySummary = useMemo(() => {
+    const trips = countrySheetItems.length;
+    const days = countrySheetItems.reduce((sum, it) => sum + it.days, 0);
+    const rated = countrySheetItems
+      .map((it) => it.rating)
+      .filter((v): v is number => typeof v === 'number');
+    return {
+      trips,
+      days,
+      avg: rated.length ? rated.reduce((a, b) => a + b, 0) / rated.length : null,
+    };
+  }, [countrySheetItems]);
 
   // 국가 시트에서 여행 기록 탭 → 그 기록이 속한 '여행 기록 카드'(TripDetail)로 이동.
   // ProfileScreen의 여행 카드(mappedThumbnails)와 동일한 파라미터를 만들어, 어디서 열든 같은 카드가 뜨게 한다.
@@ -1009,8 +1159,10 @@ export default function MainScreen({ navigation, route }: Props) {
       }
       if (data.type === 'countryTapped') {
         const koreanName = data.country;
-        // 스냅만 있는 국가는 활성화되지 않으므로 '기록 없음'으로 취급(탭 시 새 기록 추가)
-        const hasRecord = records.some(r => r.viewType !== 'snap' && matchesCountry(r, koreanName));
+        // 시트 목록과 같은 기준으로 판정한다 — 스냅·초안·미래 예약만 있는 국가는
+        // '기록 없음'으로 취급해 빈 시트가 아니라 새 기록 추가로 보낸다
+        const now = Date.now();
+        const hasRecord = records.some(r => isCountrySheetRecord(r, now) && matchesCountry(r, koreanName));
 
         if (hasRecord && koreanName) {
           openCountrySheet(koreanName);
@@ -1536,54 +1688,115 @@ export default function MainScreen({ navigation, route }: Props) {
           ]}
           pointerEvents="auto"
           accessibilityViewIsModal
+          onLayout={(e: LayoutChangeEvent) => {
+            // 닫기 애니메이션이 이만큼 내려가야 화면 밖으로 완전히 사라진다
+            countrySheetHRef.current = e.nativeEvent.layout.height;
+          }}
         >
           <SheetBackdrop />
-        {/* 핸들 */}
-        <TouchableOpacity style={styles.sheetHandleArea} onPress={closeCountrySheet} activeOpacity={0.8}>
+        {/* 핸들 — 아래로 끌어서 닫기(여행 시트와 동일 제스처) */}
+        <View style={styles.sheetHandleArea} {...countrySheetPan.panHandlers}>
           <View style={styles.sheetHandle} />
-        </TouchableOpacity>
+        </View>
 
         {/* 헤더 */}
         <View style={styles.countrySheetHeader}>
           <Text style={styles.countrySheetFlag}>
             {selectedCountry ? flagForCountry(selectedCountry) : ''}
           </Text>
-          <Text style={styles.countrySheetName}>{selectedCountry}</Text>
+          <View style={{ flex: 1 }}>
+            {/* 지구본이 보내는 국가명은 한국어라 그대로 쓰면 영어 모드에서 헤더만 한국어로 남는다
+                (목록 행은 recPlace가 이미 영문으로 바꾼다) */}
+            <Text style={styles.countrySheetName}>
+              {selectedCountry ? countryEn(selectedCountry) : ''}
+            </Text>
+            <View style={styles.countrySummaryRow}>
+              <Text style={styles.countrySummaryText}>
+                {t('main.countrySheetTrips', { count: countrySummary.trips })}
+                {countrySummary.days > 0 && ` · ${t('main.countrySheetDays', { count: countrySummary.days })}`}
+              </Text>
+              {countrySummary.avg != null && (
+                <>
+                  <Text style={styles.countrySummaryDot}>·</Text>
+                  <RatingStars
+                    score={countrySummary.avg}
+                    size={11}
+                    gap={1}
+                    fullColor={Colors.gold}
+                    emptyColor="rgba(255,255,255,0.18)"
+                  />
+                  <Text style={styles.countrySummaryText}>{countrySummary.avg.toFixed(1)}</Text>
+                </>
+              )}
+            </View>
+          </View>
         </View>
 
-        {/* 여행 기록 리스트 (실제 기록) */}
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+        {/* 여행 기록 리스트 (실제 기록).
+            flex:1이면 시트가 항상 최대 높이로 늘어난다 — flexShrink로 내용만큼만 차지하고
+            상한(maxHeight)에 닿을 때만 줄어들며 스크롤된다 */}
+        <ScrollView showsVerticalScrollIndicator={false} style={{ flexShrink: 1 }}>
           <View style={styles.countryRecordList}>
-            {(selectedCountry
-              ? records.filter(r => matchesCountry(r, selectedCountry))
-              : []
-            ).map((rec) => (
+            {countrySheetItems.map((item) => (
               <TouchableOpacity
-                key={rec.id}
+                key={item.key}
                 style={styles.countryRecordCard}
                 activeOpacity={0.7}
-                onPress={() => openTripCardForRecord(rec)}
+                onPress={() => openTripCardForRecord(item.rec)}
+                accessibilityRole="button"
+                accessibilityLabel={`${recPlace(item.rec)} ${item.periodLabel}`}
               >
                 <View style={styles.countryRecordRow}>
-                  <Text style={styles.countryRecordDate}>{rec.date}</Text>
-                  {!!rec.rating && <Text style={styles.countryRecordRating}>{'★'.repeat(rec.rating)}</Text>}
+                  <Text style={styles.countryRecordDate}>{item.periodLabel}</Text>
+                  {/* 예전엔 '★'.repeat(rating)이라 4.5점이 별 4개로 잘렸다 — 앱 공용 0.5 단위 별점으로 통일 */}
+                  {!!item.rating && (
+                    <RatingStars
+                      score={item.rating}
+                      size={13}
+                      gap={2}
+                      fullColor={Colors.gold}
+                      emptyColor="rgba(255,255,255,0.18)"
+                    />
+                  )}
                 </View>
-                <Text style={styles.countryRecordCity}>{recPlace(rec)}</Text>
+                <View style={styles.countryRecordBottomRow}>
+                  {/* 한 카드가 여러 도시를 담을 수 있어 대표 하나만 쓰면 나머지가 사라진다 */}
+                  <Text style={styles.countryRecordCity} numberOfLines={1}>
+                    {item.places.length > 1
+                      ? t('main.countrySheetMorePlaces', { place: item.places[0], count: item.places.length - 1 })
+                      : recPlace(item.rec)}
+                  </Text>
+                  {/* 여행 카드 단위로 접었으니 안에 기록이 몇 개인지 보여준다 */}
+                  {item.count > 1 && (
+                    <View style={styles.countryRecordCountBadge}>
+                      <Text style={styles.countryRecordCountText}>
+                        {t('main.countrySheetRecords', { count: item.count })}
+                      </Text>
+                    </View>
+                  )}
+                </View>
               </TouchableOpacity>
             ))}
           </View>
-          <View style={{ height: 100 }} />
+          {/* 하단 버튼 바가 absolute라 그만큼 비워둔다 — 실제 높이를 재서 쓴다.
+              고정값이면 시스템 글꼴을 키웠을 때 마지막 카드가 버튼에 가린다 */}
+          <View style={{ height: countryBottomH + 16 }} />
         </ScrollView>
 
         {/* 새 기록 추가 버튼 */}
-        <View style={styles.countrySheetBottom}>
+        <View
+          style={[styles.countrySheetBottom, { paddingBottom: insets.bottom + 20 }]}
+          onLayout={(e: LayoutChangeEvent) => setCountryBottomH(e.nativeEvent.layout.height)}
+        >
           <TouchableOpacity
             style={[styles.countryAddBtn, { backgroundColor: skinAccent.accent }]}
             activeOpacity={0.85}
             onPress={() => {
-              closeCountrySheet();
+              // 기록형식 모달은 시트 Modal이 완전히 닫힌 뒤에 연다 —
+              // 겹쳐 올리면 iOS에서 present 실패(동시 Modal 불가)
               setPendingCountry({ name: selectedCountry || '', code: '' });
-              setFormatModalVisible(true);
+              afterCountrySheetCloseRef.current = () => setFormatModalVisible(true);
+              closeCountrySheet();
             }}
           >
             <Text style={styles.countryAddBtnText}>+ {t('comp2.addNewRecord')}</Text>
@@ -2284,7 +2497,8 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: COUNTRY_SHEET_HEIGHT,
+    // 고정 높이가 아니라 상한 — 기록이 적으면 시트도 작게 올라온다
+    maxHeight: COUNTRY_SHEET_MAX_H,
     backgroundColor: 'rgba(20,20,35,0.55)',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -2318,6 +2532,20 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.bold,
     color: Colors.white,
   },
+  countrySummaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    marginTop: 3,
+  },
+  countrySummaryText: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textSecondary,
+  },
+  countrySummaryDot: {
+    fontSize: Typography.fontSize.xs,
+    color: 'rgba(255,255,255,0.3)',
+  },
   countryRecordList: {
     paddingHorizontal: Spacing[6],
     paddingTop: Spacing[4],
@@ -2329,7 +2557,7 @@ const styles = StyleSheet.create({
     padding: Spacing[4],
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
-    marginBottom: Spacing[2],
+    // 카드 간격은 목록의 gap이 담당한다 — marginBottom을 같이 주면 간격이 두 번 더해진다
   },
   countryRecordRow: {
     flexDirection: 'row',
@@ -2342,14 +2570,27 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
-  countryRecordRating: {
-    fontSize: Typography.fontSize.xs,
-    color: Colors.gold,
+  countryRecordBottomRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing[2],
   },
   countryRecordCity: {
+    flex: 1,
     fontSize: Typography.fontSize.base,
     fontFamily: Typography.fontFamily.semiBold,
     color: Colors.white,
+  },
+  countryRecordCountBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: BorderRadius.full,
+    backgroundColor: 'rgba(255,255,255,0.09)',
+  },
+  countryRecordCountText: {
+    fontSize: Typography.fontSize.xs,
+    color: Colors.textSecondary,
   },
   countrySheetBottom: {
     position: 'absolute',
@@ -2357,12 +2598,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     paddingHorizontal: Spacing[6],
-    paddingBottom: 36,
+    // paddingBottom은 인라인으로 insets.bottom + 20 — 제스처 바 높이가 기기마다 다르다
     paddingTop: Spacing[3],
     backgroundColor: 'rgba(30,30,46,0.95)',
   },
   countryAddBtn: {
-    backgroundColor: '#7B61FF',
+    // 배경색은 호출부에서 skinAccent.accent로 지정한다(지구본 스킨 연동)
     borderRadius: BorderRadius.full,
     paddingVertical: 16,
     alignItems: 'center',
