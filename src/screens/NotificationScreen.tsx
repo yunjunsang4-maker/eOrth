@@ -13,6 +13,8 @@ import { fetchNeighborNotifications, markNotificationsRead } from '../services/s
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSkinAccent } from '../constants/skinTheme';
 import { countryLabel } from '../utils/countryLabel';
+import AuthorAvatar from '../components/AuthorAvatar';
+import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon } from '../components/icons';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -39,11 +41,20 @@ const CATEGORY_LABEL_KEY: Record<CatKey, string> = {
   record: 'misc.catRecord',
 };
 
+// 카테고리 배지 아이콘 — 시스템 이모지 대신 앱 제작 SVG 아이콘.
+// 댓글은 CLAUDE.md 규칙대로 SVG 말풍선(CommentIcon)만 쓴다.
+const CATEGORY_ICON: Record<CatKey, React.FC<{ size?: number; color?: string }>> = {
+  comment: CommentIcon,
+  like: HeartIcon,
+  follow: FriendIcon,
+  memory: CameraIcon,
+  record: PinIcon,
+};
+
 interface Noti {
   id: string;
   category: CatKey;
-  emoji: string;       // 행위자 프로필 아바타 (이모지)
-  avbg: string;        // 아바타 배경색
+  photo?: string;      // 행위자 프로필 사진 — 없으면 AuthorAvatar가 제작 실루엣으로 대체
   text: string;
   read: boolean;
   createdAt: number;   // 알림 도착 시각(ms) — 정렬·시간표시·만료 기준
@@ -104,8 +115,7 @@ export default function NotificationScreen({ navigation }: Props) {
         .map((n) => ({
         id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
         category: 'follow' as CatKey,
-        emoji: n.actorEmoji || '👤',
-        avbg: 'rgba(107,33,168,0.35)',
+        photo: n.actorPhoto || undefined, // 사진 없으면 제작 실루엣(AuthorAvatar 규칙)
         text: t(textKey[n.type] ?? 'misc.neighborRequestText', { name: n.actorHandle || t('friends.travelerDefault') }),
         read: n.read,
         createdAt: n.createdAt,
@@ -173,8 +183,7 @@ export default function NotificationScreen({ navigation }: Props) {
         out.push({
           id: `mem-${r.id}`,
           category: 'memory',
-          emoji: r.countryFlag || '📸',
-          avbg: 'rgba(107,33,168,0.35)',
+          // 추억 알림은 행위자가 없다 — 아바타 자리를 카테고리 아이콘(카메라)이 채운다
           text: t('misc.memoryText', { years: yearsAgo, place }),
           read: false,
           createdAt: todayStart,
@@ -182,7 +191,8 @@ export default function NotificationScreen({ navigation }: Props) {
         });
       });
     return out;
-  }, [records]);
+    // t·언어도 의존 — 빠지면 언어를 바꿔도 추억 알림 문구가 이전 언어로 남는다
+  }, [records, t, i18n.language]);
 
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
@@ -201,19 +211,55 @@ export default function NotificationScreen({ navigation }: Props) {
       .sort((a, b) => b.newest - a.newest);
   }, [memoryNotis, followNotis]);
 
-  const Avatar = ({ emoji, bg, size = 28 }: { emoji: string; bg: string; size?: number }) => (
-    <View style={[st.avatar, { width: size, height: size, borderRadius: size / 2, backgroundColor: bg }]}>
-      <Text style={{ fontSize: size * 0.52 }}>{emoji}</Text>
-    </View>
-  );
+  // 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
+  // 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
+  // 폴백으로 쓰면 사진 없는 사용자가 전부 같은 이모지로 보인다).
+  const AVA = 34;
+  const NotiAvatar = ({ n }: { n: Noti }) => {
+    const Icon = CATEGORY_ICON[n.category];
+    const hasActor = n.category === 'follow' || n.category === 'record';
+    return (
+      <View style={{ width: AVA, height: AVA }}>
+        {hasActor ? (
+          <View style={[st.avatarRing, { borderColor: skinAccent.tint(0.35) }]}>
+            <AuthorAvatar photo={n.photo} size={AVA - 2} />
+          </View>
+        ) : (
+          // 행위자가 없는 알림(추억 등) — 카테고리 아이콘이 아바타 자리를 채운다
+          <View style={[st.avatarIcon, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.tint(0.35) }]}>
+            <Icon size={17} color={skinAccent.accent} />
+          </View>
+        )}
+        {hasActor && (
+          <View style={[st.catBadge, { backgroundColor: skinAccent.accent, borderColor: COLORS.bg }]}>
+            <Icon size={9} color="#FFFFFF" />
+          </View>
+        )}
+      </View>
+    );
+  };
 
-  // 신규·본 알림 공용 가로 막대 (본 알림은 미읽음 점만 비움)
+  // 신규·본 알림 공용 가로 막대 (읽은 알림은 톤을 낮춰 구분)
   const renderBar = (n: Noti) => (
-    <TouchableOpacity key={n.id} style={[st.bar, { borderColor: skinAccent.tint(0.20) }]} activeOpacity={0.75} onPress={() => openNoti(n)}>
-      <View style={[st.barDot, { backgroundColor: skinAccent.accent }, n.read && st.barDotRead]} />
-      <Avatar emoji={n.emoji} bg={n.avbg} />
-      <Text style={st.barText} numberOfLines={1}>{n.text}</Text>
-      <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
+    <TouchableOpacity
+      key={n.id}
+      style={[
+        st.bar,
+        { borderColor: skinAccent.tint(0.20) },
+        n.read && st.barRead,
+      ]}
+      activeOpacity={0.75}
+      onPress={() => openNoti(n)}
+      accessibilityRole="button"
+      accessibilityLabel={n.text}
+    >
+      <NotiAvatar n={n} />
+      <View style={st.barBody}>
+        <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
+        <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
+      </View>
+      {/* 미읽음 표시 — 오른쪽 끝 점(읽으면 사라진다) */}
+      {!n.read && <View style={[st.barDot, { backgroundColor: skinAccent.accent }]} />}
     </TouchableOpacity>
   );
 
@@ -316,16 +362,37 @@ const st = StyleSheet.create({
   badge: { color: COLORS.textDim, fontSize: 13 },
   badgeOpen: { color: COLORS.purpleNeon },
 
-  // 새 알림 가로 막대
+  // 알림 카드
   bar: {
-    flexDirection: 'row', alignItems: 'center', gap: 9,
-    marginLeft: 22, marginBottom: 7, paddingVertical: 8, paddingHorizontal: 10,
-    backgroundColor: 'rgba(107,33,168,0.12)', borderRadius: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 11,
+    marginLeft: 22, marginBottom: 8, paddingVertical: 10, paddingHorizontal: 12,
+    backgroundColor: 'rgba(107,33,168,0.12)', borderRadius: 14,
     borderWidth: 1, borderColor: 'rgba(191,133,252,0.20)',
   },
-  barDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: COLORS.purpleNeon },
-  barDotRead: { backgroundColor: 'transparent' },
-  avatar: { alignItems: 'center', justifyContent: 'center' },
-  barText: { flex: 1, color: COLORS.white, fontSize: 12 },
+  // 읽은 알림 — 지우지 않고 톤만 낮춰 새 알림과 구분
+  barRead: { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.07)' },
+
+  // 아바타(행위자 사진/실루엣) + 카테고리 배지
+  avatarRing: {
+    width: '100%', height: '100%', borderRadius: 999,
+    borderWidth: 1, overflow: 'hidden',
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  avatarIcon: {
+    width: '100%', height: '100%', borderRadius: 999,
+    borderWidth: 1, alignItems: 'center', justifyContent: 'center',
+  },
+  catBadge: {
+    position: 'absolute', right: -3, bottom: -3,
+    width: 16, height: 16, borderRadius: 8,
+    borderWidth: 1.5, // 카드 배경색 링 — 아바타와 배지가 분리돼 보이게
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  barBody: { flex: 1, gap: 3 },
+  barText: { color: COLORS.white, fontSize: 12.5, lineHeight: 17 },
+  barTextRead: { color: COLORS.textDim },
   barTime: { color: COLORS.textMuted, fontSize: 10 },
+  barDot: { width: 7, height: 7, borderRadius: 3.5, backgroundColor: COLORS.purpleNeon },
 });

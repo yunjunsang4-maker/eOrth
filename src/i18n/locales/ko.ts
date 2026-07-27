@@ -1532,6 +1532,7 @@ const ko = {
     noArchivedTab: '보관된 {{label}}이 없어요',
     unarchivedToast: '게시물이 소셜 탭에 다시 표시돼요',
     notifTitle: '알림',
+    unreadCountA11y: '안 읽은 알림 {{count}}개',
     catComment: '댓글',
     catLike: '좋아요',
     catFollow: '메이트',

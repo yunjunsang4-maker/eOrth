@@ -21,6 +21,8 @@ import { BlurView } from 'expo-blur';
 import { andFitText } from '../utils/fitText';
 import { parseDotDate, tripPeriodOf } from '../utils/momentMatch';
 import RatingStars from '../components/RatingStars';
+import NotificationBadge from '../components/NotificationBadge';
+import { fetchUnreadNotificationCount } from '../services/social';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -512,9 +514,17 @@ export default function MainScreen({ navigation, route }: Props) {
     return startCoach(p === 'replay');
   }, [route.params?.startTutorial]);
 
-  // 실제 미확인 알림 수에 연동돼야 함. 현재 알림 소스(NOTIS)가 비어 있어 기본은 점 없음.
-  // (추후 알림 스토어가 생기면 미확인 개수>0일 때 true로 연동)
-  const [hasUnreadAlerts, setHasUnreadAlerts] = useState(false);
+  // 헤더 벨의 미읽음 알림 개수 — 서버 notifications 테이블 기준(count만 조회).
+  // 예전엔 false로 고정돼 배지가 뜬 적이 없었다.
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+  // 화면에 들어올 때마다 갱신 — 알림 화면에서 읽고 돌아오면 배지가 내려간다
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      fetchUnreadNotificationCount().then((n) => { if (alive) setUnreadAlerts(n); });
+      return () => { alive = false; };
+    }, [])
+  );
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // 광고(스폰서) 패키지 — 지구본 마커 탭 시 뜨는 카드
@@ -1260,13 +1270,19 @@ export default function MainScreen({ navigation, route }: Props) {
         <TouchableOpacity
           style={styles.headerIcon}
           onPress={() => {
-            setHasUnreadAlerts(false);
+            setUnreadAlerts(0); // 낙관 반영 — 화면 복귀 시 서버 값으로 재확인된다
             navigation.navigate('Notifications');
           }}
           accessibilityRole="button"
-          accessibilityLabel={t('main.notifA11y')}
+          accessibilityLabel={
+            unreadAlerts > 0
+              ? `${t('main.notifA11y')}, ${t('misc.unreadCountA11y', { count: unreadAlerts })}`
+              : t('main.notifA11y')
+          }
         >
-          <NotificationBellIcon size={24} dot={hasUnreadAlerts} />
+          {/* 벨 자체 dot은 끄고(작은 점) 개수 배지를 얹는다 */}
+          <NotificationBellIcon size={24} />
+          <NotificationBadge count={unreadAlerts} />
         </TouchableOpacity>
       </View>
 

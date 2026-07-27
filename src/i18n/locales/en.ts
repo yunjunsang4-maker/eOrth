@@ -1531,6 +1531,7 @@ const en = {
     noArchivedTab: 'No archived {{label}}',
     unarchivedToast: 'The post is shown again in the social tab',
     notifTitle: 'Notifications',
+    unreadCountA11y: '{{count}} unread notifications',
     catComment: 'Comment',
     catLike: 'Like',
     catFollow: 'Mates',

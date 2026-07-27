@@ -201,6 +201,7 @@ export interface NeighborNotification {
   actorId: string;
   actorHandle: string | null;
   actorEmoji: string | null;
+  actorPhoto: string | null; // 프로필 사진 — 알림 아바타는 사진 우선(없으면 제작 실루엣)
   read: boolean;
   createdAt: number; // ms
 }
@@ -212,7 +213,7 @@ export async function fetchNeighborNotifications(): Promise<NeighborNotification
   try {
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, actor_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji)')
+      .select('id, type, actor_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji, profile_photo)')
       .eq('user_id', uid)
       .in('type', ['neighbor_request', 'neighbor_accept'])
       .order('created_at', { ascending: false })
@@ -226,12 +227,32 @@ export async function fetchNeighborNotifications(): Promise<NeighborNotification
         actorId: r.actor_id as string,
         actorHandle: p.handle ?? null,
         actorEmoji: p.emoji ?? null,
+        actorPhoto: p.profile_photo ?? null,
         read: !!r.read,
         createdAt: new Date(r.created_at).getTime(),
       };
     });
   } catch {
     return [];
+  }
+}
+
+// 미읽음 알림 개수 — 헤더 벨 배지용. 행을 받지 않고 count만 세어 가볍다(head: true).
+// 실패·미로그인은 0 (배지 미표시).
+export async function fetchUnreadNotificationCount(): Promise<number> {
+  if (!supabase) return 0;
+  const uid = await getMyUserId();
+  if (!uid) return 0;
+  try {
+    const { count, error } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', uid)
+      .eq('read', false);
+    if (error) return 0;
+    return count ?? 0;
+  } catch {
+    return 0;
   }
 }
 
