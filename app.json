@@ -130,6 +130,12 @@
             "3qcr597p9d.skadnetwork"
           ]
         }
+      ],
+      [
+        "expo-tracking-transparency",
+        {
+          "userTrackingPermission": "맞춤 광고를 보여드리기 위해 앱 추적 권한이 필요해요. 허용하지 않아도 모든 기능은 그대로 사용할 수 있어요."
+        }
       ]
     ],
     "extra": {
