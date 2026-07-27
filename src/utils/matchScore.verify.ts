@@ -87,5 +87,28 @@ eq(
 eq(Object.keys(pickReason({ ...base, recencyScore: 15 })?.params ?? {}).length, 0,
    '시의성 문구에 날짜 파라미터 없음');
 
+// 우선순위 고정 — 두 축이 동시에 있을 때 더 구체적인 쪽이 이겨야 한다.
+// (각 축을 하나씩만 켜서 테스트하면 분기 순서가 뒤바뀌어도 전부 통과한다)
+eq(
+  pickReason({ ...base, recencyScore: 15, interestScore: 15, sharedKeywords: ['미식'] })?.key,
+  'friends.reasonRecent',
+  '시의성 > 관심사',
+);
+eq(
+  pickReason({ ...base, interestScore: 15, sharedKeywords: ['미식'], seasonScore: 10 })?.key,
+  'friends.reasonInterest',
+  '관심사 > 계절',
+);
+eq(
+  pickReason({ ...base, seasonScore: 10, mutualCount: 2 })?.key,
+  'friends.reasonSeason',
+  '계절 > 공통 메이트',
+);
+eq(
+  pickReason({ ...base, mutualCount: 2, tasteScore: 7 })?.key,
+  'friends.mutualReason',
+  '공통 메이트 > 성향',
+);
+
 if (failed > 0) { console.log(`\n❌ ${failed}건 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
