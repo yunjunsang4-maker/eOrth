@@ -389,17 +389,10 @@ async function buildTexture() {
   try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
 
   if (isGlass()) {
-    // 유리 구슬 몸체: 어두운 남보라(시안 1·5). 위는 더 어둡고 아래로 갈수록 연보라가
-    // 스미는 세로 그라데이션 — 유리 아래쪽에 빛이 고이는 느낌(좌우 동일이라 이음새 없음).
+    // 유리 모드 텍스처는 '육지 전용'(바다 투명) — 육지 메시(buildGlassLand)와 뒷면 구가
+    // 샘플링한다. 바다(유리 몸체)는 본체 구의 별도 소형 텍스처(buildGlassOceanTexture)가
+    // 담당해, 래스터 육지가 본체에 남아 메시 가장자리 밖으로 번지는 것을 원천 차단한다.
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')';
-    ctx.fillRect(0, 0, W, H);
-    var glassTone = ctx.createLinearGradient(0, 0, 0, H);
-    glassTone.addColorStop(0, 'rgba(8,6,18,0.45)');
-    glassTone.addColorStop(0.45, 'rgba(0,0,0,0)');
-    glassTone.addColorStop(1, 'rgba(150,132,205,0.20)');
-    ctx.fillStyle = glassTone;
-    ctx.fillRect(0, 0, W, H);
   } else {
   ctx.fillStyle = cfg.oceanBase;
   ctx.fillRect(0, 0, W, H);
@@ -451,14 +444,19 @@ async function buildTexture() {
 
   if (isGlass()) {
     // 미기록국: 연한 유리 양각(시안 1·2) — 채움 톤 대비만으로 육지가 읽힌다.
-    // 윤곽선은 텍스처에 굽지 않는다: 시안의 빈 유리엔 외곽선이 없고,
-    // 나라 구분은 확대 시 벡터 선이 은은하게 페이드 인(updateBorderFade)하며 담당한다.
+    // 윤곽선은 굽지 않는다(구분선은 확대 시 벡터 팻라인이 담당).
+    // 같은 색 스트로크는 '블리드'다 — 메시 가장자리 픽셀이 경로 밖(투명)을 샘플링해
+    // 테두리가 얼룩지지 않게 채움을 경로 밖으로 2px 연장한다.
     worldData.features.forEach(function(f) {
       if (visitedMap[f.properties.name || '']) return;
       ctx.fillStyle = GLASS_LAND_FILL;
       ctx.beginPath();
       path(f);
       ctx.fill();
+      ctx.strokeStyle = GLASS_LAND_FILL;
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
     });
   } else {
   ctx.shadowColor = '#000';
@@ -599,6 +597,26 @@ async function buildTexture() {
         ctx.drawImage(photoImg, dx, dy, dw, dh);
 
         ctx.restore();
+
+        // 유리 모드 블리드 — 육지 메시 가장자리 픽셀이 경로 밖(투명/이웃)을 샘플링하지
+        // 않도록, cover 배치와 같은 변환의 패턴으로 경로를 3px 밖까지 이어 칠한다.
+        // (DOMMatrix 미지원 폴백: 흰 반투명 — 얇은 밝은 테두리로 보임)
+        if (isGlass()) {
+          try {
+            var pat = ctx.createPattern(photoImg, 'no-repeat');
+            if (pat && pat.setTransform && typeof DOMMatrix !== 'undefined') {
+              pat.setTransform(new DOMMatrix([dw / photoImg.width, 0, 0, dh / photoImg.height, dx, dy]));
+              ctx.strokeStyle = pat;
+            } else {
+              ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+            }
+          } catch (e) { ctx.strokeStyle = 'rgba(255,255,255,0.3)'; }
+          ctx.lineWidth = 6;
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          path(subFeature);
+          ctx.stroke();
+        }
       });
 
       // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신).
@@ -706,6 +724,26 @@ async function buildTexture() {
   return canvasTex;
 }
 
+// 유리 몸체(바다) 전용 소형 텍스처 — 어두운 남보라 + 위 어둡고 아래로 연보라가 스미는
+// 세로 그라데이션(좌우 동일이라 이음새 없음). 육지는 벡터 메시가 그리므로 여기엔 없다.
+function buildGlassOceanTexture() {
+  var c = document.createElement('canvas');
+  c.width = 1024; c.height = 512;
+  var g = c.getContext('2d');
+  g.fillStyle = 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')';
+  g.fillRect(0, 0, c.width, c.height);
+  var tone = g.createLinearGradient(0, 0, 0, c.height);
+  tone.addColorStop(0, 'rgba(8,6,18,0.45)');
+  tone.addColorStop(0.45, 'rgba(0,0,0,0)');
+  tone.addColorStop(1, 'rgba(150,132,205,0.20)');
+  g.fillStyle = tone;
+  g.fillRect(0, 0, c.width, c.height);
+  var tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  return tex;
+}
+
 // Atmosphere glow
 function buildAtmosphere(neonHex) {
   var color = new THREE.Color(neonHex);
@@ -770,6 +808,189 @@ function buildGlassSpecular() {
   var mesh = new THREE.Mesh(new THREE.SphereGeometry(1.005, 64, 64), mat);
   mesh.renderOrder = 3; // 텍스처·국경선 위에 마지막으로
   return mesh;
+}
+
+// ── 유리 벡터 대륙(일체형) — 네온(색 활성화) 지구본의 검증된 시스템 이식 ──
+// 래스터 텍스처의 육지 채움과 벡터 선이 서브텍셀만큼 어긋나 '깨져' 보이던 것을,
+// 육지를 삼각분할 메시로 그리고 테두리를 같은 정점에서 뽑아 근본 해결한다.
+// 채움 내용(유리 톤·사진)은 등장방형 텍스처를 UV로 샘플링 — 경계는 메시(벡터)가 정의.
+// 메시는 텍스처와 같은 110m 데이터로 굽는다(내용-경계 일치). 딥줌 정밀 채움은 기존
+// 지역 창(10m 마스크)이 메시 위(1.0025)에서 계속 담당한다.
+var FATLINE_CSS_W = 1.3; // 화면 기준 선 두께(css px)
+var fatMats = [];
+function fatRes() { return [renderer.domElement.width || window.innerWidth, renderer.domElement.height || window.innerHeight]; }
+var FATLINE_VS =
+  'attribute vec3 aStart; attribute vec3 aEnd; attribute float aSide; attribute float aPos;' +
+  'uniform vec2 uResolution; uniform float uWidth;' +
+  'void main(){' +
+  ' vec4 cs = projectionMatrix * modelViewMatrix * vec4(aStart,1.0);' +
+  ' vec4 ce = projectionMatrix * modelViewMatrix * vec4(aEnd,1.0);' +
+  ' float aspect = uResolution.x / uResolution.y;' +
+  ' vec2 dir = (ce.xy/ce.w) - (cs.xy/cs.w); dir.x *= aspect;' +
+  ' float L = length(dir); dir = L>0.0 ? dir/L : vec2(1.0,0.0);' +
+  ' vec2 perp = vec2(-dir.y, dir.x); perp.x /= aspect;' +
+  ' vec4 clip = (aPos < 0.5) ? cs : ce;' +
+  ' clip.xy += perp * aSide * (uWidth / uResolution.y) * clip.w;' +
+  ' gl_Position = clip;' +
+  '}';
+var FATLINE_FS =
+  'precision mediump float; uniform vec3 uColor; uniform float uOpacity;' +
+  'void main(){ if(uOpacity<=0.001) discard; gl_FragColor = vec4(uColor, uOpacity); }';
+function makeFatMat(col) {
+  var r = fatRes();
+  var m = new THREE.ShaderMaterial({
+    uniforms: {
+      uResolution: { value: new THREE.Vector2(r[0], r[1]) },
+      uWidth: { value: FATLINE_CSS_W * Math.min(window.devicePixelRatio || 1, 2) },
+      uColor: { value: new THREE.Color(col) },
+      uOpacity: { value: 0 }
+    },
+    vertexShader: FATLINE_VS, fragmentShader: FATLINE_FS,
+    transparent: true, depthWrite: false, side: THREE.DoubleSide
+  });
+  fatMats.push(m);
+  return m;
+}
+function buildFatWorldLines(world, R) {
+  var starts = [], ends = [], sides = [], poss = [], idx = []; var vi = 0;
+  function seg(a, b) {
+    for (var k = 0; k < 4; k++) { starts.push(a.x, a.y, a.z); ends.push(b.x, b.y, b.z); }
+    poss.push(0, 0, 1, 1); sides.push(-1, 1, -1, 1);
+    idx.push(vi, vi + 1, vi + 2, vi + 2, vi + 1, vi + 3); vi += 4;
+  }
+  function addRing(coords) {
+    if (coords.length < 2) return;
+    var prev = null;
+    for (var i = 0; i < coords.length; i++) {
+      var v = geoToVec3(coords[i][0], coords[i][1], R);
+      if (prev) seg(prev, v);
+      prev = v;
+    }
+  }
+  world.features.forEach(function(f) {
+    var g = f.geometry; if (!g) return;
+    if (g.type === 'Polygon') g.coordinates.forEach(addRing);
+    else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { poly.forEach(addRing); });
+  });
+  var geo = new THREE.BufferGeometry();
+  var sAttr = new THREE.Float32BufferAttribute(starts, 3);
+  geo.setAttribute('aStart', sAttr);
+  geo.setAttribute('position', sAttr);
+  geo.setAttribute('aEnd', new THREE.Float32BufferAttribute(ends, 3));
+  geo.setAttribute('aPos', new THREE.Float32BufferAttribute(poss, 1));
+  geo.setAttribute('aSide', new THREE.Float32BufferAttribute(sides, 1));
+  geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+  var mat = makeFatMat('#FFFFFF');
+  var mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
+  var grp = new THREE.Group(); grp.add(mesh);
+  grp.userData.mat = mat; grp.visible = false;
+  return grp;
+}
+// 육지 메시 셰이더 — 등장방형 텍스처를 UV로 샘플. 알파는 구운 값 그대로(유리 반투명 유지)
+var GLASS_LAND_VS =
+  'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
+var GLASS_LAND_FS =
+  'precision highp float; uniform sampler2D uTex; varying vec2 vUv;' +
+  'void main(){ vec4 c = texture2D(uTex, vUv); if (c.a < 0.01) discard; gl_FragColor = c; }';
+var glassLandMesh = null, glassLandMat = null, glassOutline = null;
+function buildGlassLand(tex) {
+  if (!worldData || typeof THREE.ShapeUtils === 'undefined') return;
+  if (glassLandMesh) { globe.remove(glassLandMesh); if (glassLandMesh.geometry) glassLandMesh.geometry.dispose(); if (glassLandMesh.material) glassLandMesh.material.dispose(); glassLandMesh = null; }
+  if (glassOutline) { globe.remove(glassOutline); glassOutline = null; }
+  var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화해도 사지타가 본체 아래로 안 꺼지게
+  var pos = [], uvs = [];
+  function pushV(p) {
+    var v = geoToVec3(p[0], p[1], R);
+    pos.push(v.x, v.y, v.z);
+    // 등장방형 UV — 캔버스 텍스처와 같은 투영. unwrap된 경도(>180)는 RepeatWrapping이 처리
+    uvs.push((p[0] + 180) / 360, (p[1] + 90) / 180);
+  }
+  function segDeg(a, b) { var dx = a[0] - b[0], dy = a[1] - b[1]; return Math.sqrt(dx * dx + dy * dy); }
+  function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
+  // crack-free 적응 세분 — 변 길이로만 판단해 공유 변이 항상 같게 쪼개짐(T-정션 없음)
+  var TH = 6;
+  function emitTri(a, b, c, depth) {
+    var sab = segDeg(a, b) > TH, sbc = segDeg(b, c) > TH, sca = segDeg(c, a) > TH;
+    if (depth <= 0 || (!sab && !sbc && !sca)) { pushV(a); pushV(b); pushV(c); return; }
+    var n = (sab ? 1 : 0) + (sbc ? 1 : 0) + (sca ? 1 : 0);
+    if (n === 3) {
+      var ab = mid(a, b), bc = mid(b, c), ca = mid(c, a);
+      emitTri(a, ab, ca, depth - 1); emitTri(ab, b, bc, depth - 1); emitTri(ca, bc, c, depth - 1); emitTri(ab, bc, ca, depth - 1);
+    } else if (n === 1) {
+      if (sab) { var m = mid(a, b); emitTri(a, m, c, depth - 1); emitTri(m, b, c, depth - 1); }
+      else if (sbc) { var m2 = mid(b, c); emitTri(b, m2, a, depth - 1); emitTri(m2, c, a, depth - 1); }
+      else { var m3 = mid(c, a); emitTri(c, m3, b, depth - 1); emitTri(m3, a, b, depth - 1); }
+    } else {
+      if (!sca) { var p = mid(a, b), q = mid(b, c); emitTri(a, p, c, depth - 1); emitTri(p, b, q, depth - 1); emitTri(p, q, c, depth - 1); }
+      else if (!sab) { var p2 = mid(b, c), q2 = mid(c, a); emitTri(b, p2, a, depth - 1); emitTri(p2, c, q2, depth - 1); emitTri(p2, q2, a, depth - 1); }
+      else { var p3 = mid(c, a), q3 = mid(a, b); emitTri(c, p3, b, depth - 1); emitTri(p3, a, q3, depth - 1); emitTri(p3, q3, b, depth - 1); }
+    }
+  }
+  // 날짜변경선 unwrap·극 폐합 — 네온 구현과 동일(주석·근거는 neon buildVectorLandPOC 참조)
+  function unwrapRing(r) {
+    var out = [[r[0][0], r[0][1]]], prev = r[0][0];
+    for (var i = 1; i < r.length; i++) { var lon = r[i][0]; while (lon - prev > 180) lon -= 360; while (lon - prev < -180) lon += 360; out.push([lon, r[i][1]]); prev = lon; }
+    return out;
+  }
+  function ringCenterLon(r) { var s = 0; for (var i = 0; i < r.length; i++) s += r[i][0]; return s / r.length; }
+  function prepRing(raw) {
+    var r = raw.slice();
+    if (r.length > 1 && r[0][0] === r[r.length - 1][0] && r[0][1] === r[r.length - 1][1]) r.pop();
+    var u = unwrapRing(r);
+    var net = u[u.length - 1][0] - u[0][0];
+    if (Math.abs(net) >= 270) {
+      var bi = 0, bd = 0;
+      for (var i = 0; i < r.length; i++) { var d = Math.abs(r[i][0] - r[(i + 1) % r.length][0]); if (d > bd) { bd = d; bi = (i + 1) % r.length; } }
+      if (bd > 180) u = unwrapRing(r.slice(bi).concat(r.slice(0, bi)));
+    }
+    return u;
+  }
+  function closePoleRing(r) {
+    var net = r[r.length - 1][0] - r[0][0];
+    if (Math.abs(net) < 270) return r;
+    var s = 0; for (var i = 0; i < r.length; i++) s += r[i][1];
+    var pole = (s < 0) ? -90 : 90;
+    var sign = (net > 0) ? 1 : -1;
+    var fx = r[0][0] + 360 * sign;
+    r.push([fx, r[0][1]]);
+    r.push([fx, pole]);
+    r.push([r[0][0], pole]);
+    return r;
+  }
+  function addPoly(rings) {
+    var outer = closePoleRing(prepRing(rings[0])); var oc = ringCenterLon(outer);
+    var contour = outer.map(function(p) { return new THREE.Vector2(p[0], p[1]); });
+    var holes = []; var all = outer.slice();
+    for (var h = 1; h < rings.length; h++) {
+      var hr = prepRing(rings[h]);
+      var shift = Math.round((oc - ringCenterLon(hr)) / 360) * 360;
+      if (shift) for (var k = 0; k < hr.length; k++) hr[k][0] += shift;
+      holes.push(hr.map(function(p) { return new THREE.Vector2(p[0], p[1]); }));
+      all = all.concat(hr);
+    }
+    var faces = THREE.ShapeUtils.triangulateShape(contour, holes);
+    for (var t = 0; t < faces.length; t++) { var fa = faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
+  }
+  worldData.features.forEach(function(f) {
+    var g = f.geometry; if (!g) return;
+    if (g.type === 'Polygon') addPoly(g.coordinates);
+    else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { addPoly(poly); });
+  });
+  var geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  glassLandMat = new THREE.ShaderMaterial({
+    uniforms: { uTex: { value: tex } },
+    vertexShader: GLASS_LAND_VS, fragmentShader: GLASS_LAND_FS,
+    transparent: true, depthWrite: false, side: THREE.FrontSide,
+  });
+  var mesh = new THREE.Mesh(geo, glassLandMat);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  globe.add(mesh); glassLandMesh = mesh;
+  // 테두리 — 같은 데이터의 링에서 뽑아 채움과 완벽 일치. 불투명도는 updateBorderFade가 줌 연동
+  glassOutline = buildFatWorldLines(worldData, R);
+  glassOutline.children[0].renderOrder = 3;
+  globe.add(glassOutline);
 }
 
 function geoToVec3(lon, lat, r) {
@@ -895,18 +1116,19 @@ async function init() {
   var geo = new THREE.SphereGeometry(1, 128, 128);
   // 반사광(specular) 제거 — 사진 위에 유리 같은 광택 띠가 얹혀 "빛나 보이던" 문제 해결.
   // 확산 조명(구체 입체 음영)은 유지하되 광택만 없애 사진이 원본처럼 보이게 한다.
+  // 유리 모드: 본체는 바다 전용 소형 텍스처(육지는 벡터 메시가 그린다),
+  // buildTexture 산출물(육지 전용)은 육지 메시·뒷면 구가 UV 샘플링한다
   var mat = new THREE.MeshPhongMaterial({
-    map: texture,
+    map: isGlass() ? buildGlassOceanTexture() : texture,
     specular: new THREE.Color(0x000000),
     shininess: 0,
   });
-  // 유리 모드: 텍스처 알파(반투명 바다)가 살아야 뒤 별밭이 비친다
-  if (isGlass()) mat.transparent = true;
+  if (isGlass()) mat.transparent = true; // 바다 알파가 살아야 뒤 별밭이 비친다
   globeMesh = new THREE.Mesh(geo, mat);
   globe.add(globeMesh);
 
   if (isGlass()) {
-    // 유리 너머 희미한 뒷면 대륙 — 같은 텍스처를 BackSide로 은은하게(구슬 리얼리즘의 핵심)
+    // 유리 너머 희미한 뒷면 대륙 — 육지 텍스처를 BackSide로 은은하게(구슬 리얼리즘의 핵심)
     glassBackMat = new THREE.MeshBasicMaterial({
       map: texture,
       transparent: true,
@@ -917,6 +1139,8 @@ async function init() {
     var backMesh = new THREE.Mesh(new THREE.SphereGeometry(0.997, 64, 64), glassBackMat);
     backMesh.renderOrder = -2; // 본체보다 먼저 그려 항상 '뒤'로
     globe.add(backMesh);
+    // 일체형 벡터 대륙 + 동일 정점 테두리 — 채움과 선의 어긋남(깨짐) 원천 제거
+    buildGlassLand(texture);
     // 화면 고정 반사 — scene에 직접(회전 무관)
     scene.add(buildGlassSpecular());
   }
@@ -927,8 +1151,11 @@ async function init() {
   // 유리 모드의 밝은 림 링과 정반대라 유리에선 뺀다
   if (!isGlass()) globe.add(buildInnerGlow());
 
-  borderGroup = buildBorders(worldData, cfg.borderColor);
-  globe.add(borderGroup);
+  // 유리 모드는 일체형 팻라인(glassOutline)이 구분선을 담당 — 구 LineBasicMaterial 그룹 불필요
+  if (!isGlass()) {
+    borderGroup = buildBorders(worldData, cfg.borderColor);
+    globe.add(borderGroup);
+  }
 
   // 보류된 광고 마커 생성 (setSponsored가 worldData 로드 전에 도착한 경우)
   if (pendingSponsored) buildAdMarkers(pendingSponsored);
@@ -1320,7 +1547,14 @@ function updateBorderFade() {
   // 3단계 유동 전환: 110m → 50m(1.9~2.6) → 10m(4.5~5.8) — 확대할수록 매끄럽게 선명해진다
   var t = world50Data ? smoothstep01(1.9, 2.6, zf) : 0;
   var t10 = borders10Lines ? smoothstep01(4.5, 5.8, zf) : 0;
-  if (t > 0 && !borderGroup50 && world50Data && zoomSettled()) {
+  // 유리 모드: 일체형 팻라인이 구분선 담당 — 기본 크기 0, 확대 시 은은하게 페이드 인.
+  // 딥줌에선 10m 팻 구분선(t10)이 위에서 이어받으므로 함께 줄인다.
+  if (isGlass() && glassOutline && glassOutline.userData.mat) {
+    var go = smoothstep01(1.5, 2.6, zf) * 0.5 * (1 - t10 * 0.6);
+    glassOutline.userData.mat.uniforms.uOpacity.value = go;
+    glassOutline.visible = go > 0.01;
+  }
+  if (!isGlass() && t > 0 && !borderGroup50 && world50Data && zoomSettled()) {
     // 그룹 생성(무거움)은 줌 안정 후 1회 — 핀치 중 렉 방지
     borderGroup50 = buildBordersMerged(world50Data, cfg.borderColor);
     globe.add(borderGroup50);
@@ -1331,7 +1565,8 @@ function updateBorderFade() {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needBorders10m' }));
   }
   if (t10 > 0 && !borders10Group && borders10Lines && zoomSettled()) {
-    borders10Group = buildAdmin1Group(borders10Lines, 1.0018); // 50m 국경(1.0015) 위
+    borders10Group = buildAdmin1Group(borders10Lines, isGlass() ? 1.003 : 1.0018); // 50m 국경(1.0015)·유리 육지 메시(1.002) 위
+    if (isGlass()) borders10Group.children[0].renderOrder = 4;
     globe.add(borders10Group);
   }
   // 유리 모드: 기본 크기에선 구분선이 없다가 확대하면 은은하게 떠오른다(시안).
@@ -1350,7 +1585,8 @@ function updateBorderFade() {
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needAdmin1' }));
   }
   if (a > 0 && admin1Lines && !admin1Group && zoomSettled()) {
-    admin1Group = buildAdmin1Group(admin1Lines);
+    admin1Group = buildAdmin1Group(admin1Lines, isGlass() ? 1.003 : undefined);
+    if (isGlass()) admin1Group.children[0].renderOrder = 4;
     globe.add(admin1Group);
   }
   if (admin1Group) {
@@ -1540,8 +1776,9 @@ function updateRegion() {
   tex.offset.set(-u0 * 360 / span, -v0 * 180 / span);
   if (!regionMesh) {
     regionMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: 0, depthWrite: false });
-    regionMesh = new THREE.Mesh(new THREE.SphereGeometry(1.0008, 128, 128), regionMat);
-    regionMesh.renderOrder = -1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
+    // 유리 모드: 육지 메시(1.002, renderOrder 1) 위에 얹어 딥줌 정밀 채움이 메시를 덮는다
+    regionMesh = new THREE.Mesh(new THREE.SphereGeometry(isGlass() ? 1.0025 : 1.0008, 128, 128), regionMat);
+    regionMesh.renderOrder = isGlass() ? 2 : -1; // 벡터 선(국경·주/도선)보다 먼저 그려 선이 항상 위에 남게
     globe.add(regionMesh);
   } else {
     var old = regionMat.map;
@@ -1741,6 +1978,11 @@ window.addEventListener('resize', function() {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
   sizeLabelCanvas();
+  // 팻라인은 화면 해상도 기준 두께 — 리사이즈 시 uniform 갱신
+  for (var fi = 0; fi < fatMats.length; fi++) {
+    var fr = fatRes();
+    fatMats[fi].uniforms.uResolution.value.set(fr[0], fr[1]);
+  }
 });
 
 // 지구본 형태(테마) 적용 — cfg 색을 갈아끼우고 텍스처/대기광/국경선만 재생성
@@ -1758,11 +2000,17 @@ function applyTheme(t) {
   loadAllImages().then(function() {
     return buildTexture();
   }).then(function(tex) {
+    // 유리 모드: 새 육지 텍스처는 육지 메시·뒷면 구가 소비(본체는 바다 전용 텍스처 유지)
+    if (isGlass() && glassLandMat) {
+      var oldG = glassLandMat.uniforms.uTex.value;
+      glassLandMat.uniforms.uTex.value = tex;
+      if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
+      if (oldG && oldG.dispose) oldG.dispose();
+      return;
+    }
     var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
     globeMesh.material.map = tex;
     globeMesh.material.needsUpdate = true;
-    // 유리 뒷면 구도 같은 텍스처를 쓴다 — 함께 갱신 안 하면 dispose된 옛 텍스처를 참조
-    if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
     if (old && old.dispose) old.dispose();
   });
   if (atmosphere) {
@@ -1780,8 +2028,11 @@ function applyTheme(t) {
     });
   }
   // 110m 기준으로 재구축(딥줌 중 worldData가 50m일 수 있음) — 50m 그룹도 있으면 새 색으로 재생성
-  borderGroup = buildBorders(world110Data || worldData, cfg.borderColor);
-  globe.add(borderGroup);
+  // (유리 모드는 팻라인이 담당하므로 재구축하지 않는다)
+  if (!isGlass()) {
+    borderGroup = buildBorders(world110Data || worldData, cfg.borderColor);
+    globe.add(borderGroup);
+  }
   if (borderGroup50) {
     globe.remove(borderGroup50);
     borderGroup50.traverse(function(o) {
@@ -1811,10 +2062,17 @@ function handleVisitedMessage(msg) {
       loadAllImages().then(function() {
         return buildTexture();
       }).then(function(tex) {
+        // 유리 모드: 새 육지 텍스처는 육지 메시·뒷면 구가 소비(본체는 바다 전용 텍스처 유지)
+        if (isGlass() && glassLandMat) {
+          var oldG = glassLandMat.uniforms.uTex.value;
+          glassLandMat.uniforms.uTex.value = tex;
+          if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
+          if (oldG && oldG.dispose) oldG.dispose();
+          return;
+        }
         var old = globeMesh.material.map;
         globeMesh.material.map = tex;
         globeMesh.material.needsUpdate = true;
-        if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
         if (old && old.dispose) old.dispose();
       });
     }
