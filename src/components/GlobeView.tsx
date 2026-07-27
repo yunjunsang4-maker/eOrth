@@ -2007,12 +2007,30 @@ function updateLabels() {
     var px = snapPx(p.x), py = snapPx(p.y);
     if (!occupy(px, py)) continue;
     var a = Math.min(1, (p.facing - 0.3) / 0.25);
-    labelCtx.font = '600 ' + fs + 'px sans-serif';
-    labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.8 * a) + ')';
-    labelCtx.lineWidth = 3;
-    labelCtx.strokeText(L.ko, px, py);
-    labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
-    labelCtx.fillText(L.ko, px, py);
+    if (isGlass()) {
+      // 유리 지구본: 빛으로 새긴 글자 — 얇은 웨이트 + 자간 + 연보라 글로우.
+      // 굵은 흰 글자+진보라 하드 테두리(기존)는 유리의 가벼움과 어긋난다.
+      labelCtx.font = '300 ' + (fs + 1) + 'px "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
+      try { labelCtx.letterSpacing = '1.5px'; } catch (e) {} // 미지원 엔진은 무시(무해)
+      // ① 대비용 짙은 소프트 섀도 — 밝은 사진 조각 위에서도 읽히게
+      labelCtx.shadowColor = 'rgba(15,8,35,' + (0.7 * a) + ')';
+      labelCtx.shadowBlur = 6;
+      labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
+      labelCtx.fillText(L.ko, px, py);
+      // ② 유리 광 — 연보라 글로우 겹
+      labelCtx.shadowColor = 'rgba(214,196,255,' + (0.8 * a) + ')';
+      labelCtx.shadowBlur = 10;
+      labelCtx.fillText(L.ko, px, py);
+      labelCtx.shadowBlur = 0;
+      try { labelCtx.letterSpacing = '0px'; } catch (e) {}
+    } else {
+      labelCtx.font = '600 ' + fs + 'px sans-serif';
+      labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.8 * a) + ')';
+      labelCtx.lineWidth = 3;
+      labelCtx.strokeText(L.ko, px, py);
+      labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
+      labelCtx.fillText(L.ko, px, py);
+    }
   }
   // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장.
   // 유리(사진) 지구본은 국가 이름만 표시 — 도시 핀·이름은 사진 조각과 유리 룩을 어지럽힌다
