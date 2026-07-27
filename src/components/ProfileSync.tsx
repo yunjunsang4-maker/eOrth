@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { useSettings, genHandle } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
 import { useIsAppEntered } from '../hooks/useIsAppEntered';
 import { isSupabaseConfigured } from '../services/supabase';
 import { upsertMyProfile } from '../services/profile';
 import { uploadImage } from '../services/media';
 import { emitToast } from '../store/toastStore';
+import { COUNTRIES } from '../constants/countries';
 import i18n from '../i18n';
 
 // 로그인(인증 진입) 후 로컬 프로필을 Supabase profiles 테이블로 동기화한다.
@@ -13,6 +15,12 @@ import i18n from '../i18n';
 export default function ProfileSync() {
   const entered = useIsAppEntered();
   const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
+  const { activeStayGroup } = useRecords();
+
+  // 진행 중(active) 체류만 push — paused(잠깐 귀국)·종료는 null
+  const stayCode = activeStayGroup?.stay?.status === 'active'
+    ? (COUNTRIES.find((c) => c.name === activeStayGroup.countryName)?.term.split(' ')[0].toUpperCase() ?? null)
+    : null;
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
@@ -37,6 +45,9 @@ export default function ProfileSync() {
         profile_photo: photoUrl,
         // 아이디 표시 폰트(프리미엄) — 해지 시 서버는 null(타인에겐 기본 폰트), 로컬 선택값은 보존 → 재구독 시 자동 복원
         handle_font: isPremium ? handleFont : null,
+        // 장기체류 상태 — active 체류 중이면 ISO 코드·'active', 아니면 null
+        stay_country: stayCode,
+        stay_status: stayCode ? 'active' : null,
       };
       // handle을 undefined로 넘기면 upsert에서 제외 → 서버 handle을 건드리지 않고 나머지만 동기화.
       const doUpsert = (h: string | null | undefined) =>
@@ -57,7 +68,7 @@ export default function ProfileSync() {
         }
       }
     })();
-  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium]);
+  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium, stayCode]);
 
   return null;
 }

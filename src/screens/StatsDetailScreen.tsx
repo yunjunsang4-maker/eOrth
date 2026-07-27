@@ -13,7 +13,10 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
+import { buildRegionEnMap, regionLabel } from '../utils/regionLabel';
 import Svg, {
+  Image as SvgImage,
   Path as SvgPath,
   Circle as SvgCircle,
   G as SvgG,
@@ -25,8 +28,14 @@ import Svg, {
 import { Colors, Typography } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
-import { DETAIL_WIREFRAME, DETAIL_RING, DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+import { DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+
+// 지구본 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스에 맞춰 배치.
+const DETAIL_RING_IMG = require('../../assets/statsDetailRing.png');
+// 지구본 문양 — Figma 시안(Group 2085664601) 그리드 지구본 PNG. 유리 베이스 원(중심 205.89,284.11 / 반경 127.07)에 정렬.
+const DETAIL_GLOBE_IMG = require('../../assets/statsDetailGlobe.png');
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
   recentTrips,
@@ -105,7 +114,7 @@ type DetailContent = { title: string; hero: Hero; boxes: Box[] };
 // 시안 좌표계(402×874): 와이어프레임 구체 중심 (206.47, 282.93), 반경 ≈115.34.
 const HERO_CX = SW / 2;
 const HERO_R = SW * 0.34;                       // 지구본 반지름
-const HERO_GLOBE_H = Math.round(HERO_R * 2 + 92); // 히어로 섹션 높이(글로우·화살표 여유 포함)
+const HERO_GLOBE_H = Math.round(HERO_R * 2 + 72); // 히어로 섹션 높이(글로우·화살표 여유 포함) — 둥근선~통계 간격 축소 위해 하단 여백 소폭 감소
 const HERO_CY = HERO_R + 30;                    // 지구본 중심 y (섹션 내)
 // 시안 좌표 → 히어로 좌표 매핑 (구체 반경을 HERO_R에 맞춤)
 const HERO_MAP_SCALE = HERO_R / 115.34;
@@ -113,7 +122,7 @@ const HERO_GLOBE_TRANSFORM = `translate(${HERO_CX} ${HERO_CY}) scale(${HERO_MAP_
 
 // ─── 메인 화면 ───
 export default function StatsDetailScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   // 지구본 스킨 연동 — aurora는 시안의 라벤더→보라 유지, 커스텀 스킨(cyan/mint)만
@@ -121,8 +130,6 @@ export default function StatsDetailScreen() {
   const skinAccent = useSkinAccent();
   const customSkin = !!skinAccent.ringGradient;
   const glowColor = customSkin ? skinAccent.accent : '#7C3AED';        // 지구본 뒤 글로우
-  const wireTop = customSkin ? skinAccent.barGradient[1] : '#E0C9FF';  // 와이어프레임 밝은 끝
-  const wireBottom = customSkin ? skinAccent.accentDeep : '#7C3AED';   // 와이어프레임 진한 끝
   const pointColor = customSkin ? skinAccent.barGradient[1] : '#E0C9FF'; // 값·더보기 포인트 텍스트
   // 대륙 키(한글, COUNTRIES 데이터)를 표시용 라벨로 변환
   const continentName = useCallback((cont: string) => {
@@ -138,9 +145,24 @@ export default function StatsDetailScreen() {
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
   const { records } = useRecords();
+  const { homeCountryCode } = useSettings();
+
+  // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
+  const homeNames = useMemo(() => {
+    const s = new Set<string>();
+    const name = COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name;
+    if (name) {
+      s.add(name);
+      if (name === '대한민국') s.add('한국');
+      if (name === '한국') s.add('대한민국');
+    }
+    return s;
+  }, [homeCountryCode]);
 
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
+  // KO→EN 지역명 맵 (영어 모드에서 도시/지역명 영문화용)
+  const regionMap = useMemo(() => buildRegionEnMap(records), [records]);
 
   // Compute stats dynamically based on statType and myRecords
   const content = useMemo<DetailContent>(() => {
@@ -152,11 +174,13 @@ export default function StatsDetailScreen() {
     myRecords.forEach((r) => {
       if (r.countries && r.countries.length > 0) {
         r.countries.forEach((c) => {
+          if (homeNames.has(c.name)) return; // 거주국 제외
           if (!visitedCountriesSet.has(c.name)) {
             visitedCountriesSet.add(c.name);
           }
         });
       } else if (r.countryName) {
+        if (homeNames.has(r.countryName)) return; // 거주국 제외
         if (!visitedCountriesSet.has(r.countryName)) {
           visitedCountriesSet.add(r.countryName);
         }
@@ -208,7 +232,7 @@ export default function StatsDetailScreen() {
       const yearStr = firstRecord.date ? firstRecord.date.split('.')[0] : (firstRecord.startDate ? firstRecord.startDate.split('.')[0] : '');
       if (yearStr && yearStr.length === 4) {
         firstTravelYear = t('statsDetail.yearN', { n: yearStr });
-        firstTravelLoc = firstRecord.countryName || (firstRecord.countries?.[0]?.name) || '';
+        firstTravelLoc = countryLabel(firstRecord.countryName || (firstRecord.countries?.[0]?.name) || '', i18n.language);
       }
     }
 
@@ -251,7 +275,7 @@ export default function StatsDetailScreen() {
       .map((year) => {
         const visits = yearlyCounts[year];
         const countriesSet = yearlyVisitedCountries[year] || new Set<string>();
-        const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).join(', ') : '';
+        const countriesStr = countriesSet.size > 0 ? Array.from(countriesSet).map((c) => countryLabel(c, i18n.language)).join(', ') : '';
         return {
           label: t('statsDetail.yearN', { n: year }),
           value: t('statsDetail.visitsN', { n: visits }),
@@ -303,7 +327,7 @@ export default function StatsDetailScreen() {
 
     const regionItems: Item[] = ['아시아', '유럽', '아메리카', '오세아니아', '아프리카'].map((cont) => {
       const count = continentCountries[cont].size;
-      const countriesListStr = Array.from(continentCountries[cont]).slice(0, 5).join(' · ') + (continentCountries[cont].size > 5 ? t('statsDetail.moreN', { n: continentCountries[cont].size - 5 }) : '');
+      const countriesListStr = Array.from(continentCountries[cont]).slice(0, 5).map((c) => countryLabel(c, i18n.language)).join(' · ') + (continentCountries[cont].size > 5 ? t('statsDetail.moreN', { n: continentCountries[cont].size - 5 }) : '');
       return {
         label: continentName(cont),
         value: t('statsDetail.countriesN', { n: count }),
@@ -335,9 +359,9 @@ export default function StatsDetailScreen() {
     const countriesItems: Item[] = Object.keys(countryVisits)
       .map((name) => {
         const cInfo = countryVisits[name];
-        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).join(' · ') : name;
+        const citiesStr = cInfo.cities.size > 0 ? Array.from(cInfo.cities).map((c) => regionLabel(c, i18n.language, regionMap)).join(' · ') : countryLabel(name, i18n.language);
         return {
-          label: `${cInfo.flag} ${name}`,
+          label: `${cInfo.flag} ${countryLabel(name, i18n.language)}`,
           value: t('statsDetail.visitsN', { n: cInfo.count }),
           sub: citiesStr,
           visits: cInfo.count, // for sorting
@@ -467,21 +491,21 @@ export default function StatsDetailScreen() {
           title: t('statsDetail.ratingTitle'),
           hero: { cycle: [
             { label: t('statsDetail.heroAvgRating'), value: t('statsDetail.starN', { n: avgRating }) },
-            { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+            { label: t('statsDetail.hlTopRated'), value: topRated ? countryLabel(topRated.country, i18n.language) : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
             { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
           ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxRatingDist'), rows: ratingItems.map((i) => ({ label: i.label, value: i.value, sub: t('statsDetail.percentN', { n: i.sub }) })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
-              { label: t('statsDetail.hlTopRated'), value: topRated ? topRated.country : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
-              { label: t('statsDetail.hlRecentRated'), value: recentRated ? recentRated.country : '-', sub: recentRated ? `★ ${recentRated.rating}` : '' },
+              { label: t('statsDetail.hlTopRated'), value: topRated ? countryLabel(topRated.country, i18n.language) : '-', sub: topRated ? `★ ${topRated.rating}` : '' },
+              { label: t('statsDetail.hlRecentRated'), value: recentRated ? countryLabel(recentRated.country, i18n.language) : '-', sub: recentRated ? `★ ${recentRated.rating}` : '' },
               { label: t('statsDetail.hlRatedCount'), value: t('statsDetail.countN', { n: ratedRecordsCount }) },
             ] },
           ],
         };
       }
     }
-  }, [statType, myRecords, t, continentName]);
+  }, [statType, myRecords, homeNames, t, continentName, regionMap, i18n.language]);
 
   // 지구본 히어로에 스포트라이트되는 항목 — 자동 순환(페이드 아웃→교체→페이드 인)
   const cycleItems = content.hero.cycle;
@@ -599,16 +623,6 @@ export default function StatsDetailScreen() {
                       <SvgStop offset="0%" stopColor={glowColor} stopOpacity={0.28} />
                       <SvgStop offset="100%" stopColor={glowColor} stopOpacity={0} />
                     </SvgRadialGradient>
-                    {/* 와이어프레임 구체 — 밝은→진한 스킨색 (aurora는 시안 라벤더→보라, 좌표는 시안 좌표계) */}
-                    <SvgLinearGradient id="detailWireGrad" x1="206.47" y1="167.585" x2="206.47" y2="398.267" gradientUnits="userSpaceOnUse">
-                      <SvgStop offset="0" stopColor={wireTop} />
-                      <SvgStop offset="1" stopColor={wireBottom} />
-                    </SvgLinearGradient>
-                    {/* 링 호 — 아래 흰색 → 위 투명 (시안 paint1) */}
-                    <SvgLinearGradient id="detailRingGrad" x1="207.98" y1="430" x2="207.98" y2="271.27" gradientUnits="userSpaceOnUse">
-                      <SvgStop offset="0" stopColor="#FFFFFF" />
-                      <SvgStop offset="1" stopColor="#999999" stopOpacity={0} />
-                    </SvgLinearGradient>
                   </SvgDefs>
                   {/* 뒤 보라 글로우 */}
                   <SvgCircle cx={HERO_CX} cy={HERO_CY} r={HERO_R * 1.15} fill="url(#detailGlobeGlow)" />
@@ -616,11 +630,10 @@ export default function StatsDetailScreen() {
                   <SvgG transform={HERO_GLOBE_TRANSFORM}>
                     {/* 유리 베이스 원 */}
                     <SvgCircle cx={205.89} cy={284.11} r={127.07} fill="#FFFFFF" fillOpacity={0.03} />
-                    {/* 와이어프레임 구체 (시안은 blur — fill 0.25로 발광 근사) */}
-                    <SvgPath d={DETAIL_WIREFRAME} fill="url(#detailWireGrad)" fillOpacity={0.25} />
-                    {/* 하단 링 호 — 시안 blur 근사(소프트 1겹 + 본선) */}
-                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={13} strokeOpacity={0.12} strokeLinecap="round" fill="none" />
-                    <SvgPath d={DETAIL_RING} stroke="url(#detailRingGrad)" strokeWidth={6.27} strokeOpacity={0.3} strokeLinecap="round" fill="none" />
+                    {/* 지구본 문양 — Figma 시안(Group 2085664601) PNG. 유리 베이스 원 바운딩 박스에 정렬 */}
+                    <SvgImage href={DETAIL_GLOBE_IMG} x={78.82} y={157.04} width={254.14} height={254.14} preserveAspectRatio="xMidYMid meet" />
+                    {/* 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스(x 63.14~352.82, y 293~426.86)에 정렬 */}
+                    <SvgImage href={DETAIL_RING_IMG} x={63.137} y={293} width={289.687} height={133.863} preserveAspectRatio="none" />
                     {/* 별가루 입자 — 하단 아치 (시안 원본 좌표) */}
                     {(() => {
                       const dots = [] as React.ReactNode[];
@@ -661,8 +674,8 @@ export default function StatsDetailScreen() {
                     </View>
                     {box.trips.map((tp, i) => (
                       <View key={i} style={s.tripRow}>
-                        <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{tp.country}</Text>
-                        <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{tp.city}</Text>
+                        <Text style={[s.tripCell, s.tripColCountry, s.tableLabel]} numberOfLines={1}>{countryLabel(tp.country, i18n.language)}</Text>
+                        <Text style={[s.tripCell, s.tripColCity, s.tableSub]} numberOfLines={1}>{regionLabel(tp.city, i18n.language, regionMap)}</Text>
                         <Text style={[s.tripCell, s.tripColPeriod, s.tableValue, { color: pointColor }]} numberOfLines={1}>{tp.period}</Text>
                         <Text style={[s.tripCell, s.tripColRecords, s.tableValue, { color: pointColor }]} numberOfLines={1}>{t('statsDetail.countN', { n: tp.records })}</Text>
                       </View>

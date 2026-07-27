@@ -12,6 +12,7 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import PhotoViewerModal from './PhotoViewerModal';
 import { sectionSlices } from '../utils/albumSections';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
@@ -67,7 +68,7 @@ function StarRow({ rating, size = 14 }: { rating?: number; size?: number }) {
 // 1. Feed
 // ─────────────────────────────────────────────
 function FeedView({ record }: { record: TravelRecord }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const firstMedia = record.medias?.[0];
 
   return (
@@ -85,7 +86,7 @@ function FeedView({ record }: { record: TravelRecord }) {
       <View style={styles.feedBody}>
         {/* 국가 + 날짜 */}
         <View style={styles.feedMeta}>
-          <Text style={styles.feedCountry}>{record.countryFlag} {record.countryName}</Text>
+          <Text style={styles.feedCountry}>{record.countryFlag} {countryLabel(record.countryName, i18n.language)}</Text>
           <Text style={styles.feedDate}>{record.date}</Text>
         </View>
 
@@ -116,12 +117,12 @@ function FeedView({ record }: { record: TravelRecord }) {
 // 2. Blog
 // ─────────────────────────────────────────────
 function BlogView({ record }: { record: TravelRecord }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   return (
     <View style={styles.blogWrap}>
       {/* 국가 + 날짜 헤더 */}
       <View style={styles.blogHeader}>
-        <Text style={styles.blogCountry}>{record.countryFlag} {record.countryName}</Text>
+        <Text style={styles.blogCountry}>{record.countryFlag} {countryLabel(record.countryName, i18n.language)}</Text>
         <Text style={styles.blogDate}>{record.date}</Text>
       </View>
 
@@ -282,7 +283,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
   onDragPosition?: (pageY: number | null) => void;
   dragScroll?: { anim: Animated.Value; value: number };
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   const medias = record.medias ?? [];
   // 섹션(세분화) — medias의 연속 구간 분할. 없으면 평면 그리드.
@@ -467,8 +468,13 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
         <View style={styles.albumHeaderLeft}>
           <Text style={styles.albumFlag}>{record.countryFlag}</Text>
           <View>
-            <Text style={styles.albumCountry}>{record.countryName}</Text>
-            <Text style={styles.albumDate}>{record.date}</Text>
+            <Text style={styles.albumCountry}>{countryLabel(record.countryName, i18n.language)}</Text>
+            {/* 여행 기간 표시 — 시작~종료(다르면 범위, 같으면 단일). 마지막날 단일 표기 대체 */}
+            <Text style={styles.albumDate}>
+              {record.startDate && record.endDate && record.startDate !== record.endDate
+                ? `${record.startDate} ~ ${record.endDate}`
+                : (record.startDate || record.date)}
+            </Text>
           </View>
         </View>
         <StarRow rating={record.rating} size={14} />
@@ -570,7 +576,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
 // 4. Snap (BeReal 스타일)
 // ─────────────────────────────────────────────
 function SnapView({ record }: { record: TravelRecord }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const lateText = (() => {
     if (!record.snapLateSeconds || record.snapLateSeconds <= 0) return null;
     const s = record.snapLateSeconds;
@@ -582,7 +588,7 @@ function SnapView({ record }: { record: TravelRecord }) {
     <View style={styles.snapWrap}>
       {/* 헤더 */}
       <View style={styles.snapHeader}>
-        <Text style={styles.snapCountry}>{record.countryFlag} {record.countryName}</Text>
+        <Text style={styles.snapCountry}>{record.countryFlag} {countryLabel(record.countryName, i18n.language)}</Text>
         <Text style={styles.snapDate}>{record.date}</Text>
       </View>
 
@@ -639,13 +645,13 @@ function SnapView({ record }: { record: TravelRecord }) {
 // 5. Cut (스트립)
 // ─────────────────────────────────────────────
 function CutView({ record }: { record: TravelRecord }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const photos = record.cutPhoto?.photos ?? [];
   return (
     <View style={styles.cutWrap}>
       {/* 헤더 */}
       <View style={styles.cutHeader}>
-        <Text style={styles.cutCountry}>{record.countryFlag} {record.countryName}</Text>
+        <Text style={styles.cutCountry}>{record.countryFlag} {countryLabel(record.countryName, i18n.language)}</Text>
         <Text style={styles.cutDate}>{record.date}</Text>
       </View>
 

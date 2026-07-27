@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -6,13 +6,17 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Image,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
+import { countryLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
-import { CameraIcon } from '../components/icons';
+import { CameraIcon, PersonIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
+import { fetchCountryVisitors, type CountryVisitor } from '../services/social';
+import { isSupabaseConfigured } from '../services/supabase';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -32,7 +36,7 @@ const tripDays = (start?: string, end?: string): number => {
 };
 
 export default function CountryScreen({ navigation, route }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
@@ -49,6 +53,18 @@ export default function CountryScreen({ navigation, route }: Props) {
   const avgRating = ratings.length ? (ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(1) : '-';
   const totalDays = countryRecords.reduce((sum, r) => sum + tripDays(r.startDate, r.endDate), 0);
 
+  // 이 나라 다녀온 사람 (여행 DNA 맥락 진입점) — 실패/빈 결과면 섹션 숨김
+  const [visitors, setVisitors] = useState<CountryVisitor[]>([]);
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const rows = await fetchCountryVisitors(country.name, 12);
+      if (alive && rows.length > 0) setVisitors(rows);
+    })();
+    return () => { alive = false; };
+  }, [country.name]);
+
   return (
     <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
       {/* Header */}
@@ -58,7 +74,7 @@ export default function CountryScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <View style={styles.headerCenter}>
           <Text style={styles.countryFlag}>{country.flag}</Text>
-          <Text style={styles.countryName}>{country.name}</Text>
+          <Text style={styles.countryName}>{countryLabel(country.name, i18n.language)}</Text>
         </View>
         <View style={{ width: 44 }} />
       </View>
@@ -79,6 +95,34 @@ export default function CountryScreen({ navigation, route }: Props) {
             <Text style={styles.statLabel} {...andFitText}>{t('misc.countryAvgRating')}</Text>
           </View>
         </View>
+
+        {/* 이 나라 다녀온 사람 — 가로 칩, 탭 → 프로필 (여행 DNA 맥락 진입점) */}
+        {visitors.length > 0 && (
+          <View style={styles.visitorsSection}>
+            <Text style={styles.visitorsTitle}>{t('misc.countryVisitorsTitle')}</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.visitorsRow}>
+              {visitors.map((v) => (
+                <TouchableOpacity
+                  key={v.authorId}
+                  style={styles.visitorChip}
+                  activeOpacity={0.75}
+                  onPress={() => navigation.navigate('FriendProfile', { userId: v.authorId, username: v.handle || '' })}
+                  accessibilityRole="button"
+                  accessibilityLabel={v.handle || ''}
+                >
+                  <View style={styles.visitorAvatar}>
+                    {v.profilePhoto ? (
+                      <Image source={{ uri: v.profilePhoto }} style={styles.visitorAvatarImg} />
+                    ) : (
+                      <PersonIcon size={20} color="#A0A0B0" />
+                    )}
+                  </View>
+                  <Text style={styles.visitorHandle} numberOfLines={1}>{v.handle}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
         {/* Globe mini display */}
         <View style={styles.miniGlobeSection}>
@@ -104,7 +148,7 @@ export default function CountryScreen({ navigation, route }: Props) {
           <Text style={styles.sectionTitle}>{t('friends.travelRecords')}</Text>
           {countryRecords.length === 0 ? (
             <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-              이 국가의 여행 기록이 아직 없어요
+              {t('main.countryNoRecords')}
             </Text>
           ) : countryRecords.map((rec) => {
             const days = tripDays(rec.startDate, rec.endDate);
@@ -212,6 +256,30 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.regular,
     color: Colors.textSecondary,
   },
+
+  visitorsSection: { marginTop: 8, marginBottom: Spacing[6], paddingHorizontal: Spacing[6] },
+  visitorsTitle: {
+    fontSize: 14,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.textPrimary,
+    marginBottom: 10,
+  },
+  visitorsRow: { gap: 12 },
+  visitorChip: { alignItems: 'center', width: 64 },
+  visitorAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: Colors.bgCard,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  visitorAvatarImg: { width: 48, height: 48 },
+  visitorHandle: { fontSize: 11, color: Colors.textSecondary, maxWidth: 64 },
 
   miniGlobeSection: {
     alignItems: 'center',

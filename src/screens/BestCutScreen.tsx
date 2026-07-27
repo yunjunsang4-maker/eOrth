@@ -24,6 +24,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { Colors } from '../constants/colors';
+import { useSkinAccent } from '../constants/skinTheme';
 import { usePhotoAI } from '../hooks/usePhotoAI';
 import { PHOTO_AI_TASK } from '../services/photoAI/backgroundScheduler';
 import type { PhotoMeta, SpotGroup } from '../services/photoAI/types';
@@ -75,6 +76,7 @@ function SpotCard({
 
 export default function BestCutScreen() {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 토글 디자인 통일(스킨색 트랙 + 흰 썸)
   const {
     loading,
     analyzing,
@@ -130,7 +132,7 @@ export default function BestCutScreen() {
           <Switch
             value={bgOn}
             onValueChange={toggleBackground}
-            trackColor={{ false: Colors.dotInactive, true: Colors.primary }}
+            trackColor={{ false: Colors.dotInactive, true: skinAccent.accent }}
             thumbColor={Colors.white}
           />
         </View>

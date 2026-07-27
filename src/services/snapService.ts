@@ -46,9 +46,16 @@ export async function detectCurrentCountry(): Promise<{
       return { countryCode: null, countryName: null, city: null };
     }
 
-    const location = await Location.getCurrentPositionAsync({
-      accuracy: Location.Accuracy.Balanced,
-    });
+    // 이 함수의 결과는 국가(+도시명)까지만 쓰이므로 정확도보다 응답 속도가 중요하다.
+    // getCurrentPositionAsync는 위치 관리자가 새 픽스를 잡을 때까지 기다리며, 실내에서는
+    // 수 초씩 걸린다(expo 문서 명시). 그래서 순서를 둔다:
+    //  1) 5분 이내의 마지막 위치가 있으면 즉시 사용 — 5분 사이에 국가가 바뀌는 일은 없다
+    //  2) 없을 때만 새로 측정하되 Low(≈1km) — 국가·도시 판정에는 충분하고 Balanced보다 빠르다
+    const location =
+      (await Location.getLastKnownPositionAsync({ maxAge: 5 * 60 * 1000 })) ??
+      (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Low }));
+
+    if (!location) return { countryCode: null, countryName: null, city: null };
 
     const [geo] = await Location.reverseGeocodeAsync({
       latitude: location.coords.latitude,
@@ -68,12 +75,18 @@ export async function detectCurrentCountry(): Promise<{
 }
 
 // ─── 해외 여부 판단 ───
+// 거주국은 물론, 진행 중 체류국(장기체류 active)도 '홈'으로 취급해 해외 알림을 억제한다.
+// stayCountryCode: 진행 중(active) 체류국 ISO2 코드. 없거나 null이면 기존 동작 유지.
 export function isAbroad(
   currentCountryCode: string | null,
-  homeCountryCode: string
+  homeCountryCode: string,
+  stayCountryCode?: string | null
 ): boolean {
   if (!currentCountryCode) return false;
-  return currentCountryCode.toUpperCase() !== homeCountryCode.toUpperCase();
+  const cur = currentCountryCode.toUpperCase();
+  if (cur === homeCountryCode.toUpperCase()) return false;
+  if (stayCountryCode && cur === stayCountryCode.toUpperCase()) return false;
+  return true;
 }
 
 // ─── 알림 권한 요청 ───

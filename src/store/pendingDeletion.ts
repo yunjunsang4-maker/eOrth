@@ -58,15 +58,35 @@ async function writeLocal(pending: PendingDeletion | null): Promise<void> {
  * 탈퇴 신청 — 서버 플래그(request_account_deletion RPC)에 기록한다.
  * 서버 기록 실패 시 throw — 호출부가 신청을 중단하고 안내해야 한다
  * (로컬만 기록되면 "영구 삭제" 약속이 서버에서 이행되지 않는다).
+ *
+ * @param reason 탈퇴 사유 문자열 (선택). 서버 스키마가 구버전(파라미터 없는 RPC)이면
+ *               무인자 호출로 폴백해 탈퇴는 계속 진행된다(사유만 유실).
  */
-export async function requestAccountDeletion(): Promise<void> {
+export async function requestAccountDeletion(reason?: string): Promise<void> {
   const uid = await currentUserId();
   if (supabase) {
     if (!uid) throw new Error('no_session');
-    const { data, error } = await withTimeout(
-      supabase.rpc('request_account_deletion'),
+
+    // p_reason 파라미터가 있는 신버전 RPC 시도; 구버전 서버라면 무인자 폴백
+    let data: unknown;
+    let error: unknown;
+    const withReason = await withTimeout(
+      supabase.rpc('request_account_deletion', { p_reason: reason ?? null }),
       SERVER_TIMEOUT_MS,
     );
+    if (withReason.error) {
+      // RPC 시그니처 불일치(구버전) → 무인자 재시도
+      const noArg = await withTimeout(
+        supabase.rpc('request_account_deletion'),
+        SERVER_TIMEOUT_MS,
+      );
+      data = noArg.data;
+      error = noArg.error;
+    } else {
+      data = withReason.data;
+      error = withReason.error;
+    }
+
     if (error) throw error;
     const ts = data ? Date.parse(String(data)) : NaN;
     await writeLocal({ requestedAt: Number.isFinite(ts) ? ts : Date.now(), userId: uid });

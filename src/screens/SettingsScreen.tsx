@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -10,12 +10,16 @@ import {
   Modal,
   TextInput,
   Pressable,
+  FlatList,
 } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
+import { emitToast } from '../store/toastStore';
+import { COUNTRIES } from '../constants/countries';
+import type { StayType } from '../utils/stayMachine';
 import { clearPersistedStores } from '../store/persist';
 import { signOut } from '../services/auth';
 import { deleteAllMyPosts } from '../services/posts';
@@ -25,7 +29,8 @@ import {
   PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
   EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon, CompassIcon,
   QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
-  TrashIcon, StarIcon, TargetIcon, StickerIcon, PaletteIcon,
+  TrashIcon, StarIcon, StickerIcon, PaletteIcon,
+  LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
 import { GLOBE_SKINS } from '../constants/globeSkins';
@@ -35,6 +40,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 // 개인정보처리방침·이용약관 게시 URL (GitHub Pages)
 const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
 const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
+// 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
+const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -85,11 +92,12 @@ const SettingGroup = ({
             <Switch
               value={item.toggle}
               onValueChange={item.onToggle}
-              trackColor={{ false: '#3A3A4A', true: skinAccent.tint(0.4) }}
-              thumbColor={skinAccent.accent}
+              trackColor={{ false: '#3A3A4A', true: skinAccent.accent }}
+              thumbColor="#FFFFFF"
             />
           ) : item.badge ? (
             <View style={[st.premiumBadge, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]}>
+              <SvgLockClosedIcon size={9} color={skinAccent.accent} />
               <Text style={[st.premiumBadgeText, { color: skinAccent.accent }]}>{item.badge}</Text>
             </View>
           ) : item.value ? (
@@ -121,8 +129,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     handle,
     globeSkin, setGlobeSkin,
     resetSettings,
+    resetTutorialsSeen,
   } = useSettings();
-  const { resetRecords } = useRecords();
+  const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
 
   // 아이디 폰트 선택 모달 — 프리미엄 전용, 폰트별 실제 미리보기 렌더
@@ -148,6 +157,70 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     const v = countryDraft.trim().toUpperCase();
     if (v) setHomeCountryCode(v);
     setCountryModalVisible(false);
+  };
+
+  // 장기체류 수동 시작 모달 — 2단계: 국가 선택 → 유형 선택
+  // step: null=닫힘, 'country'=국가 선택, 'type'=유형 선택
+  const [stayModalStep, setStayModalStep] = useState<null | 'country' | 'type'>(null);
+  const [stayCountrySearch, setStayCountrySearch] = useState('');
+  const [staySelectedCountry, setStaySelectedCountry] = useState<{ name: string; flag: string } | null>(null);
+
+  // 거주국가 이름(homeCountryCode → 국가명) — 체류국 선택 시 거주국 제외
+  const homeCountryName = useMemo(
+    () => COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null,
+    [homeCountryCode],
+  );
+
+  // 검색어 필터링 (거주국 제외)
+  const stayFilteredCountries = useMemo(() => {
+    const q = stayCountrySearch.trim().toLowerCase();
+    return COUNTRIES.filter((c) => {
+      if (c.name === homeCountryName) return false;
+      if (!q) return true;
+      return c.term.toLowerCase().includes(q) || c.name.includes(q);
+    });
+  }, [stayCountrySearch, homeCountryName]);
+
+  const STAY_TYPES: { type: StayType; labelKey: string }[] = [
+    { type: 'exchange',        labelKey: 'stay.typeExchange' },
+    { type: 'language',        labelKey: 'stay.typeLanguage' },
+    { type: 'intern',          labelKey: 'stay.typeIntern' },
+    { type: 'workingHoliday', labelKey: 'stay.typeWorkingHoliday' },
+    { type: 'other',           labelKey: 'stay.typeOther' },
+  ];
+
+  const openStayModal = () => {
+    setStayCountrySearch('');
+    setStaySelectedCountry(null);
+    setStayModalStep('country');
+  };
+  const closeStayModal = () => setStayModalStep(null);
+
+  const handleStayCountrySelect = (country: { name: string; flag: string }) => {
+    setStaySelectedCountry(country);
+    setStayModalStep('type');
+  };
+
+  const handleStayTypeSelect = (type: StayType) => {
+    if (!staySelectedCountry) return;
+    startStay(staySelectedCountry.name, type);
+    emitToast(t('stay.settingsStarted', { country: staySelectedCountry.name }));
+    closeStayModal();
+  };
+
+  const handleStayPress = () => {
+    if (activeStayGroup) {
+      Alert.alert(
+        t('stay.alreadyActiveTitle'),
+        t('stay.alreadyActiveMsg', { country: activeStayGroup.countryName ?? '' }),
+        [
+          { text: t('common.cancel'), style: 'cancel' },
+          { text: t('stay.endStay'), style: 'destructive', onPress: () => endStay(activeStayGroup.id) },
+        ],
+      );
+    } else {
+      openStayModal();
+    }
   };
 
   const handleResetData = () => {
@@ -192,6 +265,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const handleOpenTerms = () => {
     WebBrowser.openBrowserAsync(TERMS_URL).catch(() => {
       Alert.alert(t('settings.terms'), TERMS_URL);
+    });
+  };
+
+  // 피드백 — 구글 폼을 인앱 브라우저로 열기 (약관·방침과 동일한 패턴, 실패 시 주소 안내)
+  const handleOpenFeedback = () => {
+    WebBrowser.openBrowserAsync(FEEDBACK_FORM_URL).catch(() => {
+      Alert.alert(t('settings.feedback'), FEEDBACK_FORM_URL);
     });
   };
 
@@ -268,10 +348,22 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               onPress: openCountryModal,
             },
             {
-              // 튜토리얼 다시 보기 — 'replay'는 tutorialSeen(1회 게이트)을 무시하고 강제 재생
+              icon: <GlobeSkinIcon size={22} />,
+              label: t('stay.settingsStart'),
+              value: activeStayGroup
+                ? `${activeStayGroup.countryFlag ?? ''} ${activeStayGroup.countryName ?? ''}`.trim()
+                : '—',
+              onPress: handleStayPress,
+            },
+            {
+              // 튜토리얼 다시 보기 — 세 탭(메인·통계·프로필)의 1회 게이트를 모두 풀어준다.
+              // 메인은 'replay'로 지금 바로 재생하고, 통계·프로필은 그 탭에 다시 들어갈 때 뜬다.
               icon: <CompassIcon size={22} />,
               label: t('settings.viewTutorial'),
-              onPress: () => navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } }),
+              onPress: () => {
+                resetTutorialsSeen();
+                navigation.navigate('Main', { screen: 'MainTab', params: { startTutorial: 'replay' } });
+              },
             },
           ]}
         />
@@ -288,16 +380,6 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               value: t(currentFont.labelKey),
               badge: isPremium ? undefined : t('settings.premiumBadge'),
               onPress: openFontPicker,
-            },
-            {
-              // 개별 QR 디자인 — 구현됨. 친구찾기 QR 카드의 🎨 버튼에서 프리셋 선택(프리미엄)
-              icon: <TargetIcon size={22} />,
-              label: t('settings.qrDesign'),
-              badge: isPremium ? undefined : t('settings.premiumBadge'),
-              onPress: () =>
-                isPremium
-                  ? Alert.alert(t('settings.qrDesign'), t('settings.qrDesignMsg'))
-                  : navigation.navigate('Premium'),
             },
             // 스트립(네컷) 로고 제거 — 프리미엄이면 켜고 끌 수 있는 선택 토글, 아니면 잠금 안내
             isPremium
@@ -338,7 +420,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             {
               icon: <ChatIcon size={22} />,
               label: t('settings.feedback'),
-              onPress: () => navigation.navigate('Feedback'),
+              onPress: handleOpenFeedback,
             },
             {
               icon: <DocumentIcon size={22} />,
@@ -467,6 +549,77 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         </Pressable>
       </Modal>
 
+      {/* 장기체류 수동 시작 모달 — 국가 선택 단계 */}
+      <Modal
+        visible={stayModalStep === 'country'}
+        transparent
+        animationType="fade"
+        onRequestClose={closeStayModal}
+      >
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
+            <TextInput
+              style={[st.modalInput, { marginBottom: 8 }]}
+              value={stayCountrySearch}
+              onChangeText={setStayCountrySearch}
+              placeholder={t('basicInfo.residenceSearchPlaceholder')}
+              placeholderTextColor={COLORS.textMuted}
+              autoCorrect={false}
+            />
+            <FlatList
+              data={stayFilteredCountries}
+              keyExtractor={(item) => item.name}
+              style={st.fontList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={st.fontRow}
+                  activeOpacity={0.7}
+                  onPress={() => handleStayCountrySelect(item)}
+                >
+                  <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{item.flag} {item.name}</Text>
+                </TouchableOpacity>
+              )}
+            />
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}
+      <Modal
+        visible={stayModalStep === 'type'}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStayModalStep('country')}
+      >
+        <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={() => setStayModalStep('country')}>
+          <Pressable style={st.modalCard} onPress={() => {}}>
+            <Text style={st.modalTitle}>{t('stay.typeTitle')}</Text>
+            <Text style={st.modalDesc}>
+              {staySelectedCountry ? `${staySelectedCountry.flag} ${staySelectedCountry.name}` : ''}
+            </Text>
+            {STAY_TYPES.map((item) => (
+              <TouchableOpacity
+                key={item.type}
+                style={[st.fontRow, { marginBottom: 8 }]}
+                activeOpacity={0.7}
+                onPress={() => handleStayTypeSelect(item.type)}
+              >
+                <Text style={[st.fontRowPreview, { fontSize: 14 }]}>{t(item.labelKey)}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel, st.fontModalClose]} activeOpacity={0.7} onPress={closeStayModal}>
+              <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
       <Modal
         visible={skinModalVisible}
@@ -500,7 +653,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                   <LinearGradient colors={s.preview} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.skinCircle} />
                   <Text style={st.skinRowLabel}>{t(s.labelKey)}</Text>
                   {locked ? (
-                    <Text style={st.skinLock}>🔒</Text>
+                    <View style={st.skinLock}><SvgLockClosedIcon size={14} color="#A1A1B0" /></View>
                   ) : selected ? (
                     <Text style={st.fontRowCheck}>✓</Text>
                   ) : null}
@@ -620,6 +773,9 @@ const st = StyleSheet.create({
     marginLeft: 52,
   },
   premiumBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
     backgroundColor: 'rgba(107,33,168,0.2)',
     borderWidth: 1,
     borderColor: 'rgba(191,133,252,0.3)',
@@ -724,5 +880,5 @@ const st = StyleSheet.create({
   // 지구본 스킨 선택 모달
   skinCircle: { width: 34, height: 34, borderRadius: 17, marginRight: 12 },
   skinRowLabel: { flex: 1, fontSize: 13, color: COLORS.white },
-  skinLock: { fontSize: 14, marginLeft: 10 },
+  skinLock: { marginLeft: 10 },
 });

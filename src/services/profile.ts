@@ -5,7 +5,8 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
-import { supabase } from './supabase';
+import { supabase } from './supabase';
+import { sortByHandleRelevance, dedupeById } from '../utils/handleSearch';
 import { withTimeout } from '../utils/withTimeout';
 
 const READ_TIMEOUT_MS = 12000;
@@ -20,6 +21,8 @@ export interface ProfileRow {
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
+  stay_country?: string | null; // 장기체류 국가 ISO 코드 — 메이트에게만 공개(public_profiles 조건부 노출)
+  stay_status?: string | null;  // 'active' | null
 }
 
 /**
@@ -84,6 +87,22 @@ export async function getMyProfile(): Promise<ProfileRow | null> {
   }
 }
 
+/** 내 계정 생성일(profiles.created_at) — 마이 티켓 'eOrth 가입 날' 표시용. 실패 시 null */
+export async function getMyJoinedAt(): Promise<string | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data } = await withTimeout(
+      supabase.from('profiles').select('created_at').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
+    return (data as { created_at?: string } | null)?.created_at ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 내 프로필 조회 + 서버 도달 여부.
  * reached=false 면 네트워크/타임아웃으로 "신규인지 기존인지" 판정 불가 → 호출부가 오라우팅을 피할 수 있다.
@@ -104,7 +123,7 @@ export async function getMyProfileStatus(): Promise<{ reached: boolean; profile:
   }
 }
 
-/** 핸들(아이디)로 사용자 검색 (친구 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
+/** 핸들(아이디)로 사용자 검색 (메이트 찾기용). 실패는 throw — 화면이 "검색 실패"와 "결과 없음"을 구분한다 */
 export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   if (!supabase) return [];
   // '@아이디' 형태 입력 허용 (QR 스캔과 동일하게 앞의 @ 제거)
@@ -113,17 +132,26 @@ export async function searchProfiles(query: string): Promise<ProfileRow[]> {
   // ilike 와일드카드(%·_)·이스케이프 문자를 리터럴로 취급 (검색어 오작동 방지)
   const escaped = q.replace(/[\\%_]/g, (ch) => `\\${ch}`);
   // 타인 검색은 PII(birthday/gender) 제외한 public_profiles 뷰로 조회 (프로필 PII 노출 방지)
-  const { data, error } = await supabase
-    .from('public_profiles')
-    .select('*')
-    .ilike('handle', `%${escaped}%`)
-    .limit(20);
-  if (error) throw error;
-  return (data as ProfileRow[]) ?? [];
+  //
+  // 정확 일치를 따로 조회해 합치는 이유: 부분 검색은 서버에서 limit으로 잘리므로, 흔한
+  // 문자열을 검색하면 정확히 그 아이디인 사람이 20건 밖으로 밀려 아예 안 보일 수 있다.
+  // (handle은 UNIQUE라 정확 일치는 최대 1건 — 비용이 사실상 없다)
+  const [exactRes, partialRes] = await Promise.all([
+    supabase.from('public_profiles').select('*').ilike('handle', escaped).limit(1),
+    supabase.from('public_profiles').select('*').ilike('handle', `%${escaped}%`).limit(20),
+  ]);
+  // 부분 검색 실패만 오류로 취급(기존 동작 유지). 정확 조회 실패는 부분 결과로 진행한다.
+  if (partialRes.error) throw partialRes.error;
+  const merged = dedupeById([
+    ...((exactRes.data as ProfileRow[]) ?? []),
+    ...((partialRes.data as ProfileRow[]) ?? []),
+  ]);
+  // 서버는 관련도 순서를 주지 않는다 — 정확 → 접두 → 부분 순으로 다시 세운다
+  return sortByHandleRelevance(merged, q);
 }
 
 /**
- * 여러 사용자의 방문 국가 수 일괄 조회 (친구 찾기 결과 표시용)
+ * 여러 사용자의 방문 국가 수 일괄 조회 (메이트 찾기 결과 표시용)
  * profile_country_counts RPC(SECURITY DEFINER)로 비공개 제외 게시물의 distinct country_name 집계.
  * 반환: { [userId]: 방문국수 }. 미설정/실패/데이터 없음이면 빈 객체.
  */
@@ -142,9 +170,9 @@ export async function getCountryCounts(ids: string[]): Promise<Record<string, nu
 }
 
 /**
- * 여러 사용자의 이웃 수 일괄 조회 (친구 찾기 결과 표시용)
- * neighbor_counts RPC로 이웃(서로이웃) 수 집계 (N명을 1쿼리로).
- * 반환: { [userId]: 이웃수 }. 미설정/실패/데이터 없음이면 빈 객체.
+ * 여러 사용자의 메이트 수 일괄 조회 (메이트 찾기 결과 표시용)
+ * neighbor_counts RPC로 메이트(서로메이트) 수 집계 (N명을 1쿼리로).
+ * 반환: { [userId]: 메이트수 }. 미설정/실패/데이터 없음이면 빈 객체.
  */
 export async function getFollowerCounts(ids: string[]): Promise<Record<string, number>> {
   if (!supabase || ids.length === 0) return {};

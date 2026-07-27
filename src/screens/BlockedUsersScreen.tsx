@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
+import { PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -66,15 +67,17 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
           </View>
         ) : (
           <>
-            <Text style={st.countText}>{blockedUsers.length}명 차단됨</Text>
-            {blockedUsers.map((user) => (
-              <View key={user.name} style={st.userCard}>
+            <Text style={st.countText}>{t('friends.blockedCount', { count: blockedUsers.length })}</Text>
+            {blockedUsers.map((user, idx) => (
+              // id·handle이 모두 없는 구버전 데이터에서 동명+동시각 충돌을 막기 위해 idx로 최종 구분
+              <View key={user.id ?? user.handle ?? `${user.name}-${user.blockedAt}-${idx}`} style={st.userCard}>
+                {/* 차단된 사용자는 기본 프사로만 표시(신원 시각 정보 미노출 — 사용자 결정) */}
                 <View style={st.avatarWrap}>
-                  <Text style={st.avatarEmoji}>{user.emoji}</Text>
+                  <PersonIcon size={24} color="#A0A0B0" />
                 </View>
+                {/* 프사 옆에는 차단한 날짜만 표시 */}
                 <View style={st.userInfo}>
-                  <Text style={st.userName}>{user.name}</Text>
-                  <Text style={st.blockedDate}>{formatDate(user.blockedAt)} 차단됨</Text>
+                  <Text style={st.blockedDate}>{t('friends.blockedOn', { date: formatDate(user.blockedAt) })}</Text>
                 </View>
                 <TouchableOpacity
                   style={st.unblockBtn}
@@ -189,22 +192,14 @@ const st = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(191,133,252,0.25)',
   },
-  avatarEmoji: {
-    fontSize: 22,
-  },
   userInfo: {
     flex: 1,
     marginLeft: 12,
   },
-  userName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.white,
-  },
+  // 행의 유일한 텍스트(차단 날짜) — 이름 제거 후 가독성 위해 크기 상향
   blockedDate: {
-    fontSize: 11,
-    color: COLORS.textMuted,
-    marginTop: 2,
+    fontSize: 13,
+    color: COLORS.textDim,
   },
   unblockBtn: {
     backgroundColor: COLORS.redBg,

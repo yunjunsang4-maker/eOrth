@@ -3,6 +3,9 @@ import { COUNTRIES } from '../constants/countries';
 export interface ScannedPhoto {
   id?: string;
   uri: string;
+  // 스캔 중 회수한 원본 file:// 경로(있을 때만). 저장 단계가 getAssetInfoAsync를
+  // 다시 부르지 않고 바로 복사할 수 있게 실어 나른다(세션 내 유효).
+  localUri?: string;
   creationTime: number;
   countryCode: string | null;   // ISO 국가코드(reverse geocode). GPS 없거나 실패 시 null
   countryName: string;
@@ -22,9 +25,12 @@ export interface ScannedTrip {
   photoCount: number;
   content: string;
   medias: string[];
-  photos: { id?: string; uri: string; creationTime?: number }[];
+  photos: { id?: string; uri: string; localUri?: string; creationTime?: number }[];
   weather: string;
   companions: string[];
+  // 앱 내 재실행 시 채워진다 — 같은 국가·기간의 기록이 이미 있으면 true.
+  // (자산 id로 1차 제외한 뒤에도 남는 경우의 2차 방어선. 기본 선택에서 빠지고 배지가 붙는다)
+  alreadyImported?: boolean;
 }
 
 // 국가 코드(ISO) → { 국문명, 국기 }
@@ -69,7 +75,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     countryName: string;
     countryFlag: string;
     country: string;
-    photos: { id?: string; uri: string; creationTime?: number }[];
+    photos: { id?: string; uri: string; localUri?: string; creationTime?: number }[];
     dates: number[];
   }
 
@@ -79,7 +85,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
     const sameCountry = !!last && last.code === p.countryCode;
     const withinTime = !!last && p.creationTime - last.dates[last.dates.length - 1] <= SEVEN_DAYS_MS;
     if (last && sameCountry && withinTime) {
-      last.photos.push({ id: p.id, uri: p.uri, creationTime: p.creationTime });
+      last.photos.push({ id: p.id, uri: p.uri, localUri: p.localUri, creationTime: p.creationTime });
       last.dates.push(p.creationTime);
     } else {
       clusters.push({
@@ -87,7 +93,7 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
         countryName: p.countryName,
         countryFlag: p.countryFlag,
         country: `${p.countryFlag} ${p.countryName}`,
-        photos: [{ id: p.id, uri: p.uri, creationTime: p.creationTime }],
+        photos: [{ id: p.id, uri: p.uri, localUri: p.localUri, creationTime: p.creationTime }],
         dates: [p.creationTime],
       });
     }

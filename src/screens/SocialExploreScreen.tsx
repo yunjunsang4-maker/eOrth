@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { Typography, Spacing, BorderRadius } from '../constants';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
+import { countryLabel } from '../utils/countryLabel';
 
 const { width } = Dimensions.get('window');
 
@@ -75,7 +76,7 @@ function CreatorItem({ initials, name }: { initials: string; name: string }) {
 // 서브 컴포넌트: 큰 기록 카드 (탐색 탭)
 // ─────────────────────────────────────────────
 function LargeRecordCard({ item }: { item: TravelRecord }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const elapsed = Math.round((Date.now() - item.timestamp) / 3600000);
   const timeStr = elapsed < 1 ? t('time.justNow') : elapsed < 24 ? t('time.hourAgo', { n: elapsed }) : item.date;
   return (
@@ -84,7 +85,7 @@ function LargeRecordCard({ item }: { item: TravelRecord }) {
         <Text style={s.largeCardEmoji}>{getCountryEmoji(item.countryName)}</Text>
       </View>
       <View style={s.largeCardBar}>
-        <Text style={s.largeCardCountry}>{item.countryName}</Text>
+        <Text style={s.largeCardCountry}>{countryLabel(item.countryName, i18n.language)}</Text>
         <View style={s.largeCardMeta}>
           <Text style={s.largeCardUser}>{item.user.name}</Text>
           <Text style={s.largeCardDot}>·</Text>
@@ -99,13 +100,14 @@ function LargeRecordCard({ item }: { item: TravelRecord }) {
 // 서브 컴포넌트: 작은 기록 카드 (탐색 탭)
 // ─────────────────────────────────────────────
 function SmallRecordCard({ item }: { item: TravelRecord }) {
+  const { i18n } = useTranslation();
   return (
     <View style={s.smallCard}>
       <View style={s.smallCardInner}>
         <Text style={s.smallCardEmoji}>{getCountryEmoji(item.countryName)}</Text>
       </View>
       <View style={s.smallCardBar}>
-        <Text style={s.smallCardCountry}>{item.countryName}</Text>
+        <Text style={s.smallCardCountry}>{countryLabel(item.countryName, i18n.language)}</Text>
         <Text style={s.smallCardUser}>{item.user.name}</Text>
       </View>
     </View>
@@ -149,7 +151,7 @@ function AdBanner() {
 export default function SocialExploreScreen() {
   const { t } = useTranslation();
   const { records } = useRecords();
-  // 사진첩(album)은 소셜탭 미노출 — 이웃 프로필·여행 카드에서만 (SocialScreen 피드와 동일 정책)
+  // 사진첩(album)은 소셜탭 미노출 — 메이트 프로필·여행 카드에서만 (SocialScreen 피드와 동일 정책)
   const publicRecords = records.filter((r) => r.visibility === 'neighbors' && r.viewType !== 'album');
   const largeCard = publicRecords[0];
   const smallCards = publicRecords.slice(1);

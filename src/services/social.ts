@@ -10,7 +10,7 @@ import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import type { PostComment } from '../store/recordStore';
 
-// ─── 이웃 (서로이웃) ───
+// ─── 메이트 (서로메이트) ───
 export interface NeighborProfile {
   id: string;
   handle: string | null;
@@ -18,7 +18,7 @@ export interface NeighborProfile {
   photo: string | null; // 아바타 URL
 }
 
-// 이웃신청 — 상대가 이미 나에게 pending이면 자동 수락(양쪽 신청 → 즉시 서로이웃)
+// 메이트신청 — 상대가 이미 나에게 pending이면 자동 수락(양쪽 신청 → 즉시 서로메이트)
 export async function requestNeighbor(targetId: string): Promise<void> {
   if (!supabase || !targetId) return;
   const uid = await getMyUserId();
@@ -58,7 +58,7 @@ export async function declineNeighbor(requesterId: string): Promise<void> {
   if (error) throw error;
 }
 
-// 이웃 끊기 — accepted 관계 삭제 (양쪽 방향 어느 행이든)
+// 메이트 끊기 — accepted 관계 삭제 (양쪽 방향 어느 행이든)
 export async function removeNeighbor(otherId: string): Promise<void> {
   if (!supabase || !otherId) return;
   const uid = await getMyUserId();
@@ -70,7 +70,7 @@ export async function removeNeighbor(otherId: string): Promise<void> {
   if (error) throw error;
 }
 
-// 내 이웃 목록 (오류 시 null → 로컬 캐시 유지)
+// 내 메이트 목록 (오류 시 null → 로컬 캐시 유지)
 export async function fetchNeighbors(): Promise<NeighborProfile[] | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
@@ -84,7 +84,7 @@ export async function fetchNeighbors(): Promise<NeighborProfile[] | null> {
   } catch { return null; }
 }
 
-// 타인 프로필의 이웃 목록 (오류 시 null)
+// 타인 프로필의 메이트 목록 (오류 시 null)
 export async function fetchNeighborsOf(userId: string): Promise<NeighborProfile[] | null> {
   if (!supabase || !userId) return null;
   try {
@@ -96,7 +96,7 @@ export async function fetchNeighborsOf(userId: string): Promise<NeighborProfile[
   } catch { return null; }
 }
 
-// 이웃 수 (오류 시 null)
+// 메이트 수 (오류 시 null)
 export async function fetchNeighborCount(userId: string): Promise<number | null> {
   if (!supabase || !userId) return null;
   try {
@@ -104,6 +104,17 @@ export async function fetchNeighborCount(userId: string): Promise<number | null>
     if (error) return null;
     const row = (data as { user_id: string; neighbor_count: number }[] | null)?.[0];
     return row?.neighbor_count ?? 0;
+  } catch { return null; }
+}
+
+// 공유 기록 수 (visibility='neighbors' 글 집계) — 비메이트 프로필 여행수 스탯 동기화용. 오류 시 null
+export async function fetchPostCount(userId: string): Promise<number | null> {
+  if (!supabase || !userId) return null;
+  try {
+    const { data, error } = await supabase.rpc('post_counts', { ids: [userId] });
+    if (error) return null;
+    const row = (data as { user_id: string; post_count: number }[] | null)?.[0];
+    return row?.post_count ?? 0;
   } catch { return null; }
 }
 
@@ -167,7 +178,7 @@ export async function blockUser(targetId: string): Promise<void> {
   if (!uid || uid === targetId) return;
   const { error } = await supabase.from('blocks').insert({ blocker_id: uid, blocked_id: targetId });
   if (error && error.code !== '23505') throw error; // 이미 차단(중복)만 정상 취급
-  // 차단 시 이웃 관계도 정리 (서로 이웃 목록에 남지 않게). 실패해도 차단 자체는 유효.
+  // 차단 시 메이트 관계도 정리 (서로 메이트 목록에 남지 않게). 실패해도 차단 자체는 유효.
   await supabase.from('neighbors')
     .delete()
     .or(`and(requester_id.eq.${uid},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${uid})`);
@@ -181,8 +192,8 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── 알림 (이웃) ───
-// notifications 테이블은 이웃 신청/수락 시 채워진다.
+// ─── 알림 (메이트) ───
+// notifications 테이블은 메이트 신청/수락 시 채워진다.
 export type NeighborNotificationType = 'neighbor_request' | 'neighbor_accept';
 export interface NeighborNotification {
   id: string;
@@ -236,14 +247,14 @@ export async function markNotificationsRead(ids: string[]): Promise<void> {
   }
 }
 
-// ─── 추천 친구 ───
-// friend_suggestions RPC(SECURITY DEFINER) — 내 이웃들이 이웃 맺은 사용자.
+// ─── 추천 메이트 ───
+// friend_suggestions RPC(SECURITY DEFINER) — 내 메이트들이 메이트 맺은 사용자.
 export interface FriendSuggestion {
   id: string;
   handle: string | null;
   emoji: string | null;
   profilePhoto: string | null;
-  mutualCount: number; // 나와 함께 아는(내 이웃 중 이 사람과 이웃인) 수
+  mutualCount: number; // 나와 함께 아는(내 메이트 중 이 사람과 메이트인) 수
 }
 
 export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSuggestion[]> {
@@ -261,6 +272,78 @@ export async function fetchFriendSuggestions(maxCount = 10): Promise<FriendSugge
   } catch {
     return [];
   }
+}
+
+// ─── 추천 메이트(여행 DNA) ───
+// mate_suggestions RPC — 나라 겹침+여행 스타일+함께 아는 메이트 합산 랭킹.
+// extraCountries: 로컬 여행기록카드·미발행·나만보기 나라(내 매칭 입력 전용, 타인에게 비노출).
+// 부가 기능 — 실패 시 빈 배열(섹션 미표시).
+export interface MateSuggestionRow {
+  authorId: string;
+  handle: string;
+  emoji: string | null;
+  profilePhoto: string | null;
+  sharedCount: number;
+  sampleCountries: string[]; // country_name(한글, 예: '일본')
+  mutualCount: number;
+  styleScore: number;
+  totalScore: number;
+}
+
+export async function fetchMateSuggestions(limit = 10, extraCountries: string[] = []): Promise<MateSuggestionRow[]> {
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase.rpc('mate_suggestions', { match_limit: limit, extra_countries: extraCountries });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      authorId: r.author_id,
+      handle: r.handle,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      sharedCount: r.shared_count,
+      sampleCountries: r.sample_countries ?? [],
+      mutualCount: r.mutual_count ?? 0,
+      styleScore: r.style_score ?? 0,
+      totalScore: r.total_score ?? 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// 특정 유저와의 여행 겹침(타인 프로필 "나와 겹치는 나라" 줄). 실패 시 null(줄 미표시).
+export async function fetchOverlapWith(targetId: string, extraCountries: string[] = []): Promise<{ sharedCount: number; sampleCountries: string[] } | null> {
+  if (!supabase || !targetId) return null;
+  try {
+    const { data, error } = await supabase.rpc('overlap_with', { target: targetId, extra_countries: extraCountries });
+    if (error || !data) return null;
+    const row = (data as any[])[0];
+    if (!row) return null;
+    return { sharedCount: row.shared_count ?? 0, sampleCountries: row.sample_countries ?? [] };
+  } catch { return null; }
+}
+
+// 나라별 화면 "이 나라 다녀온 사람". 실패 시 빈 배열(섹션 미표시).
+export interface CountryVisitor {
+  authorId: string;
+  handle: string;
+  emoji: string | null;
+  profilePhoto: string | null;
+  visitPosts: number;
+}
+export async function fetchCountryVisitors(countryName: string, limit = 12): Promise<CountryVisitor[]> {
+  if (!supabase || !countryName) return [];
+  try {
+    const { data, error } = await supabase.rpc('country_visitors', { target_country: countryName, match_limit: limit });
+    if (error || !data) return [];
+    return (data as any[]).map((r) => ({
+      authorId: r.author_id,
+      handle: r.handle,
+      emoji: r.emoji ?? null,
+      profilePhoto: r.profile_photo ?? null,
+      visitPosts: r.visit_posts ?? 0,
+    }));
+  } catch { return []; }
 }
 
 // ─── 좋아요 ───

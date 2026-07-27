@@ -6,6 +6,8 @@ import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
+import { ensureAdsInitialized } from './src/lib/googleMobileAds';
+import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
 import AppNavigator from './src/navigation/AppNavigator';
@@ -13,8 +15,10 @@ import { RecordProvider } from './src/store/recordStore';
 import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { ToastProvider } from './src/store/toastStore';
+import { MomentProvider } from './src/store/momentStore';
 import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
+import MomentNotifier from './src/components/MomentNotifier';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import BadgeToastHost from './src/components/BadgeToastHost';
 import BadgeEvaluator from './src/components/BadgeEvaluator';
@@ -22,9 +26,24 @@ import DMToastHost from './src/components/DMToastHost';
 import ToastHost from './src/components/ToastHost';
 import ProfileSync from './src/components/ProfileSync';
 import AppStateSync from './src/components/AppStateSync';
+import PushTokenSync from './src/components/PushTokenSync';
+import ReturnDetector from './src/components/ReturnDetector';
+import ReturnDetectNudge from './src/components/ReturnDetectNudge';
+import ArrivalNotifier from './src/components/ArrivalNotifier';
 
 export default function App() {
-  // 알림 탭 → 스냅 화면으로 이동
+  // 광고 SDK 초기화 — 실패해도 앱 흐름을 막지 않는다(광고는 부가 기능).
+  // 네이티브 모듈이 없는 바이너리에서는 getGoogleMobileAds()가 null이라 그냥 넘어간다.
+  useEffect(() => {
+    if (!ADMOB_ENABLED) return;
+    const init = ensureAdsInitialized();
+    if (!init) { if (__DEV__) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요'); return; }
+    init
+      .then(() => { if (__DEV__) console.log('[AdMob] SDK 초기화 완료'); })
+      .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
+  }, []);
+
+  // 알림 탭 → 화면 이동 (snap / moment 분기)
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const data = response.notification.request.content.data;
@@ -34,8 +53,50 @@ export default function App() {
           nav.navigate('SnapRecord', { notifTimestamp: Number(data.timestamp) || undefined });
         }
       }
+      if (data?.type === 'moment') {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) {
+          nav.navigate('MomentCapture');
+          Notifications.clearLastNotificationResponseAsync();
+        }
+      }
+      // 푸시 알림 탭 라우팅 — like / comment / friend_post → 게시물 상세
+      if (
+        (data?.type === 'like' || data?.type === 'comment' || data?.type === 'friend_post') &&
+        data?.postId
+      ) {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) {
+          nav.navigate('PostDetail', { postId: String(data.postId) });
+        }
+      }
+      // 이웃 요청 / 수락 → 알림 화면
+      if (data?.type === 'neighbor_request' || data?.type === 'neighbor_accept') {
+        const nav = navigationRef.current;
+        if (nav?.isReady()) {
+          nav.navigate('Notifications');
+        }
+      }
     });
-    return () => subscription.remove();
+
+    // 콜드스타트: 종료 상태에서 moment 알림 탭으로 열린 경우 — 네비 준비를 기다렸다 이동
+    let coldStartTimer: ReturnType<typeof setInterval> | null = null;
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      const data = response?.notification.request.content.data;
+      if (data?.type !== 'moment') return;
+      let tries = 0;
+      coldStartTimer = setInterval(() => {
+        const nav = navigationRef.current;
+        tries += 1;
+        if (nav?.isReady()) { if (coldStartTimer) clearInterval(coldStartTimer); nav.navigate('MomentCapture'); Notifications.clearLastNotificationResponseAsync(); }
+        else if (tries > 20) { if (coldStartTimer) clearInterval(coldStartTimer); } // 10초 포기
+      }, 500);
+    });
+
+    return () => {
+      subscription.remove();
+      if (coldStartTimer) clearInterval(coldStartTimer);
+    };
   }, []);
 
   const [fontsLoaded] = useFonts({
@@ -82,19 +143,26 @@ export default function App() {
           <SettingsProvider>
             <LanguageBridge />
             <RecordProvider>
-              <DMProvider>
-                <ToastProvider>
-                  <StatusBar style="light" backgroundColor="#0A0118" translucent />
-                  <SnapDetector />
-                  <ProfileSync />
-                  <AppStateSync />
-                  <BadgeEvaluator />
-                  <AppNavigator />
-                  <BadgeToastHost />
-                  <DMToastHost />
-                  <ToastHost />
-                </ToastProvider>
-              </DMProvider>
+              <MomentProvider>
+                <DMProvider>
+                  <ToastProvider>
+                    <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                    <SnapDetector />
+                    <MomentNotifier />
+                    <ArrivalNotifier />
+                    <ReturnDetector />
+                    <ReturnDetectNudge />
+                    <ProfileSync />
+                    <AppStateSync />
+                    <PushTokenSync />
+                    <BadgeEvaluator />
+                    <AppNavigator />
+                    <BadgeToastHost />
+                    <DMToastHost />
+                    <ToastHost />
+                  </ToastProvider>
+                </DMProvider>
+              </MomentProvider>
             </RecordProvider>
           </SettingsProvider>
         </ErrorBoundary>

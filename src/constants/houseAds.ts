@@ -26,15 +26,6 @@ export const HOUSE_ADS: HouseAd[] = [
     route: 'FriendSearch',
     gradient: ['#6B21A8', '#BF85FC'],
   },
-  {
-    id: 'house-autoload',
-    emoji: '🗂️',
-    titleKey: 'social.adAutoloadTitle',
-    bodyKey: 'social.adAutoloadBody',
-    ctaKey: 'social.adAutoloadCta',
-    route: 'NewRecord',
-    gradient: ['#0E7490', '#22D3EE'],
-  },
 ];
 
 /** 슬롯 순번 → 하우스 광고 로테이션 */

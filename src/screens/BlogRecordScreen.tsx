@@ -20,12 +20,16 @@ import {
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 import * as ImagePicker from 'expo-image-picker';
 import { compressImage, compressImages } from '../utils/imageCompress';
+import CameraCaptureModal from '../components/CameraCaptureModal';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import type { MediaType } from 'expo-image-picker';
 import { useRecords, type Visibility } from '../store/recordStore';
-import { collectRecordedDateKeys } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
@@ -34,6 +38,9 @@ import AutoTocModal from '../components/AutoTocModal';
 import { analyzeForToc, applyTocSuggestions, TocSuggestion } from '../utils/autoToc';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, countryNameToCode, parseDotDate as parseDotDateMatch } from '../utils/momentMatch';
+import MomentListSheet from '../components/moments/MomentListSheet';
 import {
   CalendarIcon as SvgCalendarIcon,
   CoinIcon as SvgCoinIcon,
@@ -61,7 +68,11 @@ import {
   CameraIcon,
   LinkIcon,
   PaperclipIcon,
+  ArchiveIcon as SvgArchiveIcon,
+  TrashIcon as SvgTrashIcon,
 } from '../components/icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import Svg, { Path as SvgPath } from 'react-native-svg';
 import * as DocumentPicker from 'expo-document-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import {
@@ -78,6 +89,15 @@ import {
 
 const { width: SCREEN_W } = Dimensions.get('window');
 
+/** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
+function SheetCheck() {
+  return (
+    <Svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+      <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
 const C = {
   bg: '#0A0A0F', editorBg: '#111118', card: '#2E2E3B', cardLight: '#1E1B33',
   toolbar: '#16161F', toolbarBorder: '#252535',
@@ -86,6 +106,7 @@ const C = {
   white: '#FFFFFF', dim: '#A1A1B0', muted: '#4A4A59', divider: '#1A1A26',
   quoteBg: 'rgba(191,133,252,0.06)', quoteBorder: '#BF85FC',
   green: '#34C759', naverGreen: '#03C75A',
+  gold: '#FFD700', // 미입력 표시 — 다른 화면(NewRecord/CutTravelInfo)과 같은 값
 };
 
 const COMPANIONS = ['혼자', '친구', '연인', '가족', '부모님', '형제'];
@@ -99,9 +120,10 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
-const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'neighbors', label: '🏡 이웃만' },
-  { value: 'private',   label: '🔒 나만 보기' },
+// 표시 문구는 visibilityLabel(), 아이콘은 VISIBILITY_ICON_MAP이 담당한다 (동행자 칩과 동일 구조)
+const VISIBILITY_OPTIONS: { value: Visibility }[] = [
+  { value: 'neighbors' },
+  { value: 'private' },
 ];
 // 글자 크기 라벨 → i18n 키 (FONT_SIZE_OPTIONS.size 기준, 라벨은 UI 문구라 번역)
 const FONT_SIZE_KEY: Record<number, string> = {
@@ -128,6 +150,14 @@ const OTHER_CURRENCIES = [
   { code: 'AED', name: '디르함 (UAE)' },
   { code: 'NZD', name: '뉴질랜드 달러' },
 ];
+
+// ─── 공개 범위 아이콘 ───
+// 기본 이모지(🏡/🔒)는 기기 폰트마다 모양·크기가 달라 옆의 동행자 칩과 톤이 어긋났다.
+// 제작 SVG 세트로 통일한다.
+const VISIBILITY_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
+  neighbors: (c) => <SvgFriendIcon size={16} color={c} />,
+  private:   (c) => <SvgLockClosedIcon size={16} color={c} />,
+};
 
 // ─── 동행자 아이콘 ───
 const COMPANION_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
@@ -288,7 +318,7 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
   // 동행자·날씨·항공편·공개범위·구분선 값은 저장 키라 유지하고 표시만 번역
@@ -317,8 +347,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const flightLabel = (f: string) => (f === '직항' ? t('newRecord.flightDirect') : t('newRecord.flightLayover'));
   const visibilityLabel = (v: Visibility) => {
     switch (v) {
-      case 'neighbors': return `🏡 ${t('newRecord.visNeighbors')}`;
-      case 'private':   return `🔒 ${t('newRecord.visPrivate')}`;
+      case 'neighbors': return t('newRecord.visNeighbors');
+      case 'private':   return t('newRecord.visPrivate');
       default: return '';
     }
   };
@@ -332,7 +362,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       default: return '';
     }
   };
-  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
 
   // ─── 편집 모드 ───
@@ -371,12 +401,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   });
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  // 검색어는 모달을 닫을 때 비운다 — 남겨두면 다음에 열었을 때 목록이 필터된 채로 떠서
+  // "국가가 몇 개 없다"고 오해하게 된다.
+  const closeCountryModal = () => { setCountryModalVisible(false); setCountrySearch(''); };
 
   // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게 (편집 중 기록 제외)
   const recordedDates = useMemo(
     () => collectRecordedDateKeys(records, selectedCountries.map(c => c.name), editRecord?.id),
     [records, selectedCountries, editRecord?.id]
   );
+
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙, 편집 중 기록 제외)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records, editRecord?.id), [records, editRecord?.id]);
+
+  // useMoments — 서랍용 훅 (matchedMoments useMemo는 startDate/endDate state 이후에 위치)
+  const { moments: allMoments } = useMoments();
 
   // 콘텐츠
   const [title, setTitle] = useState(editRecord?.content ?? '');
@@ -402,6 +441,21 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [memo, setMemo] = useState(editRecord?.memo ?? '');
   const [startDate, setStartDate] = useState(editRecord?.startDate ?? tripPeriod?.startDate ?? '');
   const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPeriod?.endDate ?? '');
+
+  // ── 작성 화면 참고용 서랍: 선택 국가+날짜로 순간 매칭 ──
+  // startDate는 'YYYY.MM.DD' 문자열, parseDotDateMatch로 epoch ms 변환
+  const matchedMoments = useMemo(() => {
+    const first = selectedCountries[0] ?? null;
+    const startMs = parseDotDateMatch(startDate || null);
+    const endMs = parseDotDateMatch(endDate || null) ?? startMs;
+    return matchMoments(allMoments, {
+      countryCode: countryNameToCode(first?.name),
+      startMs,
+      endMs,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMoments, selectedCountries, startDate, endDate]);
+
   const [rating, setRating] = useState(editRecord?.rating ?? 0);
   const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
   const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
@@ -437,6 +491,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     const today = new Date(); today.setHours(0, 0, 0, 0); return today;
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPeriod?.startDate));
   const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPeriod?.endDate));
 
@@ -474,6 +529,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [tocSuggestions, setTocSuggestions] = useState<TocSuggestion[]>([]);
   // 하단 툴바 서브패널
   const [photoMenuVisible, setPhotoMenuVisible] = useState(false);
+  const [cameraOpen, setCameraOpen] = useState(false);
   const [fontBarVisible, setFontBarVisible] = useState(false);
   const [headingBarVisible, setHeadingBarVisible] = useState(false);
   const [moreMenuVisible, setMoreMenuVisible] = useState(false);
@@ -837,19 +893,17 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     }
   };
 
-  const handleCamera = async () => {
+  // expo-image-picker launchCameraAsync가 SDK54/새 아키텍처에서 셔터가 먹지 않아,
+  // 검증된 expo-camera(CameraCaptureModal)로 촬영한다(권한도 모달 내부에서 처리).
+  const handleCamera = () => {
     setPhotoMenuVisible(false);
-    const perm = await ImagePicker.requestCameraPermissionsAsync();
-    if (!perm.granted) { showPermissionDeniedAlert(t('permission.camera')); return; }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ['images'] as MediaType[], quality: 0.8,
-    });
-    if (!result.canceled && result.assets[0]) {
-      const orig = result.assets[0].uri;
-      const c = await compressImage(orig);
-      if (c !== orig) originalUriMapRef.current[c] = orig;
-      insertBlockAfter(createImageBlock(c));
-    }
+    setCameraOpen(true);
+  };
+  // 촬영 완료 → 압축 후 이미지 블록 삽입 (기존 handleCamera 후처리와 동일)
+  const handleCameraCaptured = async (uri: string) => {
+    const c = await compressImage(uri);
+    if (c !== uri) originalUriMapRef.current[c] = uri;
+    insertBlockAfter(createImageBlock(c));
   };
 
   const handleAddVideo = async () => {
@@ -948,6 +1002,41 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setEndDate(fmtDate(end));
   };
 
+  // ─── 기존 여행 밴드 탭 → 블로그 폼 자동 채움 (신규 작성 시에만 onSelectRecordedTrip으로 전달) ───
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    // 국가 — 다국가 배열 우선, 없으면 대표 국가 1개
+    const countries = (src.countries ?? (src.countryName ? [{ flag: src.countryFlag, name: src.countryName }] : []))
+      .map((c: { flag: string; name: string }) => COUNTRIES.find(k => k.name === c.name))
+      .filter((c): c is Country => !!c);
+    if (countries.length > 0) setSelectedCountries(countries);
+    // 지역
+    setSelectedRegion(src.regionName ? { name: src.regionName, nameEn: src.regionNameEn ?? '' } : null);
+    // 기간 — handleCalendarConfirm 재사용으로 문자열·Date 상태 동시 갱신
+    handleCalendarConfirm(start, end);
+    // 평점
+    setRating(src.rating ?? 0);
+    // 동행
+    setCompanions(src.companions ?? []);
+    setCompanionFriends(src.companionFriends ?? []);
+    // 예산·통화 — 소스에 예산이 있을 때만 통화까지 복사(자동추천 차단), 없으면 국가 기반 자동추천 유지
+    if (src.budget) {
+      setBudget(String(src.budget.amount));
+      chooseCurrency(src.budget.currency); // currencyTouchedRef 처리 포함
+    } else {
+      setBudget('');
+      currencyTouchedRef.current = false;
+    }
+    // 날씨·항공·태그·공개범위
+    setWeather(src.weather ?? '');
+    setFlightType(src.flightType ?? '');
+    setKeywords(src.keywords ?? []);
+    setVisibility(src.visibility ?? 'neighbors');
+    // 캘린더 닫고 폼 복귀
+    setCalendarVisible(false);
+  };
+
   // ─── 키워드 ───
   const addKeyword = () => {
     const raw = keywordInput.trim();
@@ -970,7 +1059,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const togglePrivateFriend = (friend: string) => {
     setPrivateFriends(prev => prev.includes(friend) ? prev.filter(f => f !== friend) : [...prev, friend]);
   };
-  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 친구 체크 상태까지 즉시 동기화
+  // 전체 비공개/해제 — 목록을 통째로 교체해 개별 메이트 체크 상태까지 즉시 동기화
   const setPrivateFriendsAll = (friends: string[]) => setPrivateFriends(friends);
   // ─── 별점 (0.5 단위) ───
   const STAR_SIZE = 28;
@@ -1242,6 +1331,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
+          {/* ✨ 여행 기억 버튼은 국가표시 행 오른쪽 끝으로 이동(헤더 제목과 겹침 방지) */}
           <TouchableOpacity
             onPress={() => setRepPhotoModalVisible(true)}
             style={[st.mapBtn, representativePhoto && [st.mapBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]]}
@@ -1282,16 +1372,26 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <ScrollView ref={scrollRef} style={st.editor} contentContainerStyle={st.editorContent}
           showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
 
-          {/* 국가 */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', marginBottom: 12 }}>
+          {/* 국가 + 여행 기억(✨) — ✨는 국가표시 열에 맞춰 오른쪽 끝에 배치(헤더 제목 겹침 방지) */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
             <TouchableOpacity style={[st.countryChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }, countryRequired && st.countryChipRequired, { marginBottom: 0 }]} onPress={() => setCountryModalVisible(true)}>
               <Text style={selectedCountry ? [st.countryChipText, { color: skinAccent.accent }] : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
-                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
             {countryRequired && <View style={st.requiredDot} />}
+            <View style={{ flex: 1 }} />
+            <TouchableOpacity
+              onPress={() => setMomentSheetVisible(true)}
+              accessibilityRole="button"
+              accessibilityLabel={t('moments.sheetTitle')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              style={{ padding: 4 }}
+            >
+              <Text style={{ fontSize: 18 }}>✨</Text>
+            </TouchableOpacity>
           </View>
 
           {/* 제목 */}
@@ -1511,8 +1611,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       {/* 여행정보 패널 */}
       <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} accessibilityViewIsModal>
-        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setTravelInfoVisible(false)}>
-          <View style={st.travelPanel} onStartShouldSetResponder={() => true}>
+        <View style={{ flex: 1 }}>
+          {/* backdrop을 패널의 형제(뒤 절대배치)로 둬야 내부 ScrollView 스크롤이 씹히지 않는다.
+              패널을 TouchableOpacity로 감싸고 onStartShouldSetResponder로 막던 방식은 스크롤 제스처를 가로챘음 */}
+          <TouchableOpacity style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)' }]} activeOpacity={1} onPress={() => setTravelInfoVisible(false)} />
+          <View style={st.travelPanel}>
             <View style={st.panelHandle} />
             <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={st.panelTitle}>{t('blog.travelInfoTitle')}</Text>
@@ -1594,7 +1697,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     const isActive = visibility === opt.value;
                     return (
                       <TouchableOpacity key={opt.value} style={[st.chip, isActive && [st.chipActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.3) }]]} onPress={() => setVisibility(opt.value)}>
-                        <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value)}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                          {VISIBILITY_ICON_MAP[opt.value]?.(isActive ? skinAccent.accent : C.dim)}
+                          <Text style={[st.chipText, isActive && [st.chipTextActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value)}</Text>
+                        </View>
                       </TouchableOpacity>
                     );
                   })}
@@ -1705,25 +1811,26 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               <View style={{ height: 120 }} />
             </ScrollView>
-            <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setTravelInfoVisible(false)}>
-              <Text style={st.panelDoneText}>{t('common.done')}</Text>
+            <TouchableOpacity onPress={() => setTravelInfoVisible(false)} activeOpacity={0.85} style={st.panelDoneWrap}>
+              <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.panelDoneBtn}>
+                <Text style={st.panelDoneText}>{t('common.done')}</Text>
+              </LinearGradient>
             </TouchableOpacity>
 
-            {/* 캘린더 오버레이 (여행정보 패널 위에 표시) */}
-            {calendarVisible && (
-              <View style={st.calOverlay}>
-                <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCalendarVisible(false)} />
-                <BlogCalendarSheet
-                  initialStart={startDateObj}
-                  initialEnd={endDateObj}
-                  onConfirm={handleCalendarConfirm}
-                  onClose={() => setCalendarVisible(false)}
-                  recordedDates={recordedDates}
-                />
-              </View>
-            )}
+            {/* 캘린더 — 공용 CalendarBottomSheet. 여행정보 패널이 이미 Modal이라 asOverlay로 렌더 (iOS Modal-in-Modal 회피) */}
+            <CalendarBottomSheet
+              visible={calendarVisible}
+              initialStart={startDateObj}
+              initialEnd={endDateObj}
+              onConfirm={handleCalendarConfirm}
+              onClose={() => setCalendarVisible(false)}
+              recordedDates={recordedDates}
+              recordedRanges={recordedRanges}
+              onSelectRecordedTrip={isEdit ? undefined : applySourceRecord}
+              asOverlay
+            />
 
-            {/* 앱 친구 선택 오버레이 (여행정보 패널 위에 표시) */}
+            {/* 앱 메이트 선택 오버레이 (여행정보 패널 위에 표시) */}
             {friendPickerVisible && (
               <View style={st.calOverlay}>
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
@@ -1738,18 +1845,27 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     ) : friendNames.map(friend => {
                       const isSelected = companionFriends.includes(friend);
                       return (
-                        <TouchableOpacity key={friend} style={st.friendPickerItem} onPress={() => toggleCompanionFriend(friend)} activeOpacity={0.75}>
-                          <View style={[st.friendPickerAvatar, { backgroundColor: skinAccent.accentDeep }]}><Text style={st.friendPickerAvatarTxt}>{friend[0]}</Text></View>
-                          <Text style={st.friendPickerName}>{friend}</Text>
+                        <TouchableOpacity
+                          key={friend}
+                          style={[st.friendPickerItem, isSelected && { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.5) }]}
+                          onPress={() => toggleCompanionFriend(friend)}
+                          activeOpacity={0.75}
+                        >
+                          <View style={[st.friendPickerAvatar, isSelected && { backgroundColor: skinAccent.tint(0.3) }]}>
+                            <Text style={[st.friendPickerAvatarTxt, isSelected && { color: skinAccent.accent }]}>{friend[0]}</Text>
+                          </View>
+                          <Text style={[st.friendPickerName, isSelected && st.friendPickerNameOn]} numberOfLines={1}>{friend}</Text>
                           <View style={[st.friendPickerCheck, isSelected && [st.friendPickerCheckActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                            {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                            {isSelected && <SheetCheck />}
                           </View>
                         </TouchableOpacity>
                       );
                     })}
                   </ScrollView>
-                  <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setFriendPickerVisible(false)}>
-                    <Text style={st.panelDoneText}>{t('common.done')}</Text>
+                  <TouchableOpacity onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85} style={st.panelDoneWrap}>
+                    <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.panelDoneBtn}>
+                      <Text style={st.panelDoneText}>{t('common.done')}</Text>
+                    </LinearGradient>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -1776,53 +1892,130 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                         const q = currencySearch.trim().toLowerCase();
                         return !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
                       })
-                      .map((c, idx, arr) => (
-                        <TouchableOpacity
-                          key={c.code}
-                          style={[st.currModalItem, idx < arr.length - 1 && { borderBottomWidth: 1, borderBottomColor: C.divider }]}
-                          onPress={() => { chooseCurrency(c.code); setCurrencyModalVisible(false); }}
-                        >
-                          <Text style={[st.currModalCode, { color: skinAccent.accent }]}>{c.code}</Text>
-                          <Text style={st.currModalName}>{c.name}</Text>
-                          {currency === c.code && <Text style={{ color: skinAccent.accent, fontSize: 16, fontWeight: "700" }}>✓</Text>}
-                        </TouchableOpacity>
-                      ))}
+                      .map((c) => {
+                        const on = currency === c.code;
+                        return (
+                          <TouchableOpacity
+                            key={c.code}
+                            style={[st.currModalItem, on && { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.5) }]}
+                            onPress={() => { chooseCurrency(c.code); setCurrencyModalVisible(false); }}
+                            activeOpacity={0.75}
+                          >
+                            <Text style={[st.currModalCode, { color: skinAccent.accent }]}>{c.code}</Text>
+                            <Text style={[st.currModalName, on && { color: C.white, fontWeight: '600' }]}>{c.name}</Text>
+                            {on && (
+                              <View style={[st.friendPickerCheck, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]}>
+                                <SheetCheck />
+                              </View>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
                   </ScrollView>
                 </View>
               </View>
             )}
           </View>
-        </TouchableOpacity>
+        </View>
         </KeyboardAvoidingView>
       </Modal>
 
 
       {/* 국가 모달 */}
-      <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
+      <Modal visible={countryModalVisible} animationType="slide" onRequestClose={closeCountryModal}>
         <SafeAreaView style={st.modalSafe} accessibilityViewIsModal>
           <View style={st.modalHeader}>
-            <TouchableOpacity onPress={() => setCountryModalVisible(false)}><Text style={[st.modalClose, { color: skinAccent.accent }]}>{t('common.close')}</Text></TouchableOpacity>
+            <TouchableOpacity onPress={closeCountryModal}><Text style={[st.modalClose, { color: skinAccent.accent }]}>{t('common.close')}</Text></TouchableOpacity>
             <Text style={st.modalTitle}>{t('blog.countrySelectTitle')}</Text>
             <View style={{ width: 40 }} />
           </View>
+
+          {/* 검색 — autoFocus는 두지 않는다. 모달을 열자마자 키보드가 목록 절반을 가려
+              대륙별로 훑어보는 사용 방식을 막았다. 검색이 필요하면 탭 한 번이면 된다. */}
           <View style={st.searchWrap}>
-            <TextInput style={st.searchInput} placeholder={t('blog.countrySearchPlaceholder')} placeholderTextColor={C.muted}
-              value={countrySearch} onChangeText={setCountrySearch} autoFocus />
+            <View style={st.searchBox}>
+              <TextInput
+                style={st.searchField}
+                placeholder={t('blog.countrySearchPlaceholder')}
+                placeholderTextColor={C.muted}
+                value={countrySearch}
+                onChangeText={setCountrySearch}
+                returnKeyType="search"
+              />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={st.searchClear}>✕</Text>
+                </TouchableOpacity>
+              )}
+            </View>
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {groupedCountries.map(g => (
-              <View key={g.continent}>
-                <Text style={st.continentLabel}>{g.continent}</Text>
-                {g.countries.map(country => (
-                  <TouchableOpacity key={country.name}
-                    style={[st.countryItem, selectedCountries.some(p => p.name === country.name) && [st.countryItemActive, { backgroundColor: skinAccent.tint(0.1) }]]}
-                    onPress={() => toggleCountry(country)}>
-                    <Text style={st.countryItemText}>
-                      {country.flag} {country.name}
-                      {selectedCountries.some(p => p.name === country.name) ? '  ✓' : ''}
+
+          {/* 선택한 국가 — 목록 안에서는 대륙별로 흩어져 무엇을 골랐는지 확인이 안 됐다.
+              여기서 바로 확인·해제할 수 있게 하고, 첫 번째가 대표 국가임을 표시한다. */}
+          {selectedCountries.length > 0 && (
+            <View style={st.pickedWrap}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={st.pickedRow}
+              >
+                {selectedCountries.map((c, idx) => (
+                  <TouchableOpacity
+                    key={c.name}
+                    style={[st.pickedChip, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.35) }]}
+                    onPress={() => toggleCountry(c)}
+                    activeOpacity={0.75}
+                  >
+                    {idx === 0 && (
+                      <Text style={[st.pickedRep, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.25) }]}>
+                        {t('newRecord.repBadge')}
+                      </Text>
+                    )}
+                    <Text style={[st.pickedTxt, { color: skinAccent.accent }]}>
+                      {c.flag} {countryLabel(c.name, i18n.language)}
                     </Text>
+                    <Text style={[st.pickedX, { color: skinAccent.accent }]}>✕</Text>
                   </TouchableOpacity>
                 ))}
+              </ScrollView>
+              <Text style={st.pickedCount}>
+                {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}
+                {selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}
+              </Text>
+            </View>
+          )}
+
+          {/* keyboardShouldPersistTaps — 키보드가 떠 있을 때 국가를 탭하면 첫 탭이
+              키보드 닫기에 먹혀 선택이 되지 않던 문제를 막는다. */}
+          <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+            {groupedCountries.length === 0 ? (
+              <Text style={st.countryEmpty}>{t('blog.countryNoResult')}</Text>
+            ) : groupedCountries.map(g => (
+              <View key={g.continent}>
+                <Text style={st.continentLabel}>{continentLabel(g.continent, i18n.language)}</Text>
+                {g.countries.map(country => {
+                  const picked = selectedCountries.some(p => p.name === country.name);
+                  // 최대치에 도달하면 미선택 국가는 탭해도 아무 일이 없었다 — 눌리지 않음을 눈으로 보여준다
+                  const blocked = !picked && selectedCountries.length >= MAX_COUNTRIES;
+                  return (
+                    <TouchableOpacity
+                      key={country.name}
+                      style={[
+                        st.countryItem,
+                        picked && [st.countryItemActive, { backgroundColor: skinAccent.tint(0.1) }],
+                        blocked && st.countryItemBlocked,
+                      ]}
+                      disabled={blocked}
+                      onPress={() => toggleCountry(country)}
+                    >
+                      <Text style={st.countryItemText}>
+                        {country.flag} {countryLabel(country.name, i18n.language)}
+                      </Text>
+                      {picked && <Text style={[st.countryItemCheck, { color: skinAccent.accent }]}>✓</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             ))}
           </ScrollView>
@@ -1830,50 +2023,92 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       </Modal>
 
 
-      {/* 임시저장 목록 모달 */}
+      {/* 임시저장 목록 — 비공개 대상 선택 시트와 같은 디자인 언어(카드형 행·아이콘 배지·그라데이션 CTA) */}
       <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
-        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={() => setDraftListVisible(false)} accessibilityViewIsModal>
-          <View style={st.draftListPanel} onStartShouldSetResponder={() => true}>
-            <View style={st.panelHandle} />
-            <Text style={st.panelTitle}>{t('blog.draftListTitle')}</Text>
+        <View style={st.dlOverlay} accessibilityViewIsModal>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setDraftListVisible(false)} />
+          <View style={st.dlSheet}>
+            <View style={st.dlHandle} />
+
+            <View style={st.dlHeader}>
+              <View style={[st.dlHeaderIcon, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.tint(0.3) }]}>
+                <SvgArchiveIcon size={18} color={skinAccent.accent} />
+              </View>
+              <Text style={st.dlTitle}>{t('blog.draftListTitle')}</Text>
+              {blogDrafts.length > 0 && (
+                <View style={[st.dlCountPill, { backgroundColor: skinAccent.tint(0.16), borderColor: skinAccent.tint(0.35) }]}>
+                  <Text style={[st.dlCountTxt, { color: skinAccent.accent }]}>{blogDrafts.length}</Text>
+                </View>
+              )}
+            </View>
+
             {blogDrafts.length === 0 ? (
-              <Text style={st.draftEmptyText}>{t('blog.noDrafts')}</Text>
+              <View style={st.dlEmptyWrap}>
+                <SvgArchiveIcon size={30} color={C.muted} />
+                <Text style={st.dlEmptyTxt}>{t('blog.noDrafts')}</Text>
+              </View>
             ) : (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+              <ScrollView showsVerticalScrollIndicator={false} style={st.dlScroll}>
                 {blogDrafts.map(draft => {
                   const draftDate = new Date(draft.timestamp);
                   const dateLabel = `${draftDate.getMonth() + 1}/${draftDate.getDate()} ${String(draftDate.getHours()).padStart(2, '0')}:${String(draftDate.getMinutes()).padStart(2, '0')}`;
                   const preview = draft.content || t('blog.noContent');
                   const isCurrent = draftId === draft.id;
                   return (
-                    <View key={draft.id} style={[st.draftItem, isCurrent && [st.draftItemCurrent, { borderColor: skinAccent.tint(0.3) }]]}>
-                      <TouchableOpacity style={st.draftItemContent} onPress={() => loadDraft(draft)} activeOpacity={0.7}>
-                        <View style={st.draftItemHeader}>
-                          <Text style={st.draftItemTitle} numberOfLines={1}>
+                    <View
+                      key={draft.id}
+                      style={[st.dlItem, isCurrent && { backgroundColor: skinAccent.tint(0.1), borderColor: skinAccent.accent }]}
+                    >
+                      <TouchableOpacity style={st.dlItemMain} onPress={() => loadDraft(draft)} activeOpacity={0.75}>
+                        <View style={st.dlItemHead}>
+                          <Text style={[st.dlItemTitle, isCurrent && st.dlItemTitleOn]} numberOfLines={1}>
                             {preview.length > 30 ? preview.slice(0, 30) + '...' : preview}
                           </Text>
-                          {isCurrent && <Text style={[st.draftCurrentBadge, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.15) }]}>{t('blog.editing')}</Text>}
+                          {isCurrent && (
+                            <Text style={[st.dlBadge, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.2) }]}>
+                              {t('blog.editing')}
+                            </Text>
+                          )}
                         </View>
-                        <View style={st.draftItemMeta}>
-                          {draft.countryFlag ? <Text style={st.draftItemCountry}>{draft.countryFlag} {draft.countryName}</Text> : null}
-                          <Text style={st.draftItemDate}>{dateLabel}</Text>
-                          <Text style={st.draftExpiry}>{draftDaysLeft(draft.timestamp)}</Text>
+                        <View style={st.dlItemMeta}>
+                          {draft.countryFlag ? (
+                            <Text style={st.dlMetaCountry}>{draft.countryFlag} {countryLabel(draft.countryName, i18n.language)}</Text>
+                          ) : null}
+                          <Text style={st.dlMetaDate}>{dateLabel}</Text>
+                          {/* 만료 임박 안내 — 목록에서 눈에 걸리도록 알약으로 */}
+                          <View style={st.dlExpiryPill}>
+                            <Text style={st.dlExpiryTxt}>{draftDaysLeft(draft.timestamp)}</Text>
+                          </View>
                         </View>
                       </TouchableOpacity>
-                      <TouchableOpacity style={st.draftDeleteBtn} onPress={() => handleDeleteDraft(draft.id)}>
-                        <Text style={st.draftDeleteText}>{t('blog.delete')}</Text>
+                      <TouchableOpacity
+                        style={st.dlDeleteBtn}
+                        onPress={() => handleDeleteDraft(draft.id)}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <SvgTrashIcon size={16} color="#FF3B30" />
                       </TouchableOpacity>
                     </View>
                   );
                 })}
               </ScrollView>
             )}
-            <TouchableOpacity style={[st.panelDoneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={() => setDraftListVisible(false)}>
-              <Text style={st.panelDoneText}>{t('common.close')}</Text>
+
+            <TouchableOpacity onPress={() => setDraftListVisible(false)} activeOpacity={0.85} style={st.dlDoneWrap}>
+              <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={st.dlDoneBtn}>
+                <Text style={st.dlDoneTxt}>{t('common.close')}</Text>
+              </LinearGradient>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
+
+      {/* 인앱 카메라 촬영 (expo-camera) — 촬영 후 이미지 블록 삽입 */}
+      <CameraCaptureModal
+        visible={cameraOpen}
+        onClose={() => setCameraOpen(false)}
+        onCapture={(uri) => { void handleCameraCaptured(uri); }}
+      />
 
       {/* 토스트 */}
       {toastMsg !== '' && (
@@ -1903,6 +2138,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriendsAll}
         onClose={() => setPrivacyModalVisible(false)}
+        desc={t('blog.privacyDesc')}
+        allPrivateDesc={t('blog.allPrivateDesc')}
       />
 
       <RepPhotoModal
@@ -1911,6 +2148,18 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         selectedPhoto={representativePhoto}
         onSelect={(uri, original) => { if (uri && original) originalUriMapRef.current[uri] = original; setRepresentativePhoto(uri); }}
         onClose={() => setRepPhotoModalVisible(false)}
+      />
+
+      {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={matchedMoments}
+        tripTitle={
+          selectedCountries.length > 0
+            ? `${selectedCountries[0].flag} ${selectedCountries[0].name}`
+            : ''
+        }
       />
 
     </SafeAreaView>
@@ -2219,135 +2468,6 @@ function PanelRow({ label, icon, labelText, required, children }: {
   );
 }
 
-// ─── 비공개 친구 선택 모달 ───
-function PrivacyModal({
-  visible,
-  selectedFriends,
-  allFriends,
-  onToggle,
-  onSetAll,
-  onClose,
-}: {
-  visible: boolean;
-  selectedFriends: string[];
-  allFriends: string[];
-  onToggle: (friend: string) => void;
-  onSetAll: (friends: string[]) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const translateY = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(translateY, {
-        toValue: 0,
-        useNativeDriver: true,
-        tension: 65,
-        friction: 13,
-      }).start();
-    } else {
-      Animated.timing(translateY, {
-        toValue: 500,
-        duration: 220,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
-          {/* 핸들 */}
-          <View style={pm.handle} />
-
-          {/* 헤더 */}
-          <View style={pm.header}>
-            <View style={pm.headerLeft}>
-              <SvgLockClosedIcon size={24} color="#A1A1B0" />
-              <View>
-                <Text style={pm.headerTitle}>{t('blog.privacyTitle')}</Text>
-                <Text style={pm.headerDesc}>{t('blog.privacyDesc')}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
-          {allFriends.length > 0 && (() => {
-            const allPrivate = selectedFriends.length === allFriends.length;
-            return (
-              <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
-                activeOpacity={0.7}
-              >
-                <View style={[pm.avatar, allPrivate && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                  <SvgLockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('blog.allPrivate')}</Text>
-                  <Text style={pm.allPrivateDesc}>{t('blog.allPrivateDesc')}</Text>
-                </View>
-                <View style={[pm.checkbox, allPrivate && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
-                </View>
-              </TouchableOpacity>
-            );
-          })()}
-
-          {/* 전체 해제 버튼 */}
-          {selectedFriends.length > 0 && (
-            <TouchableOpacity
-              style={[pm.clearAllBtn, { backgroundColor: skinAccent.tint(0.12) }]}
-              onPress={() => selectedFriends.forEach(f => onToggle(f))}
-              activeOpacity={0.7}
-            >
-              <Text style={[pm.clearAllTxt, { color: skinAccent.accent }]}>{t('blog.clearAll')}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 친구 목록 */}
-          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
-            {allFriends.map(friend => {
-              const isSelected = selectedFriends.includes(friend);
-              return (
-                <TouchableOpacity
-                  key={friend}
-                  style={[pm.friendRow, isSelected && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                  onPress={() => onToggle(friend)}
-                  activeOpacity={0.7}
-                >
-                  {/* 아바타 */}
-                  <View style={[pm.avatar, isSelected && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
-                  </View>
-                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
-                  {/* 체크박스 */}
-                  <View style={[pm.checkbox, isSelected && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* 완료 버튼 */}
-          <TouchableOpacity style={[pm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
-            <Text style={pm.doneTxt}>
-              {selectedFriends.length > 0
-                ? t('blog.privacyDoneN', { count: selectedFriends.length })
-                : t('blog.setPublic')}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
 // ─── 지도 대표 사진 선택 모달 ───
 function RepPhotoModal({
   visible,
@@ -2410,42 +2530,43 @@ function RepPhotoModal({
           {/* 핸들 */}
           <View style={rpm.handle} />
 
-          {/* 헤더 */}
+          {/* 헤더 — 아이콘을 accent 배지에 넣는 다른 시트들과 동일 구조 */}
           <View style={rpm.header}>
-            <View style={rpm.headerLeft}>
-              <MapIcon size={24} color={skinAccent.accent} />
-              <View>
-                <Text style={rpm.headerTitle}>{t('blog.repPhotoTitle')}</Text>
-                <Text style={rpm.headerDesc}>{t('blog.repPhotoDesc')}</Text>
-              </View>
+            <View style={[rpm.headerIcon, { backgroundColor: skinAccent.tint(0.14), borderColor: skinAccent.tint(0.3) }]}>
+              <MapIcon size={18} color={skinAccent.accent} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={rpm.headerTitle}>{t('blog.repPhotoTitle')}</Text>
+              <Text style={rpm.headerDesc}>{t('blog.repPhotoDesc')}</Text>
             </View>
           </View>
 
-          {/* 갤러리 선택 버튼 */}
+          {/* 갤러리에서 가져오기 */}
           <TouchableOpacity
-            style={[rpm.galleryBtn, { backgroundColor: skinAccent.tint(0.1), borderColor: skinAccent.tint(0.3) }]}
+            style={[rpm.galleryBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.32) }]}
             onPress={handlePickFromGallery}
             activeOpacity={0.8}
           >
+            <GalleryIcon size={16} color={skinAccent.accent} />
             <Text style={[rpm.galleryBtnTxt, { color: skinAccent.accent }]}>{t('blog.repPhotoPickBtn')}</Text>
           </TouchableOpacity>
 
           {displayPhotos.length === 0 ? (
             <View style={rpm.emptyWrap}>
+              <GalleryIcon size={30} color="#4A4A59" />
               <Text style={rpm.emptyTxt}>{t('blog.repPhotoEmpty')}</Text>
             </View>
           ) : (
             <>
-              {/* 대표 해제 버튼 */}
-              {selectedPhoto && (
-                <TouchableOpacity
-                  style={rpm.clearBtn}
-                  onPress={() => onSelect(null)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={rpm.clearTxt}>{t('blog.clearRep')}</Text>
-                </TouchableOpacity>
-              )}
+              {/* 목록 머리 — '대표 해제'를 다른 시트의 '전체 해제'와 같은 자리에 둔다 */}
+              <View style={rpm.listHead}>
+                <Text style={rpm.listHeadTxt}>{t('blog.photo')}</Text>
+                {selectedPhoto && (
+                  <TouchableOpacity onPress={() => onSelect(null)} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={rpm.clearTxt}>{t('blog.clearRep')}</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
 
               {/* 사진 썸네일 그리드 */}
               <ScrollView style={rpm.gridScroll} contentContainerStyle={rpm.gridContainer} showsVerticalScrollIndicator={false}>
@@ -2454,14 +2575,14 @@ function RepPhotoModal({
                   return (
                     <TouchableOpacity
                       key={`${uri}-${idx}`}
-                      style={[rpm.photoCard, isSelected && [rpm.photoCardActive, { borderColor: skinAccent.accent }]]}
+                      style={[rpm.photoCard, isSelected && { borderColor: skinAccent.accent }]}
                       onPress={() => onSelect(uri)}
                       activeOpacity={0.8}
                     >
                       <Image source={{ uri }} style={rpm.photoImg} resizeMode="cover" />
                       {isSelected && (
-                        <View style={[rpm.selectedOverlay, { backgroundColor: skinAccent.accentDeep }]}>
-                          <Text style={rpm.selectedMark}>★ {t('comp.representative')}</Text>
+                        <View style={[rpm.selectedBadge, { backgroundColor: skinAccent.accent }]}>
+                          <Text style={rpm.selectedMark}>{t('comp.representative')}</Text>
                         </View>
                       )}
                     </TouchableOpacity>
@@ -2471,9 +2592,11 @@ function RepPhotoModal({
             </>
           )}
 
-          {/* 완료 버튼 */}
-          <TouchableOpacity style={[rpm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
-            <Text style={rpm.doneTxt}>{t('common.done')}</Text>
+          {/* 완료 */}
+          <TouchableOpacity onPress={onClose} activeOpacity={0.85} style={rpm.doneWrap}>
+            <LinearGradient colors={skinAccent.btnGradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={rpm.doneBtn}>
+              <Text style={rpm.doneTxt}>{t('common.done')}</Text>
+            </LinearGradient>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -2510,8 +2633,10 @@ const st = StyleSheet.create({
   countryChip: { alignSelf: 'flex-start', backgroundColor: C.purpleBg, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: C.purpleBorder, marginBottom: 12 },
   countryChipText: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
   countryChipPlaceholder: { color: C.muted, fontSize: 13 },
-  countryChipRequired: { borderColor: '#FF3B30' },
-  requiredDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF3B30', marginLeft: 6 },
+  // 미입력 표시 — 골드. 스킨 accent(보라/시안/민트)와 겹치지 않아 '아직 안 채움'이
+  // 강조 요소와 구분되고, 빨강처럼 오류로 읽히지도 않는다.
+  countryChipRequired: { borderColor: C.gold, borderWidth: 1.5 },
+  requiredDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.gold, marginLeft: 6 },
 
   titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
   subtitleText: { color: '#AA54C1', fontSize: 15, fontWeight: '600', marginTop: 4 },
@@ -2577,7 +2702,8 @@ const st = StyleSheet.create({
   toolBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 8, minWidth: 52 },
   toolIcon: { alignItems: 'center' as const, justifyContent: 'center' as const, marginBottom: 2, height: 26 },
   toolLabel: { fontSize: 11, color: C.muted },
-  toolRequiredDot: { position: 'absolute' as const, top: -1, right: -5, width: 7, height: 7, borderRadius: 4, backgroundColor: '#FF3B30' },
+  // 아이콘 위에 겹치는 배지라 툴바색 링을 둘러 아이콘 실루엣과 분리한다.
+  toolRequiredDot: { position: 'absolute' as const, top: -2, right: -6, width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.gold, borderWidth: 1.5, borderColor: C.toolbar },
   toolSep: { width: 1, height: 22, backgroundColor: C.toolbarBorder },
   toolbarSpacer: { flex: 1 },
   toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, borderWidth: 1, borderColor: C.purpleBorder },
@@ -2613,11 +2739,12 @@ const st = StyleSheet.create({
   schedConfirmText: { color: C.white, fontSize: 14, fontWeight: '700' },
 
   // 스티커 패널
-  panelHandle: { width: 36, height: 4, borderRadius: 2, backgroundColor: C.muted, alignSelf: 'center', marginBottom: 8 },
+  // 공용 시트 토큰 — 임시저장·비공개 대상 선택 시트와 같은 값
+  panelHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 4, marginBottom: 16 },
 
   // 여행정보 패널
-  travelPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '75%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
-  panelTitle: { color: C.white, fontSize: 17, fontWeight: '700', marginBottom: 18 },
+  travelPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  panelTitle: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 16 },
   panelRow: { marginBottom: 18, gap: 8 },
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
   panelLabel: { color: C.dim, fontSize: 13, fontWeight: '600' },
@@ -2655,7 +2782,8 @@ const st = StyleSheet.create({
   kwTagDel: { color: C.muted, fontSize: 9 },
   kwInput: { height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
   memoInput: { color: C.white, fontSize: 13, lineHeight: 20, minHeight: 56, backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider },
-  panelDoneBtn: { backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 13, alignItems: 'center', marginTop: 6 },
+  panelDoneWrap: { marginTop: 12, borderRadius: 16, overflow: 'hidden' as const },
+  panelDoneBtn: { paddingVertical: 15, alignItems: 'center' },
   panelDoneText: { color: C.white, fontSize: 15, fontWeight: '700' },
 
   // 국가 모달
@@ -2664,39 +2792,85 @@ const st = StyleSheet.create({
   modalClose: { color: C.purpleNeon, fontSize: 15, fontWeight: '600' },
   modalTitle: { color: C.white, fontSize: 16, fontWeight: '700' },
   searchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
-  searchInput: { height: 40, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider },
-  continentLabel: { color: C.dim, fontSize: 11, fontWeight: '600', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
-  countryItem: { paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
-  countryItemActive: { backgroundColor: C.purpleBg },
-  countryItemText: { color: C.white, fontSize: 15 },
+  // 지우기(✕) 버튼을 품기 위해 입력칸을 컨테이너로 쓰고 TextInput은 안에서 늘어난다
+  searchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    height: 40, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14,
+    borderWidth: 1, borderColor: C.divider,
+  },
+  searchField: { flex: 1, color: C.white, fontSize: 14, paddingVertical: 0 },
+  searchClear: { color: C.dim, fontSize: 13, fontWeight: '700' },
 
-  // 임시저장 목록
-  draftListPanel: { position: 'absolute' as const, bottom: 0, left: 0, right: 0, backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '70%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
-  draftEmptyText: { color: C.muted, fontSize: 14, textAlign: 'center' as const, paddingVertical: 40 },
-  draftItem: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.cardLight, borderRadius: 12, marginBottom: 10, borderWidth: 1, borderColor: C.divider, overflow: 'hidden' as const },
-  draftItemCurrent: { borderColor: C.purpleBorder },
-  draftItemContent: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
-  draftItemHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 4 },
-  draftItemTitle: { color: C.white, fontSize: 14, fontWeight: '600', flex: 1 },
-  draftCurrentBadge: { color: C.purpleNeon, fontSize: 10, fontWeight: '700', backgroundColor: C.purpleBg, paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, overflow: 'hidden' as const },
-  draftItemMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
-  draftItemCountry: { color: C.dim, fontSize: 12 },
-  draftItemDate: { color: C.muted, fontSize: 11 },
-  draftExpiry: { color: '#FFD60A', fontSize: 10, fontWeight: '600' },
-  draftDeleteBtn: { paddingHorizontal: 16, paddingVertical: 16, justifyContent: 'center' as const, borderLeftWidth: 1, borderLeftColor: C.divider },
-  draftDeleteText: { color: '#FF3B30', fontSize: 12, fontWeight: '600' },
+  // 선택한 국가 칩 줄
+  pickedWrap: { paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: C.divider },
+  pickedRow: { paddingHorizontal: 16, gap: 6, alignItems: 'center' },
+  pickedChip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 14, borderWidth: 1 },
+  pickedRep: { fontSize: 9, fontWeight: '700', paddingHorizontal: 5, paddingVertical: 1, borderRadius: 6, overflow: 'hidden' },
+  pickedTxt: { fontSize: 13, fontWeight: '600' },
+  pickedX: { fontSize: 11, fontWeight: '700' },
+  pickedCount: { color: C.dim, fontSize: 11, paddingHorizontal: 16, paddingTop: 8 },
+
+  continentLabel: { color: C.dim, fontSize: 11, fontWeight: '600', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
+  // 체크는 문자로 이어 붙이지 않고 우측에 고정 — 국가명 길이에 따라 위치가 흔들리지 않는다
+  countryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  countryItemActive: { backgroundColor: C.purpleBg },
+  countryItemBlocked: { opacity: 0.35 },
+  countryItemText: { color: C.white, fontSize: 15, flexShrink: 1 },
+  countryItemCheck: { fontSize: 15, fontWeight: '700', marginLeft: 10 },
+  countryEmpty: { color: C.muted, fontSize: 14, textAlign: 'center' as const, paddingVertical: 48 },
+
+  // 임시저장 목록 — 비공개 대상 선택 시트(components/record/PrivacyModal)와 같은 디자인 언어
+  dlOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' as const },
+  dlSheet: {
+    backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 18, paddingBottom: Platform.OS === 'ios' ? 30 : 18, maxHeight: '78%',
+  },
+  dlHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center' as const, marginTop: 10, marginBottom: 18 },
+  dlHeader: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, marginBottom: 14 },
+  dlHeaderIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center' as const, justifyContent: 'center' as const, borderWidth: 1 },
+  dlTitle: { flex: 1, color: C.white, fontSize: 16, fontWeight: '700' },
+  dlCountPill: { minWidth: 26, height: 24, borderRadius: 12, borderWidth: 1, alignItems: 'center' as const, justifyContent: 'center' as const, paddingHorizontal: 8 },
+  dlCountTxt: { fontSize: 12, fontWeight: '700' },
+
+  dlEmptyWrap: { alignItems: 'center' as const, gap: 10, paddingVertical: 46 },
+  dlEmptyTxt: { color: C.muted, fontSize: 14 },
+  dlScroll: { maxHeight: 380 },
+
+  // 행은 카드로 — 선택(편집 중) 상태는 배경 틴트 + 테두리를 함께 켠다
+  dlItem: {
+    flexDirection: 'row' as const, alignItems: 'center' as const,
+    backgroundColor: 'rgba(255,255,255,0.04)', borderRadius: 14,
+    borderWidth: 1, borderColor: 'transparent', marginBottom: 8, overflow: 'hidden' as const,
+  },
+  dlItemMain: { flex: 1, paddingHorizontal: 14, paddingVertical: 12 },
+  dlItemHead: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8, marginBottom: 5 },
+  dlItemTitle: { flex: 1, color: '#A1A1B0', fontSize: 14.5, fontWeight: '600' },
+  dlItemTitleOn: { color: C.white, fontWeight: '700' },
+  dlBadge: { fontSize: 10, fontWeight: '700', paddingHorizontal: 7, paddingVertical: 2, borderRadius: 7, overflow: 'hidden' as const },
+  dlItemMeta: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 8 },
+  dlMetaCountry: { color: C.dim, fontSize: 12 },
+  dlMetaDate: { color: C.muted, fontSize: 11 },
+  dlExpiryPill: { backgroundColor: 'rgba(255,214,10,0.14)', borderRadius: 7, paddingHorizontal: 7, paddingVertical: 2 },
+  dlExpiryTxt: { color: '#FFD60A', fontSize: 10, fontWeight: '700' },
+  // 삭제는 파괴적 동작이라 빨강 유지 — 라벨 대신 아이콘으로 폭을 줄여 제목이 더 길게 보인다
+  dlDeleteBtn: { paddingHorizontal: 14, alignSelf: 'stretch' as const, justifyContent: 'center' as const, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.07)' },
+
+  dlDoneWrap: { marginTop: 14, borderRadius: 16, overflow: 'hidden' as const },
+  dlDoneBtn: { paddingVertical: 15, alignItems: 'center' as const },
+  dlDoneTxt: { color: C.white, fontSize: 15, fontWeight: '700' },
 
   // 캘린더 오버레이
   calOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 10 },
 
   // 통화 모달
-  currModalSheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
-  currModalSearch: { height: 40, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
-  currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 14, paddingHorizontal: 4, gap: 10 },
+  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
+  currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   currModalCode: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' as const, width: 44 },
-  currModalName: { flex: 1, color: C.white, fontSize: 14 },
+  currModalName: { flex: 1, color: '#A1A1B0', fontSize: 14 },
 
-  // 앱 친구 관련
+  // 앱 메이트 관련
   friendChip: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
   friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
   friendChipAvatarTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
@@ -2705,12 +2879,13 @@ const st = StyleSheet.create({
   addFriendTxt: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
   addFriendBadge: { backgroundColor: C.purpleDeep, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendPickerSheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 14 },
-  friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, paddingVertical: 12, gap: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
-  friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
+  friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center' as const, justifyContent: 'center' as const },
   friendPickerAvatarTxt: { color: C.white, fontSize: 15, fontWeight: '700' as const },
-  friendPickerName: { flex: 1, color: C.white, fontSize: 15 },
-  friendPickerCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: C.muted, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendPickerName: { flex: 1, color: '#A1A1B0', fontSize: 14.5, fontWeight: '600' as const },
+  friendPickerNameOn: { color: C.white, fontWeight: '700' as const },
+  friendPickerCheck: { width: 23, height: 23, borderRadius: 11.5, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center' as const, justifyContent: 'center' as const },
   friendPickerCheckActive: { backgroundColor: C.purpleNeon, borderColor: C.purpleNeon },
 
   // 토스트
@@ -2718,363 +2893,54 @@ const st = StyleSheet.create({
   toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });
 
-// ─── 날짜 유틸 ───
-const toDateKey = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
-const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
-
-// ─── 캘린더 바텀시트 ───
-const CAL_CELL = Math.floor((SCREEN_W - 32 - 12) / 7);
-
-function BlogCalendarSheet({
-  initialStart, initialEnd, onConfirm, onClose, recordedDates,
-}: {
-  initialStart: Date;
-  initialEnd: Date;
-  onConfirm: (start: Date, end: Date) => void;
-  onClose: () => void;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
-  recordedDates?: Set<string>;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const weekDays = [t('blog.week0'), t('blog.week1'), t('blog.week2'), t('blog.week3'), t('blog.week4'), t('blog.week5'), t('blog.week6')];
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const [viewYear, setViewYear]         = useState(initialStart.getFullYear());
-  const [viewMonth, setViewMonth]       = useState(initialStart.getMonth());
-  const [tempStart, setTempStart]       = useState<Date | null>(initialStart);
-  const [tempEnd, setTempEnd]           = useState<Date | null>(initialEnd);
-  const [selectingEnd, setSelectingEnd] = useState(false);
-
-  const handlePrevMonth = () => {
-    if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); }
-    else setViewMonth(m => m - 1);
-  };
-  const handleNextMonth = () => {
-    if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); }
-    else setViewMonth(m => m + 1);
-  };
-
-  const handleDayPress = (date: Date) => {
-    if (!selectingEnd) {
-      setTempStart(date); setTempEnd(null); setSelectingEnd(true);
-    } else {
-      if (isBefore(date, tempStart!)) { setTempStart(date); setTempEnd(null); }
-      else { setTempEnd(date); setSelectingEnd(false); }
-    }
-  };
-
-  const handleConfirm = () => {
-    const s = tempStart ?? today;
-    const e = tempEnd ?? s;
-    onConfirm(s, e);
-    onClose();
-  };
-
-  const buildGrid = useCallback(() => {
-    const firstDay    = new Date(viewYear, viewMonth, 1).getDay();
-    const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
-    const cells: (Date | null)[] = [];
-    for (let i = 0; i < firstDay; i++) cells.push(null);
-    for (let d = 1; d <= daysInMonth; d++) {
-      const date = new Date(viewYear, viewMonth, d);
-      date.setHours(0, 0, 0, 0);
-      cells.push(date);
-    }
-    while (cells.length % 7 !== 0) cells.push(null);
-    return cells;
-  }, [viewYear, viewMonth]);
-
-  const grid = buildGrid();
-  const isInRange    = (d: Date) => !tempStart || !tempEnd ? false : !isBefore(d, tempStart) && !isBefore(tempEnd, d);
-  const isRangeStart = (d: Date) => !!tempStart && isSameDay(d, tempStart);
-  const isRangeEnd   = (d: Date) => !!tempEnd   && isSameDay(d, tempEnd);
-  const MONTH_NAMES  = [t('blog.month0'), t('blog.month1'), t('blog.month2'), t('blog.month3'), t('blog.month4'), t('blog.month5'), t('blog.month6'), t('blog.month7'), t('blog.month8'), t('blog.month9'), t('blog.month10'), t('blog.month11')];
-  const fmtSel = (d: Date | null) =>
-    d ? `${d.getFullYear()}.${String(d.getMonth()+1).padStart(2,'0')}.${String(d.getDate()).padStart(2,'0')}` : '—';
-
-  return (
-    <View style={calSt.sheet} onStartShouldSetResponder={() => true}>
-      <View style={calSt.handle} />
-      <View style={[calSt.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
-        <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>{t('blog.departDate')}</Text>
-          <Text style={[calSt.selectedDate, !selectingEnd && [calSt.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempStart)}</Text>
-        </View>
-        <Text style={calSt.selectedArrow}>→</Text>
-        <View style={calSt.selectedItem}>
-          <Text style={calSt.selectedLabel}>{t('blog.arriveDate')}</Text>
-          <Text style={[calSt.selectedDate, selectingEnd && [calSt.selectedDateActive, { color: skinAccent.accent }]]}>{fmtSel(tempEnd)}</Text>
-        </View>
-      </View>
-      <View style={calSt.monthNav}>
-        <TouchableOpacity onPress={handlePrevMonth} style={calSt.navBtn}><Text style={[calSt.navArrow, { color: skinAccent.accent }]}>‹</Text></TouchableOpacity>
-        <Text style={calSt.monthTitle}>{t('blog.monthTitle', { year: viewYear, month: MONTH_NAMES[viewMonth] })}</Text>
-        <TouchableOpacity onPress={handleNextMonth} style={calSt.navBtn}><Text style={[calSt.navArrow, { color: skinAccent.accent }]}>›</Text></TouchableOpacity>
-      </View>
-      <View style={calSt.weekRow}>
-        {weekDays.map((d, i) => (
-          <Text key={d} style={[calSt.weekDay, { width: CAL_CELL }, i===0 && calSt.sundayText, i===6 && calSt.saturdayText]}>{d}</Text>
-        ))}
-      </View>
-      <View style={calSt.grid}>
-        {grid.map((date, idx) => {
-          if (!date) return <View key={`e-${idx}`} style={{ width: CAL_CELL, height: CAL_CELL }} />;
-          const dow = date.getDay();
-          const isToday = isSameDay(date, today);
-          const isStart = isRangeStart(date);
-          const isEnd   = isRangeEnd(date);
-          const inRange = isInRange(date);
-          const isEdge  = isStart || isEnd;
-          return (
-            <TouchableOpacity
-              key={toDateKey(date)}
-              onPress={() => handleDayPress(date)}
-              activeOpacity={0.7}
-              style={[calSt.dayCell, { width: CAL_CELL, height: CAL_CELL },
-                inRange && !isEdge && [calSt.inRange, { backgroundColor: skinAccent.tint(0.18) }],
-                isStart && [calSt.rangeStartCell, { backgroundColor: skinAccent.tint(0.18) }],
-                isEnd   && [calSt.rangeEndCell, { backgroundColor: skinAccent.tint(0.18) }],
-              ]}
-            >
-              <View style={[calSt.dayInner, isEdge && [calSt.edgeCircle, { backgroundColor: skinAccent.accent }]]}>
-                <Text style={[calSt.dayText,
-                  isToday && !isEdge && [calSt.todayText, { color: skinAccent.accent }],
-                  dow===0 && !isEdge && calSt.sundayText,
-                  dow===6 && !isEdge && calSt.saturdayText,
-                  isEdge && calSt.edgeText,
-                ]}>{date.getDate()}</Text>
-                {!!recordedDates?.has(toDateKey(date)) && (
-                  <View style={[calSt.recordDot, { backgroundColor: isEdge ? '#FFFFFF' : skinAccent.accent }]} />
-                )}
-              </View>
-            </TouchableOpacity>
-          );
-        })}
-      </View>
-      {!!recordedDates && recordedDates.size > 0 && (
-        <View style={calSt.legendRow}>
-          <View style={[calSt.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
-          <Text style={calSt.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
-        </View>
-      )}
-      <TouchableOpacity style={[calSt.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
-        <Text style={calSt.confirmText}>{t('common.confirm')}</Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
-
-const calSt = StyleSheet.create({
-  sheet: { backgroundColor: '#1E1E2E', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingBottom: 36 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.25)', alignSelf: 'center', marginTop: 12, marginBottom: 16 },
-  selectedRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(191,133,252,0.08)', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 16, marginBottom: 16 },
-  selectedItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
-  selectedLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)' },
-  selectedDate: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
-  selectedDateActive: { color: '#BF85FC' },
-  selectedArrow: { fontSize: 18, color: 'rgba(255,255,255,0.25)', marginHorizontal: 8 },
-  monthNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 4 },
-  navBtn: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
-  navArrow: { fontSize: 26, color: '#BF85FC', lineHeight: 30 },
-  monthTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  weekRow: { flexDirection: 'row', marginBottom: 4 },
-  weekDay: { textAlign: 'center', fontSize: 12, fontWeight: '600', color: 'rgba(255,255,255,0.45)', paddingVertical: 6 },
-  sundayText: { color: '#FF3B30' },
-  saturdayText: { color: '#5AC8FA' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { alignItems: 'center', justifyContent: 'center' },
-  dayInner: { width: 34, height: 34, alignItems: 'center', justifyContent: 'center', borderRadius: 17 },
-  dayText: { fontSize: 14, color: '#FFFFFF' },
-  todayText: { color: '#BF85FC', fontWeight: '700' },
-  inRange: { backgroundColor: 'rgba(191,133,252,0.18)' },
-  rangeStartCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopLeftRadius: 17, borderBottomLeftRadius: 17 },
-  rangeEndCell: { backgroundColor: 'rgba(191,133,252,0.18)', borderTopRightRadius: 17, borderBottomRightRadius: 17 },
-  edgeCircle: { backgroundColor: '#BF85FC' },
-  edgeText: { color: '#FFFFFF', fontWeight: '700' },
-  recordDot: { position: 'absolute', bottom: 2, width: 4, height: 4, borderRadius: 2 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
-  legendTxt: { fontSize: 11, color: 'rgba(255,255,255,0.45)' },
-  confirmBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
-  confirmText: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-});
-
-const pm = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    justifyContent: 'flex-end',
-  },
-  sheet: {
-    backgroundColor: '#1A1A28',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    paddingHorizontal: 20,
-    paddingBottom: 36,
-    maxHeight: '80%',
-  },
-  handle: {
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignSelf: 'center',
-    marginTop: 12,
-    marginBottom: 20,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-  },
-  headerLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  headerDesc: {
-    fontSize: 12,
-    color: '#A1A1B0',
-    marginTop: 2,
-  },
-  clearAllBtn: {
-    alignSelf: 'flex-end',
-    marginBottom: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 10,
-    backgroundColor: 'rgba(191,133,252,0.12)',
-  },
-  clearAllTxt: {
-    fontSize: 12,
-    color: '#BF85FC',
-    fontWeight: '600',
-  },
-  listScroll: {
-    maxHeight: 320,
-  },
-  allPrivateRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    gap: 14,
-    marginBottom: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
-  },
-  allPrivateLabel: {
-    fontSize: 15,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  allPrivateDesc: {
-    fontSize: 12,
-    color: '#8A8A99',
-    marginTop: 2,
-  },
-  friendRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 4,
-    borderRadius: 12,
-    gap: 14,
-    marginBottom: 2,
-  },
-  friendRowActive: {
-    backgroundColor: 'rgba(107,33,168,0.15)',
-  },
-  avatar: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: '#2E2E3B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarActive: {
-    backgroundColor: 'rgba(107,33,168,0.4)',
-  },
-  avatarTxt: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  friendName: {
-    flex: 1,
-    fontSize: 15,
-    color: '#A1A1B0',
-    fontWeight: '500',
-  },
-  friendNameActive: {
-    color: '#FFFFFF',
-    fontWeight: '600',
-  },
-  checkbox: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 1.5,
-    borderColor: '#4A4A59',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkboxActive: {
-    backgroundColor: '#BF85FC',
-    borderColor: '#BF85FC',
-  },
-  checkMark: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  doneBtn: {
-    backgroundColor: '#6B21A8',
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  doneTxt: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-});
 
 const rpm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '80%' },
-  galleryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(191,133,252,0.1)', borderWidth: 1, borderColor: 'rgba(191,133,252,0.3)', borderRadius: 12, paddingVertical: 12, marginBottom: 16 },
-  galleryBtnTxt: { color: '#BF85FC', fontSize: 14, fontWeight: '700' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  // 다른 시트(임시저장·비공개 대상 선택)와 같은 디자인 언어
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  sheet: {
+    backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
+    borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+    paddingHorizontal: 18, paddingBottom: 30, maxHeight: '82%',
+  },
+  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 10, marginBottom: 18 },
+
+  header: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
+  headerIcon: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 2 },
-  clearBtn: { alignSelf: 'flex-end', marginBottom: 12, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(255,59,48,0.12)' },
-  clearTxt: { fontSize: 12, color: '#FF3B30', fontWeight: '600' },
-  emptyWrap: { paddingVertical: 40, alignItems: 'center', justifyContent: 'center' },
-  emptyTxt: { fontSize: 14, color: '#A1A1B0', textAlign: 'center', lineHeight: 20 },
-  gridScroll: { maxHeight: 320 },
+  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 3, lineHeight: 16 },
+
+  galleryBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderWidth: 1, borderRadius: 14, paddingVertical: 13, marginBottom: 14,
+  },
+  galleryBtnTxt: { fontSize: 14, fontWeight: '700' },
+
+  // 목록 머리 — 다른 시트의 '전체 해제'와 같은 자리·같은 형태
+  listHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, paddingHorizontal: 2 },
+  listHeadTxt: { fontSize: 11, fontWeight: '700', color: '#7A7A89', letterSpacing: 0.6 },
+  clearTxt: { fontSize: 12, color: '#FF3B30', fontWeight: '700' },
+
+  emptyWrap: { alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 46 },
+  emptyTxt: { fontSize: 14, color: '#7A7A89', textAlign: 'center', lineHeight: 20 },
+
+  gridScroll: { maxHeight: 330 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 10 },
-  photoCard: { width: (SCREEN_W - 40 - 20) / 3, aspectRatio: 1, borderRadius: 8, overflow: 'hidden', backgroundColor: '#2E2E3B', borderWidth: 2, borderColor: 'transparent' },
-  photoCardActive: { borderColor: '#BF85FC' },
+  // 좌우 패딩 18*2 + gap 10*2 = 56
+  photoCard: {
+    width: (SCREEN_W - 56) / 3, aspectRatio: 1, borderRadius: 14, overflow: 'hidden',
+    backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent',
+  },
   photoImg: { width: '100%', height: '100%' },
-  selectedOverlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(107,33,168,0.85)', paddingVertical: 3, alignItems: 'center' },
-  selectedMark: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
-  doneBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
+  // 선택 표시 — 하단 전체를 덮던 보라 띠 대신 우상단 배지 + 은은한 하단 그라데이션 없이 깔끔하게
+  selectedBadge: {
+    position: 'absolute', top: 6, right: 6,
+    flexDirection: 'row', alignItems: 'center', gap: 3,
+    paddingHorizontal: 7, paddingVertical: 3, borderRadius: 9,
+  },
+  selectedMark: { color: '#FFFFFF', fontSize: 9.5, fontWeight: '700' },
+
+  doneWrap: { marginTop: 14, borderRadius: 16, overflow: 'hidden' },
+  doneBtn: { paddingVertical: 15, alignItems: 'center' },
   doneTxt: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
 });
 

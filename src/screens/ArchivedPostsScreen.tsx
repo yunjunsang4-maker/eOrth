@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -6,15 +6,17 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Pressable,
-  Alert,} from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+  Animated,
+} from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-import { useRecords } from '../store/recordStore';
-import { TrashIcon, LandscapeIcon } from '../components/icons';
+import { useRecords, TravelRecord } from '../store/recordStore';
+import { useSettings } from '../store/settingsStore';
+import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
+// 소셜탭 피드와 동일한 매거진 카드(DiaryCard)·높이 추정치를 그대로 재사용해 형태를 통일한다.
+import { DiaryCardMemo, estDiaryHeight } from './SocialScreen';
 
 const C = {
   bg: '#0A0A0F',
@@ -27,102 +29,7 @@ const C = {
   divider: '#1A1A26',
 };
 
-// ─────────────────────────────────────────────
-// 보관 게시물 카드
-// ─────────────────────────────────────────────
-function ArchivedCard({
-  item,
-  onUnarchive,
-  onDelete,
-}: {
-  item: any;
-  onUnarchive: (id: string) => void;
-  onDelete: (id: string) => void;
-}) {
-  const { t } = useTranslation();
-  const [menuVisible, setMenuVisible] = useState(false);
-
-  const handleUnarchive = () => {
-    setMenuVisible(false);
-    onUnarchive(item.id);
-  };
-
-  const handleDeletePress = () => {
-    setMenuVisible(false);
-    Alert.alert(
-      t('social.deleteConfirmTitle'),
-      t('social.deleteConfirmMsg'),
-      [
-        { text: t('common.cancel'), style: 'cancel' },
-        { text: t('social.delete'), style: 'destructive', onPress: () => onDelete(item.id) },
-      ]
-    );
-  };
-
-  return (
-    <View style={s.card}>
-      {/* 카드 헤더 */}
-      <View style={s.cardHeader}>
-        <View style={s.avatar}>
-          <Text style={{ fontSize: 22 }}>{item.user.emoji}</Text>
-        </View>
-        <View style={s.userInfo}>
-          <Text style={s.userName}>{item.user.name}</Text>
-          <View style={s.metaRow}>
-            <Text style={s.countryTag}>{item.country}</Text>
-            <Text style={s.typeTag}>
-              {item.viewType === 'blog' ? t('main.formatBlog') : item.viewType === 'snap' ? t('main.formatSnap') : item.viewType === 'cut' ? t('main.formatCut') : t('main.formatFeed')}
-            </Text>
-            <Text style={s.dateMeta}>{item.date}</Text>
-          </View>
-        </View>
-        <View>
-          <TouchableOpacity onPress={() => setMenuVisible((v) => !v)} accessibilityRole="button" accessibilityLabel={t('social.moreA11y')}>
-            <Text style={s.moreIcon}>···</Text>
-          </TouchableOpacity>
-          {menuVisible && (
-            <>
-              <Pressable style={s.menuOverlay} onPress={() => setMenuVisible(false)} />
-              <View style={s.dropdownMenu}>
-                <TouchableOpacity style={s.menuItem} onPress={handleUnarchive} activeOpacity={0.7}>
-                  <Text style={s.menuItemIcon}>📤</Text>
-                  <Text style={s.menuItemText}>{t('misc.unarchive')}</Text>
-                </TouchableOpacity>
-                <View style={s.menuDivider} />
-                <TouchableOpacity style={s.menuItem} onPress={handleDeletePress} activeOpacity={0.7}>
-                  <TrashIcon size={16} color="#FF3B30" />
-                  <Text style={[s.menuItemText, { color: '#FF3B30' }]}>{t('social.delete')}</Text>
-                </TouchableOpacity>
-              </View>
-            </>
-          )}
-        </View>
-      </View>
-
-      {/* 사진 */}
-      <LinearGradient colors={['#1A0A2E', '#3B1E8E']} style={s.photo}>
-        <LandscapeIcon size={48} color="#A1A1B0" />
-      </LinearGradient>
-
-      {/* 본문 */}
-      <View style={s.cardBody}>
-        <Text style={s.content}>{item.content}</Text>
-      </View>
-    </View>
-  );
-}
-
-// ─────────────────────────────────────────────
-// 토스트
-// ─────────────────────────────────────────────
-function Toast({ message, visible }: { message: string; visible: boolean }) {
-  if (!visible) return null;
-  return (
-    <View style={s.toast} pointerEvents="none">
-      <Text style={s.toastText}>{message}</Text>
-    </View>
-  );
-}
+const noop = () => {}; // 아카이브 화면에서 안 쓰는 콜백(빠른공유·차단·신고 등) 자리채움
 
 // ─────────────────────────────────────────────
 // 보관된 게시물 화면
@@ -130,12 +37,14 @@ function Toast({ message, visible }: { message: string; visible: boolean }) {
 export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps<'ArchivedPosts'>) {
   const { t } = useTranslation();
   useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
-  const { records, archivedIds, unarchiveRecord, deleteRecord } = useRecords();
-  const [toast, setToast] = useState({ visible: false, message: '' });
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const { records, archivedIds, unarchiveRecord, deleteRecord, toggleLike } = useRecords();
+  const { diaryCardMode, showCounts } = useSettings();
+  const { pushToast } = useToast(); // 공용 토스트(자체 구현 대체)
+  // DiaryCard의 빠른공유 팬 제스처가 요구하는 드래그 좌표 — 이 화면에선 no-op이라 더미 값이면 충분
+  const dragPos = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
 
   // 기록 형식 필터링 상태 추가
-  const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'snap' | 'cut'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'feed' | 'blog' | 'album' | 'snap' | 'cut'>('all');
 
   const archivedRecords = records.filter((r) => archivedIds.includes(r.id));
 
@@ -144,6 +53,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     all: archivedRecords.length,
     feed: archivedRecords.filter((r) => r.viewType === 'feed' || !r.viewType).length,
     blog: archivedRecords.filter((r) => r.viewType === 'blog').length,
+    album: archivedRecords.filter((r) => r.viewType === 'album').length,
     snap: archivedRecords.filter((r) => r.viewType === 'snap').length,
     cut: archivedRecords.filter((r) => r.viewType === 'cut').length,
   };
@@ -159,21 +69,14 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     all: t('misc.all'),
     feed: t('main.formatFeed'),
     blog: t('main.formatBlog'),
+    album: t('main.formatAlbum'),
     snap: t('main.formatSnap'),
     cut: t('main.formatCut'),
   };
 
-  const showToast = (msg: string) => {
-    if (toastTimer.current) clearTimeout(toastTimer.current);
-    setToast({ visible: true, message: msg });
-    toastTimer.current = setTimeout(() => setToast({ visible: false, message: '' }), 2500);
-  };
-
-  useEffect(() => () => { if (toastTimer.current) clearTimeout(toastTimer.current); }, []);
-
   const handleUnarchive = (id: string) => {
     unarchiveRecord(id);
-    showToast(t('misc.unarchivedToast'));
+    pushToast(t('misc.unarchivedToast'));
   };
 
   const handleDelete = (id: string) => {
@@ -184,6 +87,15 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
     if (activeTab === 'all') return t('misc.noArchived');
     return t('misc.noArchivedTab', { label: TAB_LABELS[activeTab] });
   };
+
+  // 소셜탭과 동일한 높이 추정 기반 2단 균형 분배
+  const columns: TravelRecord[][] = [[], []];
+  const colH = [0, 0];
+  filteredRecords.forEach((item) => {
+    const c = colH[0] <= colH[1] ? 0 : 1;
+    columns[c].push(item);
+    colH[c] += estDiaryHeight(item, diaryCardMode);
+  });
 
   return (
     <SafeAreaView style={s.safeArea}>
@@ -198,7 +110,7 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
       {/* 기록 형식 필터 탭바 */}
       <View style={s.tabBar}>
-        {(['all', 'feed', 'blog', 'snap', 'cut'] as const).map((tab) => {
+        {(['all', 'feed', 'blog', 'album', 'snap', 'cut'] as const).map((tab) => {
           const isActive = activeTab === tab;
           return (
             <TouchableOpacity
@@ -221,23 +133,42 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
           <Text style={s.emptyText}>{getEmptyMessage()}</Text>
         </View>
       ) : (
-        <View style={{ flex: 1 }}>
-          <ScrollView
-            contentContainerStyle={s.scroll}
-            showsVerticalScrollIndicator={false}
-          >
-            {filteredRecords.map((item) => (
-              <ArchivedCard
-                key={item.id}
-                item={item}
-                onUnarchive={handleUnarchive}
-                onDelete={handleDelete}
-              />
+        <ScrollView
+          contentContainerStyle={s.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* 소셜탭 피드와 동일한 2단 매거진 카드 배치 */}
+          <View style={s.masonry}>
+            {[0, 1].map((ci) => (
+              <View key={ci} style={s.col}>
+                {columns[ci].map((item) => (
+                  <DiaryCardMemo
+                    key={item.id}
+                    item={item}
+                    mode={diaryCardMode}
+                    navigation={navigation}
+                    variant="archived"
+                    toggleLike={toggleLike}
+                    showCounts={showCounts}
+                    onUnarchive={handleUnarchive}
+                    onDelete={handleDelete}
+                    onArchive={noop}
+                    onBlock={noop}
+                    onReport={noop}
+                    onToggleVisibility={noop}
+                    onQuickStart={noop}
+                    onQuickMove={noop}
+                    onQuickEnd={noop}
+                    onQuickCancel={noop}
+                    dragPos={dragPos}
+                    columnIndex={ci}
+                  />
+                ))}
+              </View>
             ))}
-            <View style={{ height: 40 }} />
-          </ScrollView>
-          <Toast message={toast.message} visible={toast.visible} />
-        </View>
+          </View>
+          <View style={{ height: 40 }} />
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -324,138 +255,13 @@ const s = StyleSheet.create({
     width: 40,
   },
 
-  // 스크롤
+  // 스크롤 + 2단 매거진 (소셜탭과 동일)
   scroll: {
     paddingHorizontal: 16,
     paddingTop: 16,
   },
-
-  // 카드
-  card: {
-    backgroundColor: C.card,
-    borderRadius: 20,
-    marginBottom: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    gap: 12,
-  },
-  avatar: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(191,133,252,0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
-  },
-  userInfo: { flex: 1 },
-  userName: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: C.white,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 2,
-  },
-  countryTag: {
-    fontSize: 11,
-    color: C.accent,
-    backgroundColor: C.accentDim,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 4,
-  },
-  typeTag: {
-    fontSize: 10,
-    color: C.white,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontWeight: '500',
-  },
-  dateMeta: {
-    fontSize: 11,
-    color: C.dim,
-  },
-  moreIcon: {
-    color: C.dim,
-    fontSize: 18,
-    letterSpacing: 2,
-  },
-
-  // 드롭다운 메뉴
-  menuOverlay: {
-    position: 'absolute',
-    top: -1000,
-    left: -1000,
-    right: -1000,
-    bottom: -1000,
-    width: 5000,
-    height: 5000,
-    zIndex: 99,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    top: 28,
-    right: 0,
-    backgroundColor: '#2E2E3B',
-    borderRadius: 12,
-    width: 160,
-    zIndex: 100,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    elevation: 14,
-    overflow: 'hidden',
-  },
-  menuItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    height: 44,
-    paddingHorizontal: 16,
-    gap: 10,
-  },
-  menuItemIcon: {
-    fontSize: 16,
-  },
-  menuItemText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: C.white,
-  },
-  menuDivider: {
-    height: 1,
-    backgroundColor: '#3A3A4A',
-  },
-
-  // 사진
-  photo: {
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // 본문
-  cardBody: {
-    padding: 16,
-  },
-  content: {
-    fontSize: 13,
-    color: C.white,
-    lineHeight: 20,
-  },
+  masonry: { flexDirection: 'row', gap: 10 },
+  col: { flex: 1, gap: 12 },
 
   // 빈 상태
   emptyContainer: {
@@ -470,23 +276,5 @@ const s = StyleSheet.create({
   emptyText: {
     fontSize: 14,
     color: C.dim,
-  },
-
-  // 토스트
-  toast: {
-    position: 'absolute',
-    bottom: 40,
-    alignSelf: 'center',
-    backgroundColor: 'rgba(30,30,46,0.96)',
-    paddingHorizontal: 22,
-    paddingVertical: 13,
-    borderRadius: 24,
-    borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
-  },
-  toastText: {
-    color: C.white,
-    fontSize: 14,
-    fontWeight: '500',
   },
 });

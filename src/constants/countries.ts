@@ -1,4 +1,5 @@
 // ─── 국가 데이터 ───
+import { SHORT_COUNTRY_EN } from './countryDisplay';
 export type Country = { term: string; flag: string; name: string; continent: string };
 export const CONTINENT_ORDER = ['아시아', '유럽', '북아메리카', '남아메리카', '아프리카', '오세아니아'];
 export const COUNTRIES: Country[] = [

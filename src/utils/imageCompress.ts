@@ -41,8 +41,20 @@ export async function compressImages(
   uris: string[],
   maxEdge: number = PHOTO_MAX_EDGE,
   quality: number = PHOTO_QUALITY,
+  onProgress?: (done: number, total: number) => void,
 ): Promise<string[]> {
-  return Promise.all(uris.map((u) => compressImage(u, maxEdge, quality)));
+  const total = uris.length;
+  let done = 0;
+  onProgress?.(0, total);
+  return Promise.all(
+    uris.map((u) =>
+      compressImage(u, maxEdge, quality).then((r) => {
+        done += 1;
+        onProgress?.(done, total);
+        return r;
+      }),
+    ),
+  );
 }
 
 /**

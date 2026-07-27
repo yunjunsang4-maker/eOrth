@@ -3,9 +3,11 @@
  * 해외 감지 시 스냅 알림을 예약하는 컴포넌트.
  * App.tsx에서 Provider 내부에 마운트.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { AppState } from 'react-native';
 import { useSettings } from '../store/settingsStore';
+import { useRecords } from '../store/recordStore';
+import { COUNTRIES } from '../constants/countries';
 import {
   detectCurrentCountry,
   isAbroad,
@@ -18,9 +20,18 @@ import {
 const CHECK_INTERVAL = 4 * 60 * 60 * 1000; // 4시간마다 체크
 
 export default function SnapDetector() {
-  const { homeCountryCode, snapEnabled, notifPrefs } = useSettings();
+  const { homeCountryCode, snapEnabled, arrivalDetect, notifPrefs } = useSettings();
+  const { activeStayGroup } = useRecords();
   const lastCheckRef = useRef(0);
   const hasSentRef = useRef(false);
+
+  // 진행 중(active) 체류국 ISO2 코드 — 체류국은 해외로 치지 않는다
+  const stayCountryCode = useMemo(() => {
+    if (activeStayGroup?.stay?.status !== 'active') return null;
+    const name = activeStayGroup.countryName;
+    if (!name) return null;
+    return COUNTRIES.find((c) => c.name === name)?.term.split(' ')[0].toUpperCase() ?? null;
+  }, [activeStayGroup]);
 
   useEffect(() => {
     // 알림 마스터 토글도 함께 검사 — 설정 화면은 마스터 OFF 시 스냅 토글을 꺼진 것으로
@@ -39,19 +50,24 @@ export default function SnapDetector() {
       const { countryCode, countryName } = await detectCurrentCountry();
       if (!countryCode) return;
 
-      if (isAbroad(countryCode, homeCountryCode)) {
+      if (isAbroad(countryCode, homeCountryCode, stayCountryCode)) {
         if (!hasSentRef.current) {
-          // 처음 해외 감지 → 즉시 알림
+          // 처음 해외 감지
           const hasPermission = await requestNotificationPermission();
           if (hasPermission) {
-            await sendSnapNotification(countryName || undefined);
-            // 이후 랜덤 알림 예약 (1~3시간 후)
+            // 도착 알림(arrivalDetect)이 켜져 있으면 '도착 순간'은 도착 알림이 담당 —
+            // 즉시 스냅은 생략해 겹치지 않게 하고, 스냅은 1~3시간 뒤 지연분으로만 온다.
+            if (!arrivalDetect) {
+              await sendSnapNotification(countryName || undefined);
+            }
             await scheduleRandomSnapNotification(countryName || undefined, 60, 180);
             hasSentRef.current = true;
           }
         }
       } else {
-        // 본국 복귀 시 리셋
+        // 본국 복귀 시 리셋 + 아직 안 뜬 예약(follow-up) 알림 취소
+        // (해외 감지 후 1~3시간 안에 귀국하면 집인데도 예약분이 뜨던 문제 방지)
+        if (hasSentRef.current) cancelScheduledSnapNotifications();
         hasSentRef.current = false;
       }
     };
@@ -65,7 +81,7 @@ export default function SnapDetector() {
     check();
 
     return () => subscription.remove();
-  }, [snapEnabled, notifPrefs.master, homeCountryCode]);
+  }, [snapEnabled, arrivalDetect, notifPrefs.master, homeCountryCode, stayCountryCode]);
 
   return null; // UI 없음
 }

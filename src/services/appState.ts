@@ -15,6 +15,7 @@ export interface AppStateBackup {
   settings?: Record<string, unknown>; // settingsStore.exportSettingsBackup()
   records?: Record<string, unknown>;  // recordStore.exportLocalStateBackup()
   cardOrder?: string[];               // 프로필 여행카드 순서
+  moments?: unknown[];                // momentStore.exportMomentsBackup() — 텍스트/메타 + photoUrl(사진 서버 백업), 로컬 photoUri 제외
 }
 
 export async function saveAppState(data: AppStateBackup): Promise<void> {

@@ -7,7 +7,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
 const GAP = 14;
-const MAX_TARGETS = 4; // 친구 3 + 기타
+const MAX_TARGETS = 4; // 메이트 3 + 기타
 
 export interface CardRect { x: number; y: number; w: number; h: number }
 
@@ -110,7 +110,7 @@ export default function QuickShareOverlay({
 
   if (!visible || !cardRect) return null;
 
-  // 타깃 키 목록: 친구 handle + 'other'
+  // 타깃 키 목록: 메이트 handle + 'other'
   const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name })),
                    { key: 'other', emoji: '👥', label: t('comp.other') }];
 

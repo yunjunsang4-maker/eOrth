@@ -280,6 +280,57 @@ export const BellIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, d
   </Svg>
 );
 
+// 통계 — 막대그래프. 탭 바의 Analysis 아이콘과 같은 글리프를 공용 세트로 뺀 것
+// (튜토리얼 말풍선 등 탭 바 밖에서도 같은 표현을 쓰기 위함).
+export const ChartIcon: React.FC<IconProps> = ({ size = 24, color = '#FFFFFF' }) => {
+  const bars = [
+    { x: 1, h: 5 },   // 좌 → 우로 높낮이가 다른 5개 막대
+    { x: 5, h: 9 },
+    { x: 9, h: 7 },
+    { x: 13, h: 13 },
+    { x: 17, h: 9 },
+  ];
+  return (
+    <Svg width={size} height={(size * 14) / 18} viewBox="0 0 20 14" fill="none">
+      {bars.map((b) => (
+        <Rect
+          key={b.x}
+          x={b.x}
+          y={14 - b.h}
+          width={1.5}
+          height={b.h}
+          rx={0.4}
+          stroke={color}
+          strokeWidth={1}
+        />
+      ))}
+    </Svg>
+  );
+};
+
+// 알림 끔 — BellIcon과 같은 종 실루엣에 사선 하나(음소거 관례).
+// 사선은 종 색과 같은 색으로 긋고, 겹치는 자리에 배경색 테두리를 깔아 형태가 뭉개지지 않게 한다.
+export const BellOffIcon: React.FC<IconProps & { slashBg?: string }> = ({
+  size = 64, color, dot = false, dotColor = COLORS.dot, slashBg = '#12121A',
+}) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 10c-3 0-5 2-5 5v3c-13 2-22 13-22 27v12c0 3-1 6-3 8l-4 5c-3 4 0 10 5 10h58c5 0 8-6 5-10l-4-5c-2-2-3-5-3-8V45c0-14-9-25-22-27v-3c0-3-2-5-5-5zm-7 78c0 4 3 7 7 7s7-3 7-7H41z" />
+    </G>
+    {/* 사선 — 바탕 테두리(굵게) 위에 본선(가늘게) */}
+    <Path d="M18 16L78 82" stroke={slashBg} strokeWidth={14} strokeLinecap="round" />
+    <Path d="M18 16L78 82" stroke={color ?? COLORS.purpleMid} strokeWidth={8} strokeLinecap="round" />
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
 // 검색 — 라인형 돋보기 (MynaUI search-line)
 export const SearchLineIcon: React.FC<IconProps> = ({ size = 24, color = '#A9A9A9' }) => (
   <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
@@ -1014,6 +1065,43 @@ export const CommentIcon: React.FC<IconProps> = ({ size = 64, color, dot = false
 // ══════════════════════════════════════════════════════════════════════
 //   Section 8 — Missing UI icons (emoji → SVG)
 // ══════════════════════════════════════════════════════════════════════
+
+// 답장 — 뒤로 향하는 화살표(리플라이). DM 메시지 롱프레스 메뉴 등.
+export const ReplyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Path
+      d="M40 26 L16 50 L40 74"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    <Path
+      d="M16 50 H54 C69 50 80 61 80 76 V80"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+    {dot && <Circle cx={82} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
+// 복사 — 겹친 두 페이지(카피). DM 메시지 롱프레스 메뉴 등.
+export const CopyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Rect x={34} y={34} width={46} height={50} rx={9} stroke={color ?? COLORS.purpleMid} strokeWidth={8} fill="none" />
+    <Path
+      d="M22 62 V24 C22 19 26 15 31 15 H60"
+      stroke={color ?? COLORS.purpleMid}
+      strokeWidth={8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+    {dot && <Circle cx={82} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
 
 export const PencilIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
   <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">

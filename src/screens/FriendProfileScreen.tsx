@@ -10,10 +10,14 @@ import {
   Alert,
   Share,
   ActivityIndicator,
+  Animated,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
+import { countryLabel } from '../utils/countryLabel';
+import { LinkIcon, ShareIcon, BellIcon, BellOffIcon, BlockIcon, MegaphoneIcon, GlobeIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import ReportModal from '../components/ReportModal';
@@ -21,7 +25,8 @@ import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
 import { fetchUserPosts } from '../services/posts';
-import { fetchNeighborCount, reportPostToServer } from '../services/social';
+import { fetchNeighborCount, fetchPostCount, fetchOverlapWith, reportPostToServer } from '../services/social';
+import GlobeLockIcon from '../components/GlobeLockIcon';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
@@ -31,6 +36,7 @@ import ProfileScreen from './ProfileScreen';
 import { useSkinAccent } from '../constants/skinTheme';
 import { handleFontStyle } from '../constants/handleFonts';
 import { countryInfoFromCode } from '../utils/pastTripScan';
+import { COUNTRIES } from '../constants/countries';
 import { profileLink } from '../utils/appLinks';
 import type { TravelRecord } from '../store/recordStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -62,46 +68,50 @@ export default function FriendProfileScreen({
   navigation,
   route,
 }: RootStackScreenProps<'FriendProfile'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { userId, username } = route.params ?? { userId: null, username: friendProfile.username };
   const displayUsername = username ?? friendProfile.username;
   // 본인 프로필로 들어온 경우(상세화면에서 내 글 작성자 탭) — 팔로우 버튼 숨김, 내 정보 폴백
-  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio } = useSettings();
+  const { handle: myHandle, profilePhoto: myPhoto, bio: myBio, homeCountryCode: myHomeCountryCode } = useSettings();
   const skinAccent = useSkinAccent(); // 팔로우·맞팔·핸들 강조를 스킨색으로
-  const { records: myRecords } = useRecords();
+  const { records: myRecords, tripGroups } = useRecords();
 
   // 실제 사용자 프로필 + 공개 글을 백엔드에서 로드 (미설정/없음이면 빈 상태)
   const [profileRow, setProfileRow] = useState<ProfileRow | null>(null);
   // handle 파라미터 없이 진입해도(댓글·알림 등 userId만 전달) 프로필 로드 후 본인 판정이 되도록
-  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 이웃신청 버튼·차단 메뉴가 뜬다
+  // profileRow.handle을 병행 확인 — 안 하면 내 프로필에 메이트신청 버튼·차단 메뉴가 뜬다
   const isSelf = !!myHandle && (route.params?.handle === myHandle || profileRow?.handle === myHandle);
   const [userPosts, setUserPosts] = useState<TravelRecord[]>([]);
   const [neighborCount, setNeighborCount] = useState(0);
+  // 여행수(기록 수) — 서버 동기화값. 비메이트은 RLS로 글이 안 와도 이 값으로 실제 개수를 보여준다.
+  const [postCount, setPostCount] = useState<number | null>(null);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
   // 프로필 로딩 완료 여부 — 완료 전엔 콘텐츠를 그리지 않는다(로딩 깜빡임 방지)
   const [profileLoaded, setProfileLoaded] = useState(!isSupabaseConfigured || !userId);
   const loadProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !userId) return;
-    const [p, posts, nc] = await Promise.all([
+    const [p, posts, nc, pc] = await Promise.all([
       getProfileById(userId),
       fetchUserPosts(userId),
       fetchNeighborCount(userId),
+      fetchPostCount(userId),
     ]);
     if (!aliveRef.current) return;
     setProfileRow(p);
     setUserPosts(posts);
     if (nc !== null) setNeighborCount(nc); // 오류(null)면 이전 값 유지 — 0 깜빡임 방지
+    if (pc !== null) setPostCount(pc);     // 여행수 서버 동기화값(오류면 로컬 폴백)
     setProfileLoaded(true);
   }, [userId]);
   useEffect(() => { loadProfile(); }, [loadProfile]);
-  // 진입 시 이웃·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
-  // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 이웃 상태가 낡아 있는 문제 방지
+  // 진입 시 메이트·대기 신청을 서버 기준으로 동기화 — 상대가 내 신청을 수락했는데
+  // '신청됨' 버튼이 잔존하거나, 알림에서 넘어왔을 때 메이트 상태가 낡아 있는 문제 방지
   const { refreshNeighbors } = useRecords();
   useEffect(() => { refreshNeighbors(); }, [refreshNeighbors]);
 
-  // 당겨서 새로고침 — 프로필·글·이웃 수 재조회
+  // 당겨서 새로고침 — 프로필·글·메이트 수 재조회
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -124,21 +134,31 @@ export default function FriendProfileScreen({
   // 배지가 0개가 된다 — 이 화면에선 그분의 글이 곧 본인 기록이므로 되살려서 넘긴다.
   const friendBadges = useMemo(() => {
     const asOwn = isSelf ? sourcePosts : sourcePosts.map((p) => ({ ...p, isMyPost: true }));
-    const earned = computeEarnedBadgeIds(asOwn, BADGES);
+    // 거주국 제외 옵션 — 본인은 내 거주국 코드, 타인은 profileRow.country(맞팔 시 서버 제공)
+    const homeCode = isSelf ? myHomeCountryCode : (profileRow?.country ?? undefined);
+    const homeCountryName = homeCode
+      ? countryInfoFromCode(homeCode.toUpperCase()).countryName
+      : undefined;
+    const earned = computeEarnedBadgeIds(asOwn, BADGES, { homeCountryName });
     return BADGES.filter((b) => earned.has(b.id)).slice(0, 8);
-  }, [sourcePosts, isSelf]);
+  }, [sourcePosts, isSelf, myHomeCountryCode, profileRow?.country]);
 
   // 이름 아래 위치 — 내 프로필과 동일한 위치 줄.
   // 거주국(country)은 맞팔일 때만 public_profiles 뷰가 내려준다(그 외 null) — 오면 우선 표시,
   // 없으면 최근 공개 글(created_at desc)의 국가로 폴백.
   const friendLocation = useMemo(() => {
+    // 체류 중(메이트 조건부 노출) — 거주국 표시보다 우선
+    if (profileRow?.stay_status === 'active' && profileRow?.stay_country) {
+      const info = countryInfoFromCode(profileRow.stay_country.toUpperCase());
+      return t('stay.stayingIn', { flag: info.countryFlag, name: info.countryName });
+    }
     if (profileRow?.country) {
       const info = countryInfoFromCode(profileRow.country.toUpperCase());
       return `${info.countryFlag} ${info.countryName}`;
     }
     const recent = sourcePosts.find((p) => p.countryName);
-    return recent?.countryName ? `${recent.countryFlag || '📍'} ${recent.countryName}` : '';
-  }, [sourcePosts, profileRow?.country]);
+    return recent?.countryName ? `${recent.countryFlag || '📍'} ${countryLabel(recent.countryName ?? '', i18n.language)}` : '';
+  }, [sourcePosts, profileRow?.stay_status, profileRow?.stay_country, profileRow?.country, t, i18n.language]);
 
   // 화면 표시값 (본인=로컬/설정, 타인=백엔드)
   const display = {
@@ -205,7 +225,7 @@ export default function FriendProfileScreen({
   const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
 
-  // 이웃·차단은 store 공유 상태 — 이웃 목록/프로필 카운트와 동기화된다
+  // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
   const { neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
   // realId는 profile uuid일 때만 — 핸들을 id로 넘기면 서버 neighbors insert(uuid 컬럼)가 실패한다
@@ -214,6 +234,27 @@ export default function FriendProfileScreen({
   const requested = !!realId && isNeighborRequested(realId);
   const neighborState: 'none' | 'requested' | 'neighbor' =
     neighborNow ? 'neighbor' : requested ? 'requested' : 'none';
+  // 비메이트 잠금 — 여행기록은 메이트 전용. 카운트만 노출하고 아카이브는 잠금 안내로 대체.
+  const locked = !isSelf && !neighborNow;
+  // 여행수 스탯 — 타인은 서버 동기화값 우선(비메이트도 실제 개수), 본인은 로컬 전체(나만보기 포함) 유지
+  const tripStatValue = isSelf ? display.trips.length : (postCount ?? display.trips.length);
+  // 나와 겹치는 나라(여행 DNA 맥락 진입점) — 로컬 여행기록카드·미발행·나만보기 나라도 반영
+  const [overlap, setOverlap] = useState<{ sharedCount: number; sampleCountries: string[] } | null>(null);
+  useEffect(() => {
+    if (isSelf || !realId || !isSupabaseConfigured) return;
+    let alive = true;
+    (async () => {
+      const localCountries = Array.from(new Set([
+        ...myRecords.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
+        ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
+      ]));
+      const res = await fetchOverlapWith(realId, localCountries);
+      if (alive && res) setOverlap(res);
+    })();
+    return () => { alive = false; };
+    // myRecords/tripGroups는 진입 시점 스냅샷이면 충분 — 의존성에 넣으면 로컬 기록 갱신마다 RPC 재호출
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSelf, realId]);
   const onNeighborPress = () => {
     if (!realId) return;
     if (neighborState === 'none') requestNeighbor(realId);
@@ -280,11 +321,18 @@ export default function FriendProfileScreen({
     }
   };
 
+  // 메뉴 아이콘 — 기본 이모지 대신 앱 아이콘 세트를 쓴다(게시물 메뉴 PostDetailScreen과 동일 규약:
+  // size 16, 일반 항목은 흰색 / 위험 항목은 빨강)
+  const MENU_ICON = 16;
   const MENU_NORMAL = [
-    { icon: '🔗', label: t('friends.copyProfileLink'), onPress: handleCopyLink },
-    { icon: '📤', label: t('friends.share'),          onPress: handleShare },
+    { key: 'link',  icon: <LinkIcon size={MENU_ICON} color={COLORS.white} />,  label: t('friends.copyProfileLink'), onPress: handleCopyLink },
+    { key: 'share', icon: <ShareIcon size={MENU_ICON} color={COLORS.white} />, label: t('friends.share'),           onPress: handleShare },
     {
-      icon:    notifMuted ? '🔔' : '🔕',
+      key:   'notif',
+      // 음소거 상태면 '알림 켜기'(종) / 아니면 '알림 끄기'(사선 종) — 누르면 될 결과를 보여준다
+      icon:  notifMuted
+        ? <BellIcon size={MENU_ICON} color={COLORS.white} />
+        : <BellOffIcon size={MENU_ICON} color={COLORS.white} slashBg={COLORS.menuBg} />,
       label:   notifMuted ? t('friends.notifOn') : t('friends.notifOff'),
       onPress: handleToggleNotif,
     },
@@ -292,7 +340,8 @@ export default function FriendProfileScreen({
 
   const MENU_DANGER = [
     {
-      icon: '⛔',
+      key: 'block',
+      icon: <BlockIcon size={MENU_ICON} color={COLORS.red} />,
       label: t('friends.blockAction'),
       onPress: () => {
         setMenuVisible(false);
@@ -304,7 +353,7 @@ export default function FriendProfileScreen({
         }, t);
       },
     },
-    { icon: '🚨', label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
+    { key: 'report', icon: <MegaphoneIcon size={MENU_ICON} color={COLORS.red} />, label: t('friends.reportLong'), onPress: () => { setMenuVisible(false); setReportVisible(true); } },
   ];
 
   // 내 프로필(내 게시물의 아이디 탭)이면 실제 프로필 탭 컴포넌트를 그대로 렌더한다 —
@@ -343,9 +392,19 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 통계 — 여행수·이웃 2개. 이웃 탭 → 이웃 목록(조회 전용) */}
+            {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
+            {!isSelf && !!overlap && overlap.sharedCount > 0 && (
+              // 앞 아이콘은 기본 이모지(🌍) 대신 앱 아이콘 — 메이트찾기의 같은 줄과 표현을 맞춘다
+              <View style={s.overlapRow}>
+                <GlobeIcon size={12} color={skinAccent.accent} />
+                <Text style={[s.overlapLine, { color: skinAccent.accent }]} numberOfLines={1}>
+                  {t('friends.overlapReason', { count: overlap.sharedCount })} · {overlap.sampleCountries.map((c) => countryLabel(c, i18n.language)).join(' · ')}
+                </Text>
+              </View>
+            )}
+            {/* 통계 — 여행수·메이트 2개. 메이트 탭 → 메이트 목록(조회 전용) */}
             <View style={pv.statsRow}>
-              <StatCard value={String(display.trips.length)} label={t('profile.tripCount')} />
+              <StatCard value={String(tripStatValue)} label={t('profile.tripCount')} />
               <StatCard
                 value={String(neighborCount)}
                 label={t('profile.neighbors')}
@@ -355,41 +414,47 @@ export default function FriendProfileScreen({
           </View>
         </View>
 
-        {/* ── 이웃신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
+        {/* ── 메이트신청 + DM 버튼 (본인 프로필이면 숨김) ── */}
         {!isSelf && (
           <>
             <View style={s.actionRow}>
-              <TouchableOpacity
-                style={[s.followBtn, neighborState === 'none' && { backgroundColor: skinAccent.accentDeep }, neighborState !== 'none' && s.followingBtn]}
+              {/* 메이트 상태에 따라 위계가 바뀐다 —
+                  아직 아님: 그라데이션(주요 CTA) / 신청중·메이트: 고스트(더 유도하지 않음) */}
+              <ProfileActionButton
+                variant={neighborState === 'none' ? 'primary' : 'ghost'}
+                label={neighborState === 'neighbor'
+                  ? t('friends.neighborActive')
+                  : neighborState === 'requested'
+                    ? t('friends.neighborRequested')
+                    : t('friends.neighborRequest')}
                 onPress={onNeighborPress}
-                activeOpacity={0.85}
-              >
-                <Text style={[s.followBtnText, neighborState !== 'none' && [s.followingBtnText, { color: skinAccent.accent }]]}>
-                  {neighborState === 'neighbor'
-                    ? t('friends.neighborActive')
-                    : neighborState === 'requested'
-                      ? t('friends.neighborRequested')
-                      : t('friends.neighborRequest')}
-                </Text>
-              </TouchableOpacity>
-              {/* DM — 대화 화면으로 이동 (핸들 기준 대화방) */}
-              <TouchableOpacity
-                style={s.dmBtn}
-                activeOpacity={0.85}
-                onPress={() => navigation.navigate('DM', {
-                  friend: {
-                    name: display.name,
-                    handle: profileRow?.handle || route.params?.handle || displayUsername,
-                    emoji: display.emoji,
-                    photo: display.photo ?? undefined,
-                    id: realId ?? undefined,
-                  },
-                })}
-                accessibilityRole="button"
-                accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
-              >
-                <Text style={s.dmBtnText}>{t('friends.dmBtn')}</Text>
-              </TouchableOpacity>
+                accent={skinAccent.accent}
+                gradient={skinAccent.btnGradient}
+                tint={skinAccent.tint}
+                style={{ flex: 1 }}
+              />
+              {/* DM — 메이트일 때만 노출. 비메이트은 DM 불가(메이트 버튼이 폭을 채움).
+                  메이트가 된 뒤에는 대화가 다음 행동이므로 메시지 쪽을 그라데이션으로 올린다 */}
+              {neighborNow && (
+                <ProfileActionButton
+                  variant="primary"
+                  label={t('friends.dmBtn')}
+                  onPress={() => navigation.navigate('DM', {
+                    friend: {
+                      name: display.name,
+                      handle: profileRow?.handle || route.params?.handle || displayUsername,
+                      emoji: display.emoji,
+                      photo: display.photo ?? undefined,
+                      id: realId ?? undefined,
+                    },
+                  })}
+                  accent={skinAccent.accent}
+                  gradient={skinAccent.btnGradient}
+                  tint={skinAccent.tint}
+                  style={{ minWidth: 110 }}
+                  accessibilityLabel={t('friends.dmNameA11y', { name: display.name })}
+                />
+              )}
             </View>
           </>
         )}
@@ -397,6 +462,16 @@ export default function FriendProfileScreen({
         {!isSelf && !profileLoaded ? (
           /* ── 프로필 로딩 중 — 콘텐츠를 아직 그리지 않는다 ── */
           <ActivityIndicator color={skinAccent.accent} style={{ marginTop: 48 }} />
+        ) : locked ? (
+          /* ── 비메이트 잠금 안내 — 카운트만 노출, 아카이브는 지구본+자물쇠 + 문구로 대체 ── */
+          <>
+            <View style={s.divider} />
+            <View style={s.lockedBox}>
+              <GlobeLockIcon size={72} color={skinAccent.accent} />
+              <Text style={s.lockedTitle}>{t('friends.lockedTitle')}</Text>
+              <Text style={s.lockedDesc}>{t('friends.lockedDesc')}</Text>
+            </View>
+          </>
         ) : (
           <>
             {/* ── Travel badge — 프로필 탭과 동일한 섹션 헤더 + 구이 서클 배지 ── */}
@@ -413,7 +488,7 @@ export default function FriendProfileScreen({
                   contentContainerStyle={pv.badgeScrollContent}
                 >
                   {friendBadges.map((badge) => (
-                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} name={badge.name} glow={badge.glow} earned />
+                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badge.name} glow={badge.glow} earned />
                   ))}
                 </ScrollView>
               </>
@@ -467,9 +542,9 @@ export default function FriendProfileScreen({
       {menuVisible && (
         <View style={s.popupMenu}>
           {MENU_NORMAL.map((item, idx) => (
-            <View key={item.label}>
+            <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
-                <Text style={s.menuItemIcon}>{item.icon}</Text>
+                <View style={s.menuItemIcon}>{item.icon}</View>
                 <Text style={s.menuItemText}>{item.label}</Text>
               </TouchableOpacity>
               {idx < MENU_NORMAL.length - 1 && <View style={s.menuItemDivider} />}
@@ -477,9 +552,9 @@ export default function FriendProfileScreen({
           ))}
           <View style={s.menuSectionDivider} />
           {MENU_DANGER.map((item, idx) => (
-            <View key={item.label}>
+            <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
-                <Text style={s.menuItemIcon}>{item.icon}</Text>
+                <View style={s.menuItemIcon}>{item.icon}</View>
                 <Text style={[s.menuItemText, s.menuItemDanger]}>{item.label}</Text>
               </TouchableOpacity>
               {idx < MENU_DANGER.length - 1 && <View style={s.menuItemDivider} />}
@@ -506,6 +581,59 @@ export default function FriendProfileScreen({
   );
 }
 
+// ─── 프로필 액션 버튼 ───
+// 메이트찾기(FriendSearchScreen.MateButton)와 같은 언어: 완전한 필 + 스킨 그라데이션 + 네온 글로우.
+// 상태로 위계를 준다 — primary(지금 누를 것) / ghost(대기·완료) / soft(보조 액션).
+// 누를 때 0.96 스프링으로 촉감을 준다(리스트 버튼보다 크므로 축소폭은 작게).
+function ProfileActionButton({
+  variant,
+  label,
+  onPress,
+  accent,
+  gradient,
+  tint,
+  style,
+  accessibilityLabel,
+}: {
+  variant: 'primary' | 'ghost' | 'soft';
+  label: string;
+  onPress: () => void;
+  accent: string;
+  gradient: [string, string];
+  tint: (a: number) => string;
+  style?: object;
+  accessibilityLabel?: string;
+}) {
+  const press = useRef(new Animated.Value(0)).current;
+  const scale = press.interpolate({ inputRange: [0, 1], outputRange: [1, 0.96] });
+  const to = (v: number) =>
+    Animated.spring(press, { toValue: v, friction: 7, tension: 220, useNativeDriver: true }).start();
+
+  return (
+    <Animated.View style={[{ transform: [{ scale }] }, style]}>
+      <TouchableOpacity
+        onPress={onPress}
+        onPressIn={() => to(1)}
+        onPressOut={() => to(0)}
+        activeOpacity={0.9}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? label}
+        style={[
+          s.actionBtn,
+          variant === 'primary' && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+          variant === 'ghost' && { borderWidth: 1, borderColor: tint(0.45), backgroundColor: tint(0.12) },
+          variant === 'soft' && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.06)' },
+        ]}
+      >
+        {variant === 'primary' && (
+          <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        )}
+        <Text style={[s.actionBtnTxt, variant === 'ghost' && { color: accent }]} numberOfLines={1}>{label}</Text>
+      </TouchableOpacity>
+    </Animated.View>
+  );
+}
+
 // ─── 배지 하이라이트 스타일 ───
 // ─── 스타일 ───
 const s = StyleSheet.create({
@@ -517,6 +645,9 @@ const s = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 32,
   },
+  // 나와 겹치는 나라 줄 — 색은 skinAccent.accent 인라인으로 덮음(스킨 관례)
+  overlapRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
+  overlapLine: { fontSize: 12, color: COLORS.accent, flexShrink: 1 },
 
   // ── 헤더 ──
   header: {
@@ -546,22 +677,16 @@ const s = StyleSheet.create({
     gap: 8,
     marginBottom: 4,
   },
-  followBtn: {
-    flex: 1,
-    height: 44, borderRadius: 12,
-    backgroundColor: COLORS.accentDark,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  dmBtn: {
+  // 액션 버튼 — 완전한 필. 그라데이션이 모서리를 넘지 않게 overflow hidden.
+  actionBtn: {
+    height: 46,
+    borderRadius: 999,
     paddingHorizontal: 22,
-    height: 44, borderRadius: 12,
-    backgroundColor: COLORS.card,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
-  dmBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  followingBtn: { backgroundColor: COLORS.card },
-  followBtnText: { fontSize: 15, fontWeight: '700', color: COLORS.white },
-  followingBtnText: { color: COLORS.accent },
+  actionBtnTxt: { fontSize: 15, fontWeight: '800', color: COLORS.white, letterSpacing: 0.2 },
 
   // ── 구분선 ──
   divider: {
@@ -578,6 +703,10 @@ const s = StyleSheet.create({
   },
   sectionTitle: { fontSize: 23, fontFamily: 'Inter_800ExtraBold', color: COLORS.white },
   archiveSubtitle: { fontSize: 12, fontWeight: '600', color: '#AA54C1', marginTop: -4, marginBottom: 16 },
+  // 비메이트 잠금 안내 — 인스타 비공개 계정 스타일(아이콘 1개 + 문구)
+  lockedBox: { alignItems: 'center', paddingVertical: 44, paddingHorizontal: 32 },
+  lockedTitle: { fontSize: 15, fontWeight: '700', color: COLORS.white, textAlign: 'center', marginTop: 16 },
+  lockedDesc: { fontSize: 13, color: '#A1A1B0', textAlign: 'center', marginTop: 6, lineHeight: 18 },
 
   // ── 여행 썸네일 2열 그리드 ──
 
@@ -598,7 +727,7 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center',
     height: 48, paddingHorizontal: 16, gap: 10,
   },
-  menuItemIcon: { fontSize: 16 },
+  menuItemIcon: { width: 18, alignItems: 'center', justifyContent: 'center' }, // 아이콘 폭 고정 → 라벨 시작점 정렬
   menuItemText: { fontSize: 14, color: COLORS.white, fontWeight: '500' },
   menuItemDanger: { color: COLORS.red },
   menuItemDivider: { height: 1, backgroundColor: COLORS.menuDivider },

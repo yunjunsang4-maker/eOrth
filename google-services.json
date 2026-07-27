@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "572294422089",
+    "project_id": "eorth-6ea51",
+    "storage_bucket": "eorth-6ea51.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:572294422089:android:12d4c3ec94e61bb1d56998",
+        "android_client_info": {
+          "package_name": "com.yunjunsang.eorth"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD91h3hypQzWR7VeaoJdynvhERDJbIPgRU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

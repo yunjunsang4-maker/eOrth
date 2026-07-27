@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { NeonFab, FAB_SIZE } from './NeonFab';
 import { SnapButton, SNAP_SIZE } from './SnapButton';
 import { useCoachOverlay } from './coachOverlayState';
+import { usePendingOpenRecordFab, consumeOpenRecordFab } from './recordFabState';
 import { useSkinAccent } from '../constants/skinTheme';
 
 const FORMAT_LABEL_KEY: Record<string, string> = {
@@ -144,6 +145,13 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
   const toggleFab = () => (fabOpen ? closeFab() : openFab());
   const fabRotateDeg = fabRotate.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '45deg'] });
 
+  // 소셜 '첫 기록 남기기' 등에서 온 원격 요청 → 마운트/신호 시 형식 메뉴를 펼친다.
+  const pendingOpen = usePendingOpenRecordFab();
+  useEffect(() => {
+    if (pendingOpen && consumeOpenRecordFab()) openFab();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingOpen]);
+
   return (
     // zIndex/elevation 으로 탭 바(elevation 8)보다 위에 그려지게
     <View style={[StyleSheet.absoluteFill, styles.root]} pointerEvents="box-none">
@@ -152,11 +160,14 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
         onPress={() => navigation.navigate('SnapRecord')}
         style={[styles.snap, { bottom: insets.bottom + 129 }]}
       />
-      {/* 튜토리얼 딤 — 스냅 강조 단계가 아닐 때 스냅 버튼을 어둡게 */}
-      {dimSnap && (
+      {/* 튜토리얼 오버레이 — 강조 단계가 아니면 어둡게, 강조 단계면 투명.
+          어느 쪽이든 터치는 차단한다(pointerEvents auto): 코치마크의 터치 차단막은 화면 '안'에
+          있어 이 레이어(내비게이터 오버레이, 화면 위)를 못 막는다 — 딤만 하고 차단을 안 하면
+          튜토리얼 도중 스냅 버튼이 그대로 눌려 카메라가 튜토리얼 위로 열렸다. */}
+      {coachActive && (
         <View
-          pointerEvents="none"
-          style={[styles.snap, { bottom: insets.bottom + 129, width: SNAP_SIZE, height: SNAP_SIZE, borderRadius: SNAP_SIZE / 2, backgroundColor: COACH_DIM }]}
+          pointerEvents="auto"
+          style={[styles.snap, { bottom: insets.bottom + 129, width: SNAP_SIZE, height: SNAP_SIZE, borderRadius: SNAP_SIZE / 2, backgroundColor: dimSnap ? COACH_DIM : 'transparent' }]}
         />
       )}
 
@@ -206,10 +217,15 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
           <NeonFab onPress={toggleFab} accessibilityLabel={t('comp.addRecordA11y')} />
         </Animated.View>
 
-        {/* 튜토리얼 딤 — FAB 강조 단계가 아닐 때 + 버튼을 어둡게 (하단 중앙, NeonFab 위) */}
-        {dimFab && (
-          <View pointerEvents="none" style={styles.fabDimWrap}>
-            <View style={{ width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: COACH_DIM }} />
+        {/* 튜토리얼 오버레이 — FAB 강조 단계가 아니면 어둡게, 강조 단계면 투명.
+            어느 쪽이든 + 버튼 터치는 차단(스냅 오버레이와 동일한 이유). 래퍼는 box-none으로 두고
+            원(circle)만 auto — 전폭 스트립이 주변 터치까지 삼키지 않게 한다. */}
+        {coachActive && (
+          <View pointerEvents="box-none" style={styles.fabDimWrap}>
+            <View
+              pointerEvents="auto"
+              style={{ width: FAB_SIZE, height: FAB_SIZE, borderRadius: FAB_SIZE / 2, backgroundColor: dimFab ? COACH_DIM : 'transparent' }}
+            />
           </View>
         )}
       </View>

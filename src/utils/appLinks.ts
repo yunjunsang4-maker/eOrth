@@ -43,7 +43,7 @@ type NavigateFn = (name: string, params?: object) => void;
 
 // 파싱된 링크를 실제 화면 이동으로 옮긴다.
 // - 프로필: 핸들을 서버에서 조회해 해당 프로필 화면으로 직행,
-//   조회 실패(미가입·로컬 모드·오프라인)면 친구찾기 검색으로 폴백해 무반응을 막는다.
+//   조회 실패(미가입·로컬 모드·오프라인)면 메이트찾기 검색으로 폴백해 무반응을 막는다.
 // - 게시물: 서버에서 글을 받아 폴백 record와 함께 상세 화면으로 이동
 //   (스토어에 없는 글도 열리도록 — PostDetail의 record 폴백 경로 활용).
 export async function openAppLink(link: AppLink, navigate: NavigateFn): Promise<void> {

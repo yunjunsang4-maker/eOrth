@@ -2,18 +2,24 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
-  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert, Animated,
+  TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { countryLabel, continentLabel } from '../utils/countryLabel';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
 import { useRecords, type Visibility } from '../store/recordStore';
-import { collectRecordedDateKeys, toRecordedDateKey } from '../utils/recordedDates';
+import { collectRecordedDateKeys, collectRecordedRanges } from '../utils/recordedDates';
+import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
+import { PrivacyModal } from '../components/record/PrivacyModal';
 import { detectCurrentCountry } from '../services/snapService';
 import { currencyForCountryName } from '../constants/countryCurrency';
 import type { CutLayout } from '../constants/cutFrames';
 import { COUNTRIES, Country, CONTINENT_ORDER } from '../constants/countries';
 import type { RootStackScreenProps } from '../navigation/types';
+import { useMoments } from '../store/momentStore';
+import { matchMoments, countryNameToCode } from '../utils/momentMatch';
+import MomentListSheet from '../components/moments/MomentListSheet';
 import {
   CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
@@ -42,9 +48,10 @@ const WEATHER_OPTIONS = [
 ];
 const FLIGHT_OPTIONS = ['직항', '경유'];
 const CURRENCIES = ['KRW', 'JPY', 'USD'];
-const VISIBILITY_OPTIONS: { value: Visibility; label: string }[] = [
-  { value: 'neighbors', label: '🏡 이웃만' },
-  { value: 'private',   label: '🔒 나만 보기' },
+// 표시 문구는 visibilityLabel(), 아이콘은 visibilityIcon()이 담당한다 (동행자 칩과 동일 구조)
+const VISIBILITY_OPTIONS: { value: Visibility }[] = [
+  { value: 'neighbors' },
+  { value: 'private' },
 ];
 const OTHER_CURRENCIES = [
   { code: 'EUR', name: '유로 (EU)' }, { code: 'CNY', name: '위안 (중국)' },
@@ -110,242 +117,30 @@ const weatherLabel = (v: string, tr: TFunction) => {
 const flightLabel = (f: string, tr: TFunction) => (f === '직항' ? tr('newRecord.flightDirect') : tr('newRecord.flightLayover'));
 const visibilityLabel = (v: Visibility, tr: TFunction) => {
   switch (v) {
-    case 'neighbors': return `🏡 ${tr('newRecord.visNeighbors')}`;
-    case 'private':   return `🔒 ${tr('newRecord.visPrivate')}`;
+    case 'neighbors': return tr('newRecord.visNeighbors');
+    case 'private':   return tr('newRecord.visPrivate');
     default: return '';
   }
 };
 
-// ─── 기간 선택 캘린더 ───
-const DOW_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
-const daysInMonth = (y: number, m: number) => new Date(y, m + 1, 0).getDate();
-const firstDow = (y: number, m: number) => new Date(y, m, 1).getDay();
+// 공개 범위 아이콘 — 기본 이모지(🏡/🔒)는 기기 폰트마다 모양·크기가 달라
+// 옆의 동행자 칩과 톤이 어긋났다. 제작 SVG 세트로 통일한다.
+const visibilityIcon = (v: Visibility, color: string): React.ReactNode => {
+  switch (v) {
+    case 'neighbors': return <FriendIcon size={16} color={color} />;
+    case 'private':   return <LockClosedIcon size={16} color={color} />;
+    default: return null;
+  }
+};
 
-function RangeCalendar({ visible, initialStart, initialEnd, onConfirm, onClose, recordedDates }: {
-  visible: boolean;
-  initialStart: Date | null;
-  initialEnd: Date | null;
-  onConfirm: (start: Date, end: Date) => void;
-  onClose: () => void;
-  /** 'YYYY-MM-DD' 키 집합 — 선택 국가에 이미 기록이 있는 날짜(점 표시) */
-  recordedDates?: Set<string>;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const base = initialStart ?? new Date();
-  const [vy, setVy] = useState(base.getFullYear());
-  const [vm, setVm] = useState(base.getMonth());
-  const [start, setStart] = useState<Date | null>(initialStart);
-  const [end, setEnd] = useState<Date | null>(initialEnd);
-
-  useEffect(() => {
-    if (visible) {
-      const b = initialStart ?? new Date();
-      setVy(b.getFullYear()); setVm(b.getMonth());
-      setStart(initialStart); setEnd(initialEnd);
-    }
-  }, [visible]);
-
-  if (!visible) return null;
-
-  const prevMonth = () => { if (vm === 0) { setVy(vy - 1); setVm(11); } else setVm(vm - 1); };
-  const nextMonth = () => { if (vm === 11) { setVy(vy + 1); setVm(0); } else setVm(vm + 1); };
-
-  const pick = (day: number) => {
-    const d = new Date(vy, vm, day);
-    if (!start || (start && end)) { setStart(d); setEnd(null); }
-    else if (d.getTime() < start.getTime()) { setEnd(start); setStart(d); }
-    else setEnd(d);
-  };
-  const inRange = (day: number) => {
-    if (!start) return false;
-    const d = new Date(vy, vm, day).getTime();
-    const s = start.getTime(); const e = (end ?? start).getTime();
-    return d >= Math.min(s, e) && d <= Math.max(s, e);
-  };
-  const isEdge = (day: number) => {
-    const d = new Date(vy, vm, day).getTime();
-    return (!!start && d === start.getTime()) || (!!end && d === end.getTime());
-  };
-
-  const cells: (number | null)[] = [];
-  for (let i = 0; i < firstDow(vy, vm); i++) cells.push(null);
-  for (let day = 1; day <= daysInMonth(vy, vm); day++) cells.push(day);
-
-  return (
-    <Modal visible transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-      <View style={cal.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <View style={cal.sheet}>
-          <View style={cal.handle} />
-          <View style={cal.navRow}>
-            <TouchableOpacity onPress={prevMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>‹</Text>
-            </TouchableOpacity>
-            <Text style={cal.ymLabel}>{t('cutInfo.yearMonth', { y: vy, m: vm + 1 })}</Text>
-            <TouchableOpacity onPress={nextMonth} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-              <Text style={[cal.navArrow, { color: skinAccent.accent }]}>›</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={cal.dowRow}>
-            {DOW_KEYS.map((dk, i) => (
-              <Text key={dk} style={[cal.dow, i === 0 && { color: '#FF6B6B' }, i === 6 && { color: '#6BA3FF' }]}>{t(dk)}</Text>
-            ))}
-          </View>
-          <View style={cal.grid}>
-            {cells.map((day, idx) => day === null ? (
-              <View key={`b${idx}`} style={cal.cell} />
-            ) : (
-              <TouchableOpacity key={day} style={cal.cell} onPress={() => pick(day)} activeOpacity={0.7}>
-                <View style={[cal.dayWrap, inRange(day) && [cal.dayInRange, { backgroundColor: skinAccent.tint(0.18) }], isEdge(day) && [cal.dayEdge, { backgroundColor: skinAccent.accentDeep }]]}>
-                  <Text style={[cal.dayTxt, isEdge(day) && cal.dayEdgeTxt]}>{day}</Text>
-                  {!!recordedDates?.has(toRecordedDateKey(new Date(vy, vm, day))) && (
-                    <View style={[cal.recordDot, { backgroundColor: isEdge(day) ? '#FFFFFF' : skinAccent.accent }]} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
-          {!!recordedDates && recordedDates.size > 0 && (
-            <View style={cal.legendRow}>
-              <View style={[cal.recordDot, { position: 'relative', bottom: 0, backgroundColor: skinAccent.accent }]} />
-              <Text style={cal.legendTxt}>{t('newRecord.calRecordedLegend')}</Text>
-            </View>
-          )}
-          <TouchableOpacity
-            style={[cal.confirmBtn, { backgroundColor: skinAccent.accentDeep }, !start && cal.confirmBtnDisabled]}
-            disabled={!start}
-            onPress={() => { if (start) { onConfirm(start, end ?? start); onClose(); } }}
-            activeOpacity={0.85}
-          >
-            <Text style={cal.confirmTxt}>{t('common.confirm')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
-}
 
 type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; photos: string[]; previewUri: string };
 
-// ─── 비공개 친구 선택 모달 (블로그와 동일) ───
-function PrivacyModal({
-  visible,
-  selectedFriends,
-  allFriends,
-  onToggle,
-  onSetAll,
-  onClose,
-}: {
-  visible: boolean;
-  selectedFriends: string[];
-  allFriends: string[];
-  onToggle: (friend: string) => void;
-  onSetAll: (friends: string[]) => void;
-  onClose: () => void;
-}) {
-  const { t } = useTranslation();
-  const skinAccent = useSkinAccent();
-  const translateY = useRef(new Animated.Value(500)).current;
-
-  useEffect(() => {
-    if (visible) {
-      Animated.spring(translateY, { toValue: 0, useNativeDriver: true, tension: 65, friction: 13 }).start();
-    } else {
-      Animated.timing(translateY, { toValue: 500, duration: 220, useNativeDriver: true }).start();
-    }
-  }, [visible]);
-
-  return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
-      <View style={pm.overlay} accessibilityViewIsModal>
-        <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
-          <View style={pm.handle} />
-
-          {/* 헤더 */}
-          <View style={pm.header}>
-            <View style={pm.headerLeft}>
-              <LockClosedIcon size={24} color="#A1A1B0" />
-              <View>
-                <Text style={pm.headerTitle}>{t('cutInfo.privacyTitle')}</Text>
-                <Text style={pm.headerDesc}>{t('cutInfo.privacyDesc')}</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* 전체 비공개 — 모든 친구에게 비공개 (맨 위 옵션) */}
-          {allFriends.length > 0 && (() => {
-            const allPrivate = selectedFriends.length === allFriends.length;
-            return (
-              <TouchableOpacity
-                style={[pm.allPrivateRow, allPrivate && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                onPress={() => onSetAll(allPrivate ? [] : [...allFriends])}
-                activeOpacity={0.7}
-              >
-                <View style={[pm.avatar, allPrivate && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                  <LockClosedIcon size={18} color={allPrivate ? '#FFFFFF' : '#A1A1B0'} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[pm.allPrivateLabel, allPrivate && pm.friendNameActive]}>{t('cutInfo.allPrivate')}</Text>
-                  <Text style={pm.allPrivateDesc}>{t('cutInfo.allPrivateDesc')}</Text>
-                </View>
-                <View style={[pm.checkbox, allPrivate && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                  {allPrivate && <Text style={pm.checkMark}>✓</Text>}
-                </View>
-              </TouchableOpacity>
-            );
-          })()}
-
-          {/* 전체 해제 버튼 */}
-          {selectedFriends.length > 0 && (
-            <TouchableOpacity style={[pm.clearAllBtn, { backgroundColor: skinAccent.tint(0.12) }]} onPress={() => selectedFriends.forEach(f => onToggle(f))} activeOpacity={0.7}>
-              <Text style={[pm.clearAllTxt, { color: skinAccent.accent }]}>{t('cutInfo.clearAll')}</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* 친구 목록 */}
-          <ScrollView style={pm.listScroll} showsVerticalScrollIndicator={false}>
-            {allFriends.map(friend => {
-              const isSelected = selectedFriends.includes(friend);
-              return (
-                <TouchableOpacity
-                  key={friend}
-                  style={[pm.friendRow, isSelected && [pm.friendRowActive, { backgroundColor: skinAccent.tint(0.12) }]]}
-                  onPress={() => onToggle(friend)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[pm.avatar, isSelected && [pm.avatarActive, { backgroundColor: skinAccent.tint(0.35) }]]}>
-                    <Text style={pm.avatarTxt}>{friend[0]}</Text>
-                  </View>
-                  <Text style={[pm.friendName, isSelected && pm.friendNameActive]}>{friend}</Text>
-                  <View style={[pm.checkbox, isSelected && [pm.checkboxActive, { backgroundColor: skinAccent.accent, borderColor: skinAccent.accent }]]}>
-                    {isSelected && <Text style={pm.checkMark}>✓</Text>}
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-
-          {/* 완료 버튼 */}
-          <TouchableOpacity style={[pm.doneBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={onClose} activeOpacity={0.85}>
-            <Text style={pm.doneTxt}>
-              {selectedFriends.length > 0
-                ? t('cutInfo.privacyDoneN', { count: selectedFriends.length })
-                : t('cutInfo.setPublic')}
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </View>
-    </Modal>
-  );
-}
-
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { addRecord, addTripGroup, neighbors, records } = useRecords();
-  // 함께한 친구·비공개 대상 목록은 실제 팔로우한 친구에서 가져온다 (데모 친구 제거)
+  // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
   const friendNames = neighbors.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
@@ -385,6 +180,9 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   );
   const [countryModalVisible, setCountryModalVisible] = useState(false);
   const [countrySearch, setCountrySearch] = useState('');
+  // 검색어는 모달을 닫을 때 비운다 — 남겨두면 다음에 열었을 때 목록이 필터된 채로 떠서
+  // "국가가 몇 개 없다"고 오해하게 된다. 배경 탭·완료·뒤로가기 세 경로 모두 이걸 거친다.
+  const closeCountryModal = () => { setCountryModalVisible(false); setCountrySearch(''); };
 
   // 선택 국가에 이미 기록된 날짜 — 기간 캘린더에 점으로 표시해 같은 여행에 기록을 추가하기 쉽게
   const recordedDates = useMemo(
@@ -392,10 +190,14 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     [records, selectedCountries]
   );
 
+  // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
+  const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
+
   // ─── 메타 상태 (피드와 동일) ───
   const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
   const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
   const [calendarVisible, setCalendarVisible] = useState(false);
+  const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [memo, setMemo] = useState('');
   const [companions, setCompanions] = useState<string[]>([]);
   const [companionFriends, setCompanionFriends] = useState<string[]>([]);
@@ -417,6 +219,21 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const [keywordQuery, setKeywordQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);
+
+  // ── 작성 화면 참고용 서랍: 선택 국가+날짜로 순간 매칭 ──
+  // startDate/endDate는 Date | null 타입
+  const { moments: allMoments } = useMoments();
+  const matchedMoments = useMemo(() => {
+    const first = selectedCountries[0] ?? null;
+    const startMs = startDate instanceof Date ? startDate.getTime() : null;
+    const endMs = endDate instanceof Date ? endDate.getTime() : (startMs ?? null);
+    return matchMoments(allMoments, {
+      countryCode: countryNameToCode(first?.name),
+      startMs,
+      endMs,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allMoments, selectedCountries, startDate, endDate]);
 
   // 대표(선택) 국가에 맞춰 기본 통화 자동 추천 — 사용자가 직접 고르기 전까지
   useEffect(() => {
@@ -444,6 +261,45 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // 캘린더에서 기존 여행 밴드를 탭하면 그 여행 정보를 폼에 채운다.
+  // 사진(cutPhoto)·글(memo)은 콘텐츠 필드이므로 건드리지 않는다.
+  const applySourceRecord = (recordId: string, start: Date, end: Date) => {
+    const src = records.find(r => r.id === recordId);
+    if (!src) return;
+    // 국가 — 다국가 배열 우선, 없으면 대표 국가 1개
+    const matched = (src.countries ?? [{ flag: src.countryFlag, name: src.countryName }])
+      .map(c => COUNTRIES.find(k => k.name === c.name))
+      .filter((c): c is Country => !!c);
+    if (matched.length) setSelectedCountries(matched);
+    // 지역
+    setSelectedRegion(src.regionName ? { name: src.regionName, nameEn: src.regionNameEn ?? '' } : null);
+    // 기간 — 탭한 밴드 기간으로 동기화
+    setStartDate(start);
+    setEndDate(end);
+    // 별점
+    setRating(src.rating ?? 0);
+    // 동행자
+    setCompanions(src.companions ?? []);
+    setCompanionFriends(src.companionFriends ?? []);
+    // 공개범위
+    setVisibility(src.visibility ?? 'neighbors');
+    // 예산·통화 — 소스에 예산이 있을 때만 통화까지 복사(자동추천 차단), 없으면 국가 기반 자동추천 유지
+    if (src.budget) {
+      setBudget(String(src.budget.amount));
+      setCurrency(src.budget.currency);
+      currencyTouchedRef.current = true;
+    } else {
+      setBudget('');
+      currencyTouchedRef.current = false;
+    }
+    // 날씨·항공·태그
+    setWeather(src.weather ?? '');
+    setFlightType(src.flightType ?? '');
+    setKeywords(src.keywords ?? []);
+    // 캘린더 닫고 폼 복귀
+    setCalendarVisible(false);
+  };
 
   const toggleCompanion = (c: string) =>
     setCompanions(prev => prev.includes(c) ? prev.filter(x => x !== c) : [...prev, c]);
@@ -615,6 +471,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
         <View style={st.headerRight}>
+          {/* ✨ 여행 기억 버튼은 국가 필드로 이동(중앙정렬 제목과 겹침 방지) */}
           <TouchableOpacity
             onPress={() => setPrivacyVisible(true)}
             style={[st.lockBtn, privateFriends.length > 0 && [st.lockBtnActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.35) }]]}
@@ -650,15 +507,31 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
 
           {/* 국가 */}
           <View style={st.fieldBlock}>
-            <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.country')}</Text><Text style={[st.req, { color: skinAccent.accent }]}>✱</Text></View>
+            <View style={st.labelRow}>
+              <Text style={st.label}>{t('cutInfo.country')}</Text>
+              <Text style={[st.req, { color: skinAccent.accent }]}>✱</Text>
+              <View style={{ flex: 1 }} />
+              {/* ✨ 여행 기억 — 국가표시 열 오른쪽 끝 */}
+              <TouchableOpacity
+                onPress={() => setMomentSheetVisible(true)}
+                accessibilityRole="button"
+                accessibilityLabel={t('moments.sheetTitle')}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                style={{ padding: 4 }}
+              >
+                <Text style={{ fontSize: 18 }}>✨</Text>
+              </TouchableOpacity>
+            </View>
             <TouchableOpacity style={[st.countryChip, { borderColor: skinAccent.tint(0.3) }]} onPress={() => setCountryModalVisible(true)} activeOpacity={0.8}>
               <Text style={selectedCountry ? st.countryChipTxt : st.countryChipPlaceholder}>
                 {selectedCountries.length > 0
-                  ? selectedCountries.map(c => `${c.flag} ${c.name}`).join(', ')
+                  ? selectedCountries.map(c => `${c.flag} ${countryLabel(c.name, i18n.language)}`).join(', ')
                   : t('blog.selectDestination')}
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* 여행 기억(✨)은 헤더 우측 버튼 → MomentListSheet로 이동(사용자 결정) */}
 
           {/* 날짜 */}
           <View style={st.fieldBlock}>
@@ -754,6 +627,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                     onPress={() => setVisibility(opt.value)}
                     activeOpacity={0.75}
                   >
+                    <View style={st.compChipIcon}>{visibilityIcon(opt.value, isActive ? skinAccent.accent : C.textDim)}</View>
                     <Text style={[st.smallTxt, isActive && [st.smallTxtActive, { color: skinAccent.accent }]]}>{visibilityLabel(opt.value, t)}</Text>
                   </TouchableOpacity>
                 );
@@ -879,16 +753,23 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       </KeyboardAvoidingView>
 
       {/* 캘린더 */}
-      <RangeCalendar
-        visible={calendarVisible}
-        initialStart={startDate}
-        initialEnd={endDate}
-        onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
-        onClose={() => setCalendarVisible(false)}
-        recordedDates={recordedDates}
-      />
+      {(() => {
+        const todayInit = new Date(); todayInit.setHours(0, 0, 0, 0);
+        return (
+          <CalendarBottomSheet
+            visible={calendarVisible}
+            initialStart={startDate ?? todayInit}
+            initialEnd={endDate ?? startDate ?? todayInit}
+            onConfirm={(s, e) => { setStartDate(s); setEndDate(e); }}
+            onClose={() => setCalendarVisible(false)}
+            recordedDates={recordedDates}
+            recordedRanges={recordedRanges}
+            onSelectRecordedTrip={applySourceRecord}
+          />
+        );
+      })()}
 
-      {/* 앱 친구 선택 모달 */}
+      {/* 앱 메이트 선택 모달 */}
       <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
         <View style={fp.overlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
@@ -921,7 +802,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         </View>
       </Modal>
 
-      {/* 비공개 대상 선택 모달 (블로그와 동일) */}
+      {/* 비공개 대상 선택 — 피드·블로그와 같은 공용 시트, 설명 문구만 스트립용으로 */}
       <PrivacyModal
         visible={privacyVisible}
         selectedFriends={privateFriends}
@@ -929,6 +810,20 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         onToggle={togglePrivateFriend}
         onSetAll={setPrivateFriends}
         onClose={() => setPrivacyVisible(false)}
+        desc={t('cutInfo.privacyDesc')}
+        allPrivateDesc={t('cutInfo.allPrivateDesc')}
+      />
+
+      {/* ✨ 여행 기억 — 선택 국가·날짜에 매칭되는 순간 목록 (헤더 버튼으로 열림) */}
+      <MomentListSheet
+        visible={momentSheetVisible}
+        onClose={() => setMomentSheetVisible(false)}
+        moments={matchedMoments}
+        tripTitle={
+          selectedCountries.length > 0
+            ? `${selectedCountries[0].flag} ${selectedCountries[0].name}`
+            : ''
+        }
       />
 
       {/* 기타 통화 선택 모달 */}
@@ -981,15 +876,15 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       </Modal>
 
       {/* 국가 선택 모달 */}
-      <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
+      <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={closeCountryModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
-          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCountryModalVisible(false)} />
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeCountryModal} />
           <View style={ct.sheet}>
             <View style={ct.handle} />
             <View style={ct.titleRow}>
               <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>
               <TouchableOpacity
-                onPress={() => setCountryModalVisible(false)}
+                onPress={closeCountryModal}
                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 activeOpacity={0.7}
               >
@@ -1002,25 +897,45 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 style={ct.searchInput}
                 value={countrySearch} onChangeText={setCountrySearch}
                 placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.textMuted}
-                autoFocus
+                returnKeyType="search"
               />
+              {countrySearch.length > 0 && (
+                <TouchableOpacity onPress={() => setCountrySearch('')} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
+                  <Text style={ct.searchClear}>✕</Text>
+                </TouchableOpacity>
+              )}
             </View>
+
+            {/* 몇 개 골랐는지 · 더 고를 수 있는지 — 목록만 보고는 알 수 없었다 */}
+            {selectedCountries.length > 0 && (
+              <Text style={ct.pickedCount}>
+                {t('newRecord.countrySelectedDone', { count: selectedCountries.length })}
+                {selectedCountries.length < MAX_COUNTRIES ? t('newRecord.countryCanAdd') : t('newRecord.countryMax')}
+              </Text>
+            )}
+
             <ScrollView style={{ maxHeight: 420, flexShrink: 1 }} keyboardShouldPersistTaps="handled">
               {groupedCountries.map(g => (
                 <View key={g.continent}>
-                  <Text style={ct.continent}>{g.continent}</Text>
-                  {g.countries.map(c => (
-                    <TouchableOpacity
-                      key={c.name}
-                      style={ct.item}
-                      onPress={() => toggleCountry(c)} // 복수 선택 — 모달은 배경 탭으로 닫는다
-                      activeOpacity={0.75}
-                    >
-                      <Text style={ct.flag}>{c.flag}</Text>
-                      <Text style={ct.name}>{c.name}</Text>
-                      {selectedCountries.some(p => p.name === c.name) && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
-                    </TouchableOpacity>
-                  ))}
+                  <Text style={ct.continent}>{continentLabel(g.continent, i18n.language)}</Text>
+                  {g.countries.map(c => {
+                    const picked = selectedCountries.some(p => p.name === c.name);
+                    // 최대치에 도달하면 미선택 국가는 탭해도 아무 일이 없었다 — 눌리지 않음을 눈으로 보여준다
+                    const blocked = !picked && selectedCountries.length >= MAX_COUNTRIES;
+                    return (
+                      <TouchableOpacity
+                        key={c.name}
+                        style={[ct.item, blocked && ct.itemBlocked]}
+                        disabled={blocked}
+                        onPress={() => toggleCountry(c)} // 복수 선택 — 모달은 배경 탭으로 닫는다
+                        activeOpacity={0.75}
+                      >
+                        <Text style={ct.flag}>{c.flag}</Text>
+                        <Text style={ct.name}>{countryLabel(c.name, i18n.language)}</Text>
+                        {picked && <Text style={[ct.check, { color: skinAccent.accent }]}>✓</Text>}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               ))}
               {groupedCountries.length === 0 && (
@@ -1042,7 +957,7 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   cancel: { fontSize: 16, color: C.textDim },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white },
+  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white, position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
@@ -1139,29 +1054,6 @@ const st = StyleSheet.create({
   kwHint: { color: C.textMuted, fontSize: 11, marginTop: 6 },
 });
 
-const cal = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 16, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
-  navRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8, marginBottom: 12 },
-  navArrow: { color: C.purpleNeon, fontSize: 26, fontWeight: '700', paddingHorizontal: 10 },
-  ymLabel: { color: C.white, fontSize: 16, fontWeight: '700' },
-  dowRow: { flexDirection: 'row', marginBottom: 6 },
-  dow: { flex: 1, textAlign: 'center', color: C.textDim, fontSize: 12, fontWeight: '600' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap' },
-  cell: { width: `${100 / 7}%`, aspectRatio: 1, alignItems: 'center', justifyContent: 'center' },
-  dayWrap: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center' },
-  dayInRange: { backgroundColor: 'rgba(191,133,252,0.18)', borderRadius: 8 },
-  dayEdge: { backgroundColor: C.purpleDeep, borderRadius: 18 },
-  dayTxt: { color: C.white, fontSize: 14 },
-  dayEdgeTxt: { color: C.white, fontWeight: '700' },
-  recordDot: { position: 'absolute', bottom: 3, width: 4, height: 4, borderRadius: 2 },
-  legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8, paddingHorizontal: 4 },
-  legendTxt: { fontSize: 11, color: C.textDim },
-  confirmBtn: { marginTop: 14, backgroundColor: C.purpleDeep, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  confirmBtnDisabled: { opacity: 0.4 },
-  confirmTxt: { color: C.white, fontSize: 15, fontWeight: '700' },
-});
 
 const fp = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -1209,39 +1101,14 @@ const ct = StyleSheet.create({
   doneBtn: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' },
   searchWrap: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: C.bg, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, marginBottom: 8 },
   searchInput: { flex: 1, color: C.white, fontSize: 14 },
+  searchClear: { color: C.textDim, fontSize: 13, fontWeight: '700' },
+  pickedCount: { color: C.textDim, fontSize: 11, paddingBottom: 6 },
   continent: { color: C.textDim, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, paddingTop: 14, paddingBottom: 6 },
   item: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
+  itemBlocked: { opacity: 0.35 },
   flag: { fontSize: 20 },
   name: { flex: 1, color: C.white, fontSize: 15 },
   check: { color: C.purpleNeon, fontSize: 15, fontWeight: '700' },
   empty: { color: C.textMuted, fontSize: 13, textAlign: 'center', paddingVertical: 30 },
 });
 
-// ─── 비공개 모달 스타일 (블로그 BlogRecordScreen의 pm과 동일) ───
-const pm = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#1A1A28', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36, maxHeight: '80%' },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginTop: 12, marginBottom: 20 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  headerTitle: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  headerDesc: { fontSize: 12, color: '#A1A1B0', marginTop: 2 },
-  clearAllBtn: { alignSelf: 'flex-end', marginBottom: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, backgroundColor: 'rgba(191,133,252,0.12)' },
-  clearAllTxt: { fontSize: 12, color: '#BF85FC', fontWeight: '600' },
-  listScroll: { maxHeight: 320 },
-  allPrivateRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
-  allPrivateLabel: { fontSize: 15, color: '#FFFFFF', fontWeight: '700' },
-  allPrivateDesc: { fontSize: 12, color: '#8A8A99', marginTop: 2 },
-  friendRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 4, borderRadius: 12, gap: 14, marginBottom: 2 },
-  friendRowActive: { backgroundColor: 'rgba(107,33,168,0.15)' },
-  avatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  avatarActive: { backgroundColor: 'rgba(107,33,168,0.4)' },
-  avatarTxt: { fontSize: 16, fontWeight: '700', color: '#FFFFFF' },
-  friendName: { flex: 1, fontSize: 15, color: '#A1A1B0', fontWeight: '500' },
-  friendNameActive: { color: '#FFFFFF', fontWeight: '600' },
-  checkbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 1.5, borderColor: '#4A4A59', alignItems: 'center', justifyContent: 'center' },
-  checkboxActive: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
-  checkMark: { fontSize: 13, color: '#FFFFFF', fontWeight: '700' },
-  doneBtn: { backgroundColor: '#6B21A8', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 16 },
-  doneTxt: { fontSize: 15, fontWeight: '700', color: '#FFFFFF' },
-});

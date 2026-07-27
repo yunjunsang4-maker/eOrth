@@ -57,8 +57,8 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
     });
   };
 
-  // ⋯ 메뉴 — 커스텀 박스 시트(UserActionSheet)로 이웃 끊기/차단. 차단은 확인 후
-  // store가 이웃 제거·서버 blocks까지 처리
+  // ⋯ 메뉴 — 커스텀 박스 시트(UserActionSheet)로 메이트 끊기/차단. 차단은 확인 후
+  // store가 메이트 제거·서버 blocks까지 처리
   const [menuTarget, setMenuTarget] = useState<(typeof neighbors)[number] | null>(null);
   const openMenu = (friend: (typeof neighbors)[number]) => {
     buzz('light');
@@ -116,7 +116,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
                 </View>
               )}
 
-              {/* 정보 — 모든 이웃은 서로이웃이라 별도 표시 없음 */}
+              {/* 정보 — 모든 메이트은 서로메이트이라 별도 표시 없음 */}
               <View style={styles.infoWrap}>
                 <Text style={styles.username}>@{friend.username}</Text>
               </View>

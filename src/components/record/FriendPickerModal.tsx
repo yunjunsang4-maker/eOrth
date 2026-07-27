@@ -12,7 +12,7 @@ import { FriendIcon as SvgFriendIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
 
 /**
- * 함께한 앱 친구 선택 모달 — NewRecordScreen 에서 분리.
+ * 함께한 앱 메이트 선택 모달 — NewRecordScreen 에서 분리.
  * 화면 state/핸들러는 props 로 받는다.
  */
 const COLORS = {

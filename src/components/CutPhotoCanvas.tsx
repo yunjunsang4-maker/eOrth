@@ -39,6 +39,16 @@ const LOGO_SCALE: Partial<Record<CutLayout, number>> = {
 /** 하단 여백(로고·스탬프 영역)이 있는 레이아웃인지 — CutRecordScreen이 스탬프 UI 노출 여부에 사용 */
 export const cutHasBottomBand = (layout: CutLayout): boolean => LOGO_SCALE[layout] != null;
 
+// 브랜드 로고 — 'e' + 글로브 + 'rth' 가로형 워드마크(원본 160×44).
+// 배경 밝기에 따라 두 벌 중 하나를 쓴다. tintColor로 칠하지 않는 이유:
+// 이 로고는 단색이 아니다. e·rth는 순수 흰색이지만 가운데 글로브는 0~255 그라데이션이라
+// tintColor를 먹이면 그라데이션이 통짜로 뭉개져 글로브가 덩어리처럼 보인다.
+// 두 벌 모두 글로브 안쪽이 비어 있어(알파 0) 프레임 배경색이 그대로 비친다.
+// 생성: scripts/build-cut-logo-variants.js
+const LOGO_WHITE = require('../../assets/logo-white.png'); // 어두운 배경용
+const LOGO_BLACK = require('../../assets/logo-black.png'); // 밝은 배경용
+const LOGO_ASPECT = 160 / 44;
+
 // 배경 밝기 판정 — 로고 색을 배경에 맞춰 어둡게/밝게 (판정 불가 시 밝은 배경 취급)
 const isLightHex = (hex?: string): boolean => {
   if (!hex || !/^#[0-9a-fA-F]{6}$/.test(hex)) return true;
@@ -120,6 +130,13 @@ const CutPhotoCanvas = forwardRef<View, Props>(
     const renderStamp = hasBand && !!(stamp?.text || stamp?.date);
     const slotBottom = Math.max(...spec.slots.map((s) => s.y + s.h));
     const logoSize = Math.max(8, width * (logoScale ?? 0));
+    // 로고 실측 크기 — 세 가지 제약 중 가장 작은 값을 따른다.
+    //  1) logoSize : 레이아웃별 기준 크기를 로고 높이로 그대로 쓴다
+    //  2) 밴드 높이의 55% : 문구·날짜와 같이 놓여도 하단 여백을 넘지 않게
+    //  3) 캔버스 폭의 55% : 가로형 워드마크라 좁은 밴드에서는 폭이 먼저 부담이 된다
+    const bandH = (1 - slotBottom) * height;
+    const logoH = Math.max(6, Math.min(logoSize, bandH * 0.55, (width * 0.55) / LOGO_ASPECT));
+    const logoW = logoH * LOGO_ASPECT;
     const captionSize = Math.max(9, width * 0.06);
     const dateSize = Math.max(7, width * 0.034);
     // 이미지 배경(테마·사용자 사진)은 밝기를 알 수 없어 밝은 글자로 고정
@@ -225,16 +242,11 @@ const CutPhotoCanvas = forwardRef<View, Props>(
               </Text>
             )}
             {renderLogo && (
-              <Text
-                style={{
-                  fontFamily: 'Gilroy-Black',
-                  fontSize: logoSize,
-                  letterSpacing: logoSize * 0.06,
-                  color: logoLight ? 'rgba(30,28,40,0.40)' : 'rgba(255,255,255,0.60)',
-                }}
-              >
-                eOrth
-              </Text>
+              <Image
+                source={logoLight ? LOGO_BLACK : LOGO_WHITE}
+                resizeMode="contain"
+                style={{ width: logoW, height: logoH, opacity: logoLight ? 0.55 : 0.7 }}
+              />
             )}
           </View>
         )}

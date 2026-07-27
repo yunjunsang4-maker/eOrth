@@ -40,6 +40,32 @@ export const setCoachBright = (v: CoachBright) => {
   emit();
 };
 
+/**
+ * 튜토리얼이 떠 있는 동안 지구본(WebGL) 렌더 루프를 재우라는 신호.
+ *
+ * 코치마크는 딤·링·말풍선을 지구본 WebView 위에 겹쳐 그리는데, 그 아래에서 three.js가 60fps로
+ * 돌면(라벨 캔버스 갱신 포함) GPU·UI 스레드를 두고 서로 프레임을 뺏어 전환이 눈에 띄게 끊긴다.
+ * 자동회전이 45초에 한 바퀴라 튜토리얼(수십 초) 동안 멈춰 있어도 사실상 티가 나지 않는다.
+ *
+ * 스냅샷(snapshot)은 건드리지 않는다 — RecordFab·탭 바가 불필요하게 리렌더되지 않도록.
+ */
+let freezeGlobeNow = false;
+const freezeListeners = new Set<(v: boolean) => void>();
+
+export const setCoachFreezeGlobe = (v: boolean) => {
+  if (freezeGlobeNow === v) return;
+  freezeGlobeNow = v;
+  freezeListeners.forEach((l) => l(v));
+};
+
+/** 리렌더 없이 명령형으로 구독(WebView에 주입만 하면 되는 쪽용) */
+export const subscribeCoachFreezeGlobe = (l: (v: boolean) => void) => {
+  freezeListeners.add(l);
+  return () => {
+    freezeListeners.delete(l);
+  };
+};
+
 const subscribe = (l: () => void) => {
   listeners.add(l);
   return () => {

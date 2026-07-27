@@ -9,7 +9,7 @@ import {
   Switch,  Linking,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
-import { MapIcon, HeartIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
+import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
@@ -69,8 +69,8 @@ const ToggleRow = ({
           value={displayValue}
           onValueChange={onValueChange}
           disabled={disabled}
-          trackColor={{ false: COLORS.divider, true: skinAccent.accentDeep }}
-          thumbColor={skinAccent.accent}
+          trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
+          thumbColor="#FFFFFF"
           ios_backgroundColor={COLORS.divider}
         />
       </View>
@@ -87,9 +87,11 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   const masterEnabled = notifPrefs.master;
   const friendTrip = notifPrefs.friendTrip;
   const likes = notifPrefs.likes;
+  const messages = notifPrefs.messages;
   const newFollower = notifPrefs.newFollower;
   const returnDetect = notifPrefs.returnDetect;
   const memoryRemind = notifPrefs.memoryRemind;
+  const travelMoment = notifPrefs.travelMoment;
   const marketing = notifPrefs.marketing;
 
   // 기기 알림 권한 상태
@@ -124,9 +126,8 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
   };
 
   const openSettings = () => {
-    // Linking.openSettings()는 iOS/Android 모두 동작 — 'app-settings:' openURL 분기는
-    // 실패 시 미처리 promise rejection을 냈다(catch 없음)
-    Linking.openSettings();
+    // Linking.openSettings()는 iOS/Android 모두 동작. 실패는 무해화(미처리 rejection 방지)
+    Linking.openSettings().catch(() => {});
   };
 
   return (
@@ -203,6 +204,14 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             disabled={!masterEnabled}
           />
           <ToggleRow
+            icon={<ChatIcon size={20} />}
+            label={t('notifSettings.messagesLabel')}
+            description={t('notifSettings.messagesDesc')}
+            value={messages}
+            onValueChange={(v) => setNotifPref('messages', v)}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
             icon={<PersonIcon size={20} />}
             label={t('notifSettings.newFollowerLabel')}
             description={t('notifSettings.newFollowerDesc')}
@@ -225,25 +234,27 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             disabled={!masterEnabled}
           />
           <ToggleRow
-            icon={<HomeIcon size={20} />}
-            label={t('notifSettings.returnLabel')}
-            description={t('notifSettings.returnDesc')}
-            value={returnDetect}
-            onValueChange={(v) => setNotifPref('returnDetect', v)}
-            disabled={!masterEnabled}
-            isLast
-          />
-        </View>
-
-        {/* ── 스냅 알림 ── */}
-        <SectionLabel label={t('notifSettings.sectionSnap')} />
-        <View style={styles.card}>
-          <ToggleRow
             icon={<BellIcon size={20} />}
             label={t('notifSettings.snapLabel')}
             description={t('notifSettings.snapDesc')}
             value={snapEnabled}
             onValueChange={setSnapEnabled}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<Text style={{ fontSize: 18 }}>✨</Text>}
+            label={t('moments.settingsLabel')}
+            description={t('moments.settingsDesc')}
+            value={travelMoment}
+            onValueChange={(v) => setNotifPref('travelMoment', v)}
+            disabled={!masterEnabled}
+          />
+          <ToggleRow
+            icon={<HomeIcon size={20} />}
+            label={t('notifSettings.returnLabel')}
+            description={t('notifSettings.returnDesc')}
+            value={returnDetect}
+            onValueChange={(v) => setNotifPref('returnDetect', v)}
             disabled={!masterEnabled}
             isLast
           />

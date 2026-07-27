@@ -82,7 +82,7 @@ export default function FriendsScreen({ navigation }: Props) {
   const { blockUser, neighbors, isBlocked, toggleMute, isMuted, refreshNeighbors } = useRecords();
   const { conversations, unreadCount, markRead, registerPeer } = useDM();
 
-  // 당겨서 새로고침 — 이웃 목록(친구)을 서버 기준으로 재동기화
+  // 당겨서 새로고침 — 메이트 목록(메이트)을 서버 기준으로 재동기화
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = async () => {
     setRefreshing(true);
@@ -90,7 +90,7 @@ export default function FriendsScreen({ navigation }: Props) {
   };
 
   const [search, setSearch] = useState('');
-  // 친구 목록은 실제 이웃으로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
+  // 메이트 목록은 실제 메이트으로 구성 (대화 미리보기는 아래에서 conversations로 오버레이) — 데모 시드 제거
   const [friends, setFriends] = useState<Friend[]>(() =>
     neighbors.map((f) => ({
       id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo,
@@ -99,9 +99,9 @@ export default function FriendsScreen({ navigation }: Props) {
   );
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
 
-  // 이웃 목록 변경을 친구 목록에 반영(새 이웃 추가/해제 제거). 로컬 상태(음소거 등)는 유지.
-  // 이웃이 아니어도 '대화가 있는' 행(아래 낯선 상대 effect가 추가)은 지우지 않는다 —
-  // 서버 정책상 이웃이 아닌 사용자도 내게 DM을 보낼 수 있는데, 이웃 기준으로만
+  // 메이트 목록 변경을 메이트 목록에 반영(새 메이트 추가/해제 제거). 로컬 상태(음소거 등)는 유지.
+  // 메이트이 아니어도 '대화가 있는' 행(아래 낯선 상대 effect가 추가)은 지우지 않는다 —
+  // 서버 정책상 메이트이 아닌 사용자도 내게 DM을 보낼 수 있는데, 메이트 기준으로만
   // 목록을 만들면 그 메시지를 열람할 경로가 전혀 없다.
   useEffect(() => {
     setFriends((prev) => {
@@ -120,7 +120,7 @@ export default function FriendsScreen({ navigation }: Props) {
     });
   }, [neighbors, conversations]);
 
-  // 이웃이 아닌 상대가 보낸 대화 → 목록 행 생성 (프로필 조회로 이모지·uuid 확보)
+  // 메이트이 아닌 상대가 보낸 대화 → 목록 행 생성 (프로필 조회로 이모지·uuid 확보)
   useEffect(() => {
     const known = new Set([
       ...neighbors.map((u) => u.username),
@@ -319,7 +319,7 @@ export default function FriendsScreen({ navigation }: Props) {
   );
 }
 
-// ─── 친구 행 ───
+// ─── 메이트 행 ───
 function FriendRow({
   friend,
   isSelected,
@@ -537,7 +537,7 @@ const st = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // 친구 행
+  // 메이트 행
   row: {
     flexDirection: 'row',
     alignItems: 'center',
