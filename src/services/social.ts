@@ -358,12 +358,16 @@ export interface MateSuggestionRow {
   mutualCount: number;
   styleScore: number;
   totalScore: number;
-  // 축별 점수 — 어느 근거로 추천됐는지 문구를 만드는 데 쓴다(만점 100의 구성 요소)
-  placeScore: number;    // 나라(희소성) + 도시
+  // 축별 점수 — 어느 근거로 추천됐는지 문구를 만드는 데 쓴다(만점 100의 구성 요소).
+  // placeScore·styleScore·mutualScore는 지금 화면에서 직접 쓰지 않는다(근거 문구는 mutualCount를
+  // 쓰고, 장소 근거는 sharedCities/sharedCount로 판단한다). RPC 반환 계약을 그대로 비추는
+  // 미러라 지우지 않는다 — 지우면 다음에 축을 쓸 때 계약과 어긋난 부분 매핑이 된다.
+  placeScore: number;    // 나라(희소성 가중 자카드) + 도시
   recencyScore: number;  // 최근 1년 내 겹친 나라
   seasonScore: number;   // 같은 나라·같은 계절
   interestScore: number; // 키워드 겹침
   tasteScore: number;    // 별점·예산·항공편
+  mutualScore: number;   // 공통 메이트(축 점수 — 사람 수는 mutualCount)
   sharedCities: string[];   // 겹친 도시(최대 3)
   sharedKeywords: string[]; // 겹친 키워드(최대 3)
 }
@@ -389,6 +393,7 @@ export async function fetchMateSuggestions(limit = 10, extraCountries: string[] 
       seasonScore: r.season_score ?? 0,
       interestScore: r.interest_score ?? 0,
       tasteScore: r.taste_score ?? 0,
+      mutualScore: r.mutual_score ?? 0,
       sharedCities: r.shared_cities ?? [],
       sharedKeywords: r.shared_keywords ?? [],
     }));

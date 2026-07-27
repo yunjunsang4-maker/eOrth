@@ -36,6 +36,7 @@ import type { TabScreenProps } from '../navigation/types';
 import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
+import { pickReason } from '../utils/matchScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
@@ -2405,11 +2406,20 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
       )}
       <Text style={s.mateCardTitle}>✦ {t('social.mateSuggestTitle')}</Text>
       {suggestions.map((m) => {
-        // 왜 추천됐는지 근거를 보여준다 — 데이터 없으면 서브라인 생략
-        const sub = [
-          m.sharedCount > 0 ? t('social.mateOverlapN', { count: m.sharedCount }) : null,
-          m.mutualCount > 0 ? t('social.mutualN', { count: m.mutualCount }) : null,
-        ].filter(Boolean).join(' · ');
+        // 왜 추천됐는지 근거 한 줄 — 메이트찾기와 같은 pickReason으로 고른다.
+        // 예전엔 나라 겹침·공통 메이트만 봐서 키워드·계절·도시로 추천된 후보는 서브라인이 빈 채로 떴다.
+        // 근거가 아예 없으면(이론상만 가능) 중립 문구로 폴백해 빈 줄이 남지 않게 한다.
+        const reason = pickReason({
+          recencyScore: m.recencyScore,
+          seasonScore: m.seasonScore,
+          interestScore: m.interestScore,
+          tasteScore: m.tasteScore,
+          mutualCount: m.mutualCount,
+          sharedCities: m.sharedCities,
+          sharedKeywords: m.sharedKeywords,
+          sharedCount: m.sharedCount,
+        });
+        const sub = reason ? t(reason.key, reason.params) : t('friends.suggestedReason');
         return (
           <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
             <View style={s.mateCardAvatarRing}>
@@ -2467,8 +2477,13 @@ function FriendsTab({ navigation }: { navigation: any }) {
         ...records.filter((r) => r.isMyPost !== false && r.countryName).map((r) => r.countryName as string),
         ...tripGroups.map((g) => g.countryName).filter((c): c is string => !!c),
       ]));
-      const rows = await fetchMateSuggestions(3, localCountries);
-      if (alive && rows.length > 0) setMateSuggestions(rows);
+      // 3칸만 받으면 RPC 안에서 상위 점수 K=2, 다양성 셔플 정원 1이 되어
+      // 가장 노출이 많은 이 표면에서 3칸 중 1칸이 매일 랜덤 저점수 후보가 된다.
+      // 다양성 셔플은 메이트찾기의 긴 목록에서만 의미가 있으므로, 여기선 넉넉히 받아
+      // 총점 내림차순 상위 3명만 쓴다(RPC 시그니처는 그대로 둔다).
+      const rows = await fetchMateSuggestions(10, localCountries);
+      const top3 = [...rows].sort((a, b) => b.totalScore - a.totalScore).slice(0, 3);
+      if (alive && top3.length > 0) setMateSuggestions(top3);
     })();
     return () => { alive = false; };
   }, []);

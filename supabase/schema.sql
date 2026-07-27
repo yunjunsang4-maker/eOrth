@@ -501,7 +501,9 @@ create policy "neighbors_delete_own" on public.neighbors
 --
 -- 예전 설계에서 바뀐 점:
 --   · 나라를 '개수'가 아니라 '희소성 가중'으로 — 아이슬란드 겹침이 일본 겹침보다 값지다.
---     정규화(내 나라들의 가중치 합으로 나눔)가 '많이 다닌 사람이 항상 유리'를 없앤다.
+--     정규화는 '가중 자카드'다(내 가중합 + 후보 가중합 - 겹친 가중합으로 나눔).
+--     내 가중합만으로 나누면 한 호출 안에서 상수라 후보 간 순위가 안 바뀐다 —
+--     후보 쪽 넓이를 분모에 넣어야 '많이 다닌 사람이 항상 유리'가 실제로 사라진다.
 --   · 기록형식·동행자 축 제거 — 2종만 겹쳐도 만점이라 사실상 전원이 받았고,
 --     변별에 기여하지 않으면서 점수를 상단에 뭉치게 하는 주범이었다.
 --
@@ -510,7 +512,7 @@ create policy "neighbors_delete_own" on public.neighbors
 --
 -- 성능: 후보를 먼저 좁히고(1단계) 비싼 JSONB 추출은 그 후보에만 돌린다(2단계).
 --
--- 반환 시그니처(9→16컬럼)가 바뀌어 create or replace만으로는 교체 불가(postgres가
+-- 반환 시그니처(9→17컬럼)가 바뀌어 create or replace만으로는 교체 불가(postgres가
 -- "cannot change return type of existing function"으로 거부) — 기존 mate_suggestions(int, text[])를
 -- 명시적으로 drop한 뒤 재정의한다. travel_overlap_suggestions(int)는 이전 리네이밍 잔재 정리용.
 -- ─────────────────────────────────────────────
@@ -521,20 +523,27 @@ returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
   place_score int, recency_score int, season_score int, interest_score int, taste_score int,
+  mutual_score int,
   shared_cities text[], shared_keywords text[]
 )
 language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
 
-  -- 공개 기록만. 여행 시작일이 없으면 작성 시각으로 대체한다.
-  -- startDate는 클라이언트가 쓰는 자유 JSONB라 형식이 보장되지 않는다 — 정규식으로 형식을
+  -- 공개 기록만. 여행 날짜는 startDate → date → 작성 시각 순으로 정한다.
+  -- date는 recordStore의 필수 필드고 startDate는 선택이라, startDate만 보면 대다수 기록이
+  -- 발행 시각으로 계절 판정된다(2019년 겨울 여행을 오늘 가져오면 '여름 여행자'가 된다).
+  -- 둘 다 클라이언트가 쓰는 자유 JSONB라 형식이 보장되지 않는다 — 정규식으로 형식을
   -- 거르고 to_date로 파싱한다(::date는 범위를 벗어나면 예외를 던져 전 사용자 조회가 죽는다,
-  -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → coalesce가 created_at으로 폴백.
+  -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → 다음 후보로 넘어간다.
+  -- 예외 블록(plpgsql)은 쓰지 않는다 — 행마다 서브트랜잭션이 생겨 느려진다.
   pub as (
     select p.id, p.author_id, p.country_name, p.data,
            coalesce(
              case when p.data->>'startDate' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
                   then to_date(replace(replace(p.data->>'startDate', '.', '-'), '/', '-'), 'YYYY-MM-DD')
+             end,
+             case when p.data->>'date' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
+                  then to_date(replace(replace(p.data->>'date', '.', '-'), '/', '-'), 'YYYY-MM-DD')
              end,
              p.created_at::date) as trip_date
     from public.posts p
@@ -567,13 +576,28 @@ language sql security definer set search_path = public as $$
   -- 나라별 방문 사용자 수 → 희소성 가중치.
   -- 표본이 적으면(전체 20명 미만) 희소성은 신호가 아니라 노이즈라 균등 가중으로 폴백한다.
   user_total as (select count(distinct author_id)::int as n from pub_country),
-  country_weight as (
-    select pc.name,
-           case when (select n from user_total) < 20 then 1.0
-                else 1.0 / ln(exp(1) + count(distinct pc.author_id))
-           end as w
+  country_user_counts as (
+    select pc.name, count(distinct pc.author_id)::int as visitors
     from pub_country pc
     group by pc.name
+  ),
+  country_weight as (
+    select cuc.name,
+           case when (select n from user_total) < 20 then 1.0
+                else 1.0 / ln(exp(1) + cuc.visitors)
+           end as w
+    from country_user_counts cuc
+  ),
+  -- 편재(遍在) 국가 — 전체 사용자의 절반 이상이 방문한 나라. 도시 축에서 제외한다.
+  -- 나라까지 대조해도 국내 기록(양쪽의 '서울')은 둘 다 대한민국이라 걸러지지 않아,
+  -- 여행 취향 유사성 없이 도시 축이 만점이 된다.
+  -- 표본 부족(<20명)이면 이 비율은 신호가 아니라 노이즈라 제외 규칙도 함께 끈다
+  -- (나라 축 희소성 폴백과 같은 조건). greatest는 0 나눗셈 방어.
+  ubiquitous_countries as (
+    select cuc.name
+    from country_user_counts cuc
+    where (select n from user_total) >= 20
+      and cuc.visitors::numeric / greatest((select n from user_total), 1) >= 0.5
   ),
 
   -- 내 입력. extra_countries는 호출자 로컬(미발행·나만보기) 나라 보강 — 내 매칭 입력에만 쓰고
@@ -583,10 +607,14 @@ language sql security definer set search_path = public as $$
     union
     select c from unnest(extra_countries) as c where c is not null and c <> ''
   ),
+  -- 도시는 (나라, 도시) 쌍으로 들고 다닌다 — 동명 지역의 오매칭을 막는다.
+  -- 나라는 기록의 대표 국가(country_name)를 쓴다. pub_country로 펼치면 다국가 기록에서
+  -- 한 도시가 그 여행의 모든 나라와 짝지어져 없는 쌍이 생긴다.
   my_cities as (
-    select distinct x.data->>'regionName' as city
+    select distinct x.country_name as country, x.data->>'regionName' as city
     from pub x, me
     where x.author_id = me.uid and coalesce(x.data->>'regionName', '') <> ''
+      and coalesce(x.country_name, '') <> ''
   ),
   my_keywords as (
     select distinct kw
@@ -656,6 +684,20 @@ language sql security definer set search_path = public as $$
     select greatest(sum(cw.w), 0.0001) as s
     from my_countries mc join country_weight cw on cw.name = mc.name
   ),
+  -- 후보 본인이 방문한 나라들의 가중치 합(S_cand) — 가중 자카드 분모의 '후보 쪽 넓이'.
+  -- 후보(cand)에 대해서만 계산한다(전 사용자로 돌리면 비싸다).
+  -- (후보, 나라) 쌍을 먼저 distinct로 만든 뒤 합해야 같은 나라를 여러 번 기록한 사람의
+  -- 가중치가 부풀지 않는다. country_weight는 나라당 1행이라 조인이 행을 불리지 않는다.
+  cand_weight_sum as (
+    select t.cid, sum(cw.w) as s
+    from (
+      select distinct pc.author_id as cid, pc.name
+      from pub_country pc
+      where pc.author_id in (select cid from cand)
+    ) t
+    join country_weight cw on cw.name = t.name
+    group by t.cid
+  ),
   cshared_pairs as (
     select distinct pc.author_id as cid, pc.name
     from pub_country pc
@@ -672,14 +714,22 @@ language sql security definer set search_path = public as $$
     join country_weight cw on cw.name = sp.name
     group by sp.cid
   ),
-  ccity as (
-    select x.author_id as cid,
-           count(distinct x.data->>'regionName')::int as n,
-           (array_agg(distinct x.data->>'regionName'))[1:3] as cities
+  -- 도시 — (나라, 도시)가 모두 같을 때만 겹침으로 센다. 편재 국가는 제외한다.
+  -- my_cities가 (나라, 도시) distinct라 조인은 기록 1행당 최대 1건, 행이 불지 않는다.
+  ccity_pairs as (
+    select distinct x.author_id as cid, x.country_name as country, x.data->>'regionName' as city
     from pub x
+    join my_cities mc on mc.country = x.country_name and mc.city = x.data->>'regionName'
     where x.author_id in (select cid from cand)
-      and x.data->>'regionName' in (select city from my_cities)
-    group by x.author_id
+      and x.country_name not in (select name from ubiquitous_countries)
+  ),
+  ccity as (
+    select cp.cid,
+           count(*)::int as n,
+           -- 이름이 같고 나라만 다른 도시가 표본에 둘 다 들어가지 않게 distinct로 모은다
+           (array_agg(distinct cp.city))[1:3] as cities
+    from ccity_pairs cp
+    group by cp.cid
   ),
   crecent as (
     select pc.author_id as cid, count(distinct pc.name)::int as n
@@ -772,17 +822,33 @@ language sql security definer set search_path = public as $$
       coalesce(ci.cities, '{}'::text[]) as shared_cities,
       coalesce(k.kws, '{}'::text[]) as shared_keywords,
       coalesce(m.mutual_count, 0) as mutual_count,
-      -- 나라(희소성 정규화) 25 + 도시 15
-      (round(least(coalesce(s.shared_weight,0) / (select s from my_weight_sum), 1.0) * 25)
+      -- 나라(희소성 가중 자카드) 25 + 도시 15
+      -- 분모는 합집합의 가중합(S_me + S_cand - 겹침). 내 가중합만으로 나누면 한 호출 안에서
+      -- 상수라 후보 순위가 shared_weight 순위와 같아져 활동량 편향이 전혀 안 걷힌다.
+      -- ×2는 스케일 보정 튜닝 상수 — 자카드는 두 나라 집합이 완전히 같을 때만 1.0이라
+      -- 현실적인 좋은 매칭(0.3~0.5)이 늘 한 자릿수가 된다. "합집합의 절반을 공유하면 만점"의
+      -- 의미이며, 실기기 점수 분포를 본 뒤 조정할 값이다.
+      -- 표본 부족(<20명) 폴백에서는 모든 w = 1.0이라 자연히 순수 개수 자카드가 된다(의도됨).
+      (round(least(coalesce(s.shared_weight,0)
+                   / greatest((select s from my_weight_sum) + coalesce(cws.s, 0)
+                              - coalesce(s.shared_weight,0), 0.0001)
+                   * 2, 1.0) * 25)
        + round(least(coalesce(ci.n,0), 3) / 3.0 * 15))::int as place_score,
       round(least(coalesce(r.n,0), 2) / 2.0 * 15)::int as recency_score,
       round(least(coalesce(se.n,0), 2) / 2.0 * 10)::int as season_score,
       round(least(coalesce(k.n,0), 3) / 3.0 * 15)::int as interest_score,
+      -- 성향: 판정 가능 항목이 2개 미만이면 분모를 3으로 고정해 비례 축소한다.
+      -- 1/1로 나누면 항목 하나만 맞아도 만점이라, 이번 재설계가 제거한 '기록형식·동행자'와
+      -- 같은 실패 양식이 된다(사실상 전원 만점). 항목 1개 적중은 10점이 아니라 약 3.3점.
+      -- 기준 자체(별점차 1.0 / 예산 2배 / 항공편 일치)는 실제 분포를 본 뒤 조일 사안이라
+      -- 이번엔 건드리지 않는다.
       (case when coalesce(ct.denom,0) = 0 then 0
-            else round(ct.num::numeric / ct.denom * 10)::int end) as taste_score,
+            when ct.denom >= 2 then round(ct.num::numeric / ct.denom * 10)::int
+            else round(ct.num::numeric / 3 * 10)::int end) as taste_score,
       round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score
     from cand c
     left join cshared s on s.cid = c.cid
+    left join cand_weight_sum cws on cws.cid = c.cid
     left join ccity ci on ci.cid = c.cid
     left join crecent r on r.cid = c.cid
     left join cseason se on se.cid = c.cid
@@ -837,6 +903,7 @@ language sql security definer set search_path = public as $$
          (p.interest_score + p.taste_score) as style_score,
          p.total_score,
          p.place_score, p.recency_score, p.season_score, p.interest_score, p.taste_score,
+         p.mutual_score,
          p.shared_cities, p.shared_keywords
   from picked p
   join public.public_profiles pp on pp.id = p.cid
