@@ -25,6 +25,7 @@ import MainCoachmark, { CoachStep } from '../components/MainCoachmark';
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import StarFieldBackground from '../components/StarFieldBackground';
+import RatingStars from '../components/RatingStars';
 import Svg, {
   Image as SvgImage,
   Path as SvgPath,
@@ -915,19 +916,16 @@ export default function StatsScreen() {
             {/* 평균의 모수 = 별점이 있는 기록 수 — 전체 기록 수로 표기하면 라벨과 실제 계산이 어긋난다 */}
             <Text style={styles.ratingBasis}>{t('stats.ratingBasis', { count: ratedRecordsCount })}</Text>
             <Text style={styles.ratingAvg}>{avgRating}</Text>
-            <View style={styles.ratingStarRow}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <Text
-                  key={star}
-                  style={[
-                    styles.ratingStarBig,
-                    { color: star <= Math.round(Number(avgRating)) ? '#FFBC00' : 'rgba(255,255,255,0.6)' },
-                  ]}
-                >
-                  ★
-                </Text>
-              ))}
-            </View>
+            {/* 0.5점 단위 — 표시 숫자(avgRating)를 그대로 넘겨 숫자와 별이 어긋나지 않게 한다.
+                예전엔 Math.round라 4.4에 별 4개, 4.8에 별 5개로 숫자와 따로 놀았다 */}
+            <RatingStars
+              score={Number(avgRating)}
+              size={19}
+              gap={5}
+              fullColor="#FFBC00"
+              emptyColor="rgba(255,255,255,0.6)"
+              style={styles.ratingStarRow}
+            />
           </View>
 
           {/* 랭킹 노드 — 유리(흰 3%) 배경 + 그라데이션 링(순위 낮을수록 옅게) */}
@@ -1365,8 +1363,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 5,
     marginTop: 6,
-  },
-  ratingStarBig: {
-    fontSize: 19,
   },
 });
