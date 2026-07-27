@@ -369,8 +369,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // 게시물 상세의 '수정'에서 기존 블로그 기록을 받아 미리 채운다
   const editRecord = route?.params?.record;
   const isEdit = !!editRecord;
-  // 여행 카드에서 추가하면 그 여행 기간을 받아 신규 작성 시 날짜에 자동 적용한다
-  const tripPeriod = route?.params?.tripPeriod;
+  // 여행 카드에서 추가하면 그 여행의 정보(기간·동행자·별점·상세)를 받아 신규 작성 시 자동 적용한다
+  const tripPrefill = route?.params?.tripPrefill;
 
   // 국가 (복수 가능 — 첫 번째가 대표 국가)
   const MAX_COUNTRIES = 10;
@@ -439,8 +439,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // 메타
   const [memo, setMemo] = useState(editRecord?.memo ?? '');
-  const [startDate, setStartDate] = useState(editRecord?.startDate ?? tripPeriod?.startDate ?? '');
-  const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPeriod?.endDate ?? '');
+  const [startDate, setStartDate] = useState(editRecord?.startDate ?? tripPrefill?.startDate ?? '');
+  const [endDate, setEndDate] = useState(editRecord?.endDate ?? tripPrefill?.endDate ?? '');
 
   // ── 작성 화면 참고용 서랍: 선택 국가+날짜로 순간 매칭 ──
   // startDate는 'YYYY.MM.DD' 문자열, parseDotDateMatch로 epoch ms 변환
@@ -456,21 +456,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allMoments, selectedCountries, startDate, endDate]);
 
-  const [rating, setRating] = useState(editRecord?.rating ?? 0);
-  const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? []);
+  const [rating, setRating] = useState(editRecord?.rating ?? tripPrefill?.rating ?? 0);
+  const [companions, setCompanions] = useState<string[]>(editRecord?.companions ?? tripPrefill?.companions ?? []);
   const [visibility, setVisibility] = useState<Visibility>(editRecord?.visibility ?? 'neighbors');
-  const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? []);
+  const [companionFriends, setCompanionFriends] = useState<string[]>(editRecord?.companionFriends ?? tripPrefill?.companionFriends ?? []);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
-  const [weather, setWeather] = useState(editRecord?.weather ?? '');
-  const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : '');
-  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? 'KRW');
-  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다 (편집 모드는 처음부터 수동 취급)
-  const currencyTouchedRef = useRef(isEdit);
+  const [weather, setWeather] = useState(editRecord?.weather ?? tripPrefill?.weather ?? '');
+  const [budget, setBudget] = useState(editRecord?.budget ? String(editRecord.budget.amount) : tripPrefill?.budget ? String(tripPrefill.budget.amount) : '');
+  const [currency, setCurrency] = useState(editRecord?.budget?.currency ?? tripPrefill?.budget?.currency ?? 'KRW');
+  // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
+  // (편집 모드·여행 카드 프리필로 통화가 이미 정해진 경우도 수동 취급)
+  const currencyTouchedRef = useRef(isEdit || !!tripPrefill?.budget);
   const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [flightType, setFlightType] = useState(editRecord?.flightType ?? '');
-  const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? []);
+  const [flightType, setFlightType] = useState(editRecord?.flightType ?? tripPrefill?.flightType ?? '');
+  const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? tripPrefill?.keywords ?? []);
   const [keywordInput, setKeywordInput] = useState('');
 
   // 날짜 캘린더 — "YYYY.MM.DD"를 직접 파싱한다.
@@ -492,8 +493,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   };
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
-  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPeriod?.startDate));
-  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPeriod?.endDate));
+  const [startDateObj, setStartDateObj] = useState<Date>(() => parseDotDate(editRecord?.startDate ?? tripPrefill?.startDate));
+  const [endDateObj, setEndDateObj] = useState<Date>(() => parseDotDate(editRecord?.endDate ?? tripPrefill?.endDate));
 
   // UI 모달
   const [privateFriends, setPrivateFriends] = useState<string[]>(editRecord?.mediaPrivacy?.[0] ?? []);

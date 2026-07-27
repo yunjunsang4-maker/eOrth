@@ -144,8 +144,8 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   const friendNames = neighbors.map((f) => f.username);
   const cutPhoto: CutPhotoParam | undefined = route?.params?.cutPhoto;
   const initialCountry = route?.params?.selectedCountry as { flag?: string; name?: string; region?: string; regionEn?: string } | undefined;
-  // 여행 카드에서 추가 시 받은 기간을 기본 날짜로 적용 ('YYYY.MM.DD' → Date)
-  const tripPeriod = route?.params?.tripPeriod;
+  // 여행 카드에서 추가 시 받은 여행 정보(기간·동행자·별점·상세)를 기본값으로 적용
+  const tripPrefill = route?.params?.tripPrefill;
   // "YYYY.MM.DD"를 로컬 자정으로 직접 파싱 — new Date('YYYY-MM-DD')는 UTC 자정 해석이라
   // 미주 등 UTC 음수 시간대에서 표시·저장 날짜가 하루 밀린다 (NewRecordScreen과 동일 파서).
   const parseTripDate = (s?: string): Date | null => {
@@ -193,29 +193,30 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
   // 기존 여행 기간 — 국가 구별 없이 전체를 캡슐 밴드로 표시 (피드 기록과 동일 규칙)
   const recordedRanges = useMemo(() => collectRecordedRanges(records), [records]);
 
-  // ─── 메타 상태 (피드와 동일) ───
-  const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.startDate));
-  const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPeriod?.endDate));
+  // ─── 메타 상태 (피드와 동일 — 여행 카드 프리필을 기본값으로) ───
+  const [startDate, setStartDate] = useState<Date | null>(() => parseTripDate(tripPrefill?.startDate));
+  const [endDate, setEndDate] = useState<Date | null>(() => parseTripDate(tripPrefill?.endDate));
   const [calendarVisible, setCalendarVisible] = useState(false);
   const [momentSheetVisible, setMomentSheetVisible] = useState(false); // ✨ 여행 기억 시트 (헤더 버튼)
   const [memo, setMemo] = useState('');
-  const [companions, setCompanions] = useState<string[]>([]);
-  const [companionFriends, setCompanionFriends] = useState<string[]>([]);
+  const [companions, setCompanions] = useState<string[]>(tripPrefill?.companions ?? []);
+  const [companionFriends, setCompanionFriends] = useState<string[]>(tripPrefill?.companionFriends ?? []);
   const [visibility, setVisibility] = useState<Visibility>('neighbors');
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [privateFriends, setPrivateFriends] = useState<string[]>([]);
   const [privacyVisible, setPrivacyVisible] = useState(false);
-  const [rating, setRating] = useState(0);
-  const [budget, setBudget] = useState('');
-  const [currency, setCurrency] = useState('KRW');
+  const [rating, setRating] = useState(tripPrefill?.rating ?? 0);
+  const [budget, setBudget] = useState(tripPrefill?.budget ? String(tripPrefill.budget.amount) : '');
+  const [currency, setCurrency] = useState(tripPrefill?.budget?.currency ?? 'KRW');
   // 사용자가 통화를 직접 고르면 국가 기반 자동 추천을 멈춘다
-  const currencyTouchedRef = useRef(false);
+  // (여행 카드 프리필로 통화가 이미 정해진 경우도 수동 취급)
+  const currencyTouchedRef = useRef(!!tripPrefill?.budget);
   const chooseCurrency = (code: string) => { currencyTouchedRef.current = true; setCurrency(code); };
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
-  const [weather, setWeather] = useState('');
-  const [flightType, setFlightType] = useState('');
-  const [keywords, setKeywords] = useState<string[]>([]);
+  const [weather, setWeather] = useState(tripPrefill?.weather ?? '');
+  const [flightType, setFlightType] = useState(tripPrefill?.flightType ?? '');
+  const [keywords, setKeywords] = useState<string[]>(tripPrefill?.keywords ?? []);
   const [keywordQuery, setKeywordQuery] = useState('');
   const [saving, setSaving] = useState(false);
   const savingRef = useRef(false);

@@ -64,10 +64,19 @@ export interface TripThumbnailParam {
   records: { id: string; viewType: string }[];
 }
 
-/** 여행 카드에서 새 기록 추가 시 자동 적용할 여행 기간 (YYYY.MM.DD) */
-export interface TripPeriodParam {
+/** 여행 카드에서 새 기록 추가 시 자동 적용할 여행 정보.
+ *  기간(YYYY.MM.DD)에 더해 필수(동행자·별점)·상세(경비·날씨·항공편·키워드) 정보까지
+ *  기존 기록에서 모아 넘긴다 — 같은 여행의 다른 형식 기록을 다시 입력 없이 잇는 용도. */
+export interface TripPrefillParam {
   startDate?: string;
   endDate?: string;
+  rating?: number;
+  companions?: string[];
+  companionFriends?: string[];
+  budget?: { amount: number; currency: string };
+  weather?: string;
+  flightType?: string;
+  keywords?: string[];
 }
 
 export type StatsDetailType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
@@ -102,7 +111,7 @@ export type RootStackParamList = {
     editRecord?: TravelRecord;
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
-    tripPeriod?: TripPeriodParam;
+    tripPrefill?: TripPrefillParam;
   } | undefined;
   Settings: undefined;
   Premium: undefined; // 프리미엄 소개(페이월) — 잠금 항목에서 진입
@@ -136,10 +145,10 @@ export type RootStackParamList = {
   BlogRecord: {
     record?: TravelRecord;
     selectedCountry?: SelectedCountryParam;
-    tripPeriod?: TripPeriodParam;
+    tripPrefill?: TripPrefillParam;
   } | undefined;
-  CutRecord: { selectedCountry?: SelectedCountryParam; tripPeriod?: TripPeriodParam } | undefined;
-  CutTravelInfo: { cutPhoto: CutPhotoParam; selectedCountry?: SelectedCountryParam; tripPeriod?: TripPeriodParam };
+  CutRecord: { selectedCountry?: SelectedCountryParam; tripPrefill?: TripPrefillParam } | undefined;
+  CutTravelInfo: { cutPhoto: CutPhotoParam; selectedCountry?: SelectedCountryParam; tripPrefill?: TripPrefillParam };
   NaverBlogImport: undefined;
   SnapRecord: {
     notifTimestamp?: number;
