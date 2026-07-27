@@ -10,6 +10,7 @@ import {
   StarIcon, LanguageIcon, GalleryIcon, StickerIcon, PaletteIcon, MegaphoneIcon,
 } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
+import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 
 // 프리미엄 소개(페이월) — 혜택 6종 요약 + 구독 CTA.
 // 베타: CTA가 isPremium 로컬 토글을 켠다. RevenueCat 연동 시 구매 플로우 호출로 교체.
@@ -99,8 +100,8 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
           ))}
         </View>
 
-        {/* 프리미엄 활성 + 압축본 사진첩 존재 → 원본 화질로 재백업 */}
-        {isPremium && compressedAlbums > 0 && (
+        {/* 압축본 사진첩을 원본으로 재백업 — 원본 백업이 혜택에서 빠진 동안은 숨긴다 */}
+        {!LAUNCH_FREE_PREMIUM && isPremium && compressedAlbums > 0 && (
           <TouchableOpacity
             style={[st.backupBtn, { borderColor: skinAccent.tint(0.35) }]}
             onPress={handleRebackup}
