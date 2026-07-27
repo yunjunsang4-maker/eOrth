@@ -64,9 +64,8 @@ interface ContactFriend {
   sharedCount?: number;       // 여행겹침 행일 때만
   sharedCountries?: string[]; // 겹친 나라 샘플(한글 country_name)
   mutualCount?: number;       // 함께 아는 메이트 수(여행 DNA)
-  styleScore?: number;        // 여행 스타일 점수(여행 DNA)
   matchScore?: number;        // 여행 DNA 종합 점수(mate_suggestions.total_score)
-  placeScore?: number;      // 축별 점수 — 추천 근거 문구 선택에 쓴다
+  // 축별 점수 — 추천 근거 문구 선택에 쓴다(placeScore는 pickReason 미사용 — sharedCities/sharedCount로 판단)
   recencyScore?: number;
   seasonScore?: number;
   interestScore?: number;
@@ -187,7 +186,6 @@ function FriendItem({
   // 근거가 없을 때: 검색 결과는 방문국·메이트 수를, 추천 행은 중립 문구를 쓴다
   // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
   const reason = pickReason({
-    placeScore: item.placeScore ?? 0,
     recencyScore: item.recencyScore ?? 0,
     seasonScore: item.seasonScore ?? 0,
     interestScore: item.interestScore ?? 0,
@@ -424,9 +422,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           sharedCount: r.sharedCount,
           sharedCountries: r.sampleCountries,
           mutualCount: r.mutualCount,
-          styleScore: r.styleScore,
           matchScore: r.totalScore,
-          placeScore: r.placeScore,
           recencyScore: r.recencyScore,
           seasonScore: r.seasonScore,
           interestScore: r.interestScore,

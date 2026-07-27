@@ -35,23 +35,41 @@ eq(matchPercent(72.6), 73, '72.6 → 73');
 eq(MATCH_BADGE_MIN, 15, '임계 상수 노출');
 
 // ── 근거 문구 선택 ──
+// placeScore(희소성 비율×25 반올림)는 도시·나라 분기의 가드로 쓰지 않는다 —
+// 흔한 나라 1곳만 겹쳐도 비율이 작아 반올림 시 0이 될 수 있어서다.
+// ReasonInput에는 애초에 placeScore 필드가 없다(sharedCities/sharedCount만으로 판단).
 const base = {
-  placeScore: 0, recencyScore: 0, seasonScore: 0, interestScore: 0, tasteScore: 0,
+  recencyScore: 0, seasonScore: 0, interestScore: 0, tasteScore: 0,
   mutualCount: 0, sharedCities: [] as string[], sharedKeywords: [] as string[], sharedCount: 0,
 };
 
 // 도시가 있으면 나라보다 강한 근거 — "둘 다 교토"가 "둘 다 일본"보다 구체적이다
 eq(
-  pickReason({ ...base, placeScore: 30, sharedCities: ['교토'], sharedCount: 1 })?.key,
+  pickReason({ ...base, sharedCities: ['교토'], sharedCount: 1 })?.key,
   'friends.reasonCity',
   '도시 겹침이 나라보다 우선',
 );
 
+// 새 동작 고정: placeScore 없이 sharedCities만으로도 도시 근거가 나온다
+// (0점으로 반올림된 흔한 나라 1곳 겹침도 국기 칩·문구가 일치해야 한다)
+eq(
+  pickReason({ ...base, sharedCities: ['방콕'] })?.key,
+  'friends.reasonCity',
+  'placeScore 없이 sharedCities만으로 도시 근거',
+);
+
 // 도시가 없으면 나라
 eq(
-  pickReason({ ...base, placeScore: 20, sharedCount: 1 })?.key,
+  pickReason({ ...base, sharedCount: 1 })?.key,
   'friends.overlapReason',
   '도시 없으면 나라 근거',
+);
+
+// 새 동작 고정: placeScore 없이 sharedCount만으로도 나라 근거가 나온다
+eq(
+  pickReason({ ...base, sharedCount: 3 })?.key,
+  'friends.overlapReason',
+  'placeScore 없이 sharedCount만으로 나라 근거',
 );
 
 // 장소가 없으면 시의성
@@ -76,11 +94,11 @@ eq(pickReason({ ...base, tasteScore: 7 })?.key, 'friends.styleReason', '성향 �
 // 아무 근거도 없으면 null (호출부가 중립 문구로 폴백)
 eq(pickReason({ ...base }), null, '근거 없으면 null');
 
-// 장소 점수가 있어도 도시·나라 데이터가 없으면 다음 축으로 넘어간다
+// 도시·나라 데이터가 전혀 없으면 다음 축(시의성)으로 넘어간다
 eq(
-  pickReason({ ...base, placeScore: 10, sharedCount: 0, recencyScore: 15 })?.key,
+  pickReason({ ...base, sharedCount: 0, recencyScore: 15 })?.key,
   'friends.reasonRecent',
-  '장소 근거 데이터 없으면 다음 축',
+  '장소 데이터 없으면 다음 축',
 );
 
 // 시의성 문구에는 날짜 관련 파라미터가 없어야 한다 (개인정보 원칙)

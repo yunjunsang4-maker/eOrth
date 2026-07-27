@@ -23,7 +23,6 @@ export function matchPercent(score?: number | null): number | null {
 // ⚠️ 개인정보: 시의성 문구에 날짜·기간을 넣지 않는다("3일 전"·"지난주" 금지).
 //    실시간 위치 추적으로 읽힐 수 있어 "최근"까지만 표현한다.
 export interface ReasonInput {
-  placeScore: number;
   recencyScore: number;
   seasonScore: number;
   interestScore: number;
@@ -41,10 +40,13 @@ export interface ReasonResult {
 
 /** 가장 기여도 높은 축의 문구 키. 근거가 없으면 null(호출부가 중립 문구로 폴백) */
 export function pickReason(input: ReasonInput): ReasonResult | null {
-  if (input.placeScore > 0 && input.sharedCities.length > 0) {
+  // placeScore(희소성 비율×25 반올림)로 가드하면 흔한 나라 1곳만 겹쳐도
+  // 반올림돼 0이 되어 실제로 겹친 나라가 있는데도 건너뛴다.
+  // sharedCities/sharedCount 자체가 겹침 유무를 말해주므로 그것만 본다.
+  if (input.sharedCities.length > 0) {
     return { key: 'friends.reasonCity', params: { city: input.sharedCities[0] } };
   }
-  if (input.placeScore > 0 && input.sharedCount > 0) {
+  if (input.sharedCount > 0) {
     return { key: 'friends.overlapReason', params: { count: input.sharedCount } };
   }
   if (input.recencyScore > 0) {

@@ -1263,7 +1263,7 @@ const ko = {
     overlapReason: '나와 겹치는 나라 {{count}}곳',
     mutualReason: '함께 아는 메이트 {{count}}명',
     styleReason: '여행 스타일이 비슷해요',
-    reasonCity: '{{city}}를 둘 다 다녀왔어요',
+    reasonCity: '둘 다 {{city}}에 다녀왔어요',
     reasonRecent: '최근 같은 곳을 다녀왔어요',
     reasonInterest: '#{{keyword}} 관심사가 같아요',
     reasonSeason: '비슷한 계절에 여행하는 편이에요',
