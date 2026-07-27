@@ -33,6 +33,7 @@ import {
   LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
+import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
 import { GLOBE_SKINS } from '../constants/globeSkins';
 import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -372,8 +373,11 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <Text style={st.groupLabel}>{t('settings.groupPremium')}</Text>
         <SettingGroup
           items={[
-            // 베타 체험 토글 — 결제(RevenueCat) 연동 시 구매 화면 진입으로 교체
-            { icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium },
+            // 베타 체험 토글 — 무료 개방 중에는 의미가 없어 숨긴다.
+            // (플래그를 내리면 다시 나타난다. 결제 연동 시 구매 화면 진입으로 교체)
+            ...(LAUNCH_FREE_PREMIUM
+              ? []
+              : [{ icon: <StarIcon size={22} />, label: t('settings.premiumToggle'), toggle: isPremium, onToggle: setIsPremium }]),
             {
               icon: <LanguageIcon size={22} />,
               label: t('settings.handleFont'),
