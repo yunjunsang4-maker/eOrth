@@ -1305,20 +1305,23 @@ export default function MainScreen({ navigation, route }: Props) {
                 <GlobeDisplayIcon tint={skinAccent.pill} />
               </BlurView>
             </TouchableOpacity>
-            {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림 */}
-            <TouchableOpacity
-              style={styles.globeColorBtn}
-              activeOpacity={0.7}
-              onPress={openDisplaySettings}
-              accessibilityRole="button"
-              accessibilityLabel={t('main.activeColorA11y')}
-            >
-              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
-                <View style={[styles.globeColorDot, { backgroundColor: globeColor }, isNoiseColor(globeColor) && { overflow: 'hidden' }]}>
-                  {isNoiseColor(globeColor) && <GrainOverlay color="#000000" opacity={0.5} dotCount={40} />}
-                </View>
-              </BlurView>
-            </TouchableOpacity>
+            {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림.
+                유리(사진) 지구본에선 숨긴다 — 활성화가 사진이라 색 팔레트가 의미 없다 */}
+            {globeVariant === 'aurora' && (
+              <TouchableOpacity
+                style={styles.globeColorBtn}
+                activeOpacity={0.7}
+                onPress={openDisplaySettings}
+                accessibilityRole="button"
+                accessibilityLabel={t('main.activeColorA11y')}
+              >
+                <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+                  <View style={[styles.globeColorDot, { backgroundColor: globeColor }, isNoiseColor(globeColor) && { overflow: 'hidden' }]}>
+                    {isNoiseColor(globeColor) && <GrainOverlay color="#000000" opacity={0.5} dotCount={40} />}
+                  </View>
+                </BlurView>
+              </TouchableOpacity>
+            )}
           </>
         ) : regionCountry ? (
           <>
