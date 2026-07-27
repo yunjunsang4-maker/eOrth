@@ -1493,19 +1493,29 @@ function projectLL(lon, lat) {
   return { x: (ndc.x * 0.5 + 0.5) * window.innerWidth, y: (-ndc.y * 0.5 + 0.5) * window.innerHeight, facing: facing };
 }
 var _lblLast = { rx: NaN, ry: NaN, zf: NaN };
-var _lblFrame = 0, _lblEmpty = true;
+var _lblEmpty = true;
+// 라벨 좌표 스냅 격자 — 캔버스 백킹 스토어(dpr 상한 2)의 디바이스 픽셀 단위.
+// CSS 1px 격자에 스냅하면 고해상도 화면에서 지구본(디바이스 픽셀 단위로 이동)보다
+// 라벨이 성기게 점프해 상대 흔들림이 보인다. 디바이스 픽셀 정렬이라 선명함은 유지된다.
+var LBL_SNAP = 1 / Math.min(window.devicePixelRatio || 1, 2);
+function snapPx(v) { return Math.round(v / LBL_SNAP) * LBL_SNAP; }
 function updateLabels() {
   if (!labelCtx) return;
-  _lblFrame++;
-  if (_lblFrame % 2) return; // 격프레임(30fps) 갱신 — 자동회전 중 매 프레임 텍스트 렌더로 인한 발열 감소
   var zf = zoomFactor();
   if (zf < 1.25 || !countryLabels.length) {
     // 라벨 없음 구간 — 이미 비어 있으면 clearRect 반복도 생략
     if (!_lblEmpty) { labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight); _lblEmpty = true; _lblLast.zf = NaN; }
     return;
   }
-  // 회전·줌이 안 변했으면 다시 그리지 않는다(발열 방지)
-  if (Math.abs(_lblLast.rx - rotX) < 1e-4 && Math.abs(_lblLast.ry - rotY) < 1e-4 && Math.abs(_lblLast.zf - zf) < 1e-3) return;
+  // 라벨이 보이는 동안은 매 프레임 갱신한다. 예전의 격프레임(30fps) 스킵은 자동회전 발열
+  // 대책이었지만, 자동회전이 항상 켜져 있어 지구본(60fps)과 라벨이 반 박자 어긋나며
+  // 30Hz 진동으로 보였다. 기본 줌에서는 라벨이 아예 안 그려져(zf<1.25) 발열 영향이 없고,
+  // 화면 밖에서는 __globePaused가 렌더 자체를 멈춘다.
+  // 회전·줌이 안 변했으면 다시 그리지 않는다(발열 방지).
+  // 회전 임계는 줌에 반비례 — 깊은 줌에서 1e-4 고정이면 프레임당 회전량이 임계보다 작아
+  // 몇 프레임 치를 모았다가 한 번에 점프한다(잔떨림의 원인).
+  var rotEps = 1e-4 / Math.max(1, zf * 0.5);
+  if (Math.abs(_lblLast.rx - rotX) < rotEps && Math.abs(_lblLast.ry - rotY) < rotEps && Math.abs(_lblLast.zf - zf) < 1e-3) return;
   _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf;
   labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   _lblEmpty = false;
@@ -1515,33 +1525,37 @@ function updateLabels() {
     if (grid[k]) return false;
     grid[k] = 1; return true;
   }
-  // 나라 라벨 — 큰 나라부터, 줌 깊어질수록 개수 확대
+  // 나라 라벨 — 큰 나라부터, 줌 깊어질수록 개수 확대.
+  // 폰트 크기는 0.5px 단위, 좌표는 정수 픽셀로 스냅 — 줌 중 매 프레임 서브픽셀 위치가
+  // 미세하게 바뀌며 글자 안티앨리어싱이 일렁이는(끓는) 현상을 막는다.
   var n = Math.min(countryLabels.length, Math.max(0, Math.floor((zf - 1.15) * 22)));
-  var fs = Math.min(15, 10 + zf * 0.45);
+  var fs = Math.min(15, Math.round((10 + zf * 0.45) * 2) / 2);
   labelCtx.textAlign = 'center'; labelCtx.textBaseline = 'middle';
   labelCtx.lineJoin = 'round';
   for (var i = 0; i < n; i++) {
     var L = countryLabels[i];
     var p = projectLL(L.lon, L.lat);
     if (!p || p.facing < 0.3) continue;
-    if (!occupy(p.x, p.y)) continue;
+    var px = snapPx(p.x), py = snapPx(p.y);
+    if (!occupy(px, py)) continue;
     var a = Math.min(1, (p.facing - 0.3) / 0.25);
     labelCtx.font = '600 ' + fs + 'px sans-serif';
     labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.8 * a) + ')';
     labelCtx.lineWidth = 3;
-    labelCtx.strokeText(L.ko, p.x, p.y);
+    labelCtx.strokeText(L.ko, px, py);
     labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
-    labelCtx.fillText(L.ko, p.x, p.y);
+    labelCtx.fillText(L.ko, px, py);
   }
   // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장
   if (zf >= 3.2 && typeof CITY_LABELS !== 'undefined') {
-    var cfs = Math.min(13, 9 + zf * 0.35);
+    var cfs = Math.min(13, Math.round((9 + zf * 0.35) * 2) / 2);
     for (var j = 0; j < CITY_LABELS.length; j++) {
       var C = CITY_LABELS[j];
       if (C.t === 2 && zf < 5) continue;
       var q = projectLL(C.lon, C.lat);
       if (!q || q.facing < 0.42) continue;
-      if (!occupy(q.x, q.y)) continue;
+      var qx = snapPx(q.x), qy = snapPx(q.y);
+      if (!occupy(qx, qy)) continue;
       var ca = Math.min(1, (q.facing - 0.42) / 0.22);
       labelCtx.fillStyle = 'rgba(255,0,183,' + (0.95 * ca) + ')'; // 핀 #FF00B7 (classic은 스킨 미적용 — aurora 기본색)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
@@ -1549,9 +1563,9 @@ function updateLabels() {
       labelCtx.font = '500 ' + cfs + 'px sans-serif';
       labelCtx.strokeStyle = 'rgba(45,16,84,' + (0.75 * ca) + ')';
       labelCtx.lineWidth = 2.5;
-      labelCtx.strokeText(C.n, q.x, q.y + cfs * 1.15);
+      labelCtx.strokeText(C.n, qx, qy + Math.round(cfs * 1.15));
       labelCtx.fillStyle = 'rgba(240,240,248,' + (0.95 * ca) + ')';
-      labelCtx.fillText(C.n, q.x, q.y + cfs * 1.15);
+      labelCtx.fillText(C.n, qx, qy + Math.round(cfs * 1.15));
     }
   }
 }
@@ -1577,9 +1591,13 @@ function animate() {
   }
 
   currentZ += (targetZ - currentZ) * 0.1;
+  // 지수 감쇠는 목표에 영원히 도달하지 않아, 꼬리 구간의 미세 변화가 라벨을 계속
+  // 재도색시키며 잔떨림으로 보인다 — 충분히 가까우면 목표값에 스냅해 완전히 멈춘다
+  if (Math.abs(targetZ - currentZ) < 0.0008) currentZ = targetZ;
   camera.position.z = currentZ;
   // 2단계 딥줌 배율 반영 (dolly와 독립)
   currentZoomX += (targetZoomX - currentZoomX) * 0.1;
+  if (Math.abs(targetZoomX - currentZoomX) < 0.002) currentZoomX = targetZoomX;
   var _dz = BASE_ZOOM * currentZoomX;
   if (Math.abs(camera.zoom - _dz) > 1e-4) { camera.zoom = _dz; camera.updateProjectionMatrix(); }
 
@@ -2859,17 +2877,21 @@ function projectLL(lon, lat){
   return { x:(ndc.x*0.5+0.5)*window.innerWidth, y:(-ndc.y*0.5+0.5)*window.innerHeight, facing:facing };
 }
 var _lblLast={ rx:NaN, ry:NaN, zf:NaN };
-var _lblFrame=0, _lblEmpty=true;
+var _lblEmpty=true;
+// 라벨 좌표 스냅 격자 — 캔버스 백킹 스토어(dpr 상한 2)의 디바이스 픽셀 단위(classic과 동일 이유)
+var LBL_SNAP=1/Math.min(window.devicePixelRatio||1,2);
+function snapPx(v){ return Math.round(v/LBL_SNAP)*LBL_SNAP; }
 function updateLabels(){
   if(!labelCtx) return;
-  _lblFrame++;
-  if(_lblFrame%2) return; // 격프레임(30fps) 갱신 — 자동회전 중 매 프레임 텍스트 렌더로 인한 발열 감소
   var zf=currentZoom;
   if(zf<1.25 || !countryLabels.length){
     if(!_lblEmpty){ labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight); _lblEmpty=true; _lblLast.zf=NaN; }
     return;
   }
-  if(Math.abs(_lblLast.rx-rotX)<1e-4 && Math.abs(_lblLast.ry-rotY)<1e-4 && Math.abs(_lblLast.zf-zf)<1e-3) return;
+  // 라벨이 보이는 동안은 매 프레임 갱신(classic과 동일 이유 — 격프레임 스킵은 항상 도는
+  // 자동회전과 반 박자 어긋나 30Hz 진동으로 보였다). 회전 임계는 줌에 반비례.
+  var rotEps=1e-4/Math.max(1, zf*0.5);
+  if(Math.abs(_lblLast.rx-rotX)<rotEps && Math.abs(_lblLast.ry-rotY)<rotEps && Math.abs(_lblLast.zf-zf)<1e-3) return;
   _lblLast.rx=rotX; _lblLast.ry=rotY; _lblLast.zf=zf;
   labelCtx.clearRect(0,0,window.innerWidth,window.innerHeight);
   _lblEmpty=false;
@@ -2879,30 +2901,34 @@ function updateLabels(){
     if(grid[k]) return false;
     grid[k]=1; return true;
   }
+  // 폰트 크기는 0.5px 단위, 좌표는 정수 픽셀로 스냅 — 줌 중 매 프레임 서브픽셀 위치가
+  // 미세하게 바뀌며 글자 안티앨리어싱이 일렁이는(끓는) 현상을 막는다.
   var n=Math.min(countryLabels.length, Math.max(0, Math.floor((zf-1.15)*22)));
-  var fs=Math.min(15, 10+zf*0.45);
+  var fs=Math.min(15, Math.round((10+zf*0.45)*2)/2);
   labelCtx.textAlign='center'; labelCtx.textBaseline='middle'; labelCtx.lineJoin='round';
   for(var i=0;i<n;i++){
     var L=countryLabels[i];
     var p=projectLL(L.lon, L.lat);
     if(!p || p.facing<0.3) continue;
-    if(!occupy(p.x,p.y)) continue;
+    var px=snapPx(p.x), py=snapPx(p.y);
+    if(!occupy(px,py)) continue;
     var a=Math.min(1,(p.facing-0.3)/0.25);
     labelCtx.font='600 '+fs+'px sans-serif';
     labelCtx.strokeStyle=LABEL_HALO+(0.8*a)+')';
     labelCtx.lineWidth=3;
-    labelCtx.strokeText(L.ko, p.x, p.y);
+    labelCtx.strokeText(L.ko, px, py);
     labelCtx.fillStyle='rgba(255,255,255,'+(0.92*a)+')';
-    labelCtx.fillText(L.ko, p.x, p.y);
+    labelCtx.fillText(L.ko, px, py);
   }
   if(zf>=3.2 && typeof CITY_LABELS!=='undefined'){
-    var cfs=Math.min(13, 9+zf*0.35);
+    var cfs=Math.min(13, Math.round((9+zf*0.35)*2)/2);
     for(var j=0;j<CITY_LABELS.length;j++){
       var C=CITY_LABELS[j];
       if(C.t===2 && zf<5) continue;
       var q=projectLL(C.lon, C.lat);
       if(!q || q.facing<0.42) continue;
-      if(!occupy(q.x,q.y)) continue;
+      var qx=snapPx(q.x), qy=snapPx(q.y);
+      if(!occupy(qx,qy)) continue;
       var ca=Math.min(1,(q.facing-0.42)/0.22);
       labelCtx.fillStyle=PIN_RGBA+(0.95*ca)+')'; // 스킨별 핀 색(aurora/cyan/mint)
       // 핀은 정확히 투영 지점에 — 작은 섬(화면 몇 px)에서도 섬 위에 찍힌다. 텍스트는 그 아래
@@ -2910,9 +2936,9 @@ function updateLabels(){
       labelCtx.font='500 '+cfs+'px sans-serif';
       labelCtx.strokeStyle=LABEL_HALO+(0.75*ca)+')';
       labelCtx.lineWidth=2.5;
-      labelCtx.strokeText(C.n, q.x, q.y+cfs*1.15);
+      labelCtx.strokeText(C.n, qx, qy+Math.round(cfs*1.15));
       labelCtx.fillStyle='rgba(240,240,248,'+(0.95*ca)+')';
-      labelCtx.fillText(C.n, q.x, q.y+cfs*1.15);
+      labelCtx.fillText(C.n, qx, qy+Math.round(cfs*1.15));
     }
   }
 }
@@ -2924,6 +2950,8 @@ function animate(){
   if(!isDragging){ velocity.x*=0.95; velocity.y*=0.95; rotX+=velocity.x; rotY+=velocity.y; rotY-=dt*(Math.PI*2/45)/Math.max(1,currentZoom*0.55); } // 우→좌 자동회전 ~45s (확대 시 감속)
   var _cx=rotXClamp(); rotX=Math.max(-_cx,Math.min(_cx,rotX));
   currentZoom+=(targetZoom-currentZoom)*0.1;
+  // 지수 감쇠 꼬리 컷 — 목표에 충분히 가까우면 스냅해 라벨 잔떨림을 끝낸다(classic과 동일 이유)
+  if(Math.abs(targetZoom-currentZoom)<Math.max(0.001, targetZoom*0.001)) currentZoom=targetZoom;
   if(Math.abs(camera.zoom-currentZoom)>1e-4){ camera.zoom=currentZoom; camera.updateProjectionMatrix(); }
   globe.rotation.y=rotY; globe.rotation.x=rotX;
   renderer.render(scene, camera);
