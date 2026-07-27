@@ -22,6 +22,9 @@ export const STORE_KEYS = {
   dm: '@eorth/dm',
   feedCache: '@eorth/feedCache', // 소셜 피드 캐시(타인 글) — 오프라인 재시작 시 마지막 피드 표시용
   moments: '@eorth/moments', // 여행 기억(순간 메모)
+  // 읽은 '추억 리마인드' 알림 id — 이 알림은 내 기록에서 매번 계산되는 로컬 알림이라
+  // 서버 read 컬럼이 없다. 저장하지 않으면 탭해도 다음 진입에 다시 새 알림이 된다.
+  memoryNotiRead: '@eorth/memoryNotiRead',
 } as const;
 
 interface Envelope<T> {
@@ -106,7 +109,7 @@ export function usePersistence<T>(
 
 /** 영속 데이터 전체 삭제 (설정 → 데이터 초기화 등에서 사용) */
 export async function clearPersistedStores(): Promise<void> {
-  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments]);
+  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead]);
 }
 
 /**

@@ -192,42 +192,58 @@ export async function unblockUser(targetId: string): Promise<void> {
   if (error) throw error;
 }
 
-// ─── 알림 (메이트) ───
-// notifications 테이블은 메이트 신청/수락 시 채워진다.
-export type NeighborNotificationType = 'neighbor_request' | 'neighbor_accept';
-export interface NeighborNotification {
+// ─── 알림 ───
+// notifications 테이블은 서버 트리거로 채워진다 (schema.sql 10-c/d/e):
+//   neighbor_request·neighbor_accept — 메이트 신청/수락
+//   like·comment·reply              — 내 게시물/댓글에 대한 반응 (post_id 있음)
+//   friend_post                     — 이웃의 새 기록 (post_id 있음)
+// ⚠️ 조회에서 타입을 필터하지 말 것 — 예전엔 neighbor_*만 조회해서, 서버·푸시로는
+//    좋아요/댓글 알림이 오는데 앱 목록은 비어 있었다(타입 추가 시 여기도 자동 포함되게 유지).
+export type AppNotificationType =
+  | 'neighbor_request' | 'neighbor_accept'
+  | 'like' | 'comment' | 'reply' | 'friend_post';
+export interface AppNotification {
   id: string;
-  type: NeighborNotificationType;
+  type: AppNotificationType;
   actorId: string;
   actorHandle: string | null;
   actorEmoji: string | null;
   actorPhoto: string | null; // 프로필 사진 — 알림 아바타는 사진 우선(없으면 제작 실루엣)
+  postId: string | null;     // like·comment·reply·friend_post의 대상 게시물 (딥링크용)
   read: boolean;
   createdAt: number; // ms
 }
 
-export async function fetchNeighborNotifications(): Promise<NeighborNotification[]> {
+// 알림 보존 기간 — 화면 표시와 미읽음 카운트가 같은 기준을 쓰도록 여기 둔다.
+// (서버 행은 남아 있어도 이보다 오래된 것은 조회·집계 대상에서 뺀다)
+export const NOTIFICATION_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+function notifSinceISO(): string {
+  return new Date(Date.now() - NOTIFICATION_MAX_AGE_MS).toISOString();
+}
+
+export async function fetchAppNotifications(): Promise<AppNotification[]> {
   if (!supabase) return [];
   const uid = await getMyUserId();
   if (!uid) return [];
   try {
     const { data, error } = await supabase
       .from('notifications')
-      .select('id, type, actor_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji, profile_photo)')
+      .select('id, type, actor_id, post_id, read, created_at, profiles:public_profiles!notifications_actor_id_fkey(handle, emoji, profile_photo)')
       .eq('user_id', uid)
-      .in('type', ['neighbor_request', 'neighbor_accept'])
+      .gte('created_at', notifSinceISO()) // 오래된 행이 limit을 잡아먹어 신규를 밀어내지 않게
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(100);
     if (error || !data) return [];
     return (data as any[]).map((r) => {
       const p = r.profiles ?? {};
       return {
         id: r.id as string,
-        type: r.type as NeighborNotificationType,
+        type: r.type as AppNotificationType,
         actorId: r.actor_id as string,
         actorHandle: p.handle ?? null,
         actorEmoji: p.emoji ?? null,
         actorPhoto: p.profile_photo ?? null,
+        postId: r.post_id ?? null,
         read: !!r.read,
         createdAt: new Date(r.created_at).getTime(),
       };
@@ -238,6 +254,8 @@ export async function fetchNeighborNotifications(): Promise<NeighborNotification
 }
 
 // 미읽음 알림 개수 — 헤더 벨 배지용. 행을 받지 않고 count만 세어 가볍다(head: true).
+// ⚠️ 목록(fetchAppNotifications)과 반드시 같은 기준을 써야 한다 —
+//    범위가 다르면 "배지엔 3인데 목록은 비어 있음"이 된다(보존 기간 필터 포함).
 // 실패·미로그인은 0 (배지 미표시).
 export async function fetchUnreadNotificationCount(): Promise<number> {
   if (!supabase) return 0;
@@ -248,11 +266,24 @@ export async function fetchUnreadNotificationCount(): Promise<number> {
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', uid)
-      .eq('read', false);
+      .eq('read', false)
+      .gte('created_at', notifSinceISO());
     if (error) return 0;
     return count ?? 0;
   } catch {
     return 0;
+  }
+}
+
+// 알림 전체 읽음 처리 — 목록을 연 시점 기준. 실패해도 조용히 넘어간다(다음 진입 시 재시도).
+export async function markAllNotificationsRead(): Promise<void> {
+  if (!supabase) return;
+  const uid = await getMyUserId();
+  if (!uid) return;
+  try {
+    await supabase.from('notifications').update({ read: true }).eq('user_id', uid).eq('read', false);
+  } catch {
+    /* 무시 */
   }
 }
 

@@ -2,17 +2,18 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert,
+  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
-import { fetchNeighborNotifications, markNotificationsRead } from '../services/social';
+import { fetchAppNotifications, markNotificationsRead, type AppNotificationType } from '../services/social';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useSkinAccent } from '../constants/skinTheme';
 import { countryLabel } from '../utils/countryLabel';
+import { saveEnvelope, loadEnvelope, STORE_KEYS } from '../store/persist';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon } from '../components/icons';
 
@@ -64,8 +65,8 @@ interface Noti {
   goRequests?: boolean; // 메이트신청 알림 → 수락/거절 가능한 메이트 목록 화면으로 이동
 }
 
-// 게시물로 이동하는 카테고리
-const POST_CATEGORIES: CatKey[] = ['comment', 'like', 'memory'];
+// 게시물로 이동하는 카테고리 (record=이웃의 새 기록도 게시물로 간다)
+const POST_CATEGORIES: CatKey[] = ['comment', 'like', 'memory', 'record'];
 
 // 시간 상수 / 알림 보존 기간 (도착 후 1주일 지나면 사라짐)
 const MIN = 60_000;
@@ -90,60 +91,95 @@ function fmtAgo(ts: number, tr: TFunction): string {
 export default function NotificationScreen({ navigation }: Props) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 알림 강조(볼륨·인덱스·미읽음 닷·테두리)를 스킨색으로
-  const { records, isMuted, isBlocked } = useRecords();
+  const { records, feedPosts, isMuted, isBlocked } = useRecords();
   const { markBadgesEarned } = useSettings();
   const [expanded, setExpanded] = useState<CatKey | null>(null);
 
-  // 메이트 알림 — 서버 notifications 테이블(메이트신청/수락 트리거로 쌓임)에서 로드
-  const [followNotis, setFollowNotis] = useState<Noti[]>([]);
+  // 읽은 추억 알림 id — 로컬 계산 알림이라 서버 read가 없어 기기에 저장한다
+  const [memoryRead, setMemoryRead] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    loadEnvelope<string[]>(STORE_KEYS.memoryNotiRead).then((ids) => {
+      if (ids?.length) setMemoryRead(new Set(ids));
+    });
+  }, []);
+  const markMemoryRead = useCallback((id: string) => {
+    setMemoryRead((prev) => {
+      if (prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.add(id);
+      // 기록이 지워지면 그 id는 다시 안 나오므로 무한정 쌓이지 않는다(상한만 안전장치로)
+      saveEnvelope(STORE_KEYS.memoryNotiRead, Array.from(next).slice(-500));
+      return next;
+    });
+  }, []);
+
+  // 서버 알림 — 메이트 신청/수락 + 좋아요·댓글·답글·이웃 새 기록(schema.sql 10-c/d/e 트리거)
+  const [serverNotis, setServerNotis] = useState<Noti[]>([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const aliveRef = useRef(true);
   useEffect(() => () => { aliveRef.current = false; }, []);
-  const loadFollowNotis = useCallback(async () => {
-    if (!isSupabaseConfigured) return;
-    const rows = await fetchNeighborNotifications();
+  const loadServerNotis = useCallback(async () => {
+    if (!isSupabaseConfigured) { setLoading(false); return; }
+    const rows = await fetchAppNotifications();
     if (!aliveRef.current) return;
-    // 메이트신청/수락별 문구 키 — 모두 '메이트' 카테고리로 묶어 표시
-    const textKey: Record<string, string> = {
-      neighbor_request: 'misc.neighborRequestText',
-      neighbor_accept: 'misc.neighborAcceptText',
+    // 타입 → 카테고리·문구 키. 서버 트리거 타입이 늘면 여기만 추가하면 된다.
+    const TYPE_MAP: Record<AppNotificationType, { cat: CatKey; key: string }> = {
+      neighbor_request: { cat: 'follow',  key: 'misc.neighborRequestText' },
+      neighbor_accept:  { cat: 'follow',  key: 'misc.neighborAcceptText' },
+      like:             { cat: 'like',    key: 'misc.likeText' },
+      comment:          { cat: 'comment', key: 'misc.commentText' },
+      reply:            { cat: 'comment', key: 'misc.replyText' },
+      friend_post:      { cat: 'record',  key: 'misc.friendPostText' },
     };
-    setFollowNotis(
+    setServerNotis(
       rows
         // 뮤트/차단한 사용자의 알림은 표시하지 않는다 (뮤트 = 알림 끔의 실제 적용 지점)
         .filter((n) => !n.actorHandle || (!isMuted(n.actorHandle) && !isBlocked({ handle: n.actorHandle })))
-        .map((n) => ({
-        id: `fol-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
-        category: 'follow' as CatKey,
-        photo: n.actorPhoto || undefined, // 사진 없으면 제작 실루엣(AuthorAvatar 규칙)
-        text: t(textKey[n.type] ?? 'misc.neighborRequestText', { name: n.actorHandle || t('friends.travelerDefault') }),
-        read: n.read,
-        createdAt: n.createdAt,
-        userId: n.actorId,
-        userName: n.actorHandle || '',
-        goRequests: n.type === 'neighbor_request',
-      }))
+        .map((n) => {
+          const m = TYPE_MAP[n.type] ?? TYPE_MAP.neighbor_request;
+          return {
+            id: `srv-${n.id}`, // 접두사로 로컬 알림과 id 충돌 방지 (읽음 처리 시 제거)
+            category: m.cat,
+            photo: n.actorPhoto || undefined, // 사진 없으면 제작 실루엣(AuthorAvatar 규칙)
+            text: t(m.key, { name: n.actorHandle || t('friends.travelerDefault') }),
+            read: n.read,
+            createdAt: n.createdAt,
+            postId: n.postId || undefined,
+            userId: n.actorId,
+            userName: n.actorHandle || '',
+            goRequests: n.type === 'neighbor_request',
+          };
+        })
     );
+    setLoading(false);
   }, [t, isMuted, isBlocked]);
-  useEffect(() => { loadFollowNotis(); }, [loadFollowNotis]);
+  useEffect(() => { loadServerNotis(); }, [loadServerNotis]);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    try { await loadFollowNotis(); } finally { if (aliveRef.current) setRefreshing(false); }
-  }, [loadFollowNotis]);
+    try { await loadServerNotis(); } finally { if (aliveRef.current) setRefreshing(false); }
+  }, [loadServerNotis]);
 
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 메이트·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
   const openNoti = (n: Noti) => {
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
-    // 메이트 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
-    if (n.category === 'follow' && !n.read && n.id.startsWith('fol-')) {
+    // 서버 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
+    if (!n.read && n.id.startsWith('srv-')) {
       markNotificationsRead([n.id.slice(4)]);
-      setFollowNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      setServerNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
     }
+    // 추억 알림은 로컬 계산이라 서버 읽음 상태가 없다 — 기기에 읽음 id를 저장한다
+    if (n.category === 'memory' && !n.read) markMemoryRead(n.id);
     if (POST_CATEGORIES.includes(n.category)) {
-      if (n.postId && records.some((r) => r.id === n.postId)) {
-        navigation.navigate('PostDetail', { postId: n.postId });
+      // 서버 알림의 post_id는 '서버' posts.id다. 내 기록은 로컬 id로 저장되고 서버 id는
+      // remoteId에 들어 있어, 그대로 넘기면 PostDetail이 못 찾아 '게시물 없음'이 떴다.
+      // 로컬 기록이면 로컬 id로 바꿔 넘기고, 이웃 글이면 피드 캐시(feedPosts)에서 찾는다.
+      const mine = n.postId ? records.find((r) => r.remoteId === n.postId || r.id === n.postId) : null;
+      const resolved = mine ? mine.id : (n.postId && feedPosts.some((r) => r.id === n.postId) ? n.postId : null);
+      if (resolved) {
+        navigation.navigate('PostDetail', { postId: resolved });
       } else {
         Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
@@ -185,19 +221,19 @@ export default function NotificationScreen({ navigation }: Props) {
           category: 'memory',
           // 추억 알림은 행위자가 없다 — 아바타 자리를 카테고리 아이콘(카메라)이 채운다
           text: t('misc.memoryText', { years: yearsAgo, place }),
-          read: false,
+          read: memoryRead.has(`mem-${r.id}`),
           createdAt: todayStart,
           postId: r.id,
         });
       });
     return out;
     // t·언어도 의존 — 빠지면 언어를 바꿔도 추억 알림 문구가 이전 언어로 남는다
-  }, [records, t, i18n.language]);
+  }, [records, t, i18n.language, memoryRead]);
 
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
-    const fresh = [...memoryNotis, ...followNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
+    const fresh = [...memoryNotis, ...serverNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
     fresh.forEach((n) => {
       if (!map.has(n.category)) map.set(n.category, []);
@@ -209,7 +245,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, [memoryNotis, followNotis]);
+  }, [memoryNotis, serverNotis]);
 
   // 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
   // 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
@@ -289,7 +325,11 @@ export default function NotificationScreen({ navigation }: Props) {
         <View style={st.rule} />
         <Text style={st.contentsLabel}>{t('misc.contents')}</Text>
 
-        {cats.length === 0 && (
+        {/* 조회 중엔 '없음' 대신 로딩 — 빈 화면을 '알림 없음'으로 오인하지 않게 */}
+        {loading && cats.length === 0 && (
+          <ActivityIndicator style={{ paddingVertical: 40 }} color={skinAccent.accent} />
+        )}
+        {!loading && cats.length === 0 && (
           <Text style={st.empty}>{t('misc.noNews')}</Text>
         )}
 
