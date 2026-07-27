@@ -3,6 +3,7 @@ import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator,
+  Image, Animated,
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
@@ -16,6 +17,13 @@ import { countryLabel } from '../utils/countryLabel';
 import { saveEnvelope, loadEnvelope, STORE_KEYS } from '../store/persist';
 import AuthorAvatar from '../components/AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, CameraIcon, PinIcon } from '../components/icons';
+import { useEntranceAnimation } from '../components/LiquidEffects';
+import type { TravelRecord } from '../store/recordStore';
+
+// 알림이 가리키는 게시물의 대표 사진 — 어느 기록에 대한 알림인지 한눈에 읽히게.
+// 형식마다 사진이 담기는 자리가 달라 순서대로 훑는다(TripDetail의 pickPhoto와 동일 규칙).
+const pickThumb = (r?: TravelRecord): string | undefined =>
+  r?.representativePhoto || r?.medias?.[0] || r?.cutPhoto?.previewUri || r?.snapBackUri || r?.snapFrontUri;
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -59,10 +67,25 @@ interface Noti {
   text: string;
   read: boolean;
   createdAt: number;   // 알림 도착 시각(ms) — 정렬·시간표시·만료 기준
-  postId?: string;     // 댓글·좋아요·추억 리마인드 → 게시물 이동용
+  postId?: string;     // 댓글·좋아요·추억 리마인드 → 게시물 이동용 (썸네일도 이걸로 조회)
   userId?: string;     // 팔로우·기록 시작 → 프로필 이동용
   userName?: string;
   goRequests?: boolean; // 메이트신청 알림 → 수락/거절 가능한 메이트 목록 화면으로 이동
+  groupIds?: string[];  // 묶인 알림들의 id — 대표를 탭하면 전부 읽음 처리
+}
+
+// 시간 구간 — 매거진 목차 안에서 '언제'를 읽히게 하는 소제목
+type TimeBucket = 'today' | 'week' | 'earlier';
+const TIME_BUCKET_KEY: Record<TimeBucket, string> = {
+  today: 'misc.bucketToday',
+  week: 'misc.bucketWeek',
+  earlier: 'misc.bucketEarlier',
+};
+function bucketOf(ts: number): TimeBucket {
+  const d = Date.now() - ts;
+  if (d < 24 * 60 * 60 * 1000) return 'today';
+  if (d < 7 * 24 * 60 * 60 * 1000) return 'week';
+  return 'earlier';
 }
 
 // 게시물로 이동하는 카테고리 (record=이웃의 새 기록도 게시물로 간다)
@@ -165,10 +188,13 @@ export default function NotificationScreen({ navigation }: Props) {
   const openNoti = (n: Noti) => {
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
-    // 서버 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영)
+    // 서버 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영).
+    // 묶음이면 묶인 알림 전부 — 대표만 처리하면 배지가 안 내려간다.
     if (!n.read && n.id.startsWith('srv-')) {
-      markNotificationsRead([n.id.slice(4)]);
-      setServerNotis((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
+      const ids = n.groupIds ?? [n.id];
+      markNotificationsRead(ids.map((i) => i.slice(4)));
+      const idSet = new Set(ids);
+      setServerNotis((prev) => prev.map((x) => (idSet.has(x.id) ? { ...x, read: true } : x)));
     }
     // 추억 알림은 로컬 계산이라 서버 읽음 상태가 없다 — 기기에 읽음 id를 저장한다
     if (n.category === 'memory' && !n.read) markMemoryRead(n.id);
@@ -223,12 +249,22 @@ export default function NotificationScreen({ navigation }: Props) {
           text: t('misc.memoryText', { years: yearsAgo, place }),
           read: memoryRead.has(`mem-${r.id}`),
           createdAt: todayStart,
-          postId: r.id,
+          postId: r.id, // 렌더 시 이 id로 대표 사진(썸네일)까지 함께 찾는다
         });
       });
     return out;
     // t·언어도 의존 — 빠지면 언어를 바꿔도 추억 알림 문구가 이전 언어로 남는다
   }, [records, t, i18n.language, memoryRead]);
+
+  // 알림의 대상 게시물 조회 — 내 기록은 remoteId(서버 id)로, 이웃 글은 피드 캐시에서.
+  // 알림을 만들 때가 아니라 렌더 시점에 찾는다 — 기록·피드가 나중에 로드돼도 썸네일이 채워진다.
+  const postOf = useCallback(
+    (postId?: string) =>
+      postId
+        ? records.find((r) => r.remoteId === postId || r.id === postId) ?? feedPosts.find((r) => r.id === postId)
+        : undefined,
+    [records, feedPosts]
+  );
 
   // 모두 읽음 — 서버 일괄 처리 + 화면 즉시 반영(로컬 추억 알림도 함께).
   // 하나씩 탭해야 배지가 내려가던 불편을 없앤다.
@@ -242,12 +278,40 @@ export default function NotificationScreen({ navigation }: Props) {
     memoryNotis.forEach((n) => { if (!n.read) markMemoryRead(n.id); });
   }, [memoryNotis, markMemoryRead]);
 
+  // 같은 대상(게시물+카테고리)에 대한 알림 묶기 — "○○님 외 3명이 좋아해요".
+  // 인기 게시물 하나 때문에 목록이 같은 문구로 도배되는 걸 막는다.
+  // 대표는 가장 최근 알림, 하나라도 안 읽었으면 묶음도 안 읽음으로 둔다.
+  const groupNotis = useCallback((items: Noti[]): Noti[] => {
+    const out: Noti[] = [];
+    const byKey = new Map<string, Noti[]>();
+    items.forEach((n) => {
+      // 게시물이 없는 알림(메이트 신청 등)은 묶지 않는다 — 각각이 개별 행동이다
+      if (!n.postId || n.category === 'memory') { out.push(n); return; }
+      const k = `${n.category}|${n.postId}`;
+      const arr = byKey.get(k);
+      if (arr) arr.push(n); else byKey.set(k, [n]);
+    });
+    byKey.forEach((arr) => {
+      const sorted = [...arr].sort((a, b) => b.createdAt - a.createdAt);
+      const head = sorted[0];
+      if (sorted.length === 1) { out.push(head); return; }
+      out.push({
+        ...head,
+        text: t('misc.groupedText', { text: head.text, count: sorted.length - 1 }),
+        read: sorted.every((x) => x.read),
+        // 묶인 알림 전부를 읽음 처리해야 배지가 정확히 내려간다
+        groupIds: sorted.map((x) => x.id),
+      });
+    });
+    return out.sort((a, b) => b.createdAt - a.createdAt);
+  }, [t]);
+
   // 도착 후 1주일 지난 알림은 제외 → 알림 있는 카테고리만, 최신순으로 그룹
   const cats = useMemo(() => {
     const now = Date.now();
     const fresh = [...memoryNotis, ...serverNotis].filter((n) => now - n.createdAt <= NOTI_MAX_AGE);
     const map = new Map<CatKey, Noti[]>();
-    fresh.forEach((n) => {
+    groupNotis(fresh).forEach((n) => {
       if (!map.has(n.category)) map.set(n.category, []);
       map.get(n.category)!.push(n);
     });
@@ -257,7 +321,7 @@ export default function NotificationScreen({ navigation }: Props) {
         return { key, items: sorted, newest: sorted[0].createdAt };
       })
       .sort((a, b) => b.newest - a.newest);
-  }, [memoryNotis, serverNotis]);
+  }, [memoryNotis, serverNotis, groupNotis]);
 
   // 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
   // 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
@@ -287,29 +351,53 @@ export default function NotificationScreen({ navigation }: Props) {
     );
   };
 
-  // 신규·본 알림 공용 가로 막대 (읽은 알림은 톤을 낮춰 구분)
-  const renderBar = (n: Noti) => (
-    <TouchableOpacity
-      key={n.id}
-      style={[
-        st.bar,
-        { borderColor: skinAccent.tint(0.20) },
-        n.read && st.barRead,
-      ]}
-      activeOpacity={0.75}
-      onPress={() => openNoti(n)}
-      accessibilityRole="button"
-      accessibilityLabel={n.text}
-    >
-      <NotiAvatar n={n} />
-      <View style={st.barBody}>
-        <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
-        <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
-      </View>
-      {/* 미읽음 표시 — 오른쪽 끝 점(읽으면 사라진다) */}
-      {!n.read && <View style={[st.barDot, { backgroundColor: skinAccent.accent }]} />}
-    </TouchableOpacity>
-  );
+  // 신규·본 알림 공용 가로 막대 (읽은 알림은 톤을 낮춰 구분).
+  // idx는 등장 스태거용 — 진입 시 위에서부터 순차로 뜬다.
+  const NotiBar = ({ n, idx }: { n: Noti; idx: number }) => {
+    const entrance = useEntranceAnimation(Math.min(idx, 6) * 45); // 길어도 6번째까지만 지연
+    const thumb = pickThumb(postOf(n.postId));
+    return (
+      <Animated.View style={entrance}>
+        <TouchableOpacity
+          style={[
+            st.bar,
+            { borderColor: skinAccent.tint(0.20) },
+            n.read && st.barRead,
+          ]}
+          activeOpacity={0.75}
+          onPress={() => openNoti(n)}
+          accessibilityRole="button"
+          accessibilityLabel={n.text}
+        >
+          <NotiAvatar n={n} />
+          <View style={st.barBody}>
+            <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
+            <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
+          </View>
+          {/* 대상 게시물 미리보기 — 어느 기록에 대한 알림인지 즉시 읽힌다 */}
+          {thumb ? <Image source={{ uri: thumb }} style={st.thumb} /> : null}
+          {/* 미읽음 표시 — 오른쪽 끝 점(읽으면 사라진다) */}
+          {!n.read && <View style={[st.barDot, { backgroundColor: skinAccent.accent }]} />}
+        </TouchableOpacity>
+      </Animated.View>
+    );
+  };
+
+  // 시간 구간 소제목을 끼워 알림 목록을 렌더 — 매거진 목차 안의 '언제' 축
+  const renderItems = (items: Noti[], startIdx = 0) => {
+    let prev: TimeBucket | null = null;
+    return items.map((n, i) => {
+      const b = bucketOf(n.createdAt);
+      const head = b !== prev ? b : null;
+      prev = b;
+      return (
+        <View key={n.id}>
+          {head && <Text style={st.bucket}>{t(TIME_BUCKET_KEY[head])}</Text>}
+          <NotiBar n={n} idx={startIdx + i} />
+        </View>
+      );
+    });
+  };
 
   return (
     <SafeAreaView style={st.safeArea}>
@@ -387,11 +475,11 @@ export default function NotificationScreen({ navigation }: Props) {
                 </Text>
               </TouchableOpacity>
 
-              {/* 새 알림 (항상 표시) */}
-              {newItems.map(renderBar)}
+              {/* 새 알림 (항상 표시) — 시간 구간 소제목과 함께 */}
+              {renderItems(newItems)}
 
               {/* 본 알림 (펼치면 같은 막대 형식으로 표시) */}
-              {open && readItems.map(renderBar)}
+              {open && renderItems(readItems, newItems.length)}
             </View>
           );
         })}
@@ -470,6 +558,16 @@ const st = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
+  // 시간 구간 소제목 — 매거진 목차 톤(작은 대문자 자간)
+  bucket: {
+    color: COLORS.textMuted, fontSize: 9, letterSpacing: 1.6,
+    textTransform: 'uppercase', marginLeft: 22, marginTop: 4, marginBottom: 6,
+  },
+  // 대상 게시물 미리보기
+  thumb: {
+    width: 38, height: 38, borderRadius: 8,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   barBody: { flex: 1, gap: 3 },
   barText: { color: COLORS.white, fontSize: 12.5, lineHeight: 17 },
   barTextRead: { color: COLORS.textDim },
