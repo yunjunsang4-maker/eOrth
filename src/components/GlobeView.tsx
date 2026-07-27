@@ -140,11 +140,14 @@ var cfg = {
 // 시안: 연보라 아크릴/유리 구슬. 바다는 반투명(뒤 별밭이 비침), 미기록국은 연한 유리 양각,
 // 기록국은 유리 속에 박힌 사진 조각. 반사광은 씬 고정 구가 담당(회전 무관, 화면 고정).
 function isGlass() { return globeDisplayMode === 'photo'; }
-var GLASS_OCEAN_ALPHA = 0.10;                    // A안(버블). B안 비교값: 0.35 — 실기기 비교 후 확정
-var GLASS_OCEAN_RGB = '196,182,232';             // 바다(유리 몸체) 연보라 rgb
-var GLASS_LAND_FILL = 'rgba(219,206,245,0.22)';  // 미기록국 유리 양각 채움
-var GLASS_LAND_EDGE = 'rgba(255,255,255,0.55)';  // 미기록국 하이라이트 윤곽
-var GLASS_RIM = '#E8DDFF';                       // 림(유리 테두리) 대기광 색
+// 시안의 유리 몸체는 '투명'이 아니라 어두운 남보라로 차 있다 — 유리 느낌은
+// 림 링·창문 반사·하단 커스틱·프레넬(buildGlassSpecular)이 만든다.
+// 몸체를 완전 불투명으로 두지 않는 이유는 뒷면 대륙이 희미하게 비쳐야 해서(시안 1).
+var GLASS_OCEAN_ALPHA = 0.88;                    // 유리 몸체 불투명도
+var GLASS_OCEAN_RGB = '24,20,40';                // 어두운 남보라 유리 몸체
+var GLASS_LAND_FILL = 'rgba(205,195,235,0.28)';  // 미기록국 유리 양각 채움
+var GLASS_LAND_EDGE = 'rgba(255,255,255,0.5)';   // 미기록국 하이라이트 윤곽
+var GLASS_RIM = '#E8DDFF';                       // 림(대기광) 색
 var GLASS_BACK_OPACITY = 0.12;                   // 유리 너머 뒷면 대륙 불투명도
 
 // --- Three.js setup ---
@@ -383,10 +386,16 @@ async function buildTexture() {
   try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
 
   if (isGlass()) {
-    // 유리 구슬: 바다 = 반투명 연보라 유리 몸체 — 알파가 살아야 뒤 별밭이 비친다.
-    // 남색 발광 블롭·톤 오버레이는 유리 톤을 탁하게 해 굽지 않는다(반사·림은 별도 구가 담당).
+    // 유리 구슬 몸체: 어두운 남보라(시안 1·5). 위는 더 어둡고 아래로 갈수록 연보라가
+    // 스미는 세로 그라데이션 — 유리 아래쪽에 빛이 고이는 느낌(좌우 동일이라 이음새 없음).
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = 'rgba(' + GLASS_OCEAN_RGB + ',' + GLASS_OCEAN_ALPHA + ')';
+    ctx.fillRect(0, 0, W, H);
+    var glassTone = ctx.createLinearGradient(0, 0, 0, H);
+    glassTone.addColorStop(0, 'rgba(8,6,18,0.45)');
+    glassTone.addColorStop(0.45, 'rgba(0,0,0,0)');
+    glassTone.addColorStop(1, 'rgba(150,132,205,0.20)');
+    ctx.fillStyle = glassTone;
     ctx.fillRect(0, 0, W, H);
   } else {
   ctx.fillStyle = cfg.oceanBase;
@@ -734,20 +743,31 @@ function buildInnerGlow() {
   return new THREE.Mesh(geo, mat);
 }
 
-// 유리 반사(스펙큘러) — globe가 아니라 scene에 얹는 구.
-// 회전과 무관하게 반사광이 화면에 고정된다(유리 구슬의 올바른 광학)이고,
+// 유리 광학(림 링·창문 반사·커스틱·프레넬) — globe가 아니라 scene에 얹는 구.
+// 회전과 무관하게 화면에 고정된다(유리 구슬의 올바른 광학)이고,
 // 줌은 camera.zoom이라 구가 커지면 반사도 자동으로 따라 커진다.
-// 뷰 공간 노멀 기준: 우상단 큰 소프트 반사(시안 1의 창문 반사) + 좌하단 작은 보조 반사.
+// 뷰 공간 노멀 기준. f = 1-vN.z (0=정중앙, 1=가장자리)로 림 계열을 만든다.
+//  ① ring   : 최외곽의 또렷한 밝은 링 — 두꺼운 유리 렌즈 가장자리(시안 1·3·5의 핵심)
+//  ② body   : 가장자리로 갈수록 몸체가 은은히 밝아지는 프레넬
+//  ③ hi/hi2 : 우상단 대형 창문 반사(넓은 소프트 + 중심 광)
+//  ④ caustic: 하단 안쪽 밝은 초승달 — 유리 바닥에 모이는 빛(살짝 분홍기, 시안 1)
+//  ⑤ lo     : 좌하단 작은 보조 반사
 function buildGlassSpecular() {
   var mat = new THREE.ShaderMaterial({
     vertexShader: 'varying vec3 vN; void main(){ vN = normalize(normalMatrix * normal); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
     fragmentShader:
       'varying vec3 vN;' +
       'void main(){' +
-      '  float hi = pow(max(dot(vN, normalize(vec3(0.5, 0.62, 0.6))), 0.0), 14.0) * 0.5;' +
-      '  float lo = pow(max(dot(vN, normalize(vec3(-0.45, -0.55, 0.55))), 0.0), 26.0) * 0.2;' +
-      '  float a = hi + lo;' +
-      '  gl_FragColor = vec4(vec3(1.0, 0.985, 1.0), a);' +
+      '  float f = 1.0 - max(vN.z, 0.0);' +
+      '  float ring = smoothstep(0.80, 0.95, f) * 0.85;' +
+      '  float body = pow(f, 2.3) * 0.16;' +
+      '  float hi  = pow(max(dot(vN, normalize(vec3(0.45, 0.55, 0.70))), 0.0), 5.0) * 0.34;' +
+      '  float hi2 = pow(max(dot(vN, normalize(vec3(0.60, 0.64, 0.48))), 0.0), 16.0) * 0.38;' +
+      '  float caustic = pow(f, 3.0) * smoothstep(0.10, 0.75, -vN.y) * 0.5;' +
+      '  float lo = pow(max(dot(vN, normalize(vec3(-0.5, -0.45, 0.6))), 0.0), 20.0) * 0.16;' +
+      '  float a = ring + body + hi + hi2 + lo + caustic;' +
+      '  vec3 col = mix(vec3(1.0, 0.985, 1.0), vec3(1.0, 0.90, 0.96), clamp(caustic * 2.0, 0.0, 1.0));' +
+      '  gl_FragColor = vec4(col, min(a, 0.9));' +
       '}',
     transparent: true,
     depthWrite: false,
@@ -905,7 +925,9 @@ async function init() {
 
   atmosphere = buildAtmosphere(isGlass() ? GLASS_RIM : cfg.neonColor);
   globe.add(atmosphere);
-  globe.add(buildInnerGlow());
+  // innerGlow는 가장자리를 어둡게 눌러 행성 느낌을 내는 레이어 —
+  // 유리 모드의 밝은 림 링과 정반대라 유리에선 뺀다
+  if (!isGlass()) globe.add(buildInnerGlow());
 
   borderGroup = buildBorders(worldData, cfg.borderColor);
   globe.add(borderGroup);
