@@ -447,8 +447,8 @@ async function buildTexture() {
   var path = d3.geoPath().projection(proj).context(ctx);
 
   if (isGlass()) {
-    // 미기록국: 연한 유리 양각(시안 1·2) — 은은히 밝은 반투명 채움 + 흰 하이라이트 윤곽.
-    // 어두운 그림자 대신 흰 글로우를 살짝 얹어 유리 표면에 돋을새김된 느낌을 낸다.
+    // 미기록국: 연한 유리 양각(시안 1·2) — 은은히 밝은 반투명 채움 위에
+    // '유리에 새긴' 베벨 윤곽(시안 5): 어두운 바탕선 + 얇고 밝은 새김선 2중 스트로크.
     worldData.features.forEach(function(f) {
       if (visitedMap[f.properties.name || '']) return;
       ctx.fillStyle = GLASS_LAND_FILL;
@@ -456,11 +456,21 @@ async function buildTexture() {
       path(f);
       ctx.fill();
     });
-    ctx.strokeStyle = GLASS_LAND_EDGE;
-    ctx.lineWidth = 2;
     ctx.lineJoin = 'round';
-    ctx.shadowColor = 'rgba(255,255,255,0.35)';
-    ctx.shadowBlur = hiTex ? 0 : 4;
+    // ① 어두운 바탕선 — 새김의 그늘
+    ctx.strokeStyle = 'rgba(96,80,140,0.40)';
+    ctx.lineWidth = 3.5;
+    worldData.features.forEach(function(f) {
+      if (visitedMap[f.properties.name || '']) return;
+      ctx.beginPath();
+      path(f);
+      ctx.stroke();
+    });
+    // ② 밝은 새김선 — 빛을 받는 유리 모서리
+    ctx.strokeStyle = GLASS_LAND_EDGE;
+    ctx.lineWidth = 1.6;
+    ctx.shadowColor = 'rgba(255,255,255,0.3)';
+    ctx.shadowBlur = hiTex ? 0 : 3;
     worldData.features.forEach(function(f) {
       if (visitedMap[f.properties.name || '']) return;
       ctx.beginPath();
@@ -610,11 +620,19 @@ async function buildTexture() {
       });
 
       // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신).
-      // 유리 모드는 살짝 강화 — 유리에 박힌 사진 조각의 가장자리 느낌
+      // 유리 모드는 미기록국과 같은 베벨(어두운 바탕선+밝은 새김선) — 사진 조각이
+      // 유리에 끼워진 느낌(시안 5)
       if (!hiTex) {
-        ctx.strokeStyle = isGlass() ? 'rgba(255,255,255,0.65)' : 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = isGlass() ? 2 : 1.5;
         ctx.lineJoin = 'round';
+        if (isGlass()) {
+          ctx.strokeStyle = 'rgba(60,48,96,0.5)';
+          ctx.lineWidth = 3.5;
+          ctx.beginPath();
+          path(f);
+          ctx.stroke();
+        }
+        ctx.strokeStyle = isGlass() ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = isGlass() ? 1.6 : 1.5;
         ctx.shadowColor = 'rgba(255,255,255,0.3)';
         ctx.shadowBlur = 3;
         ctx.beginPath();
@@ -795,8 +813,8 @@ function buildBorders(world, hexColor) {
   // 유리 모드: 국경은 은은한 연보라 헤어라인 — 시안(1·2)의 빈 유리엔 쨍한 흰 선이 없고,
   // 사진 상태(시안 5)에서도 나라 조각은 얇고 부드러운 경계로만 구분된다
   var bCol = isGlass() ? '#EFE8FF' : hexColor;
-  var bOpCore = isGlass() ? 0.30 : 0.95;
-  var bOpGlow = isGlass() ? 0.10 : 0.3;
+  var bOpCore = isGlass() ? 0.45 : 0.95;
+  var bOpGlow = isGlass() ? 0.14 : 0.3;
   var matCore = new THREE.LineBasicMaterial({
     color: new THREE.Color(bCol), transparent: true, opacity: bOpCore,
     blending: THREE.AdditiveBlending, depthWrite: false,
@@ -1280,8 +1298,8 @@ function buildBordersMerged(world, hexColor) {
   });
   // 유리 모드: buildBorders와 동일한 은은한 헤어라인 (LOD 전환 후에도 톤 일관)
   var mCol = isGlass() ? '#EFE8FF' : hexColor;
-  var mOpCore = isGlass() ? 0.30 : 0.95;
-  var mOpGlow = isGlass() ? 0.10 : 0.3;
+  var mOpCore = isGlass() ? 0.45 : 0.95;
+  var mOpGlow = isGlass() ? 0.14 : 0.3;
   var matCore = new THREE.LineBasicMaterial({ color: new THREE.Color(mCol), transparent: true, opacity: mOpCore, blending: THREE.AdditiveBlending, depthWrite: false });
   var matGlow = new THREE.LineBasicMaterial({ color: new THREE.Color(mCol), transparent: true, opacity: mOpGlow, blending: THREE.AdditiveBlending, depthWrite: false });
   var geoC = new THREE.BufferGeometry(); geoC.setAttribute('position', new THREE.Float32BufferAttribute(posCore, 3));
