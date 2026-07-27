@@ -1925,8 +1925,9 @@ function updateLabels() {
     labelCtx.fillStyle = 'rgba(255,255,255,' + (0.92 * a) + ')';
     labelCtx.fillText(L.ko, px, py);
   }
-  // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장
-  if (zf >= 3.2 && typeof CITY_LABELS !== 'undefined') {
+  // 도시 라벨 — 최대 줌 부근: tier1(수도급) → tier2(대도시) 순 등장.
+  // 유리(사진) 지구본은 국가 이름만 표시 — 도시 핀·이름은 사진 조각과 유리 룩을 어지럽힌다
+  if (!isGlass() && zf >= 3.2 && typeof CITY_LABELS !== 'undefined') {
     var cfs = Math.min(13, Math.round((9 + zf * 0.35) * 2) / 2);
     for (var j = 0; j < CITY_LABELS.length; j++) {
       var C = CITY_LABELS[j];
