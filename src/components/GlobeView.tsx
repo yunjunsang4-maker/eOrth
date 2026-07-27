@@ -146,6 +146,10 @@ function isGlass() { return globeDisplayMode === 'photo'; }
 var GLASS_OCEAN_ALPHA = 0.88;                    // 유리 몸체 불투명도
 var GLASS_OCEAN_RGB = '24,20,40';                // 어두운 남보라 유리 몸체
 var GLASS_LAND_FILL = 'rgba(205,195,235,0.28)';  // 미기록국 유리 양각 채움
+// 딥줌 지역 창의 미기록국 채움 — 반투명(0.28)을 불투명 캔버스에 그대로 쓰면 채움+블리드
+// 스트로크가 이중 합성돼 가장자리 얼룩이 생긴다. 위 반투명 색이 어두운 몸체 위에서 보이는
+// 최종색(≈0.28×라벤더 + 0.72×바다)을 미리 섞은 불투명 값 — 메시 채움과 시각적으로 이어진다.
+var GLASS_LAND_DEEP = 'rgb(73,68,91)';
 var GLASS_LAND_EDGE = 'rgba(255,255,255,0.5)';   // 미기록국 하이라이트 윤곽
 var GLASS_RIM = '#E8DDFF';                       // 림(대기광) 색
 var GLASS_BACK_OPACITY = 0.12;                   // 유리 너머 뒷면 대륙 불투명도
@@ -1580,7 +1584,9 @@ function updateBorderFade() {
   // 유리 모드: 일체형 팻라인이 구분선 담당 — 기본 크기 0, 확대 시 은은하게 페이드 인.
   // 딥줌에선 10m 팻 구분선(t10)이 위에서 이어받으므로 함께 줄인다.
   if (isGlass() && glassOutline && glassOutline.userData.mat) {
-    var go = smoothstep01(1.5, 2.6, zf) * 0.5 * (1 - t10 * 0.6);
+    // 딥줌에선 10m 정밀선(t10)+지역 창(10m 마스크) 쌍이 이어받는다 — 110m 팻라인이
+    // 남아 있으면 10m 경계와 어긋나 '깨져' 보이므로 완전히 물러난다
+    var go = smoothstep01(1.5, 2.6, zf) * 0.5 * (1 - t10);
     glassOutline.userData.mat.uniforms.uOpacity.value = go;
     glassOutline.visible = go > 0.01;
   }
@@ -1730,9 +1736,26 @@ function buildRegionTexture(lonC, latC, span) {
         else { dw = bw; dh = bw / ir; dx = bx; dy = by - (dh - bh) / 2; }
         ctx.drawImage(img, dx, dy, dw, dh);
         ctx.restore();
+        // 유리 모드 블리드 — 50m 클립 경계와 10m 마스크 사이가 투명 틈으로 남지 않게
+        // cover 배치와 같은 변환의 패턴으로 경로 밖까지 이어 칠한다(전역 텍스처와 동일 기법)
+        if (isGlass()) {
+          try {
+            var pat2 = ctx.createPattern(img, 'no-repeat');
+            if (pat2 && pat2.setTransform && typeof DOMMatrix !== 'undefined') {
+              pat2.setTransform(new DOMMatrix([dw / img.width, 0, 0, dh / img.height, dx, dy]));
+              ctx.strokeStyle = pat2;
+            } else { ctx.strokeStyle = 'rgba(255,255,255,0.3)'; }
+          } catch (e2) { ctx.strokeStyle = 'rgba(255,255,255,0.3)'; }
+          ctx.lineWidth = 12;
+          ctx.lineJoin = 'round';
+          ctx.beginPath();
+          path(sub);
+          ctx.stroke();
+        }
       });
     } else {
-      var col = visited ? (visited.color || globeDefaultColor) : cfg.landColor;
+      // 유리 모드: 옛 회색(cfg.landColor)이 아니라 유리 톤 — 메시 채움과 이어지는 사전 혼합색
+      var col = visited ? (visited.color || globeDefaultColor) : (isGlass() ? GLASS_LAND_DEEP : cfg.landColor);
       ctx.fillStyle = col; ctx.strokeStyle = col; ctx.lineWidth = 10; ctx.lineJoin = 'round';
       ctx.beginPath(); path(f); ctx.fill(); ctx.stroke(); // 두꺼운 동색 스트로크 = 10m 마스크 대비 해안 여유
     }
