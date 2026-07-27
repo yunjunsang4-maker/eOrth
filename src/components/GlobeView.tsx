@@ -443,21 +443,9 @@ async function buildTexture() {
   var path = d3.geoPath().projection(proj).context(ctx);
 
   if (isGlass()) {
-    // 미기록국: 연한 유리 양각(시안 1·2) — 채움 톤 대비만으로 육지가 읽힌다.
-    // 윤곽선은 굽지 않는다(구분선은 확대 시 벡터 팻라인이 담당).
-    // 같은 색 스트로크는 '블리드'다 — 메시 가장자리 픽셀이 경로 밖(투명)을 샘플링해
-    // 테두리가 얼룩지지 않게 채움을 경로 밖으로 2px 연장한다.
-    worldData.features.forEach(function(f) {
-      if (visitedMap[f.properties.name || '']) return;
-      ctx.fillStyle = GLASS_LAND_FILL;
-      ctx.beginPath();
-      path(f);
-      ctx.fill();
-      ctx.strokeStyle = GLASS_LAND_FILL;
-      ctx.lineWidth = 4;
-      ctx.lineJoin = 'round';
-      ctx.stroke();
-    });
+    // 미기록국은 텍스처에 굽지 않는다 — 육지 메시가 정점색(uFill)으로 직접 칠한다.
+    // 래스터를 아예 안 거치므로 가장자리 얼룩·안티앨리어싱 틈이 구조적으로 없다(네온과 동일).
+    // 이 텍스처에는 방문국(사진/활성색)만 굽는다.
   } else {
   ctx.shadowColor = '#000';
   ctx.shadowBlur = 4;
@@ -659,7 +647,8 @@ async function buildTexture() {
         ctx.globalCompositeOperation = 'source-over';
 
         ctx.strokeStyle = baseColor;
-        ctx.lineWidth = 2;
+        // 유리 모드: 메시 가장자리 샘플링용 블리드 — 경로 밖까지 활성색을 이어 칠한다
+        ctx.lineWidth = isGlass() ? 5 : 2;
         ctx.lineJoin = 'round';
         ctx.shadowColor = baseColor;
         ctx.shadowBlur = 3;
@@ -886,24 +875,33 @@ function buildFatWorldLines(world, R) {
   grp.userData.mat = mat; grp.visible = false;
   return grp;
 }
-// 육지 메시 셰이더 — 등장방형 텍스처를 UV로 샘플. 알파는 구운 값 그대로(유리 반투명 유지)
+// 육지 메시 셰이더 — 네온과 동일 원리: 미기록국은 '정점색'으로 직접 칠한다(래스터 무관 →
+// 가장자리 얼룩·안티앨리어싱 틈이 구조적으로 없음). 기록국(aPhoto=1)만 텍스처를 UV 샘플링.
 var GLASS_LAND_VS =
-  'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
+  'attribute float aPhoto; varying vec2 vUv; varying float vPhoto;' +
+  'void main(){ vUv = uv; vPhoto = aPhoto; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }';
 var GLASS_LAND_FS =
-  'precision highp float; uniform sampler2D uTex; varying vec2 vUv;' +
-  'void main(){ vec4 c = texture2D(uTex, vUv); if (c.a < 0.01) discard; gl_FragColor = c; }';
+  'precision highp float; uniform sampler2D uTex; uniform vec3 uFill; uniform float uFillA;' +
+  'varying vec2 vUv; varying float vPhoto;' +
+  'void main(){' +
+  '  if (vPhoto > 0.5) { vec4 c = texture2D(uTex, vUv); if (c.a < 0.01) discard; gl_FragColor = c; }' +
+  '  else { gl_FragColor = vec4(uFill, uFillA); }' +
+  '}';
 var glassLandMesh = null, glassLandMat = null, glassOutline = null;
+var glassPhotoAttr = null, glassRanges = null; // 방문 변경 시 aPhoto in-place 갱신용(나라별 정점 범위)
 function buildGlassLand(tex) {
   if (!worldData || typeof THREE.ShapeUtils === 'undefined') return;
   if (glassLandMesh) { globe.remove(glassLandMesh); if (glassLandMesh.geometry) glassLandMesh.geometry.dispose(); if (glassLandMesh.material) glassLandMesh.material.dispose(); glassLandMesh = null; }
   if (glassOutline) { globe.remove(glassOutline); glassOutline = null; }
   var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화해도 사지타가 본체 아래로 안 꺼지게
-  var pos = [], uvs = [];
+  var pos = [], uvs = [], photos = [];
+  var curPhoto = 0; // 현재 나라의 텍스처 샘플 여부 (features 루프에서 설정)
   function pushV(p) {
     var v = geoToVec3(p[0], p[1], R);
     pos.push(v.x, v.y, v.z);
     // 등장방형 UV — 캔버스 텍스처와 같은 투영. unwrap된 경도(>180)는 RepeatWrapping이 처리
     uvs.push((p[0] + 180) / 360, (p[1] + 90) / 180);
+    photos.push(curPhoto);
   }
   function segDeg(a, b) { var dx = a[0] - b[0], dy = a[1] - b[1]; return Math.sqrt(dx * dx + dy * dy); }
   function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
@@ -971,16 +969,28 @@ function buildGlassLand(tex) {
     var faces = THREE.ShapeUtils.triangulateShape(contour, holes);
     for (var t = 0; t < faces.length; t++) { var fa = faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
   }
+  glassRanges = [];
   worldData.features.forEach(function(f) {
     var g = f.geometry; if (!g) return;
+    var nm = f.properties && f.properties.name;
+    curPhoto = (nm && visitedMap[nm]) ? 1 : 0; // 방문국만 텍스처(사진/활성색) 샘플
+    var vStart = pos.length / 3;
     if (g.type === 'Polygon') addPoly(g.coordinates);
     else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { addPoly(poly); });
+    if (nm) glassRanges.push({ name: nm, start: vStart, count: pos.length / 3 - vStart });
   });
   var geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+  glassPhotoAttr = new THREE.Float32BufferAttribute(photos, 1);
+  geo.setAttribute('aPhoto', glassPhotoAttr);
+  // 미기록국 채움색 — GLASS_LAND_FILL(rgba)과 동일 값을 정점 셰이더 uniform으로
   glassLandMat = new THREE.ShaderMaterial({
-    uniforms: { uTex: { value: tex } },
+    uniforms: {
+      uTex: { value: tex },
+      uFill: { value: new THREE.Color(205 / 255, 195 / 255, 235 / 255) },
+      uFillA: { value: 0.28 },
+    },
     vertexShader: GLASS_LAND_VS, fragmentShader: GLASS_LAND_FS,
     transparent: true, depthWrite: false, side: THREE.FrontSide,
   });
@@ -991,6 +1001,17 @@ function buildGlassLand(tex) {
   glassOutline = buildFatWorldLines(worldData, R);
   glassOutline.children[0].renderOrder = 3;
   globe.add(glassOutline);
+}
+// 방문 변경 시 aPhoto만 in-place 갱신 — 전 나라 재삼각분할 없이(네온 updateVectorLandColors와 동일 기법)
+function updateGlassLandFlags() {
+  if (!glassPhotoAttr || !glassRanges) return;
+  var arr = glassPhotoAttr.array;
+  for (var i = 0; i < glassRanges.length; i++) {
+    var r = glassRanges[i];
+    var on = visitedMap[r.name] ? 1 : 0;
+    for (var j = r.start; j < r.start + r.count; j++) arr[j] = on;
+  }
+  glassPhotoAttr.needsUpdate = true;
 }
 
 function geoToVec3(lon, lat, r) {
@@ -2006,6 +2027,7 @@ function applyTheme(t) {
       glassLandMat.uniforms.uTex.value = tex;
       if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
       if (oldG && oldG.dispose) oldG.dispose();
+      updateGlassLandFlags(); // 방문 변경 반영 — 어떤 나라가 텍스처(사진)를 샘플할지 갱신
       return;
     }
     var old = globeMesh.material.map; // CanvasTexture — dispose 없으면 GPU 메모리 누적(네온 쪽과 동일 처리)
@@ -2068,6 +2090,7 @@ function handleVisitedMessage(msg) {
           glassLandMat.uniforms.uTex.value = tex;
           if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
           if (oldG && oldG.dispose) oldG.dispose();
+          updateGlassLandFlags(); // 방문 변경 반영
           return;
         }
         var old = globeMesh.material.map;
