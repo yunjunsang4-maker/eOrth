@@ -23,6 +23,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import BadgeToastHost from './src/components/BadgeToastHost';
 import BadgeEvaluator from './src/components/BadgeEvaluator';
 import DMToastHost from './src/components/DMToastHost';
+import ExampleNotiBanner from './src/components/ExampleNotiBanner';
 import ToastHost from './src/components/ToastHost';
 import ProfileSync from './src/components/ProfileSync';
 import AppStateSync from './src/components/AppStateSync';
@@ -159,6 +160,7 @@ export default function App() {
                     <AppNavigator />
                     <BadgeToastHost />
                     <DMToastHost />
+                    <ExampleNotiBanner />
                     <ToastHost />
                   </ToastProvider>
                 </DMProvider>

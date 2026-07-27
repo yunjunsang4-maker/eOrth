@@ -71,3 +71,23 @@ export const FEATURE_SLIDES: FeatureSlide[] = [
     ctaKey: 'socialEmpty.featPremiumCta',
   },
 ];
+
+// ─── 예시 알림 ───
+// 신규 사용자는 알림이 비어 있어 "이 화면이 뭘 하는 곳인지" 알 수 없다.
+// 실제 활동이 하나도 없을 때만 목록에 섞어 보여주는 안내용 알림.
+// isExample이라 탭해도 이동하지 않고(가리킬 게시물이 없다), 읽음 처리·배지 집계에서도 빠진다.
+export interface ExampleNoti {
+  id: string;
+  category: 'comment' | 'like' | 'follow' | 'memory' | 'record';
+  textKey: string;     // i18n 키 — 언어 전환에 따라간다
+  minutesAgo: number;  // 표시용 상대 시각(고정 타임스탬프면 며칠 뒤엔 '7일 전'이 된다)
+}
+export const EXAMPLE_NOTIS: ExampleNoti[] = [
+  { id: 'ex-noti-like',    category: 'like',    textKey: 'misc.exampleLikeText',    minutesAgo: 12 },
+  { id: 'ex-noti-comment', category: 'comment', textKey: 'misc.exampleCommentText', minutesAgo: 95 },
+  { id: 'ex-noti-follow',  category: 'follow',  textKey: 'misc.exampleFollowText',  minutesAgo: 60 * 26 },
+];
+
+// 예시 배너(토스트) — 앱을 처음 열었을 때 1회, "이런 알림이 온다"를 보여준다.
+// 실제 알림과 구분되도록 문구에 eOrth 공식임을 드러낸다.
+export const EXAMPLE_BANNER_KEY = 'misc.exampleBannerText';
