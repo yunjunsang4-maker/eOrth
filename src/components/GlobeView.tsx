@@ -450,8 +450,9 @@ async function buildTexture() {
   var path = d3.geoPath().projection(proj).context(ctx);
 
   if (isGlass()) {
-    // 미기록국: 연한 유리 양각(시안 1·2) — 은은히 밝은 반투명 채움 위에
-    // '유리에 새긴' 베벨 윤곽(시안 5): 어두운 바탕선 + 얇고 밝은 새김선 2중 스트로크.
+    // 미기록국: 연한 유리 양각(시안 1·2) — 채움 톤 대비만으로 육지가 읽힌다.
+    // 윤곽선은 텍스처에 굽지 않는다: 시안의 빈 유리엔 외곽선이 없고,
+    // 나라 구분은 확대 시 벡터 선이 은은하게 페이드 인(updateBorderFade)하며 담당한다.
     worldData.features.forEach(function(f) {
       if (visitedMap[f.properties.name || '']) return;
       ctx.fillStyle = GLASS_LAND_FILL;
@@ -459,28 +460,6 @@ async function buildTexture() {
       path(f);
       ctx.fill();
     });
-    ctx.lineJoin = 'round';
-    // ① 어두운 바탕선 — 새김의 그늘
-    ctx.strokeStyle = 'rgba(96,80,140,0.40)';
-    ctx.lineWidth = 3.5;
-    worldData.features.forEach(function(f) {
-      if (visitedMap[f.properties.name || '']) return;
-      ctx.beginPath();
-      path(f);
-      ctx.stroke();
-    });
-    // ② 밝은 새김선 — 빛을 받는 유리 모서리
-    ctx.strokeStyle = GLASS_LAND_EDGE;
-    ctx.lineWidth = 1.6;
-    ctx.shadowColor = 'rgba(255,255,255,0.3)';
-    ctx.shadowBlur = hiTex ? 0 : 3;
-    worldData.features.forEach(function(f) {
-      if (visitedMap[f.properties.name || '']) return;
-      ctx.beginPath();
-      path(f);
-      ctx.stroke();
-    });
-    ctx.shadowBlur = 0;
   } else {
   ctx.shadowColor = '#000';
   ctx.shadowBlur = 4;
@@ -623,19 +602,12 @@ async function buildTexture() {
       });
 
       // 전체 테두리 — 딥줌(50m) 텍스처엔 굽지 않음(뿌연 후광 방지, 벡터 선이 대신).
-      // 유리 모드는 미기록국과 같은 베벨(어두운 바탕선+밝은 새김선) — 사진 조각이
-      // 유리에 끼워진 느낌(시안 5)
-      if (!hiTex) {
+      // 유리 모드는 텍스처 외곽선 없음 — 사진 조각 자체의 대비로 읽히고,
+      // 나라 구분은 확대 시 벡터 선이 담당(시안: 기본 크기에선 구분선이 안 보인다)
+      if (!hiTex && !isGlass()) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.lineWidth = 1.5;
         ctx.lineJoin = 'round';
-        if (isGlass()) {
-          ctx.strokeStyle = 'rgba(60,48,96,0.5)';
-          ctx.lineWidth = 3.5;
-          ctx.beginPath();
-          path(f);
-          ctx.stroke();
-        }
-        ctx.strokeStyle = isGlass() ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.5)';
-        ctx.lineWidth = isGlass() ? 1.6 : 1.5;
         ctx.shadowColor = 'rgba(255,255,255,0.3)';
         ctx.shadowBlur = 3;
         ctx.beginPath();
@@ -1362,8 +1334,11 @@ function updateBorderFade() {
     borders10Group = buildAdmin1Group(borders10Lines, 1.0018); // 50m 국경(1.0015) 위
     globe.add(borders10Group);
   }
-  if (borderGroup) setGroupOp(borderGroup, borderGroup50 ? 1 - t : 1);
-  if (borderGroup50) setGroupOp(borderGroup50, borders10Group ? t * (1 - t10) : t);
+  // 유리 모드: 기본 크기에선 구분선이 없다가 확대하면 은은하게 떠오른다(시안).
+  // baseOp(0.45)가 상한이라 완전히 떠도 '은은한' 수준을 넘지 않는다.
+  var gz = isGlass() ? smoothstep01(1.5, 2.6, zf) : 1;
+  if (borderGroup) setGroupOp(borderGroup, (borderGroup50 ? 1 - t : 1) * gz);
+  if (borderGroup50) setGroupOp(borderGroup50, (borders10Group ? t * (1 - t10) : t) * gz);
   if (borders10Group) {
     borders10Group.userData.mat.opacity = 0.95 * t10;
     borders10Group.visible = t10 > 0.01;
