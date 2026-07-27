@@ -15,6 +15,8 @@ import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 스플래시 영상 — expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
+// 에셋은 오디오 트랙 없이 내보낸다(ffmpeg -an) — muted·mixWithOthers에 더해 3중 안전장치로,
+// 어떤 경로로도 오디오 세션을 건드리지 않아 사용자의 음악·영상 재생이 끊기지 않는다.
 const SPLASH_VIDEO = require('../../assets/splash.mp4');
 const { width: SW, height: SH } = Dimensions.get('window');
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
