@@ -263,7 +263,10 @@ scene.add(globe);
 
 // Visited countries data (injected from React Native)
 var visitedMap = {};
-var globeDisplayMode = 'flag'; // 'flag' | 'color'
+// 표시 모드는 RN이 부팅 전에 주입한다(injectedJavaScriptBeforeContentLoaded).
+// setVisitedCountries 메시지를 기다렸다 바꾸면 첫 텍스처가 비유리(파란 행성) 경로로
+// 구워져 메인탭 진입 때 파란 지구본이 한 프레임 이상 번쩍인다.
+var globeDisplayMode = (typeof window !== 'undefined' && window.__initDisplayMode) || 'flag'; // 'flag' | 'color' | 'photo'
 var globeDefaultColor = '#BF85FC';
 
 // GeoJSON name → ISO 2-letter code
@@ -3310,6 +3313,9 @@ export default function GlobeView({
         javaScriptEnabled={true}
         domStorageEnabled={true}
         source={{ html: variant === 'aurora' ? neonGlobeHTML : globeHTML }}
+        // 표시 모드를 부팅 전에 주입 — 첫 텍스처부터 올바른 경로(유리 등)로 구워
+        // 메시지 도착 전까지 파란(비유리) 지구본이 번쩍이는 것을 막는다
+        injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; true;`}
         style={{ flex: 1, backgroundColor: 'transparent' }}
         scrollEnabled={false}
         nestedScrollEnabled={false}
