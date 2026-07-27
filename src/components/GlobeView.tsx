@@ -349,27 +349,30 @@ function loadPhotoImage(url) {
   return new Promise(function(resolve) {
     var img = new Image();
     img.crossOrigin = 'anonymous';
+    img.decoding = 'async'; // 디코드를 메인 스레드 밖으로 — 로드 중 지구본 렌더 버벅임 완화
     img.onload = function() { photoImageCache[url] = img; resolve(img); };
     img.onerror = function() { resolve(null); };
     img.src = url;
   });
 }
 
-// 방문 국가 이미지 일괄 로드 (국기 또는 사진)
+// 방문 국가 이미지 일괄 로드 (국기 또는 사진).
+// 반환값 = '새로' 디코드한 이미지 수 — 0이면 호출부가 재베이크를 건너뛸 수 있다
 async function loadAllImages() {
   var promises = [];
   Object.keys(visitedMap).forEach(function(nameEn) {
     var visited = visitedMap[nameEn];
     if (globeDisplayMode === 'flag') {
       var iso = EN_TO_ISO[nameEn];
-      if (iso) promises.push(loadFlagImage(iso));
+      if (iso && !flagImageCache[iso]) promises.push(loadFlagImage(iso));
     } else if (globeDisplayMode === 'photo') {
-      if (visited.photo) {
+      if (visited.photo && !photoImageCache[visited.photo]) {
         promises.push(loadPhotoImage(visited.photo));
       }
     }
   });
   await Promise.all(promises);
+  return promises.length;
 }
 
 // Create texture from world GeoJSON
@@ -2162,9 +2165,7 @@ function handleVisitedMessage(msg) {
     if (globeMesh) globeMesh.material.transparent = isGlass();
     if (worldData && globeMesh) {
       regionC.span = 0; // 방문색/모드 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
-      loadAllImages().then(function() {
-        return buildTexture();
-      }).then(function(tex) {
+      var applyTex = function(tex) {
         // 유리 모드: 새 육지 텍스처는 육지 메시·뒷면 구가 소비(본체는 바다 전용 텍스처 유지)
         if (isGlass() && glassLandMat) {
           var oldG = glassLandMat.uniforms.uTex.value;
@@ -2178,6 +2179,15 @@ function handleVisitedMessage(msg) {
         globeMesh.material.map = tex;
         globeMesh.material.needsUpdate = true;
         if (old && old.dispose) old.dispose();
+      };
+      // 2단계 베이크 — 사진(수십 장) 디코드가 끝날 때까지 지구본이 비어 보이던 지연 완화.
+      //  1차: 디코드를 기다리지 않고 즉시 굽는다 → 방문국이 활성색으로 바로 뜬다
+      //  2차: 새로 디코드된 이미지가 있을 때만 사진을 얹어 다시 굽는다(전부 캐시면 1회로 끝)
+      buildTexture().then(applyTex).then(function() {
+        return loadAllImages();
+      }).then(function(loadedNew) {
+        if (!loadedNew) return;
+        return buildTexture().then(applyTex);
       });
     }
   } else if (msg.type === 'setSponsored') {
