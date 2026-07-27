@@ -35,33 +35,41 @@
 | 파일 | 책임 | 변경 |
 |---|---|---|
 | `supabase/schema.sql` | `mate_suggestions` 함수 정의 | CTE 재구조화 |
+| `supabase/tmp-perf-verify.sql` | 검증용 구 함수 스냅샷 (일회용) | **신규 — 검증 후 삭제** |
 | `docs/superpowers/plans/2026-07-28-mate-suggestions-perf-verify.md` | 사용자용 실행 검증 런북 | **신규** |
+
+스냅샷을 `schema.sql`이 아니라 별도 파일에 두는 이유: 유지되는 스키마에 축자 복제본이 들어가면 다음 재실행 때마다 임시 함수가 되살아난다. 파일을 분리하면 이름 자체가 일회용임을 말해주고, 정리가 파일 삭제로 끝난다.
 
 ---
 
 ### Task 1: 검증 하네스 — 구 함수 스냅샷
 
 **Files:**
-- Modify: `supabase/schema.sql` — `mate_suggestions` 정의 **직후**(`grant execute` 줄 다음)
+- Create: `supabase/tmp-perf-verify.sql`
+- **`supabase/schema.sql`은 이 태스크에서 읽기만 한다 — 수정 금지**
 
 **Interfaces:**
 - Produces: `public.mate_suggestions_old(match_limit int default 10, extra_countries text[] default '{}')` — 현재 함수와 **완전히 동일한 본문**. Task 4의 비교 검증이 이것을 쓴다.
 
 동작 보존을 정독만으로 증명할 수 없으므로, 리팩터 전 함수를 다른 이름으로 남겨 출력을 직접 비교한다.
 
+**스냅샷은 `schema.sql`에 넣지 않는다.** 유지되는 스키마에 축자 복제본이 들어가면 다음 재실행 때마다 임시 함수가 되살아난다. 별도 파일이라 정리가 파일 삭제로 끝난다.
+
 - [ ] **Step 1: 현재 함수 본문을 그대로 복제**
 
-`supabase/schema.sql`에서 `create or replace function public.mate_suggestions(...)` 부터 그 함수의 `$$;` 까지를 통째로 복사해, `grant execute on function public.mate_suggestions(int, text[]) to authenticated;` **바로 아래**에 붙여넣는다. 붙여넣은 사본에서 함수 이름만 `mate_suggestions_old`로 바꾼다.
+`supabase/schema.sql`에서 `create or replace function public.mate_suggestions(...)` 부터 그 함수의 `$$;` 까지를 통째로 복사해 **새 파일 `supabase/tmp-perf-verify.sql`**에 붙여넣는다. 붙여넣은 사본에서 함수 이름만 `mate_suggestions_old`로 바꾼다.
 
 **본문은 한 글자도 바꾸지 않는다.** 주석까지 그대로 둔다 — 비교 대상이 현재 동작이어야 하기 때문이다.
 
-앞뒤로 다음을 붙인다:
+파일 전체는 다음 형태다.
 
 ```sql
--- ── 성능 리팩터 검증용 스냅샷 (임시) ──────────────────────────────
+-- ── 성능 리팩터 검증용 스냅샷 (일회용 — 검증 후 이 파일째로 삭제) ──────────
 -- mate_suggestions의 리팩터 전 본문을 그대로 복제한 것. 새 함수와 출력을 비교해
--- 동작 보존을 실행으로 증명하는 용도이며, 검증이 끝나면 삭제한다.
--- 삭제 방법: drop function if exists public.mate_suggestions_old(int, text[]);
+-- 동작 보존을 실행으로 증명하는 용도다. schema.sql에 넣지 않는 이유는
+-- 유지되는 스키마에 남으면 재실행 때마다 임시 함수가 되살아나기 때문이다.
+-- 정리: drop function if exists public.mate_suggestions_old(int, text[]);
+--       그리고 이 파일 삭제.
 drop function if exists public.mate_suggestions_old(int, text[]);
 create or replace function public.mate_suggestions_old(match_limit int default 10, extra_countries text[] default '{}')
 returns table (
@@ -84,10 +92,9 @@ grant execute on function public.mate_suggestions_old(int, text[]) to authentica
 cd "C:/Users/2023user/OneDrive/바탕 화면/eOrth"
 node -e "
 const fs=require('fs');
-const s=fs.readFileSync('supabase/schema.sql','utf8');
-const grab=(n)=>{const i=s.indexOf('create or replace function public.'+n+'(');const j=s.indexOf('\$\$;',i);return s.slice(i,j);};
-const a=grab('mate_suggestions').replace('mate_suggestions','X');
-const b=grab('mate_suggestions_old').replace('mate_suggestions_old','X');
+const grab=(file,n)=>{const s=fs.readFileSync(file,'utf8');const i=s.indexOf('create or replace function public.'+n+'(');const j=s.indexOf('\$\$;',i);return s.slice(i,j);};
+const a=grab('supabase/schema.sql','mate_suggestions').replace('mate_suggestions','X');
+const b=grab('supabase/tmp-perf-verify.sql','mate_suggestions_old').replace('mate_suggestions_old','X');
 console.log(a===b?'동일':'다름');
 console.log('원본 길이',a.length,'사본 길이',b.length);
 "
@@ -95,14 +102,26 @@ console.log('원본 길이',a.length,'사본 길이',b.length);
 
 Expected: `동일`
 
-- [ ] **Step 3: 커밋**
+`다름`이 나오면 길이 차이를 보고 어디가 어긋났는지 찾는다. 이 대조가 통과하지 못하면 이후 비교 검증이 무의미하므로, 통과할 때까지 진행하지 말 것.
+
+- [ ] **Step 3: `schema.sql`이 안 바뀌었는지 확인**
 
 ```bash
-git add supabase/schema.sql
+cd "C:/Users/2023user/OneDrive/바탕 화면/eOrth"
+git diff --name-only
+```
+
+Expected: `supabase/schema.sql`이 **나오지 않는다**. 이 태스크는 새 파일만 만든다.
+
+- [ ] **Step 4: 커밋**
+
+```bash
+git add supabase/tmp-perf-verify.sql
 git commit -m "test(mate): 성능 리팩터 검증용 구 함수 스냅샷 추가
 
 리팩터 전후 출력을 except로 비교해 동작 보존을 실행으로 증명하기 위한
-임시 함수. 검증 후 삭제한다."
+일회용 파일. schema.sql에는 넣지 않는다 — 유지되는 스키마에 남으면
+재실행 때마다 임시 함수가 되살아난다. 검증 후 파일째 삭제한다."
 ```
 
 ---
@@ -440,14 +459,19 @@ SQL은 이 환경에서 실행할 수 없다. 사용자가 Supabase 대시보드
 이 리팩터는 **점수가 바뀌지 않아야** 성공이다. 로컬에 Postgres가 없어 정독으로만 검증했으므로,
 아래 절차로 실행 비교해 동작 보존을 증명한다.
 
-## 1. schema.sql 재실행
+## 1. 두 함수 배포
 
-Supabase SQL Editor에서 `mate_suggestions`와 `mate_suggestions_old` 두 함수 정의를
-트랜잭션으로 감싸 실행한다.
+**순서가 중요하다.** 스냅샷을 먼저 올려야 비교 대상이 리팩터 전 동작이 된다.
+
+**(a) 먼저 `supabase/tmp-perf-verify.sql`을 실행한다** — 아직 구 함수가 살아 있는 상태여야
+스냅샷이 의미가 있으므로, 이 파일을 schema.sql보다 **먼저** 돌린다.
+
+**(b) 그 다음 `supabase/schema.sql`의 `mate_suggestions` 블록을 실행한다.**
+트랜잭션으로 감쌀 것:
 
 ```sql
 begin;
--- schema.sql의 mate_suggestions 블록 + mate_suggestions_old 블록
+-- schema.sql의 drop function ~ grant execute 까지
 commit;
 ```
 
@@ -495,8 +519,8 @@ explain (analyze, buffers) select * from public.mate_suggestions_old(10);
 drop function if exists public.mate_suggestions_old(int, text[]);
 ```
 
-그리고 `supabase/schema.sql`에서도 `mate_suggestions_old` 블록을 삭제하도록 알려줄 것 —
-검증이 끝난 임시 코드가 스키마에 남으면 다음 재실행 때 다시 만들어진다.
+그리고 `supabase/tmp-perf-verify.sql` 파일을 삭제한다. 스냅샷은 `schema.sql`에 없으므로
+이 두 가지로 정리가 끝난다.
 ````
 
 - [ ] **Step 2: 커밋**
@@ -516,6 +540,6 @@ git commit -m "docs(mate): 성능 리팩터 실행 검증 런북
 1. 런북대로 Supabase에서 `schema.sql` 재실행
 2. `except` 비교 양방향 0행 확인
 3. `explain (analyze, buffers)` 전후 비교
-4. 통과하면 `mate_suggestions_old`를 DB와 `schema.sql`에서 삭제
+4. 통과하면 `mate_suggestions_old`를 DB에서 drop하고 `supabase/tmp-perf-verify.sql` 파일 삭제
 
-**4번을 잊으면 검증용 임시 함수가 스키마에 영구히 남는다.** 완료 보고 시 반드시 안내할 것.
+**4번을 잊으면 검증용 임시 함수가 DB에 남는다.** 완료 보고 시 반드시 안내할 것.
