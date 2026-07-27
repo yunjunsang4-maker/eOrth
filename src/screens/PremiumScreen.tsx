@@ -142,7 +142,9 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
           </TouchableOpacity>
         )}
 
-        <Text style={st.footnote}>{t('premium.paywallNote')}</Text>
+        <Text style={st.footnote}>
+          {LAUNCH_FREE_PREMIUM ? t('premium.launchFreeNote') : t('premium.paywallNote')}
+        </Text>
       </ScrollView>
     </SafeAreaView>
   );

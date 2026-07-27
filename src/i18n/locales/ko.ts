@@ -141,9 +141,10 @@ const ko = {
     paywallSubtitle: '여행 기록을 더 자유롭게,\n나만의 스타일로 꾸며보세요',
     paywallCta: '베타 체험 시작하기',
     paywallActive: '프리미엄 이용 중',
-    paywallNote: '베타 기간에는 무료로 체험할 수 있어요.\n정식 출시 시 구독 상품으로 전환됩니다.',
+    paywallNote: '베타 기간에는 무료로 체험할 수 있어요.\n정식 출시 시 구독 상품으로 전환됩니다.', // 재화 전환 후 미사용(플래그 내리면 재사용)
     launchFreeTitle: '출시 기념 전체 무료',
     launchFreeDesc: '아래 기능을 지금은 모두 무료로 쓸 수 있어요.',
+    launchFreeNote: '지금은 출시 기념으로 혜택을 무료로 열어뒀어요.\n앞으로 이용 방식이 바뀔 수 있어요.',
     benefitAdsTitle: '광고 없는 피드',
     benefitAdsDesc: '소셜 피드의 광고가 사라져요',
     benefitFontTitle: '아이디 폰트',
@@ -1507,7 +1508,7 @@ const ko = {
     featBadgeDesc: '기록을 남기면 배지가 열려요',
     premiumBadge: '프리미엄',
     featPremiumTitle: '프리미엄으로 더 풍부하게',
-    featPremiumDesc: '광고 제거·원본 백업·스트립',
+    featPremiumDesc: '아이디 폰트·로고 제거·프레임 커스텀',
     featPremiumCta: '혜택 보기 ›',
   },
   misc: {

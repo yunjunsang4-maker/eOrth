@@ -140,9 +140,10 @@ const en = {
     paywallSubtitle: 'Record your travels more freely,\nstyled your way',
     paywallCta: 'Start beta trial',
     paywallActive: 'Premium active',
-    paywallNote: 'Free to try during the beta.\nWill become a subscription at official launch.',
+    paywallNote: 'Free to try during the beta.\nWill become a subscription at official launch.', // unused after switching to in-app currency (kept for when the flag is reverted)
     launchFreeTitle: 'Free for launch',
     launchFreeDesc: 'All features below are free to use right now.',
+    launchFreeNote: 'These benefits are free to celebrate launch.\nHow this works may change later.',
     benefitAdsTitle: 'Ad-free feed',
     benefitAdsDesc: 'No more ads in your social feed',
     benefitFontTitle: 'Handle fonts',
@@ -1506,7 +1507,7 @@ const en = {
     featBadgeDesc: 'Records unlock badges',
     premiumBadge: 'Premium',
     featPremiumTitle: 'Do more with Premium',
-    featPremiumDesc: 'No ads, original backup, strip',
+    featPremiumDesc: 'Handle fonts, logo removal, custom frames',
     featPremiumCta: 'See benefits ›',
   },
   misc: {
