@@ -527,9 +527,16 @@ language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
 
   -- 공개 기록만. 여행 시작일이 없으면 작성 시각으로 대체한다.
+  -- startDate는 클라이언트가 쓰는 자유 JSONB라 형식이 보장되지 않는다 — 정규식으로 형식을
+  -- 거르고 to_date로 파싱한다(::date는 범위를 벗어나면 예외를 던져 전 사용자 조회가 죽는다,
+  -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → coalesce가 created_at으로 폴백.
   pub as (
     select p.id, p.author_id, p.country_name, p.data,
-           coalesce(nullif(p.data->>'startDate','')::date, p.created_at::date) as trip_date
+           coalesce(
+             case when p.data->>'startDate' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
+                  then to_date(replace(replace(p.data->>'startDate', '.', '-'), '/', '-'), 'YYYY-MM-DD')
+             end,
+             p.created_at::date) as trip_date
     from public.posts p
     where p.visibility <> 'private'
   ),
@@ -799,19 +806,30 @@ language sql security definer set search_path = public as $$
   ),
   ranked as (
     select v.*,
-      row_number() over (order by v.total_score desc, v.cid) as by_score,
+      row_number() over (order by v.total_score desc, v.cid) as by_score
+    from visible v where v.total_score > 0
+  ),
+  -- 다양성 2번 그룹(셔플) 후보는 by_score 상위 K에 들지 못한 잔여분으로만 한정한다.
+  -- ranked 전체에 셔플 등수를 매기면 이미 점수순으로 뽑힌 행이 셔플 상위에도 걸려
+  -- 그 자리가 증발해 정원(least(match_limit,50) - K)을 못 채우는 문제가 있었다.
+  rest as (
+    select r.*,
       -- 다양성: 일자 기반 결정적 셔플. 매일 바뀌되 같은 날 재조회하면 같은 순서라
       -- 스크롤·새로고침에 목록이 튀지 않는다.
-      row_number() over (order by md5(v.cid::text || current_date::text)) as by_shuffle
-    from visible v where v.total_score > 0
+      row_number() over (order by md5(r.cid::text || current_date::text)) as by_shuffle
+    from ranked r
+    where r.by_score > greatest(1, (least(match_limit, 50) * 7) / 10)
   ),
   picked as (
     -- 상위 70%는 점수순, 나머지 30%는 셔플에서 채운다(신규·저활동 사용자 노출 기회)
-    select * from ranked where by_score <= greatest(1, (least(match_limit, 50) * 7) / 10)
-    union
-    select * from ranked
-    where by_score > greatest(1, (least(match_limit, 50) * 7) / 10)
-      and by_shuffle <= greatest(1, least(match_limit, 50) - (least(match_limit, 50) * 7) / 10)
+    select cid, shared_count, sample_countries, shared_cities, shared_keywords, mutual_count,
+           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, total_score
+    from ranked where by_score <= greatest(1, (least(match_limit, 50) * 7) / 10)
+    union all
+    select cid, shared_count, sample_countries, shared_cities, shared_keywords, mutual_count,
+           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, total_score
+    from rest
+    where by_shuffle <= greatest(1, least(match_limit, 50) - (least(match_limit, 50) * 7) / 10)
   )
   select p.cid, pp.handle, pp.emoji, pp.profile_photo,
          p.shared_count, p.sample_countries, p.mutual_count,
