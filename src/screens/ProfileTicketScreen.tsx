@@ -450,12 +450,12 @@ const st = StyleSheet.create({
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 48 }, // 아이디와 통계 블록 사이 간격(전체 통계를 아래로)
   statCol: { minWidth: 64, alignItems: 'center' }, // 라벨 아래 숫자를 가운데 정렬
   statLabel: { color: '#9CA3AF', fontSize: 13, fontWeight: '600' },
-  // 시안(134:1141): Gilroy-Black 28.415 / line-height 1.44(=41).
-  // Gilroy-Black은 자체가 최굵기라 fontWeight를 같이 주면 안드로이드에서
+  // 시안(134:1141): Montserrat-Black 28.415 / line-height 1.44(=41).
+  // Montserrat-Black은 자체가 최굵기라 fontWeight를 같이 주면 안드로이드에서
   // 없는 변형을 찾다가 시스템 폰트로 폴백한다 — 무게 지정 없이 패밀리만 쓴다.
   statValue: {
     color: '#0A0A0F',
-    fontFamily: 'Gilroy-Black',
+    fontFamily: 'Montserrat-Black',
     fontSize: 28.4,
     lineHeight: 41,
     includeFontPadding: false,

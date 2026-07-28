@@ -1626,7 +1626,7 @@ function CutMeta({ item, navigation, toggleLike, onMore, showCounts }: any) {
   const isMyPost = item.isMyPost || item.user.handle === globalHandle;
   const displayHandle = isMyPost ? (globalHandle || item.user.handle) : item.user.handle;
   const nameFontStyle = handleFontStyle(isMyPost ? (myPremium ? myHandleFont : null) : item.user.font);
-  // 방문국가 — 블로그 기록 카드와 동일한 라벨(영문 국가명) + 폰트(jourCountry: Gilroy-Black)
+  // 방문국가 — 블로그 기록 카드와 동일한 라벨(영문 국가명) + 폰트(jourCountry: Montserrat-Black)
   const placeLabel = jourPlaceLabel(item);
   return (
     <View style={d.cutMeta}>
@@ -2192,7 +2192,7 @@ export const estDiaryHeight = (item: any, mode: string): number => {
 const d = StyleSheet.create({
   masonry: { flexDirection: 'row', gap: 10 },
   col: { flex: 1, gap: 12 },
-  // 예시 콘텐츠 공식 배지 — 피드/스냅 예시용. 기능 소개 카드 배지는 Figma 시안(흰 pill + Gilroy 'eOrth')이라 별도다.
+  // 예시 콘텐츠 공식 배지 — 피드/스냅 예시용. 기능 소개 카드 배지는 Figma 시안(흰 pill + Montserrat-Black 'eOrth')이라 별도다.
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
 
   // 공식 예시 콘텐츠 배지
@@ -2266,8 +2266,8 @@ const d = StyleSheet.create({
   // 안쪽 카드 — 불투명 합성색(#0A0A0F 위에 rgba(217,217,217,0.2)를 얹은 값)이라 별이 투과되지 않고 유리 룩 유지
   jourInner: { backgroundColor: '#333337', padding: 12 },
   // 시안 구조: 국가·지역 라벨 → 제목 → 소제목 → 본문 → 구분선 → 푸터
-  // 시안 스펙: Gilroy-Black 10px, line-height 130%, letter-spacing 3% (앞글자만 대문자는 라벨에서 처리)
-  jourCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, marginBottom: 6 },
+  // 시안 스펙: Montserrat-Black 10px, line-height 130%, letter-spacing 3% (앞글자만 대문자는 라벨에서 처리)
+  jourCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Montserrat-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, marginBottom: 6 },
   jourTitle: { color: '#FFFFFF', fontSize: 15, marginBottom: 4 },
   jourSubtitle: { color: '#AA54C1', fontSize: 12, fontWeight: '600', marginBottom: 6 },
   jourBody: { color: 'rgba(255,255,255,0.6)', fontSize: 11, lineHeight: 17 },
@@ -2307,8 +2307,8 @@ const d = StyleSheet.create({
   cutMeta: { paddingTop: 8, paddingBottom: 2, gap: 5 },
   // 국가(좌) + 올린시간(우) 같은 행 — 시안처럼 시간을 카드 오른쪽에 정렬
   cutMetaTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  // 블로그 기록 카드의 국가 라벨(jourCountry)과 동일한 글자 — Gilroy-Black 10px (위치/여백은 cutMeta가 유지)
-  cutMetaCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Gilroy-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, flexShrink: 1 },
+  // 블로그 기록 카드의 국가 라벨(jourCountry)과 동일한 글자 — Montserrat-Black 10px (위치/여백은 cutMeta가 유지)
+  cutMetaCountry: { color: 'rgba(255,255,255,0.5)', fontFamily: 'Montserrat-Black', fontSize: 12, lineHeight: 15, letterSpacing: 0.3, flexShrink: 1 },
   // 올린시간 — 블로그 카드 jourTime과 동일 톤(보라)
   cutMetaTime: { color: '#AA54C1', fontSize: 11, fontWeight: '500' },
   cutMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },

@@ -54,7 +54,7 @@ export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress
             <Text style={[s.badgeSuffix, s.badgeSuffixPremium]}>{t(slide.badgeKey)}</Text>
           ) : (
             <>
-              {/* 시안: eOrth = Gilroy-Black 16.13 / 공식 = 12 (같은 흰 pill 안 두 톤) */}
+              {/* 시안: eOrth = Montserrat-Black 16.13 / 공식 = 12 (같은 흰 pill 안 두 톤) */}
               <Text style={s.badgeBrand}>eOrth</Text>
               <Text style={s.badgeSuffix}>{t('socialEmpty.officialSuffix')}</Text>
             </>
@@ -104,7 +104,7 @@ const s = StyleSheet.create({
   },
   // 프리미엄 배지·CTA 색은 호출부에서 스킨으로 주입 — 여기 값은 폴백
   badgePremium: { backgroundColor: '#6B21A8' },
-  badgeBrand: { fontFamily: 'Gilroy-Black', fontSize: 10.5, color: '#000000', includeFontPadding: false }, // 16.13 → 10.4
+  badgeBrand: { fontFamily: 'Montserrat-Black', fontSize: 10.5, color: '#000000', includeFontPadding: false }, // 16.13 → 10.4
   badgeSuffix: { fontSize: 7.5, fontWeight: '800', color: '#000000', marginLeft: 2, includeFontPadding: false }, // 12 → 7.7
   badgeSuffixPremium: { color: '#FFFFFF', marginLeft: 0 },
 

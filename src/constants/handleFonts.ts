@@ -12,7 +12,7 @@ export const HANDLE_FONTS: HandleFont[] = [
   { id: 'pen', labelKey: 'premium.fontPen', fontFamily: 'NanumPenScript_400Regular' },
   { id: 'brush', labelKey: 'premium.fontBrush', fontFamily: 'NanumBrushScript_400Regular' },
   { id: 'serif', labelKey: 'premium.fontSerif', fontFamily: 'NanumMyeongjo_400Regular' },
-  { id: 'impact', labelKey: 'premium.fontImpact', fontFamily: 'Gilroy-Black' },
+  { id: 'impact', labelKey: 'premium.fontImpact', fontFamily: 'Montserrat-Black' },
   { id: 'maru', labelKey: 'premium.fontMaru', fontFamily: 'MaruBuri' },
   // 영어 전용 (아이디는 영문 한정이라 한글 글리프 불필요)
   { id: 'pacifico', labelKey: 'premium.fontPacifico', fontFamily: 'Pacifico' },

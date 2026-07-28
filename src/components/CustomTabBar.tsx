@@ -506,7 +506,7 @@ const styles = StyleSheet.create({
   },
   label: {
     color: ACTIVE_COLOR,
-    fontFamily: 'Gilroy-Black', // 미등록 시 시스템 폰트로 폴백
+    fontFamily: 'Montserrat-Black', // 미등록 시 시스템 폰트로 폴백
     fontSize: 10,
     lineHeight: 13,
     fontWeight: '600',

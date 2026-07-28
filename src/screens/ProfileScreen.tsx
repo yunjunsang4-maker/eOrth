@@ -2477,7 +2477,7 @@ const styles = StyleSheet.create({
   },
   statValue: {
     fontSize: 22,
-    fontWeight: '800', // 굵게 (Gilroy-Bold 쓰면 그걸로)
+    fontWeight: '800', // 굵게 (Montserrat-Black 쓰면 그걸로)
     fontFamily: 'Inter_800ExtraBold',
     color: '#FFFFFF',
     lineHeight: 26,
