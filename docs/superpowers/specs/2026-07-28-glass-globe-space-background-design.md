@@ -21,15 +21,20 @@
 
 ## 이미지
 
-- **원본**: Westerlund 2 성단 — 허블 25주년 "Celestial Fireworks" (NASA, ESA, Hubble Heritage Team STScI/AURA). Wikimedia Commons 경유, 8919×6683.
-- **가공**: 성단 위주 상단 크롭(`crop=iw*0.78:ih*0.62:iw*0.16:0`) → 1080×2340 커버 크롭 → 앱 보라 톤 그레이딩
+첫 시안(Westerlund 2 성단을 보라로 그레이딩)은 **너무 화려하다**는 피드백으로 폐기했다. 성운 구름과 강한 보라 색조가 인위적으로 읽혔다. 검은 우주에 별만 남기는 쪽이 단순하면서 사실적이다.
+
+- **원본**: "Scattered stars in Sagittarius" (potw1624a) — ESA/Hubble & NASA, CC BY 4.0. Wikimedia Commons 경유.
+- **가공**: 1080×2340 커버 크롭 → 어두운 별 정리 → 채도만 살짝 낮춤
 
   ```
-  eq=saturation=0.15:contrast=1.2:brightness=-0.20,
-  colorbalance=rs=0.11:gs=-0.05:bs=0.23:rm=0.15:gm=-0.07:bm=0.27
+  curves=all='0/0 0.42/0.008 0.75/0.38 1/0.95',
+  eq=saturation=0.5,
+  colorbalance=rs=0.05:bs=0.10
   ```
 
-  JPEG q6 → 약 190KB, base64 약 259KB.
+  `curves`의 검정 크러시가 희미한 별과 배경 노이즈를 지워 별이 성기게 남는다(= 단순함). 색조는 거의 중성으로 두고 그림자에만 아주 옅은 보라를 넣어 앱 팔레트와 이어지게 했다 — 보라를 더 넣으면 바로 인위적으로 보인다.
+
+  JPEG q6 → 약 115KB, base64 약 153KB.
 
 ## 전달 방식
 
@@ -52,7 +57,7 @@ export const GLASS_SPACE_BG = 'data:image/jpeg;base64,...';
 
 ### 2. `src/components/GlobeView.tsx` — `globeHTML`만
 
-- **CSS**: `#bg.space`에 배경 이미지(`background-size: cover; background-position: center`)를 깔고, 그 위에 `radial-gradient` 비네트를 얹어 상단 타이틀·하단 카드 영역을 눌러 가독성을 확보한다.
+- **CSS**: `#bg.space`에 배경 이미지(`background-size: cover; background-position: center`)를 깔고, 그 위에 `radial-gradient` 비네트를 얹어 상단 타이틀·하단 카드 영역을 눌러 가독성을 확보한다. 이미지 자체가 이미 어두워서 비네트는 약하게(상단 0.72 / 하단 0.78) — 더 세게 넣으면 가장자리 별이 통째로 지워진다.
 - **별밭 루프**(`GlobeView.tsx:167` 부근): 유리일 때 320 → 80개. 실사 별과 이중으로 겹치지 않게 하되 반짝임 연출은 남긴다.
 - **토글 2곳**: 부팅 시(`globeDisplayMode` 초기화 직후, `GlobeView.tsx:273`)와 런타임 모드 변경(`GlobeView.tsx:2190`). 각각 `bg.classList.toggle('space', isGlass())`.
 
@@ -61,8 +66,10 @@ export const GLASS_SPACE_BG = 'data:image/jpeg;base64,...';
 버전 텍스트(`SettingsScreen.tsx:476`) 아래에 작은 회색 크레딧 한 줄. ESA/Hubble 명의 이미지는 CC BY 4.0이라 출처 표기가 필요하다. 고정 문구로 두고 번역하지 않는다.
 
 ```
-배경 이미지: NASA, ESA, Hubble Heritage Team (STScI/AURA)
+Globe background: ESA/Hubble & NASA
 ```
+
+**이미지를 교체하면 이 줄도 반드시 함께 갱신할 것** — 원본이 바뀌면 크레딧도 달라진다.
 
 ## 알려진 리스크
 

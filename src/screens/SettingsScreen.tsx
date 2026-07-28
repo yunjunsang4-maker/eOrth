@@ -477,7 +477,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         {/* 유리 지구본 배경으로 쓰는 허블 이미지 출처 — ESA/Hubble 명의는 CC BY 4.0이라 표기가 필요하다.
             고정 문구(번역하지 않음). 배경 이미지를 교체하면 이 줄도 함께 갱신할 것. */}
         <Text style={st.creditText}>
-          Globe background: NASA, ESA, Hubble Heritage Team (STScI/AURA)
+          Globe background: ESA/Hubble &amp; NASA
         </Text>
       </ScrollView>
 

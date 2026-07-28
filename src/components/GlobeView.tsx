@@ -75,8 +75,8 @@ const globeHTML = `<!DOCTYPE html>
      비네트를 이미지 위에 겹쳐 상단 타이틀·하단 카드 영역을 눌러 가독성을 확보한다. */
   #bg.space {
     background-image:
-      radial-gradient(120% 62% at 50% 6%, rgba(10,10,15,0.88) 0%, rgba(10,10,15,0.34) 42%, rgba(10,10,15,0) 68%),
-      radial-gradient(130% 46% at 50% 100%, rgba(10,10,15,0.92) 0%, rgba(10,10,15,0.40) 44%, rgba(10,10,15,0) 74%),
+      radial-gradient(120% 62% at 50% 6%, rgba(10,10,15,0.72) 0%, rgba(10,10,15,0.26) 42%, rgba(10,10,15,0) 68%),
+      radial-gradient(130% 46% at 50% 100%, rgba(10,10,15,0.78) 0%, rgba(10,10,15,0.30) 44%, rgba(10,10,15,0) 74%),
       url('${GLASS_SPACE_BG}');
     background-size: cover, cover, cover;
     background-position: center, center, center;
