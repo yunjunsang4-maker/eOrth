@@ -63,6 +63,7 @@ import type { TravelRecord } from '../store/recordStore';
 import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions } from '../constants/homeRegions';
+import { REGION_MAP_ENABLED } from '../constants/featureFlags';
 import type { TabScreenProps } from '../navigation/types';
 import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
@@ -480,7 +481,10 @@ export default function MainScreen({ navigation, route }: Props) {
           title: t('main.coachGlobeTitle'),
           desc: t('main.coachGlobeDesc'),
         },
-        { rect: toggle, title: t('main.coachToggleTitle'), desc: t('main.coachToggleDesc') },
+        // 대륙 모드가 꺼져 있으면 토글이 렌더되지 않아 측정값이 null이다 — 단계를 건너뛴다.
+        ...(REGION_MAP_ENABLED
+          ? [{ rect: toggle, title: t('main.coachToggleTitle'), desc: t('main.coachToggleDesc') }]
+          : []),
         { rect: settings, title: t('main.coachFormTitle'), desc: t('main.coachFormDesc') },
         { rect: snap, shape: 'circle', circleWin: snapCircle, tipBottom: bottomTipBottom, keepBright: 'snap', icon: <CameraIcon size={16} color={skinAccent.accent} />, title: t('main.coachSnapTitle'), desc: t('main.coachSnapDesc') },
         { rect: fab, tipBottom: bottomTipBottom, keepBright: 'fab', title: t('main.coachFabTitle'), desc: t('main.coachFabDesc') },
@@ -1303,20 +1307,24 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 지구본 / 국가 지도 영역 ── */}
       {/* box-none: 빈 영역 터치는 뒤의 전체화면 글로브로 통과(토글·설정 등 자식만 터치 수신) */}
       <View style={styles.globeArea} pointerEvents="box-none">
-        {/* 지구본/대륙 전환 토글 (Liquid Glass) */}
-        <View style={styles.modeToggleWrap}>
-          {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
-          <View ref={toggleRef} collapsable={false}>
-            <SegmentedToggle
-              options={[
-                { value: 'globe', label: t('main.toggleGlobe') },
-                { value: 'region', label: t('main.toggleRegion') },
-              ]}
-              value={viewMode}
-              onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
-            />
+        {/* 지구본/대륙 전환 토글 (Liquid Glass)
+            대륙 모드가 꺼져 있으면(REGION_MAP_ENABLED=false) 선택지가 하나뿐이라
+            토글 자체를 렌더하지 않는다 — 지구본만 보이는 것이 자연스럽다. */}
+        {REGION_MAP_ENABLED && (
+          <View style={styles.modeToggleWrap}>
+            {/* 알약 토글 자체만 측정/강조하도록 ref를 내부 래퍼에 부착 (wrap은 가로 전체라 제외) */}
+            <View ref={toggleRef} collapsable={false}>
+              <SegmentedToggle
+                options={[
+                  { value: 'globe', label: t('main.toggleGlobe') },
+                  { value: 'region', label: t('main.toggleRegion') },
+                ]}
+                value={viewMode}
+                onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
+              />
+            </View>
           </View>
-        </View>
+        )}
 
         {/* 뷰 렌더링 */}
         {viewMode === 'globe' ? (

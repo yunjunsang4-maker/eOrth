@@ -54,3 +54,24 @@ export const ADMOB_ENABLED = true;
  * 재화 시스템이 준비되면 이 값을 false로 내리고 게이트를 재화 보유 여부로 바꾼다.
  */
 export const LAUNCH_FREE_PREMIUM = true;
+
+/**
+ * 대륙(국가 지역) 지도 모드 활성화 여부.
+ *
+ * 지역 경계 데이터가 GADM 4.1이었는데, GADM 라이선스는 학술·비영리 이용만
+ * 무료이고 재배포·상업적 이용은 사전 허가를 요구한다. 광고 수익이 있는 앱에
+ * 데이터를 넣어 배포하는 것은 양쪽 모두에 해당해서, 출시 전에 데이터를 빼고
+ * 이 모드를 껐다(2026-07-28).
+ *
+ * 재개 방법: OpenStreetMap(ODbL — 상업 이용 허용, 출처 표기 필수)으로 839개
+ * 지역을 다시 받아 src/data/geo/*를 복원하고 이 값을 true로 올린다. 절차와
+ * 검증된 Overpass 질의는 Important2/gadm-backup-2026-07-28/README.txt 참고.
+ *
+ * 주의: 기존 사용자의 regionColors·taggedRegions·거주 지역은 GADM 표기를
+ * 저장 키로 쓰고 있다("NewYork" 등 공백 제거형). OSM은 "New York"이므로
+ * 구→신 별칭 매핑 없이 켜면 사용자 데이터가 유실된다.
+ *
+ * 한국 시/도 프리셋(koreaRegions)은 GADM과 무관하므로 이 플래그와 상관없이
+ * 계속 동작한다 — 거주 지역 칩은 한국 사용자에게 그대로 제공된다.
+ */
+export const REGION_MAP_ENABLED = false;
