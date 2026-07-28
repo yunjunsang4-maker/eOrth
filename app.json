@@ -14,7 +14,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.yunjunsang.eorth",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
