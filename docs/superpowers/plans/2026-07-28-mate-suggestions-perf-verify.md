@@ -14,15 +14,16 @@
 > **0행을 "통과"로 읽어도 되는 것은, 그 앞의 관문 출력을 직접 눈으로 확인한 경우뿐이다.**
 > 관문을 건너뛰거나 관문 출력이 화면에 뜨지 않았다면, 뒤따르는 0행은 아무것도 증명하지 않는다.
 
-관문은 5개다. 순서대로 통과해야 한다.
+관문은 6개다. 순서대로 통과해야 한다.
 
 | 관문 | 무엇을 막는가 | 위치 |
 |---|---|---|
 | 0 | 새 함수가 배포되지 않아 구·구를 비교하는 것 | §1 (d) |
 | A | 신원이 없어 두 함수가 모두 0행을 내는 것 | §2 |
 | B | 결과가 비어 있는 계정으로 비교하는 것 | §2 |
-| C-1 | rating 축이 결과에 참여하지 않아, 바뀐 경로가 출력에 드러나지 않는 것 | §2 |
+| C-1 | rating 축이 결과에 참여하지 않아, 바뀐 경로가 출력에 드러나지 않는 것(내 쪽) | §2 |
 | C-2 | 다국가 전개가 없어 다중도(팬아웃)를 검사하지 못하는 것 | §2 |
+| C-3 | 후보 쪽에 rating이 없어 crating이 결과에 아예 도달하지 못하는 것 | §2 |
 
 ## 1. 두 함수 배포
 
@@ -171,7 +172,10 @@ where p.author_id = auth.uid() and p.visibility <> 'private'
 
 ```sql
 -- 5) 관문 C-2 — 다중도(팬아웃)를 검사할 데이터가 있는가.
---    새 코드가 들인 위험은 join public.posts p on p.id = pc.post_id 로 행이 부는 것이다.
+--    join public.posts p on p.id = pc.post_id 자체는 posts.id가 기본키라 1:1이고 행을
+--    불리지 않는다. 실제 위험은 다국가 전개 쪽이다 — 같은 기록이 pub_country에서
+--    나라별로 2행 이상 펼쳐지면, crating이 pc.author_id로 group by 할 때 그 기록 하나의
+--    평점이 겹치는 나라 수만큼 중복 반영되어 평균이 그 기록 쪽으로 쏠린다.
 --    같은 기록이 pub_country에서 2행 이상으로 펼쳐지는 경우가 하나도 없으면
 --    비교가 0행이어도 그 위험은 검사하지 않은 것이다.
 --    아래는 pub → pub_country의 전개 규칙(country_name UNION countries[].name)을 그대로 옮긴 것이다.
@@ -200,7 +204,46 @@ select count(*) as n_multi_rated from (
 ```
 
 ```sql
--- 6) 본 비교 — except ALL 이어야 중복 다중도까지 본다.
+-- 6) 관문 C-3 — crating이 후보 쪽에서도 살아 있는가.
+--    ctaste는 rating 항을 게이트할 때 내 쪽(my_rating)과 후보 쪽(crating) 둘 다 not null이어야
+--    한다(`(select r from my_rating) is not null and cr.r is not null`). 관문 C-1은 내 쪽만
+--    확인했다 — 내가 공유하는 나라 중 어느 한 곳에서라도 나 아닌 후보가 유효한 평점을 남긴
+--    적이 없으면 crating은 모든 후보에서 NULL이 되어, 이번 리팩터가 구조를 바꾼 유일한
+--    지점(crating의 post_id 되짚기)이 출력에 전혀 드러나지 않는다. 그 상태에서는 0행 비교가
+--    이 경로에 대해 아무것도 증명하지 못한다.
+--    아래 pc는 §2 보너스 절의 pc를 그대로 재사용하고 rating 정규식만 더한 것이다
+--    — country_name UNION countries[].name, schema.sql의 pub → pub_country와 같은 전개다.
+--    (author_id = auth.uid() 쪽 name 집합은 내 나라 전체가 아니라 내 rating이 있는 나라로
+--    좁힌 부분집합이다. 관문 C-1을 통과했다면 공집합이 아니고 my_countries의 부분집합이므로,
+--    여기서 겹침이 나오면 실제 my_countries와도 반드시 겹친다 — 보수적으로 좁혀도 안전하다.)
+with pc as (
+  select x.author_id, c.name
+  from (
+    select p.author_id, p.country_name,
+           case when jsonb_typeof(p.data->'countries') = 'array'
+                then p.data->'countries' else '[]'::jsonb end as countries
+    from public.posts p
+    where p.visibility <> 'private'
+      and (p.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
+  ) x
+  cross join lateral (
+    select x.country_name as name
+    union
+    select jsonb_array_elements(x.countries)->>'name'
+  ) c
+  where c.name is not null and c.name <> ''
+)
+select count(distinct pc.author_id) as n_candidate_rated
+from pc
+where pc.author_id <> auth.uid()
+  and pc.name in (select name from pc where author_id = auth.uid());
+-- 0이면 중단: 이 리팩터의 유일한 변경 경로(crating)가 출력에 전혀 나타나지 않는다는 뜻이다.
+-- rating을 남긴 후보가 나와 나라를 공유하는 다른 계정으로 다시 검증하거나,
+-- '이 경로는 미검증으로 남는다'는 사실을 기록에 남길 것.
+```
+
+```sql
+-- 7) 본 비교 — except ALL 이어야 중복 다중도까지 본다.
 --    실행 직전에 select auth.uid();가 대상 UUID를 내는지 다시 확인하고 돌릴 것.
 select * from public.mate_suggestions(50)
 except all
@@ -214,21 +257,21 @@ select * from public.mate_suggestions(50);
 ```
 
 ```sql
--- 7) 사후 관문 — 본 비교가 정말 신원 안에서 돌았는가.
---    관문 A·B를 통과한 뒤에도 커넥션이 바뀌면 6)만 신원 없이 돌 수 있고,
+-- 8) 사후 관문 — 본 비교가 정말 신원 안에서 돌았는가.
+--    관문 A·B를 통과한 뒤에도 커넥션이 바뀌면 7)만 신원 없이 돌 수 있고,
 --    그때 두 비교는 양쪽 다 0행이라 화면상 완벽한 통과로 보인다.
 --    비교 '앞뒤'로 신원을 확인해야 그 구간이 신원 안이었음이 보장된다.
 select auth.uid() as uid,
        (select count(*) from public.mate_suggestions(50)) as n_new;
--- uid가 NULL이거나 n_new = 0이면 6)의 0행은 무효다. 신원을 다시 넣고 6)부터 다시 할 것.
+-- uid가 NULL이거나 n_new = 0이면 7)의 0행은 무효다. 신원을 다시 넣고 7)부터 다시 할 것.
 -- 판별·보너스 쿼리도 같은 방식으로 앞뒤를 감쌀 것.
 ```
 
 **두 비교 모두 0행이어야 한다.** 행 수 비교는 `except`가 아니라 관문 B의 `count(*)`로 한다 —
 `except`(ALL 없음)는 양쪽을 중복 제거한 뒤 비교하므로, "새 함수가 같은 후보를 2번 반환"하는
 종류의 결함(다중도 회귀)은 `except`만으로는 양방향 모두 0행으로 통과해버린다. 본 비교에
-`except all`을 쓰는 이유가 이것이다. 이번 리팩터가 새로 들인 위험인
-`join public.posts p on p.id = pc.post_id`의 팬아웃이 정확히 이 사각과 겹친다.
+`except all`을 쓰는 이유가 이것이다. 이번 리팩터가 강화한 위험인 다국가 전개
+(`pub_country`가 한 기록을 나라별로 여러 행으로 펼치는 것)의 팬아웃이 정확히 이 사각과 겹친다.
 
 **셔플이 일자 기반이라 §2·판별·보너스 전부를 같은 날(같은 `current_date`) 실행해야 한다.**
 UTC 자정을 넘기면 `by_shuffle`과 `my_recent`가 바뀌어 리팩터와 무관한 diff가 난다.
@@ -346,25 +389,94 @@ group by 1 order by 2 desc limit 10;
 --   → '이 경로는 미검증'으로 기록에 남기고 넘어갈 것. 0행을 통과로 읽지 말 것.
 ```
 
-고른 이름 2개로 아래를 실행한다(`'일본','태국'` 자리를 치환).
+치환할 자리가 있으면 언젠가 잊고 넘어간다 — UUID 자리는 잊으면 캐스트 에러로 죽지만,
+나라 이름은 `'일본','태국'`처럼 그럴듯한 값이라 잊어도 조용히 0행만 내는 무변화 비교가
+되어 본 비교를 한 번 더 돌린 것과 구분되지 않는다. 그래서 아래는 치환 없이, 위 선택 쿼리를
+스칼라 서브쿼리로 그대로 끼워 넣어 매번 새로 계산한다.
 
 ```sql
-select * from public.mate_suggestions(50, array['일본','태국'])
+with pc as (
+  select x.author_id, c.name
+  from (
+    select p.author_id, p.country_name,
+           case when jsonb_typeof(p.data->'countries') = 'array'
+                then p.data->'countries' else '[]'::jsonb end as countries
+    from public.posts p
+    where p.visibility <> 'private'
+  ) x
+  cross join lateral (
+    select x.country_name as name
+    union
+    select jsonb_array_elements(x.countries)->>'name'
+  ) c
+  where c.name is not null and c.name <> ''
+)
+select * from public.mate_suggestions(50, (
+  select array_agg(name) from (
+    select name, count(distinct author_id) as visitors
+    from pc
+    where author_id <> auth.uid()
+      and name not in (select name from pc where author_id = auth.uid())
+    group by 1 order by 2 desc limit 2
+  ) t
+))
 except all
-select * from public.mate_suggestions_old(50, array['일본','태국']);
+select * from public.mate_suggestions_old(50, (
+  select array_agg(name) from (
+    select name, count(distinct author_id) as visitors
+    from pc
+    where author_id <> auth.uid()
+      and name not in (select name from pc where author_id = auth.uid())
+    group by 1 order by 2 desc limit 2
+  ) t
+));
 ```
 
 ```sql
-select * from public.mate_suggestions_old(50, array['일본','태국'])
+with pc as (
+  select x.author_id, c.name
+  from (
+    select p.author_id, p.country_name,
+           case when jsonb_typeof(p.data->'countries') = 'array'
+                then p.data->'countries' else '[]'::jsonb end as countries
+    from public.posts p
+    where p.visibility <> 'private'
+  ) x
+  cross join lateral (
+    select x.country_name as name
+    union
+    select jsonb_array_elements(x.countries)->>'name'
+  ) c
+  where c.name is not null and c.name <> ''
+)
+select * from public.mate_suggestions_old(50, (
+  select array_agg(name) from (
+    select name, count(distinct author_id) as visitors
+    from pc
+    where author_id <> auth.uid()
+      and name not in (select name from pc where author_id = auth.uid())
+    group by 1 order by 2 desc limit 2
+  ) t
+))
 except all
-select * from public.mate_suggestions(50, array['일본','태국']);
+select * from public.mate_suggestions(50, (
+  select array_agg(name) from (
+    select name, count(distinct author_id) as visitors
+    from pc
+    where author_id <> auth.uid()
+      and name not in (select name from pc where author_id = auth.uid())
+    group by 1 order by 2 desc limit 2
+  ) t
+));
 -- 둘 다 0행이어야 한다.
 ```
 
-이 보너스가 "새 입력"이 되도록 보장하는 것은 위 선택 쿼리 하나뿐이다 — 거기서 고른 이름은
+이 보너스가 "새 입력"이 되도록 보장하는 것은 위 스칼라 서브쿼리 자체다 — 거기서 고르는 이름은
 `my_countries`에 없던 것이면서 `country_weight`에 행이 있으므로, `my_weight_sum`이 반드시
-커지고 `cand`가 넓어진다. 임의의 나라를 적어 넣으면 이 보장이 사라지고, 0행은 본 비교를
-한 번 더 돌린 것 이상의 의미가 없다.
+커지고 `cand`가 넓어진다. 치환할 자리가 없으므로 이 보장은 항상 지켜진다. 다만 위 선택 쿼리
+(눈으로 미리 확인하는 쪽)가 0행이면 `array_agg`가 NULL이 되어 `extra_countries`가 사실상
+빈 배열과 같아지고, 아래 두 비교는 본 비교와 동일한 무변화 쿼리가 된다 — 그 경우 0행을
+통과로 읽지 말고 **'이 경로는 미검증으로 남는다'**는 사실을 기록에 남길 것.
 
 ## 3. 성능 확인
 
