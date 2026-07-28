@@ -7,6 +7,7 @@ import { THREE_SRC } from '../data/vendorThree';
 import { D3_SRC } from '../data/vendorD3';
 import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
 import { CITY_LABELS } from '../data/cityLabels';
+import { GLASS_SPACE_BG } from '../data/glassSpaceBg';
 
 // 오프라인 번들: WebView HTML에 라이브러리/지형 데이터를 인라인 주입
 // (script 태그 조기 종료 방지를 위해 </script 만 이스케이프)
@@ -70,6 +71,17 @@ const globeHTML = `<!DOCTYPE html>
   body:active { cursor: grabbing; }
   /* 배경 — 색활성화(neon) 지구본과 동일한 DOM 배경으로 통일. 단 우주가스(nebula)는 넣지 않는다. */
   #bg { position: fixed; inset: 0; overflow: hidden; background: #0A0B0F; z-index: 1; }
+  /* 유리 구슬 모드 전용 실사 우주 배경 (applySpaceBg가 클래스를 토글).
+     비네트를 이미지 위에 겹쳐 상단 타이틀·하단 카드 영역을 눌러 가독성을 확보한다. */
+  #bg.space {
+    background-image:
+      radial-gradient(120% 62% at 50% 6%, rgba(10,10,15,0.72) 0%, rgba(10,10,15,0.26) 42%, rgba(10,10,15,0) 68%),
+      radial-gradient(130% 46% at 50% 100%, rgba(10,10,15,0.78) 0%, rgba(10,10,15,0.30) 44%, rgba(10,10,15,0) 74%),
+      url('${GLASS_SPACE_BG}');
+    background-size: cover, cover, cover;
+    background-position: center, center, center;
+    background-repeat: no-repeat;
+  }
   #stars { position: absolute; inset: 0; pointer-events: none; }
   #stars i { position: absolute; border-radius: 50%; background: #ffffff; display: block; }
   @keyframes ng-twinkle { 0%,100% { opacity: var(--o); } 50% { opacity: calc(var(--o)*0.35); } }
@@ -164,10 +176,13 @@ container.appendChild(renderer.domElement);
 
 // 별밭(DOM, 결정적) — neon 배경과 동일 파라미터. 우주가스(nebula)는 제외.
 // 아래 3D Points 별밭은 이걸로 대체하므로 비활성화한다. (신뢰 불가 입력 없음 — createElement로 구성)
-(function(){
+// 유리 모드는 배경 사진에 실사 별이 이미 있으므로 개수를 줄여 이중으로 겹치지 않게 한다.
+function buildStars(){
   var el = document.getElementById('stars'); if (!el) return;
+  el.textContent = '';
+  var n = isGlass() ? 80 : 320;
   var seed = 1337; function rnd(){ seed = (seed*1664525 + 1013904223) >>> 0; return seed/4294967296; }
-  for (var i=0;i<320;i++){
+  for (var i=0;i<n;i++){
     var o=(0.45+rnd()*0.4), x=(rnd()*100).toFixed(2), y=(rnd()*100).toFixed(2);
     var d=(0.8+rnd()*1.8).toFixed(2), t=(2.5+rnd()*4).toFixed(2);
     var s = document.createElement('i');
@@ -176,7 +191,15 @@ container.appendChild(renderer.domElement);
     s.style.animation = 'ng-twinkle '+t+'s ease-in-out infinite';
     el.appendChild(s);
   }
-})();
+}
+
+// 실사 우주 배경 on/off + 별 개수 재구성. 유리(photo) 모드에서만 켠다.
+// 호출 시점: 부팅(globeDisplayMode 초기화 직후)과 런타임 모드 변경 2곳.
+function applySpaceBg(){
+  var bg = document.getElementById('bg');
+  if (bg) bg.classList.toggle('space', isGlass());
+  buildStars();
+}
 
 var scene = new THREE.Scene();
 var camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -272,6 +295,9 @@ var visitedMap = {};
 // 구워져 메인탭 진입 때 파란 지구본이 한 프레임 이상 번쩍인다.
 var globeDisplayMode = (typeof window !== 'undefined' && window.__initDisplayMode) || 'flag'; // 'flag' | 'color' | 'photo'
 var globeDefaultColor = '#BF85FC';
+// 배경/별밭은 globeDisplayMode가 정해진 뒤에 만든다 — 위쪽에서 부르면 var 호이스팅 탓에
+// isGlass()가 아직 undefined를 보고 항상 false가 된다.
+applySpaceBg();
 
 // GeoJSON name → ISO 2-letter code
 var EN_TO_ISO = {
@@ -2191,6 +2217,7 @@ function handleVisitedMessage(msg) {
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
     // 런타임에 photo↔color가 바뀌는 경우(변형 전환은 리마운트라 드물지만) 유리 알파 반영
     if (globeMesh) globeMesh.material.transparent = isGlass();
+    applySpaceBg(); // 유리 전환 시 실사 우주 배경 on/off + 별 개수 재구성
     if (worldData && globeMesh) {
       regionC.span = 0; // 방문색/모드 변경 → 지역 창은 다음 settle에 재생성(오버레이 구조라 전역과 독립)
       var applyTex = function(tex) {
