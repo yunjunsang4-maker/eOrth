@@ -57,3 +57,15 @@ cg_tmp.js
 # Supabase CLI 로컬 캐시(링크 정보 등) — 커밋 금지
 supabase/.temp/
 scripts/geo-tmp/
+
+# 에셋 작업용 일회성 스크립트·중간 산출물 — 디스크에는 남기고 커밋만 제외.
+# (EAS 빌드는 git 상태로 아카이브를 만들어서, 미추적 파일이 있으면 빌드가 멈춘다)
+scripts/intro1/
+scripts/tmp-frames/
+scripts/check-antarctica*.js
+scripts/check-orb-sharpness.js
+scripts/measure-orb-dot.js
+scripts/verify-orb-layers.js
+scripts/build-import-orb-layers.js
+scripts/orb-src.svg
+scripts/orb-export.png
