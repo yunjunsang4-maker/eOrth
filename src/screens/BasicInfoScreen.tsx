@@ -33,6 +33,7 @@ import { useSettings, type Gender, type AppLanguage } from '../store/settingsSto
 import { isHandleAvailable } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PersonIcon, CameraIcon } from '../components/icons';
@@ -93,31 +94,8 @@ const glassBtn = StyleSheet.create({
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
-// 입력 숫자를 YYYY-MM-DD 형태로 자동 정렬 (최대 8자리)
-const formatBirthday = (raw: string) => {
-  const digits = raw.replace(/\D/g, '').slice(0, 8);
-  const y = digits.slice(0, 4);
-  const m = digits.slice(4, 6);
-  const d = digits.slice(6, 8);
-  let out = y;
-  if (digits.length > 4) out += '-' + m;
-  if (digits.length > 6) out += '-' + d;
-  return out;
-};
+// 생일 입력 유틸(형식 정렬·유효성·만 14세 확인)은 utils/birthday 에서 가져온다.
 
-// YYYY-MM-DD 유효성 검사 (실제 존재하는 날짜 + 합리적 연도 범위)
-const isValidBirthday = (v: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const now = new Date().getFullYear();
-  if (year < 1900 || year > now) return false;
-  if (month < 1 || month > 12) return false;
-  const maxDay = new Date(year, month, 0).getDate();
-  return day >= 1 && day <= maxDay;
-};
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 
@@ -210,6 +188,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
       Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.handleInvalid'));
       return;
     }
+    // 만 14세 미만 가입 차단(이용약관 제4조 2항) — 서버 조회 전에 먼저 막는다.
+    if (!isOldEnough(birthday)) {
+      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.birthdayUnderage'));
+      return;
+    }
     // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
     setCheckingHandle(true);
     const avail = await isHandleAvailable(h);
@@ -229,7 +212,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
     navigation.navigate('TravelImport');
   };
 
-  const canContinue = HANDLE_RE.test(handle.trim()) && isValidBirthday(birthday) && gender !== '' && (!stayOn || !!stayCountry);
+  const canContinue = HANDLE_RE.test(handle.trim()) && isOldEnough(birthday) && gender !== '' && (!stayOn || !!stayCountry);
 
   return (
     <View style={styles.container}>
@@ -332,6 +315,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
               />
               {birthday.length > 0 && !isValidBirthday(birthday) && (
                 <Text style={styles.birthdayHint}>{t('basicInfo.birthdayHint')}</Text>
+              )}
+              {isValidBirthday(birthday) && !isOldEnough(birthday) && (
+                <Text style={styles.birthdayHint}>{t('basicInfo.birthdayUnderage')}</Text>
               )}
             </View>
           </View>

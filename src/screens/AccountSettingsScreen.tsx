@@ -20,6 +20,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, CalendarIcon, PersonIcon } from '../components/icons';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { Gender } from '../store/settingsStore';
+import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -40,34 +41,10 @@ const COLORS = {
 
 type Props = RootStackScreenProps<'AccountSettings'>;
 
-// 입력 숫자를 YYYY-MM-DD 형태로 자동 정렬 (최대 8자리)
-const formatBirthday = (raw: string) => {
-  const digits = raw.replace(/\D/g, '').slice(0, 8);
-  const y = digits.slice(0, 4);
-  const m = digits.slice(4, 6);
-  const d = digits.slice(6, 8);
-  let out = y;
-  if (digits.length > 4) out += '-' + m;
-  if (digits.length > 6) out += '-' + d;
-  return out;
-};
+// 생일 입력 유틸(형식 정렬·유효성·만 14세 확인)은 utils/birthday 에서 가져온다.
 
-// YYYY-MM-DD 유효성 검사 (실제 존재하는 날짜 + 합리적 연도 범위)
 // 이메일 형식 간이 검증 (변경 요청 전 오입력 차단)
 const EMAIL_INPUT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-const isValidBirthday = (v: string) => {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(v);
-  if (!match) return false;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  const day = Number(match[3]);
-  const now = new Date().getFullYear();
-  if (year < 1900 || year > now) return false;
-  if (month < 1 || month > 12) return false;
-  const maxDay = new Date(year, month, 0).getDate();
-  return day >= 1 && day <= maxDay;
-};
 
 // 탈퇴 사유: value는 비교용 안정 키, 라벨은 i18n에서 가져온다(번역해도 비교가 깨지지 않게)
 const DELETE_REASONS = [
@@ -150,6 +127,11 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const submitBirthday = () => {
     if (!isValidBirthday(birthdayDraft)) {
       Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.birthdayInvalid'));
+      return;
+    }
+    // 만 14세 미만으로는 수정할 수 없다(이용약관 제4조 2항 — 온보딩과 같은 규칙).
+    if (!isOldEnough(birthdayDraft)) {
+      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.birthdayUnderage'));
       return;
     }
     setBirthday(birthdayDraft);
@@ -557,7 +539,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
               <TextInput
                 style={[
                   styles.modalInput,
-                  birthdayDraft.length > 0 && !isValidBirthday(birthdayDraft) && styles.modalInputError,
+                  birthdayDraft.length > 0 && !isOldEnough(birthdayDraft) && styles.modalInputError,
                 ]}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={COLORS.textMuted}
@@ -568,6 +550,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
               />
               {birthdayDraft.length > 0 && !isValidBirthday(birthdayDraft) && (
                 <Text style={styles.inputErrorText}>{t('accountSettings.formatHint')}</Text>
+              )}
+              {isValidBirthday(birthdayDraft) && !isOldEnough(birthdayDraft) && (
+                <Text style={styles.inputErrorText}>{t('accountSettings.birthdayUnderage')}</Text>
               )}
             </View>
 
@@ -580,9 +565,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnSubmit, !isValidBirthday(birthdayDraft) && styles.modalBtnDisabled]}
+                style={[styles.modalBtn, styles.modalBtnSubmit, !isOldEnough(birthdayDraft) && styles.modalBtnDisabled]}
                 activeOpacity={0.7}
-                disabled={!isValidBirthday(birthdayDraft)}
+                disabled={!isOldEnough(birthdayDraft)}
                 onPress={submitBirthday}
               >
                 <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
