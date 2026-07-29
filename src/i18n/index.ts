@@ -13,13 +13,16 @@ const resources = {
   en: { translation: en },
 } as const;
 
-// 저장된 설정이 복원되기 전 초기 표시용으로 기기 언어를 추정(영어면 en, 그 외 ko).
-const deviceLang: AppLanguage = getLocales()[0]?.languageCode === 'en' ? 'en' : 'ko';
+// 기기 언어 기반 기본 언어 — 한국어 기기만 ko, 그 외는 전부 en (사용자 확정 2026-07-30).
+// settingsStore의 첫 실행 기본값도 이 값을 쓴다. 저장된 언어가 있으면 hydrate가 덮으므로
+// 사용자가 직접 고른 언어는 기기 언어와 무관하게 유지된다.
+export const DEVICE_DEFAULT_LANGUAGE: AppLanguage =
+  getLocales()[0]?.languageCode === 'ko' ? 'ko' : 'en';
 
 if (!i18n.isInitialized) {
   i18n.use(initReactI18next).init({
     resources,
-    lng: deviceLang,
+    lng: DEVICE_DEFAULT_LANGUAGE,
     fallbackLng: 'ko',
     interpolation: { escapeValue: false }, // RN은 XSS 이스케이프 불필요
     returnNull: false,

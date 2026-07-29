@@ -5,6 +5,7 @@ import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
+import { DEVICE_DEFAULT_LANGUAGE } from '../i18n';
 import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
@@ -238,7 +239,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
   const [birthday, setBirthday] = useState('');
   const [gender, setGender] = useState<Gender>('');
-  const [language, setLanguage] = useState<AppLanguage>('ko'); // 기본 언어: 한국어
+  // 기본 언어: 한국어 기기만 ko, 그 외 기기는 en — 저장된 언어가 있으면 hydrate가 덮는다
+  const [language, setLanguage] = useState<AppLanguage>(DEVICE_DEFAULT_LANGUAGE);
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
   const [handle, setHandle] = useState(() => genHandle());
   const [bio, setBio] = useState('');
@@ -354,7 +356,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setDiaryCardMode(p.diaryCardMode);
       setBirthday(p.birthday ?? '');
       setGender(p.gender ?? '');
-      setLanguage(p.language ?? 'ko');
+      // 과거 저장본에 language가 없으면 기기 언어 기본값(한국어 기기만 ko)으로
+      setLanguage(p.language ?? DEVICE_DEFAULT_LANGUAGE);
       setHandle(p.handle);
       setBio(p.bio);
       // 로컬 file:// 프로필 사진은 iOS 재설치 시 컨테이너 경로가 바뀜 — 현재 경로로 복구 (원격 URL은 그대로)
