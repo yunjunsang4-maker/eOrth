@@ -257,7 +257,9 @@ if (unmatched.length) console.log('\n미매칭:\n  ' + unmatched.join('\n  '));
 ```bash
 node node_modules/tsx/dist/cli.mjs scripts/build-region-aliases.ts
 ```
-기대: `고유 코드 706개`가 출력되고 `코드 중복` 예외가 나지 않는다.
+기대: `고유 코드 701개`가 출력되고 `코드 중복` 예외가 나지 않는다.
+(계획 작성 시점 예상값은 706이었으나, NE 자체 결함 피처 5건 — `iso_3166_2`가 `~`로 끝나는
+비공식 코드, ARE 2·CHN 1·COL 1·MEX 1 — 을 색인 전에 제외하면서 701로 확정됐다.)
 
 - [ ] **Step 5: 미매칭 목록을 보고 `MANUAL` 표 채우기**
 
@@ -596,7 +598,7 @@ git commit -m "feat(region): 지역 저장 키 마이그레이션 순수 로직 
 ## Task 3: settingsStore 배선
 
 **Files:**
-- Modify: `src/store/settingsStore.tsx` (payload 타입, hydrate, 저장 payload 2곳, `importSettingsBackup`)
+- Modify: `src/store/settingsStore.tsx` (payload 타입, hydrate, 저장 payload 2곳, `applySettingsBackup`)
 
 **Interfaces:**
 - Consumes: `REGION_KEY_SCHEMA`, `migrateRegionKeyMap`, `migrateTaggedRegions`, `migrateSkinColorStore` (Task 2)
@@ -685,7 +687,8 @@ hydrate 콜백에서 `setRegionDisplayModes(p.regionDisplayModes ?? {});` 부터
 
 - [ ] **Step 6: 백업 복원 경로에 같은 변환 적용**
 
-`importSettingsBackup` 안에서 아래 두 줄을 찾아 교체한다.
+`applySettingsBackup`(이 계획 초안에서는 `importSettingsBackup`이라 적었으나 실제 함수명) 안에서
+아래 두 줄을 찾아 교체한다.
 ```ts
 // 변경 전
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(v.regionColors);
@@ -822,3 +825,8 @@ git commit -m "feat(region): recordStore 지역 키 마이그레이션 배선"
 - `src/data/geo/*.ts` 26개국 NE 데이터 생성(단순화 25%)과 `countryGeo.ts`의 `LOADERS` 복원
 - `featureFlags.REGION_MAP_ENABLED = true`로 전환
 - 위 데이터의 `nameEn` 자리에 **코드**를 넣을 것 (Global Constraints의 계약 참고)
+- 위 `nameEn` 교체와 **반드시 함께** `src/constants/homeRegions.ts`의 `isCityFeature`·
+  `normalizeHomeRegion`·`getCountryRegionOptions`도 손봐야 한다. 이 셋은 `nameEn`이 GADM
+  이름이라는 전제로 동작하므로, 방치하면 GPS 지역 정규화가 조용히 무력화되고
+  `saveRegionTags`가 다시 GADM 이름 태그를 쓰기 시작한다. 그때는 스키마가 이미 1이라
+  hydrate 마이그레이션이 다시 돌지 않아 새로 쓰인 GADM 태그가 영구히 변환되지 않는다.
