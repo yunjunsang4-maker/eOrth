@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
   Text,
@@ -28,6 +29,7 @@ const COLORS = {
 
 // 타인 프로필의 메이트 목록 — 조회 전용(관리 버튼 없음), 행 탭 → 해당 프로필로 이동. mode는 무시(대칭 모델)
 export default function UserFollowListScreen({ navigation, route }: RootStackScreenProps<'UserFollowList'>) {
+  const skinAccent = useSkinAccent(); // 메이트 아이디·로딩 표시를 지구본 스킨색으로
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { userId } = route.params;
@@ -66,7 +68,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={COLORS.purpleNeon} />
+          <ActivityIndicator color={skinAccent.accent} />
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.listContent} showsVerticalScrollIndicator={false}>
@@ -92,7 +94,7 @@ export default function UserFollowListScreen({ navigation, route }: RootStackScr
                       <PersonIcon size={26} color="#A0A0B0" />
                     </View>
                   )}
-                  <Text style={styles.username}>@{name}</Text>
+                  <Text style={[styles.username, { color: skinAccent.accent }]}>@{name}</Text>
                   <Text style={styles.chevron}>›</Text>
                 </TouchableOpacity>
                 {index < list.length - 1 && <View style={styles.divider} />}
@@ -163,7 +165,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 15,
     fontWeight: '700',
-    color: COLORS.purpleNeon,
+    color: COLORS.purpleNeon, // aurora 기본값 — 호출부가 스킨 강조색으로 덮는다
   },
   chevron: {
     fontSize: 22,

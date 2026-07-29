@@ -1,5 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
   Text,
@@ -52,6 +53,7 @@ const COLORS = {
 };
 
 export default function FollowerListScreen({ navigation }: RootStackScreenProps<'FollowerList'>) {
+  const skinAccent = useSkinAccent(); // 메이트 아이디·로딩 표시를 지구본 스킨색으로
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   // 메이트 관계 액션은 store 경유 — store의 메이트 목록·배지와 동기화
@@ -161,7 +163,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
 
       {loading ? (
         <View style={styles.center}>
-          <ActivityIndicator color={COLORS.purpleNeon} />
+          <ActivityIndicator color={skinAccent.accent} />
         </View>
       ) : (
         <ScrollView
@@ -171,7 +173,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
           {/* ── 받은 메이트신청 (비공개 계정) — 수락/거절 ── */}
           {requests.length > 0 && (
             <>
-              <Text style={styles.sectionLabel}>{t('friends.neighborRequestsN', { count: requests.length })}</Text>
+              <Text style={[styles.sectionLabel, { color: skinAccent.accent }]}>{t('friends.neighborRequestsN', { count: requests.length })}</Text>
               {requests.map((req) => {
                 const reqName = req.handle || '여행자';
                 return (
@@ -188,7 +190,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                           <PersonIcon size={26} color="#A0A0B0" />
                         </View>
                       )}
-                      <Text style={styles.username}>@{reqName}</Text>
+                      <Text style={[styles.username, { color: skinAccent.accent }]}>@{reqName}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.acceptBtn, processingId === req.requesterId && styles.btnBusy]}
@@ -211,7 +213,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                   </View>
                 );
               })}
-              <Text style={styles.sectionLabel}>{t('friends.neighborsTitle')}</Text>
+              <Text style={[styles.sectionLabel, { color: skinAccent.accent }]}>{t('friends.neighborsTitle')}</Text>
             </>
           )}
 
@@ -240,7 +242,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
 
                   {/* 정보 — 모든 메이트은 서로메이트이라 별도 표시 없음 */}
                   <View style={styles.infoWrap}>
-                    <Text style={styles.username}>@{name}</Text>
+                    <Text style={[styles.username, { color: skinAccent.accent }]}>@{name}</Text>
                   </View>
 
                   {/* DM + ✕(메이트 끊기) */}
@@ -335,7 +337,7 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 15,
     fontWeight: '700',
-    color: COLORS.purpleNeon,
+    color: COLORS.purpleNeon, // aurora 기본값 — 호출부가 스킨 강조색으로 덮는다
   },
   // ── 받은 메이트신청 ──
   sectionLabel: {

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
   Text,
@@ -45,6 +46,7 @@ const COLORS = {
 };
 
 export default function FollowingListScreen({ navigation }: RootStackScreenProps<'FollowingList'>) {
+  const skinAccent = useSkinAccent(); // 메이트 아이디·로딩 표시를 지구본 스킨색으로
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { neighbors, removeNeighbor, blockUser } = useRecords();
@@ -118,7 +120,7 @@ export default function FollowingListScreen({ navigation }: RootStackScreenProps
 
               {/* 정보 — 모든 메이트은 서로메이트이라 별도 표시 없음 */}
               <View style={styles.infoWrap}>
-                <Text style={styles.username}>@{friend.username}</Text>
+                <Text style={[styles.username, { color: skinAccent.accent }]}>@{friend.username}</Text>
               </View>
 
               {/* DM + 더보기(언팔로우·차단) */}
@@ -216,7 +218,7 @@ const styles = StyleSheet.create({
   username: {
     fontSize: 15,
     fontWeight: '700',
-    color: COLORS.purpleNeon,
+    color: COLORS.purpleNeon, // aurora 기본값 — 호출부가 스킨 강조색으로 덮는다
   },
   actionBtn: {
     width: 36,
