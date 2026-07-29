@@ -101,10 +101,9 @@ function SheetCheck() {
 const C = {
   bg: '#0A0A0F', editorBg: '#111118', card: '#2E2E3B', cardLight: '#1E1B33',
   toolbar: '#16161F', toolbarBorder: '#252535',
-  purpleNeon: '#BF85FC', purpleDeep: '#6B21A8',
-  purpleBg: 'rgba(107,33,168,0.25)', purpleBorder: 'rgba(191,133,252,0.3)',
+  // 강조색(구 purpleNeon/purpleDeep/purpleBg/purpleBorder/quoteBg/quoteBorder)은
+  // 여기서 제거했다 — 스킨 연동을 위해 makeStyles(a, ad, tint) 인자로 넘어간다.
   white: '#FFFFFF', dim: '#A1A1B0', muted: '#4A4A59', divider: '#1A1A26',
-  quoteBg: 'rgba(191,133,252,0.06)', quoteBorder: '#BF85FC',
   green: '#34C759', naverGreen: '#03C75A',
   gold: '#FFD700', // 미입력 표시 — 다른 화면(NewRecord/CutTravelInfo)과 같은 값
 };
@@ -318,6 +317,7 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
+  const st = useSt();
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
@@ -2403,6 +2403,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
 // ─── 하위 컴포넌트 ───
 function ToolBtn({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+  const st = useSt();
   return (
     <TouchableOpacity style={st.toolBtn} onPress={onPress} activeOpacity={0.6}>
       <View style={st.toolIcon}>{typeof icon === 'string' ? <Text style={{ fontSize: 22, color: '#A1A1B0' }}>{icon}</Text> : icon}</View>
@@ -2411,9 +2412,10 @@ function ToolBtn({ icon, label, onPress }: { icon: React.ReactNode; label: strin
   );
 }
 
-function ToolSep() { return <View style={st.toolSep} />; }
+function ToolSep() { const st = useSt(); return <View style={st.toolSep} />; }
 
 function SubMenuItem({ icon, label, onPress }: { icon: React.ReactNode; label: string; onPress: () => void }) {
+  const st = useSt();
   return (
     <TouchableOpacity style={st.subMenuItem} onPress={onPress} activeOpacity={0.6}>
       <View style={st.subMenuIcon}>{typeof icon === 'string' ? <Text style={{ fontSize: 20, color: '#A1A1B0' }}>{icon}</Text> : icon}</View>
@@ -2427,6 +2429,7 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
   bold?: boolean; italic?: boolean; underline?: boolean; strike?: boolean; colorDot?: string;
 }) {
   const skinAccent = useSkinAccent();
+  const st = useSt();
   return (
     <TouchableOpacity style={[st.fmtBtn, active && [st.fmtBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]} onPress={onPress} activeOpacity={0.6}>
       <Text style={[st.fmtBtnText,
@@ -2440,6 +2443,7 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
 }
 
 function PickerModal({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
+  const st = useSt();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
@@ -2456,6 +2460,7 @@ function PanelRow({ label, icon, labelText, required, children }: {
   label: string; icon?: React.ReactNode | null; labelText?: string; required?: boolean; children: React.ReactNode;
 }) {
   const skinAccentReq = useSkinAccent();
+  const st = useSt();
   const displayLabel = labelText || label;
   return (
     <View style={st.panelRow}>
@@ -2606,7 +2611,17 @@ function RepPhotoModal({
 }
 
 // ─── 스타일 ───
-const st = StyleSheet.create({
+/**
+ * 스타일시트를 지구본 스킨색의 함수로 만든다.
+ *
+ * 이 화면의 강조색(C.purpleNeon/purpleDeep와 그 알파 변형)이 모듈 최상위 StyleSheet에
+ * 박혀 있어서, 스킨을 cyan/mint로 바꿔도 블로그 기록 화면만 보라색으로 남아 있었다.
+ * 35곳을 호출부마다 덮는 대신 스타일시트 자체를 스킨의 함수로 바꾼다 —
+ * 색을 쓰는 모든 지점이 자동으로 따라오고, 새 스타일을 추가할 때도 빠뜨릴 일이 없다.
+ *
+ * a=accent(밝은 강조), ad=accentDeep(진한 강조), tint=밝은 강조의 알파 틴트.
+ */
+const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: C.bg },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
   headerBtn: { paddingHorizontal: 14, paddingVertical: 10 },
@@ -2614,15 +2629,15 @@ const st = StyleSheet.create({
   headerTitle: { color: C.white, fontSize: 15, fontWeight: '700', position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   mapBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
-  mapBtnActive: { borderWidth: 1, borderColor: C.purpleNeon },
+  mapBtnActive: { borderWidth: 1, borderColor: a },
   mapBtnThumb: { width: '100%', height: '100%', borderRadius: 5 },
   naverBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: C.naverGreen, alignItems: 'center', justifyContent: 'center' },
   naverBtnText: { color: '#fff', fontSize: 13, fontWeight: '900' },
   lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
-  lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },
+  lockBtnActive: { backgroundColor: tint(0.4), borderWidth: 1, borderColor: a },
   lockBadge: { position: 'absolute', top: -5, right: -5, backgroundColor: '#FF3B30', borderRadius: 8, width: 13, height: 13, alignItems: 'center', justifyContent: 'center' },
   lockBadgeText: { color: '#FFF', fontSize: 8, fontWeight: '800' },
-  saveBtn: { backgroundColor: C.purpleDeep, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
+  saveBtn: { backgroundColor: ad, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 6 },
   saveBtnDisabled: { backgroundColor: C.muted, opacity: 0.4 },
   saveBtnText: { color: C.white, fontSize: 13, fontWeight: '700' },
   saveBtnTextDisabled: { color: C.dim },
@@ -2631,8 +2646,8 @@ const st = StyleSheet.create({
   editorContent: { paddingHorizontal: 20, paddingTop: 12 },
 
   // 국가
-  countryChip: { alignSelf: 'flex-start', backgroundColor: C.purpleBg, borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: C.purpleBorder, marginBottom: 12 },
-  countryChipText: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
+  countryChip: { alignSelf: 'flex-start', backgroundColor: tint(0.25), borderRadius: 18, paddingHorizontal: 12, paddingVertical: 5, borderWidth: 1, borderColor: tint(0.3), marginBottom: 12 },
+  countryChipText: { color: a, fontSize: 13, fontWeight: '600' },
   countryChipPlaceholder: { color: C.muted, fontSize: 13 },
   // 미입력 표시 — 골드. 스킨 accent(보라/시안/민트)와 겹치지 않아 '아직 안 채움'이
   // 강조 요소와 구분되고, 빨강처럼 오류로 읽히지도 않는다.
@@ -2641,7 +2656,7 @@ const st = StyleSheet.create({
 
   titleInput: { color: C.white, fontSize: 24, fontWeight: '700', paddingVertical: 4, minHeight: 36 },
   subtitleText: { color: '#AA54C1', fontSize: 15, fontWeight: '600', marginTop: 4 },
-  titleDivider: { height: 2, backgroundColor: C.purpleDeep, marginTop: 6, marginBottom: 14, width: 36, borderRadius: 1 },
+  titleDivider: { height: 2, backgroundColor: ad, marginTop: 6, marginBottom: 14, width: 36, borderRadius: 1 },
 
   // 블록
   textBlock: { color: C.white, lineHeight: 26, paddingVertical: 3, minHeight: 26 },
@@ -2653,10 +2668,10 @@ const st = StyleSheet.create({
   videoLabel: { position: 'absolute' as const, top: 8, left: 8, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 4, paddingHorizontal: 8, paddingVertical: 3 },
   videoLabelText: { color: '#fff', fontSize: 11, fontWeight: '600' as const },
   // 가져오기 동영상 자리 표시
-  videoPlaceholder: { backgroundColor: '#15131F', borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)', borderStyle: 'dashed' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8 },
+  videoPlaceholder: { backgroundColor: '#15131F', borderWidth: 1, borderColor: tint(0.35), borderStyle: 'dashed' as const, alignItems: 'center' as const, justifyContent: 'center' as const, gap: 8 },
   videoPlaceholderTitle: { color: C.white, fontSize: 14, fontWeight: '700' as const },
-  videoPlaceholderBtn: { backgroundColor: 'rgba(191,133,252,0.15)', borderWidth: 1, borderColor: 'rgba(191,133,252,0.4)', borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
-  videoPlaceholderBtnText: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
+  videoPlaceholderBtn: { backgroundColor: tint(0.15), borderWidth: 1, borderColor: tint(0.4), borderRadius: 10, paddingHorizontal: 16, paddingVertical: 8 },
+  videoPlaceholderBtnText: { color: a, fontSize: 13, fontWeight: '600' as const },
   videoPlaceholderLink: { color: C.dim, fontSize: 12, textDecorationLine: 'underline' as const, marginTop: 2 },
   captionInput: { color: C.dim, fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' },
   imageRemoveBtn: { position: 'absolute', top: 8, right: 8, width: 26, height: 26, borderRadius: 13, backgroundColor: 'rgba(0,0,0,0.6)', alignItems: 'center', justifyContent: 'center' },
@@ -2667,16 +2682,16 @@ const st = StyleSheet.create({
   gridCaptionInput: { color: '#A1A1B0', fontSize: 10, textAlign: 'center', paddingVertical: 2, paddingHorizontal: 4, fontStyle: 'italic' },
   layoutBtnRow: { flexDirection: 'row', justifyContent: 'center', gap: 8, paddingVertical: 8 },
   layoutBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, backgroundColor: C.cardLight },
-  layoutBtnActive: { backgroundColor: C.purpleBg },
+  layoutBtnActive: { backgroundColor: tint(0.25) },
   layoutBtnText: { color: C.muted, fontSize: 11 },
-  layoutBtnTextActive: { color: C.purpleNeon },
+  layoutBtnTextActive: { color: a },
   sepBlock: { paddingVertical: 16 },
   sepLine: { flex: 1, height: 1, backgroundColor: '#3A3A4A' },
   sepDotsRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   sepDots: { flexDirection: 'row', gap: 5 },
-  sepDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.purpleNeon, opacity: 0.5 },
-  quoteBlock: { marginVertical: 10, backgroundColor: C.quoteBg, borderLeftWidth: 3, borderLeftColor: C.quoteBorder, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'flex-start' },
-  quoteMark: { color: C.purpleNeon, fontSize: 26, fontWeight: '700', opacity: 0.35, marginRight: 6, marginTop: -6 },
+  sepDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: a, opacity: 0.5 },
+  quoteBlock: { marginVertical: 10, backgroundColor: tint(0.06), borderLeftWidth: 3, borderLeftColor: a, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 10, flexDirection: 'row', alignItems: 'flex-start' },
+  quoteMark: { color: a, fontSize: 26, fontWeight: '700', opacity: 0.35, marginRight: 6, marginTop: -6 },
   quoteInput: { flex: 1, color: C.dim, fontSize: 14, fontStyle: 'italic', lineHeight: 22, minHeight: 22, paddingVertical: 0 },
   linkBlock: { marginVertical: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider, gap: 8 },
   linkUrl: { flex: 1, color: '#64B5F6', fontSize: 13, textDecorationLine: 'underline' },
@@ -2689,11 +2704,11 @@ const st = StyleSheet.create({
   // 태그
   tagSection: { marginTop: 20, paddingTop: 14, borderTopWidth: 1, borderTopColor: C.divider },
   tagInputRow: { flexDirection: 'row', alignItems: 'center' },
-  hashIcon: { color: C.purpleNeon, fontSize: 16, fontWeight: '700', marginRight: 4 },
+  hashIcon: { color: a, fontSize: 16, fontWeight: '700', marginRight: 4 },
   tagInput: { flex: 1, height: 34, color: C.white, fontSize: 14 },
   tagList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
-  tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 4 },
-  tagText: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' },
+  tag: { flexDirection: 'row', alignItems: 'center', backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 4 },
+  tagText: { color: a, fontSize: 12, fontWeight: '500' },
   tagRemove: { color: C.muted, fontSize: 9 },
 
   // 툴바
@@ -2707,17 +2722,17 @@ const st = StyleSheet.create({
   toolRequiredDot: { position: 'absolute' as const, top: -2, right: -6, width: 9, height: 9, borderRadius: 4.5, backgroundColor: C.gold, borderWidth: 1.5, borderColor: C.toolbar },
   toolSep: { width: 1, height: 22, backgroundColor: C.toolbarBorder },
   toolbarSpacer: { flex: 1 },
-  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, borderWidth: 1, borderColor: C.purpleBorder },
+  toolbarDraftBtn: { borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8, marginRight: 4, borderWidth: 1, borderColor: tint(0.3) },
   toolbarDraftText: { color: C.dim, fontSize: 12, fontWeight: '600' },
-  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 4, backgroundColor: C.purpleBg },
-  toolbarDraftListText: { color: C.purpleNeon, fontSize: 11, fontWeight: '700' },
+  toolbarDraftListBtn: { borderRadius: 16, paddingHorizontal: 10, paddingVertical: 8, marginRight: 4, backgroundColor: tint(0.25) },
+  toolbarDraftListText: { color: a, fontSize: 11, fontWeight: '700' },
   // 서브패널
   subPanel: { backgroundColor: C.toolbar, borderTopWidth: 1, borderTopColor: C.toolbarBorder, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 6 },
   subMenuItem: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
   subMenuIcon: { alignItems: 'center' as const, justifyContent: 'center' as const, width: 24, height: 24 },
   subMenuLabel: { fontSize: 15, color: C.white, fontWeight: '500' },
   fmtBtn: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 6, minWidth: 36, borderRadius: 4 },
-  fmtBtnActive: { backgroundColor: 'rgba(191,133,252,0.15)' },
+  fmtBtnActive: { backgroundColor: tint(0.15) },
   fmtBtnText: { fontSize: 14, color: C.dim },
   fmtColorDot: { width: 10, height: 3, borderRadius: 1.5, marginTop: 2 },
 
@@ -2726,17 +2741,17 @@ const st = StyleSheet.create({
   pickerCard: { width: '100%', backgroundColor: C.card, borderRadius: 16, padding: 18 },
   pickerTitle: { color: C.white, fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
   pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
-  pickerOptionActive: { backgroundColor: C.purpleBg, borderRadius: 8, borderBottomColor: 'transparent' },
+  pickerOptionActive: { backgroundColor: tint(0.25), borderRadius: 8, borderBottomColor: 'transparent' },
   pickerOptionText: { color: C.white, fontSize: 15 },
-  pickerOptionTextActive: { color: C.purpleNeon, fontWeight: '600' },
-  checkMark: { color: C.purpleNeon, fontSize: 16, fontWeight: '700' },
+  pickerOptionTextActive: { color: a, fontWeight: '600' },
+  checkMark: { color: a, fontSize: 16, fontWeight: '700' },
   colorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   colorDot: { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent', alignItems: 'center', justifyContent: 'center' },
-  colorDotActive: { borderColor: C.purpleNeon },
+  colorDotActive: { borderColor: a },
 
   // 링크 입력
   schedInput: { height: 44, backgroundColor: C.cardLight, borderRadius: 10, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: C.divider, marginBottom: 12 },
-  schedConfirmBtn: { backgroundColor: C.purpleDeep, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
+  schedConfirmBtn: { backgroundColor: ad, borderRadius: 10, paddingVertical: 12, alignItems: 'center' },
   schedConfirmText: { color: C.white, fontSize: 14, fontWeight: '700' },
 
   // 스티커 패널
@@ -2749,7 +2764,7 @@ const st = StyleSheet.create({
   panelRow: { marginBottom: 18, gap: 8 },
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
   panelLabel: { color: C.dim, fontSize: 13, fontWeight: '600' },
-  reqTag: { color: C.purpleNeon, fontSize: 11, fontWeight: '700', marginLeft: 4 },
+  reqTag: { color: a, fontSize: 11, fontWeight: '700', marginLeft: 4 },
   dateBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.cardLight, borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, borderWidth: 1, borderColor: C.divider },
   dateBtnCol: { flex: 1 },
   dateBtnLabel: { fontSize: 11, color: C.muted, marginBottom: 4 },
@@ -2762,24 +2777,24 @@ const st = StyleSheet.create({
   starActive: { color: '#FBBF24' },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   chip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
-  chipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
+  chipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
   chipText: { color: C.dim, fontSize: 13 },
-  chipTextActive: { color: C.purpleNeon },
+  chipTextActive: { color: a },
   ratingWrap: { flexDirection: 'row' as const, alignItems: 'center' as const, justifyContent: 'space-between' as const },
-  ratingScore: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' },
+  ratingScore: { color: a, fontSize: 13, fontWeight: '600' },
   ratingScoreEmpty: { color: C.muted, fontSize: 12 },
   optDivider: { height: 1, backgroundColor: C.divider, marginVertical: 8 },
   optNotice: { color: C.muted, fontSize: 11, textAlign: 'center' as const, marginBottom: 14 },
   budgetRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: 8 },
   currencyChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
-  currencyChipActive: { backgroundColor: C.purpleBg, borderColor: C.purpleBorder },
+  currencyChipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },
   currencyTxt: { color: C.dim, fontSize: 12, fontWeight: '600' },
-  currencyTxtActive: { color: C.purpleNeon },
+  currencyTxtActive: { color: a },
   budgetInput: { flex: 1, minWidth: 80, height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
   kwWrap: { gap: 8 },
   kwTagRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, gap: 6 },
-  kwTag: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
-  kwTagText: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' },
+  kwTag: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5 },
+  kwTagText: { color: a, fontSize: 12, fontWeight: '500' },
   kwTagDel: { color: C.muted, fontSize: 9 },
   kwInput: { height: 36, backgroundColor: C.cardLight, borderRadius: 8, paddingHorizontal: 10, color: C.white, fontSize: 13, borderWidth: 1, borderColor: C.divider },
   memoInput: { color: C.white, fontSize: 13, lineHeight: 20, minHeight: 56, backgroundColor: C.cardLight, borderRadius: 10, padding: 12, borderWidth: 1, borderColor: C.divider },
@@ -2790,7 +2805,7 @@ const st = StyleSheet.create({
   // 국가 모달
   modalSafe: { flex: 1, backgroundColor: C.bg },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
-  modalClose: { color: C.purpleNeon, fontSize: 15, fontWeight: '600' },
+  modalClose: { color: a, fontSize: 15, fontWeight: '600' },
   modalTitle: { color: C.white, fontSize: 16, fontWeight: '700' },
   searchWrap: { paddingHorizontal: 16, paddingVertical: 10 },
   // 지우기(✕) 버튼을 품기 위해 입력칸을 컨테이너로 쓰고 TextInput은 안에서 늘어난다
@@ -2814,7 +2829,7 @@ const st = StyleSheet.create({
   continentLabel: { color: C.dim, fontSize: 11, fontWeight: '600', letterSpacing: 0.8, paddingHorizontal: 16, paddingTop: 16, paddingBottom: 6 },
   // 체크는 문자로 이어 붙이지 않고 우측에 고정 — 국가명 길이에 따라 위치가 흔들리지 않는다
   countryItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: C.divider },
-  countryItemActive: { backgroundColor: C.purpleBg },
+  countryItemActive: { backgroundColor: tint(0.25) },
   countryItemBlocked: { opacity: 0.35 },
   countryItemText: { color: C.white, fontSize: 15, flexShrink: 1 },
   countryItemCheck: { fontSize: 15, fontWeight: '700', marginLeft: 10 },
@@ -2868,17 +2883,17 @@ const st = StyleSheet.create({
   currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
   currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
   currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
-  currModalCode: { color: C.purpleNeon, fontSize: 14, fontWeight: '700' as const, width: 44 },
+  currModalCode: { color: a, fontSize: 14, fontWeight: '700' as const, width: 44 },
   currModalName: { flex: 1, color: '#A1A1B0', fontSize: 14 },
 
   // 앱 메이트 관련
-  friendChip: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: C.purpleBg, borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
-  friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: C.purpleDeep, alignItems: 'center' as const, justifyContent: 'center' as const },
+  friendChip: { flexDirection: 'row' as const, alignItems: 'center' as const, backgroundColor: tint(0.25), borderRadius: 14, paddingHorizontal: 10, paddingVertical: 5, gap: 6 },
+  friendChipAvatar: { width: 20, height: 20, borderRadius: 10, backgroundColor: ad, alignItems: 'center' as const, justifyContent: 'center' as const },
   friendChipAvatarTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendChipName: { color: C.purpleNeon, fontSize: 12, fontWeight: '500' as const },
-  addFriendBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.cardLight, borderRadius: 10, borderWidth: 1, borderColor: C.purpleBorder, alignSelf: 'flex-start' as const },
-  addFriendTxt: { color: C.purpleNeon, fontSize: 13, fontWeight: '600' as const },
-  addFriendBadge: { backgroundColor: C.purpleDeep, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
+  friendChipName: { color: a, fontSize: 12, fontWeight: '500' as const },
+  addFriendBtn: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6, marginTop: 10, paddingVertical: 8, paddingHorizontal: 12, backgroundColor: C.cardLight, borderRadius: 10, borderWidth: 1, borderColor: tint(0.3), alignSelf: 'flex-start' as const },
+  addFriendTxt: { color: a, fontSize: 13, fontWeight: '600' as const },
+  addFriendBadge: { backgroundColor: ad, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
   friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
   friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
@@ -2887,12 +2902,19 @@ const st = StyleSheet.create({
   friendPickerName: { flex: 1, color: '#A1A1B0', fontSize: 14.5, fontWeight: '600' as const },
   friendPickerNameOn: { color: C.white, fontWeight: '700' as const },
   friendPickerCheck: { width: 23, height: 23, borderRadius: 11.5, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.22)', alignItems: 'center' as const, justifyContent: 'center' as const },
-  friendPickerCheckActive: { backgroundColor: C.purpleNeon, borderColor: C.purpleNeon },
+  friendPickerCheckActive: { backgroundColor: a, borderColor: a },
 
   // 토스트
   toast: { position: 'absolute', bottom: 100, alignSelf: 'center', backgroundColor: 'rgba(30,30,50,0.95)', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
   toastText: { color: '#fff', fontSize: 13, fontWeight: '600' },
 });
+
+/** 현재 스킨색으로 만든 스타일시트 — 스킨이 바뀔 때만 다시 만든다 */
+function useSt() {
+  const { accent, accentDeep, tint } = useSkinAccent();
+  return useMemo(() => makeStyles(accent, accentDeep, tint), [accent, accentDeep, tint]);
+}
+
 
 
 const rpm = StyleSheet.create({
