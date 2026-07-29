@@ -1413,7 +1413,6 @@ export default function MainScreen({ navigation, route }: Props) {
                 displayMode={regionGlobalMode}
                 defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
                 searchQuery={regionSearch}
-                showPopular={popularActive}
               />
             </View>
             {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}

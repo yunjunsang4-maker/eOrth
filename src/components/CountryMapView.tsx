@@ -26,8 +26,6 @@ interface Props {
   chipBottom?: number;
   /** 검색어 — 입력 시 해당 지역/도시가 속한 주로 확대·강조 */
   searchQuery?: string;
-  /** 인기명소(기본 강조 지역) 표시 여부 */
-  showPopular?: boolean;
 }
 
 export default function CountryMapView({
@@ -41,7 +39,6 @@ export default function CountryMapView({
   fill = false,
   chipBottom = 7,
   searchQuery = '',
-  showPopular = false,
 }: Props) {
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
   const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE), [countryCode, countryName, chipBottom]);
@@ -112,18 +109,12 @@ export default function CountryMapView({
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // 인기명소 표시 여부 → WebView 전달
-  useEffect(() => {
-    webViewRef.current?.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
-  }, [showPopular]);
-
-  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색/인기명소)
+  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색)
   const sendState = () => {
     const wv = webViewRef.current;
     if (!wv) return;
     wv.postMessage(payload);
     wv.postMessage(JSON.stringify({ type: 'searchRegion', query: searchQuery }));
-    wv.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
   };
 
   // WebView 가 render 완료 후 보내는 'ready' 를 받으면 현재 상태를 동기화 (500ms 타이머보다 견고)
@@ -206,7 +197,7 @@ var COUNTRY_NAME=${JSON.stringify(countryName)};
 var recordedRegions = [];
 var displayMode = 'color';
 var defaultColor = '#BF85FC';
-var showPopular = false; // 인기명소(HL) 강조 표시 여부 — 앱 기본값(popularActive=false)과 일치, 초기 깜빡임/누락 방지
+var showPopular = false; // 인기명소(HL) 강조 표시 여부 — RN에서 더 이상 갱신하지 않아 항상 false(관련 UI는 Task 4에서 정리 예정)
 var BOTTOM_INSET = ${chipBottom}; // 하단 탭 바 가림 높이 — 투영을 보이는 영역 기준으로 중앙 정렬
 function setRegionChip(name){var c=document.getElementById('region-chip');if(!c)return;if(name){c.textContent=name;c.style.display='flex';}else{c.style.display='none';}}
 
@@ -309,8 +300,7 @@ function pipRing(pt,ring){var ins=false;for(var i=0,j=ring.length-1;i<ring.lengt
 function featHas(f,pt){var g=f.geometry;if(!g)return false;var polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;for(var i=0;i<polys.length;i++){if(pipRing(pt,polys[i][0])){var hole=false;for(var k=1;k<polys[i].length;k++){if(pipRing(pt,polys[i][k])){hole=true;break;}}if(!hole)return true;}}return false;}
 function provinceAt(pt){
   var all=(mainFeatures||[]).concat(insetFeatures||[]);
-  for(var i=0;i<all.length;i++){var n=all[i].properties.NAME_1||''; if(!isCity(n)&&featHas(all[i],pt))return n;}     // 주 우선
-  for(var i=0;i<all.length;i++){var n=all[i].properties.NAME_1||''; if(featHas(all[i],pt))return prefOf(n);}         // 도시면 상위 주로
+  for(var i=0;i<all.length;i++){ if(featHas(all[i],pt)) return all[i].properties.NAME_1||''; } // 도시 피처가 없으므로 바로 주 반환
   return null;
 }
 // 찾은 주로 확대·강조 (공통)
@@ -381,74 +371,54 @@ function boot(){
 if(typeof d3!=='undefined'){ boot(); } else { loadD3(boot); }
 
 // ── 채움색 ──
+// 기록 매칭은 CODE(예: 'US-NY') 기준, 검색 강조 비교는 NAME_1(표시명) 기준 — 서로 다른 값이라
+// 변수를 분리한다(code=매칭, n=검색 비교).
 function getFill(d){
-  var nameEn=d.properties.NAME_1||'';
-  var active=activeRecordFor(nameEn);
+  var code=d.properties.CODE||'';
+  var n=d.properties.NAME_1||'';
+  var active=activeRecordFor(code);
   if(active){
     var mode=active.mode||displayMode;
     if(mode==='photo'&&active.photo){
-      return 'url(#pat-'+(active.nameEn||nameEn).replace(/[^a-zA-Z0-9]/g,'')+')';
+      return 'url(#pat-'+(active.nameEn||code).replace(/[^a-zA-Z0-9]/g,'')+')';
     }
     return active.color||defaultColor||'#403257'; // 지역별 색상 우선, 없으면 국가 기본색
   }
-  if(nameEn===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
+  if(n===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
   return '#191920'; // 미방문
 }
-// 주 안에 별도 폴리곤(선)으로 들어있는 '도시' 피처인지 판별 (CITY_TO_PROV 에 도시→다른 주 매핑이 있으면 도시)
-function isCity(nameEn){
-  var m=CITY_TO_PROV[CODE];
-  if(!m) return false;
-  var p=m[normEn(nameEn)];
-  return !!p && p!==nameEn;
-}
-// 도시면 상위 현(주) 이름, 아니면 자기 자신
-function prefOf(nameEn){
-  var m=CITY_TO_PROV[CODE];
-  if(m){ var p=m[normEn(nameEn)]; if(p && p!==nameEn) return p; }
-  return nameEn;
-}
-// 이 지역(또는 그 상위 현)에 기록이 있으면 해당 기록 반환.
-// 인기명소 도시에 기록하면 그 도시가 속한 '현 전체'가 활성화되도록 상위 현 기준으로 매칭한다.
-function activeRecordFor(nameEn){
-  var pref=prefOf(nameEn);
+// 이 지역에 기록이 있으면 그 기록 반환. (도시 피처는 상위 주로 흡수돼 데이터에 없다)
+function activeRecordFor(code){
   for(var i=0;i<recordedRegions.length;i++){
-    if(prefOf(recordedRegions[i].nameEn)===pref) return recordedRegions[i];
+    if(recordedRegions[i].nameEn===code) return recordedRegions[i];
   }
   return null;
 }
-// 숨긴 도시(인기명소 OFF)는 탭을 안 받게 해서 아래 주가 선택되도록
-function regionPointer(d){
-  var n=d.properties.NAME_1||'';
-  return (isCity(n) && !showPopular) ? 'none' : 'auto';
+function regionPointer(){
+  return 'auto';
 }
-// 숨긴 도시는 채움도 투명 처리(아래 주 색이 그대로 비치도록)
 function regionFill(d){
-  var n=d.properties.NAME_1||'';
-  if(isCity(n) && !showPopular) return 'none';
   return getFill(d);
 }
 // ── 경계선 색·두께 (스케일 스트로크: 어긋난 인접 경계를 같은 색으로 합쳐 틈/이중선 제거) ──
+// 매칭(activeRecordFor)은 CODE, 검색 강조(searchedRegion)·인기명소 목록(highlight)은 NAME_1 기준.
 function emphStroke(d){
   var n=d.properties.NAME_1||'';
-  var city=isCity(n);
-  if(city && !showPopular) return 'none';   // 인기명소 OFF: 도시 선 숨김(주에 녹아듦)
+  var code=d.properties.CODE||'';
   if(n===searchedRegion) return '#00D8F3';
-  var a=activeRecordFor(n);
+  var a=activeRecordFor(code);
   if(a) return '#7856B0';
-  if(city) return defaultColor;                // 인기명소 ON: 도시 강조(스킨 활성화색)
-  if(showPopular && highlight.indexOf(n)>=0) return defaultColor; // 인기명소 현(예: 오키나와 전체)도 동일 강조
+  if(showPopular && highlight.indexOf(n)>=0) return defaultColor; // 인기명소 현(예: 오키나와 전체) 강조
   return '#3E3155';
 }
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
 // 이중선/틈이 남으면 아래 값을 키우고, 고배율에서 너무 두꺼우면 줄이면 된다.
 function emphWidth(d){
   var n=d.properties.NAME_1||'';
-  var city=isCity(n);
-  if(city && !showPopular) return 0;        // 인기명소 OFF: 도시 선 숨김
+  var code=d.properties.CODE||'';
   if(n===searchedRegion) return 0.6;
-  var a=activeRecordFor(n);
+  var a=activeRecordFor(code);
   if(a) return 0.45;
-  if(city) return 0.5;                       // 인기명소 ON: 도시 강조
   if(showPopular && highlight.indexOf(n)>=0) return 0.5;
   return 0.35;
 }
@@ -466,7 +436,7 @@ function onRegionClick(ev,d){
   var self=this;
   setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
   var name=d.properties.NL_NAME_1||d.properties.NAME_1||'';
-  var nameEn=d.properties.NAME_1||'';
+  var nameEn=d.properties.CODE||''; // MainScreen이 regionNameEn으로 저장하는 값
   setRegionChip(name);
   if(window.ReactNativeWebView){
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'regionTapped',region:name,regionEn:nameEn,countryCode:CODE}));
@@ -498,14 +468,14 @@ function render(geo){
   var W=window.innerWidth,H=window.innerHeight,PAD=24;
   var svg=d3.select('body').append('svg').attr('width',W).attr('height',H);
   svgElement = svg;
-  var insets=['Alaska','Hawaii','Guam','Honolulu'];
+  // NE 미국 admin-1 데이터는 50주+D.C.뿐이다. 괌은 별도 국가(GUM) 피처라 여기 없고,
+  // 호놀룰루는 옛 GADM의 도시 피처였을 뿐 admin-1에는 없다 — 둘 다 인셋 대상에서 제외.
+  var insets=['Alaska','Hawaii'];
   mainFeatures=geo.features;
   insetFeatures=[];
   if(CODE==='USA'){
     mainFeatures=geo.features.filter(function(f){return insets.indexOf(f.properties.NAME_1)<0;});
-    // Honolulu는 별도 NAME_1 피처 — 본토에서 빼고 인셋에도 안 넣으면 지도에서 완전히 사라진다.
-    // 하와이 인셋 박스에 함께 그린다(아래 box 필터 참조).
-    insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii'||f.properties.NAME_1==='Honolulu'||f.properties.NAME_1==='Guam';});
+    insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii';});
   }
   var mainGeo={type:'FeatureCollection',features:mainFeatures};
   // 하단 탭 바가 가리는 만큼 빼서, 지도가 '보이는 영역' 중앙에 오도록 한다
@@ -556,12 +526,11 @@ function render(geo){
     var VH=H-(BOTTOM_INSET||0);
     insetBoxes=[
       {name:'Alaska',x:PAD,y:VH*0.62,w:W*0.22,h:VH*0.28},
-      {name:'Hawaii',x:PAD+W*0.24,y:VH*0.72,w:W*0.15,h:VH*0.18},
-      {name:'Guam',x:PAD+W*0.41,y:VH*0.75,w:W*0.08,h:VH*0.15}
+      {name:'Hawaii',x:PAD+W*0.24,y:VH*0.72,w:W*0.15,h:VH*0.18}
     ];
     insetBoxes.forEach(function(box){
       var feat=insetFeatures.filter(function(f){
-        return f.properties.NAME_1===box.name || (box.name==='Hawaii' && f.properties.NAME_1==='Honolulu');
+        return f.properties.NAME_1===box.name;
       });
       if(feat.length===0)return;
       var fc={type:'FeatureCollection',features:feat};
@@ -638,17 +607,16 @@ function updateMap() {
   reorderEmph();
 }
 
-// 강조 스트로크(활성 기록·인기명소 주·도시·검색)가 있는 피처를 맨 위로 올린다.
+// 강조 스트로크(활성 기록·인기명소 주·검색)가 있는 피처를 맨 위로 올린다.
 // 그리기 순서가 면적 큰 순이라, 강조된 큰 주(이스탄불 등)의 외곽선을 나중에 그려진
 // 더 작은 이웃 주의 어두운 경계선이 덮어 '선이 끊겨' 보이는 문제 방지.
-// 올리는 순서 = 최종 z-순서: 활성 < 인기 주 < 도시 피처 < 검색 강조.
+// 올리는 순서 = 최종 z-순서: 활성 < 인기 주 < 검색 강조. (도시 피처는 데이터에 없어 제외)
 function reorderEmph(){
   if(!pathElements) return;
-  pathElements.filter(function(d){ return !!activeRecordFor(d.properties.NAME_1||''); }).raise();
+  pathElements.filter(function(d){ return !!activeRecordFor(d.properties.CODE||''); }).raise();
   if(showPopular){
-    pathElements.filter(function(d){ var n=d.properties.NAME_1||''; return highlight.indexOf(n)>=0 && !isCity(n); }).raise();
+    pathElements.filter(function(d){ return highlight.indexOf(d.properties.NAME_1||'')>=0; }).raise();
   }
-  pathElements.filter(function(d){ return isCity(d.properties.NAME_1||''); }).raise(); // 도시는 항상 최상위(주에 가려짐 방지)
   if(searchedRegion){
     pathElements.filter(function(d){ return (d.properties.NAME_1||'')===searchedRegion; }).raise();
   }
@@ -664,9 +632,6 @@ function handleNativeMessage(e){
       updateMap();
     } else if (msg.type === 'searchRegion') {
       doSearch(msg.query || '');
-    } else if (msg.type === 'setPopular') {
-      showPopular = !!msg.value;
-      updateMap();
     }
   } catch(e) {}
 }
