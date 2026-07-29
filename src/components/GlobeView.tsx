@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useEffect, useCallback } from 'react';
+import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import { View, StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useAnimationsActive } from '../hooks/useAnimationsActive';
@@ -3655,8 +3655,32 @@ export default function GlobeView({
   // WebView 준비 완료 여부 — globeReady 신호 수신 시 true.
   const readyRef = useRef(false);
 
-  // 폼(variant) 전환 시 WebView는 key 변경으로 리마운트되므로, 새 글로브의 globeReady를 다시 기다린다.
-  useEffect(() => { readyRef.current = false; }, [variant]);
+  // 렌더러 프로세스가 죽었을 때 WebView를 통째로 새로 만들기 위한 세대 번호.
+  //
+  // reload()를 쓰지 않는 이유(흰 화면 사고의 원인):
+  //  1) react-native-webview의 reload()는 내부 viewState를 'LOADING'으로 바꾼다.
+  //     → 기본 renderLoading(흰 배경 + 회색 스피너)이 WebView 위를 전부 덮는다.
+  //  2) 그런데 콘텐츠 프로세스가 이미 죽은 WebView는 reload()로 되살아나지 않는다.
+  //     (source가 HTML 문자열이라 다시 불러올 URL 자체가 없다)
+  //     → onLoad가 영영 오지 않아 viewState가 'IDLE'로 못 돌아오고 흰 오버레이가 영구히 남는다.
+  //     지구본이 전체화면이라 화면 전체가 하얘지고, 그 위의 BlurView(탭 바·토글·원형 버튼)가
+  //     흰 배경을 빨아들여 색이 다 날아간 것처럼 보인다.
+  // key를 바꿔 네이티브 뷰를 새로 만들면 HTML이 처음부터 다시 로드돼 확실히 복구된다.
+  const [reloadGen, setReloadGen] = useState(0);
+  const recoverCountRef = useRef(0);
+
+  const recoverFromCrash = useCallback(() => {
+    readyRef.current = false;
+    // 메모리가 계속 부족해 로드 직후 또 죽는 기기에서 무한 리마운트로 도는 것을 막는다.
+    // (성공적으로 globeReady를 받으면 아래에서 카운터가 0으로 초기화된다)
+    if (recoverCountRef.current >= 5) return;
+    recoverCountRef.current += 1;
+    setReloadGen(g => g + 1);
+  }, []);
+
+  // 폼(variant) 전환·크래시 복구 시 WebView는 key 변경으로 리마운트되므로,
+  // 새 글로브의 globeReady를 다시 기다린다.
+  useEffect(() => { readyRef.current = false; }, [variant, reloadGen]);
 
   // 현재 페이로드 일괄 전송 (초기화 직후 1회 + 폴백)
   const sendAll = useCallback(() => {
@@ -3673,6 +3697,7 @@ export default function GlobeView({
     try { data = JSON.parse(e.nativeEvent.data); } catch {}
     if (data?.type === 'globeReady') {
       readyRef.current = true;
+      recoverCountRef.current = 0; // 정상 부팅 확인 — 이후 크래시도 다시 복구할 수 있게 리셋
       sendAll();
       return; // 내부 신호는 부모로 올리지 않음
     }
@@ -3719,7 +3744,7 @@ export default function GlobeView({
   return (
     <View style={fullscreen ? styles.containerFull : [styles.container, { width: size, height: size }]}>
       <WebView
-        key={variant}
+        key={`${variant}-${reloadGen}`}
         ref={webViewRef}
         originWhitelist={['*']}
         javaScriptEnabled={true}
@@ -3739,10 +3764,14 @@ export default function GlobeView({
         mixedContentMode="always"
         onMessage={handleMessage}
         onLoad={handleLoad}
+        // 라이브러리 기본 로딩 화면은 '흰 배경 + 회색 스피너'라 다크 UI에서 사고처럼 보인다.
+        // 혹시라도 LOADING 상태가 되면 배경색과 같은 어두운 판을 덮도록 대체한다.
+        renderLoading={() => <View style={styles.loadingCover} />}
         // OS가 백그라운드에서 WebView 프로세스를 회수하면(메모리 압박) 탭 복귀 시 빈 화면으로 남는다
-        // → 즉시 리로드. 로드 완료 후 globeReady → sendAll()로 방문국/테마가 자동 재주입된다.
-        onContentProcessDidTerminate={() => { readyRef.current = false; webViewRef.current?.reload(); }}
-        onRenderProcessGone={() => { readyRef.current = false; webViewRef.current?.reload(); }}
+        // → key를 올려 WebView를 새로 만든다(reload()는 죽은 프로세스를 되살리지 못한다).
+        // 재생성 후 globeReady → sendAll()로 방문국/테마가 자동 재주입된다.
+        onContentProcessDidTerminate={recoverFromCrash}
+        onRenderProcessGone={recoverFromCrash}
       />
     </View>
   );
@@ -3756,5 +3785,10 @@ const styles = StyleSheet.create({
   containerFull: {
     flex: 1,
     overflow: 'hidden',
+  },
+  // WebView 로딩 오버레이 대체 — 지구본 HTML의 body 배경(#0A0B0F)과 같은 색
+  loadingCover: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0A0B0F',
   },
 });
