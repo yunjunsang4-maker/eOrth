@@ -15,6 +15,46 @@ const TMP = 'scripts/geo-tmp';
 const OUT_DIR = 'src/data/geo';
 const SIMPLIFY = '25%';
 
+/**
+ * 병합 대상국(FRA·ITA·ESP·GBR) 그룹의 한글 표시명 — CODE 기준.
+ *
+ * 병합 그룹은 NE 피처 여러 개를 CODE로 접은 것이라 그룹 자체의 name_ko가 없다. 개별 피처의
+ * name_ko(예: 잉글랜드를 이루는 152개 카운티 중 "체셔웨스트 체스터")를 그대로 두면
+ * -dissolve2 copy-fields가 그룹의 *첫* 피처 값을 복사해, 잉글랜드 한글명이 임의의 하위
+ * 구역명이 된다. 그 이름이 칩·소급 태깅 시트에 뜨고 taggedRegions로 영속 저장되므로
+ * 그룹 단위 한글명을 여기서 못 박는다.
+ *
+ * 출처: GADM 백업(gadm-backup-2026-07-28)의 NL_NAME_1 구 광역명 + 통용 한글 표기.
+ * CODE는 저장 키이므로 절대 바꾸지 않는다 — 여기서 바꾸는 것은 표시명뿐이다.
+ */
+const GROUP_NAME_KO: Record<string, string> = {
+  // 프랑스 18개 région
+  'FR-ARA': '오베르뉴론알프', 'FR-BFC': '부르고뉴프랑슈콩테', 'FR-BRE': '브르타뉴',
+  'FR-COR': '코르시카', 'FR-CVL': '상트르발드루아르', 'FR-GES': '그랑에스트',
+  'FR-GUA': '과들루프', 'FR-GUF': '프랑스령 기아나', 'FR-HDF': '오드프랑스',
+  'FR-IDF': '일드프랑스', 'FR-LRE': '레위니옹', 'FR-MAY': '마요트',
+  'FR-MTQ': '마르티니크', 'FR-NAQ': '누벨아키텐', 'FR-NOR': '노르망디',
+  'FR-OCC': '옥시타니', 'FR-PAC': '프로방스알프코트다쥐르', 'FR-PDL': '페이드라루아르',
+  // 이탈리아 20개 regione
+  'IT-21': '피에몬테', 'IT-23': '발레다오스타', 'IT-25': '롬바르디아',
+  'IT-32': '트렌티노알토아디제', 'IT-34': '베네토', 'IT-36': '프리울리베네치아줄리아',
+  'IT-42': '리구리아', 'IT-45': '에밀리아로마냐', 'IT-52': '토스카나',
+  'IT-55': '움브리아', 'IT-57': '마르케', 'IT-62': '라치오',
+  'IT-65': '아브루초', 'IT-67': '몰리세', 'IT-72': '캄파니아',
+  'IT-75': '풀리아', 'IT-77': '바실리카타', 'IT-78': '칼라브리아',
+  'IT-82': '시칠리아', 'IT-88': '사르데냐',
+  // 스페인 19개 comunidad autónoma (+ 세우타·멜리야 자치시)
+  'ES-AN': '안달루시아', 'ES-AR': '아라곤', 'ES-AS': '아스투리아스',
+  'ES-CB': '칸타브리아', 'ES-CE': '세우타', 'ES-CL': '카스티야이레온',
+  'ES-CM': '카스티야라만차', 'ES-CN': '카나리아 제도', 'ES-CT': '카탈루냐',
+  'ES-EX': '에스트레마두라', 'ES-GA': '갈리시아', 'ES-LO': '라리오하',
+  'ES-MD': '마드리드', 'ES-ML': '멜리야', 'ES-MU': '무르시아',
+  'ES-NA': '나바라', 'ES-PM': '발레아레스 제도', 'ES-PV': '바스크',
+  'ES-VC': '발렌시아',
+  // 영국 4개 구성국
+  'GB-ENG': '잉글랜드', 'GB-NIR': '북아일랜드', 'GB-SCT': '스코틀랜드', 'GB-WLS': '웨일스',
+};
+
 // 코드 규칙 자체 점검 — 실패하면 아무것도 쓰지 않는다
 const feats = loadNeFeatures(NE);
 assertNoPrimaryNameConflict(feats);
@@ -23,13 +63,29 @@ assertNoPrimaryNameConflict(feats);
 // (mapshaper의 JS 표현식에서는 이 파일의 함수를 못 쓰므로 계산 결과를 조인으로 주입한다)
 interface Attrs { adm1_code: string; CODE: string; NAME_1: string; NL_NAME_1: string }
 const rows: Attrs[] = [];
+const missingKo: string[] = [];
 for (const p of feats) {
   const code = codeOf(p);
   const d = DISSOLVE[p.adm0_a3];
   // 병합 대상국은 그룹명이 표시명이 된다 (프랑스 département가 아니라 région을 보여준다)
   const nameEn = d ? String((p as any)[d] || p.name_en || p.name) : (p.name_en || p.name);
-  const nameKo = p.name_ko && String(p.name_ko).trim() ? String(p.name_ko).trim() : nameEn;
+  // 한글명도 같은 원칙 — 병합 대상국은 개별 피처의 name_ko(하위 구역명)를 쓰면 안 된다.
+  let nameKo: string;
+  if (d) {
+    nameKo = GROUP_NAME_KO[code] || '';
+    if (!nameKo) { missingKo.push(`${code} (${p.adm0_a3} ${nameEn})`); nameKo = nameEn; }
+  } else {
+    nameKo = p.name_ko && String(p.name_ko).trim() ? String(p.name_ko).trim() : nameEn;
+  }
   rows.push({ adm1_code: String(p.adm1_code), CODE: code, NAME_1: nameEn, NL_NAME_1: nameKo });
+}
+// 병합 그룹에 한글명이 빠지면 하위 구역명이 그대로 노출되므로, 조용히 넘기지 않고 멈춘다.
+// (NE를 새로 받아 그룹이 늘어나는 순간이 정확히 이게 깨지는 시점이다)
+if (missingKo.length) {
+  throw new Error(
+    'GROUP_NAME_KO에 한글명이 없는 병합 그룹이 있다. 이 표에 추가해라:\n  '
+    + [...new Set(missingKo)].join('\n  '),
+  );
 }
 writeFileSync(`${TMP}/attrs.json`, JSON.stringify(rows));
 
@@ -39,6 +95,14 @@ writeFileSync(`${TMP}/attrs.json`, JSON.stringify(rows));
 // 빈 채로 출력에 남는다 — '~' 판정 규칙을 여기서 다시 구현하는 대신, loadNeFeatures가
 // 이미 승인한 adm1_code 집합으로 원본을 미리 걸러 mapshaper에 넘긴다.
 const validAdm1 = new Set(feats.map((p) => String(p.adm1_code)));
+// 조인 키(adm1_code)가 전역 유일하다는 전제 — 깨지면 mapshaper가 다른 나라 속성을 붙여
+// 폴리곤이 조용히 오염된다(예외도 경고도 없다). NE 4,596 피처에서 중복 0을 확인했지만,
+// NE를 새로 받았을 때 이 전제가 유지되는지는 여기서 못 박아 둔다.
+if (validAdm1.size !== feats.length) {
+  const seen = new Set<string>();
+  const dup = feats.map((p) => String(p.adm1_code)).filter((c) => seen.has(c) || (seen.add(c), false));
+  throw new Error(`adm1_code가 유일하지 않다(조인이 어긋난다): ${[...new Set(dup)].join(', ')}`);
+}
 const rawFC = JSON.parse(readFileSync(NE, 'utf8'));
 const filteredFC = {
   type: 'FeatureCollection',

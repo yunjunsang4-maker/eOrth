@@ -32,9 +32,15 @@ const PRIMARY_NAME_WINNER: Record<string, string> = {
   'MEX|mexico': 'MX-MEX',     // 멕시코주가 이긴다 — 연방구는 'distritofederal'로 따로 잡힌다
 };
 
-/** 정규화: 발음구별기호 제거 + 소문자 + 영숫자만 남김 */
+/**
+ * 정규화: 발음구별기호 제거 + 소문자 + 영숫자만 남김
+ *
+ * 결합 문자 범위는 반드시 `\u0300-\u036f` 이스케이프 표기로 적는다. 눈에 보이지 않는
+ * 결합 문자를 소스에 리터럴로 박아 두면 다음 편집·복사·붙여넣기에서 조용히 사라지거나
+ * 다른 문자로 바뀌어도 아무도 못 알아챈다(그 순간 별칭 표와 지오의 코드가 어긋난다).
+ */
 export const norm = (s: string): string =>
-  s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 // region_cod의 점 표기를 하이픈으로 통일 (ES.CE → ES-CE) + NE 원본의 공백류 오염 제거
 // (Île-de-France 피처들의 region_cod가 "FR-IDF\t"처럼 탭이 섞여 들어온다)
