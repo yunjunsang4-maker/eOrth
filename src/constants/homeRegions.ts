@@ -1,12 +1,16 @@
 // 거주국가(국내) 기록의 지역 선택 프리셋 — 피드 기록에서 국내 기록은 지역 단위로 여행 카드를 구분한다.
-// 한국은 시/도 프리셋(koreaRegions), 그 외 국가는 대륙 지도와 동일한 GADM Level-1 데이터(countryGeo)에서
-// 지역 목록을 뽑는다. nameEn(NAME_1)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
+// 한국은 시/도 프리셋(koreaRegions), 그 외 국가는 대륙 지도와 동일한 지오 데이터(countryGeo)에서
+// 지역 목록을 뽑는다. nameEn(CODE)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
 import { KOREA_REGIONS, normalizeKoreaRegion } from './koreaRegions';
 import { getCountryGeo } from '../data/countryGeo';
 
 export interface HomeRegion {
-  name: string;   // 표시·저장용 한글 표기 (예: '교토부', '캘리포니아')
-  nameEn: string; // 대륙 지도 매칭 키 (GADM NAME_1, 예: 'Kyoto', 'California')
+  name: string;   // 한글 표시명 (NL_NAME_1)
+  // 저장 키 = 지오의 CODE ('JP-14'). 이름과 내용이 어긋나 보이지만, 이 값을 저장하는
+  // 호출부(taggedRegions.nameEn·TravelRecord.regionNameEn)가 이미 코드 체계로
+  // 마이그레이션돼 있다. 여기서 이름을 바꾸면 오히려 저장 계층과 어긋난다.
+  nameEn: string;
+  latin: string;  // 영문명 (NAME_1) — GPS 도시명 매칭 전용, 저장하지 않는다
 }
 
 // 거주국가 코드(ISO2, settingsStore.homeCountryCode) → countryGeo 키(ISO3)
@@ -23,9 +27,9 @@ export const ISO2_TO_GEO: Record<string, string> = {
 // 발음 구별 기호 제거(Ōsaka→Osaka) — GPS 도시명과 GADM 영문명 표기차 흡수
 const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-// countryGeo에는 주(admin-1) 외에 인기명소 '도시' 피처가 섞여 있다(구분 속성 없음).
-// CountryMapView의 CITY_TO_PROV(도시→상위 주)와 동일 규칙으로 도시 피처를 지역 목록에서 제외한다
-// — 정규화한 NAME_1이 아래 매핑에서 자기 자신이 아닌 주로 매핑되면 도시.
+// GPS 도시명 → 상위 주(광역) 매핑. 지오 데이터에는 도시 피처가 없어 지도 판정용이 아니라,
+// normalizeHomeRegion에서 GPS가 준 도시명(예: Yokohama)을 상위 지역(Kanagawa)으로 올려붙이는 데만 쓴다.
+// 값은 GADM 시절 주 영문명 표기라 CODE가 아니라 latin(NAME_1)과 대조해야 한다.
 export const CITY_TO_PROV: Record<string, Record<string, string>> = {
   JPN: { tokyocity: 'Tokyo', osakacity: 'Osaka', kyotocity: 'Kyoto', fukuokacity: 'Fukuoka', sapporo: 'Hokkaido', naha: 'Okinawa', yokohama: 'Kanagawa', kobe: 'Hyōgo', nagoya: 'Aichi', hiroshimacity: 'Hiroshima', sendai: 'Miyagi' },
   CHN: { guangzhou: 'Guangdong', shenzhen: 'Guangdong', chengdu: 'Sichuan', hangzhou: 'Zhejiang', xian: 'Shaanxi', wuhan: 'Hubei', qingdao: 'Shandong', nanjing: 'Jiangsu' },
@@ -54,30 +58,19 @@ export const CITY_TO_PROV: Record<string, Record<string, string>> = {
   COL: { medellin: 'Antioquia', cartagena: 'Bolívar', cartagenadeindias: 'Bolívar', cali: 'ValledelCauca', santiagodecali: 'ValledelCauca', salento: 'Quindío' },
 };
 
-const isCityFeature = (geoKey: string, nameEn: string): boolean => {
-  const prov = CITY_TO_PROV[geoKey]?.[fold(nameEn).replace(/[\s\-'’.]/g, '')];
-  return !!prov && prov !== nameEn;
-};
-
-/**
- * 대륙 지도 국가(ISO3 geoKey)의 선택 가능한 지역 목록 — 광역(주)과 인기명소 도시를 분리해 반환.
- * 방문 지역 소급 태깅 시트 등 UI 선택용. nameEn은 대륙 지도 활성화 키(NAME_1)와 동일.
- */
-export function getCountryRegionOptions(geoKey: string): { provinces: HomeRegion[]; cities: HomeRegion[] } {
+/** 대륙 지도 국가(ISO3)의 선택 가능한 지역 목록. nameEn은 지도 매칭 키(CODE)와 동일. */
+export function getCountryRegionOptions(geoKey: string): HomeRegion[] {
   const features: any[] = getCountryGeo(geoKey)?.features ?? [];
   const seen = new Set<string>();
-  const provinces: HomeRegion[] = [];
-  const cities: HomeRegion[] = [];
+  const out: HomeRegion[] = [];
   for (const f of features) {
-    const nameEn = f?.properties?.NAME_1;
-    if (!nameEn || seen.has(nameEn)) continue;
-    seen.add(nameEn);
-    const item = { name: f?.properties?.NL_NAME_1 || nameEn, nameEn };
-    (isCityFeature(geoKey, nameEn) ? cities : provinces).push(item);
+    const p = f?.properties ?? {};
+    if (!p.CODE || seen.has(p.CODE)) continue;
+    seen.add(p.CODE);
+    out.push({ name: p.NL_NAME_1 || p.NAME_1, nameEn: p.CODE, latin: p.NAME_1 || '' });
   }
-  provinces.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  cities.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  return { provinces, cities };
+  out.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  return out;
 }
 
 // countryGeo 파싱 결과 캐시 — 국가당 1회만 추출
@@ -90,7 +83,7 @@ const regionCache: Record<string, HomeRegion[]> = {};
 export function getHomeRegions(countryCode?: string | null): HomeRegion[] {
   const cc = (countryCode || '').toUpperCase();
   if (!cc) return [];
-  if (cc === 'KR') return KOREA_REGIONS.map(r => ({ name: r.name, nameEn: r.nameEn }));
+  if (cc === 'KR') return KOREA_REGIONS.map(r => ({ name: r.name, nameEn: r.nameEn, latin: r.nameEn }));
 
   const geoKey = ISO2_TO_GEO[cc];
   if (!geoKey) return [];
@@ -100,11 +93,10 @@ export function getHomeRegions(countryCode?: string | null): HomeRegion[] {
   const seen = new Set<string>();
   const regions: HomeRegion[] = [];
   for (const f of features) {
-    const nameEn = f?.properties?.NAME_1;
-    if (!nameEn || seen.has(nameEn)) continue; // 한 지역이 여러 피처로 쪼개진 경우 중복 제거
-    seen.add(nameEn);
-    if (isCityFeature(geoKey, nameEn)) continue; // 인기명소 도시 피처는 지역 선택에서 제외
-    regions.push({ name: f?.properties?.NL_NAME_1 || nameEn, nameEn });
+    const p = f?.properties ?? {};
+    if (!p.CODE || seen.has(p.CODE)) continue; // 한 지역이 여러 피처로 쪼개진 경우 중복 제거
+    seen.add(p.CODE);
+    regions.push({ name: p.NL_NAME_1 || p.NAME_1, nameEn: p.CODE, latin: p.NAME_1 || '' });
   }
   regions.sort((a, b) => a.name.localeCompare(b.name, 'ko'));
   regionCache[geoKey] = regions;
@@ -121,20 +113,30 @@ export function normalizeHomeRegion(countryCode?: string | null, raw?: string | 
   const cc = (countryCode || '').toUpperCase();
   if (cc === 'KR') {
     const kr = normalizeKoreaRegion(raw);
-    return kr ? { name: kr.name, nameEn: kr.nameEn } : null;
+    return kr ? { name: kr.name, nameEn: kr.nameEn, latin: kr.nameEn } : null;
   }
   const regions = getHomeRegions(cc);
   if (regions.length === 0) return null;
   const q = fold(raw).replace(/[\s\-'’.]/g, '');
   // 1) 도시 → 상위 주 매핑 우선 (Yokohama→Kanagawa 등, 지도와 동일 규칙)
+  //    CITY_TO_PROV 값은 GADM 주 이름이므로 코드가 아니라 latin(영문명)과 대조한다.
   const geoKey = ISO2_TO_GEO[cc];
   const viaCity = geoKey ? CITY_TO_PROV[geoKey]?.[q] : undefined;
-  if (viaCity) return regions.find(r => r.nameEn === viaCity) ?? null;
+  if (viaCity) {
+    const vq = fold(viaCity).replace(/[\s\-'’.]/g, '');
+    // 새 지오 데이터의 NAME_1은 'Kanagawa Prefecture'처럼 접미사가 붙어 CITY_TO_PROV의
+    // 짧은 표기('Kanagawa')와 완전히 같지 않을 수 있어 완전일치 대신 포함 관계로 매칭한다.
+    const viaMatch = regions.find(r => {
+      const en = fold(r.latin).replace(/[\s\-'’.]/g, '');
+      return !!en && (en === vq || en.includes(vq) || vq.includes(en));
+    });
+    if (viaMatch) return viaMatch;
+  }
   return (
     // 2) 도시명에 지역명이 포함되거나(예: "Kyoto City") 그 반대(예: "Berlin")인 경우 모두 허용
     regions.find(r => {
-      const en = fold(r.nameEn).replace(/[\s\-'’.]/g, '');
-      return q.includes(en) || en.includes(q) || raw.includes(r.name);
+      const en = fold(r.latin).replace(/[\s\-'’.]/g, '');
+      return !!en && (q.includes(en) || en.includes(q) || raw.includes(r.name));
     }) ?? null
   );
 }
