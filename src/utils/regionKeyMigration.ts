@@ -75,7 +75,9 @@ export function migrateTaggedRegions<T extends { nameEn: string }>(
     const fromCity = new Set<string>();
     const out: T[] = [];
     for (const item of list) {
-      if (!item || typeof item.nameEn !== 'string') continue;
+      // 형식이 어긋난 항목도 버리지 않고 그대로 보존한다 —
+      // migrateRegionKeyMap이 형식 불일치 키를 남기는 것과 같은 정책(사용자 데이터 무삭제)
+      if (!item || typeof item.nameEn !== 'string') { out.push(item); continue; }
       const code = resolveRegionCode(iso3, item.nameEn);
       if (!code) { out.push(item); continue; }
       const city = isCitySourced(iso3, item.nameEn);

@@ -40,6 +40,8 @@ const MANUAL: Record<string, string> = {
   'GRC|athos': 'Mount Athos',                             // GADM "Athos" ↔ NE name_alt "Mount Athos"
   'MAR|laayouneboujdoursakiaelh': 'Laâyoune-Boujdour-Sakia El Hamra', // GADM 원본 이름이 잘려있음(SakiaElH)
   'ARE|fujairah': 'Fujayrah', // NE 결함 피처(AE-X01~, 아래 ne 필터에서 제외) 대신 진짜 푸자이라(AE-FU)로
+  'ARE|dubai': 'Dubay',       // 두바이는 도시가 아니라 에미리트(admin-1) — NE name "Dubay"(AE-DU)
+  'USA|washingtondc': 'District of Columbia', // CITY_TO_PROV의 메릴랜드 흡수보다 우선 — NE에 US-DC가 있다
 };
 
 /** 정규화: 발음구별기호 제거 + 소문자 + 영숫자만 남김 */
@@ -96,18 +98,33 @@ const addName = (iso: string, name: string | undefined, code: string) => {
     if (v.trim() && !index[k]) index[k] = code;
   }
 };
+// 색인은 반드시 2패스로 돈다(리뷰 Critical 1).
+// addName이 first-wins라 한 패스로 돌면 앞선 피처의 *부차* 이름이 뒤 피처의 *1차* 이름을
+// 선점한다. 실제 사례: 陝西(Shaanxi)의 name_alt "Shǎnxī"가 정규화되면 "shanxi"가 되어,
+// 뒤에 오는 진짜 山西(Shanxi, CN-SX)가 자기 이름을 못 갖고 CN-SN으로 오매칭됐다.
+// 1패스에서 모든 피처의 1차 이름(name, name_en)과 코드를 먼저 확정하면
+// 어떤 피처의 1차 이름도 다른 피처의 별칭에 빼앗기지 않는다.
+const codeCache = new Map<NeProps, string>();
+// 1패스 — 1차 이름 + 멱등성용 코드 자기항목
 for (const p of ne) {
   const code = codeOf(p);
   if (!code) throw new Error(`코드 없음: ${p.adm0_a3} ${p.name}`);
-  // 2단계용 — 피처 이름들
-  for (const f of ['name', 'name_en', 'name_local', 'name_alt', 'gn_name', 'woe_name'] as const) {
+  codeCache.set(p, code);
+  for (const f of ['name', 'name_en'] as const) {
+    addName(p.adm0_a3, p[f] as string | undefined, code);
+  }
+  // 멱등성용 — 코드 자신도 인덱스에 넣는다 (이미 변환된 값을 다시 넣어도 안전)
+  addName(p.adm0_a3, code, code);
+}
+// 2패스 — 부차 이름과 병합 그룹명(빈 자리만 채운다)
+for (const p of ne) {
+  const code = codeCache.get(p)!;
+  for (const f of ['name_local', 'name_alt', 'gn_name', 'woe_name'] as const) {
     addName(p.adm0_a3, p[f] as string | undefined, code);
   }
   // 3단계용 — 병합 그룹명
   const d = DISSOLVE[p.adm0_a3];
   if (d) addName(p.adm0_a3, p[d] as string | undefined, code);
-  // 멱등성용 — 코드 자신도 인덱스에 넣는다 (이미 변환된 값을 다시 넣어도 안전)
-  addName(p.adm0_a3, code, code);
 }
 
 /** 구 키 하나를 코드로 해석. cityHop=true면 도시 흡수를 거친 것 */

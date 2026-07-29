@@ -1,9 +1,8 @@
 // 자동 생성 — scripts/build-region-aliases.ts. 직접 수정 금지.
 // GADM 구 지역 키 → Natural Earth 코드 별칭 표.
-// 구 키 839개 중 820개 매칭, 미매칭 15개.
+// 구 키 839개 중 821개 매칭, 미매칭 14개.
 //
 // 미매칭 목록 (그대로 보존되며 지도에는 뜨지 않는다):
-//   ARE|Dubai
 //   GRC|Aegean
 //   GRC|EpirusandWesternMacedonia
 //   GRC|MacedoniaandThrace
@@ -21,6 +20,7 @@
 export const REGION_KEY_ALIASES: Record<string, string> = {
  "ARE|abudhabi": "AE-AZ",
  "ARE|ajman": "AE-AJ",
+ "ARE|dubai": "AE-DU",
  "ARE|fujairah": "AE-FU",
  "ARE|rasalkhaimah": "AE-RK",
  "ARE|sharjah": "AE-SH",
@@ -112,7 +112,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "CHN|shaanxi": "CN-SN",
  "CHN|shandong": "CN-SD",
  "CHN|shanghai": "CN-SH",
- "CHN|shanxi": "CN-SN",
+ "CHN|shanxi": "CN-SX",
  "CHN|sichuan": "CN-SC",
  "CHN|tianjin": "CN-TJ",
  "CHN|xinjianguygur": "CN-XJ",
@@ -758,7 +758,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "USA|alaska": "US-AK",
  "USA|hawaii": "US-HI",
  "USA|boston": "US-MA",
- "USA|washingtondc": "US-MD",
+ "USA|washingtondc": "US-DC",
  "USA|houston": "US-TX",
  "USA|denver": "US-CO",
  "USA|philadelphia": "US-PA",
@@ -979,7 +979,6 @@ export const REGION_CITY_ALIAS_KEYS: string[] = [
  "USA|philadelphia",
  "USA|sanfrancisco",
  "USA|seattle",
- "USA|washingtondc",
  "VNM|halong",
  "VNM|hoian",
  "VNM|nhatrang",

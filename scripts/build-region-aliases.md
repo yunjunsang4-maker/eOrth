@@ -18,13 +18,34 @@ node node_modules/tsx/dist/cli.mjs scripts/build-region-aliases.ts
 - `scripts/geo-tmp/`는 커밋하지 않는다.
 - 설계 배경: `docs/superpowers/specs/2026-07-29-region-key-alias-migration-design.md`
 
-## 최종 실행 결과 (2026-07-29, 리뷰 수정 반영 후)
+## 최종 실행 결과 (2026-07-29, 최종 리뷰 수정 반영 후)
 
-구 키 839개 중 820개 매칭, 미매칭 15개. 고유 코드 701개, 도시 흡수 145개.
+구 키 839개 중 821개 매칭, 미매칭 14개. 고유 코드 701개, 도시 흡수 144개.
+(839는 GADM 파일에 나온 `NAME_1` 등장 횟수 총계로 중복을 포함한다. 매칭/미매칭 수는
+중복을 제거한 고유 키 기준이라 821 + 14 < 839가 된다.)
 
 리뷰에서 발견된 Critical 2건을 고치며 NE 결함 피처 5건(ARE 2·CHN 1·COL 1·MEX 1, 전부
 `iso_3166_2`가 `~`로 끝나는 비공식/미분류 코드)을 인덱싱 대상에서 제외해 고유 코드가
 706 → 701로 줄었다. 아래 "자체 점검" 절 참고.
+
+### 최종 리뷰 반영 (색인 2패스화 + MANUAL 2건)
+
+- **색인 2패스화 (Critical)** — `addName`이 first-wins라 한 패스로 돌면 앞선 피처의
+  *부차* 이름(`name_alt` 등)이 뒤 피처의 *1차* 이름을 선점한다. 실제로 陝西의
+  `name_alt` `"Shǎnxī"`가 정규화되어 `shanxi`가 되는 바람에, 진짜 山西(`name:"Shanxi"`,
+  `CN-SX`)가 자기 이름을 못 갖고 `CHN|shanxi`가 `CN-SN`(섬서성)으로 오매칭됐다.
+  이제 1패스에서 모든 피처의 `name`·`name_en`·코드를 먼저 확정하고, 2패스에서
+  `name_local`·`name_alt`·`gn_name`·`woe_name`과 병합 그룹명으로 빈 자리만 채운다.
+  `MANUAL`로는 못 고친다 — `MANUAL`도 결국 같은 `index`를 거치기 때문이다.
+- `MANUAL['ARE|dubai'] = 'Dubay'` — 두바이는 도시가 아니라 에미리트(admin-1)이고
+  NE에 `AE-DU`(`name:"Dubay"`)로 존재한다. 미매칭 → 정매칭.
+- `MANUAL['USA|washingtondc'] = 'District of Columbia'` — `CITY_TO_PROV`가 메릴랜드로
+  흡수하던 것을 NE의 정확한 `US-DC`로 바로잡았다(`MANUAL`이 도시 흡수보다 먼저 평가된다).
+  이 항목이 도시 흡수에서 빠져 도시 흡수 수가 145 → 144가 됐다.
+
+회귀 방지 검사는 `src/utils/regionKeyMigration.verify.ts`에 있다: 같은 국가 안에서
+비-도시 별칭 키 2개 이상이 한 코드를 가리키면 실패한다(정당한 동의어
+`EGY|aluqsur` ↔ `EGY|luxor`만 허용 목록).
 
 ## 자체 점검: 코드 형식 검증
 
@@ -43,16 +64,14 @@ node node_modules/tsx/dist/cli.mjs scripts/build-region-aliases.ts
   `"FR-IDF\t"`로 오염돼 있었다(파리 포함). `dash()`가 점만 하이픈으로 바꾸고
   공백류는 그대로 두던 것을 고쳐, 이제 모든 공백 문자를 제거한다.
 
-수정 후 전체 820개 별칭 값을 정규식으로 재검증해 위반 0건을 확인했다.
+수정 후 전체 별칭 값을 정규식으로 재검증해 위반 0건을 확인했다.
 
-## 남은 미매칭 15건과 그 이유
+## 남은 미매칭 14건과 그 이유
 
 `MANUAL`에 넣지 않고 그대로 둔 항목들 — 전부 실제 행정구역과 다른 세분화이거나
 NE 데이터 자체에 없는 도시/명소/영토이기 때문에, 이름만 바꿔서는 올바르게 별칭을
 붙일 수 없다.
 
-- `ARE|Dubai` — `CITY_TO_PROV`에 ARE 항목이 아예 없어 도시 흡수가 안 됨. 두바이는
-  행정구역(에미리트)이자 도시이지만, 이번 태스크 범위 밖(보존 정책으로 이관).
 - `GRC|Aegean`, `GRC|EpirusandWesternMacedonia`, `GRC|MacedoniaandThrace`,
   `GRC|Peloponnese,WesternGreeceand`, `GRC|ThessalyandCentralGreece` — GADM 쪽
   그리스 구 지역 구분이 NE의 13개 페리페리(현행 칼리크라티스 구획)보다 굵어서,

@@ -6,7 +6,7 @@ import {
 import { REGION_KEY_ALIASES, REGION_CITY_ALIAS_KEYS } from '../data/regionKeyAliases';
 
 /** Task 1 생성기가 출력한 매칭 수. 회귀 감지용 고정값이라 표를 다시 구우면 함께 고친다. */
-const EXPECTED_ALIAS_COUNT = 820; // ← Task 1 생성기 출력(regionKeyAliases.ts 헤더 주석): 매칭 820개
+const EXPECTED_ALIAS_COUNT = 821; // ← 생성기 출력(regionKeyAliases.ts 헤더 주석): 매칭 821개
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -24,6 +24,12 @@ eq(resolveRegionCode('USA', 'NewYork'), 'US-NY', '해석: 미국 뉴욕주');
 eq(resolveRegionCode('AUT', 'Oberösterreich'), 'AT-4', '해석: 오스트리아 오버외스터라이히');
 eq(resolveRegionCode('AUT', 'Hallstatt'), 'AT-4', '해석: 도시 흡수(할슈타트→오버외스터라이히)');
 eq(resolveRegionCode('ZZZ', 'Nowhere'), null, '해석: 미등록 국가는 null');
+// 리뷰 Critical 1 — 山西(CN-SX)와 陝西(CN-SN)는 서로 다른 성이다
+eq(resolveRegionCode('CHN', 'Shanxi'), 'CN-SX', '해석: 중국 산시성(山西)');
+eq(resolveRegionCode('CHN', 'Shaanxi'), 'CN-SN', '해석: 중국 섬서성(陝西)');
+// 리뷰 Minor — 두바이는 에미리트, 워싱턴DC는 메릴랜드가 아니다
+eq(resolveRegionCode('ARE', 'Dubai'), 'AE-DU', '해석: 두바이 에미리트');
+eq(resolveRegionCode('USA', 'WashingtonDC'), 'US-DC', '해석: 워싱턴 D.C.');
 
 // 3. 멱등성 — 이미 변환된 코드를 다시 넣어도 그대로
 eq(resolveRegionCode('USA', 'US-NY'), 'US-NY', '멱등: 코드 재입력');
@@ -40,6 +46,30 @@ eq(resolveRegionCode('USA', 'US-NY'), 'US-NY', '멱등: 코드 재입력');
     else if (!prev) isoByCode.set(code, iso);
   }
   eq(cross, [], '유일성: 한 코드가 두 국가에 걸치지 않음');
+}
+
+// 4-b. 오합병 회귀 방지 — 같은 국가 안에서 "비-도시" 구 키 2개 이상이 한 코드로 접히면
+//      생성기 색인이 오염된 것이다(예: 陝西의 name_alt "Shǎnxī"가 山西의 이름을 선점해
+//      CHN|shanxi가 CN-SN으로 갔던 리뷰 Critical 1). 도시 흡수는 정상이라 제외한다.
+{
+  // 정당한 동의어만 허용 — 아랍어/영어 표기가 같은 지역을 가리키는 경우
+  const ALLOWED = new Set(['EGY|aluqsur|luxor']);
+  const cityKeys = new Set(REGION_CITY_ALIAS_KEYS);
+  const byCode = new Map<string, string[]>();
+  for (const [k, code] of Object.entries(REGION_KEY_ALIASES)) {
+    if (cityKeys.has(k)) continue; // 도시 흡수는 상위 주와 겹치는 것이 정상
+    const iso = k.slice(0, k.indexOf('|'));
+    const g = `${iso}|${code}`;
+    (byCode.get(g) ?? byCode.set(g, []).get(g)!).push(k.slice(k.indexOf('|') + 1));
+  }
+  const merged: string[] = [];
+  for (const [g, names] of byCode) {
+    if (names.length < 2) continue;
+    const iso = g.slice(0, g.indexOf('|'));
+    if (ALLOWED.has(`${iso}|${[...names].sort().join('|')}`)) continue;
+    merged.push(`${g}: ${names.join(', ')}`);
+  }
+  eq(merged.sort(), [], '오합병: 국가 내 비-도시 키가 한 코드로 겹치지 않음');
 }
 
 // 5. 충돌 규칙 — 도시와 상위 주가 같은 신 키로 접히면 주 값이 이긴다
@@ -69,6 +99,17 @@ eq(migrateTaggedRegions({
    }),
    { AUT: [{ name: '오버외스터라이히', nameEn: 'AT-4' }] },
    '태깅: 한글명 유지 + 중복 제거');
+// city-first — 도시 항목이 먼저 와도 상위 주 항목이 그 자리를 차지한다(한글명도 상위 주 것)
+eq(migrateTaggedRegions({
+     AUT: [{ name: '할슈타트', nameEn: 'Hallstatt' },
+           { name: '오버외스터라이히', nameEn: 'Oberösterreich' }],
+   }),
+   { AUT: [{ name: '오버외스터라이히', nameEn: 'AT-4' }] },
+   '태깅: 도시가 먼저 와도 상위 주 우선');
+// 형식/타입이 다른 항목은 삭제하지 않고 보존한다(맵 마이그레이션과 같은 정책)
+eq(migrateTaggedRegions({ AUT: [{ name: '이상', nameEn: 123 as unknown as string }] }),
+   { AUT: [{ name: '이상', nameEn: 123 }] },
+   '태깅: nameEn이 문자열이 아니어도 보존');
 
 // 9. 기록의 regionNameEn
 eq(migrateRegionNameEn('USA', 'NewYork'), 'US-NY', '기록: 코드로 변환');
