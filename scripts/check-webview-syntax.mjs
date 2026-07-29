@@ -25,6 +25,17 @@
  *   텍스트를 그대로 `node --check`에 넘기면(템플릿 리터럴 평가를 안 거치므로) 이 이중
  *   백슬래시가 그대로 남아 정규식 문자 클래스가 깨진 것으로 오검출된다(실측: "Range out of
  *   order" 오류). 그래서 --check 전에 `\\`→`\` 치환으로 템플릿 리터럴 평가를 흉내낸다.
+ *   주의: 이 치환은 진짜 템플릿 리터럴 파서가 아니라 "\\ → \" 한 가지 규칙만 흉내내는
+ *   근사치다. `\n`/`\t`/`\uXXXX`(홑backslash)/`` \` ``처럼 템플릿 리터럴이 실제로 다르게
+ *   해석하는 다른 이스케이프가 블록 안에 새로 생기면 이 근사치가 깨질 수 있다. 지금 검사
+ *   대상 블록에는 그런 다른 이스케이프가 없음을 확인했지만(전부 `\\` 두 벌짜리 케이스),
+ *   향후 실패 원인을 찾을 때는 이 가정부터 의심할 것.
+ *
+ * 완전성 보증(중요): 이 스크립트는 "파싱을 실제로 실행한 블록이 1개 이상"일 때만 성공(exit 0)
+ * 한다. <script> 블록을 하나도 못 찾거나, 찾은 블록이 전부 SKIP_SIZE를 넘겨 건너뛴 경우
+ * "검사할 게 없어서 통과"가 아니라 실패(exit 1)로 처리한다 — 코드를 한 글자도 파싱하지 않고
+ * 초록불을 내보내는 검사기는 없는 것보다 나쁘다(정규식이 깨져도 조용히 항상 통과하는 상태로
+ * 퇴화할 수 있기 때문). 건너뛴 블록/파일이 있으면 몇 개를 왜 건너뛰었는지 항상 로그로 남긴다.
  */
 import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
@@ -44,13 +55,21 @@ const BLOCK_RE = /^[ \t]*<script>[ \t]*\r?\n([\s\S]*?)\r?\n[ \t]*<\\?\/script>[ 
 
 const dir = mkdtempSync(join(tmpdir(), 'wvsyntax-'));
 let failed = 0;
+let parsed = 0;          // 실제로 node --check 에 넘긴 블록 수 (통과/실패 무관 — "검사를 시도했다"는 뜻)
+let skippedOversize = 0; // SKIP_SIZE 초과로 건너뛴 블록 수
+let filesNoBlocks = 0;   // <script> 블록을 하나도 못 찾은 파일 수
 try {
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
     const blocks = [...src.matchAll(BLOCK_RE)].map(m => m[1]);
-    if (!blocks.length) { console.log(`- ${file}: <script> 블록 없음 (건너뜀)`); continue; }
+    if (!blocks.length) {
+      filesNoBlocks++;
+      console.log(`- ${file}: <script> 블록 없음 (건너뜀)`);
+      continue;
+    }
     blocks.forEach((body, i) => {
       if (body.length > SKIP_SIZE) {
+        skippedOversize++;
         console.log(`- ${file} <script> #${i + 1}: 대형 블록(${body.length}자, 벤더 번들 추정) — 건너뜀`);
         return;
       }
@@ -59,6 +78,7 @@ try {
       const code = body.replace(/\$\{[^}]*\}/g, '0').replace(/\\\\/g, '\\');
       const tmp = join(dir, `block-${i}.js`);
       writeFileSync(tmp, code);
+      parsed++;
       try {
         execFileSync(process.execPath, ['--check', tmp], { stdio: 'pipe' });
         console.log(`✓ ${file} <script> #${i + 1} (${code.length}자)`);
@@ -71,5 +91,21 @@ try {
 } finally {
   rmSync(dir, { recursive: true, force: true });
 }
-if (failed) { console.error(`\n${failed}개 블록 문법 오류`); process.exit(1); }
-console.log('\n✅ WebView JS 문법 통과');
+
+if (skippedOversize || filesNoBlocks) {
+  console.log(`\n건너뜀 요약: 대형 블록 ${skippedOversize}개, <script> 없는 파일 ${filesNoBlocks}개`);
+}
+
+if (failed) {
+  console.error(`\n${failed}개 블록 문법 오류`);
+  process.exit(1);
+}
+if (parsed === 0) {
+  // 블록을 못 찾았거나(정규식이 안 맞음) 전부 건너뛰어서(SKIP_SIZE 오설정 등) 실제로는
+  // 아무 코드도 검사하지 않은 상태 — "검사할 게 없다"를 "통과"로 취급하면 정규식이 깨져도
+  // 영구히 초록불이 나오는 무의미한 검사기가 된다. 반드시 실패로 처리한다.
+  console.error('\n❌ 실제로 파싱을 시도한 <script> 블록이 0개다 — 아무것도 검사하지 않았다.');
+  console.error('   (블록을 못 찾았거나, 찾은 블록이 전부 SKIP_SIZE를 넘겨 건너뛰어졌을 수 있다. 원인을 확인할 것.)');
+  process.exit(1);
+}
+console.log(`\n✅ WebView JS 문법 통과 (${parsed}개 블록 파싱)`);

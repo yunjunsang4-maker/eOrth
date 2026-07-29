@@ -394,9 +394,6 @@ function activeRecordFor(code){
   }
   return null;
 }
-function regionPointer(){
-  return 'auto';
-}
 function regionFill(d){
   return getFill(d);
 }
@@ -461,7 +458,7 @@ function drawGroup(parent, features, pathGen, cls){
     .style('vector-effect','non-scaling-stroke')
     .attr('stroke-linejoin','round').attr('stroke-linecap','round')
     .attr('shape-rendering','geometricPrecision')
-    .style('cursor','pointer').style('pointer-events',regionPointer).on('click',onRegionClick);
+    .style('cursor','pointer').style('pointer-events','auto').on('click',onRegionClick);
   return {fill:fillSel};
 }
 function render(geo){
@@ -597,11 +594,11 @@ function updateMap() {
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
   // stroke-width는 현재 확대 배율을 반영(curStrokeWidth) — 확대 상태에서 재렌더 시 선이 다시 두꺼워지지 않게
-  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', regionPointer);
+  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', 'auto');
 
   Object.keys(insetPathElements).forEach(function(key) {
     var sel = insetPathElements[key];
-    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', regionPointer);
+    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).style('pointer-events', 'auto');
   });
 
   reorderEmph();
