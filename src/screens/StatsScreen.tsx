@@ -325,6 +325,10 @@ export default function StatsScreen() {
   };
   const snapOrbitRef = useRef(snapOrbit);
   snapOrbitRef.current = snapOrbit;
+  // 5개국 이하 여부 — 이때는 회전이 새 순위를 보여주지 못하므로(모든 나라가 이미 보임)
+  // 드래그를 고무줄로만 허용하고 놓으면 원래 배치(1위 중앙)로 되돌린다. PanResponder는
+  // 첫 렌더에 박제되므로 ref로 최신 개수를 전달한다.
+  const arcFewRef = useRef(false);
   // 플릭 관성 — 손을 놓을 때 속도로 계속 회전하다 감속 후 스냅. 손가락이 화면을 벗어나지
   // 않아도 휙휙 던져서 끝 순위까지 넘길 수 있다. 회전 중 재터치는 즉시 이어서 드래그.
   const momentumRef = useRef<{ raf: number | null }>({ raf: null });
@@ -360,6 +364,32 @@ export default function StatsScreen() {
   startMomentumRef.current = startMomentum;
   const stopMomentumRef = useRef(stopMomentum);
   stopMomentumRef.current = stopMomentum;
+  // 고무줄 복귀 — 5개국 이하에서 드래그를 놓으면 240ms ease-out으로 0(1위 중앙)에 되돌린다.
+  // momentumRef.raf 슬롯을 공유해 복귀 중 재터치(stopMomentum)가 자연스럽게 끊고 이어잡는다.
+  const springBack = () => {
+    stopMomentum();
+    const from = orbitShiftRef.current;
+    if (from === 0) return;
+    const t0 = Date.now();
+    const DUR = 240;
+    const tick = () => {
+      const p = Math.min(1, (Date.now() - t0) / DUR);
+      const e = 1 - Math.pow(1 - p, 3); // easeOutCubic
+      const v = from * (1 - e);
+      orbitShiftRef.current = v;
+      setOrbitShift(v);
+      if (p < 1) {
+        momentumRef.current.raf = requestAnimationFrame(tick);
+      } else {
+        momentumRef.current.raf = null;
+        orbitShiftRef.current = 0;
+        setOrbitShift(0);
+      }
+    };
+    momentumRef.current.raf = requestAnimationFrame(tick);
+  };
+  const springBackRef = useRef(springBack);
+  springBackRef.current = springBack;
   useEffect(() => () => stopMomentumRef.current(), []); // 언마운트 시 관성 루프 정리
   const ratingPan = useRef(
     PanResponder.create({
@@ -390,7 +420,11 @@ export default function StatsScreen() {
         const now = Date.now();
         if (now - d.lastUpd < 16) return; // 프레임 단위 스로틀
         d.lastUpd = now;
-        const next = d.start + g.dx / (60 * OS); // ≈슬롯 간격만큼 끌면 한 칸
+        const raw = g.dx / (60 * OS); // ≈슬롯 간격만큼 끌면 한 칸
+        // 5개국 이하: 고무줄 — tanh로 저항을 주고 ±0.5슬롯을 넘지 않게. 놓으면 0으로 복귀한다.
+        const next = arcFewRef.current
+          ? Math.max(-0.5, Math.min(0.5, d.start + Math.tanh(raw) * 0.5))
+          : d.start + raw;
         orbitShiftRef.current = next;
         setOrbitShift(next);
       },
@@ -400,6 +434,12 @@ export default function StatsScreen() {
         if (d.dragging) {
           d.dragging = false;
           setOrbitDragging(false); // 스크롤 잠금 해제
+          if (arcFewRef.current) {
+            // 5개국 이하: 관성·스냅 없이 원래 배치로 고무줄 복귀
+            springBackRef.current();
+            Haptics.selectionAsync().catch(() => {});
+            return;
+          }
           // 놓는 순간 속도(px/ms)를 슬롯/ms로 변환 — 빠르면 관성 회전, 느리면 즉시 스냅
           const v = Math.max(-0.015, Math.min(0.015, g.vx / (60 * OS)));
           if (Math.abs(v) > 0.0015) {
@@ -418,7 +458,8 @@ export default function StatsScreen() {
         if (d.dragging) {
           d.dragging = false;
           setOrbitDragging(false); // 스크롤 잠금 해제
-          snapOrbitRef.current();
+          if (arcFewRef.current) springBackRef.current();
+          else snapOrbitRef.current();
         }
       },
     })
@@ -663,6 +704,8 @@ export default function StatsScreen() {
     name: c.name,
     visits: c.visits,
   }));
+  // 5개국 이하면 회전이 새 순위를 보여주지 못한다 — 드래그는 고무줄로만(놓으면 복귀)
+  arcFewRef.current = ARC_COUNTRIES.length <= 5;
 
   // 5. Travel Rating Stats
   const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
