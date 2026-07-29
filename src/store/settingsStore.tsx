@@ -384,10 +384,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       let rSkins = p.skinColorStore ?? {};
       if (needMigrate) {
         try {
-          setRegionKeyBackupV0({
-            regionDisplayModes: rDisplay, regionColors: rColors,
-            taggedRegions: rTagged, skinColorStore: rSkins,
-          });
+          // 스냅샷은 "최초 1회"만 찍는다. 나중에 스키마를 2로 올리면 이미 v1로 변환된
+          // payload가 다시 여기로 들어와, 가드가 없으면 필드명은 V0인데 내용은 V1인
+          // 스냅샷으로 덮여 원본 복구가 불가능해진다.
+          if (!p.regionKeyBackupV0) {
+            setRegionKeyBackupV0({
+              regionDisplayModes: rDisplay, regionColors: rColors,
+              taggedRegions: rTagged, skinColorStore: rSkins,
+            });
+          } else {
+            setRegionKeyBackupV0(p.regionKeyBackupV0);
+          }
           rDisplay = migrateRegionKeyMap(rDisplay);
           rColors = migrateRegionKeyMap(rColors);
           rTagged = migrateTaggedRegions(rTagged);
@@ -594,6 +601,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     globeVariant, globeSkin, globeDisplayMode, globeColor,
     countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore,
     taggedRegions, dismissedRegionTagChips,
+    // 지역 키가 GADM 표기인지 NE 코드인지 구버전 클라이언트도 판별할 수 있게 스키마를 함께 싣는다.
+    // (구버전 빌드는 코드 키를 고아로 보고 지운 뒤 되돌려 push한다 — 방어 로직은 후속 작업)
+    regionKeySchema,
     representativeBadgeIds, badgeEarnedAt, shareSentCount, loginStreak, lastVisitDay, installedAt,
     notifPrefs, isPremium, stripLogoRemoval, qrDesign, verifiedNaverBlogIds, handleLastChanged, handleChosen,
     tutorialsSeen, tutorialSeen: !!tutorialsSeen.main,
@@ -619,6 +629,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(migrateTaggedRegions(v.taggedRegions as Record<string, TaggedRegion[]>));
     if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
     if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(migrateSkinColorStore(v.skinColorStore as Record<string, SkinColorSet>));
+    // 백업에 실린 지역 키 스키마. 위 네 필드는 스키마와 무관하게 전부 migrate*를 거치므로
+    // 적용 후 로컬 상태는 항상 현재 버전이다. 미래 버전 백업(구버전 앱에서 복원)만 경고로 남긴다.
+    if (typeof v.regionKeySchema === 'number' && v.regionKeySchema > REGION_KEY_SCHEMA) {
+      console.warn('[regionKey] 백업 스키마가 앱보다 높음 — 앱 업데이트 필요', v.regionKeySchema);
+    }
+    setRegionKeySchema(REGION_KEY_SCHEMA);
     if (Array.isArray(v.representativeBadgeIds)) setRepresentativeBadgeIds(v.representativeBadgeIds);
     if (v.badgeEarnedAt && typeof v.badgeEarnedAt === 'object') setBadgeEarnedAt(v.badgeEarnedAt);
     if (typeof v.shareSentCount === 'number') setShareSentCount(v.shareSentCount);
