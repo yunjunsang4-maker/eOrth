@@ -46,6 +46,12 @@
       "expo-font",
       "@react-native-community/datetimepicker",
       [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "해외 도착을 감지하고 기록에 방문 국가를 자동으로 채우기 위해 위치 접근이 필요해요."
+        }
+      ],
+      [
         "expo-media-library",
         {
           "photosPermission": "여행 사진과 영상을 불러오고 선택하기 위해 갤러리 접근이 필요해요.",
