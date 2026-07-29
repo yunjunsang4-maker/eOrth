@@ -1342,7 +1342,8 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
           <View
             onLayout={(e) => { sectionYRef.current.photo = e.nativeEvent.layout.y; }}
           >
-            <Text style={s.sectionLabel}>{t('newRecord.sectionPhoto')}</Text>
+            {/* 색은 스킨 강조색 — 아래 CollapsibleBox 제목(국가 선택·여행 정보)과 같은 규칙 */}
+            <Text style={[s.sectionLabel, { color: skinAccent.accent }]}>{t('newRecord.sectionPhoto')}</Text>
 
             {/* 큰 페이저 + 사진별 글 입력 + 액션(대표·비공개·삭제) */}
             <PhotoPagerSection
@@ -2114,7 +2115,7 @@ const s = StyleSheet.create({
   sectionLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: COLORS.purpleNeon,
+    color: COLORS.purpleNeon, // aurora 기본값 — 호출부가 스킨 강조색으로 덮는다
     letterSpacing: 0.6,
     marginBottom: 10,
   },
