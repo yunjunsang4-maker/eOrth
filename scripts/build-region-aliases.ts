@@ -32,7 +32,39 @@ const MANUAL: Record<string, string> = {
   'ARE|fujairah': 'Fujayrah', // NE 결함 피처(AE-X01~, 아래 ne 필터에서 제외) 대신 진짜 푸자이라(AE-FU)로
   'ARE|dubai': 'Dubay',       // 두바이는 도시가 아니라 에미리트(admin-1) — NE name "Dubay"(AE-DU)
   'USA|washingtondc': 'District of Columbia', // CITY_TO_PROV의 메릴랜드 흡수보다 우선 — NE에 US-DC가 있다
+
+  // ── 기계적 표기차 / NE가 더 굵게 묶은 경우 ──
+  'TUN|ariana': 'Manouba',           // NE 10m에는 아리아나 주 폴리곤이 없다 — 주 전역이 마누바(TN-14)에 흡수돼 있음을 표본점으로 확인
+  'VNM|backan': 'Northeast Vietnam', // NE는 박깐성을 개별 피처로 두지 않고 '동북부(Đông Bắc, VN-53)' 블록에 넣었다
+  'VNM|ongnai': 'Đông Nam Bộ',       // 동나이성 → NE '동남부(VN-39)' 블록
+  'VNM|hungyen': 'Red River Delta',  // 흥옌성 → NE '홍강 삼각주(Đồng Bằng Sông Hồng, VN-66)' 블록
+
+  // ── 그리스: 구 7광역 → NE 현행 13페리페리아 '대표 지역' 매핑 (사용자 확정) ──
+  // GADM의 구 광역(분권행정구)은 NE의 페리페리아 여러 개를 묶은 것이라 1:1이 성립하지 않는다.
+  // 경계가 정확히 같지는 않지만, 각 구 광역을 가장 가까운 페리페리아 하나로 보내 사용자가
+  // 칠해둔 색과 태깅이 살아나게 한다. 아래 섬·명소 4건은 MANUAL_ABSORBED로 '흡수'로도 표시한다.
+  'GRC|aegean': 'South Aegean',                     // 구 '에게'는 북·남에게 둘을 묶은 것 — 방문 대부분(산토리니·미코노스·로도스)이 남에게해다
+  'GRC|epirusandwesternmacedonia': 'Epirus',        // 구 '이피로스·서마케도니아' → 이름 앞머리이자 인구 중심인 이피로스
+  'GRC|macedoniaandthrace': 'Centre Macedonia',     // 구 '마케도니아·트라키아' → 테살로니키가 속한 중앙마케도니아
+  'GRC|peloponnesewesterngreeceand': 'Peloponnese', // 구 '펠로폰네소스·서그리스·이오니아' → 이름 앞머리인 펠로폰네소스
+  'GRC|thessalyandcentralgreece': 'Thessalia',      // 구 '테살리아·중부그리스' → 이름 앞머리인 테살리아
+  'GRC|santorini': 'South Aegean',                  // 산토리니(티라)는 남에게해 소속 섬
+  'GRC|mykonos': 'South Aegean',                    // 미코노스는 남에게해 소속 섬
+  'GRC|zakynthos': 'Ionian Islands',                // 자킨토스는 이오니아 제도 소속 섬 (구 광역 이름과 달리 펠로폰네소스가 아니다)
+  'GRC|meteora': 'Thessalia',                       // 메테오라(칼람바카)는 테살리아 내륙
 };
+
+/**
+ * MANUAL 항목 중 "광역이 아니라 그 안에 흡수된 작은 단위"인 키 — 도시 흡수(city)로 표시한다.
+ *
+ * 두 가지 효과가 있다.
+ * 1) migrateRegionKeyMap의 충돌 규칙: 같은 코드에 상위 광역 값과 이 값이 동시에 오면 상위가 이긴다.
+ * 2) regionKeyMigration.verify.ts의 '오합병' 검사가 이 정당한 흡수를 오탐하지 않는다.
+ */
+const MANUAL_ABSORBED = new Set([
+  'GRC|santorini', 'GRC|mykonos', 'GRC|zakynthos', 'GRC|meteora', // 섬·명소 → 소속 페리페리아
+  'TUN|ariana',                                                    // 아리아나 주 → NE 마누바 폴리곤
+]);
 
 const ne = loadNeFeatures(NE);
 assertNoPrimaryNameConflict(ne);
@@ -81,7 +113,7 @@ function resolve(iso: string, oldName: string): { code: string; city: boolean } 
   const n = norm(oldName);
   // 4단계 수동 별칭을 먼저 본다 (1~3단계가 오답을 낼 때 덮어쓸 수 있어야 한다)
   const man = MANUAL[`${iso}|${n}`];
-  if (man) { const c = index[`${iso}|${norm(man)}`]; if (c) return { code: c, city: false }; }
+  if (man) { const c = index[`${iso}|${norm(man)}`]; if (c) return { code: c, city: MANUAL_ABSORBED.has(`${iso}|${n}`) }; }
   // 1단계 도시 흡수
   const prov = CITY_TO_PROV[iso]?.[n];
   if (prov && norm(prov) !== n) {

@@ -6,7 +6,8 @@ import {
 import { REGION_KEY_ALIASES, REGION_CITY_ALIAS_KEYS } from '../data/regionKeyAliases';
 
 /** Task 1 생성기가 출력한 매칭 수. 회귀 감지용 고정값이라 표를 다시 구우면 함께 고친다. */
-const EXPECTED_ALIAS_COUNT = 821; // ← 생성기 출력(regionKeyAliases.ts 헤더 주석): 매칭 821개
+const EXPECTED_ALIAS_COUNT = 834; // ← 생성기 출력(regionKeyAliases.ts 헤더 주석): 매칭 834개
+                                  //    (821 + 그리스 대표지역 9 + TUN/VNM 표기차 4)
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {

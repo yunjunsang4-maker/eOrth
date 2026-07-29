@@ -1,22 +1,9 @@
 // 자동 생성 — scripts/build-region-aliases.ts. 직접 수정 금지.
 // GADM 구 지역 키 → Natural Earth 코드 별칭 표.
-// 구 키 839개 중 821개 매칭, 미매칭 14개.
+// 구 키 839개 중 834개 매칭, 미매칭 1개.
 //
 // 미매칭 목록 (그대로 보존되며 지도에는 뜨지 않는다):
-//   GRC|Aegean
-//   GRC|EpirusandWesternMacedonia
-//   GRC|MacedoniaandThrace
-//   GRC|Peloponnese,WesternGreeceand
-//   GRC|ThessalyandCentralGreece
-//   GRC|Santorini
-//   GRC|Mykonos
-//   GRC|Zakynthos
-//   GRC|Meteora
-//   TUN|Ariana
 //   USA|Guam
-//   VNM|BắcKạn
-//   VNM|ĐồngNai
-//   VNM|HưngYên
 export const REGION_KEY_ALIASES: Record<string, string> = {
  "ARE|abudhabi": "AE-AZ",
  "ARE|ajman": "AE-AJ",
@@ -282,10 +269,19 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "GBR|belfast": "GB-NIR",
  "GBR|bristol": "GB-ENG",
  "GBR|oxford": "GB-ENG",
+ "GRC|aegean": "GR-L",
  "GRC|athos": "GR-69",
  "GRC|attica": "GR-A1",
  "GRC|crete": "GR-M",
+ "GRC|epirusandwesternmacedonia": "GR-D",
+ "GRC|macedoniaandthrace": "GR-B",
+ "GRC|peloponnesewesterngreeceand": "GR-J",
+ "GRC|thessalyandcentralgreece": "GR-E",
  "GRC|athens": "GR-A1",
+ "GRC|santorini": "GR-L",
+ "GRC|mykonos": "GR-L",
+ "GRC|zakynthos": "GR-F",
+ "GRC|meteora": "GR-E",
  "ITA|abruzzo": "IT-65",
  "ITA|apulia": "IT-75",
  "ITA|basilicata": "IT-77",
@@ -588,6 +584,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "THA|yala": "TH-95",
  "THA|yasothon": "TH-35",
  "THA|pattaya": "TH-20",
+ "TUN|ariana": "TN-14",
  "TUN|beja": "TN-31",
  "TUN|benaroustunissud": "TN-13",
  "TUN|bizerte": "TN-23",
@@ -766,6 +763,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "VNM|angiang": "VN-44",
  "VNM|bariavungtau": "VN-43",
  "VNM|bacgiang": "VN-54",
+ "VNM|backan": "VN-53",
  "VNM|baclieu": "VN-55",
  "VNM|bacninh": "VN-56",
  "VNM|bentre": "VN-50",
@@ -780,6 +778,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "VNM|aklak": "VN-33",
  "VNM|aknong": "VN-72",
  "VNM|ienbien": "VN-71",
+ "VNM|ongnai": "VN-39",
  "VNM|ongthap": "VN-45",
  "VNM|gialai": "VN-30",
  "VNM|hagiang": "VN-03",
@@ -791,6 +790,7 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "VNM|haugiang": "VN-73",
  "VNM|hochiminh": "VN-SG",
  "VNM|hoabinh": "VN-14",
+ "VNM|hungyen": "VN-66",
  "VNM|khanhhoa": "VN-34",
  "VNM|kiengiang": "VN-47",
  "VNM|kontum": "VN-28",
@@ -909,6 +909,10 @@ export const REGION_CITY_ALIAS_KEYS: string[] = [
  "GBR|manchester",
  "GBR|oxford",
  "GRC|athens",
+ "GRC|meteora",
+ "GRC|mykonos",
+ "GRC|santorini",
+ "GRC|zakynthos",
  "ITA|bari",
  "ITA|bologna",
  "ITA|florence",
@@ -959,6 +963,7 @@ export const REGION_CITY_ALIAS_KEYS: string[] = [
  "SAU|medina",
  "SAU|riyadh",
  "THA|pattaya",
+ "TUN|ariana",
  "TUN|carthage",
  "TUN|eljem",
  "TUN|sidibousaid",
