@@ -842,12 +842,17 @@ export default function MainScreen({ navigation, route }: Props) {
     });
     setRegionTagSheetVisible(false);
   }, [regionCountry, regionTagOptions, regionTagSelection, setTaggedRegions]);
-  // 시트 내 검색 필터 (한글명·영문명 모두 매칭)
-  const regionTagFilter = useCallback((list: { name: string; nameEn: string }[]) => {
+  // 시트 내 검색 필터 (한글명·영문명·코드 모두 매칭)
+  // nameEn은 이제 저장 키인 코드('JP-14')라 영문 검색에 쓸 수 없다 — 영문명은 latin(NAME_1)이다.
+  // latin을 빼면 "kanagawa"로 아무것도 안 나온다.
+  const regionTagFilter = useCallback((list: { name: string; nameEn: string; latin?: string }[]) => {
     const q = regionTagSearch.trim();
     if (!q) return list;
     const ql = q.toLowerCase();
-    return list.filter(o => o.name.includes(q) || o.nameEn.toLowerCase().includes(ql));
+    return list.filter(o =>
+      o.name.includes(q)
+      || o.nameEn.toLowerCase().includes(ql)
+      || (o.latin || '').toLowerCase().includes(ql));
   }, [regionTagSearch]);
 
   // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거

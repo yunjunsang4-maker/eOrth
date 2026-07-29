@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/run-verify.mjs",
+    "test": "node scripts/run-verify.mjs && node scripts/check-webview-syntax.mjs src/components/CountryMapView.tsx",
     "lint": "expo lint"
   },
   "dependencies": {
