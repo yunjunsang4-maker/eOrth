@@ -70,6 +70,7 @@ import { getProfileByHandle } from '../services/profile';
 import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNudgeModal';
 import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
+import { regionDisplayName } from '../utils/regionLabel';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -388,7 +389,8 @@ export default function MainScreen({ navigation, route }: Props) {
     return ko === '대한민국' ? 'South Korea' : (KO_TO_EN[ko] ?? ko);
   };
   const recPlace = (rec: { regionName?: string; regionNameEn?: string; countryName?: string }): string => {
-    if (rec.regionName) return i18n.language === 'en' && rec.regionNameEn ? rec.regionNameEn : rec.regionName;
+    // regionNameEn이 마이그레이션된 ISO 코드면 표시용으로는 한글명으로 폴백한다
+    if (rec.regionName) return regionDisplayName(rec.regionName, rec.regionNameEn, i18n.language);
     return countryEn(rec.countryName || '');
   };
 

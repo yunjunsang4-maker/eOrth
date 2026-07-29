@@ -61,6 +61,7 @@ import { fetchPostLikers, PostLiker, likePost, unlikePost } from '../services/so
 import { postLink } from '../utils/appLinks';
 import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
+import { regionDisplayName } from '../utils/regionLabel';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
@@ -993,7 +994,7 @@ function SnapStoryViewer({
           {s.snapDetectedCountry && (
             <View style={storyS.locationBadge}>
               <PinIcon size={13} color="#FFFFFF" />
-              <Text style={storyS.locationText}>{countryLabel(s.snapDetectedCountry, i18n.language)}{s.regionName ? ` · ${i18n.language === 'en' && s.regionNameEn ? s.regionNameEn : s.regionName}` : ''}</Text>
+              <Text style={storyS.locationText}>{countryLabel(s.snapDetectedCountry, i18n.language)}{s.regionName ? ` · ${regionDisplayName(s.regionName, s.regionNameEn, i18n.language)}` : ''}</Text>
             </View>
           )}
           {s.snapCaption ? <Text style={storyS.caption}>{s.snapCaption}</Text> : null}
