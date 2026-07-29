@@ -653,6 +653,8 @@ export default function MainScreen({ navigation, route }: Props) {
   const [countryPickerSearch, setCountryPickerSearch] = useState('');
   // 대륙(국가 지역) 화면 검색/필터
   const [regionSearch, setRegionSearch] = useState('');
+  // "인기명소 모아보기" — 누르면 명소 도시가 속한 주들을 강조 (도시 폴리곤은 NE에 없어 주 단위)
+  const [popularActive, setPopularActive] = useState(false);
 
   // 영→한 역매핑 — 별칭이 있는 영문명은 '먼저 정의된 표준 표기'가 이긴다.
   // (마지막 항목이 덮어쓰면 'South Korea'→'한국'이 되어, '대한민국'으로 저장된
@@ -1298,7 +1300,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   { value: 'region', label: t('main.toggleRegion') },
                 ]}
                 value={viewMode}
-                onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); }}
+                onChange={(v) => { setViewMode(v); setRegionCountry(null); setRegionSearch(''); setPopularActive(false); }}
               />
             </View>
           </View>
@@ -1388,6 +1390,21 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
                 </TouchableOpacity>
               </LinearGradient>
+              {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
+              <LinearGradient
+                colors={popularActive ? skinAccent.btnGradient : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
+                start={{ x: 0, y: 0 }}
+                end={popularActive ? { x: 1, y: 1 } : { x: 0.15, y: 1 }}
+                style={styles.popularChipBorder}
+              >
+                <TouchableOpacity
+                  style={[styles.popularChipInner, { backgroundColor: skinChipBg }]}
+                  activeOpacity={0.8}
+                  onPress={() => setPopularActive((v) => !v)}
+                >
+                  <Text style={styles.regionChipText}>{t('main.popularSpots')}</Text>
+                </TouchableOpacity>
+              </LinearGradient>
             </ScrollView>
 
             {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
@@ -1402,6 +1419,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 displayMode={regionGlobalMode}
                 defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
                 searchQuery={regionSearch}
+                showPopular={popularActive}
               />
             </View>
             {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
@@ -2344,6 +2362,20 @@ const styles = StyleSheet.create({
     borderRadius: 14.5,
     // 불투명이어야 테두리 그라데이션이 배경(가운데)으로 비치지 않음
     // (#751AAD 30%가 다크 배경 위에 깔린 색과 동일)
+    backgroundColor: '#2A0F3E',
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // ── 인기명소 칩 그라데이션 테두리. LinearGradient 래퍼 + 1px 패딩으로 구현
+  popularChipBorder: {
+    borderRadius: 15.5,
+    padding: 1,
+  },
+  popularChipInner: {
+    height: 28,
+    borderRadius: 14.5,
+    // 불투명이어야 그라데이션이 가운데로 비치지 않음 (#751AAD 30%가 다크 배경 위에 깔린 색)
     backgroundColor: '#2A0F3E',
     paddingHorizontal: 16,
     alignItems: 'center',

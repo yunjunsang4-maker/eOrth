@@ -27,6 +27,9 @@ interface Props {
   chipBottom?: number;
   /** 검색어 — 입력 시 해당 지역/도시가 속한 주로 확대·강조 */
   searchQuery?: string;
+  /** 인기명소 강조 — 명소 도시가 속한 주들을 스킨 색 테두리로 강조.
+      (구 GADM 데이터는 도시 폴리곤 자체를 그렸지만 NE에는 도시 피처가 없어 상위 주 강조로 동작) */
+  showPopular?: boolean;
 }
 
 export default function CountryMapView({
@@ -40,6 +43,7 @@ export default function CountryMapView({
   fill = false,
   chipBottom = 7,
   searchQuery = '',
+  showPopular = false,
 }: Props) {
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
   const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE), [countryCode, countryName, chipBottom]);
@@ -110,12 +114,17 @@ export default function CountryMapView({
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색)
+  useEffect(() => {
+    webViewRef.current?.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
+  }, [showPopular]);
+
+  // 현재 RN 상태를 WebView 로 모두 전송 (기록/검색/인기명소)
   const sendState = () => {
     const wv = webViewRef.current;
     if (!wv) return;
     wv.postMessage(payload);
     wv.postMessage(JSON.stringify({ type: 'searchRegion', query: searchQuery }));
+    wv.postMessage(JSON.stringify({ type: 'setPopular', value: showPopular }));
   };
 
   // WebView 가 render 완료 후 보내는 'ready' 를 받으면 현재 상태를 동기화 (500ms 타이머보다 견고)
@@ -220,6 +229,23 @@ function buildCityProvMap(iso3: string, geo: any): Record<string, string> {
   return out;
 }
 
+/**
+ * 인기명소 도시들이 속한 주(CODE) 목록 — '인기명소' 칩이 켜지면 이 주들을 강조한다.
+ * 구 GADM 데이터는 도시 경계 폴리곤 자체를 그렸지만, NE admin-1에는 도시 피처가 없어
+ * 도시가 속한 상위 주를 강조하는 것으로 동작한다(도시→주 해석은 별칭 표 경유, 코드 기준).
+ */
+function buildPopularCodes(iso3: string, geo: any): string[] {
+  const src = CITY_TO_PROV_SRC[iso3];
+  if (!src) return [];
+  const valid = new Set((geo?.features ?? []).map((f: any) => f?.properties?.CODE));
+  const out = new Set<string>();
+  for (const oldName of Object.values(src)) {
+    const c = resolveRegionCode(iso3, oldName);
+    if (c && valid.has(c)) out.add(c);
+  }
+  return [...out];
+}
+
 function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '') {
   const geo = getCountryGeo(code);
   if (!geo) {
@@ -287,6 +313,9 @@ var maxZoom = 15;
 // 여기에 주 이름을 직접 적지 마라 — GADM 시절 표기와 어긋나면 resolveProvince가 truthy를
 // 돌려주는 바람에 지오코딩 폴백도 안 타고, 확대도 강조도 없이 칩만 뜨는 가짜 성공이 된다.
 var CITY_TO_PROV = ${cityProvJSON};
+// 인기명소가 속한 주(CODE) 목록 — 칩이 켜지면 이 주들을 스킨 색 테두리로 강조
+var POPULAR_CODES = ${JSON.stringify(buildPopularCodes(code, geo))};
+var showPopular = false; // 앱 기본값(popularActive=false)과 일치 — 초기 깜빡임 방지
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
 function normEn(s){
@@ -448,6 +477,7 @@ function emphStroke(d){
   if(n===searchedRegion) return '#00D8F3';
   var a=activeRecordFor(code);
   if(a) return '#7856B0';
+  if(showPopular && POPULAR_CODES.indexOf(code)>=0) return defaultColor; // 인기명소 주 강조(스킨 활성화색)
   return '#3E3155';
 }
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
@@ -458,6 +488,7 @@ function emphWidth(d){
   if(n===searchedRegion) return 0.6;
   var a=activeRecordFor(code);
   if(a) return 0.45;
+  if(showPopular && POPULAR_CODES.indexOf(code)>=0) return 0.5; // 인기명소 주 강조
   return 0.35;
 }
 // 현재 확대 배율(k). zoom 그룹 transform이 stroke도 k배 확대하므로, 화면상 선 두께를
@@ -618,9 +649,12 @@ function updateMap() {
 // 강조 스트로크(활성 기록·검색)가 있는 피처를 맨 위로 올린다.
 // 그리기 순서가 면적 큰 순이라, 강조된 큰 주(이스탄불 등)의 외곽선을 나중에 그려진
 // 더 작은 이웃 주의 어두운 경계선이 덮어 '선이 끊겨' 보이는 문제 방지.
-// 올리는 순서 = 최종 z-순서: 활성 < 검색 강조.
+// 올리는 순서 = 최종 z-순서: 인기명소 < 활성 < 검색 강조.
 function reorderEmph(){
   if(!pathElements) return;
+  if(showPopular){
+    pathElements.filter(function(d){ return POPULAR_CODES.indexOf(d.properties.CODE||'')>=0; }).raise();
+  }
   pathElements.filter(function(d){ return !!activeRecordFor(d.properties.CODE||''); }).raise();
   if(searchedRegion){
     pathElements.filter(function(d){ return (d.properties.NAME_1||'')===searchedRegion; }).raise();
@@ -637,6 +671,9 @@ function handleNativeMessage(e){
       updateMap();
     } else if (msg.type === 'searchRegion') {
       doSearch(msg.query || '');
+    } else if (msg.type === 'setPopular') {
+      showPopular = !!msg.value;
+      updateMap();
     }
   } catch(e) {}
 }
