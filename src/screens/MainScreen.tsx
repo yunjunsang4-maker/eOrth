@@ -64,6 +64,7 @@ import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions } from '../constants/homeRegions';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
+import { REGION_COUNTRIES } from '../constants/regionCountries';
 import type { TabScreenProps } from '../navigation/types';
 import { consumePendingInvite } from '../utils/pendingInvite';
 import { getProfileByHandle } from '../services/profile';
@@ -94,36 +95,7 @@ const SHEET_HEIGHT = height * 0.6;
 // 국가 시트는 내용만큼만 올라오고 이 값까지만 커진다(예전엔 기록이 하나여도 항상 65%였다)
 const COUNTRY_SHEET_MAX_H = height * 0.65;
 
-// ─── 대륙 모드 국가 목록 ───
-const REGION_COUNTRIES = [
-  { code: 'JPN', flag: '🇯🇵', name: '일본' },
-  { code: 'CHN', flag: '🇨🇳', name: '중국' },
-  { code: 'USA', flag: '🇺🇸', name: '미국' },
-  { code: 'DEU', flag: '🇩🇪', name: '독일' },
-  { code: 'ESP', flag: '🇪🇸', name: '스페인' },
-  { code: 'GBR', flag: '🇬🇧', name: '영국' },
-  { code: 'FRA', flag: '🇫🇷', name: '프랑스' },
-  { code: 'ITA', flag: '🇮🇹', name: '이탈리아' },
-  // 2026-07-20 확장 18개국 (인기 여행국 30위 기반, 사용자 확정)
-  { code: 'TUR', flag: '🇹🇷', name: '튀르키예' },
-  { code: 'GRC', flag: '🇬🇷', name: '그리스' },
-  { code: 'AUT', flag: '🇦🇹', name: '오스트리아' },
-  { code: 'PRT', flag: '🇵🇹', name: '포르투갈' },
-  { code: 'NLD', flag: '🇳🇱', name: '네덜란드' },
-  { code: 'THA', flag: '🇹🇭', name: '태국' },
-  { code: 'MYS', flag: '🇲🇾', name: '말레이시아' },
-  { code: 'VNM', flag: '🇻🇳', name: '베트남' },
-  { code: 'SAU', flag: '🇸🇦', name: '사우디아라비아' },
-  { code: 'ARE', flag: '🇦🇪', name: '아랍에미리트' },
-  { code: 'MAR', flag: '🇲🇦', name: '모로코' },
-  { code: 'EGY', flag: '🇪🇬', name: '이집트' },
-  { code: 'TUN', flag: '🇹🇳', name: '튀니지' },
-  { code: 'ZAF', flag: '🇿🇦', name: '남아프리카공화국' },
-  { code: 'MEX', flag: '🇲🇽', name: '멕시코' },
-  { code: 'CAN', flag: '🇨🇦', name: '캐나다' },
-  { code: 'BRA', flag: '🇧🇷', name: '브라질' },
-  { code: 'COL', flag: '🇨🇴', name: '콜롬비아' },
-];
+// ─── 대륙 모드 국가 목록 ─── (src/constants/regionCountries.ts로 이전, 지오 검증 스크립트가 import)
 
 // ─── 영토 표시 설정 버튼 아이콘 (스킨색 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
 // tint: 원 배경색(알파 포함) — 스킨 pill과 동일 규격(aurora 기본값 = 기존 #751AAD 30%)
