@@ -107,7 +107,9 @@ export default function ResetPasswordScreen({ navigation }: Props) {
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
                 autoCorrect={false}
-                textContentType="newPassword"
+                // newPassword를 주면 iOS '자동 강력 암호'가 필드를 가져가며 글자색을 검정으로
+                // 덮는다 — 회원가입 확인 칸과 같은 회피책(키체인 저장은 위 새 비밀번호 칸 담당)
+                textContentType="oneTimeCode"
                 returnKeyType="done"
                 onSubmitEditing={handleSubmit}
               />

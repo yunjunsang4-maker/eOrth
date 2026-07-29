@@ -564,7 +564,11 @@ export default function LoginScreen({ navigation }: Props) {
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                     secureTextEntry={!showConfirm}
-                    textContentType="newPassword"
+                    // newPassword를 주면 iOS '자동 강력 암호'가 이 필드를 시스템 관리 모드로
+                    // 가져가면서 글자색을 검정으로 덮는다(다크 배경이라 첫 칸과 색이 달라 보임).
+                    // oneTimeCode는 그 개입을 막는 표준 회피책 — 키체인 저장 제안은 위의
+                    // newPassword 필드(비밀번호 칸)가 계속 담당한다.
+                    textContentType="oneTimeCode"
                     autoComplete="password-new"
                     returnKeyType="done"
                     onSubmitEditing={() => { if (canSubmit) handleSubmit(); }}
