@@ -130,7 +130,11 @@ for (const iso of ISO3) {
     '-simplify', 'visvalingam', SIMPLIFY, 'keep-shapes',
     '-clean',
     '-filter-fields', 'CODE,NAME_1,NL_NAME_1',
-    '-o', 'format=geojson', 'precision=0.001', out,
+    // reverse-winding 필수 — mapshaper 기본 출력은 RFC 7946(외곽링 CCW)인데,
+    // 지도의 d3.geoMercator(구면 투영)는 외곽링 CW를 가정한다. CCW로 넘기면 모든
+    // 폴리곤이 "지구 전체 - 해당 지역"으로 반전돼 나라 전체가 사각형 하나로 칠해지고
+    // 어디를 눌러도 첫 피처만 잡힌다(구 GADM 데이터는 CW였다. countrygeo-winding-cw 참고).
+    '-o', 'format=geojson', 'precision=0.001', 'reverse-winding', out,
   ]);
   const fc = JSON.parse(readFileSync(out, 'utf8'));
   counts[iso] = fc.features.length;

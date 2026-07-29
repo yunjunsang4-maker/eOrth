@@ -74,5 +74,29 @@ for (const iso of GEO_COUNTRY_CODES) {
   eq(got, { FRA: 18, ITA: 20, ESP: 19, GBR: 4 }, '병합 대상국 지역 수');
 }
 
+// 6. 외곽링 감김 방향(winding)이 전부 CW인가 — 지도의 d3.geoMercator(구면 투영)는
+//    외곽링 CW를 가정한다. CCW(RFC 7946, mapshaper 기본 출력)가 섞이면 그 폴리곤이
+//    "지구 전체 - 해당 지역"으로 반전돼 나라가 사각형 하나로 칠해지고 탭도 오동작한다.
+//    실제로 출시 직전 이 사고가 났다 — 생성기의 reverse-winding이 빠지면 여기서 잡힌다.
+{
+  const ringArea = (r: number[][]) => {
+    let a = 0;
+    for (let i = 0; i < r.length - 1; i++) a += r[i][0] * r[i + 1][1] - r[i + 1][0] * r[i][1];
+    return a / 2;
+  };
+  const ccw: string[] = [];
+  for (const iso of GEO_COUNTRY_CODES) {
+    for (const f of getCountryGeo(iso)?.features ?? []) {
+      const g = f.geometry;
+      const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+      for (const poly of polys) {
+        // 외곽링(첫 링)만 검사 — 구멍(내부링)은 반대 방향이 정상이다
+        if (ringArea(poly[0]) > 0) { ccw.push(`${iso}|${f.properties.CODE}`); break; }
+      }
+    }
+  }
+  eq(ccw.slice(0, 10), [], '외곽링 winding 전부 CW (d3 구면 투영 요건)');
+}
+
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
 console.log('\n✅ 모든 검증 통과');
