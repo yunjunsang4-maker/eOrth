@@ -33,6 +33,7 @@ import PhotoPagerSection from '../components/record/PhotoPagerSection';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import { PrivacyModal } from '../components/record/PrivacyModal';
 import { MediaPickerModal } from '../components/record/MediaPickerModal';
+import WeatherIcon from '../components/WeatherIcon';
 import { FriendPickerModal } from '../components/record/FriendPickerModal';
 import { CurrencyPickerModal } from '../components/record/CurrencyPickerModal';
 import { compressImage, compressImages } from '../utils/imageCompress';
@@ -128,7 +129,9 @@ const CoinIcon = ({ size = 18, color = IC }: { size?: number; color?: string }) 
   <SvgCoinIcon size={size} color={color} />
 );
 
-const WeatherIcon = ({ size = 18, color = IC }: { size?: number; color?: string }) => (
+// 날씨 '항목 제목' 옆 고정 아이콘 — 선택값과 무관하다(값별 아이콘은 WEATHER_ICON_MAP).
+// 값 기반 공용 컴포넌트(components/WeatherIcon)와 이름이 겹치지 않게 구분한다.
+const WeatherRowIcon = ({ size = 18, color = IC }: { size?: number; color?: string }) => (
   <SvgWeatherIcon size={size} />
 );
 
@@ -203,14 +206,15 @@ const WindIcon = ({ size = 16, color = IC }: { size?: number; color?: string }) 
   <SvgWindIcon size={size} color={color} />
 );
 
-// 색을 스킨 강조색으로 주입할 수 있게 함수형으로 둔다 (부분흐림은 다색 디자인 아이콘이라 색 무시)
+// 날씨 아이콘은 components/WeatherIcon 하나로 통일한다 — 게시물 상세와 그림이
+// 갈라지지 않게 하기 위해서다(예전엔 상세가 이모지를 따로 썼다).
 const WEATHER_ICON_MAP: Record<string, (color: string) => React.ReactNode> = {
-  '맑음':     (c) => <SunIcon size={16} color={c} />,
-  '부분흐림': () => <PartlyCloudyIcon size={16} />,
-  '흐림':     (c) => <CloudyIcon size={16} color={c} />,
-  '비':       (c) => <RainIcon size={16} color={c} />,
-  '눈':       (c) => <SnowIcon size={16} color={c} />,
-  '바람':     (c) => <WindIcon size={16} color={c} />,
+  '맑음':     (c) => <WeatherIcon value="맑음" size={16} color={c} />,
+  '부분흐림': () => <WeatherIcon value="부분흐림" size={16} />,
+  '흐림':     (c) => <WeatherIcon value="흐림" size={16} color={c} />,
+  '비':       (c) => <WeatherIcon value="비" size={16} color={c} />,
+  '눈':       (c) => <WeatherIcon value="눈" size={16} color={c} />,
+  '바람':     (c) => <WeatherIcon value="바람" size={16} color={c} />,
 };
 
 // 캘린더/비공개 모달은 components/record/ 로 분리
@@ -1751,7 +1755,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               {/* 날씨 */}
               <View style={s.optRow}>
                 <View style={s.optRowHeader}>
-                  <WeatherIcon size={18} color={skinAccent.accent} />
+                  <WeatherRowIcon size={18} color={skinAccent.accent} />
                   <Text style={s.optRowTitle}>{t('newRecord.weather')}</Text>
                   {weather ? <Text style={[s.optCardValue, { color: skinAccent.accent, backgroundColor: skinAccent.tint(0.12) }]}>{WEATHER_OPTIONS.find(w => w.value === weather)?.label}</Text> : null}
                 </View>

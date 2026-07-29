@@ -41,6 +41,7 @@ import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
 import { useSkinAccent } from '../constants/skinTheme';
+import WeatherIcon, { normalizeWeather } from '../components/WeatherIcon';
 import ReportModal from '../components/ReportModal';
 import PhotoViewerModal from '../components/PhotoViewerModal';
 import RatingStars from '../components/RatingStars';
@@ -107,20 +108,7 @@ const currencySymbol = (code: string): string => {
   return map[code] || code;
 };
 
-const weatherIcon = (w: string): string => {
-  const map: Record<string, string> = {
-    '맑음': '☀️', '화창': '☀️',
-    '부분흐림': '🌤️', '구름조금': '🌤️', '구름 조금': '🌤️',
-    '흐림': '☁️', '구름많음': '☁️', '구름 많음': '☁️',
-    '비': '🌧️', '소나기': '🌦️',
-    '눈': '🌨️', '폭설': '❄️',
-    '안개': '🌫️',
-    '천둥': '⛈️', '번개': '⛈️', '뇌우': '⛈️',
-    '바람': '💨',
-    '더움': '🔥', '추움': '🥶',
-  };
-  return map[w] || '🌤️';
-};
+
 
 // ─── 동행자 아이콘 ───
 const IC = C.dim;
@@ -2086,9 +2074,10 @@ export default function PostDetailScreen() {
                   <Text style={s.infoChipText}>{record.startDate} ~ {record.endDate}</Text>
                 </View>
               )}
-              {record.weather && (
+              {normalizeWeather(record.weather) && (
                 <View style={s.weatherChip}>
-                  <Text style={s.weatherEmoji}>{weatherIcon(record.weather)}</Text>
+                  {/* 기록 화면과 같은 제작 SVG 세트 — 이모지는 기기 폰트마다 모양이 달랐다 */}
+                  <WeatherIcon value={record.weather} size={18} color="#A1A1B0" />
                 </View>
               )}
               {record.flightType && (
@@ -2603,7 +2592,6 @@ const makeS = (a: string, tint: (alpha: number) => string) => StyleSheet.create(
     backgroundColor: C.card, borderWidth: 1, borderColor: C.cardBorder,
     alignItems: 'center', justifyContent: 'center',
   },
-  weatherEmoji: { fontSize: 18 },
 
   // ── 여행정보 토글 버튼 ──
   // 위 본문(글·사진·키워드)과 시각적으로 분리되도록 위 여백을 더 준다 —
