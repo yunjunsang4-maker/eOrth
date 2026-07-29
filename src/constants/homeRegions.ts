@@ -10,7 +10,7 @@ export interface HomeRegion {
 }
 
 // 거주국가 코드(ISO2, settingsStore.homeCountryCode) → countryGeo 키(ISO3)
-const ISO2_TO_GEO: Record<string, string> = {
+export const ISO2_TO_GEO: Record<string, string> = {
   JP: 'JPN', CN: 'CHN', US: 'USA', DE: 'DEU',
   ES: 'ESP', GB: 'GBR', FR: 'FRA', IT: 'ITA',
   // 2026-07-20 확장 18개국
@@ -26,7 +26,7 @@ const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 // countryGeo에는 주(admin-1) 외에 인기명소 '도시' 피처가 섞여 있다(구분 속성 없음).
 // CountryMapView의 CITY_TO_PROV(도시→상위 주)와 동일 규칙으로 도시 피처를 지역 목록에서 제외한다
 // — 정규화한 NAME_1이 아래 매핑에서 자기 자신이 아닌 주로 매핑되면 도시.
-const CITY_TO_PROV: Record<string, Record<string, string>> = {
+export const CITY_TO_PROV: Record<string, Record<string, string>> = {
   JPN: { tokyocity: 'Tokyo', osakacity: 'Osaka', kyotocity: 'Kyoto', fukuokacity: 'Fukuoka', sapporo: 'Hokkaido', naha: 'Okinawa', yokohama: 'Kanagawa', kobe: 'Hyōgo', nagoya: 'Aichi', hiroshimacity: 'Hiroshima', sendai: 'Miyagi' },
   CHN: { guangzhou: 'Guangdong', shenzhen: 'Guangdong', chengdu: 'Sichuan', hangzhou: 'Zhejiang', xian: 'Shaanxi', wuhan: 'Hubei', qingdao: 'Shandong', nanjing: 'Jiangsu' },
   USA: { losangeles: 'California', sanfrancisco: 'California', lasvegas: 'Nevada', miami: 'Florida', chicago: 'Illinois', seattle: 'Washington', honolulu: 'Hawaii', newyorkcity: 'NewYork', boston: 'Massachusetts', washingtondc: 'Maryland', houston: 'Texas', denver: 'Colorado', philadelphia: 'Pennsylvania', atlanta: 'Georgia' },
