@@ -3,6 +3,7 @@
 // 지역 목록을 뽑는다. nameEn(CODE)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
 import { KOREA_REGIONS, normalizeKoreaRegion } from './koreaRegions';
 import { getCountryGeo } from '../data/countryGeo';
+import { resolveRegionCode } from '../utils/regionKeyMigration';
 
 export interface HomeRegion {
   name: string;   // 한글 표시명 (NL_NAME_1)
@@ -119,17 +120,16 @@ export function normalizeHomeRegion(countryCode?: string | null, raw?: string | 
   if (regions.length === 0) return null;
   const q = fold(raw).replace(/[\s\-'’.]/g, '');
   // 1) 도시 → 상위 주 매핑 우선 (Yokohama→Kanagawa 등, 지도와 동일 규칙)
-  //    CITY_TO_PROV 값은 GADM 주 이름이므로 코드가 아니라 latin(영문명)과 대조한다.
+  //    CITY_TO_PROV 값은 GADM 시절 주 이름이라 새 지오 데이터의 latin(NAME_1, 예: 'Kanagawa
+  //    Prefecture')과 표기가 어긋날 수 있다(독일 'Bayern'↔'Bavaria'처럼 언어 자체가 달라
+  //    부분 문자열로도 못 잇는 경우가 있다). 그래서 이름끼리 대조하지 않고, 정확히 이 표기차를
+  //    흡수하도록 만들어진 별칭 표(regionKeyAliases, GADM 이름→코드)를 거쳐 코드로 건너간 뒤
+  //    코드(nameEn)로 정확히 매칭한다.
   const geoKey = ISO2_TO_GEO[cc];
   const viaCity = geoKey ? CITY_TO_PROV[geoKey]?.[q] : undefined;
-  if (viaCity) {
-    const vq = fold(viaCity).replace(/[\s\-'’.]/g, '');
-    // 새 지오 데이터의 NAME_1은 'Kanagawa Prefecture'처럼 접미사가 붙어 CITY_TO_PROV의
-    // 짧은 표기('Kanagawa')와 완전히 같지 않을 수 있어 완전일치 대신 포함 관계로 매칭한다.
-    const viaMatch = regions.find(r => {
-      const en = fold(r.latin).replace(/[\s\-'’.]/g, '');
-      return !!en && (en === vq || en.includes(vq) || vq.includes(en));
-    });
+  if (viaCity && geoKey) {
+    const code = resolveRegionCode(geoKey, viaCity);
+    const viaMatch = code ? regions.find(r => r.nameEn === code) : undefined;
     if (viaMatch) return viaMatch;
   }
   return (
