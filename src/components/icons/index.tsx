@@ -339,6 +339,23 @@ export const SearchLineIcon: React.FC<IconProps> = ({ size = 24, color = '#A9A9A
   </Svg>
 );
 
+/**
+ * 셰브론(꺾쇠) — 접기/펼치기 토글용. 기본은 아래 방향(닫힘).
+ * `up`이면 위를 향한다. 텍스트 글리프(▲▼)와 달리 굵기·끝맺음이 일정하고
+ * 폰트에 좌우되지 않아 다른 라인 아이콘들과 결이 맞는다.
+ */
+export const ChevronIcon: React.FC<IconProps & { up?: boolean }> = ({ size = 24, color = '#FFFFFF', up = false }) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path
+      d={up ? 'M6 14.5L12 9L18 14.5' : 'M6 9.5L12 15L18 9.5'}
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
 // 알림(헤더) — 라인형 종 (Group.svg, 23×28 viewBox, stroke 2)
 export const NotificationBellIcon: React.FC<IconProps> = ({ size = 24, color = '#FFFFFF', dot = false, dotColor = COLORS.dot }) => (
   <Svg width={(size * 23) / 28} height={size} viewBox="0 0 23 28" fill="none">

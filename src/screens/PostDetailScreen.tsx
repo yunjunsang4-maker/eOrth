@@ -36,7 +36,7 @@ import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath, Ellipse as SvgEllipse, Circle as SvgCircle } from 'react-native-svg';
-import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon } from '../components/icons';
+import { CommentIcon as CommentSvgIcon, PersonIcon, PaperclipIcon, TrashIcon, CameraIcon, LandscapeIcon, CalendarIcon, PlaneIcon, TransferIcon, PencilIcon, LinkIcon, MegaphoneIcon, ShareIcon, ArchiveIcon, PinIcon, LockClosedIcon, GlobeIcon, ChevronIcon } from '../components/icons';
 import { useRecords, TravelRecord, RecordViewType } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -2066,7 +2066,7 @@ export default function PostDetailScreen() {
             >
               <CalendarIcon size={14} color={skinAccent.accent} />
               <Text style={[s.travelInfoBtnText, { color: skinAccent.accent }]}>{t('postDetail.travelInfo')}</Text>
-              <Text style={[s.travelInfoArrow, { color: skinAccent.accent }]}>{travelInfoOpen ? '▲' : '▼'}</Text>
+              <ChevronIcon size={16} color={skinAccent.accent} up={travelInfoOpen} />
             </TouchableOpacity>
           )}
 
@@ -2598,13 +2598,15 @@ const s = StyleSheet.create({
   weatherEmoji: { fontSize: 18 },
 
   // ── 여행정보 토글 버튼 ──
+  // 위 본문(글·사진·키워드)과 시각적으로 분리되도록 위 여백을 더 준다 —
+  // 다른 블록은 marginBottom 18로 균일한데 이 버튼만 위 여백이 없어 붙어 보였다.
   travelInfoBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
-    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, marginBottom: 18,
+    paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
+    marginTop: 10, marginBottom: 14,
     backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accentBorder,
   },
   travelInfoBtnText: { fontSize: 13, color: C.accent, fontWeight: '600' },
-  travelInfoArrow: { fontSize: 10, color: C.accent, marginLeft: 2 },
 
   // ── 메모 ──
   memoBox: {
