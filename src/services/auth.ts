@@ -152,6 +152,21 @@ export async function sendPasswordReset(email: string): Promise<AuthResult> {
   }
 }
 
+/**
+ * 현재 활성 세션 존재 여부.
+ * 딥링크 code 교환이 실패했을 때 "이미 성공한 교환의 중복 시도"인지 판별하는 용도 —
+ * 같은 인증 링크가 두 번 전달돼 두 번째 교환이 실패해도, 세션이 있으면 성공으로 취급한다.
+ */
+export async function hasActiveSession(): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase.auth.getSession();
+    return !!data.session;
+  } catch {
+    return false;
+  }
+}
+
 /** 메일 링크의 code 를 세션으로 교환 (비밀번호 재설정·이메일 인증 공용) */
 export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: msgNotConfigured() };

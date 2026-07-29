@@ -48,7 +48,7 @@ import BestCutScreen from '../screens/BestCutScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
-import { exchangeAuthCode, wasIntentionalSignOut } from '../services/auth';
+import { exchangeAuthCode, hasActiveSession, wasIntentionalSignOut } from '../services/auth';
 import { emitToast } from '../store/toastStore';
 import { parseAppLink, openAppLink } from '../utils/appLinks';
 import { savePendingInvite } from '../utils/pendingInvite';
@@ -82,9 +82,18 @@ export default function AppNavigator() {
 
   // 딥링크: eorth://user/<handle> → 메이트찾기 화면을 해당 핸들로 검색 상태로 연다
   useEffect(() => {
+    // 인증 딥링크(가입 인증·비밀번호 재설정)는 URL 단위로 1회만 처리한다.
+    // 콜드 스타트에서 getInitialURL()과 'url' 이벤트가 같은 링크를 각각 전달할 수 있는데,
+    // 인증 code는 1회용이라 첫 교환이 성공해도 두 번째 교환이 "이미 사용됨" 오류를 내며
+    // 알림을 띄운다 — 인증에 성공하고도 '링크 오류'가 뜨던 원인.
+    const processedAuthUrls = new Set<string>();
     const handleUrl = async (url: string | null) => {
       if (!url) return;
       const trimmed = url.trim();
+      if (/eorth:\/\/(reset-password|email-confirm)/i.test(trimmed)) {
+        if (processedAuthUrls.has(trimmed)) return;
+        processedAuthUrls.add(trimmed);
+      }
 
       // 내비게이션 준비를 기다렸다 이동 — 콜드 스타트에서 1회 재시도로는 컨테이너 마운트를
       // 놓쳐 화면 이동이 영영 안 될 수 있어(세션은 이미 교환됨) 최대 ~5초 재시도한다.
@@ -106,6 +115,11 @@ export default function AppNavigator() {
         }
         const result = await exchangeAuthCode(code);
         if (!result.ok) {
+          // 교환 실패여도 세션이 이미 있으면(중복 전달된 링크의 두 번째 시도 등) 정상 진행
+          if (await hasActiveSession()) {
+            navigateWhenReady(() => navigationRef.current?.navigate('ResetPassword'));
+            return;
+          }
           Alert.alert(tRef.current('login.linkErrorTitle'), result.error ?? tRef.current('login.linkExpiredMsg'));
           return;
         }
@@ -115,19 +129,28 @@ export default function AppNavigator() {
 
       // 이메일 가입 인증 딥링크: code 를 세션으로 교환 후 Splash로 → 온보딩/메인 자동 분기
       if (/eorth:\/\/email-confirm/i.test(trimmed)) {
-        const cm = /[?&]code=([^&]+)/.exec(trimmed);
+        const cm = trimmed.match(/[?&]code=([^&]+)/);
         const code = cm ? decodeURIComponent(cm[1]) : null;
+        // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.
+        const goSplash = () =>
+          navigateWhenReady(() => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] }));
         if (!code) {
-          Alert.alert(tRef.current('login.linkErrorTitle'), tRef.current('login.linkExpiredMsg'));
+          // 만료/이미 사용된 링크는 Supabase가 code 없이 error_code=otp_expired 로 리다이렉트한다.
+          // 메일 앱의 보안 스캐너가 링크를 먼저 열어 소비한 경우도 여기로 오는데, /verify 는
+          // 인증을 먼저 완료한 뒤 리다이렉트하므로 서버에는 인증이 이미 끝나 있다 —
+          // "메일 재요청"이 아니라 로그인 안내가 맞다.
+          if (await hasActiveSession()) { goSplash(); return; }
+          Alert.alert(tRef.current('login.linkErrorTitle'), tRef.current('login.confirmLinkUsedMsg'));
           return;
         }
         const result = await exchangeAuthCode(code);
         if (!result.ok) {
-          Alert.alert(tRef.current('login.linkErrorTitle'), result.error ?? tRef.current('login.linkExpiredMsg'));
+          // 교환 실패여도 세션이 이미 있으면(중복 전달된 링크의 두 번째 시도 등) 성공과 동일 진행
+          if (await hasActiveSession()) { goSplash(); return; }
+          Alert.alert(tRef.current('login.linkErrorTitle'), tRef.current('login.confirmLinkUsedMsg'));
           return;
         }
-        // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.
-        navigateWhenReady(() => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] }));
+        goSplash();
         return;
       }
 

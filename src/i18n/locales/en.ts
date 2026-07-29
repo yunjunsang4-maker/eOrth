@@ -296,6 +296,7 @@ const en = {
     purgeFailMsg: 'Something went wrong while deleting your account.\nPlease check your network and log in again to retry.',
     linkErrorTitle: 'Link error',
     linkExpiredMsg: 'This link has expired or was already used.\nPlease request a new email.',
+    confirmLinkUsedMsg: 'This link has expired or was already used.\nYour email may already be verified — try logging in first, or request a new verification email.',
     mailSendFailed: 'Failed to send email',
     mailSendFailedMsg: 'Failed to send the email.',
     waitTitle: 'One moment',
