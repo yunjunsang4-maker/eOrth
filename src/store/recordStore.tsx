@@ -38,6 +38,16 @@ import {
   unlikeComment as apiUnlikeComment,
   deleteComment as apiDeleteComment,
 } from '../services/social';
+import { REGION_KEY_SCHEMA, migrateRegionNameEn } from '../utils/regionKeyMigration';
+import { ISO2_TO_GEO } from '../constants/homeRegions'; // Task 1에서 export로 바꿔둔 것
+
+/** 한글 국가명 → ISO3 (지역 키 마이그레이션용). term 첫 토큰이 ISO2다: 'jp 일본 japan' */
+const KO_TO_ISO3: Record<string, string> = Object.fromEntries(
+  COUNTRIES.map((c) => {
+    const iso2 = String(c.term).split(/\s+/)[0].toUpperCase();
+    return [c.name, ISO2_TO_GEO[iso2] ?? ''];
+  }).filter(([, iso3]) => iso3),
+);
 
 // ─────────────────────────────────────────────
 // 타입 정의
@@ -349,6 +359,8 @@ interface RecordPersistPayload {
   tripSessionGroups?: TripSession | Record<string, string> | null;
   // 국가별 대표사진 핀 — 나중에 추가됨, 과거 저장본엔 없을 수 있음
   countryCovers?: Record<string, CountryCover>;
+  // 지역 저장 키 스키마 (GADM 표기 → NE 코드). settingsStore와 독립적으로 관리한다.
+  regionKeySchema?: number;
 }
 
 // 해외 여행 세션: 국가명→여행카드 id 매핑 + 마지막 활동 시각.
@@ -361,6 +373,7 @@ export interface TripSession {
 export function RecordProvider({ children }: { children: React.ReactNode }) {
   const { handle, profilePhoto, handleFont, isPremium, homeCountryCode, currentVisitedCountryCode } = useSettings();
   const [records, setRecords] = useState<TravelRecord[]>(INITIAL_RECORDS);
+  const [regionKeySchema, setRegionKeySchema] = useState(0);
   const [archivedIds, setArchivedIds] = useState<string[]>([]);
   const [blockedUsers, setBlockedUsers] = useState<BlockedUser[]>([]);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>([]);
@@ -407,6 +420,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       // hydrated=true 이후 디바운스 저장으로 원본을 덮어써 영구 데이터 파괴가 된다.
       // 공개범위 2값(private | neighbors) 전환 보정: 과거 저장본의 'public'/'friends'는
       // 더 이상 유효하지 않으므로 모두 'neighbors'로 승격한다. ('private'은 그대로 유지)
+      const needRegionMigrate = (p.regionKeySchema ?? 0) < REGION_KEY_SCHEMA;
       setRecords(
         (Array.isArray(p.records) ? p.records : []).map((r) => {
           // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
@@ -417,9 +431,19 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             : r;
           // iOS 재설치/재빌드로 컨테이너 경로(UUID)가 바뀐 사진 URI 복구 —
           // 파일은 새 컨테이너의 Documents로 이관돼 있으므로 경로만 재조립하면 다시 뜬다
-          return remapRecordDocUris(vis);
+          const remapped = remapRecordDocUris(vis);
+          return {
+            ...remapped,
+            // 지역 키 마이그레이션 — regionName(한글)은 건드리지 않는다.
+            // 이 값은 서버로 동기화되지 않는 로컬 전용 필드다.
+            // 26개국 밖이거나 미매칭이면 원본이 그대로 유지된다(보존 정책).
+            regionNameEn: (needRegionMigrate && remapped.regionNameEn && KO_TO_ISO3[remapped.countryName])
+              ? migrateRegionNameEn(KO_TO_ISO3[remapped.countryName], remapped.regionNameEn)
+              : remapped.regionNameEn,
+          };
         })
       );
+      setRegionKeySchema(REGION_KEY_SCHEMA);
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
@@ -455,8 +479,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession, countryCovers],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers, regionKeySchema }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession, countryCovers, regionKeySchema],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
