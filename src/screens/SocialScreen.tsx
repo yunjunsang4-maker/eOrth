@@ -2370,10 +2370,11 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
   onPressCta: () => void;
 }) {
   const { t } = useTranslation();
+  const skinAccent = useSkinAccent(); // 카드 전체(테두리·제목·아바타 링·그림자·CTA)를 지구본 스킨색으로
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
     <View
-      style={s.mateCard}
+      style={[s.mateCard, { shadowColor: skinAccent.accent }]}
       onLayout={(e) => {
         const { width, height } = e.nativeEvent.layout;
         setSize((p) => (p.w === width && p.h === height ? p : { w: width, h: height }));
@@ -2385,9 +2386,9 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
           <Svg width={size.w} height={size.h}>
             <SvgDefs>
               <SvgLinearGradient id="mateCardBorderGrad" x1="0" y1="0" x2="1" y2="1">
-                <SvgStop offset="0" stopColor="#BF85FC" stopOpacity="0.9" />
-                <SvgStop offset="0.5" stopColor="#BF85FC" stopOpacity="0.12" />
-                <SvgStop offset="1" stopColor="#6B21A8" stopOpacity="0.7" />
+                <SvgStop offset="0" stopColor={skinAccent.accent} stopOpacity="0.9" />
+                <SvgStop offset="0.5" stopColor={skinAccent.accent} stopOpacity="0.12" />
+                <SvgStop offset="1" stopColor={skinAccent.accentDeep} stopOpacity="0.7" />
               </SvgLinearGradient>
             </SvgDefs>
             <Rect
@@ -2404,7 +2405,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
           </Svg>
         </View>
       )}
-      <Text style={s.mateCardTitle}>✦ {t('social.mateSuggestTitle')}</Text>
+      <Text style={[s.mateCardTitle, { color: skinAccent.accent }]}>✦ {t('social.mateSuggestTitle')}</Text>
       {suggestions.map((m) => {
         // 왜 추천됐는지 근거 한 줄 — 메이트찾기와 같은 pickReason으로 고른다.
         // 예전엔 나라 겹침·공통 메이트만 봐서 키워드·계절·도시로 추천된 후보는 서브라인이 빈 채로 떴다.
@@ -2422,7 +2423,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
         const sub = reason ? t(reason.key, reason.params) : t('friends.suggestedReason');
         return (
           <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
-            <View style={s.mateCardAvatarRing}>
+            <View style={[s.mateCardAvatarRing, { borderColor: skinAccent.tint(0.5) }]}>
               <View style={s.mateCardAvatar}>
                 {m.profilePhoto ? (
                   <Image source={{ uri: m.profilePhoto }} style={s.mateCardAvatarImg} />
@@ -2445,7 +2446,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
         accessibilityLabel={t('social.adInviteCta')}
         style={s.mateCardCtaWrap}
       >
-        <LinearGradient colors={['#BF85FC', '#6B21A8']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mateCardCta}>
+        <LinearGradient colors={[skinAccent.accent, skinAccent.accentDeep]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={s.mateCardCta}>
           <Text style={s.mateCardCtaTxt}>{t('social.adInviteCta')} →</Text>
         </LinearGradient>
       </TouchableOpacity>
@@ -3468,6 +3469,7 @@ const s = StyleSheet.create({
 
   // 피드 추천 메이트 카드 (여행 DNA) — 네온 글로우 글래스
   // 반투명 배경으로 별 배경이 비치는 유리 느낌 + iOS 보라 글로우(안드는 elevation 색 지정 불가라 생략)
+  // 색(테두리·제목·아바타 링·그림자·CTA)은 호출부가 스킨 강조색으로 덮는다 — 아래는 aurora 기본값
   mateCard: {
     backgroundColor: 'rgba(46,46,59,0.55)',
     borderRadius: 16,
