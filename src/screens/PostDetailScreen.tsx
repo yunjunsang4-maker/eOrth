@@ -80,9 +80,8 @@ const C = {
   bg: '#0A0A0F',
   card: '#1C1C28',
   cardBorder: '#2A2A3A',
-  accent: '#BF85FC',
-  accentDim: 'rgba(191,133,252,0.12)',
-  accentBorder: 'rgba(191,133,252,0.2)',
+  // 강조색(구 accent/accentDim/accentBorder)은 제거했다 —
+  // 스킨 연동을 위해 makeS/makeBlogS/… 팩토리의 (a, tint) 인자로 넘어간다.
   white: '#FFFFFF',
   dim: '#A1A1B0',
   muted: '#5A5A6E',
@@ -325,6 +324,7 @@ const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { 
 // ─── 블로그 블록 렌더러 ───
 // ─── 블로그 영상 플레이어 (로컬: expo-video, 임베드: WebView) ───
 const BlogLocalVideo = ({ uri }: { uri: string }) => {
+  const { blogS } = useSheets();
   const player = useVideoPlayer(uri, (p) => { p.loop = false; p.muted = false; });
   return (
     <VideoView style={blogS.video} player={player} contentFit="contain" nativeControls allowsFullscreen />
@@ -342,6 +342,7 @@ const getPlayableVideoUrl = (uri: string) => {
 };
 
 const BlogVideoBlock = ({ uri, caption }: { uri: string; caption?: string }) => {
+  const { blogS } = useSheets();
   const { t } = useTranslation();
   const isLocal = uri.startsWith('file://') || uri.startsWith('content://') || uri.startsWith('/');
   const isEmbed = uri.startsWith('http');
@@ -382,6 +383,7 @@ const BlogBlockRenderer = ({
   fontScale: number;
   onImagePress?: (uris: string[], index: number) => void;
 }) => {
+  const { blogS } = useSheets();
   const skinAccent = useSkinAccent(); // 인용구 등 강조를 스킨색으로
   switch (block.type) {
     case 'text': {
@@ -516,6 +518,7 @@ const TableOfContents = ({
   headings: { id: string; level: number; text: string }[];
   onPress: (id: string) => void;
 }) => {
+  const { blogS } = useSheets();
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
   const [open, setOpen] = useState(false);
@@ -544,6 +547,7 @@ const TableOfContents = ({
 // ── 스냅 스토리 뷰어 (자립형 — 내부에서 스냅 인덱스 관리) ──
 // 같은 스토리 안에서 스냅 사진이 바뀔 때 부드럽게 크로스페이드
 function CrossfadePhoto({ uri }: { uri?: string }) {
+  const { storyS } = useSheets();
   const op = useRef(new Animated.Value(1)).current;
   const prev = useRef(uri);
   useEffect(() => {
@@ -603,6 +607,7 @@ function SnapViewerModal({
   onClose: () => void;
   viewers?: { handle: string; name: string; time: number; emoji?: string }[];
 }) {
+  const { viewerS } = useSheets();
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
   return (
@@ -651,6 +656,7 @@ function SnapStoryViewer({
   markSnapViewed: (id: string) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const { s, shareS, storyS } = useSheets();
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1307,6 +1313,7 @@ type RouteParams = {
 };
 
 export default function PostDetailScreen() {
+  const { blogS, s } = useSheets();
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
@@ -2111,17 +2118,17 @@ export default function PostDetailScreen() {
           {viewType !== 'album' && (<>
           <Animated.View style={[s.statsRow, entInfo]}>
             <View style={s.statBtn}>
-              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); springLike(); handleToggleLike(); }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
+              <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); springLike(); handleToggleLike(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Animated.View style={{ transform: [{ scale: likeScale }] }}>
                   <HeartSvg filled={!!record.liked} />
                 </Animated.View>
               </TouchableOpacity>
-              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
+              <TouchableOpacity onPress={openLikers} disabled={!canShowLikers || !!record.isExample} hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }} accessibilityRole="button" accessibilityLabel={t('postDetail.likersA11y')}>
                 <Text style={[s.statCount, record.liked && { color: C.red }]}>{record.likes}</Text>
               </TouchableOpacity>
             </View>
             {!record.isExample && (
-              <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
+              <TouchableOpacity style={s.statBtn} onPress={() => commentInputRef.current?.focus()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={t('postDetail.commentInputA11y')}>
                 <CommentSvg />
                 <Text style={s.statCount}>{totalComments}</Text>
               </TouchableOpacity>
@@ -2434,7 +2441,7 @@ export default function PostDetailScreen() {
   );
 }
 
-const s = StyleSheet.create({
+const makeS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
@@ -2474,14 +2481,14 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 18,
   },
   authorTouch: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
-  followBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: C.accent },
+  followBtn: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, backgroundColor: a },
   followBtnText: { fontSize: 13, fontWeight: '700', color: '#fff' },
   followingBtn: { backgroundColor: 'transparent', borderWidth: 1, borderColor: C.cardBorder },
   followingBtnText: { color: C.dim },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
-    backgroundColor: C.accentDim, alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: C.accentBorder,
+    backgroundColor: tint(0.12), alignItems: 'center', justifyContent: 'center',
+    borderWidth: 1, borderColor: tint(0.2),
   },
   userInfo: { flex: 1 },
   userName: { fontSize: 15, fontWeight: '700', color: C.white },
@@ -2489,12 +2496,12 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginTop: 4,
   },
   countryTag: {
-    backgroundColor: C.accentDim,
+    backgroundColor: tint(0.12),
     paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4,
   },
-  countryTagText: { fontSize: 11, fontWeight: '600', color: C.accent },
+  countryTagText: { fontSize: 11, fontWeight: '600', color: a },
   dateMeta: { fontSize: 11, color: C.muted },
-  ratingStars: { fontSize: 13, color: C.accent, letterSpacing: 1.5 },
+  ratingStars: { fontSize: 13, color: a, letterSpacing: 1.5 },
 
   // ── 이미지 ──
   imageArea: {
@@ -2555,7 +2562,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8,
     backgroundColor: 'rgba(0,0,0,0.45)',
   },
-  viewTypeText: { fontSize: 11, fontWeight: '600', color: C.accent },
+  viewTypeText: { fontSize: 11, fontWeight: '600', color: a },
   tagBtn: {
     position: 'absolute', bottom: 12, left: 12,
     width: 32, height: 32, borderRadius: 16,
@@ -2574,12 +2581,13 @@ const s = StyleSheet.create({
 
   // ── 본문 ──
   content: {
-    fontSize: 15, color: C.white, lineHeight: 24, marginBottom: 18,
+    // 아래 키워드와 한 덩어리로 읽히도록 좁게 — 섹션 경계는 statsRow에서 벌린다
+    fontSize: 15, color: C.white, lineHeight: 24, marginBottom: 12,
   },
 
   // ── 정보 칩들 ──
   infoRow: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18,
+    flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12,
     alignItems: 'center',
   },
   infoChip: {
@@ -2604,29 +2612,30 @@ const s = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start',
     paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10,
     marginTop: 10, marginBottom: 14,
-    backgroundColor: C.accentDim, borderWidth: 1, borderColor: C.accentBorder,
+    backgroundColor: tint(0.12), borderWidth: 1, borderColor: tint(0.2),
   },
-  travelInfoBtnText: { fontSize: 13, color: C.accent, fontWeight: '600' },
+  travelInfoBtnText: { fontSize: 13, color: a, fontWeight: '600' },
 
   // ── 메모 ──
   memoBox: {
-    backgroundColor: 'rgba(191,133,252,0.06)', borderRadius: 12,
+    backgroundColor: tint(0.06), borderRadius: 12,
     paddingHorizontal: 14, paddingVertical: 12, marginBottom: 14,
-    borderLeftWidth: 3, borderLeftColor: C.accent,
+    borderLeftWidth: 3, borderLeftColor: a,
   },
   memoText: { fontSize: 13, color: C.dim, lineHeight: 20, fontStyle: 'italic' },
 
   // ── 키워드 ──
-  keywords: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 18 },
+  keywords: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12 },
   keyword: {
     paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12,
-    backgroundColor: C.accentDim,
+    backgroundColor: tint(0.12),
   },
-  keywordText: { fontSize: 12, color: C.accent, fontWeight: '500' },
+  keywordText: { fontSize: 12, color: a, fontWeight: '500' },
 
   // ── 좋아요 · 댓글 ──
-  statsRow: { flexDirection: 'row', gap: 20, marginBottom: 14 },
-  statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  // 본문 영역과 소셜(반응) 영역의 경계 — 여기서 크게 벌려 두 덩어리를 나눈다
+  statsRow: { flexDirection: 'row', gap: 20, marginTop: 16, marginBottom: 14 },
+  statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
   statIcon: { fontSize: 22, color: C.dim },
   statCount: { fontSize: 14, fontWeight: '600', color: C.white },
 
@@ -2644,7 +2653,7 @@ const s = StyleSheet.create({
   commentName: { fontSize: 13, fontWeight: '600', color: C.white },
   commentTime: { fontSize: 11, color: C.muted },
   commentText: { fontSize: 13, color: C.dim, lineHeight: 19 },
-  moreBtn: { color: C.accent, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 6 },
+  moreBtn: { color: a, fontSize: 13, fontWeight: '600', marginTop: 2, marginBottom: 6 },
   // ── 좋아요한 사람 목록 ──
   likersOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   likersSheet: {
@@ -2667,7 +2676,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 8,
     backgroundColor: C.card, borderTopWidth: 1, borderTopColor: C.cardBorder,
   },
-  replyBarText: { fontSize: 12, color: C.accent, fontWeight: '600' },
+  replyBarText: { fontSize: 12, color: a, fontWeight: '600' },
   replyBarCancel: { fontSize: 16, color: C.muted, paddingHorizontal: 4 },
 
   // ── 댓글 입력 ──
@@ -2684,7 +2693,7 @@ const s = StyleSheet.create({
   },
   sendBtn: {
     paddingHorizontal: 16, paddingVertical: 9, borderRadius: 20,
-    backgroundColor: C.accent,
+    backgroundColor: a,
   },
   sendBtnDisabled: {
     backgroundColor: C.cardBorder,
@@ -2729,18 +2738,18 @@ const s = StyleSheet.create({
 
 // ── 스냅 상세 스타일 ──
 // ── 블로그 블록 스타일 ──
-const blogS = StyleSheet.create({
+const makeBlogS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   categoryBadge: {
     alignSelf: 'flex-start',
-    backgroundColor: 'rgba(191,133,252,0.15)',
+    backgroundColor: tint(0.15),
     paddingHorizontal: 12,
     paddingVertical: 5,
     borderRadius: 12,
     marginBottom: 14,
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
+    borderColor: tint(0.25),
   },
-  categoryBadgeText: { fontSize: 12, fontWeight: '600', color: '#BF85FC' },
+  categoryBadgeText: { fontSize: 12, fontWeight: '600', color: a },
   text: {
     fontSize: 15, color: '#FFFFFF', lineHeight: 26, marginBottom: 6,
   },
@@ -2760,8 +2769,8 @@ const blogS = StyleSheet.create({
   gridImage: { width: '100%', aspectRatio: 1, borderRadius: 8 },
   separator: { marginVertical: 16 },
   quote: {
-    borderLeftWidth: 3, borderLeftColor: '#BF85FC',
-    backgroundColor: 'rgba(191,133,252,0.06)',
+    borderLeftWidth: 3, borderLeftColor: a,
+    backgroundColor: tint(0.06),
     paddingHorizontal: 14, paddingVertical: 12, borderRadius: 8,
     marginBottom: 12,
   },
@@ -2780,15 +2789,15 @@ const blogS = StyleSheet.create({
   fileName: { color: '#FFFFFF', fontSize: 13, fontWeight: '500' },
   fileSize: { color: '#5A5A6E', fontSize: 11, marginTop: 2 },
   tocWrap: {
-    backgroundColor: 'rgba(191,133,252,0.06)',
+    backgroundColor: tint(0.06),
     borderRadius: 12, marginBottom: 18, overflow: 'hidden',
-    borderWidth: 1, borderColor: 'rgba(191,133,252,0.12)',
+    borderWidth: 1, borderColor: tint(0.12),
   },
   tocToggle: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 16, paddingVertical: 12,
   },
-  tocToggleText: { fontSize: 14, fontWeight: '600', color: '#BF85FC' },
+  tocToggleText: { fontSize: 14, fontWeight: '600', color: a },
   tocArrow: { fontSize: 12, color: '#A1A1B0' },
   tocItem: { paddingVertical: 8, paddingRight: 16 },
   tocItemText: { fontSize: 13, color: '#A1A1B0' },
@@ -2796,7 +2805,7 @@ const blogS = StyleSheet.create({
 
 // ── 모먼트 스토리 스타일 ──
 // ── 스냅 스토리 전체화면 스타일 ──
-const storyS = StyleSheet.create({
+const makeStoryS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   // 예시 콘텐츠 공식 배지 — 기능 소개 카드와 동일 룩, 스토리 헤더에선 살짝 크게
   officialBadge: { alignSelf: 'center', fontSize: 12, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   container: {
@@ -2867,7 +2876,7 @@ const storyS = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(191,133,252,0.4)',
+    backgroundColor: tint(0.4),
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
@@ -3085,7 +3094,7 @@ const storyS = StyleSheet.create({
     minWidth: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#BF85FC',
+    backgroundColor: a,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
@@ -3135,7 +3144,7 @@ const storyS = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     borderRadius: 21,
-    backgroundColor: '#BF85FC',
+    backgroundColor: a,
   },
   inlineSendText: {
     fontSize: 14,
@@ -3240,7 +3249,7 @@ const storyS = StyleSheet.create({
   },
   csReplyBarText: {
     fontSize: 12,
-    color: '#BF85FC',
+    color: a,
     fontWeight: '600',
   },
   csReplyBarCancel: {
@@ -3271,7 +3280,7 @@ const storyS = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 9,
     borderRadius: 20,
-    backgroundColor: '#BF85FC',
+    backgroundColor: a,
   },
   csSendText: {
     fontSize: 13,
@@ -3280,7 +3289,7 @@ const storyS = StyleSheet.create({
   },
 });
 
-const viewerS = StyleSheet.create({
+const makeViewerS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: '#0A0A0F',
@@ -3303,7 +3312,7 @@ const viewerS = StyleSheet.create({
   },
   subtitle: {
     fontSize: 13,
-    color: '#BF85FC',
+    color: a,
     textAlign: 'center',
     marginBottom: 20,
     fontWeight: '600',
@@ -3364,7 +3373,7 @@ const viewerS = StyleSheet.create({
 });
 
 // ─── 스냅 공유 시트 (메이트 DM 전송 + 외부 공유) 스타일 ───
-const shareS = StyleSheet.create({
+const makeShareS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   sheet: {
     backgroundColor: '#1A1A28',
     borderTopLeftRadius: 24,
@@ -3379,7 +3388,7 @@ const shareS = StyleSheet.create({
   friendRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 12 },
   friendAvatar: { width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   friendName: { flex: 1, color: '#FFFFFF', fontSize: 15, fontWeight: '600' },
-  friendSend: { color: '#BF85FC', fontSize: 13, fontWeight: '700' },
+  friendSend: { color: a, fontSize: 13, fontWeight: '700' },
   empty: { color: '#8B8B9E', fontSize: 13, textAlign: 'center', paddingVertical: 28 },
   externalBtn: {
     flexDirection: 'row',
@@ -3393,3 +3402,21 @@ const shareS = StyleSheet.create({
   },
   externalTxt: { color: '#FFFFFF', fontSize: 14, fontWeight: '700' },
 });
+
+/**
+ * 스타일시트를 지구본 스킨색의 함수로 — 강조색이 시트 5개에 흩어져 하드코딩돼 있어
+ * 스킨을 바꿔도 이 화면 일부만 보라로 남았다. 호출부를 하나씩 덮는 대신 시트 자체를
+ * 스킨의 함수로 두면 색을 쓰는 지점이 자동으로 따라오고 새 스타일에서도 빠뜨리지 않는다.
+ * a=accent(밝은 강조), tint=그 알파 틴트. 스킨이 바뀔 때만 다시 만든다.
+ */
+function useSheets() {
+  const { accent, tint } = useSkinAccent();
+  return useMemo(() => ({
+    s: makeS(accent, tint),
+    blogS: makeBlogS(accent, tint),
+    storyS: makeStoryS(accent, tint),
+    viewerS: makeViewerS(accent, tint),
+    shareS: makeShareS(accent, tint),
+  }), [accent, tint]);
+}
+
