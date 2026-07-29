@@ -237,16 +237,23 @@ export default function FriendsScreen({ navigation }: Props) {
         onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
         style={st.header}
       >
-        <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-          <Text style={st.backIcon}>←</Text>
-        </TouchableOpacity>
+        {/* 좌우를 같은 비율(flex:1)로 잡아야 제목이 화면 중앙에 온다 —
+            뒤로가기(40px 고정)와 추가 버튼(텍스트 길이에 따라 가변)은 폭이 달라서,
+            space-between만으로는 제목이 남는 공간의 중간에 놓여 중앙에서 밀린다. */}
+        <View style={st.headerSideLeft}>
+          <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
+            <Text style={st.backIcon}>←</Text>
+          </TouchableOpacity>
+        </View>
         <Text style={st.headerTitle}>{t('friends.title')}</Text>
-        <TouchableOpacity
-          style={[st.addBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.25) }]}
-          onPress={() => navigation.navigate('FriendSearch')}
-        >
-          <Text style={[st.addBtnText, { color: skinAccent.accent }]}>+ {t('comp2.addShort')}</Text>
-        </TouchableOpacity>
+        <View style={st.headerSideRight}>
+          <TouchableOpacity
+            style={[st.addBtn, { backgroundColor: skinAccent.tint(0.12), borderColor: skinAccent.tint(0.25) }]}
+            onPress={() => navigation.navigate('FriendSearch')}
+          >
+            <Text style={[st.addBtnText, { color: skinAccent.accent }]}>+ {t('comp2.addShort')}</Text>
+          </TouchableOpacity>
+        </View>
       </Pressable>
 
       {/* 검색 */}
@@ -489,10 +496,14 @@ const st = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.08)',
   },
   backIcon: { fontSize: 20, color: C.white },
+  // 양쪽 사이드는 같은 비율로 — 제목이 좌우 요소 폭과 무관하게 화면 중앙에 놓인다
+  headerSideLeft: { flex: 1, alignItems: 'flex-start' },
+  headerSideRight: { flex: 1, alignItems: 'flex-end' },
   headerTitle: {
     fontSize: 17,
     fontWeight: 'bold',
     color: C.white,
+    textAlign: 'center',
   },
   addBtn: {
     backgroundColor: 'rgba(107,33,168,0.2)',
