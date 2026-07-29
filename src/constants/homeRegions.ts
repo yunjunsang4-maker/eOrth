@@ -42,7 +42,10 @@ export const CITY_TO_PROV: Record<string, Record<string, string>> = {
   FRA: { paris: 'Île-de-France', nice: "Provence-Alpes-Côted'Azur", lyon: 'Auvergne-Rhône-Alpes', marseille: "Provence-Alpes-Côted'Azur", bordeaux: 'Nouvelle-Aquitaine', strasbourg: 'GrandEst', toulouse: 'Occitanie', lille: 'Hauts-de-France', nantes: 'PaysdelaLoire', montpellier: 'Occitanie', cannes: "Provence-Alpes-Côted'Azur" },
   ITA: { rome: 'Lazio', milan: 'Lombardia', florence: 'Toscana', venice: 'Veneto', naples: 'Campania', verona: 'Veneto', pisa: 'Toscana', turin: 'Piemonte', bologna: 'Emilia-Romagna', genoa: 'Liguria', palermo: 'Sicily', bari: 'Apulia' },
   TUR: { cappadocia: 'Nevsehir', pamukkale: 'Denizli', fethiye: 'Mugla' },
-  GRC: { athens: 'Attica', santorini: 'Aegean', thira: 'Aegean', mykonos: 'Aegean', meteora: 'ThessalyandCentralGreece', kalambaka: 'ThessalyandCentralGreece', zakynthos: 'Peloponnese,WesternGreeceand' },
+  // zakynthos는 구 광역명이 아니라 'Zakynthos'로 — 자킨토스는 이오니아 제도(GR-F)다.
+  // 구 광역명('Peloponnese,WesternGreeceand')을 두면 별칭 표가 GR-J(펠로폰네소스)로 해석해
+  // GPS 거주지역이 엉뚱하게 잡힌다(지도 검색 표 CountryMapView와 동일하게 맞춤).
+  GRC: { athens: 'Attica', santorini: 'Aegean', thira: 'Aegean', mykonos: 'Aegean', meteora: 'ThessalyandCentralGreece', kalambaka: 'ThessalyandCentralGreece', zakynthos: 'Zakynthos' },
   AUT: { salzburgcity: 'Salzburg', hallstatt: 'Oberösterreich', innsbruck: 'Tirol', vienna: 'Wien' },
   PRT: { lisboncity: 'Lisboa', lisbon: 'Lisboa', portocity: 'Porto', sintra: 'Lisboa', lagos: 'Faro', cabodaroca: 'Lisboa', colares: 'Lisboa' },
   NLD: { amsterdam: 'Noord-Holland', rotterdam: 'Zuid-Holland', zaanseschans: 'Noord-Holland', zaanstad: 'Noord-Holland', thehague: 'Zuid-Holland', denhaag: 'Zuid-Holland', sgravenhage: 'Zuid-Holland' },
