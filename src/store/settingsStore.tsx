@@ -5,6 +5,9 @@ import { remapDocUri } from '../utils/remapDocumentUris';
 import { setPalette } from '../components/icons';
 import { HIDDEN_BADGE_IDS } from '../constants/badges';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
+import {
+  REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
+} from '../utils/regionKeyMigration';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -205,6 +208,10 @@ interface SettingsPersistPayload {
   taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
   dismissedRegionTagChips?: string[]; // 방문 지역 칩 닫은 국가 (과거 저장본엔 없음)
   skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
+  // 지역 저장 키 스키마 (GADM 표기 → NE 코드). 없거나 낮으면 hydrate에서 1회 변환한다.
+  regionKeySchema?: number;
+  // 변환 직전 원본 스냅샷 — 사고 시 복구용. 몇 버전 뒤 제거한다.
+  regionKeyBackupV0?: unknown;
   representativeBadgeIds?: number[]; // 과거 저장본엔 없을 수 있어 optional
   badgeEarnedAt?: Record<number, number>; // 과거 저장본엔 없을 수 있어 optional
   shareSentCount?: number; // 과거 저장본엔 없을 수 있어 optional
@@ -263,6 +270,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
   const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
+  const [regionKeySchema, setRegionKeySchema] = useState(0);
+  const [regionKeyBackupV0, setRegionKeyBackupV0] = useState<unknown>(null);
   // 스킨 전환: 아이콘 팔레트 동기화 + 현재 스킨의 색을 저장하고 대상 스킨에 저장된 색(없으면 그 스킨 기본색)을 복원
   const setGlobeSkinThemed = useCallback((s: string) => {
     applyIconPalette(s);
@@ -365,11 +374,42 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setCountryColors(p.countryColors ?? {});
       setCountryDisplayModes(p.countryDisplayModes ?? {});
       setRegionGlobalMode(p.regionGlobalMode ?? 'color');
-      setRegionDisplayModes(p.regionDisplayModes ?? {});
-      setRegionColors(p.regionColors ?? {});
-      setTaggedRegions(p.taggedRegions ?? {});
+      // 지역 저장 키 마이그레이션 (GADM 표기 → NE 코드) — 스키마가 낮을 때 1회만.
+      // 실패하면 원본을 그대로 두고 버전도 올리지 않는다(다음 실행에서 재시도).
+      // 부분 적용 상태로 굳어 디바운스 저장이 원본을 덮는 것을 막는다.
+      const needMigrate = (p.regionKeySchema ?? 0) < REGION_KEY_SCHEMA;
+      let rDisplay = p.regionDisplayModes ?? {};
+      let rColors = p.regionColors ?? {};
+      let rTagged = p.taggedRegions ?? {};
+      let rSkins = p.skinColorStore ?? {};
+      if (needMigrate) {
+        try {
+          setRegionKeyBackupV0({
+            regionDisplayModes: rDisplay, regionColors: rColors,
+            taggedRegions: rTagged, skinColorStore: rSkins,
+          });
+          rDisplay = migrateRegionKeyMap(rDisplay);
+          rColors = migrateRegionKeyMap(rColors);
+          rTagged = migrateTaggedRegions(rTagged);
+          rSkins = migrateSkinColorStore(rSkins); // 스킨별 중첩 지역 색
+          setRegionKeySchema(REGION_KEY_SCHEMA);
+        } catch (e) {
+          console.warn('[regionKey] 마이그레이션 실패 — 원본 유지', e);
+          rDisplay = p.regionDisplayModes ?? {};
+          rColors = p.regionColors ?? {};
+          rTagged = p.taggedRegions ?? {};
+          rSkins = p.skinColorStore ?? {};
+          setRegionKeyBackupV0(p.regionKeyBackupV0 ?? null);
+        }
+      } else {
+        setRegionKeySchema(p.regionKeySchema ?? 0);
+        setRegionKeyBackupV0(p.regionKeyBackupV0 ?? null);
+      }
+      setRegionDisplayModes(rDisplay);
+      setRegionColors(rColors);
+      setTaggedRegions(rTagged);
+      setSkinColorStore(rSkins);
       setDismissedRegionTagChips(p.dismissedRegionTagChips ?? []);
-      setSkinColorStore(p.skinColorStore ?? {});
       setRepresentativeBadgeIds(p.representativeBadgeIds ?? []);
       setBadgeEarnedAt(p.badgeEarnedAt ?? {});
       setShareSentCount(p.shareSentCount ?? 0);
@@ -416,6 +456,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
+      regionKeySchema,
+      regionKeyBackupV0,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -462,6 +504,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
+      regionKeySchema,
+      regionKeyBackupV0,
       representativeBadgeIds,
       badgeEarnedAt,
       shareSentCount,
@@ -569,11 +613,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(v.countryColors);
     if (v.countryDisplayModes && typeof v.countryDisplayModes === 'object') setCountryDisplayModes(v.countryDisplayModes);
     if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
-    if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(v.regionDisplayModes);
-    if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(v.regionColors);
-    if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(v.taggedRegions);
+    // 옛 백업 JSON에는 GADM 키가 들어 있다. 여기를 빠뜨리면 백업을 복원한 사용자만 조용히 깨진다.
+    if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(migrateRegionKeyMap(v.regionDisplayModes as Record<string, 'color' | 'photo'>));
+    if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(migrateRegionKeyMap(v.regionColors as Record<string, string>));
+    if (v.taggedRegions && typeof v.taggedRegions === 'object') setTaggedRegions(migrateTaggedRegions(v.taggedRegions as Record<string, TaggedRegion[]>));
     if (Array.isArray(v.dismissedRegionTagChips)) setDismissedRegionTagChips(v.dismissedRegionTagChips);
-    if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(v.skinColorStore);
+    if (v.skinColorStore && typeof v.skinColorStore === 'object') setSkinColorStore(migrateSkinColorStore(v.skinColorStore as Record<string, SkinColorSet>));
     if (Array.isArray(v.representativeBadgeIds)) setRepresentativeBadgeIds(v.representativeBadgeIds);
     if (v.badgeEarnedAt && typeof v.badgeEarnedAt === 'object') setBadgeEarnedAt(v.badgeEarnedAt);
     if (typeof v.shareSentCount === 'number') setShareSentCount(v.shareSentCount);
