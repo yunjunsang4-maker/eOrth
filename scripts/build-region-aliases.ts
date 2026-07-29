@@ -39,14 +39,19 @@ const MANUAL: Record<string, string> = {
   'ESP|islascanarias': 'Canary Is.',                      // GADM "Islas Canarias" ↔ NE region명 "Canary Is."
   'GRC|athos': 'Mount Athos',                             // GADM "Athos" ↔ NE name_alt "Mount Athos"
   'MAR|laayouneboujdoursakiaelh': 'Laâyoune-Boujdour-Sakia El Hamra', // GADM 원본 이름이 잘려있음(SakiaElH)
+  'ARE|fujairah': 'Fujayrah', // NE 결함 피처(AE-X01~, 아래 ne 필터에서 제외) 대신 진짜 푸자이라(AE-FU)로
 };
 
 /** 정규화: 발음구별기호 제거 + 소문자 + 영숫자만 남김 */
 const norm = (s: string): string =>
   s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
-/** region_cod의 점 표기를 하이픈으로 통일 (ES.CE → ES-CE) */
-const dash = (s: string): string => s.replace(/\./g, '-');
+// region_cod의 점 표기를 하이픈으로 통일 (ES.CE → ES-CE) + NE 원본의 공백류 오염 제거
+// (Île-de-France 피처들의 region_cod가 "FR-IDF\t"처럼 탭이 섞여 들어옴 — 리뷰에서 발견)
+const dash = (s: string): string => s.replace(/\./g, '-').replace(/\s+/g, '');
+
+/** 최종 코드 형식 검증: `${ISO2}-${영숫자}` 꼴이 아니면 코드 자체가 오염된 것으로 본다 */
+const CODE_RE = /^[A-Z]{2}-[A-Za-z0-9]+$/;
 
 interface NeProps {
   adm0_a3: string; name: string; name_en?: string; name_local?: string;
@@ -57,16 +62,29 @@ interface NeProps {
 
 const ne: NeProps[] = JSON.parse(readFileSync(NE, 'utf8'))
   .features.map((f: any) => f.properties)
-  .filter((p: NeProps) => ISO3.includes(p.adm0_a3));
+  .filter((p: NeProps) => ISO3.includes(p.adm0_a3))
+  // NE 자체 결함 피처 제외 — iso_3166_2가 '~'로 끝나는 것은 NE가 붙인 비공식/미분류 코드로
+  // 실제 행정구역이 아니다(중립지대·남중국해 섬·미분류 잔재 폴리곤 등, 총 5건: ARE 2·CHN 1·
+  // COL 1·MEX 1). 그중 UAE "Neutral Zone"(AE-X01~)은 name_en이 "Fujairah"라서 그대로 두면
+  // 진짜 푸자이라 에미리트 이름과 충돌해 엉뚱한 코드로 별칭된다(리뷰 Critical 1) — 인덱싱
+  // 이전에 걸러낸다.
+  .filter((p: NeProps) => !(p.iso_3166_2 || '').endsWith('~'));
 
 /** 피처 하나의 최종 코드 — 병합 대상국은 그룹 코드를 쓴다 */
 function codeOf(p: NeProps): string {
   const fix = CODE_FIX[`${p.adm0_a3}|${p.name}`];
-  if (fix) return fix;
-  const d = DISSOLVE[p.adm0_a3];
-  if (d === 'geonunit') return `GB-${p.gu_a3}`;
-  if (d === 'region') return dash(p.region_cod || `${p.adm0_a3}-${norm(p.region || '')}`);
-  return dash(p.iso_3166_2 || p.adm1_code || '');
+  let code: string;
+  if (fix) {
+    code = fix;
+  } else {
+    const d = DISSOLVE[p.adm0_a3];
+    if (d === 'geonunit') code = `GB-${p.gu_a3}`;
+    else if (d === 'region') code = dash(p.region_cod || `${p.adm0_a3}-${norm(p.region || '')}`);
+    else code = dash(p.iso_3166_2 || p.adm1_code || '');
+  }
+  // 자체 점검 — NE 원본 결함(공백 오염, 비표준 코드 등)이 최종 코드까지 새는 것을 생성 시점에 막는다
+  if (!CODE_RE.test(code)) throw new Error(`코드 형식 이상: "${code}" (${p.adm0_a3} ${p.name})`);
+  return code;
 }
 
 // 검색 인덱스: `${ISO3}|${정규화된_이름}` → 코드
