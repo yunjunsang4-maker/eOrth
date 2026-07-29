@@ -2,6 +2,7 @@ import React, { useMemo , useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { getCountryGeo } from '../data/countryGeo';
+import { resolveRegionCode } from '../utils/regionKeyMigration';
 import { D3_SRC } from '../data/vendorD3';
 
 
@@ -156,6 +157,69 @@ export default function CountryMapView({
   );
 }
 
+/**
+ * 지도 검색용 "도시/명소명 → 상위 주" 표. 키는 영문 정규화형(normEn)과 한글 표기 둘 다.
+ *
+ * 값은 GADM 시절 주 표기라 Natural Earth의 NAME_1과 그대로는 맞지 않는다
+ * ('NewYork'↔'New York', 'Bayern'↔'Bavaria', 'Kanagawa'↔'Kanagawa Prefecture').
+ * 그래서 이 값을 WebView에 그대로 넣으면 안 된다 — buildCityProvMap이 별칭 표
+ * (resolveRegionCode)로 코드를 얻은 뒤 그 코드의 실제 NAME_1으로 바꿔 주입한다.
+ * (homeRegions.CITY_TO_PROV가 같은 문제를 같은 방식으로 이미 푼다. 여기는 지도용 사본으로
+ *  한글 키와 명소가 더 들어 있어 별도로 둔다.)
+ */
+const CITY_TO_PROV_SRC: Record<string, Record<string, string>> = {
+  JPN:{tokyocity:'Tokyo',osakacity:'Osaka',kyotocity:'Kyoto',fukuokacity:'Fukuoka',sapporo:'Hokkaido',naha:'Okinawa',yokohama:'Kanagawa',kobe:'Hyōgo',nagoya:'Aichi',hiroshimacity:'Hiroshima',sendai:'Miyagi',tokyo:'Tokyo',osaka:'Osaka',kyoto:'Kyoto',fukuoka:'Fukuoka',hiroshima:'Hiroshima','도쿄':'Tokyo','오사카':'Osaka','교토':'Kyoto','후쿠오카':'Fukuoka','삿포로':'Hokkaido','나하':'Okinawa','요코하마':'Kanagawa','고베':'Hyōgo','나고야':'Aichi','히로시마':'Hiroshima','센다이':'Miyagi'},
+  CHN:{guangzhou:'Guangdong',shenzhen:'Guangdong',chengdu:'Sichuan',hangzhou:'Zhejiang',xian:'Shaanxi',wuhan:'Hubei',qingdao:'Shandong',nanjing:'Jiangsu','광저우':'Guangdong','선전':'Guangdong','청두':'Sichuan','항저우':'Zhejiang','시안':'Shaanxi','우한':'Hubei','칭다오':'Shandong','난징':'Jiangsu'},
+  USA:{losangeles:'California',la:'California',sanfrancisco:'California',lasvegas:'Nevada',miami:'Florida',chicago:'Illinois',seattle:'Washington',honolulu:'Hawaii',newyork:'NewYork',newyorkcity:'NewYork',boston:'Massachusetts',washingtondc:'Maryland',dc:'Maryland',houston:'Texas',denver:'Colorado',philadelphia:'Pennsylvania',atlanta:'Georgia','로스앤젤레스':'California','엘에이':'California','샌프란시스코':'California','라스베이거스':'Nevada','마이애미':'Florida','시카고':'Illinois','시애틀':'Washington','호놀룰루':'Hawaii','뉴욕':'NewYork','뉴욕시':'NewYork','보스턴':'Massachusetts','워싱턴디씨':'Maryland','디씨':'Maryland','휴스턴':'Texas','덴버':'Colorado','필라델피아':'Pennsylvania','애틀랜타':'Georgia','애틀란타':'Georgia'},
+  DEU:{munich:'Bayern',munchen:'Bayern',frankfurt:'Hessen',stuttgart:'Baden-Württemberg',cologne:'Nordrhein-Westfalen',koln:'Nordrhein-Westfalen',nordlingen:'Bayern',dresden:'Sachsen',dusseldorf:'Nordrhein-Westfalen',hannover:'Niedersachsen','뮌헨':'Bayern','프랑크푸르트':'Hessen','슈투트가르트':'Baden-Württemberg','쾰른':'Nordrhein-Westfalen','뇌르틀링겐':'Bayern','드레스덴':'Sachsen','뒤셀도르프':'Nordrhein-Westfalen','하노버':'Niedersachsen'},
+  ESP:{granada:'Andalucía',malaga:'Andalucía',sevilla:'Andalucía',seville:'Andalucía',barcelona:'Cataluña',madrid:'ComunidaddeMadrid',valencia:'ComunidadValenciana',bilbao:'PaísVasco','그라나다':'Andalucía','말라가':'Andalucía','세비야':'Andalucía','바르셀로나':'Cataluña','마드리드':'ComunidaddeMadrid','발렌시아':'ComunidadValenciana','빌바오':'PaísVasco'},
+  GBR:{london:'England',birmingham:'England',manchester:'England',liverpool:'England',leeds:'England',edinburgh:'Scotland',glasgow:'Scotland',cardiff:'Wales',belfast:'NorthernIreland',oxford:'England',bristol:'England','런던':'England','버밍엄':'England','맨체스터':'England','리버풀':'England','리즈':'England','에든버러':'Scotland','글래스고':'Scotland','카디프':'Wales','벨파스트':'NorthernIreland','옥스퍼드':'England','브리스톨':'England'},
+  FRA:{paris:'Île-de-France',nice:"Provence-Alpes-Côted'Azur",lyon:'Auvergne-Rhône-Alpes',marseille:"Provence-Alpes-Côted'Azur",bordeaux:'Nouvelle-Aquitaine',strasbourg:'GrandEst',toulouse:'Occitanie',lille:'Hauts-de-France',nantes:'PaysdelaLoire',montpellier:'Occitanie',cannes:"Provence-Alpes-Côted'Azur",'파리':'Île-de-France','니스':"Provence-Alpes-Côted'Azur",'리옹':'Auvergne-Rhône-Alpes','마르세유':"Provence-Alpes-Côted'Azur",'보르도':'Nouvelle-Aquitaine','스트라스부르':'GrandEst','툴루즈':'Occitanie','릴':'Hauts-de-France','낭트':'PaysdelaLoire','몽펠리에':'Occitanie','칸':"Provence-Alpes-Côted'Azur"},
+  ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'},
+  TUR:{cappadocia:'Nevsehir',pamukkale:'Denizli',fethiye:'Mugla','카파도키아':'Nevsehir','파묵칼레':'Denizli','페티예':'Mugla'},
+  // 자킨토스만 구 광역명('Peloponnese, Western Greece and the Ionian') 대신 섬 이름을 쓴다 —
+  // 그 구 광역은 별칭 표에서 펠로폰네소스로 가는데 자킨토스는 이오니아 제도 소속이라,
+  // 구 광역명을 그대로 두면 검색 결과가 엉뚱한 지역으로 확대된다(별칭 표의 GRC|zakynthos 참고).
+  GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Zakynthos','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Zakynthos'},
+  AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'},
+  PRT:{lisboncity:'Lisboa',lisbon:'Lisboa',portocity:'Porto',sintra:'Lisboa',lagos:'Faro',cabodaroca:'Lisboa',colares:'Lisboa','리스본':'Lisboa','포르투':'Porto','신트라':'Lisboa','라구스':'Faro','호카곶':'Lisboa'},
+  NLD:{amsterdam:'Noord-Holland',rotterdam:'Zuid-Holland',zaanseschans:'Noord-Holland',zaanstad:'Noord-Holland',thehague:'Zuid-Holland',denhaag:'Zuid-Holland',sgravenhage:'Zuid-Holland','암스테르담':'Noord-Holland','로테르담':'Zuid-Holland','잔세스칸스':'Noord-Holland','헤이그':'Zuid-Holland'},
+  THA:{pattaya:'ChonBuri',banglamung:'ChonBuri',bangkok:'BangkokMetropolis','방콕':'BangkokMetropolis','치앙마이':'ChiangMai','푸켓':'Phuket','파타야':'ChonBuri'},
+  MYS:{kotakinabalu:'Sabah',johorbahru:'Johor',johorbaharu:'Johor',langkawi:'Kedah',penang:'PulauPinang',malacca:'Melaka','코타키나발루':'Sabah','조호르바루':'Johor','랑카위':'Kedah','페낭':'PulauPinang','말라카':'Melaka','쿠알라룸푸르':'KualaLumpur'},
+  VNM:{nhatrang:'KhánhHòa',hoian:'QuảngNam',halong:'QuảngNinh',halongbay:'QuảngNinh',phuquoc:'KiênGiang','나트랑':'KhánhHòa','호이안':'QuảngNam','하롱베이':'QuảngNinh','푸꾸옥':'KiênGiang'},
+  SAU:{riyadh:'ArRiyad',jeddah:'Makkah',jiddah:'Makkah',mecca:'Makkah',makkahalmukarramah:'Makkah',medina:'AlMadinah',alula:'AlMadinah','리야드':'ArRiyad','제다':'Makkah','메카':'Makkah','메디나':'AlMadinah','알울라':'AlMadinah'},
+  MAR:{marrakech:'Marrakech-Tensift-AlHaouz',marrakesh:'Marrakech-Tensift-AlHaouz',casablanca:'GrandCasablanca',fes:'Fès-Boulemane',fez:'Fès-Boulemane',chefchaouen:'Tanger-Tétouan','마라케시':'Marrakech-Tensift-AlHaouz','카사블랑카':'GrandCasablanca','페스':'Fès-Boulemane','셰프샤우엔':'Tanger-Tétouan'},
+  EGY:{giza:'AlJizah',luxor:'AlUqsur',aswancity:'Aswan',hurghada:'AlBahralAhmar',alghurdaqah:'AlBahralAhmar',cairo:'AlQahirah',alexandria:'AlIskandariyah','기자':'AlJizah','룩소르':'AlUqsur','아스완':'Aswan','후르가다':'AlBahralAhmar','카이로':'AlQahirah','알렉산드리아':'AlIskandariyah'},
+  TUN:{carthage:'Tunis',sidibousaid:'Tunis',eljem:'Mahdia',tozeurcity:'Tozeur','카르타고':'Tunis','시디부사이드':'Tunis','엘젬':'Mahdia','엘 젬':'Mahdia','토주르':'Tozeur','튀니스':'Tunis'},
+  ZAF:{capetown:'WesternCape',johannesburg:'Gauteng',pretoria:'Gauteng',tshwane:'Gauteng',cityofcapetown:'WesternCape',cityofjohannesburg:'Gauteng',cityoftshwane:'Gauteng','케이프타운':'WesternCape','요하네스버그':'Gauteng','프리토리아':'Gauteng'},
+  MEX:{cancun:'QuintanaRoo',benitojuarez:'QuintanaRoo',playadelcarmen:'QuintanaRoo',solidaridad:'QuintanaRoo',tulum:'QuintanaRoo',guadalajara:'Jalisco',oaxacacity:'Oaxaca',oaxacadejuarez:'Oaxaca',guanajuatocity:'Guanajuato',mexicocity:'DistritoFederal',cdmx:'DistritoFederal','칸쿤':'QuintanaRoo','플라야델카르멘':'QuintanaRoo','플라야 델 카르멘':'QuintanaRoo','툴룸':'QuintanaRoo','과달라하라':'Jalisco','오아하카':'Oaxaca','과나후아토':'Guanajuato','멕시코시티':'DistritoFederal'},
+  CAN:{vancouver:'BritishColumbia',greatervancouver:'BritishColumbia',toronto:'Ontario',montreal:'Québec',niagarafalls:'Ontario',niagara:'Ontario',quebeccity:'Québec','밴쿠버':'BritishColumbia','토론토':'Ontario','몬트리올':'Québec','나이아가라폭포':'Ontario','나이아가라 폭포':'Ontario','나이아가라':'Ontario','퀘벡':'Québec','퀘백':'Québec'},
+  BRA:{riodejaneirocity:'RiodeJaneiro',saopaulocity:'SãoPaulo',salvador:'Bahia',manaus:'Amazonas',fozdoiguacu:'Paraná',iguazufalls:'Paraná',iguacufalls:'Paraná','리우데자네이루':'RiodeJaneiro','상파울루':'SãoPaulo','살바도르':'Bahia','마나우스':'Amazonas','포스두이구아수':'Paraná','포스 두 이구아수':'Paraná','이과수폭포':'Paraná','이과수 폭포':'Paraná','이과수':'Paraná'},
+  COL:{medellin:'Antioquia',cartagena:'Bolívar',cartagenadeindias:'Bolívar',cali:'ValledelCauca',santiagodecali:'ValledelCauca',salento:'Quindío',bogota:'BogotáD.C.',bogotadc:'BogotáD.C.','보고타':'BogotáD.C.','메데인':'Antioquia','카르타헤나':'Bolívar','칼리':'ValledelCauca','살렌토':'Quindío'}
+};
+
+/**
+ * 국가 하나의 도시 표를 "이 지오 데이터에 실제로 존재하는 NAME_1" 값으로 변환한다.
+ * 못 잇는 항목은 넣지 않는다 — 넣어 두면 resolveProvince가 truthy를 돌려줘 Nominatim
+ * 지오코딩 폴백까지 건너뛰고, 확대도 강조도 없이 칩만 뜨는 가짜 성공이 된다.
+ */
+function buildCityProvMap(iso3: string, geo: any): Record<string, string> {
+  const src = CITY_TO_PROV_SRC[iso3];
+  if (!src) return {};
+  const nameByCode: Record<string, string> = {};
+  for (const f of geo?.features ?? []) {
+    const p = f?.properties ?? {};
+    if (p.CODE && p.NAME_1 && !nameByCode[p.CODE]) nameByCode[p.CODE] = p.NAME_1;
+  }
+  const out: Record<string, string> = {};
+  for (const [key, oldName] of Object.entries(src)) {
+    const code = resolveRegionCode(iso3, oldName);
+    const name = code ? nameByCode[code] : undefined;
+    if (name) out[key] = name;
+  }
+  return out;
+}
+
 function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '') {
   const geo = getCountryGeo(code);
   if (!geo) {
@@ -163,6 +227,8 @@ function buildHTML(code: string, countryName: string = '', chipBottom: number = 
   }
 
   const geoJSON = JSON.stringify(geo);
+  // 도시 표는 이 국가 것만, 그것도 지오의 실제 NAME_1으로 변환해 넣는다 (buildCityProvMap 참고)
+  const cityProvJSON = JSON.stringify({ [code]: buildCityProvMap(code, geo) });
 
   return `<!DOCTYPE html>
 <html><head>
@@ -192,12 +258,13 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 ['gesturestart','gesturechange','gestureend'].forEach(function(t){
   document.addEventListener(t, function(e){ e.preventDefault(); }, {passive:false});
 });
-var CODE='${code}';
+// 국가 ISO3. 피처 속성 CODE(지역 코드)와 헷갈리지 않게 이름을 분리해 둔다 —
+// d.properties.CODE를 CODE로 한 글자 잘못 쓰면 어떤 도구도 못 잡는다.
+var COUNTRY_CODE='${code}';
 var COUNTRY_NAME=${JSON.stringify(countryName)};
 var recordedRegions = [];
 var displayMode = 'color';
 var defaultColor = '#BF85FC';
-var showPopular = false; // 인기명소(HL) 강조 표시 여부 — RN에서 더 이상 갱신하지 않아 항상 false(관련 UI는 Task 4에서 정리 예정)
 var BOTTOM_INSET = ${chipBottom}; // 하단 탭 바 가림 높이 — 투영을 보이는 영역 기준으로 중앙 정렬
 function setRegionChip(name){var c=document.getElementById('region-chip');if(!c)return;if(name){c.textContent=name;c.style.display='flex';}else{c.style.display='none';}}
 
@@ -208,7 +275,6 @@ var projectionPath = null;
 var gElement = null;
 var pathElements = null;          // 메인 채움+경계 selection
 var insetPathElements = {};       // 인셋 채움+경계 selection
-var highlight = [];
 var insetBoxes = [];
 
 // ── 검색(지역/도시 → 주 확대·강조) ──
@@ -216,34 +282,11 @@ var searchedRegion = null;   // 강조할 주의 NAME_1 (영문)
 var zoomBehavior = null;     // d3.zoom 인스턴스 (render 에서 할당)
 var maxZoom = 15;
 
-// 도시/지역명 → 속한 주(NAME_1) 매핑. 키는 영문(normEn)·한글 모두 허용.
-var CITY_TO_PROV = {
-  JPN:{tokyocity:'Tokyo',osakacity:'Osaka',kyotocity:'Kyoto',fukuokacity:'Fukuoka',sapporo:'Hokkaido',naha:'Okinawa',yokohama:'Kanagawa',kobe:'Hyōgo',nagoya:'Aichi',hiroshimacity:'Hiroshima',sendai:'Miyagi',tokyo:'Tokyo',osaka:'Osaka',kyoto:'Kyoto',fukuoka:'Fukuoka',hiroshima:'Hiroshima','도쿄':'Tokyo','오사카':'Osaka','교토':'Kyoto','후쿠오카':'Fukuoka','삿포로':'Hokkaido','나하':'Okinawa','요코하마':'Kanagawa','고베':'Hyōgo','나고야':'Aichi','히로시마':'Hiroshima','센다이':'Miyagi'},
-  CHN:{guangzhou:'Guangdong',shenzhen:'Guangdong',chengdu:'Sichuan',hangzhou:'Zhejiang',xian:'Shaanxi',wuhan:'Hubei',qingdao:'Shandong',nanjing:'Jiangsu','광저우':'Guangdong','선전':'Guangdong','청두':'Sichuan','항저우':'Zhejiang','시안':'Shaanxi','우한':'Hubei','칭다오':'Shandong','난징':'Jiangsu'},
-  USA:{losangeles:'California',la:'California',sanfrancisco:'California',lasvegas:'Nevada',miami:'Florida',chicago:'Illinois',seattle:'Washington',honolulu:'Hawaii',newyork:'NewYork',newyorkcity:'NewYork',boston:'Massachusetts',washingtondc:'Maryland',dc:'Maryland',houston:'Texas',denver:'Colorado',philadelphia:'Pennsylvania',atlanta:'Georgia','로스앤젤레스':'California','엘에이':'California','샌프란시스코':'California','라스베이거스':'Nevada','마이애미':'Florida','시카고':'Illinois','시애틀':'Washington','호놀룰루':'Hawaii','뉴욕':'NewYork','뉴욕시':'NewYork','보스턴':'Massachusetts','워싱턴디씨':'Maryland','디씨':'Maryland','휴스턴':'Texas','덴버':'Colorado','필라델피아':'Pennsylvania','애틀랜타':'Georgia','애틀란타':'Georgia'},
-  DEU:{munich:'Bayern',munchen:'Bayern',frankfurt:'Hessen',stuttgart:'Baden-Württemberg',cologne:'Nordrhein-Westfalen',koln:'Nordrhein-Westfalen',nordlingen:'Bayern',dresden:'Sachsen',dusseldorf:'Nordrhein-Westfalen',hannover:'Niedersachsen','뮌헨':'Bayern','프랑크푸르트':'Hessen','슈투트가르트':'Baden-Württemberg','쾰른':'Nordrhein-Westfalen','뇌르틀링겐':'Bayern','드레스덴':'Sachsen','뒤셀도르프':'Nordrhein-Westfalen','하노버':'Niedersachsen'},
-  ESP:{granada:'Andalucía',malaga:'Andalucía',sevilla:'Andalucía',seville:'Andalucía',barcelona:'Cataluña',madrid:'ComunidaddeMadrid',valencia:'ComunidadValenciana',bilbao:'PaísVasco','그라나다':'Andalucía','말라가':'Andalucía','세비야':'Andalucía','바르셀로나':'Cataluña','마드리드':'ComunidaddeMadrid','발렌시아':'ComunidadValenciana','빌바오':'PaísVasco'},
-  GBR:{london:'England',birmingham:'England',manchester:'England',liverpool:'England',leeds:'England',edinburgh:'Scotland',glasgow:'Scotland',cardiff:'Wales',belfast:'NorthernIreland',oxford:'England',bristol:'England','런던':'England','버밍엄':'England','맨체스터':'England','리버풀':'England','리즈':'England','에든버러':'Scotland','글래스고':'Scotland','카디프':'Wales','벨파스트':'NorthernIreland','옥스퍼드':'England','브리스톨':'England'},
-  FRA:{paris:'Île-de-France',nice:"Provence-Alpes-Côted'Azur",lyon:'Auvergne-Rhône-Alpes',marseille:"Provence-Alpes-Côted'Azur",bordeaux:'Nouvelle-Aquitaine',strasbourg:'GrandEst',toulouse:'Occitanie',lille:'Hauts-de-France',nantes:'PaysdelaLoire',montpellier:'Occitanie',cannes:"Provence-Alpes-Côted'Azur",'파리':'Île-de-France','니스':"Provence-Alpes-Côted'Azur",'리옹':'Auvergne-Rhône-Alpes','마르세유':"Provence-Alpes-Côted'Azur",'보르도':'Nouvelle-Aquitaine','스트라스부르':'GrandEst','툴루즈':'Occitanie','릴':'Hauts-de-France','낭트':'PaysdelaLoire','몽펠리에':'Occitanie','칸':"Provence-Alpes-Côted'Azur"},
-  ITA:{rome:'Lazio',roma:'Lazio',milan:'Lombardia',milano:'Lombardia',florence:'Toscana',firenze:'Toscana',venice:'Veneto',venezia:'Veneto',naples:'Campania',napoli:'Campania',verona:'Veneto',pisa:'Toscana',turin:'Piemonte',torino:'Piemonte',bologna:'Emilia-Romagna',genoa:'Liguria',genova:'Liguria',palermo:'Sicily',bari:'Apulia','로마':'Lazio','밀라노':'Lombardia','피렌체':'Toscana','베네치아':'Veneto','나폴리':'Campania','베로나':'Veneto','피사':'Toscana','토리노':'Piemonte','볼로냐':'Emilia-Romagna','제노바':'Liguria','팔레르모':'Sicily','바리':'Apulia'},
-  TUR:{cappadocia:'Nevsehir',pamukkale:'Denizli',fethiye:'Mugla','카파도키아':'Nevsehir','파묵칼레':'Denizli','페티예':'Mugla'},
-  GRC:{athens:'Attica',santorini:'Aegean',thira:'Aegean',mykonos:'Aegean',meteora:'ThessalyandCentralGreece',kalambaka:'ThessalyandCentralGreece',zakynthos:'Peloponnese,WesternGreeceand','아테네':'Attica','산토리니':'Aegean','미코노스':'Aegean','메테오라':'ThessalyandCentralGreece','자킨토스':'Peloponnese,WesternGreeceand'},
-  AUT:{salzburgcity:'Salzburg',hallstatt:'Oberösterreich',innsbruck:'Tirol',vienna:'Wien','빈':'Wien','비엔나':'Wien','잘츠부르크':'Salzburg','할슈타트':'Oberösterreich','인스브루크':'Tirol'},
-  PRT:{lisboncity:'Lisboa',lisbon:'Lisboa',portocity:'Porto',sintra:'Lisboa',lagos:'Faro',cabodaroca:'Lisboa',colares:'Lisboa','리스본':'Lisboa','포르투':'Porto','신트라':'Lisboa','라구스':'Faro','호카곶':'Lisboa'},
-  NLD:{amsterdam:'Noord-Holland',rotterdam:'Zuid-Holland',zaanseschans:'Noord-Holland',zaanstad:'Noord-Holland',thehague:'Zuid-Holland',denhaag:'Zuid-Holland',sgravenhage:'Zuid-Holland','암스테르담':'Noord-Holland','로테르담':'Zuid-Holland','잔세스칸스':'Noord-Holland','헤이그':'Zuid-Holland'},
-  THA:{pattaya:'ChonBuri',banglamung:'ChonBuri',bangkok:'BangkokMetropolis','방콕':'BangkokMetropolis','치앙마이':'ChiangMai','푸켓':'Phuket','파타야':'ChonBuri'},
-  MYS:{kotakinabalu:'Sabah',johorbahru:'Johor',johorbaharu:'Johor',langkawi:'Kedah',penang:'PulauPinang',malacca:'Melaka','코타키나발루':'Sabah','조호르바루':'Johor','랑카위':'Kedah','페낭':'PulauPinang','말라카':'Melaka','쿠알라룸푸르':'KualaLumpur'},
-  VNM:{nhatrang:'KhánhHòa',hoian:'QuảngNam',halong:'QuảngNinh',halongbay:'QuảngNinh',phuquoc:'KiênGiang','나트랑':'KhánhHòa','호이안':'QuảngNam','하롱베이':'QuảngNinh','푸꾸옥':'KiênGiang'},
-  SAU:{riyadh:'ArRiyad',jeddah:'Makkah',jiddah:'Makkah',mecca:'Makkah',makkahalmukarramah:'Makkah',medina:'AlMadinah',alula:'AlMadinah','리야드':'ArRiyad','제다':'Makkah','메카':'Makkah','메디나':'AlMadinah','알울라':'AlMadinah'},
-  MAR:{marrakech:'Marrakech-Tensift-AlHaouz',marrakesh:'Marrakech-Tensift-AlHaouz',casablanca:'GrandCasablanca',fes:'Fès-Boulemane',fez:'Fès-Boulemane',chefchaouen:'Tanger-Tétouan','마라케시':'Marrakech-Tensift-AlHaouz','카사블랑카':'GrandCasablanca','페스':'Fès-Boulemane','셰프샤우엔':'Tanger-Tétouan'},
-  EGY:{giza:'AlJizah',luxor:'AlUqsur',aswancity:'Aswan',hurghada:'AlBahralAhmar',alghurdaqah:'AlBahralAhmar',cairo:'AlQahirah',alexandria:'AlIskandariyah','기자':'AlJizah','룩소르':'AlUqsur','아스완':'Aswan','후르가다':'AlBahralAhmar','카이로':'AlQahirah','알렉산드리아':'AlIskandariyah'},
-  TUN:{carthage:'Tunis',sidibousaid:'Tunis',eljem:'Mahdia',tozeurcity:'Tozeur','카르타고':'Tunis','시디부사이드':'Tunis','엘젬':'Mahdia','엘 젬':'Mahdia','토주르':'Tozeur','튀니스':'Tunis'},
-  ZAF:{capetown:'WesternCape',johannesburg:'Gauteng',pretoria:'Gauteng',tshwane:'Gauteng',cityofcapetown:'WesternCape',cityofjohannesburg:'Gauteng',cityoftshwane:'Gauteng','케이프타운':'WesternCape','요하네스버그':'Gauteng','프리토리아':'Gauteng'},
-  MEX:{cancun:'QuintanaRoo',benitojuarez:'QuintanaRoo',playadelcarmen:'QuintanaRoo',solidaridad:'QuintanaRoo',tulum:'QuintanaRoo',guadalajara:'Jalisco',oaxacacity:'Oaxaca',oaxacadejuarez:'Oaxaca',guanajuatocity:'Guanajuato',mexicocity:'DistritoFederal',cdmx:'DistritoFederal','칸쿤':'QuintanaRoo','플라야델카르멘':'QuintanaRoo','플라야 델 카르멘':'QuintanaRoo','툴룸':'QuintanaRoo','과달라하라':'Jalisco','오아하카':'Oaxaca','과나후아토':'Guanajuato','멕시코시티':'DistritoFederal'},
-  CAN:{vancouver:'BritishColumbia',greatervancouver:'BritishColumbia',toronto:'Ontario',montreal:'Québec',niagarafalls:'Ontario',niagara:'Ontario',quebeccity:'Québec','밴쿠버':'BritishColumbia','토론토':'Ontario','몬트리올':'Québec','나이아가라폭포':'Ontario','나이아가라 폭포':'Ontario','나이아가라':'Ontario','퀘벡':'Québec','퀘백':'Québec'},
-  BRA:{riodejaneirocity:'RiodeJaneiro',saopaulocity:'SãoPaulo',salvador:'Bahia',manaus:'Amazonas',fozdoiguacu:'Paraná',iguazufalls:'Paraná',iguacufalls:'Paraná','리우데자네이루':'RiodeJaneiro','상파울루':'SãoPaulo','살바도르':'Bahia','마나우스':'Amazonas','포스두이구아수':'Paraná','포스 두 이구아수':'Paraná','이과수폭포':'Paraná','이과수 폭포':'Paraná','이과수':'Paraná'},
-  COL:{medellin:'Antioquia',cartagena:'Bolívar',cartagenadeindias:'Bolívar',cali:'ValledelCauca',santiagodecali:'ValledelCauca',salento:'Quindío',bogota:'BogotáD.C.',bogotadc:'BogotáD.C.','보고타':'BogotáD.C.','메데인':'Antioquia','카르타헤나':'Bolívar','칼리':'ValledelCauca','살렌토':'Quindío'}
-};
+// 도시/명소명 → 속한 주(NAME_1) 매핑. 키는 영문(normEn)·한글 모두 허용.
+// 값은 RN 쪽 buildCityProvMap이 이 국가 지오의 실제 NAME_1으로 변환해 주입한다.
+// 여기에 주 이름을 직접 적지 마라 — GADM 시절 표기와 어긋나면 resolveProvince가 truthy를
+// 돌려주는 바람에 지오코딩 폴백도 안 타고, 확대도 강조도 없이 칩만 뜨는 가짜 성공이 된다.
+var CITY_TO_PROV = ${cityProvJSON};
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
 function normEn(s){
@@ -255,7 +298,7 @@ function resolveProvince(query){
   var q=(query||'').trim();
   if(!q) return null;
   var qn=normEn(q);
-  var alias=CITY_TO_PROV[CODE]||{};
+  var alias=CITY_TO_PROV[COUNTRY_CODE]||{};
   if(alias[q]) return alias[q];
   if(alias[qn]) return alias[qn];
   var all=(mainFeatures||[]).concat(insetFeatures||[]);
@@ -313,14 +356,14 @@ function applyProvince(prov){
   zoomToProvince(prov);
   updateMap();
 }
-// 로컬 매칭 실패 시 OSM(Nominatim) 지오코딩 폴백 — 인기명소가 아닌 시도 검색되게
+// 로컬 매칭 실패 시 OSM(Nominatim) 지오코딩 폴백 — 표에 없는 도시도 검색되게
 var ISO2={JPN:'jp',CHN:'cn',USA:'us',DEU:'de',ESP:'es',GBR:'gb',FRA:'fr',ITA:'it',
   TUR:'tr',GRC:'gr',AUT:'at',PRT:'pt',NLD:'nl',THA:'th',MYS:'my',VNM:'vn',SAU:'sa',
   ARE:'ae',MAR:'ma',EGY:'eg',TUN:'tn',ZAF:'za',MEX:'mx',CAN:'ca',BRA:'br',COL:'co'};
 var geoCache={};
 function geocodeFallback(query){
   if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip('검색 결과 없음'); return; }
-  var cc=ISO2[CODE]||'';
+  var cc=ISO2[COUNTRY_CODE]||'';
   var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
   // 8초 타임아웃 — 느린 네트워크에서 무한정 무응답으로 보이지 않게 중단 후 오류 안내
   var ctrl=(typeof AbortController!=='undefined')?new AbortController():null;
@@ -345,7 +388,7 @@ function doSearch(query){
     return;
   }
   var prov=resolveProvince(q);
-  if(prov){ applyProvince(prov); return; }       // 로컬(인기명소·주 이름) 즉시 매칭 (한 글자도 시도)
+  if(prov){ applyProvince(prov); return; }       // 로컬(도시 표·주 이름) 즉시 매칭 (한 글자도 시도)
   if(q.length<2){ setRegionChip('두 글자 이상 입력하세요'); return; } // 한 글자 + 미매칭 → 안내
   geocodeFallback(q);                            // 실패 시 온라인 지오코딩으로 시 단위 검색
 }
@@ -398,14 +441,13 @@ function regionFill(d){
   return getFill(d);
 }
 // ── 경계선 색·두께 (스케일 스트로크: 어긋난 인접 경계를 같은 색으로 합쳐 틈/이중선 제거) ──
-// 매칭(activeRecordFor)은 CODE, 검색 강조(searchedRegion)·인기명소 목록(highlight)은 NAME_1 기준.
+// 매칭(activeRecordFor)은 CODE, 검색 강조(searchedRegion)는 NAME_1 기준.
 function emphStroke(d){
   var n=d.properties.NAME_1||'';
   var code=d.properties.CODE||'';
   if(n===searchedRegion) return '#00D8F3';
   var a=activeRecordFor(code);
   if(a) return '#7856B0';
-  if(showPopular && highlight.indexOf(n)>=0) return defaultColor; // 인기명소 현(예: 오키나와 전체) 강조
   return '#3E3155';
 }
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
@@ -416,7 +458,6 @@ function emphWidth(d){
   if(n===searchedRegion) return 0.6;
   var a=activeRecordFor(code);
   if(a) return 0.45;
-  if(showPopular && highlight.indexOf(n)>=0) return 0.5;
   return 0.35;
 }
 // 현재 확대 배율(k). zoom 그룹 transform이 stroke도 k배 확대하므로, 화면상 선 두께를
@@ -436,7 +477,7 @@ function onRegionClick(ev,d){
   var nameEn=d.properties.CODE||''; // MainScreen이 regionNameEn으로 저장하는 값
   setRegionChip(name);
   if(window.ReactNativeWebView){
-    window.ReactNativeWebView.postMessage(JSON.stringify({type:'regionTapped',region:name,regionEn:nameEn,countryCode:CODE}));
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'regionTapped',region:name,regionEn:nameEn,countryCode:COUNTRY_CODE}));
   }
 }
 // 피처 면적(절대값 합) — 그리기 순서 정렬용
@@ -470,7 +511,7 @@ function render(geo){
   var insets=['Alaska','Hawaii'];
   mainFeatures=geo.features;
   insetFeatures=[];
-  if(CODE==='USA'){
+  if(COUNTRY_CODE==='USA'){
     mainFeatures=geo.features.filter(function(f){return insets.indexOf(f.properties.NAME_1)<0;});
     insetFeatures=geo.features.filter(function(f){return f.properties.NAME_1==='Alaska'||f.properties.NAME_1==='Hawaii';});
   }
@@ -483,42 +524,12 @@ function render(geo){
   projectionPath = path;
   var g=svg.append('g');
   gElement = g;
-  var HL={
-    JPN:['TokyoCity','OsakaCity','KyotoCity','FukuokaCity','Sapporo','Yokohama','Nagoya','Kobe','HiroshimaCity','Sendai','Okinawa'],
-    CHN:['Beijing','Shanghai','Chongqing','Tianjin','Chengdu','Guangzhou','Shenzhen','Hangzhou','Xian','Wuhan','Qingdao','Nanjing'],
-    USA:['NewYorkCity','LosAngeles','SanFrancisco','LasVegas','Miami','Chicago','Seattle','Honolulu','Boston','WashingtonDC','Houston','Denver','Philadelphia','Atlanta','Alaska','Hawaii','Guam'],
-    DEU:['Berlin','Hamburg','Munich','Frankfurt','Stuttgart','Cologne','Nordlingen','Dresden','Dusseldorf','Hannover'],
-    ESP:['Madrid','Barcelona','Sevilla','Granada','M\\xe1laga','Valencia','Bilbao','ComunidaddeMadrid','IslasBaleares'],
-    GBR:['London','Birmingham','Manchester','Liverpool','Leeds','Edinburgh','Glasgow','Cardiff','Belfast','Oxford','Bristol'],
-    FRA:['Paris','Nice','Lyon','Marseille','Bordeaux','Strasbourg','Toulouse','Lille','Nantes','Montpellier','Cannes'],
-    ITA:['Rome','Milan','Florence','Venice','Naples','Verona','Pisa','Turin','Bologna','Genoa','Palermo','Bari'],
-    TUR:['Istanbul','Antalya','Ankara','Cappadocia','Pamukkale','Fethiye'],
-    GRC:['Athens','Santorini','Mykonos','Meteora','Zakynthos','Crete'],
-    AUT:['Wien','SalzburgCity','Hallstatt','Innsbruck'],
-    PRT:['LisbonCity','PortoCity','Sintra','Lagos','CaboDaRoca'],
-    NLD:['Amsterdam','Rotterdam','ZaanseSchans','TheHague'],
-    THA:['BangkokMetropolis','ChiangMai','Phuket','Pattaya'],
-    MYS:['KualaLumpur','PulauPinang','Melaka','KotaKinabalu','JohorBahru','Langkawi'],
-    VNM:['HàNội','ĐàNẵng','HồChíMinh','NhaTrang','HoiAn','HaLong','PhuQuoc'],
-    SAU:['Riyadh','Jeddah','Mecca','Medina','AlUla'],
-    ARE:['Dubai','AbuDhabi','Sharjah'],
-    MAR:['Marrakech','Casablanca','Fes','Chefchaouen'],
-    EGY:['AlQahirah','AlIskandariyah','Giza','Luxor','AswanCity','Hurghada'],
-    TUN:['Tunis','Carthage','SidiBouSaid','ElJem','TozeurCity'],
-    ZAF:['CapeTown','Johannesburg','Pretoria'],
-    MEX:['DistritoFederal','Cancun','PlayaDelCarmen','Tulum','Guadalajara','OaxacaCity','GuanajuatoCity'],
-    CAN:['Vancouver','Toronto','Montreal','NiagaraFalls','QuebecCity'],
-    BRA:['RioDeJaneiroCity','SaoPauloCity','FozDoIguacu','Salvador','Manaus','IguazuFalls'],
-    COL:['BogotáD.C.','Medellin','Cartagena','Cali','Salento']
-  };
-  highlight=HL[CODE]||[];
-
   // 메인 지도 — 채움 + 스케일 경계 스트로크(어긋난 인접 경계를 하나로 합침)
   var mainGrp=drawGroup(g, mainFeatures, path, 'm');
   pathElements=mainGrp.fill;
-  reorderEmph(); // 초기 렌더에도 강조 피처 z-순서 적용 (도시 최상위 등)
+  reorderEmph(); // 초기 렌더에도 강조 피처 z-순서 적용
 
-  if(CODE==='USA'&&insetFeatures.length>0){
+  if(COUNTRY_CODE==='USA'&&insetFeatures.length>0){
     // 인셋도 '보이는 영역(VH)' 기준으로 배치 — 본토 중앙 정렬에 맞춰 탭 바 위로
     var VH=H-(BOTTOM_INSET||0);
     insetBoxes=[
@@ -565,7 +576,7 @@ function render(geo){
 
   setRegionChip('');
   updateMap();
-  // RN 에 준비 완료 알림 → 현재 기록/검색/인기명소 상태를 받아옴
+  // RN 에 준비 완료 알림 → 현재 기록/검색 상태를 받아옴
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));}
 }
 
@@ -604,16 +615,13 @@ function updateMap() {
   reorderEmph();
 }
 
-// 강조 스트로크(활성 기록·인기명소 주·검색)가 있는 피처를 맨 위로 올린다.
+// 강조 스트로크(활성 기록·검색)가 있는 피처를 맨 위로 올린다.
 // 그리기 순서가 면적 큰 순이라, 강조된 큰 주(이스탄불 등)의 외곽선을 나중에 그려진
 // 더 작은 이웃 주의 어두운 경계선이 덮어 '선이 끊겨' 보이는 문제 방지.
-// 올리는 순서 = 최종 z-순서: 활성 < 인기 주 < 검색 강조. (도시 피처는 데이터에 없어 제외)
+// 올리는 순서 = 최종 z-순서: 활성 < 검색 강조.
 function reorderEmph(){
   if(!pathElements) return;
   pathElements.filter(function(d){ return !!activeRecordFor(d.properties.CODE||''); }).raise();
-  if(showPopular){
-    pathElements.filter(function(d){ return highlight.indexOf(d.properties.NAME_1||'')>=0; }).raise();
-  }
   if(searchedRegion){
     pathElements.filter(function(d){ return (d.properties.NAME_1||'')===searchedRegion; }).raise();
   }
