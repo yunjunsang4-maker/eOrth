@@ -8,24 +8,14 @@
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { CITY_TO_PROV } from '../src/constants/homeRegions';
+import {
+  ISO3, DISSOLVE, NeProps, norm, loadNeFeatures, codeOf,
+  assertNoPrimaryNameConflict, primaryNameCode,
+} from './lib/neRegionCode';
 
 const NE = 'scripts/geo-tmp/ne10m_admin1.geojson';
 const GADM = 'C:/Users/2023user/OneDrive/바탕 화면/Important2/gadm-backup-2026-07-28/geo';
 const OUT = 'src/data/regionKeyAliases.ts';
-
-const ISO3 = ['ARE','AUT','BRA','CAN','CHN','COL','DEU','EGY','ESP','FRA','GBR','GRC',
-              'ITA','JPN','MAR','MEX','MYS','NLD','PRT','SAU','THA','TUN','TUR','USA','VNM','ZAF'];
-
-// 병합 대상국 — NE admin-1이 GADM Level-1보다 한 단계 아래라 상위로 묶는다
-const DISSOLVE: Record<string, 'region' | 'geonunit'> = {
-  FRA: 'region', ITA: 'region', ESP: 'region', GBR: 'geonunit',
-};
-
-// NE 데이터 자체 결함 보정 — 같은 코드가 두 지역에 붙어 있다 (스펙 1절)
-const CODE_FIX: Record<string, string> = {
-  'COL|Bogota': 'CO-DC',   // 쿤디나마르카와 CO-CUN 중복
-  'ESP|Melilla': 'ES-ML',  // 세우타와 ES.CE 중복
-};
 
 // 1~3단계로 잡히지 않는 표기차 — 미매칭 리포트를 보고 사람이 채운다
 // (키: `${ISO3}|${정규화된_구키}`, 값: NE 쪽 이름 또는 병합 그룹명)
@@ -44,50 +34,8 @@ const MANUAL: Record<string, string> = {
   'USA|washingtondc': 'District of Columbia', // CITY_TO_PROV의 메릴랜드 흡수보다 우선 — NE에 US-DC가 있다
 };
 
-/** 정규화: 발음구별기호 제거 + 소문자 + 영숫자만 남김 */
-const norm = (s: string): string =>
-  s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-// region_cod의 점 표기를 하이픈으로 통일 (ES.CE → ES-CE) + NE 원본의 공백류 오염 제거
-// (Île-de-France 피처들의 region_cod가 "FR-IDF\t"처럼 탭이 섞여 들어옴 — 리뷰에서 발견)
-const dash = (s: string): string => s.replace(/\./g, '-').replace(/\s+/g, '');
-
-/** 최종 코드 형식 검증: `${ISO2}-${영숫자}` 꼴이 아니면 코드 자체가 오염된 것으로 본다 */
-const CODE_RE = /^[A-Z]{2}-[A-Za-z0-9]+$/;
-
-interface NeProps {
-  adm0_a3: string; name: string; name_en?: string; name_local?: string;
-  name_alt?: string; gn_name?: string; woe_name?: string;
-  iso_3166_2?: string; region?: string; region_cod?: string;
-  geonunit?: string; gu_a3?: string; adm1_code?: string;
-}
-
-const ne: NeProps[] = JSON.parse(readFileSync(NE, 'utf8'))
-  .features.map((f: any) => f.properties)
-  .filter((p: NeProps) => ISO3.includes(p.adm0_a3))
-  // NE 자체 결함 피처 제외 — iso_3166_2가 '~'로 끝나는 것은 NE가 붙인 비공식/미분류 코드로
-  // 실제 행정구역이 아니다(중립지대·남중국해 섬·미분류 잔재 폴리곤 등, 총 5건: ARE 2·CHN 1·
-  // COL 1·MEX 1). 그중 UAE "Neutral Zone"(AE-X01~)은 name_en이 "Fujairah"라서 그대로 두면
-  // 진짜 푸자이라 에미리트 이름과 충돌해 엉뚱한 코드로 별칭된다(리뷰 Critical 1) — 인덱싱
-  // 이전에 걸러낸다.
-  .filter((p: NeProps) => !(p.iso_3166_2 || '').endsWith('~'));
-
-/** 피처 하나의 최종 코드 — 병합 대상국은 그룹 코드를 쓴다 */
-function codeOf(p: NeProps): string {
-  const fix = CODE_FIX[`${p.adm0_a3}|${p.name}`];
-  let code: string;
-  if (fix) {
-    code = fix;
-  } else {
-    const d = DISSOLVE[p.adm0_a3];
-    if (d === 'geonunit') code = `GB-${p.gu_a3}`;
-    else if (d === 'region') code = dash(p.region_cod || `${p.adm0_a3}-${norm(p.region || '')}`);
-    else code = dash(p.iso_3166_2 || p.adm1_code || '');
-  }
-  // 자체 점검 — NE 원본 결함(공백 오염, 비표준 코드 등)이 최종 코드까지 새는 것을 생성 시점에 막는다
-  if (!CODE_RE.test(code)) throw new Error(`코드 형식 이상: "${code}" (${p.adm0_a3} ${p.name})`);
-  return code;
-}
+const ne = loadNeFeatures(NE);
+assertNoPrimaryNameConflict(ne);
 
 // 검색 인덱스: `${ISO3}|${정규화된_이름}` → 코드
 const index: Record<string, string> = {};
@@ -108,10 +56,11 @@ const codeCache = new Map<NeProps, string>();
 // 1패스 — 1차 이름 + 멱등성용 코드 자기항목
 for (const p of ne) {
   const code = codeOf(p);
-  if (!code) throw new Error(`코드 없음: ${p.adm0_a3} ${p.name}`);
   codeCache.set(p, code);
   for (const f of ['name', 'name_en'] as const) {
-    addName(p.adm0_a3, p[f] as string | undefined, code);
+    const v = p[f] as string | undefined;
+    // 승자가 선언된 1차 이름은 그 코드로 고정 (NE 피처 순서에 좌우되지 않게)
+    if (v) addName(p.adm0_a3, v, primaryNameCode(p.adm0_a3, v, code));
   }
   // 멱등성용 — 코드 자신도 인덱스에 넣는다 (이미 변환된 값을 다시 넣어도 안전)
   addName(p.adm0_a3, code, code);
