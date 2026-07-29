@@ -41,13 +41,12 @@ import {
   recentTrips,
   revisitedCountryCount,
   mostRecentCountry,
-  thisYearVisitCount,
-  activeYearAverage,
   mostVisitedContinent,
   unvisitedContinents,
   highestRatedTrip,
   mostRecentRatedTrip,
 } from './statsDetailExtras';
+import { buildVisitEvents, yearlyCountsFromEvents, activeYearAverageFromEvents } from '../utils/tripVisitStats';
 import DetailBox from '../components/DetailBox';
 
 // ─── 등장 애니메이션 래퍼 ───
@@ -144,7 +143,7 @@ export default function StatsDetailScreen() {
   }, [t]);
   const route = useRoute<RouteProp<RouteParams, 'StatsDetail'>>();
   const { statType } = route.params;
-  const { records } = useRecords();
+  const { records, tripGroups } = useRecords();
   const { homeCountryCode } = useSettings();
 
   // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
@@ -161,6 +160,8 @@ export default function StatsDetailScreen() {
 
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
+  // 방문 1회 = 여행 카드 1장 — "방문 횟수"류 집계는 전부 이 이벤트로 센다 (StatsScreen과 동일 기준)
+  const visitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
   // KO→EN 지역명 맵 (영어 모드에서 도시/지역명 영문화용)
   const regionMap = useMemo(() => buildRegionEnMap(records), [records]);
 
@@ -237,13 +238,8 @@ export default function StatsDetailScreen() {
     }
 
     // Most active year
-    const yearlyCounts: Record<string, number> = {};
-    myRecords.forEach((r) => {
-      const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
-      if (yearStr && yearStr.length === 4) {
-        yearlyCounts[yearStr] = (yearlyCounts[yearStr] || 0) + 1;
-      }
-    });
+    // 방문 1회 = 여행 카드 1장
+    const yearlyCounts = yearlyCountsFromEvents(visitEvents);
     let mostActiveYear = '-';
     let mostActiveCount = 0;
     Object.keys(yearlyCounts).forEach((year) => {
@@ -253,20 +249,14 @@ export default function StatsDetailScreen() {
       }
     });
 
-    // Yearly breakdown items
+    // Yearly breakdown items — 연도별 방문 국가 목록도 카드(이벤트) 기준
     const yearlyVisitedCountries: Record<string, Set<string>> = {};
-    myRecords.forEach((r) => {
-      const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
-      if (yearStr && yearStr.length === 4) {
-        if (!yearlyVisitedCountries[yearStr]) {
-          yearlyVisitedCountries[yearStr] = new Set<string>();
-        }
-        if (r.countries && r.countries.length > 0) {
-          r.countries.forEach((c) => yearlyVisitedCountries[yearStr].add(c.name));
-        } else if (r.countryName) {
-          yearlyVisitedCountries[yearStr].add(r.countryName);
-        }
+    visitEvents.forEach((ev) => {
+      if (!ev.year) return;
+      if (!yearlyVisitedCountries[ev.year]) {
+        yearlyVisitedCountries[ev.year] = new Set<string>();
       }
+      ev.countries.forEach((c) => yearlyVisitedCountries[ev.year].add(c.name));
     });
 
     // 기록이 있는 연도만 최근→옛날 순으로(빈 연도 제외). yearlyCounts 키 = 기록 존재 연도.
@@ -299,15 +289,9 @@ export default function StatsDetailScreen() {
       '아프리카': new Set(),
     };
 
-    myRecords.forEach((r) => {
-      const countryNames: string[] = [];
-      if (r.countries && r.countries.length > 0) {
-        r.countries.forEach((c) => countryNames.push(c.name));
-      } else if (r.countryName) {
-        countryNames.push(r.countryName);
-      }
-
-      countryNames.forEach((name) => {
+    // 방문 1회 = 여행 카드 1장 (다국가 미소속 기록만 국가 수만큼 가산)
+    visitEvents.forEach((ev) => {
+      ev.countries.forEach(({ name }) => {
         // '한국' 별칭(가져오기 구버전 표기)은 표준 표기로 보정해 조회
         const lookupName = name === '한국' ? '대한민국' : name;
         const cMeta = COUNTRIES.find((c) => c.name === lookupName);
@@ -335,24 +319,27 @@ export default function StatsDetailScreen() {
       };
     });
 
-    // Countries breakdown items
+    // Countries breakdown items — 방문 횟수는 카드(이벤트) 단위, 도시 목록은 기록에서 수집
     const countryVisits: Record<string, { count: number; flag: string; cities: Set<string> }> = {};
+    visitEvents.forEach((ev) => {
+      ev.countries.forEach((c) => {
+        if (!countryVisits[c.name]) {
+          countryVisits[c.name] = { count: 0, flag: c.flag, cities: new Set<string>() };
+        }
+        countryVisits[c.name].count++;
+      });
+    });
+    // 도시(regionName)는 방문 횟수가 아니라 부가 정보 — 기록 단위 수집 유지
     myRecords.forEach((r) => {
+      if (!r.regionName) return;
       const countriesList: { name: string; flag: string }[] = [];
       if (r.countries && r.countries.length > 0) {
         r.countries.forEach((c) => countriesList.push(c));
       } else if (r.countryName) {
         countriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
       }
-
       countriesList.forEach((c) => {
-        if (!countryVisits[c.name]) {
-          countryVisits[c.name] = { count: 0, flag: c.flag, cities: new Set<string>() };
-        }
-        countryVisits[c.name].count++;
-        if (r.regionName) {
-          countryVisits[c.name].cities.add(r.regionName);
-        }
+        if (countryVisits[c.name]) countryVisits[c.name].cities.add(r.regionName!);
       });
     });
 
@@ -435,15 +422,15 @@ export default function StatsDetailScreen() {
           hero: { cycle: [
             { label: t('statsDetail.heroTotalVisitsLbl'), value: t('statsDetail.visitsN', { n: totalYearlyVisits }) },
             { label: t('statsDetail.boxMostActiveYear'), value: mostActiveYear },
-            { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: thisYearVisitCount(myRecords) }) },
-            { label: t('statsDetail.hlYearAvg'), value: activeYearAverage(myRecords) },
+            { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: yearlyCounts[String(new Date().getFullYear())] || 0 }) },
+            { label: t('statsDetail.hlYearAvg'), value: activeYearAverageFromEvents(visitEvents) },
           ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxYearlyStatus'), rows: yearlyItems.map((i) => ({ label: i.label, value: i.value, sub: i.sub })), collapseAt: 7 },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
               { label: t('statsDetail.boxMostActiveYear'), value: mostActiveYear, sub: mostActiveCount > 0 ? t('statsDetail.visitedNTimes', { n: mostActiveCount }) : '' },
-              { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: thisYearVisitCount(myRecords) }) },
-              { label: t('statsDetail.hlYearAvg'), value: activeYearAverage(myRecords) },
+              { label: t('statsDetail.hlThisYear'), value: t('statsDetail.visitsN', { n: yearlyCounts[String(new Date().getFullYear())] || 0 }) },
+              { label: t('statsDetail.hlYearAvg'), value: activeYearAverageFromEvents(visitEvents) },
             ] },
           ],
         };
@@ -505,7 +492,7 @@ export default function StatsDetailScreen() {
         };
       }
     }
-  }, [statType, myRecords, homeNames, t, continentName, regionMap, i18n.language]);
+  }, [statType, myRecords, visitEvents, homeNames, t, continentName, regionMap, i18n.language]);
 
   // 지구본 히어로에 스포트라이트되는 항목 — 자동 순환(페이드 아웃→교체→페이드 인)
   const cycleItems = content.hero.cycle;

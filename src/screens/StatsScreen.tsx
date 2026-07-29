@@ -41,6 +41,7 @@ import { useSettings } from '../store/settingsStore';
 import { PersonIcon, ChartIcon } from '../components/icons';
 import { getSkinPalette } from './MainScreen';
 import { andFitText } from '../utils/fitText';
+import { buildVisitEvents, yearlyCountsFromEvents } from '../utils/tripVisitStats';
 
 // 통계 튜토리얼 1회 노출 플래그 키 (계정별)
 
@@ -291,7 +292,7 @@ export default function StatsScreen() {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
-  const { records } = useRecords();
+  const { records, tripGroups } = useRecords();
   const { profilePhoto, globeSkin, homeCountryCode, tutorialsSeen, markTutorialSeen } = useSettings(); // 히어로 사진 + 지구본 스킨(활성화색 팔레트) + 튜토리얼 게이트
 
   // 네온 링 색 — 스킨 연동. aurora는 시안의 시안→마젠타 그라데이션 그대로
@@ -531,6 +532,10 @@ export default function StatsScreen() {
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
 
+  // 방문 1회 = 여행 카드 1장 — 연도별·대륙별·국가별 "방문 횟수"는 전부 이 이벤트로 센다.
+  // (기록 수 기반이던 것을 카드 단위로 통일 — 사용자 확정 2026-07-30. tripVisitStats 참고)
+  const visitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
+
   // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
   const homeNames = useMemo(() => {
     const s = new Set<string>();
@@ -593,14 +598,8 @@ export default function StatsScreen() {
 
   const worldCoveragePct = (((countryCount / 195) * 100).toFixed(1) + '%') as any;
 
-  // 2. Yearly Travel History
-  const yearlyCounts: Record<string, number> = {};
-  myRecords.forEach((r) => {
-    const yearStr = r.date ? r.date.split('.')[0] : (r.startDate ? r.startDate.split('.')[0] : '');
-    if (yearStr && yearStr.length === 4) {
-      yearlyCounts[yearStr] = (yearlyCounts[yearStr] || 0) + 1;
-    }
-  });
+  // 2. Yearly Travel History — 방문 1회 = 여행 카드 1장
+  const yearlyCounts = yearlyCountsFromEvents(visitEvents);
 
   const currentYear = new Date().getFullYear();
   const VISIT_HISTORY = [];
@@ -629,15 +628,9 @@ export default function StatsScreen() {
     '오세아니아': 0,
   };
 
-  myRecords.forEach((r) => {
-    const countryNames: string[] = [];
-    if (r.countries && r.countries.length > 0) {
-      r.countries.forEach((c) => countryNames.push(c.name));
-    } else if (r.countryName) {
-      countryNames.push(r.countryName);
-    }
-
-    countryNames.forEach((name) => {
+  // 방문 1회 = 여행 카드 1장 (다국가 미소속 기록만 국가 수만큼 가산)
+  visitEvents.forEach((ev) => {
+    ev.countries.forEach(({ name }) => {
       // '한국' 별칭(가져오기 구버전 표기)은 표준 표기로 보정해 조회
       const lookupName = name === '한국' ? '대한민국' : name;
       const cMeta = COUNTRIES.find((c) => c.name === lookupName);
@@ -671,17 +664,10 @@ export default function StatsScreen() {
   .filter((r) => r.count > 0 || regionOrder.slice(0, 4).includes(r.label))
   .sort((a, b) => regionOrder.indexOf(a.label) - regionOrder.indexOf(b.label));
 
-  // 4. Top Countries
+  // 4. Top Countries — 방문 1회 = 여행 카드 1장 (같은 여행의 기록 여러 개는 1회)
   const countryVisits: Record<string, { count: number; flag: string }> = {};
-  myRecords.forEach((r) => {
-    const countriesList: { name: string; flag: string }[] = [];
-    if (r.countries && r.countries.length > 0) {
-      r.countries.forEach((c) => countriesList.push(c));
-    } else if (r.countryName) {
-      countriesList.push({ name: r.countryName, flag: r.countryFlag || '' });
-    }
-
-    countriesList.forEach((c) => {
+  visitEvents.forEach((ev) => {
+    ev.countries.forEach((c) => {
       if (!countryVisits[c.name]) {
         countryVisits[c.name] = { count: 0, flag: c.flag };
       }
