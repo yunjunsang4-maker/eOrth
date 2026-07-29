@@ -447,6 +447,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
             // 영속 JSON에는 타입 보장이 없다 — 문자열이 아니면 손대지 않는다
             // (숫자 등이 들어오면 normRegion의 normalize에서 throw해 hydrate 전체가 죽는다)
             if (!iso3 || typeof r.regionNameEn !== 'string' || !r.regionNameEn) return r;
+            // 한국 국내 기록은 저장 어휘가 GADM이 아니라 koreaRegions 프리셋('Seoul' 등)이고,
+            // 그 어휘가 지역 칩·그룹핑의 규약이다 — 코드로 바꾸지 않는다.
+            // (지도 매칭은 MainScreen이 렌더 시 resolveRegionCode로 해석한다)
+            if (iso3 === 'KOR') return r;
             return { ...r, regionNameEn: migrateRegionNameEn(iso3, r.regionNameEn) };
           });
           nextRegionSchema = REGION_KEY_SCHEMA;

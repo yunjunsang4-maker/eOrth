@@ -1,6 +1,7 @@
 // 대륙 모드 국가 목록 — countryGeo.LOADERS·homeRegions.ISO2_TO_GEO와 항상 일치해야 한다.
 // (regionGeoSync.verify.ts가 셋을 교차 검증한다)
 export const REGION_COUNTRIES = [
+  { code: 'KOR', flag: '🇰🇷', name: '대한민국' }, // 거주국 — 목록 맨 앞 (2026-07-30 추가)
   { code: 'JPN', flag: '🇯🇵', name: '일본' },
   { code: 'CHN', flag: '🇨🇳', name: '중국' },
   { code: 'USA', flag: '🇺🇸', name: '미국' },

@@ -16,7 +16,10 @@ export interface HomeRegion {
 }
 
 // 거주국가 코드(ISO2, settingsStore.homeCountryCode) → countryGeo 키(ISO3)
+// KR도 대륙 지도용으로 수록(2026-07-30). 단 거주 지역 칩은 getHomeRegions의 KR 분기가
+// 이 표보다 먼저 koreaRegions 프리셋을 반환하므로 국내 기록 어휘('Seoul' 등)는 변하지 않는다.
 export const ISO2_TO_GEO: Record<string, string> = {
+  KR: 'KOR',
   JP: 'JPN', CN: 'CHN', US: 'USA', DE: 'DEU',
   ES: 'ESP', GB: 'GBR', FR: 'FRA', IT: 'ITA',
   // 2026-07-20 확장 18개국

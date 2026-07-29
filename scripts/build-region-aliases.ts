@@ -8,6 +8,7 @@
  */
 import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { CITY_TO_PROV } from '../src/constants/homeRegions';
+import { KOREA_REGIONS } from '../src/constants/koreaRegions';
 import {
   ISO3, DISSOLVE, NeProps, norm, loadNeFeatures, codeOf,
   assertNoPrimaryNameConflict, primaryNameCode,
@@ -52,6 +53,16 @@ const MANUAL: Record<string, string> = {
   'GRC|mykonos': 'South Aegean',                    // 미코노스는 남에게해 소속 섬
   'GRC|zakynthos': 'Ionian Islands',                // 자킨토스는 이오니아 제도 소속 섬 (구 광역 이름과 달리 펠로폰네소스가 아니다)
   'GRC|meteora': 'Thessalia',                       // 메테오라(칼람바카)는 테살리아 내륙
+
+  // ── 한국: 시/도 프리셋(koreaRegions nameEn) → NE 코드 ──
+  // 국내 기록은 GADM이 아니라 koreaRegions 프리셋 어휘('Seoul' 등)를 regionNameEn에 저장한다.
+  // 프리셋과 NE name이 다른 6개 도만 별칭이 필요하다(나머지 11개는 이름이 같아 자동 매칭).
+  'KOR|chungbuk': 'North Chungcheong',   // 충북
+  'KOR|chungnam': 'South Chungcheong',   // 충남
+  'KOR|jeonbuk': 'North Jeolla',         // 전북
+  'KOR|jeonnam': 'South Jeolla',         // 전남
+  'KOR|gyeongbuk': 'North Gyeongsang',   // 경북
+  'KOR|gyeongnam': 'South Gyeongsang',   // 경남
 };
 
 /**
@@ -144,6 +155,19 @@ for (const file of readdirSync(GADM)) {
     aliases[key] = r.code;
     if (r.city) cityKeys.push(key);
   }
+}
+
+// 한국 구 키 수집 — GADM 백업에 KOR이 없다(대륙 지도에 처음 추가).
+// 한국의 "구 키"는 국내 기록이 regionNameEn에 저장하는 koreaRegions 프리셋 어휘다.
+// 이 별칭이 있어야 지도(CODE 매칭)가 기존 국내 기록('Seoul' 등)을 켤 수 있다.
+for (const kr of KOREA_REGIONS) {
+  total++;
+  const key = `KOR|${norm(kr.nameEn)}`;
+  if (aliases[key]) continue;
+  const r = resolve('KOR', kr.nameEn);
+  if (!r) { unmatched.push(`KOR|${kr.nameEn}`); continue; }
+  aliases[key] = r.code;
+  if (r.city) cityKeys.push(key);
 }
 
 // 자체 점검 — 실패하면 생성하지 않는다

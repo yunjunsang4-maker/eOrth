@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 
 /** 대륙 지도 대상 국가(ISO3) — countryGeo.LOADERS·ISO2_TO_GEO·REGION_COUNTRIES와 일치해야 한다 */
 export const ISO3 = ['ARE','AUT','BRA','CAN','CHN','COL','DEU','EGY','ESP','FRA','GBR','GRC',
-                     'ITA','JPN','MAR','MEX','MYS','NLD','PRT','SAU','THA','TUN','TUR','USA','VNM','ZAF'];
+                     'ITA','JPN','KOR','MAR','MEX','MYS','NLD','PRT','SAU','THA','TUN','TUR','USA','VNM','ZAF'];
 
 // 병합 대상국 — NE admin-1이 GADM Level-1보다 한 단계 아래라 상위로 묶는다
 export const DISSOLVE: Record<string, 'region' | 'geonunit'> = {

@@ -72,6 +72,7 @@ import { InviteNudgeModal, type InviteNudgeTarget } from '../components/InviteNu
 import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
+import { resolveRegionCode } from '../utils/regionKeyMigration';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -759,10 +760,13 @@ export default function MainScreen({ navigation, route }: Props) {
           photo = r.medias[0];
         }
 
-        const key = `${regionCountry}|${r.regionNameEn}`; // 국가별 복합 키 (동명 지역 충돌 방지)
-        regionsMap.set(r.regionNameEn, {
+        // 지도 매칭 키는 코드(CODE) — 26개국 기록은 마이그레이션돼 이미 코드이고(멱등 통과),
+        // 한국 국내 기록은 시/도 프리셋 어휘('Seoul' 등)로 저장되므로 여기서 코드(KR-11)로 해석한다.
+        const nameEnCode = resolveRegionCode(regionCountry, r.regionNameEn) ?? r.regionNameEn;
+        const key = `${regionCountry}|${nameEnCode}`; // 국가별 복합 키 (동명 지역 충돌 방지)
+        regionsMap.set(nameEnCode, {
           name: r.regionName || r.regionNameEn,
-          nameEn: r.regionNameEn,
+          nameEn: nameEnCode,
           key,
           photo,
           mode: regionDisplayModes[key] || undefined,
@@ -1201,8 +1205,11 @@ export default function MainScreen({ navigation, route }: Props) {
         const matched = records.filter(r => {
           if (r.viewType === 'snap') return false;
           const inCountry = r.countryName === countryKo || r.countries?.some(c => c.name === countryKo);
+          // 기록의 regionNameEn을 코드로 해석해 비교 — 한국 국내 기록('Seoul')도
+          // 지도가 보내는 코드(KR-11)와 맞는다. 26개국 기록은 이미 코드라 멱등 통과.
+          const recCode = r.regionNameEn ? (resolveRegionCode(data.countryCode, r.regionNameEn) ?? r.regionNameEn) : '';
           const regionMatch =
-            (data.regionEn && r.regionNameEn === data.regionEn) ||
+            (data.regionEn && recCode === data.regionEn) ||
             (data.region && r.regionName === data.region);
           return inCountry && regionMatch;
         });

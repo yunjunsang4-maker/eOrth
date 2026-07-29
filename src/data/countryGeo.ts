@@ -23,6 +23,7 @@ const LOADERS: Record<string, () => any> = {
   GRC: () => require('./geo/GRC').default,
   ITA: () => require('./geo/ITA').default,
   JPN: () => require('./geo/JPN').default,
+  KOR: () => require('./geo/KOR').default,
   MAR: () => require('./geo/MAR').default,
   MEX: () => require('./geo/MEX').default,
   MYS: () => require('./geo/MYS').default,

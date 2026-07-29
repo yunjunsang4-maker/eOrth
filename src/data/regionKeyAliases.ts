@@ -1,6 +1,6 @@
 // 자동 생성 — scripts/build-region-aliases.ts. 직접 수정 금지.
 // GADM 구 지역 키 → Natural Earth 코드 별칭 표.
-// 구 키 839개 중 834개 매칭, 미매칭 1개.
+// 구 키 856개 중 851개 매칭, 미매칭 1개.
 //
 // 미매칭 목록 (그대로 보존되며 지도에는 뜨지 않는다):
 //   USA|Guam
@@ -838,7 +838,24 @@ export const REGION_KEY_ALIASES: Record<string, string> = {
  "ZAF|westerncape": "ZA-WC",
  "ZAF|capetown": "ZA-WC",
  "ZAF|johannesburg": "ZA-GT",
- "ZAF|pretoria": "ZA-GT"
+ "ZAF|pretoria": "ZA-GT",
+ "KOR|seoul": "KR-11",
+ "KOR|busan": "KR-26",
+ "KOR|incheon": "KR-28",
+ "KOR|daegu": "KR-27",
+ "KOR|daejeon": "KR-30",
+ "KOR|gwangju": "KR-29",
+ "KOR|ulsan": "KR-31",
+ "KOR|sejong": "KR-50",
+ "KOR|gyeonggi": "KR-41",
+ "KOR|gangwon": "KR-42",
+ "KOR|chungbuk": "KR-43",
+ "KOR|chungnam": "KR-44",
+ "KOR|jeonbuk": "KR-45",
+ "KOR|jeonnam": "KR-46",
+ "KOR|gyeongbuk": "KR-47",
+ "KOR|gyeongnam": "KR-48",
+ "KOR|jeju": "KR-49"
 };
 
 export const REGION_CITY_ALIAS_KEYS: string[] = [

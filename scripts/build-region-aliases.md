@@ -13,6 +13,8 @@ node node_modules/tsx/dist/cli.mjs scripts/build-region-aliases.ts
 ```
 
 - GADM 백업(`Important2/gadm-backup-2026-07-28/geo`)은 저장소 **밖**에 있다. 빌드타임에만 읽는다.
+- 한국(KOR)의 구 키는 GADM이 아니라 `koreaRegions` 프리셋 어휘('Seoul' 등)다 — 국내 기록이
+  `regionNameEn`에 저장하는 값이며, 생성기가 `KOREA_REGIONS`에서 직접 수집한다(2026-07-30 추가).
 - 미매칭이 출력되면 실제 행정구역인 것만 스크립트의 `MANUAL` 표에 넣고 다시 돌린다.
   NE에 없는 도시·명소는 그대로 둔다(보존 정책).
 - `scripts/geo-tmp/`는 커밋하지 않는다.
