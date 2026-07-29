@@ -3,7 +3,8 @@
 // 지역 목록을 뽑는다. nameEn(CODE)이 대륙 지도 활성화 키(regionNameEn)와 같아 지도 매칭이 그대로 동작한다.
 import { KOREA_REGIONS, normalizeKoreaRegion } from './koreaRegions';
 import { getCountryGeo } from '../data/countryGeo';
-import { resolveRegionCode } from '../utils/regionKeyMigration';
+// resolveRegionCode는 normalizeHomeRegion 안에서 지연 require한다(아래 참고) — 여기서 최상단
+// import하지 않는다.
 
 export interface HomeRegion {
   name: string;   // 한글 표시명 (NL_NAME_1)
@@ -128,6 +129,12 @@ export function normalizeHomeRegion(countryCode?: string | null, raw?: string | 
   const geoKey = ISO2_TO_GEO[cc];
   const viaCity = geoKey ? CITY_TO_PROV[geoKey]?.[q] : undefined;
   if (viaCity && geoKey) {
+    // 지연 require — scripts/build-region-aliases.ts(별칭 표 생성기)는 CITY_TO_PROV를 얻으려고
+    // 이 파일을 import한다. 여기서 최상단 import로 regionKeyMigration(→ 생성기의 산출물인
+    // regionKeyAliases.ts)을 끌어오면, 산출물이 없거나 깨진 상태(정확히 생성기가 복구해야 하는
+    // 그 상황)에서 생성기 자신이 모듈 로드 단계부터 죽어 실행조차 못 하게 된다. require를
+    // 함수 실행 시점까지 미뤄 CITY_TO_PROV의 가용성과 regionKeyAliases.ts의 유효성을 분리한다.
+    const { resolveRegionCode } = require('../utils/regionKeyMigration') as typeof import('../utils/regionKeyMigration');
     const code = resolveRegionCode(geoKey, viaCity);
     const viaMatch = code ? regions.find(r => r.nameEn === code) : undefined;
     if (viaMatch) return viaMatch;
