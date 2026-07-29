@@ -420,30 +420,44 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       // hydrated=true 이후 디바운스 저장으로 원본을 덮어써 영구 데이터 파괴가 된다.
       // 공개범위 2값(private | neighbors) 전환 보정: 과거 저장본의 'public'/'friends'는
       // 더 이상 유효하지 않으므로 모두 'neighbors'로 승격한다. ('private'은 그대로 유지)
+      const baseRecords = (Array.isArray(p.records) ? p.records : []).map((r) => {
+        // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
+        // 비교가 안 되므로 문자열로 확인한다(런타임엔 존재).
+        const legacy = r.visibility as string;
+        const vis = legacy === 'public' || legacy === 'friends'
+          ? { ...r, visibility: 'neighbors' as const }
+          : r;
+        // iOS 재설치/재빌드로 컨테이너 경로(UUID)가 바뀐 사진 URI 복구 —
+        // 파일은 새 컨테이너의 Documents로 이관돼 있으므로 경로만 재조립하면 다시 뜬다
+        return remapRecordDocUris(vis);
+      });
+
+      // 지역 키 마이그레이션 — regionName(한글)은 건드리지 않는다.
+      // 이 값은 서버로 동기화되지 않는 로컬 전용 필드다.
+      // 26개국 밖이거나 미매칭이면 원본이 그대로 유지된다(보존 정책).
+      // settingsStore와 같은 방어: 변환이 throw하면 원본을 그대로 두고 스키마도 올리지 않는다
+      // (다음 실행에서 재시도). 부분 적용 상태가 디바운스 저장으로 원본을 덮는 것을 막는다.
       const needRegionMigrate = (p.regionKeySchema ?? 0) < REGION_KEY_SCHEMA;
-      setRecords(
-        (Array.isArray(p.records) ? p.records : []).map((r) => {
-          // 과거 저장본의 legacy 값('public'/'friends')은 현재 Visibility 타입에 없어
-          // 비교가 안 되므로 문자열로 확인한다(런타임엔 존재).
-          const legacy = r.visibility as string;
-          const vis = legacy === 'public' || legacy === 'friends'
-            ? { ...r, visibility: 'neighbors' as const }
-            : r;
-          // iOS 재설치/재빌드로 컨테이너 경로(UUID)가 바뀐 사진 URI 복구 —
-          // 파일은 새 컨테이너의 Documents로 이관돼 있으므로 경로만 재조립하면 다시 뜬다
-          const remapped = remapRecordDocUris(vis);
-          return {
-            ...remapped,
-            // 지역 키 마이그레이션 — regionName(한글)은 건드리지 않는다.
-            // 이 값은 서버로 동기화되지 않는 로컬 전용 필드다.
-            // 26개국 밖이거나 미매칭이면 원본이 그대로 유지된다(보존 정책).
-            regionNameEn: (needRegionMigrate && remapped.regionNameEn && KO_TO_ISO3[remapped.countryName])
-              ? migrateRegionNameEn(KO_TO_ISO3[remapped.countryName], remapped.regionNameEn)
-              : remapped.regionNameEn,
-          };
-        })
-      );
-      setRegionKeySchema(REGION_KEY_SCHEMA);
+      let nextRecords = baseRecords;
+      let nextRegionSchema = p.regionKeySchema ?? 0;
+      if (needRegionMigrate) {
+        try {
+          nextRecords = baseRecords.map((r) => {
+            const iso3 = KO_TO_ISO3[r.countryName];
+            // 영속 JSON에는 타입 보장이 없다 — 문자열이 아니면 손대지 않는다
+            // (숫자 등이 들어오면 normRegion의 normalize에서 throw해 hydrate 전체가 죽는다)
+            if (!iso3 || typeof r.regionNameEn !== 'string' || !r.regionNameEn) return r;
+            return { ...r, regionNameEn: migrateRegionNameEn(iso3, r.regionNameEn) };
+          });
+          nextRegionSchema = REGION_KEY_SCHEMA;
+        } catch (e) {
+          console.warn('[regionKey] 기록 마이그레이션 실패 — 원본 유지', e);
+          nextRecords = baseRecords;
+          nextRegionSchema = p.regionKeySchema ?? 0;
+        }
+      }
+      setRecords(nextRecords);
+      setRegionKeySchema(nextRegionSchema);
       setArchivedIds(Array.isArray(p.archivedIds) ? p.archivedIds : []);
       setBlockedUsers(Array.isArray(p.blockedUsers) ? p.blockedUsers : []);
       setTripGroups(
