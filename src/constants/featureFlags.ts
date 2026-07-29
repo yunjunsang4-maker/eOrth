@@ -58,20 +58,14 @@ export const LAUNCH_FREE_PREMIUM = true;
 /**
  * 대륙(국가 지역) 지도 모드 활성화 여부.
  *
- * 지역 경계 데이터가 GADM 4.1이었는데, GADM 라이선스는 학술·비영리 이용만
- * 무료이고 재배포·상업적 이용은 사전 허가를 요구한다. 광고 수익이 있는 앱에
- * 데이터를 넣어 배포하는 것은 양쪽 모두에 해당해서, 출시 전에 데이터를 빼고
- * 이 모드를 껐다(2026-07-28).
+ * 지역 경계 데이터가 GADM 4.1이었는데, GADM 라이선스는 학술·비영리 이용만 무료이고
+ * 재배포·상업적 이용은 사전 허가를 요구한다. 광고 수익이 있는 앱에 데이터를 넣어
+ * 배포하는 것은 양쪽 모두에 해당해서, 출시 전에 데이터를 빼고 이 모드를 껐다(2026-07-28).
  *
- * 재개 방법: OpenStreetMap(ODbL — 상업 이용 허용, 출처 표기 필수)으로 839개
- * 지역을 다시 받아 src/data/geo/*를 복원하고 이 값을 true로 올린다. 절차와
- * 검증된 Overpass 질의는 Important2/gadm-backup-2026-07-28/README.txt 참고.
+ * 2026-07-29 Natural Earth 10m admin-1(퍼블릭 도메인)로 복원해 다시 켔다.
+ * 사용자의 저장 키는 GADM 표기에서 ISO 코드로 마이그레이션됐다
+ * (src/utils/regionKeyMigration.ts). 데이터 재생성은 scripts/build-region-geo.md 참고.
  *
- * 주의: 기존 사용자의 regionColors·taggedRegions·거주 지역은 GADM 표기를
- * 저장 키로 쓰고 있다("NewYork" 등 공백 제거형). OSM은 "New York"이므로
- * 구→신 별칭 매핑 없이 켜면 사용자 데이터가 유실된다.
- *
- * 한국 시/도 프리셋(koreaRegions)은 GADM과 무관하므로 이 플래그와 상관없이
- * 계속 동작한다 — 거주 지역 칩은 한국 사용자에게 그대로 제공된다.
+ * 한국 시/도 프리셋(koreaRegions)은 이 플래그와 무관하게 계속 동작한다.
  */
-export const REGION_MAP_ENABLED = false;
+export const REGION_MAP_ENABLED = true;
