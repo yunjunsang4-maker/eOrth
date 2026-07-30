@@ -2144,7 +2144,7 @@ export default function PostDetailScreen() {
           {/* ── 좋아요 · 댓글 수 + 댓글 목록 (앨범은 사진 모음이라 소셜 요소 없음) ── */}
           {viewType !== 'album' && (<>
           <Animated.View style={[s.statsRow, entInfo]}>
-            <View style={s.statBtn}>
+            <View style={[s.statBtn, record.liked && s.statBtnLiked]}>
               <TouchableOpacity onPress={() => { if (record.isExample) return; buzz('light'); springLike(); handleToggleLike(); }} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityRole="button" accessibilityLabel={record.liked ? t('postDetail.unlike') : t('postDetail.like')}>
                 <Animated.View style={{ transform: [{ scale: likeScale }] }}>
                   <HeartSvg filled={!!record.liked} />
@@ -2660,10 +2660,24 @@ const makeS = (a: string, tint: (alpha: number) => string) => StyleSheet.create(
 
   // ── 좋아요 · 댓글 ──
   // 본문 영역과 소셜(반응) 영역의 경계 — 여기서 크게 벌려 두 덩어리를 나눈다
-  statsRow: { flexDirection: 'row', gap: 20, marginTop: 16, marginBottom: 14 },
-  statBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 4 },
+  // 이전에는 아이콘+숫자가 배경 위에 그대로 떠 있어 본문 텍스트와 시각적 무게가 같았다.
+  // 누를 수 있는 것으로 읽히지도 않았다. 유리 알약으로 감싸 '반응 영역'임을 형태로 말한다.
+  statsRow: { flexDirection: 'row', gap: 10, marginTop: 16, marginBottom: 14 },
+  statBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 7,
+    paddingVertical: 8, paddingHorizontal: 14,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.09)',
+  },
+  // 좋아요를 누른 상태 — 하트 색만 바뀌던 것을 알약 전체가 받도록. 스킨색이 아니라
+  // 붉은 계열을 쓰는 건 하트의 기존 규약(C.red)을 따르는 것이다.
+  statBtnLiked: {
+    backgroundColor: 'rgba(255,107,157,0.12)',
+    borderColor: 'rgba(255,107,157,0.38)',
+  },
   statIcon: { fontSize: 22, color: C.dim },
-  statCount: { fontSize: 14, fontWeight: '600', color: C.white },
+  statCount: { fontSize: 14, fontWeight: '700', color: C.white },
 
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: C.cardBorder, marginBottom: 16 },
 
