@@ -8,6 +8,8 @@ import {
   collectImportedAssetIds,
   excludeImported,
   overlapsImportedTrip,
+  geocodeWaitMs,
+  GEOCODE_MIN_GAP_MS,
   BUCKET_MS,
   type ProbePoint,
 } from './scanSampling';
@@ -216,5 +218,18 @@ const a = (t: number) => ({ creationTime: t });
   assert(overlapsImportedTrip({ countryName: '일본', startDate: 'bad', endDate: 'bad' }, imported) === false, '날짜 형식이 아니면 겹침 판정 안 함');
   assert(overlapsImportedTrip(hit, []) === false, '가져온 기록이 없으면 항상 false');
 }
+// -- 지오코딩 레이트리밋: 경과 시간 기준 대기 --
+{
+  const G = GEOCODE_MIN_GAP_MS;
+  assert(geocodeWaitMs(0, 10_000) === 0, '첫 호출(lastCallAt=0)은 대기 없음');
+  assert(geocodeWaitMs(1_000, 1_000 + G) === 0, '간격이 정확히 채워졌으면 대기 없음');
+  assert(geocodeWaitMs(1_000, 1_000 + G + 5_000) === 0, '한참 지났으면 대기 없음');
+  assert(geocodeWaitMs(1_000, 1_000) === G, '즉시 연속 호출은 간격 전체를 대기');
+  assert(geocodeWaitMs(1_000, 1_100) === G - 100, '일부만 지났으면 남은 만큼만 대기');
+  // 시계가 뒤로 간 경우(사용자 수동 변경) — 과소 대기로 레이트리밋을 뚫지 않게 전체 대기
+  assert(geocodeWaitMs(5_000, 1_000) === G, '경과가 음수면 간격 전체를 대기');
+  assert(geocodeWaitMs(1_000, 1_050, 100) === 50, 'minGapMs 인자를 따른다');
+}
+
 console.log(failures === 0 ? '\n모든 검증 통과' : `\n실패 ${failures}건`);
 if (failures > 0) process.exitCode = 1;

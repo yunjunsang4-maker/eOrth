@@ -142,6 +142,29 @@ export function estimateProbeCount(bucketCount: number): number {
   return bucketCount + Math.ceil(bucketCount * 0.15) + 1;
 }
 
+/** 지오코딩 레이트리밋 간격(ms) — 호출 사이에 이만큼은 벌린다 */
+export const GEOCODE_MIN_GAP_MS = 250;
+
+/**
+ * 지오코딩 호출 전에 기다려야 할 시간(ms). 마지막 호출로부터 간격이 이미 벌어졌으면 0.
+ *
+ * 왜 필요한가: 기존 코드는 폴백 1회마다 무조건 250ms를 잤다. 실측(1.4만 장)에서
+ * 폴백은 30초 동안 7회뿐이라 이미 충분히 벌어져 있었는데도 7×250=1.75초를 그냥
+ * 버렸다(구간 총 2.0초 중). 실제 네트워크 왕복은 회당 41ms였다.
+ * 경과 시간을 기준으로 바꾸면 연속 호출은 여전히 막고, 드문 호출은 안 기다린다.
+ */
+export function geocodeWaitMs(
+  lastCallAt: number,
+  now: number,
+  minGapMs: number = GEOCODE_MIN_GAP_MS
+): number {
+  if (lastCallAt <= 0) return 0; // 첫 호출은 기다릴 이유가 없다
+  const elapsed = now - lastCallAt;
+  if (elapsed >= minGapMs) return 0;
+  // 시계가 뒤로 갔거나(수동 변경) 음수 경과면 간격 전체를 기다린다 — 과소 대기보다 안전
+  return elapsed < 0 ? minGapMs : minGapMs - elapsed;
+}
+
 // -- 중복 방지 --
 // 과거여행 불러오기는 원래 온보딩 1회용이라 재실행을 전제하지 않았다. 앱 내에서 다시
 // 스캔할 수 있게 되면서, 이미 가져온 사진이 또 여행 카드로 만들어지는 것을 막아야 한다.

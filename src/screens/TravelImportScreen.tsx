@@ -50,6 +50,7 @@ import {
   collectImportedAssetIds,
   excludeImported,
   overlapsImportedTrip,
+  geocodeWaitMs,
   MAX_BOUNDARY_STEPS,
   type ProbePoint,
 } from '../utils/scanSampling';
@@ -89,6 +90,10 @@ const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제�
 // Asset은 id·uri·촬영시각 정도의 얕은 객체라 1,000개씩 받아도 메모리 부담이 작다.
 // (좌표 조회는 이 값과 무관하다 — 12시간 버킷당 1~3장만 조사한다)
 const PAGE_SIZE = 1000;
+
+// 버킷 몇 개마다 UI에 양보할지. 버킷마다 sleep(0)을 넣으면 RN 타이머 큐 왕복(회당 10ms
+// 안팎)이 그대로 쌓인다 — 실측 1.4만 장(버킷 550여 개)에서 5초 넘게 여기로 샜다.
+const YIELD_EVERY_BUCKETS = 10;
 
 // 플랫폼별 안내 문구
 // iOS: GPS는 로컬 메타데이터로 읽으므로 iCloud 최적화 사진도 다운로드 없이 빠르게 분석
@@ -594,6 +599,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           : null;
       };
 
+      // 마지막 지오코딩 호출 시각 — 대기를 "무조건 250ms"가 아니라 경과 기준으로 낸다.
+      // 실측(1.4만 장)에서 폴백은 30초에 7회뿐인데 매번 250ms를 자 1.75초를 버렸다.
+      let lastGeocodeAt = 0;
+
       const countryAt = async (lat: number, lon: number) => {
         const key = bucketKey(lat, lon);
         let geo = geocodeCache[key];
@@ -604,13 +613,17 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           } else {
             // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 — 전체의 극히 일부
             const endGeo = prof.begin('④지오코딩폴백(대기포함)');
+            // 호출 "전"에만 간격을 맞춘다. 뒤에서 자면 마지막 호출 뒤 대기가 순수 낭비다.
+            const wait = geocodeWaitMs(lastGeocodeAt, Date.now());
+            if (wait > 0) await sleep(wait);
+            lastGeocodeAt = Date.now();
             try {
               geo = await reverseOnce(lat, lon);
             } catch {
               await sleep(500);
+              lastGeocodeAt = Date.now();
               try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
             }
-            await sleep(250); // 레이트리밋 회피 (캐시 히트·오프라인 성공 시엔 대기 없음)
             endGeo();
           }
           geocodeCache[key] = geo;
@@ -657,15 +670,19 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       };
 
       const probes: ProbePoint[] = [];
-      for (const b of buckets) {
+      for (let bi = 0; bi < buckets.length; bi++) {
         if (scanCancelRef.current) return;
+        const b = buckets[bi];
         // 버킷에서 좌표가 나올 때까지 최대 3장 시도 (실내 사진만 있는 버킷은 미상 처리)
         for (const idx of probeOrder(b.start, b.end)) {
           const code = await probeCountry(idx);
           probes.push({ index: idx, code });
           if (code) break;
         }
-        await sleep(0); // UI 양보 + iOS가 메타데이터 메모리를 회수할 틈
+        // UI 양보 + iOS가 메타데이터 메모리를 회수할 틈. 버킷마다 자면 setTimeout(0) 한 번이
+        // RN에서 10ms 안팎이라, 실측(버킷 550여 개)에서 5초 넘게 여기로 샜다.
+        // getAssetInfoAsync await 자체가 이미 JS 스레드를 놓아주므로 주기적 양보로 충분하다.
+        if (bi % YIELD_EVERY_BUCKETS === YIELD_EVERY_BUCKETS - 1) await sleep(0);
       }
 
       // ── 3-2) 국가 전환 경계를 이분 탐색으로 좁힌다 (출입국 날짜 정확도) ──
