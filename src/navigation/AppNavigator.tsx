@@ -60,8 +60,8 @@ const darkTheme = {
   dark: true,
   colors: {
     primary: '#BF85FC',
-    background: '#0A0118',
-    card: '#0A0118',
+    background: '#0A0A0F',
+    card: '#0A0A0F',
     text: '#FFFFFF',
     border: '#1A1A26',
     notification: '#BF85FC',
@@ -252,7 +252,7 @@ export default function AppNavigator() {
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
-          cardStyle: { backgroundColor: '#0A0118' },
+          cardStyle: { backgroundColor: '#0A0A0F' },
           animation: 'slide_from_right',
           gestureEnabled: true,
           gestureDirection: 'horizontal',
@@ -271,7 +271,7 @@ export default function AppNavigator() {
               ],
             },
             overlayStyle: {
-              backgroundColor: '#0A0118',
+              backgroundColor: '#0A0A0F',
               opacity: current.progress.interpolate({
                 inputRange: [0, 1],
                 outputRange: [0, 0.6],

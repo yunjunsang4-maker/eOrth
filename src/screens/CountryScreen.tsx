@@ -69,7 +69,7 @@ export default function CountryScreen({ navigation, route }: Props) {
   }, [country.name]);
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+    <LinearGradient colors={['#0A0A0F', '#100620']} style={styles.container}>
       {/* Header */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>

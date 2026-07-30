@@ -2028,7 +2028,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
 
   // 복원 전에는 시드 데이터가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {
-    return <View style={{ flex: 1, backgroundColor: '#0A0118' }} />;
+    return <View style={{ flex: 1, backgroundColor: '#0A0A0F' }} />;
   }
 
   return (

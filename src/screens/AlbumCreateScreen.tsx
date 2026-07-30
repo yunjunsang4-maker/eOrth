@@ -459,7 +459,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   if (saving) {
     return (
-      <LinearGradient colors={['#0A0118', '#100620']} style={st.center}>
+      <LinearGradient colors={['#0A0A0F', '#100620']} style={st.center}>
         <ActivityIndicator color={skinAccent.accent} size="large" />
         <Text style={st.savingText}>
           {saveProgress && saveProgress.total > 0
@@ -473,7 +473,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   // ── 1단계: 기간 설정 ──
   if (phase === 'setup') {
     return (
-      <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
+      <LinearGradient colors={['#0A0A0F', '#100620']} style={st.container}>
         <View style={[st.header, { paddingTop: insets.top + 24 }]}>
           <TouchableOpacity style={[st.closeBtn, { top: insets.top + 18 }]} onPress={() => navigation.goBack()} activeOpacity={0.8} accessibilityRole="button" accessibilityLabel={t('album.closeA11y')}>
             <Text style={st.closeTxt}>✕</Text>
@@ -627,7 +627,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
   // ── 2단계: 사진 선택 ──
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={st.container}>
+    <LinearGradient colors={['#0A0A0F', '#100620']} style={st.container}>
       <View style={[st.header, { paddingTop: insets.top + 24 }]}>
         <TouchableOpacity style={[st.backBtn, { top: insets.top + 18 }]} onPress={() => setPhase('setup')} activeOpacity={0.8}>
           <Text style={st.closeTxt}>←</Text>

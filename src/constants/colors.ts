@@ -3,7 +3,10 @@
 
 export const Colors = {
   // Backgrounds
-  bgDeep: '#0A0118',        // Main deep purple-black background
+  // 앱 전역 배경. CLAUDE.md의 '배경' 토큰과 같은 값이며, AppNavigator의 화면/카드
+  // 배경도 이 값이어야 한다 — 예전엔 여기가 #0A0118(보랏빛 검정)이라 네비게이터와
+  // 화면이 서로 다른 검정을 써서 화면 전환 중 경계가 보였다.
+  bgDeep: '#0A0A0F',        // Main background
   bgDark: '#100620',        // Slightly lighter background (BG #100620)
   bgCard: '#1A1A2E',        // Card/surface background
   bgCardAlt: '#16142A',     // Alternate card background
@@ -58,7 +61,9 @@ export const Colors = {
 
 export const Gradients = {
   // Background gradients
-  bgMain: ['#0A0118', '#100620'],
+  // 어두운 끝은 bgDeep와 같은 값을 유지할 것 — 평면 배경 화면과 이어 붙었을 때
+  // 시작 색이 어긋나면 경계가 보인다. (밝은 끝 #100620은 의도된 보랏빛 상승)
+  bgMain: ['#0A0A0F', '#100620'],
   bgCard: ['#1A1A2E', '#16142A'],
 
   // Globe visualization

@@ -53,7 +53,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
   };
 
   return (
-    <LinearGradient colors={['#0A0118', '#100620']} style={styles.container}>
+    <LinearGradient colors={['#0A0A0F', '#100620']} style={styles.container}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
