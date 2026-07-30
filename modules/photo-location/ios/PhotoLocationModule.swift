@@ -11,6 +11,9 @@
 
 import ExpoModulesCore
 import Photos
+// CLLocationCoordinate2DIsValid를 쓰므로 명시적으로 가져온다. asset.location의 타입(CLLocation)은
+// Photos를 통해 보이지만, CoreLocation의 C 함수까지 재수출된다는 보장은 없다.
+import CoreLocation
 
 public class PhotoLocationModule: Module {
     public func definition() -> ModuleDefinition {
