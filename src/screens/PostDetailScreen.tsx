@@ -329,6 +329,51 @@ const getPlayableVideoUrl = (uri: string) => {
   return uri;
 };
 
+/**
+ * 블로그 본문의 단일 이미지 블록.
+ *
+ * 4:3 고정 + cover였던 탓에 세로로 찍은 사진은 위아래가 잘려 나갔다. 같은 사진이
+ * 소셜 피드에서는 원본 비율로 보여서 화면마다 다르게 보이기도 했다. 원본 비율을 재서
+ * 그대로 그리되, 지나치게 길거나 넓은 사진이 화면을 독점하지 않게 제한한다 —
+ * 범위(0.6~1.4)는 같은 파일의 SlideImageViewerDetail과 맞췄다.
+ */
+const BlogImageBlock = ({ uri, caption, onImagePress }: {
+  uri: string;
+  caption?: string;
+  onImagePress?: (uris: string[], index: number) => void;
+}) => {
+  const { blogS } = useSheets();
+  const [ratio, setRatio] = useState<number | null>(null); // 높이/너비
+  useEffect(() => {
+    let alive = true;
+    setRatio(null); // uri가 바뀌면 이전 사진의 비율을 그대로 쓰지 않는다
+    Image.getSize(
+      uri,
+      (w, h) => {
+        if (!alive || w <= 0) return;
+        // 측정 전 4:3 자리에서 실제 비율로 바뀌는 순간이 튀지 않게
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+        setRatio(Math.min(Math.max(h / w, 0.6), 1.4));
+      },
+      () => {}, // 실패하면 기본 4:3 유지
+    );
+    return () => { alive = false; };
+  }, [uri]);
+  return (
+    <View style={blogS.imageWrap}>
+      <TouchableOpacity activeOpacity={0.85} onPress={() => onImagePress?.([uri], 0)}>
+        {/* RN의 aspectRatio는 너비/높이라 h/w의 역수를 넣는다 */}
+        <Image
+          source={{ uri }}
+          style={[blogS.image, ratio != null && { aspectRatio: 1 / ratio }]}
+          resizeMode="cover"
+        />
+      </TouchableOpacity>
+      {caption ? <Text style={blogS.caption}>{caption}</Text> : null}
+    </View>
+  );
+};
+
 const BlogVideoBlock = ({ uri, caption }: { uri: string; caption?: string }) => {
   const { blogS } = useSheets();
   const { t } = useTranslation();
@@ -414,14 +459,7 @@ const BlogBlockRenderer = ({
       );
     }
     case 'image':
-      return (
-        <View style={blogS.imageWrap}>
-          <TouchableOpacity activeOpacity={0.85} onPress={() => onImagePress?.([block.uri], 0)}>
-            <Image source={{ uri: block.uri }} style={blogS.image} resizeMode="cover" />
-          </TouchableOpacity>
-          {block.caption ? <Text style={blogS.caption}>{block.caption}</Text> : null}
-        </View>
-      );
+      return <BlogImageBlock uri={block.uri} caption={block.caption} onImagePress={onImagePress} />;
     case 'images': {
       if (block.layout === 'slide') {
         return <SlideImageViewerDetail items={block.items} onImagePress={onImagePress} />;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
-import { useSkinAccent } from '../constants/skinTheme';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
@@ -25,6 +25,7 @@ type RouteParams = {
 
 // ─── 국가 구분선 ───
 function CountryDivider({ flag, name }: { flag: string; name: string }) {
+  const st = useSt();
   return (
     <View style={st.countryDivider}>
       <View style={st.dividerLine} />
@@ -39,6 +40,7 @@ function CountryDivider({ flag, name }: { flag: string; name: string }) {
 // ─── 피드 카드 ───
 function FeedCard({ record }: { record: TravelRecord }) {
   const { i18n } = useTranslation();
+  const st = useSt();
   return (
     <View style={st.feedCard}>
       <View style={st.feedCardHeader}>
@@ -75,7 +77,7 @@ function FeedCard({ record }: { record: TravelRecord }) {
 // ─── 메인 화면 ───
 export default function TripGroupScreen() {
   const { t } = useTranslation();
-  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  const st = useSt();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripGroup'>>();
@@ -282,7 +284,14 @@ export default function TripGroupScreen() {
   );
 }
 
-const st = StyleSheet.create({
+// 스킨 강조색을 받아 스타일을 만든다. useSt()는 리렌더 구독을 겸한다 — 미구독이면
+// 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시된다.
+function useSt() {
+  const a = useSkinAccent();
+  return useMemo(() => makeStyles(a), [a]);
+}
+
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0A0A0F',
@@ -305,7 +314,7 @@ const st = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   backIcon: {
     fontSize: 18,
@@ -328,7 +337,7 @@ const st = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   menuIcon: {
     fontSize: 18,
@@ -378,7 +387,7 @@ const st = StyleSheet.create({
   dividerLabel: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#BF85FC',
+    color: a.accent,
   },
 
   // ── 피드 카드 ──
@@ -388,7 +397,7 @@ const st = StyleSheet.create({
     marginBottom: 14,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.1)',
+    borderColor: a.tint(0.1),
   },
   feedCardHeader: {
     flexDirection: 'row',
@@ -452,7 +461,7 @@ const st = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 32,
     borderTopWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   menuItem: {
     paddingVertical: 16,
@@ -480,7 +489,7 @@ const st = StyleSheet.create({
     paddingTop: 12,
     paddingHorizontal: 20,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(191,133,252,0.2)',
+    borderTopColor: a.tint(0.2),
   },
   editHandle: {
     width: 40,
@@ -500,14 +509,14 @@ const st = StyleSheet.create({
   editLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#BF85FC',
+    color: a.accent,
     marginBottom: 10,
   },
   editInputWrap: {
     backgroundColor: '#2A2A3A',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
+    borderColor: a.tint(0.25),
     paddingHorizontal: 14,
     marginBottom: 24,
   },
@@ -517,7 +526,7 @@ const st = StyleSheet.create({
     paddingVertical: 13,
   },
   editSaveBtn: {
-    backgroundColor: '#6B21A8',
+    backgroundColor: a.accentDeep,
     borderRadius: 14,
     paddingVertical: 16,
     alignItems: 'center',

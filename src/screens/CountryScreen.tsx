@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -11,7 +11,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
-import { useSkinAccent } from '../constants/skinTheme';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { CameraIcon, PersonIcon } from '../components/icons';
 import { useRecords } from '../store/recordStore';
@@ -37,7 +37,10 @@ const tripDays = (start?: string, end?: string): number => {
 
 export default function CountryScreen({ navigation, route }: Props) {
   const { t, i18n } = useTranslation();
-  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  // 스킨 강조색 — 아이콘 팔레트 리렌더 구독을 겸한다(미구독이면 스택에 남아 있던
+  // 이 화면의 아이콘이 이전 팔레트로 표시됨). 스타일도 이 값으로 만든다.
+  const a = useSkinAccent();
+  const styles = useMemo(() => makeStyles(a), [a]);
   const insets = useSafeAreaInsets();
   const country = route.params ?? { name: '일본', flag: '🇯🇵' };
 
@@ -128,7 +131,7 @@ export default function CountryScreen({ navigation, route }: Props) {
         <View style={styles.miniGlobeSection}>
           <View style={styles.miniGlowRing} />
           <LinearGradient
-            colors={['#3B1E8E', '#7B61FF', '#C084FC']}
+            colors={a.globeGradient}
             start={{ x: 0.2, y: 0.1 }}
             end={{ x: 0.8, y: 0.9 }}
             style={styles.miniGlobe}
@@ -185,7 +188,7 @@ export default function CountryScreen({ navigation, route }: Props) {
           activeOpacity={0.85}
           onPress={() => navigation.navigate('NewRecord', { selectedCountry: { name: country.name, flag: country.flag } })}
         >
-          <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.addRecordGrad}>
+          <LinearGradient colors={a.btnGradient} style={styles.addRecordGrad}>
             <Text style={styles.addRecordText}>+ {t('comp2.addNewRecord')}</Text>
           </LinearGradient>
         </TouchableOpacity>
@@ -194,7 +197,7 @@ export default function CountryScreen({ navigation, route }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   container: { flex: 1 },
   header: {
     flexDirection: 'row',
@@ -292,14 +295,14 @@ const styles = StyleSheet.create({
     width: 200,
     height: 200,
     borderRadius: 100,
-    backgroundColor: 'rgba(123,97,255,0.08)',
+    backgroundColor: a.tint(0.08),
   },
   miniGlobe: {
     width: 150,
     height: 150,
     borderRadius: 75,
     overflow: 'hidden',
-    shadowColor: '#7B61FF',
+    shadowColor: a.accent,
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
     shadowRadius: 25,

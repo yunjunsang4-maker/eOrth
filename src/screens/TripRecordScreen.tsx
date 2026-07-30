@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -28,7 +28,7 @@ import {
 } from '../utils/albumSections';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
-import { useSkinAccent } from '../constants/skinTheme';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords } from '../store/recordStore';
 import { TrashIcon, CommentIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
@@ -36,7 +36,10 @@ import type { RootStackScreenProps } from '../navigation/types';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t, i18n } = useTranslation();
-  useSkinAccent(); // 스킨(아이콘 팔레트) 변경 구독 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
+  // 스킨 강조색 — 아이콘 팔레트 리렌더 구독을 겸한다(미구독이면 스택에 남아 있던
+  // 이 화면의 아이콘이 이전 팔레트로 표시됨). 스타일도 이 값으로 만든다.
+  const a = useSkinAccent();
+  const styles = useMemo(() => makeStyles(a), [a]);
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
   const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment, tripGroups, updateTripGroup } = useRecords();
@@ -671,7 +674,7 @@ function CommentAvatar({ photo, emoji, small }: { photo?: string; emoji: string;
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#0A0A0F',
@@ -822,7 +825,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.08)',
   },
   sectionModalBtnOk: {
-    backgroundColor: '#6B21A8',
+    backgroundColor: a.accentDeep,
   },
   sectionModalBtnTxt: {
     fontSize: 14,
@@ -901,7 +904,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#6B21A8',
+    backgroundColor: a.accentDeep,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -929,7 +932,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   backIcon: {
     fontSize: 18,
@@ -961,7 +964,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   menuIcon: {
     fontSize: 18,
@@ -982,7 +985,7 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     paddingBottom: 32,
     borderTopWidth: 1,
-    borderColor: 'rgba(191,133,252,0.2)',
+    borderColor: a.tint(0.2),
   },
   menuItem: {
     paddingVertical: 16,
