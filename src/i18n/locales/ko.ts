@@ -1448,6 +1448,10 @@ const ko = {
     mergeSelect2: '여행을 2개 이상 선택하세요',
     mergeN: '{{count}}개 여행 합치기',
     importSelectedN: '선택한 여행 {{count}}개 가져오기',
+    // '이미 가져옴' 여행을 일부러 다시 선택할 때 — 기존 카드에 합쳐지지 않고 별도 카드가 하나 더 생긴다
+    dupTripTitle: '이미 가져온 여행이에요',
+    dupTripMsg: '{{title}}은(는) 이미 기록에 있어요. 다시 담으면 기존 카드와 합쳐지지 않고 별도 카드가 하나 더 만들어져요.',
+    dupTripConfirm: '따로 만들기',
     selectTripsToImport: '가져올 여행을 선택하세요',
     maxPhotosAlert: '여행당 최대 {{max}}장까지 선택할 수 있어요.',
     saveFailTitle: '저장 실패',

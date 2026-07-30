@@ -1445,6 +1445,10 @@ const en = {
     mergeSelect2: 'Select at least 2 trips',
     mergeN: 'Merge {{count}} trips',
     importSelectedN: 'Import {{count}} selected trips',
+    // Re-selecting an "already imported" trip on purpose — it becomes a second card, not a merge
+    dupTripTitle: 'Already imported',
+    dupTripMsg: '{{title}} is already in your records. Importing it again creates a separate card instead of merging into the existing one.',
+    dupTripConfirm: 'Create separate card',
     selectTripsToImport: 'Select trips to import',
     maxPhotosAlert: 'You can select up to {{max}} photos per trip.',
     saveFailTitle: 'Save failed',

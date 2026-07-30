@@ -104,6 +104,22 @@ function p(uri: string, code: string | null, t: number): ScannedPhoto {
   assert(merged.medias[0] === 'a', '대표 미디어 = 가장 이른 사진');
   assert(merged.startDate <= germans[0].startDate && merged.endDate >= germans[0].endDate, '기간 = 최소 시작~최대 종료');
   assert(merged.title === '독일 여행', '합친 제목 국가단위');
+
+  // '이미 가져옴'은 하나라도 있으면 합친 결과에도 남아야 한다. ...base로 첫 여행만
+  // 상속하면 두 번째만 가져온 경우 플래그가 사라져, 합치기 후 확인 없이 중복 카드가 생긴다.
+  const [first, second] = germans;
+  assert(
+    mergeScannedTrips([{ ...first }, { ...second, alreadyImported: true }]).alreadyImported === true,
+    '두 번째만 이미 가져옴 → 합친 결과도 이미 가져옴'
+  );
+  assert(
+    mergeScannedTrips([{ ...first, alreadyImported: true }, { ...second }]).alreadyImported === true,
+    '첫 번째만 이미 가져옴 → 합친 결과도 이미 가져옴'
+  );
+  assert(
+    mergeScannedTrips([{ ...first }, { ...second }]).alreadyImported !== true,
+    '둘 다 새 여행이면 플래그 없음'
+  );
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

@@ -158,5 +158,8 @@ export function mergeScannedTrips(trips: ScannedTrip[]): ScannedTrip {
     content: `${base.countryName}에서의 소중한 기록입니다. 총 ${photos.length}장의 사진이 타임라인에 저장됩니다.`,
     medias: [photos[0].uri],
     photos,
+    // ...base는 첫 여행만 상속하므로 따로 접어 준다. 하나라도 이미 가져온 여행이면
+    // 합친 결과도 이미 가져온 것으로 봐야 한다 — 안 그러면 합치기가 중복 확인을 우회한다.
+    alreadyImported: trips.some((t) => t.alreadyImported) || undefined,
   };
 }

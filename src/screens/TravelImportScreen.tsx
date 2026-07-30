@@ -12,6 +12,7 @@ import {
   Modal,
   Dimensions,
   Easing,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -752,9 +753,23 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
   const toggleSelect = (id: string) => {
     Haptics.selectionAsync().catch(() => {});
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
-    );
+    const select = () =>
+      setSelectedIds((prev) =>
+        prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+      );
+    // 이미 가져온 여행을 "새로 선택"할 때만 한 번 확인한다. 저장 단계는 기존 기록과
+    // 병합하지 않고 addImportedAlbum + addTripGroup으로 카드를 새로 만들기 때문에,
+    // 배지를 못 보고 누르면 같은 여행이 조용히 둘로 늘어난다.
+    // 해제는 되돌리는 동작이니 묻지 않는다.
+    const trip = scannedTrips.find((t) => t.id === id);
+    if (trip?.alreadyImported && !selectedIds.includes(id)) {
+      Alert.alert(t('imports.dupTripTitle'), t('imports.dupTripMsg', { title: trip.title }), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('imports.dupTripConfirm'), onPress: select },
+      ]);
+      return;
+    }
+    select();
   };
 
   // ── 여행 합치기 ──
@@ -785,8 +800,13 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       );
       return next;
     });
-    // 합쳐진 여행은 선택 상태로 추가 (기존 선택은 useEffect가 유효 id만 남겨 보존)
-    setSelectedIds((prev) => [...prev.filter((id) => !mergeIds.includes(id)), merged.id]);
+    // 합쳐진 여행은 선택 상태로 추가 (기존 선택은 useEffect가 유효 id만 남겨 보존).
+    // 단 이미 가져온 여행이 섞였으면 자동 선택하지 않는다 — 그러면 중복 확인을 건너뛰고
+    // 바로 담기게 된다. 사용자가 직접 눌러 확인을 통과해야 선택된다.
+    setSelectedIds((prev) => [
+      ...prev.filter((id) => !mergeIds.includes(id)),
+      ...(merged.alreadyImported ? [] : [merged.id]),
+    ]);
     setMergeIds([]);
     setMergeVisible(false);
   };
