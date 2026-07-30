@@ -1445,10 +1445,11 @@ const en = {
     mergeSelect2: 'Select at least 2 trips',
     mergeN: 'Merge {{count}} trips',
     importSelectedN: 'Import {{count}} selected trips',
-    // Re-selecting an "already imported" trip on purpose — it becomes a second card, not a merge
+    // Re-selecting an "already imported" trip on purpose — it becomes a second card, not a merge.
+    // Title sits on its own line to match ko, where inlining it would need a particle i18next can't pick.
     dupTripTitle: 'Already imported',
-    dupTripMsg: '{{title}} is already in your records. Importing it again creates a separate card instead of merging into the existing one.',
-    dupTripConfirm: 'Create separate card',
+    dupTripMsg: '{{title}}\n\nImporting this again won\'t merge into the existing card — it creates a new one.',
+    dupTripConfirm: 'Create new card',
     selectTripsToImport: 'Select trips to import',
     maxPhotosAlert: 'You can select up to {{max}} photos per trip.',
     saveFailTitle: 'Save failed',
