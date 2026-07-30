@@ -1,6 +1,6 @@
 // 순간 캡처 시트 — 알림 탭으로만 진입(스펙: 알림 단독 진입점).
 // 텍스트·무드 중 하나(필수) + 사진 1장(선택) + 자동 시간·위치. 2초 안에 입력 시작이 목표.
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Image,
@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import * as Location from 'expo-location';
 import { useMoments } from '../store/momentStore';
 import { useToast } from '../store/toastStore';
@@ -38,6 +39,9 @@ async function persistMomentPhoto(srcUri: string): Promise<string> {
 const MOODS = ['😊', '🥹', '😮', '😌', '🤩', '😭'];
 
 export default function MomentCaptureScreen() {
+  // 지구본 스킨 강조색 — 칩·완료 버튼이 스킨을 따라간다
+  const a = useSkinAccent();
+  const st = useMemo(() => makeStyles(a), [a]);
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { t } = useTranslation();
@@ -208,7 +212,7 @@ export default function MomentCaptureScreen() {
   );
 }
 
-const st = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   root: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
   sheet: {
     backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
@@ -225,13 +229,13 @@ const st = StyleSheet.create({
   moodOn: { opacity: 1, transform: [{ scale: 1.15 }] },
   bottomRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
   chip: {
-    borderWidth: 1, borderColor: '#6B21A8', borderRadius: 16,
+    borderWidth: 1, borderColor: a.accentDeep, borderRadius: 16,
     paddingHorizontal: 12, paddingVertical: 6,
   },
-  chipText: { color: '#BF85FC', fontSize: 12 },
+  chipText: { color: a.accent, fontSize: 12 },
   thumb: { width: 28, height: 28, borderRadius: 6 },
   saveBtn: {
-    marginLeft: 'auto', backgroundColor: '#BF85FC', borderRadius: 16,
+    marginLeft: 'auto', backgroundColor: a.accent, borderRadius: 16,
     paddingHorizontal: 18, paddingVertical: 8,
   },
   saveText: { color: '#12061f', fontWeight: '700', fontSize: 14 },

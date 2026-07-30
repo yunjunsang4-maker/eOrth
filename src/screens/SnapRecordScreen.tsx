@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -27,6 +27,7 @@ import {
   formatLateSeconds,
 } from '../services/snapService';
 import { COUNTRIES } from '../constants/countries';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const { width: SW } = Dimensions.get('window');
@@ -37,8 +38,7 @@ const PIP_H = SW * 0.37;
 const C = {
   bg: '#0A0A0F',
   card: '#1A1A26',
-  accent: '#BF85FC',
-  accentDim: 'rgba(191,133,252,0.2)',
+  // accent 계열은 skinTheme으로 (makeStyles의 a.tint / a.pill) — 지구본 스킨 연동
   white: '#FFFFFF',
   dim: '#A1A1B0',
   muted: '#4A4A59',
@@ -144,6 +144,10 @@ const ShutterGraphic = ({ size = 80 }: { size?: number }) => (
 type Props = RootStackScreenProps<'SnapRecord'>;
 
 export default function SnapRecordScreen({ navigation, route }: Props) {
+  // 지구본 스킨 강조색 — 보라 틴트 글래스·안내 알약이 스킨을 따라간다
+  // (시안→마젠타 촬영 그라데이션은 스냅 고유 아이덴티티라 스킨과 무관하게 유지)
+  const a = useSkinAccent();
+  const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const { addRecord } = useRecords();
   const { homeCountryCode } = useSettings();
@@ -470,8 +474,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                   width={guidePillSize.w - 1.5}
                   height={guidePillSize.h - 1.5}
                   rx={(guidePillSize.h - 1.5) / 2}
-                  fill="#751AAD"
-                  fillOpacity={0.3}
+                  fill={a.pill}
                   stroke="url(#guideBorder)"
                   strokeWidth={1.5}
                 />
@@ -731,7 +734,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 }
 
 // ─── 스타일 ───
-const st = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   bg: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1 },
   flashOverlay: {
@@ -759,7 +762,7 @@ const st = StyleSheet.create({
   // 이전(닫기) 버튼 — 보라 틴트 글래스 (디자인 iPhone 17-58)
   backBtn: {
     width: 36, height: 36, borderRadius: 18,
-    backgroundColor: 'rgba(123,97,255,0.30)',
+    backgroundColor: a.tint(0.30),
     alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.28)',
     overflow: 'hidden',

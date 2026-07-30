@@ -1,7 +1,7 @@
 // 추후 업데이트 예정 - 탐색 탭
 // 출시 초반에는 미사용, 나중에 SocialScreen에 연결 예정
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Typography, Spacing, BorderRadius } from '../constants';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
@@ -25,9 +26,7 @@ const { width } = Dimensions.get('window');
 const C = {
   bg: '#0A0A0F',
   card: '#1A0A2E',
-  accent: '#BF85FC',
-  accentDim: 'rgba(191,133,252,0.15)',
-  accentBorder: 'rgba(191,133,252,0.25)',
+  // accent 계열은 skinTheme으로 옮겼다(makeStyles의 a.accent / a.tint) — 지구본 스킨 연동
   dim: '#A1A1B0',
   white: '#FFFFFF',
   overlayBar: 'rgba(10,4,24,0.72)',
@@ -56,6 +55,7 @@ const getCountryEmoji = (name: string) => COUNTRY_EMOJI[name] ?? '🌍';
 // 서브 컴포넌트: 보이저 아이템
 // ─────────────────────────────────────────────
 function CreatorItem({ initials, name }: { initials: string; name: string }) {
+  const s = useSt();
   return (
     <View style={s.creatorItem}>
       <View style={s.creatorAvatarWrap}>
@@ -76,6 +76,7 @@ function CreatorItem({ initials, name }: { initials: string; name: string }) {
 // 서브 컴포넌트: 큰 기록 카드 (탐색 탭)
 // ─────────────────────────────────────────────
 function LargeRecordCard({ item }: { item: TravelRecord }) {
+  const s = useSt();
   const { t, i18n } = useTranslation();
   const elapsed = Math.round((Date.now() - item.timestamp) / 3600000);
   const timeStr = elapsed < 1 ? t('time.justNow') : elapsed < 24 ? t('time.hourAgo', { n: elapsed }) : item.date;
@@ -100,6 +101,7 @@ function LargeRecordCard({ item }: { item: TravelRecord }) {
 // 서브 컴포넌트: 작은 기록 카드 (탐색 탭)
 // ─────────────────────────────────────────────
 function SmallRecordCard({ item }: { item: TravelRecord }) {
+  const s = useSt();
   const { i18n } = useTranslation();
   return (
     <View style={s.smallCard}>
@@ -118,6 +120,7 @@ function SmallRecordCard({ item }: { item: TravelRecord }) {
 // 서브 컴포넌트: 광고 배너 (실제 광고로 교체 가능)
 // ─────────────────────────────────────────────
 function AdBanner() {
+  const s = useSt();
   const { t } = useTranslation();
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={() => {}}>
@@ -149,6 +152,7 @@ function AdBanner() {
 // 탐색 화면
 // ─────────────────────────────────────────────
 export default function SocialExploreScreen() {
+  const s = useSt();
   const { t } = useTranslation();
   const { records } = useRecords();
   // 사진첩(album)은 소셜탭 미노출 — 메이트 프로필·여행 카드에서만 (SocialScreen 피드와 동일 정책)
@@ -213,7 +217,13 @@ export default function SocialExploreScreen() {
 const CARD_GAP = 10;
 const SMALL_CARD_WIDTH = (width - Spacing[6] * 2 - CARD_GAP) / 2;
 
-const s = StyleSheet.create({
+// 스킨 강조색으로 스타일을 만든다 — 팔레트 C의 accent 계열을 여기로 옮겼다
+function useSt() {
+  const a = useSkinAccent();
+  return useMemo(() => makeStyles(a), [a]);
+}
+
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: C.bg,
@@ -243,7 +253,7 @@ const s = StyleSheet.create({
     height: 56,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.3)',
+    borderColor: a.tint(0.3),
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
@@ -267,7 +277,7 @@ const s = StyleSheet.create({
     color: C.dim,
   },
   adBtn: {
-    backgroundColor: '#6B21A8',
+    backgroundColor: a.accentDeep,
     borderRadius: 8,
     paddingHorizontal: 8,
     paddingVertical: 4,
@@ -303,14 +313,14 @@ const s = StyleSheet.create({
     borderRadius: 28,
     backgroundColor: C.card,
     borderWidth: 2,
-    borderColor: C.accent,
+    borderColor: a.accent,
     alignItems: 'center',
     justifyContent: 'center',
   },
   creatorInitials: {
     fontSize: 16,
     fontFamily: Typography.fontFamily.bold,
-    color: C.accent,
+    color: a.accent,
   },
   verifiedBadge: {
     position: 'absolute',
@@ -319,7 +329,7 @@ const s = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
-    backgroundColor: C.accent,
+    backgroundColor: a.accent,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 2,
@@ -376,7 +386,7 @@ const s = StyleSheet.create({
   largeCardUser: {
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.medium,
-    color: C.accent,
+    color: a.accent,
   },
   largeCardDot: {
     color: C.dim,
@@ -422,7 +432,7 @@ const s = StyleSheet.create({
   smallCardUser: {
     fontSize: 11,
     fontFamily: Typography.fontFamily.regular,
-    color: C.accent,
+    color: a.accent,
     marginTop: 1,
   },
 
