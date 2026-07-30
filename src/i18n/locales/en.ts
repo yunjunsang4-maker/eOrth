@@ -1445,6 +1445,9 @@ const en = {
     mergeSelect2: 'Select at least 2 trips',
     mergeN: 'Merge {{count}} trips',
     importSelectedN: 'Import {{count}} selected trips',
+    // Default title/body of an imported trip card. Stored, so it's built in the language at import time.
+    tripTitle: '{{country}} Trip',
+    tripContent: 'Precious memories from {{country}}. {{count}} photos will be saved to your timeline.',
     // Re-selecting an "already imported" trip on purpose — it becomes a second card, not a merge.
     // Title sits on its own line to match ko, where inlining it would need a particle i18next can't pick.
     dupTripTitle: 'Already imported',

@@ -120,6 +120,23 @@ function p(uri: string, code: string | null, t: number): ScannedPhoto {
     mergeScannedTrips([{ ...first }, { ...second }]).alreadyImported !== true,
     '둘 다 새 여행이면 플래그 없음'
   );
+
+  // 제목·본문 언어 주입 — 영어 모드에서 '독일 여행'이 저장되지 않게 한다.
+  // countryName은 한글 원본이 그대로 넘어와야 한다(표시용 변환은 호출부 책임).
+  const seen: string[] = [];
+  const enText = {
+    title: (c: string) => { seen.push(c); return `${c === '독일' ? 'Germany' : c} Trip`; },
+    content: (c: string, n: number) => `${n} photos from ${c}.`,
+  };
+  const mergedEn = mergeScannedTrips(germans, enText);
+  assert(mergedEn.title === 'Germany Trip', '합치기: 주입한 제목 사용');
+  assert(mergedEn.content === `${mergedEn.photoCount} photos from 독일.`, '합치기: 주입한 본문 사용');
+  assert(seen[0] === '독일', '주입 함수는 한글 countryName을 받는다');
+  assert(mergedEn.countryName === '독일', 'countryName은 한글 원본 유지(비교 키)');
+
+  const tripsEn = clusterForeignTrips(photos, 'KR', enText);
+  assert(tripsEn.every((tp) => tp.title.endsWith(' Trip')), '클러스터링: 주입한 제목 사용');
+  assert(germans[0].title === '독일 여행', '주입 없으면 기존 한국어 기본값');
 }
 
 console.log(failures === 0 ? '\nALL PASS' : `\n${failures} FAILED`);

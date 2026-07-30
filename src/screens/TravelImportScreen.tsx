@@ -34,9 +34,9 @@ import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
-import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip } from '../utils/pastTripScan';
+import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
-import { countryTagLabel } from '../utils/countryLabel';
+import { countryTagLabel, countryLabel } from '../utils/countryLabel';
 import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
 import { ScanProfiler } from '../utils/scanProfiler';
@@ -372,6 +372,17 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const recordsRef = useRef(records);
   recordsRef.current = records;
 
+  // 여행 카드의 기본 제목·본문을 현재 언어로 만든다. 제목은 addImportedAlbum으로 저장되는
+  // 값이라, 영어 사용자에게 '독일 여행'이 그대로 남지 않도록 생성 시점에 번역해 둔다.
+  // countryName은 한글 원본(지구본·통계 비교 키)이므로 표시용 변환은 여기서 countryLabel로.
+  const tripText = useMemo<TripTextMaker>(() => {
+    const loc = (ko: string) => countryLabel(ko, i18n.language);
+    return {
+      title: (c) => t('imports.tripTitle', { country: loc(c) }),
+      content: (c, n) => t('imports.tripContent', { country: loc(c), count: n }),
+    };
+  }, [t, i18n.language]);
+
   // 앱 내(프로필)에서 들어온 재방문인지 — 온보딩 마지막 단계와 이탈 동작·문구가 다르다
   const fromProfile = route.params?.from === 'profile';
 
@@ -699,7 +710,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
       const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
       const endCluster = prof.begin('⑦클러스터링');
-      const allTrips = clusterForeignTrips(scanned, homeCountryCode);
+      const allTrips = clusterForeignTrips(scanned, homeCountryCode, tripText);
       endCluster(scanned.length);
       // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
       const sized = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
@@ -791,7 +802,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const confirmMerge = () => {
     const chosen = scannedTrips.filter((t) => mergeIds.includes(t.id));
     if (chosen.length < 2) return;
-    const merged = mergeScannedTrips(chosen);
+    const merged = mergeScannedTrips(chosen, tripText);
     setScannedTrips((prev) => {
       const rest = prev.filter((t) => !mergeIds.includes(t.id));
       const next = [...rest, merged];

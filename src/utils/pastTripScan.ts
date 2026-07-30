@@ -33,6 +33,27 @@ export interface ScannedTrip {
   alreadyImported?: boolean;
 }
 
+/**
+ * 여행 카드의 기본 제목·본문을 만드는 함수 묶음.
+ *
+ * 왜 주입받는가: 제목은 저장되는 값이라(addImportedAlbum({ title })) 가져오는 시점의
+ * 언어로 만들어야 한다. 그런데 이 모듈은 pastTripScan.verify.ts가 RN 없이 돌리는
+ * 순수 모듈이라 i18n을 직접 import할 수 없다 — 그래서 호출부(화면)가 t()를 싸서 넘긴다.
+ *
+ * countryName은 항상 한글 원본이 들어온다(지구본·통계의 이름 비교 키라 번역 금지).
+ * 표시용 국가명 변환은 호출부가 countryLabel()로 처리한다.
+ */
+export interface TripTextMaker {
+  title: (countryName: string) => string;
+  content: (countryName: string, photoCount: number) => string;
+}
+
+/** 기본값(한국어) — 주입이 없을 때. 기존 동작·검증 테스트를 그대로 유지한다. */
+export const KO_TRIP_TEXT: TripTextMaker = {
+  title: (c) => `${c} 여행`,
+  content: (c, n) => `${c}에서의 소중한 기록입니다. 총 ${n}장의 사진이 타임라인에 저장됩니다.`,
+};
+
 // 국가 코드(ISO) → { 국문명, 국기 }
 // 앱 전체 국가 목록(constants/countries.ts)에서 자동 생성한다. 각 term의 첫 토큰이 ISO 코드.
 // → 포르투갈 등 누락 국가의 국기/국문명을 일괄 해결(하드코딩 목록 유지보수 불필요).
@@ -65,7 +86,11 @@ function formatDate(ts: number): string {
 }
 
 /** 해외(거주국가 밖) + GPS 있는 사진만 시간/국가 기준 클러스터링 → 여행 카드 */
-export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: string): ScannedTrip[] {
+export function clusterForeignTrips(
+  photos: ScannedPhoto[],
+  homeCountryCode: string,
+  text: TripTextMaker = KO_TRIP_TEXT
+): ScannedTrip[] {
   const foreign = photos
     .filter((p) => !!p.countryCode && p.countryCode !== homeCountryCode)
     .sort((a, b) => a.creationTime - b.creationTime);
@@ -112,9 +137,9 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
       startDate,
       endDate,
       rating: 5,
-      title: `${c.countryName} 여행`,
+      title: text.title(c.countryName),
       photoCount: c.photos.length,
-      content: `${c.countryName}에서의 소중한 기록입니다. 총 ${c.photos.length}장의 사진이 타임라인에 저장됩니다.`,
+      content: text.content(c.countryName, c.photos.length),
       medias: [c.photos[0].uri],
       photos: c.photos,
       weather: '맑음',
@@ -134,7 +159,10 @@ export function clusterForeignTrips(photos: ScannedPhoto[], homeCountryCode: str
  * - 사진은 시간순으로 합치고, 기간은 가장 이른 시작일~가장 늦은 종료일.
  * - 호출 전 같은 countryName인지 검증해야 한다(다른 국가 혼합 금지).
  */
-export function mergeScannedTrips(trips: ScannedTrip[]): ScannedTrip {
+export function mergeScannedTrips(
+  trips: ScannedTrip[],
+  text: TripTextMaker = KO_TRIP_TEXT
+): ScannedTrip {
   const base = trips[0];
   const photos = trips
     .flatMap((t) => t.photos)
@@ -153,9 +181,9 @@ export function mergeScannedTrips(trips: ScannedTrip[]): ScannedTrip {
     date: endDate,
     startDate,
     endDate,
-    title: `${base.countryName} 여행`,
+    title: text.title(base.countryName),
     photoCount: photos.length,
-    content: `${base.countryName}에서의 소중한 기록입니다. 총 ${photos.length}장의 사진이 타임라인에 저장됩니다.`,
+    content: text.content(base.countryName, photos.length),
     medias: [photos[0].uri],
     photos,
     // ...base는 첫 여행만 상속하므로 따로 접어 준다. 하나라도 이미 가져온 여행이면

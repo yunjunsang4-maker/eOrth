@@ -245,6 +245,19 @@ const fmtPeriod = (startMs: number, endMs: number): string => {
 // 사진첩 국가(GPS) 필터도 이 표로 세계 GeoJSON 피처를 찾는다 (AlbumCreateScreen)
 export const KO_TO_EN: Record<string, string> = {
   '벨리즈': 'Belize', '베냉': 'Benin', '부르키나파소': 'Burkina Faso', '부룬디': 'Burundi', '중앙아프리카공화국': 'Central African Republic', '지부티': 'Djibouti', '동티모르': 'East Timor', '적도기니': 'Equatorial Guinea', '에리트레아': 'Eritrea', '피지': 'Fiji', '가봉': 'Gabon', '감비아': 'Gambia', '레소토': 'Lesotho', '라이베리아': 'Liberia', '말라위': 'Malawi', '모리타니': 'Mauritania', '르완다': 'Rwanda', '시에라리온': 'Sierra Leone', '솔로몬제도': 'Solomon Islands', '수리남': 'Suriname', '바하마': 'The Bahamas', '트리니다드 토바고': 'Trinidad and Tobago', '바누아투': 'Vanuatu', '코트디부아르': 'Ivory Coast', '기니비사우': 'Guinea Bissau',
+  // 소국·도서국 30개 — COUNTRIES에는 있는데 이 표에 없어서 영어 모드에서 한글 국가명이
+  // 그대로 노출됐다(가져온 여행 제목 '싱가포르 Trip', 국가 배지 '🇸🇬 싱가포르' 등).
+  // 세계 GeoJSON에는 이 국가들의 피처가 없어(저해상도라 누락) 지구본 조회에는 영향이 없다.
+  // '콩고'는 COUNTRIES 표기가 '콩고'인데 이 표에는 '콩고 공화국'으로만 있어 키가 어긋나 있었다.
+  '싱가포르': 'Singapore', '몰디브': 'Maldives', '바레인': 'Bahrain', '모나코': 'Monaco',
+  '안도라': 'Andorra', '리히텐슈타인': 'Liechtenstein', '산마리노': 'San Marino',
+  '바티칸': 'Vatican City', '몰타': 'Malta', '바베이도스': 'Barbados', '그레나다': 'Grenada',
+  '세인트루시아': 'Saint Lucia', '세인트빈센트 그레나딘': 'Saint Vincent and the Grenadines',
+  '앤티가 바부다': 'Antigua and Barbuda', '세인트키츠 네비스': 'Saint Kitts and Nevis',
+  '도미니카': 'Dominica', '모리셔스': 'Mauritius', '세이셸': 'Seychelles', '코모로': 'Comoros',
+  '콩고': 'Congo', '상투메 프린시페': 'Sao Tome and Principe', '카보베르데': 'Cape Verde',
+  '사모아': 'Samoa', '통가': 'Tonga', '미크로네시아': 'Micronesia', '팔라우': 'Palau',
+  '마셜제도': 'Marshall Islands', '키리바시': 'Kiribati', '투발루': 'Tuvalu', '나우루': 'Nauru',
   '아프가니스탄':'Afghanistan','알바니아':'Albania','알제리':'Algeria',
   '앙골라':'Angola','아르헨티나':'Argentina','아르메니아':'Armenia',
   '호주':'Australia','오스트리아':'Austria','아제르바이잔':'Azerbaijan',
