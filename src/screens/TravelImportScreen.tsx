@@ -519,7 +519,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   //   5) 클러스터: clusterForeignTrips(scanned, homeCountryCode) → 거주국가 밖 + 7일 묶음.
   //                구간 국가를 물려받으므로 GPS 없는 실내 사진도 여행에 포함된다.
   // ────────────────────────────────────────────────────────────────────────
-  const startScan = async () => {
+  // periodOverride: 결과 없음 화면의 '전체 기간으로 다시 찾기'용. setPeriod를 부른 직후
+  // startScan을 부르면 이 클로저는 아직 이전 period를 보므로, 쓸 기간을 인자로 넘긴다.
+  const startScan = async (periodOverride?: ScanPeriodOption) => {
+    const scanPeriod = periodOverride ?? period;
     scanCancelRef.current = false;
     setScanning(true);
     setProgress(0);
@@ -534,10 +537,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     const prof = new ScanProfiler();
 
     // 기간 옵션에 따른 조회 시작점. 전체 스캔은 createdAfter 미적용.
-    const CREATED_AFTER = period.key === 'since' && period.sinceTs
-      ? period.sinceTs
-      : period.years
-      ? Date.now() - period.years * 365 * 24 * 60 * 60 * 1000
+    const CREATED_AFTER = scanPeriod.key === 'since' && scanPeriod.sinceTs
+      ? scanPeriod.sinceTs
+      : scanPeriod.years
+      ? Date.now() - scanPeriod.years * 365 * 24 * 60 * 60 * 1000
       : undefined;
     const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
 
@@ -922,6 +925,26 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     navigation.navigate('ImportPhotoSelect', { trips, from: route.params?.from });
   };
 
+  // ── 결과 없음 화면 ──
+  // 전체 기간이 아니면 넓혀서 다시 찾을 수 있다. 빈 화면의 유일한 행동이 '나가기'가
+  // 되지 않게, 남아 있는 수단을 먼저 권한다.
+  const canWidenPeriod = period.key !== 'all';
+  const retryFullScan = () => {
+    const all = BASE_SCAN_PERIODS.find((p) => p.key === 'all');
+    if (!all) return;
+    setPeriod(all);
+    setScanFinished(false);
+    // setPeriod는 즉시 반영되지 않으므로 쓸 기간을 직접 넘긴다
+    startScan(all);
+  };
+  // 못 찾은 이유 — 상황에 맞는 것만 보여준다(해당 없는 설명은 노이즈다)
+  const emptyReasons: string[] = [
+    t('imports.emptyReasonNoGps'),
+    ...(canWidenPeriod ? [t('imports.emptyReasonPeriod', { period: periodLabel(period, t) })] : []),
+    ...(lastImportAt ? [t('imports.emptyReasonAlreadyImported')] : []),
+    ...(isLimited ? [t('imports.emptyReasonLimited')] : []),
+  ];
+
   // 하단 140pt 여백은 결과 목록의 플로팅 가져오기 바 전용 — 초기·스캔 화면엔 불필요.
   // 컨텐츠가 화면에 다 들어오면 스크롤을 잠근다(작은 기기에서만 스크롤 허용).
   const showResults = scanFinished && scannedTrips.length > 0;
@@ -1029,27 +1052,56 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           </View>
         ) : scannedTrips.length === 0 ? (
           /* 빈 상태 — 해외 사진 못 찾음/권한 거부 */
-          <View style={styles.centerArea}>
-            <View style={styles.globeGlowWrap}>
-              <View style={styles.glowBg} />
-              <View style={styles.mockGlobe}>
-                <Text style={styles.mockGlobeEmoji}>🔍</Text>
-              </View>
+          <View style={styles.emptyArea}>
+            {/* 초기·스캔 화면과 같은 오브를 쓰되 흐리게 — '끝났고 비었다'를 형태가 아니라
+                밝기로 말한다. 이모지 대신 앱 공용 비주얼을 쓰는 게 화면 간 일관성에 맞다. */}
+            <View style={styles.emptyOrbWrap}>
+              <ImportOrbVisual width={ORB_W * 0.72} />
             </View>
-            <Text style={styles.scanText}>{t('imports.noTripsFound')}</Text>
-            <Text style={[styles.resultDesc, { textAlign: 'center', paddingHorizontal: 20 }]}>
-              {isLimited ? t('imports.noTripsLimited') : t('imports.noTripsNoGps')}
-            </Text>
-            <TouchableOpacity style={styles.permissionBtn} onPress={leaveImport}>
-              <LinearGradient colors={['#7B61FF', '#5A42DD']} style={styles.btnGrad}>
-                <Text style={styles.btnText}>{t(fromProfile ? 'imports.backToProfile' : 'imports.recordManually')}</Text>
-              </LinearGradient>
-            </TouchableOpacity>
-            {/* 프로필 진입에선 두 버튼이 같은 동작(프로필 복귀)이라 보조 버튼을 감춘다 */}
-            {!fromProfile && (
-              <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
-                <Text style={styles.skipText}>{t('imports.skip')}</Text>
-              </TouchableOpacity>
+
+            <Text style={styles.emptyTitle}>{t('imports.noTripsFound')}</Text>
+            <Text style={styles.emptySub}>{t('imports.emptySub')}</Text>
+
+            {/* 못 찾은 이유 — 유리 카드. 해당되는 항목만 들어간다. */}
+            <View style={styles.reasonCard}>
+              {emptyReasons.map((reason, i) => (
+                <View key={i} style={[styles.reasonRow, i > 0 && styles.reasonRowDivided]}>
+                  <View style={styles.reasonDot} />
+                  <Text style={styles.reasonTxt}>{reason}</Text>
+                </View>
+              ))}
+            </View>
+
+            {/* 아직 넓힐 기간이 남았으면 그것을 1순위 행동으로 */}
+            {canWidenPeriod ? (
+              <>
+                <ImportCtaButton
+                  label={t('imports.retryFullPeriod')}
+                  onPress={retryFullScan}
+                  gid="emptyRetry"
+                  style={styles.emptyCta}
+                />
+                <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
+                  <Text style={styles.skipText}>
+                    {t(fromProfile ? 'imports.backToProfile' : 'imports.recordManually')}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <ImportCtaButton
+                  label={t(fromProfile ? 'imports.backToProfile' : 'imports.recordManually')}
+                  onPress={leaveImport}
+                  gid="emptyLeave"
+                  style={styles.emptyCta}
+                />
+                {/* 프로필 진입에선 두 버튼이 같은 동작(프로필 복귀)이라 보조 버튼을 감춘다 */}
+                {!fromProfile && (
+                  <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
+                    <Text style={styles.skipText}>{t('imports.skip')}</Text>
+                  </TouchableOpacity>
+                )}
+              </>
             )}
           </View>
         ) : (
@@ -1242,57 +1294,77 @@ const styles = StyleSheet.create({
   },
 
   /* Center Area */
-  centerArea: {
+  /* ── 결과 없음 화면 ──
+     이전 디자인은 원 안에 🔍 이모지 + #7B61FF 단색 그라데이션 버튼이라, 같은 화면의
+     초기·스캔 상태(오브 비주얼 + 네온 CTA)와 언어가 달랐다. 앱 공용 요소로 맞춘다. */
+  emptyArea: {
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 40,
     width: '100%',
+    paddingTop: Spacing[2],
+    paddingBottom: 40,
   },
-  globeGlowWrap: {
-    width: 200,
-    height: 200,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 40,
-    position: 'relative',
+  // 오브를 흐리게 — '끝났고 비었다'를 다른 그림이 아니라 밝기로 말한다
+  emptyOrbWrap: {
+    opacity: 0.42,
+    marginBottom: Spacing[5],
   },
-  glowBg: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    backgroundColor: 'rgba(123, 97, 255, 0.12)',
+  emptyTitle: {
+    fontSize: Typography.fontSize.xl,
+    fontFamily: Typography.fontFamily.bold,
+    color: Colors.textPrimary,
+    textAlign: 'center',
   },
-  mockGlobe: {
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#7B61FF',
+  emptySub: {
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.regular,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginTop: Spacing[2],
+    paddingHorizontal: Spacing[4],
+  },
+  // 못 찾은 이유 카드 — 카드 토큰(#2E2E3B)에 보라 네온 테두리를 아주 낮게
+  reasonCard: {
+    width: '100%',
+    marginTop: Spacing[6],
+    borderRadius: 18,
+    backgroundColor: 'rgba(46,46,59,0.55)',
+    borderWidth: 1,
+    borderColor: 'rgba(191,133,252,0.18)',
+    paddingHorizontal: Spacing[4],
+  },
+  reasonRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 13,
+  },
+  // 항목 사이만 구분선 — 카드 위·아래 테두리와 겹치지 않게 첫 줄은 제외한다
+  reasonRowDivided: {
+    borderTopWidth: 1,
+    borderTopColor: '#1A1A26',
+  },
+  // 글머리 점. 문구가 두 줄이 되어도 첫 줄에 붙어 있도록 marginTop으로 baseline을 맞춘다
+  reasonDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#BF85FC',
+    marginTop: 7,
+    marginRight: 10,
+    shadowColor: '#BF85FC',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 20,
-    elevation: 10,
-    backgroundColor: '#3B1E8E',
+    shadowOpacity: 0.9,
+    shadowRadius: 4,
   },
-  mockGlobeEmoji: {
-    fontSize: 50,
+  reasonTxt: {
+    flex: 1,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.regular,
+    color: '#A1A1B0',
+    lineHeight: 20,
   },
-  permissionBtn: {
-    width: '100%',
-    borderRadius: BorderRadius.full,
-    overflow: 'hidden',
-    marginBottom: Spacing[4],
-  },
-  btnGrad: {
-    paddingVertical: 18,
-    alignItems: 'center',
-  },
-  btnText: {
-    color: Colors.white,
-    fontSize: Typography.fontSize.base,
-    fontFamily: Typography.fontFamily.semiBold,
+  emptyCta: {
+    marginTop: Spacing[6],
   },
   skipBtn: {
     paddingVertical: 12,

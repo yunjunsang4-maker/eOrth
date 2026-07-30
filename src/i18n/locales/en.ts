@@ -1434,6 +1434,13 @@ const en = {
     noTripsLimited: 'Only the selected photos were analyzed.\nSwitch to "All Photos" in Settings > Photos\nto find more past trips.',
     noTripsNoGps: 'No photos with GPS recorded outside your home country.\nPhotos need location info (GPS) to be analyzed.',
     recordManually: 'Record manually',
+    // Empty result — one-line summary plus only the reasons that actually apply.
+    emptySub: 'It could be one of these.',
+    emptyReasonNoGps: 'Your photos have no location (GPS) data. Photos taken with location off can\'t be analyzed.',
+    emptyReasonPeriod: 'Photos taken outside {{period}} were left out of this scan.',
+    emptyReasonAlreadyImported: 'Trips you already imported were skipped to avoid duplicates.',
+    emptyReasonLimited: 'Only selected photos were analyzed. Switch to "All Photos" in Settings to find more.',
+    retryFullPeriod: 'Search all time instead',
     skip: 'Skip',
     foundTripsPrefix: 'Found ',
     foundTripsCountN: '{{count}}',

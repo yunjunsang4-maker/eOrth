@@ -1437,6 +1437,14 @@ const ko = {
     noTripsLimited: '선택한 사진만 분석했어요.\n설정 > 사진에서 "모든 사진 허용"으로 바꾸면\n과거 여행을 더 잘 찾을 수 있어요.',
     noTripsNoGps: '거주국가 밖에서 GPS가 기록된 사진이 없어요.\n사진에 위치 정보(GPS)가 있어야 분석할 수 있어요.',
     recordManually: '수동으로 기록하기',
+    // 결과 없음 화면 — 한 문장 요약 + 해당되는 이유만 카드에 나열한다.
+    // (noTripsLimited·noTripsNoGps의 여러 줄 안내를 이유 항목으로 쪼갠 것)
+    emptySub: '아래 중 하나일 수 있어요.',
+    emptyReasonNoGps: '사진에 위치 정보(GPS)가 없어요. 위치 기록을 끈 상태로 찍은 사진은 분석할 수 없어요.',
+    emptyReasonPeriod: '{{period}} 밖에 찍은 사진은 이번 분석에서 빠졌어요.',
+    emptyReasonAlreadyImported: '이미 가져온 여행은 중복을 막기 위해 제외됐어요.',
+    emptyReasonLimited: '선택한 사진만 분석했어요. 설정 > 사진에서 "모든 사진 허용"으로 바꾸면 더 잘 찾아요.',
+    retryFullPeriod: '전체 기간으로 다시 찾기',
     skip: '건너뛰기',
     foundTripsPrefix: '총 ',
     foundTripsCountN: '{{count}}개',
