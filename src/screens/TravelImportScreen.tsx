@@ -38,6 +38,7 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryTagLabel } from '../utils/countryLabel';
 import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
+import { ScanProfiler } from '../utils/scanProfiler';
 import {
   bucketRanges,
   probeOrder,
@@ -498,6 +499,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     setScannedTrips([]);
     setSelectedIds([]); // 재스캔 시 결과 전체 선택이 다시 적용되도록 초기화
     const foundCodes = new Set<string>(); // 발견 나라 중복 방지(홈 국가 제외)
+    // 성능 계측 — 병목이 파일 I/O(좌표 조회)인지 지오코딩 폴백 대기인지 숫자로 남긴다.
+    // 개발 빌드에서만 콘솔에 찍고, 릴리스에선 오버헤드가 사실상 0(Date.now 몇 번)이다.
+    const prof = new ScanProfiler();
 
     // 기간 옵션에 따른 조회 시작점. 전체 스캔은 createdAfter 미적용.
     const CREATED_AFTER = period.key === 'since' && period.sinceTs
@@ -514,6 +518,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       let hasNext = true;
       while (hasNext) {
         if (scanCancelRef.current) return;
+        const endPage = prof.begin('①페이지네이션');
         const page = await MediaLibrary.getAssetsAsync({
           first: 100,
           after,
@@ -521,6 +526,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           sortBy: 'creationTime',
           createdAfter: CREATED_AFTER, // 선택한 기간만 조회 (전체 스캔이면 undefined → 전체)
         });
+        endPage(page.assets.length);
         if (page.assets.length === 0) break;
         assets.push(...page.assets);
         after = page.endCursor;
@@ -529,7 +535,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       if (assets.length === 0) throw new Error('No photos found in gallery');
 
       // 촬영시각 오름차순 보장 — 버킷 분할·경계 탐색이 정렬을 전제로 한다
+      const endSort = prof.begin('②정렬');
       assets.sort((x, y) => (x.creationTime || 0) - (y.creationTime || 0));
+      endSort(assets.length);
 
       // 이미 가져온 사진은 스캔 대상에서 제외 — 앱 내 재실행 시 같은 여행이 중복 카드로
       // 또 만들어지는 것을 막고, 조회 대상이 줄어 재스캔도 빨라진다.
@@ -566,8 +574,11 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         let geo = geocodeCache[key];
         if (geo === undefined) {
           geo = locateCountry(lat, lon); // 오프라인 point-in-polygon (즉시)
-          if (!geo) {
+          if (geo) {
+            prof.bump('⑤오프라인적중');
+          } else {
             // 폴리곤 미포함(해안·국경 인접) 좌표만 지오코딩 — 전체의 극히 일부
+            const endGeo = prof.begin('④지오코딩폴백(대기포함)');
             try {
               geo = await reverseOnce(lat, lon);
             } catch {
@@ -575,8 +586,11 @@ export default function TravelImportScreen({ navigation, route }: Props) {
               try { geo = await reverseOnce(lat, lon); } catch { geo = null; }
             }
             await sleep(250); // 레이트리밋 회피 (캐시 히트·오프라인 성공 시엔 대기 없음)
+            endGeo();
           }
           geocodeCache[key] = geo;
+        } else {
+          prof.bump('⑥좌표캐시히트');
         }
         return geo;
       };
@@ -590,7 +604,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         setProgress(Math.min(80, Math.round((probesDone / Math.max(1, probeBudget)) * 80)));
         try {
           // location은 PHAsset 로컬 DB 값이라 iCloud 다운로드 불필요(shouldDownloadFromNetwork:false)
+          const endInfo = prof.begin('③좌표조회(파일I/O)');
           const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
+          endInfo();
           if (info.localUri) localUriById.set(asset.id, info.localUri);
           const lat = Number(info.location?.latitude);
           const lon = Number(info.location?.longitude);
@@ -676,7 +692,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       }
       // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
       const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
+      const endCluster = prof.begin('⑦클러스터링');
       const allTrips = clusterForeignTrips(scanned, homeCountryCode);
+      endCluster(scanned.length);
       // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
       const sized = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
       // 2차 방어선 — 자산 id로 못 거른 경우(다른 기기에서 가져옴·사진 재추가 등)를 위해
@@ -688,6 +706,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       console.log('[TravelImport] 총 스캔 사진:', totalAssets, '/ 버킷:', buckets.length, '/ 이미 가져와 제외:', skippedImported);
       console.log('[TravelImport] 좌표 조회(getAssetInfoAsync):', probesDone, `(사진 대비 ${totalAssets ? Math.round((probesDone / totalAssets) * 100) : 0}%)`);
       console.log('[TravelImport] 국가 확정 구간:', segments.length, '→ 국가 채워진 사진:', geocodedOk);
+      // 구간별 소요 시간 — 어디가 병목인지(파일 I/O vs 지오코딩 대기) 판단용.
+      // 20만 장 같은 대용량에서 네이티브 모듈 도입의 이득을 숫자로 보기 위한 근거다.
+      for (const line of prof.formatLines()) console.log(line);
       console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
       console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
