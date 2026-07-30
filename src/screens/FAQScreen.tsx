@@ -9,7 +9,8 @@ import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 설정 > FAQ — 질문/답변 아코디언. 항목은 i18n faq.q1~qN/a1~aN 키로 관리.
-const FAQ_COUNT = 10;
+// faq.q1~qN / a1~aN 개수. 항목을 추가·삭제하면 ko/en 양쪽 문구와 함께 이 값을 맞출 것.
+const FAQ_COUNT = 13;
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
