@@ -326,8 +326,8 @@ export default function StatsScreen() {
   };
   const snapOrbitRef = useRef(snapOrbit);
   snapOrbitRef.current = snapOrbit;
-  // 5개국 이하 여부 — 이때는 회전이 새 순위를 보여주지 못하므로(모든 나라가 이미 보임)
-  // 드래그를 고무줄로만 허용하고 놓으면 원래 배치(1위 중앙)로 되돌린다. PanResponder는
+  // 4개국 이하 여부 — 슬롯(5칸)을 다 못 채워 회전시켜도 빈 자리만 돌아, 드래그를
+  // 고무줄로만 허용하고 놓으면 원래 배치(1위 중앙)로 되돌린다. PanResponder는
   // 첫 렌더에 박제되므로 ref로 최신 개수를 전달한다.
   const arcFewRef = useRef(false);
   // 플릭 관성 — 손을 놓을 때 속도로 계속 회전하다 감속 후 스냅. 손가락이 화면을 벗어나지
@@ -365,7 +365,7 @@ export default function StatsScreen() {
   startMomentumRef.current = startMomentum;
   const stopMomentumRef = useRef(stopMomentum);
   stopMomentumRef.current = stopMomentum;
-  // 고무줄 복귀 — 5개국 이하에서 드래그를 놓으면 240ms ease-out으로 0(1위 중앙)에 되돌린다.
+  // 고무줄 복귀 — 4개국 이하에서 드래그를 놓으면 240ms ease-out으로 0(1위 중앙)에 되돌린다.
   // momentumRef.raf 슬롯을 공유해 복귀 중 재터치(stopMomentum)가 자연스럽게 끊고 이어잡는다.
   const springBack = () => {
     stopMomentum();
@@ -422,7 +422,7 @@ export default function StatsScreen() {
         if (now - d.lastUpd < 16) return; // 프레임 단위 스로틀
         d.lastUpd = now;
         const raw = g.dx / (60 * OS); // ≈슬롯 간격만큼 끌면 한 칸
-        // 5개국 이하: 고무줄 — tanh로 저항을 주고 ±0.5슬롯을 넘지 않게. 놓으면 0으로 복귀한다.
+        // 4개국 이하: 고무줄 — tanh로 저항을 주고 ±0.5슬롯을 넘지 않게. 놓으면 0으로 복귀한다.
         const next = arcFewRef.current
           ? Math.max(-0.5, Math.min(0.5, d.start + Math.tanh(raw) * 0.5))
           : d.start + raw;
@@ -436,7 +436,7 @@ export default function StatsScreen() {
           d.dragging = false;
           setOrbitDragging(false); // 스크롤 잠금 해제
           if (arcFewRef.current) {
-            // 5개국 이하: 관성·스냅 없이 원래 배치로 고무줄 복귀
+            // 4개국 이하: 관성·스냅 없이 원래 배치로 고무줄 복귀
             springBackRef.current();
             Haptics.selectionAsync().catch(() => {});
             return;
@@ -690,8 +690,10 @@ export default function StatsScreen() {
     name: c.name,
     visits: c.visits,
   }));
-  // 5개국 이하면 회전이 새 순위를 보여주지 못한다 — 드래그는 고무줄로만(놓으면 복귀)
-  arcFewRef.current = ARC_COUNTRIES.length <= 5;
+  // 4개국 이하면 슬롯(5칸)이 다 차지 않아 회전이 빈 자리만 돌린다 — 드래그는 고무줄로만.
+  // 5개국은 슬롯이 꽉 차서 돌리면 중앙에 오는 나라가 실제로 바뀌므로 자유 회전을 준다
+  // (배치는 6개 이상의 캐러셀이 아니라 기존 5슬롯 순환을 그대로 쓴다).
+  arcFewRef.current = ARC_COUNTRIES.length < 5;
 
   // 5. Travel Rating Stats
   const ratingCounts = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
