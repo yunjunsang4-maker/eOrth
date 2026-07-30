@@ -1,0 +1,15 @@
+{
+  "_readme": "앱 내 공지. GitHub Pages로 게시되며(https://yunjunsang4-maker.github.io/eOrth/notices.json) 앱이 설정 > 공지사항에서 읽는다. 공지 추가 = 이 파일에 항목을 넣고 커밋. publishedAt이 미래면 그날까지 앱에 안 보인다(예약 게시). id는 한 번 쓰면 바꾸지 말 것 — 바꾸면 이미 읽은 사용자에게 다시 미읽음으로 뜬다.",
+  "notices": [
+    {
+      "id": "2026-08-04-terms",
+      "kind": "terms",
+      "title": "이용약관 개정 안내",
+      "titleEn": "Terms of Service update",
+      "publishedAt": "2026-07-31",
+      "effectiveDate": "2026-08-04",
+      "body": "이용약관이 2026년 8월 4일부터 개정됩니다.\n\n개정 사유\n· 제9조(유료 서비스): 프리미엄 기능이 현재 모든 이용자에게 무료로 제공되고 있으며 유료 결제가 도입되어 있지 않다는 점을 명확히 했습니다. 기존의 \"정식 출시 시 인앱 구독으로 전환\"이라는 문구는 결제 방식이 확정되지 않아 삭제하고, 향후 유료 전환 시 사전에 공지하며 동의 없이 결제되지 않는다는 내용을 넣었습니다.\n· 제2조(정의): \"프리미엄\"을 구독형에 한정하지 않도록 정정했습니다.\n· 제10조(광고): 광고가 프리미엄 이용 여부와 관계없이 표시된다는 점을 명시했습니다. 프리미엄에는 광고 제거가 포함되지 않습니다.\n· 제5조(서비스): 제공 중인 기능 목록에 대륙·지역 지도, 과거 여행 자동 불러오기, 외부 블로그 가져오기를 추가했습니다.\n\n전문은 설정 > 이용약관에서 확인하실 수 있습니다.",
+      "bodyEn": "Our Terms of Service will be updated on August 4, 2026.\n\nWhat changed\n· Article 9 (Paid services): Clarified that Premium features are currently free for everyone and that no paid billing exists. The previous wording promising conversion to an in-app subscription at launch was removed, since the payment model is not finalized. Added a commitment to notify you in advance and never charge without your consent.\n· Article 2 (Definitions): \"Premium\" is no longer limited to subscriptions.\n· Article 10 (Ads): Ads are shown regardless of Premium. Premium does not include ad removal.\n· Article 5 (Services): Added the continent/region map, past-trip auto import, and external blog import to the list of provided features.\n\nYou can read the full text in Settings > Terms of Service."
+    }
+  ]
+}
