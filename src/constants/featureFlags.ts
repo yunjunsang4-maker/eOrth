@@ -27,6 +27,9 @@ export const SNS_SHARE_ENABLED = channel === 'production';
  * 소셜 피드 광고 슬롯(게시물 7개당 1개) 활성화 여부.
  * 현재는 하우스 광고(앱 기능 홍보)만 표시하므로 전 채널 활성.
  * AdMob 등 외부 네트워크 연결 시 채널 조건(production)과 ATT/동의 처리를 함께 붙일 것.
+ *
+ * 프리미엄은 광고를 끄지 않는다(2026-07-31 결정, 혜택 3종 = 폰트·로고·프레임).
+ * FeedAdSlot에 isPremium 분기가 없는 것은 누락이 아니라 의도다 — 추가하지 말 것.
  */
 export const FEED_ADS_ENABLED = true;
 

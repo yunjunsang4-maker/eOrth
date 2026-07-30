@@ -153,8 +153,8 @@ const en = {
     showcaseLogoOff: 'No logo',
     showcaseStamp: 'Tokyo 2026', // 프레임 미리보기용 예시 스탬프 문구
     applyCta: 'Apply in Settings',
-    benefitAdsTitle: 'Ad-free feed',
-    benefitAdsDesc: 'No more ads in your social feed',
+    // Premium is fixed at 3 benefits (font/logo/frame). Ad removal is NOT offered — do not re-add.
+    // Photo limits and original backup are parked for in-app purchases, not premium.
     benefitFontTitle: 'Handle fonts',
     benefitFontDesc: '16 fonts for your handle on profile and feed',
     benefitPhotosTitle: '100 photos per record',

@@ -100,6 +100,8 @@ albumQuality: rec.albumUploadQuality ?? 'compressed',
 
 `src/i18n/locales/ko.ts`, `en.ts`에 안내 문구 키를 추가한다. 삭제되는 혜택 문구 키(`benefitAdsTitle`/`Desc`, `benefitBackupTitle`/`Desc`)는 **지우지 않고 남긴다** — 재화 도입 시 재사용한다.
 
+> **갱신 (2026-07-31):** 프리미엄 혜택이 3종(폰트·로고·프레임)으로 확정되고 **광고 제거는 도입하지 않기로** 결정되어, `benefitAdsTitle`/`Desc`는 실제로 삭제했다. `benefitBackup*`은 위 방침대로 남아 있다.
+
 ## 검증
 
 - `npm run typecheck` — 통과

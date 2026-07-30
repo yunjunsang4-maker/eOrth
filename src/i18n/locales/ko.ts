@@ -154,8 +154,10 @@ const ko = {
     showcaseLogoOff: '로고 없음',
     showcaseStamp: 'Tokyo 2026', // 프레임 미리보기용 예시 스탬프 문구
     applyCta: '설정에서 적용하기',
-    benefitAdsTitle: '광고 없는 피드',
-    benefitAdsDesc: '소셜 피드의 광고가 사라져요',
+    // 프리미엄 혜택은 3종(폰트·로고·프레임)으로 확정됐다(2026-07-31 사용자 결정).
+    // '광고 없는 피드'는 도입하지 않는다 — 프리미엄이어도 피드 광고는 그대로다.
+    // 다시 추가하지 말 것. 사진 상한·원본 백업은 프리미엄이 아니라 앱내 재화 쪽으로
+    // 보류돼 있어 아래 키와 PremiumScreen의 재백업 CTA를 남겨 둔다.
     benefitFontTitle: '아이디 폰트',
     benefitFontDesc: '프로필·피드의 내 아이디에 폰트 16종 적용',
     benefitPhotosTitle: '기록당 사진 100장',
