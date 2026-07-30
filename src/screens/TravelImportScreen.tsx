@@ -84,6 +84,12 @@ const makeSincePeriod = (lastImportAt: number): ScanPeriodOption => ({
 });
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
 
+// 사진 목록 한 페이지 크기. 100이면 20만 장에서 getAssetsAsync 왕복이 2,000회라
+// 장수에 정직하게 비례하는 고정비가 된다. 1000으로 올리면 200회로 줄어든다.
+// Asset은 id·uri·촬영시각 정도의 얕은 객체라 1,000개씩 받아도 메모리 부담이 작다.
+// (좌표 조회는 이 값과 무관하다 — 12시간 버킷당 1~3장만 조사한다)
+const PAGE_SIZE = 1000;
+
 // 플랫폼별 안내 문구
 // iOS: GPS는 로컬 메타데이터로 읽으므로 iCloud 최적화 사진도 다운로드 없이 빠르게 분석
 // Android: MediaStore(로컬)만 읽음 → 빠름, 단 클라우드 전용(기기에서 내린) 사진은 제외될 수 있음
@@ -525,7 +531,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
     try {
       // ── 2) 최근 3년 사진 페이지네이션 스캔 ──
-      // let인 이유: 아래에서 제외 결과로 참조를 바꿔 끼운다(20만 장 스프레드 복사 금지 — 548행 주석)
+      // let인 이유: 아래 '이미 가져온 사진 제외' 결과로 참조를 바꿔 끼운다(스프레드 복사 금지)
       let assets: MediaLibrary.Asset[] = [];
       let after: string | undefined = undefined;
       let hasNext = true;
@@ -533,7 +539,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         if (scanCancelRef.current) return;
         const endPage = prof.begin('①페이지네이션');
         const page = await MediaLibrary.getAssetsAsync({
-          first: 100,
+          first: PAGE_SIZE,
           after,
           mediaType: 'photo',
           sortBy: 'creationTime',
@@ -541,7 +547,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         });
         endPage(page.assets.length);
         if (page.assets.length === 0) break;
-        assets.push(...page.assets);
+        // 스프레드 대신 루프 — 스프레드는 배열 길이만큼을 인자로 넘기므로 PAGE_SIZE를
+        // 더 키우면 Hermes 인자 한계에 걸린다(아래 '제외' 자리에서 실제로 겪은 버그).
+        for (const a of page.assets) assets.push(a);
         after = page.endCursor;
         hasNext = page.hasNextPage;
       }
