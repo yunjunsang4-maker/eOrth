@@ -513,7 +513,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
     try {
       // ── 2) 최근 3년 사진 페이지네이션 스캔 ──
-      const assets: MediaLibrary.Asset[] = [];
+      // let인 이유: 아래에서 제외 결과로 참조를 바꿔 끼운다(20만 장 스프레드 복사 금지 — 548행 주석)
+      let assets: MediaLibrary.Asset[] = [];
       let after: string | undefined = undefined;
       let hasNext = true;
       while (hasNext) {
@@ -544,8 +545,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const importedIds = collectImportedAssetIds(recordsRef.current);
       const scanTargets = excludeImported(assets, importedIds);
       const skippedImported = assets.length - scanTargets.length;
-      assets.length = 0;
-      assets.push(...scanTargets);
+      // 참조만 바꿔 끼운다. 이전 코드는 assets.push(...scanTargets)로 내용을 복사했는데,
+      // 스프레드는 배열 길이만큼을 "인자"로 넘기므로 사진이 수만 장을 넘으면 Hermes의
+      // 인자 개수 한계에 걸려 RangeError(Maximum call stack size exceeded)로 죽는다.
+      // 그 예외가 스캔 전체의 catch로 빠져 결과 0건 = "스캔이 아예 안 됨"으로 보였다.
+      // (531행의 push는 페이지당 100장이라 안전하다)
+      assets = scanTargets;
       if (assets.length === 0) throw new Error('No new photos to scan');
       const totalAssets = assets.length;
 
