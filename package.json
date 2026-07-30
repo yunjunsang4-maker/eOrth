@@ -8,8 +8,10 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/run-verify.mjs && node scripts/check-webview-syntax.mjs src/components/CountryMapView.tsx",
-    "lint": "expo lint"
+    "test": "node scripts/run-verify.mjs && node scripts/check-webview-syntax.mjs src/components/CountryMapView.tsx && node scripts/check-docs-sync.mjs",
+    "lint": "expo lint",
+    "pages:check": "node scripts/publish-pages.mjs",
+    "pages:publish": "node scripts/publish-pages.mjs --publish"
   },
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
