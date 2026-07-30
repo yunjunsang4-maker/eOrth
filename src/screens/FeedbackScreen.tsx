@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
   KeyboardAvoidingView, Platform, ActivityIndicator,
@@ -16,13 +17,16 @@ const COLORS = {
   card: 'rgba(46,46,59,0.45)',
   cardBorder: 'rgba(255,255,255,0.08)',
   divider: '#1A1A26',
-  purpleNeon: '#BF85FC',
+  // purpleNeon은 skinTheme으로 (makeStyles의 a.accent) — 지구본 스킨 연동
   white: '#FFFFFF',
   textDim: '#A1A1B0',
   textMuted: '#8B8B9E',
 };
 
 export default function FeedbackScreen({ navigation }: RootStackScreenProps<'Feedback'>) {
+  // 지구본 스킨 강조색 연동
+  const a = useSkinAccent();
+  const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const [content, setContent] = useState('');
   const [sending, setSending] = useState(false);
@@ -96,7 +100,7 @@ export default function FeedbackScreen({ navigation }: RootStackScreenProps<'Fee
   );
 }
 
-const st = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
 
   header: {
@@ -136,7 +140,7 @@ const st = StyleSheet.create({
   sendBtn: {
     height: 50,
     borderRadius: 12,
-    backgroundColor: COLORS.purpleNeon,
+    backgroundColor: a.accent,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,

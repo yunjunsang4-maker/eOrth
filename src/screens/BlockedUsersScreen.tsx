@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View,
   Text,
@@ -16,7 +17,7 @@ const COLORS = {
   bg: '#0A0A0F',
   card: '#2E2E3B',
   divider: '#1A1A26',
-  purpleNeon: '#BF85FC',
+  // purpleNeon은 skinTheme으로 (makeStyles의 a.accent) — 지구본 스킨 연동
   white: '#FFFFFF',
   textDim: '#A1A1B0',
   textMuted: '#8B8B9E',
@@ -25,6 +26,9 @@ const COLORS = {
 };
 
 export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<'BlockedUsers'>) {
+  // 지구본 스킨 강조색 연동
+  const a = useSkinAccent();
+  const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const { blockedUsers, unblockUser } = useRecords();
 
@@ -96,7 +100,7 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
   );
 }
 
-const st = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.bg,
@@ -186,11 +190,11 @@ const st = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(191,133,252,0.1)',
+    backgroundColor: a.tint(0.1),
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: 'rgba(191,133,252,0.25)',
+    borderColor: a.tint(0.25),
   },
   userInfo: {
     flex: 1,

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   LayoutAnimation, Platform, UIManager,
@@ -19,13 +20,16 @@ const COLORS = {
   card: 'rgba(46,46,59,0.45)',
   cardBorder: 'rgba(255,255,255,0.08)',
   divider: '#1A1A26',
-  purpleNeon: '#BF85FC',
+  // purpleNeon은 skinTheme으로 (makeStyles의 a.accent) — 지구본 스킨 연동
   white: '#FFFFFF',
   textDim: '#A1A1B0',
   textMuted: '#8B8B9E',
 };
 
 export default function FAQScreen({ navigation }: RootStackScreenProps<'FAQ'>) {
+  // 지구본 스킨 강조색 연동
+  const a = useSkinAccent();
+  const st = useMemo(() => makeStyles(a), [a]);
   const { t } = useTranslation();
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -80,7 +84,7 @@ export default function FAQScreen({ navigation }: RootStackScreenProps<'FAQ'>) {
   );
 }
 
-const st = StyleSheet.create({
+const makeStyles = (a: SkinAccent) => StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: COLORS.bg },
 
   header: {
@@ -115,11 +119,11 @@ const st = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 15,
   },
-  qMark: { fontSize: 13, fontWeight: '800', color: COLORS.purpleNeon, width: 16 },
+  qMark: { fontSize: 13, fontWeight: '800', color: a.accent, width: 16 },
   qText: { flex: 1, fontSize: 13, color: COLORS.white, lineHeight: 19 },
-  qTextOn: { fontWeight: '700', color: COLORS.purpleNeon },
+  qTextOn: { fontWeight: '700', color: a.accent },
   chevron: { fontSize: 16, color: COLORS.textMuted },
-  chevronOn: { transform: [{ rotate: '180deg' }], color: COLORS.purpleNeon },
+  chevronOn: { transform: [{ rotate: '180deg' }], color: a.accent },
   aWrap: {
     paddingHorizontal: 16,
     paddingLeft: 42,
