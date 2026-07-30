@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -21,15 +21,33 @@ import { emitToast } from '../store/toastStore';
 import { COUNTRIES } from '../constants/countries';
 import type { StayType } from '../utils/stayMachine';
 import { clearPersistedStores } from '../store/persist';
+import { fetchNotices } from '../services/notices';
+import { hasUnreadNotice } from '../utils/noticeFeed';
 import { signOut } from '../services/auth';
 import { deleteAllMyPosts } from '../services/posts';
 import { clearTripState } from '../services/tripState';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
-  PersonIcon, LockIcon, BellIcon, BlockIcon, ArchiveIcon,
-  EyeIcon, GlobeSkinIcon, LanguageIcon, MoonIcon, CompassIcon,
-  QuestionIcon, ChatIcon, DocumentIcon, InfoIcon, ExitIcon, GalleryIcon,
-  TrashIcon, StarIcon, StickerIcon, PaletteIcon,
+  PersonIcon,
+  LockIcon,
+  BellIcon,
+  BlockIcon,
+  ArchiveIcon,
+  EyeIcon,
+  GlobeSkinIcon,
+  LanguageIcon,
+  MoonIcon,
+  CompassIcon,
+  QuestionIcon,
+  ChatIcon,
+  DocumentIcon,
+  InfoIcon,
+  ExitIcon,
+  GalleryIcon,
+  TrashIcon,
+  StarIcon,
+  StickerIcon,
+  PaletteIcon,
   LockClosedIcon as SvgLockClosedIcon,
 } from '../components/icons';
 import { HANDLE_FONTS, handleFontStyle } from '../constants/handleFonts';
@@ -118,7 +136,7 @@ const SettingGroup = ({
 };
 
 export default function SettingsScreen({ navigation }: RootStackScreenProps<'Settings'>) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const {
     showCounts, setShowCounts,
     homeCountryCode, setHomeCountryCode,
@@ -131,7 +149,20 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     globeSkin, setGlobeSkin,
     resetSettings,
     resetTutorialsSeen,
+    lastSeenNoticeAt,
   } = useSettings();
+  // 미읽음 공지 배지. 실패하면 배지를 띄우지 않을 뿐 화면은 그대로다.
+  // lastSeenNoticeAt이 의존성이라, 공지 화면에서 읽고 돌아오면 다시 계산돼 배지가 꺼진다.
+  const [noticeUnread, setNoticeUnread] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const all = await fetchNotices(i18n.language);
+      if (alive) setNoticeUnread(hasUnreadNotice(all, lastSeenNoticeAt, Date.now()));
+    })();
+    return () => { alive = false; };
+  }, [i18n.language, lastSeenNoticeAt]);
+
   const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
 
@@ -416,6 +447,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <Text style={st.groupLabel}>{t('settings.groupSupport')}</Text>
         <SettingGroup
           items={[
+            {
+              icon: <BellIcon size={22} />,
+              label: t('settings.notice'),
+              badge: noticeUnread ? t('notice.badgeNew') : undefined,
+              onPress: () => navigation.navigate('Notice'),
+            },
             {
               icon: <QuestionIcon size={22} />,
               label: t('settings.faq'),

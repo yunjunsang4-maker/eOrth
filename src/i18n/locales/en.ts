@@ -112,6 +112,7 @@ const en = {
     themeTitle: 'Theme',
     themeMsg: 'Only dark mode is supported for now.',
     residence: 'Country of residence',
+    notice: 'Notices',
     faq: 'FAQ',
     faqMsg: 'The FAQ page is coming soon.',
     feedback: 'Send feedback',
@@ -203,6 +204,15 @@ const en = {
     failTitle: 'Failed to send',
     failMsg: 'Could not send your feedback. Please check your login status and network, then try again.',
     note: 'Feedback is stored with your account info. We may reply to your sign-up email if needed.',
+  },
+  notice: {
+    title: 'Notices',
+    empty: 'No notices yet.',
+    badgeNew: 'N',
+    effectiveOn: 'Effective: {{date}}',
+    kind_terms: 'Terms',
+    kind_privacy: 'Privacy',
+    kind_service: 'Service',
   },
   faq: {
     title: 'FAQ',

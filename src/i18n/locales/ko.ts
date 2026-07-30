@@ -113,6 +113,7 @@ const ko = {
     themeTitle: '테마',
     themeMsg: '현재 다크 모드만 지원합니다.',
     residence: '거주 국가',
+    notice: '공지사항',
     faq: 'FAQ',
     faqMsg: 'FAQ 페이지 준비 중입니다.',
     feedback: '피드백 보내기',
@@ -206,6 +207,15 @@ const ko = {
     failTitle: '전송 실패',
     failMsg: '피드백을 보내지 못했어요. 로그인 상태와 네트워크를 확인한 뒤 다시 시도해 주세요.',
     note: '피드백은 계정 정보와 함께 저장되며, 답변이 필요한 경우 가입 이메일로 연락드릴 수 있어요.',
+  },
+  notice: {
+    title: '공지사항',
+    empty: '등록된 공지가 없어요.',
+    badgeNew: 'N',
+    effectiveOn: '시행일: {{date}}',
+    kind_terms: '이용약관',
+    kind_privacy: '개인정보',
+    kind_service: '서비스',
   },
   faq: {
     title: 'FAQ',

@@ -167,6 +167,10 @@ interface SettingsContextType {
   // 훑도록 기본 기간을 좁히는 데 쓴다. null이면 아직 한 번도 가져오지 않음.
   lastImportAt: number | null;
   setLastImportAt: (v: number | null) => void;
+  // 마지막으로 확인한 공지의 '게시 시각'(ms). 목록을 열 때 갱신하고, 이보다 새 공지가
+  // 있으면 설정에 점 배지를 띄운다. 기기 시계가 아니라 게시 시각끼리 비교한다.
+  lastSeenNoticeAt: number;
+  setLastSeenNoticeAt: (v: number) => void;
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
@@ -227,6 +231,7 @@ interface SettingsPersistPayload {
   tutorialSeen?: boolean; // (구버전) 메인 튜토리얼 1회 표시 여부 — tutorialsSeen.main으로 이관
   tutorialsSeen?: TutorialsSeen; // 탭별 튜토리얼 표시 여부
   lastImportAt?: number | null;  // 과거여행 불러오기 마지막 완료 시각
+  lastSeenNoticeAt?: number;     // 마지막으로 확인한 공지의 게시 시각(ms)
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
 
@@ -303,6 +308,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [qrDesign, setQrDesign] = useState('default'); // 개별 QR 디자인 — 기본(보라)
   const [tutorialsSeen, setTutorialsSeen] = useState<TutorialsSeen>({}); // 탭별 튜토리얼 표시 여부(계정당)
   const [lastImportAt, setLastImportAt] = useState<number | null>(null); // 과거여행 불러오기 마지막 완료 시각
+  const [lastSeenNoticeAt, setLastSeenNoticeAt] = useState(0); // 마지막으로 확인한 공지의 게시 시각
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
@@ -434,6 +440,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       // 구버전 저장본 마이그레이션 — tutorialSeen(메인 전용) → tutorialsSeen.main
       setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setLastImportAt(typeof p.lastImportAt === 'number' ? p.lastImportAt : null);
+      setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
     () => ({
@@ -482,6 +489,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialsSeen,
       tutorialSeen: !!tutorialsSeen.main, // 구버전 앱 호환용으로 함께 저장
       lastImportAt,
+      lastSeenNoticeAt,
       stayNudgeDismissedFor,
     }),
     [
@@ -529,6 +537,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       qrDesign,
       tutorialsSeen,
       lastImportAt,
+      lastSeenNoticeAt,
       stayNudgeDismissedFor,
     ],
   );
@@ -760,6 +769,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         resetTutorialsSeen,
         lastImportAt,
         setLastImportAt,
+        lastSeenNoticeAt,
+        setLastSeenNoticeAt,
         stayNudgeDismissedFor,
         setStayNudgeDismissedFor,
         resetSettings,

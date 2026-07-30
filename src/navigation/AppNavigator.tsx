@@ -20,6 +20,7 @@ import NewRecordScreen from '../screens/NewRecordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import PremiumScreen from '../screens/PremiumScreen';
 import FAQScreen from '../screens/FAQScreen';
+import NoticeScreen from '../screens/NoticeScreen';
 import FeedbackScreen from '../screens/FeedbackScreen';
 import FriendSearchScreen from '../screens/FriendSearchScreen';
 import BlockedUsersScreen from '../screens/BlockedUsersScreen';
@@ -304,6 +305,7 @@ export default function AppNavigator() {
         />
         <Stack.Screen name="Settings" component={SettingsScreen} />
         <Stack.Screen name="Premium" component={PremiumScreen} options={{ presentation: 'modal' }} />
+        <Stack.Screen name="Notice" component={NoticeScreen} />
         <Stack.Screen name="FAQ" component={FAQScreen} />
         <Stack.Screen name="Feedback" component={FeedbackScreen} />
         <Stack.Screen name="Friends" component={FriendsScreen} />
