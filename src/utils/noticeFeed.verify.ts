@@ -8,7 +8,11 @@ function assert(cond: boolean, msg: string) {
 }
 
 const DAY = 24 * 60 * 60 * 1000;
-const T = (s: string) => Date.parse(`${s}T00:00:00Z`);
+// 날짜만 적힌 publishedAt은 '로컬 자정'으로 해석되므로 기대값도 로컬로 만든다
+const T = (s: string) => {
+  const [y, m, d] = s.split('-').map(Number);
+  return new Date(y, m - 1, d).getTime();
+};
 const NOW = T('2026-08-01');
 
 const raw = {
@@ -24,7 +28,7 @@ const raw = {
   assert(ko.length === 2, '정상 항목 2개 파싱');
   assert(ko[0].title === '약관 개정' && ko[0].body === '본문', 'ko는 한국어 필드');
   assert(ko[0].effectiveDate === '2026-08-07', '시행일 원문 보존');
-  assert(ko[0].publishedAt === T('2026-07-31'), 'YYYY-MM-DD → ms (UTC 자정)');
+  assert(ko[0].publishedAt === T('2026-07-31'), 'YYYY-MM-DD → 그 날짜의 로컬 자정');
   assert(ko[1].kind === 'service', 'kind 기본값/보존');
 
   const en = parseNotices(raw, 'en');
@@ -65,6 +69,27 @@ const raw = {
   assert(parseNotices(null, 'ko').length === 0, 'null → 빈 목록');
   assert(parseNotices('문자열', 'ko').length === 0, '문자열 → 빈 목록');
   assert(parseNotices({}, 'ko').length === 0, 'notices 없는 객체 → 빈 목록');
+}
+
+// 게시일 당일 새벽에도 보여야 한다 (회귀 — 2026-07-31 실제 장애)
+// UTC 자정으로 해석하면 한국(UTC+9)에서 그날 오전 9시가 되어, 새벽에 연 사용자에게
+// 공지가 "아직 게시 전"으로 숨었다. 날짜만 적힌 값은 로컬 달력 기준이어야 한다.
+{
+  const list = parseNotices({ notices: [{ id: 'today', title: '오늘 공지', publishedAt: '2026-07-31' }] }, 'ko');
+  const dawn = new Date(2026, 6, 31, 2, 32).getTime(); // 그날 새벽 2시 32분(로컬)
+  assert(visibleNotices(list, dawn).length === 1, '게시일 당일 새벽 2시에도 보인다');
+  assert(hasUnreadNotice(list, 0, dawn) === true, '게시일 당일 새벽에 배지가 켜진다');
+  const before = new Date(2026, 6, 30, 23, 59).getTime(); // 전날 밤
+  assert(visibleNotices(list, before).length === 0, '전날 밤에는 아직 안 보인다');
+}
+
+// 시각까지 지정한 ISO 문자열은 그 시각을 그대로 따른다
+{
+  const list = parseNotices({ notices: [{ id: 'iso', title: '예약', publishedAt: '2026-07-31T18:00:00+09:00' }] }, 'ko');
+  const at1759 = Date.parse('2026-07-31T17:59:00+09:00');
+  const at1801 = Date.parse('2026-07-31T18:01:00+09:00');
+  assert(visibleNotices(list, at1759).length === 0, 'ISO 지정 시각 전에는 안 보인다');
+  assert(visibleNotices(list, at1801).length === 1, 'ISO 지정 시각 후에는 보인다');
 }
 
 // -- visibleNotices: 예약 게시 --

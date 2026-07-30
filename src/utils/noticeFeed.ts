@@ -23,10 +23,21 @@ export interface Notice {
   effectiveDate: string;
 }
 
-/** 'YYYY-MM-DD' 또는 ISO 문자열 → ms. 해석 불가면 null */
+/**
+ * 'YYYY-MM-DD' 또는 ISO 문자열 → ms. 해석 불가면 null.
+ *
+ * 날짜만 적힌 값은 **그 날짜의 로컬 자정**으로 본다. 처음엔 UTC 자정으로 잡았는데,
+ * 한국(UTC+9)에서는 그날 오전 9시가 되어 게시일 당일 새벽에 공지가 "아직 게시 전"으로
+ * 숨는 문제가 있었다(2026-07-31 새벽에 실제로 겪음). 운영자가 날짜만 적었다면
+ * "그 날부터"라는 뜻이므로 보는 사람의 달력 기준이 맞다.
+ * 시각까지 지정하고 싶으면 ISO 문자열(2026-07-31T18:00:00+09:00)을 쓰면 된다.
+ */
 function toMs(v: unknown): number | null {
   if (typeof v !== 'string' || !v.trim()) return null;
-  const t = Date.parse(v.length === 10 ? `${v}T00:00:00Z` : v);
+  const s = v.trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+  const t = Date.parse(s);
   return Number.isFinite(t) ? t : null;
 }
 
