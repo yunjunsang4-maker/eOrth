@@ -39,6 +39,13 @@ import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryTagLabel, countryLabel } from '../utils/countryLabel';
 import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
+// 좌표 배치 조회 — 네이티브가 있으면 getAssetInfoAsync(원본 파일 접근)를 건너뛴다
+import { isPhotoLocationAvailable, getLocations } from '../../modules/photo-location';
+import {
+  fetchLocationsInBatches,
+  normalizeLocations,
+  type LatLon,
+} from '../utils/photoLocationBatch';
 import { ScanProfiler } from '../utils/scanProfiler';
 import {
   bucketRanges,
@@ -633,22 +640,76 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         return geo;
       };
 
+      // ── 3-0) 네이티브 배치 좌표 조회 (있으면) ──
+      // 탐침 후보는 probeOrder가 결정적으로 정하므로 미리 다 모을 수 있다. 좌표만 필요한데
+      // getAssetInfoAsync는 localUri·exif까지 만들며 원본 파일을 열어 회당 15.5ms였다.
+      // 네이티브는 iOS에서 Photos DB 필드(asset.location)라 사실상 공짜, 안드로이드는
+      // 여전히 파일마다 EXIF를 읽지만 GPS 태그만 보고 왕복도 배치당 1회다.
+      let prefetched: Map<string, LatLon> | null = null;
+      const prefetchedIds = new Set<string>();
+      if (isPhotoLocationAvailable) {
+        const endPre = prof.begin('③-N네이티브배치좌표');
+        for (const b of buckets) {
+          for (const idx of probeOrder(b.start, b.end)) prefetchedIds.add(assets[idx].id);
+        }
+        const ids = [...prefetchedIds];
+        // 비용이 이 구간으로 옮겨왔으니 진행률도 여기서 움직여야 한다(안드로이드는 수 초 걸린다).
+        // 0~70%를 배치 진행에 쓰고, 뒤이은 탐침 루프는 자기 공식으로 80%까지 올린다.
+        prefetched = await fetchLocationsInBatches(ids, getLocations, {
+          onBatch: (done, total) =>
+            setProgress((p) => Math.max(p, Math.round((done / total) * 70))),
+        });
+        endPre(ids.length);
+        // 후보가 있는데 좌표가 0건이면 네이티브가 제 역할을 못한 것으로 본다
+        // (안드로이드 ACCESS_MEDIA_LOCATION 미승인 등). 기존 경로로 되돌린다 —
+        // 느려도 결과가 나오는 편이, 빠르게 아무것도 못 찾는 편보다 낫다.
+        if (ids.length > 0 && prefetched.size === 0) {
+          console.log('[TravelImport] 네이티브 좌표 0건 → getAssetInfoAsync 경로로 폴백');
+          prefetched = null;
+          prefetchedIds.clear();
+        }
+      }
+
       // 자산 1건의 좌표를 읽어 국가코드로 — localUri도 함께 회수해 저장 단계의 재조회를 줄인다
       const localUriById = new Map<string, string>();
       const probeCountry = async (index: number): Promise<string | null> => {
         const asset = assets[index];
         probesDone++;
-        // 진행률 0~80%는 샘플링 구간 (예산 초과 시 80에서 멈춰 있게)
-        setProgress(Math.min(80, Math.round((probesDone / Math.max(1, probeBudget)) * 80)));
+        // 진행률 0~80%는 샘플링 구간 (예산 초과 시 80에서 멈춰 있게).
+        // Math.max로 감싼 이유: 네이티브 배치가 앞에서 70%까지 올려 두므로, 여기서 낮은
+        // 값을 그대로 쓰면 바가 뒤로 간다.
+        setProgress((p) => Math.max(p, Math.min(80, Math.round((probesDone / Math.max(1, probeBudget)) * 80))));
         try {
-          // location은 PHAsset 로컬 DB 값이라 iCloud 다운로드 불필요(shouldDownloadFromNetwork:false)
-          const endInfo = prof.begin('③좌표조회(파일I/O)');
-          const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
-          endInfo();
-          if (info.localUri) localUriById.set(asset.id, info.localUri);
-          const lat = Number(info.location?.latitude);
-          const lon = Number(info.location?.longitude);
-          if (!info.location || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          let lat: number;
+          let lon: number;
+          const pre = prefetched?.get(asset.id);
+          if (pre) {
+            lat = pre.latitude;
+            lon = pre.longitude;
+          } else if (prefetched && prefetchedIds.has(asset.id)) {
+            // 배치에 넣었는데 결과에 없으면 GPS가 없는 사진이다 — 파일을 열어 볼 이유가 없다
+            return null;
+          } else if (prefetched) {
+            // 경계 이분탐색은 후보 밖 인덱스를 고르므로 배치에 없다. 그 몇 장만 따로 조회한다.
+            const endOne = prof.begin('③-N네이티브단건좌표');
+            const one = normalizeLocations(await getLocations([asset.id]));
+            endOne();
+            const loc = one.get(asset.id);
+            if (!loc) return null;
+            prefetched.set(asset.id, loc); // 같은 사진을 두 번 묻지 않게
+            lat = loc.latitude;
+            lon = loc.longitude;
+          } else {
+            // 네이티브가 없는 빌드 — 기존 경로. location은 PHAsset 로컬 DB 값이라
+            // iCloud 다운로드 불필요(shouldDownloadFromNetwork:false)
+            const endInfo = prof.begin('③좌표조회(파일I/O)');
+            const info = await MediaLibrary.getAssetInfoAsync(asset.id, { shouldDownloadFromNetwork: false });
+            endInfo();
+            if (info.localUri) localUriById.set(asset.id, info.localUri);
+            lat = Number(info.location?.latitude);
+            lon = Number(info.location?.longitude);
+            if (!info.location || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+          }
           const geo = await countryAt(lat, lon);
           if (!geo) return null;
           // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출

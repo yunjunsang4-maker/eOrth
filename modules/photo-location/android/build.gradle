@@ -1,0 +1,28 @@
+apply plugin: 'com.android.library'
+
+group = 'expo.modules.photolocation'
+version = '0.1.0'
+
+def expoModulesCorePlugin = new File(project(":expo-modules-core").projectDir.absolutePath, "ExpoModulesCorePlugin.gradle")
+apply from: expoModulesCorePlugin
+applyKotlinExpoModulesCorePlugin()
+useCoreDependencies()
+useDefaultAndroidSdkVersions()
+useExpoPublishing()
+
+android {
+  namespace "expo.modules.photolocation"
+  defaultConfig {
+    versionCode 1
+    versionName "0.1.0"
+  }
+  lintOptions {
+    abortOnError false
+  }
+}
+
+dependencies {
+  // EXIF GPS 태그 파싱. 안드로이드 10+는 스코프 스토리지가 MediaStore의 위치를 가려서
+  // setRequireOriginal로 원본 스트림을 열어 EXIF를 직접 읽어야 한다(LATITUDE 컬럼 경로 없음).
+  implementation 'androidx.exifinterface:exifinterface:1.3.7'
+}
