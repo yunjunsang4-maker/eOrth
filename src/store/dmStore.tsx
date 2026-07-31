@@ -5,8 +5,9 @@ import type { Friend, Message, MsgType, SharedRecord, ReplyInfo } from './dmType
 import { buildSharedRecord, nowTimeString, pickTopFriends } from './dmShareLogic';
 import { useSettings } from './settingsStore';
 import { usePersistence, STORE_KEYS } from './persist';
-import { isSupabaseConfigured } from '../services/supabase';
+import { isSupabaseConfigured, supabase } from '../services/supabase';
 import { onReconnect } from '../utils/connectivity';
+import { remapDocUri } from '../utils/remapDocumentUris';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage } from '../services/media';
 import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage } from '../services/dm';
@@ -21,6 +22,44 @@ const mustUpload = async (u: string): Promise<string> => {
   return r;
 };
 const mustUploadMaybe = async (u?: string): Promise<string | undefined> => (u ? mustUpload(u) : u);
+
+// iOS는 재설치/재빌드로 앱 컨테이너 경로(UUID)가 바뀌어 저장된 절대경로 URI가 전부 깨진다.
+// DM에는 이미지 메시지(imageUri)와 공유 기록 카드(record.*)에 로컬 경로가 들어가므로
+// hydrate 시 recordStore·momentStore와 동일하게 현재 컨테이너 기준으로 복구한다.
+const remapMessageDocUris = (m: Message): Message => {
+  const imageUri = remapDocUri(m.imageUri);
+  let record = m.record;
+  if (record) {
+    const mediaUri = remapDocUri(record.mediaUri);
+    const snapFrontUri = remapDocUri(record.snapFrontUri);
+    const snapBackUri = remapDocUri(record.snapBackUri);
+    let albumUris = record.albumUris;
+    if (albumUris?.length) {
+      const next = albumUris.map((u) => remapDocUri(u));
+      if (next.some((u, i) => u !== albumUris![i])) albumUris = next;
+    }
+    if (
+      mediaUri !== record.mediaUri ||
+      snapFrontUri !== record.snapFrontUri ||
+      snapBackUri !== record.snapBackUri ||
+      albumUris !== record.albumUris
+    ) {
+      record = { ...record, mediaUri, snapFrontUri, snapBackUri, albumUris };
+    }
+  }
+  if (imageUri === m.imageUri && record === m.record) return m; // 변경 없으면 원본 유지
+  return { ...m, imageUri, record };
+};
+
+const remapConversationsDocUris = (
+  conv: Record<string, Message[]>,
+): Record<string, Message[]> => {
+  const out: Record<string, Message[]> = {};
+  for (const [h, list] of Object.entries(conv)) {
+    out[h] = Array.isArray(list) ? list.map(remapMessageDocUris) : list;
+  }
+  return out;
+};
 
 // 신규 사용자는 빈 상태로 시작 — 실제 메이트를 추가/대화하면서 채워진다 (데모 시드 제거)
 const INITIAL_FRIENDS: Friend[] = [];
@@ -98,18 +137,22 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const hydrated = usePersistence<{ conversations: Record<string, Message[]>; readMarks?: Record<string, number>; hiddenIds?: Record<string, true> }>(
     STORE_KEYS.dm,
     (p) => {
-      // payload 필드 가드 — 손상/구버전 payload로 throw하면 부분 복원 상태가 저장으로 덮어써진다
-      if (p.conversations && typeof p.conversations === 'object') setConversations(p.conversations);
+      // payload 필드 가드 — 손상/구버전 payload로 throw하면 부분 복원 상태가 저장으로 덮어써진다.
+      // 사진 URI는 현재 컨테이너 기준으로 복구해서 넣는다(iOS 재빌드 시 썸네일 깨짐 방지).
+      const conv =
+        p.conversations && typeof p.conversations === 'object'
+          ? remapConversationsDocUris(p.conversations)
+          : null;
+      if (conv) setConversations(conv);
       if (p.readMarks) {
         // 구버전(읽은 개수) → 워터마크(ms) 이관: 개수 시절 값은 항상 작아(1e10 미만) 구분된다.
         // 개수 n → 당시 목록의 n번째 메시지 createdAt. 목록·시각이 없으면 0(전부 안읽음 아님,
         // 아래 unreadCount의 '내 마지막 발신' 폴백이 동작).
-        const conv = (p.conversations && typeof p.conversations === 'object') ? p.conversations : {};
         const marks: Record<string, number> = {};
         for (const [h, v] of Object.entries(p.readMarks)) {
           if (typeof v !== 'number') continue;
           if (v >= 1e10) { marks[h] = v; continue; } // 이미 워터마크
-          const list = (conv as Record<string, Message[]>)[h];
+          const list = (conv ?? {})[h];
           marks[h] = (v > 0 ? list?.[Math.min(v, list?.length ?? 0) - 1]?.createdAt : 0) ?? 0;
         }
         setReadMarks(marks);
@@ -120,6 +163,10 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     [conversations, readMarks, hiddenIds],
   );
 
+  // 전송이 진행 중인 로컬 메시지 id — 같은 메시지의 중복 전송(서버 2행) 방지.
+  // 재시도 버튼 연타, 재시도 도중의 재연결 스윕, 사진 업로드로 오래 걸리는 첫 전송 등이 겹칠 수 있다.
+  const inFlightRef = useRef<Set<string>>(new Set());
+
   // 로컬 메시지 1건을 백엔드로 전송 (성공=remoteId 부착, 실패=failed 표시). 상대 uuid를 알 때만.
   const pushToBackend = useCallback(async (
     handle: string,
@@ -127,6 +174,8 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
     payload: { type: MsgType; text: string; imageUri?: string; record?: SharedRecord },
   ) => {
     if (!isSupabaseConfigured) return;
+    if (inFlightRef.current.has(localId)) return; // 이미 전송 중 — 중복 서버 행 방지
+    inFlightRef.current.add(localId);
     try {
       // 상대 uuid 미등록(앱 재시작 직후 피드에서 바로 빠른공유 등)이면 handle로 조회해 등록한다.
       // 그래도 못 찾으면 throw → 실패 표시(재시도 가능). 조용히 성공한 척하면 상대는 영영 못 받는다.
@@ -178,6 +227,8 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
         ...prev,
         [handle]: (prev[handle] ?? []).map((x) => (x.id === localId ? { ...x, failed: true } : x)),
       }));
+    } finally {
+      inFlightRef.current.delete(localId); // 성공·실패 모두 해제 — 실패분은 다시 재시도 가능
     }
   }, [registerPeer]);
 
@@ -205,6 +256,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   const retrySend = useCallback((handle: string, messageId: string) => {
     const m = (conversations[handle] ?? []).find((x) => x.id === messageId);
     if (!m || m.remoteId) return;
+    // 아직 실패 표시가 없거나(=최초 전송 진행 중) 이미 재시도가 돌고 있으면 무시 —
+    // 두 번 밀어넣으면 서버에 같은 메시지가 2행 생긴다.
+    if (!m.failed || inFlightRef.current.has(messageId)) return;
     setConversations((prev) => ({
       ...prev,
       [handle]: (prev[handle] ?? []).map((x) => (x.id === messageId ? { ...x, failed: undefined } : x)),
@@ -338,16 +392,26 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // 실시간 수신: 내 스레드의 새 메시지를 받아 대화에 합친다 (내 메시지 echo는 무시)
+  // ⚠️ 마운트 1회만 시도하면 안 된다 — DMProvider는 로그인 화면보다 먼저 마운트되므로 그 시점의
+  //    getMyUserId()는 null이고, 그러면 로그인해도 그 세션 내내 실시간 수신이 없다. 계정 전환 시엔
+  //    반대로 이전 uid로 만든 구독이 그대로 남는다. → 인증 상태 변화에 맞춰 (재)구독한다.
+  //    (AppNavigator의 onAuthStateChange 구독과 같은 방식. 콜백 안에서 await하지 않는다 —
+  //     supabase-js는 auth 콜백 내 await를 데드락 위험으로 경고한다.)
   useEffect(() => {
     if (!isSupabaseConfigured) return;
-    // 언마운트가 uid 조회보다 먼저 끝나면 이후 생성된 구독이 정리를 영영 못 받는다 — 취소 플래그로 방어
-    let cancelled = false;
-    let cleanup = () => {};
-    (async () => {
-      const myUid = await getMyUserId();
-      if (!myUid || cancelled) return;
+    let disposed = false;
+    let cleanup: (() => void) | null = null;
+    let currentUid: string | null = null;
+
+    const applyUid = (uid: string | null) => {
+      if (disposed) return;
+      if (uid === currentUid) return; // 변화 없음(TOKEN_REFRESHED 등) — 기존 구독 유지
+      cleanup?.();                    // 이전 계정 구독 해제 (계정 전환·로그아웃)
+      cleanup = null;
+      currentUid = uid;
+      if (!uid) return;               // 로그아웃 상태 — 구독 없음
       cleanup = subscribeInbox(async (row) => {
-        if (row.sender_id === myUid) return;
+        if (row.sender_id === uid) return;
         let handle = handleByPeer.current[row.sender_id];
         if (!handle) {
           const prof = await getProfileById(row.sender_id);
@@ -355,11 +419,25 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
           handleByPeer.current[row.sender_id] = handle;
           peerByHandle.current[handle] = row.sender_id;
         }
-        ingestRemoteMessage(handle, mapRowToMessage(row, myUid));
+        ingestRemoteMessage(handle, mapRowToMessage(row, uid));
       });
-      if (cancelled) cleanup(); // 구독 생성 직전에 언마운트된 경우 즉시 해제
-    })();
-    return () => { cancelled = true; cleanup(); };
+      if (disposed) { cleanup(); cleanup = null; } // 구독 생성 직전에 언마운트된 경우 즉시 해제
+    };
+
+    // 이미 로그인된 상태로 앱이 뜬 경우 — 저장된 세션으로 즉시 1차 구독
+    // (onAuthStateChange의 INITIAL_SESSION과 겹쳐도 uid가 같으면 applyUid가 무시한다)
+    getMyUserId().then(applyUid).catch(() => {});
+
+    const sub = supabase?.auth.onAuthStateChange((event, session) => {
+      applyUid(event === 'SIGNED_OUT' ? null : (session?.user?.id ?? null));
+    });
+
+    return () => {
+      disposed = true;
+      cleanup?.();
+      cleanup = null;
+      sub?.data.subscription.unsubscribe();
+    };
   }, [ingestRemoteMessage]);
 
   // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다
