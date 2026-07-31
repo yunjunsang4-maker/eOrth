@@ -463,6 +463,36 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀
   };
 
+  // ─── 이탈 확인 ───
+  // 헤더 '취소'뿐 아니라 Android 하드웨어 뒤로가기·iOS 스와이프백까지 beforeRemove 한 경로로 방어.
+  // 여행 카드에서 받은 프리필만 들어 있는 상태(사용자가 아무것도 안 건드림)는 '입력 없음'으로 봐
+  // 들어오자마자 뒤로 갈 때 불필요한 확인창이 뜨지 않게 한다 → 첫 렌더 스냅샷과 비교.
+  // 국가·지역·통화는 위치/국가 기반으로 자동 채워지므로 비교 대상에서 제외한다.
+  const formSig = JSON.stringify({
+    s: startDate ? startDate.getTime() : null,
+    e: endDate ? endDate.getTime() : null,
+    memo: memo.trim(),
+    companions, companionFriends, rating,
+    budget: budget.trim(), weather, flightType, keywords, privateFriends, visibility,
+  });
+  const initialSigRef = useRef(formSig); // 첫 렌더 값으로 고정
+  const dirtyRef = useRef(false);
+  dirtyRef.current = formSig !== initialSigRef.current;
+
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (savingRef.current) return; // 저장 완료(Main 복귀)로 인한 정상 이탈은 통과
+      if (!dirtyRef.current) return;
+      e.preventDefault();
+      Alert.alert(t('newRecord.cancelWriteTitle'), t('newRecord.cancelWriteMsg'), [
+        { text: t('newRecord.continueWrite'), style: 'cancel' },
+        { text: t('newRecord.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+      ]);
+    });
+    return sub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
+
   return (
     <SafeAreaView style={st.safe}>
       {/* 헤더 */}

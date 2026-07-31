@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
@@ -224,17 +224,35 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
     return (s.w / s.h) * CUT_LAYOUTS[frame.layout].aspect;
   };
 
-  // 취소 — 사진 배치 중이면 확인
-  const handleCancel = () => {
-    if (photos.some(Boolean)) {
+  // 취소 — 확인 다이얼로그는 아래 beforeRemove 리스너가 일괄 처리한다.
+  // (여기서 또 확인창을 띄우면 goBack → beforeRemove 로 같은 창이 두 번 뜬다)
+  const handleCancel = () => navigation.goBack();
+
+  // 배치 중인 사진을 두고 나갈 때 확인 — 헤더 '취소'뿐 아니라 Android 하드웨어 뒤로가기,
+  // iOS 스와이프백까지 한 경로로 방어한다. 최신 상태는 ref로 참조해 리스너는 1회만 등록.
+  // 다음 화면(CutTravelInfo)으로 넘어가는 건 push라 이 리스너가 걸리지 않는다.
+  const hasPhotosRef = useRef(false);
+  hasPhotosRef.current = photos.some(Boolean);
+
+  // 다음 단계(CutTravelInfo)로 넘긴 뒤에는 확인창을 띄우지 않는다 — 거기서 저장하면
+  // navigate('Main')으로 이 화면까지 함께 정리되는데, beforeRemove는 포커스 없는 화면에도
+  // 전달돼(useOnPreventRemove) 저장 직후 "저장되지 않아요" 창이 뜨기 때문.
+  // 사용자가 뒤로 돌아와 다시 편집하면 focus에서 해제한다.
+  const handedOffRef = useRef(false);
+  useEffect(() => navigation.addListener('focus', () => { handedOffRef.current = false; }), [navigation]);
+
+  useEffect(() => {
+    const sub = navigation.addListener('beforeRemove', (e) => {
+      if (handedOffRef.current || !hasPhotosRef.current) return;
+      e.preventDefault();
       Alert.alert(t('cut.exitTitle'), t('cut.exitMsg'), [
         { text: t('cut.continueEdit'), style: 'cancel' },
-        { text: t('cut.exit'), style: 'destructive', onPress: () => navigation.goBack() },
+        { text: t('cut.exit'), style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
       ]);
-    } else {
-      navigation.goBack();
-    }
-  };
+    });
+    return sub;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigation]);
 
   // 네컷 완성 → 미리보기 캡처 후 여행정보 입력 화면으로 이동
   const goNext = async () => {
@@ -260,6 +278,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       Alert.alert(t('cut.errorTitle'), t('cut.previewError'));
       return;
     }
+    handedOffRef.current = true; // 여행정보 화면으로 인계 — 저장 완료로 이 화면이 정리될 때 확인창 방지
     navigation.navigate('CutTravelInfo', {
       // transforms(슬롯별 위치조정)를 함께 저장해야 피드·상세의 라이브 재합성에서 구도가 유지된다
       cutPhoto: { layout: frame.layout, frameId, frameColor: isBasic ? frameColor : undefined, frameImage: (isBasic && frameImage) || undefined, photos: photos as string[], transforms, previewUri, noLogo: hideLogo || undefined, stamp },
