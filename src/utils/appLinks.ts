@@ -22,17 +22,32 @@ export type AppLink =
   | { type: 'profile'; handle: string }
   | { type: 'post'; id: string };
 
+// decodeURIComponent는 잘못된 퍼센트 인코딩(예: eorth://post/100%)에서 URIError를 던진다.
+// DM 메시지 렌더 도중 던지면 전역 에러 화면으로 튕겨 대화방에 영영 못 들어가므로,
+// 디코드 실패는 예외가 아니라 "링크 아님(null)"으로 다룬다.
+const safeDecode = (raw: string): string | null => {
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return null;
+  }
+};
+
 export function parseAppLink(url: string | null | undefined): AppLink | null {
   if (!url) return null;
   const s = url.trim();
   const post = POST_RE.exec(s);
   if (post) {
-    const id = decodeURIComponent(post[1]).replace(/\/+$/, '');
+    const decoded = safeDecode(post[1]);
+    if (decoded === null) return null;
+    const id = decoded.replace(/\/+$/, '');
     return id ? { type: 'post', id } : null;
   }
   const prof = PROFILE_RE.exec(s);
   if (prof) {
-    const handle = decodeURIComponent(prof[1]).replace(/^@/, '').replace(/\/+$/, '');
+    const decoded = safeDecode(prof[1]);
+    if (decoded === null) return null;
+    const handle = decoded.replace(/^@/, '').replace(/\/+$/, '');
     if (!handle || handle === 'unknown') return null;
     return { type: 'profile', handle };
   }
