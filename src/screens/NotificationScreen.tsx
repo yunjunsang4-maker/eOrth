@@ -11,8 +11,9 @@ import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { isSupabaseConfigured } from '../services/supabase';
 import { fetchAppNotifications, markNotificationsRead, markAllNotificationsRead, type AppNotificationType } from '../services/social';
+import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
-import { useSkinAccent } from '../constants/skinTheme';
+import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { countryLabel } from '../utils/countryLabel';
 import { saveEnvelope, loadEnvelope, STORE_KEYS } from '../store/persist';
 import AuthorAvatar from '../components/AuthorAvatar';
@@ -107,6 +108,81 @@ function fmtAgo(ts: number, tr: TFunction): string {
   return tr('time.dayAgo', { n: Math.floor(d / DAY) });
 }
 
+// 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
+// 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
+// 폴백으로 쓰면 사진 없는 사용자가 전부 같은 이모지로 보인다).
+//
+// ⚠️ NotiAvatar·NotiBar는 반드시 화면 컴포넌트 '밖'(모듈 레벨)에 둔다.
+//    렌더 본문 안에서 선언하면 렌더마다 새 컴포넌트 타입이 만들어져 React가 목록 전체를
+//    언마운트→리마운트하고, 그때마다 입장 애니메이션(useEntranceAnimation)이 다시 재생돼
+//    알림 목록이 깜빡인다. 화면 상태(스킨색·썸네일·탭 핸들러)는 props로 내려준다.
+const AVA = 34;
+
+const NotiAvatar = ({ n, skinAccent }: { n: Noti; skinAccent: SkinAccent }) => {
+  const Icon = CATEGORY_ICON[n.category];
+  const hasActor = n.category === 'follow' || n.category === 'record';
+  return (
+    <View style={{ width: AVA, height: AVA }}>
+      {hasActor ? (
+        <View style={[st.avatarRing, { borderColor: skinAccent.tint(0.35) }]}>
+          <AuthorAvatar photo={n.photo} size={AVA - 2} />
+        </View>
+      ) : (
+        // 행위자가 없는 알림(추억 등) — 카테고리 아이콘이 아바타 자리를 채운다
+        <View style={[st.avatarIcon, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.tint(0.35) }]}>
+          <Icon size={17} color={skinAccent.accent} />
+        </View>
+      )}
+      {hasActor && (
+        <View style={[st.catBadge, { backgroundColor: skinAccent.accent, borderColor: COLORS.bg }]}>
+          <Icon size={9} color="#FFFFFF" />
+        </View>
+      )}
+    </View>
+  );
+};
+
+// 신규·본 알림 공용 가로 막대 (읽은 알림은 톤을 낮춰 구분).
+// idx는 등장 스태거용 — 진입 시 위에서부터 순차로 뜬다.
+const NotiBar = ({ n, idx, skinAccent, thumb, timeText, loading, onPress }: {
+  n: Noti;
+  idx: number;
+  skinAccent: SkinAccent;
+  thumb?: string;
+  timeText: string;
+  loading: boolean;   // 서버 단건 조회 중 — 오른쪽 끝에 스피너
+  onPress: (n: Noti) => void;
+}) => {
+  const entrance = useEntranceAnimation(Math.min(idx, 6) * 45); // 길어도 6번째까지만 지연
+  return (
+    <Animated.View style={entrance}>
+      <TouchableOpacity
+        style={[
+          st.bar,
+          { borderColor: skinAccent.tint(0.20) },
+          n.read && st.barRead,
+        ]}
+        activeOpacity={0.75}
+        onPress={() => onPress(n)}
+        accessibilityRole="button"
+        accessibilityLabel={n.text}
+      >
+        <NotiAvatar n={n} skinAccent={skinAccent} />
+        <View style={st.barBody}>
+          <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
+          <Text style={st.barTime}>{timeText}</Text>
+        </View>
+        {/* 대상 게시물 미리보기 — 어느 기록에 대한 알림인지 즉시 읽힌다 */}
+        {thumb ? <Image source={{ uri: thumb }} style={st.thumb} /> : null}
+        {/* 서버 조회 중 표시 — 응답이 올 때까지 아무 반응도 없어 보이지 않게 */}
+        {loading && <ActivityIndicator size="small" color={skinAccent.accent} />}
+        {/* 미읽음 표시 — 오른쪽 끝 점(읽으면 사라진다) */}
+        {!n.read && <View style={[st.barDot, { backgroundColor: skinAccent.accent }]} />}
+      </TouchableOpacity>
+    </Animated.View>
+  );
+};
+
 // 알림은 실제 활동으로 채워진다 — 신규 사용자는 빈 상태로 시작 (데모 시드 제거).
 // 좋아요·댓글·팔로우는 상대 사용자(백엔드)가 있어야 발생하므로 더미를 넣지 않는다.
 // 단, '추억 리마인드(N년 전 오늘)'는 내 기록만으로 만들 수 있어 컴포넌트에서 계산한다(memoryNotis).
@@ -183,9 +259,14 @@ export default function NotificationScreen({ navigation }: Props) {
     try { await loadServerNotis(); } finally { if (aliveRef.current) setRefreshing(false); }
   }, [loadServerNotis]);
 
+  // 서버 단건 조회 중인 알림 id — 연타로 같은 조회가 중복 실행되거나 두 번 이동하는 걸 막고,
+  // 응답이 올 때까지 해당 막대에 스피너를 보여준다.
+  const [openingId, setOpeningId] = useState<string | null>(null);
+  const openingRef = useRef(false);
+
   // 알림 탭 시 이동: 댓글·좋아요·추억 → 게시물 / 메이트·기록 → 프로필
   // 게시물이 삭제된 경우 엉뚱한 게시물 대신 안내를 띄운다
-  const openNoti = (n: Noti) => {
+  const openNoti = async (n: Noti) => {
     // '1년 전 오늘'(추억 리마인드) 알림을 누르면 배지 55 획득(행동 기반, 영구 저장)
     if (n.category === 'memory') markBadgesEarned([55]);
     // 서버 알림은 탭 시 읽음 처리 (서버 + 로컬 즉시 반영).
@@ -206,7 +287,22 @@ export default function NotificationScreen({ navigation }: Props) {
       const resolved = mine ? mine.id : (n.postId && feedPosts.some((r) => r.id === n.postId) ? n.postId : null);
       if (resolved) {
         navigation.navigate('PostDetail', { postId: resolved });
+        return;
+      }
+      // 캐시에 없다고 '없는 글'은 아니다 — 피드 캐시 상한(300개) 밖이거나 아직 피드가 안 받아진
+      // 글이면 서버에서 단건 조회해 record 폴백과 함께 연다 (DMScreen 공유 카드와 동일한 폴백).
+      if (!n.postId) { Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg')); return; }
+      if (openingRef.current) return; // 조회 중 연타 방지
+      openingRef.current = true;
+      setOpeningId(n.id);
+      const fetched = await fetchPostById(n.postId).catch(() => null);
+      openingRef.current = false;
+      if (!aliveRef.current) return; // 화면을 이미 떠났으면 아무것도 하지 않는다
+      setOpeningId(null);
+      if (fetched) {
+        navigation.navigate('PostDetail', { postId: fetched.id, record: fetched });
       } else {
+        // 서버에도 없으면 실제로 삭제된 글이다
         Alert.alert(t('misc.noPostTitle'), t('misc.noPostMsg'));
       }
     } else if (n.goRequests) {
@@ -323,67 +419,8 @@ export default function NotificationScreen({ navigation }: Props) {
       .sort((a, b) => b.newest - a.newest);
   }, [memoryNotis, serverNotis, groupNotis]);
 
-  // 아바타 — 행위자 사진(없으면 제작 실루엣) + 우하단에 카테고리 아이콘 배지.
-  // 시스템 이모지를 쓰지 않는다(AuthorAvatar 규칙: profiles.emoji는 스키마 기본값이 박혀 있어
-  // 폴백으로 쓰면 사진 없는 사용자가 전부 같은 이모지로 보인다).
-  const AVA = 34;
-  const NotiAvatar = ({ n }: { n: Noti }) => {
-    const Icon = CATEGORY_ICON[n.category];
-    const hasActor = n.category === 'follow' || n.category === 'record';
-    return (
-      <View style={{ width: AVA, height: AVA }}>
-        {hasActor ? (
-          <View style={[st.avatarRing, { borderColor: skinAccent.tint(0.35) }]}>
-            <AuthorAvatar photo={n.photo} size={AVA - 2} />
-          </View>
-        ) : (
-          // 행위자가 없는 알림(추억 등) — 카테고리 아이콘이 아바타 자리를 채운다
-          <View style={[st.avatarIcon, { backgroundColor: skinAccent.tint(0.18), borderColor: skinAccent.tint(0.35) }]}>
-            <Icon size={17} color={skinAccent.accent} />
-          </View>
-        )}
-        {hasActor && (
-          <View style={[st.catBadge, { backgroundColor: skinAccent.accent, borderColor: COLORS.bg }]}>
-            <Icon size={9} color="#FFFFFF" />
-          </View>
-        )}
-      </View>
-    );
-  };
-
-  // 신규·본 알림 공용 가로 막대 (읽은 알림은 톤을 낮춰 구분).
-  // idx는 등장 스태거용 — 진입 시 위에서부터 순차로 뜬다.
-  const NotiBar = ({ n, idx }: { n: Noti; idx: number }) => {
-    const entrance = useEntranceAnimation(Math.min(idx, 6) * 45); // 길어도 6번째까지만 지연
-    const thumb = pickThumb(postOf(n.postId));
-    return (
-      <Animated.View style={entrance}>
-        <TouchableOpacity
-          style={[
-            st.bar,
-            { borderColor: skinAccent.tint(0.20) },
-            n.read && st.barRead,
-          ]}
-          activeOpacity={0.75}
-          onPress={() => openNoti(n)}
-          accessibilityRole="button"
-          accessibilityLabel={n.text}
-        >
-          <NotiAvatar n={n} />
-          <View style={st.barBody}>
-            <Text style={[st.barText, n.read && st.barTextRead]} numberOfLines={2}>{n.text}</Text>
-            <Text style={st.barTime}>{fmtAgo(n.createdAt, t)}</Text>
-          </View>
-          {/* 대상 게시물 미리보기 — 어느 기록에 대한 알림인지 즉시 읽힌다 */}
-          {thumb ? <Image source={{ uri: thumb }} style={st.thumb} /> : null}
-          {/* 미읽음 표시 — 오른쪽 끝 점(읽으면 사라진다) */}
-          {!n.read && <View style={[st.barDot, { backgroundColor: skinAccent.accent }]} />}
-        </TouchableOpacity>
-      </Animated.View>
-    );
-  };
-
   // 시간 구간 소제목을 끼워 알림 목록을 렌더 — 매거진 목차 안의 '언제' 축
+  // (NotiAvatar·NotiBar는 모듈 레벨 — 여기서 선언하면 렌더마다 목록이 리마운트된다)
   const renderItems = (items: Noti[], startIdx = 0) => {
     let prev: TimeBucket | null = null;
     return items.map((n, i) => {
@@ -393,7 +430,15 @@ export default function NotificationScreen({ navigation }: Props) {
       return (
         <View key={n.id}>
           {head && <Text style={st.bucket}>{t(TIME_BUCKET_KEY[head])}</Text>}
-          <NotiBar n={n} idx={startIdx + i} />
+          <NotiBar
+            n={n}
+            idx={startIdx + i}
+            skinAccent={skinAccent}
+            thumb={pickThumb(postOf(n.postId))}
+            timeText={fmtAgo(n.createdAt, t)}
+            loading={openingId === n.id}
+            onPress={openNoti}
+          />
         </View>
       );
     });
