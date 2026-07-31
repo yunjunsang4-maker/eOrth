@@ -14,10 +14,17 @@ export function countryNameToCode(name?: string | null): string | null {
   return c ? c.term.split(' ')[0].toUpperCase() : null;
 }
 
-// 'YYYY.MM.DD' 또는 'YYYY-MM-DD' → epoch ms (badgeRules.parseDate와 동일 규칙)
+// 'YYYY.MM.DD' 또는 'YYYY-MM-DD' → epoch ms.
+// 날짜만 있는 문자열을 new Date()에 넘기면 'UTC 자정'으로 해석돼(ISO 날짜 규칙),
+// 로컬 getter(getDate 등)로 다시 읽거나 로컬 시각(createdAt)과 비교할 때
+// UTC- 시간대에서 하루가 밀린다 → 수동 파서로 '로컬 자정'을 만든다.
+// 시각까지 붙은 문자열(ISO)은 시간대가 명시돼 있으므로 표준 파서에 맡긴다.
 export function parseDotDate(s?: string | null): number | null {
   if (!s) return null;
-  const t = new Date(s.replace(/\./g, '-')).getTime();
+  const m = s.trim().match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+  // 폴백: ISO(시각 포함)는 그대로, 그 외 점 표기는 예전처럼 '-'로 바꿔 표준 파서에 넘긴다
+  const t = new Date(s.includes('T') ? s : s.replace(/\./g, '-')).getTime();
   return Number.isFinite(t) ? t : null;
 }
 

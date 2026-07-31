@@ -50,9 +50,13 @@ function Chevrons({ color, flip }: { color: string; flip?: boolean }) {
 }
 
 const two = (n: number) => String(n).padStart(2, '0');
-// "2025.04.13" / "2025-04-13" / ISO 모두 수용 — 실패 시 null
+// "2025.04.13" / "2025-04-13" / ISO 모두 수용 — 실패 시 null.
+// 날짜만 있는 문자열을 new Date()에 넘기면 'UTC 자정'으로 해석돼 아래 로컬 getter(fmtYMD)와
+// 어긋난다(UTC- 시간대에서 하루 밀림) → 수동 파서로 로컬 자정 Date를 만든다.
 const parseD = (s?: string | null): Date | null => {
   if (!s) return null;
+  const m = s.trim().match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const d = new Date(s.includes('T') ? s : s.replace(/[./]/g, '-'));
   return isNaN(d.getTime()) ? null : d;
 };
