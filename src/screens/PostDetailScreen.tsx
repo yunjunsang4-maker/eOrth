@@ -883,8 +883,9 @@ function SnapStoryViewer({
     const remoteId = currentSnap?.remoteId;
     if (!id || !remoteId || currentSnap?.isExample) return;
     if (fetchedCommentsRef.current.has(id)) return;
+    // await 전에 넣어 동시 중복 호출을 막고, 실패하면 되돌려 다음 진입 때 재시도되게 한다
     fetchedCommentsRef.current.add(id);
-    refreshComments(id, remoteId).catch(() => {});
+    refreshComments(id, remoteId).catch(() => { fetchedCommentsRef.current.delete(id); });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSnap?.id, currentSnap?.remoteId, refreshComments]);
 
@@ -1472,6 +1473,17 @@ export default function PostDetailScreen() {
 
   // ⚠️ 훅은 아래 if (!record) early return보다 먼저 선언해야 한다 (rules-of-hooks)
 
+  // 스냅 뷰어에 '전체 목록'을 넘길지 '이 글 하나'만 넘길지 — 진입 시 한 번만 확정한다.
+  // (initPosRef의 "위치는 한 번만 확정" 철학과 동일)
+  // 매 렌더 재평가하면, 뷰어 안에서 신고(reportPost)한 순간 그 글이 snapViewerRecords에서
+  // 빠지면서 판정이 '전체 목록'→'단독'으로 뒤집혀 방금 신고한 글만 남은 스토리에 갇힌다.
+  // 고정해 두면 신고 후에도 전체 목록을 유지해, 신고한 글만 목록에서 빠지고 인접 스토리로 넘어간다.
+  // rawRecord가 잡히기 전(피드 로딩 중)에는 판정하지 않는다 — 성급히 '단독'으로 굳지 않게.
+  const snapFallbackRef = useRef<boolean | null>(null);
+  if (snapFallbackRef.current === null && rawRecord) {
+    snapFallbackRef.current = !snapViewerRecords.some((r) => r.id === postId);
+  }
+
   // 스트립 풀스크린 목록 — 내 글이면 합성본 뒤에 슬롯 원본(낱장)을 붙여 확대해 볼 수 있게.
   // 타인 글의 슬롯 원본 URI는 작성자 기기의 로컬 경로라 열리지 않으므로 합성본만 보여준다.
   const cutViewerUris = useMemo(() => {
@@ -1772,9 +1784,9 @@ export default function PostDetailScreen() {
     // 이때 목록만 넘기면 뷰어가 대상을 못 찾아 엉뚱한 스토리(첫 번째)가 재생되거나,
     // 목록이 비면 열리자마자 닫혔다. 그런 경우 이 글 하나만 단독 스토리로 재생한다.
     // (rawRecord가 아니라 뷰어 필터를 거친 record — 작성자가 나에게 숨긴 사진이 새지 않게)
-    const snapRecords = snapViewerRecords.some((r) => r.id === postId)
-      ? snapViewerRecords
-      : [record];
+    // 판정은 snapFallbackRef가 진입 시 한 번만 내린다 — 뷰어 안에서 신고/보관해도
+    // 목록이 갑자기 '단독 스토리'로 붕괴하지 않게(위 snapFallbackRef 주석 참조).
+    const snapRecords = snapFallbackRef.current ? [record] : snapViewerRecords;
     return (
       <SnapStoryViewer
         initialPostId={postId}
