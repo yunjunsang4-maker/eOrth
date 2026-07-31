@@ -5,7 +5,6 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as Notifications from 'expo-notifications';
 import { ensureAdsInitialized } from './src/lib/googleMobileAds';
 import { prepareAdsTracking } from './src/lib/tracking';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
@@ -17,7 +16,6 @@ import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { ToastProvider } from './src/store/toastStore';
 import { MomentProvider } from './src/store/momentStore';
-import { navigationRef } from './src/navigation/navigationRef';
 import SnapDetector from './src/components/SnapDetector';
 import MomentNotifier from './src/components/MomentNotifier';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -51,63 +49,12 @@ export default function App() {
       .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
   }, []);
 
-  // 알림 탭 → 화면 이동 (snap / moment 분기)
-  useEffect(() => {
-    const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
-      const data = response.notification.request.content.data;
-      if (data?.type === 'snap') {
-        const nav = navigationRef.current;
-        if (nav?.isReady()) {
-          nav.navigate('SnapRecord', { notifTimestamp: Number(data.timestamp) || undefined });
-        }
-      }
-      if (data?.type === 'moment') {
-        const nav = navigationRef.current;
-        if (nav?.isReady()) {
-          nav.navigate('MomentCapture');
-          Notifications.clearLastNotificationResponseAsync();
-        }
-      }
-      // 푸시 알림 탭 라우팅 — like / comment / friend_post → 게시물 상세
-      if (
-        (data?.type === 'like' || data?.type === 'comment' || data?.type === 'friend_post') &&
-        data?.postId
-      ) {
-        const nav = navigationRef.current;
-        if (nav?.isReady()) {
-          nav.navigate('PostDetail', { postId: String(data.postId) });
-        }
-      }
-      // 이웃 요청 / 수락 → 알림 화면
-      if (data?.type === 'neighbor_request' || data?.type === 'neighbor_accept') {
-        const nav = navigationRef.current;
-        if (nav?.isReady()) {
-          nav.navigate('Notifications');
-        }
-      }
-    });
+  // 알림 탭 라우팅은 AppNavigator가 단독으로 담당한다(여기 있던 중복 리스너는 제거).
+  // 여기서는 인증·Main 진입 여부를 알 수 없어 로그인 화면 위로 내부 화면을 열거나
+  // AppNavigator와 같은 탭을 두 번 라우팅했고, 콜드스타트 응답을 먼저 비워
+  // AppNavigator의 콜드스타트 판독과 경합했다. 새 알림 타입도 AppNavigator에 추가할 것.
 
-    // 콜드스타트: 종료 상태에서 moment 알림 탭으로 열린 경우 — 네비 준비를 기다렸다 이동
-    let coldStartTimer: ReturnType<typeof setInterval> | null = null;
-    Notifications.getLastNotificationResponseAsync().then((response) => {
-      const data = response?.notification.request.content.data;
-      if (data?.type !== 'moment') return;
-      let tries = 0;
-      coldStartTimer = setInterval(() => {
-        const nav = navigationRef.current;
-        tries += 1;
-        if (nav?.isReady()) { if (coldStartTimer) clearInterval(coldStartTimer); nav.navigate('MomentCapture'); Notifications.clearLastNotificationResponseAsync(); }
-        else if (tries > 20) { if (coldStartTimer) clearInterval(coldStartTimer); } // 10초 포기
-      }, 500);
-    });
-
-    return () => {
-      subscription.remove();
-      if (coldStartTimer) clearInterval(coldStartTimer);
-    };
-  }, []);
-
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     Inter_400Regular: require('./assets/fonts/Inter_400Regular.ttf'),
     Inter_500Medium: require('./assets/fonts/Inter_500Medium.ttf'),
     Inter_600SemiBold: require('./assets/fonts/Inter_600SemiBold.ttf'),
@@ -136,7 +83,9 @@ export default function App() {
     Yuyu: require('./assets/fonts/Yuyu-Regular.ttf'),
   });
 
-  if (!fontsLoaded) {
+  // 폰트 로드 실패(에셋 손상·번들 누락)에도 앱은 시스템 폰트로 진행한다 —
+  // error를 무시하면 로딩 스피너에 영구 고착돼 앱을 아예 못 쓴다.
+  if (!fontsLoaded && !fontError) {
     return (
       <View style={{ flex: 1, backgroundColor: '#0A0118', alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color="#7B61FF" size="large" />

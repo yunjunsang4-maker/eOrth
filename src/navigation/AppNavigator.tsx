@@ -88,6 +88,15 @@ export default function AppNavigator() {
     // 인증 code는 1회용이라 첫 교환이 성공해도 두 번째 교환이 "이미 사용됨" 오류를 내며
     // 알림을 띄운다 — 인증에 성공하고도 '링크 오류'가 뜨던 원인.
     const processedAuthUrls = new Set<string>();
+    // 인증 code 디코드 — 잘못된 퍼센트 인코딩이 섞인 링크에서 URIError로 앱이 죽지 않게
+    // 실패는 "code 없음(null)"으로 다뤄 만료 링크와 같은 안내 경로를 타게 한다.
+    const decodeCode = (raw: string): string | null => {
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return null;
+      }
+    };
     const handleUrl = async (url: string | null) => {
       if (!url) return;
       const trimmed = url.trim();
@@ -107,7 +116,7 @@ export default function AppNavigator() {
       // 비밀번호 재설정 딥링크: code 를 세션으로 교환한 뒤 새 비밀번호 설정 화면으로 이동
       if (/eorth:\/\/reset-password/i.test(trimmed)) {
         const cm = /[?&]code=([^&]+)/.exec(trimmed);
-        const code = cm ? decodeURIComponent(cm[1]) : null;
+        const code = cm ? decodeCode(cm[1]) : null;
         if (!code) {
           // 만료/사용된 링크는 Supabase가 code 없이 error_code=otp_expired 로 리다이렉트한다 —
           // 무음 방치하면 "링크를 눌렀는데 아무 일도 없음"이 되므로 반드시 안내한다.
@@ -131,7 +140,7 @@ export default function AppNavigator() {
       // 이메일 가입 인증 딥링크: code 를 세션으로 교환 후 Splash로 → 온보딩/메인 자동 분기
       if (/eorth:\/\/email-confirm/i.test(trimmed)) {
         const cm = trimmed.match(/[?&]code=([^&]+)/);
-        const code = cm ? decodeURIComponent(cm[1]) : null;
+        const code = cm ? decodeCode(cm[1]) : null;
         // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.
         const goSplash = () =>
           navigateWhenReady(() => navigationRef.current?.reset({ index: 0, routes: [{ name: 'Splash' }] }));
@@ -180,13 +189,17 @@ export default function AppNavigator() {
       };
       tryGo(6);
     };
-    const sub = Linking.addEventListener('url', ({ url }) => handleUrl(url));
+    // handleUrl은 async — 이벤트 경로에도 catch가 없으면 처리 중 예외가 unhandled rejection이 된다
+    const sub = Linking.addEventListener('url', ({ url }) => { handleUrl(url).catch(() => {}); });
     Linking.getInitialURL().then(handleUrl).catch(() => {});
     return () => sub.remove();
   }, []);
 
-  // 푸시 알림 탭 → 관련 화면으로 이동
-  //   dm → 해당 대화, like/comment/reply/friend_post → 게시물, 메이트 → 프로필.
+  // 알림 탭 → 관련 화면으로 이동 — 앱 전체에서 이 리스너 하나만 라우팅한다.
+  //   (App.tsx에도 같은 리스너가 있었는데 인증 게이트 없이 이중 라우팅해 로그인 화면 위로
+  //    내부 화면이 열리는 문제가 있었다. 새 타입을 추가할 곳도 여기 한 곳이다.)
+  //   dm → 대화, snap/moment/arrival → 각 기록 화면, 메이트 신청·수락 → 알림 목록,
+  //   like/comment/reply/friend_post → 게시물, 그 외 actor 알림 → 프로필.
   //   인증되어 Main에 진입한 뒤에만 이동(콜드 스타트는 최대 ~6.4초 재시도). 동일 알림 중복 처리 방지.
   useEffect(() => {
     const processed = new Set<string>();
@@ -204,11 +217,16 @@ export default function AppNavigator() {
           const h = String(d.handle);
           navigate('DM', { friend: { name: h, handle: h, emoji: '💬' } });
         } else if (d.type === 'snap') {
-          navigate('SnapRecord'); // 여행 중 스냅 유도 알림 → 스냅 기록
+          // 여행 중 스냅 유도 알림 → 스냅 기록. 알림 발송 시각을 함께 넘겨야
+          // 스냅 화면이 "알림 후 몇 초 만에 찍었는지"를 표시할 수 있다.
+          navigate('SnapRecord', { notifTimestamp: Number(d.timestamp) || undefined });
         } else if (d.type === 'moment') {
           navigate('MomentCapture'); // 여행 기억 알림 → 모먼트 캡처
         } else if (d.type === 'arrival') {
           navigate('NewRecord'); // 해외 도착 알림 → 기록 작성
+        } else if (d.type === 'neighbor_request' || d.type === 'neighbor_accept') {
+          // 메이트 신청/수락 → 알림 목록(신청은 목록에서 수락·거절 화면으로 이어진다)
+          navigate('Notifications');
         } else if (d.postId) {
           openAppLink({ type: 'post', id: String(d.postId) }, navigate).catch(() => {});
         } else if (d.actorId) {
@@ -225,8 +243,16 @@ export default function AppNavigator() {
     };
     // 앱 실행 중(포그라운드/백그라운드) 탭
     const sub = Notifications.addNotificationResponseReceivedListener(routeFromResponse);
-    // 콜드 스타트: 앱이 꺼진 상태에서 푸시 탭으로 실행된 경우
-    Notifications.getLastNotificationResponseAsync().then(routeFromResponse).catch(() => {});
+    // 콜드 스타트: 앱이 꺼진 상태에서 푸시 탭으로 실행된 경우.
+    // 처리한 뒤에는 마지막 응답을 비운다 — 비우지 않으면 다음 실행 때마다 같은 알림 화면이
+    // 다시 열린다(특히 Android의 sticky moment 알림).
+    Notifications.getLastNotificationResponseAsync()
+      .then((response) => {
+        if (!response) return undefined;
+        routeFromResponse(response);
+        return Notifications.clearLastNotificationResponseAsync();
+      })
+      .catch(() => {});
     return () => sub.remove();
   }, []);
 
