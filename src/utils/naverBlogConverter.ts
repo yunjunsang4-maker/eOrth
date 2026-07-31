@@ -752,22 +752,25 @@ function stripHtml(html: string): string {
     .replace(/<\/div>/gi, '\n')
     .replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
     .replace(/&#039;/gi, "'")
+    // &amp;는 반드시 마지막 — 먼저 풀면 `&amp;lt;`가 `&lt;` → `<`로 이중 디코딩된다
+    .replace(/&amp;/gi, '&')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
 function decodeHtmlEntities(str: string): string {
   return str
-    .replace(/&amp;/gi, '&')
     .replace(/&lt;/gi, '<')
     .replace(/&gt;/gi, '>')
     .replace(/&quot;/gi, '"')
-    .replace(/&#039;/gi, "'");
+    .replace(/&#039;/gi, "'")
+    // &amp;는 반드시 마지막 — 먼저 풀면 `&amp;quot;`가 `&quot;` → `"`로 이중 디코딩된다.
+    // (사진 URL의 `?a=1&amp;b=2`는 그대로 `&`가 되지만, `&amp;amp;`가 `&`로 무너지지 않는다)
+    .replace(/&amp;/gi, '&');
 }
 
 function makeInfoRow(label: string, value: string): string {
