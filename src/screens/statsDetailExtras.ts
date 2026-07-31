@@ -101,15 +101,36 @@ export function cardRecordCount(record: TripRecord, allRecords: TripRecord[]): n
   return record.viewType === 'snap' ? 0 : 1;
 }
 
+/** 기록 단위 재방문 국가 수 — 카드 단위 규칙 도입 전 정의(검증용으로 남긴다). 화면은 아래 이벤트 버전을 쓴다. */
 export function revisitedCountryCount(records: TripRecord[]): number {
   const counts = countryVisitCounts(records);
   return Object.values(counts).filter((c) => c >= 2).length;
 }
 
-export function mostRecentCountry(records: TripRecord[]): string | undefined {
-  if (records.length === 0) return undefined;
-  const latest = [...records].sort((a, b) => travelTime(b) - travelTime(a))[0];
-  return recordCountryNames(latest)[0];
+/** 방문 1회 = 여행 카드 1장인 이벤트(tripVisitStats.VisitEvent) */
+export interface VisitEventLike {
+  countries: { name: string }[];
+}
+
+/**
+ * 재방문(2회 이상 방문) 국가 수 — 카드(방문 이벤트) 단위.
+ * 기록 단위로 세면 "일본 1카드 2기록"이 재방문으로 잡혀 방문 횟수(1회)와 모순됐다.
+ * 국가별 방문 횟수 목록(countriesItems)과 같은 이름 어휘로 세어 화면 간 값이 어긋나지 않게 한다.
+ */
+export function revisitedCountryCountFromEvents(events: VisitEventLike[]): number {
+  const counts: Record<string, number> = {};
+  events.forEach((ev) => ev.countries.forEach((c) => { counts[c.name] = (counts[c.name] || 0) + 1; }));
+  return Object.values(counts).filter((c) => c >= 2).length;
+}
+
+/** 가장 최근 방문 국가. exclude(거주국 등)에 든 국가는 건너뛴다 */
+export function mostRecentCountry(records: TripRecord[], exclude?: Set<string>): string | undefined {
+  const sorted = [...records].sort((a, b) => travelTime(b) - travelTime(a));
+  for (const r of sorted) {
+    const name = recordCountryNames(r).find((n) => !exclude?.has(n));
+    if (name) return name;
+  }
+  return undefined;
 }
 
 export function canonicalCountryName(name: string): string {
@@ -125,11 +146,13 @@ export function continentOf(name: string): Continent | undefined {
   return (CONTINENTS as readonly string[]).includes(cont) ? (cont as Continent) : undefined;
 }
 
-export function continentCountryCounts(records: TripRecord[]): Record<Continent, number> {
+/** exclude(거주국 등)에 든 국가는 대륙 집계에서 뺀다 — "거주국은 방문국이 아니다" 규칙 */
+export function continentCountryCounts(records: TripRecord[], exclude?: Set<string>): Record<Continent, number> {
   const sets: Record<Continent, Set<string>> = {
     '아시아': new Set(), '유럽': new Set(), '아메리카': new Set(), '오세아니아': new Set(), '아프리카': new Set(),
   };
   records.forEach((r) => recordCountryNames(r).forEach((n) => {
+    if (exclude?.has(n)) return;
     const cont = continentOf(n);
     if (cont) sets[cont].add(canonicalCountryName(n));
   }));
@@ -139,15 +162,15 @@ export function continentCountryCounts(records: TripRecord[]): Record<Continent,
   };
 }
 
-export function mostVisitedContinent(records: TripRecord[]): Continent | undefined {
-  const counts = continentCountryCounts(records);
+export function mostVisitedContinent(records: TripRecord[], exclude?: Set<string>): Continent | undefined {
+  const counts = continentCountryCounts(records, exclude);
   let best: Continent | undefined; let max = 0;
   CONTINENTS.forEach((c) => { if (counts[c] > max) { max = counts[c]; best = c; } });
   return best;
 }
 
-export function unvisitedContinents(records: TripRecord[]): Continent[] {
-  const counts = continentCountryCounts(records);
+export function unvisitedContinents(records: TripRecord[], exclude?: Set<string>): Continent[] {
+  const counts = continentCountryCounts(records, exclude);
   return CONTINENTS.filter((c) => counts[c] === 0);
 }
 

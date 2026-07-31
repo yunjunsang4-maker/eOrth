@@ -39,7 +39,7 @@ const DETAIL_GLOBE_IMG = require('../../assets/statsDetailGlobe.png');
 import StarFieldBackground from '../components/StarFieldBackground';
 import {
   recentTrips,
-  revisitedCountryCount,
+  revisitedCountryCountFromEvents,
   mostRecentCountry,
   mostVisitedContinent,
   unvisitedContinents,
@@ -161,7 +161,16 @@ export default function StatsDetailScreen() {
   // Filter to "my posts" (including seed data for demo consistency)
   const myRecords = records.filter((r) => r.isMyPost !== false);
   // 방문 1회 = 여행 카드 1장 — "방문 횟수"류 집계는 전부 이 이벤트로 센다 (StatsScreen과 동일 기준)
-  const visitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
+  const allVisitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
+  // 거주국은 방문국이 아니다 — 히어로 카운트에만 걸려 있던 규칙을 방문 이벤트에도 동일 적용
+  // (StatsScreen과 같은 규칙: 카드에서 거주국만 빠지면 그 카드는 방문 이벤트가 아니다)
+  const visitEvents = useMemo(
+    () =>
+      allVisitEvents
+        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name)) }))
+        .filter((ev) => ev.countries.length > 0),
+    [allVisitEvents, homeNames],
+  );
   // KO→EN 지역명 맵 (영어 모드에서 도시/지역명 영문화용)
   const regionMap = useMemo(() => buildRegionEnMap(records), [records]);
 
@@ -373,8 +382,11 @@ export default function StatsDetailScreen() {
       }
 
       if (rating !== undefined && rating >= 1 && rating <= 5) {
-        ratingCounts[rating as 5 | 4 | 3 | 2 | 1]++;
-        ratingSum += rating;
+        // 0.5 단위 별점은 내림해 정수 버킷에 넣는다(4.5 → 4점 행).
+        // 예전엔 없는 키(ratingCounts[4.5])를 올려 분포에서 빠졌고, 행 합계가 모수(ratedRecordsCount)와 어긋났다.
+        const bucket = Math.floor(rating) as 5 | 4 | 3 | 2 | 1;
+        ratingCounts[bucket]++;
+        ratingSum += rating; // 평균은 원래 값(0.5 포함) 그대로
         ratedRecordsCount++;
       }
     });
@@ -435,8 +447,9 @@ export default function StatsDetailScreen() {
           ],
         };
       case 'region': {
-        const mvc = mostVisitedContinent(myRecords);
-        const unv = unvisitedContinents(myRecords);
+        // 대륙 하이라이트도 거주국을 뺀 기준으로 — 대륙별 현황(regionItems, 방문 이벤트 기반)과 어긋나지 않게
+        const mvc = mostVisitedContinent(myRecords, homeNames);
+        const unv = unvisitedContinents(myRecords, homeNames);
         return {
           title: t('statsDetail.regionTitle'),
           hero: { cycle: [
@@ -459,14 +472,14 @@ export default function StatsDetailScreen() {
           title: t('statsDetail.countryTitle'),
           hero: { cycle: [
             { label: t('statsDetail.heroTopCountryLbl'), value: top ? top.label : '-', sub: top ? top.value : '' },
-            { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords) ?? '-' },
-            { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCount(myRecords) }) },
+            { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords, homeNames) ?? '-' },
+            { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCountFromEvents(visitEvents) }) },
           ] },
           boxes: [
             { kind: 'rows', title: t('statsDetail.boxCountryVisits'), rows: countriesItems.slice(0, 8).map((i) => ({ label: i.label, value: i.value, sub: i.sub })) },
             { kind: 'rows', title: t('statsDetail.boxHighlights'), rows: [
-              { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords) ?? '-' },
-              { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCount(myRecords) }) },
+              { label: t('statsDetail.hlRecentCountry'), value: mostRecentCountry(myRecords, homeNames) ?? '-' },
+              { label: t('statsDetail.hlRevisited'), value: t('statsDetail.countN', { n: revisitedCountryCountFromEvents(visitEvents) }) },
             ] },
           ],
         };

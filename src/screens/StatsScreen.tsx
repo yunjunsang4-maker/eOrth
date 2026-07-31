@@ -534,7 +534,7 @@ export default function StatsScreen() {
 
   // 방문 1회 = 여행 카드 1장 — 연도별·대륙별·국가별 "방문 횟수"는 전부 이 이벤트로 센다.
   // (기록 수 기반이던 것을 카드 단위로 통일 — 사용자 확정 2026-07-30. tripVisitStats 참고)
-  const visitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
+  const allVisitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
 
   // 거주국은 방문국이 아니다 — 현재 거주국 기준 동적 제외('대한민국'↔'한국' 별칭 포함)
   const homeNames = useMemo(() => {
@@ -547,6 +547,17 @@ export default function StatsScreen() {
     }
     return s;
   }, [homeCountryCode]);
+
+  // 히어로 카운트에만 적용되던 거주국 제외를 방문 이벤트에도 그대로 적용한다 —
+  // 그러지 않으면 "방문 국가 수"에는 거주국이 빠지는데 TOP 국가·대륙·연도별에는 남아 서로 모순됐다.
+  // (카드에서 거주국만 빠지면 그 카드는 방문 이벤트가 아니게 되므로 통째로 제외)
+  const visitEvents = useMemo(
+    () =>
+      allVisitEvents
+        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name)) }))
+        .filter((ev) => ev.countries.length > 0),
+    [allVisitEvents, homeNames],
+  );
 
   // 1. World Explorations Hero Stats
   const visitedCountriesSet = new Set<string>();
@@ -712,8 +723,11 @@ export default function StatsScreen() {
     }
 
     if (rating !== undefined && rating >= 1 && rating <= 5) {
-      ratingCounts[rating as 5 | 4 | 3 | 2 | 1]++;
-      ratingSum += rating;
+      // 0.5 단위 별점은 내림해 정수 버킷에 넣는다(4.5 → 4점 행).
+      // 예전엔 ratingCounts[4.5]라는 없는 키를 올려(NaN) 분포에서 사라졌고, 합계 ≠ 모수였다.
+      const bucket = Math.floor(rating) as 5 | 4 | 3 | 2 | 1;
+      ratingCounts[bucket]++;
+      ratingSum += rating; // 평균은 원래 값(0.5 포함) 그대로
       ratedRecordsCount++;
     }
   });
