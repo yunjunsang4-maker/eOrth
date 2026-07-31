@@ -1858,7 +1858,7 @@ const en = {
     toastNeighborRequestCanceled: 'Canceled mate request to {{name}}',
     toastNeighborRemoved: 'Removed {{name}} as a mate',
     shareMeMessage: 'Add me as a mate on eOrth!\n{{link}}',
-    shareProfileMsg: "Check out @{{username}}'s eOrth profile!\neorth://profile/{{username}}",
+    shareProfileMsg: "Check out @{{username}}'s eOrth profile!\n{{link}}",
     shareProfileTitle: 'Share eOrth profile',
     fontDefault: 'Default',
     fontSizeSmall: 'Small',
@@ -1867,7 +1867,7 @@ const en = {
     fontSizeXLarge: 'X-Large',
     fontSizeHeading: 'Heading',
     icloudTitle: 'These photos are in iCloud',
-    sharePostMsg: 'Check out this post on eOrth!\neorth://post/{{id}}',
+    sharePostMsg: 'Check out this post on eOrth!\n{{link}}',
   },
   stay: {
     stayingIn: '{{flag}} Staying in {{name}}',

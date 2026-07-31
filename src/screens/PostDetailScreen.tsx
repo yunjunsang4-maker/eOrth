@@ -1111,7 +1111,7 @@ function SnapStoryViewer({
     setShareSheetOpen(false);
     // 공유 시트 모달이 닫히는 중에 시스템 공유 시트를 띄우면 iOS가 무시한다 — 닫힘 완료 후 호출
     const id = currentSnap.remoteId ?? currentSnap.id;
-    setTimeout(() => { Share.share({ message: t('comp2.sharePostMsg', { id }) }); }, 400);
+    setTimeout(() => { Share.share({ message: t('comp2.sharePostMsg', { link: postLink(id) }) }); }, 400);
   };
   const handleSendToFriend = (f: { name: string; handle: string }) => {
     setShareSheetOpen(false);
@@ -1568,7 +1568,7 @@ export default function PostDetailScreen() {
     setMenuVisible(false);
     // 메뉴 모달이 닫히는 동안 공유 시트를 띄우면 표시할 화면이 없어 무동작 → 모달 닫힘 후 호출
     setTimeout(() => {
-      Share.share({ message: t('comp2.sharePostMsg', { id: shareId }) }).catch(() => {});
+      Share.share({ message: t('comp2.sharePostMsg', { link: postLink(shareId) }) }).catch(() => {});
     }, 350);
   };
 

@@ -293,7 +293,8 @@ export default function FriendProfileScreen({
   const handleShare = () => {
     setMenuVisible(false);
     Share.share({
-      message: t('comp2.shareProfileMsg', { username: linkHandle }),
+      // 링크는 로케일이 아니라 appLinks.profileLink가 만든다(인코딩·스킴 규칙 단일화)
+      message: t('comp2.shareProfileMsg', { username: linkHandle, link: profileLink(linkHandle) }),
       title: t('comp2.shareProfileTitle'),
     });
   };

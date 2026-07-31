@@ -1,7 +1,8 @@
 // 프로필 "마이" 티켓 — 보딩패스 형태의 전용 화면(iPhone 17 - 103/102 시안).
 // 상단 보라: 최근 여행지(국가·기간·별점), 하단 흰색: 아이디·통계·QR.
 // 티켓 또는 하단 "내 티켓 공유하기" 버튼을 누르면 티켓을 이미지로 캡처해 시스템 공유한다.
-// QR은 eorth://user/<handle> — 메이트찾기 스캐너(USER_LINK_RE)와 호환.
+// QR은 utils/appLinks의 profileLink로 만든 eorth://profile/<handle> — 파서(parseAppLink)가
+// 구형식 eorth://user/<handle>까지 받아주므로 이미 배포된 QR도 그대로 열린다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,6 +17,7 @@ import { KO_TO_EN } from './MainScreen';
 import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import { getCapitalByKo } from '../constants/capitals';
 import RatingStars from '../components/RatingStars';
+import { profileLink } from '../utils/appLinks';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ── 셰브런 화살표 (시안 134:1155~1170) ──
@@ -47,7 +49,6 @@ function Chevrons({ color, flip }: { color: string; flip?: boolean }) {
   );
 }
 
-const userLink = (code: string) => `eorth://user/${code}`;
 const two = (n: number) => String(n).padStart(2, '0');
 // "2025.04.13" / "2025-04-13" / ISO 모두 수용 — 실패 시 null
 const parseD = (s?: string | null): Date | null => {
@@ -371,7 +372,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
               <View style={[st.bracket, st.brBL]} />
               <View style={[st.bracket, st.brBR]} />
               {hasHandle
-                ? <QRCode value={userLink(handle)} size={112} color="#000000" backgroundColor="#FFFFFF" quietZone={6} />
+                ? <QRCode value={profileLink(handle)} size={112} color="#000000" backgroundColor="#FFFFFF" quietZone={6} />
                 : <Text style={st.qrHint}>{t('friends.qrHint')}</Text>}
             </View>
           </View>

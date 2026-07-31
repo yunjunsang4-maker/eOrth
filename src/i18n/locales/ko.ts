@@ -1865,7 +1865,7 @@ const ko = {
     toastNeighborRequestCanceled: '{{name}}님께 보낸 메이트 신청을 취소했어요',
     toastNeighborRemoved: '{{name}}님과 메이트를 끊었어요',
     shareMeMessage: 'eOrth에서 저를 메이트로 추가해보세요!\n{{link}}',
-    shareProfileMsg: '@{{username}}의 eOrth 프로필을 확인해보세요!\neorth://profile/{{username}}',
+    shareProfileMsg: '@{{username}}의 eOrth 프로필을 확인해보세요!\n{{link}}',
     shareProfileTitle: 'eOrth 프로필 공유',
     fontDefault: '기본',
     fontSizeSmall: '작게',
@@ -1874,7 +1874,7 @@ const ko = {
     fontSizeXLarge: '아주 크게',
     fontSizeHeading: '제목급',
     icloudTitle: 'iCloud에 있는 사진이에요',
-    sharePostMsg: 'eOrth에서 게시물을 확인해보세요!\neorth://post/{{id}}',
+    sharePostMsg: 'eOrth에서 게시물을 확인해보세요!\n{{link}}',
   },
   stay: {
     stayingIn: '{{flag}} {{name}} 체류 중',

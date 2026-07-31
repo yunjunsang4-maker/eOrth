@@ -27,6 +27,7 @@ import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from
 import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
 import { matchPercent, pickReason } from '../utils/matchScore';
 import { buzz } from '../utils/haptics';
+import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
 import type { RootStackScreenProps } from '../navigation/types';
 
@@ -44,10 +45,7 @@ const C = {
   gray: '#3A3A4A',
 };
 
-// ─────────────────────────────────────────────
-// 딥링크 (app.json scheme: "eorth" 와 일치) — 생성/공유/파싱을 한 곳에서 관리
-// ─────────────────────────────────────────────
-const userLink = (code: string) => `eorth://user/${code}`;
+// 딥링크 생성은 utils/appLinks의 profileLink만 사용한다(핸들 인코딩·스킴 소문자 규칙 포함).
 
 // ─────────────────────────────────────────────
 // 검색/추천 결과 메이트 타입
@@ -380,7 +378,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   const handleShareMe = () => {
     if (!myCode) { showToast(t('friends.setProfileFirst')); return; }
     Share.share({
-      message: t('comp2.shareMeMessage', { link: userLink(myCode) }),
+      message: t('comp2.shareMeMessage', { link: profileLink(myCode) }),
     }).catch(() => {});
   };
 
