@@ -146,6 +146,10 @@ const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) 
 const ISO3_TO_KO: Record<string, string> = Object.fromEntries(
   REGION_COUNTRIES.map((c) => [c.code, c.name])
 );
+// 역방향(한글 국가명 → ISO3) — 기록의 지역명을 설정 키와 같은 어휘(코드)로 해석할 때 쓴다
+const KO_TO_ISO3: Record<string, string> = Object.fromEntries(
+  REGION_COUNTRIES.map((c) => [c.name, c.code])
+);
 
 const VISITED_COUNTRIES = [
   { flag: '🇯🇵', name: '일본', visits: 5 },
@@ -239,6 +243,8 @@ const recordDateMs = (r: TravelRecord): number =>
   parseDotDate(r.startDate) ?? parseDotDate(r.date) ?? r.timestamp ?? 0;
 
 // 기간 표기 — 하루면 날짜 하나, 같은 달이면 끝을 일(DD)만, 같은 해면 MM.DD, 해가 다르면 전체.
+// 입력 ms는 parseDotDate/tripPeriodOf가 만든 '로컬 자정'이라 아래 로컬 getter와 어긋나지 않는다
+// (예전엔 UTC 자정이라 UTC- 시간대에서 하루 앞 날짜가 찍혔다).
 const fmtPeriod = (startMs: number, endMs: number): string => {
   const s = new Date(startMs);
   const e = new Date(endMs);
@@ -911,10 +917,28 @@ export default function MainScreen({ navigation, route }: Props) {
   // 고아(orphan) 표시 설정 정리 — 기록이 사라진 국가/지역의 설정을 영속 저장소에서 제거
   // (영속화 이후 누적 방지. 변경 없으면 같은 참조 반환 → 불필요한 저장/렌더 없음)
   useEffect(() => {
+    // 설정 키(`${ISO3}|${코드}`)와 같은 어휘로 비교해야 한다 —
+    // 기록의 원시 regionNameEn('Seoul')만 넣으면 코드 키('KR-11')가 전부 고아로 판정돼
+    // 사용자의 지역 색/표시 모드 설정이 조용히 삭제됐다. 원시 표기와 해석된 코드를 함께 넣는다.
     const validRegions = new Set<string>();
-    records.forEach(r => { if (r.regionNameEn) validRegions.add(r.regionNameEn); });
+    const addRegionVocab = (iso3: string | undefined, nameEn: string) => {
+      validRegions.add(nameEn); // 미마이그레이션(구 표기) 설정 키도 살린다
+      if (!iso3) return;
+      const code = resolveRegionCode(iso3, nameEn);
+      if (code) validRegions.add(code);
+    };
+    records.forEach(r => {
+      if (!r.regionNameEn) return;
+      // 기록의 국가(한글) → ISO3. 여러 국가가 묶인 기록은 후보 전부에 대해 해석한다.
+      const isos = new Set<string>();
+      if (r.countryName && KO_TO_ISO3[r.countryName]) isos.add(KO_TO_ISO3[r.countryName]);
+      r.countries?.forEach(c => { const i = KO_TO_ISO3[c.name]; if (i) isos.add(i); });
+      if (isos.size === 0) validRegions.add(r.regionNameEn);
+      else isos.forEach(iso3 => addRegionVocab(iso3, r.regionNameEn!));
+    });
     // 소급 태깅 지역의 색/모드 설정도 유효 — 태그가 살아있는 동안 지역별 설정이 지워지지 않게 포함
-    Object.values(taggedRegions).forEach(list => list.forEach(tr => validRegions.add(tr.nameEn)));
+    // (taggedRegions의 키가 곧 ISO3 — nameEn은 이미 코드지만 멱등 해석으로 구 표기도 함께 받는다)
+    Object.entries(taggedRegions).forEach(([iso3, list]) => list.forEach(tr => addRegionVocab(iso3, tr.nameEn)));
     const prune = <T,>(obj: Record<string, T>, valid: Set<string>): Record<string, T> => {
       const remove = Object.keys(obj).filter(k => !valid.has(k));
       if (remove.length === 0) return obj;
@@ -1952,7 +1976,7 @@ export default function MainScreen({ navigation, route }: Props) {
           <View style={styles.rrCard} onStartShouldSetResponder={() => true}>
             <SheetBackdrop />
             <Text style={styles.fmTitle}>{regionRecordsTitle}</Text>
-            <Text style={styles.fmSub}>{regionRecords.length}개의 기록</Text>
+            <Text style={styles.fmSub}>{t('main.regionRecordsCount', { count: regionRecords.length })}</Text>
 
             <ScrollView style={{ width: '100%', maxHeight: 300 }} showsVerticalScrollIndicator={false}>
               {regionRecords.map(rec => {
@@ -1983,7 +2007,16 @@ export default function MainScreen({ navigation, route }: Props) {
                       </Text>
                       <Text style={styles.rrItemDate}>{rec.date}</Text>
                     </View>
-                    {!!rec.rating && <Text style={styles.rrRating}>{'★'.repeat(rec.rating)}</Text>}
+                    {/* 0.5 단위 별점 — '★'.repeat(rating)은 4.5를 별 4개로 잘라냈다(국가 시트와 동일 컴포넌트로 통일) */}
+                    {!!rec.rating && (
+                      <RatingStars
+                        score={rec.rating}
+                        size={13}
+                        gap={2}
+                        fullColor={Colors.gold}
+                        emptyColor="rgba(255,255,255,0.18)"
+                      />
+                    )}
                   </TouchableOpacity>
                 );
               })}
@@ -1993,8 +2026,12 @@ export default function MainScreen({ navigation, route }: Props) {
               style={[styles.countryAddBtn, { width: '100%', marginTop: 16, backgroundColor: skinAccent.accent }]}
               activeOpacity={0.85}
               onPress={() => {
+                // 기록형식 모달은 이 모달이 완전히 닫힌 뒤에 연다 —
+                // 같은 틱에 열면 iOS에서 present가 실패한다(동시 Modal 불가).
+                // 국가 시트의 afterCountrySheetCloseRef와 같은 취지이며, 여기는 닫힘 콜백이 없는
+                // fade Modal이라 표시 설정→태깅 시트 전환(300ms)과 같은 지연을 쓴다.
                 setRegionRecordsVisible(false);
-                setFormatModalVisible(true);
+                setTimeout(() => setFormatModalVisible(true), 300);
               }}
             >
               <Text style={styles.countryAddBtnText}>+ {t('comp2.addNewRecord')}</Text>
@@ -2189,7 +2226,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   </View>
                   {recordedRegions.length === 0 ? (
                     <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
-                      기록된 지역이 없습니다.
+                      {t('main.noRecordedRegions')}
                     </Text>
                   ) : (
                     <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
@@ -2781,10 +2818,6 @@ const styles = StyleSheet.create({
     color: '#A1A1B0',
     fontSize: 12,
     marginTop: 2,
-  },
-  rrRating: {
-    color: '#FFD93D',
-    fontSize: 12,
   },
   fmSub: {
     color: '#A1A1B0',

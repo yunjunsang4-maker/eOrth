@@ -1662,10 +1662,13 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   // (이미 저장된 사용자 선택은 절대 덮어쓰지 않음)
   useEffect(() => {
     if (didSeedBadgesRef.current) return;
-    didSeedBadgesRef.current = true;
-    if (selectedBadgeIds.length > 0) return; // 영속 복원된 선택이 있으면 시드하지 않음
+    if (selectedBadgeIds.length > 0) { didSeedBadgesRef.current = true; return; } // 영속 복원된 선택이 있으면 시드 종료
     const defaults = BADGES.filter((b) => earnedBadgeIds.has(b.id)).slice(0, 5).map((b) => b.id);
-    if (defaults.length > 0) setSelectedBadgeIds(defaults);
+    // 아직 획득한 배지가 없으면 가드를 세우지 않는다 — 마운트 시점에 무조건 세워버려서
+    // 같은 세션에서 첫 배지를 얻어도 대표 배지가 채워지지 않던 문제.
+    if (defaults.length === 0) return;
+    didSeedBadgesRef.current = true;
+    setSelectedBadgeIds(defaults);
   }, [earnedBadgeIds, selectedBadgeIds, setSelectedBadgeIds]);
 
   const mappedThumbnails = useMemo(() => {
