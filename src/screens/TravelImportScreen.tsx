@@ -34,7 +34,7 @@ import type { TFunction } from 'i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
-import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
+import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryTagLabel, countryLabel } from '../utils/countryLabel';
 import AssetImage from '../components/AssetImage';
@@ -420,9 +420,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   };
   const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
-  // 스캔 취소 플래그 — startScan의 페이지네이션·GPS·지오코딩 루프가 매 반복마다 확인
-  const scanCancelRef = useRef(false);
-  useEffect(() => () => { scanCancelRef.current = true; }, []); // 화면 이탈 시 진행 중 스캔 중단
+  // 스캔 세대 토큰 — startScan이 시작할 때마다 1 증가하고, 그 스캔은 자기 세대를 캡처해
+  // 진행률·결과를 쓰기 전마다 세대가 여전히 자기 것인지 확인한다.
+  // (예전의 단일 boolean 플래그는 "취소 → 재스캔"에서 false로 리셋돼 취소된 이전 스캔이
+  //  되살아났고, 두 스캔이 동시에 진행바·결과를 써 넣었다.)
+  const scanGenRef = useRef(0);
+  useEffect(() => () => { scanGenRef.current += 1; }, []); // 화면 이탈 시 진행 중 스캔 무효화
   const [scanFinished, setScanFinished] = useState(false);
   const [progress, setProgress] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -464,16 +467,14 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const [mergeIds, setMergeIds] = useState<string[]>([]);
 
   // Sync selected IDs when scannedTrips change
-  // 첫 스캔 결과에는 전체 선택, 합치기 등으로 목록이 바뀌면 기존 선택을 보존하며 유효한 id만 남긴다
+  // 목록이 바뀌면(합치기 등) 기존 선택 중 유효한 id만 남긴다. 전체 선택은 오직
+  // '새 스캔 결과 도착' 시점에서만 명시적으로 적용한다 — 여기서 "0개면 전체 선택"으로
+  // 두면 사용자가 전부 해제한 뒤 합치기를 확정할 때 선택이 통째로 되살아났다.
   useEffect(() => {
-    if (scannedTrips.length > 0) {
-      setSelectedIds((prev) =>
-        prev.length === 0
-          // 첫 스캔 결과는 전체 선택 — 단 이미 가져온 여행은 빼 둔다(사용자가 원하면 직접 선택)
-          ? scannedTrips.filter((t) => !t.alreadyImported).map((t) => t.id)
-          : prev.filter((id) => scannedTrips.some((t) => t.id === id))
-      );
-    }
+    setSelectedIds((prev) => {
+      const next = prev.filter((id) => scannedTrips.some((t) => t.id === id));
+      return next.length === prev.length ? prev : next; // 변화 없으면 참조 유지(불필요한 렌더 방지)
+    });
   }, [scannedTrips]);
 
   const requestPermission = async () => {
@@ -523,7 +524,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   // startScan을 부르면 이 클로저는 아직 이전 period를 보므로, 쓸 기간을 인자로 넘긴다.
   const startScan = async (periodOverride?: ScanPeriodOption) => {
     const scanPeriod = periodOverride ?? period;
-    scanCancelRef.current = false;
+    // 이 스캔의 세대. 이후 모든 중단 검사는 "내 세대가 아직 최신인가"로 한다 —
+    // 새 스캔이 시작되거나 취소되면 세대가 올라가 이 스캔의 남은 작업은 전부 무시된다.
+    const myGen = ++scanGenRef.current;
+    const cancelled = () => scanGenRef.current !== myGen;
+    // 이 스캔이 만든 여행 id의 세션 토큰 — 세션 간 사진 폴더 충돌 방지(pastTripScan 참고)
+    const sessionId = newScanSessionId();
     setScanning(true);
     setProgress(0);
     progressAnim.setValue(0); // 재스캔 시 부드러운 바가 이전 값에서 시작하지 않도록 즉시 리셋
@@ -551,7 +557,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       let after: string | undefined = undefined;
       let hasNext = true;
       while (hasNext) {
-        if (scanCancelRef.current) return;
+        if (cancelled()) return;
         const endPage = prof.begin('①페이지네이션');
         const page = await MediaLibrary.getAssetsAsync({
           first: PAGE_SIZE,
@@ -659,10 +665,16 @@ export default function TravelImportScreen({ navigation, route }: Props) {
         // 비용이 이 구간으로 옮겨왔으니 진행률도 여기서 움직여야 한다(안드로이드는 수 초 걸린다).
         // 0~70%를 배치 진행에 쓰고, 뒤이은 탐침 루프는 자기 공식으로 80%까지 올린다.
         prefetched = await fetchLocationsInBatches(ids, getLocations, {
-          onBatch: (done, total) =>
-            setProgress((p) => Math.max(p, Math.round((done / total) * 70))),
+          // 취소되면 네이티브 배치 루프 자체를 끊는다. 안 끊으면 이전 스캔의 배치가
+          // 끝까지 돌며 새 스캔의 진행바를 되돌려 놓는다.
+          shouldCancel: cancelled,
+          onBatch: (done, total) => {
+            if (cancelled()) return;
+            setProgress((p) => Math.max(p, Math.round((done / total) * 70)));
+          },
         });
         endPre(ids.length);
+        if (cancelled()) return;
         // 후보가 있는데 좌표가 0건이면 네이티브가 제 역할을 못한 것으로 본다
         // (안드로이드 ACCESS_MEDIA_LOCATION 미승인 등). 기존 경로로 되돌린다 —
         // 느려도 결과가 나오는 편이, 빠르게 아무것도 못 찾는 편보다 낫다.
@@ -677,6 +689,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       const localUriById = new Map<string, string>();
       const probeCountry = async (index: number): Promise<string | null> => {
         const asset = assets[index];
+        // 취소된 스캔은 진행률·발견 국기 칩을 더 이상 건드리지 않는다
+        if (cancelled()) return null;
         probesDone++;
         // 진행률 0~80%는 샘플링 구간 (예산 초과 시 80에서 멈춰 있게).
         // Math.max로 감싼 이유: 네이티브 배치가 앞에서 70%까지 올려 두므로, 여기서 낮은
@@ -735,7 +749,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
       const probes: ProbePoint[] = [];
       for (let bi = 0; bi < buckets.length; bi++) {
-        if (scanCancelRef.current) return;
+        if (cancelled()) return;
         const b = buckets[bi];
         // 버킷에서 좌표가 나올 때까지 최대 3장 시도 (실내 사진만 있는 버킷은 미상 처리)
         for (const idx of probeOrder(b.start, b.end)) {
@@ -753,7 +767,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // 좌표를 얻은 탐침만 대상. 인접한 두 탐침의 국가가 다르면 그 사이를 최대 6회 조사한다.
       const known = probes.filter((p) => p.code != null).sort((a2, b2) => a2.index - b2.index);
       for (let k = 1; k < known.length; k++) {
-        if (scanCancelRef.current) return;
+        if (cancelled()) return;
         if (known[k].code === known[k - 1].code) continue;
         let lo = known[k - 1].index;
         let hi = known[k].index;
@@ -778,11 +792,18 @@ export default function TravelImportScreen({ navigation, route }: Props) {
 
       const scanned: ScannedPhoto[] = [];
       let geocodedOk = 0;
+      let noTimeSkipped = 0;
       for (let i = 0; i < totalAssets; i++) {
         const code = codes[i];
         if (!code) continue;
-        geocodedOk++;
         const asset = assets[i];
+        // 촬영시각이 없는 사진은 여행 클러스터링에서 제외한다.
+        // 정렬은 (creationTime || 0)인데 여기서만 Date.now()로 채웠던 탓에, 시각 없는
+        // 사진들이 '오늘' 날짜로 묶여 유령 여행 카드가 만들어졌다. 0으로 맞추면 이번엔
+        // 1970년 여행이 생긴다 — 시각을 모르는 사진은 애초에 기간에 배치할 수 없으므로 뺀다.
+        const ts = asset.creationTime || 0;
+        if (!ts) { noTimeSkipped++; continue; }
+        geocodedOk++;
         const cinfo = countryInfoFromCode(code);
         scanned.push({
           id: asset.id,
@@ -790,7 +811,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           // 탐침하지 않은 사진은 ph:// 그대로지만, 선택 화면이 asset id로 썸네일을 만든다.
           uri: localUriById.get(asset.id) || asset.uri,
           localUri: localUriById.get(asset.id),
-          creationTime: asset.creationTime || Date.now(),
+          creationTime: ts,
           countryCode: code,
           countryName: cinfo.countryName,
           countryFlag: cinfo.countryFlag,
@@ -799,7 +820,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // ── 5) 클러스터링 (거주국가 밖만) + 사진 적은 여행 제외 ──
       const foreignCount = scanned.filter((s) => s.countryCode && s.countryCode !== homeCountryCode).length;
       const endCluster = prof.begin('⑦클러스터링');
-      const allTrips = clusterForeignTrips(scanned, homeCountryCode, tripText);
+      const allTrips = clusterForeignTrips(scanned, homeCountryCode, tripText, sessionId);
       endCluster(scanned.length);
       // 사진 30장 이하 여행은 표시하지 않음 (짧은 경유/오탐 제거)
       const sized = allTrips.filter((t) => t.photoCount > MIN_TRIP_PHOTOS);
@@ -811,38 +832,42 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // 디버그 로그 — 좌표 조회 횟수가 사진 수 대비 얼마나 줄었는지 확인용
       console.log('[TravelImport] 총 스캔 사진:', totalAssets, '/ 버킷:', buckets.length, '/ 이미 가져와 제외:', skippedImported);
       console.log('[TravelImport] 좌표 조회(getAssetInfoAsync):', probesDone, `(사진 대비 ${totalAssets ? Math.round((probesDone / totalAssets) * 100) : 0}%)`);
-      console.log('[TravelImport] 국가 확정 구간:', segments.length, '→ 국가 채워진 사진:', geocodedOk);
+      console.log('[TravelImport] 국가 확정 구간:', segments.length, '→ 국가 채워진 사진:', geocodedOk, '/ 촬영시각 없어 제외:', noTimeSkipped);
       // 구간별 소요 시간 — 어디가 병목인지(파일 I/O vs 지오코딩 대기) 판단용.
       // 20만 장 같은 대용량에서 네이티브 모듈 도입의 이득을 숫자로 보기 위한 근거다.
       for (const line of prof.formatLines()) console.log(line);
       console.log('[TravelImport] 거주국가 밖 사진:', foreignCount, '(home=' + homeCountryCode + ')');
       console.log('[TravelImport] 여행 클러스터(전체/' + MIN_TRIP_PHOTOS + '장초과):', allTrips.length, '/', trips.length);
 
-      if (scanCancelRef.current) return;
+      if (cancelled()) return;
       setProgress(100);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
       setTimeout(() => {
-        if (scanCancelRef.current) return;
+        if (cancelled()) return;
         setScanning(false);
         setScanFinished(true);
         setScannedTrips(trips);
+        // 전체 선택은 '새 스캔 결과 도착'인 이 시점에만. 이미 가져온 여행은 빼 둔다
+        // (사용자가 원하면 직접 선택 — 그때 중복 확인 다이얼로그를 거친다).
+        setSelectedIds(trips.filter((tp) => !tp.alreadyImported).map((tp) => tp.id));
       }, 400);
     } catch (error) {
-      if (scanCancelRef.current) return;
+      if (cancelled()) return;
       console.error('Scan failed:', error);
       setProgress(100);
       setTimeout(() => {
-        if (scanCancelRef.current) return;
+        if (cancelled()) return;
         setScanning(false);
         setScanFinished(true);
         setScannedTrips([]);
+        setSelectedIds([]);
       }, 400);
     }
   };
 
-  // 스캔 취소 — 진행 중인 루프는 scanCancelRef를 보고 즉시 중단, UI는 시작 화면으로 복귀
+  // 스캔 취소 — 세대를 올려 진행 중인 스캔을 통째로 무효화하고, UI는 시작 화면으로 복귀
   const cancelScan = () => {
-    scanCancelRef.current = true;
+    scanGenRef.current += 1;
     setScanning(false);
     setScanFinished(false);
     setProgress(0);
