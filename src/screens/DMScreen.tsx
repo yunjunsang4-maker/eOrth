@@ -841,6 +841,11 @@ export default function DMScreen({ navigation, route }: Props) {
             onChangeText={setInput}
             returnKeyType="send"
             onSubmitEditing={sendMessage}
+            // multiline은 기본(submitBehavior='newline')이라 리턴 키가 줄바꿈만 넣고
+            // onSubmitEditing이 아예 발화하지 않았다 — 키보드의 '전송' 키가 먹통.
+            // 'submit'은 전송 이벤트만 보내고 blur는 하지 않아, 보낸 뒤에도 키보드와
+            // 입력 포커스가 그대로 유지된다(기존 전송 버튼 동작과 동일).
+            submitBehavior="submit"
             multiline
             maxLength={500}
             onFocus={() => setAttachMenuOpen(false)}
