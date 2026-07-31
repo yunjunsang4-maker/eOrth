@@ -580,6 +580,8 @@ const ko = {
     countrySheetMorePlaces: '{{place}} 외 {{count}}곳',
     visitsCountSuffix: '{{count}}회 방문',
     countryNoRecords: '이 국가의 여행 기록이 아직 없어요',
+    regionRecordsCount: '{{count}}개의 기록',
+    noRecordedRegions: '기록된 지역이 없습니다.',
     notifA11y: '알림',
     toggleGlobe: '지구본',
     toggleRegion: '대륙',
@@ -1568,6 +1570,14 @@ const ko = {
     featPremiumTitle: '프리미엄으로 더 풍부하게',
     featPremiumDesc: '아이디 폰트·로고 제거·프레임 커스텀',
     featPremiumCta: '혜택 보기 ›',
+  },
+  // 대륙(국가) 지도 WebView 안에서 쓰는 문구 — buildHTML에 JSON으로 주입된다
+  countryMap: {
+    loading: '지도를 불러오는 중...',
+    noSearchResult: '검색 결과 없음',
+    minTwoChars: '두 글자 이상 입력하세요',
+    searchError: '검색 오류 · 네트워크를 확인하세요',
+    libLoadFail: '라이브러리 로드 실패',
   },
   misc: {
     all: '전체',

@@ -160,7 +160,7 @@ export default function CountryScreen({ navigation, route }: Props) {
             return (
               <View key={rec.id} style={styles.recordCard}>
                 <View style={styles.recordHeader}>
-                  <Text style={styles.recordDate}>{dateText}{days > 0 ? ` · ${days}일` : ''}</Text>
+                  <Text style={styles.recordDate}>{dateText}{days > 0 ? ` · ${t('main.countrySheetDays', { count: days })}` : ''}</Text>
                   {!!rec.rating && rec.rating > 0 && (
                     <View style={styles.ratingBadge}>
                       <Text style={styles.ratingText}>{'★'.repeat(rec.rating)}</Text>

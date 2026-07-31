@@ -1,5 +1,6 @@
 import React, { useMemo , useRef, useEffect, useState } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
+import { useTranslation } from 'react-i18next';
 import { WebView } from 'react-native-webview';
 import { getCountryGeo } from '../data/countryGeo';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
@@ -12,6 +13,10 @@ const D3_INLINE = D3_SRC.replace(/<\/script/gi, '<\\/script');
 
 // WebView(SVG)가 못 읽는 URI(ph://, assets-library://, content://)인지 판별
 const needsMaterialize = (u?: string) => !!u && !/^(file:|https?:|data:)/.test(u);
+
+// HTML 본문에 그대로 박히는 문구 이스케이프 (번역문에 <, & 가 들어와도 마크업이 깨지지 않게)
+const escapeText = (s: string) =>
+  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 interface Props {
   countryCode: string;
@@ -45,8 +50,18 @@ export default function CountryMapView({
   searchQuery = '',
   showPopular = false,
 }: Props) {
+  const { t, i18n } = useTranslation();
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
-  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE), [countryCode, countryName, chipBottom]);
+  // WebView 안에는 i18next가 없다 — 문구를 RN에서 번역해 넣고, 언어가 바뀌면 HTML을 다시 만든다
+  const labels = useMemo<MapLabels>(() => ({
+    loading: t('countryMap.loading'),
+    noSearchResult: t('countryMap.noSearchResult'),
+    minTwoChars: t('countryMap.minTwoChars'),
+    searchError: t('countryMap.searchError'),
+    libLoadFail: t('countryMap.libLoadFail'),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [t, i18n.language]);
+  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE, labels), [countryCode, countryName, chipBottom, labels]);
   const webViewRef = useRef<WebView>(null);
 
   // ph:// 등 WebView가 못 읽는 사진을 file:// 로 변환한 캐시 (원본 URI → file:// URI)
@@ -246,7 +261,16 @@ function buildPopularCodes(iso3: string, geo: any): string[] {
   return [...out];
 }
 
-function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '') {
+/** WebView 안에서 쓰는 문구 — RN에서 t()로 뽑아 JSON으로 주입한다(WebView에는 i18next가 없다) */
+export interface MapLabels {
+  loading: string;
+  noSearchResult: string;
+  minTwoChars: string;
+  searchError: string;
+  libLoadFail: string;
+}
+
+function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels) {
   const geo = getCountryGeo(code);
   if (!geo) {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>지도 데이터가 없습니다</body></html>`;
@@ -274,7 +298,7 @@ body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
 </style>
 </head>
 <body>
-<div id="loading"><div class="spinner"></div>지도를 불러오는 중...</div>
+<div id="loading"><div class="spinner"></div>${escapeText(L.loading)}</div>
 <div id="region-chip"></div>
 ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 <script>
@@ -288,6 +312,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // d.properties.CODE를 CODE로 한 글자 잘못 쓰면 어떤 도구도 못 잡는다.
 var COUNTRY_CODE='${code}';
 var COUNTRY_NAME=${JSON.stringify(countryName)};
+var L=${JSON.stringify(L)}; // RN에서 번역해 넣은 문구(ko/en)
 var recordedRegions = [];
 var displayMode = 'color';
 var defaultColor = '#BF85FC';
@@ -391,7 +416,7 @@ var ISO2={JPN:'jp',CHN:'cn',USA:'us',DEU:'de',ESP:'es',GBR:'gb',FRA:'fr',ITA:'it
   ARE:'ae',MAR:'ma',EGY:'eg',TUN:'tn',ZAF:'za',MEX:'mx',CAN:'ca',BRA:'br',COL:'co'};
 var geoCache={};
 function geocodeFallback(query){
-  if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip('검색 결과 없음'); return; }
+  if(geoCache.hasOwnProperty(query)){ if(geoCache[query]) applyProvince(geoCache[query]); else setRegionChip(L.noSearchResult); return; }
   var cc=ISO2[COUNTRY_CODE]||'';
   var url='https://nominatim.openstreetmap.org/search?format=json&limit=1&accept-language=ko&q='+encodeURIComponent(query)+(cc?'&countrycodes='+cc:'');
   // 8초 타임아웃 — 느린 네트워크에서 무한정 무응답으로 보이지 않게 중단 후 오류 안내
@@ -403,8 +428,8 @@ function geocodeFallback(query){
     if(arr&&arr.length){var lon=parseFloat(arr[0].lon),lat=parseFloat(arr[0].lat); if(!isNaN(lon)&&!isNaN(lat)) prov=provinceAt([lon,lat]);}
     geoCache[query]=prov;
     if(prov) applyProvince(prov);
-    else setRegionChip('검색 결과 없음');
-  }).catch(function(){ if(timer)clearTimeout(timer); setRegionChip('검색 오류 · 네트워크를 확인하세요'); });
+    else setRegionChip(L.noSearchResult);
+  }).catch(function(){ if(timer)clearTimeout(timer); setRegionChip(L.searchError); });
 }
 // 검색 실행
 function doSearch(query){
@@ -418,7 +443,7 @@ function doSearch(query){
   }
   var prov=resolveProvince(q);
   if(prov){ applyProvince(prov); return; }       // 로컬(도시 표·주 이름) 즉시 매칭 (한 글자도 시도)
-  if(q.length<2){ setRegionChip('두 글자 이상 입력하세요'); return; } // 한 글자 + 미매칭 → 안내
+  if(q.length<2){ setRegionChip(L.minTwoChars); return; } // 한 글자 + 미매칭 → 안내
   geocodeFallback(q);                            // 실패 시 온라인 지오코딩으로 시 단위 검색
 }
 
@@ -426,7 +451,7 @@ function loadD3(cb){
   var u=['https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js','https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js'];
   var i=0;
   function next(){
-    if(i>=u.length){document.getElementById('loading').innerHTML='<span style="color:#FF3B30">라이브러리 로드 실패</span>';return;}
+    if(i>=u.length){var le=document.getElementById('loading');le.textContent='';var sp=document.createElement('span');sp.style.color='#FF3B30';sp.textContent=L.libLoadFail;le.appendChild(sp);return;}
     var s=document.createElement('script');s.src=u[i];
     s.onload=function(){if(typeof d3!=='undefined')cb();else{i++;next();}};
     s.onerror=function(){i++;next();};

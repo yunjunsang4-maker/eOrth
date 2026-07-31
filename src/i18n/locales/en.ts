@@ -575,6 +575,8 @@ const en = {
     countrySheetMorePlaces: '{{place}} +{{count}}',
     visitsCountSuffix: '{{count}} visits',
     countryNoRecords: 'No travel records for this country yet',
+    regionRecordsCount: '{{count}} records',
+    noRecordedRegions: 'No recorded regions yet.',
     notifA11y: 'Notifications',
     toggleGlobe: 'Globe',
     toggleRegion: 'Continents',
@@ -1561,6 +1563,14 @@ const en = {
     featPremiumTitle: 'Do more with Premium',
     featPremiumDesc: 'Handle fonts, logo removal, custom frames',
     featPremiumCta: 'See benefits ›',
+  },
+  // 대륙(국가) 지도 WebView 안에서 쓰는 문구 — buildHTML에 JSON으로 주입된다
+  countryMap: {
+    loading: 'Loading map...',
+    noSearchResult: 'No results',
+    minTwoChars: 'Enter at least 2 characters',
+    searchError: 'Search failed · check your network',
+    libLoadFail: 'Failed to load library',
   },
   misc: {
     all: 'All',
