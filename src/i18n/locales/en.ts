@@ -582,6 +582,7 @@ const en = {
     activeColorA11y: 'Change active color',
     regionSearchPlaceholder: 'Search for a specific region',
     clearSearchA11y: 'Clear search',
+    regionProgressOf: ' of {{total}} regions',
     popularSpots: 'Popular regions 👀',
     backToCountryA11y: 'Back to country selection',
     territoryDisplayA11y: 'Territory display settings',

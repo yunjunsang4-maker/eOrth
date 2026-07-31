@@ -64,6 +64,7 @@ import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions } from '../constants/homeRegions';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
+import { regionNameByCode, totalRegionCount, visitedRegionCount } from '../utils/regionGeoLookup';
 import { REGION_COUNTRIES } from '../constants/regionCountries';
 import type { TabScreenProps } from '../navigation/types';
 import { consumePendingInvite } from '../utils/pendingInvite';
@@ -778,7 +779,9 @@ export default function MainScreen({ navigation, route }: Props) {
         const nameEnCode = resolveRegionCode(regionCountry, r.regionNameEn) ?? r.regionNameEn;
         const key = `${regionCountry}|${nameEnCode}`; // 국가별 복합 키 (동명 지역 충돌 방지)
         regionsMap.set(nameEnCode, {
-          name: r.regionName || r.regionNameEn,
+          // 한글 지역명이 없으면 지오의 이름으로 폴백한다. regionNameEn을 그대로 쓰면
+          // 키 마이그레이션 이후 그 값이 ISO 코드라 목록에 'JP-13'이 노출됐다.
+          name: r.regionName || regionNameByCode(regionCountry, nameEnCode, i18n.language) || r.regionNameEn,
           nameEn: nameEnCode,
           key,
           photo,
@@ -818,7 +821,16 @@ export default function MainScreen({ navigation, route }: Props) {
     }
 
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, regionDisplayModes, regionColors, taggedRegions]);
+  }, [records, regionCountry, regionDisplayModes, regionColors, taggedRegions, i18n.language]);
+
+  // 대륙 모드 진행도 — "47곳 중 5곳". 방문 지역만 있고 전체 수가 없으면 수집의 감각이 안 생긴다.
+  // 분자는 지오에 실제로 있는 코드만 센다(오래된 코드가 섞여 분모를 넘는 것을 막는다).
+  const regionProgress = useMemo(() => {
+    if (!regionCountry) return null;
+    const total = totalRegionCount(regionCountry);
+    if (total === 0) return null; // 지역 데이터 미수록 국가 — 진행도를 숨긴다
+    return { visited: visitedRegionCount(regionCountry, recordedRegions.map(r => r.nameEn)), total };
+  }, [regionCountry, recordedRegions]);
 
   // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
   const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
@@ -1410,6 +1422,16 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
                 </TouchableOpacity>
               </LinearGradient>
+              {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
+                  칩이 아니라 표시 전용이라 테두리 없이 스킨색 숫자로만 둔다. */}
+              {regionProgress && (
+                <View style={styles.regionProgress}>
+                  <Text style={styles.regionProgressText}>
+                    <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                    {t('main.regionProgressOf', { total: regionProgress.total })}
+                  </Text>
+                </View>
+              )}
               {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
               <LinearGradient
                 colors={popularActive ? skinAccent.btnGradient : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
@@ -2400,6 +2422,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  // 진행도 — 칩 사이에 놓이지만 누를 수 없으므로 테두리 없이 여백만 맞춘다
+  regionProgress: {
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  regionProgressText: {
+    fontSize: 12,
+    color: '#A1A1B0',
+    fontFamily: Typography.fontFamily.medium,
   },
   regionChipText: {
     color: '#FFFFFF',
