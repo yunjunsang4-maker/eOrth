@@ -50,31 +50,52 @@ export function usePersistence<T>(
   // 원본을 즉시 덮어쓰는 것을 1회 막는다(.corrupt 백업과 별개의 방어선). 사용자가 이후 실제로
   // 상태를 바꾸면 그때부터는 현재 상태가 새 원본이므로 정상 저장한다.
   const skipSaveOnceRef = useRef(false);
+  // AsyncStorage '읽기 자체'가 실패한 경우 true — 이 세션 동안 이 키의 자동 저장을 완전히 끈다.
+  // 파싱 실패와 달리 raw를 손에 넣지 못해 .corrupt 백업조차 만들 수 없는데, 그대로 hydrated=true가
+  // 되면 400ms 뒤 '시드 상태'가 멀쩡히 남아 있는 원본을 백업 없이 영구 덮어쓴다
+  // (Android CursorWindow 초과로 큰 records 키 읽기가 실패하는 시나리오 — 사용자 기록 전체 소실).
+  // 이 세션의 변경이 저장되지 않는 손실보다 원본 파괴가 훨씬 크므로 저장을 포기하는 쪽을 택한다.
+  const saveDisabledRef = useRef(false);
 
   // ─── 복원 (마운트 시 1회) ───
   useEffect(() => {
     let cancelled = false;
+    skipSaveOnceRef.current = false;
+    saveDisabledRef.current = false; // key가 바뀌면 새 키 기준으로 다시 판정
     (async () => {
-      try {
-        const raw = await AsyncStorage.getItem(key);
-        if (raw && !cancelled) {
-          try {
-            const env = JSON.parse(raw) as Envelope<T>;
-            if (env.version === SCHEMA_VERSION) {
-              hydrateRef.current(env.payload);
-            }
-          } catch {
-            // 파싱/복원 실패: 시드(또는 부분 복원) 상태로 시작하되, 원본을 백업 키로 보존한다.
-            // hydrated=true가 되는 순간 디바운스 저장이 현재 상태로 원본을 '덮어쓰기' 때문에,
-            // 백업 없이는 복원 실패 한 번이 곧 영구 데이터 파괴가 된다.
-            await AsyncStorage.setItem(`${key}.corrupt`, raw).catch(() => {});
-            skipSaveOnceRef.current = true; // 마운트 직후 자동 저장 1회 스킵 — 원본 즉시 덮어쓰기 방지
-          }
+      let raw: string | null = null;
+      let readFailed = false;
+      // 읽기 실패는 1회 재시도 — 일시적 스토리지 경합이면 두 번째 시도에서 살아난다.
+      // (없는 키는 예외가 아니라 null이므로 첫 설치·빈 스토리지는 여기 걸리지 않는다)
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          raw = await AsyncStorage.getItem(key);
+          readFailed = false;
+          break;
+        } catch {
+          raw = null;
+          readFailed = true;
         }
-      } catch {
-        // 읽기 자체가 실패(스토리지 오류) — 시드로 시작
       }
-      if (!cancelled) setHydrated(true);
+      if (cancelled) return;
+      if (readFailed) {
+        // 읽기 실패: 원본이 남아 있는데 내용을 모르는 상태 → 이 키의 자동 저장을 세션 내 비활성화
+        saveDisabledRef.current = true;
+      } else if (raw) {
+        try {
+          const env = JSON.parse(raw) as Envelope<T>;
+          if (env.version === SCHEMA_VERSION) {
+            hydrateRef.current(env.payload);
+          }
+        } catch {
+          // 파싱/복원 실패: 시드(또는 부분 복원) 상태로 시작하되, 원본을 백업 키로 보존한다.
+          // hydrated=true가 되는 순간 디바운스 저장이 현재 상태로 원본을 '덮어쓰기' 때문에,
+          // 백업 없이는 복원 실패 한 번이 곧 영구 데이터 파괴가 된다.
+          await AsyncStorage.setItem(`${key}.corrupt`, raw).catch(() => {});
+          skipSaveOnceRef.current = true; // 마운트 직후 자동 저장 1회 스킵 — 원본 즉시 덮어쓰기 방지
+        }
+      }
+      setHydrated(true);
     })();
     return () => {
       cancelled = true;
@@ -84,6 +105,7 @@ export function usePersistence<T>(
   // ─── 저장 (디바운스) ───
   useEffect(() => {
     if (!hydrated) return;
+    if (saveDisabledRef.current) return; // 읽기 실패 세션 — 원본 보존을 위해 이 키는 저장하지 않는다
     if (skipSaveOnceRef.current) {
       // 부분 hydrate 직후의 첫 자동 저장은 건너뛴다 — 이후 실제 상태 변경부터 정상 저장
       skipSaveOnceRef.current = false;
