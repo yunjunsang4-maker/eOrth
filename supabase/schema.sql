@@ -641,8 +641,9 @@ create policy "neighbors_delete_own" on public.neighbors
 -- mate_suggestions 전체를 죽였다(감사 2026-08-01). 그래서 파싱 전에 범위를 직접 검증한다.
 --   · plpgsql exception 블록을 쓰지 않는 이유: 행마다 서브트랜잭션이 생겨 느려진다
 --     (mate_suggestions 는 전체 공개 게시물을 1회 스캔한다).
---   · 일(day) 초과(예: 2-31)는 to_date가 다음 달로 굴려 보정하므로 예외가 아니다 —
---     이 함수의 용도(월 단위 계절 판정)에는 충분하다.
+--   · 일(day) 처리는 두 갈래다: 32 이상은 아래 범위 검증에서 탈락해 null 이 되고,
+--     31 이하지만 그 달에 없는 날(예: 2-31)은 to_date가 다음 달로 굴려 보정한다.
+--     어느 쪽도 예외를 던지지 않으며, 이 함수의 용도(월 단위 계절 판정)에는 충분하다.
 --   · immutable + strict: 인덱스/CTE 재사용에 안전하고 null 입력은 호출 없이 null.
 create or replace function public.safe_to_date(s text)
 returns date
@@ -1423,6 +1424,20 @@ drop policy if exists "notifications_update_own" on public.notifications;
 create policy "notifications_update_own" on public.notifications
   for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
+-- ⚠️ 푸시 증폭 차단 (감사 2026-08-01)
+-- 10-f의 푸시 트리거를 collapse 대응으로 `after insert or update`로 넓혔기 때문에,
+-- 전 컬럼 update가 열려 있으면 사용자가 자기 알림 행에
+--   update notifications set created_at = now(), read = false where id = '<내 알림 id>';
+-- 를 반복하는 것만으로 매번 net.http_post → send-push 를 일으킬 수 있다
+-- (created_at 이 now()라 send-push의 5분 최신성 검증도 통과한다).
+-- posts/neighbors/dm_messages 와 같은 컬럼 수준 권한 패턴으로 막는다.
+--   · 클라이언트가 갱신하는 컬럼은 read 뿐이다
+--     (markAllNotificationsRead / markNotificationsRead, src/services/social.ts)
+--   · 트리거 내부의 on conflict do update(created_at·read·post_id 갱신)는
+--     security definer 함수가 소유자 권한으로 실행하므로 이 회수의 영향을 받지 않는다.
+revoke update on public.notifications from authenticated;
+grant update (read) on public.notifications to authenticated;
+
 drop policy if exists "notifications_delete_own" on public.notifications;
 create policy "notifications_delete_own" on public.notifications
   for delete to authenticated using (user_id = auth.uid());
@@ -2116,3 +2131,17 @@ end; $$;
 
 -- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
 revoke all on function public.purge_old_notifications(interval) from public, anon, authenticated;
+
+-- ============================================================
+-- 실행 후 사후 점검 (수동)
+--   handle 대소문자 유일 인덱스는 '이미 중복이 있으면' 경고만 남기고 건너뛴다(1) 섹션).
+--   경고는 SQL Editor 출력에서 놓치기 쉬우므로, 실행 뒤 아래 한 줄로 실제 생성 여부를 확인할 것.
+--   결과가 1이면 정상, 0이면 중복 정리 후 이 파일을 다시 실행해야 한다.
+--
+-- select count(*) from pg_indexes
+--  where schemaname = 'public' and indexname = 'uq_profiles_handle_lower';
+--
+--   0이 나왔다면 중복 목록:
+-- select lower(handle), count(*) from public.profiles
+--  where handle is not null group by 1 having count(*) > 1;
+-- ============================================================
