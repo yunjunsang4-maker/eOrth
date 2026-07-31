@@ -138,6 +138,11 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     return new Set(Object.values(appendTarget.mediaAssetIds ?? {}));
   }, [appendTarget]);
 
+  // 이번에 고를 수 있는 장수 — 이어 담기면 기존 장수를 뺀 '총량' 기준이어야 상한을 넘지 않는다
+  // (TripRecordScreen의 사진 추가와 동일 규칙: albumMax - 기존 장수)
+  const existingCount = appendTarget?.medias?.length ?? 0;
+  const selectableMax = Math.max(0, albumMax - existingCount);
+
   // 단계: setup(기간 설정) → select(사진 선택)
   const [phase, setPhase] = useState<'setup' | 'select'>('setup');
   const [loading, setLoading] = useState(false);     // 첫 페이지 로딩
@@ -172,6 +177,9 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   const [title, setTitle] = useState('');
   const [coverUri, setCoverUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // 저장 중복 실행 방지 — setSaving(state)은 다음 렌더에야 반영돼 같은 프레임의 이중 탭을 못 막는다
+  // (NewRecordScreen의 savingRef 패턴). 사진첩·여행 카드가 두 벌 생기는 것을 막는다.
+  const savingRef = useRef(false);
   const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null); // 사진 복사 진행(n/총)
 
   // 썸네일 위치 조정 — 어떤 사진에 대한 조정값인지 uri로 묶어 커버가 바뀌면 무시되게 한다
@@ -266,7 +274,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       setSelected((prev) => prev.filter((u) => u !== uri));
       return;
     }
-    if (selected.length >= albumMax) {
+    if (selected.length >= selectableMax) {
       Alert.alert(t('album.noticeTitle'), t('album.maxPhotos', { max: albumMax }));
       return;
     }
@@ -339,7 +347,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
     }
     const next = [...selected];
     for (const p of visiblePhotos) {
-      if (next.length >= albumMax) break;
+      if (next.length >= selectableMax) break;
       if (!next.includes(p.uri)) next.push(p.uri);
     }
     setSelected(next);
@@ -351,6 +359,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
   // ── 저장: 사진첩 기록(album, private) + 프로필 여행기록카드만 생성 ──
   // 국가 필드를 비워 소셜·지구본·대륙·통계 국가 카운트에 잡히지 않게 한다.
   const save = async () => {
+    if (savingRef.current) return; // 이중 탭 방지 (성공 시 replace로 화면을 떠나므로 해제하지 않는다)
+    savingRef.current = true;
     setPreviewVisible(false);
     setSaving(true);
     try {
@@ -451,6 +461,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       // 저장 직후 만든 사진첩을 바로 보여준다 — 프로필에서 카드를 다시 찾아 들어가는 수고 제거
       navigation.replace('TripRecord', { record: newRec, viewType: 'album' });
     } catch {
+      savingRef.current = false; // 실패했을 때만 재시도 허용
       setSaving(false);
       setSaveProgress(null);
       Alert.alert(t('album.saveFailTitle'), t('album.saveFailMsg'));
@@ -635,7 +646,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         <Text style={[st.title, st.titleIndented]}>{t('album.selectPhotos')}</Text>
         <Text style={st.sub}>{t('album.selectPhotosDateSub', { range: `${fmtDate(startDate)} ~ ${fmtDate(endDate)}` })}</Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-          <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {albumMax}</Text>
+          {/* 이어 담기면 남은 자리(총량 - 기존 장수)를 분모로 — 상한 판정과 같은 수를 보여준다 */}
+          <Text style={[st.counter, { color: skinAccent.accent }]}>{selected.length} / {selectableMax}</Text>
           {visiblePhotos.length > 0 && (
             <TouchableOpacity onPress={toggleSelectVisible} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
               <Text style={[st.selectAllTxt, { color: skinAccent.accent }]}>
