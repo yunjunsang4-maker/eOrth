@@ -191,7 +191,12 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         const uris = selected[t.id] ?? [];
         if (uris.length === 0) continue; // 선택 0장 → 카드 생성 안 함
         const coverUri = covers[t.id] && uris.includes(covers[t.id]) ? covers[t.id] : uris[0];
-        const picked = t.photos.filter((p) => uris.includes(p.uri));
+        // 저장 순서 = 사용자가 고른 순서(셀에 1,2,3…으로 보여 준 순번).
+        // photos 배열을 filter하면 촬영순으로 되돌아가 화면의 순번과 결과가 어긋났다.
+        const byUri = new Map(t.photos.map((p) => [p.uri, p]));
+        const picked = uris
+          .map((u) => byUri.get(u))
+          .filter((p): p is TripPhoto => !!p);
         // 썸네일(대표 사진)을 맨 앞에 복사 → medias[0]이 여행 기록 카드의 썸네일이 된다
         const items: PhotoRef[] = [
           ...picked.filter((p) => p.uri === coverUri),
