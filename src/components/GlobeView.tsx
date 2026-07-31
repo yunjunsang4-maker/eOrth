@@ -1089,10 +1089,12 @@ function buildGlassLand(tex, srcData) {
 function maybeSwapGlassLOD() {
   if (!isGlass() || !glassLandMesh || glassSwapBusy) return;
   var zf = zoomFactor();
-  // 10m 데이터 선요청 — 임계 접근 시 lazy (RN이 needCountries10m을 처리)
+  // 10m 데이터 선요청 — 임계 접근 시 lazy.
+  // 타입은 RN 핸들러(handleMessage)가 실제로 처리하는 'need10mCountries'여야 한다 —
+  // 'needCountries10m'으로 보내던 시절엔 응답(countries10m)이 영영 안 와서 유리 10m LOD가 통째로 죽어 있었다.
   if (zf > GLASS_FINE_AT * 0.8 && !glassCountries10m && !glassFineRequested && window.ReactNativeWebView) {
     glassFineRequested = true;
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'needCountries10m' }));
+    window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'need10mCountries' }));
   }
   if (!zoomSettled()) return; // 재구축(무거움)은 핀치 종료 후에만
   var want = (glassCountries10m && zf >= GLASS_FINE_AT) ? 'fine' : 'coarse';
@@ -1494,10 +1496,23 @@ function buildAdMarkers(list) {
       }
     };
     // 전파 차단: 미니 카드 위 제스처가 지구본 드래그/국가 탭으로 이어지지 않도록 (카드에서 버블링됨)
-    el.addEventListener('touchstart', function(ev) { ev.stopPropagation(); }, { passive: true });
+    // 이동량 검사(국가 탭과 같은 dist < 8) — 카드 위에서 지구본을 굴리려 드래그해도 광고가 열리지 않게
+    var adTapStart = null;
+    el.addEventListener('touchstart', function(ev) {
+      ev.stopPropagation();
+      var st = ev.touches && ev.touches[0];
+      adTapStart = st ? { x: st.clientX, y: st.clientY } : null;
+    }, { passive: true });
     el.addEventListener('mousedown', function(ev) { ev.stopPropagation(); });
     el.addEventListener('click', fire);
-    el.addEventListener('touchend', fire);
+    el.addEventListener('touchend', function(ev) {
+      var t = ev.changedTouches && ev.changedTouches[0];
+      var start = adTapStart;
+      adTapStart = null;
+      if (!t || !start) return;
+      if (Math.hypot(t.clientX - start.x, t.clientY - start.y) >= 8) return; // 드래그 → 탭 아님
+      fire(ev);
+    });
     adLayer.appendChild(el);
     adMarkers.push({ nameEn: nameEn, lon: c[0], lat: c[1], el: el });
   });
@@ -2534,6 +2549,31 @@ var worldData = null, globeMesh = null, material = null;
   setTimeout(burst, 1500 + Math.random()*2200);
 })();
 
+// 모노톤 노이즈(#00000040 25%) — 지정 활성화 색(#E1CDFB/#EB19D2)으로 칠한 국가에만 입힌다.
+// MainScreen의 NOISE_ACTIVE_COLORS와 값 일치 필요 (팔레트 채도 -15% 반영).
+// 래스터 텍스처(buildNeonTexture)와 벡터 대륙(buildVectorLandPOC)이 같은 96px 패턴을 공유한다.
+var NOISE_COLORS=['#E1CDFB','#EB19D2'];
+function isNoiseColor(col){ col=(col||'').toUpperCase(); return NOISE_COLORS.indexOf(col)!==-1; }
+function makeNoiseCanvas(){
+  if(window.__noiseCv) return window.__noiseCv;
+  var nc=document.createElement('canvas'); nc.width=96; nc.height=96;
+  var nx=nc.getContext('2d'); var img=nx.createImageData(96,96);
+  for(var i=0;i<img.data.length;i+=4){
+    if(Math.random()<0.25){ img.data[i]=0; img.data[i+1]=0; img.data[i+2]=0; img.data[i+3]=64; } else { img.data[i+3]=0; }
+  }
+  nx.putImageData(img,0,0);
+  window.__noiseCv=nc;
+  return nc;
+}
+// 벡터 대륙용 노이즈 텍스처(싱글턴) — 화면좌표(gl_FragCoord)로 반복 샘플링해 확대해도 알갱이 크기가 유지된다
+function noiseTexture(){
+  if(window.__noiseTex) return window.__noiseTex;
+  var t=new THREE.CanvasTexture(makeNoiseCanvas());
+  t.wrapS=THREE.RepeatWrapping; t.wrapT=THREE.RepeatWrapping;
+  t.magFilter=THREE.NearestFilter; t.minFilter=THREE.NearestFilter; t.generateMipmaps=false;
+  window.__noiseTex=t;
+  return t;
+}
 // 적도원통(equirectangular) 텍스처: 바다는 투명(셰이더가 절차적으로 칠함),
 // 대륙은 라벤더/방문국 활성화 색, 흰 해안선/국경선. (탭 판정과 동일한 WORLD_GEO 사용)
 function buildNeonTexture(){
@@ -2556,20 +2596,12 @@ function buildNeonTexture(){
     ctx.fillStyle = v ? (v.color || globeDefaultColor) : NEON_LAND;
     ctx.beginPath(); path(f); ctx.fill();
   });
-  // 모노톤 노이즈(0.5px, #00000040 25%) — 지정 활성화 색(#E1CDFB/#EB19D2)으로 칠한 국가에만 입힘.
-  // MainScreen의 NOISE_ACTIVE_COLORS와 값 일치 필요 (팔레트 채도 -15% 반영).
+  // 모노톤 노이즈 — 공용 패턴(makeNoiseCanvas)을 활성화 색 국가에만 클립해 입힌다
   (function(){
-    var NOISE_COLORS = ['#E1CDFB','#EB19D2'];
-    var isNoise = function(col){ col=(col||'').toUpperCase(); return NOISE_COLORS.indexOf(col)!==-1; };
+    var isNoise = isNoiseColor;
     var hasAny = worldData.features.some(function(f){ var v=visitedMap[f.properties.name||'']; return v && isNoise(v.color||globeDefaultColor); });
     if(!hasAny) return;
-    var nc=document.createElement('canvas'); nc.width=96; nc.height=96;
-    var nx=nc.getContext('2d'); var img=nx.createImageData(96,96);
-    for(var i=0;i<img.data.length;i+=4){
-      if(Math.random()<0.25){ img.data[i]=0; img.data[i+1]=0; img.data[i+2]=0; img.data[i+3]=64; } else { img.data[i+3]=0; }
-    }
-    nx.putImageData(img,0,0);
-    var pat=ctx.createPattern(nc,'repeat');
+    var pat=ctx.createPattern(makeNoiseCanvas(),'repeat');
     worldData.features.forEach(function(f){
       var v=visitedMap[f.properties.name||'']; if(!v || !isNoise(v.color||globeDefaultColor)) return;
       ctx.save(); ctx.beginPath(); path(f); ctx.clip();
@@ -2814,9 +2846,17 @@ function buildAdMarkers(list){
       '<div class="mc-text"><div class="mc-head"><span class="mc-ad">AD</span><span class="mc-title">'+escapeHtml(item.label||'여행 패키지')+'</span></div>'+priceHtml+
       '</div></div></div>';
     var fire=function(ev){ ev.stopPropagation(); if(ev.cancelable) ev.preventDefault(); if(window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify({ type:'sponsoredTapped', countryEn:nameEn })); };
-    el.addEventListener('touchstart', function(ev){ ev.stopPropagation(); }, { passive:true });
+    // 이동량 검사(국가 탭과 같은 dist < 8) — 카드 위 드래그가 광고 탭으로 오인되지 않게
+    var adTapStart=null;
+    el.addEventListener('touchstart', function(ev){ ev.stopPropagation(); var st=ev.touches&&ev.touches[0]; adTapStart=st?{x:st.clientX,y:st.clientY}:null; }, { passive:true });
     el.addEventListener('mousedown', function(ev){ ev.stopPropagation(); });
-    el.addEventListener('click', fire); el.addEventListener('touchend', fire);
+    el.addEventListener('click', fire);
+    el.addEventListener('touchend', function(ev){
+      var t=ev.changedTouches&&ev.changedTouches[0], start=adTapStart; adTapStart=null;
+      if(!t || !start) return;
+      if(Math.hypot(t.clientX-start.x, t.clientY-start.y)>=8) return; // 드래그 → 탭 아님
+      fire(ev);
+    });
     adLayer.appendChild(el);
     adMarkers.push({ nameEn:nameEn, lon:c[0], lat:c[1], el:el });
   });
@@ -3000,19 +3040,22 @@ function buildFatPolylines(lines, R){
 // 검증 목적: (1) 유리룩 (2) 채움-선 정렬 (3) 곡면 밀착(세분으로 구 안쪽 꺼짐·본체 뚫림 방지).
 // 날짜변경선 없는 테스트 나라만. 민트색이라 기존 보라 래스터와 구분됨.
 // 벡터 대륙 유리 재질 — 나라색(aColor)+투명도(aAlpha; 비방문 0.2=본체 비침) · 구면 법선 조명+글로시(NEON 육지 룩 이식)
+// aNoise=1이면 공용 노이즈 패턴(#00000040 25%)을 화면좌표로 덧입힌다 —
+// 벡터 대륙이 본체 텍스처를 덮어 쓰기 때문에 래스터 노이즈가 안 보이던 것(민무늬 단색)을 여기서 재현한다.
 var NEON_LAND_VS =
-  'attribute vec3 aColor; attribute float aAlpha; varying vec3 vN; varying vec3 vCol; varying float vA;' +
-  'void main(){ vN=normalize(normalMatrix*normalize(position)); vCol=aColor; vA=aAlpha; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
+  'attribute vec3 aColor; attribute float aAlpha; attribute float aNoise; varying vec3 vN; varying vec3 vCol; varying float vA; varying float vNz;' +
+  'void main(){ vN=normalize(normalMatrix*normalize(position)); vCol=aColor; vA=aAlpha; vNz=aNoise; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }';
 var NEON_LAND_FS =
-  'precision highp float; varying vec3 vN; varying vec3 vCol; varying float vA;' +
+  'precision highp float; uniform sampler2D uNoise; varying vec3 vN; varying vec3 vCol; varying float vA; varying float vNz;' +
   'void main(){ vec3 N=normalize(vN); vec3 L=normalize(vec3(-0.55,-0.5,0.78)); float diff=clamp(dot(N,L),0.0,1.0);' +
   ' vec3 col=vCol*mix(0.85,1.0,diff);' +
   ' float gloss=pow(max(dot(N, normalize(vec3(-0.45,-0.5,0.82))),0.0),16.0); col+=vec3(1.0)*gloss*0.22;' +
+  ' if(vNz>0.5){ float a=texture2D(uNoise, gl_FragCoord.xy/96.0).a; col*=(1.0-a); }' +
   ' gl_FragColor=vec4(col, vA); }';
 var POC_VECTOR_LAND = true;
 var POC_COUNTRIES = ['Australia','Japan','New Zealand','Madagascar','Brazil'];
 var pocLandMesh=null, pocOutline=null, countries10mData=null;
-var pocColorAttr=null, pocAlphaAttr=null, pocRanges=null; // 방문색 in-place 갱신용(나라별 정점 범위)
+var pocColorAttr=null, pocAlphaAttr=null, pocNoiseAttr=null, pocRanges=null; // 방문색 in-place 갱신용(나라별 정점 범위)
 var VECTOR_LOD_AT=1.4, vectorLOD=null; // 줌 LOD: <1.4 코어스(110m·가벼움), ≥1.4 파인(10m·디테일)
 function buildVectorLandPOC(level){
   level = level || ((countries10mData && currentZoom>=VECTOR_LOD_AT) ? 'fine' : 'coarse');
@@ -3023,9 +3066,9 @@ function buildVectorLandPOC(level){
   var feats = srcData.features; // [2단계] 전 나라 렌더 (POC_COUNTRIES 필터 제거)
   if(!feats.length) return;
   var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화(6°)해도 사지타가 본체 아래로 안 꺼지도록 여유 확대
-  var pos=[], colArr=[], alphaArr=[];
-  var curCol=[1,1,1], curA=0.2; // 나라별 색/투명도 (feats 루프에서 설정)
-  function pushV(p){ var v=geoToVec3N(p[0], p[1], R); pos.push(v.x, v.y, v.z); colArr.push(curCol[0],curCol[1],curCol[2]); alphaArr.push(curA); }
+  var pos=[], colArr=[], alphaArr=[], noiseArr=[];
+  var curCol=[1,1,1], curA=0.2, curNz=0; // 나라별 색/투명도/노이즈 여부 (feats 루프에서 설정)
+  function pushV(p){ var v=geoToVec3N(p[0], p[1], R); pos.push(v.x, v.y, v.z); colArr.push(curCol[0],curCol[1],curCol[2]); alphaArr.push(curA); noiseArr.push(curNz); }
   function segDeg(a,b){ var dx=a[0]-b[0], dy=a[1]-b[1]; return Math.sqrt(dx*dx+dy*dy); }
   function mid(a,b){ return [(a[0]+b[0])/2, (a[1]+b[1])/2]; }
   // crack-free 적응 세분 — 세분 여부를 '변 길이'로만 판단(삼각형이 아니라). 공유 변은 양쪽이 같은 길이라
@@ -3110,8 +3153,8 @@ function buildVectorLandPOC(level){
     var g=f.geometry; if(!g) return;
     // 유리 육지: 비방문=흰색 α0.2(본체 비침), 방문=활성색 불투명 (buildNeonTexture 채움 규칙과 동일)
     var nm=f.properties && f.properties.name, v=nm?visitedMap[nm]:null;
-    if(v){ var c=new THREE.Color(v.color||globeDefaultColor); curCol=[c.r,c.g,c.b]; curA=1.0; }
-    else { curCol=[1,1,1]; curA=0.2; }
+    if(v){ var vc=v.color||globeDefaultColor; var c=new THREE.Color(vc); curCol=[c.r,c.g,c.b]; curA=1.0; curNz=isNoiseColor(vc)?1:0; }
+    else { curCol=[1,1,1]; curA=0.2; curNz=0; }
     var vStart=pos.length/3;
     if(g.type==='Polygon') addPoly(g.coordinates);
     else if(g.type==='MultiPolygon') g.coordinates.forEach(function(poly){ addPoly(poly); });
@@ -3121,9 +3164,11 @@ function buildVectorLandPOC(level){
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos,3));
   pocColorAttr=new THREE.Float32BufferAttribute(colArr,3);
   pocAlphaAttr=new THREE.Float32BufferAttribute(alphaArr,1);
+  pocNoiseAttr=new THREE.Float32BufferAttribute(noiseArr,1);
   geo.setAttribute('aColor', pocColorAttr);
   geo.setAttribute('aAlpha', pocAlphaAttr);
-  var mat=new THREE.ShaderMaterial({ vertexShader:NEON_LAND_VS, fragmentShader:NEON_LAND_FS, transparent:true, depthWrite:false, side:THREE.DoubleSide });
+  geo.setAttribute('aNoise', pocNoiseAttr);
+  var mat=new THREE.ShaderMaterial({ uniforms:{ uNoise:{ value: noiseTexture() } }, vertexShader:NEON_LAND_VS, fragmentShader:NEON_LAND_FS, transparent:true, depthWrite:false, side:THREE.DoubleSide });
   var mesh=new THREE.Mesh(geo, mat); mesh.frustumCulled=false; mesh.renderOrder=1;
   globe.add(mesh); pocLandMesh=mesh;
   // 테두리 — 같은 나라 링에서 굵은 라인(동일 정점) → 채움과 완벽 일치
@@ -3150,14 +3195,14 @@ function updateVectorLandOutline(){
 // 방문색 in-place 갱신 — 전 나라 재삼각분할 없이 색/투명도 속성만 교체(끊김 제거).
 function updateVectorLandColors(){
   if(!pocColorAttr || !pocRanges) return;
-  var ca=pocColorAttr.array, aa=pocAlphaAttr.array;
+  var ca=pocColorAttr.array, aa=pocAlphaAttr.array, na=pocNoiseAttr?pocNoiseAttr.array:null;
   for(var i=0;i<pocRanges.length;i++){
-    var r=pocRanges[i], v=visitedMap[r.name], cr,cg,cb,al;
-    if(v){ var c=new THREE.Color(v.color||globeDefaultColor); cr=c.r; cg=c.g; cb=c.b; al=1.0; }
-    else { cr=1; cg=1; cb=1; al=0.2; }
-    for(var k=0;k<r.count;k++){ var vi=r.start+k; ca[vi*3]=cr; ca[vi*3+1]=cg; ca[vi*3+2]=cb; aa[vi]=al; }
+    var r=pocRanges[i], v=visitedMap[r.name], cr,cg,cb,al,nz;
+    if(v){ var vc=v.color||globeDefaultColor; var c=new THREE.Color(vc); cr=c.r; cg=c.g; cb=c.b; al=1.0; nz=isNoiseColor(vc)?1:0; }
+    else { cr=1; cg=1; cb=1; al=0.2; nz=0; }
+    for(var k=0;k<r.count;k++){ var vi=r.start+k; ca[vi*3]=cr; ca[vi*3+1]=cg; ca[vi*3+2]=cb; aa[vi]=al; if(na) na[vi]=nz; }
   }
-  pocColorAttr.needsUpdate=true; pocAlphaAttr.needsUpdate=true;
+  pocColorAttr.needsUpdate=true; pocAlphaAttr.needsUpdate=true; if(pocNoiseAttr) pocNoiseAttr.needsUpdate=true;
 }
 function buildWorldLinesMerged(world, R){
   var pos=[];
