@@ -4,7 +4,7 @@ import React, { createContext, useContext, useState, useCallback, useMemo, useEf
 import { usePersistence, STORE_KEYS } from './persist';
 import { remapDocUri } from '../utils/remapDocumentUris';
 import { isSupabaseConfigured } from '../services/supabase';
-import { uploadImage } from '../services/media';
+import { uploadImage, removeMediaUrls } from '../services/media';
 
 export interface TravelMoment {
   id: string;
@@ -57,8 +57,14 @@ export function MomentProvider({ children }: { children: React.ReactNode }) {
   }, [backupMomentPhoto]);
 
   const removeMoment = useCallback((id: string) => {
+    const target = moments.find((x) => x.id === id);
     setMoments((prev) => prev.filter((x) => x.id !== id));
-  }, []);
+    // 사진 서버 백업(Storage)도 함께 삭제 — 안 지우면 순간을 지워도 원본이 계속 남아
+    // 용량을 점유하고, 사용자 입장에선 '지웠는데 서버엔 남는' 사진이 된다. 실패는 무시(고아).
+    if (isSupabaseConfigured && target?.photoUrl && /^https?:\/\//.test(target.photoUrl)) {
+      removeMediaUrls([target.photoUrl]).catch(() => {});
+    }
+  }, [moments]);
 
   const resetMoments = useCallback(() => { setMoments([]); }, []);
 
