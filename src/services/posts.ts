@@ -174,13 +174,15 @@ export async function updatePost(remoteId: string, rec: TravelRecord, opts?: Pub
   }
 }
 
-// 게시물 삭제
-export async function deletePost(remoteId: string): Promise<void> {
-  if (!supabase || !remoteId) return;
+// 게시물 삭제 — 성공 여부 반환(호출부가 성공했을 때만 Storage 사진을 지우도록).
+// 실패를 throw하지 않는 기존 계약은 유지한다(호출부의 .catch는 그대로 동작).
+export async function deletePost(remoteId: string): Promise<boolean> {
+  if (!supabase || !remoteId) return false;
   try {
-    await supabase.from('posts').delete().eq('id', remoteId);
+    const { error } = await supabase.from('posts').delete().eq('id', remoteId);
+    return !error;
   } catch {
-    // 무시
+    return false; // 네트워크 실패 등 — 서버 게시물이 남아 있으므로 사진도 지우면 안 된다
   }
 }
 
@@ -256,14 +258,34 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
   const uid = await getMyUserId();
   if (!uid) return [];
   try {
-    const { data, error } = await supabase
-      .from('posts')
-      .select(POST_SELECT)
-      .eq('author_id', uid)
-      .order('created_at', { ascending: false })
-      .limit(200);
-    if (error || !data) return [];
-    const mine = (data as any[]).map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
+    // ⚠️ 단발 limit(200)이면 호출부(hydrateMyRecords)가 로컬 records를 통째 교체하면서
+    //    201번째부터의 오래된 기록이 복원되지 않고 사라진다 → range로 전량 조회한다.
+    const PAGE = 200;
+    const MAX_POSTS = 2000; // 안전 상한 — 비정상 응답으로 루프가 무한정 도는 것을 막는다
+    const rows: any[] = [];
+    const seen = new Set<string>(); // created_at 동률로 페이지 경계가 겹칠 때의 중복 제거
+    for (let from = 0; from < MAX_POSTS; from += PAGE) {
+      const { data, error } = await supabase
+        .from('posts')
+        .select(POST_SELECT)
+        .eq('author_id', uid)
+        // created_at 동률에서도 페이지 경계가 흔들리지 않게 id를 2차 정렬키로 둔다
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+        .range(from, from + PAGE - 1);
+      if (error) {
+        if (from === 0) return []; // 첫 페이지부터 실패 — 기존 계약대로 빈 배열
+        break;                     // 중간 실패는 받은 데이터(최신순)까지만 — 기존 limit(200) 수준으로 열화
+      }
+      if (!data || data.length === 0) break;
+      for (const row of data as any[]) {
+        if (row?.id && seen.has(row.id)) continue;
+        if (row?.id) seen.add(row.id);
+        rows.push(row);
+      }
+      if (data.length < PAGE) break; // 마지막 페이지
+    }
+    const mine = rows.map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
     // 내 좋아요 상태 복원 (mapRowToRecord가 liked:false 기본이라 재다운로드 시 유실 방지)
     const { fetchMyLikedPostIds } = await import('./social');
     const likedSet = new Set(await fetchMyLikedPostIds());
