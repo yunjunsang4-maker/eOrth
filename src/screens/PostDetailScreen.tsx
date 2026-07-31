@@ -737,7 +737,7 @@ function SnapStoryViewer({
   const [commentSheetOpen, setCommentSheetOpen] = useState(false);
   const [viewerListOpen, setViewerListOpen] = useState(false);
   const [replyBarOpen, setReplyBarOpen] = useState(false);
-  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked } = useRecords();
+  const { commentsByPost, addComment: addCommentToStore, reportPost, neighbors, isBlocked, refreshComments } = useRecords();
   // ── 공유 시트 (인스타식: 메이트 DM으로 보내기 + 외부 공유) ──
   const { sendRecord, conversations } = useDM();
   const [shareSheetOpen, setShareSheetOpen] = useState(false);
@@ -871,6 +871,23 @@ function SnapStoryViewer({
     return () => { progressAnim.stopAnimation(); };
   }, [storyPlaying, storyIdx, localIdx]);
 
+  // 표시 중인 스냅이 바뀌면 그 스냅의 서버 댓글을 불러온다.
+  // PostDetail 본문 이펙트는 '진입한' 스냅 하나만 조회해서, 스토리를 넘기면 다른 스냅의
+  // 서버 댓글이 붙지 않아 댓글 수가 0으로 보였다.
+  // 한 번 불러온 스냅은 다시 부르지 않는다 — 넘겼다 돌아올 때의 중복 조회와,
+  // refreshComments가 commentsByPost를 갱신해 재렌더될 때의 재호출 루프를 함께 막는다.
+  // 진입 스냅(initialPostId)은 본문 이펙트가 이미 조회하므로 미리 넣어 둔다.
+  const fetchedCommentsRef = useRef<Set<string>>(new Set([initialPostId]));
+  useEffect(() => {
+    const id = currentSnap?.id;
+    const remoteId = currentSnap?.remoteId;
+    if (!id || !remoteId || currentSnap?.isExample) return;
+    if (fetchedCommentsRef.current.has(id)) return;
+    fetchedCommentsRef.current.add(id);
+    refreshComments(id, remoteId).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSnap?.id, currentSnap?.remoteId, refreshComments]);
+
   if (!currentSnap || stories.length === 0) return null;
 
   // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
@@ -997,10 +1014,11 @@ function SnapStoryViewer({
               <View style={storyS.avatarRing}><View style={[storyS.avatar, s.isExample && { overflow: 'hidden' }]}>
                 {s.isExample ? (
                   <Image source={APP_LOGO} style={{ width: 40, height: 40 }} resizeMode="cover" />
-                ) : s.isMyPost === true && myPhoto ? (
-                  <Image source={{ uri: myPhoto }} style={storyS.avatarImg} />
                 ) : (
-                  <PersonIcon size={22} color="#A0A0B0" />
+                  // 내 스냅은 실시간 설정 사진, 타인 스냅은 작성자 프로필 사진.
+                  // 타인 분기(s.user.photo)가 없어 남의 스냅은 항상 실루엣으로 보였다.
+                  // AuthorAvatar가 사진 없음·로드 실패를 모두 사람 실루엣으로 폴백한다.
+                  <AuthorAvatar photo={s.isMyPost === true ? myPhoto : s.user?.photo} size={40} emojiSize={22} />
                 )}
               </View></View>
               <View style={storyS.userInfo}>
@@ -1746,10 +1764,17 @@ export default function PostDetailScreen() {
 
   // ── 스냅: 인스타 스토리 스타일 전체화면 ──
   if (viewType === 'snap') {
-    // 예시 스냅은 snapViewerRecords(store 필터링 목록)에 없으므로 rawRecord를 단독으로 넘긴다
-    const snapRecords = rawRecord?.isExample
-      ? [rawRecord]
-      : snapViewerRecords;
+    // 스냅 뷰어는 소셜 탭 스토리 링과 같은 필터 목록(snapViewerRecords)에서 스토리를 만든다.
+    // 다만 열려는 스냅이 그 목록에 '없는' 경우가 있다 —
+    //   · 예시 스냅(isExample): 스토어에 저장되지 않는 로컬 상수
+    //   · 보관한 스냅(보관함 탭): archivedIds로 목록에서 걸러진다
+    //   · 메이트 프로필→여행 상세(게스트)에서 route.params.record로 넘어온 스냅: 스토어에 없다
+    // 이때 목록만 넘기면 뷰어가 대상을 못 찾아 엉뚱한 스토리(첫 번째)가 재생되거나,
+    // 목록이 비면 열리자마자 닫혔다. 그런 경우 이 글 하나만 단독 스토리로 재생한다.
+    // (rawRecord가 아니라 뷰어 필터를 거친 record — 작성자가 나에게 숨긴 사진이 새지 않게)
+    const snapRecords = snapViewerRecords.some((r) => r.id === postId)
+      ? snapViewerRecords
+      : [record];
     return (
       <SnapStoryViewer
         initialPostId={postId}
