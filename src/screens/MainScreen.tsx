@@ -1422,16 +1422,6 @@ export default function MainScreen({ navigation, route }: Props) {
                   <Text style={styles.regionChipText}>{countryEn(ISO3_TO_KO[regionCountry] || regionCountry)}</Text>
                 </TouchableOpacity>
               </LinearGradient>
-              {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
-                  칩이 아니라 표시 전용이라 테두리 없이 스킨색 숫자로만 둔다. */}
-              {regionProgress && (
-                <View style={styles.regionProgress}>
-                  <Text style={styles.regionProgressText}>
-                    <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
-                    {t('main.regionProgressOf', { total: regionProgress.total })}
-                  </Text>
-                </View>
-              )}
               {/* 인기명소 모아보기 — 활성: 스킨 버튼 그라데이션 / 비활성: 흰색/검은색 베벨 */}
               <LinearGradient
                 colors={popularActive ? skinAccent.btnGradient : ['rgba(102,102,102,0)', 'rgba(255,255,255,0.6)']}
@@ -1448,6 +1438,17 @@ export default function MainScreen({ navigation, route }: Props) {
                 </TouchableOpacity>
               </LinearGradient>
             </ScrollView>
+
+            {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
+                칩 행에 끼우면 우측 정렬(flex-end)이라 국가 칩이 밀리므로 아래 별도 줄로 둔다. */}
+            {regionProgress && (
+              <View style={styles.regionProgress} pointerEvents="none">
+                <Text style={styles.regionProgressText}>
+                  <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                  {t('main.regionProgressOf', { total: regionProgress.total })}
+                </Text>
+              </View>
+            )}
 
             {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
             <View style={styles.regionMapFill}>
@@ -2423,10 +2424,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 진행도 — 칩 사이에 놓이지만 누를 수 없으므로 테두리 없이 여백만 맞춘다
+  // 진행도 — 칩 행 아래 별도 줄. 지도 위에 떠 있으므로 배경 없이 글자만 둔다
   regionProgress: {
-    justifyContent: 'center',
-    paddingHorizontal: 10,
+    zIndex: 2,
+    marginTop: 8,
+    alignItems: 'center',
   },
   regionProgressText: {
     fontSize: 12,
