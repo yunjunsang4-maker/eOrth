@@ -1,4 +1,8 @@
 -- ============================================================
+-- ⛔ 실행 금지 — 이미 실행 완료된 1회성 마이그레이션 기록물 (2026-07-15 실행됨)
+--    다시 실행하지 말 것. 보관 목적으로만 남긴다.
+--    (재실행하면 그 사이 사용자가 직접 비공개로 되돌린 기록까지 다시 공개로 승격된다.)
+-- ============================================================
 -- 1회성 데이터 마이그레이션 (2026-07-15) — Supabase SQL 편집기에서 한 번만 실행
 --
 -- 과거 여행 불러오기(addImportedAlbum)가 기록을 visibility='private'로 발행해
@@ -15,11 +19,18 @@
 --    사용자가 직접 private으로 바꾼 기록까지 재실행 때마다 되돌리게 된다.
 -- ============================================================
 
+-- ⚠️ 값 정정 (감사 2026-08-01): 원본은 'friends' 였으나 이후 follows→neighbors 전환으로
+--    'friends' 는 어느 정책·클라이언트도 인정하지 않는 죽은 값이 됐다. 실수로 재실행될
+--    경우에 대비해 현행 값 'neighbors' 로 고쳐 둔다.
+-- ⚠️ 실행 가드: 마이그레이션 시점(2026-07-15) 이전에 만들어진 기록만 대상으로 좁힌다.
+--    이후 발행분은 앱이 이미 올바른 공개범위로 저장하므로 건드릴 이유가 없고,
+--    혹시 재실행되더라도 최근 기록의 사용자 선택을 뒤엎지 않는다.
 update public.posts
-set visibility = 'friends',
-    data = jsonb_set(data, '{visibility}', '"friends"')
+set visibility = 'neighbors',
+    data = jsonb_set(data, '{visibility}', '"neighbors"')
 where visibility = 'private'
-  and client_id like 'rec-import-%';
+  and client_id like 'rec-import-%'
+  and created_at < timestamptz '2026-07-15';
 
 -- 확인용: 남은 private 가져오기 기록이 0이어야 한다
 -- select count(*) from public.posts where visibility = 'private' and client_id like 'rec-import-%';
