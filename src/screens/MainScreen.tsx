@@ -1439,17 +1439,6 @@ export default function MainScreen({ navigation, route }: Props) {
               </LinearGradient>
             </ScrollView>
 
-            {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
-                칩 행에 끼우면 우측 정렬(flex-end)이라 국가 칩이 밀리므로 아래 별도 줄로 둔다. */}
-            {regionProgress && (
-              <View style={styles.regionProgress} pointerEvents="none">
-                <Text style={styles.regionProgressText}>
-                  <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
-                  {t('main.regionProgressOf', { total: regionProgress.total })}
-                </Text>
-              </View>
-            )}
-
             {/* 국가 지역 지도 — globeArea 전체(로고 아래까지)를 채우는 배경. 검색바·칩은 위에 떠 있음 */}
             <View style={styles.regionMapFill}>
               <CountryMapView
@@ -1466,6 +1455,18 @@ export default function MainScreen({ navigation, route }: Props) {
               />
             </View>
             {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
+            {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
+                스냅 버튼(right:46 / bottom:insets+129, 60×60) 바로 위에 띄운다.
+                pointerEvents="none"으로 아래 지도의 터치를 가리지 않는다. */}
+            {regionProgress && (
+              <View pointerEvents="none" style={[styles.regionProgress, { bottom: (insets.bottom || 0) + 129 + 60 + 10 }]}>
+                <Text style={styles.regionProgressText}>
+                  <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                  {t('main.regionProgressOf', { total: regionProgress.total })}
+                </Text>
+              </View>
+            )}
+
             {showRegionTagChip && (
               <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 148, alignItems: 'center' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
@@ -2424,11 +2425,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 진행도 — 칩 행 아래 별도 줄. 지도 위에 떠 있으므로 배경 없이 글자만 둔다
+  // 진행도 — 스냅 버튼 바로 위에 띄운다. bottom은 스냅 버튼 위치에서 계산해 인라인으로 준다.
+  // right를 스냅 버튼(46)과 맞춰 오른쪽 끝을 정렬하고, 글자는 왼쪽으로 자란다.
   regionProgress: {
+    position: 'absolute',
+    right: 46,
     zIndex: 2,
-    marginTop: 8,
-    alignItems: 'center',
+    alignItems: 'flex-end',
   },
   regionProgressText: {
     fontSize: 12,
