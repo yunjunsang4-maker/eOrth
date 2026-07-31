@@ -211,7 +211,10 @@ interface SettingsPersistPayload {
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
   taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
-  dismissedRegionTagChips?: string[]; // 방문 지역 칩 닫은 국가 (과거 저장본엔 없음)
+  // 방문 지역 칩을 닫은 국가 (과거 저장본엔 없음).
+  // 영속되지만 '이번 방문' 동안만 유효하다 — MainScreen이 그 나라 대륙 화면에 다시
+  // 들어올 때 해당 항목을 지운다(닫아도 재진입하면 다시 안내). 영구 숨김이 아니다.
+  dismissedRegionTagChips?: string[];
   skinColorStore?: Record<string, SkinColorSet>; // 과거 저장본엔 없을 수 있어 optional
   // 지역 저장 키 스키마 (GADM 표기 → NE 코드). 없거나 낮으면 hydrate에서 1회 변환한다.
   regionKeySchema?: number;

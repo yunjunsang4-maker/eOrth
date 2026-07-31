@@ -858,6 +858,17 @@ export default function MainScreen({ navigation, route }: Props) {
       r.viewType !== 'snap' && (r.countryName === countryKo || r.countries?.some(c => c.name === countryKo)),
     ).length;
   }, [records, regionCountry]);
+  // 칩 닫기는 '이번 방문'에만 유효하다 — 나갔다 다시 들어오면 또 안내한다.
+  // 예전엔 dismissedRegionTagChips가 영속이라 한 번 닫으면 그 나라에서는 영영 안 떴고,
+  // 나중에 지역을 채우고 싶어져도 진입점이 사라졌다(설정에도 노출되지 않는다).
+  // 진입(regionCountry가 그 나라로 바뀌는 시점)에 해제 기록을 지운다.
+  useEffect(() => {
+    if (!regionCountry) return;
+    setDismissedRegionTagChips(prev =>
+      prev.includes(regionCountry) ? prev.filter(c => c !== regionCountry) : prev, // 같으면 그대로 — 불필요한 저장 방지
+    );
+  }, [regionCountry, setDismissedRegionTagChips]);
+
   const showRegionTagChip =
     !!regionCountry && regionCountryRecordCount > 0 && recordedRegions.length === 0
     && !dismissedRegionTagChips.includes(regionCountry);
