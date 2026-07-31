@@ -97,6 +97,14 @@ const SHEET_HEIGHT = height * 0.6;
 // 국가 시트는 내용만큼만 올라오고 이 값까지만 커진다(예전엔 기록이 하나여도 항상 65%였다)
 const COUNTRY_SHEET_MAX_H = height * 0.65;
 
+// 스냅 버튼(탭 바 오버레이 RecordFab)의 절대 제약 — 이 화면은 버튼을 직접 그리지 않지만,
+// 튜토리얼 앵커와 하단 오버레이가 같은 값을 알아야 겹치지 않는다.
+// 예전엔 각자 상수를 들고 있어, 대륙 모드의 '방문 지역 추가하기' 칩이 스냅 버튼 아래에
+// 깔려 닫기(✕) 버튼이 눌리지 않았다(스냅·FAB가 앞 레이어).
+const SNAP_BTN = { right: 46, bottom: 129, size: 60 };
+/** 스냅 버튼 위에 얹는 오버레이의 bottom (insets.bottom 제외) */
+const ABOVE_SNAP = SNAP_BTN.bottom + SNAP_BTN.size + 10;
+
 // ─── 대륙 모드 국가 목록 ─── (src/constants/regionCountries.ts로 이전, 지오 검증 스크립트가 import)
 
 // ─── 영토 표시 설정 버튼 아이콘 (스킨색 배경 + 위경도 격자 지구본) — 지구본/대륙 공용 ───
@@ -1281,7 +1289,7 @@ export default function MainScreen({ navigation, route }: Props) {
         ref={snapAnchorRef}
         collapsable={false}
         pointerEvents="none"
-        style={{ position: 'absolute', right: 46, bottom: (insets.bottom || 0) + 129, width: 60, height: 60, opacity: 0 }}
+        style={{ position: 'absolute', right: SNAP_BTN.right, bottom: (insets.bottom || 0) + SNAP_BTN.bottom, width: SNAP_BTN.size, height: SNAP_BTN.size, opacity: 0 }}
       />
 
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
@@ -1454,21 +1462,24 @@ export default function MainScreen({ navigation, route }: Props) {
                 showPopular={popularActive}
               />
             </View>
-            {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
-            {/* 진행도 — 방문 지역 수만 있으면 "얼마나 남았는지"를 알 수 없어 수집의 감각이 없다.
-                스냅 버튼(right:46 / bottom:insets+129, 60×60) 바로 위에 띄운다.
-                pointerEvents="none"으로 아래 지도의 터치를 가리지 않는다. */}
-            {regionProgress && (
-              <View pointerEvents="none" style={[styles.regionProgress, { bottom: (insets.bottom || 0) + 129 + 60 + 10 }]}>
-                <Text style={styles.regionProgressText}>
-                  <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
-                  {t('main.regionProgressOf', { total: regionProgress.total })}
-                </Text>
-              </View>
-            )}
+            {/* ── 하단 오버레이 스택 ──
+                진행도와 태그 칩을 각자 absolute로 띄우면 서로를, 그리고 앞 레이어인 스냅 버튼을
+                모른다. 실제로 칩이 스냅 버튼에 덮여 닫기(✕)가 눌리지 않았다.
+                하나의 스택에 넣고 스냅 버튼 위(ABOVE_SNAP)에 앵커해 겹침을 구조적으로 막는다.
+                아래(스냅 버튼 쪽)부터 진행도 → 칩 순으로 쌓이도록 column-reverse를 쓴다. */}
+            <View pointerEvents="box-none" style={[styles.regionBottomStack, { bottom: (insets.bottom || 0) + ABOVE_SNAP }]}>
+              {regionProgress && (
+                <View pointerEvents="none" style={{ alignSelf: 'flex-end', marginRight: SNAP_BTN.right }}>
+                  <Text style={styles.regionProgressText}>
+                    <Text style={{ color: skinAccent.accent, fontWeight: '700' }}>{regionProgress.visited}</Text>
+                    {t('main.regionProgressOf', { total: regionProgress.total })}
+                  </Text>
+                </View>
+              )}
 
-            {showRegionTagChip && (
-              <View pointerEvents="box-none" style={{ position: 'absolute', left: 0, right: 0, bottom: insets.bottom + 148, alignItems: 'center' }}>
+              {/* 방문 지역 소급 태깅 안내 칩 — 기록은 있는데 활성 지역이 없는 국가에서만 */}
+              {showRegionTagChip && (
+                <View style={{ alignSelf: 'center', maxWidth: '92%' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingLeft: 16, paddingRight: 8, paddingVertical: 10 }}>
                   <TouchableOpacity activeOpacity={0.8} onPress={openRegionTagSheet} accessibilityRole="button">
                     <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>
@@ -1485,8 +1496,9 @@ export default function MainScreen({ navigation, route }: Props) {
                     <Text style={{ color: 'rgba(255,255,255,0.55)', fontSize: 13, marginLeft: 10, padding: 4 }}>✕</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            )}
+                </View>
+              )}
+            </View>
             {/* 방문 지역 선택 시트 (소급 태깅) */}
             <Modal visible={regionTagSheetVisible} transparent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
               <View style={{ flex: 1, justifyContent: 'flex-end' }}>
@@ -2425,13 +2437,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // 진행도 — 스냅 버튼 바로 위에 띄운다. bottom은 스냅 버튼 위치에서 계산해 인라인으로 준다.
-  // right를 스냅 버튼(46)과 맞춰 오른쪽 끝을 정렬하고, 글자는 왼쪽으로 자란다.
-  regionProgress: {
+  // 하단 오버레이 스택 — 스냅 버튼 위에 앵커(bottom은 인라인). column-reverse라 JSX에서 먼저
+  // 쓴 항목이 아래(스냅 버튼 쪽)에 온다: 진행도가 버튼 바로 위, 태그 칩이 그 위.
+  regionBottomStack: {
     position: 'absolute',
-    right: 46,
+    left: 0,
+    right: 0,
     zIndex: 2,
-    alignItems: 'flex-end',
+    flexDirection: 'column-reverse',
+    gap: 10,
   },
   regionProgressText: {
     fontSize: 12,
