@@ -57,22 +57,34 @@ export function normalizeLocations(raw: unknown): Map<string, LatLon> {
 /**
  * 자산 id를 배치로 쪼개 좌표를 모은다. fetcher를 주입받아 네이티브 없이도 검증 가능하다.
  * 배치 하나가 실패해도 나머지는 계속한다 — 한 덩이의 예외로 스캔 전체를 버릴 이유가 없다.
+ *
+ * shouldCancel: 매 배치 전후로 물어 true면 즉시 멈춘다(그때까지 모은 좌표는 반환).
+ * 없으면 취소해도 네이티브 배치가 끝까지 돌면서 onBatch로 '이전 스캔의 진행률'을
+ * 계속 흘려보내, 사용자가 다시 시작한 새 스캔의 진행바를 오염시켰다.
+ * 취소 이후에는 onBatch도 부르지 않는다(진행률 역주행 방지).
  */
 export async function fetchLocationsInBatches(
   ids: string[],
   fetcher: (batch: string[]) => Promise<unknown>,
-  options: { size?: number; onBatch?: (done: number, total: number) => void } = {}
+  options: {
+    size?: number;
+    onBatch?: (done: number, total: number) => void;
+    shouldCancel?: () => boolean;
+  } = {}
 ): Promise<Map<string, LatLon>> {
   const size = options.size ?? LOCATION_BATCH_SIZE;
   const batches = chunkIds(ids, size);
   const out = new Map<string, LatLon>();
   for (let i = 0; i < batches.length; i++) {
+    if (options.shouldCancel?.()) break;
     try {
       const raw = await fetcher(batches[i]);
       for (const [id, loc] of normalizeLocations(raw)) out.set(id, loc);
     } catch {
       // 이 배치만 좌표 없음으로 둔다(해당 사진들은 미상 처리되고 스캔은 계속된다)
     }
+    // 배치를 기다리는 동안 취소됐을 수 있다 — 그 경우 진행 콜백도 건너뛴다
+    if (options.shouldCancel?.()) break;
     options.onBatch?.(i + 1, batches.length);
   }
   return out;
