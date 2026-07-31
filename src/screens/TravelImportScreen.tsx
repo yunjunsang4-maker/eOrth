@@ -729,8 +729,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           }
           const geo = await countryAt(lat, lon);
           if (!geo) return null;
-          // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출
-          if (geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
+          // 거주국 밖의 새 나라를 처음 만나면 국기 칩으로 실시간 노출.
+          // 진입 시 가드만으로는 부족하다 — 위 좌표 조회·지오코딩 대기 사이에 취소+재스캔이
+          // 일어나면, 이전 스캔의 칩이 새 스캔의 setDiscovered([]) 뒤에 도착해 유령으로 남는다.
+          if (!cancelled() && geo.code !== homeCountryCode && !foundCodes.has(geo.code)) {
             foundCodes.add(geo.code);
             const cinfo0 = countryInfoFromCode(geo.code, geo.name);
             const code = geo.code;
@@ -788,6 +790,9 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       // GPS가 없던 사진도 그 구간의 국가를 물려받는다(실내 사진 누락 해소).
       const segments = segmentsFromProbes(probes, totalAssets);
       const codes = fillCountries(totalAssets, segments);
+      // 이분탐색 루프의 마지막 await 도중 취소되면 루프는 정상 종료해 여기로 온다.
+      // 무가드로 두면 setProgress(90)이 새 스캔의 진행바를 90%에 못박는다(Math.max 누적).
+      if (cancelled()) return;
       setProgress(90);
 
       const scanned: ScannedPhoto[] = [];
