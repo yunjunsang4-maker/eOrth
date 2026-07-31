@@ -511,11 +511,9 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         </TouchableOpacity>
 
         <Text style={st.versionText}>{t('settings.footer')}</Text>
-        {/* 유리 지구본 배경으로 쓰는 허블 이미지 출처 — ESA/Hubble 명의는 CC BY 4.0이라 표기가 필요하다.
-            고정 문구(번역하지 않음). 배경 이미지를 교체하면 이 줄도 함께 갱신할 것. */}
-        <Text style={st.creditText}>
-          Globe background: ESA/Hubble &amp; NASA
-        </Text>
+        {/* 유리 지구본 배경 크레딧은 2026-07-31에 제거했다 — 허블(ESA/Hubble, CC BY 4.0)
+            이미지를 사용자가 직접 만든 이미지로 교체해 표기 의무가 없어졌다.
+            외부 저작물을 다시 쓰게 되면 여기에 출처를 되살릴 것. */}
       </ScrollView>
 
       {/* 거주 국가 입력 모달 (iOS/Android 공용) */}
@@ -860,15 +858,6 @@ const st = StyleSheet.create({
     color: COLORS.textMuted,
     textAlign: 'center',
     marginTop: 20,
-  },
-
-  // 이미지 출처 표기
-  creditText: {
-    fontSize: 9,
-    color: COLORS.textMuted,
-    opacity: 0.6,
-    textAlign: 'center',
-    marginTop: 6,
   },
 
   // 거주 국가 입력 모달
