@@ -314,6 +314,21 @@ const MapIcon = ({ size = 12, color = '#FFFFFF' }: { size?: number; color?: stri
   <SvgMapIcon size={size} color={color} />
 );
 
+// ─── 키워드 표기 통일 ───
+// '#' 포함 여부가 화면마다 다르다(피드는 '#서울'로, 블로그는 '서울'로 저장). 그대로 받아오면
+// 블로그는 표시할 때 '#'을 덧붙여 '##서울'이 되고, 중복 검사(includes)도 표기가 달라 무력화된다.
+// → 받는 경로·추가 경로 모두 선행 '#'을 떼고 저장하고, '#'은 표시할 때만 붙인다.
+//   (이미 저장된 기록의 데이터는 손대지 않는다 — 표시/비교 시점에만 정규화)
+const stripHash = (s: string): string => s.trim().replace(/^#+/, '').trim();
+const normalizeKeywords = (list?: string[] | null): string[] => {
+  const out: string[] = [];
+  for (const raw of list ?? []) {
+    const kw = stripHash(raw ?? '');
+    if (kw && !out.includes(kw)) out.push(kw); // 정규화로 같아진 태그는 하나만 남긴다
+  }
+  return out;
+};
+
 type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
@@ -471,7 +486,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
   const [currencyModalVisible, setCurrencyModalVisible] = useState(false);
   const [currencySearch, setCurrencySearch] = useState('');
   const [flightType, setFlightType] = useState(editRecord?.flightType ?? tripPrefill?.flightType ?? '');
-  const [keywords, setKeywords] = useState<string[]>(editRecord?.keywords ?? tripPrefill?.keywords ?? []);
+  const [keywords, setKeywords] = useState<string[]>(normalizeKeywords(editRecord?.keywords ?? tripPrefill?.keywords));
   const [keywordInput, setKeywordInput] = useState('');
 
   // 날짜 캘린더 — "YYYY.MM.DD"를 직접 파싱한다.
@@ -576,7 +591,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       if (imported.rating) setRating(prev => prev > 0 ? prev : imported.rating!);
       if (imported.companions) setCompanions(prev => prev.length > 0 ? prev : imported.companions!);
       if (imported.weather) setWeather(prev => prev || imported.weather!);
-      if (imported.keywords) setKeywords(prev => prev.length > 0 ? prev : imported.keywords!);
+      if (imported.keywords) setKeywords(prev => prev.length > 0 ? prev : normalizeKeywords(imported.keywords));
       if (imported.countryName) {
         setSelectedCountries(prev => {
           if (prev.length) return prev;
@@ -724,7 +739,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     setBudget(draft.budget ? String(draft.budget.amount) : '');
     chooseCurrency(draft.budget?.currency || 'KRW');
     setFlightType(draft.flightType || '');
-    setKeywords(draft.keywords || []);
+    setKeywords(normalizeKeywords(draft.keywords));
     if (draft.mediaPrivacy && draft.mediaPrivacy[0]) {
       setPrivateFriends(draft.mediaPrivacy[0]);
     } else {
@@ -1032,7 +1047,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     // 날씨·항공·태그·공개범위
     setWeather(src.weather ?? '');
     setFlightType(src.flightType ?? '');
-    setKeywords(src.keywords ?? []);
+    setKeywords(normalizeKeywords(src.keywords));
     setVisibility(src.visibility ?? 'neighbors');
     // 캘린더 닫고 폼 복귀
     setCalendarVisible(false);
@@ -1040,8 +1055,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
   // ─── 키워드 ───
   const addKeyword = () => {
-    const raw = keywordInput.trim();
-    const kw = raw.startsWith('#') ? raw.slice(1).trim() : raw;
+    const kw = stripHash(keywordInput); // '#' 여러 개·앞뒤 공백까지 정리 (표시할 때만 '#'을 붙인다)
     if (kw && !keywords.includes(kw) && keywords.length < 10) { setKeywords(prev => [...prev, kw]); setKeywordInput(''); }
   };
 
@@ -1787,9 +1801,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       if (v.endsWith(' ')) {
                         // 중복 검사도 '#' 제거 후 값으로 — 제거 전 값(#seoul)로 검사하고 제거 후
                         // 값(seoul)을 저장하면 같은 태그가 중복 저장돼 key 충돌·이중 삭제가 났다.
-                        // (엔터 경로 addKeyword와 동일 규칙)
-                        const raw = v.trim();
-                        const tag = raw.startsWith('#') ? raw.slice(1).trim() : raw;
+                        // (엔터 경로 addKeyword와 동일 규칙 — stripHash 공용)
+                        const tag = stripHash(v);
                         if (tag && !keywords.includes(tag) && keywords.length < 10) {
                           setKeywords(prev => [...prev, tag]);
                         }
