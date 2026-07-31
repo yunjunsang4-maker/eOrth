@@ -57,7 +57,37 @@ drop trigger if exists trg_profiles_updated on public.profiles;
 create trigger trg_profiles_updated before update on public.profiles
   for each row execute function public.set_updated_at();
 
-create index if not exists idx_profiles_handle on public.profiles (lower(handle));
+-- 아이디(handle) 유일성은 '대소문자 무시' 기준이어야 한다.
+-- 테이블 정의의 `handle text unique`(profiles_handle_key)는 대소문자를 구분해
+-- 'Alice'와 'alice'가 동시에 등록될 수 있었다 — 반면 가용성 검사(is_handle_available)와
+-- 아이디 로그인(email_for_handle)은 lower() 기준이라 사칭 아이디가 만들어졌다.
+-- → lower(handle) UNIQUE 인덱스를 최종 방어선으로 둔다(기존 비유니크 lower 인덱스는 대체).
+--   (대소문자만 구분하던 profiles_handle_key는 이 인덱스의 부분집합이라 그대로 둔다 —
+--    드롭해도 되지만 남겨도 무해하고, 드롭은 되돌리기 어려워 보수적으로 유지.)
+-- ⚠️ 이미 대소문자만 다른 중복 handle이 있으면 유니크 인덱스를 만들 수 없다.
+--    그 경우 아래 블록이 경고만 남기고 넘어가므로(스키마 전체 실행 실패 방지),
+--    중복을 정리한 뒤 이 파일을 다시 실행할 것. 중복 조회:
+--      select lower(handle), count(*) from public.profiles
+--       where handle is not null group by 1 having count(*) > 1;
+do $$
+declare dup_count int;
+begin
+  select count(*) into dup_count from (
+    select lower(handle)
+    from public.profiles
+    where handle is not null
+    group by 1
+    having count(*) > 1
+  ) d;
+
+  if dup_count > 0 then
+    raise warning '[eOrth] 대소문자만 다른 중복 handle % 건 — uq_profiles_handle_lower 생성을 건너뜁니다. 중복 정리 후 재실행하세요.', dup_count;
+  else
+    create unique index if not exists uq_profiles_handle_lower on public.profiles (lower(handle));
+    -- 유니크 인덱스가 조회용 인덱스 역할까지 대신하므로 기존 비유니크 인덱스는 정리
+    drop index if exists public.idx_profiles_handle;
+  end if;
+end $$;
 
 alter table public.profiles enable row level security;
 
@@ -215,6 +245,20 @@ drop policy if exists "posts_delete_own" on public.posts;
 create policy "posts_delete_own" on public.posts
   for delete to authenticated using (author_id = auth.uid());
 
+-- 카운터 컬럼 보호 — RLS(posts_update_own)는 '행' 단위라 작성자가 자기 글의
+-- likes_count/comments_count 를 임의 값으로 조작할 수 있었다(좋아요 수 위조).
+-- 컬럼 수준 권한으로 클라이언트가 실제로 갱신하는 컬럼만 허용한다.
+--   · 클라이언트 갱신 컬럼: updatePost(src/services/posts.ts) → visibility, view_type, country_name, data
+--     (client_id 는 현재 insert 에서만 쓰지만, 향후 재발행 보정 여지를 남겨 함께 허용)
+--   · updated_at 은 트리거(set_updated_at)가 채운다 — 컬럼 권한은 'UPDATE 문이 명시한
+--     컬럼'에만 적용되므로 트리거 갱신에는 권한이 필요 없다.
+--   · likes_count/comments_count 는 sync_likes_count/sync_comments_count(security definer)가
+--     소유자 권한으로 갱신하므로 이 회수의 영향을 받지 않는다.
+-- insert/select/delete 권한은 건드리지 않는다(update 만 회수 후 컬럼 단위 재부여).
+revoke update on public.posts from authenticated;
+grant update (visibility, view_type, country_name, data, client_id)
+  on public.posts to authenticated;
+
 -- ============================================================
 -- 3) post_likes / comments
 --    (서로이웃(neighbors) 테이블·정책은 차단 함수 의존성 때문에 4-b 섹션에서 정의)
@@ -241,8 +285,11 @@ create policy "likes_delete_own" on public.post_likes
   for delete to authenticated using (user_id = auth.uid());
 
 -- 좋아요 수 동기화 트리거
+-- security definer 필수 — 트리거 함수는 기본적으로 '좋아요를 누른 사용자' 권한으로 돌아
+-- posts_update_own(작성자만 update) RLS에 걸린다. 그러면 타인 글의 likes_count 갱신이
+-- 에러 없이 0행 no-op으로 조용히 실패해 좋아요 수가 늘지 않는다(감사 2026-08-01).
 create or replace function public.sync_likes_count()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if (tg_op = 'INSERT') then
     update public.posts set likes_count = likes_count + 1 where id = new.post_id;
@@ -295,8 +342,10 @@ drop policy if exists "comments_delete_own" on public.comments;
 create policy "comments_delete_own" on public.comments
   for delete to authenticated using (author_id = auth.uid());
 
+-- (sync_likes_count와 동일 이유로 security definer — 타인 글 댓글 수 갱신이 RLS로 막히면
+--  댓글 수가 0에 머문다.)
 create or replace function public.sync_comments_count()
-returns trigger language plpgsql as $$
+returns trigger language plpgsql security definer set search_path = public as $$
 begin
   if (tg_op = 'INSERT') then
     update public.posts set comments_count = comments_count + 1 where id = new.post_id;
@@ -309,6 +358,25 @@ end; $$;
 drop trigger if exists trg_comments_count on public.comments;
 create trigger trg_comments_count after insert or delete on public.comments
   for each row execute function public.sync_comments_count();
+
+-- [선택·수동] 카운터 소급 보정 — 위 두 함수가 security definer가 되기 전에 쌓인
+-- 좋아요·댓글은 RLS에 막혀 카운트에 반영되지 않았다(타인 글의 카운터가 0에 머묾).
+-- 실제 행 수로 다시 세는 1회 보정. 재실행해도 결과가 같지만 전체 게시물 update라
+-- 자동 실행하지 않고 필요할 때 SQL Editor에서 아래 두 문장을 직접 실행할 것.
+--
+-- update public.posts p
+--    set likes_count = coalesce(c.n, 0)
+--   from (select id from public.posts) ids
+--   left join (select post_id, count(*)::int as n from public.post_likes group by 1) c
+--          on c.post_id = ids.id
+--  where p.id = ids.id and p.likes_count is distinct from coalesce(c.n, 0);
+--
+-- update public.posts p
+--    set comments_count = coalesce(c.n, 0)
+--   from (select id from public.posts) ids
+--   left join (select post_id, count(*)::int as n from public.comments group by 1) c
+--          on c.post_id = ids.id
+--  where p.id = ids.id and p.comments_count is distinct from coalesce(c.n, 0);
 
 -- 댓글 좋아요
 create table if not exists public.comment_likes (
@@ -415,6 +483,29 @@ create policy "messages_insert_sender" on public.dm_messages
     )
   );
 
+-- 읽음 표시(read_at) — UPDATE 정책이 아예 없어서 '읽음' 기능을 붙이는 순간
+-- 조용한 0행 no-op이 된다(RLS는 정책 없는 명령을 에러 없이 막는다). 미리 열어 둔다.
+--   · 대상: 내가 '받은' 메시지(발신자가 내가 아닌) 중 내가 참여한 스레드의 행
+--   · 컬럼: read_at 만 (본문·이미지 위조 방지 — 컬럼 수준 권한으로 강제)
+drop policy if exists "messages_update_read" on public.dm_messages;
+create policy "messages_update_read" on public.dm_messages
+  for update to authenticated
+  using (
+    sender_id <> auth.uid() and exists (
+      select 1 from public.dm_threads t
+      where t.id = dm_messages.thread_id and auth.uid() in (t.user_a, t.user_b)
+    )
+  )
+  with check (
+    sender_id <> auth.uid() and exists (
+      select 1 from public.dm_threads t
+      where t.id = dm_messages.thread_id and auth.uid() in (t.user_a, t.user_b)
+    )
+  );
+
+revoke update on public.dm_messages from authenticated;
+grant update (read_at) on public.dm_messages to authenticated;
+
 -- 차단
 create table if not exists public.blocks (
   blocker_id uuid not null references public.profiles(id) on delete cascade,
@@ -490,6 +581,34 @@ drop policy if exists "neighbors_update_addressee" on public.neighbors;
 create policy "neighbors_update_addressee" on public.neighbors
   for update to authenticated using (addressee_id = auth.uid()) with check (addressee_id = auth.uid());
 
+-- ⚠️ 관계 위조 방어 (감사 2026-08-01, CRITICAL)
+-- 위 정책은 '내가 addressee인 행'만 허용하지만 컬럼 제한이 없어서, addressee가 자기 앞으로
+-- 온 pending 행의 requester_id 를 임의의 다른 사용자 UUID로 바꾸고 status='accepted' 로
+-- 만들면 '동의한 적 없는 사람과의 서로이웃 관계'를 만들 수 있었다(with check도 addressee만
+-- 보므로 통과). 서로이웃은 비공개 기록 열람 권한이라 실제 정보 유출로 이어진다.
+--
+-- 이중 방어:
+--   ① 컬럼 수준 권한 — authenticated 는 status 컬럼만 update 가능.
+--   ② BEFORE UPDATE 트리거 — 관계의 두 당사자(PK)는 어떤 경로로도 불변.
+-- 클라이언트 흐름은 그대로 동작한다: 수락은 accept_neighbor RPC(security definer, status만
+-- 변경), 거절/취소/끊기는 delete(src/services/social.ts) — 직접 update 호출은 없다.
+revoke update on public.neighbors from authenticated;
+grant update (status) on public.neighbors to authenticated;
+
+create or replace function public.neighbors_freeze_parties()
+returns trigger language plpgsql as $$
+begin
+  if new.requester_id is distinct from old.requester_id
+     or new.addressee_id is distinct from old.addressee_id then
+    raise exception 'neighbors_parties_immutable';
+  end if;
+  return new;
+end; $$;
+
+drop trigger if exists trg_neighbors_freeze_parties on public.neighbors;
+create trigger trg_neighbors_freeze_parties before update on public.neighbors
+  for each row execute function public.neighbors_freeze_parties();
+
 drop policy if exists "neighbors_delete_own" on public.neighbors;
 create policy "neighbors_delete_own" on public.neighbors
   for delete to authenticated using (requester_id = auth.uid() or addressee_id = auth.uid());
@@ -516,6 +635,28 @@ create policy "neighbors_delete_own" on public.neighbors
 -- "cannot change return type of existing function"으로 거부) — 기존 mate_suggestions(int, text[])를
 -- 명시적으로 drop한 뒤 재정의한다. travel_overlap_suggestions(int)는 이전 리네이밍 잔재 정리용.
 -- ─────────────────────────────────────────────
+-- 자유 JSONB 날짜 문자열 → date, 실패하면 null (예외를 던지지 않는다).
+-- to_date는 '관대하다'고 알려져 있지만 월 13 이상·연 0 같은 '범위 밖' 값에는 예외를 던진다
+-- (PG10+). data->>'startDate' 는 클라이언트가 자유롭게 쓰는 값이라 잘못된 기록 단 한 건이
+-- mate_suggestions 전체를 죽였다(감사 2026-08-01). 그래서 파싱 전에 범위를 직접 검증한다.
+--   · plpgsql exception 블록을 쓰지 않는 이유: 행마다 서브트랜잭션이 생겨 느려진다
+--     (mate_suggestions 는 전체 공개 게시물을 1회 스캔한다).
+--   · 일(day) 초과(예: 2-31)는 to_date가 다음 달로 굴려 보정하므로 예외가 아니다 —
+--     이 함수의 용도(월 단위 계절 판정)에는 충분하다.
+--   · immutable + strict: 인덱스/CTE 재사용에 안전하고 null 입력은 호출 없이 null.
+create or replace function public.safe_to_date(s text)
+returns date
+language sql immutable strict as $$
+  select case
+    when s ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
+     and split_part(translate(s, './', '--'), '-', 1)::int between 1 and 9999
+     and split_part(translate(s, './', '--'), '-', 2)::int between 1 and 12
+     and split_part(translate(s, './', '--'), '-', 3)::int between 1 and 31
+    then to_date(translate(s, './', '--'), 'YYYY-MM-DD')
+  end;
+$$;
+grant execute on function public.safe_to_date(text) to authenticated;
+
 drop function if exists public.travel_overlap_suggestions(int);
 drop function if exists public.mate_suggestions(int, text[]);
 create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
@@ -532,22 +673,17 @@ language sql security definer set search_path = public as $$
   -- 공개 기록만. 여행 날짜는 startDate → date → 작성 시각 순으로 정한다.
   -- date는 recordStore의 필수 필드고 startDate는 선택이라, startDate만 보면 대다수 기록이
   -- 발행 시각으로 계절 판정된다(2019년 겨울 여행을 오늘 가져오면 '여름 여행자'가 된다).
-  -- 둘 다 클라이언트가 쓰는 자유 JSONB라 형식이 보장되지 않는다 — 정규식으로 형식을
-  -- 거르고 to_date로 파싱한다(::date는 범위를 벗어나면 예외를 던져 전 사용자 조회가 죽는다,
-  -- to_date는 관대하게 보정한다). 형식이 안 맞으면 case가 null → 다음 후보로 넘어간다.
-  -- 예외 블록(plpgsql)은 쓰지 않는다 — 행마다 서브트랜잭션이 생겨 느려진다.
+  -- 둘 다 클라이언트가 쓰는 자유 JSONB라 형식이 보장되지 않는다 — safe_to_date로 파싱한다
+  -- (형식·범위가 안 맞으면 예외 대신 null → coalesce가 다음 후보로 넘어간다).
+  -- to_date를 직접 쓰면 월 13 같은 값 하나로 전 사용자 조회가 죽는다(safe_to_date 주석 참조).
   -- 전역 1회 스캔. data 전체(본문·사진 URL·perCountryData 포함)를 들고 다니지 않는다 —
   -- 나라 전개에 필요한 countries 배열만 남긴다. data가 필요한 계산은 작성자로 좁혀진 뒤
   -- public.posts를 직접 읽는다.
   pub as (
     select p.id as post_id, p.author_id, p.country_name,
            coalesce(
-             case when p.data->>'startDate' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
-                  then to_date(replace(replace(p.data->>'startDate', '.', '-'), '/', '-'), 'YYYY-MM-DD')
-             end,
-             case when p.data->>'date' ~ '^[0-9]{4}[./-][0-9]{1,2}[./-][0-9]{1,2}$'
-                  then to_date(replace(replace(p.data->>'date', '.', '-'), '/', '-'), 'YYYY-MM-DD')
-             end,
+             public.safe_to_date(p.data->>'startDate'),
+             public.safe_to_date(p.data->>'date'),
              p.created_at::date) as trip_date,
            case when jsonb_typeof(p.data->'countries') = 'array'
                 then p.data->'countries' else '[]'::jsonb end as countries
@@ -1257,12 +1393,21 @@ create table if not exists public.notifications (
 -- 기존 DB의 타입 제약을 서로이웃 타입으로 교체 (follow* → neighbor_request/neighbor_accept)
 -- 순서 중요: 옛 제약을 먼저 떼야(neighbor_* 는 옛 제약이 허용 안 함) 데이터 이관이 가능하다.
 --   1) 제약 드롭 → 2) follow* 행 이관/정리 → 3) 새 제약 추가.
+--
+-- ⚠️ 재실행 안전성 (감사 2026-08-01 수정)
+--   예전에는 여기서 `delete ... where type not in ('neighbor_request','neighbor_accept')` 로
+--   정리했는데, 10-b에서 like/comment/reply/friend_post 타입이 추가된 뒤로는 이 파일을
+--   재실행할 때마다 '신형 알림 전량 삭제'가 되는 파괴적 코드였다.
+--   → 삭제 조건과 제약 목록을 모두 '현재 유효한 전체 타입'으로 맞춘다. 즉 남는 삭제 대상은
+--     정말로 옛 모델(follow_*)의 잔재뿐이고, 재실행 시에는 0행 no-op이다.
+--   (제약은 10-b에서 동일 목록으로 한 번 더 drop+add 되지만 결과는 같다.)
 alter table public.notifications drop constraint if exists notifications_type_check;
 update public.notifications set type = 'neighbor_request' where type = 'follow_request';
 update public.notifications set type = 'neighbor_accept'  where type = 'follow_accept';
-delete from public.notifications where type not in ('neighbor_request', 'neighbor_accept');
+delete from public.notifications
+ where type not in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post');
 alter table public.notifications add constraint notifications_type_check
-  check (type in ('neighbor_request', 'neighbor_accept'));
+  check (type in ('neighbor_request', 'neighbor_accept', 'like', 'comment', 'reply', 'friend_post'));
 create index if not exists idx_notifications_user on public.notifications (user_id, created_at desc);
 -- 같은 (수신자·행위자·타입)당 알림 1건 유지 — 반복 신청/재수락 스팸 방지.
 -- (아래 서로이웃 알림 insert는 이 유일 인덱스에 맞춰 on conflict 업서트로 처리한다.)
@@ -1525,9 +1670,12 @@ begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
   end if;
+  -- 유예 시각은 최초 신청 시각 유지(중복 신청으로 연장 방지)하되,
+  -- 사유는 '이번 신청에 적은 사유'가 우선이다. 예전에는 coalesce(deletion_reason, p_reason)이라
+  -- 취소 후 다시 신청해도 옛 사유가 남아 새 사유가 무시됐다(감사 2026-08-01).
   update public.profiles
      set deletion_requested_at = coalesce(deletion_requested_at, now()),
-         deletion_reason       = coalesce(deletion_reason, p_reason)
+         deletion_reason       = coalesce(p_reason, deletion_reason)
    where id = auth.uid()
    returning deletion_requested_at into ts;
   return ts;
@@ -1542,7 +1690,12 @@ begin
   if auth.uid() is null then
     raise exception 'not_authenticated';
   end if;
-  update public.profiles set deletion_requested_at = null where id = auth.uid();
+  -- 사유도 함께 지운다 — 취소했는데 탈퇴 사유가 남아 있으면 다음 신청에 옛 사유가 섞이고,
+  -- 남길 이유도 없는 개인정보다(감사 2026-08-01).
+  update public.profiles
+     set deletion_requested_at = null,
+         deletion_reason       = null
+   where id = auth.uid();
 end; $$;
 grant execute on function public.cancel_account_deletion() to authenticated;
 
@@ -1776,6 +1929,17 @@ create trigger trg_notify_friend_post after insert on public.posts
 --   선행 조건:
 --     ① supabase functions deploy send-push
 --     ② (시크릿 없음 — service_role은 SUPABASE_SERVICE_ROLE_KEY 자동 주입)
+--
+--   INSERT 전용이면 안 되는 이유 (감사 2026-08-01):
+--     uq_notifications_actor_type 유일 인덱스 때문에 같은 (수신자·행위자·타입)의 두 번째
+--     알림부터는 insert가 아니라 `on conflict do update`(created_at 갱신 + read=false)로
+--     collapse 된다. AFTER INSERT 전용 트리거는 이때 발화하지 않아, 예를 들어 같은 사람이
+--     내 다른 글에 댓글을 달면 알림 목록에는 뜨지만 푸시는 영영 오지 않았다.
+--     → INSERT OR UPDATE 로 확장하되, UPDATE 경로는 '읽지 않은 상태로 되살아난' 경우
+--       (read=false 이면서 created_at 이 갱신됨)에만 발화시켜 중복 푸시를 막는다.
+--       사용자가 알림을 읽음 처리(read=true)하는 update 는 created_at 이 그대로라 발화 안 함.
+--     ⚠️ 남는 한계: collapse 시 post_id 가 최신 것으로 덮여 이전 알림의 딥링크는 사라진다.
+--        (알림 1건 유지가 목표인 설계라 의도된 손실 — 분리하려면 유일 인덱스 설계 변경 필요)
 -- ============================================================
 create or replace function public.notify_send_push()
 returns trigger
@@ -1783,12 +1947,22 @@ language plpgsql
 security definer set search_path = ''
 as $$
 begin
+  if tg_op = 'UPDATE' then
+    -- 재알림(collapse)만 발화. 그 외 update(읽음 처리 등)는 조용히 통과.
+    if not (new.read = false and new.created_at is distinct from old.created_at) then
+      return new;
+    end if;
+  end if;
+
   perform net.http_post(
     url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/send-push',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'Authorization', 'Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8'
     ),
+    -- UPDATE(collapse) 경로에서도 'INSERT'로 보낸다 — send-push는 payload를 신뢰하지 않고
+    -- record.id로 notifications를 재조회해 검증하므로, 이 값은 '알림 발송 요청'을 뜻하는
+    -- 고정 라벨일 뿐이다(send-push의 body.type 분기와 계약을 맞추기 위함).
     body := jsonb_build_object(
       'type', 'INSERT',
       'table', 'notifications',
@@ -1805,7 +1979,7 @@ $$;
 
 drop trigger if exists notifications_push on public.notifications;
 create trigger notifications_push
-  after insert on public.notifications
+  after insert or update on public.notifications
   for each row execute function public.notify_send_push();
 
 -- ============================================================
@@ -1910,7 +2084,15 @@ as $$
    where id = p_campaign_id;
 $$;
 
-grant execute on function public.log_ad_click(uuid) to anon, authenticated;
+-- 실행 권한은 로그인 사용자로 한정 (감사 2026-08-01).
+-- anon 에게 열려 있으면 공개 anon key만으로 아무나 click_count 를 무한 증가시켜
+-- 제휴 성과 지표를 오염시킬 수 있었다. 광고 슬롯(FeedAdSlot)은 소셜 피드에서만 렌더되고
+-- 소셜 피드는 로그인 이후 화면이라, anon 회수로 깨지는 클라이언트 흐름은 없다
+-- (logAdClick 실패는 src/services/adCampaigns.ts 에서 무시 — 링크 이동이 우선).
+-- ⚠️ 남는 한계: 로그인 사용자의 반복 호출은 여전히 막지 못한다(사용자 식별자를 저장하지
+--    않는다는 방침상 rate limit을 걸 자리가 없다). 지표는 '대략치'로만 취급할 것.
+revoke all on function public.log_ad_click(uuid) from public, anon;
+grant execute on function public.log_ad_click(uuid) to authenticated;
 
 -- ============================================================
 -- 11) 알림 보존 정리
