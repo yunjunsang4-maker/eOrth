@@ -1002,14 +1002,28 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return changed ? next : prev;
     });
     if (isSupabaseConfigured) {
-      if (cur?.remoteId) updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes })).catch(notifySyncError);
-      // 발행(업로드) 진행 중 수정 — 완료 시점에 최신 내용으로 서버를 갱신하도록 예약
-      else if (cur && publishAttemptRef.current.has(id)) pendingEditRef.current.add(id);
-      // 수정으로 더 이상 참조되지 않는 업로드 파일은 Storage에서 정리 (고아 파일 누수 방지)
+      // 수정으로 더 이상 참조되지 않는 업로드 파일 (Storage 고아 정리 대상)
+      let orphans: string[] = [];
       if (cur && updated) {
         const keep = new Set(collectRemoteMediaUrls(updated));
-        const removed = collectRemoteMediaUrls(cur).filter((u) => !keep.has(u));
-        if (removed.length > 0) removeMediaUrls(removed).catch(() => {});
+        orphans = collectRemoteMediaUrls(cur).filter((u) => !keep.has(u));
+      }
+      if (cur?.remoteId) {
+        // ⚠️ 삭제는 반드시 서버 갱신 '성공 후'에만 — 오프라인/실패인데 파일을 먼저 지우면
+        //    서버 게시물이 죽은 URL을 계속 참조하고 사진은 영구 유실된다(복구 불가).
+        //    실패 시 남는 파일은 고아로 두고(탈퇴 sweep 대상) 데이터 쪽을 지킨다.
+        updatePost(cur.remoteId, { ...cur, ...changes }, albumPublishOpts({ ...cur, ...changes }))
+          .then((ok) => {
+            if (ok && orphans.length > 0) removeMediaUrls(orphans).catch(() => {});
+          })
+          .catch(notifySyncError);
+      } else if (cur && publishAttemptRef.current.has(id)) {
+        // 발행(업로드) 진행 중 수정 — 완료 시점에 최신 내용으로 서버를 갱신하도록 예약.
+        // 업로드가 진행 중인 파일을 여기서 지우면 방금 올라간 사진이 사라지므로 정리하지 않는다.
+        pendingEditRef.current.add(id);
+      } else if (orphans.length > 0) {
+        // 서버 사본이 없는(로컬 전용) 기록 — 참조하는 게시물이 없으니 즉시 정리
+        removeMediaUrls(orphans).catch(() => {});
       }
     }
   };
@@ -1037,12 +1051,24 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
     if (isSupabaseConfigured && target) {
-      if (target.remoteId) deletePost(target.remoteId).catch(notifySyncError);
-      // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약
-      else if (publishAttemptRef.current.has(id)) pendingDeleteRef.current.add(id);
-      // 게시물이 참조하던 업로드 파일도 Storage에서 정리 (고아 파일 누수 방지)
+      // 게시물이 참조하던 업로드 파일 (Storage 고아 정리 대상)
       const urls = collectRemoteMediaUrls(target);
-      if (urls.length > 0) removeMediaUrls(urls).catch(() => {});
+      if (target.remoteId) {
+        // ⚠️ 사진 삭제는 서버 게시물 삭제 '성공 후'에만 — 오프라인에서 먼저 지우면 서버에 남은
+        //    게시물이 죽은 URL을 참조하고(타인 피드에 깨진 사진) 원본은 복구할 수 없다.
+        deletePost(target.remoteId)
+          .then((ok) => {
+            if (ok && urls.length > 0) removeMediaUrls(urls).catch(() => {});
+          })
+          .catch(notifySyncError);
+      } else if (publishAttemptRef.current.has(id)) {
+        // remoteId 부착 전(발행 업로드 중) 삭제 — 완료 시점에 서버에서도 지우도록 예약.
+        // 업로드 중인 파일을 지금 지우면 발행 완료본이 깨지므로 정리는 하지 않는다.
+        pendingDeleteRef.current.add(id);
+      } else if (urls.length > 0) {
+        // 서버 사본이 없는(로컬 전용) 기록 — 참조하는 게시물이 없으니 즉시 정리
+        removeMediaUrls(urls).catch(() => {});
+      }
     }
   };
 
