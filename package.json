@@ -8,7 +8,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
-    "test": "node scripts/run-verify.mjs && node scripts/check-webview-syntax.mjs src/components/CountryMapView.tsx && node scripts/check-docs-sync.mjs",
+    "test": "node scripts/run-verify.mjs && node scripts/check-webview-syntax.mjs src/components/CountryMapView.tsx src/components/GlobeView.tsx && node scripts/check-docs-sync.mjs",
     "lint": "expo lint",
     "pages:check": "node scripts/publish-pages.mjs",
     "pages:publish": "node scripts/publish-pages.mjs --publish"

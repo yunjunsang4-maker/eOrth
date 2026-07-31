@@ -50,6 +50,9 @@ interface GlobeViewProps {
   defaultColor?: string;
   variant?: GlobeVariant; // 지구본 형태(색상 테마). 기본 aurora
   themeOverride?: NeonSkinTheme; // 네온(aurora) 본체 스킨 — 지정 시 셰이더 기본 팔레트 대신 사용 (constants/globeSkins.ts)
+  // 유리 구슬(classic·사진 폼) 배경 이미지의 색상 회전(deg). 배경이 래스터라 팔레트를
+  // 갈아 끼울 수 없어 CSS hue-rotate로 돌린다 (constants/globeSkins.ts의 glassBgHue)
+  glassBgHue?: number;
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
@@ -195,9 +198,16 @@ function buildStars(){
 
 // 실사 우주 배경 on/off + 별 개수 재구성. 유리(photo) 모드에서만 켠다.
 // 호출 시점: 부팅(globeDisplayMode 초기화 직후)과 런타임 모드 변경 2곳.
+// 스킨별 배경 색상 회전(deg). setTheme으로 갱신되며 applySpaceBg가 실제로 적용한다.
+var glassBgHue = 0;
 function applySpaceBg(){
   var bg = document.getElementById('bg');
-  if (bg) bg.classList.toggle('space', isGlass());
+  if (bg) {
+    bg.classList.toggle('space', isGlass());
+    // 유리 모드일 때만 건다 — 색활성화 모드의 단색 배경에 필터를 걸 이유가 없다.
+    // 원본이 '보라 성운 + 흰 별 + 검정'이라 채도 0인 별·배경은 그대로고 성운만 돌아간다.
+    bg.style.filter = (isGlass() && glassBgHue) ? 'hue-rotate(' + glassBgHue + 'deg)' : '';
+  }
   buildStars();
 }
 
@@ -2148,6 +2158,11 @@ window.addEventListener('resize', function() {
 // (WebView 통째 리로드 없이 부드럽게 전환. 회전 상태·카메라 유지)
 function applyTheme(t) {
   if (!t) return;
+  // 배경 색상 회전은 텍스처 재생성과 무관하므로 아래 early return보다 먼저 적용한다
+  if (typeof t.glassBgHue === 'number' && t.glassBgHue !== glassBgHue) {
+    glassBgHue = t.glassBgHue;
+    applySpaceBg();
+  }
   if (t.oceanBase) cfg.oceanBase = t.oceanBase;
   if (t.deepRGB) cfg.deepRGB = t.deepRGB;
   if (t.zoneRGB) cfg.zoneRGB = t.zoneRGB;
@@ -3587,7 +3602,7 @@ init();
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
   visitedCountries = [], displayMode = 'flag', defaultColor = '#BF85FC',
-  variant = 'aurora', themeOverride, sponsoredItems = [],
+  variant = 'aurora', themeOverride, glassBgHue = 0, sponsoredItems = [],
 }: GlobeViewProps) {
   const webViewRef = useRef<WebView>(null);
 
@@ -3630,8 +3645,8 @@ export default function GlobeView({
   const themePayload = useMemo(() => JSON.stringify({
     type: 'setTheme',
     // classic은 팔레트 필드(oceanBase 등)를, 네온(aurora)은 neon 필드만 읽는다
-    theme: { ...(GLOBE_THEMES[variant] || GLOBE_THEMES.aurora), neon: themeOverride || null },
-  }), [variant, themeOverride]);
+    theme: { ...(GLOBE_THEMES[variant] || GLOBE_THEMES.aurora), neon: themeOverride || null, glassBgHue },
+  }), [variant, themeOverride, glassBgHue]);
 
   useEffect(() => {
     // 빈 목록도 반드시 전송 — 마지막 방문국 기록을 삭제(1→0)했을 때 보내지 않으면

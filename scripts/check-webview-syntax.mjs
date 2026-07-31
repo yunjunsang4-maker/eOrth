@@ -45,9 +45,12 @@ import { join } from 'node:path';
 const files = process.argv.slice(2);
 if (!files.length) { console.error('사용법: node scripts/check-webview-syntax.mjs <파일...>'); process.exit(1); }
 
-// 벤더 번들(d3 등)이 통째로 <script> 리터럴에 박혀 들어온 경우 파싱 자체는 유효하지만 검사가
-// 느려질 뿐이니, 문법 오류 가능성이 낮은 대형 블록은 건너뛰고 그 사실만 보고한다.
-const SKIP_SIZE = 50000;
+// 벤더 번들이 <script>에 '문자열 리터럴로 직접' 박힌 극단적 경우만 건너뛴다.
+// 주의: ${THREE_SRC} 같은 보간으로 주입되는 벤더 코드는 아래에서 '0'으로 치환되므로 애초에
+// 이 크기에 포함되지 않는다. 예전 값(50000)은 그래서 GlobeView의 앱 코드 두 블록
+// (97KB·62KB)을 벤더로 오인해 통째로 검사에서 빼고 있었다 — 앱에서 가장 복잡한 WebView가
+// 문법 보호를 못 받던 셈이다. node --check는 100KB를 밀리초 단위로 읽으므로 넉넉히 잡는다.
+const SKIP_SIZE = 400000;
 
 // <script> / </script>(또는 이스케이프된 <\/script>) 가 그 줄에 단독으로 오는 "진짜" 블록만
 // 뽑는다. 인라인 문자열 리터럴(예: '<script>' + x + '</script>')은 줄 단독이 아니므로 제외된다.

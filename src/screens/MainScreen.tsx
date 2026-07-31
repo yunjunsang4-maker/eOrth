@@ -44,7 +44,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
-import { getGlobeSkinTheme, GLOBE_SKINS } from '../constants/globeSkins';
+import { getGlobeSkinTheme, getGlassBgHue, GLOBE_SKINS } from '../constants/globeSkins';
 import { getSkinAccent } from '../constants/skinTheme';
 import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
@@ -744,6 +744,9 @@ export default function MainScreen({ navigation, route }: Props) {
   const globeForcedMode: GlobeDisplayMode = globeVariant === 'aurora' ? 'color' : 'photo';
   // 지구본 스킨 — 색 활성화(aurora) 폼에만 적용, classic은 기본 테마 유지
   const globeSkinTheme = globeVariant === 'aurora' ? getGlobeSkinTheme(globeSkin) : undefined;
+  // 유리 구슬(classic) 배경은 래스터라 팔레트 교체가 안 된다 — 색상 회전값만 넘겨 CSS로 돌린다.
+  // 네온 팔레트(themeOverride)와 달리 classic 폼에서만 의미가 있다.
+  const glassBgHue = globeVariant === 'aurora' ? 0 : getGlassBgHue(globeSkin);
   // 앱 강조색 — 지구본 스킨에 맞춘 통일 색(단계적 마이그레이션). aurora는 기존값과 동일.
   const skinAccent = getSkinAccent(globeSkin);
   // 대륙 칩(국가표시·인기명소) 내부 배경 — 스킨 강조색을 어둡게 깐 불투명색(기존 #2A0F3E 대체)
@@ -1306,7 +1309,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 전체화면 지구본 — 헤더/토글 뒤(화면 맨 위~맨 아래). 헤더·토글이 위로 오버레이됨 ── */}
       {viewMode === 'globe' && (
         <View ref={globeRef} collapsable={false} style={StyleSheet.absoluteFill}>
-          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} themeOverride={globeSkinTheme} sponsoredItems={sponsoredMarkerItems} />
+          <GlobeView size={undefined} fullscreen onMessage={handleGlobeMessage} visitedCountries={globeVisitedCountries} displayMode={globeForcedMode} defaultColor={globeColor} variant={globeVariant} themeOverride={globeSkinTheme} glassBgHue={glassBgHue} sponsoredItems={sponsoredMarkerItems} />
         </View>
       )}
 
