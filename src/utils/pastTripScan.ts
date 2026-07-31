@@ -77,6 +77,18 @@ export function countryInfoFromCode(
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
+/**
+ * 스캔 세션 토큰 — 여행 id에 섞어 "가져오기 세션 간" 유일성을 보장한다.
+ *
+ * 왜 필요한가: id가 `scanned-JP-0`처럼 결정적이면 일본을 두 번 가져올 때 두 세션이
+ * 같은 id를 갖고, 저장 단계가 그 id로 사진 폴더(trips/{id}/)를 만들기 때문에
+ * 두 번째 가져오기가 첫 번째 앨범의 사진 파일을 조용히 덮어썼다.
+ * (합치기 여행의 `merged-${Date.now()}-…`와 같은 규약)
+ */
+export function newScanSessionId(): string {
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+}
+
 function formatDate(ts: number): string {
   const d = new Date(ts);
   const y = d.getFullYear();
@@ -85,11 +97,19 @@ function formatDate(ts: number): string {
   return `${y}.${m}.${day}`;
 }
 
-/** 해외(거주국가 밖) + GPS 있는 사진만 시간/국가 기준 클러스터링 → 여행 카드 */
+/**
+ * 해외(거주국가 밖) + GPS 있는 사진만 시간/국가 기준 클러스터링 → 여행 카드
+ *
+ * sessionId: 이번 스캔 세션의 토큰(기본값은 호출 시각 기반으로 새로 만든다).
+ * 여행 id에 들어가 세션 간 충돌을 막는다 — newScanSessionId 주석 참고.
+ * '이미 가져옴' 판정은 id가 아니라 국가·기간 비교(scanSampling.overlapsImportedTrip)와
+ * 자산 id 제외(collectImportedAssetIds)로 하므로, id가 매번 달라도 영향이 없다.
+ */
 export function clusterForeignTrips(
   photos: ScannedPhoto[],
   homeCountryCode: string,
-  text: TripTextMaker = KO_TRIP_TEXT
+  text: TripTextMaker = KO_TRIP_TEXT,
+  sessionId: string = newScanSessionId()
 ): ScannedTrip[] {
   const foreign = photos
     .filter((p) => !!p.countryCode && p.countryCode !== homeCountryCode)
@@ -129,7 +149,7 @@ export function clusterForeignTrips(
     const startDate = formatDate(c.dates[0]);
     const endDate = formatDate(c.dates[c.dates.length - 1]);
     return {
-      id: `scanned-${c.code}-${i}`,
+      id: `scanned-${sessionId}-${c.code}-${i}`,
       country: c.country,
       countryName: c.countryName,
       countryFlag: c.countryFlag,
