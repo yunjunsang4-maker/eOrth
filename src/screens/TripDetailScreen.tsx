@@ -27,7 +27,7 @@ import { andFitText } from '../utils/fitText';
 import { useSkinAccent } from '../constants/skinTheme';
 import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
-import { matchMoments, tripPeriodOf, countryNameToCode } from '../utils/momentMatch';
+import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -175,10 +175,10 @@ const ADD_FORMATS: { type: string; name: string }[] = [
 ];
 
 // 'YYYY.MM.DD' / 'YYYY-MM-DD' → epoch(ms). 실패 시 null (recordStore의 그룹핑 파서와 동일 규칙)
+// new Date('YYYY-MM-DD')는 ISO 규칙상 'UTC 자정'으로 읽혀, 아래 fmt()의 로컬 getter로 다시
+// 표시하면 미주(UTC-) 시간대에서 하루가 밀린다 → 공용 수동 파서(로컬 자정)를 쓴다.
 function parseTripDate(s?: string): number | null {
-  if (!s) return null;
-  const t = new Date(s.replace(/\./g, '-')).getTime();
-  return Number.isFinite(t) ? t : null;
+  return parseDotDate(s);
 }
 
 // 기록들의 startDate/endDate/date에서 여행 기간(min~max)을 'YYYY.MM.DD'로 산출
@@ -297,22 +297,26 @@ export default function TripDetailScreen() {
   };
 
   // 조정 확정 → 썸네일 교체 + (이동/확대했다면) 보이는 영역을 실제 크롭해 representativePhoto로 저장
+  //
+  // ⚠️ medias는 재정렬하지 않는다. 여행 카드 썸네일은 ProfileScreen이
+  //    `group.coverUri ?? coverRec.representativePhoto ?? coverRec.medias[0]` 순으로 고르므로,
+  //    representativePhoto만 지정하면 medias 순서를 건드리지 않고도 원하는 사진이 썸네일이 된다.
+  //    예전처럼 선택 사진을 medias 맨 앞으로 옮기면
+  //      · 사진별 글(photoTexts)·비공개 대상(mediaPrivacy)이 인덱스 기준이라 전부 한 칸씩 밀리고
+  //      · 사진첩(albumSections)은 섹션 경계가 밀려 '1일차/2일차' 구성이 깨지며
+  //      · 이미 발행된 게시물의 사진 순서까지 바뀐다.
+  //    (사진첩 화면 TripRecordScreen의 '커버로 지정'과 동일한 방식)
   const applyThumb = async (uri: string, t: CutTransform) => {
     if (!currentGroup) return;
     const owner = groupRecordObjs.find((r) => (r.medias ?? []).includes(uri));
     if (!owner) return;
     const isIdentity = t.scale === 1 && t.tx === 0 && t.ty === 0;
-    let rep: string | undefined;
-    if (!isIdentity) {
-      rep = (await bakeCoverCrop(uri, t, CARD_ASPECT, owner.id)) ?? undefined;
-    }
-    // 선택한 사진을 해당 기록의 맨 앞으로 + 그 기록을 대표 기록으로 → 프로필 카드 썸네일(medias[0]) 반영
-    // 조정 없이 확정하면 representativePhoto를 비워 원본 커버가 그대로 쓰이게 한다
-    updateRecord(owner.id, {
-      medias: [uri, ...(owner.medias ?? []).filter((u) => u !== uri)],
-      representativePhoto: rep,
-    });
-    updateTripGroup(currentGroup.id, { coverRecordId: owner.id });
+    // 조정 없이 확정하면 원본을, 이동/확대했으면 보이는 영역만 구운 크롭본을 대표로 쓴다
+    // (크롭 실패 시에도 원본으로 폴백 — 대표를 비우면 이전 썸네일이 그대로 남는다)
+    const rep = isIdentity ? uri : ((await bakeCoverCrop(uri, t, CARD_ASPECT, owner.id)) ?? uri);
+    updateRecord(owner.id, { representativePhoto: rep, representativePhotoSource: uri });
+    // coverUri는 카드 썸네일 오버라이드(다른 기기에서 지정한 값이 남아 있으면 새 선택을 덮는다) — 함께 해제
+    updateTripGroup(currentGroup.id, { coverRecordId: owner.id, coverUri: undefined });
   };
 
   const handleArchiveCard = () => {

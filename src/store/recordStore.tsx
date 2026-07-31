@@ -12,6 +12,7 @@ import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
 import { koAliases, matchesCountry } from '../utils/countryMatch';
+import { parseDotDate } from '../utils/momentMatch';
 import { saveTripState, fetchTripState } from '../services/tripState';
 import { removeMediaUrls } from '../services/media';
 import { persistRecordPhotos } from '../utils/persistRecordPhotos';
@@ -511,11 +512,10 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // 거주국가(국내) 기록은 '귀국' 신호가 없어 세션 판단이 불가하므로 기존
   // 날짜 근접(7일) 규칙을 유지한다.
   const GROUP_GAP_MS = 7 * 24 * 60 * 60 * 1000;
-  const parseRecDate = (s?: string): number | null => {
-    if (!s) return null;
-    const t = new Date(s.replace(/\./g, '-')).getTime();
-    return Number.isFinite(t) ? t : null;
-  };
+  // 'YYYY.MM.DD' / 'YYYY-MM-DD' → epoch(ms).
+  // new Date('YYYY-MM-DD')는 ISO 규칙상 'UTC 자정'이라 미주(UTC-)에서는 Date.now()(로컬)와
+  // 비교할 때 하루가 밀려 세션·7일 근접 그룹핑이 어긋난다 → 로컬 자정 수동 파서를 쓴다.
+  const parseRecDate = (s?: string): number | null => parseDotDate(s);
   // 거주국가 코드(예: KR) → 기록에 저장되는 국가명(예: 대한민국)
   const homeCountryName =
     COUNTRIES.find((c) => c.term.split(' ')[0].toUpperCase() === (homeCountryCode || '').toUpperCase())?.name ?? null;
