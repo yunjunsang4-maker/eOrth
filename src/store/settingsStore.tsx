@@ -174,7 +174,11 @@ interface SettingsContextType {
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
-  resetSettings: () => void; // 모든 설정을 기본값으로 되돌림
+  // 모든 설정을 기본값으로 되돌림.
+  // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·birthday·
+  // signUpMethod·signUpEmail·language)은 그대로 둔다 — 설정 > '데이터 초기화'용.
+  // 계정 전환·탈퇴 파기처럼 '다른 사람이 되는' 경로는 옵션 없이 호출해 전부 초기화한다.
+  resetSettings: (opts?: { keepIdentity?: boolean }) => void;
   // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
   // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
   exportSettingsBackup: () => Record<string, unknown>;
@@ -560,21 +564,29 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setLastVisitDay(today);
   }, [hydrated, lastVisitDay]);
 
-  const resetSettings = () => {
+  // opts.keepIdentity: 로컬 정체성 보존 여부.
+  //   false(기본, 계정 전환·탈퇴 파기) — 예전 동작 그대로 전부 초기화.
+  //   true('데이터 초기화') — handle·birthday·가입수단·언어를 유지한다. 표시 이름이 곧 handle이고
+  //   온보딩 완료 신호가 birthday라, 이걸 지우면 ProfileSync가 사용자가 고른 아이디를 랜덤 값으로
+  //   서버에 덮어쓰고(=아이디 유실) 소셜 가입자는 'email' 가입자로 오인돼 탈퇴가 막힌다.
+  const resetSettings = (opts?: { keepIdentity?: boolean }) => {
+    const keepIdentity = opts?.keepIdentity === true;
     setShowCounts(true);
     setHomeCountryCode('KR');
     setSnapEnabled(true);
     setDiaryCardMode('full');
-    setBirthday('');
     setGender('');
-    setLanguage('ko');
-    setHandle(genHandle());
     setBio('');
     setProfilePhoto(null);
-    setHandleLastChanged(null);
-    setHandleChosen(false);
-    setSignUpMethod('email');
-    setSignUpEmail('user@eorth.app');
+    if (!keepIdentity) {
+      setBirthday('');
+      setLanguage('ko');
+      setHandle(genHandle());
+      setHandleLastChanged(null); // 정체성 보존 시엔 아이디 변경 쿨다운도 함께 유지(초기화로 우회 방지)
+      setHandleChosen(false);
+      setSignUpMethod('email');
+      setSignUpEmail('user@eorth.app');
+    }
     setArrivalDetect(true);
     setCurrentVisitedCountryCode('KR');
     setVerifiedNaverBlogIds([]);
@@ -605,6 +617,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setQrDesign('default');
     setTutorialsSeen({});
     setLastImportAt(null);
+    // 공지 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '읽음' 시각을 물려받아
+    // 그 사이에 올라온 공지를 영영 못 본다.
+    setLastSeenNoticeAt(0);
     setStayNudgeDismissedFor(null);
     visitRecordedRef.current = false;
   };

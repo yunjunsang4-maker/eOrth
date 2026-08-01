@@ -62,6 +62,12 @@ const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
 // 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
 const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
+// 지원하는 거주 국가 코드(ISO 2자) — COUNTRIES의 term 첫 토큰이 국가 코드다.
+// 거주국 판정(체류국 제외·통계·프로필)이 전부 이 코드로 매칭되므로 목록 밖 값은 저장을 막는다.
+const VALID_COUNTRY_CODES = new Set(
+  COUNTRIES.map((c) => c.term.split(' ')[0].toUpperCase()),
+);
+
 const COLORS = {
   bg:           '#0A0A0F',
   card:         '#2E2E3B',
@@ -187,7 +193,13 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
   const openCountryModal = () => { setCountryDraft(homeCountryCode); setCountryModalVisible(true); };
   const submitCountry = () => {
     const v = countryDraft.trim().toUpperCase();
-    if (v) setHomeCountryCode(v);
+    if (!v) { setCountryModalVisible(false); return; } // 빈 입력은 변경 없이 닫기(취소와 동일)
+    // 지원 목록에 없는 코드는 저장하지 않는다 — 저장되면 거주국 제외·통계·프로필이 모두 매칭에 실패한다.
+    if (!VALID_COUNTRY_CODES.has(v)) {
+      Alert.alert(t('settings.countryModalTitle'), t('settings.countryInvalidMsg'));
+      return;
+    }
+    setHomeCountryCode(v);
     setCountryModalVisible(false);
   };
 
@@ -274,10 +286,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                 return;
               }
               await clearTripState(); // 여행 카드 백업도 제거 (실패는 내부에서 무시)
+              // 영속 스토어를 '먼저' 비운다. 리셋 뒤에 비우면 삭제와 리셋 상태의 디바운스
+              // 저장(400ms)이 경합해, 삭제가 늦게 끝나면 보존한 아이디까지 디스크에서 사라진다.
+              await clearPersistedStores().catch(() => {});
               resetRecords();
-              resetSettings();
+              // 계정은 그대로 쓰는 '데이터' 초기화 — 아이디·생일·가입수단·언어는 유지한다.
+              // (지우면 ProfileSync가 랜덤 아이디로 서버를 덮고 소셜 가입자가 탈퇴 불가가 된다)
+              resetSettings({ keepIdentity: true });
               resetConversations();
-              clearPersistedStores().catch(() => {});
               Alert.alert(t('settings.doneTitle'), t('settings.resetDoneMsg'));
             })();
           },
@@ -535,7 +551,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               placeholderTextColor={COLORS.textMuted}
               autoCapitalize="characters"
               autoCorrect={false}
-              maxLength={3}
+              maxLength={2}
             />
             <View style={st.modalBtnRow}>
               <TouchableOpacity style={[st.modalBtn, st.modalBtnCancel]} activeOpacity={0.7} onPress={() => setCountryModalVisible(false)}>

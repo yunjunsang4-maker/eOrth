@@ -135,6 +135,7 @@ const en = {
     footer: 'eOrth · v1.0.0 · © 2025',
     countryModalTitle: 'Country of residence',
     countryModalDesc: 'Enter a country code (e.g. KR, US, JP)',
+    countryInvalidMsg: 'That country code is not supported.\nEnter a two-letter code (e.g. KR, US, JP)',
   },
   premium: {
     // Paywall (PremiumScreen)

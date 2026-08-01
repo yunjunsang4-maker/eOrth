@@ -136,6 +136,7 @@ const ko = {
     footer: 'eOrth · v1.0.0 · © 2025',
     countryModalTitle: '거주 국가',
     countryModalDesc: '국가 코드를 입력하세요 (예: KR, US, JP)',
+    countryInvalidMsg: '지원하지 않는 국가 코드예요.\n두 자리 코드로 입력해주세요 (예: KR, US, JP)',
   },
   premium: {
     // 페이월 (PremiumScreen)
