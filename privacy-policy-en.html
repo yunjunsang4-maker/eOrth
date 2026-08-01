@@ -112,7 +112,9 @@
   <h3>6) Location</h3>
   <ul>
     <li>(Optional, only if you grant permission) Your device's <strong>approximate location</strong> — used solely to detect arrival in another country and to fill in the country and city on your travel records.</li>
-    <li>Coordinates are converted to a country and city name on your device and then discarded. <strong>The coordinates themselves are never stored on our servers.</strong></li>
+    <li>Coordinates are used only to derive a country and city name. <strong>Only the derived name is stored on eOrth's servers; the coordinates themselves are not.</strong></li>
+    <li>Wherever possible the conversion runs on your device using map data bundled with the app. Only when that cannot determine the place does the app fall back to <strong>the geocoding service provided by your operating system</strong> (Apple on iOS, Google on Android). In that case the coordinates are sent to that platform provider, and their handling is governed by that company's privacy policy.</li>
+    <li>When you <strong>search for a region by name</strong> on the map screen, the search term and country code are sent to OpenStreetMap (Nominatim). Your location coordinates are not sent.</li>
     <li>You can decline location permission and still use every feature by entering countries and cities yourself.</li>
     <li>Your approximate region may be inferred from your IP address when ads are served; see Section 6 (Advertising).</li>
   </ul>
@@ -154,8 +156,9 @@
   <table>
     <tr><th>Provider</th><th>Entrusted work</th><th>Notes</th></tr>
     <tr><td>Supabase Inc.</td><td>Authentication, database, and file (photo/video) storage</td><td>Cloud backend</td></tr>
-    <tr><td>Google LLC</td><td>Social sign-in (OAuth)</td><td>Only if you choose it</td></tr>
-    <tr><td>Apple Inc.</td><td>Social sign-in (OAuth)</td><td>Only if you choose it</td></tr>
+    <tr><td>Google LLC</td><td>Social sign-in (OAuth); converting coordinates to place names on Android</td><td>Sign-in only if you choose it</td></tr>
+    <tr><td>Apple Inc.</td><td>Social sign-in (OAuth); converting coordinates to place names on iOS</td><td>Sign-in only if you choose it</td></tr>
+    <tr><td>OpenStreetMap Foundation</td><td>Region name search on the map screen (Nominatim)</td><td>Only when you search; the search term only</td></tr>
     <tr><td>Naver</td><td>Blog import (from the blog you authenticated)</td><td>Only if you choose it</td></tr>
     <tr><td>Google LLC</td><td>Advertising (AdMob)</td><td>Personalized ads with consent; non-personalized otherwise</td></tr>
     <tr><td>Expo (650 Industries, Inc.)</td><td>Push notification delivery relay</td><td>Only if you allow notifications</td></tr>
