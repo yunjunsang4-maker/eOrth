@@ -14,6 +14,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { andFitText } from '../utils/fitText';
+import { ArchiveIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 // 소셜탭 피드와 동일한 매거진 카드(DiaryCard)·높이 추정치를 그대로 재사용해 형태를 통일한다.
 import { DiaryCardMemo, estDiaryHeight } from './SocialScreen';
@@ -129,7 +130,8 @@ export default function ArchivedPostsScreen({ navigation }: RootStackScreenProps
 
       {filteredRecords.length === 0 ? (
         <View style={s.emptyContainer}>
-          <Text style={s.emptyEmoji}>📦</Text>
+          {/* 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 — 위 useSkinAccent() 구독이 그 용도 */}
+          <ArchiveIcon size={48} />
           <Text style={s.emptyText}>{getEmptyMessage()}</Text>
         </View>
       ) : (
@@ -269,9 +271,6 @@ const s = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
-  },
-  emptyEmoji: {
-    fontSize: 48,
   },
   emptyText: {
     fontSize: 14,

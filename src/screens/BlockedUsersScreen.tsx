@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
-import { PersonIcon } from '../components/icons';
+import { BlockIcon, PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const COLORS = {
@@ -65,7 +65,8 @@ export default function BlockedUsersScreen({ navigation }: RootStackScreenProps<
       <ScrollView style={st.scroll} contentContainerStyle={st.content} showsVerticalScrollIndicator={false}>
         {blockedUsers.length === 0 ? (
           <View style={st.emptyContainer}>
-            <Text style={st.emptyIcon}>🚫</Text>
+            {/* 색상 prop 없이 두면 아이콘 전역 팔레트(지구본 스킨)를 따른다 */}
+            <View style={st.emptyIcon}><BlockIcon size={48} /></View>
             <Text style={st.emptyTitle}>{t('friends.noBlocked')}</Text>
             <Text style={st.emptyDesc}>{t('friends.noBlockedDesc')}</Text>
           </View>
@@ -153,7 +154,6 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     paddingTop: 80,
   },
   emptyIcon: {
-    fontSize: 48,
     marginBottom: 16,
   },
   emptyTitle: {

@@ -1330,6 +1330,24 @@ export const ShareIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, 
   </Svg>
 );
 
+// 기기에 저장(내려받기) — 아래 화살표 + 받침 트레이
+export const DownloadIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M42 8h12v26h14L48 58 28 34h14V8z" />
+      <Path d="M16 62h12v14h40V62h12v18c0 5-4 9-9 9H25c-5 0-9-4-9-9V62z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
 export const GoogleIcon: React.FC<IconProps & { color?: string }> = ({ size = 64, color }) => {
   if (color) {
     return (

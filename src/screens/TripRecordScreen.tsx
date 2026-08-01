@@ -42,7 +42,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   const styles = useMemo(() => makeStyles(a), [a]);
   const insets = useSafeAreaInsets();
   const { record: paramRecord, viewType: initialViewType } = route.params;
-  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment, tripGroups, updateTripGroup } = useRecords();
+  const { records, deleteRecord, updateRecord, toggleLike, commentsByPost, addComment, tripGroups, updateTripGroup, setCountryCover } = useRecords();
   // 편집 후 복귀 시 최신 내용이 보이도록 store의 기록을 우선 사용 (파라미터는 스냅샷)
   const record = records.find((r) => r.id === paramRecord.id) ?? paramRecord;
 
@@ -209,6 +209,27 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       .filter((g) => g.coverRecordId === record.id && g.coverUri)
       .forEach((g) => updateTripGroup(g.id, { coverUri: uri }));
     Alert.alert(t('trip.albumCoverSet'));
+  };
+
+  // 뷰어에서 유리 지구본 활성화 사진 지정 — 그 나라 대표사진 핀(countryCovers)을 이 사진으로 고정한다.
+  // 핀은 getCountryPhoto에서 최신순 폴백보다 우선하므로, 이후 새 기록이 생겨도 이 사진이 유지된다.
+  const handleSetGlobeCover = (index: number) => {
+    const uri = medias[index];
+    if (!uri) return;
+    // 다국가 기록이면 어느 나라의 지구본 사진으로 쓸지 고른다(핀은 나라 단위라 한 번에 하나).
+    const names = (record.countries?.length ? record.countries.map((c) => c.name) : [record.countryName]).filter(Boolean);
+    const apply = (name: string) => {
+      setCountryCover(name, record.id, uri);
+      Alert.alert(t('trip.globeCoverSet', { country: countryLabel(name, i18n.language) }));
+    };
+    if (names.length <= 1) {
+      if (names[0]) apply(names[0]);
+      return;
+    }
+    Alert.alert(t('trip.globeCoverPickTitle'), t('trip.globeCoverPickBody'), [
+      ...names.map((n) => ({ text: countryLabel(n, i18n.language), onPress: () => apply(n) })),
+      { text: t('common.cancel'), style: 'cancel' as const },
+    ]);
   };
 
   // 다중 삭제 확인
@@ -444,6 +465,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             onAlbumAddPhotos={handleAlbumAddPhotos}
             onAlbumStartSelect={startSelecting}
             onAlbumSetCover={handleSetCover}
+            onAlbumSetGlobeCover={handleSetGlobeCover}
             onAlbumAddSection={openAddSection}
             onAlbumSectionMenu={handleSectionMenu}
             albumSelecting={selecting}

@@ -30,6 +30,7 @@ interface Props {
   onAlbumAddPhotos?: (sectionIndex?: number) => void;
   onAlbumStartSelect?: () => void; // 다중 선택 모드 진입 (이동/삭제는 선택 액션 바에서)
   onAlbumSetCover?: (index: number) => void; // 뷰어에서 커버(여행카드 썸네일)로 지정
+  onAlbumSetGlobeCover?: (index: number) => void; // 뷰어에서 유리 지구본 활성화 사진(국가 대표사진)으로 지정
   onAlbumAddSection?: () => void;
   onAlbumSectionMenu?: (sectionIndex: number) => void; // 헤더 ⋯: 이름변경/삭제
   // 다중 선택 모드 — 탭이 선택 토글로 바뀌고 체크 오버레이 표시
@@ -265,12 +266,13 @@ function DraggableAlbumTile({
   );
 }
 
-function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onAddSection, onSectionMenu, selecting, selected, onToggleSelect, onReorder, onMoveAcross, onRemoveAt, onDragStateChange, onDragPosition, dragScroll }: {
+function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, onSetGlobeCover, onAddSection, onSectionMenu, selecting, selected, onToggleSelect, onReorder, onMoveAcross, onRemoveAt, onDragStateChange, onDragPosition, dragScroll }: {
   record: TravelRecord;
   editable?: boolean;
   onAddPhotos?: (sectionIndex?: number) => void;
   onStartSelect?: () => void;
   onSetCover?: (index: number) => void;
+  onSetGlobeCover?: (index: number) => void;
   onAddSection?: () => void;
   onSectionMenu?: (sectionIndex: number) => void;
   selecting?: boolean;
@@ -565,6 +567,7 @@ function AlbumView({ record, editable, onAddPhotos, onStartSelect, onSetCover, o
         initialIndex={lightboxIdx ?? 0}
         onClose={() => setLightboxIdx(null)}
         showActions={editable}
+        onSetGlobeCover={editable ? onSetGlobeCover : undefined}
         onSetCover={editable ? onSetCover : undefined}
         onDelete={editable && onRemoveAt ? (i) => onRemoveAt(i) : undefined}
       />
@@ -695,7 +698,7 @@ function CutView({ record }: { record: TravelRecord }) {
 // ─────────────────────────────────────────────
 // 메인 컴포넌트
 // ─────────────────────────────────────────────
-export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumAddSection, onAlbumSectionMenu, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumReorder, onAlbumMoveAcross, onAlbumRemoveAt, onAlbumDragStateChange, onAlbumDragPosition, albumDragScroll }: Props) {
+export default function TripRecordRenderer({ record, viewType, onClose, albumEditable, onAlbumAddPhotos, onAlbumStartSelect, onAlbumSetCover, onAlbumSetGlobeCover, onAlbumAddSection, onAlbumSectionMenu, albumSelecting, albumSelected, onAlbumToggleSelect, onAlbumReorder, onAlbumMoveAcross, onAlbumRemoveAt, onAlbumDragStateChange, onAlbumDragPosition, albumDragScroll }: Props) {
   switch (viewType) {
     case 'blog':
       return <BlogView record={record} />;
@@ -707,6 +710,7 @@ export default function TripRecordRenderer({ record, viewType, onClose, albumEdi
           onAddPhotos={onAlbumAddPhotos}
           onStartSelect={onAlbumStartSelect}
           onSetCover={onAlbumSetCover}
+          onSetGlobeCover={onAlbumSetGlobeCover}
           onAddSection={onAlbumAddSection}
           onSectionMenu={onAlbumSectionMenu}
           selecting={albumSelecting}

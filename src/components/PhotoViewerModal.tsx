@@ -4,13 +4,19 @@
  * 줌은 페이지별 내부 ScrollView(maximumZoomScale)로 구현 — iOS 네이티브 핀치 줌.
  * (Android는 ScrollView 줌 미지원이라 페이징·카운터만 동작하는 안전한 폴백)
  *
- * 액션 바(선택) — showActions일 때 하단에 공유·기기 저장, 호출부가 넘기면 커버 지정·삭제.
- * 공유는 RN 내장 Share가 iOS에서만 파일 URL을 지원해 iOS 전용으로 표시한다.
+ * 액션 바(선택) — showActions일 때 하단에 기기 저장, 호출부가 넘기면 지구본 사진 지정·커버 지정·삭제.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Image, Dimensions, Platform, Share, Alert } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Image, Dimensions, Alert } from 'react-native';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
+import { GlobeIcon, DownloadIcon, GalleryIcon, TrashIcon } from './icons';
+
+// 액션 바 아이콘은 라벨과 같은 색을 명시한다.
+// (색을 넘기지 않으면 아이콘들이 같은 그라데이션 id를 공유해 한 화면에 여러 개가 뜰 때 서로 간섭한다)
+const ACTION_ICON = 22;
+const ACTION_TINT = '#FFFFFF';
+const ACTION_DANGER = '#FF6B6B';
 
 const { width: W, height: H } = Dimensions.get('window');
 
@@ -20,6 +26,7 @@ export default function PhotoViewerModal({
   initialIndex = 0,
   onClose,
   showActions,
+  onSetGlobeCover,
   onSetCover,
   onDelete,
 }: {
@@ -27,8 +34,10 @@ export default function PhotoViewerModal({
   uris: string[];
   initialIndex?: number;
   onClose: () => void;
-  /** 하단 액션 바(공유·기기 저장) 표시 여부 */
+  /** 하단 액션 바(기기 저장) 표시 여부 */
   showActions?: boolean;
+  /** 현재 사진을 유리 지구본 활성화 사진(국가 대표사진)으로 지정 — 넘기면 버튼 표시 */
+  onSetGlobeCover?: (index: number) => void;
   /** 현재 사진을 커버(여행카드 썸네일)로 지정 — 넘기면 버튼 표시 */
   onSetCover?: (index: number) => void;
   /** 현재 사진 삭제 — 넘기면 버튼 표시. 확인/삭제 처리는 호출부 책임 (뷰어는 닫힌 뒤 호출) */
@@ -40,12 +49,6 @@ export default function PhotoViewerModal({
   useEffect(() => {
     if (visible) setIndex(initialIndex);
   }, [visible, initialIndex]);
-
-  const handleShare = async () => {
-    try {
-      await Share.share({ url: uris[index] });
-    } catch {}
-  };
 
   const handleSaveToDevice = async () => {
     try {
@@ -60,7 +63,7 @@ export default function PhotoViewerModal({
   };
 
   if (!visible) return null;
-  const hasActionBar = showActions || !!onSetCover || !!onDelete;
+  const hasActionBar = showActions || !!onSetGlobeCover || !!onSetCover || !!onDelete;
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
@@ -106,27 +109,27 @@ export default function PhotoViewerModal({
         {/* 하단 액션 바 — 보면서 바로 공유/저장/커버/삭제 */}
         {hasActionBar && (
           <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center', paddingTop: 14, paddingBottom: 40, backgroundColor: 'rgba(0,0,0,0.55)' }}>
-            {showActions && Platform.OS === 'ios' && (
-              <TouchableOpacity onPress={handleShare} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
-                <Text style={{ fontSize: 20 }}>↗️</Text>
-                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerShare')}</Text>
+            {onSetGlobeCover && (
+              <TouchableOpacity onPress={() => onSetGlobeCover(index)} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
+                <GlobeIcon size={ACTION_ICON} color={ACTION_TINT} />
+                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSetGlobeCover')}</Text>
               </TouchableOpacity>
             )}
             {showActions && (
               <TouchableOpacity onPress={handleSaveToDevice} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
-                <Text style={{ fontSize: 20 }}>⬇️</Text>
+                <DownloadIcon size={ACTION_ICON} color={ACTION_TINT} />
                 <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSave')}</Text>
               </TouchableOpacity>
             )}
             {onSetCover && (
               <TouchableOpacity onPress={() => onSetCover(index)} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
-                <Text style={{ fontSize: 20 }}>🖼️</Text>
+                <GalleryIcon size={ACTION_ICON} color={ACTION_TINT} />
                 <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSetCover')}</Text>
               </TouchableOpacity>
             )}
             {onDelete && (
               <TouchableOpacity onPress={() => { const i = index; onClose(); onDelete(i); }} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
-                <Text style={{ fontSize: 20 }}>🗑️</Text>
+                <TrashIcon size={ACTION_ICON} color={ACTION_DANGER} />
                 <Text style={{ color: '#FF6B6B', fontSize: 11, marginTop: 3 }}>{t('comp.viewerDelete')}</Text>
               </TouchableOpacity>
             )}
