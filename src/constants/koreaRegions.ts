@@ -29,11 +29,31 @@ export const KOREA_REGIONS: KoreaRegion[] = [
 ];
 
 /**
+ * 같은 지명이 두 시/도에 걸쳐 있을 때의 우선 규칙.
+ * 문자열에 signals(상위 시/도 신호)와 over(광역시 이름)가 함께 있으면 winner를 택한다.
+ *
+ * 광주: '경기도 광주시'·'Gwangju-si, Gyeonggi-do'가 부분 문자열 첫 일치로 광주광역시에
+ * 잡히던 문제. 광주광역시 표기에는 '경기'가 함께 나올 수 없으므로, 경기 신호가 있으면
+ * 경기도로 보내도 기존 광주광역시 매칭('광주광역시'·'광주 서구'·'Gwangju')은 그대로 산다.
+ */
+const REGION_PRIORITY: { signals: string[]; over: string[]; winner: string }[] = [
+  { signals: ['경기', 'gyeonggi'], over: ['광주', 'gwangju'], winner: '경기' },
+];
+
+/**
  * 자유 문자열 지역명(GPS 도시명 등)을 시/도 프리셋으로 정규화.
  * 매칭 실패 시 null — 호출부는 원본을 그대로 쓰거나 미지정 처리.
  */
 export function normalizeKoreaRegion(raw?: string | null): KoreaRegion | null {
   if (!raw) return null;
   const lower = raw.toLowerCase();
+  // 1) 시/도가 겹치는 지명은 더 구체적인 신호(상위 시/도)를 먼저 본다
+  for (const rule of REGION_PRIORITY) {
+    if (rule.signals.some((s) => lower.includes(s)) && rule.over.some((o) => lower.includes(o))) {
+      const win = KOREA_REGIONS.find((r) => r.name === rule.winner);
+      if (win) return win;
+    }
+  }
+  // 2) 일반 부분 문자열 매칭 (프리셋 순서)
   return KOREA_REGIONS.find((r) => r.match.some((m) => lower.includes(m))) ?? null;
 }

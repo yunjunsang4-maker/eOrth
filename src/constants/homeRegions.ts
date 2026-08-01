@@ -35,10 +35,13 @@ const fold = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').t
 // GPS 도시명 → 상위 주(광역) 매핑. 지오 데이터에는 도시 피처가 없어 지도 판정용이 아니라,
 // normalizeHomeRegion에서 GPS가 준 도시명(예: Yokohama)을 상위 지역(Kanagawa)으로 올려붙이는 데만 쓴다.
 // 값은 GADM 시절 주 영문명 표기라 CODE가 아니라 latin(NAME_1)과 대조해야 한다.
+// USA.washingtondc는 예외적으로 인접 주(Maryland)가 아니라 'WashingtonD.C.'다 —
+// 지오 데이터에 US-DC 피처가 따로 있는데 메릴랜드로 승격되던 문제. 별칭 표의
+// 'USA|washingtondc' → US-DC 항목(생성기 MANUAL에 명시)으로 해석된다.
 export const CITY_TO_PROV: Record<string, Record<string, string>> = {
   JPN: { tokyocity: 'Tokyo', osakacity: 'Osaka', kyotocity: 'Kyoto', fukuokacity: 'Fukuoka', sapporo: 'Hokkaido', naha: 'Okinawa', yokohama: 'Kanagawa', kobe: 'Hyōgo', nagoya: 'Aichi', hiroshimacity: 'Hiroshima', sendai: 'Miyagi' },
   CHN: { guangzhou: 'Guangdong', shenzhen: 'Guangdong', chengdu: 'Sichuan', hangzhou: 'Zhejiang', xian: 'Shaanxi', wuhan: 'Hubei', qingdao: 'Shandong', nanjing: 'Jiangsu' },
-  USA: { losangeles: 'California', sanfrancisco: 'California', lasvegas: 'Nevada', miami: 'Florida', chicago: 'Illinois', seattle: 'Washington', honolulu: 'Hawaii', newyorkcity: 'NewYork', boston: 'Massachusetts', washingtondc: 'Maryland', houston: 'Texas', denver: 'Colorado', philadelphia: 'Pennsylvania', atlanta: 'Georgia' },
+  USA: { losangeles: 'California', sanfrancisco: 'California', lasvegas: 'Nevada', miami: 'Florida', chicago: 'Illinois', seattle: 'Washington', honolulu: 'Hawaii', newyorkcity: 'NewYork', boston: 'Massachusetts', washingtondc: 'WashingtonD.C.', houston: 'Texas', denver: 'Colorado', philadelphia: 'Pennsylvania', atlanta: 'Georgia' },
   DEU: { munich: 'Bayern', frankfurt: 'Hessen', stuttgart: 'Baden-Württemberg', cologne: 'Nordrhein-Westfalen', nordlingen: 'Bayern', dresden: 'Sachsen', dusseldorf: 'Nordrhein-Westfalen', hannover: 'Niedersachsen' },
   ESP: { granada: 'Andalucía', malaga: 'Andalucía', sevilla: 'Andalucía', barcelona: 'Cataluña', madrid: 'ComunidaddeMadrid', valencia: 'ComunidadValenciana', bilbao: 'PaísVasco' },
   GBR: { london: 'England', birmingham: 'England', manchester: 'England', liverpool: 'England', leeds: 'England', edinburgh: 'Scotland', glasgow: 'Scotland', cardiff: 'Wales', belfast: 'NorthernIreland', oxford: 'England', bristol: 'England' },
