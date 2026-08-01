@@ -686,27 +686,38 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Terms — 안내 문구만 두면 가입 시점에 약관 전문을 볼 수단이 없다(심사 지적 단골).
-              문장 안의 단어를 쪼개 링크로 만들면 언어별 어순 때문에 깨지므로, 문구 아래에
-              탭 가능한 링크 두 개를 따로 둔다. */}
+          {/* 약관 안내 — 가입 시점에 전문을 볼 수단이 없으면 심사에서 지적되고, 문서 이름만
+              걸어두면 무엇에 동의하는지도 알 수 없다. 그래서 ① 무엇에 동의하는지 한 문장,
+              ② 문서별로 어떤 내용을 담는지 한 줄 요약, ③ 탭하면 전문(인앱 브라우저) 세 가지를 함께 둔다.
+              문장 안의 단어를 쪼개 링크로 만들지 않는 이유는 언어별 어순 때문에 깨지기 때문이다. */}
           <Text style={styles.termsText}>
             {isSignup ? t('login.termsSignup') : t('login.termsLogin')}
           </Text>
-          <View style={styles.termsLinkRow}>
+          <View style={styles.legalBox}>
             <TouchableOpacity
+              style={styles.legalRow}
               onPress={() => openLegal(TERMS_URL)}
               accessibilityRole="link"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel={`${t('settings.termsTitle')} ${t('login.legalView')}`}
             >
-              <Text style={styles.termsLink}>{t('settings.termsTitle')}</Text>
+              <View style={styles.legalTextCol}>
+                <Text style={styles.legalTitle}>{t('settings.termsTitle')}</Text>
+                <Text style={styles.legalDesc}>{t('login.legalTermsDesc')}</Text>
+              </View>
+              <Text style={styles.legalView}>{t('login.legalView')}</Text>
             </TouchableOpacity>
-            <Text style={styles.termsText}>·</Text>
+            <View style={styles.legalDivider} />
             <TouchableOpacity
+              style={styles.legalRow}
               onPress={() => openLegal(PRIVACY_POLICY_URL)}
               accessibilityRole="link"
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              accessibilityLabel={`${t('settings.privacyPolicy')} ${t('login.legalView')}`}
             >
-              <Text style={styles.termsLink}>{t('settings.privacyPolicy')}</Text>
+              <View style={styles.legalTextCol}>
+                <Text style={styles.legalTitle}>{t('settings.privacyPolicy')}</Text>
+                <Text style={styles.legalDesc}>{t('login.legalPrivacyDesc')}</Text>
+              </View>
+              <Text style={styles.legalView}>{t('login.legalView')}</Text>
             </TouchableOpacity>
           </View>
         </ScrollView>
@@ -996,19 +1007,43 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
-  termsLinkRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 4,
+  legalBox: {
+    marginTop: 10,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.10)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    overflow: 'hidden',
   },
-  termsLink: {
-    color: Colors.textSecondary,
+  legalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  legalTextCol: { flex: 1 },
+  legalTitle: {
+    color: Colors.textPrimary,
+    fontSize: Typography.fontSize.sm,
+    fontFamily: Typography.fontFamily.medium,
+  },
+  legalDesc: {
+    color: Colors.textMuted,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.regular,
+    lineHeight: 17,
+    marginTop: 3,
+  },
+  legalView: {
+    color: Colors.primaryLight,
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.medium,
-    textDecorationLine: 'underline',
-    lineHeight: 18,
+  },
+  legalDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    marginHorizontal: 14,
   },
 
   // Forgot Password Modal
