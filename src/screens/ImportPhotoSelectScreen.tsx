@@ -62,8 +62,11 @@ function PhotoCell({ uri, assetId, order, onPress }: { uri: string; assetId?: st
 
   return (
     <TouchableOpacity activeOpacity={0.85} onPress={onPress} style={st.cellWrap}>
-      {/* ph:// 자가 복구를 위해 AssetImage 사용 — 스케일은 바깥 Animated.View가 담당 */}
-      <Animated.View style={{ transform: [{ scale: imgScale }] }}>
+      {/* ph:// 자가 복구를 위해 AssetImage 사용 — 스케일은 바깥 Animated.View가 담당.
+          ⚠️ 이 래퍼에 크기를 반드시 줘야 한다. 크기가 없으면 Yoga 가 자식 크기에 맞추려 하는데
+          자식(st.cell)은 width/height 가 '100%' 라 부모를 참조 → 순환이 되어 둘 다 0으로 접힌다.
+          그러면 이미지가 0×0 으로 그려져 cellWrap 의 흰 배경만 보인다(= 흰 타일 증상). */}
+      <Animated.View style={{ width: '100%', height: '100%', transform: [{ scale: imgScale }] }}>
         <AssetImage uri={uri} assetId={assetId} style={st.cell} />
       </Animated.View>
       {on ? (
