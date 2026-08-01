@@ -177,12 +177,17 @@ async function handleDm(messageId: string): Promise<Response> {
   // 발신자는 자기 message_id 를 알 수 있다. 재조회로 '위조'는 막았지만 '반복 호출'은
   // 막지 못해, 같은 message_id 로 5분간 수천 번 호출하면 피해자 단말에 푸시가
   // 그만큼 발사됐다. 이미 발송한 메시지면 무시한다.
+  //
+  // ⚠️ 중복(23505)일 때만 건너뛴다. 모든 오류를 '중복'으로 처리하면, 이 함수가
+  // dm_push_sent 테이블보다 먼저 배포된 순간(테이블 없음=42P01) 모든 DM 푸시가
+  // 조용히 멈춘다 — 배포 순서에 기능이 좌우되면 안 되므로 그 외 오류는 통과시킨다
+  // (멱등성은 잃지만 푸시는 살아 있다. 스키마 재실행 후 자동으로 정상화된다).
   {
     const { error: dupErr } = await admin
       .from('dm_push_sent')
       .insert({ message_id: msg.id });
-    // 23505 = unique_violation → 이미 발송함
-    if (dupErr) return new Response('ignored', { status: 200 });
+    if (dupErr?.code === '23505') return new Response('ignored', { status: 200 });
+    if (dupErr) console.warn('[send-push] dm_push_sent 기록 실패(발송은 계속):', dupErr.code, dupErr.message);
   }
 
   // ③ 발신자 핸들
