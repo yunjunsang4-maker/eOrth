@@ -7,6 +7,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Switch,  Linking,
+  AppState,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
@@ -99,6 +100,12 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
 
   useEffect(() => {
     checkPermission();
+    // OS 설정에서 권한을 바꾸고 돌아와도 배너가 그대로였다(마운트 1회만 확인) —
+    // 앱이 포그라운드로 복귀할 때마다 다시 확인해 배너를 갱신한다.
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') checkPermission();
+    });
+    return () => sub.remove();
   }, []);
 
   const checkPermission = async () => {

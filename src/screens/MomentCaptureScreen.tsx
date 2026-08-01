@@ -1,6 +1,6 @@
 // 순간 캡처 시트 — 알림 탭으로만 진입(스펙: 알림 단독 진입점).
 // 텍스트·무드 중 하나(필수) + 사진 1장(선택) + 자동 시간·위치. 2초 안에 입력 시작이 목표.
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, Image,
@@ -137,8 +137,17 @@ export default function MomentCaptureScreen() {
   // 텍스트 또는 무드 중 하나만 있어도 저장 가능 (감정만 남기는 캡처 허용)
   const canSave = !!text.trim() || !!mood;
 
+  // 이 시트를 닫는 경로(배경 탭·저장)는 모두 goBack이라, 이중 탭이면 아래 화면까지 팝된다.
+  // 닫기는 한 번만 — 저장도 중복 addMoment를 막기 위해 같은 가드를 공유한다.
+  const closingRef = useRef(false);
+  const closeOnce = () => {
+    if (closingRef.current) return;
+    closingRef.current = true;
+    navigation.goBack();
+  };
+
   const save = () => {
-    if (!canSave) return;
+    if (!canSave || closingRef.current) return;
     addMoment({
       text: text.trim(),
       mood: mood ?? undefined,
@@ -148,13 +157,13 @@ export default function MomentCaptureScreen() {
       regionName: geo.region,
     });
     pushToast(t('moments.saved'));
-    navigation.goBack();
+    closeOnce();
   };
 
   return (
     <View style={st.root}>
       {/* 배경 탭으로 닫기 */}
-      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => navigation.goBack()} />
+      <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={closeOnce} />
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[st.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={st.grab} />

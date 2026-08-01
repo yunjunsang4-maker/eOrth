@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
@@ -25,6 +25,27 @@ import type { RootStackScreenProps } from '../navigation/types';
 
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
+
+const PROFILE_MEDIA_DIR = 'profile/';
+
+// 프로필 사진을 documentDirectory로 복사해 OS 캐시 정리 후에도 유지한다
+// (MomentCaptureScreen의 persistMomentPhoto와 같은 패턴 — 피커가 준 캐시 URI를 그대로 영속하면
+//  며칠 뒤 아바타가 통째로 사라진다). 복사 실패 시엔 기존 컨벤션대로 원본 URI를 그대로 쓴다.
+async function persistProfilePhoto(srcUri: string): Promise<string> {
+  try {
+    const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const dir = `${base}${PROFILE_MEDIA_DIR}`;
+      try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
+      const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
+      const to = `${dir}profile-${Date.now()}.${ext}`;
+      await FileSystem.copyAsync({ from: srcUri, to });
+      return to;
+    }
+  } catch { /* 복사 실패 → 원본 URI 유지 */ }
+  return srcUri;
+}
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -67,12 +88,36 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
   const [bio, setBio] = useState(globalBio);
   const [saving, setSaving] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
+  const [toastMsg, setToastMsg] = useState('');
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 저장 재진입 가드 — setSaving은 비동기 반영이라 연타 사이에 늦어, 판정은 ref로 한다.
+  const savingRef = useRef(false);
+  // 저장 후 뒤로가기 예약 타이머 + 1회 보장 플래그(수동 뒤로가기와 겹쳐 아래 화면까지 팝되는 것 방지)
+  const goBackTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const wentBackRef = useRef(false);
+
+  // 언마운트 시 예약된 타이머 정리 — 남겨두면 이미 떠난 화면에서 goBack이 한 번 더 돈다.
+  useEffect(() => {
+    wentBackRef.current = false; // 재마운트 시 잠금이 남아 뒤로가기가 막히지 않게 초기화
+    return () => {
+      if (toastTimer.current) clearTimeout(toastTimer.current);
+      if (goBackTimer.current) clearTimeout(goBackTimer.current);
+      wentBackRef.current = true; // 화면이 사라진 뒤의 잔여 콜백은 무효화
+    };
+  }, []);
 
   const showToast = (msg: string) => {
     if (toastTimer.current) clearTimeout(toastTimer.current);
+    setToastMsg(msg);
     setToastVisible(true);
     toastTimer.current = setTimeout(() => setToastVisible(false), 2500);
+  };
+
+  // 뒤로가기는 어떤 경로로든 딱 한 번만 (예약 타이머 · 수동 탭 공용)
+  const goBackOnce = () => {
+    if (wentBackRef.current) return;
+    wentBackRef.current = true;
+    navigation.goBack();
   };
 
   const pickImage = async () => {
@@ -99,56 +144,67 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
       quality: 0.8,
     });
     if (!result.canceled && result.assets[0]) {
-      setProfilePhoto(result.assets[0].uri);
+      // 피커 캐시 URI를 그대로 두면 OS가 캐시를 비울 때 아바타가 사라진다 → 앱 문서함으로 복사
+      setProfilePhoto(await persistProfilePhoto(result.assets[0].uri));
     }
   };
 
   const handleSave = async () => {
-    if (saving) return;
-    if (!handle.trim()) {
-      Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleEmpty'));
-      return;
+    // 아이디 미변경 경로는 await가 없어 예전 saving 상태 가드를 그대로 통과했다 —
+    // 연타하면 goBack 예약이 두 번 걸려 아래 화면까지 팝됐다. ref로 즉시 잠근다.
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    let exitScheduled = false;
+    try {
+      if (!handle.trim()) {
+        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleEmpty'));
+        return;
+      }
+
+      const trimmedHandle = handle.trim();
+      const handleChanged = trimmedHandle !== globalHandle;
+      if (handleChanged) {
+        if (!canChangeHandle) {
+          Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleChangeBlocked'));
+          return;
+        }
+        if (!HANDLE_RE.test(trimmedHandle)) {
+          Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleInvalid'));
+          return;
+        }
+        // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
+        const avail = await isHandleAvailable(trimmedHandle);
+        if (avail === false) {
+          Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleTaken'));
+          return;
+        }
+        setGlobalHandle(trimmedHandle);
+        setHandleLastChanged(Date.now());
+        setHandleChosen(true); // 사용자가 아이디를 직접 변경 → 충돌 시 임의 재생성 금지
+      }
+
+      // Save to global context
+      setGlobalBio(bio.trim());
+      setGlobalProfilePhoto(profilePhoto);
+
+      showToast(t('editProfile.savedToast'));
+      exitScheduled = true; // 이동이 예약됐으니 잠금은 풀지 않는다(중복 저장·중복 팝 방지)
+      goBackTimer.current = setTimeout(goBackOnce, 1000);
+    } finally {
+      // 검증 실패로 화면에 머무는 경로에서만 다시 저장할 수 있게 잠금 해제
+      if (!exitScheduled) {
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
-
-    const trimmedHandle = handle.trim();
-    const handleChanged = trimmedHandle !== globalHandle;
-    if (handleChanged) {
-      if (!canChangeHandle) {
-        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleChangeBlocked'));
-        return;
-      }
-      if (!HANDLE_RE.test(trimmedHandle)) {
-        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleInvalid'));
-        return;
-      }
-      // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
-      setSaving(true);
-      const avail = await isHandleAvailable(trimmedHandle);
-      setSaving(false);
-      if (avail === false) {
-        Alert.alert(t('editProfile.noticeTitle'), t('editProfile.handleTaken'));
-        return;
-      }
-      setGlobalHandle(trimmedHandle);
-      setHandleLastChanged(Date.now());
-      setHandleChosen(true); // 사용자가 아이디를 직접 변경 → 충돌 시 임의 재생성 금지
-    }
-
-    // Save to global context
-    setGlobalBio(bio.trim());
-    setGlobalProfilePhoto(profilePhoto);
-
-    showToast(t('editProfile.savedToast'));
-    setTimeout(() => {
-      navigation.goBack();
-    }, 1000);
   };
 
   return (
     <SafeAreaView style={s.safeArea}>
       {/* 헤더 */}
       <View style={s.header}>
-        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={() => navigation.goBack()} accessibilityRole="button" accessibilityLabel={t('editProfile.back')}>
+        <TouchableOpacity style={s.backBtn} activeOpacity={0.7} onPress={goBackOnce} accessibilityRole="button" accessibilityLabel={t('editProfile.back')}>
           <Text style={s.backIcon}>‹</Text>
         </TouchableOpacity>
         <Text style={s.headerTitle}>{t('editProfile.title')}</Text>
@@ -276,7 +332,8 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
-      <Toast visible={toastVisible} message={t('editProfile.savedToast')} />
+      {/* 토스트 문구는 showToast(msg)가 넘긴 값을 그대로 쓴다(고정 문구 하드코딩 제거) */}
+      <Toast visible={toastVisible} message={toastMsg} />
     </SafeAreaView>
   );
 }
