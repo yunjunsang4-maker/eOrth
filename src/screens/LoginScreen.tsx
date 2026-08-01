@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -30,6 +30,8 @@ import Svg, {
   Rect as SvgRect,
 } from 'react-native-svg';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
+import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
+import * as WebBrowser from 'expo-web-browser';
 import { EorthLogo } from '../components/EorthLogo';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
@@ -154,6 +156,21 @@ export default function LoginScreen({ navigation }: Props) {
   const [socialLoading, setSocialLoading] = useState(false);
   const [authSuccess, setAuthSuccess] = useState(false);
 
+  // 오버레이 최후 안전장치 — 이 모달은 취소 버튼이 없고 뒤로가기도 막혀 있어(onRequestClose),
+  // 로딩이 안 풀리면 앱 강제종료 외에 탈출구가 없다. 내부 호출마다 타임아웃을 걸었지만
+  // 예상 못 한 경로가 매달릴 경우를 대비해 여기서 한 번 더 끊는다.
+  // 정상 흐름의 최악(토큰 15s + 프로필 12s + 표시 0.6s ≈ 28s)보다 넉넉히 잡아 오탐을 막는다.
+  useEffect(() => {
+    if (!socialLoading) return;
+    const timer = setTimeout(() => {
+      setSocialLoading(false);
+      setSocialModal(null);
+      setAuthSuccess(false);
+      Alert.alert(t('login.loginFailed'), t('authErr.timeout'));
+    }, 45000);
+    return () => clearTimeout(timer);
+  }, [socialLoading, t]);
+
   // 실제 소셜 로그인 (Supabase OAuth). 로딩/성공 오버레이만 모달로 표시하고
   // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
   const handleSocialLogin = async (provider: 'google' | 'apple') => {
@@ -224,6 +241,13 @@ export default function LoginScreen({ navigation }: Props) {
       setSocialLoading(false);
       setSocialModal(null);
     }
+  };
+
+  // 약관·방침 열기 — 설정 화면과 동일하게 인앱 브라우저, 실패 시 주소를 직접 안내한다.
+  const openLegal = (url: string) => {
+    WebBrowser.openBrowserAsync(url).catch(() => {
+      Alert.alert(t('settings.terms'), url);
+    });
   };
 
   const handleGooglePress = () => handleSocialLogin('google');
@@ -662,10 +686,29 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </View>
 
-          {/* Terms */}
+          {/* Terms — 안내 문구만 두면 가입 시점에 약관 전문을 볼 수단이 없다(심사 지적 단골).
+              문장 안의 단어를 쪼개 링크로 만들면 언어별 어순 때문에 깨지므로, 문구 아래에
+              탭 가능한 링크 두 개를 따로 둔다. */}
           <Text style={styles.termsText}>
             {isSignup ? t('login.termsSignup') : t('login.termsLogin')}
           </Text>
+          <View style={styles.termsLinkRow}>
+            <TouchableOpacity
+              onPress={() => openLegal(TERMS_URL)}
+              accessibilityRole="link"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.termsLink}>{t('settings.termsTitle')}</Text>
+            </TouchableOpacity>
+            <Text style={styles.termsText}>·</Text>
+            <TouchableOpacity
+              onPress={() => openLegal(PRIVACY_POLICY_URL)}
+              accessibilityRole="link"
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <Text style={styles.termsLink}>{t('settings.privacyPolicy')}</Text>
+            </TouchableOpacity>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -951,6 +994,20 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
     textAlign: 'center',
+    lineHeight: 18,
+  },
+  termsLinkRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  termsLink: {
+    color: Colors.textSecondary,
+    fontSize: Typography.fontSize.xs,
+    fontFamily: Typography.fontFamily.medium,
+    textDecorationLine: 'underline',
     lineHeight: 18,
   },
 

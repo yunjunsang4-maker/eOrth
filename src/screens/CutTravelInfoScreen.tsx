@@ -412,6 +412,10 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
     if (savingRef.current || !selectedCountry || !startDate || !cutPhoto) return;
     savingRef.current = true;
     setSaving(true);
+    // ⚠️ 아래 전체를 try/catch 로 감싼다 — 예외가 나면 저장 상태가 영영 안 풀려 버튼이
+    // '저장 중…' 으로 고정되고, savingRef 가 true 라 이탈 확인(beforeRemove)까지 건너뛰어
+    // 사용자가 경고 없이 화면을 떠나며 작성 내용을 통째로 잃는다.
+    try {
     const sStr = fmtDate(startDate, t);
     const eStr = fmtDate(endDate ?? startDate, t);
     const recId = addRecord({
@@ -461,6 +465,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       });
     }
     navigation.navigate('Main'); // 스택 루트가 항상 Main이 아닐 수 있어 명시적으로 Main으로 복귀
+    } catch (e) {
+      savingRef.current = false;
+      setSaving(false);
+      Alert.alert(t('cutInfo.saveFailTitle'), t('cutInfo.saveFailMsg'));
+    }
   };
 
   // ─── 이탈 확인 ───

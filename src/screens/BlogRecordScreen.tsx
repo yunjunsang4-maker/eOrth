@@ -1743,7 +1743,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     </Text>
                   </TouchableOpacity>
                   <TextInput style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
-                    value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" />
+                    value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={12} />
                 </View>
               </PanelRow>
 

@@ -25,14 +25,22 @@ let requested: Promise<boolean> | null = null;
 /**
  * ATT 권한을 요청하고 '추적 허용 여부'를 돌려준다. 앱 생애주기에서 1회만 실제 요청한다.
  *
- * - iOS 외 플랫폼: 항상 true (ATT는 iOS 전용 개념 — 안드로이드는 별도 동의 체계)
+ * - iOS 외 플랫폼: false(비개인화) — 아래 ⚠️ 참조
  * - 이미 결정된 상태면 시스템 팝업 없이 현재 값을 그대로 반환한다
  * - 모듈이 없거나 오류면 false(비개인화)로 안전하게 떨어진다
+ *
+ * ⚠️ 안드로이드는 true(추적 허용)를 반환하고 있었다. ATT가 iOS 전용 개념인 건 맞지만,
+ *    호출부(useFeedAdSource)가 이 값을 그대로 `requestNonPersonalizedAdsOnly: !granted`
+ *    로 쓰기 때문에 결과적으로 **동의 절차 없이 개인화 광고가 나갔다.** "안드로이드는
+ *    별도 동의 체계"라는 전제였으나 그 체계(Google UMP 동의 폼)는 아직 도입되지 않았다.
+ *    EEA·영국 사용자에게 동의 없이 개인화 광고를 내보내는 것은 AdMob EU 사용자 동의 정책
+ *    위반이므로, UMP 를 붙이기 전까지는 비개인화로 고정한다(수익은 줄지만 정책은 지킨다).
+ *    UMP 도입 시 이 자리에서 AdsConsent 결과를 반환하도록 바꿀 것.
  */
 export function requestTrackingPermission(): Promise<boolean> {
   if (requested) return requested;
   requested = (async () => {
-    if (Platform.OS !== 'ios') return true;
+    if (Platform.OS !== 'ios') return false;
     const tr = getTracking();
     if (!tr) return false;
     try {

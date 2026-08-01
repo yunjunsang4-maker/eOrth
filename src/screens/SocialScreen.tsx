@@ -338,9 +338,11 @@ function CommentBottomSheet({
                   value={commentText}
                   onChangeText={setCommentText}
                   multiline
+                  maxLength={500}
                 />
-                <TouchableOpacity style={cs.sendBtn} onPress={onSend}>
-                  <Text style={cs.sendIcon}>↑</Text>
+                {/* 공백만 입력하면 onSend가 조용히 무시해 '고장'으로 보였다 — 비활성으로 드러낸다 */}
+                <TouchableOpacity style={cs.sendBtn} onPress={onSend} disabled={!commentText.trim()}>
+                  <Text style={[cs.sendIcon, !commentText.trim() && { opacity: 0.4 }]}>↑</Text>
                 </TouchableOpacity>
               </View>
             </View>

@@ -10,6 +10,13 @@
  */
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
+import { withTimeout } from '../utils/withTimeout';
+
+// 이 두 함수는 로그인 직후(useAccountBoundary)와 Splash 진입 판정에서 await 된다.
+// 즉 사용자가 로딩 화면을 보며 기다리는 경로다 — 상한이 없으면 소켓이 stall 될 때
+// (끊김이 아니라 무응답) 스피너가 영원히 돌고 탈출구가 없다. RN fetch 는 기본
+// 타임아웃이 없어 OS 레벨까지 수 분 매달린다.
+const APP_STATE_TIMEOUT_MS = 8000;
 
 export interface AppStateBackup {
   settings?: Record<string, unknown>; // settingsStore.exportSettingsBackup()
@@ -23,9 +30,9 @@ export async function saveAppState(data: AppStateBackup): Promise<void> {
   const uid = await getMyUserId();
   if (!uid) return;
   try {
-    await supabase.from('user_app_state').upsert({ user_id: uid, data });
+    await withTimeout(supabase.from('user_app_state').upsert({ user_id: uid, data }), APP_STATE_TIMEOUT_MS);
   } catch {
-    /* 무시 — 다음 변경 때 재시도 */
+    /* 무시(타임아웃 포함) — 다음 변경 때 재시도 */
   }
 }
 
@@ -34,11 +41,10 @@ export async function fetchAppState(): Promise<AppStateBackup | null> {
   const uid = await getMyUserId();
   if (!uid) return null;
   try {
-    const { data, error } = await supabase
-      .from('user_app_state')
-      .select('data')
-      .eq('user_id', uid)
-      .maybeSingle();
+    const { data, error } = await withTimeout(
+      supabase.from('user_app_state').select('data').eq('user_id', uid).maybeSingle(),
+      APP_STATE_TIMEOUT_MS,
+    );
     if (error || !data?.data) return null;
     return data.data as AppStateBackup;
   } catch {

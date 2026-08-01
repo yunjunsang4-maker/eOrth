@@ -1103,6 +1103,8 @@ const ko = {
     recommendCount: '{{total}}장 중 {{best}}장 추천',
   },
   cutInfo: {
+    saveFailTitle: '저장 실패',
+    saveFailMsg: '기록을 저장하는 중 문제가 발생했어요.\n다시 시도해주세요.',
     travelInfo: '여행 정보',
     saving: '저장 중…',
     noticeTitle: '알림',

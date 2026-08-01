@@ -109,6 +109,34 @@ drop policy if exists "profiles_update_own" on public.profiles;
 create policy "profiles_update_own" on public.profiles
   for update to authenticated using (auth.uid() = id) with check (auth.uid() = id);
 
+-- ⚠️ 탈퇴 안전장치 위조 방어 (출시 전 감사 2026-08-02, CRITICAL)
+-- 위 정책은 '본인 행'만 허용할 뿐 컬럼 제한이 없어서, 사용자가 자기 행의
+-- deletion_requested_at 을 임의 과거 시각으로 직접 써넣을 수 있었다. 그런데
+-- delete-account Edge Function 이 검사하는 두 조건이 하필 이 컬럼이다:
+--   ① 탈퇴 신청이 있는가(deletion_requested_at is not null)
+--   ② 유예기간(30일)이 지났는가
+-- 즉 사용자가 쓸 수 있는 값으로 두 안전장치를 모두 통과시켜, 유예기간을 건너뛰고
+-- 계정을 즉시 영구 파기할 수 있었다(scope='content' 는 날짜 조건조차 없다).
+-- 세션이 탈취된 기기에서 게시물·DM·사진이 되돌릴 수 없이 삭제된다.
+-- posts/neighbors/dm_messages 와 같은 컬럼 수준 권한 패턴으로 막는다.
+--
+--   · updated_at 은 트리거(set_updated_at)가 채우므로 권한 부여가 필요 없다.
+--   · deletion_requested_at/deletion_reason 은 request_account_deletion()·
+--     cancel_account_deletion()(security definer)만 갱신한다 — 소유자 권한이라
+--     이 회수의 영향을 받지 않는다.
+--   · created_at 은 애초에 변경 대상이 아니다.
+--   · id 는 반드시 포함해야 한다 — 클라이언트가 upsert 로 프로필을 저장하는데
+--     (services/profile.ts:54 가 payload 에 id 를 넣는다) PostgREST 의 upsert 는
+--     ON CONFLICT DO UPDATE SET 에 payload 의 모든 컬럼을 넣으므로, id 권한이 없으면
+--     프로필 동기화 전체가 'permission denied for column id' 로 깨진다.
+--     위 profiles_update_own 의 with check (auth.uid() = id) 가 결과 행의 소유자를
+--     강제하므로, id 를 열어도 남의 uuid 로 바꾸는 것은 불가능하다(자기 id 재기입만 가능).
+-- insert/select/delete 권한은 건드리지 않는다(update 만 회수 후 컬럼 단위 재부여).
+revoke update on public.profiles from authenticated;
+grant update (id, handle, emoji, bio, birthday, gender, profile_photo,
+              country, handle_font, stay_country, stay_status)
+  on public.profiles to authenticated;
+
 -- 타인에게 노출할 '공개 컬럼만' 담은 뷰. RLS는 컬럼 단위 제한이 안 되므로
 -- birthday·gender 같은 PII를 빼고 이 뷰로 타인 프로필을 조회한다.
 -- profiles 테이블 자체는 본인 행만 select 가능해졌으므로, 이 뷰는 definer
@@ -314,6 +342,13 @@ create table if not exists public.comments (
 );
 create index if not exists idx_comments_post on public.comments (post_id, created_at);
 
+-- 본문 길이 상한 — 클라이언트 maxLength(500)와 짝을 이루는 서버측 방어.
+-- 없으면 REST 직접 호출로 수 MB 댓글을 넣어 피드·상세 렌더와 대역폭을 태울 수 있다.
+-- not valid: 기존 행은 검사하지 않고 이후 insert/update 부터 적용(재실행 안전).
+alter table public.comments drop constraint if exists comments_text_len;
+alter table public.comments add constraint comments_text_len
+  check (char_length(text) between 1 and 500) not valid;
+
 alter table public.comments enable row level security;
 
 -- 댓글 조회는 '해당 게시물을 볼 수 있는 사용자'로 제한 (posts 가시성과 동일).
@@ -412,6 +447,14 @@ language sql security definer set search_path = public as $$
   where p.author_id = any(ids)
     and p.country_name is not null and p.country_name <> ''
     and p.visibility <> 'private'
+    -- 차단 관계는 집계에서 제외 — 차단당한 사용자에게 상대의 '이웃 전용' 기록 기준
+    -- 방문국 수가 그대로 노출되던 것을 막는다.
+    -- (is_blocked_between 은 이 함수보다 아래에서 정의되므로 인라인으로 쓴다)
+    and not exists (
+      select 1 from public.blocks b
+      where (b.blocker_id = auth.uid() and b.blocked_id = p.author_id)
+         or (b.blocker_id = p.author_id and b.blocked_id = auth.uid())
+    )
   group by p.author_id;
 $$;
 
@@ -1075,12 +1118,17 @@ language sql security definer set search_path = public as $$
     where p.author_id = me.uid and p.visibility <> 'private'
       and p.country_name is not null and p.country_name <> ''
     union
-    select c from unnest(extra_countries) as c where c is not null and c <> ''
+    -- ⚠️ 상한 30 — 호출자가 넣은 배열이 그대로 비교 집합이 되므로, 전 세계 국가를 통째로
+    --    넣고 배열을 반씩 쪼개 재호출하면(이분 탐색) 대상의 방문국을 전부 특정할 수 있었다.
+    select c from unnest(extra_countries[1:30]) as c where c is not null and c <> ''
   ),
   shared as (
     select distinct p.country_name
-    from public.posts p
+    from public.posts p, me
     where p.author_id = target and p.visibility <> 'private'
+      -- 차단 관계면 빈 결과 — mate_suggestions·country_visitors 와 같은 게이트를
+      -- 이 함수만 빠뜨려, 나를 차단한 사람의 '이웃 전용' 기록 국가까지 캐낼 수 있었다.
+      and not public.is_blocked_between(me.uid, target)
       and p.country_name in (select country_name from my_countries)
   )
   select count(*)::int as shared_count,
@@ -1234,7 +1282,11 @@ language sql stable security definer set search_path = public as $$
   join public.public_profiles p
     on p.id = case when n.requester_id = target then n.addressee_id else n.requester_id end
   where n.status = 'accepted'
-    and (n.requester_id = target or n.addressee_id = target);
+    and (n.requester_id = target or n.addressee_id = target)
+    -- 차단 관계면 빈 목록. 조인하는 public_profiles 는 '목록에 뜬 사람과 나'의 차단만
+    -- 거르고 'target 과 나'의 차단은 보지 않아서, 차단당한 사용자가 상대의 메이트 전원을
+    -- 받아가고 그 uuid로 재호출해 소셜 그래프를 단계적으로 수집할 수 있었다.
+    and not public.is_blocked_between(auth.uid(), target);
 $$;
 grant execute on function public.neighbor_list_of(uuid) to authenticated;
 
@@ -1304,6 +1356,20 @@ create table if not exists public.reports (
   created_at timestamptz not null default now()
 );
 alter table public.reports enable row level security;
+
+-- ⚠️ 신고 폭탄 방어 (출시 전 감사 2026-08-02)
+-- 신고 '내용' 위조는 report-alert 가 재조회로 막지만 '건수'는 못 막았다. 로그인 사용자가
+-- insert 를 반복하면 건마다 트리거 → net.http_post → 운영자 메일이 발송돼, 메일함과
+-- Resend 쿼터가 소진되고 **그 뒤 들어오는 진짜 신고 알림이 유실**된다(각 행이 새로 생성돼
+-- 함수의 5분 신선도 검사도 전부 통과한다). reason 에 수 MB 문자열을 넣으면 메일 본문까지 부푼다.
+--   ① 길이 제한 — feedback.content 와 같은 기준
+--   ② 같은 대상 중복 신고 차단 — 재신고는 의미가 없고, 폭탄의 가장 쉬운 경로다
+alter table public.reports drop constraint if exists reports_reason_len;
+alter table public.reports add constraint reports_reason_len
+  check (reason is null or char_length(reason) <= 1000) not valid;
+create unique index if not exists uq_reports_reporter_post
+  on public.reports (reporter_id, post_id) where post_id is not null;
+
 drop policy if exists "reports_insert_own" on public.reports;
 create policy "reports_insert_own" on public.reports
   for insert to authenticated with check (reporter_id = auth.uid());
@@ -1322,7 +1388,22 @@ returns trigger
 language plpgsql
 security definer set search_path = ''
 as $$
+declare
+  recent_count int;
 begin
+  -- ⚠️ 메일 폭탄 차단 (출시 전 감사 2026-08-02)
+  -- 신고 접수 자체는 항상 남긴다(운영자가 나중에 조회 가능). 다만 '메일 발송'은
+  -- 같은 신고자가 1시간에 10건을 넘기면 생략한다 — 넘치는 알림이 진짜 신고를 묻어버리고
+  -- Resend 쿼터까지 태우는 게 실제 피해이기 때문이다. post_id 가 null 인 신고는
+  -- 중복 방지 인덱스로 막히지 않으므로 이 빈도 제한이 유일한 방어선이다.
+  select count(*) into recent_count
+    from public.reports
+   where reporter_id = new.reporter_id
+     and created_at > now() - interval '1 hour';
+  if recent_count > 10 then
+    return new;
+  end if;
+
   perform net.http_post(
     url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/report-alert',
     headers := jsonb_build_object(
@@ -1600,10 +1681,28 @@ insert into storage.buckets (id, name, public)
 values ('media', 'media', true)
 on conflict (id) do nothing;
 
--- 누구나 읽기(공개 URL), 업로드/수정/삭제는 본인 폴더(media/<uid>/...)만
-drop policy if exists "media_read_all" on storage.objects;
-create policy "media_read_all" on storage.objects
-  for select to authenticated using (bucket_id = 'media');
+-- 업로드/수정/삭제는 본인 폴더(media/<uid>/...)만. 읽기는 아래 참고.
+--
+-- ⚠️ 목록 조회 차단 (출시 전 감사 2026-08-02, CRITICAL)
+-- 이전 정책은 `using (bucket_id = 'media')` 라 폴더 제한이 없어서, 로그인한
+-- 아무 사용자나 storage list API 로 **남의 폴더 파일 목록을 통째로** 받아낼 수 있었다.
+-- 이 버킷은 public 이라 URL만 알면 비인증으로도 원본을 내려받을 수 있고, 그
+-- 유일한 방어선이 "경로를 추측할 수 없다"(<uid>/<ts>-<랜덤7자>)였는데 목록 조회가
+-- 열려 있으면 그 전제가 무너진다. uid 는 public_profiles 로 공개돼 있으므로
+--   POST /storage/v1/object/list/media  {"prefix":"<피해자 uid>/"}
+-- 한 번이면 파일명을 전부 얻고, 그 뒤엔 인증 없이 public URL 로 원본을 받는다.
+-- 대상에 visibility='private' 기록 사진, 이웃 전용 사진, DM 이미지가 포함되고
+-- 차단한 상대도 막지 못한다.
+--
+-- → select 는 본인 폴더로 축소한다. 앱은 목록 조회를 쓰지 않고(services/media.ts 는
+--   upload/getPublicUrl/remove 만 사용) 이미지 표시는 RLS 를 타지 않는 public URL
+--   경로라 화면은 그대로 동작한다. 근본 해결은 아래 [선택/후속] 의 private 버킷 전환.
+drop policy if exists "media_read_all" on storage.objects;  -- 옛 이름(전체 허용) 제거
+drop policy if exists "media_read_own" on storage.objects;  -- 재실행 안전
+create policy "media_read_own" on storage.objects
+  for select to authenticated using (
+    bucket_id = 'media' and (storage.foldername(name))[1] = auth.uid()::text
+  );
 
 drop policy if exists "media_write_own" on storage.objects;
 create policy "media_write_own" on storage.objects
@@ -1631,10 +1730,11 @@ create policy "media_delete_own" on storage.objects
 --   ⚠️ 클라이언트 서명 URL 전환 전에 아래를 실행하면 기존 공개 URL 이미지가 모두 깨지므로
 --      반드시 클라이언트 작업과 함께 적용할 것. (그래서 기본은 주석 처리해 둔다.)
 --
+--   ⚠️ 아래를 켤 때 select 정책을 다시 버킷 전체로 넓히지 말 것 — 그러면 위에서 막은
+--      목록 조회 구멍이 되살아난다. 서명 URL 발급은 RLS 를 타지 않으므로 본인 폴더
+--      정책(media_read_own)을 그대로 두면 된다.
+--
 -- update storage.buckets set public = false where id = 'media';
--- drop policy if exists "media_read_all" on storage.objects;
--- create policy "media_read_auth" on storage.objects
---   for select to authenticated using (bucket_id = 'media');  -- 접근은 서명 URL 발급 경로로만
 -- ============================================================
 
 -- 실시간 DM을 쓰려면 (대시보드 > Database > Replication 에서 dm_messages 추가하거나):
@@ -2005,6 +2105,19 @@ create trigger notifications_push
 --   본인/차단 관계면 호출을 생략(불필요 발송 절감). report-alert와 동일한 pg_net 패턴.
 --   Authorization의 anon key는 앱 번들에 포함되는 공개 키(Edge Function 기본 JWT 검증 통과용).
 -- ============================================================
+
+-- 발송 완료한 DM message_id 기록 — send-push 멱등성 근거(출시 전 감사 2026-08-02).
+-- 위 anon key 로 이 함수를 직접 호출할 수 있고 발신자는 자기 message_id 를 알 수 있어,
+-- 같은 id 로 반복 호출하면 피해자 단말에 푸시가 반복 발사됐다. 유니크 제약이 그 반복을 막는다.
+-- (service role 만 접근 — 일반 사용자 정책 없음. 오래된 행은 아래 주석의 정리 SQL 참고.)
+create table if not exists public.dm_push_sent (
+  message_id uuid primary key references public.dm_messages(id) on delete cascade,
+  sent_at    timestamptz not null default now()
+);
+alter table public.dm_push_sent enable row level security;
+create index if not exists idx_dm_push_sent_at on public.dm_push_sent (sent_at);
+-- [선택·수동] 보존 정리: delete from public.dm_push_sent where sent_at < now() - interval '7 days';
+
 create or replace function public.notify_on_dm()
 returns trigger
 language plpgsql

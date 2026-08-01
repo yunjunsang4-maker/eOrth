@@ -1748,6 +1748,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     value={budget}
                     onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
                     keyboardType="numeric"
+                    maxLength={12}
                   />
                 </View>
               </View>

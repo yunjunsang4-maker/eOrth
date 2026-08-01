@@ -159,6 +159,32 @@ async function handleDm(messageId: string): Promise<Response> {
   const recipient = thread.user_a === msg.sender_id ? thread.user_b : thread.user_a;
   if (!recipient || recipient === msg.sender_id) return new Response('ignored', { status: 200 });
 
+  // ②-b 차단 검사 — DB 트리거(notify_on_dm)에만 있던 검사라, 이 함수를 HTTP로 직접
+  // 호출하는 경로에서는 건너뛰어졌다. 차단한 상대에게 푸시가 가지 않도록 여기서도 본다.
+  {
+    const { data: blocked } = await admin
+      .from('blocks')
+      .select('blocker_id')
+      .or(
+        `and(blocker_id.eq.${msg.sender_id},blocked_id.eq.${recipient}),` +
+        `and(blocker_id.eq.${recipient},blocked_id.eq.${msg.sender_id})`,
+      )
+      .limit(1);
+    if (blocked && blocked.length > 0) return new Response('ignored', { status: 200 });
+  }
+
+  // ②-c 멱등성 — 이 함수는 verify_jwt 를 앱 번들의 anon 키로 통과할 수 있고,
+  // 발신자는 자기 message_id 를 알 수 있다. 재조회로 '위조'는 막았지만 '반복 호출'은
+  // 막지 못해, 같은 message_id 로 5분간 수천 번 호출하면 피해자 단말에 푸시가
+  // 그만큼 발사됐다. 이미 발송한 메시지면 무시한다.
+  {
+    const { error: dupErr } = await admin
+      .from('dm_push_sent')
+      .insert({ message_id: msg.id });
+    // 23505 = unique_violation → 이미 발송함
+    if (dupErr) return new Response('ignored', { status: 200 });
+  }
+
   // ③ 발신자 핸들
   let senderHandle = '';
   try {

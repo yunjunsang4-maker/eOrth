@@ -27,7 +27,9 @@ import { useSettings } from '../store/settingsStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
-import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon } from '../components/icons';
+import { GlobeIcon, CameraIcon, GalleryIcon, SearchIcon, PersonIcon, ReplyIcon, CopyIcon, TrashIcon, FlagIcon, BlockIcon } from '../components/icons';
+import ReportModal from '../components/ReportModal';
+import { handleBlock } from '../utils/reportAndBlock';
 import CameraCaptureModal from '../components/CameraCaptureModal';
 import { APP_LINK_SPLIT_RE, parseAppLink, openAppLink } from '../utils/appLinks';
 import { fetchPostById } from '../services/posts';
@@ -305,7 +307,9 @@ export default function DMScreen({ navigation, route }: Props) {
 
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
-  const { records, feedPosts } = useRecords();
+  const { records, feedPosts, blockUser, reportPost } = useRecords();
+  // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
+  const [dmReportVisible, setDmReportVisible] = useState(false);
   const { markBadgesEarned } = useSettings();
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
   const messages = conversations[friend.handle] ?? [];
@@ -499,6 +503,23 @@ export default function DMScreen({ navigation, route }: Props) {
       { text: t('common.cancel'), style: 'cancel' },
       { text: t('dm.clear'), style: 'destructive', onPress: () => clearConversation(friend.handle) },
     ]);
+  };
+
+  // 상대 신고 — 대화는 남기고 접수만 한다(대화 정리는 차단/나가기로).
+  const handleReportPeer = () => {
+    setHeaderMenuOpen(false);
+    setDmReportVisible(true);
+  };
+
+  // 상대 차단 — 서버 blocks 에 기록돼 RLS가 이후 게시물·댓글·DM을 걸러낸다.
+  // 차단 후에는 이 대화에 머무를 이유가 없으므로 대화를 비우고 뒤로 나간다.
+  const handleBlockPeer = () => {
+    setHeaderMenuOpen(false);
+    handleBlock(friend.handle, () => {
+      blockUser({ name: friend.handle, emoji: '', handle: friend.handle, id: friend.id });
+      clearConversation(friend.handle);
+      navigation.goBack();
+    }, t);
   };
 
   const handleLeaveConversation = () => {
@@ -986,6 +1007,14 @@ export default function DMScreen({ navigation, route }: Props) {
               <Text style={st.sheetIcon}>🧹</Text>
               <Text style={st.sheetText}>{t('dm.clearChatTitle')}</Text>
             </TouchableOpacity>
+            <TouchableOpacity style={st.sheetItem} onPress={handleReportPeer}>
+              <View style={st.sheetIconWrap}><FlagIcon size={18} color="#A1A1B0" /></View>
+              <Text style={st.sheetText}>{t('social.report')}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={st.sheetItem} onPress={handleBlockPeer}>
+              <View style={st.sheetIconWrap}><BlockIcon size={18} color="#FF6B6B" /></View>
+              <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('social.blockTitle')}</Text>
+            </TouchableOpacity>
             <TouchableOpacity style={st.sheetItem} onPress={handleLeaveConversation}>
               <Text style={st.sheetIcon}>🚪</Text>
               <Text style={[st.sheetText, { color: '#FF6B6B' }]}>{t('dm.leave')}</Text>
@@ -993,6 +1022,18 @@ export default function DMScreen({ navigation, route }: Props) {
           </Animated.View>
         </View>
       </Modal>
+
+      {/* 상대 신고 — 접수만 하고 대화는 유지(정리는 차단/나가기) */}
+      <ReportModal
+        visible={dmReportVisible}
+        onClose={() => setDmReportVisible(false)}
+        onSubmit={(reason) => {
+          setDmReportVisible(false);
+          // DM은 게시물 id가 없으므로 대상 핸들을 사유에 담아 접수한다.
+          reportPost(`dm:${friend.handle}`, `[dm:@${friend.handle}] ${reason ?? ''}`.trim());
+          Alert.alert(t('social.reportReceivedToast'));
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -1114,6 +1155,7 @@ const st = StyleSheet.create({
   },
   sheetItem: { flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 14, paddingHorizontal: 12 },
   sheetIcon: { fontSize: 18, width: 24, textAlign: 'center' },
+  sheetIconWrap: { width: 24, alignItems: 'center' },
   // 메시지 롱프레스 컨텍스트 메뉴
   ctxDim: { position: 'absolute', left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.55)' },
   ctxMenu: {

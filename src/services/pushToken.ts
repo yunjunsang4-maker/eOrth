@@ -14,7 +14,11 @@ import * as Notifications from 'expo-notifications';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase, isSupabaseConfigured } from './supabase';
+import { withTimeout } from '../utils/withTimeout';
 import type { NotifPrefKey } from '../store/settingsStore';
+
+// 로그인/계정 전환을 막지 않도록 푸시 토큰 해제에 거는 상한(ms).
+const UNREGISTER_TIMEOUT_MS = 5000;
 
 // push_tokens 테이블에 저장할 prefs 구조 (Edge Function이 이 키로 필터)
 export type PushPrefs = Partial<Record<NotifPrefKey, boolean>>;
@@ -95,10 +99,15 @@ export async function unregisterPushToken(): Promise<void> {
   try {
     // getToken 실패 시 마지막 등록 토큰 캐시로 폴백 — 실패하면 이전 계정 행이 남아
     // 이 기기로 이전 계정 푸시가 계속 오는 문제(감사 H2)의 1차 방어선
-    const token = (await getToken()) ?? (await AsyncStorage.getItem(LAST_TOKEN_KEY).catch(() => null));
+    // ⚠️ 이 함수는 계정 전환 로그인 경로(useAccountBoundary)에서 await 된다 —
+    // 호출부의 .catch()는 거부만 막을 뿐 무응답(hang)은 못 막으므로, 여기서 상한을 건다.
+    // 실패해도 무해하다(다음 계정 로그인 시 claim_push_token RPC가 회수).
+    const token =
+      (await withTimeout(getToken(), UNREGISTER_TIMEOUT_MS).catch(() => null)) ??
+      (await AsyncStorage.getItem(LAST_TOKEN_KEY).catch(() => null));
     if (!token) return;
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await withTimeout(supabase.auth.getUser(), UNREGISTER_TIMEOUT_MS);
     if (!user) return;
 
     const { error } = await supabase

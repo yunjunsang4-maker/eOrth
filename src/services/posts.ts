@@ -217,8 +217,13 @@ function mapRowToRecord(row: any): TravelRecord {
 const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles:public_profiles!posts_author_id_fkey(handle, emoji, profile_photo, handle_font)';
 
 // 피드: 남들의 공개/메이트 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
-export async function fetchFeed(): Promise<TravelRecord[]> {
-  if (!supabase) return [];
+//
+// ⚠️ 실패는 반드시 null 로 구분한다(빈 배열 아님). 예전엔 오류도 [] 로 돌려줘서
+//    호출부가 "글이 하나도 없다"와 구분하지 못했고, 그 결과 ①네트워크 오류인데
+//    "아직 기록이 없어요 + 첫 기록 남기기" 안내가 뜨고 ②빈 배열이 피드 캐시를
+//    덮어써 오프라인 재시작 시 마지막 피드까지 사라졌다.
+export async function fetchFeed(): Promise<TravelRecord[] | null> {
+  if (!supabase) return null;
   const uid = await getMyUserId();
   try {
     let query = supabase
@@ -230,10 +235,10 @@ export async function fetchFeed(): Promise<TravelRecord[]> {
       .limit(300);
     if (uid) query = query.neq('author_id', uid);
     const { data, error } = await query;
-    if (error || !data) return [];
+    if (error || !data) return null;
     return (data as any[]).map(mapRowToRecord);
   } catch {
-    return [];
+    return null;
   }
 }
 

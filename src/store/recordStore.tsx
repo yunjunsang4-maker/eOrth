@@ -264,6 +264,8 @@ interface RecordContextType {
   isBlocked: (user: { name?: string; handle?: string }) => boolean;
   // 신고한 게시물 id — 신고 시 피드에서 숨김(영속). 백엔드 도입 시 서버 신고도 함께 처리.
   reportedPostIds: string[];
+  reportedCommentIds: string[];
+  reportComment: (postId: string, commentId: string, reason?: string) => void;
   reportPost: (id: string, reason?: string) => void;
   // 음소거한 사용자 handle — 영속(알림 백엔드 도입 시 알림 억제에 사용)
   mutedHandles: string[];
@@ -353,6 +355,7 @@ interface RecordPersistPayload {
   neighbors?: FollowedFriend[];
   commentsByPost?: Record<string, PostComment[]>;
   reportedPostIds?: string[];
+  reportedCommentIds?: string[];
   mutedHandles?: string[];
   viewedSnapIds?: string[];
   // 해외 여행 세션 — 출국~귀국 사이 유지. 과거 저장본엔 없거나(미도입)
@@ -393,6 +396,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [outgoingNeighborRequests, setOutgoingNeighborRequests] = useState<string[]>([]);
   const [commentsByPost, setCommentsByPost] = useState<Record<string, PostComment[]>>(INITIAL_COMMENTS);
   const [reportedPostIds, setReportedPostIds] = useState<string[]>([]);
+  const [reportedCommentIds, setReportedCommentIds] = useState<string[]>([]);
   // 내가 본 타인 스냅(remoteId) — feedPosts는 재조회 시 초기화되므로 '안 본 링' 상태를 영속 유지
   const [viewedSnapIds, setViewedSnapIds] = useState<string[]>([]);
   const [mutedHandles, setMutedHandles] = useState<string[]>([]);
@@ -478,6 +482,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
       );
       setCommentsByPost(p.commentsByPost ?? INITIAL_COMMENTS);
       setReportedPostIds(p.reportedPostIds ?? []);
+      setReportedCommentIds(p.reportedCommentIds ?? []);
       setMutedHandles(p.mutedHandles ?? []);
       setViewedSnapIds(Array.isArray(p.viewedSnapIds) ? p.viewedSnapIds : []);
       if (p.countryCovers && typeof p.countryCovers === 'object' && !Array.isArray(p.countryCovers)) {
@@ -498,8 +503,8 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
         normalized && Date.now() - normalized.lastActiveAt <= 30 * 24 * 60 * 60 * 1000 ? normalized : null
       );
     },
-    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers, regionKeySchema }),
-    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, mutedHandles, viewedSnapIds, tripSession, countryCovers, regionKeySchema],
+    () => ({ records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSessionGroups: tripSession, countryCovers, regionKeySchema }),
+    [records, archivedIds, blockedUsers, tripGroups, drafts, neighbors, commentsByPost, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, tripSession, countryCovers, regionKeySchema],
   );
 
   // ─── 기록 → 여행 카드(트립 그룹) 자동 연결 ───
@@ -1288,6 +1293,23 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // 댓글 신고 → 즉시 숨김(영속) + 서버 reports 접수.
+  // App Store 1.2(UGC)는 불쾌한 콘텐츠를 신고하고 '즉시 사라지게' 하는 수단을 요구하는데,
+  // 게시물에만 있고 댓글에는 없었다. 신고 대상 식별은 게시물 신고와 같은 reports 테이블에
+  // post_id + reason(댓글 본문 일부 포함)으로 남긴다 — 운영자가 어느 댓글인지 찾을 수 있다.
+  const reportComment = (postId: string, commentId: string, reason?: string) => {
+    if (reportedCommentIds.includes(commentId)) return;
+    setReportedCommentIds((prev) => (prev.includes(commentId) ? prev : [...prev, commentId]));
+    if (isSupabaseConfigured) {
+      const target = records.find((r) => r.id === postId) ?? feedPosts.find((r) => r.id === postId);
+      const remoteId = target?.remoteId ?? (feedPosts.some((r) => r.id === postId) ? postId : null);
+      const body = (commentsByPost[postId] ?? []).find((c) => c.id === commentId)?.text ?? '';
+      apiReportPost(remoteId, `[comment:${commentId}] ${reason ?? ''} ${body.slice(0, 200)}`.trim()).catch(() => {
+        // 접수 실패는 조용히 무시 — 로컬 숨김은 이미 적용됨
+      });
+    }
+  };
+
   // 사용자 알림 음소거 토글/조회 (handle 기준, 영속)
   const toggleMute = (handle: string) => {
     if (!handle) return;
@@ -1638,6 +1660,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setNeighbors(INITIAL_NEIGHBORS);
     setCommentsByPost(INITIAL_COMMENTS);
     setReportedPostIds([]);
+    setReportedCommentIds([]);
     setMutedHandles([]);
     setCurrentViewer(null);
     setFeedPosts([]);
@@ -1664,6 +1687,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     try {
       // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
       const [posts, likedIds] = await withTimeout(Promise.all([fetchFeed(), fetchMyLikedPostIds()]), 12000);
+      // 조회 실패(null)면 현재 피드도 캐시도 건드리지 않는다 — 빈 배열로 덮으면
+      // 사용자에겐 '기록 없음'으로 보이고 오프라인용 캐시까지 지워진다.
+      if (!posts) {
+        emitToast(i18n.t('store.feedLoadFailed'));
+        return;
+      }
       const likedSet = new Set(likedIds);
       const fresh = posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
       feedFreshRef.current = true; // 이후 도착하는 캐시 복원이 구본으로 덮지 않게
@@ -1988,13 +2017,14 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   // ── 앱 상태 통합 백업(user_app_state) — 기록 부가상태 스냅샷 ──
   // 기록 본문은 posts, 여행카드는 user_trip_state가 담당하므로 여기선 부가상태만.
   const exportLocalStateBackup = (): Record<string, unknown> => ({
-    archivedIds, blockedUsers, reportedPostIds, mutedHandles, viewedSnapIds, countryCovers,
+    archivedIds, blockedUsers, reportedPostIds, reportedCommentIds, mutedHandles, viewedSnapIds, countryCovers,
   });
   const applyLocalStateBackup = (b: Record<string, unknown>) => {
     const v = b as any;
     if (Array.isArray(v.archivedIds)) setArchivedIds(v.archivedIds);
     if (Array.isArray(v.blockedUsers)) setBlockedUsers(v.blockedUsers);
     if (Array.isArray(v.reportedPostIds)) setReportedPostIds(v.reportedPostIds);
+    if (Array.isArray(v.reportedCommentIds)) setReportedCommentIds(v.reportedCommentIds);
     if (Array.isArray(v.mutedHandles)) setMutedHandles(v.mutedHandles);
     if (Array.isArray(v.viewedSnapIds)) setViewedSnapIds(v.viewedSnapIds);
     if (v.countryCovers && typeof v.countryCovers === 'object' && !Array.isArray(v.countryCovers)) setCountryCovers(v.countryCovers as Record<string, CountryCover>);
@@ -2058,7 +2088,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

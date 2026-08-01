@@ -1098,6 +1098,8 @@ const en = {
     recommendCount: '{{best}} of {{total}} recommended',
   },
   cutInfo: {
+    saveFailTitle: 'Save failed',
+    saveFailMsg: 'Something went wrong while saving.\nPlease try again.',
     travelInfo: 'Travel info',
     saving: 'Saving…',
     noticeTitle: 'Notice',

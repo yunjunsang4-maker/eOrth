@@ -668,6 +668,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 secureTextEntry
+                maxLength={72}
                 value={emailCurrentPassword}
                 onChangeText={setEmailCurrentPassword}
               />
@@ -725,6 +726,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 secureTextEntry
+                maxLength={72}
                 value={currentPassword}
                 onChangeText={setCurrentPassword}
               />
@@ -738,6 +740,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 placeholder={t('accountSettings.newPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 secureTextEntry
+                maxLength={72}
                 value={newPassword}
                 onChangeText={setNewPassword}
               />
@@ -754,6 +757,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                  placeholder={t('accountSettings.confirmPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
                 secureTextEntry
+                maxLength={72}
                 value={confirmPassword}
                 onChangeText={setConfirmPassword}
               />
@@ -902,6 +906,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                       placeholder={t('accountSettings.deletePasswordPlaceholder')}
                       placeholderTextColor={COLORS.textMuted}
                       secureTextEntry
+                maxLength={72}
                       value={deletePassword}
                       onChangeText={setDeletePassword}
                     />

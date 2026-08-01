@@ -12,6 +12,7 @@ import { getCurrentSession, signOut } from '../services/auth';
 import { isOnline } from '../utils/connectivity';
 import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
+import { withTimeout } from '../utils/withTimeout';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 스플래시 영상 — expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
@@ -22,6 +23,9 @@ const { width: SW, height: SH } = Dimensions.get('window');
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
 // 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
 const MAX_SPLASH_MS = 4000;
+// 진입 목적지 판정의 상한. 이 시간을 넘기면 로컬 신호만으로 폴백해 앱에 들어간다
+// (영상 대기 상한인 MAX_SPLASH_MS 와는 별개 — 그건 비동기 작업을 끊지 못한다).
+const DEST_TIMEOUT_MS = 8000;
 
 type Props = RootStackScreenProps<'Splash'>;
 
@@ -47,6 +51,8 @@ export default function SplashScreen({ navigation }: Props) {
 
   useEffect(() => {
     let navigated = false;
+    // 판정이 상한을 넘겼을 때 쓸 폴백 근거 — 세션 유무는 로컬에서 즉시 알 수 있다.
+    let sessionSeen = false;
 
     // 이동 목적지 결정(부수효과 포함). 영상 재생과 병렬로 즉시 시작해,
     // 영상이 끝날 즈음엔 네트워크 판정이 대부분 끝나 있게 한다.
@@ -55,6 +61,7 @@ export default function SplashScreen({ navigation }: Props) {
       const FORCE_ONBOARDING = false;
       if (isSupabaseConfigured && !FORCE_ONBOARDING) {
         const session = await getCurrentSession();
+        sessionSeen = !!session;
         // 확실히 오프라인이면 서버 확인(탈퇴 유예·온보딩 판정)을 건너뛰고 즉시 Main 진입 —
         // 오지/기내에서 타임아웃을 기다리며 스플래시에 갇히지 않게 한다.
         if (session && (await isOnline()) === false) {
@@ -102,7 +109,16 @@ export default function SplashScreen({ navigation }: Props) {
     const go = async () => {
       if (navigated) return;
       navigated = true;
-      const dest = await destination;
+      // ⚠️ MAX_SPLASH_MS 는 '영상 대기' 상한일 뿐 이 판정의 상한이 아니다.
+      // 상한이 없으면 판정 체인 안의 서버 호출 하나가 무응답일 때 스플래시 마지막
+      // 프레임에서 영구 정지해 앱 진입 자체가 불가능해진다. 판정이 늦거나 실패하면
+      // 오프라인 분기와 같은 기준(세션 유무 + 로컬 birthday)으로 폴백한다.
+      const fallback = (): 'Main' | 'BasicInfo' | 'AppIntro' => {
+        if (!sessionSeen) return 'AppIntro';
+        const b = birthdayRef.current;
+        return b && b.trim() ? 'Main' : 'BasicInfo';
+      };
+      const dest = await withTimeout(destination, DEST_TIMEOUT_MS).catch(fallback);
       navigation.replace(dest);
     };
 

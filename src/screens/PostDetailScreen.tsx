@@ -755,6 +755,7 @@ function SnapStoryViewer({
   const [toastMsg, setToastMsg] = useState('');
   const replyInputRef = useRef<TextInput>(null);
   const commentInputRef = useRef<TextInput>(null);
+  const sendingCommentRef = useRef(false);
 
   const commentSheetAnim = useRef(new Animated.Value(SCREEN_H * 0.6)).current;
   const commentOverlayAnim = useRef(new Animated.Value(0)).current;
@@ -903,7 +904,11 @@ function SnapStoryViewer({
   const isMyPost = currentSnap.isMyPost === true;
 
   const addComment = () => {
-    if (!commentText.trim()) return;
+    // 연타 가드 — 입력 비우기에만 의존하면 두 번 눌린 사이에 같은 댓글이 두 번 저장된다
+    // (서버 addComment 에 멱등키가 없어 중복 행이 그대로 남는다).
+    if (sendingCommentRef.current || !commentText.trim()) return;
+    sendingCommentRef.current = true;
+    setTimeout(() => { sendingCommentRef.current = false; }, 800);
     addCommentToStore(currentSnap.id, commentText.trim(), replyTo?.id);
     setReplyTo(null);
     setCommentText('');
@@ -1275,7 +1280,7 @@ function SnapStoryViewer({
             </View>
           )}
           <View style={storyS.csInputBar}>
-            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" />
+            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
             <TouchableOpacity style={[storyS.csSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { backgroundColor: "#2A2A3A" }]} onPress={addComment} disabled={!commentText.trim()}>
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
@@ -1365,7 +1370,7 @@ export default function PostDetailScreen() {
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
-  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser } = useRecords();
+  const { records, feedPosts, toggleLike, deleteRecord, archiveRecord, unarchiveRecord, updateRecord, markSnapViewed, commentsByPost, addComment: addCommentToStore, toggleCommentLike, deleteComment, neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, currentViewer, refreshComments, reportPost, isBlocked, archivedIds, reportedPostIds, blockUser, reportedCommentIds, reportComment } = useRecords();
   // 스냅 스토리 뷰어 소스 — 소셜 탭 스토리 링과 동일한 필터(공개범위·차단·보관·신고·뷰어 숨김) 적용.
   // 무필터로 넘기면 차단/신고한 사용자의 스냅이 스와이프로 그대로 재생된다.
   const { handle: globalHandle, profilePhoto: globalProfilePhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1391,12 +1396,17 @@ export default function PostDetailScreen() {
 
   // 수정 3: 차단된 사용자의 댓글·답글 필터 (PostComment에 handle 없으므로 name으로 매칭)
   const rawComments = commentsByPost[postId] ?? [];
+  // 차단한 사용자 + 신고한 댓글은 즉시 사라져야 한다(App Store 1.2 UGC 요건).
   const comments = rawComments
-    .filter((c) => !isBlocked({ name: c.name }))
+    .filter((c) => !isBlocked({ name: c.name }) && !reportedCommentIds.includes(c.id))
     .map((c) => ({
       ...c,
-      replies: c.replies ? c.replies.filter((r) => !isBlocked({ name: r.name })) : c.replies,
+      replies: c.replies
+        ? c.replies.filter((r) => !isBlocked({ name: r.name }) && !reportedCommentIds.includes(r.id))
+        : c.replies,
     }));
+  // 신고할 댓글 id (모달 대상) — 게시물 신고와 모달은 같고 대상만 다르다
+  const [commentReportId, setCommentReportId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [showCompanions, setShowCompanions] = useState(false);
   // null = 자동: 채워진 항목이 2개 이하면 접을 이유가 없어 펼쳐서 시작, 3개 이상이면 접힘
@@ -1421,6 +1431,7 @@ export default function PostDetailScreen() {
     setFullImgVisible(true);
   };
   const commentInputRef = useRef<TextInput>(null);
+  const sendingCommentRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const blockYPositions = useRef<Record<string, number>>({});
   // 더블탭 좋아요
@@ -1545,7 +1556,10 @@ export default function PostDetailScreen() {
   const bodyLong = bodyText.trim().length > 150;
 
   const addComment = () => {
-    if (!commentText.trim()) return;
+    // 연타 가드 — 위 스토리 댓글과 같은 이유(서버 멱등키 없음)
+    if (sendingCommentRef.current || !commentText.trim()) return;
+    sendingCommentRef.current = true;
+    setTimeout(() => { sendingCommentRef.current = false; }, 800);
     // remoteId 오버라이드 — 스토어에 없는 폴백 글(타인 프로필)도 댓글이 서버에 저장되게
     addCommentToStore(postId, commentText.trim(), replyTo?.id, record.remoteId ?? undefined);
     setReplyTo(null);
@@ -2234,9 +2248,13 @@ export default function PostDetailScreen() {
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
                       <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
                     </TouchableOpacity>
-                    {c.isMine && (
+                    {c.isMine ? (
                       <TouchableOpacity onPress={() => confirmDeleteComment(c.id)}>
                         <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <TouchableOpacity onPress={() => setCommentReportId(c.id)}>
+                        <Text style={s.commentActionText}>{t('social.report')}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -2271,9 +2289,13 @@ export default function PostDetailScreen() {
                       <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
                         <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
                       </TouchableOpacity>
-                      {r.isMine && (
+                      {r.isMine ? (
                         <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
                           <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity onPress={() => setCommentReportId(r.id)}>
+                          <Text style={s.commentActionText}>{t('social.report')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>
@@ -2313,6 +2335,7 @@ export default function PostDetailScreen() {
             onChangeText={setCommentText}
             onSubmitEditing={addComment}
             returnKeyType="send"
+            maxLength={500}
           />
           <TouchableOpacity
             style={[s.sendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && s.sendBtnDisabled]}
@@ -2449,6 +2472,19 @@ export default function PostDetailScreen() {
         onSubmit={(reason) => {
           setReportVisible(false);
           reportPost(record.id, reason);
+          setToastMsg(t('social.reportReceivedToast'));
+          setTimeout(() => setToastMsg(''), 2000);
+        }}
+      />
+
+      {/* 댓글 신고 — 접수 즉시 해당 댓글이 목록에서 사라진다(App Store 1.2) */}
+      <ReportModal
+        visible={commentReportId !== null}
+        onClose={() => setCommentReportId(null)}
+        onSubmit={(reason) => {
+          const id = commentReportId;
+          setCommentReportId(null);
+          if (id) reportComment(postId, id, reason);
           setToastMsg(t('social.reportReceivedToast'));
           setTimeout(() => setToastMsg(''), 2000);
         }}

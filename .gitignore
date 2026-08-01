@@ -52,7 +52,15 @@ cg_tmp.js
 .superpowers/
 
 # Supabase keys
-.env
+# ⚠️ `.env` 만 두면 .env.production / .env.development / .env.preview 가 걸러지지 않는다
+#    (실측 확인). EAS 빌드 프로필별 env 파일은 출시 준비 중 흔히 만들게 되므로 전부 막고
+#    템플릿인 .env.example 만 예외로 허용한다.
+.env*
+!.env.example
+
+# 서명 자격증명 — /ios /android 디렉터리 무시로 대부분 덮이지만 루트에 두는 경우 대비
+*.keystore
+GoogleService-Info.plist
 
 # Supabase CLI 로컬 캐시(링크 정보 등) — 커밋 금지
 supabase/.temp/

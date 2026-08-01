@@ -56,9 +56,8 @@ import { GLOBE_SKINS } from '../constants/globeSkins';
 import { useSkinAccent } from '../constants/skinTheme';
 import { LinearGradient } from 'expo-linear-gradient';
 
-// 개인정보처리방침·이용약관 게시 URL (GitHub Pages)
-const PRIVACY_POLICY_URL = 'https://yunjunsang4-maker.github.io/eOrth/privacy-policy.html';
-const TERMS_URL = 'https://yunjunsang4-maker.github.io/eOrth/terms.html';
+// 개인정보처리방침·이용약관 게시 URL — 가입 화면과 공유하므로 constants/legalLinks 가 단일 출처
+import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
 // 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
 const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
