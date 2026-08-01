@@ -5,6 +5,21 @@ import { WORLD_GEO_TEXT } from '../data/vendorWorldGeo';
 type Ring = [number, number][]; // [lon, lat]
 type Feature = { properties: { name: string }; geometry: { type: string; coordinates: any } };
 
+// GeoJSON의 구식 국가명 → 표준 이름. countryLocate.ts·GlobeView의 GEO_NAME_FIX와 같은 표다
+// (같은 GeoJSON을 쓰므로 세 곳이 항상 같아야 한다).
+// 이 보정이 없으면 호출부가 넘기는 표준명('United States of America' 등)이 피처의 구식
+// 이름('USA')과 안 맞아 미국·영국·세르비아 등에서 GPS 필터가 조용히 사라진다.
+const GEO_NAME_FIX: Record<string, string> = {
+  'USA': 'United States of America',
+  'England': 'United Kingdom',
+  'Republic of Serbia': 'Serbia',
+  'United Republic of Tanzania': 'Tanzania',
+  'Macedonia': 'North Macedonia',
+  'Swaziland': 'Eswatini',
+  'Republic of the Congo': 'Congo',
+  'West Bank': 'Palestine',
+};
+
 let worldGeo: { features: Feature[] } | null = null;
 const featureCache: Record<string, Feature | null> = {};
 
@@ -14,7 +29,11 @@ export function getCountryFeature(nameEn: string): Feature | null {
   if (!worldGeo) {
     try { worldGeo = JSON.parse(WORLD_GEO_TEXT); } catch { worldGeo = { features: [] }; }
   }
-  const f = worldGeo!.features.find((x) => x.properties?.name === nameEn) ?? null;
+  // 표준명·구식 이름 어느 쪽으로 물어봐도 찾도록 양방향으로 대조한다.
+  const f = worldGeo!.features.find((x) => {
+    const raw = x.properties?.name;
+    return !!raw && (raw === nameEn || (GEO_NAME_FIX[raw] ?? raw) === nameEn);
+  }) ?? null;
   featureCache[nameEn] = f;
   return f;
 }

@@ -6,6 +6,8 @@ import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 // badges.ts가 아니라 badgeVisibility.ts에서 가져온다 — badges.ts에는 배지 이미지 require가
 // 40개 넘게 있어, 여기서 그걸 끌고 오면 이 순수 로직의 검증(npm test)이 node에서 못 돈다.
 import { HIDDEN_BADGE_IDS } from '../constants/badgeVisibility';
+// 날씨 별칭 정규화(순수 로직, RN 의존 없음) — 101·102 집계를 기록 화면과 같은 기준으로 맞춘다.
+import { normalizeWeather } from './weatherKey';
 
 // 판정에 필요한 최소 필드만 받는다(TravelRecord와 느슨하게 호환).
 export interface BadgeStatRecord {
@@ -326,6 +328,9 @@ export interface TravelStats {
   maxCountryVisits: number;   // 한 국가 최다 방문 횟수(여행 단위)
   islandVisits: number;       // 섬(섬나라+섬지역) 방문 횟수(여행 단위)
   regionsByCountry: Map<string, Set<string>>; // 국가 → 방문한 서로 다른 지역(regionName) 집합
+  // 거주국 이름(별칭 포함). 방문국 집계에서는 제외되지만 '전 국가/대륙 정복'(43·44)
+  // 판정에서는 covered로 합류시켜야 해서 통계에 남긴다.
+  homeNames: Set<string>;
 }
 
 // 내 기록만 모아 통계를 집계한다.
@@ -507,10 +512,13 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
       if (r.rating === 5) rating5Count += 1;
       if (r.rating === 1) rating1Count += 1;
     }
-    // 날씨 기록 (101·102) — 피드·블로그·스트립만
+    // 날씨 기록 (101·102) — 피드·블로그·스트립만.
+    // 저장값에 별칭('폭설'·'천둥' 등)이 섞여 있어 canonical 6종으로 접은 뒤 센다
+    // (기록 화면 아이콘과 같은 기준 — weatherKey.normalizeWeather).
     if (isDiary && r.weather) {
-      if (r.weather === '비') rainRecordCount += 1;
-      else if (r.weather === '눈') snowRecordCount += 1;
+      const w = normalizeWeather(r.weather);
+      if (w === '비') rainRecordCount += 1;
+      else if (w === '눈') snowRecordCount += 1;
     }
     if (r.companions) for (const comp of r.companions) companions.add(comp);
 
@@ -599,6 +607,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     monthsRecorded,
     maxCountryVisits,
     regionsByCountry,
+    homeNames,
     islandVisits: countDistinctTrips(islandReps), // 섬 방문도 여행 단위
     japanVisits: countDistinctTrips(repsByCountry.get('일본') ?? []), // 기록 수가 아니라 여행 단위
   };
@@ -690,8 +699,13 @@ export function computeEarnedBadgeIds(
   // ── 뉴욕 방문 (미국 대륙 기록의 뉴욕 지역) ──
   // regionsByCountry는 대륙 기록 + 피드·블로그·스트립만 담으므로 지구본·스냅·앨범은 자동 제외.
   const usRegions = s.regionsByCountry.get('미국');
+  // 지역명이 없고 코드(regionNameEn = 'US-NY')만 남은 기록도 인정한다 — 지역 키가
+  // 코드 체계로 마이그레이션된 뒤 저장된 기록이 이름 비교만으로는 걸리지 않았다.
   const visitedNewYork = usRegions
-    ? [...usRegions].some((r) => { const x = r.toLowerCase().replace(/\s+/g, ''); return x.includes('뉴욕') || x.includes('newyork'); })
+    ? [...usRegions].some((r) => {
+        const x = r.toLowerCase().replace(/\s+/g, '');
+        return x.includes('뉴욕') || x.includes('newyork') || x.includes('us-ny');
+      })
     : false;
   on(25, visitedNewYork);
 
@@ -713,7 +727,11 @@ export function computeEarnedBadgeIds(
 
   // ── 모든 등록 국가 방문 (피드·블로그·스트립) ──
   // 대한민국은 별칭 '한국'으로 기록됐을 수 있어 보정.
+  // 거주국은 방문국 집계(diaryCountries)에서 빠지지만, '전 국가'·'대륙 정복'은 사는 나라를
+  // 안 가본 나라로 두면 구조적으로 달성 불가라 이 판정에서만 covered로 합류시킨다.
+  // (43·44 전용 지역 변수라 다른 배지·방문국 카운트에는 영향이 없다)
   const coveredCountries = new Set(s.diaryCountries);
+  for (const h of s.homeNames) coveredCountries.add(h);
   if (coveredCountries.has('한국')) coveredCountries.add('대한민국');
   on(43, COUNTRIES.every((c) => coveredCountries.has(c.name)));
 
