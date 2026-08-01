@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { View, StyleSheet, Dimensions } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRecords } from '../store/recordStore';
@@ -27,7 +27,11 @@ type Props = RootStackScreenProps<'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
   const { resetRecords } = useRecords();
-  const { resetSettings } = useSettings();
+  const { resetSettings, birthday } = useSettings();
+  // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
+  // (effect는 마운트 1회만 도는데, 그 사이 계정 경계 처리가 birthday를 바꿀 수 있다)
+  const birthdayRef = useRef(birthday);
+  birthdayRef.current = birthday;
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
 
@@ -55,7 +59,10 @@ export default function SplashScreen({ navigation }: Props) {
         // 오지/기내에서 타임아웃을 기다리며 스플래시에 갇히지 않게 한다.
         if (session && (await isOnline()) === false) {
           await runAccountBoundary(); // 내부 서버 호출은 로컬 폴백으로 즉시 종료됨
-          return 'Main';
+          // 온라인 분기와 같은 기준(로컬 birthday = 온보딩 완료 신호)으로 판정한다.
+          // 생략하면 온보딩 중 이탈한 사용자가 비행기모드로 앱을 켜는 것만으로 Main에 들어간다.
+          const localBirthday = birthdayRef.current;
+          return localBirthday && localBirthday.trim() ? 'Main' : 'BasicInfo';
         }
         const pending = session ? await getPendingDeletion() : null;
         // 탈퇴 유예(30일) 만료 → 서버까지 영구 파기 후 초기 화면으로.

@@ -176,6 +176,23 @@ export default function AccountSettingsScreen({ navigation }: Props) {
   const [deleteSocialConfirm, setDeleteSocialConfirm] = useState('');
   const [deleteSubmitting, setDeleteSubmitting] = useState(false); // 서버 신청 중 중복 제출 방지
 
+  // 본인 확인(현재 비밀번호 재인증) 공용 — 성공하면 null, 실패하면 보여줄 안내 문구를 반환한다.
+  // Supabase updateUser는 기존 비밀번호를 확인하지 않으므로 현재 이메일+비밀번호로 재로그인해
+  // 본인 확인을 대신한다(같은 계정이라 세션 영향 없음).
+  const verifyCurrentPassword = async (password: string): Promise<string | null> => {
+    // 계정 이메일은 서버가 원본이다. 조회에 실패했는데(오프라인·세션 만료) 로컬 signUpEmail로
+    // 폴백하면 기본값('user@eorth.app')으로 로그인 시도가 가서, 네트워크 문제가 전부
+    // '비밀번호가 틀렸다'로 표시된다 → 검증을 아예 시도하지 않고 네트워크 안내로 구분한다.
+    const email = await getAuthEmail();
+    if (!email) return t('login.networkError');
+    const verify = await signInWithEmail(email.toLowerCase(), password);
+    if (verify.ok) return null;
+    // 자격 증명 오류만 '현재 비밀번호가 다름'으로, 네트워크·타임아웃 등은 원인 안내를 그대로 보여준다.
+    return !verify.error || verify.error === t('authErr.invalidCred')
+      ? t('accountSettings.currentPasswordWrongMsg')
+      : verify.error;
+  };
+
   // 실제 이메일 변경: 본인 확인(현재 비밀번호 재인증) 후 auth에 변경을 요청하면
   // 새 주소로 인증 메일이 가고, 링크 확인 후 변경이 완료된다.
   // (즉시 로컬 표시만 바꾸면 로그인 이메일과 어긋난다 — 인증 완료 후 위 useEffect가 표시를 동기화)
@@ -204,16 +221,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
     setEmailSubmitting(true);
     try {
-      // 본인 확인 — Supabase updateUser는 기존 비밀번호를 확인하지 않으므로
-      // 현재 이메일+현재 비밀번호로 재로그인해 본인 확인을 대신한다(같은 계정이라 세션 영향 없음).
-      const email = (await getAuthEmail()) ?? signUpEmail;
-      if (!email) {
-        Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
-        return;
-      }
-      const verify = await signInWithEmail(email.toLowerCase(), trimmedPassword);
-      if (!verify.ok) {
-        Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+      const verifyError = await verifyCurrentPassword(trimmedPassword);
+      if (verifyError) {
+        Alert.alert(t('accountSettings.errorTitle'), verifyError);
         return;
       }
       const result = await requestEmailChange(newEmail);
@@ -285,16 +295,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
     setPasswordSubmitting(true);
     try {
-      // 현재 비밀번호 검증 — Supabase updateUser는 기존 비밀번호를 확인하지 않으므로
-      // 현재 이메일+현재 비밀번호로 재로그인해 본인 확인을 대신한다(같은 계정이라 세션 영향 없음).
-      const email = (await getAuthEmail()) ?? signUpEmail;
-      if (!email) {
-        Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
-        return;
-      }
-      const verify = await signInWithEmail(email.toLowerCase(), trimmedCurrent);
-      if (!verify.ok) {
-        Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+      const verifyError = await verifyCurrentPassword(trimmedCurrent);
+      if (verifyError) {
+        Alert.alert(t('accountSettings.errorTitle'), verifyError);
         return;
       }
       const result = await updatePassword(trimmedNew);
@@ -350,14 +353,9 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     try {
       // 수정1: email 가입자 — 비밀번호 재인증으로 본인 확인
       if (signUpMethod === 'email') {
-        const email = (await getAuthEmail()) ?? signUpEmail;
-        if (!email) {
-          Alert.alert(t('accountSettings.errorTitle'), t('login.genericError'));
-          return;
-        }
-        const verify = await signInWithEmail(email.toLowerCase(), deletePassword.trim());
-        if (!verify.ok) {
-          Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.currentPasswordWrongMsg'));
+        const verifyError = await verifyCurrentPassword(deletePassword.trim());
+        if (verifyError) {
+          Alert.alert(t('accountSettings.errorTitle'), verifyError);
           return;
         }
       }

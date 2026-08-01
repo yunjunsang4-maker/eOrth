@@ -307,6 +307,9 @@ export default function LoginScreen({ navigation }: Props) {
                 Alert.alert(t('login.recoverFailTitle'), t('login.recoverFailMsg'));
                 return;
               }
+              // recoverFresh와 동일하게 가입 정보를 적용한다 — 빠뜨리면 가입 수단이 기본값('email')로
+              // 남아 소셜 계정이 이메일 계정으로 오인되고(비밀번호 변경·탈퇴 흐름이 어긋남) 이메일도 기본값이 된다.
+              applySignup();
               goTo('Main');
             })();
           },
@@ -379,67 +382,76 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const handleSubmit = async () => {
+    if (submitting) return; // 연타 방지(버튼 disabled의 이중 안전망)
     const identifier = email.trim();
     const normEmail = normalizeEmail(email);
     const usedEmail = isValidEmail(identifier); // 로그인 입력이 이메일인지(아니면 아이디)
 
-    // Supabase 미설정: 기존 모의 로그인 유지
-    if (!isSupabaseConfigured) {
-      const applyMock = () => {
-        setSignUpMethod('email');
-        setSignUpEmail(normEmail || 'user@eorth.app');
-      };
-      proceedAfterAuth(applyMock, isSignup ? 'BasicInfo' : 'Main');
-      return;
-    }
-
+    // 인증 성공 뒤에도 프로필 조회·계정 경계 처리·네비게이션이 수십 초 걸릴 수 있다.
+    // 그 사이 버튼을 되살리면 무반응처럼 보이고 재탭으로 로그인이 중복 실행된다 →
+    // '이동(또는 실패 확정)이 끝날 때'까지 submitting을 유지한다(finally에서 한 번만 해제).
     setSubmitting(true);
-    const result = isSignup
-      ? await signUpWithEmail(normEmail, password)
-      : await signInWithIdentifier(identifier, password); // 이메일 또는 아이디로 로그인
-    setSubmitting(false);
-
-    if (!result.ok) {
-      Alert.alert(isSignup ? t('login.signupFailed') : t('login.loginFailed'), result.error ?? t('login.genericError'));
-      return;
-    }
-    if (result.needsEmailConfirm) {
-      const targetEmail = normEmail;
-      Alert.alert(
-        t('login.emailVerifyTitle'),
-        t('login.emailVerifyMsg'),
-        [
-          { text: t('login.resendMail'), onPress: () => handleResendConfirmation(targetEmail) },
-          { text: t('common.confirm'), onPress: () => switchMode('login') },
-        ],
-      );
-      return;
-    }
-    // 아이디로 로그인했으면 실제 이메일을 서버에서 조회해 저장(아이디를 이메일로 저장하지 않도록).
-    let storedEmail: string | null = usedEmail ? normEmail : null;
-    if (!isSignup && !usedEmail) {
-      storedEmail = await getAuthEmail();
-    }
-    const applySignup = () => {
-      setSignUpMethod('email');
-      if (storedEmail) setSignUpEmail(storedEmail);
-      else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
-    };
-
-    // 로그인도 소셜·Splash와 동일하게 온보딩 완료(생일 채움) 여부로 목적지를 판정한다.
-    // 무조건 Main으로 보내면 온보딩 중 이탈한 사용자가 프로필(아이디·생일) 없이 메인에 진입한다.
-    let destination: 'BasicInfo' | 'Main' = 'BasicInfo';
-    if (!isSignup) {
-      const status = await getMyProfileStatus();
-      if (!status.reached) {
-        // 신규/기존 판정 불가(일시적 네트워크 오류) → 오라우팅 대신 Splash에서 재평가
-        applySignup();
-        navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+    try {
+      // Supabase 미설정: 기존 모의 로그인 유지
+      if (!isSupabaseConfigured) {
+        const applyMock = () => {
+          setSignUpMethod('email');
+          setSignUpEmail(normEmail || 'user@eorth.app');
+        };
+        await proceedAfterAuth(applyMock, isSignup ? 'BasicInfo' : 'Main');
         return;
       }
-      destination = status.profile?.birthday && status.profile.birthday.trim() ? 'Main' : 'BasicInfo';
+
+      const result = isSignup
+        ? await signUpWithEmail(normEmail, password)
+        : await signInWithIdentifier(identifier, password); // 이메일 또는 아이디로 로그인
+
+      if (!result.ok) {
+        Alert.alert(isSignup ? t('login.signupFailed') : t('login.loginFailed'), result.error ?? t('login.genericError'));
+        return;
+      }
+      if (result.needsEmailConfirm) {
+        const targetEmail = normEmail;
+        Alert.alert(
+          t('login.emailVerifyTitle'),
+          t('login.emailVerifyMsg'),
+          [
+            { text: t('login.resendMail'), onPress: () => handleResendConfirmation(targetEmail) },
+            { text: t('common.confirm'), onPress: () => switchMode('login') },
+          ],
+        );
+        return;
+      }
+      // 아이디로 로그인했으면 실제 이메일을 서버에서 조회해 저장(아이디를 이메일로 저장하지 않도록).
+      let storedEmail: string | null = usedEmail ? normEmail : null;
+      if (!isSignup && !usedEmail) {
+        storedEmail = await getAuthEmail();
+      }
+      const applySignup = () => {
+        setSignUpMethod('email');
+        if (storedEmail) setSignUpEmail(storedEmail);
+        else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
+      };
+
+      // 로그인도 소셜·Splash와 동일하게 온보딩 완료(생일 채움) 여부로 목적지를 판정한다.
+      // 무조건 Main으로 보내면 온보딩 중 이탈한 사용자가 프로필(아이디·생일) 없이 메인에 진입한다.
+      let destination: 'BasicInfo' | 'Main' = 'BasicInfo';
+      if (!isSignup) {
+        const status = await getMyProfileStatus();
+        if (!status.reached) {
+          // 신규/기존 판정 불가(일시적 네트워크 오류) → 오라우팅 대신 Splash에서 재평가
+          applySignup();
+          navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
+          return;
+        }
+        destination = status.profile?.birthday && status.profile.birthday.trim() ? 'Main' : 'BasicInfo';
+      }
+      await proceedAfterAuth(applySignup, destination);
+    } finally {
+      // 성공 시엔 이미 화면이 교체된 뒤라 무의미하고(언마운트 후 setState는 no-op),
+      // 실패·복구 안내로 로그인 화면에 남는 경로에서는 버튼이 반드시 되살아난다.
+      setSubmitting(false);
     }
-    proceedAfterAuth(applySignup, destination);
   };
 
   return (
