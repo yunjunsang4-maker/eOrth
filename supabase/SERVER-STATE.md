@@ -10,6 +10,7 @@
 >
 > - **Edge Function 배포 = 실측.** `supabase functions list` 로 서버에서 직접 받은 값. 4개 전량 최신.
 > - **`schema.sql` 실행 = 실측.** 감사 커밋에서 처음 도입된 `safe_to_date` 가 서버에 존재함을 확인(방법은 맨 아래).
+> - **감사 수정분 = 실측.** `uq_profiles_handle_lower` 인덱스 생성도 SQL Editor 조회로 확인.
 > - **개별 항목 실행일 = 작업 기록 기반.** "이미 된 것" 표의 **날짜**는 서버에서 확인한 값이 아니다.
 >   다만 `schema.sql` 이 멱등이고 최신 상태로 실행됐으므로, 항목 자체는 모두 반영돼 있다.
 >
@@ -21,12 +22,11 @@
 
 **서버 반영 작업은 없다.** 2026-08-01 기준으로 `schema.sql` 재실행과 Edge Function 4종 배포가 모두 끝났다.
 
-남은 것은 아래 두 가지뿐이다.
-- **4번(정리 대기)** — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없음.
-- **미확인 1건** — `uq_profiles_handle_lower` 인덱스 생성 여부. 인덱스는 PostgREST로 조회할 수 없어
-  anon 키로 확인이 안 된다. SQL Editor에서 맨 아래 1)번 쿼리로 확인할 것.
-  대소문자만 다른 handle 중복이 있으면 인덱스 생성이 **warning 으로 조용히 건너뛰어지므로**(schema.sql 67·84행),
-  빈 결과가 나오면 중복을 정리한 뒤 `schema.sql` 을 다시 실행해야 한다.
+`uq_profiles_handle_lower` 인덱스도 SQL Editor 조회로 **생성 확인됨**(2026-08-01).
+이 인덱스는 대소문자만 다른 handle 중복이 있으면 warning 만 남기고 조용히 건너뛰어지는데(schema.sql 67·84행),
+실제로 만들어졌다는 것은 **중복 handle 이 없었다**는 뜻이기도 하다.
+
+남은 것은 **4번(정리 대기)** 하나뿐이다 — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
 
 **2026-08-01 재실행에 포함된 감사 수정분** (커밋 `a828788` · `406116c`):
 - 이웃 관계 위조 방어 — `neighbors.requester_id` 컬럼 단위 grant (schema.sql 584행)
@@ -49,7 +49,7 @@
 | 장기체류(Stay) 모델 | 2026-07-16 | — | |
 | `post_counts` RPC (`migration-2026-07-17-post-counts.sql`) | 2026-07-17 | ✅ 존재 | `create or replace` 라 재실행 안전 |
 | 여행 DNA 매칭 6축 재설계 | 2026-07-28 | ✅ 존재 | `mate_suggestions` (schema.sql 663행) |
-| 스키마 감사 수정 10건 | 2026-08-01 | ✅ 존재 | `safe_to_date` 로 확인 (커밋 `a828788`·`406116c`) |
+| 스키마 감사 수정 10건 | 2026-08-01 | ✅ 확인 | `safe_to_date` 함수 + `uq_profiles_handle_lower` 인덱스 (커밋 `a828788`·`406116c`) |
 
 > ⚠️ **`follower_counts` 는 없는 게 정상이다.** 2026-06-30에 도입됐다가 7-15 이웃 모델 전환 때
 > `neighbor_counts` 로 대체됐고, schema.sql 1295행에서 명시적으로 `drop` 한다. 클라이언트도
@@ -146,7 +146,7 @@ const r = await fetch(`${URL}/rest/v1/rpc/safe_to_date`, {
 ### B. SQL Editor에서 확인 (인덱스·권한 등 A로 못 보는 것)
 
 ```sql
--- 1) ⬅️ 아직 확인 못 한 유일한 항목. 한 줄 나오면 정상, 빈 결과면 2)의 중복부터 정리할 것.
+-- 1) 유니크 인덱스 (2026-08-01 확인: 존재). 빈 결과로 바뀌면 2)의 중복부터 정리할 것.
 select indexname from pg_indexes
  where schemaname = 'public' and indexname = 'uq_profiles_handle_lower';
 
