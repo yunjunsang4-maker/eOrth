@@ -1,10 +1,11 @@
 // 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록.
-// 삭제: 왼쪽 스와이프(버튼 탭 또는 끝까지 밀면 즉시) 또는 길게 눌러 확인 후.
+// 삭제: 왼쪽 스와이프로 드러난 삭제 버튼 탭 또는 길게 누르기 — 둘 다 확인 Alert를 거친다.
 import React from 'react';
 import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity } from 'react-native';
 // RN Modal은 별도 네이티브 뷰 계층이라 앱 루트의 GestureHandlerRootView가 닿지 않는다 — 시트 내부에 자체 루트 필요
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
+import type { SwipeableMethods } from 'react-native-gesture-handler/ReanimatedSwipeable';
 import { useTranslation } from 'react-i18next';
 import { useMoments } from '../../store/momentStore';
 import type { TravelMoment } from '../../store/momentStore';
@@ -21,9 +22,11 @@ export default function MomentListSheet({
   const { t } = useTranslation();
   const { removeMoment } = useMoments();
 
-  const confirmDelete = (m: TravelMoment) => {
+  // 삭제 확인 — 스와이프 버튼·롱프레스가 같은 경로를 쓴다.
+  // swipeable을 받으면 취소 시 열려 있던 행을 닫아 준다(확정 시엔 행 자체가 사라진다).
+  const confirmDelete = (m: TravelMoment, swipeable?: SwipeableMethods) => {
     Alert.alert(t('moments.deleteTitle'), m.text || m.mood || '', [
-      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('common.cancel'), style: 'cancel', onPress: () => swipeable?.close() },
       { text: t('moments.deleteConfirm'), style: 'destructive', onPress: () => removeMoment(m.id) },
     ]);
   };
@@ -47,15 +50,21 @@ export default function MomentListSheet({
           keyExtractor={(m) => m.id}
           contentContainerStyle={{ padding: 16, flexGrow: 1 }}
           renderItem={({ item }) => (
-            // 왼쪽 스와이프 → 오른쪽에 삭제 버튼(고정 폭)이 드러나고, 끝까지 밀면 즉시 삭제
+            // 왼쪽 스와이프 → 오른쪽에 삭제 버튼(고정 폭)이 드러난다.
+            // 스와이프만으로는 지우지 않는다 — 확인 없는 영구 삭제를 막고, 드러난 버튼을
+            // 실제로 누를 수 있게(예전엔 열리자마자 삭제돼 버튼이 죽은 UI였다) 한다.
             <ReanimatedSwipeable
-              renderRightActions={() => (
-                <TouchableOpacity style={st.deleteAction} onPress={() => removeMoment(item.id)}>
+              renderRightActions={(_progress, _translation, swipeable) => (
+                <TouchableOpacity
+                  style={st.deleteAction}
+                  onPress={() => confirmDelete(item, swipeable)}
+                  accessibilityRole="button"
+                  accessibilityLabel={t('moments.deleteConfirm')}
+                >
                   <Text style={st.deleteActionText}>🗑️</Text>
                   <Text style={st.deleteActionText}>{t('moments.deleteConfirm')}</Text>
                 </TouchableOpacity>
               )}
-              onSwipeableOpen={(direction) => { if (direction === 'right') removeMoment(item.id); }}
               rightThreshold={64}
               overshootRight={false}
             >

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Svg, { Circle } from 'react-native-svg';
 
 // Deterministic pseudo-random
@@ -28,25 +28,27 @@ export default function GrainOverlay({ opacity = 0.06, dotCount = 120, color = '
     return arr;
   }, [dotCount]);
 
+  // 새 아키텍처의 RNSVG는 Svg에 직접 준 pointerEvents를 무시한다 —
+  // 반드시 View(pointerEvents="none")로 감싸야 터치가 아래로 통과한다(StarFieldBackground와 동일).
   return (
-    <Svg
-      width="100%"
-      height="100%"
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-      viewBox="0 0 200 200"
-      preserveAspectRatio="xMidYMid slice"
-    >
-      {dots.map((d, i) => (
-        <Circle
-          key={i}
-          cx={d.cx}
-          cy={d.cy}
-          r={d.r}
-          fill={color}
-          opacity={d.o * opacity}
-        />
-      ))}
-    </Svg>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg
+        width="100%"
+        height="100%"
+        viewBox="0 0 200 200"
+        preserveAspectRatio="xMidYMid slice"
+      >
+        {dots.map((d, i) => (
+          <Circle
+            key={i}
+            cx={d.cx}
+            cy={d.cy}
+            r={d.r}
+            fill={color}
+            opacity={d.o * opacity}
+          />
+        ))}
+      </Svg>
+    </View>
   );
 }

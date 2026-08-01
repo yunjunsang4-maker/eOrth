@@ -128,8 +128,11 @@ const fp = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.white,
   },
+  // 높이 auto(maxHeight '65%') 시트라 flex:1을 주면 Yoga의 at-most 측정에서 높이가 0이 되어
+  // 목록이 통째로 사라진다(메이트 선택 불가). 자매 모달(PrivacyModal·CurrencyPickerModal)과
+  // 같이 고정 maxHeight로 잡아 콘텐츠 높이만큼 늘어나되 넘치면 스크롤되게 한다.
   list: {
-    flex: 1,
+    maxHeight: 300,
   },
   row: {
     flexDirection: 'row',

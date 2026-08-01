@@ -58,27 +58,31 @@ function useReduceTransparency() {
   return reduce;
 }
 
+// 새 아키텍처의 RNSVG는 Svg에 직접 준 pointerEvents를 무시한다 — View(pointerEvents="none")
+// 래퍼가 있어야 유리 표면 위 버튼·스크롤 터치가 이 장식 레이어에 먹히지 않는다.
 function EdgeHighlight({ radius, gradId }: { radius: number; gradId: string }) {
   return (
-    <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" pointerEvents="none">
-      <Defs>
-        <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.4" />
-          <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-        </SvgLinearGradient>
-      </Defs>
-      <Rect
-        x={0}
-        y={0}
-        width="100%"
-        height="100%"
-        rx={radius}
-        ry={radius}
-        fill="none"
-        stroke={`url(#${gradId})`}
-        strokeWidth={1}
-      />
-    </Svg>
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%">
+        <Defs>
+          <SvgLinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor="#FFFFFF" stopOpacity="0.4" />
+            <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+          </SvgLinearGradient>
+        </Defs>
+        <Rect
+          x={0}
+          y={0}
+          width="100%"
+          height="100%"
+          rx={radius}
+          ry={radius}
+          fill="none"
+          stroke={`url(#${gradId})`}
+          strokeWidth={1}
+        />
+      </Svg>
+    </View>
   );
 }
 

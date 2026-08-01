@@ -1,6 +1,6 @@
 // 초대 귀속 넛지 모달 — 초대 딥링크로 가입한 사용자에게 첫 메인 진입 시
 // "초대자와 메이트 연결"을 제안한다. (Alert 대체 — 앱 다크 보라 톤, StayPromptModal 관례)
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from './icons';
@@ -19,6 +19,9 @@ export function InviteNudgeModal({ target, onSend, onClose }: {
   const { t } = useTranslation();
   // 사진 로드 실패 시 아이콘으로 회귀 (깨진 이미지 방지)
   const [imgError, setImgError] = useState(false);
+  // 대상이 바뀌면 다시 시도 — 안 그러면 한 번 실패한 뒤엔 이 컴포넌트가 살아 있는 동안
+  // 다른 초대자의 정상 사진까지 계속 실루엣으로 나온다 (AuthorAvatar와 같은 규칙).
+  useEffect(() => { setImgError(false); }, [target?.photo]);
   const visible = !!target;
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
