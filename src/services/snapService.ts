@@ -35,13 +35,23 @@ const SNAP_MESSAGES = [
 ];
 
 // ─── 현재 국가 감지 ───
-export async function detectCurrentCountry(): Promise<{
+//
+// ⚠️ 기본은 '이미 허용된 경우에만' 동작한다(권한 팝업을 띄우지 않는다).
+// 앱 루트에 상주하는 감지기(SnapDetector·ArrivalNotifier·MomentNotifier·ReturnDetector)가
+// 마운트 즉시 이 함수를 부르는데, 여기서 권한을 요청하면 **로그인도 하기 전 스플래시 위에**
+// 위치 팝업이 뜬다. 맥락 없이 권한을 먼저 요구하는 것은 App Store 5.1.1 의 전형적 거부 사유다.
+//
+// 실제 요청은 '왜 필요한지가 화면에 드러난 시점'에만 한다 — 사용자가 기록 작성 화면을 연
+// 경우(방문 국가 자동 입력이 그 화면의 목적)에만 { allowPrompt: true } 로 부른다.
+export async function detectCurrentCountry(opts?: { allowPrompt?: boolean }): Promise<{
   countryCode: string | null;
   countryName: string | null;
   city: string | null;
 }> {
   try {
-    const { status } = await Location.requestForegroundPermissionsAsync();
+    const { status } = opts?.allowPrompt
+      ? await Location.requestForegroundPermissionsAsync()
+      : await Location.getForegroundPermissionsAsync();
     if (status !== 'granted') {
       return { countryCode: null, countryName: null, city: null };
     }

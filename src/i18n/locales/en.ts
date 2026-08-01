@@ -377,6 +377,8 @@ const en = {
     emailChangeSentTitle: 'Verification email sent',
     emailChangeSentMsg: 'We sent a verification email to {{email}}.\nTap the link in the email to complete the change.',
     currentPasswordWrongMsg: 'Your current password is incorrect.',
+    socialNoneLabel: 'Email',
+    socialNoneValue: 'Signed up with email',
     socialLinkComingSoon: 'Linking or unlinking social accounts is not available yet.\nComing soon.',
     socialNoPasswordChange: 'Google/Apple login accounts do not support password changes.',
     currentPasswordEmpty: 'Please enter your current password.',

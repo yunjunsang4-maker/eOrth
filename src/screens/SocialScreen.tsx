@@ -40,6 +40,7 @@ import { pickReason } from '../utils/matchScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
+import { APP_STORE_URL, PLAY_STORE_URL } from '../constants/legalLinks';
 import { getHouseAd, type HouseAd } from '../constants/houseAds';
 import { fetchFriendSuggestions, type FriendSuggestion, fetchMateSuggestions, type MateSuggestionRow } from '../services/social';
 import { isSupabaseConfigured } from '../services/supabase';
@@ -111,6 +112,10 @@ function ShareBottomSheet({
     id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo, online: false,
   }));
 
+  // 외부 공유 주소 — 예전엔 미등록 도메인(eorth.app)의 고정 경로를 내보내 어떤 게시물이든
+  // 같은 죽은 링크가 나갔다. 게시물별 웹 페이지가 준비되기 전까지는 스토어 링크를 쓴다.
+  const shareUrl = () => (Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL);
+
   const handleSNS = () => {
     // 테스트/베타 빌드에서는 외부 SNS 공유를 막고 '준비 중'만 안내한다.
     if (!SNS_SHARE_ENABLED) {
@@ -118,12 +123,12 @@ function ShareBottomSheet({
       return;
     }
     // 프로덕션: OS 공유 시트로 인스타그램·틱톡 등 외부 앱 공유
-    Share.share({ message: 'https://eorth.app/post/share' }).catch(() => {});
+    Share.share({ message: shareUrl() }).catch(() => {});
     onClose();
   };
 
   const handleCopyLink = async () => {
-    await Clipboard.setStringAsync('https://eorth.app/post/share');
+    await Clipboard.setStringAsync(shareUrl());
     onClose();
     onLinkCopied();
   };

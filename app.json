@@ -4,6 +4,10 @@
     "slug": "eOrth",
     "version": "1.0.0",
     "scheme": "eorth",
+    "locales": {
+      "ko": "./locales/ko.json",
+      "en": "./locales/en.json"
+    },
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -35,7 +39,6 @@
         "android.permission.ACCESS_MEDIA_LOCATION",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS"
       ]
     },
@@ -63,8 +66,7 @@
         "expo-image-picker",
         {
           "photosPermission": "여행 사진과 영상을 불러오고 선택하기 위해 갤러리 접근이 필요해요.",
-          "cameraPermission": "사진 및 영상 촬영을 위해 카메라 접근이 필요해요.",
-          "microphonePermission": "영상 녹화 시 오디오를 위해 마이크 접근이 필요해요."
+          "cameraPermission": "여행 사진을 바로 촬영해 기록에 넣기 위해 카메라 접근이 필요해요."
         }
       ],
       "expo-background-task",

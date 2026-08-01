@@ -389,7 +389,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
     if (route?.params?.selectedCountry) return; // 글로브 등에서 국가 지정해 들어온 경우는 패스
     let cancelled = false;
     (async () => {
-      const { countryCode, countryName, city } = await detectCurrentCountry();
+      const { countryCode, countryName, city } = await detectCurrentCountry({ allowPrompt: true });
       if (cancelled || (!countryCode && !countryName)) return;
       const mapped = geoJsonToCountry(countryName ?? '', countryCode ?? undefined);
       if (!mapped) return;

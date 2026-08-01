@@ -219,7 +219,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
   useEffect(() => {
     (async () => {
       try {
-        const { countryName, city } = await detectCurrentCountry();
+        const { countryName, city } = await detectCurrentCountry({ allowPrompt: true });
         if (countryName) setDetectedCountry(countryName);
         if (city) setDetectedCity(city);
       } catch {}

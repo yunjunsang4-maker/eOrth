@@ -12,6 +12,7 @@ import {
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
+import * as Location from 'expo-location';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
@@ -83,6 +84,22 @@ const ToggleRow = ({
 export default function NotificationSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const { arrivalDetect, setArrivalDetect, snapEnabled, setSnapEnabled, notifPrefs, setNotifPref } = useSettings();
+
+  // 도착 감지를 켜는 순간 = 위치 권한을 요청할 자연스러운 지점.
+  // 앱 시작 시에는 권한을 묻지 않도록 바꿨기 때문에(snapService.detectCurrentCountry),
+  // 사용자가 이 기능을 스스로 켤 때 요청하지 않으면 권한을 얻을 기회가 없다.
+  // 거부해도 토글은 켠 상태로 두고(설정 앱에서 나중에 허용 가능) 기능만 조용히 쉰다.
+  const handleArrivalToggle = async (next: boolean) => {
+    setArrivalDetect(next);
+    if (!next) return;
+    try {
+      const cur = await Location.getForegroundPermissionsAsync();
+      if (cur.status === 'granted' || !cur.canAskAgain) return;
+      await Location.requestForegroundPermissionsAsync();
+    } catch {
+      /* 권한 모듈 오류는 무시 — 토글 자체는 저장됐다 */
+    }
+  };
 
   // 알림 토글은 settingsStore에 영속 저장 (재진입 시 유지)
   const masterEnabled = notifPrefs.master;
@@ -237,7 +254,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
             label={t('notifSettings.arrivalLabel')}
             description={t('notifSettings.arrivalDesc')}
             value={arrivalDetect}
-            onValueChange={setArrivalDetect}
+            onValueChange={handleArrivalToggle}
             disabled={!masterEnabled}
           />
           <ToggleRow

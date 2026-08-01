@@ -67,8 +67,22 @@ export function requestTrackingPermission(): Promise<boolean> {
  */
 export async function prepareAdsTracking(): Promise<boolean> {
   const granted = await requestTrackingPermission();
+  await configureAdContent();
+  return granted;
+}
+
+/**
+ * 광고 콘텐츠 등급만 설정한다 — **권한 팝업을 띄우지 않는다.**
+ *
+ * ATT 요청과 분리한 이유: 등급 설정은 앱 시작 시 미리 해둬야 첫 광고부터 적용되는데,
+ * ATT 는 반대로 앱 시작 시 물으면 맥락이 없어 심사에서 지적된다(5.1.1). 그래서
+ * App.tsx 는 이 함수만 부르고, ATT 요청은 첫 광고를 부르는 useFeedAdSource 가 맡는다.
+ *
+ * 등급 T(청소년) — 여행 앱에 부적절한 광고가 섞이지 않게 상한을 둔다.
+ */
+export async function configureAdContent(): Promise<void> {
   const ads = getGoogleMobileAds();
-  if (!ads) return granted;
+  if (!ads) return;
   try {
     await ads.default().setRequestConfiguration({
       maxAdContentRating: ads.MaxAdContentRating.T,
@@ -78,5 +92,4 @@ export async function prepareAdsTracking(): Promise<boolean> {
   } catch {
     /* 설정 실패해도 광고 자체는 동작 — 조용히 넘어간다 */
   }
-  return granted;
 }

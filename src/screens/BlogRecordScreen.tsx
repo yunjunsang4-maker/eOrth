@@ -567,7 +567,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     if (isEdit || preselected) return;
     let cancelled = false;
     (async () => {
-      const { countryCode, countryName, city } = await detectCurrentCountry();
+      const { countryCode, countryName, city } = await detectCurrentCountry({ allowPrompt: true });
       if (cancelled || (!countryCode && !countryName)) return;
       const found =
         (countryCode && COUNTRIES.find(c => c.term.split(' ')[0].toUpperCase() === countryCode.toUpperCase())) ||

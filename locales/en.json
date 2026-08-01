@@ -1,0 +1,7 @@
+{
+  "NSLocationWhenInUseUsageDescription": "eOrth uses your location to detect when you arrive in another country and to fill in the country and city on your travel records automatically. You can enter them by hand instead — every feature works without this.",
+  "NSPhotoLibraryUsageDescription": "eOrth needs access to your photo library so you can pick travel photos and videos for your records.",
+  "NSPhotoLibraryAddUsageDescription": "eOrth needs permission to save photos to your library.",
+  "NSCameraUsageDescription": "eOrth needs camera access so you can take a photo and add it to a travel record right away.",
+  "NSUserTrackingUsageDescription": "This lets eOrth show you more relevant ads. Everything in the app works the same if you don't allow it."
+}

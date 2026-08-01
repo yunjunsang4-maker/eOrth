@@ -397,18 +397,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     setDeleteSocialConfirm('');
   };
 
-  // 소셜 계정 연동/해제 — 실제 identity linking API(콘솔 설정 포함)가 아직 연동되지 않았다.
-  // 로컬 상태만 바꾸고 성공한 척하던 목업을 제거하고, 준비 중임을 정직하게 안내한다.
-  const toggleSocial = (provider: string) => {
-    const isSignupProvider = (provider === 'Google' && signUpMethod === 'google') ||
-                             (provider === 'Apple' && signUpMethod === 'apple');
-    if (isSignupProvider) {
-      Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.socialUnlinkSignupError', { provider }));
-      return;
-    }
-    Alert.alert(t('accountSettings.noticeTitle'), t('accountSettings.socialLinkComingSoon'));
-  };
-
   return (
     <SafeAreaView style={styles.safeArea}>
       {/* 상단 헤더 */}
@@ -472,38 +460,35 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           />
         </View>
 
-        {/* ── 연결된 소셜 계정 ── */}
+        {/* ── 연결된 소셜 계정 (읽기 전용) ──
+            ⚠️ 예전엔 켜고 끄는 스위치였지만 identity linking API 가 아직 없어 누르면
+            "준비 중" 안내만 떴다. 동작하지 않는 컨트롤은 App Store 2.1(완성도) 지적
+            대상이라, 실제로 연동된 가입 수단만 보여주는 정보 행으로 바꾼다.
+            연동/해제 기능이 붙으면 그때 스위치를 되살릴 것. */}
         <SectionTitle label={t('accountSettings.sectionSocial')} />
         <View style={styles.card}>
-          {/* 구글 */}
-          <CardRow
-            icon={<GoogleIcon size={18} />}
-            label="Google"
-            value={googleLinked ? t('accountSettings.linked') : t('accountSettings.notLinked')}
-            rightElement={
-              <Switch
-                value={googleLinked}
-                onValueChange={() => toggleSocial('Google')}
-                trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
-                thumbColor={COLORS.white}
-              />
-            }
-          />
-          <View style={styles.rowDivider} />
-          {/* 애플 */}
-          <CardRow
-            icon={<AppleIcon size={18} color="#FFFFFF" />}
-            label="Apple"
-            value={appleLinked ? t('accountSettings.linked') : t('accountSettings.notLinked')}
-            rightElement={
-              <Switch
-                value={appleLinked}
-                onValueChange={() => toggleSocial('Apple')}
-                trackColor={{ false: COLORS.divider, true: skinAccent.accent }}
-                thumbColor={COLORS.white}
-              />
-            }
-          />
+          {googleLinked && (
+            <CardRow
+              icon={<GoogleIcon size={18} />}
+              label="Google"
+              value={t('accountSettings.linked')}
+            />
+          )}
+          {googleLinked && appleLinked && <View style={styles.rowDivider} />}
+          {appleLinked && (
+            <CardRow
+              icon={<AppleIcon size={18} color="#FFFFFF" />}
+              label="Apple"
+              value={t('accountSettings.linked')}
+            />
+          )}
+          {!googleLinked && !appleLinked && (
+            <CardRow
+              icon={<EmailIcon size={18} color="#FFFFFF" />}
+              label={t('accountSettings.socialNoneLabel')}
+              value={t('accountSettings.socialNoneValue')}
+            />
+          )}
         </View>
 
         {/* ── 위험 구역 ── */}

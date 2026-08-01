@@ -382,6 +382,8 @@ const ko = {
     emailChangeSentTitle: '인증 메일 발송',
     emailChangeSentMsg: '{{email}}로 인증 메일을 보냈어요.\n메일의 링크를 누르면 이메일 변경이 완료돼요.',
     currentPasswordWrongMsg: '현재 비밀번호가 올바르지 않아요.',
+    socialNoneLabel: '이메일',
+    socialNoneValue: '이메일로 가입했어요',
     socialLinkComingSoon: '소셜 계정 연동·해제는 아직 준비 중이에요.\n곧 지원할 예정이에요.',
     socialNoPasswordChange: '구글/애플 로그인 계정은 비밀번호 변경을 제공하지 않습니다.',
     currentPasswordEmpty: '현재 비밀번호를 입력해주세요.',

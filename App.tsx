@@ -6,7 +6,7 @@ import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ensureAdsInitialized } from './src/lib/googleMobileAds';
-import { prepareAdsTracking } from './src/lib/tracking';
+import { configureAdContent } from './src/lib/tracking';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
 import './src/i18n'; // i18next 초기화(앱 진입 시 1회)
 import LanguageBridge from './src/i18n/LanguageBridge';
@@ -38,14 +38,18 @@ export default function App() {
     if (!ADMOB_ENABLED) return;
     const init = ensureAdsInitialized();
     if (!init) { if (__DEV__) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요'); return; }
+    // ⚠️ 여기서 ATT(prepareAdsTracking)를 부르지 않는다.
+    // 앱 시작 직후 추적 권한을 물으면 사용자는 아직 광고를 본 적도 없어 맥락이 없고,
+    // 위치 권한 팝업과 겹쳐 첫 화면에 시스템 창이 연달아 뜬다(App Store 5.1.1 지적 대상).
+    // ATT 요청은 첫 광고를 실제로 불러오는 시점(useFeedAdSource)이 담당한다 —
+    // 그쪽이 이미 requestTrackingPermission()을 await 한 뒤 광고를 요청하므로
+    // '결정 전에 광고가 나가는' 문제도 없다. SDK 초기화만 여기서 미리 끝내둔다.
     init
       .then(() => {
         if (__DEV__) console.log('[AdMob] SDK 초기화 완료');
-        // ATT 권한을 미리 요청 — 첫 광고 요청이 사용자 결정을 기다리지 않게 한다.
-        // (iOS는 SDK 초기화 후에 요청해야 IDFA가 정상 반영된다)
-        return prepareAdsTracking();
+        // 콘텐츠 등급(T) 은 권한과 무관하므로 여기서 미리 걸어 첫 광고부터 적용되게 한다.
+        return configureAdContent();
       })
-      .then((granted) => { if (__DEV__) console.log('[ATT] 추적 허용:', granted); })
       .catch((e) => { if (__DEV__) console.log('[AdMob] SDK 초기화 실패:', e?.message ?? e); });
   }, []);
 

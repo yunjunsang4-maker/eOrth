@@ -1,0 +1,7 @@
+{
+  "NSLocationWhenInUseUsageDescription": "해외 도착을 감지하고 기록에 방문 국가·도시를 자동으로 채우기 위해 위치 접근이 필요해요. 허용하지 않아도 직접 입력해 모든 기능을 그대로 쓸 수 있어요.",
+  "NSPhotoLibraryUsageDescription": "여행 사진과 영상을 불러오고 선택하기 위해 갤러리 접근이 필요해요.",
+  "NSPhotoLibraryAddUsageDescription": "사진을 기기에 저장하기 위해 권한이 필요해요.",
+  "NSCameraUsageDescription": "여행 사진을 바로 촬영해 기록에 넣기 위해 카메라 접근이 필요해요.",
+  "NSUserTrackingUsageDescription": "맞춤 광고를 보여드리기 위해 앱 추적 권한이 필요해요. 허용하지 않아도 모든 기능은 그대로 사용할 수 있어요."
+}
