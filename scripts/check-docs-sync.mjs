@@ -49,6 +49,27 @@ for (const base of ['terms', 'privacy-policy']) {
   else ok(`${base} 시행일 일치: ${md}`);
 }
 
+// ── 1-b. 영문 방침의 시행일이 한국어 원문과 같은가 ──
+//   번역본은 한 번 만들어 두면 원문만 고치고 잊기 쉽다. 두 문서가 다른 날짜를 말하면
+//   어느 쪽이 유효한지 알 수 없으므로 실패로 다룬다. (형식: 한국어 '시행일: 2026-08-04',
+//   영문 'Effective date: August 4, 2026' — 날짜를 정규화해 비교한다)
+{
+  const MONTHS = ['january','february','march','april','may','june',
+                  'july','august','september','october','november','december'];
+  const enDate = (text) => {
+    const m = text.match(/Effective date:\s*([A-Za-z]+)\s+(\d{1,2}),\s*(\d{4})/);
+    if (!m) return null;
+    const mi = MONTHS.indexOf(m[1].toLowerCase());
+    if (mi < 0) return null;
+    return `${m[3]}-${String(mi + 1).padStart(2, '0')}-${m[2].padStart(2, '0')}`;
+  };
+  const ko = normDate(headerEffectiveDate(read('privacy-policy.md')));
+  const en = enDate(read('privacy-policy-en.html'));
+  if (!ko || !en) bad(`privacy-policy-en: 시행일을 읽지 못했습니다 (ko=${ko} en=${en})`);
+  else if (ko !== en) bad(`privacy-policy-en: 한국어 원문과 시행일 불일치 — ko=${ko}, en=${en} (번역본만 안 고쳤을 가능성)`);
+  else ok(`privacy-policy-en 시행일 일치: ${en}`);
+}
+
 // ── 2. notices.json이 유효하고 약관 공지가 약관 시행일과 맞는가 ──
 let notices = null;
 try {

@@ -5,7 +5,13 @@
 import { createHash } from 'node:crypto';
 
 /** docs/ 아래에서 gh-pages 루트로 그대로 복사되는 파일들 */
-export const PUBLISHED_FILES = ['terms.html', 'privacy-policy.html', 'notices.json'];
+export const PUBLISHED_FILES = [
+  'terms.html',
+  'privacy-policy.html',
+  'privacy-policy-en.html',  // 영문 스토어 로케일용 번역(한국어 원문이 정본)
+  'support-en.html',         // App Store 영문 지원 URL
+  'notices.json',
+];
 
 /**
  * 줄바꿈·끝 공백 정규화. 이 저장소는 작업트리가 CRLF인데 git 저장본은 LF라
