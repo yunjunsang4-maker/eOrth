@@ -19,6 +19,15 @@ import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
 // 인증 네트워크 호출 타임아웃(ms) — 응답이 없을 때 무한 대기를 막는다.
 const AUTH_TIMEOUT_MS = 15000;
 
+// 사용자가 직접 조작하는 네이티브 단계(구글 계정 선택 시트·Play 서비스 다이얼로그)의 안전장치 타임아웃(ms).
+// 통화 수신·앱 전환 등으로 시트가 사라지면 SDK 프라미스가 영영 풀리지 않아 로딩만 계속 도는데,
+// 그 상태를 끝내기 위한 상한이다. 정상 조작(계정 선택·비밀번호 입력) 중에는 걸리지 않도록 넉넉히 준다.
+const GOOGLE_SHEET_TIMEOUT_MS = 180000;
+const PLAY_SERVICES_TIMEOUT_MS = 60000;
+
+// withTimeout이 던진 타임아웃인지 판별 — 취소·구성 오류와 구분해 안내를 다르게 하기 위함.
+const isTimeoutError = (e: unknown) => e instanceof Error && e.message === 'timeout';
+
 // OAuth 콜백으로 인앱 브라우저가 돌아왔을 때 세션을 정상 종료시킨다.
 // (일부 기기에서 브라우저가 닫히지 않는 문제 예방 — expo-web-browser 권장 호출)
 WebBrowser.maybeCompleteAuthSession();
@@ -284,20 +293,34 @@ function ensureGoogleConfigured() {
  * 인앱 브라우저("supabase.co를 사용하려고 합니다" 시스템 창)가 뜨지 않는다.
  * 콘솔 구성이 아직 없거나(iOS 클라이언트 미발급, Android SHA-1 미등록=DEVELOPER_ERROR)
  * Play 서비스가 없는 기기면 기존 웹 OAuth로 자동 폴백해 로그인이 막히지 않게 한다.
+ *
+ * ⚠️ 폴백은 "구성/환경 문제"일 때만 쓴다. 네트워크 오류·타임아웃까지 폴백으로 넘기면
+ *    브라우저가 뜨지 않거나 조용히 닫히면서 아무 안내 없이 로그인 화면으로 돌아가
+ *    (사용자에겐 "로딩만 돌다 끊김"으로 보인다) 원인을 알 수 없게 된다.
  */
 async function signInWithGoogleNative(): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: msgNotConfigured() };
-  if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) return signInWithProviderWeb('google');
+  if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) {
+    return signInWithProviderWeb('google', i18n.t('authErr.googleFallbackFailed'));
+  }
+  // 타임아웃이 어느 단계에서 났는지 구분해 안내한다(시트 멈춤 vs 서버 지연).
+  let step: 'sheet' | 'token' = 'sheet';
   try {
     ensureGoogleConfigured();
-    if (Platform.OS === 'android') await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+    if (Platform.OS === 'android') {
+      await withTimeout(
+        GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true }),
+        PLAY_SERVICES_TIMEOUT_MS,
+      );
+    }
     // 웹 방식의 prompt=select_account와 같은 의도 — 항상 계정 선택창을 띄운다
     await GoogleSignin.signOut().catch(() => {});
-    const response = await GoogleSignin.signIn();
+    const response = await withTimeout(GoogleSignin.signIn(), GOOGLE_SHEET_TIMEOUT_MS);
     if (!isSuccessResponse(response)) return { ok: false, cancelled: true };
     const idToken = response.data.idToken;
     if (!idToken) return { ok: false, error: i18n.t('authErr.googleTokenMissing') };
     const nonce = extractNonceFromIdToken(idToken);
+    step = 'token';
     const { error } = await withTimeout(
       supabase.auth.signInWithIdToken({ provider: 'google', token: idToken, ...(nonce ? { nonce } : {}) }),
       AUTH_TIMEOUT_MS,
@@ -305,13 +328,36 @@ async function signInWithGoogleNative(): Promise<AuthResult> {
     if (error) return { ok: false, error: toKoMessage(error.message) };
     return { ok: true };
   } catch (e) {
-    if (isErrorWithCode(e)) {
-      if (e.code === statusCodes.SIGN_IN_CANCELLED || e.code === statusCodes.IN_PROGRESS) {
-        return { ok: false, cancelled: true };
-      }
+    // 시트가 응답 없이 멈췄거나 서버가 지연됨 — 폴백하지 않고 사유를 알려 로딩을 끝낸다.
+    if (isTimeoutError(e)) {
+      return { ok: false, error: i18n.t(step === 'sheet' ? 'authErr.googleSheetTimeout' : 'authErr.timeout') };
     }
-    // 구성 오류(DEVELOPER_ERROR)·Play 서비스 없음 등 — 웹 OAuth로 폴백
-    return signInWithProviderWeb('google');
+    const raw = e instanceof Error ? e.message : String(e);
+    if (isErrorWithCode(e)) {
+      // 사용자가 시트를 닫음 — 실패가 아니라 취소(안내 없음)
+      if (e.code === statusCodes.SIGN_IN_CANCELLED) return { ok: false, cancelled: true };
+      // 직전 시도가 아직 매달려 있음 — 조용히 닫지 말고 상태를 알린다
+      if (e.code === statusCodes.IN_PROGRESS) return { ok: false, error: i18n.t('authErr.googleInProgress') };
+      // 구성/환경 문제일 때만 웹 OAuth로 폴백.
+      // 라이브러리 statusCodes에 DEVELOPER_ERROR가 없어 문자열 코드도 함께 본다
+      // (Android SHA-1 미등록·클라이언트 ID 불일치는 'DEVELOPER_ERROR' 또는 '10'으로 온다).
+      const configCodes = new Set<string>([
+        statusCodes.PLAY_SERVICES_NOT_AVAILABLE,
+        statusCodes.NULL_PRESENTER,
+        'DEVELOPER_ERROR',
+        '10',
+      ]);
+      if (configCodes.has(String(e.code))) {
+        return signInWithProviderWeb('google', i18n.t('authErr.googleFallbackFailed'));
+      }
+      return { ok: false, error: toKoMessage(raw) };
+    }
+    // 네이티브 모듈이 아예 없는 환경(Expo Go 등)은 웹 OAuth가 유일한 경로라 폴백을 유지한다.
+    if (/native module|RNGoogleSign|TurboModuleRegistry|is not available|doesn't exist/i.test(raw)) {
+      return signInWithProviderWeb('google', i18n.t('authErr.googleFallbackFailed'));
+    }
+    // 그 외(네트워크 등)는 폴백으로 삼키지 않고 사유를 그대로 보여준다.
+    return { ok: false, error: toKoMessage(raw) };
   }
 }
 
@@ -330,7 +376,12 @@ export async function signInWithProvider(provider: 'google' | 'apple'): Promise<
  * 웹 OAuth 폴백 — 동작하려면 Supabase 대시보드 > Authentication > Providers 에서 해당 공급자를 켜고
  * Redirect URL에 위 딥링크를 등록해야 한다.
  */
-async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<AuthResult> {
+async function signInWithProviderWeb(
+  provider: 'google' | 'apple',
+  // 네이티브 실패로 넘어온 폴백이면 그 사유를 받는다. 폴백 흐름에서 브라우저가
+  // 성공 없이 끝나면 "취소"로 조용히 닫지 않고 이 사유를 보여준다(원인 없는 끊김 방지).
+  fallbackReason?: string,
+): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: msgNotConfigured() };
   try {
     const { data, error } = await supabase.auth.signInWithOAuth({
@@ -350,7 +401,10 @@ async function signInWithProviderWeb(provider: 'google' | 'apple'): Promise<Auth
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, oauthRedirect);
     if (result.type !== 'success' || !result.url) {
-      // 사용자가 브라우저를 닫음(취소/dismiss) — 실패가 아니라 취소로 구분한다.
+      // 사용자가 직접 시작한 웹 로그인이면 브라우저를 닫은 것 = 취소(안내 없음).
+      // 네이티브 실패로 넘어온 폴백이면 브라우저가 아예 안 뜨거나 콜백이 안 돌아온 경우가 많아,
+      // 조용히 닫으면 "로딩만 돌다 끊김"이 된다 — 원래 사유를 알린다.
+      if (fallbackReason) return { ok: false, error: fallbackReason };
       return { ok: false, cancelled: true };
     }
     const cbUrl = new URL(result.url);
