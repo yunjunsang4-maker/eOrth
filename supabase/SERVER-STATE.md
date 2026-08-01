@@ -6,11 +6,12 @@
 - 프로젝트 ref: `blweolnunmsxgztmvzfd`
 - 적용 경로: Supabase 대시보드 > SQL Editor (SQL) / `supabase functions deploy <name>` (Edge Function)
 
-> **2026-08-01 기준 서버 반영은 모두 끝났다.** 아래는 그 근거와, 앞으로 무엇을 건드리면 안 되는지의 기록이다.
+> **2026-08-02 기준 서버 반영은 모두 끝났다.** 아래는 그 근거와, 앞으로 무엇을 건드리면 안 되는지의 기록이다.
 >
 > - **Edge Function 배포 = 실측.** `supabase functions list` 로 서버에서 직접 받은 값. 4개 전량 최신.
-> - **`schema.sql` 실행 = 실측.** 감사 커밋에서 처음 도입된 `safe_to_date` 가 서버에 존재함을 확인(방법은 맨 아래).
-> - **감사 수정분 = 실측.** `uq_profiles_handle_lower` 인덱스 생성도 SQL Editor 조회로 확인.
+> - **`schema.sql` 실행 = 실측.** 각 라운드에서 '그때 처음 생긴 것'의 존재로 확인했다
+>   (2026-08-01 `safe_to_date` 함수 / 2026-08-02 `dm_push_sent` 테이블).
+> - **출시 전 감사 수정분 = 실측.** 컬럼 권한·스토리지 정책을 SQL Editor 조회로 직접 확인(아래 2번 표).
 > - **개별 항목 실행일 = 작업 기록 기반.** "이미 된 것" 표의 **날짜**는 서버에서 확인한 값이 아니다.
 >   다만 `schema.sql` 이 멱등이고 최신 상태로 실행됐으므로, 항목 자체는 모두 반영돼 있다.
 >
@@ -18,15 +19,20 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-01 기준)
+## 1. 지금 해야 하는 것 — 없음 (2026-08-02 기준)
 
-**서버 반영 작업은 없다.** 2026-08-01 기준으로 `schema.sql` 재실행과 Edge Function 4종 배포가 모두 끝났다.
-
-`uq_profiles_handle_lower` 인덱스도 SQL Editor 조회로 **생성 확인됨**(2026-08-01).
-이 인덱스는 대소문자만 다른 handle 중복이 있으면 warning 만 남기고 조용히 건너뛰어지는데(schema.sql 67·84행),
-실제로 만들어졌다는 것은 **중복 handle 이 없었다**는 뜻이기도 하다.
+**서버 반영 작업은 없다.** `schema.sql` 재실행과 Edge Function 4종 배포가 모두 끝났고,
+출시 전 감사(2026-08-02)의 치명 2건도 서버에서 차단 확인됐다.
 
 남은 것은 **4번(정리 대기)** 하나뿐이다 — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
+
+### 코드 밖에 남은 일 (콘솔·외부 — SQL 로는 못 고친다)
+
+| 항목 | 왜 |
+|---|---|
+| Firebase Android API 키에 앱/API 제한 | `google-services.json` 의 키는 공개돼도 되지만, 제한이 없으면 제3자가 같은 GCP 프로젝트의 활성 API 할당량을 태울 수 있다 |
+| `eorth.app` 도메인 확보 | 공유 링크가 이 도메인을 쓴다 — 미등록이면 리뷰어가 공유를 시험할 때 죽은 링크가 된다 |
+| 저장소 public 유지 여부 결정 | RLS 정책 전문이 공개돼 있어 공격 비용을 낮춘다. private 전환 또는 침투 테스트 |
 
 **2026-08-01 재실행에 포함된 감사 수정분** (커밋 `a828788` · `406116c`):
 - 이웃 관계 위조 방어 — `neighbors.requester_id` 컬럼 단위 grant (schema.sql 584행)
@@ -50,19 +56,34 @@
 | `post_counts` RPC (`migration-2026-07-17-post-counts.sql`) | 2026-07-17 | ✅ 존재 | `create or replace` 라 재실행 안전 |
 | 여행 DNA 매칭 6축 재설계 | 2026-07-28 | ✅ 존재 | `mate_suggestions` (schema.sql 663행) |
 | 스키마 감사 수정 10건 | 2026-08-01 | ✅ 확인 | `safe_to_date` 함수 + `uq_profiles_handle_lower` 인덱스 (커밋 `a828788`·`406116c`) |
+| **출시 전 감사 수정** | **2026-08-02** | **✅ 확인** | 아래 상세 (커밋 `f827009`) |
+
+### 출시 전 감사(2026-08-02) 반영 상세 — SQL Editor 조회로 실측
+
+| 수정 | 서버 확인 결과 |
+|---|---|
+| **`profiles` 컬럼 권한** — 사용자가 `deletion_requested_at` 을 위조해 30일 유예를 건너뛰고 계정을 즉시 파기시킬 수 있었다 | UPDATE 가능 컬럼 11개(`id`·`handle`·`emoji`·`bio`·`birthday`·`gender`·`profile_photo`·`country`·`handle_font`·`stay_country`·`stay_status`)만 남고 **`deletion_requested_at` 없음** ✅ |
+| **`media_read_own`** — 목록 조회가 열려 있어 남의 폴더 파일명을 받아낸 뒤 public URL 로 원본(비공개 사진·DM 이미지)을 가져갈 수 있었다 | `media_read_all` 제거, `media_read_own` 하나만 존재하며 `qual` 에 `(storage.foldername(name))[1] = auth.uid()` 폴더 제한 확인 ✅ |
+| `dm_push_sent` 테이블 — send-push 멱등성 근거 | 존재 확인(PostgREST 조회) ✅ — 배포된 v4 가 이 표를 쓰기 시작하며 멱등성 자동 활성 |
+| `overlap_with`·`neighbor_list_of`·`profile_country_counts` 차단 검사, `extra_countries` 상한 30 | 같은 재실행에 포함 |
+| `reports` reason 1000자 + 중복 방지 + 트리거 1시간 10건 초과 시 메일 생략 | 같은 재실행에 포함 |
+| `comments.text` 1~500자 check | 같은 재실행에 포함 |
+
+> `media` 버킷은 여전히 public 이며, 공개 URL 이미지 표시가 정상임을 확인했다
+> (`/storage/v1/object/public/media/<없는파일>` → `Object not found`). 정책 축소는 **목록 조회만** 막는다.
 
 > ⚠️ **`follower_counts` 는 없는 게 정상이다.** 2026-06-30에 도입됐다가 7-15 이웃 모델 전환 때
 > `neighbor_counts` 로 대체됐고, schema.sql 1295행에서 명시적으로 `drop` 한다. 클라이언트도
 > `neighbor_counts` 만 호출한다(`src/services/profile.ts`·`social.ts`). 서버 조회에서 이 이름이
 > "없음"으로 나와도 문제가 아니다 — 오히려 drop 이 실행됐다는 증거다.
 
-### Edge Function 배포 (2026-08-01 재배포 후 `supabase functions list`로 실측)
+### Edge Function 배포 (2026-08-02 `supabase functions list`로 실측)
 
 | 함수 | 버전 | 서버 배포 | 코드 최종 커밋 | `verify_jwt` |
 |---|---|---|---|---|
 | `report-alert` | v5 | 2026-08-01 22:53 | 2026-08-01 04:51 (`b47376a`) | true |
 | `login-with-identifier` | v5 | 2026-08-01 22:53 | 2026-08-01 04:51 (`b47376a`) | **false** |
-| `send-push` | v3 | 2026-08-01 22:53 | 2026-07-22 15:24 (`d60715e`) | true |
+| `send-push` | v4 | 2026-08-02 02:11 | 2026-08-02 (출시 전 감사) | true |
 | `delete-account` | v5 | 2026-07-10 14:00 | 2026-07-07 05:07 (`35ed042`) | true |
 
 넷 모두 배포가 코드 커밋보다 최신이다. 이로써 감사(2026-08-01)의 **신고 위조 차단이 서버에 반영**됐다.
@@ -143,9 +164,26 @@ const r = await fetch(`${URL}/rest/v1/rpc/safe_to_date`, {
 
 존재하지 않는 이름(예: `this_fn_never_existed`)을 대조군으로 같이 던져, 조회 자체가 멀쩡한지 먼저 확인하면 좋다.
 
+**테이블도 같은 방법으로 본다.** `GET /rest/v1/<테이블>?select=*&limit=1` → 없으면 `404` + `PGRST205`,
+있으면 `200`(RLS 로 막혀도 빈 배열). 재실행이 반영됐는지는 **그 라운드에서 처음 생긴 것**으로 확인하는 게 확실하다
+(2026-08-02 라운드는 `dm_push_sent`).
+
+**버킷이 public 인지**도 확인할 수 있다. `GET /storage/v1/object/public/media/<없는파일>` 응답이
+`Object not found` 면 버킷 존재 + public(이미지 표시 정상), `Bucket not found` 면 public 이 아니다.
+
 ### B. SQL Editor에서 확인 (인덱스·권한 등 A로 못 보는 것)
 
 ```sql
+-- 0) 출시 전 감사(2026-08-02) 치명 2건 — 둘 다 확인 완료. 재실행 후 어긋나면 여기서 잡힌다.
+--    ①은 11개 컬럼만 나와야 하고 deletion_requested_at 이 있으면 안 된다.
+--    ②는 media_read_own 한 줄만 나와야 한다(media_read_all 이 남아 있으면 구멍이 열린 것).
+select column_name from information_schema.column_privileges
+ where table_name='profiles' and privilege_type='UPDATE' and grantee='authenticated'
+ order by column_name;
+
+select policyname, qual from pg_policies
+ where tablename='objects' and policyname like 'media_read%';
+
 -- 1) 유니크 인덱스 (2026-08-01 확인: 존재). 빈 결과로 바뀌면 2)의 중복부터 정리할 것.
 select indexname from pg_indexes
  where schemaname = 'public' and indexname = 'uq_profiles_handle_lower';
