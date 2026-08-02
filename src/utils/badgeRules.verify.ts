@@ -20,7 +20,6 @@ const catalog: BadgeCatalogEntry[] = [
   const earned = computeEarnedBadgeIds([], catalog);
   assert(!earned.has(1), '기록 없으면 첫 기록(1) 미획득');
   assert(!earned.has(16), '기록 없으면 일본 재방문(16) 미획득(static 무시)');
-  assert(!earned.has(22), '기록 없으면 섬 입문자(22) 미획득(이제 데이터 판정)');
   assert(earned.has(8), '데이터 비판정 배지(8)는 static earned 유지');
 }
 
@@ -142,17 +141,8 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds(snapQ4, catalog).has(53), 'Q4가 스냅 → 53 미획득');
 }
 
-// ── 소셜: 좋아요(76)·동행(84·85·77)·댓글(75) ──
+// ── 소셜: 동행(84·85) ──
 {
-  // 좋아요 합산 100 → 76
-  const likes: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', likes: 60 },
-    { isMyPost: true, countryName: '일본', likes: 40 },
-  ];
-  assert(computeTravelStats(likes).likesReceived === 100, '좋아요 합산 100');
-  assert(computeEarnedBadgeIds(likes, catalog).has(76), '좋아요 100 → 76 획득');
-  assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', likes: 99 }], catalog).has(76), '좋아요 99 → 76 미획득');
-
   // 앱 메이트 동행: 1회 → 84, 3회 → 85
   const comp = (friends: string[]): BadgeStatRecord => ({ isMyPost: true, countryName: '일본', companionFriends: friends });
   assert(computeEarnedBadgeIds([comp(['민지'])], catalog).has(84) && !computeEarnedBadgeIds([comp(['민지'])], catalog).has(85), '동행 1회 → 84 O, 85 X');
@@ -160,22 +150,6 @@ const catalog: BadgeCatalogEntry[] = [
   assert(computeEarnedBadgeIds(three, catalog).has(85), '동행 3회 → 85 획득');
   // companionFriends 없으면 미획득
   assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', companions: ['혼자'] }], catalog).has(84), '동행메이트 없으면 84 미획득');
-
-  // 같은 메이트 5회 → 77
-  const sameFive = Array.from({ length: 5 }, () => comp(['민지']));
-  assert(computeTravelStats(sameFive).maxSameFriendCompanions === 5, '같은 메이트 5회 집계');
-  assert(computeEarnedBadgeIds(sameFive, catalog).has(77), '같은 메이트 5회 → 77 획득');
-  // 서로 다른 메이트 5회(각 1회) → 77 미획득
-  const diffFive = ['a', 'b', 'c', 'd', 'e'].map((f) => comp([f]));
-  assert(!computeEarnedBadgeIds(diffFive, catalog).has(77), '다른 메이트 각 1회 → 77 미획득');
-
-  // 댓글 50개 → 75 (옵션 전달)
-  assert(computeEarnedBadgeIds([], catalog, { commentsWritten: 50 }).has(75), '댓글 50개 → 75 획득');
-  assert(!computeEarnedBadgeIds([], catalog, { commentsWritten: 49 }).has(75), '댓글 49개 → 75 미획득');
-
-  // 공유 10회 → 74
-  assert(computeEarnedBadgeIds([], catalog, { sharesSent: 10 }).has(74), '공유 10회 → 74 획득');
-  assert(!computeEarnedBadgeIds([], catalog, { sharesSent: 9 }).has(74), '공유 9회 → 74 미획득');
 
   // 앱 연속 접속(112·113·114)
   const login = (n: number) => computeEarnedBadgeIds([], catalog, { loginStreak: n });
@@ -268,7 +242,7 @@ const catalog: BadgeCatalogEntry[] = [
   assert(computeTravelStats(feedWeek).maxSnapStreak === 0, '피드는 스냅 스트릭 0');
 }
 
-// ── 기록 습관(97·98·99·101·102·103·104) ──
+// ── 기록 습관(97·98·99) ──
 {
   // 97: 30일 연속 기록(피드)
   const streak30 = Array.from({ length: 30 }, (_, i) => {
@@ -284,23 +258,6 @@ const catalog: BadgeCatalogEntry[] = [
   assert(computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', viewType: 'feed', startDate: '2025.01.01' }], catalog).has(98), '1/1 기록 → 98');
   assert(computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', viewType: 'blog', startDate: '2025.12.25' }], catalog).has(99), '12/25 기록 → 99');
   assert(!computeEarnedBadgeIds([{ isMyPost: true, countryName: '일본', viewType: 'feed', startDate: '2025.01.02' }], catalog).has(98), '1/2 → 98 미획득');
-
-  // 101 비 10회, 102 눈 5회
-  const rain = (n: number) => Array.from({ length: n }, () => ({ isMyPost: true, countryName: '일본', viewType: 'feed' as const, weather: '비' }));
-  assert(computeEarnedBadgeIds(rain(10), catalog).has(101), '비 10회 → 101');
-  assert(!computeEarnedBadgeIds(rain(9), catalog).has(101), '비 9회 → 101 미획득');
-  const snow = (n: number) => Array.from({ length: n }, () => ({ isMyPost: true, countryName: '일본', viewType: 'feed' as const, weather: '눈' }));
-  assert(computeEarnedBadgeIds(snow(5), catalog).has(102), '눈 5회 → 102');
-  assert(!computeEarnedBadgeIds(snow(4), catalog).has(102), '눈 4회 → 102 미획득');
-
-  // 103 별점5 10개, 104 별점1 3개
-  const star = (val: number, n: number) => Array.from({ length: n }, () => ({ isMyPost: true, countryName: '일본', viewType: 'feed' as const, rating: val }));
-  assert(computeEarnedBadgeIds(star(5, 10), catalog).has(103), '별점5 10개 → 103');
-  assert(!computeEarnedBadgeIds(star(5, 9), catalog).has(103), '별점5 9개 → 103 미획득');
-  assert(computeEarnedBadgeIds(star(1, 3), catalog).has(104), '별점1 3개 → 104');
-  assert(!computeEarnedBadgeIds(star(1, 2), catalog).has(104), '별점1 2개 → 104 미획득');
-  // 스냅 날씨/별점은 미집계(피드·블로그·스트립만)
-  assert(!computeEarnedBadgeIds(Array.from({ length: 10 }, () => ({ isMyPost: true, countryName: '일본', viewType: 'snap' as const, weather: '비' })), catalog).has(101), '스냅 비는 101 무관');
 }
 
 // ── 시즌 배지(118·119·120·121) — 국가 + 계절 ──
@@ -708,60 +665,6 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds(snapFive, catalog).has(34), '스냅 5회 → 34 미획득');
 }
 
-// ── 섬 방문 횟수(22·23·24) — 섬나라 + 섬지역, 여행 단위 ──
-{
-  // 섬나라2 + 섬지역1 = 3회 → 섬 입문자(22)
-  const islands: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', startDate: '2024.01.01' },                       // 섬나라
-    { isMyPost: true, countryName: '필리핀', startDate: '2024.04.01' },                     // 섬나라
-    { isMyPost: true, countryName: '대한민국', regionName: '제주도', startDate: '2024.07.01' }, // 섬지역(비섬나라)
-  ];
-  assert(computeTravelStats(islands).islandVisits === 3, '섬나라2 + 섬지역1 = 3회');
-  assert(computeEarnedBadgeIds(islands, catalog).has(22), '섬 3회 → 섬 입문자(22)');
-  assert(!computeEarnedBadgeIds(islands, catalog).has(23), '3회면 섬 탐험가(23) 미획득');
-
-  // 같은 섬 여행에서 글 여러 개 → 1회
-  const sameIslandTrip: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', regionName: '오키나와', startDate: '2024.01.01' },
-    { isMyPost: true, countryName: '일본', regionName: '오키나와', startDate: '2024.01.03' },
-  ];
-  assert(computeTravelStats(sameIslandTrip).islandVisits === 1, '같은 섬 여행 → 1회');
-
-  // 서로 다른 섬 5회 → 섬 탐험가(23)
-  const fiveIslands: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', startDate: '2024.01.01' },
-    { isMyPost: true, countryName: '대만', startDate: '2024.03.01' },
-    { isMyPost: true, countryName: '몰디브', startDate: '2024.05.01' },
-    { isMyPost: true, countryName: '영국', startDate: '2024.07.01' },
-    { isMyPost: true, countryName: '뉴질랜드', startDate: '2024.09.01' },
-  ];
-  assert(computeTravelStats(fiveIslands).islandVisits === 5, '서로 다른 섬 5회');
-  assert(computeEarnedBadgeIds(fiveIslands, catalog).has(23), '섬 5회 → 섬 탐험가(23)');
-
-  // 내륙 국가/지역 → 섬 0회
-  const inland: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '프랑스', regionName: '파리', startDate: '2024.01.01' },
-  ];
-  assert(computeTravelStats(inland).islandVisits === 0, '내륙 국가/지역 → 섬 0회');
-
-  // 형식 제한: 스냅·앨범 섬 기록은 islandVisits에 안 셈
-  const nonDiaryIslands: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', viewType: 'snap', startDate: '2024.01.01' },
-    { isMyPost: true, countryName: '대만', viewType: 'album', startDate: '2024.04.01' },
-    { isMyPost: true, countryName: '몰디브', viewType: 'snap', startDate: '2024.07.01' },
-  ];
-  assert(computeTravelStats(nonDiaryIslands).islandVisits === 0, '스냅·앨범 섬 방문은 미집계');
-
-  // 같은 섬들을 피드·블로그·스트립으로 → 정상 집계
-  const diaryIslands: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', viewType: 'feed', startDate: '2024.01.01' },
-    { isMyPost: true, countryName: '대만', viewType: 'blog', startDate: '2024.04.01' },
-    { isMyPost: true, countryName: '몰디브', viewType: 'cut', startDate: '2024.07.01' },
-  ];
-  assert(computeTravelStats(diaryIslands).islandVisits === 3, '형식 기록 섬 3회 집계');
-  assert(computeEarnedBadgeIds(diaryIslands, catalog).has(22), '형식 기록 섬 3회 → 22 획득');
-}
-
 // ── 정확히 1년만에 같은 곳(33) — 같은 여행지·같은 월일, 1년 차이 (피드·블로그·스트립) ──
 {
   // 같은 곳(일본 도쿄), 같은 월일(03.15), 1년 차이 → 획득
@@ -820,49 +723,6 @@ const catalog: BadgeCatalogEntry[] = [
     { isMyPost: true, countryName: '프랑스', countries: [{ name: '프랑스' }, { name: '독일' }], viewType: 'snap' },
   ];
   assert(!computeEarnedBadgeIds(multiSnap, catalog).has(32), '스냅 다국 기록 → 32 미획득');
-}
-
-// ── 무비자 입국(31) — 비자 필요국·자국 제외, 무비자 5개국 이상 (피드·블로그·스트립) ──
-{
-  // 무비자 5개국(프랑스·일본·태국·호주·멕시코) → 획득
-  const five: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '프랑스', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-    { isMyPost: true, countryName: '태국', viewType: 'blog' },
-    { isMyPost: true, countryName: '호주', viewType: 'cut' },
-    { isMyPost: true, countryName: '멕시코', viewType: 'feed' },
-  ];
-  assert(computeEarnedBadgeIds(five, catalog).has(31), '무비자 5개국 → 31 획득');
-
-  // 비자 필요국(중국·인도·이집트)은 무비자 카운트에서 제외 → 무비자는 프랑스·일본 2개뿐 → 미획득
-  const withVisaReq: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '프랑스', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-    { isMyPost: true, countryName: '중국', viewType: 'feed' },
-    { isMyPost: true, countryName: '인도', viewType: 'feed' },
-    { isMyPost: true, countryName: '이집트', viewType: 'feed' },
-  ];
-  assert(!computeEarnedBadgeIds(withVisaReq, catalog).has(31), '비자 필요국 제외 → 무비자 2개국뿐 → 31 미획득');
-
-  // 자국(대한민국)은 카운트 안 함
-  const withHome: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '대한민국', viewType: 'feed' },
-    { isMyPost: true, countryName: '프랑스', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-    { isMyPost: true, countryName: '태국', viewType: 'feed' },
-    { isMyPost: true, countryName: '호주', viewType: 'feed' },
-  ];
-  assert(!computeEarnedBadgeIds(withHome, catalog).has(31), '자국 제외 → 무비자 4개국 → 31 미획득');
-
-  // 형식 제한: 스냅은 미인정
-  const oneSnap: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '프랑스', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-    { isMyPost: true, countryName: '태국', viewType: 'feed' },
-    { isMyPost: true, countryName: '호주', viewType: 'feed' },
-    { isMyPost: true, countryName: '멕시코', viewType: 'snap' },
-  ];
-  assert(!computeEarnedBadgeIds(oneSnap, catalog).has(31), '5개국 중 1개 스냅 → 31 미획득');
 }
 
 // ── 열대 지역 방문(30) — 9개국 중 5개국 이상 (피드·블로그·스트립) ──
@@ -947,29 +807,6 @@ const catalog: BadgeCatalogEntry[] = [
     { isMyPost: true, countryName: '캐나다', viewType: 'feed' },
     { isMyPost: true, countryName: '뉴질랜드', viewType: 'feed' },
   ], catalog).has(28), '호주 스냅 → 28 미획득');
-}
-
-// ── 한자 문화권 모두 방문(27) — 중국·일본·베트남 전부 (피드·블로그·스트립) ──
-{
-  const all3: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '중국', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'blog' },
-    { isMyPost: true, countryName: '베트남', viewType: 'cut' },
-  ];
-  assert(computeEarnedBadgeIds(all3, catalog).has(27), '중국·일본·베트남 모두 → 27 획득');
-
-  // 둘만 → 미획득
-  assert(!computeEarnedBadgeIds([
-    { isMyPost: true, countryName: '중국', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-  ], catalog).has(27), '베트남 빠짐 → 27 미획득');
-
-  // 베트남이 스냅이면 미인정
-  assert(!computeEarnedBadgeIds([
-    { isMyPost: true, countryName: '중국', viewType: 'feed' },
-    { isMyPost: true, countryName: '일본', viewType: 'feed' },
-    { isMyPost: true, countryName: '베트남', viewType: 'snap' },
-  ], catalog).has(27), '베트남 스냅 → 27 미획득');
 }
 
 // ── 카지노 국가 방문(26) — 홍콩·미국·싱가포르·모나코·필리핀 중 3개국 (피드·블로그·스트립) ──
@@ -1160,7 +997,12 @@ const catalog: BadgeCatalogEntry[] = [
   assert(!computeEarnedBadgeIds(recs, emptyCat).has(56), '데이터 4개뿐 → 56 미획득');
 
   // 노출 배지 99(크리스마스)를 이미 획득 → 5개째 → 56 점등
-  assert(computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [99] }).has(56), '데이터4 + 영구획득(99) = 5개 → 56 획득');
+  // 영구 획득분은 '카탈로그에 있는 배지'만 카운트하므로(폐기 배지 제외) 99를 담은 카탈로그를 쓴다
+  const catWith99: BadgeCatalogEntry[] = [{ id: 99, earned: false }];
+  assert(computeEarnedBadgeIds(recs, catWith99, { alreadyEarnedIds: [99] }).has(56), '데이터4 + 영구획득(99) = 5개 → 56 획득');
+
+  // 폐기(카탈로그 삭제)된 배지가 badgeEarnedAt에 남아 있어도 메타 카운트에 안 들어간다
+  assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [99] }).has(56), '카탈로그에 없는 영구획득분 → 카운트 제외');
 
   // 숨김 배지는 영구 획득분이어도 메타 카운트에서 제외 (55는 출시 축소로 숨김)
   assert(!computeEarnedBadgeIds(recs, emptyCat, { alreadyEarnedIds: [55] }).has(56), '숨김 배지(55)는 카운트 제외 → 4개라 56 미획득');
