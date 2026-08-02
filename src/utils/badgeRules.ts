@@ -6,8 +6,6 @@ import { COUNTRIES, CONTINENT_ORDER } from '../constants/countries';
 // badges.ts가 아니라 badgeVisibility.ts에서 가져온다 — badges.ts에는 배지 이미지 require가
 // 40개 넘게 있어, 여기서 그걸 끌고 오면 이 순수 로직의 검증(npm test)이 node에서 못 돈다.
 import { HIDDEN_BADGE_IDS } from '../constants/badgeVisibility';
-// 날씨 별칭 정규화(순수 로직, RN 의존 없음) — 101·102 집계를 기록 화면과 같은 기준으로 맞춘다.
-import { normalizeWeather } from './weatherKey';
 
 // 판정에 필요한 최소 필드만 받는다(TravelRecord와 느슨하게 호환).
 export interface BadgeStatRecord {
@@ -15,10 +13,8 @@ export interface BadgeStatRecord {
   countryName?: string;
   countries?: { name: string }[];
   rating?: number;
-  weather?: string;            // 날씨 ('비'·'눈' 등) — 101·102용
   companions?: string[];
-  companionFriends?: string[]; // 함께한 앱 메이트 이름들 (77·84·85용)
-  likes?: number;              // 받은 좋아요 수 (76용)
+  companionFriends?: string[]; // 함께한 앱 메이트 이름들 (84·85용)
   medias?: string[];
   startDate?: string;
   endDate?: string;
@@ -41,9 +37,7 @@ export interface BadgeComputeOptions {
   homeCountryName?: string; // 현재 거주국 이름 — 방문국 집계에서 동적 제외(거주국은 '방문'이 아님)
   // 이미 영구 획득한 배지 id (행동 배지 55, 과거 획득분 등). 메타 배지(개수 달성) 카운트에 합산된다.
   alreadyEarnedIds?: number[];
-  commentsWritten?: number; // 내가 작성한 댓글 수 (75 댓글 요정용)
   neighborCount?: number; // 메이트(서로메이트) 수 (78·81·82·83용)
-  sharesSent?: number;        // 게시물 공유(보낸) 누적 횟수 (74용)
   loginStreak?: number;       // 앱 연속 접속 일수 (112·113·114용)
   daysSinceInstall?: number;  // 앱 설치 후 경과 일수 (115용)
   installedAt?: number | null;// 앱 첫 설치 시각 (116 얼리어답터용)
@@ -82,9 +76,6 @@ const RELIGION_COUNTRY_GROUPS: string[][] = [
 // 카지노로 유명한 국가 — 이 중 3개국 이상 방문 시 배지 26 점등.
 const CASINO_COUNTRIES = ['홍콩', '미국', '싱가포르', '모나코', '필리핀'];
 
-// 한자 문화권 — 모두 방문 시 배지 27 점등.
-const HANJA_COUNTRIES = ['중국', '일본', '베트남'];
-
 // 영어권 — 모두 방문 시 배지 28 점등.
 const ENGLISH_COUNTRIES = ['미국', '영국', '호주', '캐나다', '뉴질랜드'];
 
@@ -93,27 +84,6 @@ const DESERT_COUNTRIES = ['이집트', '사우디아라비아', '아랍에미리
 
 // 열대 지역 국가 — 이 중 5개국 이상 방문 시 배지 30 점등.
 const TROPICAL_COUNTRIES = ['인도네시아', '태국', '베트남', '말레이시아', '필리핀', '브라질', '콜롬비아', '콩고', '케냐'];
-
-// 배지 31(무비자 입국): 한국 여권으로 '비자가 필요한' 국가 목록(초안).
-// 여기에 없는 나라는 무비자로 간주한다. (정책 변동 시 이 목록만 수정)
-const VISA_REQUIRED_FOR_KOREA = new Set<string>([
-  // 아시아·중동
-  '중국', '인도', '미얀마', '부탄', '파키스탄', '방글라데시', '아프가니스탄', '네팔', '스리랑카', '캄보디아',
-  '투르크메니스탄', '타지키스탄', '이란', '이라크', '사우디아라비아', '예멘', '시리아',
-  // 유럽
-  '러시아',
-  // 아프리카(대부분 비자 필요 — 무비자 소수국은 제외)
-  '이집트', '알제리', '리비아', '수단', '남수단', '에티오피아', '에리트레아', '지부티', '소말리아',
-  '케냐', '탄자니아', '우간다', '르완다', '부룬디', '나이지리아', '가나', '코트디부아르', '카메룬',
-  '앙골라', '모잠비크', '짐바브웨', '잠비아', '말라위', '마다가스카르', '코모로', '콩고', '콩고민주공화국',
-  '가봉', '적도기니', '상투메 프린시페', '기니비사우', '기니', '시에라리온', '라이베리아', '토고', '베냉',
-  '부르키나파소', '말리', '니제르', '차드', '모리타니', '감비아', '세네갈', '중앙아프리카공화국', '나미비아',
-  // 아메리카
-  '볼리비아', '수리남', '베네수엘라', '가이아나', '쿠바',
-]);
-
-// 자국(집계 제외) — 무비자 '입국'이 아니므로 제외.
-const HOME_COUNTRIES = new Set<string>(['대한민국', '한국']);
 
 // 데이터로 자동 판정하는 배지 id 집합. 이 안에 든 배지는 static earned를 무시하고 데이터로만 켠다.
 export const DATA_DRIVEN_BADGE_IDS = new Set<number>([
@@ -126,15 +96,12 @@ export const DATA_DRIVEN_BADGE_IDS = new Set<number>([
   21,                             // 종교국가 3종교 이상 방문
   25,                             // 뉴욕 방문(미국 대륙 기록)
   26,                             // 카지노 국가 3개국 이상 방문
-  27,                             // 한자 문화권(중국·일본·베트남) 모두 방문
   28,                             // 영어권(미국·영국·호주·캐나다·뉴질랜드) 모두 방문
   29,                             // 사막 지역(이집트·사우디·UAE·몽골) 모두 방문
   30,                             // 열대 지역 9개국 중 5개국 이상 방문
-  31,                             // 무비자 입국 가능국 5개국 이상 방문
   32,                             // 한번에 여러 나라 방문(한 기록 2개국+)
   33,                             // 정확히 1년만에 같은 곳 방문
   ...COUNTRY_REGION_BADGES.map((b) => b.id), // 국가별 여러 지역 방문 (17·19·20 + 추가분)
-  22, 23, 24,                     // 섬 방문 횟수 (3·5·10회)
   34,                             // 같은 나라 재방문 5회
   35, 36, 37, 38, 39, 40, 41, 42, // 방문 국가 수 마일스톤 + 모든 대륙
   43,                             // 모든 등록 국가 방문
@@ -143,9 +110,9 @@ export const DATA_DRIVEN_BADGE_IDS = new Set<number>([
   48, 49, 50, 51, 52,             // 별점 기록
   66, 67, 68, 70, 71,             // 블로그10 / 스트립5 / 스냅30 / 프레임5종 / 피드20
   88, 89, 90,                     // 스냅: 스트릭(7일) / 야행성(2~5시) / 일출(5~7시)
-  97, 98, 99, 101, 102, 103, 104, // 기록 습관: 연속30 / 1·1 / 12·25 / 비10 / 눈5 / 별점5×10 / 별점1×3
+  97, 98, 99,                     // 기록 습관: 연속30 / 1·1 / 12·25
   69,                             // 만능 기록자(피드·블로그·스트립·스냅 각 1개+)
-  74, 75, 76, 77, 84, 85,         // 소셜: 공유10 / 댓글50 / 좋아요100 / 같은메이트5 / 동행1 / 동행3
+  84, 85,                         // 소셜: 앱 메이트 동행 1회 / 3회
   78, 81, 82, 83,                 // 맞팔 메이트 수: 50 / 1 / 10 / 100
   112, 113, 114,                  // 앱 연속 접속: 30 / 50 / 100일
   115, 116,                       // eOrth 1주년(설치 1년) / 얼리어답터(출시 첫 달 가입)
@@ -176,38 +143,6 @@ const NAME_TO_CONTINENT: Record<string, string> = (() => {
   map['한국'] = '아시아';
   return map;
 })();
-
-// 섬나라(국가 단위) — constants/countries의 정확한 한글명과 일치해야 한다.
-const ISLAND_COUNTRIES = new Set<string>([
-  // 아시아
-  '일본', '대만', '필리핀', '인도네시아', '싱가포르', '스리랑카', '몰디브', '동티모르', '바레인', '키프로스',
-  // 유럽
-  '영국', '아이슬란드', '아일랜드', '몰타',
-  // 북아메리카(카리브)
-  '쿠바', '자메이카', '아이티', '도미니카공화국', '트리니다드 토바고', '바하마', '바베이도스',
-  '그레나다', '세인트루시아', '세인트빈센트 그레나딘', '앤티가 바부다', '세인트키츠 네비스', '도미니카',
-  // 아프리카
-  '마다가스카르', '모리셔스', '세이셸', '코모로', '상투메 프린시페', '카보베르데',
-  // 오세아니아
-  '뉴질랜드', '파푸아뉴기니', '피지', '솔로몬제도', '바누아투', '사모아', '통가',
-  '미크로네시아', '팔라우', '마셜제도', '키리바시', '투발루', '나우루',
-]);
-
-// 섬 지역 키워드 — regionName/regionNameEn에 부분 일치하면 섬 방문으로 본다(자유 입력 대응).
-const ISLAND_REGION_KEYWORDS = [
-  '제주', '오키나와', '발리', '푸켓', '하와이', '세부', '보라카이', '푸꾸옥', '랑카위',
-  '사이판', '괌', '산토리니', '미코노스', '시칠리아', '사르데냐', '이비자', '보홀',
-  '이시가키', '미야코', '코사무이', '피피', '페낭',
-  'jeju', 'okinawa', 'bali', 'phuket', 'hawaii', 'cebu', 'boracay', 'phuquoc', 'langkawi',
-  'saipan', 'guam', 'santorini', 'mykonos', 'sicily', 'sardinia', 'ibiza', 'bohol',
-  'ishigaki', 'miyako', 'samui', 'phiphi', 'penang',
-];
-
-function isIslandRegion(r: BadgeStatRecord): boolean {
-  const hay = `${r.regionName ?? ''} ${r.regionNameEn ?? ''}`.toLowerCase();
-  if (!hay.trim()) return false;
-  return ISLAND_REGION_KEYWORDS.some((k) => hay.includes(k.toLowerCase()));
-}
 
 // '기록'으로 인정하는 뷰 형식 — 피드·블로그·스트립(cut). 앨범(보관)·스냅(임시)은 제외.
 const DIARY_VIEW_TYPES = new Set<string>(['feed', 'blog', 'cut']);
@@ -299,16 +234,10 @@ export interface TravelStats {
   cutRecordCount: number;      // 스트립(cut) 기록 수
   cutFrames: Set<string>;      // 스트립에서 사용한 서로 다른 프레임(frameId) 집합
   viewTypesUsed: Set<string>;  // 사용한 뷰 형식 집합(feed/blog/cut/snap/album) — 69용
-  likesReceived: number;            // 내 기록이 받은 좋아요 합계 (76용)
   companionFriendRecordCount: number; // 앱 메이트와 동행한 기록 수 (84·85용)
-  maxSameFriendCompanions: number;    // 같은 메이트와 동행한 최다 기록 수 (77용)
   maxDiaryStreak: number;       // 기록(피드·블로그·스트립)을 연속한 최대 일수 (97용)
   hasNewYearDayRecord: boolean; // 1월 1일 기록이 있는가 (98용)
   hasChristmasRecord: boolean;  // 12월 25일 기록이 있는가 (99용)
-  rainRecordCount: number;      // 날씨 '비' 기록 수 (101용)
-  snowRecordCount: number;      // 날씨 '눈' 기록 수 (102용)
-  rating5Count: number;         // 별점 5점 기록 수 (103용)
-  rating1Count: number;         // 별점 1점 기록 수 (104용)
   hasSakuraRecord: boolean;     // 3~4월 일본 기록 (118용)
   hasOktoberfestRecord: boolean;// 10월 독일 기록 (119용)
   hasCarnivalRecord: boolean;   // 2~3월 브라질 기록 (120용)
@@ -326,7 +255,6 @@ export interface TravelStats {
   monthsRecorded: Set<number>;   // 피드·블로그·스트립 기록 날짜가 속한 월(1~12) 집합
   japanVisits: number;        // 일본 방문 횟수(여행 단위)
   maxCountryVisits: number;   // 한 국가 최다 방문 횟수(여행 단위)
-  islandVisits: number;       // 섬(섬나라+섬지역) 방문 횟수(여행 단위)
   regionsByCountry: Map<string, Set<string>>; // 국가 → 방문한 서로 다른 지역(regionName) 집합
   // 거주국 이름(별칭 포함). 방문국 집계에서는 제외되지만 '전 국가/대륙 정복'(43·44)
   // 판정에서는 covered로 합류시켜야 해서 통계에 남긴다.
@@ -360,16 +288,10 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   let cutRecordCount = 0;
   const cutFrames = new Set<string>();
   const viewTypesUsed = new Set<string>();
-  let likesReceived = 0;
   let companionFriendRecordCount = 0;
-  const friendCompanionCounts = new Map<string, number>();
   const diaryDays = new Set<number>(); // 기록을 남긴 날짜(자정 기준) — 97 연속 기록
   let hasNewYearDayRecord = false;
   let hasChristmasRecord = false;
-  let rainRecordCount = 0;
-  let snowRecordCount = 0;
-  let rating5Count = 0;
-  let rating1Count = 0;
   let hasSakuraRecord = false;
   let hasOktoberfestRecord = false;
   let hasCarnivalRecord = false;
@@ -383,8 +305,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   let hasMultiCountryRecord = false;
   // 국가별 기록 대표 날짜 모음 → 마지막에 '여행 단위'로 묶어 국가별 방문 횟수를 센다.
   const repsByCountry = new Map<string, (number | null)[]>();
-  // 섬(섬나라 or 섬지역) 기록 대표 날짜 모음 → '여행 단위'로 묶어 섬 방문 횟수를 센다.
-  const islandReps: (number | null)[] = [];
   // 국가 → 방문한 서로 다른 지역(regionName) 집합. regionName은 대륙 기록에서만 채워진다.
   const regionsByCountry = new Map<string, Set<string>>();
   // '같은 여행지|같은 월일' → 방문 연도 집합. 1년 차이(연속 연도)가 있으면 33 점등.
@@ -424,7 +344,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     const names = new Set<string>();
     if (r.countryName) names.add(r.countryName);
     if (r.countries) for (const c of r.countries) if (c?.name) names.add(c.name);
-    let isIsland = false;
     for (const n of names) {
       if (homeNames.has(n)) continue; // 거주국 제외
       countries.add(n);
@@ -436,10 +355,7 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
         const arr = repsByCountry.get(n);
         if (arr) arr.push(rep); else repsByCountry.set(n, [rep]);
       }
-      if (ISLAND_COUNTRIES.has(n)) isIsland = true;
     }
-    if (!isIsland && isIslandRegion(r)) isIsland = true; // 섬나라가 아니어도 섬 지역이면 포함
-    if (isIsland && isDiary) islandReps.push(rep); // 섬 방문도 피드·블로그·스트립만 인정
 
     // 한 기록에 2개국 이상(한번에 여러 나라) — 피드·블로그·스트립만 인정
     if (isDiary && names.size >= 2) hasMultiCountryRecord = true;
@@ -506,29 +422,15 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
         if (sd != null && ed != null && Math.round((ed - sd) / DAY_MS) === 0) hasDayTrip = true;
       }
     }
-    // 별점(48~52·103·104)은 별점을 다는 형식(피드·블로그·스트립)에서만 집계
+    // 별점(48~52)은 별점을 다는 형식(피드·블로그·스트립)에서만 집계
     if (isDiary && typeof r.rating === 'number' && r.rating >= 1 && r.rating <= 5) {
       ratings.add(r.rating);
-      if (r.rating === 5) rating5Count += 1;
-      if (r.rating === 1) rating1Count += 1;
-    }
-    // 날씨 기록 (101·102) — 피드·블로그·스트립만.
-    // 저장값에 별칭('폭설'·'천둥' 등)이 섞여 있어 canonical 6종으로 접은 뒤 센다
-    // (기록 화면 아이콘과 같은 기준 — weatherKey.normalizeWeather).
-    if (isDiary && r.weather) {
-      const w = normalizeWeather(r.weather);
-      if (w === '비') rainRecordCount += 1;
-      else if (w === '눈') snowRecordCount += 1;
     }
     if (r.companions) for (const comp of r.companions) companions.add(comp);
 
-    // 소셜: 받은 좋아요 합산(76), 앱 메이트 동행 집계(84·85·77)
-    likesReceived += r.likes ?? 0;
+    // 소셜: 앱 메이트 동행 집계(84·85)
     if (r.companionFriends && r.companionFriends.length > 0) {
       companionFriendRecordCount += 1;
-      for (const f of r.companionFriends) {
-        friendCompanionCounts.set(f, (friendCompanionCounts.get(f) ?? 0) + 1);
-      }
     }
   }
 
@@ -538,10 +440,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     maxCountryVisits = Math.max(maxCountryVisits, countDistinctTrips(reps));
   }
 
-
-  // 같은 메이트와 동행한 최다 기록 수 (77)
-  let maxSameFriendCompanions = 0;
-  for (const c of friendCompanionCounts.values()) maxSameFriendCompanions = Math.max(maxSameFriendCompanions, c);
 
   // 연속 일수 공통 계산 (자정 timestamp 집합 → 최대 연속일)
   const maxConsecutiveDays = (daySet: Set<number>): number => {
@@ -580,16 +478,10 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     cutRecordCount,
     cutFrames,
     viewTypesUsed,
-    likesReceived,
     companionFriendRecordCount,
-    maxSameFriendCompanions,
     maxDiaryStreak,
     hasNewYearDayRecord,
     hasChristmasRecord,
-    rainRecordCount,
-    snowRecordCount,
-    rating5Count,
-    rating1Count,
     hasSakuraRecord,
     hasOktoberfestRecord,
     hasCarnivalRecord,
@@ -608,7 +500,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     maxCountryVisits,
     regionsByCountry,
     homeNames,
-    islandVisits: countDistinctTrips(islandReps), // 섬 방문도 여행 단위
     japanVisits: countDistinctTrips(repsByCountry.get('일본') ?? []), // 기록 수가 아니라 여행 단위
   };
 }
@@ -666,9 +557,6 @@ export function computeEarnedBadgeIds(
   // ── 카지노 국가 방문: 홍콩·미국·싱가포르·모나코·필리핀 중 3개국 이상 (피드·블로그·스트립) ──
   on(26, CASINO_COUNTRIES.filter((c) => s.diaryCountries.has(c)).length >= 3);
 
-  // ── 한자 문화권 모두 방문: 중국·일본·베트남 전부 (피드·블로그·스트립) ──
-  on(27, HANJA_COUNTRIES.every((c) => s.diaryCountries.has(c)));
-
   // ── 영어권 모두 방문: 미국·영국·호주·캐나다·뉴질랜드 전부 (피드·블로그·스트립) ──
   on(28, ENGLISH_COUNTRIES.every((c) => s.diaryCountries.has(c)));
 
@@ -677,13 +565,6 @@ export function computeEarnedBadgeIds(
 
   // ── 열대 지역 방문: 9개국 중 5개국 이상 (피드·블로그·스트립) ──
   on(30, TROPICAL_COUNTRIES.filter((c) => s.diaryCountries.has(c)).length >= 5);
-
-  // ── 무비자 입국: 한국 여권 무비자 가능국(비자 필요국·자국 제외) 5개국 이상 (피드·블로그·스트립) ──
-  let visaFreeCount = 0;
-  for (const c of s.diaryCountries) {
-    if (!VISA_REQUIRED_FOR_KOREA.has(c) && !HOME_COUNTRIES.has(c)) visaFreeCount += 1;
-  }
-  on(31, visaFreeCount >= 5);
 
   // ── 한번에 여러 나라 방문: 한 기록에 2개국 이상 (피드·블로그·스트립) ──
   on(32, s.hasMultiCountryRecord);
@@ -708,11 +589,6 @@ export function computeEarnedBadgeIds(
       })
     : false;
   on(25, visitedNewYork);
-
-  // ── 섬 방문 횟수(여행 단위) ──
-  on(22, s.islandVisits >= 3);         // 섬 입문자
-  on(23, s.islandVisits >= 5);         // 섬 탐험가
-  on(24, s.islandVisits >= 10);        // 섬 정복자
 
   // ── 방문 국가 수 마일스톤 (피드·블로그·스트립 기록 기준) ──
   // 통계 카드용 countryCount(모든 형식)와 달리, 배지는 diaryCountries로 판정한다.
@@ -782,10 +658,6 @@ export function computeEarnedBadgeIds(
   on(97, s.maxDiaryStreak >= 30);  // 꾸준함의 힘: 30일 연속 기록
   on(98, s.hasNewYearDayRecord);   // 새해 첫 기록: 1월 1일
   on(99, s.hasChristmasRecord);    // 크리스마스 트래블러: 12월 25일
-  on(101, s.rainRecordCount >= 10);// 비 오는 날의 기록: 날씨 '비' 10회
-  on(102, s.snowRecordCount >= 5); // 눈의 나라: 날씨 '눈' 5회
-  on(103, s.rating5Count >= 10);   // 별점 후한 사람: 별점 5점 10개
-  on(104, s.rating1Count >= 3);    // 까다로운 평론가: 별점 1점 3개
 
   // ── 시즌 배지 (국가 + 계절) ──
   on(118, s.hasSakuraRecord);      // 벚꽃 시즌: 3~4월 일본
@@ -797,10 +669,6 @@ export function computeEarnedBadgeIds(
   on(69, ['feed', 'blog', 'cut', 'snap'].every((v) => s.viewTypesUsed.has(v)));
 
   // ── 소셜 배지 ──
-  on(74, (options?.sharesSent ?? 0) >= 10);        // 공유왕: 게시물 공유 10회
-  on(75, (options?.commentsWritten ?? 0) >= 50);   // 댓글 요정: 댓글 50개 작성
-  on(76, s.likesReceived >= 100);                  // 인싸 여행러: 좋아요 100개 받기
-  on(77, s.maxSameFriendCompanions >= 5);          // 여행 메이트: 같은 메이트와 동행 5회
   on(84, s.companionFriendRecordCount >= 1);       // 첫 동행: 앱 메이트 동행 1회
   on(85, s.companionFriendRecordCount >= 3);       // 동행 메이트: 앱 메이트 동행 3회
 
@@ -835,7 +703,12 @@ export function computeEarnedBadgeIds(
   const countSet = new Set<number>();
   for (const id of earned) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
   if (options?.alreadyEarnedIds) {
-    for (const id of options.alreadyEarnedIds) if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id)) countSet.add(id);
+    // 폐기(카탈로그에서 삭제)된 배지가 badgeEarnedAt에 남아 있을 수 있다 — 더는 존재하지 않는
+    // 배지가 메타 카운트를 부풀리지 않게, 영구 획득분은 카탈로그에 있는 id만 센다.
+    const catalogIds = new Set(catalog.map((b) => b.id));
+    for (const id of options.alreadyEarnedIds) {
+      if (!metaIds.has(id) && !HIDDEN_BADGE_IDS.has(id) && catalogIds.has(id)) countSet.add(id);
+    }
   }
   const total = countSet.size;
   for (const [idStr, threshold] of Object.entries(META_BADGE_THRESHOLDS)) {

@@ -23,7 +23,6 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
 import { buzz } from '../utils/haptics';
 import { useRecords, TravelRecord } from '../store/recordStore';
-import { useSettings } from '../store/settingsStore';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useDM } from '../store/dmStore';
 import type { Message, SharedRecord, ReplyInfo } from '../store/dmTypes';
@@ -310,7 +309,6 @@ export default function DMScreen({ navigation, route }: Props) {
   const { records, feedPosts, blockUser, reportPost } = useRecords();
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
   const [dmReportVisible, setDmReportVisible] = useState(false);
-  const { markBadgesEarned } = useSettings();
   const { conversations, addMessage: dmAddMessage, retrySend, sendRecord, deleteMessage, clearConversation, markRead, loadHistory } = useDM();
   const messages = conversations[friend.handle] ?? [];
 
@@ -326,10 +324,6 @@ export default function DMScreen({ navigation, route }: Props) {
     try { await loadHistory(friend.handle, friend.id); } finally { setRefreshing(false); }
   };
 
-  // 받은 공유(상대가 보낸 게시물)가 대화에 있으면 배지 80(첫 공유받기) 획득
-  useEffect(() => {
-    if (messages.some((m) => !m.isMine && m.type === 'record')) markBadgesEarned([80]);
-  }, [messages, markBadgesEarned]);
   const [input, setInput] = useState('');
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const [cameraOpen, setCameraOpen] = useState(false);
@@ -390,7 +384,6 @@ export default function DMScreen({ navigation, route }: Props) {
   const addMessage = (msg: Omit<Message, 'id' | 'isMine' | 'time'>) => {
     const replyTo = replyTarget ? toReplyInfo(replyTarget, t) : undefined;
     dmAddMessage(friend.handle, { type: msg.type, text: msg.text, imageUri: msg.imageUri, record: msg.record, replyTo });
-    markBadgesEarned([73]); // 메이트에게 첫 DM 전송 → 배지 73(행동 기반, 영구)
     if (replyTarget) setReplyTarget(null);
     setAttachMenuOpen(false);
   };
