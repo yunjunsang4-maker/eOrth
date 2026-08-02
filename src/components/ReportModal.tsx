@@ -20,7 +20,7 @@ export default function ReportModal({ visible, onClose, onSubmit }: ReportModalP
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent statusBarTranslucent navigationBarTranslucent
       animationType="fade"
       onRequestClose={onClose}
     >

@@ -435,7 +435,8 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </KeyboardAvoidingView>
 
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        <View style={styles.modalRoot} accessibilityViewIsModal>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
+        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.residenceSelect')}</Text>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}>
@@ -470,7 +471,8 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </Modal>
 
       <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
-        <View style={styles.modalRoot} accessibilityViewIsModal>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
+        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.stayCountryLabel')}</Text>
             <TouchableOpacity onPress={() => setStayCountryModalVisible(false)}>

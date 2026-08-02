@@ -107,7 +107,8 @@ export default function App() {
               <MomentProvider>
                 <DMProvider>
                   <ToastProvider>
-                    <StatusBar style="light" backgroundColor="#0A0118" translucent />
+                    {/* edge-to-edge에서 backgroundColor/translucent는 안드로이드 no-op(경고만 발생) — style만 유효 */}
+                    <StatusBar style="light" />
                     <SnapDetector />
                     <MomentNotifier />
                     <ArrivalNotifier />

@@ -571,7 +571,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </KeyboardAvoidingView>
 
       {/* 이동 대상 섹션 선택 시트 (단일/다중 공용) */}
-      <Modal visible={moveSheet !== null} transparent animationType="slide" onRequestClose={() => setMoveSheet(null)}>
+      <Modal visible={moveSheet !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMoveSheet(null)}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setMoveSheet(null)} accessibilityViewIsModal>
           <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
             <Text style={styles.sheetTitle}>{t('trip.albumPhotoMoveTitle')}</Text>
@@ -589,7 +589,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </Modal>
 
       {/* 섹션 헤더 ⋯ 메뉴 시트 — Alert은 안드로이드에서 3버튼 초과분이 잘려 시트로 대체 */}
-      <Modal visible={sectionMenu !== null} transparent animationType="slide" onRequestClose={closeSectionMenu}>
+      <Modal visible={sectionMenu !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={closeSectionMenu}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={closeSectionMenu} accessibilityViewIsModal>
           <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
             <Text style={styles.sheetTitle}>{sectionMenu !== null ? (sections?.[sectionMenu]?.title ?? '') : ''}</Text>
@@ -664,7 +664,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </Modal>
 
       {/* 섹션 제목 입력 모달 (추가/이름변경 공용) */}
-      <Modal visible={sectionModal !== null} transparent animationType="fade" onRequestClose={() => setSectionModal(null)}>
+      <Modal visible={sectionModal !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setSectionModal(null)}>
         <View style={styles.sectionModalOverlay} accessibilityViewIsModal>
           <View style={styles.sectionModalCard}>
             <Text style={styles.sectionModalTitle}>
@@ -700,9 +700,10 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </Modal>
 
       {/* ⋯ 팝업 메뉴 */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
-          <View style={styles.menuSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[styles.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             {isAlbum && (
               <TouchableOpacity
                 style={styles.menuItem}

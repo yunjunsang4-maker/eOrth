@@ -300,6 +300,7 @@ function BadgeListModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const badgeInsets = useSafeAreaInsets(); // pageSheet가 안드로이드에선 전체화면이라 상단 인셋 보정
   const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
 
   // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
@@ -357,7 +358,8 @@ function BadgeListModal({
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <View style={blStyles.root} accessibilityViewIsModal>
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
+      <View style={[blStyles.root, Platform.OS === 'android' && { paddingTop: badgeInsets.top }]} accessibilityViewIsModal>
         {/* 핸들·헤더를 아래로 끌면 닫힌다(스크롤 영역과 분리) */}
         <View {...dragToClose.panHandlers}>
         {/* 핸들 바 */}
@@ -495,7 +497,7 @@ function BadgeListModal({
         {/* 배지 확대 보기 오버레이 */}
         <Modal
           visible={enlargedBadge !== null}
-          transparent
+          transparent statusBarTranslucent navigationBarTranslucent
           animationType="fade"
           onRequestClose={() => setEnlargedBadge(null)}
         >
@@ -586,6 +588,7 @@ function EditProfileModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const editInsets = useSafeAreaInsets(); // pageSheet가 안드로이드에선 전체화면이라 상단 인셋 보정
   const [name, setName] = useState(currentName);
   const [photo, setPhoto] = useState<string | null>(currentPhoto);
 
@@ -630,9 +633,10 @@ function EditProfileModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalRoot}
+        style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: editInsets.top }]}
       >
         {/* 헤더 */}
         <View style={styles.modalHeader}>
@@ -708,6 +712,7 @@ function PhotoViewerModal({
   const scale = useRef(new Animated.Value(1)).current;
   const currentScale = useRef(1);
   const lastDistance = useRef(0);
+  const pvInsets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
 
   useEffect(() => {
     if (!visible) {
@@ -757,7 +762,7 @@ function PhotoViewerModal({
   const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={pvStyles.container} accessibilityViewIsModal>
         {/* 배경 탭으로 닫기 */}
         <TouchableOpacity
@@ -776,8 +781,8 @@ function PhotoViewerModal({
             resizeMode="contain"
           />
         </View>
-        {/* X 버튼 */}
-        <TouchableOpacity style={pvStyles.closeBtn} onPress={onClose}>
+        {/* X 버튼 — 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
+        <TouchableOpacity style={[pvStyles.closeBtn, Platform.OS === 'android' && { top: pvInsets.top + 8 }]} onPress={onClose}>
           <Text style={pvStyles.closeBtnText}>✕</Text>
         </TouchableOpacity>
       </View>
@@ -823,7 +828,7 @@ function AvatarActionSheet({
       visible={visible}
       animationType="none"
       onRequestClose={onClose}
-      statusBarTranslucent
+      statusBarTranslucent navigationBarTranslucent
     >
       <View style={asStyles.overlay}>
         {/* 배경 탭으로 닫기 */}
@@ -1259,7 +1264,7 @@ function GroupMergeModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, justifyContent: 'flex-end' }}

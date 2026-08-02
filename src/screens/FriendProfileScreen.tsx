@@ -11,6 +11,7 @@ import {
   Share,
   ActivityIndicator,
   Animated,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -539,9 +540,9 @@ export default function FriendProfileScreen({
         />
       )}
 
-      {/* ── 팝업 메뉴 ── */}
+      {/* ── 팝업 메뉴 — 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정(iOS 120 = 인셋(~56)+64) ── */}
       {menuVisible && (
-        <View style={s.popupMenu}>
+        <View style={[s.popupMenu, Platform.OS === 'android' && { top: insets.top + 64 }]}>
           {MENU_NORMAL.map((item, idx) => (
             <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>

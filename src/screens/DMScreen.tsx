@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import AppRefreshControl from '../components/AppRefreshControl';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -305,6 +305,7 @@ export default function DMScreen({ navigation, route }: Props) {
   };
 
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
   const { records, feedPosts, blockUser, reportPost } = useRecords();
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
@@ -883,9 +884,10 @@ export default function DMScreen({ navigation, route }: Props) {
       />
 
       {/* 여행 기록 선택 모달 */}
-      <Modal visible={recordPickerOpen} transparent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
+      <Modal visible={recordPickerOpen} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRecordPickerOpen(false)}>
         <View style={st.pickerOverlay} accessibilityViewIsModal>
-          <View style={st.pickerSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.pickerSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }]}>
             <View style={st.pickerHeader}>
               <Text style={st.pickerTitle}>{t('dm.shareTravelRecord')}</Text>
               <TouchableOpacity onPress={() => setRecordPickerOpen(false)}>
@@ -927,19 +929,20 @@ export default function DMScreen({ navigation, route }: Props) {
       </Modal>
 
       {/* 이미지 전체화면 뷰어 */}
-      <Modal visible={!!viewerUri} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setViewerUri(null)}>
+      <Modal visible={!!viewerUri} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setViewerUri(null)}>
         <TouchableOpacity style={st.viewerOverlay} activeOpacity={1} onPress={() => setViewerUri(null)} accessibilityViewIsModal>
           {viewerUri && (
             <Image source={{ uri: viewerUri }} style={st.viewerImage} resizeMode="contain" />
           )}
-          <TouchableOpacity style={st.viewerClose} onPress={() => setViewerUri(null)} activeOpacity={0.7}>
+          {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
+          <TouchableOpacity style={[st.viewerClose, Platform.OS === 'android' && { top: insets.top + 6 }]} onPress={() => setViewerUri(null)} activeOpacity={0.7}>
             <Text style={st.viewerCloseText}>✕</Text>
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
 
       {/* 메시지 롱프레스 컨텍스트 메뉴 — 눌린 메시지 강조(주변 딤) + 그 근처에 세로 옵션 (아이메시지풍) */}
-      <Modal visible={!!menuMsg} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuMsg(null)}>
+      <Modal visible={!!menuMsg} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuMsg(null)}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuMsg(null)} accessibilityViewIsModal>
           {/* 눌린 메시지 행 위·아래만 딤 → 그 행(실제 메시지)만 밝게 강조되어 보인다 */}
           {menuRect && <View pointerEvents="none" style={[st.ctxDim, { top: 0, height: Math.max(0, menuRect.y) }]} />}
@@ -985,7 +988,7 @@ export default function DMScreen({ navigation, route }: Props) {
       </Modal>
 
       {/* 헤더 메뉴: 대화 비우기 / 나가기 — 딤은 제자리 페이드, 시트만 슬라이드업 */}
-      <Modal visible={headerSheetMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setHeaderMenuOpen(false)}>
+      <Modal visible={headerSheetMounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setHeaderMenuOpen(false)}>
         <View style={StyleSheet.absoluteFill}>
           <Animated.View
             pointerEvents="none"
@@ -993,7 +996,8 @@ export default function DMScreen({ navigation, route }: Props) {
           />
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setHeaderMenuOpen(false)} accessibilityViewIsModal />
           <Animated.View
-            style={[st.sheet, st.sheetAnchor, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [240, 0] }) }] }]}
+            // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+            style={[st.sheet, st.sheetAnchor, { paddingBottom: Platform.OS === 'ios' ? 34 : insets.bottom + 14 }, { transform: [{ translateY: headerSheetAnim.interpolate({ inputRange: [0, 1], outputRange: [240, 0] }) }] }]}
           >
             <View style={st.sheetHandle} />
             <TouchableOpacity style={st.sheetItem} onPress={handleClearConversation}>

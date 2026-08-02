@@ -75,7 +75,7 @@ export function CurrencyPickerModal({
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent statusBarTranslucent navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >

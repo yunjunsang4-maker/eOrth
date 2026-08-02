@@ -6,7 +6,9 @@ import {
   Modal,
   TouchableOpacity,
   Animated,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 
 // 팔로워/팔로잉 목록 ⋯ 메뉴 — 기본 플랫폼 Alert 대신 앱 공통 톤의 박스 시트.
@@ -27,6 +29,7 @@ export default function UserActionSheet({
   onBlock: () => void;
 }) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -43,12 +46,13 @@ export default function UserActionSheet({
   }, [visible, translateY]);
 
   return (
-    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal transparent visible={visible} animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={styles.overlay}>
         {/* 배경 탭으로 닫기 */}
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
 
-        <Animated.View style={[styles.sheet, { transform: [{ translateY }] }]}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[styles.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
           <View style={styles.handle} />
 
           <View style={styles.optionsCard}>

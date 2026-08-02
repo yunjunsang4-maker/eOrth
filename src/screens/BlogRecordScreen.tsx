@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -193,6 +193,7 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
 }) {
   const [idx, setIdx] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
 
   useEffect(() => {
     if (visible) {
@@ -205,7 +206,7 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
 
   if (!visible) return null;
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
         <ScrollView
           ref={scrollRef}
@@ -225,7 +226,8 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
             <Text style={{ color: '#fff', fontSize: 14 }}>{idx + 1} / {images.length}</Text>
           </View>
         )}
-        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: 50, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
+        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: Platform.OS === 'ios' ? 50 : insets.top + 6, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
         </TouchableOpacity>
       </View>
@@ -333,6 +335,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const st = useSt();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
@@ -1624,13 +1627,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       </PickerModal>
 
       {/* 여행정보 패널 */}
-      <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
+      <Modal visible={travelInfoVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} accessibilityViewIsModal>
         <View style={{ flex: 1 }}>
           {/* backdrop을 패널의 형제(뒤 절대배치)로 둬야 내부 ScrollView 스크롤이 씹히지 않는다.
               패널을 TouchableOpacity로 감싸고 onStartShouldSetResponder로 막던 방식은 스크롤 제스처를 가로챘음 */}
           <TouchableOpacity style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)' }]} activeOpacity={1} onPress={() => setTravelInfoVisible(false)} />
-          <View style={st.travelPanel}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.travelPanel, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
             <View style={st.panelHandle} />
             <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={st.panelTitle}>{t('blog.travelInfoTitle')}</Text>
@@ -2038,10 +2042,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
 
       {/* 임시저장 목록 — 비공개 대상 선택 시트와 같은 디자인 언어(카드형 행·아이콘 배지·그라데이션 CTA) */}
-      <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
+      <Modal visible={draftListVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
         <View style={st.dlOverlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setDraftListVisible(false)} />
-          <View style={st.dlSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.dlSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
             <View style={st.dlHandle} />
 
             <View style={st.dlHeader}>
@@ -2458,7 +2463,7 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
 function PickerModal({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const st = useSt();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
       <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
         <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
           <Text style={st.pickerTitle}>{title}</Text>
@@ -2503,6 +2508,7 @@ function RepPhotoModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -2542,10 +2548,11 @@ function RepPhotoModal({
   const displayPhotos = isSelectedFromGallery ? [selectedPhoto, ...photos] : photos;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={rpm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[rpm.sheet, { transform: [{ translateY }] }]}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[rpm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }, { transform: [{ translateY }] }]}>
           {/* 핸들 */}
           <View style={rpm.handle} />
 

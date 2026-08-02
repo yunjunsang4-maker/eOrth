@@ -12,6 +12,7 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -535,9 +536,10 @@ export default function TripDetailScreen() {
       </Animated.View>
 
       {/* 편집 메뉴 시트 */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-          <View style={s.menuSheet}>
+          {/* 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정 — iOS 100 = 인셋(~48)+52 */}
+          <View style={[s.menuSheet, Platform.OS === 'android' && { top: insets.top + 52 }]}>
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"
@@ -585,7 +587,7 @@ export default function TripDetailScreen() {
       />
 
       {/* 기록 추가 — 형식 선택 모달 */}
-      <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+      <Modal visible={formatPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
         <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
           <View style={s.fmCard}>
             <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
@@ -611,9 +613,10 @@ export default function TripDetailScreen() {
       </Modal>
 
       {/* 썸네일 사진 선택 시트 */}
-      <Modal visible={thumbPickerVisible} transparent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
+      <Modal visible={thumbPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
         <View style={s.thumbOverlay}>
-          <View style={s.thumbSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[s.thumbSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={s.thumbTitle}>{t('trip.changeThumbTitle')}</Text>
             <Text style={s.thumbSub}>{t('trip.changeThumbSub')}</Text>
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>

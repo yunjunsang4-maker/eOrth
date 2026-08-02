@@ -471,7 +471,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 커스텀 프레임 색 모달 (프리미엄) — 색조×명도 그리드에서 자유 선택 */}
       <Modal
         visible={customColorVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setCustomColorVisible(false)}
       >
@@ -511,7 +511,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 문구 스탬프 모달 (프리미엄) — 문구 입력 + 폰트 선택 */}
       <Modal
         visible={captionModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setCaptionModalVisible(false)}
       >

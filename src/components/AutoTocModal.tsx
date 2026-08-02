@@ -41,7 +41,7 @@ export default function AutoTocModal({
   const accepted = suggestions.filter(s => checked[s.beforeBlockId]);
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop} accessibilityViewIsModal>
         <View style={styles.card}>
           <View style={styles.header}>

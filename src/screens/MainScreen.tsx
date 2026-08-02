@@ -1541,7 +1541,7 @@ export default function MainScreen({ navigation, route }: Props) {
               )}
             </View>
             {/* 방문 지역 선택 시트 (소급 태깅) */}
-            <Modal visible={regionTagSheetVisible} transparent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
+            <Modal visible={regionTagSheetVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
               <View style={{ flex: 1, justifyContent: 'flex-end' }}>
                 <TouchableOpacity
                   style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
@@ -1667,7 +1667,7 @@ export default function MainScreen({ navigation, route }: Props) {
         {/* ── 전체 국가 목록 시트 (돋보기) ── */}
         <Modal
           visible={countryPickerVisible}
-          transparent
+          transparent statusBarTranslucent navigationBarTranslucent
           animationType="slide"
           onRequestClose={() => setCountryPickerVisible(false)}
         >
@@ -1786,7 +1786,7 @@ export default function MainScreen({ navigation, route }: Props) {
         visible={countrySheetOpen}
         transparent
         animationType="none"
-        statusBarTranslucent
+        statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeCountrySheet}
       >
         {/* 오버레이 */}
@@ -1925,7 +1925,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 기록형식 선택 모달 ── */}
       <Modal
         visible={formatModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setFormatModalVisible(false)}
       >
@@ -1966,7 +1966,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 지역(주) 기존 기록 보기 모달 ── */}
       <Modal
         visible={regionRecordsVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setRegionRecordsVisible(false)}
       >
@@ -2046,7 +2046,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 영토 표시 설정 모달 ── */}
       <Modal
         visible={displaySettingsVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={cancelDisplaySettings}
       >

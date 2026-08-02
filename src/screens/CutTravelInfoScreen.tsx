@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   TextInput, Image, KeyboardAvoidingView, Platform, PanResponder, Modal, Alert,
@@ -138,6 +138,7 @@ type CutPhotoParam = { layout: CutLayout; frameId: string; frameColor?: string; 
 
 export default function CutTravelInfoScreen({ navigation, route }: RootStackScreenProps<'CutTravelInfo'>) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 스킨 변경 구독 + 강조색 — 미구독이면 스택에 남아 있던 이 화면의 아이콘이 이전 팔레트로 표시됨
   const { addRecord, addTripGroup, neighbors, records } = useRecords();
   // 함께한 메이트·비공개 대상 목록은 실제 팔로우한 메이트에서 가져온다 (데모 메이트 제거)
@@ -810,10 +811,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       })()}
 
       {/* 앱 메이트 선택 모달 */}
-      <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent>
+      <Modal visible={friendPickerVisible} transparent animationType="slide" onRequestClose={() => setFriendPickerVisible(false)} statusBarTranslucent navigationBarTranslucent>
         <View style={fp.overlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
-          <View style={fp.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[fp.sheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 16 }]}>
             <View style={fp.handle} />
             <View style={fp.header}>
               <FriendIcon size={16} color={skinAccent.accent} />
@@ -867,10 +869,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       />
 
       {/* 기타 통화 선택 모달 */}
-      <Modal visible={currencyModalVisible} transparent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
+      <Modal visible={currencyModalVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setCurrencyModalVisible(false)}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
-          <View style={cur.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) — iOS는 기존 외형 유지 */}
+          <View style={[cur.sheet, Platform.OS === 'android' && { paddingBottom: insets.bottom + 16 }]}>
             <View style={cur.handle} />
             <View style={cur.titleRow}>
               <Text style={cur.title}>{t('cutInfo.currencySelect')}</Text>
@@ -916,10 +919,11 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
       </Modal>
 
       {/* 국가 선택 모달 */}
-      <Modal visible={countryModalVisible} transparent animationType="slide" onRequestClose={closeCountryModal}>
+      <Modal visible={countryModalVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={closeCountryModal}>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={closeCountryModal} />
-          <View style={ct.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) — iOS는 기존 외형 유지 */}
+          <View style={[ct.sheet, Platform.OS === 'android' && { paddingBottom: insets.bottom + 16 }]}>
             <View style={ct.handle} />
             <View style={ct.titleRow}>
               <Text style={ct.title}>{t('cutInfo.destSelect')}</Text>

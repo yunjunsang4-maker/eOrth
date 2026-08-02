@@ -8,7 +8,9 @@ import {
   Modal,
   Animated,
   Dimensions,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
 
@@ -65,6 +67,7 @@ export function CalendarBottomSheet({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const startLbl = startLabel ?? t('newRecord.departDate');
   const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
@@ -158,7 +161,8 @@ export function CalendarBottomSheet({
   const body = (
       <View style={[calS.overlay, asOverlay && StyleSheet.absoluteFillObject]} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[calS.sheet, { transform: [{ translateY }] }]}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[calS.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }, { transform: [{ translateY }] }]}>
           <View style={calS.handle} />
           <View style={[calS.selectedRow, { backgroundColor: skinAccent.tint(0.08) }]}>
             {singleDate ? (
@@ -268,7 +272,7 @@ export function CalendarBottomSheet({
   // 오버레이 모드: 이미 Modal 안인 호출처(블로그 패널)용 — visible일 때만 절대배치로 덮는다
   if (asOverlay) return visible ? body : null;
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       {body}
     </Modal>
   );

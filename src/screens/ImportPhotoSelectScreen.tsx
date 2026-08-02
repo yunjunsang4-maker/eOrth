@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Dimensions, ActivityIndicator, Alert, ScrollView, Modal, Animated,
+  Dimensions, ActivityIndicator, Alert, ScrollView, Modal, Animated, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -373,9 +373,10 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       </View>
 
       {/* 기록 카드 미리보기 + 썸네일 선택 */}
-      <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
+      <Modal visible={previewVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
         <View style={st.pvOverlay} accessibilityViewIsModal>
-          <View style={st.pvSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.pvSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={st.pvTitle}>{t('imports.previewTitle')}</Text>
             <Text style={st.pvSub}>{t('imports.previewSub')}</Text>
 

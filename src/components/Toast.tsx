@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Image, PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthorAvatar from './AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, PinIcon } from './icons';
@@ -87,7 +87,8 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
       style={[
         s.toast,
         rich && s.toastRich,
-        isTop ? { top: insets.top + 12 } : { bottom: 48 },
+        // 하단 토스트 — 안드로이드 3버튼 내비바(48dp)와 겹치지 않게 인셋 기반 보정 (iOS는 기존 48 유지)
+        isTop ? { top: insets.top + 12 } : { bottom: Platform.OS === 'ios' ? 48 : insets.bottom + 24 },
         { opacity, transform: [{ translateY }, { translateY: drag }] },
       ]}
       pointerEvents={onPress || onDismiss ? 'box-none' : 'none'}

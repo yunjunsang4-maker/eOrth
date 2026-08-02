@@ -509,7 +509,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       <Modal
         visible={isBirthdayModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setIsBirthdayModalVisible(false)}
       >
         <View style={styles.modalOverlay} accessibilityViewIsModal>
@@ -564,7 +564,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       <Modal
         visible={isGenderModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setIsGenderModalVisible(false)}
       >
         <View style={styles.modalOverlay} accessibilityViewIsModal>
@@ -616,7 +616,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       <Modal
         visible={isEmailModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeEmailModal}
       >
         <View style={styles.modalOverlay} accessibilityViewIsModal>
@@ -693,7 +693,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       <Modal
         visible={isPasswordModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closePasswordModal}
       >
         <View style={styles.modalOverlay} accessibilityViewIsModal>
@@ -781,7 +781,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
       <Modal
         visible={isDeleteAccountModalVisible}
         animationType="fade"
-        transparent={true}
+        transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeDeleteAccountModal}
       >
         <View style={styles.modalOverlay} accessibilityViewIsModal>

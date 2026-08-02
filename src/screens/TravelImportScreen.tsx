@@ -1180,9 +1180,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       </ScrollView>
 
       {/* ── 여행 합치기 모달 ── */}
-      <Modal visible={mergeVisible} transparent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
+      <Modal visible={mergeVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
         <View style={styles.mgOverlay} accessibilityViewIsModal>
-          <View style={styles.mgSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[styles.mgSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={styles.mgTitle}>{t('imports.mergeTitle')}</Text>
             <Text style={styles.mgSub}>
               합칠 여행을 2개 이상 선택하세요.{'\n'}같은 나라의 여행끼리만 합칠 수 있어요.

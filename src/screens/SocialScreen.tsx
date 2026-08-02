@@ -104,6 +104,7 @@ function ShareBottomSheet({
   navigation: any;
 }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { neighbors } = useRecords();
@@ -180,14 +181,14 @@ function ShareBottomSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
           if (!prepareVisible && !friendPickerVisible) onClose();
         }} />
 
-        {/* 바텀시트 */}
-        <View style={ss.sheet}>
+        {/* 바텀시트 — 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
           {/* 핸들 바 */}
           <View style={ss.handle} />
 
@@ -282,10 +283,11 @@ function CommentBottomSheet({
   setCommentText: (t: string) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent statusBarTranslucent navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >
@@ -295,7 +297,8 @@ function CommentBottomSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-          <View style={cs.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[cs.sheet, { paddingBottom: Platform.OS === 'ios' ? 20 : insets.bottom + 12 }]}>
             {/* 핸들 바 */}
             <View style={cs.handle} />
 
@@ -511,7 +514,7 @@ function FeedCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity
@@ -570,7 +573,7 @@ function FeedCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity
@@ -1004,7 +1007,7 @@ function BlogCard({
                 visible={menuOpen}
                 transparent
                 animationType="none"
-                statusBarTranslucent
+                statusBarTranslucent navigationBarTranslucent
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1046,7 +1049,7 @@ function BlogCard({
                 visible={menuOpen}
                 transparent
                 animationType="none"
-                statusBarTranslucent
+                statusBarTranslucent navigationBarTranslucent
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1315,7 +1318,7 @@ function AlbumCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1357,7 +1360,7 @@ function AlbumCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1863,6 +1866,7 @@ function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
 
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
@@ -2140,7 +2144,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
-      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
         <View style={{ flex: 1 }}>
           <Animated.View
             pointerEvents="none"
@@ -2148,7 +2152,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           />
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
           <Animated.View
-            style={[ss.sheet, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
+            // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
           >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
@@ -2463,6 +2468,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
@@ -3055,10 +3061,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
       />
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
-      <Modal visible={!!otherPickerItem} transparent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
+      <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
-          <View style={ss.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             <View style={ss.handle} />
             <Text style={ss.sheetTitle}>{t('social.friendPickerTitle')}</Text>
             <ScrollView style={{ maxHeight: 360 }}>

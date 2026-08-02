@@ -175,7 +175,7 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent navigationBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={s.overlay} accessibilityViewIsModal>
           <Text style={s.title}>{t('comp.cutAdjustTitle')}</Text>

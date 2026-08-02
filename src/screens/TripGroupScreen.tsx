@@ -209,7 +209,7 @@ export default function TripGroupScreen() {
       {/* ⋯ 팝업 메뉴 */}
       <Modal
         visible={menuVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setMenuVisible(false)}
       >
@@ -219,7 +219,8 @@ export default function TripGroupScreen() {
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
         >
-          <View style={st.menuSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             <TouchableOpacity style={st.menuItem} onPress={openEdit}>
               <Text style={st.menuItemText}>✏️  {t('comp2.groupEdit')}</Text>
             </TouchableOpacity>
@@ -239,7 +240,7 @@ export default function TripGroupScreen() {
       <Modal
         visible={editModalVisible}
         animationType="slide"
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setEditModalVisible(false)}
       >
         <KeyboardAvoidingView

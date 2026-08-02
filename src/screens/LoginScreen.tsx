@@ -726,7 +726,7 @@ export default function LoginScreen({ navigation }: Props) {
       {/* Forgot Password Modal */}
       <Modal
         visible={forgotPasswordVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setForgotPasswordVisible(false)}
       >
@@ -813,7 +813,7 @@ export default function LoginScreen({ navigation }: Props) {
       {/* 소셜 로그인 로딩 오버레이 (실제 인증은 인앱 브라우저에서 진행 — 가짜 인증 UI 없음) */}
       <Modal
         visible={socialModal !== null}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
       >
