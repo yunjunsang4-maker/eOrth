@@ -1537,7 +1537,8 @@ const ab = StyleSheet.create({
   bottom: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, gap: 12 },
   actionBtn: { paddingRight: 4 },
   likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionIcon: { fontSize: 22, color: '#A1A1B0', lineHeight: 22 },
+  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+  actionIcon: { fontSize: 22, color: '#A1A1B0', lineHeight: Platform.OS === 'ios' ? 22 : 27 },
   actionCount: { fontSize: 12, color: '#A1A1B0', fontWeight: '500' },
   photoCount: { color: '#A1A1B0', fontSize: 12, marginLeft: 'auto' },
 });

@@ -2409,7 +2409,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: 28 },
+  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: Platform.OS === 'ios' ? 28 : 34 },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {

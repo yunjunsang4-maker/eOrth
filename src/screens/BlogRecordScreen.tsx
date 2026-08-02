@@ -2189,17 +2189,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     switch (block.type) {
       case 'text': {
         const tb = block as TextBlock;
+        // 커스텀 한글 서체(단일 굵기 파일)에 fontWeight를 얹으면 안드로이드는 해당 굵기
+        // 변형을 찾다 실패해 시스템 폰트로 통째로 폴백한다 → 안드로이드는 서체 유지 우선.
+        // 고정 lineHeight 26은 '제목급'(26px)에서 한글 상하가 잘려 글자 크기에 비례시킨다.
+        const customFam = tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined;
         return (
           <TextInput key={block.id}
             ref={ref => { blockRefs.current[block.id] = ref; }}
             style={[st.textBlock, {
               fontSize: tb.fontSize || 15, textAlign: tb.align || 'left',
-              fontWeight: tb.bold ? '700' : '400',
+              lineHeight: Math.max(26, Math.round((tb.fontSize || 15) * 1.4)),
+              fontWeight: customFam && Platform.OS === 'android' ? 'normal' : (tb.bold ? '700' : '400'),
               fontStyle: tb.italic ? 'italic' : 'normal',
               textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
               color: tb.color || C.white,
               backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
-              fontFamily: tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined,
+              fontFamily: customFam,
             }]}
             placeholder={index === 0 && blocks.length === 1 ? t('blog.bodyPlaceholder') : ''}
             placeholderTextColor={C.muted}

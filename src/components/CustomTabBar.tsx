@@ -13,6 +13,7 @@ import { GlassSurface } from './GlassSurface';
 import { useCoachActive } from './coachOverlayState';
 import { useTabBarHidden } from './tabBarVisibility';
 import { useSkinAccent } from '../constants/skinTheme';
+import { andFitText } from '../utils/fitText';
 import Svg, {
   Path as SvgPath,
   Line as SvgLine,
@@ -242,7 +243,7 @@ const TabItem: React.FC<{
             style={[isGlobe ? styles.labelBoxGlobe : styles.labelBoxH, labelStyle]}
             pointerEvents="none"
           >
-            <Text style={styles.label} numberOfLines={1}>{label}</Text>
+            <Text style={styles.label} numberOfLines={1} {...andFitText}>{label}</Text>
           </Animated.View>
         </View>
       </Animated.View>
@@ -506,10 +507,12 @@ const styles = StyleSheet.create({
   },
   label: {
     color: ACTIVE_COLOR,
+    // fontWeight를 함께 주면 안드로이드가 Montserrat-Black의 '600' 변형을 찾다 실패해
+    // 시스템 폰트로 폴백한다(단일 굵기 파일) — 패밀리만 지정한다
     fontFamily: 'Montserrat-Black', // 미등록 시 시스템 폰트로 폴백
     fontSize: 10,
     lineHeight: 13,
-    fontWeight: '600',
     textAlign: 'center',
+    includeFontPadding: false, // 안드로이드 기본 상하 여백 제거 — 아이콘과의 간격을 iOS와 맞춤
   },
 });

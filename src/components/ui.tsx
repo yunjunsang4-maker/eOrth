@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import { Colors, BorderRadius, Typography, Spacing } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
+import { andFitText } from '../utils/fitText';
 
 // ─── Primary Button ────────────────────────────────────────────────────────────
 interface PrimaryButtonProps {
@@ -194,7 +195,8 @@ export const StatCard: React.FC<StatCardProps> = ({ value, label, icon }) => (
   <View style={styles.statCard}>
     {icon && <Text style={styles.statIcon}>{icon}</Text>}
     <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+    {/* 안드로이드 한글 폭이 넓어 고정폭 3열에서 줄바꿈됨 — 한 줄 고정+자동 축소 */}
+    <Text style={styles.statLabel} {...andFitText}>{label}</Text>
   </View>
 );
 

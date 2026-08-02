@@ -10,6 +10,7 @@ import {
   Image,
   Dimensions,
   PanResponder,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -1190,7 +1191,8 @@ const styles = StyleSheet.create({
   },
   cardChevron: {
     fontSize: 18,
-    lineHeight: 18,
+    // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+    lineHeight: Platform.OS === 'ios' ? 18 : 22,
     color: Colors.textMuted,
     marginLeft: 4,
   },

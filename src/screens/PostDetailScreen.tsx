@@ -421,12 +421,15 @@ const BlogBlockRenderer = ({
   switch (block.type) {
     case 'text': {
       const fs = (block.fontSize || 15) * fontScale;
+      // 커스텀 한글 서체(단일 굵기)에 fontWeight를 얹으면 안드로이드는 시스템 폰트로
+      // 통째로 폴백한다 → 안드로이드는 서체 유지를 우선한다 (작성 화면과 동일 규칙)
+      const customFam = block.fontFamily && block.fontFamily !== 'System' ? block.fontFamily : undefined;
       return (
         <Text
           style={[
             blogS.text,
             { fontSize: fs, lineHeight: fs * 1.7 },
-            block.bold && { fontWeight: '700' },
+            block.bold && { fontWeight: customFam && Platform.OS === 'android' ? 'normal' : '700' },
             block.italic && { fontStyle: 'italic' },
             (block.underline || block.strikethrough) && {
               textDecorationLine: block.underline
@@ -436,7 +439,7 @@ const BlogBlockRenderer = ({
             block.color && { color: block.color },
             block.bgColor && block.bgColor !== 'transparent' && { backgroundColor: block.bgColor },
             block.align && { textAlign: block.align },
-            block.fontFamily && block.fontFamily !== 'System' && { fontFamily: block.fontFamily },
+            customFam && { fontFamily: customFam },
           ]}
         >
           {block.value}

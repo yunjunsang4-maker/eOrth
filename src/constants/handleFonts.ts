@@ -27,8 +27,11 @@ export const HANDLE_FONTS: HandleFont[] = [
   { id: 'yuyu', labelKey: 'premium.fontYuyu', fontFamily: 'Yuyu' },
 ];
 
-/** 폰트 id → Text에 얹을 스타일 (기본/미지정이면 null) */
-export const handleFontStyle = (id?: string | null): { fontFamily: string } | null => {
+/** 폰트 id → Text에 얹을 스타일 (기본/미지정이면 null)
+ *  fontWeight를 'normal'로 함께 강제하는 이유: 기존 스타일의 fontWeight('600' 등)가 남아 있으면
+ *  안드로이드는 해당 굵기 변형을 찾다가 실패해 서체 전체를 시스템 폰트로 폴백시킨다
+ *  (여기 폰트는 전부 단일 굵기 파일이라 iOS 외형은 변하지 않는다). */
+export const handleFontStyle = (id?: string | null): { fontFamily: string; fontWeight: 'normal' } | null => {
   const fam = HANDLE_FONTS.find((f) => f.id === id)?.fontFamily;
-  return fam ? { fontFamily: fam } : null;
+  return fam ? { fontFamily: fam, fontWeight: 'normal' } : null;
 };
