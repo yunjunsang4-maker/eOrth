@@ -352,7 +352,9 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
     }));
   }, [W, H]);
   return (
-    <Svg width={W} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
+    // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <Svg width={W} height={H}>
       <SvgDefs>
         <SvgRadialGradient id="sbGlowP" cx="50%" cy="50%" r="50%">
           <SvgStop offset="0%" stopColor={glow} stopOpacity={0.18} />
@@ -375,6 +377,7 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
         <Circle key={i} cx={st.x} cy={st.y} r={st.r} fill="#ffffff" fillOpacity={st.o} />
       ))}
     </Svg>
+    </View>
   );
 }
 

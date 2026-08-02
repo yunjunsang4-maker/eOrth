@@ -255,25 +255,30 @@ export default function BasicInfoScreen({ navigation }: Props) {
                   <PersonIcon size={50} color="#A0A0B0" />
                 </View>
               )}
-              <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
-                <SvgDefs>
-                  <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                    <SvgStop stopColor="#000000" stopOpacity="0" />
-                    <SvgStop offset="1" stopColor="#FFFFFF" />
-                  </SvgLinearGradient>
-                </SvgDefs>
-                <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
-              </Svg>
-              {!photo && (
-                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+              {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+              <View style={styles.avatarInner} pointerEvents="none">
+                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
                   <SvgDefs>
-                    <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                      <SvgStop stopColor="#00D8F3" />
-                      <SvgStop offset="1" stopColor="#EC34F7" />
+                    <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                      <SvgStop stopColor="#000000" stopOpacity="0" />
+                      <SvgStop offset="1" stopColor="#FFFFFF" />
                     </SvgLinearGradient>
                   </SvgDefs>
-                  <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
+                  <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
                 </Svg>
+              </View>
+              {!photo && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+                    <SvgDefs>
+                      <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                        <SvgStop stopColor="#00D8F3" />
+                        <SvgStop offset="1" stopColor="#EC34F7" />
+                      </SvgLinearGradient>
+                    </SvgDefs>
+                    <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
+                  </Svg>
+                </View>
               )}
             </View>
             <View style={styles.avatarEditBadge}>

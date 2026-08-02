@@ -461,7 +461,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             }}
           >
             {guidePillSize.w > 0 && (
-              <Svg width={guidePillSize.w} height={guidePillSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+              // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width={guidePillSize.w} height={guidePillSize.h}>
                 <Defs>
                   <SvgLinearGradient id="guideBorder" x1="0" y1="0" x2={String(guidePillSize.w)} y2={String(guidePillSize.h)} gradientUnits="userSpaceOnUse">
                     <Stop stopColor="#00D8F3" />
@@ -479,6 +481,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                   strokeWidth={1.5}
                 />
               </Svg>
+              </View>
             )}
             <Text style={st.guideText}>
               {phase === 'switching' ? `📸 ${t('comp2.snapSwitching')}` : t('snap.guideText')}
@@ -558,26 +561,29 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                 <Text style={st.pipSwapIcon}>⇄</Text>
               </View>
             </View>
-            {/* 테두리 글래스 하이라이트 (버튼과 동일) */}
-            <Svg width={PIP_W} height={PIP_H} style={StyleSheet.absoluteFill} pointerEvents="none">
-              <Defs>
-                <SvgLinearGradient id="pipGlass" x1="0" y1="0" x2="0" y2={String(PIP_H)} gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.85" />
-                  <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
-                </SvgLinearGradient>
-              </Defs>
-              <Rect
-                x={1}
-                y={1}
-                width={PIP_W - 2}
-                height={PIP_H - 2}
-                rx={15}
-                fill="none"
-                stroke="url(#pipGlass)"
-                strokeWidth={2}
-              />
-            </Svg>
+            {/* 테두리 글래스 하이라이트 (버튼과 동일)
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width={PIP_W} height={PIP_H}>
+                <Defs>
+                  <SvgLinearGradient id="pipGlass" x1="0" y1="0" x2="0" y2={String(PIP_H)} gradientUnits="userSpaceOnUse">
+                    <Stop stopColor="#FFFFFF" stopOpacity="0.85" />
+                    <Stop offset="0.5" stopColor="#FFFFFF" stopOpacity="0.1" />
+                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Rect
+                  x={1}
+                  y={1}
+                  width={PIP_W - 2}
+                  height={PIP_H - 2}
+                  rx={15}
+                  fill="none"
+                  stroke="url(#pipGlass)"
+                  strokeWidth={2}
+                />
+              </Svg>
+            </View>
           </TouchableOpacity>
         )}
 
@@ -630,7 +636,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
           }}
         >
           {retakeSize.w > 0 && (
-            <Svg width={retakeSize.w} height={retakeSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+            // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={retakeSize.w} height={retakeSize.h}>
               <Defs>
                 {/* 흰색 유리 광택 — 밝은 흰색 → 옅은 흰색 */}
                 <SvgLinearGradient id="retakeBorder" x1="0" y1="0" x2={String(retakeSize.w)} y2={String(retakeSize.h)} gradientUnits="userSpaceOnUse">
@@ -666,6 +674,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                 strokeWidth={1.5}
               />
             </Svg>
+            </View>
           )}
           <Text style={st.retakeBtnText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
@@ -680,7 +689,9 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         >
           {/* 배경 #D9D9D9 20% + 마젠타→시안 이중 그라데이션 테두리 (iPhone 17-59) */}
           {sendSize.w > 0 && (
-            <Svg width={sendSize.w} height={sendSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
+            // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+            <Svg width={sendSize.w} height={sendSize.h}>
               <Defs>
                 <SvgLinearGradient id="sendBorder" x1="0" y1="0" x2={String(sendSize.w)} y2={String(sendSize.h)} gradientUnits="userSpaceOnUse">
                   <Stop stopColor="#FF14E4" />
@@ -721,6 +732,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
                 strokeWidth={1.3}
               />
             </Svg>
+            </View>
           )}
           <Text style={st.sendBtnText}>{t('comp2.snapShare')}</Text>
         </TouchableOpacity>

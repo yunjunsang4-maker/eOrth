@@ -81,15 +81,18 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       style={[styles.glassBtn, disabled && styles.glassBtnDisabled, style]}
     >
       {size.w > 0 && (
-        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-              <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
-              <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
-        </Svg>
+        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={size.w} height={size.h}>
+            <SvgDefs>
+              <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
+                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
+          </Svg>
+        </View>
       )}
       {loading ? (
         <ActivityIndicator color={Colors.white} size="small" />

@@ -104,26 +104,31 @@ export const ProfileAvatar = ({ photo }: { photo?: string | null }) => {
           <PersonIcon size={50} color="#A0A0B0" />
         </View>
       )}
-      {/* 사진 위 글래스 틴트 + 림 — ProfileScreen과 동일 재현 */}
-      <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={pv.avatarInner} pointerEvents="none">
-        <Defs>
-          <SvgLinearGradient id="pvAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-            <Stop stopColor="#000000" stopOpacity="0" />
-            <Stop offset="1" stopColor="#FFFFFF" />
-          </SvgLinearGradient>
-        </Defs>
-        <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#pvAvatarInnerGrad)" strokeWidth="0.5" />
-      </Svg>
-      {!photo && (
-        <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* 사진 위 글래스 틴트 + 림 — ProfileScreen과 동일 재현
+          (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+      <View style={pv.avatarInner} pointerEvents="none">
+        <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
           <Defs>
-            <SvgLinearGradient id="pvAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-              <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-              <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+            <SvgLinearGradient id="pvAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+              <Stop stopColor="#000000" stopOpacity="0" />
+              <Stop offset="1" stopColor="#FFFFFF" />
             </SvgLinearGradient>
           </Defs>
-          <Circle cx="64" cy="64" r="61" stroke="url(#pvAvatarRingGrad)" strokeWidth="6" fill="none" />
+          <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#pvAvatarInnerGrad)" strokeWidth="0.5" />
         </Svg>
+      </View>
+      {!photo && (
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+            <Defs>
+              <SvgLinearGradient id="pvAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+              </SvgLinearGradient>
+            </Defs>
+            <Circle cx="64" cy="64" r="61" stroke="url(#pvAvatarRingGrad)" strokeWidth="6" fill="none" />
+          </Svg>
+        </View>
       )}
     </View>
   );
@@ -156,15 +161,18 @@ export const BadgeHighlightItem = ({ emoji, image, earned = true }: { emoji: str
             ) : (
               <LockClosedIcon size={22} color="#7A7A89" />
             )}
-            <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-              <Defs>
-                <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
-                </SvgLinearGradient>
-              </Defs>
-              <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
-            </Svg>
+            {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width={64} height={64} viewBox="0 0 64 64" fill="none">
+                <Defs>
+                  <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+                    <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+              </Svg>
+            </View>
           </>
         )}
       </View>

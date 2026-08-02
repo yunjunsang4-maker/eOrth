@@ -234,25 +234,30 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
                     <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
-                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={s.avatarInner} pointerEvents="none">
-                  <Defs>
-                    <SvgLinearGradient id="editAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                      <Stop stopColor="#000000" stopOpacity="0" />
-                      <Stop offset="1" stopColor="#FFFFFF" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#editAvatarInnerGrad)" strokeWidth="0.5" />
-                </Svg>
-                {!profilePhoto && (
-                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+                {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+                <View style={s.avatarInner} pointerEvents="none">
+                  <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
                     <Defs>
-                      <SvgLinearGradient id="editAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                        <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-                        <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+                      <SvgLinearGradient id="editAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                        <Stop stopColor="#000000" stopOpacity="0" />
+                        <Stop offset="1" stopColor="#FFFFFF" />
                       </SvgLinearGradient>
                     </Defs>
-                    <Circle cx="64" cy="64" r="61" stroke="url(#editAvatarRingGrad)" strokeWidth="6" fill="none" />
+                    <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#editAvatarInnerGrad)" strokeWidth="0.5" />
                   </Svg>
+                </View>
+                {!profilePhoto && (
+                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+                      <Defs>
+                        <SvgLinearGradient id="editAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                          <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                          <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+                        </SvgLinearGradient>
+                      </Defs>
+                      <Circle cx="64" cy="64" r="61" stroke="url(#editAvatarRingGrad)" strokeWidth="6" fill="none" />
+                    </Svg>
+                  </View>
                 )}
               </View>
               <View style={s.cameraIcon}>

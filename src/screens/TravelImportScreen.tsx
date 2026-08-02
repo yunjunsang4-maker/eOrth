@@ -248,20 +248,23 @@ function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boole
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
     >
       {w > 0 && (
-        <Svg width={w} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-              <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
-              <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
-              <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
-              <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgRect
-            x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
-            fill="none" stroke={`url(#${gid})`} strokeWidth={1}
-          />
-        </Svg>
+        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={w} height={H}>
+            <SvgDefs>
+              <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
+                <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
+                <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
+                <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect
+              x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
+              fill="none" stroke={`url(#${gid})`} strokeWidth={1}
+            />
+          </Svg>
+        </View>
       )}
       <Text style={styles.periodTxt}>{label}</Text>
     </TouchableOpacity>

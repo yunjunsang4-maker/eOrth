@@ -933,8 +933,10 @@ export default function StatsScreen() {
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
               <SvgImage href={RATING_GLOBE_IMG} x={RATING_GLOBE_X} y={RATING_GLOBE_Y} width={RATING_GLOBE_D} height={RATING_GLOBE_D} preserveAspectRatio="xMidYMid meet" />
             </Svg>
-            {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽) */}
-            <Svg width={170 * OS} height={170 * OS} style={styles.ratingDisk3BorderBox} pointerEvents="none">
+            {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽)
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+            <View style={styles.ratingDisk3BorderBox} pointerEvents="none">
+            <Svg width={170 * OS} height={170 * OS}>
               <SvgDefs>
                 {/* 맨뒤 원판 테두리와 동일 — 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
                 <SvgLinearGradient id="ratingDisk3Border" x1="0" y1="0" x2="1" y2="1">
@@ -953,6 +955,7 @@ export default function StatsScreen() {
                 strokeWidth={1.5}
               />
             </Svg>
+            </View>
           </View>
 
           {/* Travel Rating — 지구본 중앙 (탭: 평가 상세 · 꾹 누른 채 좌우 드래그: 랭킹 노드 궤도 회전) */}

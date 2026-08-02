@@ -246,15 +246,18 @@ const BadgeHighlightItem = ({ emoji, image, name, glow, earned = true }: { emoji
             ) : (
               <LockClosedIcon size={22} color="#7A7A89" />
             )}
-            <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-              <Defs>
-                <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
-                </SvgLinearGradient>
-              </Defs>
-              <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
-            </Svg>
+            {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width={64} height={64} viewBox="0 0 64 64" fill="none">
+                <Defs>
+                  <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+                    <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+              </Svg>
+            </View>
           </>
         )}
       </View>
@@ -1942,28 +1945,33 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
-                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현 */}
-                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
-                  <Defs>
-                    <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                      <Stop stopColor="#000000" stopOpacity="0" />
-                      <Stop offset="1" stopColor="#FFFFFF" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
-                </Svg>
+                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현
+                    (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+                <View style={styles.avatarInner} pointerEvents="none">
+                  <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
+                    <Defs>
+                      <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                        <Stop stopColor="#000000" stopOpacity="0" />
+                        <Stop offset="1" stopColor="#FFFFFF" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
+                  </Svg>
+                </View>
                 {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke). */}
                 {/* 기본 프사(사진 미설정)일 때만 표시하고, 실제 프사가 설정되면 그라데이션 링을 제거한다. */}
                 {!profilePhoto && (
-                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-                    <Defs>
-                      <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                        <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-                        <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
-                      </SvgLinearGradient>
-                    </Defs>
-                    <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
-                  </Svg>
+                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+                      <Defs>
+                        <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                          <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                          <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+                        </SvgLinearGradient>
+                      </Defs>
+                      <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
+                    </Svg>
+                  </View>
                 )}
             </View>
           </LiquidPressable>
@@ -2254,26 +2262,29 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             activeOpacity={0.85}
             onLayout={(e) => setMergeBtnSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
           >
-            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208) */}
+            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208)
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
             {mergeBtnSize.w > 0 && (
-              <Svg width={mergeBtnSize.w} height={mergeBtnSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Defs>
-                  <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
-                    <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
-                    <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-                  </SvgLinearGradient>
-                </Defs>
-                <SvgRect
-                  x={0.5}
-                  y={0.5}
-                  width={mergeBtnSize.w - 1}
-                  height={mergeBtnSize.h - 1}
-                  rx={(mergeBtnSize.h - 1) / 2}
-                  stroke="url(#mergeBtnRing)"
-                  strokeWidth={1}
-                  fill="none"
-                />
-              </Svg>
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={mergeBtnSize.w} height={mergeBtnSize.h}>
+                  <Defs>
+                    <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
+                      <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
+                      <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <SvgRect
+                    x={0.5}
+                    y={0.5}
+                    width={mergeBtnSize.w - 1}
+                    height={mergeBtnSize.h - 1}
+                    rx={(mergeBtnSize.h - 1) / 2}
+                    stroke="url(#mergeBtnRing)"
+                    strokeWidth={1}
+                    fill="none"
+                  />
+                </Svg>
+              </View>
             )}
             <Text style={[mergeSt.barBtnTxt, mergeSelected.length < 2 && mergeSt.barBtnTxtDisabled]}>
               {t('profile.mergeBtn', { count: mergeSelected.length })}

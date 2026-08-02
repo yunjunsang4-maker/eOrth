@@ -364,47 +364,22 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   };
 
   // 섹션 헤더 ⋯ — 이름 변경 / 섹션 삭제(사진은 옆 섹션으로 합쳐짐)
+  // Alert.alert은 안드로이드에서 버튼을 3개까지만 표시해(4번째부터 소실) 시트 모달로 띄운다.
+  const [sectionMenu, setSectionMenu] = useState<number | null>(null);
   const handleSectionMenu = (index: number) => {
     if (!sections) return;
-    Alert.alert(sections[index]?.title ?? '', undefined, [
-      {
-        text: t('trip.albumSectionRename'),
-        onPress: () => { setSectionTitleInput(sections[index]?.title ?? ''); setSectionModal({ mode: 'rename', index }); },
-      },
-      {
-        // 순서 변경은 사진 꾹 누르기로 진입 — 메뉴에는 다중 선택(이동/삭제)만 남긴다
-        text: t('trip.albumSelect'),
-        onPress: startSelecting,
-      },
-      ...(index > 0 ? [{
-        text: t('trip.albumMoveUp'),
-        onPress: () => {
-          const next = moveSection(medias, sections, index, index - 1);
-          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
-        },
-      }] : []),
-      ...(index < sections.length - 1 ? [{
-        text: t('trip.albumMoveDown'),
-        onPress: () => {
-          const next = moveSection(medias, sections, index, index + 1);
-          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
-        },
-      }] : []),
-      {
-        text: t('trip.albumSectionDelete'),
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
-            { text: t('common.cancel'), style: 'cancel' },
-            {
-              text: t('trip.delete'),
-              style: 'destructive',
-              onPress: () => updateRecord(record.id, { albumSections: deleteSection(sections, medias.length, index) ?? undefined }),
-            },
-          ]);
-        },
-      },
+    setSectionMenu(index);
+  };
+  const closeSectionMenu = () => setSectionMenu(null);
+  const handleSectionDelete = (index: number) => {
+    if (!sections) return;
+    Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('trip.delete'),
+        style: 'destructive',
+        onPress: () => updateRecord(record.id, { albumSections: deleteSection(sections, medias.length, index) ?? undefined }),
+      },
     ]);
   };
 
@@ -607,6 +582,81 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               </TouchableOpacity>
             ))}
             <TouchableOpacity style={[styles.sheetRow, { justifyContent: 'center' }]} onPress={() => setMoveSheet(null)}>
+              <Text style={[styles.sheetRowTxt, { color: '#A1A1B0' }]}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* 섹션 헤더 ⋯ 메뉴 시트 — Alert은 안드로이드에서 3버튼 초과분이 잘려 시트로 대체 */}
+      <Modal visible={sectionMenu !== null} transparent animationType="slide" onRequestClose={closeSectionMenu}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={closeSectionMenu} accessibilityViewIsModal>
+          <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
+            <Text style={styles.sheetTitle}>{sectionMenu !== null ? (sections?.[sectionMenu]?.title ?? '') : ''}</Text>
+            {sectionMenu !== null && sections && (
+              <>
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const idx = sectionMenu;
+                    closeSectionMenu();
+                    setSectionTitleInput(sections[idx]?.title ?? '');
+                    setSectionModal({ mode: 'rename', index: idx });
+                  }}
+                >
+                  <Text style={styles.sheetRowTxt}>{t('trip.albumSectionRename')}</Text>
+                </TouchableOpacity>
+                {/* 순서 변경은 사진 꾹 누르기로 진입 — 메뉴에는 다중 선택(이동/삭제)만 남긴다 */}
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => { closeSectionMenu(); startSelecting(); }}
+                >
+                  <Text style={styles.sheetRowTxt}>{t('trip.albumSelect')}</Text>
+                </TouchableOpacity>
+                {sectionMenu > 0 && (
+                  <TouchableOpacity
+                    style={styles.sheetRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const idx = sectionMenu;
+                      closeSectionMenu();
+                      const next = moveSection(medias, sections, idx, idx - 1);
+                      updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+                    }}
+                  >
+                    <Text style={styles.sheetRowTxt}>{t('trip.albumMoveUp')}</Text>
+                  </TouchableOpacity>
+                )}
+                {sectionMenu < sections.length - 1 && (
+                  <TouchableOpacity
+                    style={styles.sheetRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const idx = sectionMenu;
+                      closeSectionMenu();
+                      const next = moveSection(medias, sections, idx, idx + 1);
+                      updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+                    }}
+                  >
+                    <Text style={styles.sheetRowTxt}>{t('trip.albumMoveDown')}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const idx = sectionMenu;
+                    closeSectionMenu();
+                    handleSectionDelete(idx);
+                  }}
+                >
+                  <Text style={[styles.sheetRowTxt, { color: '#FF3B30' }]}>{t('trip.albumSectionDelete')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity style={[styles.sheetRow, { justifyContent: 'center' }]} onPress={closeSectionMenu}>
               <Text style={[styles.sheetRowTxt, { color: '#A1A1B0' }]}>{t('common.cancel')}</Text>
             </TouchableOpacity>
           </View>
