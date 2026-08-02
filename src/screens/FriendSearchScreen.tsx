@@ -512,7 +512,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
       {/* ── 검색창 ── */}
       <View style={s.searchWrap}>
         <SearchIcon size={16} color="#A1A1B0" />
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={s.searchInput}
           placeholder={t('friends.nameOrIdPlaceholder')}
           placeholderTextColor={C.dim}

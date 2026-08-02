@@ -290,7 +290,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.handle')}</Text>
             <View style={styles.inputWrapper}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder={t('basicInfo.handlePlaceholder')}
                 placeholderTextColor={Colors.textMuted}
@@ -309,7 +309,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.birthday')}</Text>
             <View style={styles.inputWrapper}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={Colors.textMuted}
@@ -443,7 +443,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               <Text style={styles.modalClose}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.modalSearch}
             placeholder={t('basicInfo.residenceSearchPlaceholder')}
             placeholderTextColor={Colors.textMuted}
@@ -479,7 +479,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               <Text style={styles.modalClose}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.modalSearch}
             placeholder={t('basicInfo.residenceSearchPlaceholder')}
             placeholderTextColor={Colors.textMuted}

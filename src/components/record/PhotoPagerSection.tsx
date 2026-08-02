@@ -136,7 +136,7 @@ export default function PhotoPagerSection({
         <Text style={[st.captionLabel, { color: skinAccent.accent }]}>
           {t('newRecord.photoTextLabel', { n: activeIdx + 1, total: medias.length })}
         </Text>
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={st.captionInput}
           placeholder={t('newRecord.photoTextPlaceholder')}
           placeholderTextColor="#5a5a68"

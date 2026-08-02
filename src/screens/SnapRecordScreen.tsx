@@ -65,13 +65,18 @@ const GlassFill = ({
   specular?: boolean;
 }) => (
   <>
-    <BlurView
-      intensity={intensity}
-      tint={tint}
-      experimentalBlurMethod="dimezisBlurView"
-      style={StyleSheet.absoluteFill}
-      pointerEvents="none"
-    />
+    {/* 안드로이드 dimezisBlurView는 카메라 프리뷰(하드웨어 서피스)를 스냅샷하지 못해
+        버튼이 검은 판으로 보인다 — 안드로이드는 반투명 매트로 대체 (iOS는 실블러) */}
+    {Platform.OS === 'ios' ? (
+      <BlurView
+        intensity={intensity}
+        tint={tint}
+        style={StyleSheet.absoluteFill}
+        pointerEvents="none"
+      />
+    ) : (
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(22,18,32,0.55)' }]} pointerEvents="none" />
+    )}
     <LinearGradient
       colors={[GLASS.innerTop, GLASS.innerBottom]}
       start={{ x: 0, y: 0 }}
@@ -613,7 +618,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
 
       {/* 캡션 입력 */}
       <View style={st.captionArea}>
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={st.captionInput}
           placeholder={t('snap.captionPlaceholder')}
           placeholderTextColor={C.muted}

@@ -594,7 +594,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
           {/* 글 */}
           <View style={st.fieldBlock}>
             <View style={st.labelRow}><Text style={st.label}>{t('cutInfo.text')}</Text></View>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.memoInput}
               placeholder={t('cutInfo.textPlaceholder')}
               placeholderTextColor={C.textMuted}
@@ -702,7 +702,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   {CURRENCIES.includes(currency) ? t('cutInfo.otherCurrency') : currency}
                 </Text>
               </TouchableOpacity>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.budgetInput}
                 placeholder={t('cutInfo.amountPlaceholder')} placeholderTextColor={C.textMuted}
                 value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))}
@@ -773,7 +773,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                   <Text style={[st.kwTagDel, { color: skinAccent.accent }]}> ✕</Text>
                 </TouchableOpacity>
               ))}
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.kwInput}
                 value={keywordQuery}
                 onChangeText={v => {
@@ -887,7 +887,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             </View>
             <View style={cur.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={cur.searchInput}
                 value={currencySearch} onChangeText={setCurrencySearch}
                 placeholder={t('cutInfo.currencySearchPlaceholder')} placeholderTextColor={C.textMuted}
@@ -937,7 +937,7 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
             </View>
             <View style={ct.searchWrap}>
               <SearchIcon size={14} color={C.textDim} />
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={ct.searchInput}
                 value={countrySearch} onChangeText={setCountrySearch}
                 placeholder={t('cutInfo.countrySearchPlaceholder')} placeholderTextColor={C.textMuted}

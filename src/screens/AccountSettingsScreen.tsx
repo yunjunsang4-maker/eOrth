@@ -519,7 +519,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.birthday')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[
                   styles.modalInput,
                   birthdayDraft.length > 0 && !isOldEnough(birthdayDraft) && styles.modalInputError,
@@ -627,7 +627,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* 새 이메일 주소 */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.newEmailLabel')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[
                   styles.modalInput,
                   emailDraft.length > 0 && !EMAIL_INPUT_RE.test(emailDraft.trim()) && styles.modalInputError,
@@ -648,7 +648,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* 본인 확인: 현재 비밀번호 (재인증) */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.modalInput}
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
@@ -706,7 +706,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* 현재 비밀번호 */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.currentPasswordLabel')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.modalInput}
                 placeholder={t('accountSettings.currentPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
@@ -720,7 +720,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* 새 비밀번호 */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.newPasswordLabel')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.modalInput}
                 placeholder={t('accountSettings.newPasswordPlaceholder')}
                 placeholderTextColor={COLORS.textMuted}
@@ -734,7 +734,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             {/* 새 비밀번호 확인 */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>{t('accountSettings.confirmPasswordLabel')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[
                   styles.modalInput,
                   confirmPassword.length > 0 && newPassword !== confirmPassword && styles.modalInputError
@@ -850,7 +850,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 </View>
 
                 {deleteReason === 'other' && (
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={[styles.modalInput, { marginTop: 10 }]}
                     placeholder={t('accountSettings.reasonOtherPlaceholder')}
                     placeholderTextColor={COLORS.textMuted}
@@ -886,7 +886,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 {signUpMethod === 'email' ? (
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>{t('accountSettings.deletePasswordLabel')}</Text>
-                    <TextInput
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                       style={styles.modalInput}
                       placeholder={t('accountSettings.deletePasswordPlaceholder')}
                       placeholderTextColor={COLORS.textMuted}
@@ -899,7 +899,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 ) : (
                   <View style={styles.inputGroup}>
                     <Text style={styles.inputLabel}>{t('accountSettings.deleteSocialLabel')}</Text>
-                    <TextInput
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                       style={styles.modalInput}
                       placeholder={t('accountSettings.deleteConfirmPhrase')}
                       placeholderTextColor={COLORS.textMuted}

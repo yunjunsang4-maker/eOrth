@@ -676,7 +676,7 @@ function EditProfileModal({
           <View style={styles.modalField}>
             <Text style={styles.modalFieldLabel}>{t('profile.nickname')}</Text>
             <View style={[styles.modalInputWrap, { borderColor: skinAccent.tint(0.3) }]}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.modalInput}
                 value={name}
                 onChangeText={setName}
@@ -1284,7 +1284,7 @@ function GroupMergeModal({
             {/* 묶음 제목 */}
             <Text style={[gmSt.sectionLabel, { color: skinAccent.accent }]}>{t('profile.groupTitle')}</Text>
             <View style={gmSt.inputWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={gmSt.input}
                 value={title}
                 onChangeText={setTitle}

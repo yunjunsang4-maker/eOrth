@@ -168,7 +168,7 @@ export default function MomentCaptureScreen() {
         <View style={[st.sheet, { paddingBottom: insets.bottom + 16 }]}>
           <View style={st.grab} />
           <Text style={st.title}>✨ {t('moments.captureTitle')}</Text>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={st.input}
             placeholder={t('moments.placeholder')}
             placeholderTextColor="#5a5a68"

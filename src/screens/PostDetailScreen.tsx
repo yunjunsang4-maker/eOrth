@@ -1216,7 +1216,7 @@ function SnapStoryViewer({
           <KeyboardAvoidingView style={storyS.inlineInputWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
             {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
             <View style={[storyS.inlineInputRow, { paddingBottom: Platform.OS === 'ios' ? 34 : insets.bottom + 14 }]}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 ref={replyInputRef}
                 style={storyS.inlineInput}
                 placeholder={t('postDetail.sendMessagePlaceholder')}
@@ -1288,7 +1288,7 @@ function SnapStoryViewer({
             </View>
           )}
           <View style={storyS.csInputBar}>
-            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
             <TouchableOpacity style={[storyS.csSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { backgroundColor: "#2A2A3A" }]} onPress={addComment} disabled={!commentText.trim()}>
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
@@ -2335,7 +2335,7 @@ export default function PostDetailScreen() {
         {viewType !== 'album' && !record.isExample && (
         // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
         <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             ref={commentInputRef}
             style={s.input}
             placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')}

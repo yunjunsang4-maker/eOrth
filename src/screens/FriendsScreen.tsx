@@ -265,7 +265,7 @@ export default function FriendsScreen({ navigation }: Props) {
         onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
         style={st.searchWrap}
       >
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={st.searchInput}
           placeholder={t('friends.searchPlaceholder')}
           placeholderTextColor={C.muted}

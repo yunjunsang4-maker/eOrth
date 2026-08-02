@@ -550,7 +550,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         {/* 댓글 입력 바 (앨범 제외) */}
         {!isAlbum && (
         <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.input}
             value={commentText}
             onChangeText={setCommentText}
@@ -674,7 +674,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
                   ? t('trip.albumSectionRename')
                   : t('trip.albumSectionAddTitle')}
             </Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={styles.sectionModalInput}
               value={sectionTitleInput}
               onChangeText={setSectionTitleInput}

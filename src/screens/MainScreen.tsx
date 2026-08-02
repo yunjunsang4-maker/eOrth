@@ -381,6 +381,15 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
   );
 }
 
+// 지구본 위 버튼의 유리 채움 — 안드로이드 dimezisBlurView는 WebView(하드웨어 서피스)를
+// 스냅샷하지 못해 검은 원판으로 보인다 → 안드로이드는 반투명 매트로 대체 (iOS는 실블러)
+function GlobeBtnGlass({ style, children }: { style?: object; children: React.ReactNode }) {
+  if (Platform.OS === 'ios') {
+    return <BlurView intensity={50} tint="dark" style={style}>{children}</BlurView>;
+  }
+  return <View style={[style, { backgroundColor: 'rgba(22,18,32,0.6)' }]}>{children}</View>;
+}
+
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
@@ -1400,9 +1409,9 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.globeFormA11y')}
             >
-              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+              <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon tint={skinAccent.pill} />
-              </BlurView>
+              </GlobeBtnGlass>
             </TouchableOpacity>
             {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림.
                 유리(사진) 지구본에선 숨긴다 — 활성화가 사진이라 색 팔레트가 의미 없다 */}
@@ -1414,11 +1423,11 @@ export default function MainScreen({ navigation, route }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={t('main.activeColorA11y')}
               >
-                <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+                <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                   <View style={[styles.globeColorDot, { backgroundColor: globeColor }, isNoiseColor(globeColor) && { overflow: 'hidden' }]}>
                     {isNoiseColor(globeColor) && <GrainOverlay color="#000000" opacity={0.5} dotCount={40} />}
                   </View>
-                </BlurView>
+                </GlobeBtnGlass>
               </TouchableOpacity>
             )}
           </>
@@ -1426,7 +1435,7 @@ export default function MainScreen({ navigation, route }: Props) {
           <>
             {/* 검색바 (Figma 8:385) */}
             <View style={styles.regionSearchWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.regionSearchInput}
                 value={regionSearch}
                 onChangeText={setRegionSearch}
@@ -1556,7 +1565,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 }}>
                     <SearchLineIcon size={18} color="#A9A9A9" />
-                    <TextInput
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                       style={{ flex: 1, color: '#FFFFFF', fontSize: 14, paddingVertical: 10, marginLeft: 8 }}
                       value={regionTagSearch}
                       onChangeText={setRegionTagSearch}
@@ -1628,9 +1637,9 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.territoryDisplayA11y')}
             >
-              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+              <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon tint={skinAccent.pill} />
-              </BlurView>
+              </GlobeBtnGlass>
             </TouchableOpacity>
           </>
         ) : (
@@ -1676,7 +1685,7 @@ export default function MainScreen({ navigation, route }: Props) {
             <View style={styles.countryPickerSheet}>
               <View style={styles.countryPickerHandle} />
               <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.countryPickerInput}
                 placeholder={t('main.countrySearchPh')}
                 placeholderTextColor="#5a5a68"
@@ -1713,7 +1722,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {SHOW_VISITED_SHEET && !sheetOpen && (
         <TouchableOpacity style={styles.handleTrigger} onPress={openSheet} activeOpacity={0.8}>
           <LinearGradient
-            colors={['transparent', 'rgba(10,1,24,0.85)']}
+            colors={['rgba(10,1,24,0)', 'rgba(10,1,24,0.85)']}
             style={styles.handleTriggerGradient}
             pointerEvents="none"
           />

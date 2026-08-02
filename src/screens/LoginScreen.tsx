@@ -524,7 +524,7 @@ export default function LoginScreen({ navigation }: Props) {
               <Text style={styles.fieldLabel}>{isSignup ? t('login.email') : t('login.emailOrId')}</Text>
               <View style={[styles.inputBox, emailFocused && styles.inputBoxFocused]}>
                 <Image source={EMOJI_MAIL} style={styles.inputIcon} />
-                <TextInput
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                   style={styles.input}
                   placeholder={isSignup ? 'example@email.com' : t('login.emailOrIdPlaceholder')}
                   placeholderTextColor={Colors.textMuted}
@@ -550,7 +550,7 @@ export default function LoginScreen({ navigation }: Props) {
               <Text style={styles.fieldLabel}>{t('login.password')}</Text>
               <View style={[styles.inputBox, pwFocused && styles.inputBoxFocused]}>
                 <Image source={EMOJI_LOCK} style={styles.inputIcon} />
-                <TextInput
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                   ref={passwordRef}
                   style={styles.input}
                   placeholder={t('login.passwordPlaceholder')}
@@ -592,7 +592,7 @@ export default function LoginScreen({ navigation }: Props) {
                   confirmPassword.length > 0 && confirmPassword !== password && styles.inputBoxError,
                 ]}>
                   <Image source={EMOJI_KEY} style={styles.inputIcon} />
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     ref={confirmRef}
                     style={styles.input}
                     placeholder={t('login.confirmPlaceholder')}
@@ -755,7 +755,7 @@ export default function LoginScreen({ navigation }: Props) {
                   <Text style={styles.fieldLabel}>{t('login.resetEmailLabel')}</Text>
                   <View style={[styles.inputBox, forgotEmailFocused && styles.inputBoxFocused]}>
                     <Image source={EMOJI_MAIL} style={styles.inputIcon} />
-                    <TextInput
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                       style={styles.input}
                       placeholder="example@email.com"
                       placeholderTextColor={Colors.textMuted}

@@ -518,7 +518,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <View style={st.searchCard}>
             <View style={st.searchRow}>
               <SearchIcon size={16} color="#A1A1B0" />
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.searchInput}
                 placeholder={t('album.countrySearchPlaceholder')}
                 placeholderTextColor="#5A5A6E"
@@ -813,7 +813,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
             {/* 제목 입력 */}
             <Text style={[st.pvPickLabel, { color: skinAccent.accent }]}>{t('album.albumName')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.pvInput}
               value={title}
               onChangeText={setTitle}

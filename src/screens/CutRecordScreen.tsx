@@ -518,7 +518,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         <Pressable style={st.ccOverlay} onPress={() => setCaptionModalVisible(false)}>
           <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={[st.capInput, handleFontStyle(captionFont)]}
               value={captionDraft}
               onChangeText={setCaptionDraft}

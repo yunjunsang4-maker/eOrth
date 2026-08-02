@@ -285,7 +285,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
             <Text style={s.fieldLabel}>{t('editProfile.handleLabel')}</Text>
             <View style={[s.inputWrap, !canChangeHandle && s.inputWrapDisabled]}>
               <Text style={s.atPrefix}>@</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[s.input, { flex: 1 }, !canChangeHandle && s.inputDisabled]}
                 value={handle}
                 onChangeText={(text) => setHandle(text.replace(/[^a-zA-Z0-9_]/g, ''))}
@@ -317,7 +317,7 @@ export default function EditProfileScreen({ navigation }: RootStackScreenProps<'
           <View style={s.fieldGroup}>
             <Text style={s.fieldLabel}>{t('editProfile.bioLabel')}</Text>
             <View style={s.inputWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={[s.input, s.bioInput]}
                 value={bio}
                 onChangeText={setBio}

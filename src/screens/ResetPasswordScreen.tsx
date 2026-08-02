@@ -70,7 +70,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
           <View style={styles.field}>
             <Text style={styles.label}>{t('login.newPassword')}</Text>
             <View style={styles.inputBox}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder={t('login.passwordPlaceholder')}
                 placeholderTextColor={Colors.textMuted}
@@ -98,7 +98,7 @@ export default function ResetPasswordScreen({ navigation }: Props) {
           <View style={styles.field}>
             <Text style={styles.label}>{t('login.confirmPassword')}</Text>
             <View style={styles.inputBox}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder={t('login.confirmPlaceholder')}
                 placeholderTextColor={Colors.textMuted}

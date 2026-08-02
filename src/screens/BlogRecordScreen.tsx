@@ -276,7 +276,7 @@ function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress
           ))}
         </View>
       )}
-      <TextInput
+      <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
         style={{ color: '#A1A1B0', fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' }}
         placeholder={t('blog.photoCaptionN', { n: activeIdx + 1 })}
         placeholderTextColor="#4A4A59"
@@ -1413,7 +1413,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </View>
 
           {/* 제목 */}
-          <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
             value={title} onChangeText={setTitle} maxLength={100}
             onSubmitEditing={() => { const f = blocks[0]; if (f) { setActiveBlockId(f.id); blockRefs.current[f.id]?.focus(); } }} />
           {/* 부제목(선택) — 있으면 제목 아래 보라색으로 표시, 탭하면 수정 */}
@@ -1431,7 +1431,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.tagSection}>
             <View style={st.tagInputRow}>
               <Text style={[st.hashIcon, { color: skinAccent.accent }]}>#</Text>
-              <TextInput style={st.tagInput} placeholder={t('blog.tagPlaceholder')} placeholderTextColor={C.muted}
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.tagInput} placeholder={t('blog.tagPlaceholder')} placeholderTextColor={C.muted}
                 value={keywordInput} onChangeText={setKeywordInput} onSubmitEditing={addKeyword} returnKeyType="done" />
             </View>
             {keywords.length > 0 && (
@@ -1603,7 +1603,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 링크 입력 */}
       <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title={t('blog.insertLink')}>
-        <TextInput style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
         <TouchableOpacity style={[st.schedConfirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleAddLink}>
           <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
@@ -1612,7 +1612,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 부제목 입력 */}
       <PickerModal visible={subtitleModalVisible} onClose={() => setSubtitleModalVisible(false)} title={t('blog.subtitle')}>
-        <TextInput style={st.schedInput} placeholder={t('blog.subtitlePlaceholder')} placeholderTextColor={C.muted}
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder={t('blog.subtitlePlaceholder')} placeholderTextColor={C.muted}
           value={subtitleDraft} onChangeText={setSubtitleDraft} maxLength={60} autoFocus />
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {!!subtitle.trim() && (
@@ -1746,7 +1746,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       {CURRENCIES.includes(currency) ? t('blog.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
-                  <TextInput style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
                     value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={12} />
                 </View>
               </PanelRow>
@@ -1800,7 +1800,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       ))}
                     </View>
                   )}
-                  <TextInput style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
                     value={keywordInput} onChangeText={v => {
                       if (v.endsWith(' ')) {
                         // 중복 검사도 '#' 제거 후 값으로 — 제거 전 값(#seoul)로 검사하고 제거 후
@@ -1822,7 +1822,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               {/* 메모 (비공개) */}
               <PanelRow label="" icon={null} labelText={t('blog.memoLabel')}>
-                <TextInput style={st.memoInput} placeholder={t('blog.memoPlaceholder')} placeholderTextColor={C.muted}
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.memoInput} placeholder={t('blog.memoPlaceholder')} placeholderTextColor={C.muted}
                   value={memo} onChangeText={setMemo} multiline textAlignVertical="top"
                   onFocus={() => setTimeout(() => travelScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
               </PanelRow>
@@ -1896,7 +1896,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <View style={st.currModalSheet}>
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>{t('blog.currencySelect')}</Text>
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={st.currModalSearch}
                     value={currencySearch}
                     onChangeText={setCurrencySearch}
@@ -1952,7 +1952,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               대륙별로 훑어보는 사용 방식을 막았다. 검색이 필요하면 탭 한 번이면 된다. */}
           <View style={st.searchWrap}>
             <View style={st.searchBox}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.searchField}
                 placeholder={t('blog.countrySearchPlaceholder')}
                 placeholderTextColor={C.muted}
@@ -2194,7 +2194,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         // 고정 lineHeight 26은 '제목급'(26px)에서 한글 상하가 잘려 글자 크기에 비례시킨다.
         const customFam = tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined;
         return (
-          <TextInput key={block.id}
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" key={block.id}
             ref={ref => { blockRefs.current[block.id] = ref; }}
             style={[st.textBlock, {
               fontSize: tb.fontSize || 15, textAlign: tb.align || 'left',
@@ -2217,7 +2217,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         const sizes = { 1: 26, 2: 22, 3: 18 };
         return (
           <View key={block.id} style={st.headingWrap}>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               ref={ref => { blockRefs.current[block.id] = ref; }}
               style={[st.headingInput, { fontSize: sizes[hb.level], textAlign: hb.align || 'left' }]}
               placeholder={t('blog.headingPlaceholder', { level: hb.level })} placeholderTextColor={C.muted}
@@ -2236,7 +2236,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage([ib.uri], 0)}>
               <Image source={{ uri: ib.uri }} style={st.imageBlockImg} resizeMode="cover" />
             </TouchableOpacity>
-            <TextInput style={st.captionInput} placeholder={t('blog.photoCaptionPlaceholder')} placeholderTextColor={C.muted}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.captionInput} placeholder={t('blog.photoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={ib.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -2261,7 +2261,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage(imb.items.map(it => it.uri), i)}>
                       <Image source={{ uri: item.uri }} style={[st.gridImg, { width: imgW, height: imgW * 0.75 }]} resizeMode="cover" />
                     </TouchableOpacity>
-                    <TextInput style={st.gridCaptionInput} placeholder={t('blog.gridCaptionPlaceholder')} placeholderTextColor={C.muted}
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.gridCaptionInput} placeholder={t('blog.gridCaptionPlaceholder')} placeholderTextColor={C.muted}
                       value={item.caption || ''} onChangeText={v => updateImagesItemCaption(block.id, i, v)} />
                   </View>
                 ))}
@@ -2354,7 +2354,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <View style={st.videoLabel}>
               <Text style={st.videoLabelText}>▶ {t('blog.video')}</Text>
             </View>
-            <TextInput style={st.captionInput} placeholder={t('blog.videoCaptionPlaceholder')} placeholderTextColor={C.muted}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.captionInput} placeholder={t('blog.videoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={vb.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -2381,7 +2381,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         return (
           <View key={block.id} style={[st.quoteBlock, { backgroundColor: skinAccent.tint(0.06), borderLeftColor: skinAccent.accent }]}>
             <Text style={[st.quoteMark, { color: skinAccent.accent }]}>"</Text>
-            <TextInput ref={ref => { blockRefs.current[block.id] = ref; }}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={ref => { blockRefs.current[block.id] = ref; }}
               style={st.quoteInput} placeholder={t('blog.quotePlaceholder')} placeholderTextColor={C.muted}
               value={qb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
               onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />

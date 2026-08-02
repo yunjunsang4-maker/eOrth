@@ -730,7 +730,7 @@ export default function DMScreen({ navigation, route }: Props) {
       {/* 대화 내 검색 바 */}
       {searchOpen && (
         <View style={st.searchBar}>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={st.searchInput}
             placeholder={t('dm.searchInChat')}
             placeholderTextColor={C.muted}
@@ -848,7 +848,7 @@ export default function DMScreen({ navigation, route }: Props) {
           >
             <Text style={st.attachBtnText}>{attachMenuOpen ? '✕' : '+'}</Text>
           </TouchableOpacity>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={st.input}
             placeholder={t('dm.messagePlaceholder')}
             placeholderTextColor={C.muted}

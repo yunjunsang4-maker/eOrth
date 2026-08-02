@@ -339,7 +339,7 @@ function CommentBottomSheet({
                 <Text style={cs.myAvatarText}>{t('social.me')}</Text>
               </View>
               <View style={cs.inputWrap}>
-                <TextInput
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                   style={cs.input}
                   placeholder={t('social.commentPlaceholder')}
                   placeholderTextColor="#4A4A59"

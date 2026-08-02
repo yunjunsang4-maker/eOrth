@@ -1460,7 +1460,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
               <View style={[s.searchCard, selectedCountries.length > 0 ? [s.searchCardSelected, { borderColor: skinAccent.accent }] : null]}>
                 <View style={s.searchRow}>
                   <SearchIcon size={16} color={COLORS.textDim} />
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={s.searchInput}
                     placeholder={selectedCountries.length > 0
                       ? t('newRecord.searchMore')
@@ -1741,7 +1741,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       {CURRENCIES.includes(currency) ? t('newRecord.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={s.optBudgetInput}
                     placeholder={t('newRecord.amountPlaceholder')}
                     placeholderTextColor={COLORS.textMuted}
@@ -1823,7 +1823,7 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                       <Text style={[s.kwTagDel, { color: skinAccent.tint(0.6) }]}> ✕</Text>
                     </TouchableOpacity>
                   ))}
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={s.kwInlineInput}
                     value={keywordQuery}
                     onChangeText={v => {

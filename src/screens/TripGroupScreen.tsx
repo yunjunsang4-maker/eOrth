@@ -259,7 +259,7 @@ export default function TripGroupScreen() {
 
             <Text style={st.editLabel}>{t('trip.groupTitle')}</Text>
             <View style={st.editInputWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.editInput}
                 value={editTitle}
                 onChangeText={setEditTitle}

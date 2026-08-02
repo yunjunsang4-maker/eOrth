@@ -542,7 +542,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
             <Text style={st.modalDesc}>{t('settings.countryModalDesc')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.modalInput}
               value={countryDraft}
               onChangeText={setCountryDraft}
@@ -618,7 +618,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
           <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={[st.modalInput, { marginBottom: 8 }]}
               value={stayCountrySearch}
               onChangeText={setStayCountrySearch}

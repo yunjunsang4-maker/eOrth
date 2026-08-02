@@ -491,7 +491,7 @@ export default function TripDetailScreen() {
         <View style={s.headerCenter}>
           {isEditing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 value={editedTitle}
                 onChangeText={setEditedTitle}
                 style={s.headerInput}
@@ -852,7 +852,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={['rgba(191,133,252,0.08)', 'transparent']}
+        colors={['rgba(191,133,252,0.08)', 'rgba(191,133,252,0)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -891,7 +891,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
   return (
     <View style={[card.album, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={['rgba(255,166,87,0.1)', 'rgba(255,166,87,0.02)', 'transparent']}
+        colors={['rgba(255,166,87,0.1)', 'rgba(255,166,87,0.02)', 'rgba(255,166,87,0)']}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -960,7 +960,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -996,7 +996,7 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -1041,7 +1041,7 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
