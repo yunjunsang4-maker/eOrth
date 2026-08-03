@@ -1214,8 +1214,9 @@ function SnapStoryViewer({
         <>
           <Pressable style={storyS.inlineOverlay} onPress={() => { setReplyBarOpen(false); setCommentText(''); }} />
           <KeyboardAvoidingView style={storyS.inlineInputWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-            {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-            <View style={[storyS.inlineInputRow, { paddingBottom: Platform.OS === 'ios' ? 34 : insets.bottom + 14 }]}>
+            {/* 이 입력줄은 autoFocus로 항상 키보드와 함께 떠서(닫히면 blur로 사라짐)
+                키보드가 내비바를 덮음 — 안드로이드 인셋 가산 불필요, 고정 여백만 */}
+            <View style={[storyS.inlineInputRow, { paddingBottom: Platform.OS === 'ios' ? 34 : 14 }]}>
               <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 ref={replyInputRef}
                 style={storyS.inlineInput}
@@ -1375,6 +1376,15 @@ export default function PostDetailScreen() {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
+  // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
+  const [kbVisible, setKbVisible] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, () => setKbVisible(true));
+    const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
@@ -1893,6 +1903,7 @@ export default function PostDetailScreen() {
           style={s.scroll}
           contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={() => setShowCompanions(false)}
           onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
           scrollEventThrottle={32}
@@ -2333,8 +2344,8 @@ export default function PostDetailScreen() {
         )}
         {/* ── 댓글 입력 (앨범 및 예시 콘텐츠 제외) ── */}
         {viewType !== 'album' && !record.isExample && (
-        // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-        <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
+        // 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음)
+        <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : kbVisible ? 12 : insets.bottom + 12 }]}>
           <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             ref={commentInputRef}
             style={s.input}

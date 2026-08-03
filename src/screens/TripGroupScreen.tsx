@@ -176,7 +176,7 @@ export default function TripGroupScreen() {
       </View>
 
       {/* 기록 목록 */}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={st.scrollContent} keyboardShouldPersistTaps="handled">
         {groupRecords.length === 0 ? (
           <View style={st.emptyState}>
             <Text style={st.emptyIcon}>📦</Text>

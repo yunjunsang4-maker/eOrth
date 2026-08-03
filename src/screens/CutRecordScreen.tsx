@@ -529,7 +529,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
             />
             {/* 폰트 선택 — 아이디 폰트 16종 재사용, 입력한 문구로 미리보기 */}
             <Text style={st.capFontLabel}>{t('cut.captionFontLabel')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.capFontRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.capFontRow} keyboardShouldPersistTaps="handled">
               {HANDLE_FONTS.map((f) => {
                 const selected = (captionFont ?? 'default') === f.id;
                 return (

@@ -662,6 +662,7 @@ export default function TripDetailScreen() {
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* 히어로 배너 */}
         <Animated.View style={[s.hero, {
@@ -1243,7 +1244,11 @@ const s = StyleSheet.create({
   railNode: {
     position: 'absolute', left: -23, top: 30, width: 10, height: 10, borderRadius: 5,
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6, elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6 },
+      default: {},
+    }),
     zIndex: 2,
   },
   railLink: { position: 'absolute', left: -14, top: 34, width: 14, height: 1.5, borderRadius: 1 },
@@ -1258,9 +1263,17 @@ const s = StyleSheet.create({
   moduleCutB: { borderTopLeftRadius: 24, borderTopRightRadius: 4, borderBottomRightRadius: 24, borderBottomLeftRadius: 4 },
   moduleEdge: {
     position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5, elevation: 4,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5 },
+      default: {},
+    }),
   },
-  moduleIndex: { fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center' },
+  moduleIndex: {
+    fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center',
+    // 안드로이드는 letterSpacing이 마지막 글자 뒤에도 여백을 남겨 왼쪽으로 치우침 → 같은 값만큼 왼쪽 패딩으로 상쇄 (SnapRecordScreen snapBadge와 동일 패턴)
+    ...(Platform.OS === 'android' && { paddingLeft: 1 }),
+  },
   moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
   moduleNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },

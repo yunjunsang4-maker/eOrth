@@ -622,7 +622,11 @@ function ProfileActionButton({
         accessibilityLabel={accessibilityLabel ?? label}
         style={[
           s.actionBtn,
-          variant === 'primary' && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+          variant === 'primary' && Platform.select({
+            ios: { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+            default: {},
+          }),
           variant === 'ghost' && { borderWidth: 1, borderColor: tint(0.45), backgroundColor: tint(0.12) },
           variant === 'soft' && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.06)' },
         ]}

@@ -8,6 +8,7 @@ import {
   PanResponder,
   LayoutAnimation,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
@@ -565,11 +566,16 @@ const ds = StyleSheet.create({
   draggableRowActive: {
     backgroundColor: 'rgba(191,133,252,0.12)',
     borderColor: '#BF85FC',
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#BF85FC',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
     transform: [{ scale: 1.02 }],
   },
   dragHandle: {
@@ -646,11 +652,16 @@ const ds = StyleSheet.create({
     borderColor: '#BF85FC',
     borderWidth: 1.5,
     borderRadius: 12,
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#BF85FC',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
     transform: [{ scale: 1.05 }],
   },
   mediaThumb: {

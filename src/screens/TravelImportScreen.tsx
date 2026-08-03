@@ -1501,11 +1501,16 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     top: -2,
     backgroundColor: '#00E5FF',
-    shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9,
+        shadowRadius: 6,
+      },
+      default: {},
+    }),
   },
 
   // 실시간 발견 나라

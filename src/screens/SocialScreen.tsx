@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Dimensions,
   Image,
@@ -284,6 +285,15 @@ function CommentBottomSheet({
 }) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
+  const [kbVisible, setKbVisible] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, () => setKbVisible(true));
+    const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   return (
     <Modal
       visible={visible}
@@ -297,8 +307,8 @@ function CommentBottomSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
-          <View style={[cs.sheet, { paddingBottom: Platform.OS === 'ios' ? 20 : insets.bottom + 12 }]}>
+          {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
+          <View style={[cs.sheet, { paddingBottom: Platform.OS === 'ios' ? 20 : kbVisible ? 12 : insets.bottom + 12 }]}>
             {/* 핸들 바 */}
             <View style={cs.handle} />
 
@@ -311,7 +321,7 @@ function CommentBottomSheet({
             </View>
 
             {/* 댓글 목록 */}
-            <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false}>
+            <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {comments.map((c, idx) => (
                 <View key={c.id}>
                   <View style={cs.commentRow}>
@@ -2154,7 +2164,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
           <Animated.View
             // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
-            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
+            // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
+            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
           >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
@@ -3461,10 +3472,15 @@ const s = StyleSheet.create({
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+      },
+      default: {},
+    }),
   },
   emptyCtaText: {
     fontSize: 14,

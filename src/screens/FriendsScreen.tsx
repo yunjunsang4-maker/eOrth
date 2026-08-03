@@ -279,6 +279,7 @@ export default function FriendsScreen({ navigation }: Props) {
       <ScrollView
         style={st.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         onScrollBeginDrag={() => { if (selectedFriendId) setSelectedFriendId(null); }}
       >
@@ -301,9 +302,11 @@ export default function FriendsScreen({ navigation }: Props) {
                     }
                   }}
                   onLongPress={(anchor) => {
+                    // 좌표 측정 실패 시 진입하지 않음 — 메뉴 없이 행만 어두워지는 상태 방지
+                    if (!anchor) return;
                     buzz('light');
                     setSelectedFriendId(f.id);
-                    setPopupAnchor(anchor ? { ...anchor, placeBelow: idx === 0 } : null);
+                    setPopupAnchor({ ...anchor, placeBelow: idx === 0 });
                   }}
                 />
               </View>

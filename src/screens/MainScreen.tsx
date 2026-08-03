@@ -14,6 +14,7 @@ import {
   PanResponder,
   Platform,
   Image,
+  KeyboardAvoidingView,
   type LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1551,7 +1552,8 @@ export default function MainScreen({ navigation, route }: Props) {
             </View>
             {/* 방문 지역 선택 시트 (소급 태깅) */}
             <Modal visible={regionTagSheetVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
-              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+              {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
                 <TouchableOpacity
                   style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
                   activeOpacity={1}
@@ -1610,7 +1612,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </KeyboardAvoidingView>
             </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
             <TouchableOpacity
@@ -1680,7 +1682,8 @@ export default function MainScreen({ navigation, route }: Props) {
           animationType="slide"
           onRequestClose={() => setCountryPickerVisible(false)}
         >
-          <View style={styles.countryPickerOverlay} accessibilityViewIsModal>
+          {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.countryPickerOverlay} accessibilityViewIsModal>
             <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCountryPickerVisible(false)} />
             <View style={styles.countryPickerSheet}>
               <View style={styles.countryPickerHandle} />
@@ -1712,7 +1715,7 @@ export default function MainScreen({ navigation, route }: Props) {
               </ScrollView>
               <View style={{ height: insets.bottom + 16 }} />
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
 
@@ -2580,7 +2583,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
-    elevation: 20,
+    // elevation 제거 — 안드로이드는 반투명 배경+overflow hidden에서 elevation 그림자가
+    // 시트 뒤로 각지게 비쳐 유리감을 해침 (그림자는 iOS shadow*만, z순서는 zIndex가 담당)
     overflow: 'hidden',
   },
   sheetHandleArea: {
@@ -2665,7 +2669,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
-    elevation: 25,
+    // elevation 제거 — 사유는 bottomSheet와 동일
     overflow: 'hidden',
   },
   countrySheetHeader: {

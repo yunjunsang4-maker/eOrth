@@ -60,6 +60,7 @@ export default function PhotoPagerSection({
           ref={scrollRef}
           horizontal
           pagingEnabled
+          keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(e) => setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / PAGE_W))}
           style={{ width: PAGE_W, height: PAGE_H }}

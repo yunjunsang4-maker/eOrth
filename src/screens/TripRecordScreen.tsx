@@ -427,6 +427,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           ref={albumScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
           scrollEnabled={scrollEnabled}
           scrollEventThrottle={16}
           onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
@@ -665,7 +666,8 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
 
       {/* 섹션 제목 입력 모달 (추가/이름변경 공용) */}
       <Modal visible={sectionModal !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setSectionModal(null)}>
-        <View style={styles.sectionModalOverlay} accessibilityViewIsModal>
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력) */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.sectionModalOverlay} accessibilityViewIsModal>
           <View style={styles.sectionModalCard}>
             <Text style={styles.sectionModalTitle}>
               {sectionModal?.mode === 'albumTitle'
@@ -696,7 +698,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ⋯ 팝업 메뉴 */}
@@ -775,7 +777,8 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   likeIcon: {
     fontSize: 22,
     color: '#A1A1B0',
-    lineHeight: 24,
+    // 안드로이드는 lineHeight가 타이트하면 글리프 상하가 잘림 — 안드로이드만 여유 확보
+    lineHeight: Platform.OS === 'ios' ? 24 : 27,
   },
   likeIconActive: {
     color: '#FF6B9D',

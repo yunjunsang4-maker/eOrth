@@ -1124,11 +1124,16 @@ const styles = StyleSheet.create({
     height: 57,
     borderRadius: 28.5,
     overflow: 'hidden',
-    shadowColor: '#7B61FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 8,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7B61FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 15,
+      },
+      default: {},
+    }),
   },
   globeMiniGrad: { flex: 1 },
   // 프로필 사진 없을 때 — 프로필 탭 기본 아바타와 동일한 톤(어두운 원 + 사람 아이콘)

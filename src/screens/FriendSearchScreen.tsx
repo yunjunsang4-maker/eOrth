@@ -10,6 +10,7 @@ import {
   Animated,
   ActivityIndicator,
   Share,
+  Platform,
 } from 'react-native';
 
 import { LinearGradient } from 'expo-linear-gradient';
@@ -127,7 +128,11 @@ function MateButton({
             backgroundColor: state === 'requested' ? tint(0.12) : 'rgba(255,255,255,0.06)',
           },
           // 신청 가능 상태만 네온 글로우 — 눈이 먼저 가야 할 버튼
-          !ghost && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 3 }, elevation: 4 },
+          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+          !ghost && Platform.select({
+            ios: { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+            default: {},
+          }),
         ]}
       >
         {!ghost && (
@@ -691,7 +696,8 @@ const s = StyleSheet.create({
   requestBannerArrow: {
     fontSize: 26,
     fontWeight: '300',
-    lineHeight: 28,
+    // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+    lineHeight: Platform.OS === 'ios' ? 28 : 31,
   },
 
   // 내 메이트 목록 — 보조 액션이라 아웃라인 필(주요 CTA인 초대 버튼과 위계 구분)
@@ -837,10 +843,15 @@ const s = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOpacity: 0.5,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: {
+        shadowOpacity: 0.5,
+        shadowRadius: 14,
+        shadowOffset: { width: 0, height: 4 },
+      },
+      default: {},
+    }),
   },
   inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
 });

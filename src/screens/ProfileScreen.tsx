@@ -442,9 +442,10 @@ function BadgeListModal({
                                         <Text style={blStyles.coinEmoji}>{badge.emoji}</Text>
                                       </LinearGradient>
                                     </LinearGradient>
-                                    {/* 메탈릭 광택 */}
+                                    {/* 메탈릭 광택 — 중간 'transparent'(투명 검정)는 흰↔검 보간에서 회색 띠를 만들어 4-stop(같은 위치 0.5)으로 분리 */}
                                     <LinearGradient
-                                      colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                                      colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']}
+                                      locations={[0, 0.5, 0.5, 1]}
                                       start={{ x: 0.1, y: 0.1 }}
                                       end={{ x: 0.9, y: 0.9 }}
                                       style={blStyles.coinShine}
@@ -533,8 +534,10 @@ function BadgeListModal({
                               <Text style={blStyles.zoomCoinEmoji}>{enlargedBadge.emoji}</Text>
                             </LinearGradient>
                           </LinearGradient>
+                          {/* 중간 'transparent'(투명 검정)는 흰↔검 보간에서 회색 띠를 만들어 4-stop(같은 위치 0.5)으로 분리 */}
                           <LinearGradient
-                            colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                            colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']}
+                            locations={[0, 0.5, 0.5, 1]}
                             start={{ x: 0.1, y: 0.1 }}
                             end={{ x: 0.9, y: 0.9 }}
                             style={blStyles.zoomCoinShine}
@@ -1163,11 +1166,16 @@ function DraggableCardWrapper({
             { scale: dragScale },
           ],
           zIndex: 1000,
-          elevation: 12,
-          shadowColor: '#BF85FC',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.5,
-          shadowRadius: 20,
+          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+          ...Platform.select({
+            ios: {
+              shadowColor: '#BF85FC',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.5,
+              shadowRadius: 20,
+            },
+            default: {},
+          }),
         },
       ]}
     >

@@ -767,6 +767,7 @@ export default function DMScreen({ navigation, route }: Props) {
           keyExtractor={item => item.id}
           contentContainerStyle={st.msgList}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefreshHistory} />}
           scrollEventThrottle={16}
           onScroll={(e) => {

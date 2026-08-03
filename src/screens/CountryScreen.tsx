@@ -7,6 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Image,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
@@ -302,11 +303,16 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     height: 150,
     borderRadius: 75,
     overflow: 'hidden',
-    shadowColor: a.accent,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 25,
-    elevation: 15,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: a.accent,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 25,
+      },
+      default: {},
+    }),
   },
   latLine: {
     position: 'absolute',

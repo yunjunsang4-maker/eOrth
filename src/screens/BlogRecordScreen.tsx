@@ -2469,12 +2469,15 @@ function PickerModal({ visible, onClose, title, children }: { visible: boolean; 
   const st = useSt();
   return (
     <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
-        <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
-          <Text style={st.pickerTitle}>{title}</Text>
-          {children}
-        </View>
-      </TouchableOpacity>
+      {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력 포함) */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
+          <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
+            <Text style={st.pickerTitle}>{title}</Text>
+            {children}
+          </View>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }

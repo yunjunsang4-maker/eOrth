@@ -4,7 +4,7 @@
 // QR은 utils/appLinks의 profileLink로 만든 eorth://profile/<handle> — 파서(parseAppLink)가
 // 구형식 eorth://user/<handle>까지 받아주므로 이미 배포된 QR도 그대로 열린다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
@@ -448,7 +448,8 @@ const st = StyleSheet.create({
   // 국기 대신 수도(시안 BERN) — flex로 폭이 잡히므로 maxWidth 없이 긴 이름은 adjustsFontSizeToFit이 줄인다
   favCapital: { flex: 1, color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.5, textAlign: 'left' },
   // 평점 숫자가 이 영역의 주인공 — 별은 보조라 한 단계 낮춘다
-  favRating: { color: '#FFFFFF', fontSize: 54, fontWeight: '900', marginTop: 16, lineHeight: 58 },
+  // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+  favRating: { color: '#FFFFFF', fontSize: 54, fontWeight: '900', marginTop: 16, lineHeight: Platform.OS === 'ios' ? 58 : 65 },
   starRow: { flexDirection: 'row', gap: 7, marginTop: 4 },
   noFav: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 26, marginBottom: 30 },
   // ── 하단 흰색 ──

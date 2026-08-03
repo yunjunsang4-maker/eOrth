@@ -418,6 +418,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         style={styles.scroll}
         contentContainerStyle={styles.content}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* ── 이메일 ── */}
         <SectionTitle label={t('accountSettings.sectionEmail')} />

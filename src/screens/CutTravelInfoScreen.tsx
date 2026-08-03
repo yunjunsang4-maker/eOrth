@@ -1059,7 +1059,8 @@ const st = StyleSheet.create({
   ratingScoreEmpty: { color: C.textMuted, fontSize: 12 },
   ratingCard: { backgroundColor: C.card, borderRadius: 12, paddingVertical: 16, alignItems: 'center' },
   ratingRow: { flexDirection: 'row', gap: 6 },
-  starChar: { fontSize: 32, color: C.textMuted, lineHeight: 34 },
+  // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+  starChar: { fontSize: 32, color: C.textMuted, lineHeight: Platform.OS === 'ios' ? 34 : 38 },
   starCharActive: { color: C.gold },
   starAbsolute: { position: 'absolute', left: 0, top: 0 },
   starFillClip: { position: 'absolute', left: 0, top: 0, height: 32, overflow: 'hidden' },

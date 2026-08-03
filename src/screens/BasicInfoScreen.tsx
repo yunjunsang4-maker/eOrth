@@ -533,7 +533,8 @@ const styles = StyleSheet.create({
   backTxt: {
     color: Colors.textPrimary,
     fontSize: 22,
-    lineHeight: 24,
+    // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+    lineHeight: Platform.OS === 'ios' ? 24 : 27,
     marginTop: -2,
   },
   // 온보딩 step 라벨과 동일한 톤 — 마젠타 액센트

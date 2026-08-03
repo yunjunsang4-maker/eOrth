@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Animated, Easing } from 'react-native';
+import { View, Text, StyleSheet, Animated, Easing, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -165,11 +165,16 @@ const st = StyleSheet.create({
     borderRadius: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#EC34F7',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.85,
-    shadowRadius: 22,
-    elevation: 10,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#EC34F7',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.85,
+        shadowRadius: 22,
+      },
+      default: {},
+    }),
   },
   title: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginBottom: 16 },
   tripLine: { color: '#EC34F7', fontSize: 17, fontWeight: '700', marginBottom: 6, textAlign: 'center' },
