@@ -2016,6 +2016,22 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             </View>
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
+            {/* 여행 DNA — 신원 블록(이름·위치·소개) 바로 아래 칩. 완료: 유형 텍스트(탭→결과·재검사),
+                미완료: 점선 빈 칩으로 빈자리를 보여줘 검사를 유도(탭→설문) */}
+            <TouchableOpacity
+              style={[styles.dnaChip, !dnaComplete && styles.dnaChipEmpty]}
+              activeOpacity={0.75}
+              onPress={() =>
+                dnaComplete
+                  ? navigation.navigate('TravelDnaResult')
+                  : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
+              }
+            >
+              <Text style={styles.dnaChipMark}>✦</Text>
+              <Text style={styles.dnaChipText} numberOfLines={1}>
+                {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
+              </Text>
+            </TouchableOpacity>
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(neighborCount)} label={t('profile.neighbors')} onPress={() => navigation.navigate('FollowerList')} />
@@ -2056,22 +2072,6 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             })}
           </ScrollView>
         </View>
-
-        {/* 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사) */}
-        <TouchableOpacity
-          style={dnaCard.wrap}
-          activeOpacity={0.85}
-          onPress={() =>
-            dnaComplete
-              ? navigation.navigate('TravelDnaResult')
-              : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
-          }
-        >
-          <Text style={dnaCard.label}>{t('dna.resultTitle')}</Text>
-          <Text style={dnaCard.value}>
-            {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
-          </Text>
-        </TouchableOpacity>
 
         <View style={styles.divider} />
 
@@ -2509,6 +2509,37 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  // 여행 DNA 칩 — 소개(bio)의 marginBottom(-15)이 statsRow(marginTop 23)를 겨냥해 튜닝돼
+  // 있던 값이라, 칩이 그 사이에 끼면서 marginTop을 23으로 두어 동일한 시각적 간격(≈8)을 물려받는다.
+  dnaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    marginTop: 23,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: COLORS.purpleBg,
+    borderWidth: 1,
+    borderColor: COLORS.purpleBorder,
+  },
+  // 미완료(빈 상태) — 채움 없이 점선 테두리만. 본인 신원 블록의 빈자리를 드러내 검사를 유도.
+  dnaChipEmpty: {
+    backgroundColor: 'transparent',
+    borderStyle: 'dashed',
+  },
+  dnaChipMark: {
+    color: COLORS.purpleNeon,
+    fontSize: 11,
+    marginRight: 4,
+  },
+  dnaChipText: {
+    color: COLORS.purpleNeon,
+    fontSize: 12,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
   avatarRing: {
     width: 128,
     height: 128,
@@ -2806,17 +2837,6 @@ const badgeHL = StyleSheet.create({
   // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
   circleImage: { backgroundColor: 'transparent' },
   badgeImg: { width: 64, height: 64 },
-});
-
-// ─── 여행 DNA 카드 스타일 ───
-const dnaCard = StyleSheet.create({
-  wrap: {
-    backgroundColor: '#2E2E3B', borderRadius: 16, padding: 18,
-    marginTop: 14,
-    borderWidth: 1, borderColor: '#1A1A26',
-  },
-  label: { color: '#A1A1B0', fontSize: 12 },
-  value: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 6 },
 });
 
 // ─── 배지 전체 목록 모달 스타일 ───

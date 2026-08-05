@@ -25,6 +25,7 @@ import ReportModal from '../components/ReportModal';
 import Toast from '../components/Toast';
 import { isSupabaseConfigured } from '../services/supabase';
 import { getProfileById, type ProfileRow } from '../services/profile';
+import { labelFromKey } from '../utils/travelDnaScore';
 import { fetchUserPosts } from '../services/posts';
 import { fetchNeighborCount, fetchPostCount, fetchOverlapWith, reportPostToServer } from '../services/social';
 import GlobeLockIcon from '../components/GlobeLockIcon';
@@ -226,6 +227,10 @@ export default function FriendProfileScreen({
   const { handleFont: myHandleFont, isPremium: myPremium } = useSettings();
   const nameFontStyle = handleFontStyle(isSelf ? (myPremium ? myHandleFont : null) : profileRow?.handle_font);
 
+  // 상대의 여행 DNA 유형 — public_profiles 뷰의 dna_type_key만 공개(축 점수는 비공개, 설계 §9).
+  // 미완료·해석 불가면 labelFromKey가 null을 주고, 그때는 칩 자체를 렌더하지 않는다(빈 상태는 본인 전용).
+  const friendDnaLabel = labelFromKey(profileRow?.dna_type_key);
+
   // 메이트·차단은 store 공유 상태 — 메이트 목록/프로필 카운트와 동기화된다
   const { neighbors, requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, blockUser, toggleMute, isMuted } = useRecords();
   // 신원은 id 우선 — 핸들이 빈 유저끼리 충돌 방지
@@ -394,6 +399,16 @@ export default function FriendProfileScreen({
             {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
+            {/* 여행 DNA — 상대가 유형을 갖고 있을 때만(탭 불가·본인 결과 아님). 없으면 아무것도
+                렌더하지 않는다 — 빈 상태 유도는 본인 프로필에서만 의미가 있다 */}
+            {!!friendDnaLabel && (
+              <View style={s.dnaChip}>
+                <Text style={s.dnaChipMark}>✦</Text>
+                <Text style={s.dnaChipText} numberOfLines={1}>
+                  {i18n.language.startsWith('en') ? friendDnaLabel.en : friendDnaLabel.ko}
+                </Text>
+              </View>
+            )}
             {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
             {!isSelf && !!overlap && overlap.sharedCount > 0 && (
               // 앞 아이콘은 기본 이모지(🌍) 대신 앱 아이콘 — 메이트찾기의 같은 줄과 표현을 맞춘다
@@ -654,6 +669,32 @@ const s = StyleSheet.create({
   // 나와 겹치는 나라 줄 — 색은 skinAccent.accent 인라인으로 덮음(스킨 관례)
   overlapRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 },
   overlapLine: { fontSize: 12, color: COLORS.accent, flexShrink: 1 },
+  // 여행 DNA 칩 — 프로필 탭과 동일한 톤. pv.userBio엔 프로필 탭 같은 음수 marginBottom 보정이
+  // 없어(수정 범위 밖) marginTop을 직접 8로 둬 같은 시각적 간격을 낸다. 탭 불가(정보 전용).
+  dnaChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-start',
+    maxWidth: '100%',
+    marginTop: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: COLORS.accentBg,
+    borderWidth: 1,
+    borderColor: COLORS.accentBorder,
+  },
+  dnaChipMark: {
+    color: COLORS.accent,
+    fontSize: 11,
+    marginRight: 4,
+  },
+  dnaChipText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: '700',
+    flexShrink: 1,
+  },
 
   // ── 헤더 ──
   header: {

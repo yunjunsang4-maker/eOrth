@@ -5,7 +5,7 @@
  * 사진(profile_photo)은 공개 URL일 때만 저장한다(로컬 file:// 경로는 타인이 못 봄 → Storage 업로드는 2단계).
  */
 
-import { supabase } from './supabase';
+import { supabase } from './supabase';
 import { sortByHandleRelevance, dedupeById } from '../utils/handleSearch';
 import { withTimeout } from '../utils/withTimeout';
 
@@ -23,6 +23,7 @@ export interface ProfileRow {
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
   stay_country?: string | null; // 장기체류 국가 ISO 코드 — 메이트에게만 공개(public_profiles 조건부 노출)
   stay_status?: string | null;  // 'active' | null
+  dna_type_key?: string | null; // 여행 DNA 유형 키 — public_profiles가 공개하는 유일한 설문 필드(축 점수는 비공개)
 }
 
 /**
