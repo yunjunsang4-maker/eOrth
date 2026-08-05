@@ -3,6 +3,7 @@ import { useSettings } from '../store/settingsStore';
 import { useRecords } from '../store/recordStore';
 import { useDM } from '../store/dmStore';
 import { useMoments } from '../store/momentStore';
+import { useTravelDna } from '../store/travelDnaStore';
 import { clearPersistedStores } from '../store/persist';
 import { setCardOrder } from '../store/cardOrderStore';
 import { setAppStateBackupArmed } from '../components/AppStateSync';
@@ -32,6 +33,7 @@ export function useAccountBoundary(): () => Promise<void> {
   const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
   const { resetConversations } = useDM();
   const { resetMoments, applyMomentsBackup } = useMoments();
+  const { clear: clearTravelDna } = useTravelDna();
 
   const applyServerProfile = (p: ProfileRow) => {
     if (p.handle) setHandle(p.handle);
@@ -81,6 +83,9 @@ export function useAccountBoundary(): () => Promise<void> {
         resetSettings();
         resetConversations();
         resetMoments();
+        // travelDna는 인메모리 상태라 clearPersistedStores(디스크)만으로는 안 지워진다 —
+        // Provider가 전환 중 언마운트되지 않아 이전 계정의 answers/label이 그대로 남는다.
+        clearTravelDna();
         await clearPersistedStores().catch(() => {});
         // 프로필 먼저 복원 → ProfileSync가 빈값으로 서버를 덮어쓰지 않도록.
         try {
