@@ -1204,31 +1204,15 @@ const st = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 4: 라우트 등록**
+- [ ] **Step 4: 타입·린트 확인**
 
-`src/navigation/AppNavigator.tsx`에 import를 추가하고, `<Stack.Screen name="Main" ...>` 아래에 두 줄을 넣는다:
+라우트 등록(`AppNavigator.tsx`)은 Task 7에서 두 화면을 한 번에 붙인다 — 여기서 등록하면
+아직 없는 `TravelDnaResultScreen`을 import하게 되어 이 태스크가 단독으로 컴파일되지 않는다.
 
-```tsx
-import TravelDnaSurveyScreen from '../screens/TravelDnaSurveyScreen';
-import TravelDnaResultScreen from '../screens/TravelDnaResultScreen';
-```
+Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaSurveyScreen.tsx src/navigation/types.ts src/i18n/locales/ko.ts src/i18n/locales/en.ts`
+Expected: 출력 없음
 
-```tsx
-        {/* 여행 DNA 설문 — 중간 이탈 시 답이 날아가므로 스와이프 뒤로가기를 막는다
-            (이탈은 화면 안 '건너뛰기'로만, 확인창을 거친다) */}
-        <Stack.Screen
-          name="TravelDnaSurvey"
-          component={TravelDnaSurveyScreen}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
-```
-
-> Task 7에서 `TravelDnaResultScreen`을 만들기 전까지 이 import는 컴파일에 실패한다.
-> Task 6의 tsc 확인은 Task 7 완료 후 함께 통과시킨다 — 두 화면은 한 쌍이라 라우트를 쪼개면
-> 어느 쪽도 단독으로 동작하지 않는다.
-
-- [ ] **Step 5: 커밋 (Task 7과 함께 검증)**
+- [ ] **Step 5: 커밋**
 
 ```bash
 git add src/screens/TravelDnaSurveyScreen.tsx src/navigation/types.ts src/i18n/locales/ko.ts src/i18n/locales/en.ts
@@ -1244,7 +1228,7 @@ git commit -m "feat(dna): 설문 화면 — 전체 36문항·온보딩 축약판
 
 **Files:**
 - Create: `src/screens/TravelDnaResultScreen.tsx`
-- Modify: `src/navigation/AppNavigator.tsx` (Task 6에서 추가한 라우트가 여기서 컴파일된다)
+- Modify: `src/navigation/AppNavigator.tsx` (설문·결과 두 화면의 라우트를 여기서 함께 등록한다)
 
 **Interfaces:**
 - Consumes: Task 5의 `useTravelDna`, Task 1의 `DNA_AXES`·`DNA_LABELS`
@@ -1357,12 +1341,32 @@ const st = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 2: 타입·린트 확인 (Task 6 라우트 포함)**
+- [ ] **Step 2: 라우트 등록 — 설문·결과 두 화면을 함께**
 
-Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaSurveyScreen.tsx src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx`
+`src/navigation/AppNavigator.tsx`에 import를 추가하고, `<Stack.Screen name="Main" ...>` 아래에 넣는다:
+
+```tsx
+import TravelDnaSurveyScreen from '../screens/TravelDnaSurveyScreen';
+import TravelDnaResultScreen from '../screens/TravelDnaResultScreen';
+```
+
+```tsx
+        {/* 여행 DNA 설문 — 중간 이탈 시 답이 날아가므로 스와이프 뒤로가기를 막는다
+            (이탈은 화면 안 '건너뛰기'로만, 확인창을 거친다) */}
+        <Stack.Screen
+          name="TravelDnaSurvey"
+          component={TravelDnaSurveyScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
+```
+
+- [ ] **Step 3: 타입·린트 확인**
+
+Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx`
 Expected: 출력 없음
 
-- [ ] **Step 3: 커밋**
+- [ ] **Step 4: 커밋**
 
 ```bash
 git add src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx
