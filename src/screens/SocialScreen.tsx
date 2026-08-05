@@ -2445,12 +2445,9 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
         // 근거가 아예 없으면(이론상만 가능) 중립 문구로 폴백해 빈 줄이 남지 않게 한다.
         const reason = pickReason({
           recencyScore: m.recencyScore,
-          seasonScore: m.seasonScore,
-          interestScore: m.interestScore,
-          tasteScore: m.tasteScore,
+          surveyScore: m.surveyScore,
           mutualCount: m.mutualCount,
           sharedCities: m.sharedCities,
-          sharedKeywords: m.sharedKeywords,
           sharedCount: m.sharedCount,
         });
         const sub = reason ? t(reason.key, reason.params) : t('friends.suggestedReason');

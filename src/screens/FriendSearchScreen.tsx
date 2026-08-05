@@ -67,11 +67,8 @@ interface ContactFriend {
   matchScore?: number;        // 여행 DNA 종합 점수(mate_suggestions.total_score)
   // 축별 점수 — 추천 근거 문구 선택에 쓴다(placeScore는 pickReason 미사용 — sharedCities/sharedCount로 판단)
   recencyScore?: number;
-  seasonScore?: number;
-  interestScore?: number;
-  tasteScore?: number;
+  surveyScore?: number; // 설문 성향 유사도 — 예전 season/interest/taste 3축을 대체
   sharedCities?: string[];
-  sharedKeywords?: string[];
   // 추천 섹션에서 온 행인지 — 검색 결과와 부가정보(방문국·메이트 수) 표기가 다르다.
   // 추천 행은 방문국 수를 조회하지 않으므로 '방문 기록 없음'으로 오표기하면 안 된다.
   fromSuggestion?: boolean;
@@ -191,12 +188,9 @@ function FriendItem({
   // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
   const reason = pickReason({
     recencyScore: item.recencyScore ?? 0,
-    seasonScore: item.seasonScore ?? 0,
-    interestScore: item.interestScore ?? 0,
-    tasteScore: item.tasteScore ?? 0,
+    surveyScore: item.surveyScore ?? 0,
     mutualCount: item.mutualCount ?? 0,
     sharedCities: item.sharedCities ?? [],
-    sharedKeywords: item.sharedKeywords ?? [],
     sharedCount: item.sharedCount ?? shared.length,
   });
   const reasonText = reason
@@ -430,11 +424,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           mutualCount: r.mutualCount,
           matchScore: r.totalScore,
           recencyScore: r.recencyScore,
-          seasonScore: r.seasonScore,
-          interestScore: r.interestScore,
-          tasteScore: r.tasteScore,
+          surveyScore: r.surveyScore,
           sharedCities: r.sharedCities,
-          sharedKeywords: r.sharedKeywords,
           fromSuggestion: true,
         })));
       } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }

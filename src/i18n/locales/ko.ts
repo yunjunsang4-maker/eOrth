@@ -1302,6 +1302,7 @@ const ko = {
     reasonRecent: '최근 같은 곳을 다녀왔어요',
     reasonInterest: '#{{keyword}} 관심사가 같아요',
     reasonSeason: '비슷한 계절에 여행하는 편이에요',
+    reasonDna: '여행 성향이 잘 맞아요',
     inviteNudgeTitle: '메이트 초대',
     inviteNudgeMsg: '@{{handle}}님의 초대로 오셨네요!\n메이트 신청을 보낼까요?',
     inviteNudgeLater: '나중에',

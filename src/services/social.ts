@@ -364,12 +364,13 @@ export interface MateSuggestionRow {
   // 미러라 지우지 않는다 — 지우면 다음에 축을 쓸 때 계약과 어긋난 부분 매핑이 된다.
   placeScore: number;    // 나라(희소성 가중 자카드) + 도시
   recencyScore: number;  // 최근 1년 내 겹친 나라
-  seasonScore: number;   // 같은 나라·같은 계절
-  interestScore: number; // 키워드 겹침
-  tasteScore: number;    // 별점·예산·항공편
+  seasonScore: number;   // 같은 나라·같은 계절 — 서버가 설문 도입 후 상시 0 반환(하위 호환용 미러)
+  interestScore: number; // 키워드 겹침 — 상동, 상시 0
+  tasteScore: number;    // 별점·예산·항공편 — 상동, 상시 0
   mutualScore: number;   // 공통 메이트(축 점수 — 사람 수는 mutualCount)
   sharedCities: string[];   // 겹친 도시(최대 3)
   sharedKeywords: string[]; // 겹친 키워드(최대 3)
+  surveyScore: number;   // 설문 성향 유사도(0~35). 한쪽이라도 미완료면 0
 }
 
 export async function fetchMateSuggestions(limit = 10, extraCountries: string[] = []): Promise<MateSuggestionRow[]> {
@@ -396,6 +397,8 @@ export async function fetchMateSuggestions(limit = 10, extraCountries: string[] 
       mutualScore: r.mutual_score ?? 0,
       sharedCities: r.shared_cities ?? [],
       sharedKeywords: r.shared_keywords ?? [],
+      // 배포 직후 캐시된 행은 survey_score 컬럼이 없어 undefined일 수 있어 0으로 고정
+      surveyScore: r.survey_score ?? 0,
     }));
   } catch {
     return [];

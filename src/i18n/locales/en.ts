@@ -1297,6 +1297,7 @@ const en = {
     reasonRecent: 'You both traveled somewhere similar recently',
     reasonInterest: 'You share an interest in #{{keyword}}',
     reasonSeason: 'You travel in similar seasons',
+    reasonDna: 'Your travel styles line up',
     inviteNudgeTitle: 'Mate invite',
     inviteNudgeMsg: "You came from @{{handle}}'s invite!\nSend a mate request?",
     inviteNudgeLater: 'Later',
