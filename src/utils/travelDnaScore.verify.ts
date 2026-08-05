@@ -1,7 +1,7 @@
 // src/utils/travelDnaScore.verify.ts
 // 여행 DNA 채점 검증. 이게 깨지면 매칭 점수가 조용히 틀어진다 — 화면상 원인이 안 보인다.
 import { DNA_QUESTIONS, DNA_AXES, ONBOARDING_QUESTION_IDS } from '../constants/travelDna';
-import { scoreAxes, answeredCount, isValidDna, type DnaAnswers } from './travelDnaScore';
+import { scoreAxes, answeredCount, isValidDna, makeTypeLabel, type DnaAnswers } from './travelDnaScore';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -66,6 +66,33 @@ function eq(actual: unknown, expected: unknown, msg: string) {
   const withGhost: DnaAnswers = { 1: 'B', 999: 'B' };
   eq(scoreAxes(withGhost)['plan'], scoreAxes({ 1: 'B' })['plan'], '존재하지 않는 문항 id는 무시');
   eq(answeredCount(withGhost), 1, '집계에서도 무시');
+}
+
+// ── 7) 유형 라벨 ──
+{
+  const mid = {} as any; DNA_AXES.forEach((a) => { mid[a] = 50; });
+
+  // 모든 축이 중립 → 폴백
+  eq(makeTypeLabel(mid).key, 'neutral', '전 축 중립 → 폴백 라벨');
+
+  // 1위 purpose(A쪽 20 → 강도 30), 2위 pace(B쪽 85 → 강도 35)... 강도 큰 쪽이 1위다
+  const s1 = { ...mid, purpose: 10, pace: 85 };  // 강도 40, 35
+  eq(makeTypeLabel(s1).ko, '부지런한 미식가', '1위=명사(미식가), 2위=수식어(부지런한)');
+  eq(makeTypeLabel(s1).key, 'purposeA-paceB', '라벨 키 형식');
+
+  // 방향이 뒤집히면 반대쪽 문구
+  const s2 = { ...mid, purpose: 90, pace: 15 };  // 강도 40, 35
+  eq(makeTypeLabel(s2).ko, '느긋한 관람객', '점수>50이면 B쪽 문구');
+
+  // 동점이면 축 순서(DNA_AXES)가 빠른 쪽이 명사
+  const s3 = { ...mid, plan: 90, pace: 90 };
+  eq(makeTypeLabel(s3).key, 'planB-paceB', '동점 → 앞선 축이 명사');
+
+  // 결정성 — 같은 입력이면 항상 같은 출력
+  eq(makeTypeLabel(s1).key, makeTypeLabel({ ...s1 }).key, '같은 응답 → 같은 라벨');
+
+  // 1위 강도가 문턱 미만이면 폴백 (2위가 아무리 있어도)
+  eq(makeTypeLabel({ ...mid, plan: 60 }).key, 'neutral', '1위 강도 10 < 15 → 폴백');
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }

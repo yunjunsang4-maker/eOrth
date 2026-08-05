@@ -11,7 +11,7 @@
  *    7문항만 답한 사람이 모든 축에서 극단으로 찍히고 그대로 매칭에 들어간다.
  *    수축 덕분에 응답이 쌓일수록 점수가 자연히 극단으로 자라나 별도 보정이 필요 없다.
  */
-import { DNA_QUESTIONS, DNA_AXES, type DnaAxisId, type DnaQuestion } from '../constants/travelDna';
+import { DNA_QUESTIONS, DNA_AXES, DNA_LABELS, DNA_LABEL_MIN_STRENGTH, type DnaAxisId, type DnaQuestion } from '../constants/travelDna';
 
 export type DnaAnswers = Record<number, 'A' | 'B'>;
 export type DnaScores = Record<DnaAxisId, number>;
@@ -60,4 +60,38 @@ export function isValidDna(answers: DnaAnswers): boolean {
     if (q && (choice === 'A' || choice === 'B')) seen.add(q.axis);
   }
   return DNA_AXES.every((a) => seen.has(a));
+}
+
+export interface DnaTypeLabel { key: string; ko: string; en: string }
+
+/**
+ * 유형 라벨 — 가장 강한 축이 명사, 두 번째가 수식어.
+ *
+ * 7축이면 조합이 128가지라 프로토타입을 미리 쓰는 방식은 커버가 성기다.
+ * 조합식이면 작성할 문구가 28개뿐이라 품질을 사람이 통제할 수 있고, 축을 늘려도 규칙이 그대로다.
+ *
+ * 강도는 중립(50)에서의 거리. 동점이면 DNA_AXES 순서가 빠른 축이 명사를 갖는다 —
+ * 결정론적이어야 같은 응답에 항상 같은 라벨이 나온다.
+ */
+export function makeTypeLabel(scores: DnaScores): DnaTypeLabel {
+  const ranked = DNA_AXES
+    .map((axis, i) => ({ axis, i, strength: Math.abs(scores[axis] - 50), toB: scores[axis] > 50 }))
+    .sort((x, y) => (y.strength - x.strength) || (x.i - y.i));
+
+  const top = ranked[0];
+  if (!top || top.strength < DNA_LABEL_MIN_STRENGTH) {
+    return { key: 'neutral', ko: '아직 색이 옅은 여행자', en: 'A traveler still taking shape' };
+  }
+  const second = ranked[1];
+  const nl = DNA_LABELS[top.axis];
+  const al = DNA_LABELS[second.axis];
+  const noun = top.toB ? nl.nounB : nl.nounA;
+  const enNoun = top.toB ? nl.enNounB : nl.enNounA;
+  const adj = second.toB ? al.adjB : al.adjA;
+  const enAdj = second.toB ? al.enAdjB : al.enAdjA;
+  return {
+    key: `${top.axis}${top.toB ? 'B' : 'A'}-${second.axis}${second.toB ? 'B' : 'A'}`,
+    ko: `${adj} ${noun}`,
+    en: `${enAdj} ${enNoun}`,
+  };
 }
