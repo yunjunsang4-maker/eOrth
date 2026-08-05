@@ -4,7 +4,7 @@
  * 한 화면에 한 문항. 고르면 바로 다음으로 넘어간다(확인 버튼 없음) —
  * 36문항에서 탭이 두 배가 되면 완주율이 떨어진다.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -36,6 +36,15 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const q = questions[idx];
   const text = i18n.language.startsWith('en') ? q.en : q.ko;
 
+  // 스토어의 answers는 마운트 후 로컬 캐시 → 서버 순으로 비동기 채워진다.
+  // 이 화면이 그 로드보다 먼저 마운트되면 초기 useState(saved)는 빈 값으로 굳는다.
+  // 아직 사용자가 아무것도 고르지 않았을 때(touched 이전)에 한해 saved 도착을 반영한다 —
+  // 가드 없이 매번 반영하면 답하는 도중 스토어 갱신이 방금 고른 선택을 되돌린다.
+  const touchedRef = useRef(false);
+  useEffect(() => {
+    if (!touchedRef.current) setAnswers(saved);
+  }, [saved]);
+
   const finish = async (next: DnaAnswers) => {
     setSaving(true);
     const ok = await submit(next);
@@ -46,6 +55,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
 
   const choose = (choice: 'A' | 'B') => {
     if (saving) return;
+    touchedRef.current = true;
     Haptics.selectionAsync().catch(() => {});
     const next = { ...answers, [q.id]: choice };
     setAnswers(next);
@@ -54,6 +64,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   };
 
   const quit = () => {
+    if (saving) return;
     if (Object.keys(answers).length === 0) { navigation.goBack(); return; }
     Alert.alert(t('dna.quitTitle'), t('dna.quitMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
