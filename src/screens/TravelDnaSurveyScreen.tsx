@@ -5,17 +5,44 @@
  * 36문항에서 탭이 두 배가 되면 완주율이 떨어진다.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, BackHandler } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, BackHandler, Animated, Easing } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { useTranslation } from 'react-i18next';
+import StarFieldBackground from '../components/StarFieldBackground';
+import { IntroAmbient } from './introVisuals';
+import { GlassSurface } from '../components/GlassSurface';
 import { DNA_QUESTIONS, ONBOARDING_QUESTION_IDS, type DnaQuestion } from '../constants/travelDna';
 import { useTravelDna } from '../store/travelDnaStore';
 import type { DnaAnswers } from '../utils/travelDnaScore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 const C = { bg: '#0A0A0F', card: '#2E2E3B', neon: '#BF85FC', dim: '#A1A1B0', line: '#1A1A26' };
+
+// 선택 카드 — GlassSurface는 배경 재질이라 absoluteFill로 깔고 텍스트는 형제로 위에 얹는다
+// (컴포넌트 헤더 주석의 "중첩 금지" 규칙). 카드가 크므로 androidBlur는 쓰지 않고
+// 기본 Android 매트 폴백을 그대로 쓴다(블러는 탭 바 같은 소면적 전용).
+function DnaChoiceCard({ text, onPress }: { text: string; onPress: () => void }) {
+  const scale = useRef(new Animated.Value(1)).current;
+  const onPressIn = () => {
+    Animated.timing(scale, { toValue: 0.97, duration: 80, useNativeDriver: true }).start();
+  };
+  const onPressOut = () => {
+    // 뗄 때 살짝 튕기며 정착 — onPress보다 먼저 불려, 다음 문항이 페이드인하는 동안 자연스럽게 겹친다.
+    Animated.spring(scale, { toValue: 1, friction: 5, tension: 120, useNativeDriver: true }).start();
+  };
+  return (
+    <TouchableOpacity activeOpacity={0.85} onPress={onPress} onPressIn={onPressIn} onPressOut={onPressOut}>
+      <Animated.View style={[st.choiceOuter, { transform: [{ scale }] }]}>
+        <GlassSurface style={StyleSheet.absoluteFill} borderRadius={18} edgeHighlight />
+        <View style={st.choiceContent}>
+          <Text style={st.choiceText}>{text}</Text>
+        </View>
+      </Animated.View>
+    </TouchableOpacity>
+  );
+}
 
 // 아직 답하지 않은 첫 문항. 축약판(7문항) 뒤에 전체 설문에 들어오면 앞쪽 문항엔 이미 답이
 // 있어, 0에서 시작하면 아는 문항을 다시 탭하게 된다(답은 보존되니 손실은 아니고 성가실 뿐).
@@ -43,6 +70,37 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const [saving, setSaving] = useState(false);
   const q = questions[idx];
   const text = i18n.language.startsWith('en') ? q.en : q.ko;
+
+  // 진행 바 — 인덱스가 바뀔 때마다 목표 비율로 슬라이드. width는 레이아웃 속성이라
+  // 네이티브 드라이버로 못 돌린다(scaleX 변환으로 우회할 수도 있지만, 이 애니메이션은
+  // 문항마다 한 번(≈220ms)만 짧게 뛰고 제스처처럼 연속 구동되지 않으므로 JS 드라이버
+  // 비용이 무시할 만하다 — transformOrigin 이슈 없는 useNativeDriver:false를 택함).
+  const barAnim = useRef(new Animated.Value((idx + 1) / questions.length)).current;
+  useEffect(() => {
+    Animated.timing(barAnim, {
+      toValue: (idx + 1) / questions.length,
+      duration: 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  }, [idx, questions.length, barAnim]);
+  const barWidth = barAnim.interpolate({ inputRange: [0, 1], outputRange: ['0%', '100%'], extrapolate: 'clamp' });
+
+  // 문항 전환 페이드+슬라이드 — idx만 보고 반응하므로 '다음'이든 '이전'(뒤로가기·이전 버튼)이든
+  // 동일하게 적용된다. choose()의 저장/가드 로직은 전혀 건드리지 않고 시각 효과만 얹는다.
+  // .start()는 논블로킹이라 연타해도 choose()는 매번 즉시 실행되어 답이 밀리거나 씹히지 않는다.
+  const qAnim = useRef(new Animated.Value(1)).current;
+  const prevIdxRef = useRef(idx);
+  useEffect(() => {
+    if (prevIdxRef.current === idx) return;
+    prevIdxRef.current = idx;
+    qAnim.setValue(0);
+    Animated.timing(qAnim, { toValue: 1, duration: 200, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+  }, [idx, qAnim]);
+  const qStyle = {
+    opacity: qAnim,
+    transform: [{ translateY: qAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) }],
+  };
 
   // 스토어의 answers는 마운트 후 로컬 캐시 → 서버 순으로 비동기 채워진다.
   // 이 화면이 그 로드보다 먼저 마운트되면 초기 useState(saved)는 빈 값으로 굳는다.
@@ -115,6 +173,9 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
 
   return (
     <View style={[st.container, { paddingTop: insets.top + 12 }]}>
+      <StarFieldBackground opacity={0.5} />
+      <IntroAmbient />
+
       <View style={st.header}>
         <TouchableOpacity onPress={quit} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
           <Text style={st.skip}>{t('dna.skip')}</Text>
@@ -123,18 +184,14 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
       </View>
 
       <View style={st.barTrack}>
-        <View style={[st.barFill, { width: `${((idx + 1) / questions.length) * 100}%` }]} />
+        <Animated.View style={[st.barFill, { width: barWidth }]} />
       </View>
 
-      <View style={st.body}>
+      <Animated.View style={[st.body, qStyle]}>
         <Text style={st.situation}>{text.s}</Text>
-        <TouchableOpacity style={st.choice} activeOpacity={0.85} onPress={() => choose('A')}>
-          <Text style={st.choiceText}>{text.a}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={st.choice} activeOpacity={0.85} onPress={() => choose('B')}>
-          <Text style={st.choiceText}>{text.b}</Text>
-        </TouchableOpacity>
-      </View>
+        <DnaChoiceCard text={text.a} onPress={() => choose('A')} />
+        <DnaChoiceCard text={text.b} onPress={() => choose('B')} />
+      </Animated.View>
 
       <View style={[st.footer, { paddingBottom: insets.bottom + 16 }]}>
         {idx > 0 && (
@@ -156,10 +213,10 @@ const st = StyleSheet.create({
   barFill: { height: 3, borderRadius: 2, backgroundColor: C.neon },
   body: { flex: 1, justifyContent: 'center', gap: 14 },
   situation: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 18, lineHeight: 30 },
-  choice: {
-    backgroundColor: C.card, borderRadius: 18, paddingVertical: 22, paddingHorizontal: 20,
-    borderWidth: 1, borderColor: C.line,
+  choiceOuter: {
+    borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: C.line,
   },
+  choiceContent: { paddingVertical: 22, paddingHorizontal: 20 },
   choiceText: { color: '#FFFFFF', fontSize: 16, lineHeight: 24 },
   footer: { minHeight: 44, justifyContent: 'center' },
   prev: { color: C.dim, fontSize: 14 },
