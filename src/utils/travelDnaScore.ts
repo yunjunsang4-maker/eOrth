@@ -95,3 +95,41 @@ export function makeTypeLabel(scores: DnaScores): DnaTypeLabel {
     en: `${enAdj} ${enNoun}`,
   };
 }
+
+/** 축 id 하나 + 방향(A/B) 형식 검증 — labelFromKey에서만 쓰는 조각 */
+const KEY_PART_RE = /^([a-z]+)([AB])$/;
+
+/**
+ * 저장된 key만으로 라벨 문구를 복원한다(타인의 유형 — 축 점수를 갖고 있지 않을 때).
+ *
+ * makeTypeLabel의 역함수: 첫 조각의 축이 명사, 두 번째 조각의 축이 수식어를 낸다.
+ * 단어 목록은 DNA_LABELS 하나만 참조해 makeTypeLabel과 절대 따로 놀지 않는다.
+ *
+ * ⚠️ 서버에서 온 값이라 예측 못 한 축 이름(개편 후 옛 키)이 섞일 수 있다 — 파싱 실패는
+ *    전부 null로 조용히 처리한다. 여기서 던지면 카드 렌더 자체가 무너진다.
+ */
+export function labelFromKey(key: string | null | undefined): { ko: string; en: string } | null {
+  if (!key) return null;
+  if (key === 'neutral') {
+    return { ko: '아직 색이 옅은 여행자', en: 'A traveler still taking shape' };
+  }
+  const parts = key.split('-');
+  if (parts.length !== 2) return null;
+  const [nounPart, adjPart] = parts;
+  if (!nounPart || !adjPart) return null;
+  const nm = nounPart.match(KEY_PART_RE);
+  const am = adjPart.match(KEY_PART_RE);
+  if (!nm || !am) return null;
+
+  const [, nounAxis, nounDir] = nm;
+  const [, adjAxis, adjDir] = am;
+  if (!(DNA_AXES as string[]).includes(nounAxis) || !(DNA_AXES as string[]).includes(adjAxis)) return null;
+
+  const nl = DNA_LABELS[nounAxis as DnaAxisId];
+  const al = DNA_LABELS[adjAxis as DnaAxisId];
+  const noun = nounDir === 'B' ? nl.nounB : nl.nounA;
+  const enNoun = nounDir === 'B' ? nl.enNounB : nl.enNounA;
+  const adj = adjDir === 'B' ? al.adjB : al.adjA;
+  const enAdj = adjDir === 'B' ? al.enAdjB : al.enAdjA;
+  return { ko: `${adj} ${noun}`, en: `${enAdj} ${enNoun}` };
+}

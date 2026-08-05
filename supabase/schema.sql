@@ -771,7 +771,8 @@ returns table (
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
   place_score int, recency_score int, season_score int, interest_score int, taste_score int,
   mutual_score int, survey_score int,
-  shared_cities text[], shared_keywords text[]
+  shared_cities text[], shared_keywords text[],
+  dna_type_key text
 )
 language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
@@ -1114,7 +1115,9 @@ language sql security definer set search_path = public as $$
          p.total_score,
          p.place_score, p.recency_score, p.season_score, p.interest_score, p.taste_score,
          p.mutual_score, p.survey_score,
-         p.shared_cities, '{}'::text[] as shared_keywords
+         p.shared_cities, '{}'::text[] as shared_keywords,
+         -- 유형 라벨만 공개(§9) — public_profiles가 이미 그 규칙으로 노출을 좁혀뒀다.
+         pp.dna_type_key
   from picked p
   join public.public_profiles pp on pp.id = p.cid
   order by p.total_score desc, pp.handle
@@ -2334,7 +2337,8 @@ returns table (
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
   place_score int, recency_score int, season_score int, interest_score int, taste_score int,
   mutual_score int, survey_score int,
-  shared_cities text[], shared_keywords text[]
+  shared_cities text[], shared_keywords text[],
+  dna_type_key text
 )
 language plpgsql security definer set search_path = public as $$
 -- returns table(...)의 출력 컬럼명(author_id·handle·…)은 plpgsql 안에서 변수로도 잡힌다.
@@ -2371,12 +2375,14 @@ begin
   select r.author_id, r.handle, r.emoji, r.profile_photo,
          r.shared_count, r.sample_countries, r.mutual_count, r.style_score, r.total_score,
          r.place_score, r.recency_score, r.season_score, r.interest_score, r.taste_score,
-         r.mutual_score, r.survey_score, r.shared_cities, r.shared_keywords
+         r.mutual_score, r.survey_score, r.shared_cities, r.shared_keywords,
+         r.dna_type_key
     from jsonb_to_recordset(cached) as r(
       author_id uuid, handle text, emoji text, profile_photo text,
       shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
       place_score int, recency_score int, season_score int, interest_score int, taste_score int,
-      mutual_score int, survey_score int, shared_cities text[], shared_keywords text[]
+      mutual_score int, survey_score int, shared_cities text[], shared_keywords text[],
+      dna_type_key text
     );
 end; $$;
 

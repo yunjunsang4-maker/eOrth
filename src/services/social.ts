@@ -371,6 +371,10 @@ export interface MateSuggestionRow {
   sharedCities: string[];   // 겹친 도시(최대 3)
   sharedKeywords: string[]; // 겹친 키워드(최대 3)
   surveyScore: number;   // 설문 성향 유사도(0~35). 한쪽이라도 미완료면 0
+  // 상대의 여행 DNA 유형 키(public_profiles.dna_type_key) — utils/travelDnaScore의
+  // labelFromKey로 문구화한다. 축 점수는 비공개(설계 §9), 키만 공개.
+  // null: 설문 미완료 또는 배포 직후 컬럼 없는 캐시 행(레거시 캐시 대비 ?? null 필수).
+  dnaTypeKey: string | null;
 }
 
 export async function fetchMateSuggestions(limit = 10, extraCountries: string[] = []): Promise<MateSuggestionRow[]> {
@@ -399,6 +403,8 @@ export async function fetchMateSuggestions(limit = 10, extraCountries: string[] 
       sharedKeywords: r.shared_keywords ?? [],
       // 배포 직후 캐시된 행은 survey_score 컬럼이 없어 undefined일 수 있어 0으로 고정
       surveyScore: r.survey_score ?? 0,
+      // 배포 직후 캐시된 행은 dna_type_key 컬럼 자체가 없어 undefined일 수 있다 — null로 고정
+      dnaTypeKey: r.dna_type_key ?? null,
     }));
   } catch {
     return [];

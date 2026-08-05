@@ -27,6 +27,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
 import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
 import { matchPercent, pickReason } from '../utils/matchScore';
+import { labelFromKey } from '../utils/travelDnaScore';
 import { buzz } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
@@ -69,6 +70,7 @@ interface ContactFriend {
   recencyScore?: number;
   surveyScore?: number; // 설문 성향 유사도 — 예전 season/interest/taste 3축을 대체
   sharedCities?: string[];
+  dnaTypeKey?: string | null; // 여행 DNA 유형 키(추천 행만) — utils/travelDnaScore.labelFromKey로 문구화
   // 추천 섹션에서 온 행인지 — 검색 결과와 부가정보(방문국·메이트 수) 표기가 다르다.
   // 추천 행은 방문국 수를 조회하지 않으므로 '방문 기록 없음'으로 오표기하면 안 된다.
   fromSuggestion?: boolean;
@@ -199,6 +201,11 @@ function FriendItem({
       ? t('friends.suggestedReason')
       : `${item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}${item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}`;
 
+  // 상대의 여행 DNA 유형 — 서버가 공개하는 건 type_key뿐(축 점수는 비공개, 설계 §9).
+  // 키가 없거나(설문 미완료) 해석 불가면 labelFromKey가 null을 주고, 그때는 줄 자체를 뺀다.
+  const dnaLabel = labelFromKey(item.dnaTypeKey);
+  const dnaText = dnaLabel ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : null;
+
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
       <View style={s.avatar}>
@@ -221,6 +228,12 @@ function FriendItem({
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>{reasonText}</Text>
         </View>
+        {/* 여행 DNA 유형 — 축 점수는 비공개, 라벨 문구만(설계 §9·§10) */}
+        {!!dnaText && (
+          <View style={s.dnaTypeChip}>
+            <Text style={s.dnaTypeChipTxt} numberOfLines={1}>{dnaText}</Text>
+          </View>
+        )}
         {/* 겹치는 나라를 국기 칩으로 — 한 줄 텍스트로 잘리던 것을 한눈에 */}
         {flags.length > 0 && (
           <View style={s.flagRow}>
@@ -426,6 +439,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           recencyScore: r.recencyScore,
           surveyScore: r.surveyScore,
           sharedCities: r.sharedCities,
+          dnaTypeKey: r.dnaTypeKey,
           fromSuggestion: true,
         })));
       } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
@@ -792,6 +806,21 @@ const s = StyleSheet.create({
   friendInfo: {
     flex: 1,
     gap: 2,
+  },
+
+  // 여행 DNA 유형 칩 — flagChip과 같은 크기감, 보라 네온 톤으로 구분
+  dnaTypeChip: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(191,133,252,0.14)',
+  },
+  dnaTypeChipTxt: {
+    fontSize: 10,
+    color: C.accent,
+    fontWeight: '700',
   },
   friendUsername: {
     fontSize: 14,

@@ -1,7 +1,7 @@
 // src/utils/travelDnaScore.verify.ts
 // 여행 DNA 채점 검증. 이게 깨지면 매칭 점수가 조용히 틀어진다 — 화면상 원인이 안 보인다.
 import { DNA_QUESTIONS, DNA_AXES, ONBOARDING_QUESTION_IDS } from '../constants/travelDna';
-import { scoreAxes, answeredCount, isValidDna, makeTypeLabel, type DnaAnswers } from './travelDnaScore';
+import { scoreAxes, answeredCount, isValidDna, makeTypeLabel, labelFromKey, type DnaAnswers } from './travelDnaScore';
 
 let failed = 0;
 function eq(actual: unknown, expected: unknown, msg: string) {
@@ -94,6 +94,56 @@ function eq(actual: unknown, expected: unknown, msg: string) {
 
   // 1위 강도가 문턱 미만이면 폴백 (2위가 아무리 있어도)
   eq(makeTypeLabel({ ...mid, plan: 60 }).key, 'neutral', '1위 강도 10 < 15 → 폴백');
+}
+
+// ── 8) labelFromKey — makeTypeLabel의 역함수 (타인 유형 복원) ──
+{
+  const mid = {} as any; DNA_AXES.forEach((a) => { mid[a] = 50; });
+
+  // 라운드트립 — key만으로 복원한 ko/en이 원래 scores에서 낸 문구와 정확히 같아야 한다.
+  // 이게 실제로 지켜주는 것: makeTypeLabel과 labelFromKey가 단어 목록을 각자 베끼면
+  // 둘 중 하나만 바뀌었을 때 여기서 즉시 어긋난다.
+  const s1 = { ...mid, purpose: 10, pace: 85 };
+  const label1 = makeTypeLabel(s1);
+  eq(labelFromKey(label1.key), { ko: label1.ko, en: label1.en }, '라운드트립: purpose명사/pace수식어');
+
+  const s2 = { ...mid, purpose: 90, pace: 15 };
+  const label2 = makeTypeLabel(s2);
+  eq(labelFromKey(label2.key), { ko: label2.ko, en: label2.en }, '라운드트립: 방향 반전');
+
+  const s3 = { ...mid, plan: 90, pace: 90 };
+  const label3 = makeTypeLabel(s3);
+  eq(labelFromKey(label3.key), { ko: label3.ko, en: label3.en }, '라운드트립: 동점 tie-break');
+
+  // 모든 축 조합 전수 — makeTypeLabel이 낼 수 있는 모든 key가 labelFromKey로 그대로 복원되는지
+  for (const topAxis of DNA_AXES) {
+    for (const secondAxis of DNA_AXES) {
+      if (topAxis === secondAxis) continue;
+      for (const topB of [false, true]) {
+        for (const secondB of [false, true]) {
+          const scores = { ...mid };
+          scores[topAxis] = topB ? 90 : 10;   // 강도 40
+          scores[secondAxis] = secondB ? 80 : 20; // 강도 30 (topAxis보다 약함)
+          const label = makeTypeLabel(scores);
+          const restored = labelFromKey(label.key);
+          eq(restored, { ko: label.ko, en: label.en }, `라운드트립 전수: ${label.key}`);
+        }
+      }
+    }
+  }
+
+  // 폴백 key
+  const fallback = makeTypeLabel(mid);
+  eq(labelFromKey('neutral'), { ko: fallback.ko, en: fallback.en }, 'neutral → makeTypeLabel 폴백과 동일');
+
+  // 방어 — 깨진/모르는 입력은 예외 없이 null
+  eq(labelFromKey(null), null, 'null → null');
+  eq(labelFromKey(undefined), null, 'undefined → null');
+  eq(labelFromKey(''), null, '빈 문자열 → null');
+  eq(labelFromKey('garbage'), null, '구분자 없는 문자열 → null');
+  eq(labelFromKey('plan-pace'), null, '방향 문자 없음 → null');
+  eq(labelFromKey('unknownAxisA-paceB'), null, '모르는 축 이름 → null (개편 후 옛 키 대비)');
+  eq(labelFromKey('planA-planA-planA'), null, '조각이 3개 이상 → null');
 }
 
 if (failed) { console.error(`\n${failed} 실패`); process.exit(1); }
