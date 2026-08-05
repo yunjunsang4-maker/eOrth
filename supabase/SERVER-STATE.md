@@ -19,16 +19,28 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-05 기준)
+## 1. 지금 해야 하는 것 — 1건 (여행 DNA 설문)
 
-2026-08-05 확장성(스케일) 작업의 서버 반영 2건이 같은 날 완료됐다.
+| # | 무엇을 | 어디서 | 왜 |
+|---|---|---|---|
+| 1 | `schema.sql` 재실행 | SQL Editor | `travel_dna` 표·RLS·`save_travel_dna` RPC, `public_profiles.dna_type_key`, `mate_suggestions_compute` 재편(계절·관심사·성향 → 설문축), 캐시 무효화 트리거 확장 |
 
-| # | 무엇을 | 상태 |
-|---|---|---|
-| 1 | `schema.sql` 재실행 — 추천 메이트 결과 캐시 도입 | **2026-08-05 실행 완료** (사용자 실행 보고) |
-| 2 | `cron-setup.sql` 실행 + Vault `service_role_key` 등록 | **2026-08-05 실행 완료** (사용자 실행 보고) |
+앱보다 **서버를 먼저** 올려도 안전하다 — 아무도 설문을 안 한 상태라 설문축이 0이고
+정규화가 기록 축 65점 만점으로 돌아간다. 구버전 앱은 `season/interest/taste` 컬럼을
+그대로 받는다(값 0).
 
-> ⚠️ 위 두 줄은 **서버 조회로 실측한 값이 아니라 실행 보고 기반**이다. 어긋남이 의심되면 아래 쿼리로 직접 확인할 것.
+```sql
+-- 반영 확인
+select count(*) from public.travel_dna;                      -- 표 없으면 에러 = 미반영
+select proname from pg_proc where pronamespace='public'::regnamespace
+   and proname in ('save_travel_dna','mate_suggestions_compute');
+select column_name from information_schema.columns
+ where table_name='public_profiles' and column_name='dna_type_key';
+```
+
+2026-08-05 확장성 작업의 서버 반영 2건은 같은 날 완료됐다(아래 2번 표 참조).
+
+> ⚠️ 위 2026-08-05 두 건은 **서버 조회로 실측한 값이 아니라 실행 보고 기반**이다. 어긋남이 의심되면 아래 쿼리로 직접 확인할 것.
 
 ### 1번으로 생긴 것 (반영 확인용)
 
