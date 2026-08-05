@@ -1466,7 +1466,11 @@ create policy "dna_select_own" on public.travel_dna
 
 -- 쓰기는 아래 RPC(security definer)로만. 클라이언트가 직접 insert 하면
 -- 점수를 임의로 조작해 매칭을 올릴 수 있다.
-revoke insert, update, delete on public.travel_dna from anon, authenticated;
+-- truncate도 반드시 회수 — RLS는 행 단위 DML만 막고 TRUNCATE는 검사하지 않는다.
+-- Supabase 기본 권한이 authenticated에 폭넓게 부여하므로 명시적으로 떼지 않으면
+-- 로그인한 아무나 표 전체를 통째로 지울 수 있다.
+revoke insert, update, delete, truncate, references, trigger
+  on public.travel_dna from anon, authenticated;
 
 -- 응답 저장 — 점수·라벨은 클라이언트가 계산해 보내지만, 서버가 응답 원본과 함께
 -- 보관하므로 이상이 발견되면 answers로 재계산해 덮어쓸 수 있다.
