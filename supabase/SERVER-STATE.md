@@ -19,24 +19,61 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 1건 (여행 DNA 설문)
+## 1. 지금 해야 하는 것 — 없음 (2026-08-06 기준)
 
-| # | 무엇을 | 어디서 | 왜 |
-|---|---|---|---|
-| 1 | `schema.sql` 재실행 | SQL Editor | `travel_dna` 표·RLS·`save_travel_dna` RPC, `public_profiles.dna_type_key`, `mate_suggestions_compute` 재편(계절·관심사·성향 → 설문축), 캐시 무효화 트리거 확장 |
+여행 DNA 설문의 서버 반영(`schema.sql` 재실행)이 **2026-08-06 완료**됐다. 사용자가 SQL Editor에서
+실행하고 아래 점검 쿼리로 확인했다.
 
-앱보다 **서버를 먼저** 올려도 안전하다 — 아무도 설문을 안 한 상태라 설문축이 0이고
-정규화가 기록 축 65점 만점으로 돌아간다. 구버전 앱은 `season/interest/taste` 컬럼을
-그대로 받는다(값 0).
+### 이때 함께 고친 것 — `schema.sql`이 그동안 조용히 한 문장씩 실패하고 있었다
+
+`public_profiles`는 파일에 두 번 정의된다. 조기 정의(146행)는 지울 수 없다 —
+`mate_suggestions_compute`·`country_visitors`·`neighbor_list_of` 세 `language sql` 함수가
+이 뷰를 조인하는데, `check_function_bodies`가 **CREATE 시점에** 본문을 검증하기 때문이다.
+
+그런데 조기 정의는 7컬럼, 최종 정의(1458행)는 11컬럼이었다. `CREATE OR REPLACE VIEW`는
+컬럼을 뺄 수 없으므로, **2026-07-10부터** 기존 DB에 재실행할 때마다 146행이
+`cannot drop columns from view`로 실패해 왔다. 뒤 문장들은 계속 실행돼서 겉으로는
+"재실행 성공"으로 보였고, 그래서 이 문서의 과거 기록도 그렇게 남아 있었다.
+
+→ 조기 정의를 최종 정의와 **같은 컬럼 이름·순서·타입**(부족분은 `null::text` 자리표시자)으로
+맞춰 해소했다. 실제 값은 여전히 1458행 재정의가 채운다.
+
+> ⚠️ **조기 정의의 컬럼 목록을 줄이지 말 것.** "안 쓰는 null"로 보이지만 줄이는 순간
+> 재실행이 다시 깨진다. 최종 정의에 컬럼을 추가하면 조기 정의에도 같은 자리에 추가해야 한다.
+> 146행 위 주석에 같은 경고를 남겨 뒀다.
+
+### 반영 확인 (재확인이 필요할 때)
 
 ```sql
--- 반영 확인
-select count(*) from public.travel_dna;                      -- 표 없으면 에러 = 미반영
-select proname from pg_proc where pronamespace='public'::regnamespace
-   and proname in ('save_travel_dna','mate_suggestions_compute');
-select column_name from information_schema.columns
- where table_name='public_profiles' and column_name='dna_type_key';
+select '① public_profiles 컬럼 수 (11이어야 정상)' as 항목,
+       (select count(*)::text from information_schema.columns
+         where table_schema='public' and table_name='public_profiles') as 값
+union all select '② travel_dna 표',
+       (select case when to_regclass('public.travel_dna') is null then '없음' else '있음' end)
+union all select '③ save_travel_dna 함수',
+       (select count(*)::text from pg_proc
+         where pronamespace='public'::regnamespace and proname='save_travel_dna')
+union all select '④ survey_score 반환 컬럼',
+       (select case when pg_get_function_result(oid) like '%survey_score%' then '있음' else '없음' end
+          from pg_proc where pronamespace='public'::regnamespace and proname='mate_suggestions')
+union all select '⑤ dna_type_key 반환 컬럼',
+       (select case when pg_get_function_result(oid) like '%dna_type_key%' then '있음' else '없음' end
+          from pg_proc where pronamespace='public'::regnamespace and proname='mate_suggestions')
+union all select '⑥ travel_dna 캐시 무효화 트리거',
+       (select count(*)::text from pg_trigger where tgname='trg_dna_invalidate_mate_cache')
+union all select '⑦ TRUNCATE 남은 표 수 (0이어야 정상)',
+       (select count(*)::text from information_schema.table_privileges
+         where grantee in ('anon','authenticated') and table_schema='public'
+           and privilege_type='TRUNCATE');
 ```
+
+### 같은 재실행에 포함된 보안 수정 — TRUNCATE 권한 회수
+
+RLS는 **TRUNCATE를 검사하지 않는다**(행 단위 DML에만 적용된다). Supabase 기본 권한이
+`anon`/`authenticated`에 폭넓게 부여하므로, 그동안 로그인한 사용자가 `posts`·`dm_messages`·
+`notifications` 등을 통째로 비울 수 있었다. 18개 표에 `truncate, references, trigger`를
+회수했다(`schema.sql` 끝 쪽 단일 블록). `select/insert/update/delete`는 건드리지 않았다 —
+그건 RLS와 컬럼 단위 grant로 이미 통제된다.
 
 2026-08-05 확장성 작업의 서버 반영 2건은 같은 날 완료됐다(아래 2번 표 참조).
 
