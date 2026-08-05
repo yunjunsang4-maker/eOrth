@@ -2405,7 +2405,10 @@ delete from public.mate_suggestions_cache;
 --   부여하므로, 명시적으로 회수하지 않으면 "RLS로 다 막았다"고 믿는 표들도
 --   로그인한 아무 사용자나(심지어 일부는 익명도) TRUNCATE 한 번으로 통째로
 --   비울 수 있는 구멍이 남는다. (travel_dna는 738행, public_profiles 뷰는
---   1482행에서 이미 개별적으로 회수했고 아래 목록에는 없음 — 중복 방지)
+--   1482행에서 이미 개별적으로 회수했고 아래 목록에는 없음 — 중복 방지.
+--   mate_suggestions_cache는 2297행 `revoke all`로 이미 TRUNCATE까지 덮여
+--   실질적으로 중복이지만, 목록 완결성 — "표 추가 시 여기만 보면 된다" — 을
+--   위해 아래 목록에 그대로 남겨둔다. revoke는 멱등이라 무해하다)
 --
 --   ⚠️ SELECT/INSERT/UPDATE/DELETE는 여기서 절대 회수하지 않는다 — 그건 RLS
 --   정책과, 일부 표(예: posts)의 컬럼 단위 grant로 이미 의도적으로 통제되고
