@@ -2016,6 +2016,8 @@ const ko = {
     axisPurpose: '미식 · 관광',
     axisCrowd: '북적임 · 한적함',
     axisCompany: '혼자 · 함께',
+    mateTitle: '성향이 맞는 메이트',
+    mateFind: '메이트 찾아보기',
   },
 } as const;
 

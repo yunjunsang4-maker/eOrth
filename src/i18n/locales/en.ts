@@ -2009,6 +2009,8 @@ const en = {
     axisPurpose: 'Food · Sights',
     axisCrowd: 'Crowds · Quiet',
     axisCompany: 'Solo · Together',
+    mateTitle: 'Mates who travel like you',
+    mateFind: 'Find mates',
   },
 } as const;
 
