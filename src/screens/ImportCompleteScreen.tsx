@@ -9,6 +9,7 @@ import { requestNotificationPermission } from '../services/snapService';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
+import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 완료 화면에서 가져온 나라 국기 칩 — 순차로 톡 튀어오르며 나타난다(스프링).
@@ -31,6 +32,9 @@ function FlagChip({ flag, name, delay }: { flag: string; name: string; delay: nu
 }
 
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
+  // 완료 화면은 뒤로가기로 빠져나가면 안 된다 — 온보딩 경로에서는 이 화면의 CTA가
+  // 알림 권한 요청과 튜토리얼 시작을 겸하고, 되돌아갈 이전 단계도 이미 스택에서 정리됐다.
+  useBlockHardwareBack();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { tripCount, photoCount, countries, from } = route.params;

@@ -62,6 +62,7 @@ import {
   type ProbePoint,
 } from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
+import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -385,6 +386,9 @@ function TripCard({
 }
 
 export default function TravelImportScreen({ navigation, route }: Props) {
+  // 스와이프와 함께 하드웨어 뒤로가기도 막는다 — 스캔 도중 이탈로 진행 상태가 어정쩡해지는 것 방지.
+  // 나가는 길은 화면 안에 있다: 권한 화면·결과 없음 화면의 스킵 링크, 결과 목록의 '프로필로 돌아가기'.
+  useBlockHardwareBack();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { homeCountryCode, lastImportAt } = useSettings();
@@ -992,7 +996,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 14, paddingBottom: showResults ? 140 : insets.bottom + 24 },
+          // 결과 화면의 하단 여백은 플로팅 바 전용 — CTA 아래 이탈 링크가 붙어 바가 그만큼 높아졌다
+          { paddingTop: insets.top + 14, paddingBottom: showResults ? 182 : insets.bottom + 24 },
         ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
@@ -1263,6 +1268,21 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                 : t('imports.selectTripsToImport')
             }
           />
+          {/* 결과 화면 이탈 수단 — 여기에만 없었다.
+              권한 요청 화면과 '결과 없음' 화면에는 스킵 링크가 있는데, 정작 여행을 찾아낸
+              결과 목록에는 나가는 길이 없어서 가져오기를 끝내야만 화면을 벗어날 수 있었다.
+              이 시점엔 아직 아무것도 저장되지 않으므로(저장은 handleImport에서 시작) 확인 없이 즉시 나간다.
+              가져오는 중에는 막는다 — 중간에 나가면 절반만 들어온 상태가 된다. */}
+          <TouchableOpacity
+            style={[styles.skipBtn, styles.bottomBarSkip]}
+            onPress={leaveImport}
+            disabled={isImporting}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.skipText, isImporting && { opacity: 0.4 }]}>
+              {t(fromProfile ? 'imports.backToProfile' : 'imports.skip')}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -1402,6 +1422,12 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     paddingVertical: 12,
+  },
+  // 결과 화면 하단 바 안의 스킵 링크 — 바는 자식을 가로로 늘리므로 여기서 가운데로 모은다
+  // (초기·빈 결과 화면의 스킵은 이미 가운데 정렬된 컨테이너 안에 있어 이 보정이 필요 없다)
+  bottomBarSkip: {
+    alignItems: 'center',
+    paddingVertical: 10,
   },
   skipText: {
     color: 'rgba(255,255,255,0.4)',
