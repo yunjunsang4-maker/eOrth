@@ -2392,6 +2392,44 @@ delete from public.mate_suggestions_cache;
 --     $$delete from public.mate_suggestions_cache where computed_at < now() - interval '7 days'$$);
 
 -- ============================================================
+-- 보안 하드닝: TRUNCATE 권한 일괄 회수
+--   RLS는 SELECT/INSERT/UPDATE/DELETE 같은 행 단위 DML만 검사하고 TRUNCATE는
+--   검사 대상이 아니다 — TRUNCATE는 오직 테이블 권한(privilege)만으로 통제된다.
+--   그런데 Supabase는 새 테이블을 만들 때 anon/authenticated에 기본 권한을 폭넓게
+--   부여하므로, 명시적으로 회수하지 않으면 "RLS로 다 막았다"고 믿는 표들도
+--   로그인한 아무 사용자나(심지어 일부는 익명도) TRUNCATE 한 번으로 통째로
+--   비울 수 있는 구멍이 남는다. (travel_dna는 738행, public_profiles 뷰는
+--   1482행에서 이미 개별적으로 회수했고 아래 목록에는 없음 — 중복 방지)
+--
+--   ⚠️ SELECT/INSERT/UPDATE/DELETE는 여기서 절대 회수하지 않는다 — 그건 RLS
+--   정책과, 일부 표(예: posts)의 컬럼 단위 grant로 이미 의도적으로 통제되고
+--   있으므로 여기서 건드리면 앱이 깨진다. 이 블록은 TRUNCATE/REFERENCES/TRIGGER
+--   세 가지만 대상으로 한다.
+--
+--   이 문(create table)들이 전부 위에서 이미 정의된 뒤, 파일 맨 끝 쪽에 모아둔다
+--   — 표 하나 추가할 때마다 여기 목록에만 이름을 더하면 되도록.
+revoke truncate, references, trigger on
+  public.ad_campaigns,
+  public.blocks,
+  public.comment_likes,
+  public.comments,
+  public.dm_messages,
+  public.dm_push_sent,
+  public.dm_threads,
+  public.feedback,
+  public.mate_suggestions_cache,
+  public.neighbors,
+  public.notifications,
+  public.post_likes,
+  public.posts,
+  public.profiles,
+  public.push_tokens,
+  public.reports,
+  public.user_app_state,
+  public.user_trip_state
+  from anon, authenticated;
+
+-- ============================================================
 -- 실행 후 사후 점검 (수동)
 --   handle 대소문자 유일 인덱스는 '이미 중복이 있으면' 경고만 남기고 건너뛴다(1) 섹션).
 --   경고는 SQL Editor 출력에서 놓치기 쉬우므로, 실행 뒤 아래 한 줄로 실제 생성 여부를 확인할 것.
