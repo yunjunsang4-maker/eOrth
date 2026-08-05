@@ -25,7 +25,7 @@ export const STORE_KEYS = {
   // 읽은 '추억 리마인드' 알림 id — 이 알림은 내 기록에서 매번 계산되는 로컬 알림이라
   // 서버 read 컬럼이 없다. 저장하지 않으면 탭해도 다음 진입에 다시 새 알림이 된다.
   memoryNotiRead: '@eorth/memoryNotiRead',
-  travelDna: 'eorth.travelDna',
+  travelDna: '@eorth/travelDna',
 } as const;
 
 interface Envelope<T> {
@@ -130,9 +130,14 @@ export function usePersistence<T>(
   return hydrated;
 }
 
-/** 영속 데이터 전체 삭제 (설정 → 데이터 초기화 등에서 사용) */
+/**
+ * 영속 데이터 전체 삭제 (계정 전환·데이터 초기화 전용 — 일반 로그아웃은 로컬을 지우지 않는다.
+ * records 등은 서버에서 재다운로드하지 않아 지우면 데이터 손실이지만, travelDna는 서버가
+ * 진실이라 지워도 다음 진입에 다시 받아온다 — 그래서 여기 포함해도 안전하고, 계정 귀속
+ * 데이터라 포함하지 않으면 다음 계정에 이전 계정의 유형이 그대로 남는다).
+ */
 export async function clearPersistedStores(): Promise<void> {
-  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead]);
+  await AsyncStorage.multiRemove([STORE_KEYS.records, STORE_KEYS.settings, STORE_KEYS.dm, STORE_KEYS.feedCache, STORE_KEYS.moments, STORE_KEYS.memoryNotiRead, STORE_KEYS.travelDna]);
 }
 
 /**
