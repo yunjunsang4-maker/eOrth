@@ -2017,7 +2017,12 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               {/* 여행 DNA — 거주국 오른쪽. 완료: 유형 텍스트(탭→결과·재검사),
                   미완료: 점선 빈 칩으로 빈자리를 보여줘 검사를 유도(탭→설문) */}
               <TouchableOpacity
-                style={[styles.dnaChip, !dnaComplete && styles.dnaChipEmpty]}
+                style={[
+                  styles.dnaChip,
+                  // 채움은 진한 강조색 25%(8자리 hex #RRGGBBAA, 0x40 ≈ 0.25), 테두리는 밝은 강조색 30%
+                  { backgroundColor: `${skinAccent.accentDeep}40`, borderColor: skinAccent.tint(0.3) },
+                  !dnaComplete && styles.dnaChipEmpty,
+                ]}
                 activeOpacity={0.75}
                 onPress={() =>
                   dnaComplete
@@ -2025,8 +2030,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
                 }
               >
-                <Text style={styles.dnaChipMark}>✦</Text>
-                <Text style={styles.dnaChipText} numberOfLines={1}>
+                <Text style={[styles.dnaChipMark, { color: skinAccent.accent }]}>✦</Text>
+                <Text style={[styles.dnaChipText, { color: skinAccent.accent }]} numberOfLines={1}>
                   {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
                 </Text>
               </TouchableOpacity>
@@ -2526,22 +2531,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: COLORS.purpleBg,
     borderWidth: 1,
-    borderColor: COLORS.purpleBorder,
+    // backgroundColor·borderColor는 스킨 강조색 — 인라인
   },
   // 미완료(빈 상태) — 채움 없이 점선 테두리만. 본인 신원 블록의 빈자리를 드러내 검사를 유도.
+  // 인라인 스킨 채움보다 뒤에 와야 transparent가 이긴다.
   dnaChipEmpty: {
     backgroundColor: 'transparent',
     borderStyle: 'dashed',
   },
   dnaChipMark: {
-    color: COLORS.purpleNeon,
     fontSize: 11,
     marginRight: 4,
   },
   dnaChipText: {
-    color: COLORS.purpleNeon,
     fontSize: 12,
     fontWeight: '700',
     flexShrink: 1,

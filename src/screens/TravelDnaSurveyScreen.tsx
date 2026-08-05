@@ -13,12 +13,14 @@ import { useTranslation } from 'react-i18next';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import { GlassSurface } from '../components/GlassSurface';
+import { useSkinAccent } from '../constants/skinTheme';
 import { DNA_QUESTIONS, ONBOARDING_QUESTION_IDS, type DnaQuestion } from '../constants/travelDna';
 import { useTravelDna } from '../store/travelDnaStore';
 import type { DnaAnswers } from '../utils/travelDnaScore';
 import type { RootStackScreenProps } from '../navigation/types';
 
-const C = { bg: '#0A0A0F', card: '#2E2E3B', neon: '#BF85FC', dim: '#A1A1B0', line: '#1A1A26' };
+// 강조색은 지구본 스킨을 따른다(useSkinAccent) — 결과 화면과 같은 규칙.
+const C = { bg: '#0A0A0F', card: '#2E2E3B', dim: '#A1A1B0', line: '#1A1A26' };
 
 // 선택 카드 — GlassSurface는 배경 재질이라 absoluteFill로 깔고 텍스트는 형제로 위에 얹는다
 // (컴포넌트 헤더 주석의 "중첩 금지" 규칙). 카드가 크므로 androidBlur는 쓰지 않고
@@ -55,6 +57,7 @@ const firstUnanswered = (list: DnaQuestion[], src: DnaAnswers) => {
 export default function TravelDnaSurveyScreen({ navigation, route }: RootStackScreenProps<'TravelDnaSurvey'>) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
+  const skin = useSkinAccent(); // 지구본 스킨 → 앱 강조색
   const { answers: saved, submit } = useTravelDna();
   const onboarding = route.params?.mode === 'onboarding';
 
@@ -184,7 +187,7 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
       </View>
 
       <View style={st.barTrack}>
-        <Animated.View style={[st.barFill, { width: barWidth }]} />
+        <Animated.View style={[st.barFill, { backgroundColor: skin.accent, width: barWidth }]} />
       </View>
 
       <Animated.View style={[st.body, qStyle]}>
@@ -210,7 +213,7 @@ const st = StyleSheet.create({
   skip: { color: C.dim, fontSize: 14 },
   progress: { color: C.dim, fontSize: 13, fontWeight: '600' },
   barTrack: { height: 3, borderRadius: 2, backgroundColor: C.line, marginTop: 14, overflow: 'hidden' },
-  barFill: { height: 3, borderRadius: 2, backgroundColor: C.neon },
+  barFill: { height: 3, borderRadius: 2 }, // backgroundColor는 스킨 강조색 — 인라인
   body: { flex: 1, justifyContent: 'center', gap: 14 },
   situation: { color: '#FFFFFF', fontSize: 22, fontWeight: '800', marginBottom: 18, lineHeight: 30 },
   choiceOuter: {

@@ -405,9 +405,15 @@ export default function FriendProfileScreen({
                   <Text style={[pv.userLocation, s.locationShrink]} numberOfLines={1}>{friendLocation}</Text>
                 )}
                 {!!friendDnaLabel && (
-                  <View style={s.dnaChip}>
-                    <Text style={s.dnaChipMark}>✦</Text>
-                    <Text style={s.dnaChipText} numberOfLines={1}>
+                  <View
+                    style={[
+                      s.dnaChip,
+                      // 본인 프로필 칩과 같은 배합 — 채움은 진한 강조색 25%(#RRGGBBAA), 테두리는 밝은 강조색 30%
+                      { backgroundColor: `${skinAccent.accentDeep}40`, borderColor: skinAccent.tint(0.3) },
+                    ]}
+                  >
+                    <Text style={[s.dnaChipMark, { color: skinAccent.accent }]}>✦</Text>
+                    <Text style={[s.dnaChipText, { color: skinAccent.accent }]} numberOfLines={1}>
                       {i18n.language.startsWith('en') ? friendDnaLabel.en : friendDnaLabel.ko}
                     </Text>
                   </View>
@@ -695,17 +701,14 @@ const s = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
-    backgroundColor: COLORS.accentBg,
     borderWidth: 1,
-    borderColor: COLORS.accentBorder,
+    // backgroundColor·borderColor는 스킨 강조색 — 인라인
   },
   dnaChipMark: {
-    color: COLORS.accent,
     fontSize: 11,
     marginRight: 4,
   },
   dnaChipText: {
-    color: COLORS.accent,
     fontSize: 12,
     fontWeight: '700',
     flexShrink: 1,
