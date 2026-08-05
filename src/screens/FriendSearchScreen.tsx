@@ -30,6 +30,7 @@ import { matchPercent, pickReason } from '../utils/matchScore';
 import { buzz } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
+import { useTravelDna } from '../store/travelDnaStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
@@ -315,6 +316,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   }, [route.params?.initialQuery, route.params?.ts]);
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
   const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
+  // 여행 DNA — 완료 전까지만 배너 노출(매칭 동기가 가장 큰 자리)
+  const { isComplete: dnaComplete, isFull: dnaFull, label: dnaLabel } = useTravelDna();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
   // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
   const [myId, setMyId] = useState<string | null>(null);
@@ -570,6 +573,25 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                   <Text style={s.requestBannerBody}>{t('friends.incomingBannerBody')}</Text>
                 </View>
                 <Text style={[s.requestBannerArrow, { color: skinAccent.accent }]}>›</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* 여행 DNA 배너 — 매칭 동기가 가장 큰 자리. 완료 전까지만 노출한다 */}
+            {!dnaFull && (
+              <TouchableOpacity
+                style={dnaBanner.wrap}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('TravelDnaSurvey', { mode: 'full' })}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={dnaBanner.title}>
+                    {dnaComplete ? t('dna.continueSurvey') : t('dna.bannerTitle')}
+                  </Text>
+                  <Text style={dnaBanner.desc}>{t('dna.bannerDesc')}</Text>
+                </View>
+                <Text style={dnaBanner.cta}>
+                  {dnaComplete ? t('dna.continueSurvey') : t('dna.startSurvey')}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -854,4 +876,17 @@ const s = StyleSheet.create({
     }),
   },
   inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+});
+
+// 여행 DNA 배너
+const dnaBanner = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#2E2E3B', borderRadius: 16, padding: 16,
+    marginHorizontal: 16, marginBottom: 14,
+    borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)',
+  },
+  title: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  desc: { color: '#A1A1B0', fontSize: 12, marginTop: 4 },
+  cta: { color: '#BF85FC', fontSize: 13, fontWeight: '700' },
 });
