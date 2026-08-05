@@ -317,7 +317,7 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
   const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
   // 여행 DNA — 완료 전까지만 배너 노출(매칭 동기가 가장 큰 자리)
-  const { isComplete: dnaComplete, isFull: dnaFull, label: dnaLabel } = useTravelDna();
+  const { isComplete: dnaComplete, isFull: dnaFull } = useTravelDna();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
   // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
   const [myId, setMyId] = useState<string | null>(null);
@@ -883,7 +883,7 @@ const dnaBanner = StyleSheet.create({
   wrap: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: '#2E2E3B', borderRadius: 16, padding: 16,
-    marginHorizontal: 16, marginBottom: 14,
+    marginBottom: 14,
     borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)',
   },
   title: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

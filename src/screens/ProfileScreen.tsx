@@ -2812,7 +2812,7 @@ const badgeHL = StyleSheet.create({
 const dnaCard = StyleSheet.create({
   wrap: {
     backgroundColor: '#2E2E3B', borderRadius: 16, padding: 18,
-    marginHorizontal: 16, marginTop: 14,
+    marginTop: 14,
     borderWidth: 1, borderColor: '#1A1A26',
   },
   label: { color: '#A1A1B0', fontSize: 12 },
