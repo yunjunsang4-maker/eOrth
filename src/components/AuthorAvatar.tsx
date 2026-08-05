@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Image, View } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { PersonIcon } from './icons';
 
 // eOrth 공식 예시 아바타 이미지(지구본) — 소셜 예시 기록의 '이어스' 프로필 사진
@@ -38,10 +39,15 @@ export default function AuthorAvatar({
     );
   }
   if (photo && !failed) {
+    // 원격 프로필 사진은 expo-image로 — 피드 한 화면에서 같은 아바타가 수십 번 반복 요청되던 것을
+    // 디스크 캐시로 없앤다(앱 재시작 후에도 유지). 로컬 asset(예시 아바타)은 위 RN Image 그대로.
     return (
-      <Image
+      <ExpoImage
         source={{ uri: photo }}
         style={{ width: size, height: size, borderRadius: size / 2 }}
+        cachePolicy="memory-disk"
+        contentFit="cover"
+        transition={120}
         onError={() => setFailed(true)}
       />
     );

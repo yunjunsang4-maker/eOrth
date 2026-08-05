@@ -10,6 +10,13 @@ import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 export const PHOTO_MAX_EDGE = 1600;
 export const PHOTO_QUALITY = 0.75;
 
+// 목록(피드·스토리·여행카드 커버)용 축소본 규격.
+// 피드 카드는 화면 폭 절반짜리 2단 배치라 640px이면 3배 밀도에서도 충분하고,
+// 용량은 1600px 원본의 1/6~1/10로 떨어진다(이그레스 절감의 핵심).
+// 상세 화면은 계속 원본을 쓴다 — 축소본은 어디까지나 '목록용'이다.
+export const THUMB_MAX_EDGE = 640;
+export const THUMB_QUALITY = 0.6;
+
 function getSize(uri: string): Promise<{ width: number; height: number }> {
   return new Promise((resolve, reject) => {
     Image.getSize(uri, (width, height) => resolve({ width, height }), reject);

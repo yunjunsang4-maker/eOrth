@@ -455,6 +455,29 @@ export async function unlikePost(postId: string): Promise<void> {
 }
 
 // 내가 좋아요한 게시물 id 목록
+/**
+ * 주어진 게시물들에 대한 '내 좋아요' 여부만 조회 (피드 페이지용).
+ *
+ * fetchMyLikedPostIds 는 내 좋아요를 전부 받아온다 — 좋아요가 쌓인 사용자일수록 피드를
+ * 열 때마다 수천 개의 uuid를 내려받고, PostgREST 기본 행 상한(1000)에 걸리면 오래된
+ * 좋아요가 조용히 빠져 하트가 빈 채로 보인다. 페이지 단위 조회는 항상 20~70건이라 둘 다 없다.
+ */
+export async function fetchMyLikesFor(postIds: string[]): Promise<Set<string>> {
+  if (!supabase || postIds.length === 0) return new Set();
+  const uid = await getMyUserId();
+  if (!uid) return new Set();
+  try {
+    const { data } = await supabase
+      .from('post_likes')
+      .select('post_id')
+      .eq('user_id', uid)
+      .in('post_id', postIds);
+    return new Set((data ?? []).map((r: any) => r.post_id as string));
+  } catch {
+    return new Set();
+  }
+}
+
 export async function fetchMyLikedPostIds(): Promise<string[]> {
   if (!supabase) return [];
   const uid = await getMyUserId();

@@ -718,6 +718,7 @@ const ko = {
     moreA11y: '더보기',
     dmA11y: '디엠',
     shareFailed: '공유 실패',
+    feedEnd: '여기까지가 마지막 기록이에요',
     emptyText: '아직 공유된 기록이 없어요',
     emptySuggestTitle: '추천 메이트',
     emptyCtaFindFriends: '메이트 찾기',

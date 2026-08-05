@@ -19,12 +19,40 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-02 기준)
+## 1. 지금 해야 하는 것 — 2건 (2026-08-05 확장성 작업)
 
-**서버 반영 작업은 없다.** `schema.sql` 재실행과 Edge Function 4종 배포가 모두 끝났고,
-출시 전 감사(2026-08-02)의 치명 2건도 서버에서 차단 확인됐다.
+> 2026-08-02까지의 반영은 모두 끝나 있었다. 아래 2건은 **2026-08-05 확장성(스케일) 작업**으로 새로 생긴 것이다.
 
-남은 것은 **4번(정리 대기)** 하나뿐이다 — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
+| # | 무엇을 | 어디서 | 왜 |
+|---|---|---|---|
+| 1 | `schema.sql` 재실행 | SQL Editor | 추천 메이트 결과 캐시 도입 — `mate_suggestions` 가 캐시 래퍼로 바뀌고 계산 본체는 `mate_suggestions_compute` 로 분리됐다. **재실행 전까지는 예전처럼 매 호출마다 전역 스캔이 돈다.** |
+| 2 | `cron-setup.sql` 실행 | SQL Editor | 알림 정리·탈퇴 계정 파기·캐시 정리 정기 작업 등록. 셋 다 함수는 있었지만 **호출하는 주체가 없어 한 번도 돈 적이 없다.** |
+
+**순서**: 1 → 2 (2번의 캐시 정리 잡이 1번에서 만들어지는 `mate_suggestions_cache` 표를 참조한다).
+
+### 1번 재실행으로 새로 생기는 것 (반영 확인용)
+
+- 표 `public.mate_suggestions_cache` — 사용자·파라미터별 추천 결과 캐시(TTL 6시간)
+- 함수 `public.mate_suggestions_compute(int, text[])` — 기존 계산 본체(클라이언트 실행 권한 회수됨)
+- 함수 `public.mate_suggestions(int, text[])` — 캐시 래퍼(`language plpgsql`). **클라이언트 호출 이름·시그니처·반환 컬럼은 그대로**라 앱 수정은 필요 없다
+- 트리거 `trg_posts_invalidate_mate_cache` — 내 기록이 추가/삭제되면 내 캐시만 즉시 무효화
+
+```sql
+-- 반영 확인 (1번)
+select proname, prosecdef, prolang::regtype from pg_proc
+ where pronamespace = 'public'::regnamespace
+   and proname in ('mate_suggestions', 'mate_suggestions_compute');
+select count(*) from public.mate_suggestions_cache;  -- 표가 없으면 에러 = 미반영
+
+-- 반영 확인 (2번)
+select jobname, schedule, active from cron.job order by jobname;
+--   purge-deleted-accounts / purge-mate-cache / purge-notifications 3건이 나와야 한다
+```
+
+⚠️ **2번의 `purge-deleted-accounts` 는 Vault 선행 등록이 필요하다** — `cron-setup.sql` 3)절 주석 참조.
+service_role 키를 Vault에 넣지 않으면 잡은 등록되지만 매일 인증 실패로 아무것도 파기하지 못한다.
+
+그 밖에 남은 것은 **4번(정리 대기)** — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
 
 ### 코드 밖에 남은 일 (콘솔·외부 — SQL 로는 못 고친다)
 
@@ -110,6 +138,7 @@
 | `migration-2026-07-15-imported-albums-friends.sql` | **⛔ 2026-07-15 실행 완료.** 재실행하면 그 뒤 사용자가 직접 비공개로 되돌린 기록까지 다시 공개로 승격된다 |
 | `migration-2026-07-15-neighbors.sql` | **⛔ 2026-07-15 실행 완료.** 맞팔 이관은 멱등이지만 공개범위 이관이 사용자가 되돌린 값을 덮는다. `follows` 테이블도 이미 drop 되어 1)은 어차피 빈 결과 |
 | `analysis-mate-score-distribution.sql` | **폐기됨.** 2026-07-28에 없어진 구 4축 공식을 재는 파일 — 돌리면 "개선이 없다"는 잘못된 결론이 나온다 |
+| `cron-setup.sql` | 실행해도 안전하다(재실행 가능 — `cron.schedule` 은 같은 이름 잡을 덮어쓴다). 위 1번 표 참조 |
 | `tmp-perf-verify.sql` | 성능 리팩터 검증용 구 함수 스냅샷(2026-07-28). 아래 4번 참조 |
 
 ---

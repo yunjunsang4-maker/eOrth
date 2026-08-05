@@ -713,6 +713,7 @@ const en = {
     moreA11y: 'More',
     dmA11y: 'DM',
     shareFailed: 'Share failed',
+    feedEnd: "You're all caught up",
     emptyText: 'No shared records yet',
     emptySuggestTitle: 'Suggested mates',
     emptyCtaFindFriends: 'Find mates',
