@@ -25,6 +25,7 @@ export const STORE_KEYS = {
   // 읽은 '추억 리마인드' 알림 id — 이 알림은 내 기록에서 매번 계산되는 로컬 알림이라
   // 서버 read 컬럼이 없다. 저장하지 않으면 탭해도 다음 진입에 다시 새 알림이 된다.
   memoryNotiRead: '@eorth/memoryNotiRead',
+  travelDna: 'eorth.travelDna',
 } as const;
 
 interface Envelope<T> {
