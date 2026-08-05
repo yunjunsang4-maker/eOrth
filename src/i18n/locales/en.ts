@@ -1984,6 +1984,31 @@ const en = {
     stateMismatch: 'Auth state check failed. Please try again.',
     noAuthCode: "Didn't receive an auth code.",
   },
+  // Travel DNA survey & result (TravelDnaSurveyScreen etc.)
+  dna: {
+    surveyTitle: 'Find your travel type',
+    progress: '{{current}} / {{total}}',
+    skip: 'Skip',
+    prev: 'Back',
+    quitTitle: 'Stop the survey?',
+    quitMsg: "Your answers so far won't be saved.",
+    quitOk: 'Stop',
+    saveFailed: "Couldn't save. Please try again in a moment.",
+    resultTitle: 'My Travel DNA',
+    retake: 'Retake',
+    continueSurvey: 'Continue',
+    startSurvey: 'Find my type',
+    bannerTitle: 'Tell us how you travel',
+    bannerDesc: "We'll show mates with similar taste first",
+    accuracy: '{{percent}}% complete',
+    axisPlan: 'Planned · Spontaneous',
+    axisPace: 'Restful · Active',
+    axisTerrain: 'City · Nature',
+    axisBudget: 'Thrifty · Generous',
+    axisPurpose: 'Food · Sights',
+    axisCrowd: 'Crowds · Quiet',
+    axisCompany: 'Solo · Together',
+  },
 } as const;
 
 export default en;
