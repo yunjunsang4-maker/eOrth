@@ -81,7 +81,18 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
           </TouchableOpacity>
         )}
         <TouchableOpacity
-          onPress={() => (fromOnboarding ? navigation.replace('Main') : navigation.goBack())}
+          onPress={() => {
+            if (!fromOnboarding) { navigation.goBack(); return; }
+            // 온보딩 종점 — replace가 아니라 reset을 쓴다: replace는 이 화면만 바꿔서
+            // 아래 온보딩 스택(Splash·AppIntro·Login·BasicInfo·TravelImport·ImportComplete)이
+            // 그대로 남고, 안드로이드 뒤로가기로 온보딩에 다시 들어갈 수 있게 된다.
+            // startTutorial: true는 MainScreen이 읽어 첫 진입 코치마크 튜토리얼을 띄우는
+            // 살아있는 플래그다 — ImportCompleteScreen의 기존 온보딩 종료 처리와 동일하게 맞춘다.
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
+            });
+          }}
         >
           <Text style={st.secondaryText}>{fromOnboarding ? t('common.done') : t('common.close')}</Text>
         </TouchableOpacity>
