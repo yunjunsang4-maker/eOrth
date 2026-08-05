@@ -39,6 +39,7 @@ import { useSettings } from '../store/settingsStore';
 import { timeAgo } from '../utils/timeAgo';
 import { andFitText } from '../utils/fitText';
 import { pickReason } from '../utils/matchScore';
+import { labelFromKey } from '../utils/travelDnaScore';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { CUT_LAYOUTS, getCutFrame } from '../constants/cutFrames';
 import { SNS_SHARE_ENABLED, FEED_ADS_ENABLED } from '../constants/featureFlags';
@@ -2402,7 +2403,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
   onPressUser: (m: MateSuggestionRow) => void;
   onPressCta: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카드 전체(테두리·제목·아바타 링·그림자·CTA)를 지구본 스킨색으로
   const [size, setSize] = useState({ w: 0, h: 0 });
   return (
@@ -2445,15 +2446,16 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
         // 근거가 아예 없으면(이론상만 가능) 중립 문구로 폴백해 빈 줄이 남지 않게 한다.
         const reason = pickReason({
           recencyScore: m.recencyScore,
-          seasonScore: m.seasonScore,
-          interestScore: m.interestScore,
-          tasteScore: m.tasteScore,
+          surveyScore: m.surveyScore,
           mutualCount: m.mutualCount,
           sharedCities: m.sharedCities,
-          sharedKeywords: m.sharedKeywords,
           sharedCount: m.sharedCount,
         });
         const sub = reason ? t(reason.key, reason.params) : t('friends.suggestedReason');
+        // 여행 DNA 유형 — 서버가 공개하는 건 type_key뿐(축 점수는 비공개, 설계 §9).
+        // 해석 불가(미완료·미지의 키)면 labelFromKey가 null을 주고, 그때는 줄 자체를 뺀다.
+        const dnaLabel = labelFromKey(m.dnaTypeKey);
+        const dnaText = dnaLabel ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : null;
         return (
           <TouchableOpacity key={m.authorId} style={s.mateCardRow} activeOpacity={0.75} onPress={() => onPressUser(m)}>
             <View style={[s.mateCardAvatarRing, { borderColor: skinAccent.tint(0.5) }]}>
@@ -2468,6 +2470,7 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
             <View style={{ flex: 1, minWidth: 0 }}>
               <Text style={s.mateCardHandle} numberOfLines={1}>{m.handle}</Text>
               {!!sub && <Text style={s.mateCardSub} numberOfLines={1}>{sub}</Text>}
+              {!!dnaText && <Text style={[s.mateCardSub, { color: skinAccent.accent }]} numberOfLines={1}>{dnaText}</Text>}
             </View>
           </TouchableOpacity>
         );

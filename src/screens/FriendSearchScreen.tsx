@@ -27,9 +27,11 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { searchProfiles, getMyUserId, getCountryCounts, getFollowerCounts } from '../services/profile';
 import { fetchMateSuggestions, fetchIncomingNeighborRequests } from '../services/social';
 import { matchPercent, pickReason } from '../utils/matchScore';
+import { labelFromKey } from '../utils/travelDnaScore';
 import { buzz } from '../utils/haptics';
 import { profileLink } from '../utils/appLinks';
 import Toast from '../components/Toast';
+import { useTravelDna } from '../store/travelDnaStore';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ─────────────────────────────────────────────
@@ -66,11 +68,9 @@ interface ContactFriend {
   matchScore?: number;        // 여행 DNA 종합 점수(mate_suggestions.total_score)
   // 축별 점수 — 추천 근거 문구 선택에 쓴다(placeScore는 pickReason 미사용 — sharedCities/sharedCount로 판단)
   recencyScore?: number;
-  seasonScore?: number;
-  interestScore?: number;
-  tasteScore?: number;
+  surveyScore?: number; // 설문 성향 유사도 — 예전 season/interest/taste 3축을 대체
   sharedCities?: string[];
-  sharedKeywords?: string[];
+  dnaTypeKey?: string | null; // 여행 DNA 유형 키(추천 행만) — utils/travelDnaScore.labelFromKey로 문구화
   // 추천 섹션에서 온 행인지 — 검색 결과와 부가정보(방문국·메이트 수) 표기가 다르다.
   // 추천 행은 방문국 수를 조회하지 않으므로 '방문 기록 없음'으로 오표기하면 안 된다.
   fromSuggestion?: boolean;
@@ -190,12 +190,9 @@ function FriendItem({
   // (추천 행은 방문국 수를 조회하지 않아 '방문 기록 없음'이 되면 오표기가 된다).
   const reason = pickReason({
     recencyScore: item.recencyScore ?? 0,
-    seasonScore: item.seasonScore ?? 0,
-    interestScore: item.interestScore ?? 0,
-    tasteScore: item.tasteScore ?? 0,
+    surveyScore: item.surveyScore ?? 0,
     mutualCount: item.mutualCount ?? 0,
     sharedCities: item.sharedCities ?? [],
-    sharedKeywords: item.sharedKeywords ?? [],
     sharedCount: item.sharedCount ?? shared.length,
   });
   const reasonText = reason
@@ -203,6 +200,11 @@ function FriendItem({
     : item.fromSuggestion
       ? t('friends.suggestedReason')
       : `${item.countries > 0 ? t('friends.countriesVisitedN', { count: item.countries }) : t('friends.noVisitRecord')}${item.followers ? ` · ${t('friends.followers')} ${item.followers}` : ''}`;
+
+  // 상대의 여행 DNA 유형 — 서버가 공개하는 건 type_key뿐(축 점수는 비공개, 설계 §9).
+  // 키가 없거나(설문 미완료) 해석 불가면 labelFromKey가 null을 주고, 그때는 줄 자체를 뺀다.
+  const dnaLabel = labelFromKey(item.dnaTypeKey);
+  const dnaText = dnaLabel ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : null;
 
   return (
     <TouchableOpacity style={s.friendItem} onPress={onPress} activeOpacity={0.75}>
@@ -226,6 +228,12 @@ function FriendItem({
           <GlobeIcon size={12} color="#A1A1B0" />
           <Text style={s.friendCountries} {...andFitText}>{reasonText}</Text>
         </View>
+        {/* 여행 DNA 유형 — 축 점수는 비공개, 라벨 문구만(설계 §9·§10) */}
+        {!!dnaText && (
+          <View style={s.dnaTypeChip}>
+            <Text style={s.dnaTypeChipTxt} numberOfLines={1}>{dnaText}</Text>
+          </View>
+        )}
         {/* 겹치는 나라를 국기 칩으로 — 한 줄 텍스트로 잘리던 것을 한눈에 */}
         {flags.length > 0 && (
           <View style={s.flagRow}>
@@ -315,6 +323,8 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
   }, [route.params?.initialQuery, route.params?.ts]);
   // 메이트 상태는 store 공유 — 메이트 프로필·메이트 목록·프로필 카운트와 동기화
   const { requestNeighbor, cancelNeighborRequest, removeNeighbor, isNeighbor, isNeighborRequested, isBlocked, records, tripGroups } = useRecords();
+  // 여행 DNA — 완료 전까지만 배너 노출(매칭 동기가 가장 큰 자리)
+  const { isComplete: dnaComplete, isFull: dnaFull } = useTravelDna();
   const [searching, setSearching] = useState(false); // 원격 검색 진행 중
   // 본인 제외용 (원격 검색 결과) — state로 두어 id 로드 완료 시 필터가 재실행되게 함
   const [myId, setMyId] = useState<string | null>(null);
@@ -427,11 +437,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
           mutualCount: r.mutualCount,
           matchScore: r.totalScore,
           recencyScore: r.recencyScore,
-          seasonScore: r.seasonScore,
-          interestScore: r.interestScore,
-          tasteScore: r.tasteScore,
+          surveyScore: r.surveyScore,
           sharedCities: r.sharedCities,
-          sharedKeywords: r.sharedKeywords,
+          dnaTypeKey: r.dnaTypeKey,
           fromSuggestion: true,
         })));
       } catch { /* 부가 기능 — 실패 시 섹션 미표시 */ }
@@ -570,6 +578,25 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                   <Text style={s.requestBannerBody}>{t('friends.incomingBannerBody')}</Text>
                 </View>
                 <Text style={[s.requestBannerArrow, { color: skinAccent.accent }]}>›</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* 여행 DNA 배너 — 매칭 동기가 가장 큰 자리. 완료 전까지만 노출한다 */}
+            {!dnaFull && (
+              <TouchableOpacity
+                style={dnaBanner.wrap}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('TravelDnaSurvey', { mode: 'full' })}
+              >
+                <View style={{ flex: 1 }}>
+                  {/* 제목은 두 상태 모두 같다 — 상태 구분은 오른쪽 CTA가 한다.
+                      제목까지 continueSurvey를 쓰면 같은 문구가 한 줄에 두 번 보인다 */}
+                  <Text style={dnaBanner.title}>{t('dna.bannerTitle')}</Text>
+                  <Text style={dnaBanner.desc}>{t('dna.bannerDesc')}</Text>
+                </View>
+                <Text style={dnaBanner.cta}>
+                  {dnaComplete ? t('dna.continueSurvey') : t('dna.startSurvey')}
+                </Text>
               </TouchableOpacity>
             )}
 
@@ -780,6 +807,21 @@ const s = StyleSheet.create({
     flex: 1,
     gap: 2,
   },
+
+  // 여행 DNA 유형 칩 — flagChip과 같은 크기감, 보라 네온 톤으로 구분
+  dnaTypeChip: {
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(191,133,252,0.14)',
+  },
+  dnaTypeChipTxt: {
+    fontSize: 10,
+    color: C.accent,
+    fontWeight: '700',
+  },
   friendUsername: {
     fontSize: 14,
     fontWeight: '700',
@@ -854,4 +896,17 @@ const s = StyleSheet.create({
     }),
   },
   inviteCardBtnText: { color: C.white, fontSize: 14, fontWeight: '800', letterSpacing: 0.2 },
+});
+
+// 여행 DNA 배너
+const dnaBanner = StyleSheet.create({
+  wrap: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#2E2E3B', borderRadius: 16, padding: 16,
+    marginBottom: 14,
+    borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)',
+  },
+  title: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  desc: { color: '#A1A1B0', fontSize: 12, marginTop: 4 },
+  cta: { color: '#BF85FC', fontSize: 13, fontWeight: '700' },
 });

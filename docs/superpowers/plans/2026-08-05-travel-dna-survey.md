@@ -528,13 +528,30 @@ git commit -m "feat(dna): 유형 라벨 생성 — 강한 2축 조합
 
 - [ ] **Step 1: 스키마 추가**
 
-`supabase/schema.sql`에서 `revoke all on function public.purge_old_notifications(interval) from public, anon, authenticated;` 줄을 찾아, 그 **바로 아래**에 삽입한다:
+⚠️ **삽입 위치가 중요하다.** `schema.sql`은 SQL Editor에 위에서부터 통째로 붙여넣어 실행되고,
+`check_function_bodies`(기본 on)가 `language sql` 함수 본문을 **CREATE 시점에** 카탈로그로 검증한다.
+`travel_dna`를 참조하는 곳이 둘이므로 표는 **그 둘보다 모두 먼저** 만들어져야 한다.
+
+| 참조하는 곳 | 위치 | 태스크 |
+|---|---|---|
+| `mate_suggestions_compute` (language sql) | ~712행 | Task 4 |
+| `public_profiles` 최종 재정의 | ~1499행 | Task 3 Step 2 |
+
+→ **`drop function if exists public.travel_overlap_suggestions(int);` 줄 바로 위**(즉 여행 DNA 매칭
+섹션이 시작되기 직전, ~704행)에 삽입한다. 이 표의 의존 대상은 `public.profiles`(25행)뿐이라
+이 위치가 안전하다.
+
+뒤에 두면 재실행이 `relation "public.travel_dna" does not exist`로 실패해 배포 수단 자체가 깨진다.
 
 ```sql
 -- ============================================================
--- 11-b) 여행 DNA 설문
+-- 3-a) 여행 DNA 설문
 --   설계: docs/superpowers/specs/2026-08-05-travel-dna-survey-design.md
 --   기록에서 짜내던 계절·관심사·성향 3축(35점)을 이 설문이 대체한다.
+--
+--   ⚠️ 위치 고정 — mate_suggestions_compute(712행, language sql)와 public_profiles
+--      재정의(1499행)가 이 표를 참조한다. 뒤로 옮기면 check_function_bodies가
+--      CREATE 시점에 잡아 schema.sql 재실행이 통째로 죽는다.
 -- ============================================================
 create table if not exists public.travel_dna (
   user_id    uuid primary key references public.profiles(id) on delete cascade,
@@ -1204,31 +1221,15 @@ const st = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 4: 라우트 등록**
+- [ ] **Step 4: 타입·린트 확인**
 
-`src/navigation/AppNavigator.tsx`에 import를 추가하고, `<Stack.Screen name="Main" ...>` 아래에 두 줄을 넣는다:
+라우트 등록(`AppNavigator.tsx`)은 Task 7에서 두 화면을 한 번에 붙인다 — 여기서 등록하면
+아직 없는 `TravelDnaResultScreen`을 import하게 되어 이 태스크가 단독으로 컴파일되지 않는다.
 
-```tsx
-import TravelDnaSurveyScreen from '../screens/TravelDnaSurveyScreen';
-import TravelDnaResultScreen from '../screens/TravelDnaResultScreen';
-```
+Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaSurveyScreen.tsx src/navigation/types.ts src/i18n/locales/ko.ts src/i18n/locales/en.ts`
+Expected: 출력 없음
 
-```tsx
-        {/* 여행 DNA 설문 — 중간 이탈 시 답이 날아가므로 스와이프 뒤로가기를 막는다
-            (이탈은 화면 안 '건너뛰기'로만, 확인창을 거친다) */}
-        <Stack.Screen
-          name="TravelDnaSurvey"
-          component={TravelDnaSurveyScreen}
-          options={{ gestureEnabled: false }}
-        />
-        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
-```
-
-> Task 7에서 `TravelDnaResultScreen`을 만들기 전까지 이 import는 컴파일에 실패한다.
-> Task 6의 tsc 확인은 Task 7 완료 후 함께 통과시킨다 — 두 화면은 한 쌍이라 라우트를 쪼개면
-> 어느 쪽도 단독으로 동작하지 않는다.
-
-- [ ] **Step 5: 커밋 (Task 7과 함께 검증)**
+- [ ] **Step 5: 커밋**
 
 ```bash
 git add src/screens/TravelDnaSurveyScreen.tsx src/navigation/types.ts src/i18n/locales/ko.ts src/i18n/locales/en.ts
@@ -1244,7 +1245,7 @@ git commit -m "feat(dna): 설문 화면 — 전체 36문항·온보딩 축약판
 
 **Files:**
 - Create: `src/screens/TravelDnaResultScreen.tsx`
-- Modify: `src/navigation/AppNavigator.tsx` (Task 6에서 추가한 라우트가 여기서 컴파일된다)
+- Modify: `src/navigation/AppNavigator.tsx` (설문·결과 두 화면의 라우트를 여기서 함께 등록한다)
 
 **Interfaces:**
 - Consumes: Task 5의 `useTravelDna`, Task 1의 `DNA_AXES`·`DNA_LABELS`
@@ -1357,12 +1358,32 @@ const st = StyleSheet.create({
 });
 ```
 
-- [ ] **Step 2: 타입·린트 확인 (Task 6 라우트 포함)**
+- [ ] **Step 2: 라우트 등록 — 설문·결과 두 화면을 함께**
 
-Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaSurveyScreen.tsx src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx`
+`src/navigation/AppNavigator.tsx`에 import를 추가하고, `<Stack.Screen name="Main" ...>` 아래에 넣는다:
+
+```tsx
+import TravelDnaSurveyScreen from '../screens/TravelDnaSurveyScreen';
+import TravelDnaResultScreen from '../screens/TravelDnaResultScreen';
+```
+
+```tsx
+        {/* 여행 DNA 설문 — 중간 이탈 시 답이 날아가므로 스와이프 뒤로가기를 막는다
+            (이탈은 화면 안 '건너뛰기'로만, 확인창을 거친다) */}
+        <Stack.Screen
+          name="TravelDnaSurvey"
+          component={TravelDnaSurveyScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
+```
+
+- [ ] **Step 3: 타입·린트 확인**
+
+Run: `npx tsc --noEmit && npx eslint src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx`
 Expected: 출력 없음
 
-- [ ] **Step 3: 커밋**
+- [ ] **Step 4: 커밋**
 
 ```bash
 git add src/screens/TravelDnaResultScreen.tsx src/navigation/AppNavigator.tsx

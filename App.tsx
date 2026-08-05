@@ -16,6 +16,7 @@ import { DMProvider } from './src/store/dmStore';
 import { SettingsProvider } from './src/store/settingsStore';
 import { ToastProvider } from './src/store/toastStore';
 import { MomentProvider } from './src/store/momentStore';
+import { TravelDnaProvider } from './src/store/travelDnaStore';
 import SnapDetector from './src/components/SnapDetector';
 import MomentNotifier from './src/components/MomentNotifier';
 import ErrorBoundary from './src/components/ErrorBoundary';
@@ -103,30 +104,32 @@ export default function App() {
         <ErrorBoundary>
           <SettingsProvider>
             <LanguageBridge />
-            <RecordProvider>
-              <MomentProvider>
-                <DMProvider>
-                  <ToastProvider>
-                    {/* edge-to-edge에서 backgroundColor/translucent는 안드로이드 no-op(경고만 발생) — style만 유효 */}
-                    <StatusBar style="light" />
-                    <SnapDetector />
-                    <MomentNotifier />
-                    <ArrivalNotifier />
-                    <ReturnDetector />
-                    <ReturnDetectNudge />
-                    <ProfileSync />
-                    <AppStateSync />
-                    <PushTokenSync />
-                    <BadgeEvaluator />
-                    <AppNavigator />
-                    <BadgeToastHost />
-                    <DMToastHost />
-                    <NotiToastHost />
-                    <ToastHost />
-                  </ToastProvider>
-                </DMProvider>
-              </MomentProvider>
-            </RecordProvider>
+            <TravelDnaProvider>
+              <RecordProvider>
+                <MomentProvider>
+                  <DMProvider>
+                    <ToastProvider>
+                      {/* edge-to-edge에서 backgroundColor/translucent는 안드로이드 no-op(경고만 발생) — style만 유효 */}
+                      <StatusBar style="light" />
+                      <SnapDetector />
+                      <MomentNotifier />
+                      <ArrivalNotifier />
+                      <ReturnDetector />
+                      <ReturnDetectNudge />
+                      <ProfileSync />
+                      <AppStateSync />
+                      <PushTokenSync />
+                      <BadgeEvaluator />
+                      <AppNavigator />
+                      <BadgeToastHost />
+                      <DMToastHost />
+                      <NotiToastHost />
+                      <ToastHost />
+                    </ToastProvider>
+                  </DMProvider>
+                </MomentProvider>
+              </RecordProvider>
+            </TravelDnaProvider>
           </SettingsProvider>
         </ErrorBoundary>
       </SafeAreaProvider>

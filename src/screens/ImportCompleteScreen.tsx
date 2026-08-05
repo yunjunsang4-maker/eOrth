@@ -73,22 +73,22 @@ export default function ImportCompleteScreen({ navigation, route }: RootStackScr
       : t('imports.icTripSingle', { flag: lead.flag, name: lead.name })
     : t('imports.icTripNone', { count: tripCount });
 
-  // "이어스 시작하기" → 메인으로 이동하면서 MainTab에 startTutorial 플래그 전달 → 코치마크 튜토리얼 자동 시작
-  // 온보딩 마지막 단계 — 메인 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
+  // "이어스 시작하기" → 온보딩 경로는 축약판 여행 DNA 설문으로, 결과 화면(Task 7)이
+  // startTutorial 플래그와 함께 메인 스택 리셋을 이어받는다
+  // 온보딩 마지막 단계 — 설문 진입 직전에 알림 권한을 한 번 요청한다 (사용 중 뜬금 팝업 방지)
   const startEorth = async () => {
-    // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청·튜토리얼 없이
+    // 앱 내(프로필)에서 들어온 경우 — 온보딩이 아니므로 알림 권한 요청·설문 없이
     // 원래 보던 화면으로 돌아간다. 스택에 남은 불러오기 단계들은 함께 정리한다.
     if (from === 'profile') {
       // 스택 루트(Main)로 — 탭 상태는 그대로라 프로필 탭으로 돌아간다.
-      // (온보딩 경로는 아래 reset을 타야 한다: 그쪽 스택 루트는 Splash라 popToTop이 부적절)
+      // (온보딩 경로는 아래 replace를 타야 한다: 그쪽 스택 루트는 Splash라 popToTop이 부적절)
       navigation.popToTop();
       return;
     }
     await requestNotificationPermission().catch(() => {});
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
-    });
+    // 온보딩 마지막 — 축당 1문항(약 40초)만 받는다. 36문항 전체는 여기 넣기엔 길다.
+    // 건너뛰면 결과 없이 메인으로 가고, 메이트찾기 배너가 나중에 회수한다.
+    navigation.replace('TravelDnaSurvey', { mode: 'onboarding' });
   };
 
   return (

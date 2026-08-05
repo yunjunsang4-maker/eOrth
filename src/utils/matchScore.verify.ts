@@ -38,9 +38,10 @@ eq(MATCH_BADGE_MIN, 15, '임계 상수 노출');
 // placeScore(희소성 비율×25 반올림)는 도시·나라 분기의 가드로 쓰지 않는다 —
 // 흔한 나라 1곳만 겹쳐도 비율이 작아 반올림 시 0이 될 수 있어서다.
 // ReasonInput에는 애초에 placeScore 필드가 없다(sharedCities/sharedCount만으로 판단).
+// season/interest/taste 3축은 서버가 survey_score로 대체(상시 0 반환)하며 ReasonInput에서 제거됐다.
 const base = {
-  recencyScore: 0, seasonScore: 0, interestScore: 0, tasteScore: 0,
-  mutualCount: 0, sharedCities: [] as string[], sharedKeywords: [] as string[], sharedCount: 0,
+  recencyScore: 0, surveyScore: 0,
+  mutualCount: 0, sharedCities: [] as string[], sharedCount: 0,
 };
 
 // 도시가 있으면 나라보다 강한 근거 — "둘 다 교토"가 "둘 다 일본"보다 구체적이다
@@ -75,21 +76,18 @@ eq(
 // 장소가 없으면 시의성
 eq(pickReason({ ...base, recencyScore: 15 })?.key, 'friends.reasonRecent', '장소 없으면 시의성');
 
-// 그다음 관심사
-eq(
-  pickReason({ ...base, interestScore: 15, sharedKeywords: ['미식'] })?.key,
-  'friends.reasonInterest',
-  '관심사 근거',
-);
+// 그다음 설문 성향(임계 20 이상)
+eq(pickReason({ ...base, surveyScore: 20 })?.key, 'friends.reasonDna', '설문 성향 근거');
 
-// 그다음 계절
-eq(pickReason({ ...base, seasonScore: 10 })?.key, 'friends.reasonSeason', '계절 근거');
+// 임계 미만이면 다음 축(공통 메이트)으로 넘어간다
+eq(
+  pickReason({ ...base, surveyScore: 19, mutualCount: 2 })?.key,
+  'friends.mutualReason',
+  '설문 성향 임계 미만이면 넘어감',
+);
 
 // 그다음 공통 메이트
 eq(pickReason({ ...base, mutualCount: 2 })?.key, 'friends.mutualReason', '공통 메이트 근거');
-
-// 성향만 있으면 스타일 문구
-eq(pickReason({ ...base, tasteScore: 7 })?.key, 'friends.styleReason', '성향 근거');
 
 // 아무 근거도 없으면 null (호출부가 중립 문구로 폴백)
 eq(pickReason({ ...base }), null, '근거 없으면 null');
@@ -108,24 +106,14 @@ eq(Object.keys(pickReason({ ...base, recencyScore: 15 })?.params ?? {}).length, 
 // 우선순위 고정 — 두 축이 동시에 있을 때 더 구체적인 쪽이 이겨야 한다.
 // (각 축을 하나씩만 켜서 테스트하면 분기 순서가 뒤바뀌어도 전부 통과한다)
 eq(
-  pickReason({ ...base, recencyScore: 15, interestScore: 15, sharedKeywords: ['미식'] })?.key,
+  pickReason({ ...base, recencyScore: 15, surveyScore: 20 })?.key,
   'friends.reasonRecent',
-  '시의성 > 관심사',
+  '시의성 > 설문 성향',
 );
 eq(
-  pickReason({ ...base, interestScore: 15, sharedKeywords: ['미식'], seasonScore: 10 })?.key,
-  'friends.reasonInterest',
-  '관심사 > 계절',
-);
-eq(
-  pickReason({ ...base, seasonScore: 10, mutualCount: 2 })?.key,
-  'friends.reasonSeason',
-  '계절 > 공통 메이트',
-);
-eq(
-  pickReason({ ...base, mutualCount: 2, tasteScore: 7 })?.key,
-  'friends.mutualReason',
-  '공통 메이트 > 성향',
+  pickReason({ ...base, surveyScore: 20, mutualCount: 2 })?.key,
+  'friends.reasonDna',
+  '설문 성향 > 공통 메이트',
 );
 
 if (failed > 0) { console.log(`\n❌ ${failed}건 실패`); process.exit(1); }

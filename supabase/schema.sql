@@ -143,9 +143,25 @@ grant update (id, handle, emoji, bio, birthday, gender, profile_photo,
 -- (security_invoker=false, 소유자 권한으로 RLS 우회)여야 타인 행이 보인다 —
 -- 노출 컬럼이 여기 나열된 공개 컬럼으로 한정되므로 안전하다.
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회.)
+-- ⚠️ 이 정의는 '진짜'가 아니다 — country/stay_country/stay_status/dna_type_key는
+--    are_neighbors·is_blocked_between·travel_dna가 정의된 뒤(1458행 부근)에야 계산 가능해
+--    그 시점에 아래 컬럼 목록과 순서가 동일한 재정의로 최종 교체된다(진짜 값은 거기서 채움).
+--    그럼에도 이 자리에 남겨두는 이유는 오직 하나 — 이 뷰를 조인하는
+--    mate_suggestions_compute(768행 부근)·country_visitors(1174행 부근)·
+--    neighbor_list_of(1303행 부근)가 이 지점에서 language sql 본문을 CREATE 검증받는데,
+--    check_function_bodies가 CREATE 시점에 이미 존재하는 컬럼만 인정하기 때문이다
+--    (mate_suggestions_compute가 pp.dna_type_key를 참조).
+--    타입 NULL 자리표시자(null::text)는 실제 컬럼과 이름·순서·타입이 같아야 하며,
+--    CREATE OR REPLACE VIEW는 컬럼을 빼거나 순서를 바꾸면 실패하므로(기존 DB 재실행 시
+--    'cannot drop columns from view') 아래 목록을 1458행 재정의와 항상 맞춰야 한다.
+--    "어차피 안 쓰는 null인데" 하고 줄이면 재실행이 다시 깨진다 — 절대 축소 금지.
 create or replace view public.public_profiles
   with (security_invoker = false) as
-  select id, handle, emoji, bio, profile_photo, created_at, handle_font
+  select id, handle, emoji, bio, profile_photo, created_at, handle_font,
+         null::text as country,
+         null::text as stay_country,
+         null::text as stay_status,
+         null::text as dna_type_key
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
@@ -701,6 +717,62 @@ language sql immutable strict as $$
 $$;
 grant execute on function public.safe_to_date(text) to authenticated;
 
+-- ============================================================
+-- 3-a) 여행 DNA 설문
+--   설계: docs/superpowers/specs/2026-08-05-travel-dna-survey-design.md
+--   기록에서 짜내던 계절·관심사·성향 3축(35점)을 이 설문이 대체한다.
+--   ⚠️ 위치 고정 — mate_suggestions_compute(language sql)와 public_profiles 재정의가
+--      이 표를 참조한다. 뒤로 옮기면 check_function_bodies가 CREATE 시점에 잡아
+--      schema.sql 재실행이 통째로 죽는다.
+-- ============================================================
+create table if not exists public.travel_dna (
+  user_id    uuid primary key references public.profiles(id) on delete cascade,
+  -- 응답 원본 {"1":"A","2":"B",...}. 문항을 추가하거나 가중치를 바꿔도
+  -- 재검사 없이 점수를 다시 계산할 수 있다.
+  answers    jsonb not null,
+  -- 7축 점수(각 0~100). 순서는 클라이언트 DNA_AXES와 1:1 —
+  -- plan, pace, terrain, budget, purpose, crowd, company
+  scores     smallint[] not null,
+  type_key   text,
+  answered   smallint not null default 0,
+  updated_at timestamptz not null default now()
+);
+-- 추천 후보 표본 조회용(최근 갱신순) — mate_suggestions의 3번째 후보 경로가 쓴다
+create index if not exists idx_travel_dna_updated on public.travel_dna (updated_at desc);
+
+alter table public.travel_dna enable row level security;
+
+drop policy if exists "dna_select_own" on public.travel_dna;
+create policy "dna_select_own" on public.travel_dna
+  for select to authenticated using (user_id = auth.uid());
+
+-- 쓰기는 아래 RPC(security definer)로만. 클라이언트가 직접 insert 하면
+-- 점수를 임의로 조작해 매칭을 올릴 수 있다.
+-- truncate도 반드시 회수 — RLS는 행 단위 DML만 막고 TRUNCATE는 검사하지 않는다.
+-- Supabase 기본 권한이 authenticated에 폭넓게 부여하므로 명시적으로 떼지 않으면
+-- 로그인한 아무나 표 전체를 통째로 지울 수 있다.
+revoke insert, update, delete, truncate, references, trigger
+  on public.travel_dna from anon, authenticated;
+
+-- 응답 저장 — 점수·라벨은 클라이언트가 계산해 보내지만, 서버가 응답 원본과 함께
+-- 보관하므로 이상이 발견되면 answers로 재계산해 덮어쓸 수 있다.
+create or replace function public.save_travel_dna(
+  p_answers jsonb, p_scores smallint[], p_type_key text, p_answered smallint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  -- 축 개수가 어긋나면 매칭 계산에서 조용히 틀어지므로 여기서 막는다
+  if array_length(p_scores, 1) is distinct from 7 then
+    raise exception 'travel_dna.scores must have exactly 7 elements';
+  end if;
+  insert into public.travel_dna (user_id, answers, scores, type_key, answered, updated_at)
+  values (auth.uid(), p_answers, p_scores, p_type_key, coalesce(p_answered, 0), now())
+  on conflict (user_id) do update
+    set answers = excluded.answers, scores = excluded.scores,
+        type_key = excluded.type_key, answered = excluded.answered, updated_at = now();
+end; $$;
+grant execute on function public.save_travel_dna(jsonb, smallint[], text, smallint) to authenticated;
+
 drop function if exists public.travel_overlap_suggestions(int);
 -- 래퍼(12번 절)와 본체를 둘 다 먼저 떨어뜨린 뒤 재정의한다.
 -- 래퍼는 본체에 의존하므로 순서가 중요하다(본체를 drop하려면 래퍼가 먼저 없어야 안전).
@@ -714,8 +786,9 @@ returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
   place_score int, recency_score int, season_score int, interest_score int, taste_score int,
-  mutual_score int,
-  shared_cities text[], shared_keywords text[]
+  mutual_score int, survey_score int,
+  shared_cities text[], shared_keywords text[],
+  dna_type_key text
 )
 language sql security definer set search_path = public as $$
   with me as (select auth.uid() as uid),
@@ -752,16 +825,6 @@ language sql security definer set search_path = public as $$
     ) c
     where c.name is not null and c.name <> ''
   ),
-  -- 계절 판정 — 월 단위. 일 단위로 내려가지 않는다(개인정보 원칙).
-  pub_season as (
-    select pc.*,
-      case when extract(month from pc.trip_date) in (12,1,2) then 'winter'
-           when extract(month from pc.trip_date) between 3 and 5 then 'spring'
-           when extract(month from pc.trip_date) between 6 and 8 then 'summer'
-           else 'fall' end as season
-    from pub_country pc
-  ),
-
   -- 나라별 방문 사용자 수 → 희소성 가중치.
   -- 표본이 적으면(전체 20명 미만) 희소성은 신호가 아니라 노이즈라 균등 가중으로 폴백한다.
   user_total as (select count(distinct author_id)::int as n from pub_country),
@@ -806,47 +869,11 @@ language sql security definer set search_path = public as $$
       and coalesce(p.data->>'regionName', '') <> ''
       and coalesce(p.country_name, '') <> ''
   ),
-  my_keywords as (
-    select distinct kw
-    from public.posts p, me, jsonb_array_elements_text(
-      case when jsonb_typeof(p.data->'keywords') = 'array' then p.data->'keywords' else '[]'::jsonb end
-    ) as kw
-    where p.author_id = me.uid and p.visibility <> 'private' and kw <> ''
-  ),
-  my_seasons as (
-    select distinct ps.name, ps.season
-    from pub_season ps, me where ps.author_id = me.uid
-  ),
   -- 시의성: 최근 1년 내 다녀온 나라(날짜 자체는 반환하지 않는다)
   my_recent as (
     select distinct pc.name
     from pub_country pc, me
     where pc.author_id = me.uid and pc.trip_date >= current_date - interval '1 year'
-  ),
-  my_rating as (
-    select avg((p.data->>'rating')::numeric) as r
-    from pub_country pc
-    join public.posts p on p.id = pc.post_id
-    cross join me
-    where pc.author_id = me.uid and pc.name in (select name from my_countries)
-      and (p.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
-  ),
-  -- 예산은 같은 통화일 때만 비교한다(환율 정보가 없어 다른 통화는 비교 불가).
-  -- 내가 가장 많이 쓴 통화 1개를 기준으로 삼는다.
-  my_budget as (
-    select p.data->'budget'->>'currency' as cur, avg((p.data->'budget'->>'amount')::numeric) as amt
-    from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
-      and (p.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
-      and coalesce(p.data->'budget'->>'currency','') <> ''
-    group by 1 order by count(*) desc limit 1
-  ),
-  my_flight as (
-    select p.data->>'flightType' as ft
-    from public.posts p, me
-    where p.author_id = me.uid and p.visibility <> 'private'
-      and coalesce(p.data->>'flightType','') <> ''
-    group by 1 order by count(*) desc limit 1
   ),
   my_mates as (
     select case when n.requester_id = me.uid then n.addressee_id else n.requester_id end as mate_id
@@ -857,18 +884,78 @@ language sql security definer set search_path = public as $$
   -- 1단계: 후보 좁히기(싼 필터) — 나라가 겹치거나 공통 메이트가 있는 사람만, 최대 200명.
   cand as (
     select cid from (
-      select pc.author_id as cid
+      select pc.author_id as cid, 0 as pri
       from pub_country pc, me
       where pc.author_id <> me.uid and pc.name in (select name from my_countries)
-      union
-      select case when n2.requester_id = mm.mate_id then n2.addressee_id else n2.requester_id end as cid
+      union all
+      select case when n2.requester_id = mm.mate_id then n2.addressee_id else n2.requester_id end as cid, 0 as pri
       from my_mates mm
       join public.neighbors n2 on n2.status = 'accepted'
         and (n2.requester_id = mm.mate_id or n2.addressee_id = mm.mate_id)
+      union all
+      -- 3번째 경로 — 설문 완료자 표본.
+      -- 기존 두 경로(나라 겹침·공통 메이트)는 기록이 있어야 걸린다.
+      -- 이게 없으면 기록 없는 신규는 설문을 마쳐도 후보에 못 들어와 추천이 0이다.
+      -- union 안에서 order by/limit을 괄호 없이 붙이면 이 분기가 아니라 union 전체 결과에
+      -- 걸려버린다(그리고 바깥 스코프에는 d.updated_at이 안 보여 파싱조차 안 된다) —
+      -- 그래서 이 분기만 별도 하위질의로 감싼다.
+      -- 호출자가 설문을 안 했으면 이 경로를 아예 끈다: 설문축이 0인 후보 100명이
+      -- 후보 풀에 섞여 rest(다양성 셔플) 자리를 먹어, 나라 겹침·공통 메이트로 걸린
+      -- 진짜 근거 있는 후보의 노출 자리를 빼앗는다. 이 경로의 목적(§8)은 어디까지나
+      -- '설문을 마친 호출자'가 추천 0이 되는 걸 막는 것이다.
+      -- my_dna CTE는 cand보다 뒤에 정의돼 참조할 수 없어(비재귀 WITH는 앞선 CTE만 보인다)
+      -- exists 하위질의로 직접 확인한다.
+      select cid, 1 as pri from (
+        select d.user_id as cid
+        from public.travel_dna d
+        where exists (select 1 from public.travel_dna my, me where my.user_id = me.uid)
+        order by d.updated_at desc
+        limit 100
+      ) dna_sample
     ) u, me
     where u.cid <> me.uid
     group by cid
+    -- pri 0(나라 겹침·공통 메이트, 기록 근거 있음)을 pri 1(설문 표본만)보다 항상 앞세운다 —
+    -- 안 그러면 200명 상한에서 기록 근거가 있는 좋은 후보가 무관한 설문 표본에 밀려날 수 있다.
+    -- union all + group by cid로 중복은 여기서 걷어낸다(distinct 두 경로에 걸린 후보는 pri=0으로 남는다).
+    order by min(pri), cid
     limit 200
+  ),
+
+  -- 설문 성향 — 축별 점수 차를 유사도로 바꿔 합산(축당 5점, 7축 = 35점).
+  -- 나누는 값이 100이 아니라 50인 이유: 무작위 두 사람의 축별 평균 차이가 약 33이라
+  -- 100으로 나누면 아무나 0.67을 받아 변별력이 사라진다.
+  --
+  -- 여기에 응답량 가중치 f를 곱하는 이유(중요):
+  -- 클라이언트 채점은 응답이 적으면 점수를 중립 50으로 수축시킨다(§5). 수축은 '얕은 근거가
+  -- 강한 결론을 내지 못하게' 하려는 장치인데, 거리(차이) 기반 유사도에서는 정반대로 작동한다 —
+  -- 모두를 가운데로 모으면 서로 닮아 보이기 때문이다.
+  -- 실제로 온보딩 축약판(7문항)은 conf ≈ 2/7이라 모든 축이 정확히 36 아니면 64가 되고,
+  -- 축약판끼리는 축별 차이가 0 아니면 28 → 유사도 1.0 또는 0.44 → 기대 ~25/35가 나온다.
+  -- 36문항을 다 답한 두 사람은 점수가 넓게 퍼져 평균 차이 ≈ 33 → 약 12/35다.
+  -- 즉 덜 답할수록 낯선 사람과 더 잘 맞아 보이고, pickReason의 문턱 20을 쉽게 넘어
+  -- 공통점이 없는 상대에게 "여행 성향이 잘 맞아요"가 붙는다.
+  -- → 두 사람 중 '적게 답한 쪽'의 응답량으로 설문축 전체를 감쇠시킨다.
+  --
+  -- 그리고 총점 정규화의 분모(아래 visible)는 반드시 이 f를 따라가야 한다.
+  -- 분모를 100으로 고정하면 설문축이 35f점밖에 안 실리므로 축약판 사용자의 총점 상한이
+  -- 65+35f로 눌리고, 설문을 아예 안 한 사람(분모 65 → 상한 100)보다 낮아진다.
+  -- '조금 답한 것'이 '안 답한 것'보다 불리해지는 역전이라, 실제 실린 가중치만큼만 분모를 키운다.
+  my_dna as (select scores, answered from public.travel_dna, me where user_id = me.uid),
+  csurvey as (
+    select x.cid, x.f, least(35, round(x.raw * x.f))::int as n
+    from (
+      select d.user_id as cid,
+             least(1.0, least(m.answered, d.answered)::numeric / 36) as f,
+             sum(greatest(0, 1 - abs(a.v - b.v) / 50.0) * 5) as raw
+      from public.travel_dna d
+      join my_dna m on true
+      cross join lateral unnest(m.scores) with ordinality as a(v, i)
+      cross join lateral unnest(d.scores) with ordinality as b(v, j)
+      where d.user_id in (select cid from cand) and a.i = b.j
+      -- m.answered는 CTE 컬럼이라 함수 종속성이 안 잡힌다 — group by에 직접 넣어야 한다.
+      group by d.user_id, d.answered, m.answered
+    ) x
   ),
 
   -- 2단계: 후보에만 비싼 계산.
@@ -934,76 +1021,6 @@ language sql security definer set search_path = public as $$
       and pc.trip_date >= current_date - interval '1 year'
     group by pc.author_id
   ),
-  -- 시기: 겹친 (나라, 계절) 쌍의 개수 — 같은 조합을 여러 번 갔다고 더 세지 않는다
-  cseason as (
-    select t.cid, count(*)::int as n
-    from (
-      select distinct ps.author_id as cid, ps.name, ps.season
-      from pub_season ps
-      join my_seasons ms on ms.name = ps.name and ms.season = ps.season
-      where ps.author_id in (select cid from cand)
-    ) t
-    group by t.cid
-  ),
-  ckw as (
-    select p.author_id as cid,
-           count(distinct kw)::int as n,
-           (array_agg(distinct kw))[1:3] as kws
-    from public.posts p, jsonb_array_elements_text(
-      case when jsonb_typeof(p.data->'keywords') = 'array' then p.data->'keywords' else '[]'::jsonb end
-    ) as kw
-    where p.visibility <> 'private'
-      and p.author_id in (select cid from cand) and kw in (select kw from my_keywords)
-    group by p.author_id
-  ),
-  crating as (
-    select pc.author_id as cid, avg((p.data->>'rating')::numeric) as r
-    from pub_country pc
-    join public.posts p on p.id = pc.post_id
-    where pc.author_id in (select cid from cand)
-      and pc.name in (select name from my_countries)
-      and (p.data->>'rating') ~ '^[0-9]+(\.[0-9]+)?$'
-    group by pc.author_id
-  ),
-  -- 내 기준 통화와 같은 기록만 집계 — 후보당 1행이 되도록 통화로 미리 걸러낸다
-  cbudget as (
-    select p.author_id as cid, avg((p.data->'budget'->>'amount')::numeric) as amt
-    from public.posts p
-    where p.visibility <> 'private'
-      and p.author_id in (select cid from cand)
-      and (p.data->'budget'->>'amount') ~ '^[0-9]+(\.[0-9]+)?$'
-      and p.data->'budget'->>'currency' = (select cur from my_budget)
-    group by p.author_id
-  ),
-  cflight as (
-    select cid, ft from (
-      select p.author_id as cid, p.data->>'flightType' as ft,
-             row_number() over (partition by p.author_id order by count(*) desc) as rn
-      from public.posts p
-      where p.visibility <> 'private'
-        and p.author_id in (select cid from cand) and coalesce(p.data->>'flightType','') <> ''
-      group by 1, 2
-    ) t where rn = 1
-  ),
-  -- 성향 3항목. 판정 불가한 항목은 '미충족'이 아니라 분모에서 뺀다
-  -- (예산을 아무도 안 적었다고 점수가 깎이면 안 된다).
-  ctaste as (
-    select c.cid,
-      ((case when (select r from my_rating) is not null and cr.r is not null then 1 else 0 end)
-       + (case when (select amt from my_budget) is not null and cb.amt is not null then 1 else 0 end)
-       + (case when (select ft from my_flight) is not null and cf.ft is not null then 1 else 0 end)) as denom,
-      ((case when (select r from my_rating) is not null and cr.r is not null
-                  and abs(cr.r - (select r from my_rating)) <= 1.0 then 1 else 0 end)
-       + (case when (select amt from my_budget) is not null and cb.amt is not null
-                  and cb.amt between (select amt from my_budget) / 2 and (select amt from my_budget) * 2
-                 then 1 else 0 end)
-       + (case when (select ft from my_flight) is not null and cf.ft = (select ft from my_flight)
-                 then 1 else 0 end)) as num
-    from cand c
-    left join crating cr on cr.cid = c.cid
-    left join cbudget cb on cb.cid = c.cid
-    left join cflight cf on cf.cid = c.cid
-  ),
   cmut as (
     select c.cid, count(distinct mm.mate_id)::int as mutual_count
     from cand c
@@ -1019,7 +1036,8 @@ language sql security definer set search_path = public as $$
       coalesce(s.shared_count, 0) as shared_count,
       coalesce(s.sample_countries, '{}'::text[]) as sample_countries,
       coalesce(ci.cities, '{}'::text[]) as shared_cities,
-      coalesce(k.kws, '{}'::text[]) as shared_keywords,
+      -- 관심사 키워드 추출(ckw)을 걷어내며 같이 사라졌다 — 구버전 호환을 위해 컬럼만 남긴다.
+      '{}'::text[] as shared_keywords,
       coalesce(m.mutual_count, 0) as mutual_count,
       -- 나라(희소성 가중 자카드) 25 + 도시 15
       -- 분모는 합집합의 가중합(S_me + S_cand - 겹침). 내 가중합만으로 나누면 한 호출 안에서
@@ -1034,31 +1052,41 @@ language sql security definer set search_path = public as $$
                    * 2, 1.0) * 25)
        + round(least(coalesce(ci.n,0), 3) / 3.0 * 15))::int as place_score,
       round(least(coalesce(r.n,0), 2) / 2.0 * 15)::int as recency_score,
-      round(least(coalesce(se.n,0), 2) / 2.0 * 10)::int as season_score,
-      round(least(coalesce(k.n,0), 3) / 3.0 * 15)::int as interest_score,
-      -- 성향: 판정 가능 항목이 2개 미만이면 분모를 3으로 고정해 비례 축소한다.
-      -- 1/1로 나누면 항목 하나만 맞아도 만점이라, 이번 재설계가 제거한 '기록형식·동행자'와
-      -- 같은 실패 양식이 된다(사실상 전원 만점). 항목 1개 적중은 10점이 아니라 약 3.3점.
-      -- 기준 자체(별점차 1.0 / 예산 2배 / 항공편 일치)는 실제 분포를 본 뒤 조일 사안이라
-      -- 이번엔 건드리지 않는다.
-      (case when coalesce(ct.denom,0) = 0 then 0
-            when ct.denom >= 2 then round(ct.num::numeric / ct.denom * 10)::int
-            else round(ct.num::numeric / 3 * 10)::int end) as taste_score,
-      round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score
+      -- season/interest/taste는 설문축으로 대체됐다. 구버전 앱이 이 컬럼을 읽으므로
+      -- 시그니처는 유지하되 값만 0으로 고정한다(옛 계절·관심사·성향 계산 CTE는 위에서 전부 삭제했다).
+      0 as season_score,
+      0 as interest_score,
+      0 as taste_score,
+      round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score,
+      coalesce(cs.n, 0) as survey_score,
+      -- 이 쌍에 실제로 실린 설문축 가중치(0~1). 총점 분모가 이 값을 따라간다(csurvey 주석).
+      coalesce(cs.f, 0) as survey_f,
+      -- coalesce가 위에서 null을 0으로 지우므로 survey_score is null로는 '설문 없음'을 못 가른다
+      -- (양쪽 다 설문을 안 해도 0으로 보여 정상 응답과 구분이 안 됐다). csurvey는 my_dna와
+      -- inner join이라 행이 있다는 것 자체가 호출자·후보 양쪽 다 설문을 마쳤다는 뜻이다.
+      (cs.cid is not null) as has_survey
     from cand c
     left join cshared s on s.cid = c.cid
     left join cand_weight_sum cws on cws.cid = c.cid
     left join ccity ci on ci.cid = c.cid
     left join crecent r on r.cid = c.cid
-    left join cseason se on se.cid = c.cid
-    left join ckw k on k.cid = c.cid
-    left join ctaste ct on ct.cid = c.cid
     left join cmut m on m.cid = c.cid
+    left join csurvey cs on cs.cid = c.cid
   ),
   visible as (
     select sc.*,
-      (sc.place_score + sc.recency_score + sc.season_score
-       + sc.interest_score + sc.taste_score + sc.mutual_score) as total_score
+      -- 둘 다 유효 응답이 있을 때만(has_survey) 설문축을 더한다. 아니면 기록 축(65) 만점을
+      -- 100으로 환산한다 — 설문축을 0으로 두면 설문 안 한 사람(또는 상대)이 추천에서 부당하게 밀린다.
+      -- 설문이 있을 때의 분모는 100 고정이 아니라 65 + 35×f다. 설문축에 f만큼만 실렸으므로
+      -- 분모도 딱 그만큼만 키워야 만점이 100으로 맞는다(f=1이면 분모 100, f=0이면 65 —
+      -- 위 has_survey=false 분기와 같은 식이 된다). 자세한 이유는 csurvey 주석 참조.
+      -- least(100, ...)은 반올림 방어: survey_score를 정수로 반올림한 뒤 실수 분모로 나누므로
+      -- 최대 0.5점의 올림 오차가 100을 아주 살짝 넘겨(최대 100.6) 101%가 표시될 수 있다.
+      case when not sc.has_survey
+        then round((sc.place_score + sc.recency_score + sc.mutual_score) * 100.0 / 65)::int
+        else least(100, round((sc.place_score + sc.recency_score + sc.mutual_score + sc.survey_score)
+                              * 100.0 / (65 + 35 * sc.survey_f)))::int
+      end as total_score
     from scored sc, me
     where not public.is_blocked_between(me.uid, sc.cid)
       and not public.are_neighbors(me.uid, sc.cid)
@@ -1088,22 +1116,24 @@ language sql security definer set search_path = public as $$
   picked as (
     -- 상위 70%는 점수순, 나머지 30%는 셔플에서 채운다(신규·저활동 사용자 노출 기회)
     select cid, shared_count, sample_countries, shared_cities, shared_keywords, mutual_count,
-           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, total_score
+           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, survey_score, total_score
     from ranked where by_score <= greatest(1, (least(match_limit, 50) * 7) / 10)
     union all
     select cid, shared_count, sample_countries, shared_cities, shared_keywords, mutual_count,
-           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, total_score
+           place_score, recency_score, season_score, interest_score, taste_score, mutual_score, survey_score, total_score
     from rest
     where by_shuffle <= greatest(1, least(match_limit, 50) - (least(match_limit, 50) * 7) / 10)
   )
   select p.cid, pp.handle, pp.emoji, pp.profile_photo,
          p.shared_count, p.sample_countries, p.mutual_count,
-         -- style_score는 구버전 앱 호환 — 관심사+성향으로 채운다
+         -- style_score는 구버전 앱 호환 — 관심사+성향으로 채운다(둘 다 0 고정이라 항상 0)
          (p.interest_score + p.taste_score) as style_score,
          p.total_score,
          p.place_score, p.recency_score, p.season_score, p.interest_score, p.taste_score,
-         p.mutual_score,
-         p.shared_cities, p.shared_keywords
+         p.mutual_score, p.survey_score,
+         p.shared_cities, '{}'::text[] as shared_keywords,
+         -- 유형 라벨만 공개(§9) — public_profiles가 이미 그 규칙으로 노출을 좁혀뒀다.
+         pp.dna_type_key
   from picked p
   join public.public_profiles pp on pp.id = p.cid
   order by p.total_score desc, pp.handle
@@ -1455,7 +1485,11 @@ create or replace view public.public_profiles
          -- (2026-07-16) 장기체류 — 위치 정보라 본인·이웃(서로이웃)에게만 노출, 그 외 null.
          -- (위 country(거주국)와 동일한 이웃 조건부 정책 + 본인 예외)
          case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_country else null end as stay_country,
-         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_status else null end as stay_status
+         case when auth.uid() = id or public.are_neighbors(auth.uid(), id) then stay_status else null end as stay_status,
+         -- 여행 DNA는 '유형 라벨만' 공개한다. 축 점수는 본인만 —
+         -- 매칭 계산은 security definer RPC 안에서 도니 점수를 열 이유가 없고,
+         -- '혼자 ↔ 함께' 같은 축은 그대로 노출되면 불편할 수 있다.
+         (select d.type_key from public.travel_dna d where d.user_id = profiles.id) as dna_type_key
   from public.profiles
   where not public.is_blocked_between(auth.uid(), id);
 -- 재정의 이후에도 anon 회수 보장 (definer 뷰 — 비로그인 노출 방지, 1) 섹션 주석 참조)
@@ -2287,16 +2321,27 @@ declare
 begin
   -- ⚠️ DELETE 트리거에서 new 는 미할당이라 필드를 읽으면 예외가 난다(coalesce로도 못 피한다).
   --    반드시 tg_op 로 분기할 것.
-  if tg_op = 'DELETE' then uid := old.author_id; else uid := new.author_id; end if;
+  -- 표마다 사용자 컬럼 이름이 다르다: posts=author_id, travel_dna=user_id
+  if tg_table_name = 'travel_dna' then
+    uid := case when tg_op = 'DELETE' then old.user_id else new.user_id end;
+  else
+    uid := case when tg_op = 'DELETE' then old.author_id else new.author_id end;
+  end if;
   delete from public.mate_suggestions_cache where user_id = uid;
   return null;
 exception when others then
-  return null; -- 캐시 정리 실패가 게시물 저장을 막으면 안 된다
+  return null; -- 캐시 정리 실패가 저장을 막으면 안 된다
 end; $$;
 
 drop trigger if exists trg_posts_invalidate_mate_cache on public.posts;
 create trigger trg_posts_invalidate_mate_cache
   after insert or delete on public.posts
+  for each row execute function public.invalidate_mate_cache();
+
+-- 설문을 마쳐도 캐시(TTL 6시간) 때문에 추천이 안 바뀌던 문제 — posts 외에 여기도 무효화한다.
+drop trigger if exists trg_dna_invalidate_mate_cache on public.travel_dna;
+create trigger trg_dna_invalidate_mate_cache
+  after insert or update on public.travel_dna
   for each row execute function public.invalidate_mate_cache();
 
 -- 캐시 래퍼 — 앱이 호출하는 이름은 계속 mate_suggestions 다(클라이언트 변경 없음).
@@ -2307,8 +2352,9 @@ returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
   place_score int, recency_score int, season_score int, interest_score int, taste_score int,
-  mutual_score int,
-  shared_cities text[], shared_keywords text[]
+  mutual_score int, survey_score int,
+  shared_cities text[], shared_keywords text[],
+  dna_type_key text
 )
 language plpgsql security definer set search_path = public as $$
 -- returns table(...)의 출력 컬럼명(author_id·handle·…)은 plpgsql 안에서 변수로도 잡힌다.
@@ -2345,20 +2391,68 @@ begin
   select r.author_id, r.handle, r.emoji, r.profile_photo,
          r.shared_count, r.sample_countries, r.mutual_count, r.style_score, r.total_score,
          r.place_score, r.recency_score, r.season_score, r.interest_score, r.taste_score,
-         r.mutual_score, r.shared_cities, r.shared_keywords
+         r.mutual_score, r.survey_score, r.shared_cities, r.shared_keywords,
+         r.dna_type_key
     from jsonb_to_recordset(cached) as r(
       author_id uuid, handle text, emoji text, profile_photo text,
       shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
       place_score int, recency_score int, season_score int, interest_score int, taste_score int,
-      mutual_score int, shared_cities text[], shared_keywords text[]
+      mutual_score int, survey_score int, shared_cities text[], shared_keywords text[],
+      dna_type_key text
     );
 end; $$;
 
 grant execute on function public.mate_suggestions(int, text[]) to authenticated;
 
+-- 점수 체계 자체가 바뀌었다(계절·관심사·성향 3축 → 설문축) — 기존 캐시 행은 옛 6축 값이고
+-- survey_score 키도 없다. TTL(6시간)이 지나기 전까지 낡은 점수가 그대로 노출되는 걸 막기 위해
+-- 배포 시 1회 전량 비운다. 재실행해도 안전(캐시는 다음 호출에서 지연 재생성된다).
+delete from public.mate_suggestions_cache;
+
 -- 오래된 캐시 정리(선택) — 행이 사용자당 몇 개라 급하지 않다. 필요하면 pg_cron에 등록:
 --   select cron.schedule('purge-mate-cache', '30 4 * * *',
 --     $$delete from public.mate_suggestions_cache where computed_at < now() - interval '7 days'$$);
+
+-- ============================================================
+-- 보안 하드닝: TRUNCATE 권한 일괄 회수
+--   RLS는 SELECT/INSERT/UPDATE/DELETE 같은 행 단위 DML만 검사하고 TRUNCATE는
+--   검사 대상이 아니다 — TRUNCATE는 오직 테이블 권한(privilege)만으로 통제된다.
+--   그런데 Supabase는 새 테이블을 만들 때 anon/authenticated에 기본 권한을 폭넓게
+--   부여하므로, 명시적으로 회수하지 않으면 "RLS로 다 막았다"고 믿는 표들도
+--   로그인한 아무 사용자나(심지어 일부는 익명도) TRUNCATE 한 번으로 통째로
+--   비울 수 있는 구멍이 남는다. (travel_dna는 738행, public_profiles 뷰는
+--   1482행에서 이미 개별적으로 회수했고 아래 목록에는 없음 — 중복 방지.
+--   mate_suggestions_cache는 2297행 `revoke all`로 이미 TRUNCATE까지 덮여
+--   실질적으로 중복이지만, 목록 완결성 — "표 추가 시 여기만 보면 된다" — 을
+--   위해 아래 목록에 그대로 남겨둔다. revoke는 멱등이라 무해하다)
+--
+--   ⚠️ SELECT/INSERT/UPDATE/DELETE는 여기서 절대 회수하지 않는다 — 그건 RLS
+--   정책과, 일부 표(예: posts)의 컬럼 단위 grant로 이미 의도적으로 통제되고
+--   있으므로 여기서 건드리면 앱이 깨진다. 이 블록은 TRUNCATE/REFERENCES/TRIGGER
+--   세 가지만 대상으로 한다.
+--
+--   이 문(create table)들이 전부 위에서 이미 정의된 뒤, 파일 맨 끝 쪽에 모아둔다
+--   — 표 하나 추가할 때마다 여기 목록에만 이름을 더하면 되도록.
+revoke truncate, references, trigger on
+  public.ad_campaigns,
+  public.blocks,
+  public.comment_likes,
+  public.comments,
+  public.dm_messages,
+  public.dm_push_sent,
+  public.dm_threads,
+  public.feedback,
+  public.mate_suggestions_cache,
+  public.neighbors,
+  public.notifications,
+  public.post_likes,
+  public.posts,
+  public.profiles,
+  public.push_tokens,
+  public.reports,
+  public.user_app_state,
+  public.user_trip_state
+  from anon, authenticated;
 
 -- ============================================================
 -- 실행 후 사후 점검 (수동)

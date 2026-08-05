@@ -42,6 +42,7 @@ import {
   LiquidCardGlow,
 } from '../components/LiquidEffects';
 import { useRecords } from '../store/recordStore';
+import { useTravelDna } from '../store/travelDnaStore';
 import { emitToast } from '../store/toastStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
 import { useSettings } from '../store/settingsStore';
@@ -1639,6 +1640,8 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
   }, [arrivalDetect, notifPrefs.master, homeCountryCode]);
 
   const { records, tripGroups, archivedIds, mergeTripGroups, refreshNeighbors, activeStayGroup, startStay, endStay, stayPromptCountry, setStayPromptCountry } = useRecords();
+  // 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사)
+  const { label: dnaLabel, isComplete: dnaComplete } = useTravelDna();
 
   const [staySheetVisible, setStaySheetVisible] = useState(false);
   const stayActive = activeStayGroup?.stay?.status === 'active';
@@ -2053,6 +2056,22 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             })}
           </ScrollView>
         </View>
+
+        {/* 여행 DNA — 완료 전이면 검사 유도, 완료면 유형 표시(탭하면 결과·재검사) */}
+        <TouchableOpacity
+          style={dnaCard.wrap}
+          activeOpacity={0.85}
+          onPress={() =>
+            dnaComplete
+              ? navigation.navigate('TravelDnaResult')
+              : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
+          }
+        >
+          <Text style={dnaCard.label}>{t('dna.resultTitle')}</Text>
+          <Text style={dnaCard.value}>
+            {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.divider} />
 
@@ -2787,6 +2806,17 @@ const badgeHL = StyleSheet.create({
   // 커스텀 이미지 배지 — 회색 원 채움 제거(메달 자체 테두리 사용)
   circleImage: { backgroundColor: 'transparent' },
   badgeImg: { width: 64, height: 64 },
+});
+
+// ─── 여행 DNA 카드 스타일 ───
+const dnaCard = StyleSheet.create({
+  wrap: {
+    backgroundColor: '#2E2E3B', borderRadius: 16, padding: 18,
+    marginTop: 14,
+    borderWidth: 1, borderColor: '#1A1A26',
+  },
+  label: { color: '#A1A1B0', fontSize: 12 },
+  value: { color: '#FFFFFF', fontSize: 17, fontWeight: '800', marginTop: 6 },
 });
 
 // ─── 배지 전체 목록 모달 스타일 ───
