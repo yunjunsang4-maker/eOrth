@@ -867,22 +867,22 @@ language sql security definer set search_path = public as $$
   -- 1단계: 후보 좁히기(싼 필터) — 나라가 겹치거나 공통 메이트가 있는 사람만, 최대 200명.
   cand as (
     select cid from (
-      select pc.author_id as cid
+      select pc.author_id as cid, 0 as pri
       from pub_country pc, me
       where pc.author_id <> me.uid and pc.name in (select name from my_countries)
-      union
-      select case when n2.requester_id = mm.mate_id then n2.addressee_id else n2.requester_id end as cid
+      union all
+      select case when n2.requester_id = mm.mate_id then n2.addressee_id else n2.requester_id end as cid, 0 as pri
       from my_mates mm
       join public.neighbors n2 on n2.status = 'accepted'
         and (n2.requester_id = mm.mate_id or n2.addressee_id = mm.mate_id)
-      union
+      union all
       -- 3번째 경로 — 설문 완료자 표본.
       -- 기존 두 경로(나라 겹침·공통 메이트)는 기록이 있어야 걸린다.
       -- 이게 없으면 기록 없는 신규는 설문을 마쳐도 후보에 못 들어와 추천이 0이다.
       -- union 안에서 order by/limit을 괄호 없이 붙이면 이 분기가 아니라 union 전체 결과에
       -- 걸려버린다(그리고 바깥 스코프에는 d.updated_at이 안 보여 파싱조차 안 된다) —
       -- 그래서 이 분기만 별도 하위질의로 감싼다.
-      select cid from (
+      select cid, 1 as pri from (
         select d.user_id as cid
         from public.travel_dna d
         order by d.updated_at desc
@@ -891,6 +891,10 @@ language sql security definer set search_path = public as $$
     ) u, me
     where u.cid <> me.uid
     group by cid
+    -- pri 0(나라 겹침·공통 메이트, 기록 근거 있음)을 pri 1(설문 표본만)보다 항상 앞세운다 —
+    -- 안 그러면 200명 상한에서 기록 근거가 있는 좋은 후보가 무관한 설문 표본에 밀려날 수 있다.
+    -- union all + group by cid로 중복은 여기서 걷어낸다(distinct 두 경로에 걸린 후보는 pri=0으로 남는다).
+    order by min(pri), cid
     limit 200
   ),
 
@@ -1009,7 +1013,11 @@ language sql security definer set search_path = public as $$
       0 as interest_score,
       0 as taste_score,
       round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score,
-      coalesce(cs.n, 0) as survey_score
+      coalesce(cs.n, 0) as survey_score,
+      -- coalesce가 위에서 null을 0으로 지우므로 survey_score is null로는 '설문 없음'을 못 가른다
+      -- (양쪽 다 설문을 안 해도 0으로 보여 정상 응답과 구분이 안 됐다). csurvey는 my_dna와
+      -- inner join이라 행이 있다는 것 자체가 호출자·후보 양쪽 다 설문을 마쳤다는 뜻이다.
+      (cs.cid is not null) as has_survey
     from cand c
     left join cshared s on s.cid = c.cid
     left join cand_weight_sum cws on cws.cid = c.cid
@@ -1020,9 +1028,9 @@ language sql security definer set search_path = public as $$
   ),
   visible as (
     select sc.*,
-      -- 둘 다 유효 응답이 있을 때만 100점 만점. 아니면 기록 축(65) 만점을 100으로 환산한다 —
-      -- 설문축을 0으로 두면 설문 안 한 사람이 추천에서 부당하게 밀린다.
-      case when sc.survey_score is null or not exists (select 1 from my_dna)
+      -- 둘 다 유효 응답이 있을 때만(has_survey) 100점 만점. 아니면 기록 축(65) 만점을 100으로
+      -- 환산한다 — 설문축을 0으로 두면 설문 안 한 사람(또는 상대)이 추천에서 부당하게 밀린다.
+      case when not sc.has_survey
         then round((sc.place_score + sc.recency_score + sc.mutual_score) * 100.0 / 65)::int
         else (sc.place_score + sc.recency_score + sc.mutual_score + sc.survey_score)
       end as total_score
@@ -2337,6 +2345,11 @@ begin
 end; $$;
 
 grant execute on function public.mate_suggestions(int, text[]) to authenticated;
+
+-- 점수 체계 자체가 바뀌었다(계절·관심사·성향 3축 → 설문축) — 기존 캐시 행은 옛 6축 값이고
+-- survey_score 키도 없다. TTL(6시간)이 지나기 전까지 낡은 점수가 그대로 노출되는 걸 막기 위해
+-- 배포 시 1회 전량 비운다. 재실행해도 안전(캐시는 다음 호출에서 지연 재생성된다).
+delete from public.mate_suggestions_cache;
 
 -- 오래된 캐시 정리(선택) — 행이 사용자당 몇 개라 급하지 않다. 필요하면 pg_cron에 등록:
 --   select cron.schedule('purge-mate-cache', '30 4 * * *',
