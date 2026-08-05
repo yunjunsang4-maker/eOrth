@@ -575,9 +575,9 @@ export default function FriendSearchScreen({ navigation, route }: Props) {
                 onPress={() => navigation.navigate('TravelDnaSurvey', { mode: 'full' })}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={dnaBanner.title}>
-                    {dnaComplete ? t('dna.continueSurvey') : t('dna.bannerTitle')}
-                  </Text>
+                  {/* 제목은 두 상태 모두 같다 — 상태 구분은 오른쪽 CTA가 한다.
+                      제목까지 continueSurvey를 쓰면 같은 문구가 한 줄에 두 번 보인다 */}
+                  <Text style={dnaBanner.title}>{t('dna.bannerTitle')}</Text>
                   <Text style={dnaBanner.desc}>{t('dna.bannerDesc')}</Text>
                 </View>
                 <Text style={dnaBanner.cta}>

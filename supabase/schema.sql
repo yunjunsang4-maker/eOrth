@@ -882,9 +882,16 @@ language sql security definer set search_path = public as $$
       -- union 안에서 order by/limit을 괄호 없이 붙이면 이 분기가 아니라 union 전체 결과에
       -- 걸려버린다(그리고 바깥 스코프에는 d.updated_at이 안 보여 파싱조차 안 된다) —
       -- 그래서 이 분기만 별도 하위질의로 감싼다.
+      -- 호출자가 설문을 안 했으면 이 경로를 아예 끈다: 설문축이 0인 후보 100명이
+      -- 후보 풀에 섞여 rest(다양성 셔플) 자리를 먹어, 나라 겹침·공통 메이트로 걸린
+      -- 진짜 근거 있는 후보의 노출 자리를 빼앗는다. 이 경로의 목적(§8)은 어디까지나
+      -- '설문을 마친 호출자'가 추천 0이 되는 걸 막는 것이다.
+      -- my_dna CTE는 cand보다 뒤에 정의돼 참조할 수 없어(비재귀 WITH는 앞선 CTE만 보인다)
+      -- exists 하위질의로 직접 확인한다.
       select cid, 1 as pri from (
         select d.user_id as cid
         from public.travel_dna d
+        where exists (select 1 from public.travel_dna my, me where my.user_id = me.uid)
         order by d.updated_at desc
         limit 100
       ) dna_sample
@@ -901,16 +908,37 @@ language sql security definer set search_path = public as $$
   -- 설문 성향 — 축별 점수 차를 유사도로 바꿔 합산(축당 5점, 7축 = 35점).
   -- 나누는 값이 100이 아니라 50인 이유: 무작위 두 사람의 축별 평균 차이가 약 33이라
   -- 100으로 나누면 아무나 0.67을 받아 변별력이 사라진다.
-  my_dna as (select scores from public.travel_dna, me where user_id = me.uid),
+  --
+  -- 여기에 응답량 가중치 f를 곱하는 이유(중요):
+  -- 클라이언트 채점은 응답이 적으면 점수를 중립 50으로 수축시킨다(§5). 수축은 '얕은 근거가
+  -- 강한 결론을 내지 못하게' 하려는 장치인데, 거리(차이) 기반 유사도에서는 정반대로 작동한다 —
+  -- 모두를 가운데로 모으면 서로 닮아 보이기 때문이다.
+  -- 실제로 온보딩 축약판(7문항)은 conf ≈ 2/7이라 모든 축이 정확히 36 아니면 64가 되고,
+  -- 축약판끼리는 축별 차이가 0 아니면 28 → 유사도 1.0 또는 0.44 → 기대 ~25/35가 나온다.
+  -- 36문항을 다 답한 두 사람은 점수가 넓게 퍼져 평균 차이 ≈ 33 → 약 12/35다.
+  -- 즉 덜 답할수록 낯선 사람과 더 잘 맞아 보이고, pickReason의 문턱 20을 쉽게 넘어
+  -- 공통점이 없는 상대에게 "여행 성향이 잘 맞아요"가 붙는다.
+  -- → 두 사람 중 '적게 답한 쪽'의 응답량으로 설문축 전체를 감쇠시킨다.
+  --
+  -- 그리고 총점 정규화의 분모(아래 visible)는 반드시 이 f를 따라가야 한다.
+  -- 분모를 100으로 고정하면 설문축이 35f점밖에 안 실리므로 축약판 사용자의 총점 상한이
+  -- 65+35f로 눌리고, 설문을 아예 안 한 사람(분모 65 → 상한 100)보다 낮아진다.
+  -- '조금 답한 것'이 '안 답한 것'보다 불리해지는 역전이라, 실제 실린 가중치만큼만 분모를 키운다.
+  my_dna as (select scores, answered from public.travel_dna, me where user_id = me.uid),
   csurvey as (
-    select d.user_id as cid,
-           round(sum(greatest(0, 1 - abs(a.v - b.v) / 50.0) * 5))::int as n
-    from public.travel_dna d
-    join my_dna m on true
-    cross join lateral unnest(m.scores) with ordinality as a(v, i)
-    cross join lateral unnest(d.scores) with ordinality as b(v, j)
-    where d.user_id in (select cid from cand) and a.i = b.j
-    group by d.user_id
+    select x.cid, x.f, least(35, round(x.raw * x.f))::int as n
+    from (
+      select d.user_id as cid,
+             least(1.0, least(m.answered, d.answered)::numeric / 36) as f,
+             sum(greatest(0, 1 - abs(a.v - b.v) / 50.0) * 5) as raw
+      from public.travel_dna d
+      join my_dna m on true
+      cross join lateral unnest(m.scores) with ordinality as a(v, i)
+      cross join lateral unnest(d.scores) with ordinality as b(v, j)
+      where d.user_id in (select cid from cand) and a.i = b.j
+      -- m.answered는 CTE 컬럼이라 함수 종속성이 안 잡힌다 — group by에 직접 넣어야 한다.
+      group by d.user_id, d.answered, m.answered
+    ) x
   ),
 
   -- 2단계: 후보에만 비싼 계산.
@@ -1014,6 +1042,8 @@ language sql security definer set search_path = public as $$
       0 as taste_score,
       round(least(coalesce(m.mutual_count,0), 3) / 3.0 * 10)::int as mutual_score,
       coalesce(cs.n, 0) as survey_score,
+      -- 이 쌍에 실제로 실린 설문축 가중치(0~1). 총점 분모가 이 값을 따라간다(csurvey 주석).
+      coalesce(cs.f, 0) as survey_f,
       -- coalesce가 위에서 null을 0으로 지우므로 survey_score is null로는 '설문 없음'을 못 가른다
       -- (양쪽 다 설문을 안 해도 0으로 보여 정상 응답과 구분이 안 됐다). csurvey는 my_dna와
       -- inner join이라 행이 있다는 것 자체가 호출자·후보 양쪽 다 설문을 마쳤다는 뜻이다.
@@ -1028,11 +1058,17 @@ language sql security definer set search_path = public as $$
   ),
   visible as (
     select sc.*,
-      -- 둘 다 유효 응답이 있을 때만(has_survey) 100점 만점. 아니면 기록 축(65) 만점을 100으로
-      -- 환산한다 — 설문축을 0으로 두면 설문 안 한 사람(또는 상대)이 추천에서 부당하게 밀린다.
+      -- 둘 다 유효 응답이 있을 때만(has_survey) 설문축을 더한다. 아니면 기록 축(65) 만점을
+      -- 100으로 환산한다 — 설문축을 0으로 두면 설문 안 한 사람(또는 상대)이 추천에서 부당하게 밀린다.
+      -- 설문이 있을 때의 분모는 100 고정이 아니라 65 + 35×f다. 설문축에 f만큼만 실렸으므로
+      -- 분모도 딱 그만큼만 키워야 만점이 100으로 맞는다(f=1이면 분모 100, f=0이면 65 —
+      -- 위 has_survey=false 분기와 같은 식이 된다). 자세한 이유는 csurvey 주석 참조.
+      -- least(100, ...)은 반올림 방어: survey_score를 정수로 반올림한 뒤 실수 분모로 나누므로
+      -- 최대 0.5점의 올림 오차가 100을 아주 살짝 넘겨(최대 100.6) 101%가 표시될 수 있다.
       case when not sc.has_survey
         then round((sc.place_score + sc.recency_score + sc.mutual_score) * 100.0 / 65)::int
-        else (sc.place_score + sc.recency_score + sc.mutual_score + sc.survey_score)
+        else least(100, round((sc.place_score + sc.recency_score + sc.mutual_score + sc.survey_score)
+                              * 100.0 / (65 + 35 * sc.survey_f)))::int
       end as total_score
     from scored sc, me
     where not public.is_blocked_between(me.uid, sc.cid)
