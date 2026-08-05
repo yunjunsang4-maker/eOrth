@@ -143,9 +143,25 @@ grant update (id, handle, emoji, bio, birthday, gender, profile_photo,
 -- (security_invoker=false, 소유자 권한으로 RLS 우회)여야 타인 행이 보인다 —
 -- 노출 컬럼이 여기 나열된 공개 컬럼으로 한정되므로 안전하다.
 -- (본인 전체 프로필은 기존 profiles 테이블에서 직접 조회.)
+-- ⚠️ 이 정의는 '진짜'가 아니다 — country/stay_country/stay_status/dna_type_key는
+--    are_neighbors·is_blocked_between·travel_dna가 정의된 뒤(1458행 부근)에야 계산 가능해
+--    그 시점에 아래 컬럼 목록과 순서가 동일한 재정의로 최종 교체된다(진짜 값은 거기서 채움).
+--    그럼에도 이 자리에 남겨두는 이유는 오직 하나 — 이 뷰를 조인하는
+--    mate_suggestions_compute(768행 부근)·country_visitors(1174행 부근)·
+--    neighbor_list_of(1303행 부근)가 이 지점에서 language sql 본문을 CREATE 검증받는데,
+--    check_function_bodies가 CREATE 시점에 이미 존재하는 컬럼만 인정하기 때문이다
+--    (mate_suggestions_compute가 pp.dna_type_key를 참조).
+--    타입 NULL 자리표시자(null::text)는 실제 컬럼과 이름·순서·타입이 같아야 하며,
+--    CREATE OR REPLACE VIEW는 컬럼을 빼거나 순서를 바꾸면 실패하므로(기존 DB 재실행 시
+--    'cannot drop columns from view') 아래 목록을 1458행 재정의와 항상 맞춰야 한다.
+--    "어차피 안 쓰는 null인데" 하고 줄이면 재실행이 다시 깨진다 — 절대 축소 금지.
 create or replace view public.public_profiles
   with (security_invoker = false) as
-  select id, handle, emoji, bio, profile_photo, created_at, handle_font
+  select id, handle, emoji, bio, profile_photo, created_at, handle_font,
+         null::text as country,
+         null::text as stay_country,
+         null::text as stay_status,
+         null::text as dna_type_key
   from public.profiles;
 
 grant select on public.public_profiles to authenticated;
