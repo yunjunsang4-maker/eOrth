@@ -2011,6 +2011,7 @@ const en = {
     axisCompany: 'Solo · Together',
     mateTitle: 'Mates who travel like you',
     mateFind: 'Find mates',
+    mateEmpty: "No one has shared their type yet. They'll show up here once others finish the survey.",
   },
 } as const;
 

@@ -2018,6 +2018,7 @@ const ko = {
     axisCompany: '혼자 · 함께',
     mateTitle: '성향이 맞는 메이트',
     mateFind: '메이트 찾아보기',
+    mateEmpty: '아직 성향을 밝힌 메이트가 없어요. 상대도 검사를 마치면 여기에 보여드릴게요.',
   },
 } as const;
 

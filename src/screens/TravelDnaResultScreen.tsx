@@ -103,7 +103,8 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
   // (설문이 매칭 100점 중 35점을 차지한다) 결과가 유형명에서 끝나면 보상이 오지 않는다.
   // travel_dna 트리거가 저장 시 mate_suggestions_cache를 비우므로 여기 도착한 시점의 추천은
   // 방금 낸 답이 이미 반영된 것이다.
-  const [mates, setMates] = useState<MateSuggestionRow[]>([]);
+  // null = 아직 조회 전. 빈 배열과 구분해야 조회 중에 "없어요"가 먼저 떴다가 사라지지 않는다.
+  const [mates, setMates] = useState<MateSuggestionRow[] | null>(null);
   // 나라 목록은 조회 인자로만 쓴다 — 의존성에 넣으면 스토어가 갱신될 때마다 다시 조회한다
   const localRef = useRef({ records, tripGroups });
   useEffect(() => { localRef.current = { records, tripGroups }; }, [records, tripGroups]);
@@ -404,7 +405,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
         {isComplete && (
           <View style={st.mateCard}>
             <Text style={st.mateTitle}>{t('dna.mateTitle')}</Text>
-            {mates.map((m) => {
+            {mates?.map((m) => {
               const lab = labelFromKey(m.dnaTypeKey);
               const pct = matchPercent(m.totalScore); // 임계 미만이면 null — 배지를 그리지 않는 기존 규칙
               return (
@@ -427,6 +428,9 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
                 </TouchableOpacity>
               );
             })}
+            {/* 조회가 끝났는데 아무도 없을 때만. 실패로 읽히지 않게 이유(상대도 설문을
+                마쳐야 한다)를 밝힌다 — 출시 초기에는 이쪽이 기본 상태다. */}
+            {mates?.length === 0 && <Text style={st.mateEmpty}>{t('dna.mateEmpty')}</Text>}
             <TouchableOpacity
               style={st.mateFind}
               activeOpacity={0.8}
@@ -568,6 +572,7 @@ const st = StyleSheet.create({
   mateHandle: { color: '#FFFFFF', fontSize: 14, fontWeight: '600' },
   mateType: { color: C.dim, fontSize: 12, marginTop: 2 },
   matePct: { fontSize: 13, fontWeight: '800' }, // color는 스킨 강조색 — 인라인
+  mateEmpty: { color: C.dim, fontSize: 12, lineHeight: 18, paddingVertical: 2 },
   // 추천이 비어도(상대가 아직 설문을 안 마쳤을 때) 이 줄은 남아 매칭으로 가는 길이 끊기지 않는다
   mateFind: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingTop: 12, paddingBottom: 4 },
   mateFindText: { fontSize: 14, fontWeight: '700' },
