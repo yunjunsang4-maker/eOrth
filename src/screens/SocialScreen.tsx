@@ -11,6 +11,7 @@ import {
   Modal,
   TextInput,
   KeyboardAvoidingView,
+  Keyboard,
   Platform,
   Dimensions,
   Image,
@@ -18,6 +19,7 @@ import {
   Animated,
   Pressable,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
@@ -55,6 +57,8 @@ import { useSkinAccent } from '../constants/skinTheme';
 import BlogPin from '../components/BlogPin';
 import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
+import FeedPhoto from '../components/FeedPhoto';
+import { thumbOf } from '../utils/thumbUrl';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -104,6 +108,7 @@ function ShareBottomSheet({
   navigation: any;
 }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [prepareVisible, setPrepareVisible] = useState(false);
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const { neighbors } = useRecords();
@@ -180,14 +185,14 @@ function ShareBottomSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
           if (!prepareVisible && !friendPickerVisible) onClose();
         }} />
 
-        {/* 바텀시트 */}
-        <View style={ss.sheet}>
+        {/* 바텀시트 — 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
           {/* 핸들 바 */}
           <View style={ss.handle} />
 
@@ -282,10 +287,20 @@ function CommentBottomSheet({
   setCommentText: (t: string) => void;
 }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
+  const [kbVisible, setKbVisible] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, () => setKbVisible(true));
+    const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent statusBarTranslucent navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >
@@ -295,7 +310,8 @@ function CommentBottomSheet({
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={onClose} />
-          <View style={cs.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음) */}
+          <View style={[cs.sheet, { paddingBottom: Platform.OS === 'ios' ? 20 : kbVisible ? 12 : insets.bottom + 12 }]}>
             {/* 핸들 바 */}
             <View style={cs.handle} />
 
@@ -308,7 +324,7 @@ function CommentBottomSheet({
             </View>
 
             {/* 댓글 목록 */}
-            <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false}>
+            <ScrollView style={cs.commentList} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               {comments.map((c, idx) => (
                 <View key={c.id}>
                   <View style={cs.commentRow}>
@@ -336,7 +352,7 @@ function CommentBottomSheet({
                 <Text style={cs.myAvatarText}>{t('social.me')}</Text>
               </View>
               <View style={cs.inputWrap}>
-                <TextInput
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                   style={cs.input}
                   placeholder={t('social.commentPlaceholder')}
                   placeholderTextColor="#4A4A59"
@@ -511,7 +527,7 @@ function FeedCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity
@@ -570,7 +586,7 @@ function FeedCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity
@@ -746,7 +762,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
           {/* 후면 사진 (메인) — 더미는 그라데이션 */}
           <View style={sc.backPhoto}>
             {item.snapBackUri ? (
-              <Image source={{ uri: item.snapBackUri }} style={sc.backImg} resizeMode="cover" />
+              <FeedPhoto uri={item.snapBackUri} thumbs={item.thumbs} style={sc.backImg} />
             ) : (
               <View style={sc.placeholderBg}>
                 <Text style={sc.placeholderEmoji}>📸</Text>
@@ -757,7 +773,7 @@ function SnapCard({ item, toggleLike, navigation }: { item: any; toggleLike: (id
           {/* 전면 사진 (PIP) */}
           {item.snapFrontUri ? (
             <View style={sc.pipWrap}>
-              <Image source={{ uri: item.snapFrontUri }} style={sc.pipImg} resizeMode="cover" />
+              <FeedPhoto uri={item.snapFrontUri} thumbs={item.thumbs} style={sc.pipImg} />
             </View>
           ) : (
             <View style={sc.pipWrap}>
@@ -1004,7 +1020,7 @@ function BlogCard({
                 visible={menuOpen}
                 transparent
                 animationType="none"
-                statusBarTranslucent
+                statusBarTranslucent navigationBarTranslucent
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1046,7 +1062,7 @@ function BlogCard({
                 visible={menuOpen}
                 transparent
                 animationType="none"
-                statusBarTranslucent
+                statusBarTranslucent navigationBarTranslucent
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1315,7 +1331,7 @@ function AlbumCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1357,7 +1373,7 @@ function AlbumCard({
               visible={menuOpen}
               transparent
               animationType="none"
-              statusBarTranslucent
+              statusBarTranslucent navigationBarTranslucent
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
@@ -1534,7 +1550,8 @@ const ab = StyleSheet.create({
   bottom: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, gap: 12 },
   actionBtn: { paddingRight: 4 },
   likeBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionIcon: { fontSize: 22, color: '#A1A1B0', lineHeight: 22 },
+  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+  actionIcon: { fontSize: 22, color: '#A1A1B0', lineHeight: Platform.OS === 'ios' ? 22 : 27 },
   actionCount: { fontSize: 12, color: '#A1A1B0', fontWeight: '500' },
   photoCount: { color: '#A1A1B0', fontSize: 12, marginLeft: 'auto' },
 });
@@ -1773,7 +1790,7 @@ function resolveCutBg(cutPhoto: any): { color?: string; image?: any; isLight: bo
 // 스트립(네컷) 기록 카드의 사진 영역 — 시안(Group 2085664520)처럼 각 프레임 슬롯대로 사진을 격자 배치.
 // 프레임 색/이미지는 이 '사진 영역'의 배경으로 살린다(가폭 사이로 프레임이 비침 = 스트립 사진 프레임).
 // 바깥 카드 배경은 시안대로 라이트 톤 유지. 슬롯(x/y/w/h 0~1)·aspect를 써서 모든 스트립 포맷에 자동 대응.
-function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
+function CutGridPreview({ cutPhoto, thumbs }: { cutPhoto: any; thumbs?: Record<string, string> }) {
   const frame = cutPhoto?.frameId ? getCutFrame(cutPhoto.frameId) : undefined;
   const lay = frame?.layout || cutPhoto?.layout || 'four';
   const spec = (CUT_LAYOUTS as any)[lay] || CUT_LAYOUTS['four'];
@@ -1791,7 +1808,7 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
       }}
     >
       {photos[i] ? (
-        <Image source={{ uri: photos[i] }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+        <FeedPhoto uri={photos[i]} thumbs={thumbs} style={{ width: '100%', height: '100%' }} />
       ) : null}
     </View>
   ));
@@ -1820,10 +1837,16 @@ function CutGridPreview({ cutPhoto }: { cutPhoto: any }) {
 // 스트립 카드 사진 영역 — 상세(PostDetail·TripRecord)와 동일한 공용 캔버스(CutPhotoCanvas)로
 // 라이브 합성해 프레임 로고·문구·날짜 스탬프·사진 조정값까지 그대로 반영한다.
 // (기존 CutGridPreview는 배경+사진 슬롯만 그려 로고/스탬프가 소셜 카드에서 누락됐었음)
-function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
+function CutCanvasPreview({ cutPhoto, thumbs }: { cutPhoto: any; thumbs?: Record<string, string> }) {
   const [w, setW] = useState(0);
   const frame = getCutFrame(cutPhoto.frameId);
   const aspect = (frame && (CUT_LAYOUTS as any)[frame.layout]?.aspect) || 0.7;
+  // 목록 카드는 축소본으로 합성한다(원본 4장을 매번 받지 않게). 편집·내보내기 경로는
+  // CutPhotoCanvas를 직접 쓰므로 원본 그대로다 — 여기 교체는 피드 렌더에만 적용된다.
+  const canvasPhotos = useMemo(
+    () => (cutPhoto.photos ?? []).map((p: string) => thumbOf(thumbs, p)),
+    [cutPhoto.photos, thumbs]
+  );
   return (
     // aspect로 자리를 먼저 잡아 폭 측정 전(w=0)에도 마소너리 높이가 튀지 않게 한다.
     <View style={{ width: '100%', aspectRatio: aspect }} onLayout={(e) => setW(e.nativeEvent.layout.width)}>
@@ -1846,7 +1869,7 @@ function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
         {w > 0 && (
           <CutPhotoCanvas
             frameId={cutPhoto.frameId}
-            photos={cutPhoto.photos}
+            photos={canvasPhotos}
             transforms={cutPhoto.transforms}
             width={w}
             bgOverride={cutPhoto.frameColor}
@@ -1863,6 +1886,7 @@ function CutCanvasPreview({ cutPhoto }: { cutPhoto: any }) {
 
 function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, onDelete, onBlock, onReport, onToggleVisibility, onUnarchive, variant = 'feed', onQuickStart, onQuickMove, onQuickEnd, onQuickCancel, dragPos, columnIndex }: any) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { records } = useRecords();
   const { handle: globalHandle, isPremium, handleFont: myHandleFont } = useSettings();
   const skinAccent = useSkinAccent(); // 저널 카드 부제·시간 강조를 스킨색으로
@@ -1992,7 +2016,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       const hasFrame = !!(item.cutPhoto?.frameId && getCutFrame(item.cutPhoto.frameId));
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          {hasFrame ? <CutCanvasPreview cutPhoto={item.cutPhoto} /> : <CutGridPreview cutPhoto={item.cutPhoto} />}
+          {hasFrame ? <CutCanvasPreview cutPhoto={item.cutPhoto} thumbs={item.thumbs} /> : <CutGridPreview cutPhoto={item.cutPhoto} thumbs={item.thumbs} />}
           {cutMeta}
         </DiaryTappable>
       );
@@ -2003,7 +2027,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     if (uri) {
       return (
         <DiaryTappable style={d.cutCardLight} tilt={tilt} onSingle={open} onDouble={like}>
-          <Image source={{ uri }} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} resizeMode="cover" />
+          <FeedPhoto uri={uri} thumbs={item.thumbs} style={{ width: '100%', aspectRatio: aspect, borderRadius: 3 }} />
           {cutMeta}
         </DiaryTappable>
       );
@@ -2021,7 +2045,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       return (
         <DiaryTappable style={d.scrap} tilt={tilt} onSingle={open} onDouble={like}>
           <View style={d.tape} />
-          <Image source={{ uri: photo }} style={d.scrapImg} resizeMode="cover" />
+          <FeedPhoto uri={photo} thumbs={item.thumbs} style={d.scrapImg} />
           {!!title && <Text style={[d.scrapTitle, { fontFamily: SERIF }]} numberOfLines={2}>{title}</Text>}
           {!!excerpt && <Text style={d.scrapExcerpt} numberOfLines={3}>{excerpt}</Text>}
           {meta}
@@ -2097,7 +2121,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         <View pointerEvents="none" style={[d.polaTape, tapeVariant === 1 && { top: -13 }]}>
           <FeedTape variant={tapeVariant} />
         </View>
-        {photo ? <Image source={{ uri: photo }} style={d.polaImg} resizeMode="cover" /> : <View style={[d.polaImg, d.polaEmpty]} />}
+        {photo ? <FeedPhoto uri={photo} thumbs={item.thumbs} style={d.polaImg} /> : <View style={[d.polaImg, d.polaEmpty]} />}
         {/* 사진과 글 사이: 방문국가(좌) + 올린시간(우, 보라) — 스트립 카드와 동일 */}
         <View style={[d.cutMetaTopRow, { paddingTop: 8 }]}>
           <Text style={d.cutMetaCountry} numberOfLines={1}>{jourPlaceLabel(item)}</Text>
@@ -2140,7 +2164,7 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
       <GestureDetector gesture={panGesture}>
         <View ref={cardRef} collapsable={false}>{card}</View>
       </GestureDetector>
-      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuMounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
         <View style={{ flex: 1 }}>
           <Animated.View
             pointerEvents="none"
@@ -2148,7 +2172,9 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           />
           <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={() => setMenuVisible(false)} />
           <Animated.View
-            style={[ss.sheet, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54, 0] }) }] }]}
+            // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+            // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
+            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
           >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
@@ -2463,10 +2489,11 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
 
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
-  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
+  const { records, toggleLike, blockUser, deleteRecord, archivedIds, archiveRecord, currentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, isBlocked, neighbors, reportedPostIds, reportPost, viewedSnapIds, tripGroups, updateRecord } = useRecords();
   // 빈 피드 기본 콘텐츠 — 추천 메이트 (팔로우할 사람이 생기면 피드가 채워진다)
   const [suggested, setSuggested] = useState<FriendSuggestion[]>([]);
   useEffect(() => {
@@ -2512,6 +2539,16 @@ function FriendsTab({ navigation }: { navigation: any }) {
   
   const { sendRecord, conversations } = useDM();
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  // 무한 스크롤 — 바닥 근처에 닿으면 다음 페이지를 이어받는다.
+  // (FlatList가 아니라 ScrollView라 onEndReached가 없어 스크롤 좌표로 직접 판정한다)
+  const FEED_END_THRESHOLD = 1200; // px — 카드 2~3장 남았을 때 미리 받아 끊김을 줄인다
+  const onFeedScroll = useCallback((e: any) => {
+    if (activeMenuId !== null) setActiveMenuId(null);
+    const { contentOffset, contentSize, layoutMeasurement } = e?.nativeEvent ?? {};
+    if (!contentOffset || !contentSize || !layoutMeasurement) return;
+    const distanceToEnd = contentSize.height - contentOffset.y - layoutMeasurement.height;
+    if (distanceToEnd < FEED_END_THRESHOLD) loadMoreFeed();
+  }, [activeMenuId, loadMoreFeed]);
   const [toast, setToast] = useState({ visible: false, message: '' });
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const scrollY = useRef(new Animated.Value(0)).current;
@@ -2825,7 +2862,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
             useNativeDriver: true,
-            listener: () => { if (activeMenuId !== null) setActiveMenuId(null); },
+            listener: onFeedScroll,
           }
         )}
         scrollEventThrottle={16}
@@ -3038,6 +3075,16 @@ function FriendsTab({ navigation }: { navigation: any }) {
               </TouchableOpacity>
             </View>
           )}
+          {/* 다음 페이지 로딩 표시 — 무한 스크롤이 동작 중임을 알린다(빈 여백 스크롤 방지) */}
+          {feedLoadingMore && (
+            <View style={s.feedMoreLoading}>
+              <ActivityIndicator size="small" color="#BF85FC" />
+            </View>
+          )}
+          {/* 끝까지 받았을 때만 마감선. feedPosts 기준이라 서버 피드가 오기 전(내 글만 있는 상태)에는 뜨지 않는다 */}
+          {!feedHasMore && !feedLoadingMore && feedPosts.length > 0 && (
+            <Text style={s.feedEndText}>{t('social.feedEnd')}</Text>
+          )}
           <View style={{ height: 100 }} />
         </View>
       </Animated.ScrollView>
@@ -3055,10 +3102,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
       />
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
-      <Modal visible={!!otherPickerItem} transparent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
+      <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
-          <View style={ss.sheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             <View style={ss.handle} />
             <Text style={ss.sheetTitle}>{t('social.friendPickerTitle')}</Text>
             <ScrollView style={{ maxHeight: 360 }}>
@@ -3453,10 +3501,15 @@ const s = StyleSheet.create({
     alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+      },
+      default: {},
+    }),
   },
   emptyCtaText: {
     fontSize: 14,
@@ -3472,6 +3525,18 @@ const s = StyleSheet.create({
     fontSize: 13,
     color: C.dim,
     textDecorationLine: 'underline',
+  },
+
+  // 무한 스크롤 하단 — 다음 페이지 로딩 스피너 / 마지막 페이지 안내
+  feedMoreLoading: {
+    paddingVertical: 20,
+    alignItems: 'center',
+  },
+  feedEndText: {
+    paddingVertical: 20,
+    textAlign: 'center',
+    fontSize: 12,
+    color: C.dim,
   },
 
   // 피드 추천 메이트 카드 (여행 DNA) — 네온 글로우 글래스

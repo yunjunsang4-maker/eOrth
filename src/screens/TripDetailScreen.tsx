@@ -12,6 +12,7 @@ import {
   TextInput,
   Modal,
   Alert,
+  Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -490,7 +491,7 @@ export default function TripDetailScreen() {
         <View style={s.headerCenter}>
           {isEditing ? (
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 value={editedTitle}
                 onChangeText={setEditedTitle}
                 style={s.headerInput}
@@ -535,9 +536,10 @@ export default function TripDetailScreen() {
       </Animated.View>
 
       {/* 편집 메뉴 시트 */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
-          <View style={s.menuSheet}>
+          {/* 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정 — iOS 100 = 인셋(~48)+52 */}
+          <View style={[s.menuSheet, Platform.OS === 'android' && { top: insets.top + 52 }]}>
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"
@@ -585,7 +587,7 @@ export default function TripDetailScreen() {
       />
 
       {/* 기록 추가 — 형식 선택 모달 */}
-      <Modal visible={formatPickerVisible} transparent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
+      <Modal visible={formatPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setFormatPickerVisible(false)}>
         <TouchableOpacity style={s.fmOverlay} activeOpacity={1} onPress={() => setFormatPickerVisible(false)}>
           <View style={s.fmCard}>
             <Text style={s.fmTitle}>{t('trip.recordFormatTitle')}</Text>
@@ -611,9 +613,10 @@ export default function TripDetailScreen() {
       </Modal>
 
       {/* 썸네일 사진 선택 시트 */}
-      <Modal visible={thumbPickerVisible} transparent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
+      <Modal visible={thumbPickerVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setThumbPickerVisible(false)}>
         <View style={s.thumbOverlay}>
-          <View style={s.thumbSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[s.thumbSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={s.thumbTitle}>{t('trip.changeThumbTitle')}</Text>
             <Text style={s.thumbSub}>{t('trip.changeThumbSub')}</Text>
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
@@ -659,6 +662,7 @@ export default function TripDetailScreen() {
         style={s.scroll}
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         {/* 히어로 배너 */}
         <Animated.View style={[s.hero, {
@@ -849,7 +853,7 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={['rgba(191,133,252,0.08)', 'transparent']}
+        colors={['rgba(191,133,252,0.08)', 'rgba(191,133,252,0)']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -888,7 +892,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
   return (
     <View style={[card.album, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={['rgba(255,166,87,0.1)', 'rgba(255,166,87,0.02)', 'transparent']}
+        colors={['rgba(255,166,87,0.1)', 'rgba(255,166,87,0.02)', 'rgba(255,166,87,0)']}
         start={{ x: 1, y: 0 }}
         end={{ x: 0, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -957,7 +961,7 @@ function BlogCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -993,7 +997,7 @@ function SnapCard({ record, accent }: { record: TravelRecord; accent: string }) 
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -1038,7 +1042,7 @@ function CutCard({ record, accent }: { record: TravelRecord; accent: string }) {
   return (
     <View style={[card.feed, { borderColor: accent + '18' }]}>
       <LinearGradient
-        colors={[accent + '14', 'transparent']}
+        colors={[accent + '14', accent + '00']}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={StyleSheet.absoluteFillObject}
@@ -1240,7 +1244,11 @@ const s = StyleSheet.create({
   railNode: {
     position: 'absolute', left: -23, top: 30, width: 10, height: 10, borderRadius: 5,
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.7)',
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6, elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 6 },
+      default: {},
+    }),
     zIndex: 2,
   },
   railLink: { position: 'absolute', left: -14, top: 34, width: 14, height: 1.5, borderRadius: 1 },
@@ -1255,9 +1263,17 @@ const s = StyleSheet.create({
   moduleCutB: { borderTopLeftRadius: 24, borderTopRightRadius: 4, borderBottomRightRadius: 24, borderBottomLeftRadius: 4 },
   moduleEdge: {
     position: 'absolute', left: 0, top: 10, bottom: 10, width: 3, borderRadius: 2,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5, elevation: 4,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 5 },
+      default: {},
+    }),
   },
-  moduleIndex: { fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center' },
+  moduleIndex: {
+    fontSize: 18, fontWeight: '800', letterSpacing: 1, width: 30, textAlign: 'center',
+    // 안드로이드는 letterSpacing이 마지막 글자 뒤에도 여백을 남겨 왼쪽으로 치우침 → 같은 값만큼 왼쪽 패딩으로 상쇄 (SnapRecordScreen snapBadge와 동일 패턴)
+    ...(Platform.OS === 'android' && { paddingLeft: 1 }),
+  },
   moduleCode: { fontSize: 9, fontWeight: '700', letterSpacing: 2, marginBottom: 2 },
   moduleNameRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   moduleName: { fontSize: 15, fontWeight: '700', color: COLORS.white },

@@ -11,6 +11,7 @@ import {
   Pressable,
   Animated,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import { SearchIcon, PersonIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
@@ -98,6 +99,9 @@ export default function FriendsScreen({ navigation }: Props) {
     }))
   );
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
+  // 팝업 메뉴 앵커(행의 화면 좌표) — 안드로이드는 부모 경계 밖 자식에 터치를 전달하지 않아
+  // 행 내부 absolute 배치로는 메뉴 버튼이 눌리지 않는다. 화면 루트에서 측정 좌표로 렌더한다.
+  const [popupAnchor, setPopupAnchor] = useState<{ y: number; height: number; placeBelow: boolean } | null>(null);
 
   // 메이트 목록 변경을 메이트 목록에 반영(새 메이트 추가/해제 제거). 로컬 상태(음소거 등)는 유지.
   // 메이트이 아니어도 '대화가 있는' 행(아래 낯선 상대 effect가 추가)은 지우지 않는다 —
@@ -261,7 +265,7 @@ export default function FriendsScreen({ navigation }: Props) {
         onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}
         style={st.searchWrap}
       >
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={st.searchInput}
           placeholder={t('friends.searchPlaceholder')}
           placeholderTextColor={C.muted}
@@ -275,7 +279,9 @@ export default function FriendsScreen({ navigation }: Props) {
       <ScrollView
         style={st.scroll}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        onScrollBeginDrag={() => { if (selectedFriendId) setSelectedFriendId(null); }}
       >
         <Pressable onPress={() => { if (selectedFriendId) setSelectedFriendId(null); }}>
           <Text style={st.sectionLabel}>{t('friends.friendsCountN', { count: filtered.length })}</Text>
@@ -287,7 +293,6 @@ export default function FriendsScreen({ navigation }: Props) {
                   friend={f}
                   isSelected={isSelected}
                   anySelected={selectedFriendId !== null}
-                  placeBelow={idx === 0}
                   onPress={() => {
                     if (selectedFriendId) {
                       setSelectedFriendId(null);
@@ -296,14 +301,13 @@ export default function FriendsScreen({ navigation }: Props) {
                       navigation.navigate('DM', { friend: f });
                     }
                   }}
-                  onLongPress={() => {
+                  onLongPress={(anchor) => {
+                    // 좌표 측정 실패 시 진입하지 않음 — 메뉴 없이 행만 어두워지는 상태 방지
+                    if (!anchor) return;
                     buzz('light');
                     setSelectedFriendId(f.id);
+                    setPopupAnchor({ ...anchor, placeBelow: idx === 0 });
                   }}
-                  onToggleMute={handleToggleMute}
-                  onMarkAsRead={handleMarkAsRead}
-                  onBlock={handleBlockSelected}
-                  isCurrentlyMuted={f.isMuted ?? false}
                 />
               </View>
             );
@@ -320,9 +324,79 @@ export default function FriendsScreen({ navigation }: Props) {
         </Pressable>
       </ScrollView>
 
+      {/* 팝업 메뉴 — 행 내부가 아니라 화면 루트에서 측정 좌표로 렌더 (안드로이드 터치 호환) */}
+      {selectedFriendId !== null && popupAnchor && (() => {
+        const friend = filtered.find((f) => f.id === selectedFriendId);
+        if (!friend) return null;
+        return (
+          <FriendPopupMenu
+            anchor={popupAnchor}
+            isCurrentlyMuted={friend.isMuted ?? false}
+            onToggleMute={handleToggleMute}
+            onMarkAsRead={handleMarkAsRead}
+            onBlock={handleBlockSelected}
+          />
+        );
+      })()}
+
       {/* 토스트 피드백 */}
       <Toast visible={toastVisible} message={toastMessage} />
     </SafeAreaView>
+  );
+}
+
+// ─── 팝업 메뉴 (화면 루트 오버레이) ───
+function FriendPopupMenu({
+  anchor,
+  isCurrentlyMuted,
+  onToggleMute,
+  onMarkAsRead,
+  onBlock,
+}: {
+  anchor: { y: number; height: number; placeBelow: boolean };
+  isCurrentlyMuted: boolean;
+  onToggleMute: () => void;
+  onMarkAsRead: () => void;
+  onBlock: () => void;
+}) {
+  const { t } = useTranslation();
+  const { height: winH } = useWindowDimensions();
+  const popupScale = useRef(new Animated.Value(0.85)).current;
+  const popupOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.spring(popupScale, { toValue: 1, tension: 60, friction: 6, useNativeDriver: true }),
+      Animated.timing(popupOpacity, { toValue: 1, duration: 150, useNativeDriver: true }),
+    ]).start();
+  }, [popupScale, popupOpacity]);
+
+  // 행 위(기본) 또는 행 아래(첫 행) — 화면(window) 좌표 기준
+  const placement = anchor.placeBelow
+    ? { top: anchor.y + anchor.height + 10 }
+    : { bottom: winH - anchor.y + 10 };
+
+  return (
+    <Animated.View
+      style={[st.popupMenu, placement, { opacity: popupOpacity, transform: [{ scale: popupScale }] }]}
+    >
+      <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
+        <Text style={st.popupIcon}>{isCurrentlyMuted ? '🔔' : '🔕'}</Text>
+        <Text style={st.popupText}>{isCurrentlyMuted ? t('friends.muteOnShort') : t('friends.muteOffShort')}</Text>
+      </TouchableOpacity>
+      <View style={st.popupDivider} />
+      <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
+        <Text style={st.popupIcon}>📖</Text>
+        <Text style={st.popupText}>{t('friends.read')}</Text>
+      </TouchableOpacity>
+      <View style={st.popupDivider} />
+      <TouchableOpacity style={st.popupBtn} onPress={onBlock}>
+        <Text style={st.popupIcon}>🚫</Text>
+        <Text style={[st.popupText, { color: '#FF6B6B' }]}>{t('friends.block')}</Text>
+      </TouchableOpacity>
+      {/* 말풍선 꼬리 */}
+      <View style={anchor.placeBelow ? st.popupArrowBelow : st.popupArrow} />
+    </Animated.View>
   );
 }
 
@@ -331,70 +405,29 @@ function FriendRow({
   friend,
   isSelected,
   anySelected,
-  placeBelow,
   onPress,
   onLongPress,
-  onToggleMute,
-  onMarkAsRead,
-  onBlock,
-  isCurrentlyMuted,
 }: {
   friend: Friend;
   isSelected: boolean;
   anySelected: boolean;
-  placeBelow: boolean;
   onPress: () => void;
-  onLongPress: () => void;
-  onToggleMute: () => void;
-  onMarkAsRead: () => void;
-  onBlock: () => void;
-  isCurrentlyMuted: boolean;
+  onLongPress: (anchor: { y: number; height: number } | null) => void;
 }) {
   const { t } = useTranslation();
-  const popupScale = useRef(new Animated.Value(0.85)).current;
-  const popupOpacity = useRef(new Animated.Value(0)).current;
+  const containerRef = useRef<View>(null);
   const selectedOverlayOpacity = useRef(new Animated.Value(0)).current;
   const rowOpacity = useRef(new Animated.Value(1)).current;
 
   useEffect(() => {
-    // 1. Popup spring and fade entry animations
-    if (isSelected) {
-      Animated.parallel([
-        Animated.spring(popupScale, {
-          toValue: 1,
-          tension: 60,
-          friction: 6,
-          useNativeDriver: true,
-        }),
-        Animated.timing(popupOpacity, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(popupScale, {
-          toValue: 0.85,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-        Animated.timing(popupOpacity, {
-          toValue: 0,
-          duration: 120,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-
-    // 2. Selected border & background overlay fade transition
+    // 1. Selected border & background overlay fade transition
     Animated.timing(selectedOverlayOpacity, {
       toValue: isSelected ? 1 : 0,
       duration: 200,
       useNativeDriver: true,
     }).start();
 
-    // 3. Other row dimming opacity transition
+    // 2. Other row dimming opacity transition
     Animated.timing(rowOpacity, {
       toValue: isSelected ? 1 : (anySelected ? 0.45 : 1),
       duration: 200,
@@ -403,34 +436,20 @@ function FriendRow({
   }, [isSelected, anySelected]);
 
   return (
-    <Animated.View style={[st.rowContainer, { opacity: rowOpacity }]}>
-      {/* 팝업 메뉴 */}
-      {isSelected && (
-        <Animated.View style={[st.popupMenu, placeBelow ? st.popupMenuBelow : st.popupMenuAbove, { opacity: popupOpacity, transform: [{ scale: popupScale }] }]}>
-          <TouchableOpacity style={st.popupBtn} onPress={onToggleMute}>
-            <Text style={st.popupIcon}>{isCurrentlyMuted ? '🔔' : '🔕'}</Text>
-            <Text style={st.popupText}>{isCurrentlyMuted ? t('friends.muteOnShort') : t('friends.muteOffShort')}</Text>
-          </TouchableOpacity>
-          <View style={st.popupDivider} />
-          <TouchableOpacity style={st.popupBtn} onPress={onMarkAsRead}>
-            <Text style={st.popupIcon}>📖</Text>
-            <Text style={st.popupText}>{t('friends.read')}</Text>
-          </TouchableOpacity>
-          <View style={st.popupDivider} />
-          <TouchableOpacity style={st.popupBtn} onPress={onBlock}>
-            <Text style={st.popupIcon}>🚫</Text>
-            <Text style={[st.popupText, { color: '#FF6B6B' }]}>{t('friends.block')}</Text>
-          </TouchableOpacity>
-          {/* 말풍선 꼬리 */}
-          <View style={placeBelow ? st.popupArrowBelow : st.popupArrow} />
-        </Animated.View>
-      )}
-
+    <Animated.View ref={containerRef} style={[st.rowContainer, { opacity: rowOpacity }]}>
       <TouchableOpacity
         style={st.row}
         activeOpacity={0.7}
         onPress={onPress}
-        onLongPress={onLongPress}
+        onLongPress={() => {
+          // 팝업 메뉴를 화면 루트에서 띄우도록 행의 화면 좌표를 측정해 넘긴다
+          const node = containerRef.current;
+          if (node?.measureInWindow) {
+            node.measureInWindow((_x, y, _w, h) => onLongPress({ y, height: h }));
+          } else {
+            onLongPress(null);
+          }
+        }}
         delayLongPress={400}
       >
         {/* 선택 강조 오버레이 */}
@@ -587,14 +606,6 @@ const st = StyleSheet.create({
     shadowRadius: 8,
     elevation: 12,
     zIndex: 9999,
-  },
-  popupMenuAbove: {
-    bottom: '100%',
-    marginBottom: 10,
-  },
-  popupMenuBelow: {
-    top: '100%',
-    marginTop: 10,
   },
   popupBtn: {
     flexDirection: 'row',

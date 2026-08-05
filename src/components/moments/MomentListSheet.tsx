@@ -1,7 +1,8 @@
 // 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록.
 // 삭제: 왼쪽 스와이프로 드러난 삭제 버튼 탭 또는 길게 누르기 — 둘 다 확인 Alert를 거친다.
 import React from 'react';
-import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // RN Modal은 별도 네이티브 뷰 계층이라 앱 루트의 GestureHandlerRootView가 닿지 않는다 — 시트 내부에 자체 루트 필요
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import ReanimatedSwipeable from 'react-native-gesture-handler/ReanimatedSwipeable';
@@ -21,6 +22,7 @@ export default function MomentListSheet({
 }) {
   const { t } = useTranslation();
   const { removeMoment } = useMoments();
+  const insets = useSafeAreaInsets();
 
   // 삭제 확인 — 스와이프 버튼·롱프레스가 같은 경로를 쓴다.
   // swipeable을 받으면 취소 시 열려 있던 행을 닫아 준다(확정 시엔 행 자체가 사라진다).
@@ -36,7 +38,8 @@ export default function MomentListSheet({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <GestureHandlerRootView style={st.root} accessibilityViewIsModal>
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
+      <GestureHandlerRootView style={[st.root, Platform.OS === 'android' && { paddingTop: insets.top }]} accessibilityViewIsModal>
         <View style={st.handle} />
         <View style={st.titleRow}>
           <Text style={st.title}>✨ {t('moments.sheetTitle')}</Text>

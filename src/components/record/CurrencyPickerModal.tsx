@@ -75,7 +75,7 @@ export function CurrencyPickerModal({
   return (
     <Modal
       visible={visible}
-      transparent
+      transparent statusBarTranslucent navigationBarTranslucent
       animationType="slide"
       onRequestClose={onClose}
     >
@@ -94,7 +94,7 @@ export function CurrencyPickerModal({
           <Text style={cs.currModalTitle}>{t('blog.currencySelect')}</Text>
           <View style={cs.currModalSearchWrap}>
             <SvgSearchIcon size={14} color={COLORS.textDim} />
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={cs.currModalSearchInput}
               value={search}
               onChangeText={onSearchChange}

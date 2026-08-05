@@ -534,7 +534,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 거주 국가 입력 모달 (iOS/Android 공용) */}
       <Modal
         visible={countryModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setCountryModalVisible(false)}
       >
@@ -542,7 +542,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
             <Text style={st.modalDesc}>{t('settings.countryModalDesc')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.modalInput}
               value={countryDraft}
               onChangeText={setCountryDraft}
@@ -567,7 +567,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
       <Modal
         visible={fontModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setFontModalVisible(false)}
       >
@@ -611,14 +611,14 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 장기체류 수동 시작 모달 — 국가 선택 단계 */}
       <Modal
         visible={stayModalStep === 'country'}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={closeStayModal}
       >
         <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
           <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={[st.modalInput, { marginBottom: 8 }]}
               value={stayCountrySearch}
               onChangeText={setStayCountrySearch}
@@ -652,7 +652,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}
       <Modal
         visible={stayModalStep === 'type'}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setStayModalStep('country')}
       >
@@ -682,7 +682,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
       {/* 지구본 스킨 선택 모달 — 그라데이션 원 미리보기 (aurora 폼 전용 적용) */}
       <Modal
         visible={skinModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setSkinModalVisible(false)}
       >

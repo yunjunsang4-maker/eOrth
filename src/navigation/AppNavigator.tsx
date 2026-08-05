@@ -312,8 +312,22 @@ export default function AppNavigator() {
         <Stack.Screen name="Login" component={LoginScreen} />
         <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
         <Stack.Screen name="BasicInfo" component={BasicInfoScreen} />
-        <Stack.Screen name="TravelImport" component={TravelImportScreen} />
-        <Stack.Screen name="ImportPhotoSelect" component={ImportPhotoSelectScreen} />
+        {/* 과거여행 불러오기 3단계 — 스와이프 뒤로가기를 전부 막는다.
+            전역 screenOptions가 gestureEnabled: true라 이 스택은 안드로이드에서도 스와이프가 먹는데,
+            이 흐름에서는 그게 화면 안의 '이전'·'프로필로 돌아가기' 버튼을 우회한다:
+              · 사진 선택 단계에서 스와이프로 나가면 고른 사진이 확인창 없이 통째로 날아가고
+              · 스캔 중에 나가면 진행 상태가 어정쩡하게 남는다.
+            이탈은 화면 안 버튼으로만 하도록 통일한다(각 단계에 이탈 수단이 모두 있다). */}
+        <Stack.Screen
+          name="TravelImport"
+          component={TravelImportScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
+          name="ImportPhotoSelect"
+          component={ImportPhotoSelectScreen}
+          options={{ gestureEnabled: false }}
+        />
         <Stack.Screen
           name="ImportComplete"
           component={ImportCompleteScreen}

@@ -471,7 +471,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 커스텀 프레임 색 모달 (프리미엄) — 색조×명도 그리드에서 자유 선택 */}
       <Modal
         visible={customColorVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setCustomColorVisible(false)}
       >
@@ -511,14 +511,14 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
       {/* 문구 스탬프 모달 (프리미엄) — 문구 입력 + 폰트 선택 */}
       <Modal
         visible={captionModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setCaptionModalVisible(false)}
       >
         <Pressable style={st.ccOverlay} onPress={() => setCaptionModalVisible(false)}>
           <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={[st.capInput, handleFontStyle(captionFont)]}
               value={captionDraft}
               onChangeText={setCaptionDraft}
@@ -529,7 +529,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
             />
             {/* 폰트 선택 — 아이디 폰트 16종 재사용, 입력한 문구로 미리보기 */}
             <Text style={st.capFontLabel}>{t('cut.captionFontLabel')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.capFontRow}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={st.capFontRow} keyboardShouldPersistTaps="handled">
               {HANDLE_FONTS.map((f) => {
                 const selected = (captionFont ?? 'default') === f.id;
                 return (

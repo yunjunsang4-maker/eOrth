@@ -10,6 +10,7 @@ import {
   Image,
   Dimensions,
   PanResponder,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
@@ -933,8 +934,10 @@ export default function StatsScreen() {
             <Svg width={ARC_W} height={ORBIT_H} style={StyleSheet.absoluteFill}>
               <SvgImage href={RATING_GLOBE_IMG} x={RATING_GLOBE_X} y={RATING_GLOBE_Y} width={RATING_GLOBE_D} height={RATING_GLOBE_D} preserveAspectRatio="xMidYMid meet" />
             </Svg>
-            {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽) */}
-            <Svg width={170 * OS} height={170 * OS} style={styles.ratingDisk3BorderBox} pointerEvents="none">
+            {/* 맨앞 원판(3겹) 테두리 — 문양·문양블러 위에 올려야 안 덮이고 보인다(반경 85가 문양블러 반경 95 안쪽)
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+            <View style={styles.ratingDisk3BorderBox} pointerEvents="none">
+            <Svg width={170 * OS} height={170 * OS}>
               <SvgDefs>
                 {/* 맨뒤 원판 테두리와 동일 — 좌상단 흰색 진하게, 가운데 투명, 우하단 흰색 약하게 */}
                 <SvgLinearGradient id="ratingDisk3Border" x1="0" y1="0" x2="1" y2="1">
@@ -953,6 +956,7 @@ export default function StatsScreen() {
                 strokeWidth={1.5}
               />
             </Svg>
+            </View>
           </View>
 
           {/* Travel Rating — 지구본 중앙 (탭: 평가 상세 · 꾹 누른 채 좌우 드래그: 랭킹 노드 궤도 회전) */}
@@ -1120,11 +1124,16 @@ const styles = StyleSheet.create({
     height: 57,
     borderRadius: 28.5,
     overflow: 'hidden',
-    shadowColor: '#7B61FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 15,
-    elevation: 8,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#7B61FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.6,
+        shadowRadius: 15,
+      },
+      default: {},
+    }),
   },
   globeMiniGrad: { flex: 1 },
   // 프로필 사진 없을 때 — 프로필 탭 기본 아바타와 동일한 톤(어두운 원 + 사람 아이콘)
@@ -1187,7 +1196,8 @@ const styles = StyleSheet.create({
   },
   cardChevron: {
     fontSize: 18,
-    lineHeight: 18,
+    // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+    lineHeight: Platform.OS === 'ios' ? 18 : 22,
     color: Colors.textMuted,
     marginLeft: 4,
   },

@@ -1,4 +1,5 @@
 // eOrth Design System - Typography & Spacing
+import { Platform } from 'react-native';
 
 export const Typography = {
   // Font families (Inter from Expo Google Fonts)
@@ -69,20 +70,27 @@ export const BorderRadius = {
 };
 
 export const Shadow = {
-  glow: {
-    shadowColor: '#7B61FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  goldGlow: {
-    shadowColor: '#FFD700',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 16,
-    elevation: 8,
-  },
+  // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정이 불가해 회색 사각
+  // 그림자로 렌더되므로 아예 뺀다(글로우가 필요한 곳은 NeonFab의 헤일로 View 폴백 참고)
+  glow: Platform.select({
+    ios: {
+      shadowColor: '#7B61FF',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.6,
+      shadowRadius: 20,
+    },
+    default: {},
+  }) as object,
+  goldGlow: Platform.select({
+    ios: {
+      shadowColor: '#FFD700',
+      shadowOffset: { width: 0, height: 0 },
+      shadowOpacity: 0.5,
+      shadowRadius: 16,
+    },
+    default: {},
+  }) as object,
+  // 무채색 카드 그림자는 elevation으로도 자연스러워 양 플랫폼 유지
   card: {
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },

@@ -8,7 +8,9 @@ import {
   FlatList,
   StyleSheet,
   Dimensions,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../../constants/skinTheme';
@@ -46,6 +48,7 @@ export function MediaPickerModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets();
   return (
     <Modal
       visible={visible}
@@ -53,7 +56,8 @@ export function MediaPickerModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
-      <View style={mpStyles.root} accessibilityViewIsModal>
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
+      <View style={[mpStyles.root, Platform.OS === 'android' && { paddingTop: insets.top }]} accessibilityViewIsModal>
         {/* 헤더 */}
         <View style={mpStyles.header}>
           <TouchableOpacity onPress={onClose} style={{ padding: 4 }}>

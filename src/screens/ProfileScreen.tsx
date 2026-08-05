@@ -246,15 +246,18 @@ const BadgeHighlightItem = ({ emoji, image, name, glow, earned = true }: { emoji
             ) : (
               <LockClosedIcon size={22} color="#7A7A89" />
             )}
-            <Svg width={64} height={64} viewBox="0 0 64 64" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-              <Defs>
-                <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
-                  <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
-                  <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
-                </SvgLinearGradient>
-              </Defs>
-              <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
-            </Svg>
+            {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+            <View style={StyleSheet.absoluteFill} pointerEvents="none">
+              <Svg width={64} height={64} viewBox="0 0 64 64" fill="none">
+                <Defs>
+                  <SvgLinearGradient id={ringId} x1="13" y1="0" x2="51" y2="64" gradientUnits="userSpaceOnUse">
+                    <Stop stopColor="#FFFFFF" stopOpacity="0.7" />
+                    <Stop offset="1" stopColor="#FFFFFF" stopOpacity="0.08" />
+                  </SvgLinearGradient>
+                </Defs>
+                <Circle cx="32" cy="32" r="31.4" stroke={`url(#${ringId})`} strokeWidth="1.2" fill="none" />
+              </Svg>
+            </View>
           </>
         )}
       </View>
@@ -297,6 +300,7 @@ function BadgeListModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const badgeInsets = useSafeAreaInsets(); // pageSheet가 안드로이드에선 전체화면이라 상단 인셋 보정
   const earnedCount = BADGES.filter((b) => earnedBadgeIds.has(b.id)).length;
 
   // 선택 모드: 기본(false)은 탭하면 확대, 선택 모드(true)는 탭하면 프로필 표시 토글
@@ -354,7 +358,8 @@ function BadgeListModal({
       presentationStyle="pageSheet"
       onRequestClose={handleClose}
     >
-      <View style={blStyles.root} accessibilityViewIsModal>
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
+      <View style={[blStyles.root, Platform.OS === 'android' && { paddingTop: badgeInsets.top }]} accessibilityViewIsModal>
         {/* 핸들·헤더를 아래로 끌면 닫힌다(스크롤 영역과 분리) */}
         <View {...dragToClose.panHandlers}>
         {/* 핸들 바 */}
@@ -437,9 +442,10 @@ function BadgeListModal({
                                         <Text style={blStyles.coinEmoji}>{badge.emoji}</Text>
                                       </LinearGradient>
                                     </LinearGradient>
-                                    {/* 메탈릭 광택 */}
+                                    {/* 메탈릭 광택 — 중간 'transparent'(투명 검정)는 흰↔검 보간에서 회색 띠를 만들어 4-stop(같은 위치 0.5)으로 분리 */}
                                     <LinearGradient
-                                      colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                                      colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']}
+                                      locations={[0, 0.5, 0.5, 1]}
                                       start={{ x: 0.1, y: 0.1 }}
                                       end={{ x: 0.9, y: 0.9 }}
                                       style={blStyles.coinShine}
@@ -492,7 +498,7 @@ function BadgeListModal({
         {/* 배지 확대 보기 오버레이 */}
         <Modal
           visible={enlargedBadge !== null}
-          transparent
+          transparent statusBarTranslucent navigationBarTranslucent
           animationType="fade"
           onRequestClose={() => setEnlargedBadge(null)}
         >
@@ -528,8 +534,10 @@ function BadgeListModal({
                               <Text style={blStyles.zoomCoinEmoji}>{enlargedBadge.emoji}</Text>
                             </LinearGradient>
                           </LinearGradient>
+                          {/* 중간 'transparent'(투명 검정)는 흰↔검 보간에서 회색 띠를 만들어 4-stop(같은 위치 0.5)으로 분리 */}
                           <LinearGradient
-                            colors={['rgba(255,255,255,0.4)', 'transparent', 'rgba(0,0,0,0.35)']}
+                            colors={['rgba(255,255,255,0.4)', 'rgba(255,255,255,0)', 'rgba(0,0,0,0)', 'rgba(0,0,0,0.35)']}
+                            locations={[0, 0.5, 0.5, 1]}
                             start={{ x: 0.1, y: 0.1 }}
                             end={{ x: 0.9, y: 0.9 }}
                             style={blStyles.zoomCoinShine}
@@ -583,6 +591,7 @@ function EditProfileModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const editInsets = useSafeAreaInsets(); // pageSheet가 안드로이드에선 전체화면이라 상단 인셋 보정
   const [name, setName] = useState(currentName);
   const [photo, setPhoto] = useState<string | null>(currentPhoto);
 
@@ -627,9 +636,10 @@ function EditProfileModal({
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.modalRoot}
+        style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: editInsets.top }]}
       >
         {/* 헤더 */}
         <View style={styles.modalHeader}>
@@ -669,7 +679,7 @@ function EditProfileModal({
           <View style={styles.modalField}>
             <Text style={styles.modalFieldLabel}>{t('profile.nickname')}</Text>
             <View style={[styles.modalInputWrap, { borderColor: skinAccent.tint(0.3) }]}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.modalInput}
                 value={name}
                 onChangeText={setName}
@@ -705,6 +715,7 @@ function PhotoViewerModal({
   const scale = useRef(new Animated.Value(1)).current;
   const currentScale = useRef(1);
   const lastDistance = useRef(0);
+  const pvInsets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
 
   useEffect(() => {
     if (!visible) {
@@ -754,7 +765,7 @@ function PhotoViewerModal({
   const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={pvStyles.container} accessibilityViewIsModal>
         {/* 배경 탭으로 닫기 */}
         <TouchableOpacity
@@ -773,8 +784,8 @@ function PhotoViewerModal({
             resizeMode="contain"
           />
         </View>
-        {/* X 버튼 */}
-        <TouchableOpacity style={pvStyles.closeBtn} onPress={onClose}>
+        {/* X 버튼 — 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
+        <TouchableOpacity style={[pvStyles.closeBtn, Platform.OS === 'android' && { top: pvInsets.top + 8 }]} onPress={onClose}>
           <Text style={pvStyles.closeBtnText}>✕</Text>
         </TouchableOpacity>
       </View>
@@ -820,7 +831,7 @@ function AvatarActionSheet({
       visible={visible}
       animationType="none"
       onRequestClose={onClose}
-      statusBarTranslucent
+      statusBarTranslucent navigationBarTranslucent
     >
       <View style={asStyles.overlay}>
         {/* 배경 탭으로 닫기 */}
@@ -1155,11 +1166,16 @@ function DraggableCardWrapper({
             { scale: dragScale },
           ],
           zIndex: 1000,
-          elevation: 12,
-          shadowColor: '#BF85FC',
-          shadowOffset: { width: 0, height: 10 },
-          shadowOpacity: 0.5,
-          shadowRadius: 20,
+          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+          ...Platform.select({
+            ios: {
+              shadowColor: '#BF85FC',
+              shadowOffset: { width: 0, height: 10 },
+              shadowOpacity: 0.5,
+              shadowRadius: 20,
+            },
+            default: {},
+          }),
         },
       ]}
     >
@@ -1256,7 +1272,7 @@ function GroupMergeModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="slide" transparent statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1, justifyContent: 'flex-end' }}
@@ -1276,7 +1292,7 @@ function GroupMergeModal({
             {/* 묶음 제목 */}
             <Text style={[gmSt.sectionLabel, { color: skinAccent.accent }]}>{t('profile.groupTitle')}</Text>
             <View style={gmSt.inputWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={gmSt.input}
                 value={title}
                 onChangeText={setTitle}
@@ -1942,28 +1958,33 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                     <PersonIcon size={50} color="#A0A0B0" />
                   </View>
                 )}
-                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현 */}
-                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
-                  <Defs>
-                    <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                      <Stop stopColor="#000000" stopOpacity="0" />
-                      <Stop offset="1" stopColor="#FFFFFF" />
-                    </SvgLinearGradient>
-                  </Defs>
-                  <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
-                </Svg>
+                {/* 사진 위 글래스 틴트 + 림 — Ellipse 2997.svg 그대로 재현
+                    (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
+                <View style={styles.avatarInner} pointerEvents="none">
+                  <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
+                    <Defs>
+                      <SvgLinearGradient id="avatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                        <Stop stopColor="#000000" stopOpacity="0" />
+                        <Stop offset="1" stopColor="#FFFFFF" />
+                      </SvgLinearGradient>
+                    </Defs>
+                    <Circle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#avatarInnerGrad)" strokeWidth="0.5" />
+                  </Svg>
+                </View>
                 {/* 그라데이션 테두리 — Ellipse 2985.svg 그대로 재현 (4px stroke). */}
                 {/* 기본 프사(사진 미설정)일 때만 표시하고, 실제 프사가 설정되면 그라데이션 링을 제거한다. */}
                 {!profilePhoto && (
-                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
-                    <Defs>
-                      <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                        <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
-                        <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
-                      </SvgLinearGradient>
-                    </Defs>
-                    <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
-                  </Svg>
+                  <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                    <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+                      <Defs>
+                        <SvgLinearGradient id="avatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                          <Stop stopColor={skinAccent.ringGradient?.[0] ?? '#00D8F3'} />
+                          <Stop offset="1" stopColor={skinAccent.ringGradient?.[1] ?? '#EC34F7'} />
+                        </SvgLinearGradient>
+                      </Defs>
+                      <Circle cx="64" cy="64" r="61" stroke="url(#avatarRingGrad)" strokeWidth="6" fill="none" />
+                    </Svg>
+                  </View>
                 )}
             </View>
           </LiquidPressable>
@@ -2254,26 +2275,29 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             activeOpacity={0.85}
             onLayout={(e) => setMergeBtnSize({ w: Math.round(e.nativeEvent.layout.width), h: Math.round(e.nativeEvent.layout.height) })}
           >
-            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208) */}
+            {/* 유리 테두리 — #CECFCD → 투명 그라데이션 stroke (시안 Frame 2147230208)
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다) */}
             {mergeBtnSize.w > 0 && (
-              <Svg width={mergeBtnSize.w} height={mergeBtnSize.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-                <Defs>
-                  <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
-                    <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
-                    <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-                  </SvgLinearGradient>
-                </Defs>
-                <SvgRect
-                  x={0.5}
-                  y={0.5}
-                  width={mergeBtnSize.w - 1}
-                  height={mergeBtnSize.h - 1}
-                  rx={(mergeBtnSize.h - 1) / 2}
-                  stroke="url(#mergeBtnRing)"
-                  strokeWidth={1}
-                  fill="none"
-                />
-              </Svg>
+              <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                <Svg width={mergeBtnSize.w} height={mergeBtnSize.h}>
+                  <Defs>
+                    <SvgLinearGradient id="mergeBtnRing" x1="0.216" y1="0" x2="0.28" y2="1">
+                      <Stop offset="0" stopColor="#CECFCD" stopOpacity={mergeSelected.length < 2 ? 0.3 : 1} />
+                      <Stop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+                    </SvgLinearGradient>
+                  </Defs>
+                  <SvgRect
+                    x={0.5}
+                    y={0.5}
+                    width={mergeBtnSize.w - 1}
+                    height={mergeBtnSize.h - 1}
+                    rx={(mergeBtnSize.h - 1) / 2}
+                    stroke="url(#mergeBtnRing)"
+                    strokeWidth={1}
+                    fill="none"
+                  />
+                </Svg>
+              </View>
             )}
             <Text style={[mergeSt.barBtnTxt, mergeSelected.length < 2 && mergeSt.barBtnTxtDisabled]}>
               {t('profile.mergeBtn', { count: mergeSelected.length })}
@@ -2393,7 +2417,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: 28 },
+  // lineHeight == fontSize면 안드로이드에서 글리프 상하가 잘림 — 안드로이드만 여유 확보
+  backIcon: { fontSize: 28, color: COLORS.white, lineHeight: Platform.OS === 'ios' ? 28 : 34 },
 
   // 프로필 헤더 행 (아바타 + 정보)
   profileRow: {

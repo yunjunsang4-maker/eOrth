@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, Dimensions,
+  View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -175,7 +175,7 @@ export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onC
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="fade" onRequestClose={onCancel} statusBarTranslucent navigationBarTranslucent>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={s.overlay} accessibilityViewIsModal>
           <Text style={s.title}>{t('comp.cutAdjustTitle')}</Text>
@@ -260,7 +260,11 @@ const s = StyleSheet.create({
   // 확인 — 스킨 그라데이션 + 소프트 글로우
   btnPrimaryWrap: {
     borderRadius: 999,
-    shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12, elevation: 8,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자). shadowColor(accent)는 사용처 인라인
+    ...Platform.select({
+      ios: { shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.55, shadowRadius: 12 },
+      default: {},
+    }),
   },
   btnPrimaryGrad: {
     paddingHorizontal: 28, paddingVertical: 12, borderRadius: 999,

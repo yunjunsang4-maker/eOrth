@@ -10,7 +10,7 @@
 import { supabase } from './supabase';
 import { getMyUserId } from './profile';
 import { uploadImage, uploadImages } from './media';
-import { compressImage } from '../utils/imageCompress';
+import { compressImage, THUMB_MAX_EDGE, THUMB_QUALITY } from '../utils/imageCompress';
 import type { TravelRecord } from '../store/recordStore';
 
 // 사진첩 서버본 압축 규격 — 감상·재동기화용으로 충분한 화질. 원본(무압축) 백업은 프리미엄 혜택.
@@ -41,6 +41,32 @@ const ups = async (arr: string[]): Promise<string[]> => (await uploadImages(arr)
 async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions): Promise<TravelRecord> {
   const copy: TravelRecord = { ...rec };
   const isAlbum = rec.viewType === 'album';
+
+  // ─── 목록용 축소본(썸네일) ───
+  // 피드·스토리·여행카드 커버는 1600px 원본을 그대로 받아 쓰고 있었다. 카드 크기의 5배가 넘는
+  // 픽셀을 매번 내려받는 셈이라 이그레스가 그대로 태워졌다. 여기서 '원본 URL → 축소본 URL' 맵을
+  // 만들어 data에 실어 보내면, 목록 렌더러(utils/thumbUrl)가 축소본을 골라 쓴다.
+  // 수정 발행이면 기존 맵을 이어받는다 — 이미 올린 사진의 축소본을 다시 만들 필요가 없다.
+  const thumbs: Record<string, string> = { ...(rec.thumbs ?? {}) };
+  // 업로드된 원본 URL에 대응하는 축소본을 만들어 올린다. 실패는 무시(원본으로 표시될 뿐).
+  const addThumb = async (localUri: string, remoteUrl: string): Promise<string> => {
+    if (thumbs[remoteUrl]) return remoteUrl;
+    try {
+      const small = await compressImage(localUri, THUMB_MAX_EDGE, THUMB_QUALITY);
+      if (small === localUri) return remoteUrl; // 이미 충분히 작음 — 원본을 그대로 쓰는 게 이득
+      const url = await uploadImage(small);
+      if (/^https?:\/\//.test(url)) thumbs[remoteUrl] = url;
+    } catch {
+      /* 썸네일 생성/업로드 실패는 발행을 막지 않는다 */
+    }
+    return remoteUrl;
+  };
+  // 목록에 노출되는 사진 전용 업로드 — 원본 업로드 + 축소본 생성.
+  // (이미 원격 URL이면 로컬 원본이 없어 축소본을 만들 수 없으므로 그대로 둔다)
+  const upCover = async (u: string): Promise<string> => {
+    if (/^https?:\/\//.test(u)) return u;
+    return addThumb(u, await up(u));
+  };
   // 사진첩 전용 업로드 — 캐시 재사용 + (압축 화질이면) 장변 축소 후 업로드
   const uploadedNow: Record<string, string> = {};
   const cache = opts?.uploadCache ?? {};
@@ -60,24 +86,37 @@ async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions):
         for (const u of copy.medias) out.push(await upAlbum(u));
         copy.medias = out;
       }
-      if (copy.representativePhoto) copy.representativePhoto = await upAlbum(copy.representativePhoto);
+      if (copy.representativePhoto) {
+        const cover = copy.representativePhoto;
+        copy.representativePhoto = await upAlbum(cover);
+        // 앨범 커버는 프로필 여행카드 목록에 뜨므로 축소본을 만든다(본문 100장은 대상 아님)
+        if (!/^https?:\/\//.test(cover)) await addThumb(cover, copy.representativePhoto);
+      }
     } finally {
       // 중간 실패해도 여기까지 올라간 장은 캐시로 보고 — 재시도가 이어서 진행되게 (100장 업로드 내성)
       if (Object.keys(uploadedNow).length > 0) opts?.onUploaded?.(uploadedNow);
     }
     // 로컬 전용 캐시는 서버 data에 싣지 않는다
     delete copy.uploadedMediaUrls;
+    if (Object.keys(thumbs).length > 0) copy.thumbs = thumbs;
     return copy;
   }
-  if (copy.medias?.length) copy.medias = await ups(copy.medias);
-  if (copy.representativePhoto) copy.representativePhoto = await up(copy.representativePhoto);
-  if (copy.snapFrontUri) copy.snapFrontUri = await up(copy.snapFrontUri);
-  if (copy.snapBackUri) copy.snapBackUri = await up(copy.snapBackUri);
+  // medias[0]는 피드 카드가 그리는 사진이라 축소본을 만든다. 나머지는 상세에서만 쓰여 원본만 올린다.
+  if (copy.medias?.length) {
+    const [first, ...rest] = copy.medias;
+    copy.medias = [await upCover(first), ...(await ups(rest))];
+  }
+  if (copy.representativePhoto) copy.representativePhoto = await upCover(copy.representativePhoto);
+  if (copy.snapFrontUri) copy.snapFrontUri = await upCover(copy.snapFrontUri);
+  if (copy.snapBackUri) copy.snapBackUri = await upCover(copy.snapBackUri);
   if (copy.cutPhoto) {
+    // 네컷은 피드에서 4장을 라이브 합성해 그린다 — 4장 모두 축소본이 필요하다
+    const cutPhotos: string[] = [];
+    for (const p of copy.cutPhoto.photos) cutPhotos.push(await upCover(p));
     copy.cutPhoto = {
       ...copy.cutPhoto,
-      previewUri: await up(copy.cutPhoto.previewUri),
-      photos: await ups(copy.cutPhoto.photos),
+      previewUri: await upCover(copy.cutPhoto.previewUri),
+      photos: cutPhotos,
       // 프레임 배경 사진(프리미엄) — 타인 피드 라이브 렌더에도 보여야 하므로 업로드
       frameImage: copy.cutPhoto.frameImage ? await up(copy.cutPhoto.frameImage) : undefined,
     };
@@ -106,6 +145,7 @@ async function withUploadedMedia(rec: TravelRecord, opts?: PublishMediaOptions):
       })
     );
   }
+  if (Object.keys(thumbs).length > 0) copy.thumbs = thumbs;
   return copy;
 }
 
@@ -216,23 +256,89 @@ function mapRowToRecord(row: any): TravelRecord {
 //    관계 후보를 여러 개 찾아 PGRST201(모호) 오류를 낸다 (실서버 확인됨).
 const POST_SELECT = 'id, author_id, data, likes_count, comments_count, created_at, profiles:public_profiles!posts_author_id_fkey(handle, emoji, profile_photo, handle_font)';
 
-// 피드: 남들의 공개/메이트 글을 TravelRecord로 변환해 최신순 반환 (내 글 제외)
+// ─── 피드 조회 (커서 페이지네이션) ───
 //
-// ⚠️ 실패는 반드시 null 로 구분한다(빈 배열 아님). 예전엔 오류도 [] 로 돌려줘서
-//    호출부가 "글이 하나도 없다"와 구분하지 못했고, 그 결과 ①네트워크 오류인데
-//    "아직 기록이 없어요 + 첫 기록 남기기" 안내가 뜨고 ②빈 배열이 피드 캐시를
-//    덮어써 오프라인 재시작 시 마지막 피드까지 사라졌다.
-export async function fetchFeed(): Promise<TravelRecord[] | null> {
+// 예전에는 limit(300) 단발 조회였다. 그 설계의 문제 두 가지를 여기서 없앤다.
+//   ① 이웃이 늘면 300번째 밖의 글이 피드에서 영영 사라졌다(더 받을 방법이 없었음).
+//   ② 새로고침 한 번에 300건의 data(JSONB 전체 — 블로그 본문·사진 URL·perCountryData)를
+//      내려받아 이그레스와 DB CPU를 그대로 태웠다.
+// 이제 FEED_PAGE_SIZE 단위로 끊어 받고, 화면 하단에서 다음 페이지를 이어 받는다.
+export const FEED_PAGE_SIZE = 20;
+
+/** 다음 페이지 시작점 — 마지막으로 받은 행의 created_at (ISO 문자열) */
+export type FeedCursor = string;
+
+export interface FeedPage {
+  posts: TravelRecord[];
+  /** 다음 호출에 넘길 커서. null이면 더 없음 */
+  nextCursor: FeedCursor | null;
+  hasMore: boolean;
+}
+
+// 피드 스트림에서 제외할 뷰 타입:
+//   · album — 사진첩은 게시물이 아니라 앨범이라 클라이언트가 어차피 버린다(SocialScreen allVisible).
+//             그런데 medias가 최대 100장이라 '버릴 것'을 받느라 피드 응답이 가장 크게 부풀었다.
+//   · snap  — 스토리 라인 전용. 타임라인 페이지에 섞이면 페이지 경계에 따라 스토리가 들쭉날쭉해져
+//             fetchFeedSnaps로 분리해 받는다.
+// ⚠️ view_type 은 nullable(옛 행)이라 neq/not-in 만 쓰면 NULL 행이 통째로 빠진다(NULL 비교 → NULL).
+//    is.null 을 명시적으로 OR 해서 옛 글이 피드에서 사라지지 않게 한다.
+const TIMELINE_VIEW_TYPES = 'view_type.is.null,and(view_type.neq.album,view_type.neq.snap)';
+
+/**
+ * 피드 한 페이지 — 남들의 메이트 공개 글을 최신순으로 (내 글 제외).
+ *
+ * ⚠️ 실패는 반드시 null 로 구분한다(빈 배열 아님). 예전엔 오류도 [] 로 돌려줘서
+ *    호출부가 "글이 하나도 없다"와 구분하지 못했고, 그 결과 ①네트워크 오류인데
+ *    "아직 기록이 없어요 + 첫 기록 남기기" 안내가 뜨고 ②빈 배열이 피드 캐시를
+ *    덮어써 오프라인 재시작 시 마지막 피드까지 사라졌다.
+ */
+export async function fetchFeed(cursor?: FeedCursor | null, limit = FEED_PAGE_SIZE): Promise<FeedPage | null> {
   if (!supabase) return null;
   const uid = await getMyUserId();
   try {
     let query = supabase
       .from('posts')
       .select(POST_SELECT)
+      .or(TIMELINE_VIEW_TYPES)
       .order('created_at', { ascending: false })
-      // 커서 페이지네이션 도입 전 임시 상한 — 네트워크 게시물이 이 수를 넘으면
-      // 오래된 글이 피드에서 잘린다(베타 규모 기준). 초과 시 무한 스크롤 도입 필요.
-      .limit(300);
+      // created_at 동률에서도 페이지 순서가 흔들리지 않게 id를 2차 정렬키로 둔다
+      .order('id', { ascending: false })
+      .limit(limit);
+    if (uid) query = query.neq('author_id', uid);
+    // lt가 아니라 lte + 호출부 중복 제거 — 같은 created_at 이 페이지 경계에 걸렸을 때
+    // lt는 그 행들을 통째로 건너뛰지만(글 유실), lte는 최악이라도 중복 1건이라 안전하다.
+    if (cursor) query = query.lte('created_at', cursor);
+    const { data, error } = await query;
+    if (error || !data) return null;
+    const rows = data as any[];
+    const last = rows.length > 0 ? (rows[rows.length - 1].created_at as string) : null;
+    // 커서가 앞으로 나아가지 못하면(한 페이지가 전부 같은 created_at) 무한 루프가 되므로 중단한다.
+    const advanced = !!last && last !== cursor;
+    return {
+      posts: rows.map(mapRowToRecord),
+      nextCursor: advanced ? last : null,
+      hasMore: rows.length === limit && advanced,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 스냅(스토리 라인) 전용 조회 — 타임라인 페이지와 무관하게 최신 스냅을 한 번에 받는다.
+ * 스냅은 사진 2장짜리 가벼운 기록이라 이 수량을 받아도 응답이 작다.
+ * 실패 시 null (피드와 동일 계약 — 호출부가 기존 스냅을 지우지 않게).
+ */
+export async function fetchFeedSnaps(limit = 50): Promise<TravelRecord[] | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  try {
+    let query = supabase
+      .from('posts')
+      .select(POST_SELECT)
+      .eq('view_type', 'snap')
+      .order('created_at', { ascending: false })
+      .limit(limit);
     if (uid) query = query.neq('author_id', uid);
     const { data, error } = await query;
     if (error || !data) return null;

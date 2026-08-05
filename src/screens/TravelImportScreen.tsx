@@ -62,6 +62,7 @@ import {
   type ProbePoint,
 } from '../utils/scanSampling';
 import { requestNotificationPermission } from '../services/snapService';
+import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 분석 기간 옵션 — 기간이 길수록 조회·지오코딩할 사진이 많아져 분석 시간이 길어진다.
@@ -248,20 +249,23 @@ function PeriodChip({ label, on, idSuffix, onPress }: { label: string; on: boole
       onLayout={(e) => setW(e.nativeEvent.layout.width)}
     >
       {w > 0 && (
-        <Svg width={w} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
-              <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
-              <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
-              <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
-              <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgRect
-            x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
-            fill="none" stroke={`url(#${gid})`} strokeWidth={1}
-          />
-        </Svg>
+        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={w} height={H}>
+            <SvgDefs>
+              <SvgLinearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
+                <SvgStop offset="0" stopColor="#FFFFFF" stopOpacity={0.9} />
+                <SvgStop offset="0.35" stopColor="#FFFFFF" stopOpacity={0.12} />
+                <SvgStop offset="0.65" stopColor="#88888F" stopOpacity={0.12} />
+                <SvgStop offset="1" stopColor="#88888F" stopOpacity={0.6} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect
+              x={0.5} y={0.5} width={w - 1} height={H - 1} rx={(H - 1) / 2}
+              fill="none" stroke={`url(#${gid})`} strokeWidth={1}
+            />
+          </Svg>
+        </View>
       )}
       <Text style={styles.periodTxt}>{label}</Text>
     </TouchableOpacity>
@@ -382,6 +386,9 @@ function TripCard({
 }
 
 export default function TravelImportScreen({ navigation, route }: Props) {
+  // 스와이프와 함께 하드웨어 뒤로가기도 막는다 — 스캔 도중 이탈로 진행 상태가 어정쩡해지는 것 방지.
+  // 나가는 길은 화면 안에 있다: 권한 화면·결과 없음 화면의 스킵 링크, 결과 목록의 '프로필로 돌아가기'.
+  useBlockHardwareBack();
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets();
   const { homeCountryCode, lastImportAt } = useSettings();
@@ -989,7 +996,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
-          { paddingTop: insets.top + 14, paddingBottom: showResults ? 140 : insets.bottom + 24 },
+          // 결과 화면의 하단 여백은 플로팅 바 전용 — CTA 아래 이탈 링크가 붙어 바가 그만큼 높아졌다
+          { paddingTop: insets.top + 14, paddingBottom: showResults ? 182 : insets.bottom + 24 },
         ]}
         showsVerticalScrollIndicator={false}
         onLayout={(e) => setViewportH(e.nativeEvent.layout.height)}
@@ -1177,9 +1185,10 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       </ScrollView>
 
       {/* ── 여행 합치기 모달 ── */}
-      <Modal visible={mergeVisible} transparent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
+      <Modal visible={mergeVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMergeVisible(false)}>
         <View style={styles.mgOverlay} accessibilityViewIsModal>
-          <View style={styles.mgSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[styles.mgSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={styles.mgTitle}>{t('imports.mergeTitle')}</Text>
             <Text style={styles.mgSub}>
               합칠 여행을 2개 이상 선택하세요.{'\n'}같은 나라의 여행끼리만 합칠 수 있어요.
@@ -1259,6 +1268,21 @@ export default function TravelImportScreen({ navigation, route }: Props) {
                 : t('imports.selectTripsToImport')
             }
           />
+          {/* 결과 화면 이탈 수단 — 여기에만 없었다.
+              권한 요청 화면과 '결과 없음' 화면에는 스킵 링크가 있는데, 정작 여행을 찾아낸
+              결과 목록에는 나가는 길이 없어서 가져오기를 끝내야만 화면을 벗어날 수 있었다.
+              이 시점엔 아직 아무것도 저장되지 않으므로(저장은 handleImport에서 시작) 확인 없이 즉시 나간다.
+              가져오는 중에는 막는다 — 중간에 나가면 절반만 들어온 상태가 된다. */}
+          <TouchableOpacity
+            style={[styles.skipBtn, styles.bottomBarSkip]}
+            onPress={leaveImport}
+            disabled={isImporting}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.skipText, isImporting && { opacity: 0.4 }]}>
+              {t(fromProfile ? 'imports.backToProfile' : 'imports.skip')}
+            </Text>
+          </TouchableOpacity>
         </View>
       )}
     </View>
@@ -1399,6 +1423,12 @@ const styles = StyleSheet.create({
   skipBtn: {
     paddingVertical: 12,
   },
+  // 결과 화면 하단 바 안의 스킵 링크 — 바는 자식을 가로로 늘리므로 여기서 가운데로 모은다
+  // (초기·빈 결과 화면의 스킵은 이미 가운데 정렬된 컨테이너 안에 있어 이 보정이 필요 없다)
+  bottomBarSkip: {
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
   skipText: {
     color: 'rgba(255,255,255,0.4)',
     fontSize: 13,
@@ -1497,11 +1527,16 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     top: -2,
     backgroundColor: '#00E5FF',
-    shadowColor: '#00E5FF',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.9,
-    shadowRadius: 6,
-    elevation: 6,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.9,
+        shadowRadius: 6,
+      },
+      default: {},
+    }),
   },
 
   // 실시간 발견 나라

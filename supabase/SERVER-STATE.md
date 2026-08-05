@@ -19,12 +19,48 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-02 기준)
+## 1. 지금 해야 하는 것 — 없음 (2026-08-05 기준)
 
-**서버 반영 작업은 없다.** `schema.sql` 재실행과 Edge Function 4종 배포가 모두 끝났고,
-출시 전 감사(2026-08-02)의 치명 2건도 서버에서 차단 확인됐다.
+2026-08-05 확장성(스케일) 작업의 서버 반영 2건이 같은 날 완료됐다.
 
-남은 것은 **4번(정리 대기)** 하나뿐이다 — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
+| # | 무엇을 | 상태 |
+|---|---|---|
+| 1 | `schema.sql` 재실행 — 추천 메이트 결과 캐시 도입 | **2026-08-05 실행 완료** (사용자 실행 보고) |
+| 2 | `cron-setup.sql` 실행 + Vault `service_role_key` 등록 | **2026-08-05 실행 완료** (사용자 실행 보고) |
+
+> ⚠️ 위 두 줄은 **서버 조회로 실측한 값이 아니라 실행 보고 기반**이다. 어긋남이 의심되면 아래 쿼리로 직접 확인할 것.
+
+### 1번으로 생긴 것 (반영 확인용)
+
+- 표 `public.mate_suggestions_cache` — 사용자·파라미터별 추천 결과 캐시(TTL 6시간)
+- 함수 `public.mate_suggestions_compute(int, text[])` — 기존 계산 본체(클라이언트 실행 권한 회수됨)
+- 함수 `public.mate_suggestions(int, text[])` — 캐시 래퍼(`language plpgsql`). **클라이언트 호출 이름·시그니처·반환 컬럼은 그대로**라 앱 수정이 필요 없다 → 이미 배포된 빌드에도 즉시 적용된다
+- 트리거 `trg_posts_invalidate_mate_cache` — 내 기록이 추가/삭제되면 내 캐시만 즉시 무효화
+
+```sql
+-- 1번 확인: mate_suggestions 가 plpgsql(래퍼), _compute 가 sql(본체)로 나와야 한다
+select proname, prosecdef, prolang::regtype from pg_proc
+ where pronamespace = 'public'::regnamespace
+   and proname in ('mate_suggestions', 'mate_suggestions_compute');
+select count(*) from public.mate_suggestions_cache;  -- 표가 없으면 에러 = 미반영
+
+-- 캐시가 실제로 도는지: 앱에서 발견/메이트찾기 화면을 연 뒤 행이 생기고,
+-- 다시 열어도 computed_at 이 그대로면 재계산을 건너뛴 것이다(정상)
+select user_id, params_key, computed_at, jsonb_array_length(rows) as n
+  from public.mate_suggestions_cache order by computed_at desc limit 5;
+
+-- 2번 확인: 잡 3건 + Vault 시크릿
+select jobname, schedule, active from cron.job order by jobname;
+--   purge-deleted-accounts / purge-mate-cache / purge-notifications
+select name from vault.decrypted_secrets where name = 'service_role_key';
+
+-- 잡이 실제로 돈 결과 (등록 다음 날부터 쌓인다)
+select j.jobname, d.status, d.return_message, d.start_time
+  from cron.job_run_details d join cron.job j on j.jobid = d.jobid
+ order by d.start_time desc limit 20;
+```
+
+남은 것은 **4번(정리 대기)** — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
 
 ### 코드 밖에 남은 일 (콘솔·외부 — SQL 로는 못 고친다)
 
@@ -57,6 +93,8 @@
 | 여행 DNA 매칭 6축 재설계 | 2026-07-28 | ✅ 존재 | `mate_suggestions` (schema.sql 663행) |
 | 스키마 감사 수정 10건 | 2026-08-01 | ✅ 확인 | `safe_to_date` 함수 + `uq_profiles_handle_lower` 인덱스 (커밋 `a828788`·`406116c`) |
 | **출시 전 감사 수정** | **2026-08-02** | **✅ 확인** | 아래 상세 (커밋 `f827009`) |
+| 추천 메이트 결과 캐시 (`mate_suggestions_cache` + 래퍼) | 2026-08-05 | 실행 보고 | 커밋 `c8498ca`. 확인 쿼리는 1번 절 |
+| pg_cron 3종 등록 (`cron-setup.sql`) + Vault `service_role_key` | 2026-08-05 | 실행 보고 | 알림 정리·탈퇴 파기·캐시 정리. 이전까지 한 번도 돈 적 없음 |
 
 ### 출시 전 감사(2026-08-02) 반영 상세 — SQL Editor 조회로 실측
 
@@ -110,6 +148,7 @@
 | `migration-2026-07-15-imported-albums-friends.sql` | **⛔ 2026-07-15 실행 완료.** 재실행하면 그 뒤 사용자가 직접 비공개로 되돌린 기록까지 다시 공개로 승격된다 |
 | `migration-2026-07-15-neighbors.sql` | **⛔ 2026-07-15 실행 완료.** 맞팔 이관은 멱등이지만 공개범위 이관이 사용자가 되돌린 값을 덮는다. `follows` 테이블도 이미 drop 되어 1)은 어차피 빈 결과 |
 | `analysis-mate-score-distribution.sql` | **폐기됨.** 2026-07-28에 없어진 구 4축 공식을 재는 파일 — 돌리면 "개선이 없다"는 잘못된 결론이 나온다 |
+| `cron-setup.sql` | 실행해도 안전하다(재실행 가능 — `cron.schedule` 은 같은 이름 잡을 덮어쓴다). 위 1번 표 참조 |
 | `tmp-perf-verify.sql` | 성능 리팩터 검증용 구 함수 스냅샷(2026-07-28). 아래 4번 참조 |
 
 ---

@@ -24,7 +24,7 @@ export function InviteNudgeModal({ target, onSend, onClose }: {
   useEffect(() => { setImgError(false); }, [target?.photo]);
   const visible = !!target;
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.card}>
           <View style={s.avatar}>

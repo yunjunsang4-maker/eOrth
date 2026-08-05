@@ -257,7 +257,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
           </Text>
 
           <View style={st.urlInputWrap}>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.urlInput}
               placeholder="https://blog.naver.com/..."
               placeholderTextColor={C.muted}

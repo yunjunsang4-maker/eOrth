@@ -9,6 +9,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';
+import { andFitText } from '../utils/fitText';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -42,7 +43,8 @@ function SegLabel({ text, active }: { text: string; active: boolean }) {
     op.value = withTiming(active ? 1 : 0.5, ANIM);
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const style = useAnimatedStyle(() => ({ opacity: op.value }));
-  return <Animated.Text style={[styles.label, style]}>{text}</Animated.Text>;
+  // 안드로이드 한글 폰트(Noto)가 넓어 고정 트랙 안에서 라벨이 줄바꿈/썸 폭 어긋남 — 한 줄 고정+자동 축소
+  return <Animated.Text style={[styles.label, style]} {...andFitText}>{text}</Animated.Text>;
 }
 
 export function SegmentedToggle<T extends string>({

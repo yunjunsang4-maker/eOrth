@@ -5,6 +5,8 @@ import { Platform } from 'react-native';
 // iOS(Apple SD 고딕)보다 글리프가 넓고 시스템 글꼴 배율(fontScale)도 그대로 곱해진다.
 // 그 결과 iOS 폭 기준의 고정폭 칸에서 한글·단위 라벨이 줄바꿈돼 레이아웃이 밀린다
 // → android에서만 한 줄 고정·자동 축소·배율 상한을 적용. <Text {...andFitText}> 로 사용.
+// minimumFontScale: 자동 축소의 하한 — 없으면(기본 0.01) 긴 번역문에서 글자가 무한정
+// 작아져 읽을 수 없게 된다 (FeatureShowcaseCard의 로컬 구현 0.82와 통일)
 export const andFitText = Platform.OS === 'android'
-  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, maxFontSizeMultiplier: 1.2 } as const)
+  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: 1.2 } as const)
   : ({} as const);

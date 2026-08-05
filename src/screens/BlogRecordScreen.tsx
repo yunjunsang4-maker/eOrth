@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -193,6 +193,7 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
 }) {
   const [idx, setIdx] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
 
   useEffect(() => {
     if (visible) {
@@ -205,7 +206,7 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
 
   if (!visible) return null;
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }}>
         <ScrollView
           ref={scrollRef}
@@ -225,7 +226,8 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
             <Text style={{ color: '#fff', fontSize: 14 }}>{idx + 1} / {images.length}</Text>
           </View>
         )}
-        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: 50, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
+        <TouchableOpacity onPress={onClose} style={{ position: 'absolute', top: Platform.OS === 'ios' ? 50 : insets.top + 6, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
         </TouchableOpacity>
       </View>
@@ -274,7 +276,7 @@ function SlideImageViewer({ items, width, blockId, onCaptionChange, onImagePress
           ))}
         </View>
       )}
-      <TextInput
+      <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
         style={{ color: '#A1A1B0', fontSize: 12, textAlign: 'center', paddingVertical: 8, paddingHorizontal: 12, fontStyle: 'italic' }}
         placeholder={t('blog.photoCaptionN', { n: activeIdx + 1 })}
         placeholderTextColor="#4A4A59"
@@ -333,6 +335,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const st = useSt();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
   const { addRecord, updateRecord, addTripGroup, saveDraft, updateDraft, deleteDraft, drafts, neighbors, records } = useRecords();
@@ -1410,7 +1413,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           </View>
 
           {/* 제목 */}
-          <TextInput style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.titleInput} placeholder={t('blog.titlePlaceholder')} placeholderTextColor={C.muted}
             value={title} onChangeText={setTitle} maxLength={100}
             onSubmitEditing={() => { const f = blocks[0]; if (f) { setActiveBlockId(f.id); blockRefs.current[f.id]?.focus(); } }} />
           {/* 부제목(선택) — 있으면 제목 아래 보라색으로 표시, 탭하면 수정 */}
@@ -1428,7 +1431,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
           <View style={st.tagSection}>
             <View style={st.tagInputRow}>
               <Text style={[st.hashIcon, { color: skinAccent.accent }]}>#</Text>
-              <TextInput style={st.tagInput} placeholder={t('blog.tagPlaceholder')} placeholderTextColor={C.muted}
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.tagInput} placeholder={t('blog.tagPlaceholder')} placeholderTextColor={C.muted}
                 value={keywordInput} onChangeText={setKeywordInput} onSubmitEditing={addKeyword} returnKeyType="done" />
             </View>
             {keywords.length > 0 && (
@@ -1600,7 +1603,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 링크 입력 */}
       <PickerModal visible={linkModalVisible} onClose={() => setLinkModalVisible(false)} title={t('blog.insertLink')}>
-        <TextInput style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
         <TouchableOpacity style={[st.schedConfirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleAddLink}>
           <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
@@ -1609,7 +1612,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
       {/* 부제목 입력 */}
       <PickerModal visible={subtitleModalVisible} onClose={() => setSubtitleModalVisible(false)} title={t('blog.subtitle')}>
-        <TextInput style={st.schedInput} placeholder={t('blog.subtitlePlaceholder')} placeholderTextColor={C.muted}
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder={t('blog.subtitlePlaceholder')} placeholderTextColor={C.muted}
           value={subtitleDraft} onChangeText={setSubtitleDraft} maxLength={60} autoFocus />
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {!!subtitle.trim() && (
@@ -1624,13 +1627,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       </PickerModal>
 
       {/* 여행정보 패널 */}
-      <Modal visible={travelInfoVisible} transparent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
+      <Modal visible={travelInfoVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setTravelInfoVisible(false)}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} accessibilityViewIsModal>
         <View style={{ flex: 1 }}>
           {/* backdrop을 패널의 형제(뒤 절대배치)로 둬야 내부 ScrollView 스크롤이 씹히지 않는다.
               패널을 TouchableOpacity로 감싸고 onStartShouldSetResponder로 막던 방식은 스크롤 제스처를 가로챘음 */}
           <TouchableOpacity style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(0,0,0,0.6)' }]} activeOpacity={1} onPress={() => setTravelInfoVisible(false)} />
-          <View style={st.travelPanel}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.travelPanel, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
             <View style={st.panelHandle} />
             <ScrollView ref={travelScrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text style={st.panelTitle}>{t('blog.travelInfoTitle')}</Text>
@@ -1742,7 +1746,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       {CURRENCIES.includes(currency) ? t('blog.otherCurrency') : currency}
                     </Text>
                   </TouchableOpacity>
-                  <TextInput style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.budgetInput} placeholder={t('blog.amountPlaceholder')} placeholderTextColor={C.muted}
                     value={budget} onChangeText={v => setBudget(v.replace(/[^0-9]/g, ''))} keyboardType="numeric" maxLength={12} />
                 </View>
               </PanelRow>
@@ -1796,7 +1800,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                       ))}
                     </View>
                   )}
-                  <TextInput style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.kwInput} placeholder={t('comp2.keywordPlaceholder')} placeholderTextColor={C.muted}
                     value={keywordInput} onChangeText={v => {
                       if (v.endsWith(' ')) {
                         // 중복 검사도 '#' 제거 후 값으로 — 제거 전 값(#seoul)로 검사하고 제거 후
@@ -1818,7 +1822,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
               {/* 메모 (비공개) */}
               <PanelRow label="" icon={null} labelText={t('blog.memoLabel')}>
-                <TextInput style={st.memoInput} placeholder={t('blog.memoPlaceholder')} placeholderTextColor={C.muted}
+                <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.memoInput} placeholder={t('blog.memoPlaceholder')} placeholderTextColor={C.muted}
                   value={memo} onChangeText={setMemo} multiline textAlignVertical="top"
                   onFocus={() => setTimeout(() => travelScrollRef.current?.scrollToEnd({ animated: true }), 300)} />
               </PanelRow>
@@ -1892,7 +1896,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <View style={st.currModalSheet}>
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>{t('blog.currencySelect')}</Text>
-                  <TextInput
+                  <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                     style={st.currModalSearch}
                     value={currencySearch}
                     onChangeText={setCurrencySearch}
@@ -1948,7 +1952,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               대륙별로 훑어보는 사용 방식을 막았다. 검색이 필요하면 탭 한 번이면 된다. */}
           <View style={st.searchWrap}>
             <View style={st.searchBox}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.searchField}
                 placeholder={t('blog.countrySearchPlaceholder')}
                 placeholderTextColor={C.muted}
@@ -2038,10 +2042,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
 
 
       {/* 임시저장 목록 — 비공개 대상 선택 시트와 같은 디자인 언어(카드형 행·아이콘 배지·그라데이션 CTA) */}
-      <Modal visible={draftListVisible} transparent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
+      <Modal visible={draftListVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setDraftListVisible(false)}>
         <View style={st.dlOverlay} accessibilityViewIsModal>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setDraftListVisible(false)} />
-          <View style={st.dlSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.dlSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
             <View style={st.dlHandle} />
 
             <View style={st.dlHeader}>
@@ -2184,17 +2189,22 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
     switch (block.type) {
       case 'text': {
         const tb = block as TextBlock;
+        // 커스텀 한글 서체(단일 굵기 파일)에 fontWeight를 얹으면 안드로이드는 해당 굵기
+        // 변형을 찾다 실패해 시스템 폰트로 통째로 폴백한다 → 안드로이드는 서체 유지 우선.
+        // 고정 lineHeight 26은 '제목급'(26px)에서 한글 상하가 잘려 글자 크기에 비례시킨다.
+        const customFam = tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined;
         return (
-          <TextInput key={block.id}
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" key={block.id}
             ref={ref => { blockRefs.current[block.id] = ref; }}
             style={[st.textBlock, {
               fontSize: tb.fontSize || 15, textAlign: tb.align || 'left',
-              fontWeight: tb.bold ? '700' : '400',
+              lineHeight: Math.max(26, Math.round((tb.fontSize || 15) * 1.4)),
+              fontWeight: customFam && Platform.OS === 'android' ? 'normal' : (tb.bold ? '700' : '400'),
               fontStyle: tb.italic ? 'italic' : 'normal',
               textDecorationLine: tb.underline ? (tb.strikethrough ? 'underline line-through' : 'underline') : (tb.strikethrough ? 'line-through' : 'none'),
               color: tb.color || C.white,
               backgroundColor: tb.bgColor && tb.bgColor !== 'transparent' ? tb.bgColor : undefined,
-              fontFamily: tb.fontFamily && tb.fontFamily !== 'System' ? tb.fontFamily : undefined,
+              fontFamily: customFam,
             }]}
             placeholder={index === 0 && blocks.length === 1 ? t('blog.bodyPlaceholder') : ''}
             placeholderTextColor={C.muted}
@@ -2207,7 +2217,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         const sizes = { 1: 26, 2: 22, 3: 18 };
         return (
           <View key={block.id} style={st.headingWrap}>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               ref={ref => { blockRefs.current[block.id] = ref; }}
               style={[st.headingInput, { fontSize: sizes[hb.level], textAlign: hb.align || 'left' }]}
               placeholder={t('blog.headingPlaceholder', { level: hb.level })} placeholderTextColor={C.muted}
@@ -2226,7 +2236,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage([ib.uri], 0)}>
               <Image source={{ uri: ib.uri }} style={st.imageBlockImg} resizeMode="cover" />
             </TouchableOpacity>
-            <TextInput style={st.captionInput} placeholder={t('blog.photoCaptionPlaceholder')} placeholderTextColor={C.muted}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.captionInput} placeholder={t('blog.photoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={ib.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -2251,7 +2261,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                     <TouchableOpacity activeOpacity={0.85} onPress={() => openFullImage(imb.items.map(it => it.uri), i)}>
                       <Image source={{ uri: item.uri }} style={[st.gridImg, { width: imgW, height: imgW * 0.75 }]} resizeMode="cover" />
                     </TouchableOpacity>
-                    <TextInput style={st.gridCaptionInput} placeholder={t('blog.gridCaptionPlaceholder')} placeholderTextColor={C.muted}
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.gridCaptionInput} placeholder={t('blog.gridCaptionPlaceholder')} placeholderTextColor={C.muted}
                       value={item.caption || ''} onChangeText={v => updateImagesItemCaption(block.id, i, v)} />
                   </View>
                 ))}
@@ -2344,7 +2354,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <View style={st.videoLabel}>
               <Text style={st.videoLabelText}>▶ {t('blog.video')}</Text>
             </View>
-            <TextInput style={st.captionInput} placeholder={t('blog.videoCaptionPlaceholder')} placeholderTextColor={C.muted}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.captionInput} placeholder={t('blog.videoCaptionPlaceholder')} placeholderTextColor={C.muted}
               value={vb.caption || ''} onChangeText={v => updateBlock(block.id, { caption: v } as any)} />
             <TouchableOpacity style={st.imageRemoveBtn} onPress={() => deleteBlock(block.id)}>
               <Text style={st.imageRemoveText}>✕</Text>
@@ -2371,7 +2381,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         return (
           <View key={block.id} style={[st.quoteBlock, { backgroundColor: skinAccent.tint(0.06), borderLeftColor: skinAccent.accent }]}>
             <Text style={[st.quoteMark, { color: skinAccent.accent }]}>"</Text>
-            <TextInput ref={ref => { blockRefs.current[block.id] = ref; }}
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={ref => { blockRefs.current[block.id] = ref; }}
               style={st.quoteInput} placeholder={t('blog.quotePlaceholder')} placeholderTextColor={C.muted}
               value={qb.value} onChangeText={v => updateBlock(block.id, { value: v } as any)}
               onFocus={() => setActiveBlockId(block.id)} multiline scrollEnabled={false} />
@@ -2458,13 +2468,16 @@ function FormatBtn({ label, active, onPress, bold, italic, underline, strike, co
 function PickerModal({ visible, onClose, title, children }: { visible: boolean; onClose: () => void; title: string; children: React.ReactNode }) {
   const st = useSt();
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
-        <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
-          <Text style={st.pickerTitle}>{title}</Text>
-          {children}
-        </View>
-      </TouchableOpacity>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
+      {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력 포함) */}
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <TouchableOpacity style={st.overlayBg} activeOpacity={1} onPress={onClose} accessibilityViewIsModal>
+          <View style={st.pickerCard} onStartShouldSetResponder={() => true}>
+            <Text style={st.pickerTitle}>{title}</Text>
+            {children}
+          </View>
+        </TouchableOpacity>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -2503,6 +2516,7 @@ function RepPhotoModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -2542,10 +2556,11 @@ function RepPhotoModal({
   const displayPhotos = isSelectedFromGallery ? [selectedPhoto, ...photos] : photos;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={rpm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[rpm.sheet, { transform: [{ translateY }] }]}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[rpm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 12 }, { transform: [{ translateY }] }]}>
           {/* 핸들 */}
           <View style={rpm.handle} />
 

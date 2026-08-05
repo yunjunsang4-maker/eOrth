@@ -10,6 +10,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';
 import { Colors, BorderRadius, Typography, Spacing } from '../constants';
 import { useSkinAccent } from '../constants/skinTheme';
+import { andFitText } from '../utils/fitText';
 
 // ─── Primary Button ────────────────────────────────────────────────────────────
 interface PrimaryButtonProps {
@@ -81,15 +82,18 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       style={[styles.glassBtn, disabled && styles.glassBtnDisabled, style]}
     >
       {size.w > 0 && (
-        <Svg width={size.w} height={size.h} style={StyleSheet.absoluteFill} pointerEvents="none">
-          <SvgDefs>
-            <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
-              <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
-              <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
-            </SvgLinearGradient>
-          </SvgDefs>
-          <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
-        </Svg>
+        // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+        <View style={StyleSheet.absoluteFill} pointerEvents="none">
+          <Svg width={size.w} height={size.h}>
+            <SvgDefs>
+              <SvgLinearGradient id={gid} x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+                <SvgStop offset="0" stopColor="#CECFCD" stopOpacity={disabled ? 0.3 : 1} />
+                <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity={0} />
+              </SvgLinearGradient>
+            </SvgDefs>
+            <SvgRect x={0.5} y={0.5} width={size.w - 1} height={size.h - 1} rx={(size.h - 1) / 2} stroke={`url(#${gid})`} strokeWidth={1} fill="none" />
+          </Svg>
+        </View>
       )}
       {loading ? (
         <ActivityIndicator color={Colors.white} size="small" />
@@ -191,7 +195,8 @@ export const StatCard: React.FC<StatCardProps> = ({ value, label, icon }) => (
   <View style={styles.statCard}>
     {icon && <Text style={styles.statIcon}>{icon}</Text>}
     <Text style={styles.statValue}>{value}</Text>
-    <Text style={styles.statLabel}>{label}</Text>
+    {/* 안드로이드 한글 폭이 넓어 고정폭 3열에서 줄바꿈됨 — 한 줄 고정+자동 축소 */}
+    <Text style={styles.statLabel} {...andFitText}>{label}</Text>
   </View>
 );
 

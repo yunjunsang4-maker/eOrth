@@ -6,7 +6,9 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { FriendIcon as SvgFriendIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
@@ -40,17 +42,19 @@ export function FriendPickerModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   return (
     <Modal
       visible={visible}
       transparent
       animationType="slide"
       onRequestClose={onClose}
-      statusBarTranslucent
+      statusBarTranslucent navigationBarTranslucent
     >
       <View style={fp.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <View style={fp.sheet}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <View style={[fp.sheet, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }]}>
           <View style={fp.handle} />
           <View style={fp.header}>
             <SvgFriendIcon size={16} color={skinAccent.accent} />

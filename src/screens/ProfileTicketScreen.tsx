@@ -4,7 +4,7 @@
 // QR은 utils/appLinks의 profileLink로 만든 eorth://profile/<handle> — 파서(parseAppLink)가
 // 구형식 eorth://user/<handle>까지 받아주므로 이미 배포된 QR도 그대로 열린다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
@@ -18,6 +18,7 @@ import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import { getCapitalByKo } from '../constants/capitals';
 import RatingStars from '../components/RatingStars';
 import { profileLink } from '../utils/appLinks';
+import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // ── 셰브런 화살표 (시안 134:1155~1170) ──
@@ -321,24 +322,25 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         <View style={st.white}>
           <Text style={st.name} numberOfLines={1}>{handle || t('friends.setProfileFirst')}</Text>
 
+          {/* 안드로이드 한글 폭이 넓어 고정폭 라벨이 줄바꿈됨 — 캡처·공유되는 화면이라 andFitText 필수 */}
           <View style={st.statsRow}>
             <View style={st.statCol}>
-              <Text style={st.statLabel}>{t('profile.tripCount')}</Text>
+              <Text style={st.statLabel} {...andFitText}>{t('profile.tripCount')}</Text>
               <Text style={st.statValue}>{tripCount}</Text>
             </View>
             <View style={st.statCol}>
-              <Text style={st.statLabel}>{t('profileTicket.mate')}</Text>
+              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.mate')}</Text>
               <Text style={st.statValue}>{neighborCount}</Text>
             </View>
             <View style={st.statCol}>
-              <Text style={st.statLabel}>{t('profileTicket.companion')}</Text>
+              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.companion')}</Text>
               <Text style={st.statValue}>{companionCount}</Text>
             </View>
           </View>
 
           <View style={st.subRow}>
             <View style={st.subCol}>
-              <Text style={st.statLabel}>{t('profileTicket.recentCountry')}</Text>
+              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.recentCountry')}</Text>
               <Text style={st.subValue} numberOfLines={1}>{recentCountry}</Text>
             </View>
 
@@ -351,7 +353,7 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
             </View>
 
             <View style={[st.subCol, st.subColRight]}>
-              <Text style={st.statLabel}>{t('profileTicket.joinedAt')}</Text>
+              <Text style={st.statLabel} {...andFitText}>{t('profileTicket.joinedAt')}</Text>
               <Text style={st.subValue} numberOfLines={1}>{joinedLabel}</Text>
             </View>
           </View>
@@ -446,7 +448,8 @@ const st = StyleSheet.create({
   // 국기 대신 수도(시안 BERN) — flex로 폭이 잡히므로 maxWidth 없이 긴 이름은 adjustsFontSizeToFit이 줄인다
   favCapital: { flex: 1, color: '#FFFFFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.5, textAlign: 'left' },
   // 평점 숫자가 이 영역의 주인공 — 별은 보조라 한 단계 낮춘다
-  favRating: { color: '#FFFFFF', fontSize: 54, fontWeight: '900', marginTop: 16, lineHeight: 58 },
+  // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+  favRating: { color: '#FFFFFF', fontSize: 54, fontWeight: '900', marginTop: 16, lineHeight: Platform.OS === 'ios' ? 58 : 65 },
   starRow: { flexDirection: 'row', gap: 7, marginTop: 4 },
   noFav: { color: '#FFFFFF', fontSize: 16, fontWeight: '700', marginTop: 26, marginBottom: 30 },
   // ── 하단 흰색 ──

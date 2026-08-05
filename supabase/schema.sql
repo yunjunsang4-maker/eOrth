@@ -702,8 +702,14 @@ $$;
 grant execute on function public.safe_to_date(text) to authenticated;
 
 drop function if exists public.travel_overlap_suggestions(int);
+-- 래퍼(12번 절)와 본체를 둘 다 먼저 떨어뜨린 뒤 재정의한다.
+-- 래퍼는 본체에 의존하므로 순서가 중요하다(본체를 drop하려면 래퍼가 먼저 없어야 안전).
 drop function if exists public.mate_suggestions(int, text[]);
-create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
+drop function if exists public.mate_suggestions_compute(int, text[]);
+-- ⚠️ 이 함수는 '계산 본체'다. 앱이 호출하는 이름은 아래(파일 끝 12번 절)의 캐시 래퍼
+--    public.mate_suggestions 이며, 그 래퍼가 이 함수를 하루 몇 번만 부른다.
+--    본체를 직접 호출하면 캐시를 우회해 매번 전역 스캔이 돈다 — 진단 목적 외에는 쓰지 말 것.
+create or replace function public.mate_suggestions_compute(match_limit int default 10, extra_countries text[] default '{}')
 returns table (
   author_id uuid, handle text, emoji text, profile_photo text,
   shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
@@ -1103,7 +1109,8 @@ language sql security definer set search_path = public as $$
   order by p.total_score desc, pp.handle
   limit greatest(1, least(match_limit, 50));
 $$;
-grant execute on function public.mate_suggestions(int, text[]) to authenticated;
+-- 본체는 클라이언트가 직접 못 부르게 한다 — 호출 경로는 캐시 래퍼 하나로 고정(12번 절).
+revoke all on function public.mate_suggestions_compute(int, text[]) from public, anon, authenticated;
 
 -- ─────────────────────────────────────────────
 -- 특정 유저와의 여행 겹침(타인 프로필 "나와 겹치는 나라 N곳" 줄).
@@ -2244,6 +2251,114 @@ end; $$;
 
 -- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
 revoke all on function public.purge_old_notifications(interval) from public, anon, authenticated;
+
+-- ============================================================
+-- 12) 추천 메이트(여행 DNA) 결과 캐시
+--
+--   왜 필요한가: mate_suggestions_compute 는 호출 1회에 private 아닌 posts 전량을 나라 단위로
+--   펼치고 희소성 가중치까지 계산한다. 규모에 정비례하는 비용인데, 클라이언트는 발견 화면에
+--   들어올 때마다(SocialScreen·FriendSearchScreen) 이걸 그대로 호출하고 있었다.
+--   게시물이 수만 건이 되면 이 함수 하나가 인스턴스 CPU를 독점한다.
+--
+--   해법: 사용자·파라미터 조합별로 결과를 저장하고 TTL 안에서는 그대로 돌려준다.
+--   pg_cron 배치가 아니라 '첫 호출 때 계산해 넣는' 지연 캐시라 등록할 스케줄이 없고,
+--   가입 직후 사용자도 첫 진입에서 바로 결과를 받는다.
+-- ============================================================
+create table if not exists public.mate_suggestions_cache (
+  user_id     uuid not null references public.profiles(id) on delete cascade,
+  -- 같은 사용자라도 match_limit·extra_countries(로컬 나라 보강)가 다르면 결과가 다르다.
+  params_key  text not null,
+  rows        jsonb not null,
+  computed_at timestamptz not null default now(),
+  primary key (user_id, params_key)
+);
+
+alter table public.mate_suggestions_cache enable row level security;
+-- 클라이언트는 이 표를 직접 읽거나 쓰지 않는다 — 접근 경로는 아래 security definer 함수뿐.
+-- (RLS 켜고 정책을 두지 않으면 authenticated 는 아무 행도 못 본다)
+revoke all on table public.mate_suggestions_cache from anon, authenticated;
+
+-- 내 기록이 늘면 내 추천 입력이 달라진다 → 내 캐시를 버려 다음 진입에서 새로 계산되게.
+-- (타인 캐시는 건드리지 않는다. 하루 안에 새 사용자가 반영되지 않는 정도는 TTL로 흡수)
+create or replace function public.invalidate_mate_cache()
+returns trigger language plpgsql security definer set search_path = public as $$
+declare
+  uid uuid;
+begin
+  -- ⚠️ DELETE 트리거에서 new 는 미할당이라 필드를 읽으면 예외가 난다(coalesce로도 못 피한다).
+  --    반드시 tg_op 로 분기할 것.
+  if tg_op = 'DELETE' then uid := old.author_id; else uid := new.author_id; end if;
+  delete from public.mate_suggestions_cache where user_id = uid;
+  return null;
+exception when others then
+  return null; -- 캐시 정리 실패가 게시물 저장을 막으면 안 된다
+end; $$;
+
+drop trigger if exists trg_posts_invalidate_mate_cache on public.posts;
+create trigger trg_posts_invalidate_mate_cache
+  after insert or delete on public.posts
+  for each row execute function public.invalidate_mate_cache();
+
+-- 캐시 래퍼 — 앱이 호출하는 이름은 계속 mate_suggestions 다(클라이언트 변경 없음).
+-- TTL 6시간: 추천 목록의 신선도보다 인스턴스 CPU를 지키는 쪽이 중요하고, 새 기록을 올리면
+-- 위 트리거가 즉시 무효화하므로 '내가 뭘 해도 안 바뀌는' 체감은 생기지 않는다.
+create or replace function public.mate_suggestions(match_limit int default 10, extra_countries text[] default '{}')
+returns table (
+  author_id uuid, handle text, emoji text, profile_photo text,
+  shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
+  place_score int, recency_score int, season_score int, interest_score int, taste_score int,
+  mutual_score int,
+  shared_cities text[], shared_keywords text[]
+)
+language plpgsql security definer set search_path = public as $$
+-- returns table(...)의 출력 컬럼명(author_id·handle·…)은 plpgsql 안에서 변수로도 잡힌다.
+-- 아래 return query 가 같은 이름의 컬럼을 조회하므로 모호성이 생길 수 있어 '컬럼 우선'으로 못박는다.
+#variable_conflict use_column
+declare
+  me     uuid := auth.uid();
+  key    text;
+  cached jsonb;
+  fresh  jsonb;
+begin
+  if me is null then return; end if;
+
+  -- 파라미터 정규화 — 순서만 다른 같은 나라 목록이 서로 다른 캐시 항목이 되지 않게 정렬해서 해싱한다.
+  key := match_limit::text || ':' || md5(coalesce(
+           (select string_agg(c, ',' order by c) from unnest(coalesce(extra_countries, '{}')) as c), ''));
+
+  select c.rows into cached
+    from public.mate_suggestions_cache c
+   where c.user_id = me and c.params_key = key
+     and c.computed_at > now() - interval '6 hours';
+
+  if cached is null then
+    select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) into fresh
+      from public.mate_suggestions_compute(match_limit, extra_countries) s;
+    insert into public.mate_suggestions_cache (user_id, params_key, rows, computed_at)
+    values (me, key, fresh, now())
+    on conflict (user_id, params_key)
+      do update set rows = excluded.rows, computed_at = excluded.computed_at;
+    cached := fresh;
+  end if;
+
+  return query
+  select r.author_id, r.handle, r.emoji, r.profile_photo,
+         r.shared_count, r.sample_countries, r.mutual_count, r.style_score, r.total_score,
+         r.place_score, r.recency_score, r.season_score, r.interest_score, r.taste_score,
+         r.mutual_score, r.shared_cities, r.shared_keywords
+    from jsonb_to_recordset(cached) as r(
+      author_id uuid, handle text, emoji text, profile_photo text,
+      shared_count int, sample_countries text[], mutual_count int, style_score int, total_score int,
+      place_score int, recency_score int, season_score int, interest_score int, taste_score int,
+      mutual_score int, shared_cities text[], shared_keywords text[]
+    );
+end; $$;
+
+grant execute on function public.mate_suggestions(int, text[]) to authenticated;
+
+-- 오래된 캐시 정리(선택) — 행이 사용자당 몇 개라 급하지 않다. 필요하면 pg_cron에 등록:
+--   select cron.schedule('purge-mate-cache', '30 4 * * *',
+--     $$delete from public.mate_suggestions_cache where computed_at < now() - interval '7 days'$$);
 
 -- ============================================================
 -- 실행 후 사후 점검 (수동)

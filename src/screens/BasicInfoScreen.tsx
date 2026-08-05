@@ -255,25 +255,30 @@ export default function BasicInfoScreen({ navigation }: Props) {
                   <PersonIcon size={50} color="#A0A0B0" />
                 </View>
               )}
-              <Svg width={110} height={110} viewBox="0 0 111 111" fill="none" style={styles.avatarInner} pointerEvents="none">
-                <SvgDefs>
-                  <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
-                    <SvgStop stopColor="#000000" stopOpacity="0" />
-                    <SvgStop offset="1" stopColor="#FFFFFF" />
-                  </SvgLinearGradient>
-                </SvgDefs>
-                <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
-              </Svg>
-              {!photo && (
-                <Svg width={128} height={128} viewBox="0 0 128 128" fill="none" style={StyleSheet.absoluteFill} pointerEvents="none">
+              {/* 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다 */}
+              <View style={styles.avatarInner} pointerEvents="none">
+                <Svg width={110} height={110} viewBox="0 0 111 111" fill="none">
                   <SvgDefs>
-                    <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
-                      <SvgStop stopColor="#00D8F3" />
-                      <SvgStop offset="1" stopColor="#EC34F7" />
+                    <SvgLinearGradient id="basicAvatarInnerGrad" x1="74" y1="48.5" x2="99.5" y2="95.5" gradientUnits="userSpaceOnUse">
+                      <SvgStop stopColor="#000000" stopOpacity="0" />
+                      <SvgStop offset="1" stopColor="#FFFFFF" />
                     </SvgLinearGradient>
                   </SvgDefs>
-                  <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
+                  <SvgCircle cx="55.5" cy="55.5" r="55" fill="#751AAD" fillOpacity="0.1" stroke="url(#basicAvatarInnerGrad)" strokeWidth="0.5" />
                 </Svg>
+              </View>
+              {!photo && (
+                <View style={StyleSheet.absoluteFill} pointerEvents="none">
+                  <Svg width={128} height={128} viewBox="0 0 128 128" fill="none">
+                    <SvgDefs>
+                      <SvgLinearGradient id="basicAvatarRingGrad" x1="64" y1="0" x2="96" y2="64" gradientUnits="userSpaceOnUse">
+                        <SvgStop stopColor="#00D8F3" />
+                        <SvgStop offset="1" stopColor="#EC34F7" />
+                      </SvgLinearGradient>
+                    </SvgDefs>
+                    <SvgCircle cx="64" cy="64" r="61" stroke="url(#basicAvatarRingGrad)" strokeWidth="6" fill="none" />
+                  </Svg>
+                </View>
               )}
             </View>
             <View style={styles.avatarEditBadge}>
@@ -285,7 +290,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.handle')}</Text>
             <View style={styles.inputWrapper}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder={t('basicInfo.handlePlaceholder')}
                 placeholderTextColor={Colors.textMuted}
@@ -304,7 +309,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.birthday')}</Text>
             <View style={styles.inputWrapper}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.input}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColor={Colors.textMuted}
@@ -430,14 +435,15 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </KeyboardAvoidingView>
 
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
-        <View style={styles.modalRoot} accessibilityViewIsModal>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
+        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.residenceSelect')}</Text>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}>
               <Text style={styles.modalClose}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.modalSearch}
             placeholder={t('basicInfo.residenceSearchPlaceholder')}
             placeholderTextColor={Colors.textMuted}
@@ -465,14 +471,15 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </Modal>
 
       <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
-        <View style={styles.modalRoot} accessibilityViewIsModal>
+        {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
+        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.stayCountryLabel')}</Text>
             <TouchableOpacity onPress={() => setStayCountryModalVisible(false)}>
               <Text style={styles.modalClose}>{t('common.close')}</Text>
             </TouchableOpacity>
           </View>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.modalSearch}
             placeholder={t('basicInfo.residenceSearchPlaceholder')}
             placeholderTextColor={Colors.textMuted}
@@ -526,7 +533,8 @@ const styles = StyleSheet.create({
   backTxt: {
     color: Colors.textPrimary,
     fontSize: 22,
-    lineHeight: 24,
+    // 타이트 행간은 안드로이드에서 글리프 상하가 잘림 → 안드로이드만 fontSize*1.2로 완화
+    lineHeight: Platform.OS === 'ios' ? 24 : 27,
     marginTop: -2,
   },
   // 온보딩 step 라벨과 동일한 톤 — 마젠타 액센트

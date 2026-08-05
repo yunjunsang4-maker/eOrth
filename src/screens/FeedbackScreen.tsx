@@ -65,7 +65,7 @@ export default function FeedbackScreen({ navigation }: RootStackScreenProps<'Fee
         <Text style={st.desc}>{t('feedback.desc')}</Text>
 
         <View style={st.inputCard}>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={st.input}
             value={content}
             onChangeText={(v) => setContent(v.slice(0, MAX_LEN))}

@@ -364,47 +364,22 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
   };
 
   // 섹션 헤더 ⋯ — 이름 변경 / 섹션 삭제(사진은 옆 섹션으로 합쳐짐)
+  // Alert.alert은 안드로이드에서 버튼을 3개까지만 표시해(4번째부터 소실) 시트 모달로 띄운다.
+  const [sectionMenu, setSectionMenu] = useState<number | null>(null);
   const handleSectionMenu = (index: number) => {
     if (!sections) return;
-    Alert.alert(sections[index]?.title ?? '', undefined, [
-      {
-        text: t('trip.albumSectionRename'),
-        onPress: () => { setSectionTitleInput(sections[index]?.title ?? ''); setSectionModal({ mode: 'rename', index }); },
-      },
-      {
-        // 순서 변경은 사진 꾹 누르기로 진입 — 메뉴에는 다중 선택(이동/삭제)만 남긴다
-        text: t('trip.albumSelect'),
-        onPress: startSelecting,
-      },
-      ...(index > 0 ? [{
-        text: t('trip.albumMoveUp'),
-        onPress: () => {
-          const next = moveSection(medias, sections, index, index - 1);
-          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
-        },
-      }] : []),
-      ...(index < sections.length - 1 ? [{
-        text: t('trip.albumMoveDown'),
-        onPress: () => {
-          const next = moveSection(medias, sections, index, index + 1);
-          updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
-        },
-      }] : []),
-      {
-        text: t('trip.albumSectionDelete'),
-        style: 'destructive',
-        onPress: () => {
-          Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
-            { text: t('common.cancel'), style: 'cancel' },
-            {
-              text: t('trip.delete'),
-              style: 'destructive',
-              onPress: () => updateRecord(record.id, { albumSections: deleteSection(sections, medias.length, index) ?? undefined }),
-            },
-          ]);
-        },
-      },
+    setSectionMenu(index);
+  };
+  const closeSectionMenu = () => setSectionMenu(null);
+  const handleSectionDelete = (index: number) => {
+    if (!sections) return;
+    Alert.alert(t('trip.albumSectionDelete'), t('trip.albumSectionDeleteMsg'), [
       { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('trip.delete'),
+        style: 'destructive',
+        onPress: () => updateRecord(record.id, { albumSections: deleteSection(sections, medias.length, index) ?? undefined }),
+      },
     ]);
   };
 
@@ -452,6 +427,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
           ref={albumScrollRef}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={{ paddingBottom: 24 }}
+          keyboardShouldPersistTaps="handled"
           scrollEnabled={scrollEnabled}
           scrollEventThrottle={16}
           onScroll={(e) => { scrollYRef.current = e.nativeEvent.contentOffset.y; }}
@@ -575,7 +551,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         {/* 댓글 입력 바 (앨범 제외) */}
         {!isAlbum && (
         <View style={[styles.inputBar, { paddingBottom: keyboardVisible ? 8 : insets.bottom + 8 }]}>
-          <TextInput
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             style={styles.input}
             value={commentText}
             onChangeText={setCommentText}
@@ -596,7 +572,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
       </KeyboardAvoidingView>
 
       {/* 이동 대상 섹션 선택 시트 (단일/다중 공용) */}
-      <Modal visible={moveSheet !== null} transparent animationType="slide" onRequestClose={() => setMoveSheet(null)}>
+      <Modal visible={moveSheet !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setMoveSheet(null)}>
         <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={() => setMoveSheet(null)} accessibilityViewIsModal>
           <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
             <Text style={styles.sheetTitle}>{t('trip.albumPhotoMoveTitle')}</Text>
@@ -613,9 +589,85 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
         </TouchableOpacity>
       </Modal>
 
+      {/* 섹션 헤더 ⋯ 메뉴 시트 — Alert은 안드로이드에서 3버튼 초과분이 잘려 시트로 대체 */}
+      <Modal visible={sectionMenu !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={closeSectionMenu}>
+        <TouchableOpacity style={styles.sheetOverlay} activeOpacity={1} onPress={closeSectionMenu} accessibilityViewIsModal>
+          <View style={[styles.sheetCard, { paddingBottom: insets.bottom + 12 }]}>
+            <Text style={styles.sheetTitle}>{sectionMenu !== null ? (sections?.[sectionMenu]?.title ?? '') : ''}</Text>
+            {sectionMenu !== null && sections && (
+              <>
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const idx = sectionMenu;
+                    closeSectionMenu();
+                    setSectionTitleInput(sections[idx]?.title ?? '');
+                    setSectionModal({ mode: 'rename', index: idx });
+                  }}
+                >
+                  <Text style={styles.sheetRowTxt}>{t('trip.albumSectionRename')}</Text>
+                </TouchableOpacity>
+                {/* 순서 변경은 사진 꾹 누르기로 진입 — 메뉴에는 다중 선택(이동/삭제)만 남긴다 */}
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => { closeSectionMenu(); startSelecting(); }}
+                >
+                  <Text style={styles.sheetRowTxt}>{t('trip.albumSelect')}</Text>
+                </TouchableOpacity>
+                {sectionMenu > 0 && (
+                  <TouchableOpacity
+                    style={styles.sheetRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const idx = sectionMenu;
+                      closeSectionMenu();
+                      const next = moveSection(medias, sections, idx, idx - 1);
+                      updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+                    }}
+                  >
+                    <Text style={styles.sheetRowTxt}>{t('trip.albumMoveUp')}</Text>
+                  </TouchableOpacity>
+                )}
+                {sectionMenu < sections.length - 1 && (
+                  <TouchableOpacity
+                    style={styles.sheetRow}
+                    activeOpacity={0.7}
+                    onPress={() => {
+                      const idx = sectionMenu;
+                      closeSectionMenu();
+                      const next = moveSection(medias, sections, idx, idx + 1);
+                      updateRecord(record.id, { medias: next.medias, albumSections: next.sections });
+                    }}
+                  >
+                    <Text style={styles.sheetRowTxt}>{t('trip.albumMoveDown')}</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  style={styles.sheetRow}
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    const idx = sectionMenu;
+                    closeSectionMenu();
+                    handleSectionDelete(idx);
+                  }}
+                >
+                  <Text style={[styles.sheetRowTxt, { color: '#FF3B30' }]}>{t('trip.albumSectionDelete')}</Text>
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity style={[styles.sheetRow, { justifyContent: 'center' }]} onPress={closeSectionMenu}>
+              <Text style={[styles.sheetRowTxt, { color: '#A1A1B0' }]}>{t('common.cancel')}</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* 섹션 제목 입력 모달 (추가/이름변경 공용) */}
-      <Modal visible={sectionModal !== null} transparent animationType="fade" onRequestClose={() => setSectionModal(null)}>
-        <View style={styles.sectionModalOverlay} accessibilityViewIsModal>
+      <Modal visible={sectionModal !== null} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setSectionModal(null)}>
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력) */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.sectionModalOverlay} accessibilityViewIsModal>
           <View style={styles.sectionModalCard}>
             <Text style={styles.sectionModalTitle}>
               {sectionModal?.mode === 'albumTitle'
@@ -624,7 +676,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
                   ? t('trip.albumSectionRename')
                   : t('trip.albumSectionAddTitle')}
             </Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={styles.sectionModalInput}
               value={sectionTitleInput}
               onChangeText={setSectionTitleInput}
@@ -646,13 +698,14 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ⋯ 팝업 메뉴 */}
-      <Modal visible={menuVisible} transparent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={styles.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
-          <View style={styles.menuSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[styles.menuSheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             {isAlbum && (
               <TouchableOpacity
                 style={styles.menuItem}
@@ -724,7 +777,8 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
   likeIcon: {
     fontSize: 22,
     color: '#A1A1B0',
-    lineHeight: 24,
+    // 안드로이드는 lineHeight가 타이트하면 글리프 상하가 잘림 — 안드로이드만 여유 확보
+    lineHeight: Platform.OS === 'ios' ? 24 : 27,
   },
   likeIconActive: {
     color: '#FF6B9D',

@@ -7,7 +7,7 @@ import { usePersistence, STORE_KEYS, saveEnvelope, loadEnvelope } from './persis
 import { isSupabaseConfigured } from '../services/supabase';
 import { emitToast } from './toastStore';
 import i18n from '../i18n';
-import { publishPost, updatePost, deletePost, fetchFeed, fetchMyPosts, type PublishMediaOptions } from '../services/posts';
+import { publishPost, updatePost, deletePost, fetchFeed, fetchFeedSnaps, fetchMyPosts, type PublishMediaOptions, type FeedCursor } from '../services/posts';
 import { getProfileByHandle, getMyUserId } from '../services/profile';
 import { COUNTRIES } from '../constants/countries';
 import { normalizeHomeRegion } from '../constants/homeRegions';
@@ -32,7 +32,7 @@ import {
   reportPostToServer as apiReportPost,
   likePost,
   unlikePost,
-  fetchMyLikedPostIds,
+  fetchMyLikesFor,
   fetchComments,
   addComment as apiAddComment,
   likeComment as apiLikeComment,
@@ -114,6 +114,10 @@ export interface TravelRecord {
   uploadedMediaUrls?: Record<string, string>;
   albumUploadQuality?: 'compressed' | 'original';
   mediaPrivacy?: Record<number, string[]>;
+  // 목록용 축소본 매핑: 업로드된 원본 URL → 축소본(640px) URL.
+  // 발행 시 services/posts.ts 가 채우고, 목록 렌더러는 utils/thumbUrl.thumbOf 로 골라 쓴다.
+  // 없으면(옛 글·아직 발행 전 로컬 기록) 원본이 그대로 쓰이므로 하위 호환은 자동이다.
+  thumbs?: Record<string, string>;
   budget?: { amount: number; currency: string };
   weather?: string;
   flightType?: string;
@@ -330,6 +334,10 @@ interface RecordContextType {
   // 백엔드 피드(남들의 공개/메이트 글). Supabase 미설정 시 항상 빈 배열.
   feedPosts: TravelRecord[];
   refreshFeed: () => Promise<void>;
+  // 다음 페이지 이어받기 (무한 스크롤). 더 없거나 이미 로딩 중이면 무동작.
+  loadMoreFeed: () => Promise<void>;
+  feedHasMore: boolean;
+  feedLoadingMore: boolean;
   refreshComments: (postId: string, remoteId?: string) => Promise<void>;
   // 내 기록을 서버에서 로컬로 복원(계정 전환 후 pull). 로컬 records를 서버 기준으로 교체한다.
   hydrateMyRecords: () => Promise<void>;
@@ -404,6 +412,11 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   const [feedPosts, setFeedPosts] = useState<TravelRecord[]>([]);
   // 피드 캐시 복원 race 가드 — 서버 refreshFeed가 먼저 성공했으면 캐시(구본)로 덮어쓰지 않는다
   const feedFreshRef = useRef(false);
+  // 커서 페이지네이션 상태 — 커서는 렌더에 쓰이지 않으므로 ref로 둔다(리렌더 불필요).
+  const feedCursorRef = useRef<FeedCursor | null>(null);
+  const feedLoadingMoreRef = useRef(false); // 스크롤 연타가 같은 페이지를 두 번 받지 않게
+  const [feedHasMore, setFeedHasMore] = useState(false);
+  const [feedLoadingMore, setFeedLoadingMore] = useState(false);
   // 새 해외국 감지 → "여행/장기체류" 프롬프트 요청 (UI가 소비). null이면 없음
   const [stayPromptCountry, setStayPromptCountry] = useState<string | null>(null);
 
@@ -1664,6 +1677,12 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setMutedHandles([]);
     setCurrentViewer(null);
     setFeedPosts([]);
+    // 페이지네이션 상태도 함께 되감는다 — 이전 계정의 커서로 다음 페이지를 받으면
+    // 새 계정 피드 중간부터 이어붙는다.
+    feedCursorRef.current = null;
+    feedLoadingMoreRef.current = false;
+    setFeedHasMore(false);
+    setFeedLoadingMore(false);
     // 계정 경계 잔존물 정리 — 이전 계정의 세션·열람 이력·요청이 새 계정 저장본/서버 행으로 이월되지 않게
     setTripSession(null);
     setViewedSnapIds([]);
@@ -1681,21 +1700,41 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     setTripRestoreNonce((n) => n + 1);
   };
 
-  // 백엔드 피드 새로고침 (남들의 공개/메이트 글 + 내 좋아요 표시)
+  // id 기준 중복 제거 — 커서가 lte라 페이지 경계에서 같은 글이 한 번 겹칠 수 있다(fetchFeed 주석).
+  const dedupeById = (list: TravelRecord[]): TravelRecord[] => {
+    const seen = new Set<string>();
+    return list.filter((r) => {
+      const k = r.remoteId ?? r.id;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+
+  // 백엔드 피드 새로고침 — 첫 페이지 + 스토리 라인용 스냅. 커서를 처음으로 되감는다.
+  //
+  // 스냅을 따로 받는 이유: 스토리 라인은 '최근 스냅 전부'가 필요한데, 타임라인 페이지에
+  // 섞어 받으면 20건 페이지 경계 밖의 스냅이 스토리에서 사라진다. 스냅은 사진 2장짜리라
+  // 별도 조회 비용이 작다.
   const refreshFeed = useCallback(async () => {
     if (!isSupabaseConfigured) return;
     try {
       // 12초 타임아웃 — 응답이 끊기지 않고 지연되는 경우에도 로딩이 무한 대기하지 않게 한다.
-      const [posts, likedIds] = await withTimeout(Promise.all([fetchFeed(), fetchMyLikedPostIds()]), 12000);
+      const [page, snaps] = await withTimeout(Promise.all([fetchFeed(null), fetchFeedSnaps()]), 12000);
       // 조회 실패(null)면 현재 피드도 캐시도 건드리지 않는다 — 빈 배열로 덮으면
       // 사용자에겐 '기록 없음'으로 보이고 오프라인용 캐시까지 지워진다.
-      if (!posts) {
+      if (!page) {
         emitToast(i18n.t('store.feedLoadFailed'));
         return;
       }
-      const likedSet = new Set(likedIds);
-      const fresh = posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
+      // 스냅 조회만 실패하면(null) 타임라인은 살리고 스토리만 이번 회차에 비운다 — 전체 실패로 취급하지 않는다.
+      const merged = dedupeById([...page.posts, ...(snaps ?? [])]);
+      // 좋아요는 '이번에 받은 글'에 대해서만 조회한다(내 전체 좋아요 목록을 받지 않는다)
+      const likedSet = await withTimeout(fetchMyLikesFor(merged.map((p) => p.remoteId ?? p.id)), 12000);
+      const fresh = merged.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
       feedFreshRef.current = true; // 이후 도착하는 캐시 복원이 구본으로 덮지 않게
+      feedCursorRef.current = page.nextCursor;
+      setFeedHasMore(page.hasMore);
       setFeedPosts(fresh);
       // 연타 가드 ref 리셋 — 서버 진실이 도착했으므로 이전 낙관 상태를 기준으로 쓰면
       // 다른 기기에서 바뀐 좋아요가 첫 탭에 반대로 동작한다
@@ -1705,6 +1744,32 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // 타임아웃 등 진짜 'hang'일 때만 도달(서비스는 일반 실패 시 빈 배열을 반환). 현재 피드는 유지.
       emitToast(i18n.t('store.feedLoadFailed'));
+    }
+  }, []);
+
+  // 다음 페이지 이어받기 — 실패하면 조용히 유지한다(사용자가 더 스크롤하면 다시 시도).
+  // hasMore는 끄지 않는다: 일시적 네트워크 실패로 피드 끝을 영구히 닫아버리지 않기 위함.
+  const loadMoreFeed = useCallback(async () => {
+    if (!isSupabaseConfigured) return;
+    if (feedLoadingMoreRef.current) return;
+    const cursor = feedCursorRef.current;
+    if (!cursor) return; // 첫 페이지 미도착이거나 끝까지 받음
+    feedLoadingMoreRef.current = true;
+    setFeedLoadingMore(true);
+    try {
+      const page = await withTimeout(fetchFeed(cursor), 12000);
+      if (!page) return;
+      const likedSet = await withTimeout(fetchMyLikesFor(page.posts.map((p) => p.remoteId ?? p.id)), 12000);
+      const next = page.posts.map((p) => ({ ...p, liked: likedSet.has(p.remoteId ?? p.id) }));
+      feedCursorRef.current = page.nextCursor;
+      setFeedHasMore(page.hasMore);
+      // 이어붙인 뒤 중복 제거 — 앞 페이지와 겹친 1건이 카드 중복으로 보이지 않게
+      setFeedPosts((prev) => dedupeById([...prev, ...next]));
+    } catch {
+      /* 무시 — 다음 스크롤에서 재시도 */
+    } finally {
+      feedLoadingMoreRef.current = false;
+      setFeedLoadingMore(false);
     }
   }, []);
 
@@ -2088,7 +2153,7 @@ export function RecordProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
+    <RecordContext.Provider value={{ records, addRecord, updateRecord, deleteRecord, toggleLike, markSnapViewed, viewedSnapIds, archivedIds, archiveRecord, unarchiveRecord, blockedUsers, blockUser, unblockUser, isBlocked, reportedPostIds, reportPost, reportedCommentIds, reportComment, mutedHandles, toggleMute, isMuted, neighbors, requestNeighbor, cancelNeighborRequest, acceptNeighbor, declineNeighbor, removeNeighbor, outgoingNeighborRequests, isNeighbor, isNeighborRequested, refreshNeighbors, commentsByPost, addComment, toggleCommentLike, deleteComment, tripGroups, addTripGroup, deleteTripGroup, updateTripGroup, mergeTripGroups, activeStayGroup, startStay, endStay, absorbIntoStay, stayPromptCountry, setStayPromptCountry, drafts, saveDraft, updateDraft, deleteDraft, publishDraft, addImportedAlbum, resetRecords, currentViewer, setCurrentViewer, feedPosts, refreshFeed, loadMoreFeed, feedHasMore, feedLoadingMore, refreshComments, hydrateMyRecords, rearmTripRestore, exportLocalStateBackup, applyLocalStateBackup, rebackupAlbumOriginals, countryCovers, getCountryPhoto, getCountryPhotoRecord, setCountryCover }}>
       {children}
     </RecordContext.Provider>
   );

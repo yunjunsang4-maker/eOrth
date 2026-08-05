@@ -60,6 +60,7 @@ export default function PhotoPagerSection({
           ref={scrollRef}
           horizontal
           pagingEnabled
+          keyboardShouldPersistTaps="handled"
           showsHorizontalScrollIndicator={false}
           onMomentumScrollEnd={(e) => setActiveIdx(Math.round(e.nativeEvent.contentOffset.x / PAGE_W))}
           style={{ width: PAGE_W, height: PAGE_H }}
@@ -136,7 +137,7 @@ export default function PhotoPagerSection({
         <Text style={[st.captionLabel, { color: skinAccent.accent }]}>
           {t('newRecord.photoTextLabel', { n: activeIdx + 1, total: medias.length })}
         </Text>
-        <TextInput
+        <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
           style={st.captionInput}
           placeholder={t('newRecord.photoTextPlaceholder')}
           placeholderTextColor="#5a5a68"

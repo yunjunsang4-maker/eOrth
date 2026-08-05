@@ -421,12 +421,15 @@ const BlogBlockRenderer = ({
   switch (block.type) {
     case 'text': {
       const fs = (block.fontSize || 15) * fontScale;
+      // 커스텀 한글 서체(단일 굵기)에 fontWeight를 얹으면 안드로이드는 시스템 폰트로
+      // 통째로 폴백한다 → 안드로이드는 서체 유지를 우선한다 (작성 화면과 동일 규칙)
+      const customFam = block.fontFamily && block.fontFamily !== 'System' ? block.fontFamily : undefined;
       return (
         <Text
           style={[
             blogS.text,
             { fontSize: fs, lineHeight: fs * 1.7 },
-            block.bold && { fontWeight: '700' },
+            block.bold && { fontWeight: customFam && Platform.OS === 'android' ? 'normal' : '700' },
             block.italic && { fontStyle: 'italic' },
             (block.underline || block.strikethrough) && {
               textDecorationLine: block.underline
@@ -436,7 +439,7 @@ const BlogBlockRenderer = ({
             block.color && { color: block.color },
             block.bgColor && block.bgColor !== 'transparent' && { backgroundColor: block.bgColor },
             block.align && { textAlign: block.align },
-            block.fontFamily && block.fontFamily !== 'System' && { fontFamily: block.fontFamily },
+            customFam && { fontFamily: customFam },
           ]}
         >
           {block.value}
@@ -636,9 +639,11 @@ function SnapViewerModal({
   const { viewerS } = useSheets();
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const viewerInsets = useSafeAreaInsets(); // pageSheet가 안드로이드에선 전체화면이라 상단 인셋 보정
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={viewerS.root} accessibilityViewIsModal>
+      {/* pageSheet는 안드로이드에서 무시되어 전체화면이 되므로 상단 인셋을 직접 보정 */}
+      <View style={[viewerS.root, Platform.OS === 'android' && { paddingTop: viewerInsets.top }]} accessibilityViewIsModal>
         {/* 드래그바 */}
         <View style={viewerS.handle} />
         <Text style={viewerS.title}>{t('postDetail.snapViewersTitle')}</Text>
@@ -683,6 +688,7 @@ function SnapStoryViewer({
 }) {
   const { t, i18n } = useTranslation();
   const { s, shareS, storyS } = useSheets();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
   const { handle: myHandle, profilePhoto: myPhoto, handleFont: myHandleFont, isPremium: myPremium } = useSettings();
@@ -1046,7 +1052,8 @@ function SnapStoryViewer({
           </View>
         </LinearGradient>
         {/* 스냅 및 촬영지연 뱃지 비활성화 */}
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={storyS.bottomGradient} pointerEvents="box-none">
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.7)']} style={[storyS.bottomGradient, { paddingBottom: Platform.OS === 'ios' ? 36 : insets.bottom + 16 }]} pointerEvents="box-none">
           {s.snapDetectedCountry && (
             <View style={storyS.locationBadge}>
               <PinIcon size={13} color="#FFFFFF" />
@@ -1207,8 +1214,10 @@ function SnapStoryViewer({
         <>
           <Pressable style={storyS.inlineOverlay} onPress={() => { setReplyBarOpen(false); setCommentText(''); }} />
           <KeyboardAvoidingView style={storyS.inlineInputWrap} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
-            <View style={storyS.inlineInputRow}>
-              <TextInput
+            {/* 이 입력줄은 autoFocus로 항상 키보드와 함께 떠서(닫히면 blur로 사라짐)
+                키보드가 내비바를 덮음 — 안드로이드 인셋 가산 불필요, 고정 여백만 */}
+            <View style={[storyS.inlineInputRow, { paddingBottom: Platform.OS === 'ios' ? 34 : 14 }]}>
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 ref={replyInputRef}
                 style={storyS.inlineInput}
                 placeholder={t('postDetail.sendMessagePlaceholder')}
@@ -1280,7 +1289,7 @@ function SnapStoryViewer({
             </View>
           )}
           <View style={storyS.csInputBar}>
-            <TextInput ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" ref={commentInputRef} style={storyS.csInput} placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')} placeholderTextColor="#5A5A6E" value={commentText} onChangeText={setCommentText} onSubmitEditing={addComment} returnKeyType="send" maxLength={500} />
             <TouchableOpacity style={[storyS.csSendBtn, { backgroundColor: skinAccent.accent }, !commentText.trim() && { backgroundColor: "#2A2A3A" }]} onPress={addComment} disabled={!commentText.trim()}>
               <Text style={[storyS.csSendText, !commentText.trim() && { color: '#5A5A6E' }]}>{t('postDetail.send')}</Text>
             </TouchableOpacity>
@@ -1289,7 +1298,7 @@ function SnapStoryViewer({
       </Animated.View>
 
       {/* 메뉴 모달 */}
-      <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent onRequestClose={() => setMenuVisible(false)}>
+      <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={s.menuCard}>
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
@@ -1315,7 +1324,7 @@ function SnapStoryViewer({
       </Modal>
 
       {/* 공유 시트 — 메이트 DM으로 보내기(대화량 많은 순) + 외부 공유 */}
-      <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
+      <Modal visible={shareSheetOpen} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setShareSheetOpen(false)}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setShareSheetOpen(false)} />
           <View style={shareS.sheet}>
@@ -1367,6 +1376,15 @@ export default function PostDetailScreen() {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
+  // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
+  const [kbVisible, setKbVisible] = useState(false);
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const s1 = Keyboard.addListener(showEvt, () => setKbVisible(true));
+    const s2 = Keyboard.addListener(hideEvt, () => setKbVisible(false));
+    return () => { s1.remove(); s2.remove(); };
+  }, []);
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'PostDetail'>>();
   const { postId } = route.params;
@@ -1885,6 +1903,7 @@ export default function PostDetailScreen() {
           style={s.scroll}
           contentContainerStyle={s.scrollContent}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
           onScrollBeginDrag={() => setShowCompanions(false)}
           onScroll={(e) => setScrolled(e.nativeEvent.contentOffset.y > 8)}
           scrollEventThrottle={32}
@@ -2325,8 +2344,9 @@ export default function PostDetailScreen() {
         )}
         {/* ── 댓글 입력 (앨범 및 예시 콘텐츠 제외) ── */}
         {viewType !== 'album' && !record.isExample && (
-        <View style={s.inputBar}>
-          <TextInput
+        // 안드로이드 내비바 인셋 보정 (키보드가 떠 있으면 인셋 불필요 — 키보드가 내비바를 덮음)
+        <View style={[s.inputBar, { paddingBottom: Platform.OS === 'ios' ? 28 : kbVisible ? 12 : insets.bottom + 12 }]}>
+          <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
             ref={commentInputRef}
             style={s.input}
             placeholder={replyTo ? t('postDetail.replyToPlaceholder', { name: replyTo.name }) : t('postDetail.commentPlaceholder')}
@@ -2361,7 +2381,7 @@ export default function PostDetailScreen() {
         visible={menuVisible}
         transparent
         animationType="fade"
-        statusBarTranslucent
+        statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setMenuVisible(false)}
       >
         <TouchableOpacity
@@ -2491,9 +2511,10 @@ export default function PostDetailScreen() {
       />
 
       {/* ── 좋아요한 사람 목록 ── */}
-      <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent onRequestClose={() => setLikersVisible(false)}>
+      <Modal visible={likersVisible} transparent animationType="slide" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setLikersVisible(false)}>
         <TouchableOpacity style={s.likersOverlay} activeOpacity={1} onPress={() => setLikersVisible(false)} accessibilityViewIsModal>
-          <View style={s.likersSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[s.likersSheet, { paddingBottom: Platform.OS === 'ios' ? 28 : insets.bottom + 12 }]}>
             <View style={s.likersHandle} />
             <Text style={s.likersTitle}>{t('postDetail.likersCountN', { count: likers.length })}</Text>
             {likersLoading ? (

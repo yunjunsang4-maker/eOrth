@@ -11,6 +11,7 @@ import {
   Share,
   ActivityIndicator,
   Animated,
+  Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Clipboard from 'expo-clipboard';
@@ -539,9 +540,9 @@ export default function FriendProfileScreen({
         />
       )}
 
-      {/* ── 팝업 메뉴 ── */}
+      {/* ── 팝업 메뉴 — 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정(iOS 120 = 인셋(~56)+64) ── */}
       {menuVisible && (
-        <View style={s.popupMenu}>
+        <View style={[s.popupMenu, Platform.OS === 'android' && { top: insets.top + 64 }]}>
           {MENU_NORMAL.map((item, idx) => (
             <View key={item.key}>
               <TouchableOpacity style={s.menuItem} onPress={item.onPress} activeOpacity={0.7}>
@@ -621,7 +622,11 @@ function ProfileActionButton({
         accessibilityLabel={accessibilityLabel ?? label}
         style={[
           s.actionBtn,
-          variant === 'primary' && { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 }, elevation: 5 },
+          // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+          variant === 'primary' && Platform.select({
+            ios: { shadowColor: accent, shadowOpacity: 0.45, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
+            default: {},
+          }),
           variant === 'ghost' && { borderWidth: 1, borderColor: tint(0.45), backgroundColor: tint(0.12) },
           variant === 'soft' && { borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)', backgroundColor: 'rgba(255,255,255,0.06)' },
         ]}

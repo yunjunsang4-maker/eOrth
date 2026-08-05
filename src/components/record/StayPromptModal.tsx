@@ -27,7 +27,7 @@ export function StayPromptModal({ countryName, onTravel, onStay, onClose }: {
   // 새 국가로 다시 열릴 때 유형 선택 단계 초기화
   useEffect(() => { if (visible) setPickType(false); }, [visible, countryName]);
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={onClose}>
       <View style={s.backdrop}>
         <View style={s.card}>
           {!pickType ? (

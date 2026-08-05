@@ -14,6 +14,7 @@ import {
   PanResponder,
   Platform,
   Image,
+  KeyboardAvoidingView,
   type LayoutChangeEvent,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -352,7 +353,9 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
     }));
   }, [W, H]);
   return (
-    <Svg width={W} height={H} style={StyleSheet.absoluteFill} pointerEvents="none">
+    // 새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다
+    <View style={StyleSheet.absoluteFill} pointerEvents="none">
+    <Svg width={W} height={H}>
       <SvgDefs>
         <SvgRadialGradient id="sbGlowP" cx="50%" cy="50%" r="50%">
           <SvgStop offset="0%" stopColor={glow} stopOpacity={0.18} />
@@ -375,7 +378,17 @@ function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string;
         <Circle key={i} cx={st.x} cy={st.y} r={st.r} fill="#ffffff" fillOpacity={st.o} />
       ))}
     </Svg>
+    </View>
   );
+}
+
+// 지구본 위 버튼의 유리 채움 — 안드로이드 dimezisBlurView는 WebView(하드웨어 서피스)를
+// 스냅샷하지 못해 검은 원판으로 보인다 → 안드로이드는 반투명 매트로 대체 (iOS는 실블러)
+function GlobeBtnGlass({ style, children }: { style?: object; children: React.ReactNode }) {
+  if (Platform.OS === 'ios') {
+    return <BlurView intensity={50} tint="dark" style={style}>{children}</BlurView>;
+  }
+  return <View style={[style, { backgroundColor: 'rgba(22,18,32,0.6)' }]}>{children}</View>;
 }
 
 export default function MainScreen({ navigation, route }: Props) {
@@ -1397,9 +1410,9 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.globeFormA11y')}
             >
-              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+              <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon tint={skinAccent.pill} />
-              </BlurView>
+              </GlobeBtnGlass>
             </TouchableOpacity>
             {/* 활성화 색 변경 — 형태 전환 버튼 왼쪽. 현재 색을 원으로 보여주고 탭하면 표시설정(팔레트) 열림.
                 유리(사진) 지구본에선 숨긴다 — 활성화가 사진이라 색 팔레트가 의미 없다 */}
@@ -1411,11 +1424,11 @@ export default function MainScreen({ navigation, route }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={t('main.activeColorA11y')}
               >
-                <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+                <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                   <View style={[styles.globeColorDot, { backgroundColor: globeColor }, isNoiseColor(globeColor) && { overflow: 'hidden' }]}>
                     {isNoiseColor(globeColor) && <GrainOverlay color="#000000" opacity={0.5} dotCount={40} />}
                   </View>
-                </BlurView>
+                </GlobeBtnGlass>
               </TouchableOpacity>
             )}
           </>
@@ -1423,7 +1436,7 @@ export default function MainScreen({ navigation, route }: Props) {
           <>
             {/* 검색바 (Figma 8:385) */}
             <View style={styles.regionSearchWrap}>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.regionSearchInput}
                 value={regionSearch}
                 onChangeText={setRegionSearch}
@@ -1538,8 +1551,9 @@ export default function MainScreen({ navigation, route }: Props) {
               )}
             </View>
             {/* 방문 지역 선택 시트 (소급 태깅) */}
-            <Modal visible={regionTagSheetVisible} transparent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
-              <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <Modal visible={regionTagSheetVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setRegionTagSheetVisible(false)}>
+              {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+              <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
                 <TouchableOpacity
                   style={{ ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' }}
                   activeOpacity={1}
@@ -1553,7 +1567,7 @@ export default function MainScreen({ navigation, route }: Props) {
                   </Text>
                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#22222E', borderRadius: 12, paddingHorizontal: 12, marginBottom: 6 }}>
                     <SearchLineIcon size={18} color="#A9A9A9" />
-                    <TextInput
+                    <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                       style={{ flex: 1, color: '#FFFFFF', fontSize: 14, paddingVertical: 10, marginLeft: 8 }}
                       value={regionTagSearch}
                       onChangeText={setRegionTagSearch}
@@ -1598,7 +1612,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     </LinearGradient>
                   </TouchableOpacity>
                 </View>
-              </View>
+              </KeyboardAvoidingView>
             </Modal>
             {/* 뒤로가기 버튼 (Figma — 좌측 셰브론 아이콘) */}
             <TouchableOpacity
@@ -1625,9 +1639,9 @@ export default function MainScreen({ navigation, route }: Props) {
               accessibilityRole="button"
               accessibilityLabel={t('main.territoryDisplayA11y')}
             >
-              <BlurView intensity={50} tint="dark" experimentalBlurMethod="dimezisBlurView" style={styles.globeSettingsBtnBlur}>
+              <GlobeBtnGlass style={styles.globeSettingsBtnBlur}>
                 <GlobeDisplayIcon tint={skinAccent.pill} />
-              </BlurView>
+              </GlobeBtnGlass>
             </TouchableOpacity>
           </>
         ) : (
@@ -1664,16 +1678,17 @@ export default function MainScreen({ navigation, route }: Props) {
         {/* ── 전체 국가 목록 시트 (돋보기) ── */}
         <Modal
           visible={countryPickerVisible}
-          transparent
+          transparent statusBarTranslucent navigationBarTranslucent
           animationType="slide"
           onRequestClose={() => setCountryPickerVisible(false)}
         >
-          <View style={styles.countryPickerOverlay} accessibilityViewIsModal>
+          {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.countryPickerOverlay} accessibilityViewIsModal>
             <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setCountryPickerVisible(false)} />
             <View style={styles.countryPickerSheet}>
               <View style={styles.countryPickerHandle} />
               <Text style={styles.countryPickerTitle}>{t('main.selectCountry')}</Text>
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={styles.countryPickerInput}
                 placeholder={t('main.countrySearchPh')}
                 placeholderTextColor="#5a5a68"
@@ -1700,7 +1715,7 @@ export default function MainScreen({ navigation, route }: Props) {
               </ScrollView>
               <View style={{ height: insets.bottom + 16 }} />
             </View>
-          </View>
+          </KeyboardAvoidingView>
         </Modal>
       </View>
 
@@ -1710,7 +1725,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {SHOW_VISITED_SHEET && !sheetOpen && (
         <TouchableOpacity style={styles.handleTrigger} onPress={openSheet} activeOpacity={0.8}>
           <LinearGradient
-            colors={['transparent', 'rgba(10,1,24,0.85)']}
+            colors={['rgba(10,1,24,0)', 'rgba(10,1,24,0.85)']}
             style={styles.handleTriggerGradient}
             pointerEvents="none"
           />
@@ -1783,7 +1798,7 @@ export default function MainScreen({ navigation, route }: Props) {
         visible={countrySheetOpen}
         transparent
         animationType="none"
-        statusBarTranslucent
+        statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeCountrySheet}
       >
         {/* 오버레이 */}
@@ -1922,7 +1937,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 기록형식 선택 모달 ── */}
       <Modal
         visible={formatModalVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setFormatModalVisible(false)}
       >
@@ -1963,7 +1978,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 지역(주) 기존 기록 보기 모달 ── */}
       <Modal
         visible={regionRecordsVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={() => setRegionRecordsVisible(false)}
       >
@@ -2043,7 +2058,7 @@ export default function MainScreen({ navigation, route }: Props) {
       {/* ── 영토 표시 설정 모달 ── */}
       <Modal
         visible={displaySettingsVisible}
-        transparent
+        transparent statusBarTranslucent navigationBarTranslucent
         animationType="fade"
         onRequestClose={cancelDisplaySettings}
       >
@@ -2568,7 +2583,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
-    elevation: 20,
+    // elevation 제거 — 안드로이드는 반투명 배경+overflow hidden에서 elevation 그림자가
+    // 시트 뒤로 각지게 비쳐 유리감을 해침 (그림자는 iOS shadow*만, z순서는 zIndex가 담당)
     overflow: 'hidden',
   },
   sheetHandleArea: {
@@ -2653,7 +2669,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.4,
     shadowRadius: 16,
-    elevation: 25,
+    // elevation 제거 — 사유는 bottomSheet와 동일
     overflow: 'hidden',
   },
   countrySheetHeader: {

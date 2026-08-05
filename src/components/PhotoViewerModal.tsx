@@ -7,7 +7,8 @@
  * 액션 바(선택) — showActions일 때 하단에 기기 저장, 호출부가 넘기면 지구본 사진 지정·커버 지정·삭제.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Image, Dimensions, Alert } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Image, Dimensions, Alert, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, DownloadIcon, GalleryIcon, TrashIcon } from './icons';
@@ -44,6 +45,7 @@ export default function PhotoViewerModal({
   onDelete?: (index: number) => void;
 }) {
   const { t } = useTranslation();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [index, setIndex] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
   useEffect(() => {
@@ -65,7 +67,7 @@ export default function PhotoViewerModal({
   if (!visible) return null;
   const hasActionBar = showActions || !!onSetGlobeCover || !!onSetCover || !!onDelete;
   return (
-    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.95)' }} accessibilityViewIsModal>
         <ScrollView
           ref={scrollRef}
@@ -93,14 +95,15 @@ export default function PhotoViewerModal({
             </ScrollView>
           ))}
         </ScrollView>
+        {/* 상단 좌표 — 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 보정 */}
         {uris.length > 1 && (
-          <View style={{ position: 'absolute', top: 56, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)' }}>
+          <View style={{ position: 'absolute', top: Platform.OS === 'ios' ? 56 : insets.top + 12, alignSelf: 'center', paddingHorizontal: 12, paddingVertical: 5, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.5)' }}>
             <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>{index + 1} / {uris.length}</Text>
           </View>
         )}
         <TouchableOpacity
           onPress={onClose}
-          style={{ position: 'absolute', top: 50, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}
+          style={{ position: 'absolute', top: Platform.OS === 'ios' ? 50 : insets.top + 6, right: 20, width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' }}
           accessibilityRole="button"
         >
           <Text style={{ color: '#fff', fontSize: 18, fontWeight: '600' }}>✕</Text>
@@ -108,7 +111,8 @@ export default function PhotoViewerModal({
 
         {/* 하단 액션 바 — 보면서 바로 공유/저장/커버/삭제 */}
         {hasActionBar && (
-          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center', paddingTop: 14, paddingBottom: 40, backgroundColor: 'rgba(0,0,0,0.55)' }}>
+          // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+          <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-evenly', alignItems: 'center', paddingTop: 14, paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16, backgroundColor: 'rgba(0,0,0,0.55)' }}>
             {onSetGlobeCover && (
               <TouchableOpacity onPress={() => onSetGlobeCover(index)} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
                 <GlobeIcon size={ACTION_ICON} color={ACTION_TINT} />

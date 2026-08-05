@@ -8,6 +8,7 @@ import {
   PanResponder,
   LayoutAnimation,
   StyleSheet,
+  Platform,
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
@@ -30,6 +31,10 @@ const COLORS = {
   purpleDeep: '#6B21A8',
   textDim: '#A1A1B0',
 };
+
+// 사진 썸네일 래퍼의 사방 확장폭 — 모서리 버튼(기존 -7 배치)을 래퍼 경계 안에 담아
+// 안드로이드에서도 터치가 전달되게 한다(안드로이드는 부모 밖 자식 터치 무시).
+const MEDIA_BLEED = 7;
 
 // ─── 드래그 핸들 아이콘 ───
 const DragHandleIcon = ({ size = 20, color = '#A1A1B0' }: { size?: number; color?: string }) => (
@@ -375,6 +380,9 @@ function DraggablePhotoThumb({
     }
   }
 
+  // 안드로이드는 부모 경계 밖 자식에 터치를 전달하지 않으므로, 래퍼를 사방 BLEED(7px)만큼
+  // 키워 모서리 버튼(-7 배치였던 것)을 경계 안(0 배치)에 담는다. 사진은 래퍼 안쪽 7px에
+  // 놓이고 그리드 컨테이너의 음수 마진이 이를 상쇄해 화면상 위치는 이전과 동일하다.
   return (
     <Animated.View
       style={[
@@ -383,17 +391,18 @@ function DraggablePhotoThumb({
           position: 'absolute',
           left: left,
           top: top,
-          width: THUMB_SIZE,
-          height: THUMB_SIZE,
+          width: THUMB_SIZE + MEDIA_BLEED * 2,
+          height: THUMB_SIZE + MEDIA_BLEED * 2,
           zIndex: zIndex,
         },
-        isDragging && [ds.mediaThumbActive, { borderColor: skinAccent.accent, shadowColor: skinAccent.accent }],
       ]}
       {...panResponder.panHandlers}
     >
-      <Image source={{ uri }} style={ds.mediaThumb} />
+      <View style={[ds.mediaThumbFrame, isDragging && [ds.mediaThumbActive, { borderColor: skinAccent.accent, shadowColor: skinAccent.accent }]]}>
+        <Image source={{ uri }} style={ds.mediaThumb} />
 
-      {isLocked && <View style={[ds.mediaLockedOverlay, { backgroundColor: skinAccent.tint(0.35) }]} />}
+        {isLocked && <View style={[ds.mediaLockedOverlay, { backgroundColor: skinAccent.tint(0.35) }]} />}
+      </View>
 
       {!isDragging && (
         <TouchableOpacity
@@ -505,8 +514,18 @@ export function DraggablePhotoGrid({
 
   const numRows = Math.ceil(medias.length / 3);
 
+  // 래퍼가 사방 MEDIA_BLEED만큼 커진 것을 음수 마진으로 상쇄 — 사진의 화면상 위치는 그대로,
+  // 모서리 버튼은 래퍼 경계 안에 들어와 안드로이드에서도 터치가 전달된다.
   return (
-    <View style={{ height: numRows * CELL_SIZE, position: 'relative', marginTop: 12 }}>
+    <View
+      style={{
+        height: numRows * CELL_SIZE + MEDIA_BLEED * 2,
+        position: 'relative',
+        marginTop: 12 - MEDIA_BLEED,
+        marginHorizontal: -MEDIA_BLEED,
+        marginBottom: -MEDIA_BLEED,
+      }}
+    >
       {medias.map((uri, idx) => (
         <DraggablePhotoThumb
           key={uri + '_' + idx}
@@ -547,11 +566,16 @@ const ds = StyleSheet.create({
   draggableRowActive: {
     backgroundColor: 'rgba(191,133,252,0.12)',
     borderColor: '#BF85FC',
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#BF85FC',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
     transform: [{ scale: 1.02 }],
   },
   dragHandle: {
@@ -613,18 +637,31 @@ const ds = StyleSheet.create({
   // 사진 그리드
   mediaThumbWrap: {
     position: 'relative',
-    borderRadius: 10,
     overflow: 'visible',
+  },
+  // 사진 프레임 — 래퍼 안쪽 MEDIA_BLEED(7px) 인셋. 테두리/스케일/그림자는 여기에 적용
+  mediaThumbFrame: {
+    position: 'absolute',
+    top: 7,
+    left: 7,
+    right: 7,
+    bottom: 7,
+    borderRadius: 10,
   },
   mediaThumbActive: {
     borderColor: '#BF85FC',
     borderWidth: 1.5,
     borderRadius: 12,
-    shadowColor: '#BF85FC',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    // 컬러 글로우는 iOS 전용 — 안드로이드 elevation은 색 지정 불가(회색 사각 그림자)
+    ...Platform.select({
+      ios: {
+        shadowColor: '#BF85FC',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 8,
+      },
+      default: {},
+    }),
     transform: [{ scale: 1.05 }],
   },
   mediaThumb: {
@@ -639,11 +676,11 @@ const ds = StyleSheet.create({
     backgroundColor: 'rgba(107,33,168,0.35)',
     zIndex: 1,
   },
-  // 삭제 버튼 — 좌측 상단
+  // 삭제 버튼 — 좌측 상단 (래퍼가 BLEED만큼 커졌으므로 0 = 기존 -7과 같은 화면 위치)
   mediaRemoveBtn: {
     position: 'absolute',
-    top: -7,
-    left: -7,
+    top: 0,
+    left: 0,
     width: 22,
     height: 22,
     borderRadius: 11,
@@ -655,11 +692,11 @@ const ds = StyleSheet.create({
     zIndex: 10,
   },
   mediaRemoveTxt: { color: COLORS.white, fontSize: 14, fontWeight: 'bold', lineHeight: 16 },
-  // 🔒 버튼 — 우측 상단
+  // 🔒 버튼 — 우측 상단 (래퍼가 BLEED만큼 커졌으므로 0 = 기존 -7과 같은 화면 위치)
   mediaLockBtn: {
     position: 'absolute',
-    top: -7,
-    right: -7,
+    top: 0,
+    right: 0,
     width: 26,
     height: 26,
     borderRadius: 13,
@@ -674,10 +711,10 @@ const ds = StyleSheet.create({
     backgroundColor: COLORS.purpleDeep,
     borderColor: COLORS.purpleNeon,
   },
-  // 비공개 인원 배지 — 하단 중앙
+  // 비공개 인원 배지 — 하단 중앙 (래퍼 확장분 7px 보정: 기존 사진 기준 bottom 4)
   privacyCountBadge: {
     position: 'absolute',
-    bottom: 4,
+    bottom: 11,
     alignSelf: 'center',
     left: 0,
     right: 0,
@@ -694,11 +731,11 @@ const ds = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
-  // ⭐️ 지도대표 버튼 — 좌측 하단
+  // ⭐️ 지도대표 버튼 — 좌측 하단 (래퍼가 BLEED만큼 커졌으므로 0 = 기존 -7과 같은 화면 위치)
   mediaRepBtn: {
     position: 'absolute',
-    bottom: -7,
-    left: -7,
+    bottom: 0,
+    left: 0,
     height: 22,
     borderRadius: 11,
     backgroundColor: 'rgba(0,0,0,0.75)',

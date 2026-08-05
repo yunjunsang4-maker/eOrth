@@ -7,7 +7,9 @@ import {
   Modal,
   Animated,
   ScrollView,
+  Platform,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
@@ -44,6 +46,7 @@ export function PrivacyModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
   useEffect(() => {
@@ -67,10 +70,11 @@ export function PrivacyModal({
   const allPrivate = allFriends.length > 0 && count === allFriends.length;
 
   return (
-    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} transparent animationType="none" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={pm.overlay} accessibilityViewIsModal>
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
-        <Animated.View style={[pm.sheet, { transform: [{ translateY }] }]}>
+        {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+        <Animated.View style={[pm.sheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 14 }, { transform: [{ translateY }] }]}>
           <View style={pm.handle} />
 
           {/* 헤더 — 아이콘을 accent 배지에 넣어 시트의 시작점을 만든다 */}

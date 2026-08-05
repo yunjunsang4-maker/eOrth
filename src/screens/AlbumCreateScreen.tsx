@@ -518,7 +518,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
           <View style={st.searchCard}>
             <View style={st.searchRow}>
               <SearchIcon size={16} color="#A1A1B0" />
-              <TextInput
+              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
                 style={st.searchInput}
                 placeholder={t('album.countrySearchPlaceholder')}
                 placeholderTextColor="#5A5A6E"
@@ -744,7 +744,8 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
         />
       )}
 
-      <View style={st.bottom}>
+      {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+      <View style={[st.bottom, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
         <TouchableOpacity
           style={[st.nextBtn, selected.length === 0 && st.nextBtnDisabled]}
           onPress={() => setPreviewVisible(true)}
@@ -768,13 +769,14 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
       />
 
       {/* 기록 카드 미리보기 + 제목 입력 + 썸네일 선택 */}
-      <Modal visible={previewVisible} transparent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
+      <Modal visible={previewVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setPreviewVisible(false)}>
         <KeyboardAvoidingView
           style={st.pvOverlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           accessibilityViewIsModal
         >
-          <View style={st.pvSheet}>
+          {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+          <View style={[st.pvSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={st.pvTitle}>{appendTarget ? t('album.appendTitle') : t('album.previewTitle')}</Text>
             <Text style={st.pvSub}>{appendTarget ? t('album.appendSub') : t('album.previewSub')}</Text>
 
@@ -811,7 +813,7 @@ export default function AlbumCreateScreen({ navigation, route }: RootStackScreen
 
             {/* 제목 입력 */}
             <Text style={[st.pvPickLabel, { color: skinAccent.accent }]}>{t('album.albumName')}</Text>
-            <TextInput
+            <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
               style={st.pvInput}
               value={title}
               onChangeText={setTitle}

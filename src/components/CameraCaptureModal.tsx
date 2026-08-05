@@ -60,7 +60,7 @@ export default function CameraCaptureModal({
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent>
+    <Modal visible={visible} animationType="slide" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent>
       <View style={s.bg}>
         {!permission ? (
           <View style={s.center}>
