@@ -88,8 +88,9 @@ function eq(actual: unknown, expected: unknown, msg: string) {
   const s3 = { ...mid, plan: 90, pace: 90 };
   eq(makeTypeLabel(s3).key, 'planB-paceB', '동점 → 앞선 축이 명사');
 
-  // 결정성 — 같은 입력이면 항상 같은 출력
-  eq(makeTypeLabel(s1).key, makeTypeLabel({ ...s1 }).key, '같은 응답 → 같은 라벨');
+  // 결정성 — 동점 케이스에서 tie-break가 안정적인지 검증 (같은 입력이면 항상 같은 출력)
+  eq(makeTypeLabel(s3).key, makeTypeLabel({ ...s3 }).key, '동점 재호출 → key 일관성');
+  eq(makeTypeLabel(s3).ko, makeTypeLabel({ ...s3 }).ko, '동점 재호출 → ko 일관성');
 
   // 1위 강도가 문턱 미만이면 폴백 (2위가 아무리 있어도)
   eq(makeTypeLabel({ ...mid, plan: 60 }).key, 'neutral', '1위 강도 10 < 15 → 폴백');
