@@ -1436,6 +1436,57 @@ create trigger reports_email_alert
   after insert on public.reports
   for each row execute function public.notify_report_alert();
 
+-- ============================================================
+-- 9-b) 여행 DNA 설문
+--   설계: docs/superpowers/specs/2026-08-05-travel-dna-survey-design.md
+--   기록에서 짜내던 계절·관심사·성향 3축(35점)을 이 설문이 대체한다.
+--   ⚠️ 위치 고정 — 바로 아래 public_profiles 재정의가 이 표를 참조한다.
+--      뒤로 옮기면 schema.sql 재실행이 "relation does not exist"로 죽는다.
+-- ============================================================
+create table if not exists public.travel_dna (
+  user_id    uuid primary key references public.profiles(id) on delete cascade,
+  -- 응답 원본 {"1":"A","2":"B",...}. 문항을 추가하거나 가중치를 바꿔도
+  -- 재검사 없이 점수를 다시 계산할 수 있다.
+  answers    jsonb not null,
+  -- 7축 점수(각 0~100). 순서는 클라이언트 DNA_AXES와 1:1 —
+  -- plan, pace, terrain, budget, purpose, crowd, company
+  scores     smallint[] not null,
+  type_key   text,
+  answered   smallint not null default 0,
+  updated_at timestamptz not null default now()
+);
+-- 추천 후보 표본 조회용(최근 갱신순) — mate_suggestions의 3번째 후보 경로가 쓴다
+create index if not exists idx_travel_dna_updated on public.travel_dna (updated_at desc);
+
+alter table public.travel_dna enable row level security;
+
+drop policy if exists "dna_select_own" on public.travel_dna;
+create policy "dna_select_own" on public.travel_dna
+  for select to authenticated using (user_id = auth.uid());
+
+-- 쓰기는 아래 RPC(security definer)로만. 클라이언트가 직접 insert 하면
+-- 점수를 임의로 조작해 매칭을 올릴 수 있다.
+revoke insert, update, delete on public.travel_dna from anon, authenticated;
+
+-- 응답 저장 — 점수·라벨은 클라이언트가 계산해 보내지만, 서버가 응답 원본과 함께
+-- 보관하므로 이상이 발견되면 answers로 재계산해 덮어쓸 수 있다.
+create or replace function public.save_travel_dna(
+  p_answers jsonb, p_scores smallint[], p_type_key text, p_answered smallint)
+returns void language plpgsql security definer set search_path = public as $$
+begin
+  if auth.uid() is null then return; end if;
+  -- 축 개수가 어긋나면 매칭 계산에서 조용히 틀어지므로 여기서 막는다
+  if array_length(p_scores, 1) is distinct from 7 then
+    raise exception 'travel_dna.scores must have exactly 7 elements';
+  end if;
+  insert into public.travel_dna (user_id, answers, scores, type_key, answered, updated_at)
+  values (auth.uid(), p_answers, p_scores, p_type_key, coalesce(p_answered, 0), now())
+  on conflict (user_id) do update
+    set answers = excluded.answers, scores = excluded.scores,
+        type_key = excluded.type_key, answered = excluded.answered, updated_at = now();
+end; $$;
+grant execute on function public.save_travel_dna(jsonb, smallint[], text, smallint) to authenticated;
+
 -- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김 — 1)의 public_profiles 뷰를
 -- 차단 필터 포함으로 재정의한다 (is_blocked_between이 이 지점에서야 정의되므로 여기서 교체).
 -- definer(security_invoker=false) 유지 — profiles 테이블은 본인 행만 select 가능하므로
@@ -2255,55 +2306,6 @@ end; $$;
 
 -- 일반 사용자는 실행 불가(관리자/서비스롤 전용)
 revoke all on function public.purge_old_notifications(interval) from public, anon, authenticated;
-
--- ============================================================
--- 11-b) 여행 DNA 설문
---   설계: docs/superpowers/specs/2026-08-05-travel-dna-survey-design.md
---   기록에서 짜내던 계절·관심사·성향 3축(35점)을 이 설문이 대체한다.
--- ============================================================
-create table if not exists public.travel_dna (
-  user_id    uuid primary key references public.profiles(id) on delete cascade,
-  -- 응답 원본 {"1":"A","2":"B",...}. 문항을 추가하거나 가중치를 바꿔도
-  -- 재검사 없이 점수를 다시 계산할 수 있다.
-  answers    jsonb not null,
-  -- 7축 점수(각 0~100). 순서는 클라이언트 DNA_AXES와 1:1 —
-  -- plan, pace, terrain, budget, purpose, crowd, company
-  scores     smallint[] not null,
-  type_key   text,
-  answered   smallint not null default 0,
-  updated_at timestamptz not null default now()
-);
--- 추천 후보 표본 조회용(최근 갱신순) — mate_suggestions의 3번째 후보 경로가 쓴다
-create index if not exists idx_travel_dna_updated on public.travel_dna (updated_at desc);
-
-alter table public.travel_dna enable row level security;
-
-drop policy if exists "dna_select_own" on public.travel_dna;
-create policy "dna_select_own" on public.travel_dna
-  for select to authenticated using (user_id = auth.uid());
-
--- 쓰기는 아래 RPC(security definer)로만. 클라이언트가 직접 insert 하면
--- 점수를 임의로 조작해 매칭을 올릴 수 있다.
-revoke insert, update, delete on public.travel_dna from anon, authenticated;
-
--- 응답 저장 — 점수·라벨은 클라이언트가 계산해 보내지만, 서버가 응답 원본과 함께
--- 보관하므로 이상이 발견되면 answers로 재계산해 덮어쓸 수 있다.
-create or replace function public.save_travel_dna(
-  p_answers jsonb, p_scores smallint[], p_type_key text, p_answered smallint)
-returns void language plpgsql security definer set search_path = public as $$
-begin
-  if auth.uid() is null then return; end if;
-  -- 축 개수가 어긋나면 매칭 계산에서 조용히 틀어지므로 여기서 막는다
-  if array_length(p_scores, 1) is distinct from 7 then
-    raise exception 'travel_dna.scores must have exactly 7 elements';
-  end if;
-  insert into public.travel_dna (user_id, answers, scores, type_key, answered, updated_at)
-  values (auth.uid(), p_answers, p_scores, p_type_key, coalesce(p_answered, 0), now())
-  on conflict (user_id) do update
-    set answers = excluded.answers, scores = excluded.scores,
-        type_key = excluded.type_key, answered = excluded.answered, updated_at = now();
-end; $$;
-grant execute on function public.save_travel_dna(jsonb, smallint[], text, smallint) to authenticated;
 
 -- ============================================================
 -- 12) 추천 메이트(여행 DNA) 결과 캐시
