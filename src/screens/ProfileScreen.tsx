@@ -1996,8 +1996,9 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
           <View style={styles.profileInfo}>
             <Text style={[styles.userName, nameFontStyle]}>{profileName}</Text>
             <View style={styles.statusRow}>
-              <TouchableOpacity disabled={!stayActive} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
-                <Text style={styles.userLocation}>
+              {/* 거주국·체류국 — 길어지면 먼저 줄어들어 오른쪽 DNA 칩이 밀려나지 않게 한다 */}
+              <TouchableOpacity style={styles.locationTap} disabled={!stayActive} onPress={() => setStaySheetVisible(true)} activeOpacity={0.6}>
+                <Text style={styles.userLocation} numberOfLines={1}>
                   {(() => {
                     const home = COUNTRY_DATA[homeCountryCode] || { name: '대한민국', flag: '🇰🇷' };
                     // 체류 진행 중 — "🇯🇵 일본 체류 중" (여행 중보다 우선)
@@ -2013,25 +2014,25 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
                   })()}
                 </Text>
               </TouchableOpacity>
+              {/* 여행 DNA — 거주국 오른쪽. 완료: 유형 텍스트(탭→결과·재검사),
+                  미완료: 점선 빈 칩으로 빈자리를 보여줘 검사를 유도(탭→설문) */}
+              <TouchableOpacity
+                style={[styles.dnaChip, !dnaComplete && styles.dnaChipEmpty]}
+                activeOpacity={0.75}
+                onPress={() =>
+                  dnaComplete
+                    ? navigation.navigate('TravelDnaResult')
+                    : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
+                }
+              >
+                <Text style={styles.dnaChipMark}>✦</Text>
+                <Text style={styles.dnaChipText} numberOfLines={1}>
+                  {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
+                </Text>
+              </TouchableOpacity>
             </View>
             {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
             {!!bio && <Text style={styles.userBio} numberOfLines={1} ellipsizeMode="tail">{bio}</Text>}
-            {/* 여행 DNA — 신원 블록(이름·위치·소개) 바로 아래 칩. 완료: 유형 텍스트(탭→결과·재검사),
-                미완료: 점선 빈 칩으로 빈자리를 보여줘 검사를 유도(탭→설문) */}
-            <TouchableOpacity
-              style={[styles.dnaChip, !dnaComplete && styles.dnaChipEmpty]}
-              activeOpacity={0.75}
-              onPress={() =>
-                dnaComplete
-                  ? navigation.navigate('TravelDnaResult')
-                  : navigation.navigate('TravelDnaSurvey', { mode: 'full' })
-              }
-            >
-              <Text style={styles.dnaChipMark}>✦</Text>
-              <Text style={styles.dnaChipText} numberOfLines={1}>
-                {dnaComplete ? (i18n.language.startsWith('en') ? dnaLabel.en : dnaLabel.ko) : t('dna.startSurvey')}
-              </Text>
-            </TouchableOpacity>
             <View style={styles.statsRow}>
               <StatCard value={String(displayTrips.length)} label={t('profile.tripCount')} />
               <StatCard value={String(neighborCount)} label={t('profile.neighbors')} onPress={() => navigation.navigate('FollowerList')} />
@@ -2478,6 +2479,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  // 거주국 탭 영역 — 같은 행의 DNA 칩과 공간을 나눠 갖는다. 국가명이 길면(체류 중 문구 등)
+  // 이쪽이 먼저 줄어들어야 칩이 화면 밖으로 밀리지 않는다.
+  locationTap: {
+    flexShrink: 1,
+  },
   userLocation: {
     fontSize: 14,
     fontWeight: '600',
@@ -2514,9 +2520,9 @@ const styles = StyleSheet.create({
   dnaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    marginTop: 23,
+    // 거주국과 같은 행 — 위 여백 대신 좌측 간격만 준다. flexShrink로 긴 유형명은 칩 안에서 잘린다
+    flexShrink: 1,
+    marginLeft: 8,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,

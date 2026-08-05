@@ -395,20 +395,27 @@ export default function FriendProfileScreen({
           <View style={pv.profileInfo}>
             {/* 닉네임 폐지 — 아이디(handle)만 표시. 프로필 탭과 동일하게 이름 한 줄 */}
             <Text style={[pv.userName, nameFontStyle]}>{display.name}</Text>
-            {/* 이름 아래 위치 줄 — 내 프로필과 동일 */}
-            {!!friendLocation && <Text style={pv.userLocation}>{friendLocation}</Text>}
-            {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
-            {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
-            {/* 여행 DNA — 상대가 유형을 갖고 있을 때만(탭 불가·본인 결과 아님). 없으면 아무것도
-                렌더하지 않는다 — 빈 상태 유도는 본인 프로필에서만 의미가 있다 */}
-            {!!friendDnaLabel && (
-              <View style={s.dnaChip}>
-                <Text style={s.dnaChipMark}>✦</Text>
-                <Text style={s.dnaChipText} numberOfLines={1}>
-                  {i18n.language.startsWith('en') ? friendDnaLabel.en : friendDnaLabel.ko}
-                </Text>
+            {/* 이름 아래 위치 줄 + 여행 DNA 칩 — 내 프로필과 동일한 배치(거주국 오른쪽에 칩).
+                여행 DNA는 상대가 유형을 갖고 있을 때만 그린다(탭 불가 — 본인 결과가 아니다).
+                없으면 아무것도 렌더하지 않는다 — 빈 상태 유도는 본인 프로필에서만 의미가 있다. */}
+            {(!!friendLocation || !!friendDnaLabel) && (
+              <View style={s.identityRow}>
+                {!!friendLocation && (
+                  // 국가명이 길면 이쪽이 먼저 줄어들어 오른쪽 칩이 밀려나지 않게 한다
+                  <Text style={[pv.userLocation, s.locationShrink]} numberOfLines={1}>{friendLocation}</Text>
+                )}
+                {!!friendDnaLabel && (
+                  <View style={s.dnaChip}>
+                    <Text style={s.dnaChipMark}>✦</Text>
+                    <Text style={s.dnaChipText} numberOfLines={1}>
+                      {i18n.language.startsWith('en') ? friendDnaLabel.en : friendDnaLabel.ko}
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
+            {/* 소개(bio) — 위치와 통계 사이. 한 줄로 제한하고 넘치면 …처리. 없으면 여백 0 */}
+            {!!display.bio && <Text style={pv.userBio} numberOfLines={1} ellipsizeMode="tail">{display.bio}</Text>}
             {/* 나와 겹치는 나라 — 겹침 있을 때만 (여행 DNA 맥락 진입점) */}
             {!isSelf && !!overlap && overlap.sharedCount > 0 && (
               // 앞 아이콘은 기본 이모지(🌍) 대신 앱 아이콘 — 메이트찾기의 같은 줄과 표현을 맞춘다
@@ -671,12 +678,20 @@ const s = StyleSheet.create({
   overlapLine: { fontSize: 12, color: COLORS.accent, flexShrink: 1 },
   // 여행 DNA 칩 — 프로필 탭과 동일한 톤. pv.userBio엔 프로필 탭 같은 음수 marginBottom 보정이
   // 없어(수정 범위 밖) marginTop을 직접 8로 둬 같은 시각적 간격을 낸다. 탭 불가(정보 전용).
+  // 위치 줄 + DNA 칩을 한 행에 — 내 프로필의 statusRow와 같은 배치.
+  // gap으로 간격을 주므로 칩 자체에는 좌측 마진을 두지 않는다(위치가 없을 때 칩만 밀리는 것 방지)
+  identityRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  locationShrink: {
+    flexShrink: 1,
+  },
   dnaChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    alignSelf: 'flex-start',
-    maxWidth: '100%',
-    marginTop: 8,
+    flexShrink: 1,
     paddingHorizontal: 10,
     paddingVertical: 5,
     borderRadius: 999,
