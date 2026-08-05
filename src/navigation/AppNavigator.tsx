@@ -46,6 +46,8 @@ import AlbumCreateScreen from '../screens/AlbumCreateScreen';
 import FriendsScreen from '../screens/FriendsScreen';
 import DMScreen from '../screens/DMScreen';
 import BestCutScreen from '../screens/BestCutScreen';
+import TravelDnaSurveyScreen from '../screens/TravelDnaSurveyScreen';
+import TravelDnaResultScreen from '../screens/TravelDnaResultScreen';
 import TabNavigator from './TabNavigator';
 import { navigationRef } from './navigationRef';
 import { supabase } from '../services/supabase';
@@ -334,6 +336,14 @@ export default function AppNavigator() {
           options={{ gestureEnabled: false }}
         />
         <Stack.Screen name="Main" component={TabNavigator} options={{ gestureEnabled: false }} />
+        {/* 여행 DNA 설문 — 중간 이탈 시 답이 날아가므로 스와이프 뒤로가기를 막는다
+            (이탈은 화면 안 '건너뛰기'로만, 확인창을 거친다) */}
+        <Stack.Screen
+          name="TravelDnaSurvey"
+          component={TravelDnaSurveyScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
