@@ -528,22 +528,30 @@ git commit -m "feat(dna): 유형 라벨 생성 — 강한 2축 조합
 
 - [ ] **Step 1: 스키마 추가**
 
-⚠️ **삽입 위치가 중요하다.** `schema.sql`은 SQL Editor에 위에서부터 통째로 붙여넣어 실행된다.
-Step 2에서 `public_profiles` 뷰(파일 하단 `stay_status`가 있는 정의, ~1444행)가 `travel_dna`를
-참조하게 되므로, **표는 반드시 그 뷰보다 먼저 만들어져야 한다.** 뒤에 두면 재실행이
-`relation "public.travel_dna" does not exist`로 실패해 스키마 배포 수단 자체가 깨진다.
+⚠️ **삽입 위치가 중요하다.** `schema.sql`은 SQL Editor에 위에서부터 통째로 붙여넣어 실행되고,
+`check_function_bodies`(기본 on)가 `language sql` 함수 본문을 **CREATE 시점에** 카탈로그로 검증한다.
+`travel_dna`를 참조하는 곳이 둘이므로 표는 **그 둘보다 모두 먼저** 만들어져야 한다.
 
-`-- 검색·프로필 단건 조회도 차단 관계면 서버에서 숨김` 주석 블록 **바로 위**(즉 최종
-`public_profiles` 뷰 재정의 직전)에 삽입한다:
+| 참조하는 곳 | 위치 | 태스크 |
+|---|---|---|
+| `mate_suggestions_compute` (language sql) | ~712행 | Task 4 |
+| `public_profiles` 최종 재정의 | ~1499행 | Task 3 Step 2 |
+
+→ **`drop function if exists public.travel_overlap_suggestions(int);` 줄 바로 위**(즉 여행 DNA 매칭
+섹션이 시작되기 직전, ~704행)에 삽입한다. 이 표의 의존 대상은 `public.profiles`(25행)뿐이라
+이 위치가 안전하다.
+
+뒤에 두면 재실행이 `relation "public.travel_dna" does not exist`로 실패해 배포 수단 자체가 깨진다.
 
 ```sql
 -- ============================================================
--- 9-b) 여행 DNA 설문
+-- 3-a) 여행 DNA 설문
 --   설계: docs/superpowers/specs/2026-08-05-travel-dna-survey-design.md
 --   기록에서 짜내던 계절·관심사·성향 3축(35점)을 이 설문이 대체한다.
 --
---   ⚠️ 위치 고정 — 바로 아래 public_profiles 재정의가 이 표를 참조한다.
---      뒤로 옮기면 schema.sql 재실행이 "relation does not exist"로 죽는다.
+--   ⚠️ 위치 고정 — mate_suggestions_compute(712행, language sql)와 public_profiles
+--      재정의(1499행)가 이 표를 참조한다. 뒤로 옮기면 check_function_bodies가
+--      CREATE 시점에 잡아 schema.sql 재실행이 통째로 죽는다.
 -- ============================================================
 create table if not exists public.travel_dna (
   user_id    uuid primary key references public.profiles(id) on delete cascade,
