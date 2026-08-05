@@ -412,7 +412,13 @@ async function loadAllImages() {
 }
 
 // Create texture from world GeoJSON
-async function buildTexture(srcOverride) {
+// opts.sliced: 방문국 그리기 루프를 시간예산으로 나눠 프레임을 양보한다(유리 10m 스왑 전용).
+// ⚠️ 캔버스가 싱글턴(__texCv)이라 그리는 도중 양보하면 다른 베이크(테마 변경·사진 디코드 2차)와
+//    겹쳐 텍스처가 오염될 수 있다 — 아래 busy 대기로 호출을 직렬화한다(sliced가 아니어도 안전망).
+async function buildTexture(srcOverride, opts) {
+  while (window.__texBusy) { await new Promise(function(r) { setTimeout(r, 16); }); }
+  window.__texBusy = true;
+  try {
   // 채움(사진 클립 경로)의 데이터 소스 — 유리 모드는 메시와 같은 LOD 데이터를 써야
   // 블리드·경계가 정합한다(기본: 유리=glassSrcData(), 그 외=worldData)
   var srcW = srcOverride || (isGlass() ? glassSrcData() : worldData);
@@ -523,9 +529,9 @@ async function buildTexture(srcOverride) {
   });
   }
 
-  // 방문 국가 활성화
+  // 방문 국가 활성화 — sliced면 시간예산마다 프레임 양보(아래 루프 참조)
   var pathForBounds = d3.geoPath().projection(proj);
-  srcW.features.forEach(function(f) {
+  var drawVisitedOne = function(f) {
     var nameEn = f.properties.name || '';
     var visited = visitedMap[nameEn];
     if (!visited) return;
@@ -710,7 +716,19 @@ async function buildTexture(srcOverride) {
         ctx.shadowBlur = 0;
       }
     }
-  });
+  };
+  if (opts && opts.sliced) {
+    var _vt0 = performance.now();
+    for (var _vi = 0; _vi < srcW.features.length; _vi++) {
+      drawVisitedOne(srcW.features[_vi]);
+      if (performance.now() - _vt0 > 8) {
+        await new Promise(function(r) { setTimeout(r, 0); });
+        _vt0 = performance.now();
+      }
+    }
+  } else {
+    for (var _vj = 0; _vj < srcW.features.length; _vj++) drawVisitedOne(srcW.features[_vj]);
+  }
 
   // Clouds
   function seededRand(seed) {
@@ -754,7 +772,21 @@ async function buildTexture(srcOverride) {
   drawCloud(600,820,1.1,0.07,25); drawCloud(300,870,1.0,0.07,26);
   }
 
-  var canvasTex = new THREE.CanvasTexture(offscreen);
+  var canvasTex;
+  if (opts && opts.sliced && window.createImageBitmap) {
+    // 캔버스를 직접 텍스처 소스로 쓰면 업로드(texImage2D) 때 캔버스 readback·premultiply 변환이
+    // 메인 스레드에서 동기로 돌아 8192에선 그것만 초 단위다. ImageBitmap은 이 변환을
+    // 비동기(오프스레드)로 미리 끝내 업로드가 순수 memcpy에 가까워진다.
+    // flipY: CanvasTexture 기본(flipY=true)과 동일 방향이 되도록 비트맵을 미리 뒤집고 flipY는 끈다.
+    try {
+      var bmp = await createImageBitmap(offscreen, { imageOrientation: 'flipY' });
+      canvasTex = new THREE.Texture(bmp);
+      canvasTex.flipY = false;
+      canvasTex.needsUpdate = true;
+    } catch (e) { canvasTex = new THREE.CanvasTexture(offscreen); }
+  } else {
+    canvasTex = new THREE.CanvasTexture(offscreen);
+  }
   canvasTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
   canvasTex.minFilter = THREE.LinearMipmapLinearFilter;
   canvasTex.magFilter = THREE.LinearFilter;
@@ -763,6 +795,7 @@ async function buildTexture(srcOverride) {
   canvasTex.wrapS = THREE.RepeatWrapping;
   canvasTex.wrapT = THREE.ClampToEdgeWrapping;
   return canvasTex;
+  } finally { window.__texBusy = false; }
 }
 
 // 유리 몸체(바다) 전용 소형 텍스처 — 어두운 남보라 단색.
@@ -953,37 +986,57 @@ var glassPhotoAttr = null, glassRanges = null; // 방문 변경 시 aPhoto in-pl
 // 유리 메시 LOD — 네온(VECTOR_LOD_AT)과 동일 방식: 딥줌에서 10m 데이터로 메시·테두리·텍스처를
 // '함께' 재구축해 어느 줌에서도 벡터 일체형을 유지한다(래스터 지역 창으로 전환하지 않는다).
 var glassCountries10m = null, glassFineRequested = false, glassLOD = 'coarse', glassSwapBusy = false;
+// 슬라이스 빌드 세대 토큰 — 진행 중 모드가 바뀌면(유리 해제 등) 커밋 전에 조용히 폐기한다
+var glassBuildGen = 0;
+// 유리 텍스처 폐기 — ImageBitmap 소스(10m 스왑 경로)는 dispose만으로는 네이티브 메모리가
+// 안 풀린다(GC 대기 128MB). close까지 함께. CanvasTexture에는 close가 없어 무해하게 지나간다.
+function disposeGlassTex(t) {
+  if (!t) return;
+  try { if (t.image && typeof t.image.close === 'function') t.image.close(); } catch (e) {}
+  if (t.dispose) t.dispose();
+}
+// 슬라이스당 시간예산(ms) — 프레임(16.7ms) 안에서 렌더 몫을 남긴다. 실기기 손맛 조정 대상
+var GLASS_BUILD_BUDGET_MS = 10;
 // 이 방문국이 '텍스처에 그려져 있는가' — 메시 aPhoto와 베이크 스킵 규칙의 단일 기준.
 // 사진이 있는데 디코드 전이면 false(미기록처럼 유리 채움 유지 — 색→사진 깜빡임 방지),
 // 커버 사진이 아예 없으면 색 채움이 영구 표현이라 true.
 function glassTexReady(v) { return !!(v && (!v.photo || photoImageCache[v.photo])); }
+// 유리 딥줌 10m LOD — 제품 결정(2026-08-05)으로 비활성.
+// 유리 지구본은 '사진으로 채워진 구슬'이 목적이지 지도를 구체적으로 보는 용도가 아니다(사용자 확정).
+// 최대 줌에서 110m 경계가 뭉툭한 것은 수용하고, 10m 전환이 만들던 도달 직후 스톨
+// (1.3MB 파싱·전 국가 재삼각분할·8192 재베이크·GPU 재업로드)을 통째로 없앤다.
+// 슬라이스 빌더·ImageBitmap 업로드 등 전환 기반 시설은 남겨 둔다 — 되살리려면 이 플래그만 true.
+var GLASS_FINE_LOD = false;
 var GLASS_FINE_AT = 3.0; // zoomFactor 임계 — 이상이면 10m(파인) 메시
+// 파인에서 코스로 되돌아가는 문턱 비율(= 2.4). 임계 하나로 판정하면 3.0 근처를 오갈 때마다
+// 전 국가 재삼각분할이 왕복 실행돼 확대/축소가 끊긴다.
+var GLASS_LOD_HYST = 0.8;
 function glassSrcData() { return (glassLOD === 'fine' && glassCountries10m) ? glassCountries10m : (world110Data || worldData); }
-function buildGlassLand(tex, srcData) {
-  var src = srcData || worldData;
-  if (!src || typeof THREE.ShapeUtils === 'undefined') return;
-  if (glassLandMesh) { globe.remove(glassLandMesh); if (glassLandMesh.geometry) glassLandMesh.geometry.dispose(); if (glassLandMesh.material) glassLandMesh.material.dispose(); glassLandMesh = null; }
-  if (glassOutline) {
-    globe.remove(glassOutline);
-    glassOutline.traverse(function(o) {
-      if (o.geometry) o.geometry.dispose();
-      if (o.material) {
-        var fx = fatMats.indexOf(o.material);
-        if (fx >= 0) fatMats.splice(fx, 1); // 리사이즈 갱신 목록에서도 제거(누수 방지)
-        o.material.dispose();
-      }
-    });
-    glassOutline = null;
-  }
+// 유리 육지 빌더 — 피처를 하나씩 먹여 육지 삼각형과 테두리(팻라인) 세그먼트를 '한 순회'로 누적한다.
+// 부팅(110m·소량)은 buildGlassLand가 즉시 전부 먹이고, 딥줌 10m 스왑(maybeSwapGlassLOD)은
+// 시간예산 슬라이스로 나눠 먹인다 — 전 국가 재삼각분할을 통짜 동기로 돌리던 것이
+// 최대 줌 프리즈(수 초)의 본체였다. 테두리도 여기서 같이 누적한다: 예전엔 buildFatWorldLines가
+// 같은 10m 링을 처음부터 다시 순회해 비용이 두 배였다.
+// 이전 메시 정리는 commit 시점으로 미룬다 — 슬라이스 빌드 동안 기존(코스) 지구본이 그대로 보여야 한다.
+function makeGlassLandBuilder(src) {
   var R = 1.002; // 본체(1.0) 살짝 위 — 세분 완화해도 사지타가 본체 아래로 안 꺼지게
-  var pos = [], uvs = [], photos = [];
+  // 성장형 TypedArray — 일반 배열로 모으면 commit에서 new Float32Array(수백만 원소 JS 배열)
+  // 변환이 통짜 블록(수백 ms)이 되고, 누적 중 GC 압박도 크다. 처음부터 typed로 쌓고
+  // commit은 subarray 뷰만 넘긴다(복사 0).
+  function mkF(cap) { return { a: new Float32Array(cap), n: 0 }; }
+  function mkU(cap) { return { a: new Uint32Array(cap), n: 0 }; }
+  function pF(b, v) { if (b.n === b.a.length) { var na = new Float32Array(b.a.length * 2); na.set(b.a); b.a = na; } b.a[b.n++] = v; }
+  function pU(b, v) { if (b.n === b.a.length) { var na = new Uint32Array(b.a.length * 2); na.set(b.a); b.a = na; } b.a[b.n++] = v; }
+  var pos = mkF(1 << 20), uvs = mkF(1 << 20), photos = mkF(1 << 18), ranges = [];
+  // 테두리(팻라인) 배열 — buildFatWorldLines와 동일 규칙(세그당 4정점·6인덱스)
+  var lnS = mkF(1 << 20), lnE = mkF(1 << 20), lnSd = mkF(1 << 18), lnP = mkF(1 << 18), lnI = mkU(1 << 18), lnVi = 0;
   var curPhoto = 0; // 현재 나라의 텍스처 샘플 여부 (features 루프에서 설정)
   function pushV(p) {
     var v = geoToVec3(p[0], p[1], R);
-    pos.push(v.x, v.y, v.z);
+    pF(pos, v.x); pF(pos, v.y); pF(pos, v.z);
     // 등장방형 UV — 캔버스 텍스처와 같은 투영. unwrap된 경도(>180)는 RepeatWrapping이 처리
-    uvs.push((p[0] + 180) / 360, (p[1] + 90) / 180);
-    photos.push(curPhoto);
+    pF(uvs, (p[0] + 180) / 360); pF(uvs, (p[1] + 90) / 180);
+    pF(photos, curPhoto);
   }
   function segDeg(a, b) { var dx = a[0] - b[0], dy = a[1] - b[1]; return Math.sqrt(dx * dx + dy * dy); }
   function mid(a, b) { return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]; }
@@ -1051,20 +1104,45 @@ function buildGlassLand(tex, srcData) {
     var faces = THREE.ShapeUtils.triangulateShape(contour, holes);
     for (var t = 0; t < faces.length; t++) { var fa = faces[t]; emitTri(all[fa[0]], all[fa[1]], all[fa[2]], 6); }
   }
-  glassRanges = [];
-  src.features.forEach(function(f) {
+  // 테두리 세그먼트 — buildFatWorldLines.addRing과 같은 출력(셰이더 계약 동일)
+  function addRingLine(coords) {
+    if (coords.length < 2) return;
+    var prev = null;
+    for (var i = 0; i < coords.length; i++) {
+      var v = geoToVec3(coords[i][0], coords[i][1], R);
+      if (prev) {
+        for (var k = 0; k < 4; k++) {
+          pF(lnS, prev.x); pF(lnS, prev.y); pF(lnS, prev.z);
+          pF(lnE, v.x); pF(lnE, v.y); pF(lnE, v.z);
+        }
+        pF(lnP, 0); pF(lnP, 0); pF(lnP, 1); pF(lnP, 1);
+        pF(lnSd, -1); pF(lnSd, 1); pF(lnSd, -1); pF(lnSd, 1);
+        pU(lnI, lnVi); pU(lnI, lnVi + 1); pU(lnI, lnVi + 2);
+        pU(lnI, lnVi + 2); pU(lnI, lnVi + 1); pU(lnI, lnVi + 3); lnVi += 4;
+      }
+      prev = v;
+    }
+  }
+  function feed(f) {
     var g = f.geometry; if (!g) return;
     var nm = f.properties && f.properties.name;
     curPhoto = (nm && glassTexReady(visitedMap[nm])) ? 1 : 0; // 텍스처에 그려진 방문국만 샘플
-    var vStart = pos.length / 3;
-    if (g.type === 'Polygon') addPoly(g.coordinates);
-    else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { addPoly(poly); });
-    if (nm) glassRanges.push({ name: nm, start: vStart, count: pos.length / 3 - vStart });
-  });
+    var vStart = pos.n / 3;
+    if (g.type === 'Polygon') { addPoly(g.coordinates); g.coordinates.forEach(addRingLine); }
+    else if (g.type === 'MultiPolygon') g.coordinates.forEach(function(poly) { addPoly(poly); poly.forEach(addRingLine); });
+    if (nm) ranges.push({ name: nm, start: vStart, count: pos.n / 3 - vStart });
+  }
+  // 커밋은 육지/테두리 2단계 — 첫 렌더의 VBO 업로드(합쳐 수십 MB)를 한 프레임에 다 싣지 않게.
+  // 슬라이스 경로는 commitLand 몇 프레임 뒤 commitOutline을 부른다(그 사이 옛 110m 테두리 유지 — 무해).
+  function commitLand(tex) {
+  // 여기서야 이전 메시를 정리한다 — 빌드 동안 화면이 비지 않게
+  if (glassLandMesh) { globe.remove(glassLandMesh); if (glassLandMesh.geometry) glassLandMesh.geometry.dispose(); if (glassLandMesh.material) glassLandMesh.material.dispose(); glassLandMesh = null; }
+  glassRanges = ranges;
   var geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
-  glassPhotoAttr = new THREE.Float32BufferAttribute(photos, 1);
+  // subarray 뷰 그대로 — JS 배열→TypedArray 변환 블록(수백 ms)이 여기 있던 것을 없앤다
+  geo.setAttribute('position', new THREE.BufferAttribute(pos.a.subarray(0, pos.n), 3));
+  geo.setAttribute('uv', new THREE.BufferAttribute(uvs.a.subarray(0, uvs.n), 2));
+  glassPhotoAttr = new THREE.BufferAttribute(photos.a.subarray(0, photos.n), 1);
   geo.setAttribute('aPhoto', glassPhotoAttr);
   // 미기록국 채움색 — GLASS_LAND_FILL(rgba)과 동일 값을 정점 셰이더 uniform으로
   glassLandMat = new THREE.ShaderMaterial({
@@ -1079,16 +1157,65 @@ function buildGlassLand(tex, srcData) {
   var mesh = new THREE.Mesh(geo, glassLandMat);
   mesh.frustumCulled = false; mesh.renderOrder = 1;
   globe.add(mesh); glassLandMesh = mesh;
-  // 테두리 — 같은 데이터의 링에서 뽑아 채움과 완벽 일치. 불투명도는 updateBorderFade가 줌 연동
-  glassOutline = buildFatWorldLines(src, R);
-  glassOutline.children[0].renderOrder = 3;
+  }
+  // 테두리 — feed에서 같은 순회로 누적한 배열(채움과 동일 데이터·동일 정점 규칙).
+  // 그룹 구성은 buildFatWorldLines와 동일 계약: userData.mat(페이드용)·visible=false 시작
+  function commitOutline() {
+  if (glassOutline) {
+    globe.remove(glassOutline);
+    glassOutline.traverse(function(o) {
+      if (o.geometry) o.geometry.dispose();
+      if (o.material) {
+        var fx = fatMats.indexOf(o.material);
+        if (fx >= 0) fatMats.splice(fx, 1); // 리사이즈 갱신 목록에서도 제거(누수 방지)
+        o.material.dispose();
+      }
+    });
+    glassOutline = null;
+  }
+  var lgeo = new THREE.BufferGeometry();
+  var lsAttr = new THREE.BufferAttribute(lnS.a.subarray(0, lnS.n), 3);
+  lgeo.setAttribute('aStart', lsAttr);
+  lgeo.setAttribute('position', lsAttr);
+  lgeo.setAttribute('aEnd', new THREE.BufferAttribute(lnE.a.subarray(0, lnE.n), 3));
+  lgeo.setAttribute('aPos', new THREE.BufferAttribute(lnP.a.subarray(0, lnP.n), 1));
+  lgeo.setAttribute('aSide', new THREE.BufferAttribute(lnSd.a.subarray(0, lnSd.n), 1));
+  lgeo.setIndex(new THREE.BufferAttribute(lnI.a.subarray(0, lnI.n), 1));
+  var lmat = makeFatMat('#FFFFFF');
+  var lmesh = new THREE.Mesh(lgeo, lmat);
+  lmesh.frustumCulled = false; lmesh.renderOrder = 3;
+  var lgrp = new THREE.Group(); lgrp.add(lmesh);
+  lgrp.userData.mat = lmat; lgrp.visible = false;
+  glassOutline = lgrp;
   globe.add(glassOutline);
+  }
+  function commit(tex) { commitLand(tex); commitOutline(); }
+  return { feed: feed, commit: commit, commitLand: commitLand, commitOutline: commitOutline };
+}
+// 동기 경로 — 부팅·코스(110m)처럼 데이터가 작을 때만 쓴다.
+// 10m은 반드시 maybeSwapGlassLOD의 슬라이스 경로로 — 여기로 돌리면 프리즈가 되살아난다.
+function buildGlassLand(tex, srcData) {
+  var src = srcData || worldData;
+  if (!src || typeof THREE.ShapeUtils === 'undefined') return;
+  var b = makeGlassLandBuilder(src);
+  for (var i = 0; i < src.features.length; i++) b.feed(src.features[i]);
+  b.commit(tex);
 }
 // 유리 메시 LOD 전환 — 딥줌에서 텍스처(사진 클립)와 메시·테두리를 '같은 10m 데이터'로
 // 함께 재구축한다. 래스터 지역 창으로 갈아타던 옛 경로가 최대 줌에서 깨져 보이던 원인.
 function maybeSwapGlassLOD() {
+  if (!GLASS_FINE_LOD) return; // 10m 전환 비활성 — 요청·파싱·재구축 전부 발생하지 않는다
   if (!isGlass() || !glassLandMesh || glassSwapBusy) return;
   var zf = zoomFactor();
+  // ⚠️ 핀치 도중에는 아무것도 하지 않는다 — 요청도 포함.
+  //
+  // 예전엔 10m 선요청이 이 가드보다 '위'에 있어서, 확대 중 zf가 임계의 80%를 넘는 순간
+  // need10mCountries가 나갔다. 그 응답은 1.3MB TopoJSON 문자열(vendorCountries10m)이고,
+  // WebView는 이걸 ①봉투 JSON 파싱 ②JSON.parse(msg.topo) ③topoDecode ④이름 정규화까지
+  // 전부 '동기'로 처리한다. WebView JS는 단일 스레드라 그동안 렌더 루프가 통째로 멈춘다
+  // → 빠르게 확대할수록 임계를 일찍 넘어 핀치 한복판에서 프리즈가 났다.
+  // 비유리 경로(maybeSwapLOD)는 처음부터 need50m 요청을 가드 뒤에 두고 있었다 — 같은 규칙으로 맞춘다.
+  if (!zoomSettled()) return;
   // 10m 데이터 선요청 — 임계 접근 시 lazy.
   // 타입은 RN 핸들러(handleMessage)가 실제로 처리하는 'need10mCountries'여야 한다 —
   // 'needCountries10m'으로 보내던 시절엔 응답(countries10m)이 영영 안 와서 유리 10m LOD가 통째로 죽어 있었다.
@@ -1096,19 +1223,61 @@ function maybeSwapGlassLOD() {
     glassFineRequested = true;
     window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'need10mCountries' }));
   }
-  if (!zoomSettled()) return; // 재구축(무거움)은 핀치 종료 후에만
-  var want = (glassCountries10m && zf >= GLASS_FINE_AT) ? 'fine' : 'coarse';
+  // 파인↔코스 히스테리시스 — 임계 하나로 판정하면 3.0 근처에서 줌이 오락가락할 때마다
+  // buildTexture+buildGlassLand(전 국가 재삼각분할)가 왕복 실행된다. 들어갈 때와 나올 때의
+  // 문턱을 벌려 그 왕복을 없앤다.
+  var want = glassLOD;
+  if (glassCountries10m && zf >= GLASS_FINE_AT) want = 'fine';
+  else if (zf < GLASS_FINE_AT * GLASS_LOD_HYST) want = 'coarse';
   if (want === glassLOD) return;
   glassLOD = want;
   glassSwapBusy = true;
+  var myGen = ++glassBuildGen;
   var oldTex = glassLandMat ? glassLandMat.uniforms.uTex.value : null;
   loadAllImages().then(function() {
-    return buildTexture(glassSrcData());
+    return buildTexture(glassSrcData(), { sliced: true });
   }).then(function(tex) {
-    buildGlassLand(tex, glassSrcData());
-    if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
-    if (oldTex && oldTex !== tex && oldTex.dispose) oldTex.dispose();
-    glassSwapBusy = false;
+    // ── GPU 업로드 스톨 억제 ──
+    // 이 텍스처는 8192×4096(≈128MB) — 첫 렌더가 업로드를 떠안으면 그 프레임이 초 단위로
+    // 멈춘다(최대 줌 도달 직후 '5초 프리즈'의 최대 지분). 두 가지로 줄인다:
+    //  ① 파인 텍스처는 밉맵을 굽지 않는다. 밉맵은 축소 필터인데 파인은 확대 상태에서만
+    //     쓰이고(축소되면 코스로 복귀) 생성 비용이 업로드만큼 크다.
+    //  ② 커밋 전에 별도 슬라이스에서 미리 업로드(initTexture) — 스톨이 남더라도
+    //     제스처·커밋 프레임과 겹치지 않는 자리로 옮긴다.
+    if (glassLOD === 'fine') {
+      tex.generateMipmaps = false;
+      tex.minFilter = THREE.LinearFilter;
+    }
+    if (renderer.initTexture) setTimeout(function() { try { renderer.initTexture(tex); } catch (e) {} }, 0);
+    // ── 시간분할 재구축 ──
+    // 10m 전 국가 재삼각분할(triangulateShape + 적응 세분 depth 6)을 통짜로 돌리면
+    // 최대 줌 진입 직후 수 초 프리즈가 났다. 피처 단위로 잘라 슬라이스당
+    // GLASS_BUILD_BUDGET_MS만 쓰고 setTimeout(0)으로 양보한다 — 빌드 중에도 렌더 루프가
+    // 돌고, 기존(코스) 지구본은 commit까지 그대로 보인다.
+    var src = glassSrcData();
+    if (!src || typeof THREE.ShapeUtils === 'undefined') { glassSwapBusy = false; return; }
+    var b = makeGlassLandBuilder(src);
+    var feats = src.features, i = 0;
+    (function step() {
+      // 무효화: 새 빌드가 시작됐거나(세대 불일치) 유리 모드가 꺼졌으면 커밋 없이 폐기.
+      // 안 지키면 모드 전환 뒤 유리 메시가 유령처럼 다시 붙는다.
+      if (myGen !== glassBuildGen || !isGlass()) { glassSwapBusy = false; return; }
+      var t0 = performance.now();
+      while (i < feats.length && performance.now() - t0 < GLASS_BUILD_BUDGET_MS) b.feed(feats[i++]);
+      if (i < feats.length) { setTimeout(step, 0); return; }
+      // 커밋 2단계 — 육지 먼저, 테두리는 몇 프레임 뒤. 첫 렌더의 VBO 업로드를 나눠
+      // 커밋 순간의 단일 스톨을 절반 이하로 줄인다(그 사이 옛 테두리가 잠깐 남는 건 무해).
+      b.commitLand(tex);
+      if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
+      if (oldTex && oldTex !== tex) disposeGlassTex(oldTex);
+      // 빌드 중 사진 디코드가 끝났을 수 있다 — feed 시점 판정을 최신으로 덮는다
+      updateGlassLandFlags();
+      setTimeout(function() {
+        if (myGen !== glassBuildGen || !isGlass()) return; // 폐기 — 새 빌드가 자기 테두리를 만든다
+        b.commitOutline();
+      }, 120);
+      glassSwapBusy = false;
+    })();
   }).catch(function() { glassSwapBusy = false; });
 }
 // 방문 변경 시 aPhoto만 in-place 갱신 — 전 나라 재삼각분할 없이(네온 updateVectorLandColors와 동일 기법)
@@ -1314,6 +1483,12 @@ async function init() {
 var targetZ = 4.2, currentZ = 4.2;
 var MIN_Z = 1.3, MAX_Z = 5.0;
 var targetZoomX = 1, currentZoomX = 1, MAX_ZOOM_X = 10.0; // 총 ~32배 — 최대 화면 폭 ≈ 5°(뉴욕~보스턴권, 사용자 확정 스케일)
+// 유리 모드의 2단계 배율 상한 — 10m LOD 비활성(GLASS_FINE_LOD)과 짝인 제품 결정(2026-08-05).
+// 유리는 채움 감상이 목적이라 딥줌이 필요 없고, 110m 경계가 뭉툭해지는 지점(구 파인 임계 zf≈3.0)
+// 직전에서 멈춘다. 돌리 한계(MIN_Z=1.3)만으로 zf≈3.2 — 배율 1.0이면 2단계를 아예 안 태운다.
+// 답답하면 1.3(zf≈4.2)까지는 110m으로도 봐줄 만하다 — 조정은 이 값 하나.
+var GLASS_MAX_ZOOM_X = 1.0;
+function maxZoomX() { return isGlass() ? GLASS_MAX_ZOOM_X : MAX_ZOOM_X; }
 // 유효 확대 배율(시작=1) — 라벨 LOD·국경 해상도·회전 감도의 공용 지표
 function zoomFactor() { return (4.2 / currentZ) * currentZoomX; }
 // 회전 감도 — 확대할수록 반비례로 줄여 구글맵처럼 정밀 이동
@@ -1409,7 +1584,7 @@ window.addEventListener('touchend', function(e) {
 // 핀치/휠 공용 — 확대(delta>0)는 dolly 한계 후 2단계 배율로 이어받고, 축소는 배율부터 되돌린다
 function applyZoomDelta(delta) {
   if (delta > 0 && targetZ <= MIN_Z + 1e-4) {
-    targetZoomX = Math.min(MAX_ZOOM_X, targetZoomX * (1 + delta * 0.8));
+    targetZoomX = Math.min(maxZoomX(), targetZoomX * (1 + delta * 0.8));
   } else if (delta < 0 && targetZoomX > 1 + 1e-4) {
     targetZoomX = Math.max(1, targetZoomX * (1 + delta * 0.8));
   } else {
@@ -1598,6 +1773,61 @@ function topoDecode(topo, objName) {
     if (geom) feats.push({ type: 'Feature', properties: { name: name }, geometry: geom });
   });
   return { type: 'FeatureCollection', features: feats };
+}
+// topoDecode의 시간분할판 — 10m(수십만 점) 전용. 동기판을 그대로 쓰면 디코드가 통짜 블록이 된다.
+// 차이 두 가지: ①arc→feature 두 단계를 시간예산 슬라이스로 양보 ②ring을 concat이 아니라 push로
+// 이어붙인다(concat은 arc마다 중간 배열을 새로 만들어 GC까지 태운다).
+function topoDecodeSliced(topo, objName, budgetMs, done, fail) {
+  try {
+    var tf = topo.transform;
+    var srcArcs = topo.arcs, arcs = new Array(srcArcs.length), ai = 0;
+    var geoms = (topo.objects[objName] && topo.objects[objName].geometries) || [];
+    var feats = [], gi = 0;
+    function pushArc(ring, aidx) {
+      // 이음점 중복 제거 규칙은 동기판과 동일: ring이 비어있지 않으면 첫 점을 버린다
+      if (aidx >= 0) {
+        var pts = arcs[aidx];
+        for (var i = ring.length ? 1 : 0; i < pts.length; i++) ring.push(pts[i]);
+      } else {
+        var pts2 = arcs[~aidx]; // 역방향 — slice().reverse() 복사 없이 뒤에서부터 push
+        for (var j = pts2.length - (ring.length ? 2 : 1); j >= 0; j--) ring.push(pts2[j]);
+      }
+    }
+    function ringOf(arcIdxs) { var r = []; for (var k = 0; k < arcIdxs.length; k++) pushArc(r, arcIdxs[k]); return r; }
+    function stepArcs() {
+      try {
+        var t0 = performance.now();
+        while (ai < srcArcs.length && performance.now() - t0 < budgetMs) {
+          var arc = srcArcs[ai], out = new Array(arc.length);
+          if (!tf) { for (var i = 0; i < arc.length; i++) out[i] = [arc[i][0], arc[i][1]]; }
+          else {
+            var x = 0, y = 0;
+            for (var i2 = 0; i2 < arc.length; i2++) { x += arc[i2][0]; y += arc[i2][1]; out[i2] = [x * tf.scale[0] + tf.translate[0], y * tf.scale[1] + tf.translate[1]]; }
+          }
+          arcs[ai++] = out;
+        }
+        if (ai < srcArcs.length) { setTimeout(stepArcs, 0); return; }
+        setTimeout(stepFeats, 0);
+      } catch (err) { fail(err); }
+    }
+    function stepFeats() {
+      try {
+        var t0 = performance.now();
+        while (gi < geoms.length && performance.now() - t0 < budgetMs) {
+          var g = geoms[gi++];
+          var name = (g.properties && g.properties.name) || '';
+          name = NAME_FIX_50M[name] || name;
+          var geom = null;
+          if (g.type === 'Polygon') geom = { type: 'Polygon', coordinates: g.arcs.map(ringOf) };
+          else if (g.type === 'MultiPolygon') geom = { type: 'MultiPolygon', coordinates: g.arcs.map(function(poly) { return poly.map(ringOf); }) };
+          if (geom) feats.push({ type: 'Feature', properties: { name: name }, geometry: geom });
+        }
+        if (gi < geoms.length) { setTimeout(stepFeats, 0); return; }
+        done({ type: 'FeatureCollection', features: feats });
+      } catch (err) { fail(err); }
+    }
+    stepArcs();
+  } catch (err) { fail(err); }
 }
 function applyLOD(target) {
   if (!globeMesh) return;
@@ -2011,7 +2241,7 @@ function projectLL(lon, lat) {
   if (ndc.z >= 1) return null;
   return { x: (ndc.x * 0.5 + 0.5) * window.innerWidth, y: (-ndc.y * 0.5 + 0.5) * window.innerHeight, facing: facing };
 }
-var _lblLast = { rx: NaN, ry: NaN, zf: NaN };
+var _lblLast = { rx: NaN, ry: NaN, zf: NaN, lite: null };
 var _lblEmpty = true;
 // 라벨 좌표 스냅 격자 — 캔버스 백킹 스토어(dpr 상한 2)의 디바이스 픽셀 단위.
 // CSS 1px 격자에 스냅하면 고해상도 화면에서 지구본(디바이스 픽셀 단위로 이동)보다
@@ -2034,8 +2264,12 @@ function updateLabels() {
   // 회전 임계는 줌에 반비례 — 깊은 줌에서 1e-4 고정이면 프레임당 회전량이 임계보다 작아
   // 몇 프레임 치를 모았다가 한 번에 점프한다(잔떨림의 원인).
   var rotEps = 1e-4 / Math.max(1, zf * 0.5);
-  if (Math.abs(_lblLast.rx - rotX) < rotEps && Math.abs(_lblLast.ry - rotY) < rotEps && Math.abs(_lblLast.zf - zf) < 1e-3) return;
-  _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf;
+  // 제스처 중 저비용 라벨 경로(아래 lite 주석 참조). 더티 체크에 반드시 포함해야 한다 —
+  // 빠지면 손을 뗀 뒤 회전·줌이 멈춘 상태에서 다시 그릴 이유가 없어져 저품질 라벨이 그대로 남는다.
+  var lite = isGlass() && !zoomSettled();
+  if (Math.abs(_lblLast.rx - rotX) < rotEps && Math.abs(_lblLast.ry - rotY) < rotEps
+      && Math.abs(_lblLast.zf - zf) < 1e-3 && _lblLast.lite === lite) return;
+  _lblLast.rx = rotX; _lblLast.ry = rotY; _lblLast.zf = zf; _lblLast.lite = lite;
   labelCtx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   _lblEmpty = false;
   var grid = {}; var CELL = 76;
@@ -2049,6 +2283,13 @@ function updateLabels() {
   // 미세하게 바뀌며 글자 안티앨리어싱이 일렁이는(끓는) 현상을 막는다.
   var n = Math.min(countryLabels.length, Math.max(0, Math.floor((zf - 1.15) * 22)));
   var fs = Math.min(15, Math.round((10 + zf * 0.45) * 2) / 2);
+  // 제스처 중에는 유리 라벨의 글로우를 끈다.
+  // 유리 분기는 라벨 하나당 shadowBlur가 걸린 fillText를 두 번 그린다(대비용 짙은 섀도 + 연보라 광).
+  // 캔버스 그림자는 글리프마다 가우시안 블러를 새로 굽는 연산이라, 격자 컬링(CELL=76) 뒤에도
+  // 화면에 50개 남짓이 남으면 프레임당 블러 100회가 된다. 줌 중에는 zf가 매 프레임 바뀌어
+  // 위 더티 체크가 항상 통과하므로 이 비용이 매 프레임 그대로 발생했다(= 유리에서만 렉이 심한 이유).
+  // 손을 떼고 줌이 안정되면 원래 품질로 다시 그린다 — 정지 화면의 룩은 그대로다.
+  // (lite 값 자체는 위 더티 체크 직전에 구해 뒀다 — 전환 시 재그리기가 반드시 일어나야 하므로)
   labelCtx.textAlign = 'center'; labelCtx.textBaseline = 'middle';
   labelCtx.lineJoin = 'round';
   for (var i = 0; i < n; i++) {
@@ -2063,16 +2304,26 @@ function updateLabels() {
       // 굵은 흰 글자+진보라 하드 테두리(기존)는 유리의 가벼움과 어긋난다.
       labelCtx.font = '300 ' + (fs + 1) + 'px "Apple SD Gothic Neo", "Noto Sans KR", sans-serif';
       try { labelCtx.letterSpacing = '1.5px'; } catch (e) {} // 미지원 엔진은 무시(무해)
-      // ① 대비용 짙은 소프트 섀도 — 밝은 사진 조각 위에서도 읽히게
-      labelCtx.shadowColor = 'rgba(15,8,35,' + (0.7 * a) + ')';
-      labelCtx.shadowBlur = 6;
-      labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
-      labelCtx.fillText(L.ko, px, py);
-      // ② 유리 광 — 연보라 글로우 겹
-      labelCtx.shadowColor = 'rgba(214,196,255,' + (0.8 * a) + ')';
-      labelCtx.shadowBlur = 10;
-      labelCtx.fillText(L.ko, px, py);
-      labelCtx.shadowBlur = 0;
+      if (lite) {
+        // 제스처 중 저비용 경로 — 블러 대신 얇은 어두운 테두리로 대비만 확보한다.
+        // 위치·크기·자간은 그대로라 손을 뗄 때 글자가 튀지 않는다.
+        labelCtx.strokeStyle = 'rgba(15,8,35,' + (0.55 * a) + ')';
+        labelCtx.lineWidth = 2.5;
+        labelCtx.strokeText(L.ko, px, py);
+        labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
+        labelCtx.fillText(L.ko, px, py);
+      } else {
+        // ① 대비용 짙은 소프트 섀도 — 밝은 사진 조각 위에서도 읽히게
+        labelCtx.shadowColor = 'rgba(15,8,35,' + (0.7 * a) + ')';
+        labelCtx.shadowBlur = 6;
+        labelCtx.fillStyle = 'rgba(255,255,255,' + (0.95 * a) + ')';
+        labelCtx.fillText(L.ko, px, py);
+        // ② 유리 광 — 연보라 글로우 겹
+        labelCtx.shadowColor = 'rgba(214,196,255,' + (0.8 * a) + ')';
+        labelCtx.shadowBlur = 10;
+        labelCtx.fillText(L.ko, px, py);
+        labelCtx.shadowBlur = 0;
+      }
       try { labelCtx.letterSpacing = '0px'; } catch (e) {}
     } else {
       labelCtx.font = '600 ' + fs + 'px sans-serif';
@@ -2194,7 +2445,7 @@ function applyTheme(t) {
       var oldG = glassLandMat.uniforms.uTex.value;
       glassLandMat.uniforms.uTex.value = tex;
       if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
-      if (oldG && oldG.dispose) oldG.dispose();
+      disposeGlassTex(oldG); // ImageBitmap 소스(10m 스왑분)면 close까지 — dispose만으론 128MB 잔류
       updateGlassLandFlags(); // 방문 변경 반영 — 어떤 나라가 텍스처(사진)를 샘플할지 갱신
       return;
     }
@@ -2244,6 +2495,9 @@ function handleVisitedMessage(msg) {
       visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null };
     });
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
+    // 유리로 전환되는 순간 2단계 배율을 유리 상한으로 되감는다 — 색/국기 모드의 딥줌(배율 10)
+    // 상태에서 넘어오면 상한만 낮춰서는 이미 넘어선 배율이 그대로 남는다(부드럽게 애니메이션 복귀)
+    if (isGlass() && targetZoomX > maxZoomX()) targetZoomX = maxZoomX();
     if (msg.defaultColor) globeDefaultColor = msg.defaultColor;
     // 런타임에 photo↔color가 바뀌는 경우(변형 전환은 리마운트라 드물지만) 유리 알파 반영
     if (globeMesh) globeMesh.material.transparent = isGlass();
@@ -2256,7 +2510,7 @@ function handleVisitedMessage(msg) {
           var oldG = glassLandMat.uniforms.uTex.value;
           glassLandMat.uniforms.uTex.value = tex;
           if (glassBackMat) { glassBackMat.map = tex; glassBackMat.needsUpdate = true; }
-          if (oldG && oldG.dispose) oldG.dispose();
+          disposeGlassTex(oldG); // ImageBitmap 소스(10m 스왑분)면 close까지
           updateGlassLandFlags(); // 방문 변경 반영
           return;
         }
@@ -2288,14 +2542,24 @@ function handleVisitedMessage(msg) {
     }
   } else if (msg.type === 'countries10m' && msg.topo) {
     // 10m 나라별 폴리곤 도착 — 다음 maybeSwapGlassLOD에서 파인(10m) 메시로 전환.
-    // 국가명 정규화(init의 GEO_NAME_FIX와 동일) — 안 맞으면 방문국이 파인 전환 때 사진을 잃는다
-    try {
-      glassCountries10m = topoDecode(JSON.parse(msg.topo), 'countries');
-      var FIX10 = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
-      glassCountries10m.features.forEach(function(f) { var fx = FIX10[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
-    } catch (err) {
-      glassFineRequested = false;
-    }
+    // 국가명 정규화(init의 GEO_NAME_FIX와 동일) — 안 맞으면 방문국이 파인 전환 때 사진을 잃는다.
+    //
+    // ⚠️ 여기서 바로 파싱하지 않는다 — 1.3MB 문자열의 JSON.parse+topoDecode를 메시지 콜백에서
+    // 동기로 돌리면 도착 순간 터치·렌더가 통째로 멈춘다(빠른 확대 프리즈의 한 축).
+    // setTimeout 두 단계로 나눠 파스와 디코드 사이에 프레임을 양보한다. 완성 전까지
+    // glassCountries10m은 null이라 스왑 판정(want)이 코스에 머문다 — 중간 상태 노출 없음.
+    (function(topoStr) {
+      setTimeout(function() {
+        var parsed;
+        try { parsed = JSON.parse(topoStr); } catch (err) { glassFineRequested = false; return; }
+        // 디코드도 슬라이스 — 수십만 점을 동기로 풀면 이 자리에서 또 한 번 멈춘다
+        topoDecodeSliced(parsed, 'countries', 8, function(fc) {
+          var FIX10 = {"USA":"United States of America","England":"United Kingdom","Republic of Serbia":"Serbia","United Republic of Tanzania":"Tanzania","Macedonia":"North Macedonia","Swaziland":"Eswatini","Republic of the Congo":"Congo","West Bank":"Palestine"};
+          fc.features.forEach(function(f) { var fx = FIX10[f.properties && f.properties.name]; if (fx) f.properties.name = fx; });
+          glassCountries10m = fc;
+        }, function() { glassFineRequested = false; });
+      }, 0);
+    })(msg.topo);
   } else if (msg.type === 'admin1Lines' && msg.lines) {
     // 주/도 지역구분선 데이터 도착 — 다음 updateBorderFade에서 그룹 생성
     try {
