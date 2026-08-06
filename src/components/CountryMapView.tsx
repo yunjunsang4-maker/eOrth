@@ -336,6 +336,7 @@ var puzzleImage = null;          // 퍼즐 원본 그림 (data URI/file://)
 var puzzleComplete = false;      // RN(regionProgress)이 계산해 내려주는 완성 여부
 var puzzlePrevComplete = null;   // null=첫 수신(기준선만 설정, 연출 없음 — 남발 방지)
 var prevMatchedCodes = [];       // 직전 매칭 CODE 목록 — '마지막 조각' 글로우 대상 계산용
+var puzzleGroups = [];           // 그림을 깔 그룹(본토/인셋)의 {key, gen(경로 생성기), feats, b(bbox)} — render()가 채운다
 var defaultColor = '#BF85FC';
 var BOTTOM_INSET = ${chipBottom}; // 하단 탭 바 가림 높이 — 투영을 보이는 영역 기준으로 중앙 정렬
 function setRegionChip(name){var c=document.getElementById('region-chip');if(!c)return;if(name){c.textContent=name;c.style.display='flex';}else{c.style.display='none';}}
@@ -495,11 +496,12 @@ function getFill(d){
   var code=d.properties.CODE||'';
   var n=d.properties.NAME_1||'';
   var active=activeRecordFor(code);
-  // 퍼즐 모드: 그림 한 장을 공유 패턴으로 — 방문=선명 조각, 미방문=흑백 힌트.
-  // 그림이 아직 없으면(변환 중) 아래 기존 규칙으로 폴백한다.
-  // 검색 강조는 채움을 덮지 않는다 — emphStroke의 시안 테두리가 담당(조각 그림 유지).
+  // 퍼즐 모드: 채움은 전부 투명 — 실루엣 배경(미방문 #191920)과 방문 조각 그림은
+  // path 아래의 pz-layer가 그린다(ensurePuzzleLayers 주석 참고 — 월경지 때문에 path
+  // 채움으로 처리하면 안 된다). 'transparent'는 히트 판정엔 잡히므로 탭은 그대로 동작.
+  // 검색 강조는 채움을 덮지 않는다 — emphStroke의 시안 테두리가 담당.
   if(displayMode==='puzzle'&&puzzleImage){
-    return active ? 'url(#pz-sharp-'+puzzleGroupOf(d)+')' : 'url(#pz-hint-'+puzzleGroupOf(d)+')';
+    return 'transparent';
   }
   if(active){
     var mode=active.mode||displayMode;
@@ -510,12 +512,6 @@ function getFill(d){
   }
   if(n===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
   return '#191920'; // 미방문
-}
-// 피처가 속한 패턴 그룹 — 본토는 'm', 미국 인셋은 주 이름. 패턴 id 접미사로 쓴다.
-function puzzleGroupOf(d){
-  var n=d.properties.NAME_1||'';
-  if(COUNTRY_CODE==='USA'&&(n==='Alaska'||n==='Hawaii')) return n;
-  return 'm';
 }
 // 이 지역에 기록이 있으면 그 기록 반환. (도시 피처는 상위 주로 흡수돼 데이터에 없다)
 function activeRecordFor(code){
@@ -613,6 +609,8 @@ function render(geo){
   projectionPath = path;
   var g=svg.append('g');
   gElement = g;
+  // 퍼즐 레이어 대상 그룹 등록 — 그림·클립을 updateMap의 ensurePuzzleLayers가 여기서 만든다
+  puzzleGroups=[{key:'m', gen:path, feats:mainFeatures, b:path.bounds(mainGeo)}];
   // 메인 지도 — 채움 + 스케일 경계 스트로크(어긋난 인접 경계를 하나로 합침)
   var mainGrp=drawGroup(g, mainFeatures, path, 'm');
   pathElements=mainGrp.fill;
@@ -633,12 +631,14 @@ function render(geo){
       var fc={type:'FeatureCollection',features:feat};
       var ip=d3.geoMercator().fitExtent([[box.x+4,box.y+4],[box.x+box.w-4,box.y+box.h-4]],fc);
       var ipath=d3.geoPath().projection(ip);
-      g.append('rect').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
+      // inset-bg 클래스: 퍼즐 모드에선 fill을 투명으로 바꿔 아래 pz-layer 그림이 비치게 한다
+      g.append('rect').attr('class','inset-bg').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
         .attr('rx',6).attr('fill','#191920').attr('stroke','#3E3155').attr('stroke-width',0.8);
       g.append('text').attr('x',box.x+box.w/2).attr('y',box.y+14).attr('text-anchor','middle')
         .attr('fill','#A1A1B0').attr('font-size','10px').text(feat[0].properties.NL_NAME_1);
       var grp=drawGroup(g, feat, ipath, box.name);
       insetPathElements[box.name]=grp.fill;
+      puzzleGroups.push({key:box.name, gen:ipath, feats:feat, b:[[box.x,box.y],[box.x+box.w,box.y+box.h]]});
     });
   }
   // 확대 상한 — 지역 경계 데이터 해상도(지역당 정점 수)에 맞춰 자동 설정.
@@ -654,8 +654,13 @@ function render(geo){
   })();
   zoomBehavior=d3.zoom().scaleExtent([1,maxZoom])
     .on('zoom',function(ev){
+      // 제스처 중에는 transform만 — 프레임마다 전 지역 path에 stroke-width를 다시 쓰면
+      // attr 변경이 path를 무효화해 패턴 채움(퍼즐 이미지)까지 통째로 리페인트된다(핀치 렉).
+      // 두께는 non-scaling-stroke가 제스처 동안 화면 px 기준으로 유지해 준다.
       g.attr('transform',ev.transform);
-      // 확대 배율에 맞춰 구분선을 얇게 — non-scaling-stroke로 두께 유지 + base/k로 추가로 얇아짐
+    })
+    .on('end',function(ev){
+      // 배율별 미세 보정(base/k^0.25, 하한 75%)은 제스처가 끝난 뒤 한 번만
       var k=ev.transform.k;
       g.selectAll('path.region-stroke').attr('stroke-width',function(d){return scaledStroke(d,k);});
     });
@@ -669,38 +674,75 @@ function render(geo){
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));}
 }
 
-// 퍼즐 패턴 2벌(선명/흑백 힌트) — 그룹(본토/인셋)마다 자기 bbox 기준.
-// userSpaceOnUse가 핵심: 패턴 좌표가 지도 좌표계에 고정되므로 모든 지역이
-// 같은 그림의 '자기 위치 조각'을 자동 샘플링한다(조각 정렬 계산 불필요).
-// preserveAspectRatio slice = cover-fit: 나라 bbox 비율과 무관하게 그림이 꽉 찬다.
-function buildPuzzlePatterns(defs){
-  if(displayMode!=='puzzle'||!puzzleImage||!projectionPath||!mainFeatures) return;
-  var groups=[{key:'m', b:projectionPath.bounds({type:'FeatureCollection',features:mainFeatures})}];
-  insetBoxes.forEach(function(box){
-    groups.push({key:box.name, b:[[box.x,box.y],[box.x+box.w,box.y+box.h]]});
-  });
-  groups.forEach(function(grp){
-    var bx=grp.b[0][0], by=grp.b[0][1], bw=grp.b[1][0]-bx, bh=grp.b[1][1]-by;
-    if(bw<=0||bh<=0) return;
-    [['pz-sharp-',''],['pz-hint-','grayscale(1) brightness(0.3)']].forEach(function(pp){
-      var pat=defs.append('pattern')
-        .attr('id',pp[0]+grp.key)
-        .attr('patternUnits','userSpaceOnUse')
+// ── 퍼즐 레이어 — 그림은 지역별 패턴 채움이 아니라 <image> 1장 + mask로 그린다 ──
+// 처음엔 지역마다 패턴 채움을 썼는데, 줌·팬 리페인트마다 WebKit이 패턴 인스턴스 수십 개를
+// 다시 그려 프레임이 무너졌다(실기기 렉). 이미지가 g(줌 변환 그룹) 안의 일반 노드면
+// 프레임당 작업이 '마스크 1회 + 래스터 스케일'로 줄어든다.
+// 좌표는 그룹 bbox 기준 cover-fit(slice)이라 조각 정렬은 자동이다.
+//
+// 레이어 구성(아래→위): ① 실루엣 배경 — 전 지역을 미방문색(#191920)으로 칠한 path들
+// (흑백 힌트는 폐지 — 미방문은 퍼즐 이전과 똑같이 빈 상태) ② 방문 마스크를 쓴 그림.
+// 지역 path 자체는 퍼즐 모드에서 전부 transparent다 — 미방문을 path의 불투명 채움으로
+// 처리하면 월경지 역방향(미방문 경기 안의 방문 서울)에서 큰 지역의 채움이 그림을 덮는다.
+//
+// 방문 마스크는 clipPath가 아니라 mask다. clipPath는 합집합만 되고 빼기가 안 돼,
+// 방문한 큰 지역(경기) 폴리곤에 구멍이 없으면 그 안의 미방문 월경지(서울)까지 그림이
+// 비쳤다. mask는 그리기 순서가 살아 있어 큰 지역 흰색(보임) 위에 작은 미방문 지역을
+// 검정(가림)으로 덧그리면 구멍이 뚫린다 — 전 지역 path를 면적 큰 순(drawGroup과 동일
+// 규칙)으로 넣어두고, 방문 여부는 매 갱신마다 fill 흰/검만 바꾼다.
+//
+// 이미지 재생성은 그림이 바뀔 때만(디코드가 무겁다). 퍼즐 모드를 떠나도 레이어는 지우지
+// 않고 숨긴다 — 사진↔퍼즐 토글 왕복(표시 설정 라이브 미리보기)에 재디코드가 없게.
+var puzzleBuiltFor = null;
+function ensurePuzzleLayers(){
+  if(!gElement) return;
+  var on = displayMode === 'puzzle' && !!puzzleImage;
+  gElement.selectAll('rect.inset-bg').attr('fill', on ? 'transparent' : '#191920');
+  var layer = gElement.select('g.pz-layer');
+  if(!on){ if(!layer.empty()) layer.style('display','none'); return; }
+  if(layer.empty()) layer = gElement.insert('g',':first-child').attr('class','pz-layer');
+  layer.style('display',null);
+
+  if(puzzleBuiltFor !== puzzleImage){
+    puzzleBuiltFor = puzzleImage;
+    layer.selectAll('*').remove();
+    puzzleGroups.forEach(function(grp){
+      var bx=grp.b[0][0], by=grp.b[0][1], bw=grp.b[1][0]-bx, bh=grp.b[1][1]-by;
+      if(bw<=0||bh<=0) return;
+      // ① 실루엣 배경 — 미방문 지역이 '빈' 상태로 보이는 층. 단색 path라 페인트가 싸다.
+      grp.feats.forEach(function(f){
+        layer.append('path').attr('d', grp.gen(f)).attr('fill','#191920');
+      });
+      // ② 방문 마스크
+      var mask=layer.append('mask').attr('id','pzm-sharp-'+grp.key)
+        .attr('class','pz-sharp-mask')
+        .attr('maskUnits','userSpaceOnUse')
         .attr('x',bx).attr('y',by).attr('width',bw).attr('height',bh);
-      var img=pat.append('image')
+      grp.feats.slice().sort(function(a,b){return featArea(b)-featArea(a);}).forEach(function(f){
+        mask.append('path').attr('d', grp.gen(f)).datum(f).attr('fill','#000000');
+      });
+      layer.append('image')
         .attr('href',puzzleImage).attr('xlink:href',puzzleImage)
-        .attr('width',bw).attr('height',bh)
-        .attr('preserveAspectRatio','xMidYMid slice');
-      if(pp[1]) img.style('filter',pp[1]);
+        .attr('x',bx).attr('y',by).attr('width',bw).attr('height',bh)
+        .attr('preserveAspectRatio','xMidYMid slice')
+        .attr('mask','url(#pzm-sharp-'+grp.key+')');
     });
+  }
+
+  // 방문 조각 마스크 갱신 — 기록·소급 태깅 변경을 반영. path는 이미 있으므로
+  // fill(흰=보임/검=가림)만 바꾼다 — attr 한 바퀴라 가볍다.
+  layer.selectAll('mask.pz-sharp-mask path').attr('fill', function(f){
+    return activeRecordFor((f&&f.properties&&f.properties.CODE)||'') ? '#FFFFFF' : '#000000';
   });
 }
 function updateMap() {
   if (!svgElement) return;
 
-  svgElement.selectAll('defs').remove();
-  var defs = svgElement.append('defs');
-  buildPuzzlePatterns(defs);
+  // 지역별 사진 패턴(pat-*)만 매번 다시 굽는다 — 기록 사진은 수시로 바뀔 수 있다.
+  // 퍼즐 레이어는 그림이 바뀔 때만 재생성(ensurePuzzleLayers 내부 캐시).
+  svgElement.selectAll('defs.region-defs').remove();
+  var defs = svgElement.append('defs').attr('class','region-defs');
+  ensurePuzzleLayers();
 
   recordedRegions.forEach(function(r) {
     if (r.photo) {
@@ -721,7 +763,9 @@ function updateMap() {
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
   // stroke-width는 현재 확대 배율을 반영(curStrokeWidth) — 확대 상태에서 재렌더 시 선이 다시 두꺼워지지 않게
-  var strokeOp = (displayMode==='puzzle'&&puzzleComplete) ? 0 : 1;
+  // 경계선 숨김은 그림이 실제로 깔린 완성 퍼즐에서만 — 사진 미선택(사용자 사진 전용이라
+  // 가능한 상태)이면 지도가 사진 모드 규칙으로 그려지므로 경계선이 있어야 한다.
+  var strokeOp = (displayMode==='puzzle'&&puzzleImage&&puzzleComplete) ? 0 : 1;
   if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).attr('stroke-opacity', strokeOp).style('pointer-events', 'auto');
 
   Object.keys(insetPathElements).forEach(function(key) {
@@ -780,7 +824,8 @@ function handleNativeMessage(e){
       updateMap();
       // 완성 전이 감지 — '미완성→완성'으로 바뀐 그 수신에서만 연출.
       // 첫 수신은 기준선만 설정한다(이미 완성 상태로 진입하면 연출 없이 완성 화면).
-      if (displayMode === 'puzzle') {
+      // 그림이 없으면 연출도 없다(퍼즐이 안 그려지는 상태에서 경계선 페이드만 돌면 이상하다).
+      if (displayMode === 'puzzle' && puzzleImage) {
         var cur = recordedRegions.map(function(r){ return r.nameEn; });
         if (puzzlePrevComplete === null) {
           puzzlePrevComplete = puzzleComplete; prevMatchedCodes = cur;

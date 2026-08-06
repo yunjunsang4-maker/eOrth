@@ -634,7 +634,7 @@ const ko = {
     regionPhotoMode: '지역별 사진',
     puzzle: '퍼즐',
     puzzleImageLabel: '퍼즐 그림',
-    puzzleDefaultArt: '기본 아트',
+    puzzleNeedPhoto: '퍼즐로 채울 사진을 골라 주세요',
     puzzleFromAlbum: '앨범',
     regionTagChip: '기록 {{count}}개가 있어요 · 방문 지역 추가하기',
     regionTagDismissA11y: '방문 지역 안내 닫기',

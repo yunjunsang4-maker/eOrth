@@ -629,7 +629,7 @@ const en = {
     regionPhotoMode: 'Photos by region',
     puzzle: 'Puzzle',
     puzzleImageLabel: 'Puzzle image',
-    puzzleDefaultArt: 'Default art',
+    puzzleNeedPhoto: 'Pick a photo to fill the puzzle',
     puzzleFromAlbum: 'Album',
     regionTagChip: '{{count}} records here · Add visited regions',
     regionTagDismissA11y: 'Dismiss visited-region suggestion',

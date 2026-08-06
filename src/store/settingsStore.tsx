@@ -119,7 +119,7 @@ interface SettingsContextType {
   // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
   regionColors: Record<string, string>;
   setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
-  // 나라별 퍼즐 그림 (키: ISO3, 값: 사진 URI). 없으면 기본 아트(PUZZLE_ART) 사용
+  // 나라별 퍼즐 그림 (키: ISO3, 값: 사진 URI). 사용자 사진 전용 — 없으면 퍼즐이 그려지지 않는다
   puzzleImages: Record<string, string>;
   setPuzzleImages: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 소급 태깅한 방문 지역 (키: ISO3) — 지구본 기록만 있는 국가의 대륙 지역 활성화용
