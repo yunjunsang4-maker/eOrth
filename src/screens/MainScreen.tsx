@@ -641,7 +641,7 @@ export default function MainScreen({ navigation, route }: Props) {
     globeSkin: string;
     countryColors: Record<string, string>;
     countryDisplayModes: Record<string, MapDisplayMode>;
-    regionGlobalMode: 'color' | 'photo';
+    regionGlobalMode: 'photo' | 'puzzle';
     regionDisplayModes: Record<string, 'color' | 'photo'>;
     regionColors: Record<string, string>;
     skinColorStore: Record<string, SkinColorSet>;
@@ -2208,7 +2208,8 @@ export default function MainScreen({ navigation, route }: Props) {
                     <TouchableOpacity
                       style={[styles.dsOption, regionGlobalMode !== 'photo' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
                       activeOpacity={0.7}
-                      onPress={() => setRegionGlobalMode('color')}
+                      // 임시 — Task 4에서 사진/퍼즐 토글로 교체
+                      onPress={() => setRegionGlobalMode('photo')}
                     >
                       <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
                       <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>{t('main.color')}</Text>
