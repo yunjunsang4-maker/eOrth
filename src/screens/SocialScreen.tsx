@@ -2570,8 +2570,6 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  // '기타'에서 연 공유 시트의 대상 게시물 id (null이면 닫힘)
-  const [otherSharePostId, setOtherSharePostId] = useState<string | null>(null);
   // 빠른공유 메이트는 메이트(neighbors)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
@@ -2595,35 +2593,36 @@ function FriendsTab({ navigation }: { navigation: any }) {
     quickToastTimer.current = setTimeout(() => setQuickToastVisible(false), 1800);
   };
 
-  // '기타' 시트의 외부 공유 — 옵션(인스타·틱톡·링크)을 여기서 다시 만들지 않고
-  // 점 3개 > 공유 와 **같은 ShareBottomSheet** 를 띄운다. 공유 수단이 늘거나 바뀔 때
-  // 한 곳만 고치면 되고, 두 경로의 화면이 어긋날 일도 없다.
+  // '기타 > 공유' — 앱 자체 시트가 아니라 **OS 네이티브 공유 시트**를 띄운다.
+  // (AirDrop·메시지·카톡 등 기기에 설치된 앱 전부를 OS가 처리한다)
   //
-  // ⚠️ Modal 위에 Modal 을 겹치면 iOS 에서 두 번째가 안 뜬다. '기타' 시트를 먼저 닫고,
-  //    닫힘이 끝난 뒤(onDismiss) 공유 시트를 연다. onDismiss 는 iOS 전용이라
+  // SNS_SHARE_ENABLED 게이트를 타지 않는다(2026-08-07 결정). 그 플래그는 '인스타그램'
+  // '틱톡'처럼 특정 SNS 를 내건 버튼을 베타에서 가리려는 것이고, 이 버튼은 대상 앱을
+  // 고르지 않는 일반 공유라 베타에서도 열어 둔다. 점 3개 > 공유 쪽 제한은 그대로다.
+  //
+  // ⚠️ RN Modal 이 닫히는 중에 OS 시트를 띄우면 iOS 에서 표시되지 않는다. '기타' 시트를
+  //    먼저 닫고 닫힘이 끝난 뒤(onDismiss) 호출한다. onDismiss 는 iOS 전용이라
   //    안드로이드는 타이머로 보장한다 (ShareBottomSheet 의 메이트 선택과 같은 방식).
-  const pendingShareRef = useRef<string | null>(null);
+  const pendingShareRef = useRef(false);
+
+  const doOsShare = () => {
+    // 게시물별 웹 페이지가 없어 스토어 링크를 내보낸다(미등록 도메인 죽은 링크 방지)
+    const url = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
+    Share.share({ message: url }).catch(() => {});
+  };
 
   const openShareSheetForOther = () => {
-    const id = otherPickerItem?.id ?? null;
-    if (!id) return;
-    pendingShareRef.current = id;
+    pendingShareRef.current = true;
     setOtherPickerItem(null);
     if (Platform.OS === 'android') {
       setTimeout(() => {
-        if (pendingShareRef.current) {
-          setOtherSharePostId(pendingShareRef.current);
-          pendingShareRef.current = null;
-        }
+        if (pendingShareRef.current) { pendingShareRef.current = false; doOsShare(); }
       }, 320);
     }
   };
 
   const handleOtherDismiss = () => {
-    if (pendingShareRef.current) {
-      setOtherSharePostId(pendingShareRef.current);
-      pendingShareRef.current = null;
-    }
+    if (pendingShareRef.current) { pendingShareRef.current = false; doOsShare(); }
   };
 
   // 드롭 판정 여유(px) — 원을 정확히 덮지 않아도 근처면 인정 (자연스러운 드롭감)
@@ -3152,7 +3151,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             <View style={ss.handle} />
             <Text style={ss.sheetTitle}>{t('social.shareTitle')}</Text>
 
-            {/* 외부 공유 — 옵션을 여기서 또 만들지 않고, 점 3개 > 공유 와 같은 시트를 띄운다 */}
+            {/* 외부 공유 — OS 네이티브 공유 시트 (AirDrop·메시지·카톡 등) */}
             <TouchableOpacity style={ss.otherShareBtn} onPress={openShareSheetForOther} activeOpacity={0.75}>
               <ShareSvgIcon size={18} color="#FFFFFF" />
               <Text style={ss.otherShareBtnText}>{t('social.share')}</Text>
@@ -3186,15 +3185,6 @@ function FriendsTab({ navigation }: { navigation: any }) {
           </View>
         </View>
       </Modal>
-
-      {/* '기타'에서 연 공유 시트 — 점 3개 > 공유 와 같은 컴포넌트 */}
-      <ShareBottomSheet
-        visible={!!otherSharePostId}
-        onClose={() => setOtherSharePostId(null)}
-        onLinkCopied={() => showQuickToast(t('social.linkCopiedToast'))}
-        postId={otherSharePostId ?? undefined}
-        navigation={navigation}
-      />
     </View>
   );
 }
