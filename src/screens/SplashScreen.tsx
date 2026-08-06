@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
@@ -20,6 +20,23 @@ import type { RootStackScreenProps } from '../navigation/types';
 // 어떤 경로로도 오디오 세션을 건드리지 않아 사용자의 음악·영상 재생이 끊기지 않는다.
 const SPLASH_VIDEO = require('../../assets/splash.mp4');
 const { width: SW, height: SH } = Dimensions.get('window');
+
+// ─────────────────────────────────────────────
+// 네이티브 스플래시 로고 크기 미리보기 (개발 전용)
+// ─────────────────────────────────────────────
+// 네이티브 스플래시는 LaunchScreen 스토리보드에 구워져서 크기를 바꿀 때마다 EAS 재빌드가
+// 필요하다(한 번에 15~25분). 그래서 크기만 여기서 먼저 고른다 —
+// 아래를 true 로 바꾸면 영상 대신 미리보기가 뜨고, 핫리로드로 즉시 반영된다.
+//
+// 이 화면은 app.json 의 expo-splash-screen 설정과 **같은 조건**으로 그린다:
+//   같은 이미지 · 배경 #000000 · 폭 = imageWidth(dp). 그래서 여기서 정한 숫자를
+//   app.json 의 imageWidth 에 그대로 넣으면 된다.
+//
+// 다 고른 뒤에는 반드시 false 로 되돌릴 것. (__DEV__ 가드가 있어 배포본에는 영향이 없다)
+const SPLASH_LOGO_PREVIEW = false;
+const SPLASH_LOGO = require('../../assets/splash-icon.png');
+// app.json > plugins > expo-splash-screen > imageWidth 와 같은 값을 둔다
+const SPLASH_LOGO_WIDTH = 260;
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
 // 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
 const MAX_SPLASH_MS = 4000;
@@ -30,6 +47,8 @@ const DEST_TIMEOUT_MS = 8000;
 type Props = RootStackScreenProps<'Splash'>;
 
 export default function SplashScreen({ navigation }: Props) {
+  const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
+  const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
   const { resetRecords } = useRecords();
   const { resetSettings, birthday } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
@@ -50,6 +69,8 @@ export default function SplashScreen({ navigation }: Props) {
   });
 
   useEffect(() => {
+    // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 비교할 시간이 필요하다
+    if (previewMode) return;
     let navigated = false;
     // 판정이 상한을 넘겼을 때 쓸 폴백 근거 — 세션 유무는 로컬에서 즉시 알 수 있다.
     let sessionSeen = false;
@@ -133,6 +154,35 @@ export default function SplashScreen({ navigation }: Props) {
     };
   }, []);
 
+  if (previewMode) {
+    const pct = Math.round((previewW / SW) * 100);
+    return (
+      <View style={styles.container}>
+        {/* 네이티브 스플래시와 같은 조건: 배경 #000000, 같은 이미지, 폭 = imageWidth(dp) */}
+        <Image source={SPLASH_LOGO} style={{ width: previewW }} resizeMode="contain" />
+        <View style={styles.previewPanel}>
+          <Text style={styles.previewValue}>imageWidth: {previewW}dp</Text>
+          <Text style={styles.previewHint}>화면 폭의 {pct}% · 이 화면 폭 {Math.round(SW)}dp</Text>
+          <View style={styles.previewRow}>
+            {[-20, -5, 5, 20].map((d) => (
+              <TouchableOpacity
+                key={d}
+                style={styles.previewBtn}
+                onPress={() => setPreviewW((w) => Math.max(40, w + d))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.previewBtnText}>{d > 0 ? `+${d}` : d}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.previewHint}>
+            정한 값을 app.json 의 imageWidth 에 넣고{'\n'}SPLASH_LOGO_PREVIEW 를 false 로 되돌릴 것
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       <VideoView
@@ -158,4 +208,14 @@ const styles = StyleSheet.create({
     width: SW,
     height: SH,
   },
+  // ── 개발 전용 미리보기 (SPLASH_LOGO_PREVIEW) ──
+  previewPanel: { position: 'absolute', bottom: 60, alignItems: 'center', gap: 10 },
+  previewValue: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
+  previewHint: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', lineHeight: 18 },
+  previewRow: { flexDirection: 'row', gap: 10 },
+  previewBtn: {
+    minWidth: 56, paddingVertical: 12, borderRadius: 10,
+    backgroundColor: '#2E2E3B', alignItems: 'center',
+  },
+  previewBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
 });
