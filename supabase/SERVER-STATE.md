@@ -25,7 +25,45 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-07 기준)
+## 1. 지금 해야 하는 것 — 1건 (2026-08-07 기준)
+
+### ⏳ `delete-account` 재배포 + `PURGE_SECRET` 등록 (코드는 커밋됐고 서버 반영만 남음)
+
+sweep 인증을 플랫폼 키(`SUPABASE_SERVICE_ROLE_KEY`)와의 문자열 비교에서 **우리가 정하는
+`PURGE_SECRET`** 으로 옮겼다. 아래 표의 "왜"는 바로 다음 절에 있다.
+
+**반영 전까지는 옛 방식 폴백으로 계속 동작하므로 급하지 않다** — 함수에 `PURGE_SECRET` 이 없으면
+자동으로 옛 비교(Authorization = service_role env)를 쓴다. 다만 폴백이 살아 있는 한 같은 사고가
+재발할 수 있으니 출시 전에는 끝낼 것.
+
+```bash
+# ① 랜덤 시크릿 생성 후 함수에 등록 → 배포
+supabase secrets set PURGE_SECRET=<랜덤> --project-ref blweolnunmsxgztmvzfd
+supabase functions deploy delete-account --project-ref blweolnunmsxgztmvzfd
+```
+
+```sql
+-- ② 같은 값을 Vault 에 저장 (cron 이 보낼 값)
+select vault.create_secret('<①과 똑같은 값>', 'purge_secret');
+
+-- ③ 잡 재등록 — x-purge-secret 헤더가 추가됐다. cron-setup.sql 3)번 블록을 그대로 재실행
+--    (cron.schedule 은 같은 이름 잡을 덮어쓴다)
+
+-- ④ 실측 — 200 / {"ok":true,...} 여야 한다
+select net.http_post(
+  url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/delete-account',
+  headers := jsonb_build_object(
+    'Content-Type', 'application/json',
+    'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key'),
+    'x-purge-secret', (select decrypted_secret from vault.decrypted_secrets where name = 'purge_secret')
+  ),
+  body := '{"scope":"sweep"}'::jsonb
+);
+select status_code, content from net._http_response order by created desc limit 1;
+```
+
+401 이면 `content` 의 `hint` 로 갈린다 — `purge_secret_not_set`(①이 안 됨) /
+`purge_secret_mismatch`(①②가 다름) / `INVALID_JWT_FORMAT`(게이트웨이 = Authorization 쪽 문제).
 
 ### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 
@@ -76,9 +114,12 @@ select vault.update_secret(
 > `succeeded` 로 찍는다. HTTP 응답이 401 이어도 잡은 성공으로 보인다. 스케줄러 상태는
 > 반드시 `net._http_response` 까지 봐야 한다. 아래 "2번 확인" 쿼리에 반영해 뒀다.
 >
-> **설계상 남은 취약점.** `sweep` 인증이 플랫폼이 주입하는 env 와의 정확한 문자열 일치에
-> 의존한다. 키 체계가 또 바뀌면 같은 방식으로 조용히 죽는다. 전용 시크릿(`PURGE_SECRET` 등)으로
-> 옮기는 편이 안전하다 — 아직 안 했다.
+> **설계 개편(2026-08-07, 코드 반영 완료·서버 반영 대기).** 원인은 값 하나가 아니라
+> **인증 방식이 플랫폼이 주입하는 env 에 묶여 있던 것**이었다. 키 체계가 또 바뀌면 같은 식으로
+> 조용히 죽는다. 그래서 sweep 인가를 우리가 정하는 `PURGE_SECRET`(헤더 `x-purge-secret`)으로
+> 옮겼다. `Authorization` 은 이제 **게이트웨이 통과 용도로만** 쓴다 — 두 관심사를 분리한 것이다.
+> 401 응답에 `hint` 를 넣고 함수 로그(`console.error`)도 남겨, 다음엔 조용히 죽지 않는다.
+> 반영 절차는 이 절 맨 위.
 
 ### 여행 DNA 반영은 완료됐다 (2026-08-06)
 
