@@ -16,10 +16,46 @@
 >   다만 `schema.sql` 이 멱등이고 최신 상태로 실행됐으므로, 항목 자체는 모두 반영돼 있다.
 >
 > 새로 실행·배포했으면 날짜와 함께 이 문서를 갱신한다.
+>
+> ⚠️ **2026-08-07 정정.** 위 "모두 끝났다"에는 예외가 있다 — pg_cron 3종은 등록만 됐고
+> 실행은 전부 401 로 실패해 왔다(1번 절). **"객체가 존재한다"와 "실제로 동작한다"는 다르다.**
+> 이 문서의 ✅ 는 대부분 전자만 확인한 값이니, 스케줄러·Edge Function 처럼 *돌아야* 의미가 있는
+> 항목은 반드시 **실행 결과**(`net._http_response` 등)까지 보고 표시할 것.
 
 ---
 
-## 1. 지금 해야 하는 것 — 없음 (2026-08-06 기준)
+## 1. 지금 해야 하는 것 — 1건 (2026-08-07 기준)
+
+### ⚠️ Vault `service_role_key` 가 잘못된 값이다 — pg_cron 3종이 전부 실패 중
+
+2026-08-07 베타 계정 초기화 작업 중 발견했다. `delete-account` 를 `scope='sweep'` 으로 호출하면
+**401 `{"error":"unauthorized"}`** 가 돌아온다. 이건 게이트웨이가 아니라 **함수 자신이 낸 에러**
+(`functions/delete-account/index.ts` 99행)라, JWT 형식은 맞지만 값이 함수의
+`SUPABASE_SERVICE_ROLE_KEY` 환경변수와 **다르다**는 뜻이다.
+
+그리고 `net._http_response` 에 쌓인 실패 중 **매일 18:00 UTC 정각 건은 사람이 누른 게 아니라
+`purge-deleted-accounts` 잡의 정기 실행**이다. 즉 이 잡은 등록만 돼 있고(`active=true`)
+**한 번도 성공한 적이 없다.** 같은 Vault 값을 쓰는 나머지 2종도 동일하다.
+
+> **영향:** 탈퇴 유예 30일이 지난 계정이 자동 파기되지 않는다. `auth.users` 행과 Storage
+> `media/<uid>/` 사진이 서버에 계속 남는다 — 개인정보처리방침의 파기 약속과 어긋나므로
+> 정식 출시 전에 반드시 해소할 것.
+
+**고치는 법.** 대시보드 **Settings > API Keys > `Legacy API keys`** 탭에서 `service_role`
+키(`eyJ` 로 시작하는 JWT)를 복사한다. 신형 키(`sb_secret_...`)를 넣으면 게이트웨이가
+`UNAUTHORIZED_INVALID_JWT_FORMAT` 으로 막는다 — 함수 환경변수 쪽은 레거시 JWT이기 때문이다.
+
+```sql
+select vault.update_secret(
+  (select id from vault.secrets where name = 'service_role_key'),
+  '<레거시 service_role 키>'
+);
+```
+
+`vault.create_secret` 은 이름이 중복돼 실패하니 반드시 `update_secret` 을 쓴다.
+고친 뒤 아래 "2번 확인" 쿼리로 **200 이 돌아오는지**까지 확인할 것.
+
+### 여행 DNA 반영은 완료됐다 (2026-08-06)
 
 여행 DNA 설문의 서버 반영(`schema.sql` 재실행)이 **2026-08-06 완료**됐다. 사용자가 SQL Editor에서
 실행하고 아래 점검 쿼리로 확인했다.
@@ -101,12 +137,27 @@ select user_id, params_key, computed_at, jsonb_array_length(rows) as n
 -- 2번 확인: 잡 3건 + Vault 시크릿
 select jobname, schedule, active from cron.job order by jobname;
 --   purge-deleted-accounts / purge-mate-cache / purge-notifications
-select name from vault.decrypted_secrets where name = 'service_role_key';
+
+-- ⚠️ 시크릿은 '있는지'가 아니라 '맞는지'를 봐야 한다.
+--    이름만 확인하다가 값이 틀린 걸 놓쳐서 잡 3종이 계속 401로 죽어 있었다(2026-08-07 발견).
+--    role 이 service_role 이어야 하고, 공백이 섞이면 안 된다.
+select length(decrypted_secret) as 길이,
+       (decrypted_secret ~ '\s') as 공백포함,
+       convert_from(decode(
+         rpad(translate(split_part(decrypted_secret, '.', 2), '-_', '+/'),
+              ((length(split_part(decrypted_secret, '.', 2)) + 3) / 4) * 4, '='),
+         'base64'), 'utf8') as 페이로드
+  from vault.decrypted_secrets where name = 'service_role_key';
+--   페이로드가 비면 JWT 가 아닌 신형 키(sb_secret_...) → 함수 env 와 영원히 불일치
 
 -- 잡이 실제로 돈 결과 (등록 다음 날부터 쌓인다)
 select j.jobname, d.status, d.return_message, d.start_time
   from cron.job_run_details d join cron.job j on j.jobid = d.jobid
  order by d.start_time desc limit 20;
+--   ⚠️ pg_cron 은 net.http_post 호출 자체가 성공하면 succeeded 로 기록한다.
+--      HTTP 응답이 401 이어도 여기서는 성공으로 보이므로 아래를 함께 볼 것.
+select status_code, content, created
+  from net._http_response order by created desc limit 10;
 ```
 
 남은 것은 **4번(정리 대기)** — `tmp-perf-verify.sql` 검증 마무리 또는 폐기. 서버 동작에는 영향 없다.
@@ -143,7 +194,8 @@ select j.jobname, d.status, d.return_message, d.start_time
 | 스키마 감사 수정 10건 | 2026-08-01 | ✅ 확인 | `safe_to_date` 함수 + `uq_profiles_handle_lower` 인덱스 (커밋 `a828788`·`406116c`) |
 | **출시 전 감사 수정** | **2026-08-02** | **✅ 확인** | 아래 상세 (커밋 `f827009`) |
 | 추천 메이트 결과 캐시 (`mate_suggestions_cache` + 래퍼) | 2026-08-05 | 실행 보고 | 커밋 `c8498ca`. 확인 쿼리는 1번 절 |
-| pg_cron 3종 등록 (`cron-setup.sql`) + Vault `service_role_key` | 2026-08-05 | 실행 보고 | 알림 정리·탈퇴 파기·캐시 정리. 이전까지 한 번도 돈 적 없음 |
+| pg_cron 3종 등록 (`cron-setup.sql`) | 2026-08-05 | ✅ 확인 | `cron.job` 3건 `active=true`. **단 실행은 전부 401 실패** — 아래 행 참조 |
+| Vault `service_role_key` | 2026-08-05 | ❌ **값이 틀림** | 2026-08-07 발견. 시크릿은 존재하나 함수 env 와 불일치 → 잡 3종이 한 번도 성공한 적 없다. 조치는 **1번 절** |
 
 ### 출시 전 감사(2026-08-02) 반영 상세 — SQL Editor 조회로 실측
 
