@@ -122,6 +122,11 @@ interface SettingsContextType {
   // 나라별 퍼즐 그림 (키: ISO3, 값: 사진 URI). 사용자 사진 전용 — 없으면 퍼즐이 그려지지 않는다
   puzzleImages: Record<string, string>;
   setPuzzleImages: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 나라별 퍼즐 원본 사진 (키: ISO3, 값: 크롭 전 원본 URI). 재조정을 항상 원본에서 시작해
+  // '크롭의 크롭'(재조정마다 1280px JPG를 다시 잘라 화질 저하·범위 축소 불가)을 막는다.
+  // 구 저장본에는 없다 — 그 경우 재조정은 현재 크롭본에서 시작(기존 동작).
+  puzzleSources: Record<string, string>;
+  setPuzzleSources: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 지역별 사진 수동 지정 (키: `${ISO3}|${regionEn}` — regionColors와 동일 규칙, 값: 사진 URI).
   // 없으면 기록 대표사진 자동 선정. 사용자가 고른 명시값이라 표시 설정 취소로 원복하지 않는다.
   regionPhotos: Record<string, string>;
@@ -223,6 +228,7 @@ interface SettingsPersistPayload {
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
   puzzleImages?: Record<string, string>;
+  puzzleSources?: Record<string, string>; // 퍼즐 원본(크롭 전) 사진 (과거 저장본엔 없음)
   regionPhotos?: Record<string, string>; // 지역별 사진 수동 지정 (과거 저장본엔 없음)
   taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
   // 방문 지역 칩을 닫은 국가 (과거 저장본엔 없음).
@@ -292,6 +298,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [puzzleImages, setPuzzleImages] = useState<Record<string, string>>({});
+  const [puzzleSources, setPuzzleSources] = useState<Record<string, string>>({});
   const [regionPhotos, setRegionPhotos] = useState<Record<string, string>>({});
   const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
   const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
@@ -406,6 +413,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setPuzzleImages(Object.fromEntries(
         Object.entries(p.puzzleImages ?? {}).map(([k, v]) => [k, remapDocUri(v)])
       ));
+      // 퍼즐 원본도 동일 복구 — 앨범 원본은 Documents/puzzle/에 사본으로 영속돼 있다
+      setPuzzleSources(Object.fromEntries(
+        Object.entries(p.puzzleSources ?? {}).map(([k, v]) => [k, remapDocUri(v)])
+      ));
       // 지역별 수동 사진도 동일 복구. 신규 필드라 GADM 키 마이그레이션 대상은 아니다
       setRegionPhotos(Object.fromEntries(
         Object.entries(p.regionPhotos ?? {}).map(([k, v]) => [k, remapDocUri(v)])
@@ -498,6 +509,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionDisplayModes,
       regionColors,
       puzzleImages,
+      puzzleSources,
       regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
@@ -549,6 +561,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionDisplayModes,
       regionColors,
       puzzleImages,
+      puzzleSources,
       regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
@@ -782,9 +795,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         regionColors,
         setRegionColors,
         puzzleImages,
+        setPuzzleImages,
+        puzzleSources,
+        setPuzzleSources,
         regionPhotos,
         setRegionPhotos,
-        setPuzzleImages,
         taggedRegions,
         setTaggedRegions,
         dismissedRegionTagChips,

@@ -76,6 +76,7 @@ export default function CountryMapView({
     minTwoChars: t('countryMap.minTwoChars'),
     searchError: t('countryMap.searchError'),
     libLoadFail: t('countryMap.libLoadFail'),
+    noData: t('countryMap.noData'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [t, i18n.language]);
   // 스킨 강조색 hex → RGB (WebView가 선 색을 밝기 배율로 파생할 때 쓴다)
@@ -92,6 +93,9 @@ export default function CountryMapView({
   // 예전엔 ph:// 만 file:// 로 바꿔 넣었는데, inline HTML WebView는 file:// 자체를 못
   // 읽어 실기기에서 새로 고른 사진(Documents 영속본)이 지도에 전혀 반영되지 않았다.
   const [photoCache, setPhotoCache] = useState<Record<string, string>>({});
+  // 국가가 바뀌면 캐시를 비운다 — 컴포넌트가 리마운트 없이 나라만 갈아타므로, 안 비우면
+  // 이전 나라들의 data URI(장당 수백 KB)가 세션 내내 누적된다. WebView는 어차피 새 HTML로 리로드된다.
+  useEffect(() => { setPhotoCache({}); }, [countryCode]);
   useEffect(() => {
     const targets = Array.from(
       new Set(
@@ -298,12 +302,13 @@ export interface MapLabels {
   minTwoChars: string;
   searchError: string;
   libLoadFail: string;
+  noData: string;
 }
 
 function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels, accentRgb: [number, number, number] = [191, 133, 252]) {
   const geo = getCountryGeo(code);
   if (!geo) {
-    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>지도 데이터가 없습니다</body></html>`;
+    return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>${escapeText(L.noData)}</body></html>`;
   }
 
   const geoJSON = JSON.stringify(geo);
@@ -341,7 +346,7 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 // 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
 // (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
 //  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
-var MAP_SCRIPT_VER = 'v6';
+var MAP_SCRIPT_VER = 'v7';
 var MAP_DEBUG = false;
 var dbgTimer = null;
 function dbgChip(text){
@@ -578,6 +583,18 @@ function emphStroke(d){
   if(showPopular && POPULAR_CODES.indexOf(code)>=0) return defaultColor; // 인기명소 주 강조(스킨 활성화색)
   return LINE_BASE;
 }
+// 경계선 표시 여부(불투명도) — 완성 퍼즐(그림이 실제로 깔린 상태)에서만 숨긴다. 사진 미선택
+// (사용자 사진 전용이라 가능한 상태)이면 지도가 사진 모드 규칙으로 그려지므로 경계선이 있어야 한다.
+// 단, 검색·인기명소 강조는 스트로크가 유일한 표시 수단이라 완성 상태에서도 보여야 한다 —
+// 전체 opacity 0으로 깔면 완성한 나라에서 검색해도 확대만 되고 강조 테두리가 안 보였다.
+function strokeOpFor(d){
+  if(!(displayMode==='puzzle'&&puzzleImage&&puzzleComplete)) return 1;
+  var n=d.properties.NAME_1||'';
+  var code=d.properties.CODE||'';
+  if(n===searchedRegion) return 1;
+  if(showPopular && POPULAR_CODES.indexOf(code)>=0) return 1;
+  return 0;
+}
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
 // 이중선/틈이 남으면 아래 값을 키우고, 고배율에서 너무 두꺼우면 줄이면 된다.
 function emphWidth(d){
@@ -599,9 +616,20 @@ function scaledStroke(d,k){ var base=emphWidth(d); if(!base) return 0; return Ma
 function curStrokeWidth(d){ return scaledStroke(d, curK()); }
 // ── 구역 탭 ──
 function onRegionClick(ev,d){
-  d3.select(this).attr('fill',TAP_FLASH);
-  var self=this;
-  setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
+  if(displayMode==='puzzle'&&puzzleImage){
+    // 퍼즐 모드: 단색 채움 플래시는 애써 깐 그림 조각을 350ms 동안 통째로 덮는다 —
+    // 대신 테두리가 스킨색으로 잠깐 밝아졌다 꺼지는 스트로크 펄스로 피드백한다.
+    var selp=d3.select(this);
+    selp.raise()
+      .attr('stroke',accentShade(1)).attr('stroke-opacity',1).attr('stroke-width',1.4)
+      .transition().duration(450)
+      .attr('stroke-opacity',strokeOpFor(d))
+      .on('end',function(){ selp.attr('stroke',emphStroke(d)).attr('stroke-width',curStrokeWidth(d)); });
+  } else {
+    d3.select(this).attr('fill',TAP_FLASH);
+    var self=this;
+    setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
+  }
   var name=d.properties.NL_NAME_1||d.properties.NAME_1||'';
   var nameEn=d.properties.CODE||''; // MainScreen이 regionNameEn으로 저장하는 값
   setRegionChip(name);
@@ -782,6 +810,24 @@ function render(geo){
 // 이미지 재생성은 그림이 바뀔 때만(디코드가 무겁다). 퍼즐 모드를 떠나도 레이어는 지우지
 // 않고 숨긴다 — 사진↔퍼즐 토글 왕복(표시 설정 라이브 미리보기)에 재디코드가 없게.
 var puzzleBuiltFor = null;
+// 빈 조각 그레인 타일 — 미세한 밝은 점 노이즈를 #191920 위에 깐 64px 캔버스 타일.
+// 앱의 그레인 모티프(GrainOverlay)와 같은 결로, 완전 평면이던 미방문 조각에
+// '아직 못 채운 빈 자리'의 물성만 준다(흑백 사진 힌트와는 무관 — 재질감뿐이다).
+// null=미시도, ''=시도했으나 실패(단색 폴백). 패턴은 userSpaceOnUse라 페인트가 싸다.
+var grainTileUri = null;
+function makeGrainTile(){
+  try{
+    var c=document.createElement('canvas'); c.width=64; c.height=64;
+    var x=c.getContext('2d');
+    if(!x) return '';
+    x.fillStyle='#191920'; x.fillRect(0,0,64,64);
+    for(var i=0;i<90;i++){
+      x.fillStyle='rgba(255,255,255,'+(0.02+Math.random()*0.03).toFixed(3)+')';
+      x.fillRect(Math.floor(Math.random()*64),Math.floor(Math.random()*64),1,1);
+    }
+    return c.toDataURL('image/png');
+  }catch(e){ return ''; }
+}
 function ensurePuzzleLayers(){
   if(!gElement) return;
   var on = displayMode === 'puzzle' && !!puzzleImage;
@@ -794,12 +840,20 @@ function ensurePuzzleLayers(){
   if(puzzleBuiltFor !== puzzleImage){
     puzzleBuiltFor = puzzleImage;
     layer.selectAll('*').remove();
+    if(grainTileUri===null) grainTileUri=makeGrainTile();
+    if(grainTileUri){
+      layer.append('defs').append('pattern').attr('id','pz-grain')
+        .attr('patternUnits','userSpaceOnUse').attr('width',64).attr('height',64)
+        .append('image').attr('href',grainTileUri).attr('xlink:href',grainTileUri)
+        .attr('width',64).attr('height',64);
+    }
+    var emptyFill = grainTileUri ? 'url(#pz-grain)' : '#191920';
     puzzleGroups.forEach(function(grp){
       var bx=grp.b[0][0], by=grp.b[0][1], bw=grp.b[1][0]-bx, bh=grp.b[1][1]-by;
       if(bw<=0||bh<=0) return;
-      // ① 실루엣 배경 — 미방문 지역이 '빈' 상태로 보이는 층. 단색 path라 페인트가 싸다.
+      // ① 실루엣 배경 — 미방문 지역이 '빈' 상태로 보이는 층. 그레인 타일 패턴(실패 시 단색).
       grp.feats.forEach(function(f){
-        layer.append('path').attr('d', grp.gen(f)).attr('fill','#191920');
+        layer.append('path').attr('d', grp.gen(f)).attr('fill',emptyFill);
       });
       // ② 방문 마스크
       var mask=layer.append('mask').attr('id','pzm-sharp-'+grp.key)
@@ -869,14 +923,11 @@ function updateMap() {
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
   // stroke-width는 현재 확대 배율을 반영(curStrokeWidth) — 확대 상태에서 재렌더 시 선이 다시 두꺼워지지 않게
-  // 경계선 숨김은 그림이 실제로 깔린 완성 퍼즐에서만 — 사진 미선택(사용자 사진 전용이라
-  // 가능한 상태)이면 지도가 사진 모드 규칙으로 그려지므로 경계선이 있어야 한다.
-  var strokeOp = (displayMode==='puzzle'&&puzzleImage&&puzzleComplete) ? 0 : 1;
-  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).attr('stroke-opacity', strokeOp).style('pointer-events', 'auto');
+  if (pathElements) pathElements.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).attr('stroke-opacity', strokeOpFor).style('pointer-events', 'auto');
 
   Object.keys(insetPathElements).forEach(function(key) {
     var sel = insetPathElements[key];
-    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).attr('stroke-opacity', strokeOp).style('pointer-events', 'auto');
+    if (sel) sel.attr('fill', regionFill).attr('stroke', emphStroke).attr('stroke-width', curStrokeWidth).attr('stroke-opacity', strokeOpFor).style('pointer-events', 'auto');
   });
 
   reorderEmph();
@@ -897,6 +948,20 @@ function reorderEmph(){
   }
 }
 
+// 조각 채움 연출 — 새로 방문된 지역의 마스크를 검정→흰으로 0.4초 페이드해 그림이
+// '조각을 끼우듯' 떠오르게 한다. updateMap(ensurePuzzleLayers)이 이미 흰색으로 세팅한
+// 뒤에 불리므로, 검정으로 되돌린 다음 트랜지션한다(최종 상태는 세팅과 일치).
+// completing이면 햅틱은 완성 연출(Success)이 담당하므로 piecePlaced 메시지는 생략한다.
+function playPiecePlaced(newCodes, completing){
+  if(!gElement) return;
+  gElement.selectAll('g.pz-layer mask.pz-sharp-mask path')
+    .filter(function(f){ return !!(f && f.properties && newCodes.indexOf(f.properties.CODE||'')>=0); })
+    .attr('fill','#000000')
+    .transition().duration(400).attr('fill','#FFFFFF');
+  if(!completing && window.ReactNativeWebView){
+    window.ReactNativeWebView.postMessage(JSON.stringify({type:'piecePlaced'}));
+  }
+}
 // 완성 연출: 마지막 조각(새로 매칭된 지역) 흰 글로우 펄스 → 전 경계선 1초 페이드아웃.
 // updateMap이 stroke-opacity를 이미 0으로 세팅한 뒤 불리므로, 펄스는 1로 올렸다가
 // 트랜지션으로 0에 수렴시킨다(최종 상태는 updateMap의 세팅과 일치).
@@ -913,9 +978,42 @@ function playPuzzleCompletion(newCodes){
       .attr('stroke-opacity',1)
       .transition().delay(250).duration(1000).attr('stroke-opacity',0);
   });
+  // 경계선이 다 사라진 직후 그림 위로 광택 스윕 1회 — '한 장의 그림이 완성됐다'의 방점
+  setTimeout(playShineSweep, 1300);
   if(window.ReactNativeWebView){
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'puzzleCompleted'}));
   }
+}
+
+// 완성 광택 스윕 — 대각(그라데이션 자체를 기울임) 광 띠가 나라 그림을 한 번 훑고 사라진다.
+// 방문 마스크(완성 시 전 지역 흰색)를 g 래퍼에 걸어 그림 영역 밖으로는 새지 않는다.
+// 띠는 마스크 없는 rect가 아니라 mask 걸린 g 안에서 x만 움직인다 — rect 자체에 transform을
+// 주면 userSpaceOnUse 마스크와 좌표가 어긋난다.
+function playShineSweep(){
+  if(!gElement || !(displayMode==='puzzle'&&puzzleImage)) return;
+  var layer=gElement.select('g.pz-layer');
+  if(layer.empty()) return;
+  if(layer.select('#pz-shine-grad').empty()){
+    var lg=layer.append('defs').attr('class','pz-shine-defs')
+      .append('linearGradient').attr('id','pz-shine-grad')
+      .attr('x1','0').attr('y1','0').attr('x2','1').attr('y2','0')
+      .attr('gradientTransform','rotate(18)');
+    lg.append('stop').attr('offset','0').attr('stop-color','#FFFFFF').attr('stop-opacity','0');
+    lg.append('stop').attr('offset','0.5').attr('stop-color','#FFFFFF').attr('stop-opacity','0.22');
+    lg.append('stop').attr('offset','1').attr('stop-color','#FFFFFF').attr('stop-opacity','0');
+  }
+  puzzleGroups.forEach(function(grp){
+    var bx=grp.b[0][0], by=grp.b[0][1], bw=grp.b[1][0]-bx, bh=grp.b[1][1]-by;
+    if(bw<=0||bh<=0) return;
+    var band=bw*0.6;
+    var wrap=layer.append('g').attr('mask','url(#pzm-sharp-'+grp.key+')').style('pointer-events','none');
+    wrap.append('rect')
+      .attr('x',bx-band).attr('y',by).attr('width',band).attr('height',bh)
+      .attr('fill','url(#pz-shine-grad)')
+      .transition().duration(900).ease(d3.easeCubicInOut)
+      .attr('x',bx+bw)
+      .on('end',function(){ wrap.remove(); });
+  });
 }
 
 function handleNativeMessage(e){
@@ -945,15 +1043,16 @@ function handleNativeMessage(e){
       // 완성 전이 감지 — '미완성→완성'으로 바뀐 그 수신에서만 연출.
       // 첫 수신은 기준선만 설정한다(이미 완성 상태로 진입하면 연출 없이 완성 화면).
       // 그림이 없으면 연출도 없다(퍼즐이 안 그려지는 상태에서 경계선 페이드만 돌면 이상하다).
+      // 조각 채움 연출도 같은 기준선 규칙 — 지도를 보는 중에 도착한 변경에만 페이드가 돈다.
       if (displayMode === 'puzzle' && puzzleImage) {
         var cur = recordedRegions.map(function(r){ return r.nameEn; });
         if (puzzlePrevComplete === null) {
           puzzlePrevComplete = puzzleComplete; prevMatchedCodes = cur;
         } else {
-          if (puzzleComplete && !puzzlePrevComplete) {
-            var newCodes = cur.filter(function(c){ return prevMatchedCodes.indexOf(c) < 0; });
-            playPuzzleCompletion(newCodes);
-          }
+          var newCodes = cur.filter(function(c){ return prevMatchedCodes.indexOf(c) < 0; });
+          var completing = puzzleComplete && !puzzlePrevComplete;
+          if (newCodes.length > 0) playPiecePlaced(newCodes, completing);
+          if (completing) playPuzzleCompletion(newCodes);
           puzzlePrevComplete = puzzleComplete; prevMatchedCodes = cur;
         }
       }

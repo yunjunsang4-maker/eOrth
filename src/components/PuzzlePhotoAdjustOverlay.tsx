@@ -7,8 +7,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
 import { useTranslation } from 'react-i18next';
+import * as Haptics from 'expo-haptics';
 import { useSkinAccent } from '../constants/skinTheme';
-import { getCountryGeo } from '../data/countryGeo';
+import { buildCountryShape, buildSilhouettePaths } from '../utils/countryShape';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 // 자유 조정 — 확대(5배)뿐 아니라 축소(0.25배)도 허용한다. 사진이 프레임을 다 못 덮으면
@@ -33,47 +34,7 @@ const MIN_OVERLAP = 24;
  * GestureHandlerRootView가 필요하다(CutPhotoAdjustModal과 같은 이유).
  */
 
-// 지도(WebView) d3.geoMercator와 같은 투영 수식 (스케일 무관 — 비율만 쓴다)
-function mercPt(lon: number, lat: number): [number, number] {
-  const r = Math.PI / 180;
-  const la = Math.max(-85, Math.min(85, lat)); // 메르카토르 특이점 방지
-  return [lon * r, -Math.log(Math.tan(Math.PI / 4 + (la * r) / 2))];
-}
-
-// 나라 실루엣 투영 — 링 좌표(투영계)와 bbox. 지도의 본토 그룹과 같은 피처 집합을 쓴다.
-function buildCountryShape(countryCode: string) {
-  const geo = getCountryGeo(countryCode);
-  if (!geo) return null;
-  let feats: any[] = geo.features;
-  if (countryCode === 'USA') {
-    // 지도와 동일 규칙 — 알래스카·하와이는 인셋이라 본토 bbox에서 제외
-    feats = feats.filter((f: any) => f.properties.NAME_1 !== 'Alaska' && f.properties.NAME_1 !== 'Hawaii');
-  }
-  const rings: [number, number][][] = [];
-  let total = 0;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const f of feats) {
-    const polys = f.geometry.type === 'Polygon' ? [f.geometry.coordinates] : f.geometry.coordinates;
-    for (const poly of polys) {
-      for (const ring of poly) {
-        const pr: [number, number][] = [];
-        for (const [lon, lat] of ring) {
-          const p = mercPt(lon, lat);
-          if (p[0] < minX) minX = p[0];
-          if (p[0] > maxX) maxX = p[0];
-          if (p[1] < minY) minY = p[1];
-          if (p[1] > maxY) maxY = p[1];
-          pr.push(p);
-        }
-        rings.push(pr);
-        total += pr.length;
-      }
-    }
-  }
-  const dx = maxX - minX, dy = maxY - minY;
-  if (!(dx > 0) || !(dy > 0)) return null;
-  return { rings, total, minX, minY, dx, dy };
-}
+// 실루엣 투영·패스 생성은 countryShape.ts 공용 유틸 사용 — 시트 미리보기·공유 카드와 동일 수식
 
 // cover-fit 렌더 크기 — CutPhotoAdjustModal과 같은 규칙 (scale=1 기준 크기)
 function coverSize(imgAspect: number, frameW: number, frameH: number) {
@@ -115,24 +76,10 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
   if (frameH > maxH) { frameH = maxH; frameW = frameH * aspect; }
 
   // 실루엣 패스 — 오버레이는 가이드라 ~4천 점으로 감량(원본 수만 점을 그대로 그리면 무겁다)
+  // evenodd: 바깥 사각형 + 나라 링들 → 나라 밖만 어둡게(안은 홀수-짝수로 뚫린다)
   const { dimPath, linePath } = useMemo(() => {
     if (!shape) return { dimPath: '', linePath: '' };
-    const k = frameW / shape.dx;
-    const step = Math.max(1, Math.ceil(shape.total / 4000));
-    let d = '';
-    for (const ring of shape.rings) {
-      let seg = '';
-      let n = 0;
-      for (let i = 0; i < ring.length; i += step) {
-        const x = ((ring[i][0] - shape.minX) * k).toFixed(1);
-        const y = ((ring[i][1] - shape.minY) * k).toFixed(1);
-        seg += (n === 0 ? 'M' : 'L') + x + ' ' + y;
-        n++;
-      }
-      if (n >= 3) d += seg + 'Z';
-    }
-    // evenodd: 바깥 사각형 + 나라 링들 → 나라 밖만 어둡게(안은 홀수-짝수로 뚫린다)
-    return { linePath: d, dimPath: `M0 0H${frameW.toFixed(1)}V${frameH.toFixed(1)}H0Z` + d };
+    return buildSilhouettePaths(shape, frameW, frameH, 4000);
   }, [shape, frameW, frameH]);
 
   // 사진 비율 (cover 기준 크기 계산용)
@@ -179,6 +126,15 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
     .onUpdate((e) => {
       const s = Math.max(MIN_SCALE, Math.min(MAX_SCALE, pinchBase.current * e.scale));
       apply(s, cur.current.tx, cur.current.ty);
+    })
+    .onEnd(() => {
+      // 기본 배율(1.0 = 지도 cover-fit 그대로) 근처에서 놓으면 스냅 + 셀렉션 햅틱 틱 —
+      // 제스처 중에 당기면 조작감이 끈적해지므로 스냅은 손을 뗀 순간에만 건다.
+      const s = cur.current.scale;
+      if (s !== 1 && Math.abs(s - 1) < 0.06) {
+        apply(1, cur.current.tx, cur.current.ty);
+        Haptics.selectionAsync().catch(() => {});
+      }
     });
   const panG = Gesture.Pan()
     .runOnJS(true)
@@ -186,7 +142,15 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
     .onUpdate((e) => {
       apply(cur.current.scale, panBase.current.tx + e.translationX, panBase.current.ty + e.translationY);
     });
-  const composed = Gesture.Simultaneous(pinchG, panG);
+  // 더블탭 — 초기 상태(중앙 cover-fit)로 리셋. 조정이 꼬였을 때의 탈출구.
+  const doubleTapG = Gesture.Tap()
+    .numberOfTaps(2)
+    .runOnJS(true)
+    .onEnd(() => {
+      apply(1, 0, 0);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    });
+  const composed = Gesture.Simultaneous(pinchG, panG, doubleTapG);
 
   // 확정 — 프레임에 보이는 모습 그대로 캡처(실루엣 오버레이는 형제 뷰라 캡처에 안 담긴다)
   const canvasRef = useRef<View>(null);
@@ -241,7 +205,8 @@ export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, 
             <View pointerEvents="none" style={StyleSheet.absoluteFill}>
               <Svg width={frameW} height={frameH}>
                 <Path d={dimPath} fill="rgba(6,7,10,0.68)" fillRule="evenodd" />
-                <Path d={linePath} fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth={0.8} />
+                {/* 실루엣 선은 스킨 강조색 — 시트 미리보기·공유 카드의 실루엣 선과 같은 언어 */}
+                <Path d={linePath} fill="none" stroke={skinAccent.accent} strokeOpacity={0.6} strokeWidth={0.8} />
               </Svg>
             </View>
           </View>
