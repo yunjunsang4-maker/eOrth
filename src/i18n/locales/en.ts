@@ -611,7 +611,9 @@ const en = {
     territoryDisplayTitle: 'Territory display settings',
     territoryDisplaySub: 'Choose the color for recorded countries',
     flag: 'Flag',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     color: 'Color',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     photo: 'Photo',
     importFromGallery: 'Import from gallery',
     defaultColor: 'Default color',
@@ -622,6 +624,7 @@ const en = {
     regionDisplaySub: 'Choose how each region appears on the continent map',
     globalDefault: 'Global default',
     perRegion: 'Per-region settings',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     modeDefault: 'Default',
     regionPhotoMode: 'Photos by region',
     puzzle: 'Puzzle',

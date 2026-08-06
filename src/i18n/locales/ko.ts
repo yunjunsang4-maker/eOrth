@@ -616,7 +616,9 @@ const ko = {
     territoryDisplayTitle: '영토 표시 설정',
     territoryDisplaySub: '기록한 국가를 표시할 색을 선택하세요',
     flag: '국기',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     color: '색상',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     photo: '사진',
     importFromGallery: '갤러리에서 가져오기',
     defaultColor: '기본 색상',
@@ -627,6 +629,7 @@ const ko = {
     regionDisplaySub: '대륙 지도 내 각 지역의 표시 방식을 선택하세요',
     globalDefault: '글로벌 기본 설정',
     perRegion: '지역별 개별 설정',
+    // 2026-08-06 퍼즐 개편으로 미사용 — 롤백 여지로 보존
     modeDefault: '기본',
     regionPhotoMode: '지역별 사진',
     puzzle: '퍼즐',

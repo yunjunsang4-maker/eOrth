@@ -66,6 +66,7 @@ import { COUNTRIES } from '../constants/countries';
 import { useSettings, type MapDisplayMode, type SkinColorSet, type TaggedRegion } from '../store/settingsStore';
 import { getCountryRegionOptions } from '../constants/homeRegions';
 import { REGION_MAP_ENABLED } from '../constants/featureFlags';
+import type { RegionGlobalMode } from '../utils/regionModeMigration';
 import { regionNameByCode, totalRegionCount, visitedRegionCount } from '../utils/regionGeoLookup';
 import { REGION_COUNTRIES } from '../constants/regionCountries';
 import type { TabScreenProps } from '../navigation/types';
@@ -393,6 +394,28 @@ function GlobeBtnGlass({ style, children }: { style?: object; children: React.Re
   return <View style={[style, { backgroundColor: 'rgba(22,18,32,0.6)' }]}>{children}</View>;
 }
 
+const PUZZLE_MEDIA_DIR = 'puzzle/';
+
+// 퍼즐 그림을 documentDirectory로 복사해 OS 캐시 정리 후에도 유지한다
+// (EditProfileScreen의 persistProfilePhoto·MomentCaptureScreen의 persistMomentPhoto와 같은 패턴).
+// 피커 캐시 URI를 그대로 두면 OS가 캐시를 비울 때 퍼즐 그림이 사라지고,
+// Documents 밖이라 재빌드 복구(remapDocUri)도 안 걸린다.
+async function persistPuzzleImage(srcUri: string): Promise<string> {
+  try {
+    const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+    const base = FileSystem.documentDirectory;
+    if (base) {
+      const dir = `${base}${PUZZLE_MEDIA_DIR}`;
+      try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
+      const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
+      const to = `${dir}puzzle-${Date.now()}.${ext}`;
+      await FileSystem.copyAsync({ from: srcUri, to });
+      return to;
+    }
+  } catch { /* 복사 실패 → 원본 URI 유지 */ }
+  return srcUri;
+}
+
 export default function MainScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { t, i18n } = useTranslation();
@@ -644,7 +667,7 @@ export default function MainScreen({ navigation, route }: Props) {
     globeSkin: string;
     countryColors: Record<string, string>;
     countryDisplayModes: Record<string, MapDisplayMode>;
-    regionGlobalMode: 'photo' | 'puzzle';
+    regionGlobalMode: RegionGlobalMode;
     regionDisplayModes: Record<string, 'color' | 'photo'>;
     regionColors: Record<string, string>;
     puzzleImages: Record<string, string>;
@@ -874,17 +897,19 @@ export default function MainScreen({ navigation, route }: Props) {
   // 앨범에서 퍼즐 그림 선택
   const pickPuzzleImage = useCallback(async () => {
     if (!regionCountry) return;
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') return;
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { showPermissionDeniedAlert(t('permission.gallery')); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       quality: 0.9,
     });
     if (!result.canceled && result.assets[0]) {
-      const uri = result.assets[0].uri;
+      // 피커 캐시 URI를 그대로 두면 OS가 캐시를 비울 때 퍼즐 그림이 사라지고,
+      // Documents 밖이라 재빌드 복구(remapDocUri)도 안 걸린다 — documentDirectory로 복사해 영속화한다.
+      const uri = await persistPuzzleImage(result.assets[0].uri);
       setPuzzleImages(prev => ({ ...prev, [regionCountry]: uri }));
     }
-  }, [regionCountry, setPuzzleImages]);
+  }, [regionCountry, setPuzzleImages, t]);
 
   // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
   const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
@@ -1017,7 +1042,16 @@ export default function MainScreen({ navigation, route }: Props) {
       const next = prev.filter(hasCountryRecord);
       return next.length === prev.length ? prev : next;
     });
-  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips]);
+    // puzzleImages도 taggedRegions와 같은 ISO3 키 체계 — 계정 전환 시 이전 계정 사진이 남거나,
+    // 기록을 다 지운 뒤에도 죽은 URI가 남는 것을 막는다.
+    setPuzzleImages(prev => {
+      const remove = Object.keys(prev).filter(k => !hasCountryRecord(k));
+      if (remove.length === 0) return prev;
+      const next = { ...prev };
+      remove.forEach(k => delete next[k]);
+      return next;
+    });
+  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setPuzzleImages]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -3104,59 +3138,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
-  },
-  dsCountryReset: {
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  dsCountryResetText: {
-    color: '#A1A1B0',
-    fontSize: 11,
-  },
-  dsCountryPalette: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-    paddingLeft: 30,
-    paddingBottom: 10,
-  },
-  dsColorItemSm: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: 'transparent',
-  },
-  dsColorItemSmActive: {
-    borderColor: '#fff',
-    borderWidth: 2.5,
-  },
-  dsSegmentWrap: {
-    flexDirection: 'row',
-    backgroundColor: '#1E1E28',
-    borderRadius: 8,
-    padding: 2,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  dsSegmentBtn: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  dsSegmentBtnActive: {
-    backgroundColor: '#BF85FC',
-  },
-  dsSegmentText: {
-    color: '#A1A1B0',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  dsSegmentTextActive: {
-    color: '#fff',
   },
 });
