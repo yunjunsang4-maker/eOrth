@@ -122,6 +122,10 @@ interface SettingsContextType {
   // 나라별 퍼즐 그림 (키: ISO3, 값: 사진 URI). 사용자 사진 전용 — 없으면 퍼즐이 그려지지 않는다
   puzzleImages: Record<string, string>;
   setPuzzleImages: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 지역별 사진 수동 지정 (키: `${ISO3}|${regionEn}` — regionColors와 동일 규칙, 값: 사진 URI).
+  // 없으면 기록 대표사진 자동 선정. 사용자가 고른 명시값이라 표시 설정 취소로 원복하지 않는다.
+  regionPhotos: Record<string, string>;
+  setRegionPhotos: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 소급 태깅한 방문 지역 (키: ISO3) — 지구본 기록만 있는 국가의 대륙 지역 활성화용
   taggedRegions: Record<string, TaggedRegion[]>;
   setTaggedRegions: React.Dispatch<React.SetStateAction<Record<string, TaggedRegion[]>>>;
@@ -219,6 +223,7 @@ interface SettingsPersistPayload {
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
   puzzleImages?: Record<string, string>;
+  regionPhotos?: Record<string, string>; // 지역별 사진 수동 지정 (과거 저장본엔 없음)
   taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
   // 방문 지역 칩을 닫은 국가 (과거 저장본엔 없음).
   // 영속되지만 '이번 방문' 동안만 유효하다 — MainScreen이 그 나라 대륙 화면에 다시
@@ -287,6 +292,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
   const [puzzleImages, setPuzzleImages] = useState<Record<string, string>>({});
+  const [regionPhotos, setRegionPhotos] = useState<Record<string, string>>({});
   const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
   const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
@@ -400,6 +406,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setPuzzleImages(Object.fromEntries(
         Object.entries(p.puzzleImages ?? {}).map(([k, v]) => [k, remapDocUri(v)])
       ));
+      // 지역별 수동 사진도 동일 복구. 신규 필드라 GADM 키 마이그레이션 대상은 아니다
+      setRegionPhotos(Object.fromEntries(
+        Object.entries(p.regionPhotos ?? {}).map(([k, v]) => [k, remapDocUri(v)])
+      ));
       // 지역 저장 키 마이그레이션 (GADM 표기 → NE 코드) — 스키마가 낮을 때 1회만.
       // 실패하면 원본을 그대로 두고 버전도 올리지 않는다(다음 실행에서 재시도).
       // 부분 적용 상태로 굳어 디바운스 저장이 원본을 덮는 것을 막는다.
@@ -488,6 +498,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionDisplayModes,
       regionColors,
       puzzleImages,
+      regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
@@ -538,6 +549,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionDisplayModes,
       regionColors,
       puzzleImages,
+      regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
@@ -613,6 +625,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setRegionDisplayModes({});
     setRegionColors({});
     setPuzzleImages({});
+    setRegionPhotos({});
     setTaggedRegions({});
     setDismissedRegionTagChips([]);
     setSkinColorStore({});
@@ -639,7 +652,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // ── 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 ──
   // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
-  // puzzleImages는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
+  // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
@@ -769,6 +782,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         regionColors,
         setRegionColors,
         puzzleImages,
+        regionPhotos,
+        setRegionPhotos,
         setPuzzleImages,
         taggedRegions,
         setTaggedRegions,

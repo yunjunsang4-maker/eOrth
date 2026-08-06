@@ -5,14 +5,18 @@ import { WebView } from 'react-native-webview';
 import { getCountryGeo } from '../data/countryGeo';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
 import { D3_SRC } from '../data/vendorD3';
+import { imageToDataUri } from '../utils/imageCompress';
 
 
 
 // 오프라인 번들용 d3 소스 (script 태그 조기 종료 방지 위해 </script 만 이스케이프)
 const D3_INLINE = D3_SRC.replace(/<\/script/gi, '<\\/script');
 
-// WebView(SVG)가 못 읽는 URI(ph://, assets-library://, content://)인지 판별
-const needsMaterialize = (u?: string) => !!u && !/^(file:|https?:|data:)/.test(u);
+// WebView(SVG)가 못 읽는 URI인지 판별 — file:// 도 포함이다.
+// inline HTML(source={{html}})로 뜬 WKWebView는 비-file origin이라 file:// 서브리소스
+// 로드를 차단한다(지구본이 같은 이유로 imageToDataUri를 쓴다 — imageCompress.ts 주석 참고).
+// http/data 만 그대로 그릴 수 있다.
+const needsMaterialize = (u?: string) => !!u && !/^(https?:|data:)/.test(u);
 
 // HTML 본문에 그대로 박히는 문구 이스케이프 (번역문에 <, & 가 들어와도 마크업이 깨지지 않게)
 const escapeText = (s: string) =>
@@ -21,7 +25,8 @@ const escapeText = (s: string) =>
 interface Props {
   countryCode: string;
   onMessage?: (e: any) => void;
-  recordedRegions?: { name: string; nameEn: string; photo?: string; mode?: 'color' | 'photo' }[];
+  // mode·color 필드는 퍼즐 도입(색 활성화 폐지)으로 제거 — 방문 지역은 사진 패턴 또는 기본 바탕뿐
+  recordedRegions?: { name: string; nameEn: string; photo?: string }[];
   defaultColor?: string;
   countryName?: string;
   height?: number;
@@ -41,6 +46,9 @@ interface Props {
   puzzleImage?: string;
   /** 전 지역 방문 여부 — RN(regionProgress)이 계산한다. WebView는 전이 감지·연출만 담당 */
   puzzleComplete?: boolean;
+  /** 지구본 스킨 강조색(hex) — 경계선·외곽선·방문 테두리 색을 이 색의 밝기 배율로 파생한다.
+      기본값은 aurora 보라(기존 하드코딩 값과 동일하게 나온다) */
+  accentColor?: string;
 }
 
 export default function CountryMapView({
@@ -57,6 +65,7 @@ export default function CountryMapView({
   showPopular = false,
   puzzleImage,
   puzzleComplete = false,
+  accentColor = '#BF85FC',
 }: Props) {
   const { t, i18n } = useTranslation();
   const height = useMemo(() => heightProp ?? Dimensions.get('window').height * 0.75, [heightProp]);
@@ -69,10 +78,19 @@ export default function CountryMapView({
     libLoadFail: t('countryMap.libLoadFail'),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [t, i18n.language]);
-  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE, labels), [countryCode, countryName, chipBottom, labels]);
+  // 스킨 강조색 hex → RGB (WebView가 선 색을 밝기 배율로 파생할 때 쓴다)
+  const accentRgb = useMemo<[number, number, number]>(() => {
+    const m = /^#?([0-9a-fA-F]{6})$/.exec(accentColor || '');
+    const n = m ? parseInt(m[1], 16) : 0xbf85fc;
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }, [accentColor]);
+  // accentRgb가 바뀌면 HTML을 다시 만든다(WebView 리로드) — 스킨 변경은 드물어 허용
+  const html = useMemo(() => buildHTML(countryCode, countryName, chipBottom, D3_INLINE, labels, accentRgb), [countryCode, countryName, chipBottom, labels, accentRgb]);
   const webViewRef = useRef<WebView>(null);
 
-  // ph:// 등 WebView가 못 읽는 사진을 file:// 로 변환한 캐시 (원본 URI → file:// URI)
+  // 사진 URI(file://·ph:// 등)를 data URI 로 변환한 캐시 (원본 URI → data URI).
+  // 예전엔 ph:// 만 file:// 로 바꿔 넣었는데, inline HTML WebView는 file:// 자체를 못
+  // 읽어 실기기에서 새로 고른 사진(Documents 영속본)이 지도에 전혀 반영되지 않았다.
   const [photoCache, setPhotoCache] = useState<Record<string, string>>({});
   useEffect(() => {
     const targets = Array.from(
@@ -84,17 +102,12 @@ export default function CountryMapView({
     if (targets.length === 0) return;
     let cancelled = false;
     (async () => {
-       
-      const ImageManipulator = require('expo-image-manipulator') as typeof import('expo-image-manipulator');
       const updates: Record<string, string> = {};
       for (const uri of targets) {
-        try {
-          // 변형 없이 한 번 처리하면 ph:// 를 읽어 file:// 로 캐시에 기록한다(iCloud 오프로드 사진은 실패→건너뜀)
-          const out = await ImageManipulator.manipulateAsync(uri, [], {});
-          if (out?.uri) updates[uri] = out.uri;
-        } catch {
-          // 변환 불가(예: iCloud 미다운로드) — 건너뜀
-        }
+        // 퍼즐 그림은 지도 전면을 덮으니 1024px, 지역 패턴 채움은 조각 크기라 640px이면 충분
+        const d = await imageToDataUri(uri, uri === puzzleImage ? 1024 : 640, 0.7);
+        if (cancelled) return;
+        if (d) updates[uri] = d; // 변환 불가(예: iCloud 오프로드) — 건너뜀 → 색 폴백
       }
       if (!cancelled && Object.keys(updates).length) {
         setPhotoCache(prev => ({ ...prev, ...updates }));
@@ -103,8 +116,8 @@ export default function CountryMapView({
     return () => { cancelled = true; };
   }, [recordedRegions, puzzleImage]);
 
-  // 사진 URI를 변환본으로 치환한 지역 목록
-  // ph:// 등 변환이 필요한데 아직(또는 끝내) 변환 못한 사진은 깨진 이미지 대신 색상으로 폴백(photo 제거)
+  // 사진 URI를 data URI 변환본으로 치환한 지역 목록
+  // 변환이 필요한데(file://·ph:// 등) 아직(또는 끝내) 변환 못한 사진은 깨진 이미지 대신 색상으로 폴백(photo 제거)
   const resolvedRegions = useMemo(
     () => recordedRegions.map(r => {
       if (!r.photo) return r;
@@ -115,7 +128,7 @@ export default function CountryMapView({
     [recordedRegions, photoCache]
   );
 
-  // 퍼즐 그림도 같은 규칙: ph:// 등은 변환본으로, 변환 전/실패면 undefined(사진 모드 폴백)
+  // 퍼즐 그림도 같은 규칙: file://·ph:// 등은 data URI 변환본으로, 변환 전/실패면 undefined(사진 모드 폴백)
   const resolvedPuzzleImage = useMemo(() => {
     if (!puzzleImage) return undefined;
     if (photoCache[puzzleImage]) return photoCache[puzzleImage];
@@ -287,7 +300,7 @@ export interface MapLabels {
   libLoadFail: string;
 }
 
-function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels) {
+function buildHTML(code: string, countryName: string = '', chipBottom: number = 7, d3Src: string = '', L: MapLabels, accentRgb: [number, number, number] = [191, 133, 252]) {
   const geo = getCountryGeo(code);
   if (!geo) {
     return `<!DOCTYPE html><html><head><meta charset="UTF-8"><style>body{background:#0A0B0F;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;color:#FF3B30;font-size:14px}</style></head><body>지도 데이터가 없습니다</body></html>`;
@@ -309,7 +322,7 @@ html,body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-to
 svg{touch-action:none;display:block}
 body{background:#0A0B0F;width:100vw;height:100vh;overflow:hidden}
 #loading{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#A1A1B0;font-size:14px;gap:12px;pointer-events:none}
-.spinner{width:28px;height:28px;border:3px solid #2E2E3B;border-top-color:#BF85FC;border-radius:50%;animation:spin .8s linear infinite}
+.spinner{width:28px;height:28px;border:3px solid #2E2E3B;border-top-color:rgb(${accentRgb.join(',')});border-radius:50%;animation:spin .8s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 #region-chip{position:fixed;left:7px;bottom:${chipBottom}px;min-width:100px;height:26px;padding:0 12px;border-radius:13px;background:rgba(10,11,15,0.5);display:none;align-items:center;justify-content:center;color:#E8E8F0;font-size:12px;font-weight:600;font-family:-apple-system,'Noto Sans KR',sans-serif;z-index:10;pointer-events:none}
 </style>
@@ -325,6 +338,18 @@ ${d3Src ? '<script>' + d3Src + '</script>' : ''}
 ['gesturestart','gesturechange','gestureend'].forEach(function(t){
   document.addEventListener(t, function(e){ e.preventDefault(); }, {passive:false});
 });
+// 진단 스위치 — 켜면 부팅·수신 시 칩에 스크립트 버전과 수신 데이터 요약이 잠깐 표시된다.
+// (사진 미적용 이슈는 원인 확정: inline HTML WebView가 file:// 을 못 읽는 것 → RN에서
+//  data URI 변환으로 해결. 진단은 꺼 두고 재발 시에만 켠다.)
+var MAP_SCRIPT_VER = 'v6';
+var MAP_DEBUG = false;
+var dbgTimer = null;
+function dbgChip(text){
+  if(!MAP_DEBUG) return;
+  setRegionChip(text);
+  if(dbgTimer) clearTimeout(dbgTimer);
+  dbgTimer = setTimeout(function(){ setRegionChip(''); }, 4000);
+}
 // 국가 ISO3. 피처 속성 CODE(지역 코드)와 헷갈리지 않게 이름을 분리해 둔다 —
 // d.properties.CODE를 CODE로 한 글자 잘못 쓰면 어떤 도구도 못 잡는다.
 var COUNTRY_CODE='${code}';
@@ -337,6 +362,10 @@ var puzzleComplete = false;      // RN(regionProgress)이 계산해 내려주는
 var puzzlePrevComplete = null;   // null=첫 수신(기준선만 설정, 연출 없음 — 남발 방지)
 var prevMatchedCodes = [];       // 직전 매칭 CODE 목록 — '마지막 조각' 글로우 대상 계산용
 var puzzleGroups = [];           // 그림을 깔 그룹(본토/인셋)의 {key, gen(경로 생성기), feats, b(bbox)} — render()가 채운다
+// 지역별 사진 패턴 세대 관리 — 사진이 바뀌면 rev를 올려 패턴 id(=fill 값)가 바뀌게 한다
+// (WebKit은 pattern 내부 변경을 리페인트하지 않는다 — updateMap 주석 참고)
+var patRevs = {};      // nameEn → { photo, rev }
+var patIdByCode = {};  // nameEn → 현재 패턴 id (updateMap마다 재계산, getFill이 참조)
 var defaultColor = '#BF85FC';
 var BOTTOM_INSET = ${chipBottom}; // 하단 탭 바 가림 높이 — 투영을 보이는 영역 기준으로 중앙 정렬
 function setRegionChip(name){var c=document.getElementById('region-chip');if(!c)return;if(name){c.textContent=name;c.style.display='flex';}else{c.style.display='none';}}
@@ -363,6 +392,19 @@ var CITY_TO_PROV = ${cityProvJSON};
 // 인기명소가 속한 주(CODE) 목록 — 칩이 켜지면 이 주들을 스킨 색 테두리로 강조
 var POPULAR_CODES = ${JSON.stringify(buildPopularCodes(code, geo))};
 var showPopular = false; // 앱 기본값(popularActive=false)과 일치 — 초기 깜빡임 방지
+
+// ── 지구본 스킨 강조색 파생 선 색 ──
+// 밝기 배율은 구 하드코딩 보라값(#3E3155·#4A3B66·#7856B0·#4E3D6B)이 aurora 강조색
+// (#BF85FC)의 몇 배 밝기였는지에서 역산 — aurora에서는 기존과 거의 같은 색이 나오고,
+// cyan/mint 스킨에서는 같은 관계를 유지한 파랑/초록 계열이 나온다.
+var ACCENT_RGB = ${JSON.stringify(accentRgb)};
+function accentShade(f){
+  return 'rgb('+Math.round(ACCENT_RGB[0]*f)+','+Math.round(ACCENT_RGB[1]*f)+','+Math.round(ACCENT_RGB[2]*f)+')';
+}
+var LINE_BASE = accentShade(0.34);    // 내부 경계 기본 (aurora≈#3E3155)
+var LINE_OUTLINE = accentShade(0.40); // 나라 외곽선 (aurora≈#4A3B66)
+var LINE_ACTIVE = accentShade(0.64);  // 방문 지역 테두리 (aurora≈#7856B0)
+var TAP_FLASH = accentShade(0.42);    // 지역 탭 피드백 채움 (aurora≈#4E3D6B)
 
 // 영문 정규화: 소문자 + 발음기호 제거 + 공백/하이픈/어퍼스트로피 제거
 function normEn(s){
@@ -503,15 +545,17 @@ function getFill(d){
   if(displayMode==='puzzle'&&puzzleImage){
     return 'transparent';
   }
-  if(active){
-    var mode=active.mode||displayMode;
-    if(mode==='photo'&&active.photo){
-      return 'url(#pat-'+(active.nameEn||code).replace(/[^a-zA-Z0-9]/g,'')+')';
-    }
-    return active.color||defaultColor||'#403257'; // 지역별 색상 우선, 없으면 국가 기본색
+  // 사진 모드: 방문 지역은 사진 패턴만 깐다. 사진이 없거나(변환 전·실패 포함) 패턴이
+  // 아직 없으면 단색 활성화 없이 기본 바탕 그대로 — 색 활성화는 퍼즐 도입으로 폐지됐고,
+  // 방문 표시는 emphStroke의 보라 경계선이 담당한다.
+  if(active&&active.photo){
+    // 패턴 id는 세대 접미사가 붙어 updateMap이 계산한 표에서 찾는다(문자열 조립 금지 —
+    // 사진 교체 시 id가 바뀌는 것이 WebKit 리페인트를 강제하는 핵심이다)
+    var pid=patIdByCode[active.nameEn||code];
+    if(pid) return 'url(#'+pid+')';
   }
   if(n===searchedRegion) return '#22323d'; // 검색 강조(다크 시안)
-  return '#191920'; // 미방문
+  return '#191920'; // 미방문·사진 없는 방문 지역 공통 바탕
 }
 // 이 지역에 기록이 있으면 그 기록 반환. (도시 피처는 상위 주로 흡수돼 데이터에 없다)
 function activeRecordFor(code){
@@ -528,11 +572,11 @@ function regionFill(d){
 function emphStroke(d){
   var n=d.properties.NAME_1||'';
   var code=d.properties.CODE||'';
-  if(n===searchedRegion) return '#00D8F3';
+  if(n===searchedRegion) return '#00D8F3'; // 검색 강조는 기능색(시안) 고정 — 스킨과 무관하게 눈에 띄어야 한다
   var a=activeRecordFor(code);
-  if(a) return '#7856B0';
+  if(a) return LINE_ACTIVE;
   if(showPopular && POPULAR_CODES.indexOf(code)>=0) return defaultColor; // 인기명소 주 강조(스킨 활성화색)
-  return '#3E3155';
+  return LINE_BASE;
 }
 // 두께는 '지오 단위'라 줌에 따라 커지며, 어긋난 인접 경계를 같은 색으로 덮어 합친다.
 // 이중선/틈이 남으면 아래 값을 키우고, 고배율에서 너무 두꺼우면 줄이면 된다.
@@ -555,7 +599,7 @@ function scaledStroke(d,k){ var base=emphWidth(d); if(!base) return 0; return Ma
 function curStrokeWidth(d){ return scaledStroke(d, curK()); }
 // ── 구역 탭 ──
 function onRegionClick(ev,d){
-  d3.select(this).attr('fill','#4E3D6B');
+  d3.select(this).attr('fill',TAP_FLASH);
   var self=this;
   setTimeout(function(){d3.select(self).attr('fill',getFill(d));},350);
   var name=d.properties.NL_NAME_1||d.properties.NAME_1||'';
@@ -564,6 +608,39 @@ function onRegionClick(ev,d){
   if(window.ReactNativeWebView){
     window.ReactNativeWebView.postMessage(JSON.stringify({type:'regionTapped',region:name,regionEn:nameEn,countryCode:COUNTRY_CODE}));
   }
+}
+// ── 나라 외곽선 추출 — 두 지역이 공유하지 않는 변(1회 등장)만 모은다 ──
+// 인접 지역은 정점을 정확히 공유한다(NE→mapshaper 위상 보존 — 빌드 데이터로 검증:
+// 내부 경계는 전부 정확히 2회 등장, 어긋난 내부 변 0%). 그래서 변 등장 횟수만 세면
+// 내부/외곽이 정확히 갈린다: 2회 = 내부 경계, 1회 = 바다·국경 쪽 외곽.
+function outlineGeom(features){
+  var cnt={}, segs=[];
+  features.forEach(function(f){
+    var polys=f.geometry.type==='Polygon'?[f.geometry.coordinates]:f.geometry.coordinates;
+    polys.forEach(function(poly){ poly.forEach(function(ring){
+      for(var i=0;i<ring.length-1;i++){
+        var a=ring[i], b=ring[i+1];
+        var ka=a[0]+','+a[1], kb=b[0]+','+b[1];
+        var k=ka<kb?ka+'|'+kb:kb+'|'+ka;
+        cnt[k]=(cnt[k]||0)+1;
+        segs.push([a,b,k]);
+      }
+    });});
+  });
+  var lines=[];
+  for(var i=0;i<segs.length;i++){ if(cnt[segs[i][2]]===1) lines.push([segs[i][0],segs[i][1]]); }
+  return {type:'MultiLineString',coordinates:lines};
+}
+// 외곽선 패스 — 지역 채움·내부 경계선 위에 상수 두께(화면 px)로 그려 나라 실루엣을 세운다.
+// 내부 경계(0.35px)보다 확실히 두껍게, 색은 내부선(#3E3155)과 같은 계열의 한 단계 밝은 톤 —
+// 이질감 없이 윤곽만 서게 한다. 탭 히트는 지역 path가 담당하므로 포인터는 통과시킨다.
+function drawOutline(parent, features, pathGen){
+  parent.append('path').attr('class','country-outline')
+    .attr('d', pathGen(outlineGeom(features)))
+    .attr('fill','none').attr('stroke',LINE_OUTLINE).attr('stroke-width',1.6)
+    .style('vector-effect','non-scaling-stroke')
+    .attr('stroke-linejoin','round').attr('stroke-linecap','round')
+    .style('pointer-events','none');
 }
 // 피처 면적(절대값 합) — 그리기 순서 정렬용
 function featArea(f){
@@ -614,14 +691,17 @@ function render(geo){
   // 메인 지도 — 채움 + 스케일 경계 스트로크(어긋난 인접 경계를 하나로 합침)
   var mainGrp=drawGroup(g, mainFeatures, path, 'm');
   pathElements=mainGrp.fill;
+  drawOutline(g, mainFeatures, path); // 나라 외곽선 — 지역 채움 위, 강조 피처 아래
   reorderEmph(); // 초기 렌더에도 강조 피처 z-순서 적용
 
   if(COUNTRY_CODE==='USA'&&insetFeatures.length>0){
     // 인셋도 '보이는 영역(VH)' 기준으로 배치 — 본토 중앙 정렬에 맞춰 탭 바 위로
     var VH=H-(BOTTOM_INSET||0);
+    // 알래스카는 가로로 긴 모양(투영 가로:세로 ≈ 1.3:1)이라 박스도 가로형으로 —
+    // 세로형 박스(구 0.22W×0.28VH)는 위아래가 절반 넘게 비어 실제 그림이 작아 보였다.
     insetBoxes=[
-      {name:'Alaska',x:PAD,y:VH*0.62,w:W*0.22,h:VH*0.28},
-      {name:'Hawaii',x:PAD+W*0.24,y:VH*0.72,w:W*0.15,h:VH*0.18}
+      {name:'Alaska',x:PAD,y:VH*0.74,w:W*0.28,h:VH*0.16},
+      {name:'Hawaii',x:PAD+W*0.30,y:VH*0.74,w:W*0.15,h:VH*0.16}
     ];
     insetBoxes.forEach(function(box){
       var feat=insetFeatures.filter(function(f){
@@ -629,15 +709,22 @@ function render(geo){
       });
       if(feat.length===0)return;
       var fc={type:'FeatureCollection',features:feat};
-      var ip=d3.geoMercator().fitExtent([[box.x+4,box.y+4],[box.x+box.w-4,box.y+box.h-4]],fc);
+      // 알래스카는 알류샨 열도 끝이 날짜변경선(180°)을 넘어 동경까지 걸친다(실측 -179.1..+179.8).
+      // 회전 없는 투영으로 fitExtent하면 경도 폭이 지구 한 바퀴로 계산돼 축척이 무너지고
+      // 박스 안에 점처럼 작게 그려진다 — 투영을 알래스카 중심(154°W)으로 회전해 경도를
+      // 연속 구간(-26°..+26° 부근)으로 만든 뒤 맞춘다. 하와이는 안 넘으니 회전 불필요.
+      var ip=d3.geoMercator();
+      if(box.name==='Alaska') ip.rotate([154,0]);
+      ip.fitExtent([[box.x+4,box.y+4],[box.x+box.w-4,box.y+box.h-4]],fc);
       var ipath=d3.geoPath().projection(ip);
       // inset-bg 클래스: 퍼즐 모드에선 fill을 투명으로 바꿔 아래 pz-layer 그림이 비치게 한다
       g.append('rect').attr('class','inset-bg').attr('x',box.x).attr('y',box.y).attr('width',box.w).attr('height',box.h)
-        .attr('rx',6).attr('fill','#191920').attr('stroke','#3E3155').attr('stroke-width',0.8);
+        .attr('rx',6).attr('fill','#191920').attr('stroke',LINE_BASE).attr('stroke-width',0.8);
       g.append('text').attr('x',box.x+box.w/2).attr('y',box.y+14).attr('text-anchor','middle')
         .attr('fill','#A1A1B0').attr('font-size','10px').text(feat[0].properties.NL_NAME_1);
       var grp=drawGroup(g, feat, ipath, box.name);
       insetPathElements[box.name]=grp.fill;
+      drawOutline(g, feat, ipath); // 인셋(알래스카·하와이)도 같은 규칙 — 피처 하나면 전체 경계가 외곽선
       puzzleGroups.push({key:box.name, gen:ipath, feats:feat, b:[[box.x,box.y],[box.x+box.w,box.y+box.h]]});
     });
   }
@@ -669,6 +756,7 @@ function render(geo){
   svg.call(zoomBehavior.transform, d3.zoomIdentity);
 
   setRegionChip('');
+  dbgChip('지도 ' + MAP_SCRIPT_VER); // 임시 진단 — 이 표시가 없으면 옛 스크립트가 돌고 있는 것
   updateMap();
   // RN 에 준비 완료 알림 → 현재 기록/검색 상태를 받아옴
   if(window.ReactNativeWebView){window.ReactNativeWebView.postMessage(JSON.stringify({type:'ready'}));}
@@ -738,27 +826,45 @@ function ensurePuzzleLayers(){
 function updateMap() {
   if (!svgElement) return;
 
-  // 지역별 사진 패턴(pat-*)만 매번 다시 굽는다 — 기록 사진은 수시로 바뀔 수 있다.
-  // 퍼즐 레이어는 그림이 바뀔 때만 재생성(ensurePuzzleLayers 내부 캐시).
-  svgElement.selectAll('defs.region-defs').remove();
-  var defs = svgElement.append('defs').attr('class','region-defs');
+  // 지역별 사진 패턴(pat-*) — 사진이 바뀌면 '패턴 id 자체'를 바꾼다(세대 접미사).
+  // WebKit(iOS)은 <pattern> 내부 변경(자식 교체·image href 교체)이 소비자 path를
+  // 리페인트하지 않는 오랜 결함이 있어, 같은 id로 내용만 갈아끼우면 사진 변경이 지도에
+  // 반영되지 않았다. fill 속성값이 바뀌면(url(#...-r1)) 어떤 엔진이든 페인트 서버를
+  // 재해석하므로 확실하다. 사진이 안 바뀐 지역은 id가 그대로라 리페인트 비용도 없다.
+  var defs = svgElement.select('defs.region-defs');
+  if (defs.empty()) defs = svgElement.append('defs').attr('class','region-defs');
   ensurePuzzleLayers();
 
+  patIdByCode = {};
+  var wantPat = {}; // patId → 사진 URI
   recordedRegions.forEach(function(r) {
-    if (r.photo) {
-      var patId = 'pat-' + r.nameEn.replace(/[^a-zA-Z0-9]/g, '');
-      var pat = defs.append('pattern')
-        .attr('id', patId)
-        .attr('patternContentUnits', 'objectBoundingBox')
-        .attr('width', 1)
-        .attr('height', 1);
-      pat.append('image')
-        .attr('href', r.photo)
-        .attr('xlink:href', r.photo)
-        .attr('preserveAspectRatio', 'xMidYMid slice')
-        .attr('width', 1)
-        .attr('height', 1);
-    }
+    if (!r.photo) return;
+    var st = patRevs[r.nameEn];
+    if (!st) { st = patRevs[r.nameEn] = { photo: r.photo, rev: 0 }; }
+    else if (st.photo !== r.photo) { st.photo = r.photo; st.rev++; }
+    var id = 'pat-' + r.nameEn.replace(/[^a-zA-Z0-9]/g, '') + '-r' + st.rev;
+    patIdByCode[r.nameEn] = id;
+    wantPat[id] = r.photo;
+  });
+  // 사진이 사라졌거나 세대가 지난 패턴 제거
+  defs.selectAll('pattern').each(function() {
+    var id = this.getAttribute('id');
+    if (!wantPat[id]) d3.select(this).remove();
+  });
+  // 없는 패턴만 생성 — 한번 만든 id의 내용은 불변이라 내부 갱신이 필요 없다
+  Object.keys(wantPat).forEach(function(id) {
+    if (!defs.select('pattern#' + id).empty()) return;
+    var pat = defs.append('pattern')
+      .attr('id', id)
+      .attr('patternContentUnits', 'objectBoundingBox')
+      .attr('width', 1)
+      .attr('height', 1);
+    pat.append('image')
+      .attr('href', wantPat[id])
+      .attr('xlink:href', wantPat[id])
+      .attr('preserveAspectRatio', 'xMidYMid slice')
+      .attr('width', 1)
+      .attr('height', 1);
   });
 
   // 채움색 + 경계선(색/두께) + 탭 가능 여부 갱신
@@ -822,6 +928,20 @@ function handleNativeMessage(e){
       puzzleImage = msg.puzzleImage || null;
       puzzleComplete = !!msg.puzzleComplete;
       updateMap();
+      // 진단(MAP_DEBUG) — RN이 보낸 데이터가 실제로 도착했는지 기기에서 확인.
+      // 해시 = 전 지역 사진 URI를 이어붙인 체크섬: 어떤 지역이든 사진이 바뀌면 이 값이 바뀐다.
+      // 사진이 data URI(수 MB)라 해시 루프가 싸지 않다 — 반드시 MAP_DEBUG 안에서만 돈다.
+      if (MAP_DEBUG) {
+        var pc = 0, h = 0;
+        for (var di = 0; di < recordedRegions.length; di++) {
+          var ph = recordedRegions[di].photo;
+          if (!ph) continue;
+          pc++;
+          for (var ci = 0; ci < ph.length; ci++) { h = ((h * 31) + ph.charCodeAt(ci)) | 0; }
+        }
+        var hs = (h >>> 0).toString(36).slice(0, 6);
+        dbgChip(MAP_SCRIPT_VER + ' ' + displayMode + ' 사진' + pc + ' 해시:' + hs + ' 퍼즐:' + (puzzleImage ? puzzleImage.slice(-10) : '없음'));
+      }
       // 완성 전이 감지 — '미완성→완성'으로 바뀐 그 수신에서만 연출.
       // 첫 수신은 기준선만 설정한다(이미 완성 상태로 진입하면 연출 없이 완성 화면).
       // 그림이 없으면 연출도 없다(퍼즐이 안 그려지는 상태에서 경계선 페이드만 돌면 이상하다).

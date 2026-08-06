@@ -636,6 +636,8 @@ const ko = {
     puzzleImageLabel: '퍼즐 그림',
     puzzleNeedPhoto: '퍼즐로 채울 사진을 골라 주세요',
     puzzleFromAlbum: '앨범',
+    puzzleAdjustTitle: '퍼즐 범위 조정',
+    puzzleAdjustHint: '드래그로 이동, 두 손가락으로 자유롭게 확대·축소해 지도에 담길 부분을 맞춰 주세요',
     regionTagChip: '기록 {{count}}개가 있어요 · 방문 지역 추가하기',
     regionTagDismissA11y: '방문 지역 안내 닫기',
     regionTagTitle: '방문 지역 선택',

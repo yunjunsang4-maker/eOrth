@@ -52,6 +52,7 @@ import { getSkinAccent } from '../constants/skinTheme';
 import { imageToDataUri } from '../utils/imageCompress';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import CountryMapView from '../components/CountryMapView';
+import PuzzlePhotoAdjustOverlay from '../components/PuzzlePhotoAdjustOverlay';
 import GrainOverlay from '../components/GrainOverlay';
 import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark';
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
@@ -409,20 +410,21 @@ function GlobeBtnGlass({ style, children }: { style?: object; children: React.Re
 }
 
 const PUZZLE_MEDIA_DIR = 'puzzle/';
+const REGION_PHOTO_DIR = 'region-photos/';
 
-// 퍼즐 그림을 documentDirectory로 복사해 OS 캐시 정리 후에도 유지한다
+// 지도용 사진을 documentDirectory로 복사해 OS 캐시 정리 후에도 유지한다
 // (EditProfileScreen의 persistProfilePhoto·MomentCaptureScreen의 persistMomentPhoto와 같은 패턴).
 // 피커 캐시 URI를 그대로 두면 OS가 캐시를 비울 때 퍼즐 그림이 사라지고,
 // Documents 밖이라 재빌드 복구(remapDocUri)도 안 걸린다.
-async function persistPuzzleImage(srcUri: string): Promise<string> {
+async function persistMapPhoto(srcUri: string, subDir: string): Promise<string> {
   try {
     const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
     const base = FileSystem.documentDirectory;
     if (base) {
-      const dir = `${base}${PUZZLE_MEDIA_DIR}`;
+      const dir = `${base}${subDir}`;
       try { await FileSystem.makeDirectoryAsync(dir, { intermediates: true }); } catch { /* 이미 존재 */ }
       const ext = (srcUri.split('?')[0].match(/\.(jpg|jpeg|png|webp|heic)$/i)?.[1] || 'jpg').toLowerCase();
-      const to = `${dir}puzzle-${Date.now()}.${ext}`;
+      const to = `${dir}photo-${Date.now()}.${ext}`;
       await FileSystem.copyAsync({ from: srcUri, to });
       return to;
     }
@@ -634,6 +636,7 @@ export default function MainScreen({ navigation, route }: Props) {
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
     puzzleImages, setPuzzleImages,
+    regionPhotos, setRegionPhotos,
     taggedRegions, setTaggedRegions,
     dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
@@ -675,22 +678,22 @@ export default function MainScreen({ navigation, route }: Props) {
   const [editingCountryColor, setEditingCountryColor] = useState<string | null>(null);
 
   // 표시 설정 모달은 라이브로 적용되므로, 열 때 스냅샷을 떠두고 "취소(바깥 탭)" 시 원복한다.
-  // ⚠️ puzzleImages는 스냅샷에 넣지 않는다 — 퍼즐 사진 선택은 색상처럼 '훑어보는 미리보기'가
-  //    아니라 명시적 확정이라, 바깥 탭으로 닫을 때 원복하면 방금 고른 사진이 조용히 버려져
-  //    "바꿔도 적용이 안 된다"로 보인다(실기기 보고). 고르는 즉시 확정된 것으로 취급한다.
+  // ⚠️ puzzleImages와 regionGlobalMode(사진/퍼즐 토글)는 스냅샷에 넣지 않는다 — 색상 팔레트처럼
+  //    '훑어보는 미리보기'가 아니라 명시적 확정이라, 바깥 탭으로 닫을 때 원복하면 방금 고른
+  //    사진·모드가 조용히 버려져 "바꿔도 적용이 안 된다"로 보인다(실기기 보고 2건: 퍼즐 사진,
+  //    그리고 퍼즐로 바꿔도 지도가 기존 사진 모드로 남던 문제). 고르는 즉시 확정으로 취급한다.
   const dsSnapshot = useRef<{
     globeDisplayMode: MapDisplayMode;
     globeColor: string;
     globeSkin: string;
     countryColors: Record<string, string>;
     countryDisplayModes: Record<string, MapDisplayMode>;
-    regionGlobalMode: RegionGlobalMode;
     regionDisplayModes: Record<string, 'color' | 'photo'>;
     regionColors: Record<string, string>;
     skinColorStore: Record<string, SkinColorSet>;
   } | null>(null);
   const openDisplaySettings = () => {
-    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore };
+    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionDisplayModes, regionColors, skinColorStore };
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
@@ -702,7 +705,6 @@ export default function MainScreen({ navigation, route }: Props) {
       setGlobeColor(s.globeColor);
       setCountryColors(s.countryColors);
       setCountryDisplayModes(s.countryDisplayModes);
-      setRegionGlobalMode(s.regionGlobalMode);
       setRegionDisplayModes(s.regionDisplayModes);
       setRegionColors(s.regionColors);
       setSkinColorStore(s.skinColorStore); // 미리보기 중 스킨 스왑이 저장소에 남긴 값까지 원복
@@ -858,7 +860,8 @@ export default function MainScreen({ navigation, route }: Props) {
           name: r.regionName || regionNameByCode(regionCountry, nameEnCode, i18n.language) || r.regionNameEn,
           nameEn: nameEnCode,
           key,
-          photo,
+          // 사용자가 직접 지정한 사진이 기록 대표사진보다 우선
+          photo: regionPhotos[key] || photo,
         });
       }
     });
@@ -885,13 +888,13 @@ export default function MainScreen({ navigation, route }: Props) {
           name: tr.name,
           nameEn: tr.nameEn,
           key,
-          photo: countryPhoto,
+          photo: regionPhotos[key] || countryPhoto,
         });
       });
     }
 
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, taggedRegions, i18n.language]);
+  }, [records, regionCountry, taggedRegions, regionPhotos, i18n.language]);
 
   // 대륙 모드 진행도 — "47곳 중 5곳". 방문 지역만 있고 전체 수가 없으면 수집의 감각이 안 생긴다.
   // 분자는 지오에 실제로 있는 코드만 센다(오래된 코드가 섞여 분모를 넘는 것을 막는다).
@@ -912,7 +915,35 @@ export default function MainScreen({ navigation, route }: Props) {
     if (puzzleImage && !fromRecords.includes(puzzleImage)) return [puzzleImage, ...fromRecords];
     return fromRecords;
   }, [recordedRegions, puzzleImage]);
-  // 앨범에서 퍼즐 그림 선택
+  // 퍼즐 범위 조정 오버레이 — 후보/앨범에서 사진을 고르면 열리고, 여기서 나라 실루엣을
+  // 대고 범위를 정한 크롭본이 최종 퍼즐 그림이 된다(바로 저장하지 않는다).
+  const [puzzleAdjustUri, setPuzzleAdjustUri] = useState<string | null>(null);
+  const confirmPuzzleAdjust = useCallback(async (croppedUri: string) => {
+    if (!regionCountry) { setPuzzleAdjustUri(null); return; }
+    // 크롭 결과는 캐시 경로다 — 피커 캐시와 같은 이유로 documentDirectory에 영속화한다
+    // (OS 캐시 정리로 소실·재빌드 복구(remapDocUri) 불가 방지)
+    const uri = await persistMapPhoto(croppedUri, PUZZLE_MEDIA_DIR);
+    setPuzzleImages(prev => ({ ...prev, [regionCountry]: uri }));
+    setPuzzleAdjustUri(null);
+  }, [regionCountry, setPuzzleImages]);
+  // 현재 퍼즐 그림 제거 — 그림이 없으면 지도에 퍼즐이 안 그려지고 시트에 사진 선택 안내가 뜬다.
+  // 우리가 만든 크롭본(Documents/puzzle/)이면 파일도 함께 정리한다(기록 사진은 건드리지 않는다).
+  const removePuzzleImage = useCallback(() => {
+    if (!regionCountry) return;
+    const cur = puzzleImages[regionCountry];
+    setPuzzleImages(prev => {
+      const next = { ...prev };
+      delete next[regionCountry];
+      return next;
+    });
+    if (cur && cur.includes(`/${PUZZLE_MEDIA_DIR}`)) {
+      try {
+        const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
+        FileSystem.deleteAsync(cur, { idempotent: true }).catch(() => {});
+      } catch { /* 파일 정리 실패는 무시 — 참조는 이미 지웠다 */ }
+    }
+  }, [regionCountry, puzzleImages, setPuzzleImages]);
+  // 앨범에서 퍼즐 그림 선택 → 범위 조정으로
   const pickPuzzleImage = useCallback(async () => {
     if (!regionCountry) return;
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -922,12 +953,25 @@ export default function MainScreen({ navigation, route }: Props) {
       quality: 0.9,
     });
     if (!result.canceled && result.assets[0]) {
-      // 피커 캐시 URI를 그대로 두면 OS가 캐시를 비울 때 퍼즐 그림이 사라지고,
-      // Documents 밖이라 재빌드 복구(remapDocUri)도 안 걸린다 — documentDirectory로 복사해 영속화한다.
-      const uri = await persistPuzzleImage(result.assets[0].uri);
-      setPuzzleImages(prev => ({ ...prev, [regionCountry]: uri }));
+      // 영속화는 조정 확정 시(크롭본만 저장) — 여기서 원본을 저장하면 취소해도 파일이 쌓인다
+      setPuzzleAdjustUri(result.assets[0].uri);
     }
-  }, [regionCountry, setPuzzleImages, t]);
+  }, [regionCountry, t]);
+
+  // 지역별 사진 수동 지정 — 개별 설정 목록의 갤러리 버튼. 키는 regionColors와 같은 복합키.
+  const pickRegionPhoto = useCallback(async (regionKey: string) => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) { showPermissionDeniedAlert(t('permission.gallery')); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets[0]) {
+      // 퍼즐 그림과 같은 이유로 documentDirectory에 영속화(피커 캐시는 OS가 지운다)
+      const uri = await persistMapPhoto(result.assets[0].uri, REGION_PHOTO_DIR);
+      setRegionPhotos(prev => ({ ...prev, [regionKey]: uri }));
+    }
+  }, [setRegionPhotos, t]);
 
   // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
   const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
@@ -1041,6 +1085,7 @@ export default function MainScreen({ navigation, route }: Props) {
     setCountryDisplayModes(prev => prune(prev, visitedNameSet));
     setRegionDisplayModes(prev => pruneRegion(prev));
     setRegionColors(prev => pruneRegion(prev));
+    setRegionPhotos(prev => pruneRegion(prev));
     // 소급 태깅·칩 닫음 목록 정리 — 그 국가 기록(스냅 제외)이 전부 사라지면 함께 제거
     const recordedCountryKos = new Set<string>();
     records.forEach(r => {
@@ -1069,7 +1114,7 @@ export default function MainScreen({ navigation, route }: Props) {
       remove.forEach(k => delete next[k]);
       return next;
     });
-  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setPuzzleImages]);
+  }, [records, visitedNameSet, taggedRegions, setCountryColors, setCountryDisplayModes, setRegionDisplayModes, setRegionColors, setTaggedRegions, setDismissedRegionTagChips, setPuzzleImages, setRegionPhotos]);
 
   const sheetAnim = useRef(new Animated.Value(SHEET_HEIGHT)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
@@ -1592,6 +1637,7 @@ export default function MainScreen({ navigation, route }: Props) {
                 defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
                 searchQuery={regionSearch}
                 showPopular={popularActive}
+                accentColor={skinAccent.accent}
                 puzzleImage={puzzleImage}
                 puzzleComplete={!!regionProgress && regionProgress.total > 0 && regionProgress.visited === regionProgress.total}
               />
@@ -2324,10 +2370,9 @@ export default function MainScreen({ navigation, route }: Props) {
                           <TouchableOpacity
                             key={`${i}-${uri.slice(-24)}`}
                             activeOpacity={0.8}
-                            onPress={() => {
-                              if (!regionCountry) return;
-                              setPuzzleImages(prev => ({ ...prev, [regionCountry]: uri }));
-                            }}
+                            // 즉시 확정하지 않고 범위 조정(나라 실루엣 대보기)을 거친다.
+                            // 현재 그림(크롭본)을 다시 누르면 그 크롭본 기준으로 재조정.
+                            onPress={() => setPuzzleAdjustUri(uri)}
                           >
                             {/* RN Image는 원본 해상도를 통째로 디코드한다 — 기록 사진(수 MB)을
                                 56px 썸네일에 쓰면 퍼즐 선택 순간 디코드 폭주로 시트가 멈칫한다.
@@ -2338,6 +2383,21 @@ export default function MainScreen({ navigation, route }: Props) {
                               transition={0}
                               style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: selected ? skinAccent.accent : 'transparent' }}
                             />
+                            {/* 현재 그림 제거 — 해제하면 퍼즐이 안 그려지는 '사진 선택 안내' 상태로 복귀 */}
+                            {selected && (
+                              <TouchableOpacity
+                                onPress={removePuzzleImage}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                accessibilityRole="button"
+                                accessibilityLabel={t('comp.delete')}
+                                style={{
+                                  position: 'absolute', top: 2, right: 2, width: 18, height: 18, borderRadius: 9,
+                                  backgroundColor: 'rgba(10,11,15,0.85)', alignItems: 'center', justifyContent: 'center',
+                                }}
+                              >
+                                <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', lineHeight: 12 }}>✕</Text>
+                              </TouchableOpacity>
+                            )}
                           </TouchableOpacity>
                         );
                       })}
@@ -2353,7 +2413,10 @@ export default function MainScreen({ navigation, route }: Props) {
                   </View>
                 )}
 
-                {/* 지역별 개별 설정 */}
+                {/* 지역별 개별 설정 — 지역별 사진 모드 전용. 퍼즐 모드의 지도는 나라당
+                    그림 한 장이라 지역별 사진이 쓰이지 않는다(목록이 있으면 "지정했는데
+                    적용이 안 된다"는 오해를 부른다) */}
+                {regionGlobalMode !== 'puzzle' && (
                 <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <Text style={styles.dsColorLabel}>{t('main.perRegion')}</Text>
@@ -2375,16 +2438,44 @@ export default function MainScreen({ navigation, route }: Props) {
                       {recordedRegions.map(r => (
                         <View key={r.key} style={{ marginBottom: 8 }}>
                           <View style={styles.dsCountryRow}>
-                            <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
-                              {!!r.photo && <GalleryIcon size={12} color="#A1A1B0" />}
-                            </View>
+                            {/* 현재 이 지역에 실제로 쓰이는 사진(수동 지정 > 기록 대표사진) 미리보기 */}
+                            {r.photo ? (
+                              <ExpoImage
+                                source={{ uri: r.photo }}
+                                cachePolicy="memory-disk"
+                                transition={0}
+                                style={{ width: 28, height: 28, borderRadius: 6 }}
+                              />
+                            ) : (
+                              <View style={[styles.dsCountryDot, { width: 28, height: 28, borderRadius: 6, backgroundColor: '#2E2E3B' }]} />
+                            )}
                             <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
+                            {/* 수동 지정이 있을 때만 — 지우면 기록 대표사진 자동 선정으로 복귀 */}
+                            {!!regionPhotos[r.key] && (
+                              <TouchableOpacity
+                                activeOpacity={0.7}
+                                onPress={() => setRegionPhotos(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
+                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              >
+                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }}>{t('main.reset')}</Text>
+                              </TouchableOpacity>
+                            )}
+                            <TouchableOpacity
+                              activeOpacity={0.7}
+                              onPress={() => pickRegionPhoto(r.key)}
+                              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                              accessibilityRole="button"
+                              accessibilityLabel={t('main.photo')}
+                            >
+                              <GalleryIcon size={18} color={skinAccent.accent} />
+                            </TouchableOpacity>
                           </View>
                         </View>
                       ))}
                     </ScrollView>
                   )}
                 </View>
+                )}
               </>
             )}
 
@@ -2397,6 +2488,15 @@ export default function MainScreen({ navigation, route }: Props) {
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
+        {/* 퍼즐 범위 조정 — 이 Modal 안의 절대위치 오버레이(중첩 Modal 금지 — 껍데기 잔존 전례) */}
+        {puzzleAdjustUri && regionCountry ? (
+          <PuzzlePhotoAdjustOverlay
+            countryCode={regionCountry}
+            uri={puzzleAdjustUri}
+            onConfirm={confirmPuzzleAdjust}
+            onCancel={() => setPuzzleAdjustUri(null)}
+          />
+        ) : null}
       </Modal>
 
       {/* FAB(기록 추가)는 CustomTabBar 레이어의 RecordFab 로 렌더 (탭 바 위 겹침) */}

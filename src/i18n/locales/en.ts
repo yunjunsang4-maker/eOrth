@@ -631,6 +631,8 @@ const en = {
     puzzleImageLabel: 'Puzzle image',
     puzzleNeedPhoto: 'Pick a photo to fill the puzzle',
     puzzleFromAlbum: 'Album',
+    puzzleAdjustTitle: 'Adjust puzzle area',
+    puzzleAdjustHint: 'Drag to move and pinch to zoom freely, so the photo fits the map the way you want',
     regionTagChip: '{{count}} records here · Add visited regions',
     regionTagDismissA11y: 'Dismiss visited-region suggestion',
     regionTagTitle: 'Select visited regions',
