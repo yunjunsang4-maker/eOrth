@@ -48,7 +48,7 @@
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#000000",
-          "imageWidth": 150
+          "imageWidth": 215
         }
       ],
       "expo-font",

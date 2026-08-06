@@ -1,6 +1,8 @@
 import 'react-native-gesture-handler';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import React, { useEffect } from 'react';
+import * as NativeSplash from 'expo-splash-screen';
+import './src/utils/appStart'; // JS 시작 시각 기록 — 반드시 스플래시 제어보다 먼저
 import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
@@ -32,7 +34,20 @@ import ReturnDetector from './src/components/ReturnDetector';
 import ReturnDetectNudge from './src/components/ReturnDetectNudge';
 import ArrivalNotifier from './src/components/ArrivalNotifier';
 
+// 네이티브 스플래시를 JS 가 직접 내린다.
+// 기본 동작은 RN 첫 렌더와 동시에 사라지는 것이라, 기기가 빠르면 로고가 스쳐 지나간다.
+// 실제로 내리는 곳은 SplashScreen(영상 화면)이며, 거기서 최소 노출 시간을 보장한 뒤
+// 영상 재생과 함께 내린다. 여기서는 '자동으로 사라지지 않게'만 막아둔다.
+NativeSplash.preventAutoHideAsync().catch(() => {});
+
 export default function App() {
+  // 안전망 — SplashScreen 이 마운트되지 못하는 경로(초기화 예외 등)에서 스플래시가
+  // 영원히 남으면 앱이 아예 안 열린 것처럼 보인다. 시간이 지나면 무조건 내린다.
+  useEffect(() => {
+    const t = setTimeout(() => { NativeSplash.hideAsync().catch(() => {}); }, 5000);
+    return () => clearTimeout(t);
+  }, []);
+
   // 광고 SDK 초기화 — 실패해도 앱 흐름을 막지 않는다(광고는 부가 기능).
   // 네이티브 모듈이 없는 바이너리에서는 getGoogleMobileAds()가 null이라 그냥 넘어간다.
   useEffect(() => {

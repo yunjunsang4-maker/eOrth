@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import * as NativeSplash from 'expo-splash-screen';
+import { APP_START_MS } from '../utils/appStart';
 import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { useDM } from '../store/dmStore';
@@ -43,14 +45,19 @@ const SPLASH_LOGO = require('../../assets/splash-icon.png');
 //   · 아이폰 393pt 기준 로고 145.6dp, splash-icon.png 는 코어/전체 = 0.968 이므로
 //     imageWidth = 145.6 / 0.968 ≈ 150
 // 영상 로고는 화면 폭에 비례하고 imageWidth 는 고정 dp 라, 기기 폭이 크게 다르면
-// 몇 % 차이는 남는다(393pt 기준 정확, 430pt 에서 약 6% 작게 보임).
-const SPLASH_LOGO_WIDTH = 150;
+// 몇 % 차이는 남는다.
+//
+// 실측값은 150 이었지만 실기기 겹쳐보기로 확인한 결과 215 로 정했다(2026-08-07).
+const SPLASH_LOGO_WIDTH = 215;
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
 // 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
 const MAX_SPLASH_MS = 4000;
 // 진입 목적지 판정의 상한. 이 시간을 넘기면 로컬 신호만으로 폴백해 앱에 들어간다
 // (영상 대기 상한인 MAX_SPLASH_MS 와는 별개 — 그건 비동기 작업을 끊지 못한다).
 const DEST_TIMEOUT_MS = 8000;
+// 네이티브 스플래시(로고)를 최소 이만큼은 보여준 뒤 영상으로 넘긴다.
+// 앱 시작 시각(APP_START_MS) 기준이라, 번들 로드가 이미 이 시간을 넘겼으면 곧바로 넘어간다.
+const NATIVE_SPLASH_MIN_MS = 700;
 
 type Props = RootStackScreenProps<'Splash'>;
 
@@ -74,13 +81,15 @@ export default function SplashScreen({ navigation }: Props) {
     // 멈추게 한다 — 무음 스플래시는 다른 앱 오디오와 섞여도 되므로 포커스를 잡지 않는다.
     p.audioMixingMode = 'mixWithOthers';
     p.playbackRate = SPLASH_RATE; // 빠르게
-    p.play();
+    // 여기서 재생하지 않는다 — 네이티브 스플래시를 내리는 시점에 맞춰 시작해야
+    // 로고가 떠 있는 0.7초 동안 영상 앞부분이 보이지 않은 채 흘러가지 않는다.
   });
 
   useEffect(() => {
     // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 비교할 시간이 필요하다.
     // 영상은 반복 재생·등속으로 돌려서 로고가 뜬 구간을 계속 볼 수 있게 한다.
     if (previewMode) {
+      NativeSplash.hideAsync().catch(() => {});
       player.loop = true;
       player.playbackRate = 1;
       player.play();
@@ -158,14 +167,27 @@ export default function SplashScreen({ navigation }: Props) {
       navigation.replace(dest);
     };
 
+    // 네이티브 스플래시(로고)를 최소 노출 시간만큼 유지한 뒤, 영상 재생과 함께 내린다.
+    // 재생을 먼저 걸고 내려야 로고 → 검은 화면 → 영상 순으로 끊겨 보이지 않는다.
+    // 앱 시작 기준이라, 번들 로드가 이미 오래 걸렸으면 대기 없이 즉시 넘어간다.
+    const waitMs = Math.max(0, NATIVE_SPLASH_MIN_MS - (Date.now() - APP_START_MS));
+    const revealTimer = setTimeout(() => {
+      player.play();
+      NativeSplash.hideAsync().catch(() => {});
+    }, waitMs);
+
     // 영상이 끝나면 이동. 이벤트 누락 대비 안전 타이머도 둔다.
+    // (상한은 로고 노출이 끝난 시점부터 재야 영상 재생 시간이 그만큼 깎이지 않는다)
     const sub = player.addListener('playToEnd', () => { go(); });
-    const timer = setTimeout(() => { go(); }, MAX_SPLASH_MS);
+    const timer = setTimeout(() => { go(); }, waitMs + MAX_SPLASH_MS);
 
     return () => {
       navigated = true;
       sub?.remove?.();
+      clearTimeout(revealTimer);
       clearTimeout(timer);
+      // 화면을 벗어날 때 스플래시가 남아 있으면 다음 화면이 가려진다
+      NativeSplash.hideAsync().catch(() => {});
     };
   }, []);
 
