@@ -17,43 +17,68 @@
 >
 > 새로 실행·배포했으면 날짜와 함께 이 문서를 갱신한다.
 >
-> ⚠️ **2026-08-07 정정.** 위 "모두 끝났다"에는 예외가 있다 — pg_cron 3종은 등록만 됐고
-> 실행은 전부 401 로 실패해 왔다(1번 절). **"객체가 존재한다"와 "실제로 동작한다"는 다르다.**
+> ⚠️ **2026-08-07 정정.** 위 "모두 끝났다"에는 예외가 있었다 — pg_cron 3종은 등록만 됐고
+> 실행은 이틀간 전부 401 로 실패해 왔다(같은 날 해소, 1번 절).
+> **"객체가 존재한다"와 "실제로 동작한다"는 다르다.**
 > 이 문서의 ✅ 는 대부분 전자만 확인한 값이니, 스케줄러·Edge Function 처럼 *돌아야* 의미가 있는
 > 항목은 반드시 **실행 결과**(`net._http_response` 등)까지 보고 표시할 것.
 
 ---
 
-## 1. 지금 해야 하는 것 — 1건 (2026-08-07 기준)
+## 1. 지금 해야 하는 것 — 없음 (2026-08-07 기준)
 
-### ⚠️ Vault `service_role_key` 가 잘못된 값이다 — pg_cron 3종이 전부 실패 중
+### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 
-2026-08-07 베타 계정 초기화 작업 중 발견했다. `delete-account` 를 `scope='sweep'` 으로 호출하면
-**401 `{"error":"unauthorized"}`** 가 돌아온다. 이건 게이트웨이가 아니라 **함수 자신이 낸 에러**
-(`functions/delete-account/index.ts` 99행)라, JWT 형식은 맞지만 값이 함수의
-`SUPABASE_SERVICE_ROLE_KEY` 환경변수와 **다르다**는 뜻이다.
+2026-08-07 베타 계정 초기화 중 발견해 같은 날 고쳤다. **등록일(2026-08-05)부터 이틀간
+`purge-deleted-accounts` 를 포함한 잡 3종이 한 번도 성공한 적이 없었다.**
 
-그리고 `net._http_response` 에 쌓인 실패 중 **매일 18:00 UTC 정각 건은 사람이 누른 게 아니라
-`purge-deleted-accounts` 잡의 정기 실행**이다. 즉 이 잡은 등록만 돼 있고(`active=true`)
-**한 번도 성공한 적이 없다.** 같은 Vault 값을 쓰는 나머지 2종도 동일하다.
-
-> **영향:** 탈퇴 유예 30일이 지난 계정이 자동 파기되지 않는다. `auth.users` 행과 Storage
-> `media/<uid>/` 사진이 서버에 계속 남는다 — 개인정보처리방침의 파기 약속과 어긋나므로
-> 정식 출시 전에 반드시 해소할 것.
-
-**고치는 법.** 대시보드 **Settings > API Keys > `Legacy API keys`** 탭에서 `service_role`
-키(`eyJ` 로 시작하는 JWT)를 복사한다. 신형 키(`sb_secret_...`)를 넣으면 게이트웨이가
-`UNAUTHORIZED_INVALID_JWT_FORMAT` 으로 막는다 — 함수 환경변수 쪽은 레거시 JWT이기 때문이다.
+**Vault 에 넣어야 하는 건 레거시 JWT 가 아니라 신형 시크릿 키(`sb_secret_...`)다.**
+이 프로젝트의 Edge Function 환경변수 `SUPABASE_SERVICE_ROLE_KEY` 에는 신형 키가 주입돼 있어서,
+대시보드 `Legacy API keys` 탭의 `service_role` JWT 를 넣으면 서명은 유효해 게이트웨이는 통과하지만
+함수 내부의 문자열 비교(`functions/delete-account/index.ts` 99행)에서 걸린다.
 
 ```sql
 select vault.update_secret(
   (select id from vault.secrets where name = 'service_role_key'),
-  '<레거시 service_role 키>'
+  '<sb_secret_... 신형 시크릿 키>'
+);
+-- vault.create_secret 은 이름 중복으로 실패한다. 반드시 update_secret.
+```
+
+#### 401 두 종류를 구분하면 원인이 바로 갈린다
+
+| 응답 | 낸 주체 | 뜻 |
+|---|---|---|
+| `{"code":"UNAUTHORIZED_INVALID_JWT_FORMAT","message":"Invalid JWT"}` | 게이트웨이 | 키 문자열이 깨졌거나 서명이 이 프로젝트 것이 아님 |
+| `{"error":"unauthorized"}` | 함수 자신 (99행) | 서명은 유효하나 **env 값과 문자열이 다름** = 키 종류를 잘못 골랐다 |
+
+#### 함께 겪은 함정 — 복사한 키에 보이지 않는 문자가 섞인다
+
+대시보드에서 복사한 키에 제로폭/NBSP 류가 끼어들어 세그먼트 길이가 헤더 37·서명 44(정상 36·43)가
+됐다. `~ '\s'` 로는 안 잡힌다. 넣기 전에 아래로 검사하고, 걸리면 정제 후 다시 저장할 것.
+
+```sql
+-- 정상: 조각수 3 / 안전문자만 true. JWT 는 base64url 과 점만 쓴다
+select length(decrypted_secret) as 총길이,
+       array_length(string_to_array(decrypted_secret, '.'), 1) as 조각수,
+       (decrypted_secret ~ '^[A-Za-z0-9_.-]+$') as 안전문자만
+  from vault.decrypted_secrets where name = 'service_role_key';
+
+-- 정제
+select vault.update_secret(
+  (select id from vault.secrets where name = 'service_role_key'),
+  (select regexp_replace(decrypted_secret, '[^A-Za-z0-9_.-]', '', 'g')
+     from vault.decrypted_secrets where name = 'service_role_key')
 );
 ```
 
-`vault.create_secret` 은 이름이 중복돼 실패하니 반드시 `update_secret` 을 쓴다.
-고친 뒤 아래 "2번 확인" 쿼리로 **200 이 돌아오는지**까지 확인할 것.
+> **왜 이틀간 안 보였나.** `cron.job_run_details` 는 `net.http_post` **호출 자체**가 성공하면
+> `succeeded` 로 찍는다. HTTP 응답이 401 이어도 잡은 성공으로 보인다. 스케줄러 상태는
+> 반드시 `net._http_response` 까지 봐야 한다. 아래 "2번 확인" 쿼리에 반영해 뒀다.
+>
+> **설계상 남은 취약점.** `sweep` 인증이 플랫폼이 주입하는 env 와의 정확한 문자열 일치에
+> 의존한다. 키 체계가 또 바뀌면 같은 방식으로 조용히 죽는다. 전용 시크릿(`PURGE_SECRET` 등)으로
+> 옮기는 편이 안전하다 — 아직 안 했다.
 
 ### 여행 DNA 반영은 완료됐다 (2026-08-06)
 
@@ -195,7 +220,7 @@ select status_code, content, created
 | **출시 전 감사 수정** | **2026-08-02** | **✅ 확인** | 아래 상세 (커밋 `f827009`) |
 | 추천 메이트 결과 캐시 (`mate_suggestions_cache` + 래퍼) | 2026-08-05 | 실행 보고 | 커밋 `c8498ca`. 확인 쿼리는 1번 절 |
 | pg_cron 3종 등록 (`cron-setup.sql`) | 2026-08-05 | ✅ 확인 | `cron.job` 3건 `active=true`. **단 실행은 전부 401 실패** — 아래 행 참조 |
-| Vault `service_role_key` | 2026-08-05 | ❌ **값이 틀림** | 2026-08-07 발견. 시크릿은 존재하나 함수 env 와 불일치 → 잡 3종이 한 번도 성공한 적 없다. 조치는 **1번 절** |
+| Vault `service_role_key` | 2026-08-05 → **2026-08-07 교체** | ✅ 확인 (200 실측) | 등록 당시 값이 함수 env 와 불일치해 잡 3종이 이틀간 전부 401. **넣을 값은 레거시 JWT 가 아니라 신형 `sb_secret_...`** — 1번 절 참조 |
 
 ### 출시 전 감사(2026-08-02) 반영 상세 — SQL Editor 조회로 실측
 
