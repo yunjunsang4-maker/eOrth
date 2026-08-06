@@ -2571,7 +2571,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
     () => neighbors
       // 차단한 상대는 공유 대상에서 제외 — 차단 시 언팔되지만 로컬 상태가 어긋난 경우의 안전망
       .filter((f) => !isBlocked({ handle: f.username, name: f.username }))
-      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳' })),
+      // photo 를 함께 넘겨야 빠른공유 원 안에 프로필 사진이 뜬다 (없으면 이모지로 폴백)
+      .map((f) => ({ id: f.id, name: f.username, handle: f.username, emoji: f.emoji || '🧳', photo: f.photo })),
     [neighbors, isBlocked]
   );
   const top3 = useMemo(
