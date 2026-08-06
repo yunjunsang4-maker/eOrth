@@ -187,7 +187,7 @@ function ShareBottomSheet({
 
   return (
     <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} accessibilityViewIsModal>
         <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
           if (!prepareVisible && !friendPickerVisible) onClose();
         }} />
@@ -310,7 +310,7 @@ function CommentBottomSheet({
       animationType="slide"
       onRequestClose={onClose}
     >
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }}>
+      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }}>
         <KeyboardAvoidingView
           style={{ flex: 1 }}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -3144,7 +3144,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
       <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)} onDismiss={handleOtherDismiss}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} accessibilityViewIsModal>
           <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
@@ -3757,7 +3757,9 @@ const cs = StyleSheet.create({
 // ─────────────────────────────────────────────
 const ss = StyleSheet.create({
   sheet: {
-    backgroundColor: 'rgba(20,20,35,0.75)',
+    // 불투명해야 한다. 반투명(0.75)이면 블러가 없어서 뒤 피드·탭바가 그대로 비쳐
+    // 유리가 아니라 얼룩처럼 보였다 — 대면적은 매트로 덮는 게 이 앱의 규칙이다.
+    backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingBottom: 32,
