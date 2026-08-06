@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image }
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
+import { FriendIcon } from './icons';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
@@ -16,7 +17,7 @@ export interface CardRect { x: number; y: number; w: number; h: number }
 function TargetCircle({
   tg, x, y, hovered, appear, fromDir, onReport,
 }: {
-  tg: { key: string; emoji: string; label: string; photo?: string };
+  tg: { key: string; emoji: string; label: string; photo?: string; icon?: boolean };
   x: number; y: number;
   hovered: boolean;
   appear: Animated.Value;
@@ -57,9 +58,11 @@ function TargetCircle({
           },
         ]}
       >
-        {/* 프로필 사진이 있으면 사진 아바타, 없으면 이모지 (DM·메이트 목록과 동일 규칙) */}
+        {/* 사진 > 제작 아이콘 > 이모지 순. '기타'는 이모지 대신 자체 제작 SVG를 쓴다 */}
         {tg.photo ? (
           <Image source={{ uri: tg.photo }} style={st.targetPhoto} />
+        ) : tg.icon ? (
+          <FriendIcon size={28} color={skinAccent.accent} />
         ) : (
           <Text style={st.targetEmoji}>{tg.emoji}</Text>
         )}
@@ -117,7 +120,7 @@ export default function QuickShareOverlay({
 
   // 타깃 키 목록: 메이트 handle + 'other'
   const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name, photo: f.photo })),
-                   { key: 'other', emoji: '👥', label: t('comp.other') }];
+                   { key: 'other', emoji: '', label: t('comp.other'), icon: true }];
 
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
