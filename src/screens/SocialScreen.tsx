@@ -246,7 +246,12 @@ function ShareBottomSheet({
                   <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
                     <View style={ss.friendAvatarWrap}>
                       <View style={ss.friendAvatar}>
-                        <Text style={ss.friendAvatarEmoji}>{f.emoji}</Text>
+                        {/* 프로필 사진이 있으면 사진 아바타 — 빠른공유 원·DM 목록과 같은 규칙 */}
+                        {f.photo ? (
+                          <Image source={{ uri: f.photo }} style={ss.friendAvatarPhoto} />
+                        ) : (
+                          <Text style={ss.friendAvatarEmoji}>{f.emoji}</Text>
+                        )}
                       </View>
                       {f.online && <View style={ss.friendOnline} />}
                     </View>
@@ -3855,6 +3860,7 @@ const ss = StyleSheet.create({
     justifyContent: 'center',
   },
   friendAvatarEmoji: { fontSize: 20 },
+  friendAvatarPhoto: { width: 42, height: 42, borderRadius: 21 },
   friendOnline: {
     position: 'absolute',
     bottom: 1,
