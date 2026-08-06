@@ -666,7 +666,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.globeColor === 'string') setGlobeColor(v.globeColor);
     if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(v.countryColors);
     if (v.countryDisplayModes && typeof v.countryDisplayModes === 'object') setCountryDisplayModes(v.countryDisplayModes);
-    if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
+    if (v.regionGlobalMode !== undefined) setRegionGlobalMode(normalizeRegionGlobalMode(v.regionGlobalMode));
     // 옛 백업 JSON에는 GADM 키가 들어 있다. 여기를 빠뜨리면 백업을 복원한 사용자만 조용히 깨진다.
     if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(migrateRegionKeyMap(v.regionDisplayModes as Record<string, 'color' | 'photo'>));
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(migrateRegionKeyMap(v.regionColors as Record<string, string>));
