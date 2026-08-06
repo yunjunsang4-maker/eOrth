@@ -35,8 +35,16 @@ const { width: SW, height: SH } = Dimensions.get('window');
 // 다 고른 뒤에는 반드시 false 로 되돌릴 것. (__DEV__ 가드가 있어 배포본에는 영향이 없다)
 const SPLASH_LOGO_PREVIEW = false;
 const SPLASH_LOGO = require('../../assets/splash-icon.png');
-// app.json > plugins > expo-splash-screen > imageWidth 와 같은 값을 둔다
-const SPLASH_LOGO_WIDTH = 260;
+// app.json > plugins > expo-splash-screen > imageWidth 와 같은 값을 둔다.
+//
+// 150 은 '영상 속 로고와 같은 크기'를 실측해서 나온 값이다:
+//   · 영상 1080x2114, 로고 코어 폭 400px (프레임 5~10 내내 일정) → 영상 폭의 37.0%
+//   · contentFit="contain" 이고 세로가 긴 화면에서는 폭이 기준이라 화면 폭의 37.0%
+//   · 아이폰 393pt 기준 로고 145.6dp, splash-icon.png 는 코어/전체 = 0.968 이므로
+//     imageWidth = 145.6 / 0.968 ≈ 150
+// 영상 로고는 화면 폭에 비례하고 imageWidth 는 고정 dp 라, 기기 폭이 크게 다르면
+// 몇 % 차이는 남는다(393pt 기준 정확, 430pt 에서 약 6% 작게 보임).
+const SPLASH_LOGO_WIDTH = 150;
 const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
 // 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
 const MAX_SPLASH_MS = 4000;
@@ -49,6 +57,7 @@ type Props = RootStackScreenProps<'Splash'>;
 export default function SplashScreen({ navigation }: Props) {
   const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
   const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
+  const [previewOverlay, setPreviewOverlay] = useState(true);
   const { resetRecords } = useRecords();
   const { resetSettings, birthday } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
@@ -69,8 +78,14 @@ export default function SplashScreen({ navigation }: Props) {
   });
 
   useEffect(() => {
-    // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 비교할 시간이 필요하다
-    if (previewMode) return;
+    // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 비교할 시간이 필요하다.
+    // 영상은 반복 재생·등속으로 돌려서 로고가 뜬 구간을 계속 볼 수 있게 한다.
+    if (previewMode) {
+      player.loop = true;
+      player.playbackRate = 1;
+      player.play();
+      return;
+    }
     let navigated = false;
     // 판정이 상한을 넘겼을 때 쓸 폴백 근거 — 세션 유무는 로컬에서 즉시 알 수 있다.
     let sessionSeen = false;
@@ -155,11 +170,21 @@ export default function SplashScreen({ navigation }: Props) {
   }, []);
 
   if (previewMode) {
-    const pct = Math.round((previewW / SW) * 100);
+    const pct = Math.round((previewW / SW) * 1000) / 10;
     return (
       <View style={styles.container}>
+        {/* 겹쳐보기: 영상 속 로고와 크기가 같은지 직접 대조한다 */}
+        {previewOverlay && (
+          <VideoView player={player} style={styles.video} contentFit="contain" nativeControls={false} />
+        )}
         {/* 네이티브 스플래시와 같은 조건: 배경 #000000, 같은 이미지, 폭 = imageWidth(dp) */}
-        <Image source={SPLASH_LOGO} style={{ width: previewW }} resizeMode="contain" />
+        <View style={styles.previewLogoWrap} pointerEvents="none">
+          <Image
+            source={SPLASH_LOGO}
+            style={{ width: previewW, opacity: previewOverlay ? 0.55 : 1 }}
+            resizeMode="contain"
+          />
+        </View>
         <View style={styles.previewPanel}>
           <Text style={styles.previewValue}>imageWidth: {previewW}dp</Text>
           <Text style={styles.previewHint}>화면 폭의 {pct}% · 이 화면 폭 {Math.round(SW)}dp</Text>
@@ -175,7 +200,17 @@ export default function SplashScreen({ navigation }: Props) {
               </TouchableOpacity>
             ))}
           </View>
+          <TouchableOpacity
+            style={[styles.previewBtn, styles.previewToggle]}
+            onPress={() => setPreviewOverlay((v) => !v)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.previewBtnText}>
+              {previewOverlay ? '영상 끄기 (로고만)' : '영상 위에 겹쳐보기'}
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.previewHint}>
+            겹쳐보기에서 두 로고의 좌우 끝이 맞으면 같은 크기다{'\n'}
             정한 값을 app.json 의 imageWidth 에 넣고{'\n'}SPLASH_LOGO_PREVIEW 를 false 로 되돌릴 것
           </Text>
         </View>
@@ -209,7 +244,9 @@ const styles = StyleSheet.create({
     height: SH,
   },
   // ── 개발 전용 미리보기 (SPLASH_LOGO_PREVIEW) ──
+  previewLogoWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   previewPanel: { position: 'absolute', bottom: 60, alignItems: 'center', gap: 10 },
+  previewToggle: { paddingHorizontal: 18 },
   previewValue: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   previewHint: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', lineHeight: 18 },
   previewRow: { flexDirection: 'row', gap: 10 },
