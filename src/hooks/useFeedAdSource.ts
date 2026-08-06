@@ -32,6 +32,23 @@ function loadCampaignsOnce(): Promise<AdCampaign[]> {
 // 요청 대비 노출 비율(match rate)이 떨어져 필률이 깎인다.
 const MAX_ADMOB_SLOTS = 3;
 
+// 제휴 캠페인이 채울 수 있는 상위 슬롯 수.
+//
+// 상한이 없으면 제휴가 AdMob보다 우선이라 피드의 모든 광고 슬롯이 제휴로 도배되고
+// AdMob은 한 번도 표시되지 않는다(pickCampaign이 slot을 후보 수로 나눈 나머지를 쓰므로
+// 캠페인이 1개면 전 슬롯이 같은 캠페인이다). 쿠팡 파트너스처럼 구매 전환형 제휴는
+// 노출을 늘려도 수익이 비례하지 않는 반면 AdMob은 노출 기반이라, 상위 슬롯만 제휴에
+// 주고 나머지는 AdMob에 넘기는 편이 낫다.
+const MAX_AFFILIATE_SLOTS = 2;
+
+// 세션마다 제휴 후보의 시작 위치를 옮긴다.
+//
+// pickCampaign의 정렬은 안정적(weight 내림차순 → slug 사전순)이라 slot만으로 회전시키면
+// 슬롯 상한보다 뒤 순번인 캠페인은 영구히 노출되지 않는다 — 캠페인 4개에 상한 2면 3·4번째는
+// 한 번도 안 나온다. 앱을 켤 때마다 시작 위치를 바꿔 전 캠페인이 고르게 돌게 한다.
+// 대가: 국가 타겟팅된 캠페인의 '맨 앞' 우선순위가 세션에 따라 밀릴 수 있다(노출 자체는 된다).
+const SESSION_ROTATION = Math.floor(Math.random() * 997);
+
 export function useFeedAdSource(slot: number): FeedAdSource {
   const { i18n } = useTranslation();
   const { currentVisitedCountryCode, homeCountryCode } = useSettings();
@@ -46,11 +63,37 @@ export function useFeedAdSource(slot: number): FeedAdSource {
     return () => { alive = false; };
   }, []);
 
+  // 제휴 판정 — 아래 AdMob effect가 이 결과로 요청 여부를 정하므로 effect보다 먼저 계산한다.
+  // campaigns가 아직 null(로딩 중)이면 판정할 수 없어 계산하지 않는다.
+  const nowMs = Date.now();
+  const campaign = campaigns && slot < MAX_AFFILIATE_SLOTS
+    ? pickCampaign(campaigns, {
+        nowMs,
+        locale: i18n.language?.startsWith('ko') ? 'ko' : 'en',
+        countryCode: resolveTargetCountry({
+          currentVisitedCountryCode,
+          homeCountryCode,
+          recentTrips: records.map((r) => ({
+            countryName: r.countryName ?? null,
+            timestamp: typeof r.timestamp === 'number' ? r.timestamp : 0,
+          })),
+          nowMs,
+        }),
+        // 세션 오프셋으로 후보 시작 위치를 옮긴다 — SESSION_ROTATION 주석 참고
+        slot: slot + SESSION_ROTATION,
+      })
+    : null;
+  const campaignsReady = campaigns !== null;
+  const affiliateFills = campaign !== null;
+
   // 제휴 판정 뒤, 하우스 폴백 앞 단계 — AdMob 상태 로딩.
   // useState/useEffect는 조건부로 호출할 수 없으므로 훅 호출 자체는 항상 실행하고,
   // 실제 요청 여부만 effect 내부 조건으로 제어한다(반환 분기는 아래에서 처리).
   useEffect(() => {
     if (!ADMOB_ENABLED || slot >= MAX_ADMOB_SLOTS) return;
+    // 제휴 판정이 끝나기 전에는 요청하지 않는다 — 제휴가 채울 슬롯에 요청을 날리면
+    // 그 응답은 화면에 못 나오고 match rate만 깎인다(MAX_ADMOB_SLOTS와 같은 이유).
+    if (!campaignsReady || affiliateFills) return;
     // AdMob 네이티브 모듈이 없는 바이너리(구 dev client 등)면 하우스로 떨어진다.
     const ads = getGoogleMobileAds();
     if (!ads) return;
@@ -84,27 +127,10 @@ export function useFeedAdSource(slot: number): FeedAdSource {
 
     // destroy를 빠뜨리면 네이티브 메모리가 샌다.
     return () => { alive = false; created?.destroy(); };
-  }, [slot]);
+  }, [slot, campaignsReady, affiliateFills]);
 
   // 로딩 중에는 하우스를 먼저 그린다 — 폴라로이드 크기가 같아 레이아웃이 흔들리지 않는다.
-  if (campaigns === null) return { kind: 'house' };
-
-  const countryCode = resolveTargetCountry({
-    currentVisitedCountryCode,
-    homeCountryCode,
-    recentTrips: records.map((r) => ({
-      countryName: r.countryName ?? null,
-      timestamp: typeof r.timestamp === 'number' ? r.timestamp : 0,
-    })),
-    nowMs: Date.now(),
-  });
-
-  const campaign = pickCampaign(campaigns, {
-    nowMs: Date.now(),
-    locale: i18n.language?.startsWith('ko') ? 'ko' : 'en',
-    countryCode,
-    slot,
-  });
+  if (!campaignsReady) return { kind: 'house' };
 
   if (campaign) return { kind: 'affiliate', campaign };
   if (nativeAd) return { kind: 'admob', ad: nativeAd };
