@@ -93,6 +93,73 @@ type SheetComment = { id: string; name: string; text: string; time?: string; cre
 const sheetCommentTime = (c: SheetComment) => c.time ?? timeAgo(c.createdAt);
 
 // ─────────────────────────────────────────────
+// 바텀시트 공통 껍데기
+// ─────────────────────────────────────────────
+// Modal 의 animationType="slide" 는 **딤까지 통째로** 밀어 올린다. 그래서 검은 사각형이
+// 화면을 쓸고 올라오는 것처럼 보인다. 딤은 페이드, 시트는 슬라이드로 분리해 없앤다.
+//
+// 닫힘도 직접 그린다 — visible 을 곧바로 false 로 내리면 퇴장 없이 사라지므로,
+// 애니메이션이 끝난 뒤에 언마운트한다. 덕분에 후속 동작(네비게이션·OS 공유 시트)을
+// iOS 전용 onDismiss + 안드로이드 타이머 폴백 없이 onClosed 한 곳에서 이어갈 수 있다.
+const SHEET_SLIDE_FROM = Dimensions.get('window').height * 0.6;
+
+function SheetShell({
+  visible, onRequestClose, onClosed, overlay, children,
+}: {
+  visible: boolean;
+  onRequestClose: () => void;
+  /** 퇴장 애니메이션까지 끝난 뒤 1회 호출 (iOS·안드로이드 공통) */
+  onClosed?: () => void;
+  /** 시트 위에 겹치는 내용 — 함께 슬라이드하지 않는다 */
+  overlay?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = useState(false);
+  const anim = useRef(new Animated.Value(0)).current;
+  const openedRef = useRef(false);
+  // 최신 콜백을 참조해 애니메이션 완료 시점의 stale 클로저를 피한다
+  const closedCbRef = useRef(onClosed);
+  closedCbRef.current = onClosed;
+
+  useEffect(() => {
+    if (visible) {
+      openedRef.current = true;
+      setMounted(true);
+      anim.setValue(0);
+      Animated.spring(anim, { toValue: 1, useNativeDriver: true, speed: 18, bounciness: 3 }).start();
+    } else if (openedRef.current) {
+      openedRef.current = false;
+      Animated.timing(anim, { toValue: 0, duration: 180, useNativeDriver: true }).start(({ finished }) => {
+        if (!finished) return;
+        setMounted(false);
+        closedCbRef.current?.();
+      });
+    }
+  }, [visible, anim]); // anim 은 useRef 값이라 실제로는 고정
+
+  if (!mounted) return null;
+
+  return (
+    <Modal visible transparent statusBarTranslucent navigationBarTranslucent animationType="none" onRequestClose={onRequestClose}>
+      <View style={{ flex: 1 }} accessibilityViewIsModal>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: '#000000', opacity: Animated.multiply(anim, 0.4) }]}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onRequestClose} />
+        </Animated.View>
+        <Animated.View
+          style={{
+            marginTop: 'auto',
+            transform: [{ translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [SHEET_SLIDE_FROM, 0] }) }],
+          }}
+        >
+          {children}
+        </Animated.View>
+        {overlay}
+      </View>
+    </Modal>
+  );
+}
+
+// ─────────────────────────────────────────────
 // 공유 바텀시트
 // ─────────────────────────────────────────────
 function ShareBottomSheet({
@@ -146,25 +213,16 @@ function ShareBottomSheet({
   const handleSelectFriend = (friend: typeof shareFriends[0]) => {
     // 내부 View 오버레이 닫기
     setFriendPickerVisible(false);
-    const doNav = () => {
+    // 시트가 완전히 닫힌 뒤 이동한다 — 닫히는 중에 화면을 밀면 iOS 에서 전환이 씹힌다.
+    // SheetShell 이 퇴장 애니메이션 후 onClosed 를 양 플랫폼에서 불러주므로
+    // 예전의 'iOS onDismiss + 안드로이드 타이머' 이중 처리는 필요 없다.
+    pendingNavRef.current = () => {
       navigation.navigate('DM', {
         friend: { ...friend, lastMessage: '', time: '', unread: 0 },
         sharePostId: postId,
       });
     };
-    // iOS: onDismiss 콜백에서 네비게이션 실행
-    pendingNavRef.current = doNav;
-    // 외부 Modal 닫기
     onClose();
-    // Android 폴백: onDismiss가 호출되지 않을 수 있으므로 타이머로 보장
-    if (Platform.OS === 'android') {
-      setTimeout(() => {
-        if (pendingNavRef.current) {
-          pendingNavRef.current = null;
-          doNav();
-        }
-      }, 500);
-    }
   };
 
   const SHARE_OPTIONS = [
@@ -186,12 +244,69 @@ function ShareBottomSheet({
   };
 
   return (
-    <Modal visible={visible} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={onClose} onDismiss={handleDismiss}>
-      <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} accessibilityViewIsModal>
-        <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
-          if (!prepareVisible && !friendPickerVisible) onClose();
-        }} />
+    <SheetShell
+      visible={visible}
+      onRequestClose={() => {
+        // 안내·메이트 선택 오버레이가 떠 있을 땐 배경 탭·뒤로가기로 시트가 닫히지 않게 한다
+        if (!prepareVisible && !friendPickerVisible) onClose();
+      }}
+      onClosed={handleDismiss}
+      overlay={
+        <>
+          {/* 서비스 준비 중 — View 오버레이 (Modal 아님) */}
+          {prepareVisible && (
+            <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
+              <View style={ss.prepareCard}>
+                <Text style={ss.prepareEmoji}>🚧</Text>
+                <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
+                <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
+                <TouchableOpacity style={ss.prepareBtn} onPress={() => setPrepareVisible(false)} activeOpacity={0.85}>
+                  <Text style={ss.prepareBtnText}>{t('common.confirm')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
+          {/* 메이트 선택 — View 오버레이 (Modal 아님) */}
+          {friendPickerVisible && (
+            <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
+              <View style={ss.friendPickerCard}>
+                <Text style={ss.friendPickerTitle}>{t('social.friendPickerTitle')}</Text>
+                <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
+                  {shareFriends.length === 0 ? (
+                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
+                      {t('social.noFollowedFriends')}
+                    </Text>
+                  ) : shareFriends.map(f => (
+                    <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
+                      <View style={ss.friendAvatarWrap}>
+                        <View style={ss.friendAvatar}>
+                          {/* 프로필 사진이 있으면 사진 아바타 — 빠른공유 원·DM 목록과 같은 규칙 */}
+                          {f.photo ? (
+                            <Image source={{ uri: f.photo }} style={ss.friendAvatarPhoto} />
+                          ) : (
+                            <Text style={ss.friendAvatarEmoji}>{f.emoji}</Text>
+                          )}
+                        </View>
+                        {f.online && <View style={ss.friendOnline} />}
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={ss.friendName}>{f.name}</Text>
+                        <Text style={ss.friendHandle}>@{f.handle}</Text>
+                      </View>
+                      <Text style={ss.friendSendIcon}>→</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={ss.friendCancelBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
+                  <Text style={ss.friendCancelText}>{t('common.cancel')}</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </>
+      }
+    >
         {/* 바텀시트 — 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
         <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
           {/* 핸들 바 */}
@@ -217,60 +332,7 @@ function ShareBottomSheet({
             <Text style={ss.cancelText}>{t('common.cancel')}</Text>
           </TouchableOpacity>
         </View>
-
-        {/* 서비스 준비 중 — View 오버레이 (Modal 아님) */}
-        {prepareVisible && (
-          <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
-            <View style={ss.prepareCard}>
-              <Text style={ss.prepareEmoji}>🚧</Text>
-              <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
-              <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
-              <TouchableOpacity style={ss.prepareBtn} onPress={() => setPrepareVisible(false)} activeOpacity={0.85}>
-                <Text style={ss.prepareBtnText}>{t('common.confirm')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-
-        {/* 메이트 선택 — View 오버레이 (Modal 아님) */}
-        {friendPickerVisible && (
-          <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
-            <View style={ss.friendPickerCard}>
-              <Text style={ss.friendPickerTitle}>{t('social.friendPickerTitle')}</Text>
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 320 }}>
-                {shareFriends.length === 0 ? (
-                  <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', paddingVertical: 28 }}>
-                    {t('social.noFollowedFriends')}
-                  </Text>
-                ) : shareFriends.map(f => (
-                  <TouchableOpacity key={f.id} style={ss.friendRow} activeOpacity={0.7} onPress={() => handleSelectFriend(f)}>
-                    <View style={ss.friendAvatarWrap}>
-                      <View style={ss.friendAvatar}>
-                        {/* 프로필 사진이 있으면 사진 아바타 — 빠른공유 원·DM 목록과 같은 규칙 */}
-                        {f.photo ? (
-                          <Image source={{ uri: f.photo }} style={ss.friendAvatarPhoto} />
-                        ) : (
-                          <Text style={ss.friendAvatarEmoji}>{f.emoji}</Text>
-                        )}
-                      </View>
-                      {f.online && <View style={ss.friendOnline} />}
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={ss.friendName}>{f.name}</Text>
-                      <Text style={ss.friendHandle}>@{f.handle}</Text>
-                    </View>
-                    <Text style={ss.friendSendIcon}>→</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={ss.friendCancelBtn} onPress={() => setFriendPickerVisible(false)} activeOpacity={0.85}>
-                <Text style={ss.friendCancelText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-      </View>
-    </Modal>
+    </SheetShell>
   );
 }
 
@@ -2600,29 +2662,21 @@ function FriendsTab({ navigation }: { navigation: any }) {
   // '틱톡'처럼 특정 SNS 를 내건 버튼을 베타에서 가리려는 것이고, 이 버튼은 대상 앱을
   // 고르지 않는 일반 공유라 베타에서도 열어 둔다. 점 3개 > 공유 쪽 제한은 그대로다.
   //
-  // ⚠️ RN Modal 이 닫히는 중에 OS 시트를 띄우면 iOS 에서 표시되지 않는다. '기타' 시트를
-  //    먼저 닫고 닫힘이 끝난 뒤(onDismiss) 호출한다. onDismiss 는 iOS 전용이라
-  //    안드로이드는 타이머로 보장한다 (ShareBottomSheet 의 메이트 선택과 같은 방식).
+  // ⚠️ 시트가 닫히는 중에 OS 시트를 띄우면 iOS 에서 표시되지 않는다. '기타' 시트를 먼저
+  //    닫고, 퇴장 애니메이션이 끝난 뒤 SheetShell 이 불러주는 onClosed 에서 호출한다.
   const pendingShareRef = useRef(false);
-
-  const doOsShare = () => {
-    // 게시물별 웹 페이지가 없어 스토어 링크를 내보낸다(미등록 도메인 죽은 링크 방지)
-    const url = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
-    Share.share({ message: url }).catch(() => {});
-  };
 
   const openShareSheetForOther = () => {
     pendingShareRef.current = true;
     setOtherPickerItem(null);
-    if (Platform.OS === 'android') {
-      setTimeout(() => {
-        if (pendingShareRef.current) { pendingShareRef.current = false; doOsShare(); }
-      }, 320);
-    }
   };
 
   const handleOtherDismiss = () => {
-    if (pendingShareRef.current) { pendingShareRef.current = false; doOsShare(); }
+    if (!pendingShareRef.current) return;
+    pendingShareRef.current = false;
+    // 게시물별 웹 페이지가 없어 스토어 링크를 내보낸다(미등록 도메인 죽은 링크 방지)
+    const url = Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL;
+    Share.share({ message: url }).catch(() => {});
   };
 
   // 드롭 판정 여유(px) — 원을 정확히 덮지 않아도 근처면 인정 (자연스러운 드롭감)
@@ -3143,9 +3197,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
       />
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
-      <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)} onDismiss={handleOtherDismiss}>
-        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.4)' }} accessibilityViewIsModal>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
+      <SheetShell
+        visible={!!otherPickerItem}
+        onRequestClose={() => setOtherPickerItem(null)}
+        onClosed={handleOtherDismiss}
+      >
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             <View style={ss.handle} />
@@ -3183,8 +3239,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             </ScrollView>
             <View style={{ height: 24 }} />
           </View>
-        </View>
-      </Modal>
+      </SheetShell>
     </View>
   );
 }
