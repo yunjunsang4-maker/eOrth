@@ -2570,7 +2570,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const [quickToastVisible, setQuickToastVisible] = useState(false);
   const quickToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [otherPickerItem, setOtherPickerItem] = useState<any>(null);
-  const [otherPrepareVisible, setOtherPrepareVisible] = useState(false);
+  // '기타'에서 연 공유 시트의 대상 게시물 id (null이면 닫힘)
+  const [otherSharePostId, setOtherSharePostId] = useState<string | null>(null);
   // 빠른공유 메이트는 메이트(neighbors)에서 — 대화량 많은 순 상위 3명.
   // (dmStore.friends는 항상 비어 있어 더 이상 사용하지 않음)
   const dmFriends = useMemo(
@@ -2594,21 +2595,35 @@ function FriendsTab({ navigation }: { navigation: any }) {
     quickToastTimer.current = setTimeout(() => setQuickToastVisible(false), 1800);
   };
 
-  // '기타' 시트의 외부 공유 — 공유 바텀시트(ShareBottomSheet)와 같은 동작·같은 주소를 쓴다.
-  // 게시물별 웹 페이지가 없어 스토어 링크를 내보낸다(미등록 도메인 죽은 링크 방지).
-  const otherShareUrl = () => (Platform.OS === 'android' ? PLAY_STORE_URL : APP_STORE_URL);
+  // '기타' 시트의 외부 공유 — 옵션(인스타·틱톡·링크)을 여기서 다시 만들지 않고
+  // 점 3개 > 공유 와 **같은 ShareBottomSheet** 를 띄운다. 공유 수단이 늘거나 바뀔 때
+  // 한 곳만 고치면 되고, 두 경로의 화면이 어긋날 일도 없다.
+  //
+  // ⚠️ Modal 위에 Modal 을 겹치면 iOS 에서 두 번째가 안 뜬다. '기타' 시트를 먼저 닫고,
+  //    닫힘이 끝난 뒤(onDismiss) 공유 시트를 연다. onDismiss 는 iOS 전용이라
+  //    안드로이드는 타이머로 보장한다 (ShareBottomSheet 의 메이트 선택과 같은 방식).
+  const pendingShareRef = useRef<string | null>(null);
 
-  const handleOtherSNS = () => {
-    // 테스트/베타 빌드에서는 외부 SNS 공유를 막고 '준비 중'만 안내한다.
-    if (!SNS_SHARE_ENABLED) { setOtherPrepareVisible(true); return; }
-    Share.share({ message: otherShareUrl() }).catch(() => {});
+  const openShareSheetForOther = () => {
+    const id = otherPickerItem?.id ?? null;
+    if (!id) return;
+    pendingShareRef.current = id;
     setOtherPickerItem(null);
+    if (Platform.OS === 'android') {
+      setTimeout(() => {
+        if (pendingShareRef.current) {
+          setOtherSharePostId(pendingShareRef.current);
+          pendingShareRef.current = null;
+        }
+      }, 320);
+    }
   };
 
-  const handleOtherCopyLink = async () => {
-    await Clipboard.setStringAsync(otherShareUrl());
-    setOtherPickerItem(null);
-    showQuickToast(t('social.linkCopiedToast'));
+  const handleOtherDismiss = () => {
+    if (pendingShareRef.current) {
+      setOtherSharePostId(pendingShareRef.current);
+      pendingShareRef.current = null;
+    }
   };
 
   // 드롭 판정 여유(px) — 원을 정확히 덮지 않아도 근처면 인정 (자연스러운 드롭감)
@@ -3129,32 +3144,19 @@ function FriendsTab({ navigation }: { navigation: any }) {
       />
       <Toast visible={quickToastVisible} message={quickToast} />
       {/* 기타 피커 */}
-      <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)}>
+      <Modal visible={!!otherPickerItem} transparent statusBarTranslucent navigationBarTranslucent animationType="slide" onRequestClose={() => setOtherPickerItem(null)} onDismiss={handleOtherDismiss}>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)' }} accessibilityViewIsModal>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => {
-            // '준비 중' 안내가 떠 있을 땐 배경 탭으로 시트가 닫히지 않게 한다
-            if (!otherPrepareVisible) setOtherPickerItem(null);
-          }} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setOtherPickerItem(null)} />
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }]}>
             <View style={ss.handle} />
             <Text style={ss.sheetTitle}>{t('social.shareTitle')}</Text>
 
-            {/* 외부 공유 — 공유 바텀시트와 같은 3종 */}
-            <View style={ss.optionsRow}>
-              {[
-                { key: 'instagram', icon: '📷', label: t('social.instagram'), onPress: handleOtherSNS },
-                { key: 'tiktok', icon: '🎵', label: t('social.tiktok'), onPress: handleOtherSNS },
-                { key: 'link', icon: '🔗', label: t('social.copyLink'), onPress: handleOtherCopyLink },
-              ].map((opt) => (
-                <TouchableOpacity key={opt.key} style={ss.optionItem} onPress={opt.onPress} activeOpacity={0.75}>
-                  <View style={ss.optionIconWrap}>
-                    <Text style={ss.optionIcon}>{opt.icon}</Text>
-                  </View>
-                  <Text style={ss.optionLabel}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            {/* 외부 공유 — 옵션을 여기서 또 만들지 않고, 점 3개 > 공유 와 같은 시트를 띄운다 */}
+            <TouchableOpacity style={ss.otherShareBtn} onPress={openShareSheetForOther} activeOpacity={0.75}>
+              <ShareSvgIcon size={18} color="#FFFFFF" />
+              <Text style={ss.otherShareBtnText}>{t('social.share')}</Text>
+            </TouchableOpacity>
 
             <Text style={ss.otherSectionLabel}>{t('social.friendPickerTitle')}</Text>
             <ScrollView style={{ maxHeight: 360 }}>
@@ -3170,7 +3172,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
                   }}
                 >
                   <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }}>
-                    <Text style={{ fontSize: 18 }}>{f.emoji}</Text>
+                    {f.photo ? (
+                      <Image source={{ uri: f.photo }} style={{ width: 40, height: 40, borderRadius: 20 }} />
+                    ) : (
+                      <Text style={{ fontSize: 18 }}>{f.emoji}</Text>
+                    )}
                   </View>
                   <Text style={{ color: '#FFFFFF', fontSize: 15, fontWeight: '600' }}>{f.name}</Text>
                 </TouchableOpacity>
@@ -3178,22 +3184,17 @@ function FriendsTab({ navigation }: { navigation: any }) {
             </ScrollView>
             <View style={{ height: 24 }} />
           </View>
-
-          {/* 서비스 준비 중 — View 오버레이 (중첩 Modal 금지: 시트가 껍데기로 남아 터치가 먹통이 된다) */}
-          {otherPrepareVisible && (
-            <View style={[StyleSheet.absoluteFill, ss.prepareOverlay]}>
-              <View style={ss.prepareCard}>
-                <Text style={ss.prepareEmoji}>🚧</Text>
-                <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
-                <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
-                <TouchableOpacity style={ss.prepareBtn} onPress={() => setOtherPrepareVisible(false)} activeOpacity={0.85}>
-                  <Text style={ss.prepareBtnText}>{t('common.confirm')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
         </View>
       </Modal>
+
+      {/* '기타'에서 연 공유 시트 — 점 3개 > 공유 와 같은 컴포넌트 */}
+      <ShareBottomSheet
+        visible={!!otherSharePostId}
+        onClose={() => setOtherSharePostId(null)}
+        onLinkCopied={() => showQuickToast(t('social.linkCopiedToast'))}
+        postId={otherSharePostId ?? undefined}
+        navigation={navigation}
+      />
     </View>
   );
 }
@@ -3914,10 +3915,17 @@ const ss = StyleSheet.create({
   },
   friendAvatarEmoji: { fontSize: 20 },
   friendAvatarPhoto: { width: 42, height: 42, borderRadius: 21 },
-  // '기타' 시트에서 외부 공유 행과 메이트 목록을 가르는 구분 라벨
+  // '기타' 시트의 가로 공유 버튼 + 메이트 목록 구분 라벨
+  otherShareBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginHorizontal: 20, marginTop: 4, paddingVertical: 14,
+    borderRadius: 14, backgroundColor: '#2E2E3B',
+    borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)',
+  },
+  otherShareBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
   otherSectionLabel: {
     color: '#A1A1B0', fontSize: 12, fontWeight: '600',
-    paddingHorizontal: 20, marginTop: 4, marginBottom: 6,
+    paddingHorizontal: 20, marginTop: 16, marginBottom: 6,
   },
   friendOnline: {
     position: 'absolute',
