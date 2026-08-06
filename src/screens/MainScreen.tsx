@@ -42,6 +42,7 @@ import { useTranslation } from 'react-i18next';
 import { SHORT_COUNTRY_EN } from '../constants/countryDisplay';
 import Svg, { Circle, Path as SvgPath, Line as SvgLine, Rect as SvgRect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, RadialGradient as SvgRadialGradient, Stop as SvgStop } from 'react-native-svg';
 import * as ImagePicker from 'expo-image-picker';
+import * as Haptics from 'expo-haptics';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { NotificationBellIcon, SearchLineIcon, GlobeIcon, CameraIcon, LockClosedIcon } from '../components/icons';
 import GlobeView, { VisitedCountry, GlobeDisplayMode } from '../components/GlobeView';
@@ -75,6 +76,7 @@ import { isSupabaseConfigured } from '../services/supabase';
 import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
+import { PUZZLE_ART } from '../data/puzzleArt';
 
 const { height, width } = Dimensions.get('window');
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
@@ -594,6 +596,7 @@ export default function MainScreen({ navigation, route }: Props) {
     countryDisplayModes, setCountryDisplayModes,
     regionDisplayModes, setRegionDisplayModes,
     regionColors, setRegionColors,
+    puzzleImages, setPuzzleImages,
     taggedRegions, setTaggedRegions,
     dismissedRegionTagChips, setDismissedRegionTagChips,
     skinColorStore, setSkinColorStore,
@@ -644,10 +647,11 @@ export default function MainScreen({ navigation, route }: Props) {
     regionGlobalMode: 'photo' | 'puzzle';
     regionDisplayModes: Record<string, 'color' | 'photo'>;
     regionColors: Record<string, string>;
+    puzzleImages: Record<string, string>;
     skinColorStore: Record<string, SkinColorSet>;
   } | null>(null);
   const openDisplaySettings = () => {
-    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, skinColorStore };
+    dsSnapshot.current = { globeDisplayMode, globeColor, globeSkin, countryColors, countryDisplayModes, regionGlobalMode, regionDisplayModes, regionColors, puzzleImages, skinColorStore };
     setDisplaySettingsVisible(true);
   };
   const cancelDisplaySettings = () => {
@@ -662,6 +666,7 @@ export default function MainScreen({ navigation, route }: Props) {
       setRegionGlobalMode(s.regionGlobalMode);
       setRegionDisplayModes(s.regionDisplayModes);
       setRegionColors(s.regionColors);
+      setPuzzleImages(s.puzzleImages);
       setSkinColorStore(s.skinColorStore); // 미리보기 중 스킨 스왑이 저장소에 남긴 값까지 원복
     }
     dsSnapshot.current = null;
@@ -781,12 +786,13 @@ export default function MainScreen({ navigation, route }: Props) {
   );
 
   // 현재 선택된 대륙 국가의 기록된 지역 목록
+  // 2026-08-06 퍼즐 도입 — 지역별 색/모드 읽기 중단(저장 데이터는 보존, regionModeMigration 참고)
   const recordedRegions = useMemo(() => {
     if (!regionCountry) return [];
     const countryKo = ISO3_TO_KO[regionCountry];
     if (!countryKo) return [];
 
-    const regionsMap = new Map<string, { name: string; nameEn: string; key: string; photo?: string; mode?: 'color' | 'photo'; color?: string }>();
+    const regionsMap = new Map<string, { name: string; nameEn: string; key: string; photo?: string }>();
 
     // 실제 기록(store)에서 이 국가의 기록된 지역 수집
     records.forEach(r => {
@@ -815,8 +821,6 @@ export default function MainScreen({ navigation, route }: Props) {
           nameEn: nameEnCode,
           key,
           photo,
-          mode: regionDisplayModes[key] || undefined,
-          color: regionColors[key] || undefined,
         });
       }
     });
@@ -844,14 +848,12 @@ export default function MainScreen({ navigation, route }: Props) {
           nameEn: tr.nameEn,
           key,
           photo: countryPhoto,
-          mode: regionDisplayModes[key] || undefined,
-          color: regionColors[key] || undefined,
         });
       });
     }
 
     return Array.from(regionsMap.values());
-  }, [records, regionCountry, regionDisplayModes, regionColors, taggedRegions, i18n.language]);
+  }, [records, regionCountry, taggedRegions, i18n.language]);
 
   // 대륙 모드 진행도 — "47곳 중 5곳". 방문 지역만 있고 전체 수가 없으면 수집의 감각이 안 생긴다.
   // 분자는 지오에 실제로 있는 코드만 센다(오래된 코드가 섞여 분모를 넘는 것을 막는다).
@@ -861,6 +863,28 @@ export default function MainScreen({ navigation, route }: Props) {
     if (total === 0) return null; // 지역 데이터 미수록 국가 — 진행도를 숨긴다
     return { visited: visitedRegionCount(regionCountry, recordedRegions.map(r => r.nameEn)), total };
   }, [regionCountry, recordedRegions]);
+
+  // 현재 나라의 퍼즐 그림 — 사용자가 고른 게 없으면 기본 아트
+  const puzzleImage = regionCountry ? (puzzleImages[regionCountry] ?? PUZZLE_ART) : PUZZLE_ART;
+  // 퍼즐 그림 후보 — 이 나라 기록의 대표사진들(recordedRegions와 같은 규칙으로 이미 수집됨)
+  const puzzleCandidates = useMemo(
+    () => Array.from(new Set(recordedRegions.map(r => r.photo).filter((u): u is string => !!u))),
+    [recordedRegions]
+  );
+  // 앨범에서 퍼즐 그림 선택
+  const pickPuzzleImage = useCallback(async () => {
+    if (!regionCountry) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') return;
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      quality: 0.9,
+    });
+    if (!result.canceled && result.assets[0]) {
+      const uri = result.assets[0].uri;
+      setPuzzleImages(prev => ({ ...prev, [regionCountry]: uri }));
+    }
+  }, [regionCountry, setPuzzleImages]);
 
   // ── 방문 지역 소급 태깅 (지구본 기록만 있는 국가의 대륙 지역 활성화) ──
   const [regionTagSheetVisible, setRegionTagSheetVisible] = useState(false);
@@ -1276,6 +1300,11 @@ export default function MainScreen({ navigation, route }: Props) {
   const handleRegionMessage = (e: any) => {
     try {
       const data = JSON.parse(e.nativeEvent.data);
+      if (data.type === 'puzzleCompleted') {
+        // 퍼즐 완성 — WebView 연출과 동시에 성공 햅틱
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        return;
+      }
       if (data.type === 'regionTapped') {
         const countryKo = ISO3_TO_KO[data.countryCode] || data.countryCode;
         const regionName = data.region || data.regionEn;
@@ -1511,6 +1540,8 @@ export default function MainScreen({ navigation, route }: Props) {
                 defaultColor={countryColors[KO_TO_EN[ISO3_TO_KO[regionCountry]]] || globeColor}
                 searchQuery={regionSearch}
                 showPopular={popularActive}
+                puzzleImage={puzzleImage}
+                puzzleComplete={!!regionProgress && regionProgress.total > 0 && regionProgress.visited === regionProgress.total}
               />
             </View>
             {/* ── 하단 오버레이 스택 ──
@@ -2201,31 +2232,74 @@ export default function MainScreen({ navigation, route }: Props) {
                 <Text style={styles.dsTitle}>{t('main.regionDisplayTitle')}</Text>
                 <Text style={styles.dsSub}>{t('main.regionDisplaySub')}</Text>
 
-                {/* 대륙 글로벌 기본 모드 선택 */}
+                {/* 대륙 글로벌 모드 — 지역별 사진 / 퍼즐 (색 단독 모드는 2026-08-06 폐지) */}
                 <View style={styles.dsColorSection}>
                   <Text style={styles.dsColorLabel}>{t('main.globalDefault')}</Text>
                   <View style={styles.dsSection}>
                     <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode !== 'photo' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
-                      activeOpacity={0.7}
-                      // 임시 — Task 4에서 사진/퍼즐 토글로 교체
-                      onPress={() => setRegionGlobalMode('photo')}
-                    >
-                      <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: globeColor }} />
-                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'photo' && styles.dsOptionTextActive]}>{t('main.color')}</Text>
-                      {regionGlobalMode !== 'photo' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.dsOption, regionGlobalMode === 'photo' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
+                      style={[styles.dsOption, regionGlobalMode !== 'puzzle' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
                       activeOpacity={0.7}
                       onPress={() => setRegionGlobalMode('photo')}
                     >
                       <Text style={{ fontSize: 24 }}>🖼️</Text>
-                      <Text style={[styles.dsOptionText, regionGlobalMode === 'photo' && styles.dsOptionTextActive]}>{t('main.photo')}</Text>
-                      {regionGlobalMode === 'photo' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
+                      <Text style={[styles.dsOptionText, regionGlobalMode !== 'puzzle' && styles.dsOptionTextActive]}>{t('main.regionPhotoMode')}</Text>
+                      {regionGlobalMode !== 'puzzle' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.dsOption, regionGlobalMode === 'puzzle' && [styles.dsOptionActive, { borderColor: skinAccent.accent, backgroundColor: skinAccent.tint(0.1) }]]}
+                      activeOpacity={0.7}
+                      onPress={() => setRegionGlobalMode('puzzle')}
+                    >
+                      <Text style={{ fontSize: 24 }}>🧩</Text>
+                      <Text style={[styles.dsOptionText, regionGlobalMode === 'puzzle' && styles.dsOptionTextActive]}>{t('main.puzzle')}</Text>
+                      {regionGlobalMode === 'puzzle' && <View style={[styles.dsCheck, { backgroundColor: skinAccent.accent }]} />}
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {/* 퍼즐 그림 선택 — 기본 아트 / 이 나라 기록 사진 / 앨범 */}
+                {regionGlobalMode === 'puzzle' && (
+                  <View style={styles.dsColorSection}>
+                    <Text style={styles.dsColorLabel}>{t('main.puzzleImageLabel')}</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 4 }}>
+                      {[PUZZLE_ART, ...puzzleCandidates].map((uri, i) => {
+                        const selected = puzzleImage === uri;
+                        return (
+                          <TouchableOpacity
+                            key={`${i}-${uri.slice(-24)}`}
+                            activeOpacity={0.8}
+                            onPress={() => {
+                              if (!regionCountry) return;
+                              // 기본 아트 선택 = 사용자 지정 제거(기본값 복귀)
+                              setPuzzleImages(prev => {
+                                const next = { ...prev };
+                                if (uri === PUZZLE_ART) delete next[regionCountry];
+                                else next[regionCountry] = uri;
+                                return next;
+                              });
+                            }}
+                          >
+                            <Image
+                              source={{ uri }}
+                              style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 2, borderColor: selected ? skinAccent.accent : 'transparent' }}
+                            />
+                            {i === 0 && (
+                              <Text style={{ color: '#A1A1B0', fontSize: 9, textAlign: 'center', marginTop: 2 }}>{t('main.puzzleDefaultArt')}</Text>
+                            )}
+                          </TouchableOpacity>
+                        );
+                      })}
+                      <TouchableOpacity
+                        activeOpacity={0.8}
+                        onPress={pickPuzzleImage}
+                        style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#3E3155', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Text style={{ color: '#A1A1B0', fontSize: 20 }}>＋</Text>
+                        <Text style={{ color: '#A1A1B0', fontSize: 9 }}>{t('main.puzzleFromAlbum')}</Text>
+                      </TouchableOpacity>
+                    </ScrollView>
+                  </View>
+                )}
 
                 {/* 지역별 개별 설정 */}
                 <View style={[styles.dsColorSection, { flex: 1, maxHeight: 300 }]}>
@@ -2246,78 +2320,16 @@ export default function MainScreen({ navigation, route }: Props) {
                     </Text>
                   ) : (
                     <ScrollView style={{ flex: 1 }} nestedScrollEnabled showsVerticalScrollIndicator={false}>
-                      {recordedRegions.map(r => {
-                        const currentMode = (regionDisplayModes[r.key] || 'default') as 'color' | 'photo' | 'default';
-                        const effectiveMode = currentMode === 'default' ? regionGlobalMode : currentMode;
-                        const regionColor = regionColors[r.key] || globeColor;
-                        const isEditing = editingCountryColor === r.key;
-
-                        return (
-                          <View key={r.key} style={{ marginBottom: 8 }}>
-                            <View style={styles.dsCountryRow}>
-                              {effectiveMode === 'color' ? (
-                                <TouchableOpacity
-                                  style={[styles.dsCountryDot, { backgroundColor: regionColor }]}
-                                  onPress={() => setEditingCountryColor(isEditing ? null : r.key)}
-                                />
-                              ) : (
-                                <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
-                                  {effectiveMode === 'photo' && <Text style={{ fontSize: 10 }}>🖼️</Text>}
-                                </View>
-                              )}
-                              <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
-
-                              <View style={styles.dsSegmentWrap}>
-                                {(['default', 'color', 'photo'] as const).map(m => {
-                                  const label = m === 'default' ? t('main.modeDefault') : m === 'color' ? t('main.color') : t('main.photo');
-                                  const active = currentMode === m;
-                                  return (
-                                    <TouchableOpacity
-                                      key={m}
-                                      style={[styles.dsSegmentBtn, active && [styles.dsSegmentBtnActive, { backgroundColor: skinAccent.accent }]]}
-                                      onPress={() => {
-                                        setRegionDisplayModes(prev => {
-                                          const next = { ...prev };
-                                          if (m === 'default') {
-                                            delete next[r.key];
-                                          } else {
-                                            next[r.key] = m;
-                                          }
-                                          return next;
-                                        });
-                                        if (m !== 'color' && editingCountryColor === r.key) setEditingCountryColor(null);
-                                      }}
-                                    >
-                                      <Text style={[styles.dsSegmentText, active && styles.dsSegmentTextActive]}>{label}</Text>
-                                    </TouchableOpacity>
-                                  );
-                                })}
-                              </View>
+                      {recordedRegions.map(r => (
+                        <View key={r.key} style={{ marginBottom: 8 }}>
+                          <View style={styles.dsCountryRow}>
+                            <View style={[styles.dsCountryDot, { backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' }]}>
+                              {!!r.photo && <Text style={{ fontSize: 10 }}>🖼️</Text>}
                             </View>
-
-                            {/* 지역별 색상 선택 (색상 모드일 때 점 탭으로 펼침) */}
-                            {isEditing && effectiveMode === 'color' && (
-                              <View style={styles.dsCountryPalette}>
-                                {getSkinPalette(globeSkin).map(c => (
-                                  <TouchableOpacity key={c} activeOpacity={0.8} onPress={() => setRegionColors(prev => ({ ...prev, [r.key]: c }))}>
-                                    <View style={[styles.dsColorItemSm, { backgroundColor: c }, isNoiseColor(c) && { overflow: 'hidden' }, (regionColors[r.key] || globeColor) === c && styles.dsColorItemSmActive]}>
-                                      {isNoiseColor(c) && <GrainOverlay color="#000000" opacity={0.5} dotCount={80} />}
-                                    </View>
-                                  </TouchableOpacity>
-                                ))}
-                                {regionColors[r.key] && (
-                                  <TouchableOpacity
-                                    style={styles.dsCountryReset}
-                                    onPress={() => setRegionColors(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
-                                  >
-                                    <Text style={styles.dsCountryResetText}>{t('main.reset')}</Text>
-                                  </TouchableOpacity>
-                                )}
-                              </View>
-                            )}
+                            <Text style={styles.dsCountryName} numberOfLines={1}>{r.name}</Text>
                           </View>
-                        );
-                      })}
+                        </View>
+                      ))}
                     </ScrollView>
                   )}
                 </View>
