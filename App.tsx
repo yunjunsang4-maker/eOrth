@@ -92,7 +92,7 @@ export default function App() {
   // error를 무시하면 로딩 스피너에 영구 고착돼 앱을 아예 못 쓴다.
   if (!fontsLoaded && !fontError) {
     return (
-      <View style={{ flex: 1, backgroundColor: '#0A0118', alignItems: 'center', justifyContent: 'center' }}>
+      <View style={{ flex: 1, backgroundColor: '#000000', alignItems: 'center', justifyContent: 'center' }}>
         <ActivityIndicator color="#7B61FF" size="large" />
       </View>
     );
