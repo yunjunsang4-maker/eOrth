@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
-import { useVideoPlayer, VideoView } from 'expo-video';
 import * as NativeSplash from 'expo-splash-screen';
 import { APP_START_MS } from '../utils/appStart';
 import { useRecords } from '../store/recordStore';
@@ -17,18 +16,17 @@ import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
 import type { RootStackScreenProps } from '../navigation/types';
 
-// 스플래시 영상 — expo-video 사용 (expo-av Video는 새 아키텍처에서 크래시 — eorth-expo-av-to-expo-video)
-// 에셋은 오디오 트랙 없이 내보낸다(ffmpeg -an) — muted·mixWithOthers에 더해 3중 안전장치로,
-// 어떤 경로로도 오디오 세션을 건드리지 않아 사용자의 음악·영상 재생이 끊기지 않는다.
-const SPLASH_VIDEO = require('../../assets/splash.mp4');
-const { width: SW, height: SH } = Dimensions.get('window');
+// 스플래시 영상은 2026-08-07 제거했다. 이제 스플래시는 네이티브 LaunchScreen(로고) 하나뿐이고,
+// 이 화면은 그 뒤에서 진입 목적지만 판정한다 — 화면 자체는 검은 배경만 그린다.
+// (assets/splash.mp4 는 더 이상 참조되지 않는다)
+const { width: SW } = Dimensions.get('window');
 
 // ─────────────────────────────────────────────
 // 네이티브 스플래시 로고 크기 미리보기 (개발 전용)
 // ─────────────────────────────────────────────
 // 네이티브 스플래시는 LaunchScreen 스토리보드에 구워져서 크기를 바꿀 때마다 EAS 재빌드가
 // 필요하다(한 번에 15~25분). 그래서 크기만 여기서 먼저 고른다 —
-// 아래를 true 로 바꾸면 영상 대신 미리보기가 뜨고, 핫리로드로 즉시 반영된다.
+// 아래를 true 로 바꾸면 미리보기가 뜨고, 핫리로드로 즉시 반영된다.
 //
 // 이 화면은 app.json 의 expo-splash-screen 설정과 **같은 조건**으로 그린다:
 //   같은 이미지 · 배경 #000000 · 폭 = imageWidth(dp). 그래서 여기서 정한 숫자를
@@ -38,24 +36,11 @@ const { width: SW, height: SH } = Dimensions.get('window');
 const SPLASH_LOGO_PREVIEW = false;
 const SPLASH_LOGO = require('../../assets/splash-icon.png');
 // app.json > plugins > expo-splash-screen > imageWidth 와 같은 값을 둔다.
-//
-// 150 은 '영상 속 로고와 같은 크기'를 실측해서 나온 값이다:
-//   · 영상 1080x2114, 로고 코어 폭 400px (프레임 5~10 내내 일정) → 영상 폭의 37.0%
-//   · contentFit="contain" 이고 세로가 긴 화면에서는 폭이 기준이라 화면 폭의 37.0%
-//   · 아이폰 393pt 기준 로고 145.6dp, splash-icon.png 는 코어/전체 = 0.968 이므로
-//     imageWidth = 145.6 / 0.968 ≈ 150
-// 영상 로고는 화면 폭에 비례하고 imageWidth 는 고정 dp 라, 기기 폭이 크게 다르면
-// 몇 % 차이는 남는다.
-//
-// 실측값은 150 이었지만 실기기 겹쳐보기로 확인한 결과 215 로 정했다(2026-08-07).
+// 실기기에서 눈으로 확인해 215 로 정했다(2026-08-07).
 const SPLASH_LOGO_WIDTH = 215;
-const SPLASH_RATE = 2.5; // 재생 배속 — 더 빠르게
-// 영상 길이 ≈ 5.0초 / 배속 ≈ 2.0초. 이벤트 누락·판정 지연에도 갇히지 않게 여유를 둔 안전 상한.
-const MAX_SPLASH_MS = 4000;
-// 진입 목적지 판정의 상한. 이 시간을 넘기면 로컬 신호만으로 폴백해 앱에 들어간다
-// (영상 대기 상한인 MAX_SPLASH_MS 와는 별개 — 그건 비동기 작업을 끊지 못한다).
+// 진입 목적지 판정의 상한. 이 시간을 넘기면 로컬 신호만으로 폴백해 앱에 들어간다.
 const DEST_TIMEOUT_MS = 8000;
-// 네이티브 스플래시(로고)를 최소 이만큼은 보여준 뒤 영상으로 넘긴다.
+// 네이티브 스플래시(로고)를 최소 이만큼은 보여준다.
 // 앱 시작 시각(APP_START_MS) 기준이라, 번들 로드가 이미 이 시간을 넘겼으면 곧바로 넘어간다.
 const NATIVE_SPLASH_MIN_MS = 700;
 
@@ -64,7 +49,6 @@ type Props = RootStackScreenProps<'Splash'>;
 export default function SplashScreen({ navigation }: Props) {
   const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
   const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
-  const [previewOverlay, setPreviewOverlay] = useState(true);
   const { resetRecords } = useRecords();
   const { resetSettings, birthday } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
@@ -74,25 +58,10 @@ export default function SplashScreen({ navigation }: Props) {
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
 
-  const player = useVideoPlayer(SPLASH_VIDEO, (p) => {
-    p.loop = false;
-    p.muted = true; // 스플래시는 무음 재생
-    // 기본 'auto'는 초기화 시점에 오디오 세션(포커스)을 가져가 백그라운드 음악·영상을
-    // 멈추게 한다 — 무음 스플래시는 다른 앱 오디오와 섞여도 되므로 포커스를 잡지 않는다.
-    p.audioMixingMode = 'mixWithOthers';
-    p.playbackRate = SPLASH_RATE; // 빠르게
-    // 여기서 재생하지 않는다 — 네이티브 스플래시를 내리는 시점에 맞춰 시작해야
-    // 로고가 떠 있는 0.7초 동안 영상 앞부분이 보이지 않은 채 흘러가지 않는다.
-  });
-
   useEffect(() => {
-    // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 비교할 시간이 필요하다.
-    // 영상은 반복 재생·등속으로 돌려서 로고가 뜬 구간을 계속 볼 수 있게 한다.
+    // 미리보기 중에는 화면을 넘기지 않는다 — 크기를 눈으로 볼 시간이 필요하다
     if (previewMode) {
       NativeSplash.hideAsync().catch(() => {});
-      player.loop = true;
-      player.playbackRate = 1;
-      player.play();
       return;
     }
     let navigated = false;
@@ -151,40 +120,36 @@ export default function SplashScreen({ navigation }: Props) {
 
     const destination = resolveDestination();
 
+    let cancelled = false;
+
     const go = async () => {
       if (navigated) return;
       navigated = true;
-      // ⚠️ MAX_SPLASH_MS 는 '영상 대기' 상한일 뿐 이 판정의 상한이 아니다.
-      // 상한이 없으면 판정 체인 안의 서버 호출 하나가 무응답일 때 스플래시 마지막
-      // 프레임에서 영구 정지해 앱 진입 자체가 불가능해진다. 판정이 늦거나 실패하면
-      // 오프라인 분기와 같은 기준(세션 유무 + 로컬 birthday)으로 폴백한다.
+      // ⚠️ 판정에 상한이 없으면, 체인 안의 서버 호출 하나가 무응답일 때 스플래시에서
+      // 영구 정지해 앱 진입 자체가 불가능해진다. 판정이 늦거나 실패하면 오프라인
+      // 분기와 같은 기준(세션 유무 + 로컬 birthday)으로 폴백한다.
       const fallback = (): 'Main' | 'BasicInfo' | 'AppIntro' => {
         if (!sessionSeen) return 'AppIntro';
         const b = birthdayRef.current;
         return b && b.trim() ? 'Main' : 'BasicInfo';
       };
       const dest = await withTimeout(destination, DEST_TIMEOUT_MS).catch(fallback);
+      if (cancelled) return;
       navigation.replace(dest);
+      // 다음 화면이 그려진 뒤에 스플래시를 내린다 — 먼저 내리면 그 사이 검은 화면이
+      // 한 프레임 스친다. 이 화면 자체는 아무것도 그리지 않으므로 여기가 유일한 가림막이다.
+      requestAnimationFrame(() => { NativeSplash.hideAsync().catch(() => {}); });
     };
 
-    // 네이티브 스플래시(로고)를 최소 노출 시간만큼 유지한 뒤, 영상 재생과 함께 내린다.
-    // 재생을 먼저 걸고 내려야 로고 → 검은 화면 → 영상 순으로 끊겨 보이지 않는다.
+    // 로고를 최소 노출 시간만큼 유지한 뒤 이동한다. 판정이 그보다 오래 걸리면
+    // 그때까지 로고가 계속 떠 있는다(go 내부에서 await 하므로 자연스럽게 이어진다).
     // 앱 시작 기준이라, 번들 로드가 이미 오래 걸렸으면 대기 없이 즉시 넘어간다.
     const waitMs = Math.max(0, NATIVE_SPLASH_MIN_MS - (Date.now() - APP_START_MS));
-    const revealTimer = setTimeout(() => {
-      player.play();
-      NativeSplash.hideAsync().catch(() => {});
-    }, waitMs);
-
-    // 영상이 끝나면 이동. 이벤트 누락 대비 안전 타이머도 둔다.
-    // (상한은 로고 노출이 끝난 시점부터 재야 영상 재생 시간이 그만큼 깎이지 않는다)
-    const sub = player.addListener('playToEnd', () => { go(); });
-    const timer = setTimeout(() => { go(); }, waitMs + MAX_SPLASH_MS);
+    const timer = setTimeout(() => { go(); }, waitMs);
 
     return () => {
+      cancelled = true;
       navigated = true;
-      sub?.remove?.();
-      clearTimeout(revealTimer);
       clearTimeout(timer);
       // 화면을 벗어날 때 스플래시가 남아 있으면 다음 화면이 가려진다
       NativeSplash.hideAsync().catch(() => {});
@@ -195,17 +160,9 @@ export default function SplashScreen({ navigation }: Props) {
     const pct = Math.round((previewW / SW) * 1000) / 10;
     return (
       <View style={styles.container}>
-        {/* 겹쳐보기: 영상 속 로고와 크기가 같은지 직접 대조한다 */}
-        {previewOverlay && (
-          <VideoView player={player} style={styles.video} contentFit="contain" nativeControls={false} />
-        )}
         {/* 네이티브 스플래시와 같은 조건: 배경 #000000, 같은 이미지, 폭 = imageWidth(dp) */}
         <View style={styles.previewLogoWrap} pointerEvents="none">
-          <Image
-            source={SPLASH_LOGO}
-            style={{ width: previewW, opacity: previewOverlay ? 0.55 : 1 }}
-            resizeMode="contain"
-          />
+          <Image source={SPLASH_LOGO} style={{ width: previewW }} resizeMode="contain" />
         </View>
         <View style={styles.previewPanel}>
           <Text style={styles.previewValue}>imageWidth: {previewW}dp</Text>
@@ -222,17 +179,7 @@ export default function SplashScreen({ navigation }: Props) {
               </TouchableOpacity>
             ))}
           </View>
-          <TouchableOpacity
-            style={[styles.previewBtn, styles.previewToggle]}
-            onPress={() => setPreviewOverlay((v) => !v)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.previewBtnText}>
-              {previewOverlay ? '영상 끄기 (로고만)' : '영상 위에 겹쳐보기'}
-            </Text>
-          </TouchableOpacity>
           <Text style={styles.previewHint}>
-            겹쳐보기에서 두 로고의 좌우 끝이 맞으면 같은 크기다{'\n'}
             정한 값을 app.json 의 imageWidth 에 넣고{'\n'}SPLASH_LOGO_PREVIEW 를 false 로 되돌릴 것
           </Text>
         </View>
@@ -240,35 +187,22 @@ export default function SplashScreen({ navigation }: Props) {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <VideoView
-        player={player}
-        style={styles.video}
-        contentFit="contain"
-        nativeControls={false}
-      />
-    </View>
-  );
+  // 네이티브 스플래시가 이 화면을 덮고 있다. 여기서 뭔가를 그리면 스플래시를 내리는
+  // 순간 그게 한 프레임 스치므로, 배경색만 두고 아무것도 그리지 않는다.
+  return <View style={styles.container} />;
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000', // 영상 배경(우주 검정)과 동일한 백드롭
+    // 네이티브 스플래시 배경과 같은 색 — 내려가는 순간 색이 튀지 않는다
+    backgroundColor: '#000000',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  video: {
-    // contain: cover는 세로가 긴 화면에서 좌우를 크롭해 피사체가 화면 밖으로 넘쳤음.
-    // 영상 배경(우주 검정)이 백드롭 #000과 같아 여백이 티 나지 않고 피사체만 온전히 담긴다.
-    width: SW,
-    height: SH,
   },
   // ── 개발 전용 미리보기 (SPLASH_LOGO_PREVIEW) ──
   previewLogoWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   previewPanel: { position: 'absolute', bottom: 60, alignItems: 'center', gap: 10 },
-  previewToggle: { paddingHorizontal: 18 },
   previewValue: { color: '#FFFFFF', fontSize: 18, fontWeight: '700' },
   previewHint: { color: '#A1A1B0', fontSize: 12, textAlign: 'center', lineHeight: 18 },
   previewRow: { flexDirection: 'row', gap: 10 },
