@@ -16,9 +16,9 @@ import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
 import type { RootStackScreenProps } from '../navigation/types';
 
-// 스플래시 영상은 2026-08-07 제거했다. 이제 스플래시는 네이티브 LaunchScreen(로고) 하나뿐이고,
-// 이 화면은 그 뒤에서 진입 목적지만 판정한다 — 화면 자체는 검은 배경만 그린다.
-// (assets/splash.mp4 는 더 이상 참조되지 않는다)
+// 스플래시 영상은 2026-08-07 제거했다(에셋 assets/splash.mp4 도 함께 삭제).
+// 이제 스플래시는 네이티브 LaunchScreen(로고) 하나뿐이고, 이 화면은 그 뒤에서
+// 진입 목적지만 판정한다 — 화면 자체는 검은 배경만 그린다.
 const { width: SW } = Dimensions.get('window');
 
 // ─────────────────────────────────────────────
