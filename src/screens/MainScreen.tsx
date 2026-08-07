@@ -2546,7 +2546,8 @@ export default function MainScreen({ navigation, route }: Props) {
                                   backgroundColor: 'rgba(10,11,15,0.85)', alignItems: 'center', justifyContent: 'center',
                                 }}
                               >
-                                <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', lineHeight: 12 }}>✕</Text>
+                                {/* includeFontPadding: 안드로이드 기본 상하 여백이 18px 원 안 글리프를 아래로 밀어 iOS와 어긋남 */}
+                                <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '700', lineHeight: 12, includeFontPadding: false }}>✕</Text>
                               </TouchableOpacity>
                             )}
                           </TouchableOpacity>

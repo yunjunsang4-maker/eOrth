@@ -48,7 +48,18 @@
           "image": "./assets/splash-icon.png",
           "resizeMode": "contain",
           "backgroundColor": "#000000",
-          "imageWidth": 215
+          "imageWidth": 215,
+          "android": {
+            "image": "./assets/splash-icon-android.png",
+            "imageWidth": 150
+          }
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#BF85FC"
         }
       ],
       "expo-font",
