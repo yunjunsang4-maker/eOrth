@@ -9,7 +9,7 @@
 //   - scope='full'    : (본인 JWT) 유예 만료 — Storage 파일 정리 후 auth.users 삭제(→ cascade 전체 파기).
 //                       서버가 만료 여부를 직접 검증하므로 클라이언트 시계 조작으로
 //                       유예를 건너뛸 수 없다.
-//   - scope='sweep'   : (service_role 전용) 유예가 만료됐는데 재로그인하지 않은 계정을
+//   - scope='sweep'   : (관리자 전용) 유예가 만료됐는데 재로그인하지 않은 계정을
 //                       일괄 파기하는 안전망 — pg_cron + pg_net 이 매일 호출한다.
 //                       ⚠️ storage.objects 는 SQL 직접 삭제가 트리거로 금지되어 있어
 //                       (protect_delete) SQL 함수로는 파일 정리가 불가 → 반드시 이 경로 사용.
@@ -18,9 +18,19 @@
 //   - content/full 은 profiles.deletion_requested_at 이 기록된 계정만 파기 가능
 //     (탈퇴 신청 없이 토큰만으로 계정을 파기하는 것을 방지)
 //   - 'full'/'sweep' 은 신청 후 30일이 지나야 실행된다.
-//   - 'sweep' 은 Authorization 토큰이 service_role 키와 일치할 때만 동작.
+//   - 'sweep' 은 x-purge-secret 헤더가 PURGE_SECRET 과 일치할 때만 동작.
 //
-// 배포: supabase functions deploy delete-account --project-ref <ref>
+// ⚠️ sweep 인증을 PURGE_SECRET 으로 옮긴 이유 (2026-08-07)
+//   원래는 Authorization 토큰을 SUPABASE_SERVICE_ROLE_KEY 와 문자열 비교했다. 그런데 이 env 에
+//   무엇이 주입되는지는 **플랫폼이 정한다** — 실제로 이 프로젝트는 신형 키 체계로 넘어가면서
+//   레거시 service_role JWT 와 값이 달라졌고, 그 결과 cron 이 이틀간 조용히 401 로 죽었다.
+//   (자세한 경위는 supabase/SERVER-STATE.md 1번 절)
+//   PURGE_SECRET 은 우리가 정하는 값이라 플랫폼 키 변경에 영향받지 않는다.
+//   Authorization 헤더는 이제 **게이트웨이를 통과하기 위한 용도로만** 쓰인다.
+//
+// 배포:
+//   supabase secrets set PURGE_SECRET=<임의의 긴 랜덤 문자열> --project-ref <ref>
+//   supabase functions deploy delete-account --project-ref <ref>
 //   (SUPABASE_URL / SUPABASE_ANON_KEY / SUPABASE_SERVICE_ROLE_KEY 는 런타임 자동 주입)
 // -----------------------------------------------------------------------------
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -31,9 +41,21 @@ const MEDIA_BUCKET = 'media';
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-purge-secret',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
+
+// 길이 정보까지 흘리지 않도록 상수 시간 비교
+function secretEquals(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
+}
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -93,10 +115,34 @@ Deno.serve(async (req: Request) => {
 
   const authHeader = req.headers.get('Authorization') ?? '';
 
-  // ── sweep: 유예 만료 미복귀 계정 일괄 파기 (pg_cron 안전망, service_role 전용) ──
+  // ── sweep: 유예 만료 미복귀 계정 일괄 파기 (pg_cron 안전망, 관리자 전용) ──
   if (scope === 'sweep') {
-    const token = authHeader.replace(/^Bearer\s+/i, '').trim();
-    if (!token || token !== serviceKey) return json({ error: 'unauthorized' }, 401);
+    // 1순위: 우리가 정한 PURGE_SECRET. 플랫폼 키 체계가 바뀌어도 영향받지 않는다.
+    // 2순위(호환): 아직 PURGE_SECRET 을 안 넣었을 때만 옛 방식(service_role 문자열 비교)을 허용한다.
+    //   → secrets set 을 마쳤으면 이 폴백은 자동으로 꺼진다.
+    const purgeSecret = Deno.env.get('PURGE_SECRET');
+    const bearer = authHeader.replace(/^Bearer\s+/i, '').trim();
+    const provided = (req.headers.get('x-purge-secret') ?? '').trim();
+
+    const ok = purgeSecret
+      ? provided.length > 0 && secretEquals(provided, purgeSecret)
+      : bearer.length > 0 && secretEquals(bearer, serviceKey);
+
+    if (!ok) {
+      // 조용히 죽지 않게 남긴다 — 이전에 cron 이 이틀간 401 인 걸 아무도 몰랐다.
+      console.error(
+        `[sweep] unauthorized (mode=${purgeSecret ? 'purge_secret' : 'legacy_service_role'}, ` +
+          `x-purge-secret=${provided ? 'present' : 'absent'})`,
+      );
+      return json(
+        {
+          error: 'unauthorized',
+          // 401 을 만났을 때 원인을 바로 갈라볼 수 있게 한다. 비밀값은 담지 않는다.
+          hint: purgeSecret ? 'purge_secret_mismatch' : 'purge_secret_not_set',
+        },
+        401,
+      );
+    }
     const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
     const cutoff = new Date(Date.now() - GRACE_DAYS * DAY_MS).toISOString();
     const { data: expired, error: listErr } = await admin
@@ -120,10 +166,14 @@ Deno.serve(async (req: Request) => {
         const { error: delErr } = await admin.auth.admin.deleteUser(row.id);
         if (delErr) throw delErr;
         purged++;
-      } catch {
+      } catch (e) {
         failed++; // 한 계정 실패가 나머지 파기를 막지 않게 계속 진행
+        // 삼키기만 하면 어느 계정이 왜 안 지워졌는지 영영 모른다
+        console.error(`[sweep] purge failed uid=${row.id}: ${e instanceof Error ? e.message : e}`);
       }
     }
+    // 잡이 실제로 돌았는지 함수 로그만으로 확인할 수 있게 남긴다
+    console.log(`[sweep] done: candidates=${(expired ?? []).length} purged=${purged} failed=${failed}`);
     return json({ ok: true, purged, failed }, 200);
   }
 

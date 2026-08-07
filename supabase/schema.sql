@@ -1861,21 +1861,10 @@ grant execute on function public.cancel_account_deletion() to authenticated;
 --    pg_cron + pg_net 이 매일 호출한다(아래 등록 절차). 이 SQL 함수는 DB 행만 지우는
 --    수동 폴백(Storage 파일은 남음)으로만 남겨둔다.
 --
--- [pg_cron 등록 절차 — 대시보드 SQL Editor에서 1회 실행]
---  1) Extensions에서 pg_cron, pg_net 활성화
---  2) service_role 키를 Vault에 저장:
---     select vault.create_secret('<SERVICE_ROLE_KEY>', 'service_role_key');
---  3) 스케줄 등록(매일 18:00 UTC = KST 새벽 3시):
---     select cron.schedule('purge-deleted-accounts', '0 18 * * *', $cron$
---       select net.http_post(
---         url := 'https://blweolnunmsxgztmvzfd.supabase.co/functions/v1/delete-account',
---         headers := jsonb_build_object(
---           'Content-Type', 'application/json',
---           'Authorization', 'Bearer ' || (select decrypted_secret from vault.decrypted_secrets where name = 'service_role_key')
---         ),
---         body := '{"scope":"sweep"}'::jsonb
---       );
---     $cron$);
+-- [pg_cron 등록 절차]
+--   ⚠️ 절차 원본은 supabase/cron-setup.sql 하나뿐이다. 여기에 사본을 두지 않는다 —
+--      2026-08-07 헤더 개편(x-purge-secret 도입) 때 두 벌이 어긋날 뻔했다.
+--      선행 조건(PURGE_SECRET 등록·배포, Vault 시크릿 2종)과 확인 쿼리가 모두 그 파일에 있다.
 create or replace function public.purge_expired_deletion_requests(grace_days int default 30)
 returns integer
 language plpgsql security definer set search_path = public, auth as $$

@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image }
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
+import { FriendIcon } from './icons';
 
 const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
@@ -16,7 +17,7 @@ export interface CardRect { x: number; y: number; w: number; h: number }
 function TargetCircle({
   tg, x, y, hovered, appear, fromDir, onReport,
 }: {
-  tg: { key: string; emoji: string; label: string };
+  tg: { key: string; emoji: string; label: string; photo?: string; icon?: boolean };
   x: number; y: number;
   hovered: boolean;
   appear: Animated.Value;
@@ -57,7 +58,14 @@ function TargetCircle({
           },
         ]}
       >
-        <Text style={st.targetEmoji}>{tg.emoji}</Text>
+        {/* 사진 > 제작 아이콘 > 이모지 순. '기타'는 이모지 대신 자체 제작 SVG를 쓴다 */}
+        {tg.photo ? (
+          <Image source={{ uri: tg.photo }} style={st.targetPhoto} />
+        ) : tg.icon ? (
+          <FriendIcon size={28} color={skinAccent.accent} />
+        ) : (
+          <Text style={st.targetEmoji}>{tg.emoji}</Text>
+        )}
         <Text style={[st.targetLabel, hovered && st.targetLabelHover]} numberOfLines={1}>{tg.label}</Text>
       </Animated.View>
     </View>
@@ -111,8 +119,8 @@ export default function QuickShareOverlay({
   if (!visible || !cardRect) return null;
 
   // 타깃 키 목록: 메이트 handle + 'other'
-  const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name })),
-                   { key: 'other', emoji: '👥', label: t('comp.other') }];
+  const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name, photo: f.photo })),
+                   { key: 'other', emoji: '', label: t('comp.other'), icon: true }];
 
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
@@ -238,6 +246,8 @@ const st = StyleSheet.create({
   },
   targetHover: { borderColor: '#BF85FC', backgroundColor: '#3A2A55' },
   targetEmoji: { fontSize: 20 },
+  // 원 안을 꽉 채운다 — target 의 borderWidth 2 를 뺀 안쪽 크기
+  targetPhoto: { width: CIRCLE - 4, height: CIRCLE - 4, borderRadius: (CIRCLE - 4) / 2, backgroundColor: '#1A1A26' },
   targetLabel: { position: 'absolute', bottom: -17, fontSize: 10, color: '#A1A1B0', width: 68, textAlign: 'center' },
   targetLabelHover: { color: '#E9DDFF', fontWeight: '700' },
   ghost: {

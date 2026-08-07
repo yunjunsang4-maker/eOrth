@@ -9,6 +9,7 @@ import { DEVICE_DEFAULT_LANGUAGE } from '../i18n';
 import {
   REGION_KEY_SCHEMA, migrateRegionKeyMap, migrateTaggedRegions, migrateSkinColorStore,
 } from '../utils/regionKeyMigration';
+import { normalizeRegionGlobalMode, type RegionGlobalMode } from '../utils/regionModeMigration';
 
 // 소셜 다이어리 카드 모드: full = 상호작용 표시(B, 기본), minimal = 미니멀(A)
 export type DiaryCardMode = 'full' | 'minimal';
@@ -111,13 +112,25 @@ interface SettingsContextType {
   setCountryColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   countryDisplayModes: Record<string, MapDisplayMode>;
   setCountryDisplayModes: React.Dispatch<React.SetStateAction<Record<string, MapDisplayMode>>>;
-  regionGlobalMode: 'color' | 'photo';
-  setRegionGlobalMode: React.Dispatch<React.SetStateAction<'color' | 'photo'>>;
+  regionGlobalMode: RegionGlobalMode;
+  setRegionGlobalMode: React.Dispatch<React.SetStateAction<RegionGlobalMode>>;
   regionDisplayModes: Record<string, 'color' | 'photo'>;
   setRegionDisplayModes: React.Dispatch<React.SetStateAction<Record<string, 'color' | 'photo'>>>;
   // 지역별 색상 (키: `${ISO3}|${regionEn}` 복합 — 국가 간 동명 지역 충돌 방지)
   regionColors: Record<string, string>;
   setRegionColors: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 나라별 퍼즐 그림 (키: ISO3, 값: 사진 URI). 사용자 사진 전용 — 없으면 퍼즐이 그려지지 않는다
+  puzzleImages: Record<string, string>;
+  setPuzzleImages: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 나라별 퍼즐 원본 사진 (키: ISO3, 값: 크롭 전 원본 URI). 재조정을 항상 원본에서 시작해
+  // '크롭의 크롭'(재조정마다 1280px JPG를 다시 잘라 화질 저하·범위 축소 불가)을 막는다.
+  // 구 저장본에는 없다 — 그 경우 재조정은 현재 크롭본에서 시작(기존 동작).
+  puzzleSources: Record<string, string>;
+  setPuzzleSources: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+  // 지역별 사진 수동 지정 (키: `${ISO3}|${regionEn}` — regionColors와 동일 규칙, 값: 사진 URI).
+  // 없으면 기록 대표사진 자동 선정. 사용자가 고른 명시값이라 표시 설정 취소로 원복하지 않는다.
+  regionPhotos: Record<string, string>;
+  setRegionPhotos: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   // 소급 태깅한 방문 지역 (키: ISO3) — 지구본 기록만 있는 국가의 대륙 지역 활성화용
   taggedRegions: Record<string, TaggedRegion[]>;
   setTaggedRegions: React.Dispatch<React.SetStateAction<Record<string, TaggedRegion[]>>>;
@@ -211,9 +224,12 @@ interface SettingsPersistPayload {
   globeColor?: string;
   countryColors?: Record<string, string>;
   countryDisplayModes?: Record<string, MapDisplayMode>;
-  regionGlobalMode?: 'color' | 'photo';
+  regionGlobalMode?: 'color' | 'photo' | 'puzzle'; // 구 저장본 'color'는 hydrate에서 'photo'로 정규화
   regionDisplayModes?: Record<string, 'color' | 'photo'>;
   regionColors?: Record<string, string>;
+  puzzleImages?: Record<string, string>;
+  puzzleSources?: Record<string, string>; // 퍼즐 원본(크롭 전) 사진 (과거 저장본엔 없음)
+  regionPhotos?: Record<string, string>; // 지역별 사진 수동 지정 (과거 저장본엔 없음)
   taggedRegions?: Record<string, TaggedRegion[]>; // 소급 태깅 방문 지역 (과거 저장본엔 없음)
   // 방문 지역 칩을 닫은 국가 (과거 저장본엔 없음).
   // 영속되지만 '이번 방문' 동안만 유효하다 — MainScreen이 그 나라 대륙 화면에 다시
@@ -278,9 +294,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [globeColor, setGlobeColor] = useState('#C88BF6'); // 보라 활성화색 기본 (팔레트 4종 중, 채도 -15%)
   const [countryColors, setCountryColors] = useState<Record<string, string>>({});
   const [countryDisplayModes, setCountryDisplayModes] = useState<Record<string, MapDisplayMode>>({});
-  const [regionGlobalMode, setRegionGlobalMode] = useState<'color' | 'photo'>('color');
+  const [regionGlobalMode, setRegionGlobalMode] = useState<RegionGlobalMode>('photo');
   const [regionDisplayModes, setRegionDisplayModes] = useState<Record<string, 'color' | 'photo'>>({});
   const [regionColors, setRegionColors] = useState<Record<string, string>>({});
+  const [puzzleImages, setPuzzleImages] = useState<Record<string, string>>({});
+  const [puzzleSources, setPuzzleSources] = useState<Record<string, string>>({});
+  const [regionPhotos, setRegionPhotos] = useState<Record<string, string>>({});
   const [taggedRegions, setTaggedRegions] = useState<Record<string, TaggedRegion[]>>({});
   const [dismissedRegionTagChips, setDismissedRegionTagChips] = useState<string[]>([]);
   const [skinColorStore, setSkinColorStore] = useState<Record<string, SkinColorSet>>({});
@@ -389,7 +408,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setGlobeColor(p.globeColor ?? '#C88BF6');
       setCountryColors(p.countryColors ?? {});
       setCountryDisplayModes(p.countryDisplayModes ?? {});
-      setRegionGlobalMode(p.regionGlobalMode ?? 'color');
+      setRegionGlobalMode(normalizeRegionGlobalMode(p.regionGlobalMode));
+      // 퍼즐 그림 URI는 iOS 재빌드 시 컨테이너 절대경로가 깨진다 — profilePhoto와 같은 복구
+      setPuzzleImages(Object.fromEntries(
+        Object.entries(p.puzzleImages ?? {}).map(([k, v]) => [k, remapDocUri(v)])
+      ));
+      // 퍼즐 원본도 동일 복구 — 앨범 원본은 Documents/puzzle/에 사본으로 영속돼 있다
+      setPuzzleSources(Object.fromEntries(
+        Object.entries(p.puzzleSources ?? {}).map(([k, v]) => [k, remapDocUri(v)])
+      ));
+      // 지역별 수동 사진도 동일 복구. 신규 필드라 GADM 키 마이그레이션 대상은 아니다
+      setRegionPhotos(Object.fromEntries(
+        Object.entries(p.regionPhotos ?? {}).map(([k, v]) => [k, remapDocUri(v)])
+      ));
       // 지역 저장 키 마이그레이션 (GADM 표기 → NE 코드) — 스키마가 낮을 때 1회만.
       // 실패하면 원본을 그대로 두고 버전도 올리지 않는다(다음 실행에서 재시도).
       // 부분 적용 상태로 굳어 디바운스 저장이 원본을 덮는 것을 막는다.
@@ -477,6 +508,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      puzzleImages,
+      puzzleSources,
+      regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
@@ -526,6 +560,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       regionGlobalMode,
       regionDisplayModes,
       regionColors,
+      puzzleImages,
+      puzzleSources,
+      regionPhotos,
       taggedRegions,
       dismissedRegionTagChips,
       skinColorStore,
@@ -597,9 +634,11 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setGlobeColor('#C88BF6'); // 초기 기본값과 동일하게 (팔레트 4종 중 하나, 채도 -15% — #BF85FC는 팔레트 밖)
     setCountryColors({});
     setCountryDisplayModes({});
-    setRegionGlobalMode('color');
+    setRegionGlobalMode('photo');
     setRegionDisplayModes({});
     setRegionColors({});
+    setPuzzleImages({});
+    setRegionPhotos({});
     setTaggedRegions({});
     setDismissedRegionTagChips([]);
     setSkinColorStore({});
@@ -626,6 +665,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // ── 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 ──
   // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
+  // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
     globeVariant, globeSkin, globeDisplayMode, globeColor,
@@ -652,7 +692,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (typeof v.globeColor === 'string') setGlobeColor(v.globeColor);
     if (v.countryColors && typeof v.countryColors === 'object') setCountryColors(v.countryColors);
     if (v.countryDisplayModes && typeof v.countryDisplayModes === 'object') setCountryDisplayModes(v.countryDisplayModes);
-    if (v.regionGlobalMode === 'color' || v.regionGlobalMode === 'photo') setRegionGlobalMode(v.regionGlobalMode);
+    if (v.regionGlobalMode !== undefined) setRegionGlobalMode(normalizeRegionGlobalMode(v.regionGlobalMode));
     // 옛 백업 JSON에는 GADM 키가 들어 있다. 여기를 빠뜨리면 백업을 복원한 사용자만 조용히 깨진다.
     if (v.regionDisplayModes && typeof v.regionDisplayModes === 'object') setRegionDisplayModes(migrateRegionKeyMap(v.regionDisplayModes as Record<string, 'color' | 'photo'>));
     if (v.regionColors && typeof v.regionColors === 'object') setRegionColors(migrateRegionKeyMap(v.regionColors as Record<string, string>));
@@ -754,6 +794,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setRegionDisplayModes,
         regionColors,
         setRegionColors,
+        puzzleImages,
+        setPuzzleImages,
+        puzzleSources,
+        setPuzzleSources,
+        regionPhotos,
+        setRegionPhotos,
         taggedRegions,
         setTaggedRegions,
         dismissedRegionTagChips,
