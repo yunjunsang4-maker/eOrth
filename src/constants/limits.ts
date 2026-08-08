@@ -1,5 +1,7 @@
-// 기록당 사진 상한 — 피드 기록 작성(NewRecordScreen)과 과거 여행 불러오기
-// (ImportPhotoSelectScreen)가 공유한다.
+// 기록당 사진 상한 — 피드 기록 작성(NewRecordScreen) 전용.
+// 과거 여행 불러오기(ImportPhotoSelectScreen)도 예전엔 이 값을 썼지만, 여행 한 건을
+// 통째로 담는 화면이라 20장이 너무 적었고 사진첩·여행 기록 화면의 100장과도 어긋났다.
+// 2026-08-05(085fbbe)에 아래 앨범 상한으로 옮겼다.
 export const MAX_RECORD_PHOTOS = 20;           // 전체 공통(기본)
 // 상향치 — 현재는 프리미엄 구독 혜택에서 제외됨. 추후 앱내 재화 구매로 해제 예정(예약값).
 export const MAX_RECORD_PHOTOS_PREMIUM = 100;
@@ -11,7 +13,9 @@ export const MAX_RECORD_PHOTOS_PREMIUM = 100;
  */
 export const getMaxRecordPhotos = (_isPremium?: boolean): number => MAX_RECORD_PHOTOS;
 
-// 사진첩 한 권당 사진 상한 — 서버본이 압축 업로드라 무료도 100장 (posts.ts ALBUM_EDGE)
+// 사진첩 한 권당 사진 상한 — 서버본이 압축 업로드라 무료도 100장 (posts.ts ALBUM_EDGE).
+// 사진첩 만들기(AlbumCreateScreen)·여행 기록(TripRecordScreen)·과거 여행 불러오기
+// (ImportPhotoSelectScreen)가 공유한다.
 export const MAX_ALBUM_PHOTOS = 100;           // 전체 공통(기본)
 // 상향치 — 현재는 프리미엄 구독 혜택에서 제외됨. 추후 앱내 재화 구매로 해제 예정(예약값).
 export const MAX_ALBUM_PHOTOS_PREMIUM = 200;
