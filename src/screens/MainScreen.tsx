@@ -815,14 +815,17 @@ export default function MainScreen({ navigation, route }: Props) {
     const todo = uris.filter(u => globePhotoCacheRef.current[u] === undefined);
     if (todo.length === 0) return;
     (async () => {
-      let changed = false;
+      let wrote = false;
       for (const u of todo) {
         const d = await imageToDataUri(u);
         if (cancelled) return;
         globePhotoCacheRef.current[u] = d ?? ''; // '' = 변환 실패(재시도 안 함)
-        if (d) changed = true;
+        wrote = true;
       }
-      if (changed && !cancelled) setGlobePhotoVersion(v => v + 1);
+      // 실패('')도 반드시 반영한다 — photoPending(=변환 대기)이 풀리는 신호이기 때문.
+      // 성공분만 반영하던 때는, 전부 실패하는 사진(iCloud 오프로드 등)만 있는 나라가
+      // 영영 '대기'로 남아 유리 채움에서 색 폴백으로 못 넘어간다.
+      if (wrote && !cancelled) setGlobePhotoVersion(v => v + 1);
     })();
     return () => { cancelled = true; };
   }, [visitedCountries]);
@@ -840,11 +843,19 @@ export default function MainScreen({ navigation, route }: Props) {
   const skinChipBg = `rgb(${Math.round(skinAccent.rgb[0] * 0.22)},${Math.round(skinAccent.rgb[1] * 0.22)},${Math.round(skinAccent.rgb[2] * 0.22)})`;
   // 폼이 모드를 강제하므로 개별 mode를 덮어쓰고, 사진은 변환된 data URI 로 교체
   const globeVisitedCountries = useMemo(
-    () => visitedCountries.map(c => ({
-      ...c,
-      mode: globeForcedMode,
-      photo: c.photo ? (globePhotoCacheRef.current[c.photo] || undefined) : undefined,
-    })),
+    () => visitedCountries.map(c => {
+      const conv = c.photo ? globePhotoCacheRef.current[c.photo] : undefined;
+      return {
+        ...c,
+        mode: globeForcedMode,
+        photo: conv || undefined,
+        // 변환 대기 중(캐시에 아직 항목 없음)이면 '사진 있음'을 지구본에 알린다.
+        // 안 알리면 유리 지구본이 사진 없는 방문국으로 보고 활성색을 구워, 첫 시작 때
+        // 색 → 사진 깜빡임이 난다(globePhotoCacheRef는 메모리라 콜드 스타트마다 비어 있다).
+        // 변환 실패('')는 대기가 아니라 최종 상태 → 색 채움이 맞다.
+        photoPending: !!c.photo && conv === undefined,
+      };
+    }),
     [visitedCountries, globeForcedMode, globePhotoVersion],
   );
 

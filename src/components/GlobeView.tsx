@@ -39,6 +39,10 @@ export interface VisitedCountry {
   color?: string;       // 사용자 지정 색상 (hex)
   photo?: string;       // 대표 사진 URI (hex)
   mode?: GlobeDisplayMode; // 개별 표시 모드
+  // 대표 사진은 있으나 아직 지구본용 data URI 변환 전이라는 표시.
+  // 이 신호가 없으면 WebView가 '사진 없는 방문국'으로 보고 활성색을 구워
+  // 첫 시작 때 색→사진 깜빡임이 난다(photo만으론 '없음'과 '아직'을 구분 못 함).
+  photoPending?: boolean;
 }
 
 interface GlobeViewProps {
@@ -550,11 +554,13 @@ async function buildTexture(srcOverride, opts) {
     var flagImg = iso ? flagImageCache[iso] : null;
     var photoImg = visited.photo ? photoImageCache[visited.photo] : null;
 
-    // 유리(사진) 모드: 사진이 있는데 아직 디코드 전이면 이번 베이크에선 건너뛴다 —
+    // 유리(사진) 모드: 사진이 아직 준비 전이면 이번 베이크에선 건너뛴다 —
     // 활성색으로 먼저 칠했다가 사진으로 바뀌는 '색→사진 깜빡임'을 없앤다.
-    // (그동안은 미기록처럼 유리로 보이고, 디코드 완료 후 2차 베이크가 사진을 바로 얹는다.
+    // (그동안은 미기록처럼 유리로 보이고, 준비 완료 후 2차 베이크가 사진을 바로 얹는다.
     //  커버 사진이 아예 없는 방문국은 색 채움이 영구 표현이라 즉시 그린다)
-    if (isGlass() && mode === 'photo' && visited.photo && !photoImg) return;
+    // 판정은 glassTexReady 하나로 — 메시 aPhoto와 기준이 갈리면 빈 텍스처를 샘플해 구멍이 난다.
+    // (디코드 전 + RN 변환 대기 photoPending 둘 다 여기서 걸린다)
+    if (isGlass() && mode === 'photo' && !glassTexReady(visited)) return;
 
     if (mode === 'flag' && flagImg) {
       // 국기 모드: 각 폴리곤(영토)마다 개별적으로 국기 그리기
@@ -1008,7 +1014,9 @@ var GLASS_BUILD_BUDGET_MS = 10;
 // 이 방문국이 '텍스처에 그려져 있는가' — 메시 aPhoto와 베이크 스킵 규칙의 단일 기준.
 // 사진이 있는데 디코드 전이면 false(미기록처럼 유리 채움 유지 — 색→사진 깜빡임 방지),
 // 커버 사진이 아예 없으면 색 채움이 영구 표현이라 true.
-function glassTexReady(v) { return !!(v && (!v.photo || photoImageCache[v.photo])); }
+// photoPending = RN이 file:// → data URI 변환 중이라 photo가 아직 안 넘어온 상태.
+// 이걸 빼면 '사진 없음'과 같아져 첫 시작 때 활성색이 구워진다(변환 캐시는 메모리라 콜드 스타트마다 빈다).
+function glassTexReady(v) { return !!(v && !v.photoPending && (!v.photo || photoImageCache[v.photo])); }
 // 유리 딥줌 10m LOD — 제품 결정(2026-08-05)으로 비활성.
 // 유리 지구본은 '사진으로 채워진 구슬'이 목적이지 지도를 구체적으로 보는 용도가 아니다(사용자 확정).
 // 최대 줌에서 110m 경계가 뭉툭한 것은 수용하고, 10m 전환이 만들던 도달 직후 스톨
@@ -2500,7 +2508,7 @@ function handleVisitedMessage(msg) {
   } else if (msg.type === 'setVisitedCountries' && msg.countries) {
     visitedMap = {};
     msg.countries.forEach(function(c) {
-      visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null };
+      visitedMap[c.nameEn] = { color: c.color || null, mode: c.mode || null, photo: c.photo || null, photoPending: !!c.photoPending };
     });
     if (msg.displayMode) globeDisplayMode = msg.displayMode;
     // 유리로 전환되는 순간 2단계 배율을 유리 상한으로 되감는다 — 색/국기 모드의 딥줌(배율 10)
