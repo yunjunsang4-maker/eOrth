@@ -1120,6 +1120,23 @@ export const CopyIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, d
   </Svg>
 );
 
+// 추가 — 끝이 둥근 굵은 십자(＋). "새로 만들기" 액션용 (기록 추가 등).
+export const PlusIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
+  <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
+    <Defs>
+      <LinearGradient id="eorth-grad" x1="0" y1="0" x2="0" y2="1">
+        <Stop offset="0%" stopColor={color ?? COLORS.purpleTop} stopOpacity={color ? 1 : 1} />
+        <Stop offset="55%" stopColor={color ?? COLORS.purpleMid} />
+        <Stop offset="100%" stopColor={color ?? COLORS.purpleBot} />
+      </LinearGradient>
+    </Defs>
+    <G fill={color ?? "url(#eorth-grad)"}>
+      <Path d="M48 12a6 6 0 016 6v24h24a6 6 0 010 12H54v24a6 6 0 01-12 0V54H18a6 6 0 010-12h24V18a6 6 0 016-6z" />
+    </G>
+    {dot && <Circle cx={76} cy={20} r={9} fill={dotColor} />}
+  </Svg>
+);
+
 export const PencilIcon: React.FC<IconProps> = ({ size = 64, color, dot = false, dotColor = COLORS.dot }) => (
   <Svg width={size} height={size} viewBox="0 0 96 96" fill="none">
     <Defs>

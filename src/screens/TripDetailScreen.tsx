@@ -18,7 +18,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { LinearGradient } from 'expo-linear-gradient';
-import { CommentIcon } from '../components/icons';
+import { CommentIcon, PlusIcon, PencilIcon, GalleryIcon, ArchiveIcon, TrashIcon } from '../components/icons';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import type { TripPrefillParam } from '../navigation/types';
 import CutPhotoAdjustModal, { type CutTransform } from '../components/CutPhotoAdjustModal';
@@ -546,7 +546,8 @@ export default function TripDetailScreen() {
               accessibilityLabel={t('trip.addRecordA11y')}
               onPress={() => { setMenuVisible(false); setFormatPickerVisible(true); }}
             >
-              <Text style={s.menuItemText}>➕  {t('comp2.tdAddRecord')}</Text>
+              <PlusIcon size={16} color={COLORS.white} />
+              <Text style={s.menuItemText}>{t('comp2.tdAddRecord')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity
@@ -560,19 +561,23 @@ export default function TripDetailScreen() {
                 setIsEditing(true);
               }}
             >
-              <Text style={s.menuItemText}>✏️  {t('comp2.tdEditTitle')}</Text>
+              <PencilIcon size={16} color={COLORS.white} />
+              <Text style={s.menuItemText}>{t('comp2.tdEditTitle')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleChangeThumb} accessibilityRole="button" accessibilityLabel={t('trip.changeThumbA11y')}>
-              <Text style={s.menuItemText}>🖼️  {t('comp2.tdChangeThumb')}</Text>
+              <GalleryIcon size={16} color={COLORS.white} />
+              <Text style={s.menuItemText}>{t('comp2.tdChangeThumb')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleArchiveCard} accessibilityRole="button" accessibilityLabel={t('trip.archiveCardA11y')}>
-              <Text style={s.menuItemText}>📦  {t('comp2.tdArchive')}</Text>
+              <ArchiveIcon size={16} color={COLORS.white} />
+              <Text style={s.menuItemText}>{t('comp2.tdArchive')}</Text>
             </TouchableOpacity>
             <View style={s.menuDivider} />
             <TouchableOpacity style={s.menuItem} onPress={handleDeleteCard} accessibilityRole="button" accessibilityLabel={t('trip.deleteCardA11y')}>
-              <Text style={[s.menuItemText, s.menuItemDanger]}>🗑️  {t('comp2.tdDelete')}</Text>
+              <TrashIcon size={16} color="#FF3B30" />
+              <Text style={[s.menuItemText, s.menuItemDanger]}>{t('comp2.tdDelete')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -1187,7 +1192,8 @@ const s = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.cardBorder,
     paddingVertical: 6, overflow: 'hidden',
   },
-  menuItem: { paddingVertical: 12, paddingHorizontal: 16 },
+  // 이모지 대신 제작 SVG 아이콘 — 아이콘+라벨 가로 정렬 (PostDetail ☰ 메뉴와 동일한 톤)
+  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12, paddingHorizontal: 16 },
   menuItemText: { color: COLORS.white, fontSize: 14, fontWeight: '600' },
   menuItemDanger: { color: '#FF3B30' },
   menuDivider: { height: 1, backgroundColor: 'rgba(255,255,255,0.07)' },
