@@ -46,6 +46,11 @@ const BAR_H = 63;          // 컨테이너 높이
 const BAR_R = 31.5;        // 높이의 절반 = 완전 둥근형
 const BAR_W_GLOBE = 323;   // Globe 활성 시 컨테이너 폭
 const BAR_W_OTHER = 348;   // 나머지 활성 시 컨테이너 폭
+// 좁은 화면에서 남길 최소 좌우 여백. 위 폭은 시안 기준 고정값이라 화면이 이보다 좁으면
+// 그대로 쓸 수 없다 — 예전엔 left 만 Math.max(16) 로 막아서 폭은 348 그대로였고,
+// 그 결과 320pt('확대 표시' 설정)에서 오른쪽 44pt 가 화면 밖으로 나가 마지막 탭이
+// 잘리고 눌리지도 않았다(360pt mini 에서도 4pt 넘침). 이제 폭 자체를 줄인다.
+const BAR_SIDE_MIN = 16;
 
 const PILL_H = 36;         // 가로 알약 높이
 const H_COLLAPSED_W = 48;  // 비활성(아이콘만) 폭
@@ -287,15 +292,20 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   }, [state.index]);
 
   // 컨테이너 폭/좌표 (폭 변화에 따라 가운데 정렬 유지) + 숨김 페이드·슬라이드
-  const containerStyle = useAnimatedStyle(() => ({
-    width: barW.value,
-    left: Math.max(16, (SCREEN_W - barW.value) / 2),
-    opacity: 1 - hideProgress.value,
-    transform: [{ translateY: hideProgress.value * 24 }],
-  }));
-  // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋)
+  const containerStyle = useAnimatedStyle(() => {
+    // 화면에 안 들어가면 폭을 줄여 맞춘다(BAR_SIDE_MIN 주석 참고). 안 줄이면 잘린다.
+    const w = Math.min(barW.value, SCREEN_W - BAR_SIDE_MIN * 2);
+    return {
+      width: w,
+      left: (SCREEN_W - w) / 2,
+      opacity: 1 - hideProgress.value,
+      transform: [{ translateY: hideProgress.value * 24 }],
+    };
+  });
+  // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋).
+  // 컨테이너와 같은 클램프를 써야 좁은 화면에서 테두리만 삐져나오지 않는다.
   const borderRectProps = useAnimatedProps(() => ({
-    width: Math.max(0, barW.value - 1.5),
+    width: Math.max(0, Math.min(barW.value, SCREEN_W - BAR_SIDE_MIN * 2) - 1.5),
   }));
 
   // 탭바 위에서 가로 슬라이드 → 바로 옆 탭으로 이동 (PanResponder는 첫 렌더 박제 → ref로 최신 상태 참조)

@@ -56,7 +56,15 @@ interface GlobeViewProps {
   sponsoredItems?: { nameEn: string; label: string; price?: string; image?: string }[]; // 광고 미니 카드 마커 항목
 }
 
-const globeHTML = `<!DOCTYPE html>
+// 지구본 HTML 은 폼(variant)마다 한 벌씩 있는데, 둘 다 three.js·d3·세계 지오를 통째로
+// 인라인해 각각 1MB 를 넘는다. 모듈 스코프 상수로 두면 이 파일을 import 하는 순간
+// **쓰지도 않을 폼까지** 만들어져 앱 수명 내내 메모리에 남았다.
+// 실제로 쓰는 폼만 첫 렌더에서 만들고 이후 재사용한다(폼을 바꾸면 그때 나머지 한 벌이
+// 생기고, 그 뒤로는 둘 다 재사용 — 토글 왕복에 재생성 비용이 없다).
+let _globeHTML: string | null = null;
+function getGlobeHTML(): string {
+  if (_globeHTML !== null) return _globeHTML;
+  _globeHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -2612,13 +2620,18 @@ init();
 <\/script>
 </body>
 </html>`;
+  return _globeHTML;
+}
 
 // ── Neon Globe (aurora 폼 전용) ──
 // 첨부 "Neon Globe (standalone)" 디자인을 이식: 정사영(Orthographic) 납작 원반 +
 // 커스텀 셰이더 바디(보라 그라데이션) + 라벤더 대륙 + 흰 해안선 + 방향성 네온 프레넬 림,
 // 캔버스 뒤 CSS 별·무드글로우·블룸 후광. eOrth의 THREE/D3/WORLD_GEO·CanvasTexture·탭·광고마커는 그대로 재사용.
 // classic(사진) 폼은 위의 globeHTML을 그대로 쓰므로 영향 없음.
-const neonGlobeHTML = `<!DOCTYPE html>
+let _neonGlobeHTML: string | null = null;
+function getNeonGlobeHTML(): string {
+  if (_neonGlobeHTML !== null) return _neonGlobeHTML;
+  _neonGlobeHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
@@ -3907,6 +3920,8 @@ init();
 <\/script>
 </body>
 </html>`;
+  return _neonGlobeHTML;
+}
 
 export default function GlobeView({
   size = 300, fullscreen = false, onMessage,
@@ -4073,7 +4088,7 @@ export default function GlobeView({
         originWhitelist={['*']}
         javaScriptEnabled={true}
         domStorageEnabled={true}
-        source={{ html: variant === 'aurora' ? neonGlobeHTML : globeHTML }}
+        source={{ html: variant === 'aurora' ? getNeonGlobeHTML() : getGlobeHTML() }}
         // 표시 모드를 부팅 전에 주입 — 첫 텍스처부터 올바른 경로(유리 등)로 구워
         // 메시지 도착 전까지 파란(비유리) 지구본이 번쩍이는 것을 막는다
         injectedJavaScriptBeforeContentLoaded={`window.__initDisplayMode=${JSON.stringify(displayMode)}; true;`}

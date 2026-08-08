@@ -802,6 +802,16 @@ export default function MainScreen({ navigation, route }: Props) {
   useEffect(() => {
     let cancelled = false;
     const uris = Array.from(new Set(visitedCountries.map(c => c.photo).filter(Boolean) as string[]));
+
+    // 더 이상 쓰이지 않는 항목은 버린다. 이걸 안 하면 대표 사진을 바꾸거나 기록을 지울 때마다
+    // 옛 URI의 base64가 캐시에 남고, MainScreen 은 탭 화면이라 언마운트되지 않아 세션 내내
+    // 쌓이기만 했다. 1024px JPEG 의 base64 는 JS 문자열(UTF-16)로 장당 수백 KB다.
+    // (현재 방문국 수만큼은 지구본이 동시에 그리므로 남는 게 맞다 — 상한을 더 낮출 수는 없다)
+    const live = new Set(uris);
+    for (const key of Object.keys(globePhotoCacheRef.current)) {
+      if (!live.has(key)) delete globePhotoCacheRef.current[key];
+    }
+
     const todo = uris.filter(u => globePhotoCacheRef.current[u] === undefined);
     if (todo.length === 0) return;
     (async () => {
