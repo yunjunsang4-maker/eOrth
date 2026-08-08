@@ -13,6 +13,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  BackHandler,
 } from 'react-native';
 
 // 생성 이모티콘(AI 커스텀, 다크 보라 3D 글로시) — 시스템 이모지 대체
@@ -155,14 +156,18 @@ export default function LoginScreen({ navigation }: Props) {
   const [socialModal, setSocialModal] = useState<'google' | 'apple' | null>(null);
   const [socialLoading, setSocialLoading] = useState(false);
   const [authSuccess, setAuthSuccess] = useState(false);
+  // 시도 세대 — 45초 안전장치가 오버레이를 닫은 뒤 매달렸던 SDK 프라미스가 3분 시점에
+  // 풀리면(시트 타임아웃) 두 번째 알림이 또 떴다. 안전장치가 세대를 올리면 늦은 결과는 폐기한다.
+  const socialAttemptRef = useRef(0);
 
-  // 오버레이 최후 안전장치 — 이 모달은 취소 버튼이 없고 뒤로가기도 막혀 있어(onRequestClose),
+  // 오버레이 최후 안전장치 — 이 오버레이는 취소 버튼이 없고 뒤로가기도 막혀 있어(아래 BackHandler),
   // 로딩이 안 풀리면 앱 강제종료 외에 탈출구가 없다. 내부 호출마다 타임아웃을 걸었지만
   // 예상 못 한 경로가 매달릴 경우를 대비해 여기서 한 번 더 끊는다.
   // 정상 흐름의 최악(토큰 15s + 프로필 12s + 표시 0.6s ≈ 28s)보다 넉넉히 잡아 오탐을 막는다.
   useEffect(() => {
     if (!socialLoading) return;
     const timer = setTimeout(() => {
+      socialAttemptRef.current += 1; // 진행 중이던 시도 무효화 — 늦게 풀린 프라미스가 알림·이동을 못 하게
       setSocialLoading(false);
       setSocialModal(null);
       setAuthSuccess(false);
@@ -170,6 +175,14 @@ export default function LoginScreen({ navigation }: Props) {
     }, 45000);
     return () => clearTimeout(timer);
   }, [socialLoading, t]);
+
+  // 로딩 중 안드로이드 뒤로가기 차단 — Modal이던 시절 onRequestClose가 하던 역할.
+  // (절대위치 View로 바꾸며 백 버튼 처리가 사라져, 로딩 중 화면 이탈이 가능해지는 것을 막는다)
+  useEffect(() => {
+    if (socialModal === null) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+    return () => sub.remove();
+  }, [socialModal]);
 
   // 실제 소셜 로그인 (Supabase OAuth). 로딩/성공 오버레이만 모달로 표시하고
   // 실제 인증은 인앱 브라우저에서 진행된다. (가짜 계정 선택 화면 없음)
@@ -185,10 +198,13 @@ export default function LoginScreen({ navigation }: Props) {
     } catch {
       // 점검 실패 시 그냥 진행
     }
+    const myAttempt = ++socialAttemptRef.current;
     setSocialModal(provider);
     setSocialLoading(true);
     setAuthSuccess(false);
     const result = await signInWithProvider(provider);
+    // 45초 안전장치가 이미 이 시도를 끝냈으면(알림도 띄웠음) 늦은 결과는 조용히 폐기
+    if (myAttempt !== socialAttemptRef.current) return;
     if (!result.ok) {
       setSocialModal(null);
       setSocialLoading(false);
@@ -810,13 +826,12 @@ export default function LoginScreen({ navigation }: Props) {
         </View>
       </Modal>
 
-      {/* 소셜 로그인 로딩 오버레이 (실제 인증은 인앱 브라우저에서 진행 — 가짜 인증 UI 없음) */}
-      <Modal
-        visible={socialModal !== null}
-        transparent statusBarTranslucent navigationBarTranslucent
-        animationType="fade"
-        onRequestClose={() => { if (!socialLoading) setSocialModal(null); }}
-      >
+      {/* 소셜 로그인 로딩 오버레이 — Modal 금지, 절대위치 View로 그린다.
+          iOS에서 Modal이 fade로 뜨는 도중에 구글 네이티브 시트를 present하면 UIKit이
+          전환 충돌로 시트 표시를 조용히 거부해 SDK 프라미스가 영영 안 풀린다(간헐 '씹힘').
+          라이브러리 공식 문서도 로딩 인디케이터 모달과의 동시 표시를 금지한다.
+          (사진 피커 뒤 터치 먹통 때 세운 '짧은 수명 로딩 오버레이는 Modal 금지' 규칙과 동일) */}
+      {socialModal !== null && (
         <View style={styles.socialModalOverlay}>
           <View style={styles.loaderCard}>
             {authSuccess ? (
@@ -832,7 +847,7 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </View>
         </View>
-      </Modal>
+      )}
     </View>
   );
 }
@@ -1147,13 +1162,16 @@ const styles = StyleSheet.create({
     marginBottom: Spacing[4],
   },
 
-  // Social Mock Modals
+  // 소셜 로그인 로딩 오버레이 — Modal이 아닌 절대위치 View(위 JSX 주석 참조).
+  // zIndex/elevation으로 화면 내 최상단 보장(형제 요소들 위).
   socialModalOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(5, 1, 15, 0.75)',
     justifyContent: 'center',
     alignItems: 'center',
     padding: Spacing[6],
+    zIndex: 100,
+    elevation: 100,
   },
   loaderCard: {
     minWidth: 200,
