@@ -1,6 +1,7 @@
 # 앱 내 매거진 — 설계
 
 2026-08-08 · 대상: 메인탭 좌하단 매거진 버튼 + 바텀시트 뷰어 (구현 전 — 구상·계획 단계)
+· 같은 날 2차 다듬기 반영: 핀치줌·푸시 라우팅·aspect·SWR 캐시·별도 버킷 등 9건
 
 ## 요약
 
@@ -31,19 +32,34 @@
 - 아이콘: 제작 SVG(펼친 잡지 모양) — 이모지 금지 규칙([아이콘 규칙] CLAUDE.md).
 - 미읽음 뱃지: 버튼 우상단 스킨 강조색 점. 판정은 로컬 —
   `최신 issue_no > settingsStore.lastSeenMagazineIssueNo`. 시트를 열면 갱신.
+  (설치 직후 기본값 0 → 첫 사용자에게 뱃지가 떠 있는 것은 발견성 의도)
+- **호가 0개면 버튼 자체를 숨긴다** — 1호 발행 전에 빈 시트가 뜨는 버튼을 노출하지 않는다.
+  캐시·네트워크 모두 없어 판정 불가일 때도 숨김(있는데 못 보여주는 것보다 없는 게 낫다).
 
 ## 2. 바텀시트 UI
 
 - **SheetShell 패턴 재사용**(2e244a6 — 딤은 페이드, 시트만 슬라이드, onClosed 단일 처리).
 - 구조(위→아래): 핸들 → 호 제목(`eOrth 매거진 {issue_no}호 · {title}`) →
-  가로 캐러셀(페이지 이미지 + 페이지 도트, 기본 비율 4:5) →
+  가로 캐러셀(페이지 이미지 + 페이지 표시) →
   인스타 원본 링크(`instagram_url` 있을 때만, `Linking.openURL`) →
-  아카이브 행(과거 호 표지 가로 스크롤 — 탭하면 시트 안에서 그 호로 전환).
+  아카이브 행(과거 호 표지 가로 스크롤 — 탭하면 시트 안에서 그 호로 전환,
+  **지금 보는 호는 스킨 강조색 테두리로 표시**).
+- **핀치줌 필수(1단계)** — 인스타 매거진은 이미지 안에 글이 많은데 캐러셀 표시 폭은
+  350pt 남짓이라, 줌이 없으면 글자가 안 읽히는 반쪽 기능이 된다. 캐러셀 안에서
+  핀치 확대 + 더블탭(확대↔원복), 놓으면 원복. 원본이 1440px라 확대 화질은 충분하다.
+  제스처는 캐러셀 가로 스와이프와 동시 인식 충돌 주의(핀치 중 스와이프 잠금).
+- 페이지 표시: 도트 + **`3/10` 숫자 카운터 병행** — 페이지가 10장을 넘으면 도트만으로
+  비좁다.
+- **프리페치**: 현재 페이지 +1을 expo-image `prefetch`로 미리 받는다 — 안 하면
+  페이지마다 로딩이 깜빡여 인스타처럼 술술 넘어가지 않는다.
 - 이미지는 전부 **expo-image + `cachePolicy: "memory-disk"`** — RN Image 금지
   (원본 전체 디코드로 메모리 폭증, 2026-08-08 최적화 점검에서 확인된 함정).
 - 작은 화면: 시트 `maxHeight '85%'` + 내부 스크롤 영역 `flexShrink: 1`
   (CutTravelInfoScreen 통화 시트가 모범 패턴 — 568pt에서 하단 잘림 방지).
-- 캐러셀 폭 = 화면폭 − 시트 좌우 패딩. 페이지 이미지 비율은 호 단위 고정(4:5 기본).
+- 캐러셀 폭 = 화면폭 − 시트 좌우 패딩. 페이지 이미지 비율은 호 단위(`aspect` 컬럼,
+  기본 4:5) — 인스타는 1:1도 흔해 호마다 다를 수 있다.
+- 접근성: 페이지 이미지는 낭독이 불가하므로 `accessibilityLabel`에 호 제목+페이지
+  번호라도 넣는다(이미지 기반 콘텐츠의 한계 수용).
 
 ## 3. 데이터 모델 (Supabase)
 
@@ -54,6 +70,7 @@ create table if not exists public.magazine_issues (
   title_ko      text not null,
   title_en      text,                          -- 없으면 ko 폴백
   pages         text[] not null,               -- 페이지 이미지 URL, 순서 = 배열 순서
+  aspect        real not null default 0.8,     -- 페이지 가로/세로 비율 (4:5 = 0.8, 1:1 = 1.0) — 호 단위 고정
   cover_url     text,                          -- 없으면 첫 페이지(Postgres 배열은 1-기반: pages[1], JS에선 pages[0])
   instagram_url text,                          -- 원본 게시물 링크(선택)
   published_at  timestamptz not null default now(),
@@ -63,20 +80,31 @@ create table if not exists public.magazine_issues (
 
 - RLS: `ad_campaigns`와 동일 패턴 — `active = true and published_at <= now()` 행만
   누구나(비로그인 포함) select. 삽입·수정·삭제 정책 없음 → service_role(SQL Editor)만 쓰기.
-- 이미지: Storage `media` 버킷 `magazine/issue-{no}/p{n}.jpg`. 긴변 1440px JPEG 권장
-  (선명도·용량 균형 — 캐러셀 표시 폭은 최대 ~400pt@3x).
-- **발행 절차 = ① 이미지 업로드(대시보드) ② insert 한 줄.** 앱 반영은 캐시 TTL 내 자동.
+- **예약 발행은 공짜로 된다** — `published_at`을 미래로 넣으면 RLS 조건이 그때까지
+  숨긴다. 서버 시간(UTC) 기준이라 notices.json의 로컬 자정 함정(de7f370)이 없다.
+- 이미지: **전용 공개 버킷 `magazine`** — 사용자 미디어(`media` 버킷)와 분리한다.
+  `media`는 계정 파기 sweep이 도는 버킷이라 운영 콘텐츠를 섞으면 경로 사고 여지가
+  생긴다(sweep 코드가 지금은 사용자 폴더 기준이어도, 분리해 두면 앞으로도 0이다).
+  경로: `magazine/issue-{no}/p{n}.jpg`, 긴변 1440px JPEG 권장
+  (선명도·용량 균형 — 캐러셀 표시 폭 최대 ~400pt@3x + 핀치줌 확대분).
+- **발행 절차 = ① 이미지 업로드(대시보드) ② insert 한 줄.**
+  insert 템플릿은 `supabase/seed-magazine-issue.sql`로 만들어 둔다(쿠팡 시드처럼
+  자리표시자+체크리스트 주석) — 매달 반복하는 작업이라 실수 방지 가치가 크다.
 - i18n: 이미지는 한국어 원본 그대로(다국어 이미지 없음), 제목만 `title_en` 폴백.
 
 ## 4. 앱 데이터 흐름
 
 - `services/magazine.ts` 신설 — `fetchMagazineIssues()`:
-  `services/adCampaigns.ts`와 같은 구조(AsyncStorage 캐시 → TTL 신선하면 네트워크 생략,
-  실패 시 만료 캐시 폴백, 둘 다 없으면 빈 배열). **TTL 12시간**(발행 빈도가 낮다).
-- 로드 시점: 시트 열 때. 버튼 뱃지용 최신호 확인만 메인 진입 시 1회(캐시 우선) —
+  **stale-while-revalidate** — 캐시가 있으면 즉시 반환해 시트를 바로 그리고,
+  백그라운드에서 새로 받아 다르면 상태를 갱신한다. adCampaigns의 TTL 방식(신선하면
+  네트워크 생략)과 달리, 발행·오타 수정이 다음 열람에 즉시 반영된다 — 운영자가
+  콘텐츠를 고칠 일이 반드시 생기는 기능이라 TTL 12시간 지연은 수용 불가.
+  네트워크 실패 시 캐시 그대로(폴백), 둘 다 없으면 빈 배열.
+- 로드 시점: 시트 열 때. 버튼 뱃지·숨김 판정용 목록 확인만 메인 진입 시 1회(캐시 우선) —
   앱 시작 비용 0 유지.
-- 미읽음 상태: `settingsStore.lastSeenMagazineIssueNo: number`(persist, 기기 로컬).
-  시트가 열리면 최신호 번호로 갱신.
+- 미읽음 상태: `settingsStore.lastSeenMagazineIssueNo: number`(persist).
+  시트가 열리면 최신호 번호로 갱신. **user_app_state 백업에 포함**(비-PII 스칼라) —
+  재설치해도 뱃지가 다시 뜨지 않는다.
 - 오프라인: 이미 본 호 = 메타 캐시 + expo-image 디스크 캐시로 열람 가능.
   한 번도 못 받았으면 시트에 빈 상태 문구(오류 아님, 안내 톤).
 
@@ -88,6 +116,10 @@ create table if not exists public.magazine_issues (
   (`push_tokens` 전량, Expo push 100건 배치). 작업량의 대부분이 여기다.
 - 정책: 마케팅성 푸시이므로 `notifPrefs`에 매거진 수신 토글(기본 on, 설정에서 off).
   문구는 이모지 없는 앱 푸시 규칙 그대로.
+- **탭 라우팅(필수)**: 푸시 페이로드에 `type: 'magazine'`(+`issue_no`)을 넣고,
+  기존 푸시 응답 라우팅에 분기 추가 — 앱 열림 → 메인탭 → 매거진 시트 자동 오픈,
+  해당 호로. 이게 없으면 푸시가 앱만 열고 끝나 발송 의미가 반감된다.
+  콜드스타트 경로(앱이 죽어 있다가 푸시로 시작)까지 기존 알림 라우팅과 같은 규칙으로.
 - 트리거에 Vault 시크릿이 얽히므로 pg_cron 401 사태(2026-08-07)의 교훈 적용 —
   등록 후 **실행 결과(`net._http_response`)까지 확인**해야 완료다.
 
@@ -95,14 +127,15 @@ create table if not exists public.magazine_issues (
 
 | 단계 | 내용 | 완결성 |
 |---|---|---|
-| 1단계 | 버튼+뱃지, 바텀시트, `magazine_issues` 테이블+RLS, `services/magazine.ts`, settingsStore 필드 | 이것만으로 기능 완결(열어본 사람은 다 봄) |
-| 2단계 | insert 트리거 + send-push 전체 발송 경로 + notifPrefs 토글 + 설정 UI | 도달률 향상 |
+| 1단계 | 버튼+뱃지(0호 숨김 포함), 바텀시트(핀치줌·프리페치·페이지 카운터), `magazine_issues` 테이블+RLS, `magazine` 버킷, `services/magazine.ts`(SWR), settingsStore 필드+백업, 발행 시드 템플릿 | 이것만으로 기능 완결(열어본 사람은 다 봄) |
+| 2단계 | insert 트리거 + send-push 전체 발송 경로 + 푸시 탭 라우팅(콜드스타트 포함) + notifPrefs 토글 + 설정 UI | 도달률 향상 |
 
 ## 검증 (`*.verify.ts`, npm test)
 
-- 미읽음 판정(최신 issue_no vs lastSeen) 순수 로직.
-- 캐시 폴백(신선/만료/없음 × 네트워크 성공/실패) — adCampaigns와 같은 표로.
+- 미읽음 판정(최신 issue_no vs lastSeen) + 버튼 숨김 판정(0호/판정불가) 순수 로직.
+- SWR 캐시(캐시 유/무 × 네트워크 성공/실패 × 응답 동일/변경 — 갱신 호출 여부까지).
 - 실기기(자동화 불가, 문서화): 568pt 시트 높이, 이미지 로드/디스크 캐시 오프라인 열람,
+  **핀치줌과 캐러셀 가로 스와이프의 제스처 충돌**, 프리페치 체감,
   대륙 모드 지역명 칩과 버튼 겹침, 빠른공유 드래그 시 버튼 페이드.
 
 ## 범위 밖 (명시적 제외, 1차)
@@ -110,4 +143,5 @@ create table if not exists public.magazine_issues (
 - 좋아요·댓글·앱내 공유 카드.
 - 인스타 자동 동기화(Graph API) — 수동 재발행 확정.
 - 호 내 텍스트 본문(이미지가 곧 본문), 다국어 이미지.
-- 풀스크린 뷰어 — 시트 안 캐러셀로 충분, 반응 보고 후속.
+- 풀스크린 뷰어 — 가독성은 시트 안 핀치줌(§2, 1단계 필수)이 담당한다.
+  전용 풀스크린 화면은 반응 보고 후속.
