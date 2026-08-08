@@ -25,7 +25,32 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 1건 (2026-08-07 기준)
+## 1. 지금 해야 하는 것 — 2건 (2026-08-09 기준)
+
+### ⏳ `schema.sql` 재실행 — 유저 상호작용 감사(2026-08-09) 수정분 5건
+
+멱등이므로 SQL Editor에서 전체 재실행하면 된다. 이번 재실행으로 반영되는 것:
+
+| # | 내용 | 왜 |
+|---|------|-----|
+| 1 | `neighbors` 중복 쌍 정리 + `uq_neighbors_pair` 대칭 유일 인덱스 | 맞신청 레이스로 (A,B)+(B,A) accepted 2행이 생기면 `notify_on_friend_post`가 21000으로 실패해 **두 사용자 모두 게시물 발행 불가**가 되던 결함의 근본 차단 |
+| 2 | `accept_neighbor` — 수락 시 역방향 행 삭제 | 인덱스 이전 잔재 방어 |
+| 3 | `notify_on_friend_post` — `select distinct` + 예외 흡수 | 알림 실패가 발행을 롤백시키지 않게 (이중 방어) |
+| 4 | `trg_cleanup_neighbor_request_notif` — pending 삭제 시 유령 알림 정리 | 신청 취소·거절 후 수신자에게 '탭해도 빈 목록' 알림이 남던 문제 |
+| 5 | Realtime publication에 `dm_messages`·`notifications` 추가(멱등 DO 블록) | 없으면 DM 실시간 수신·벨 배지 실시간 갱신이 에러 없이 무음으로 죽는다 |
+
+재실행 후 실측:
+
+```sql
+-- ① 대칭 인덱스 존재
+select indexname from pg_indexes where tablename = 'neighbors' and indexname = 'uq_neighbors_pair';
+-- ② 실시간 publication에 두 테이블이 보여야 한다
+select tablename from pg_publication_tables where pubname = 'supabase_realtime'
+ and tablename in ('dm_messages', 'notifications');
+```
+
+클라이언트 짝(같은 커밋): requestNeighbor 23505 수렴, DM 스레드 시드(재설치 복원),
+fetchMyLikesFor 청크화 — 서버 재실행 없이도 동작하지만 1·4·5의 효과는 재실행이 전제다.
 
 ### ⏳ `delete-account` 재배포 + `PURGE_SECRET` 등록 (코드는 커밋됐고 서버 반영만 남음)
 

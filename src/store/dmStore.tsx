@@ -10,7 +10,7 @@ import { onReconnect } from '../utils/connectivity';
 import { remapDocUri } from '../utils/remapDocumentUris';
 import { getMyUserId, getProfileById, getProfileByHandle } from '../services/profile';
 import { uploadImage } from '../services/media';
-import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage } from '../services/dm';
+import { getOrCreateThread, fetchMessages, sendMessage, subscribeInbox, mapRowToMessage, fetchThreadPeers } from '../services/dm';
 
 // 업로드 실패 감지 — uploadImage는 실패 시 '원본 로컬 URI'를 그대로 돌려주므로 falsy 검사로는
 // 잡히지 않는다. file:// 경로가 서버에 저장되면 상대 기기에서 그 사진이 영구히 깨져 보이므로,
@@ -397,6 +397,9 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
   //    반대로 이전 uid로 만든 구독이 그대로 남는다. → 인증 상태 변화에 맞춰 (재)구독한다.
   //    (AppNavigator의 onAuthStateChange 구독과 같은 방식. 콜백 안에서 await하지 않는다 —
   //     supabase-js는 auth 콜백 내 await를 데드락 위험으로 경고한다.)
+  // 실시간 구독·스레드 시드가 따라갈 현재 로그인 uid (applyUid가 갱신)
+  const [authUid, setAuthUid] = useState<string | null>(null);
+
   useEffect(() => {
     if (!isSupabaseConfigured) return;
     let disposed = false;
@@ -409,6 +412,7 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       cleanup?.();                    // 이전 계정 구독 해제 (계정 전환·로그아웃)
       cleanup = null;
       currentUid = uid;
+      setAuthUid(uid);                // 스레드 시드 effect가 로그인·계정 전환을 따라가게
       if (!uid) return;               // 로그아웃 상태 — 구독 없음
       cleanup = subscribeInbox(async (row) => {
         if (row.sender_id === uid) return;
@@ -439,6 +443,36 @@ export function DMProvider({ children }: { children: React.ReactNode }) {
       sub?.data.subscription.unsubscribe();
     };
   }, [ingestRemoteMessage]);
+
+  // 서버 스레드 시드 — 재설치/기기 변경으로 로컬 대화가 빈 스레드를 복원한다.
+  // 이게 없으면 서버엔 대화가 있는데 목록(메이트 목록·대화 행)에 뜨지 않아, 특히 비메이트
+  // 상대의 과거 대화는 상대가 새 메시지를 보내기 전까지 열람 경로가 아예 없었다.
+  // hydrate 이후에만 실행 — 복원 전에 돌면 로컬 대화가 전부 비어 보여 전 스레드를 다시 받고,
+  // 그 결과를 hydrate가 통째로 덮어쓰는 경합이 생긴다. 계정(uid)당 세션 1회.
+  const seededForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isSupabaseConfigured || !hydrated || !authUid) return;
+    if (seededForRef.current === authUid) return;
+    seededForRef.current = authUid;
+    let cancelled = false;
+    (async () => {
+      const peers = await fetchThreadPeers();
+      for (const peerId of peers) {
+        if (cancelled) return;
+        let handle = handleByPeer.current[peerId];
+        if (!handle) {
+          const prof = await getProfileById(peerId).catch(() => null);
+          if (!prof?.handle) continue; // 탈퇴 등으로 프로필 없음 — 목록에 세울 이름이 없다
+          handle = prof.handle;
+          registerPeer(handle, peerId);
+        }
+        // 로컬에 이미 대화가 있으면 스킵 — 열려 있는 대화는 DMScreen 진입 시 loadHistory가 갱신
+        if ((conversationsRef.current[handle]?.length ?? 0) > 0) continue;
+        await loadHistory(handle, peerId); // 히스토리 병합 → 목록 행도 이 대화로 생긴다
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [hydrated, authUid, loadHistory, registerPeer]);
 
   // 복원 전에는 시드 대화가 잠깐 보이지 않도록 렌더를 막는다
   if (!hydrated) {

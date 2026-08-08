@@ -30,6 +30,22 @@ export function mapRowToMessage(row: any, uid: string): Message {
   };
 }
 
+// 내가 참여한 모든 스레드의 상대 uuid 목록 — 재설치/기기 변경 후 대화 목록 복원용.
+// RLS(threads_select_participant)가 내 스레드만 주고 차단 관계는 걸러진다. 실패 시 빈 배열.
+export async function fetchThreadPeers(): Promise<string[]> {
+  if (!supabase) return [];
+  const uid = await getMyUserId();
+  if (!uid) return [];
+  try {
+    const { data } = await supabase.from('dm_threads').select('user_a, user_b');
+    return (data ?? [])
+      .map((r: any) => (r.user_a === uid ? r.user_b : r.user_a) as string)
+      .filter((p) => !!p && p !== uid);
+  } catch {
+    return [];
+  }
+}
+
 // 두 사용자 사이 스레드 찾거나 생성 → thread_id (실패 시 null)
 export async function getOrCreateThread(otherUserId: string): Promise<string | null> {
   if (!supabase || !otherUserId) return null;

@@ -612,6 +612,32 @@ create table if not exists public.neighbors (
 create index if not exists idx_neighbors_addressee on public.neighbors (addressee_id);
 create index if not exists idx_neighbors_status on public.neighbors (status);
 
+-- ⚠️ 대칭 중복 방지 (감사 2026-08-09)
+-- PK가 방향성 (requester, addressee)라 (A,B)와 (B,A)가 공존할 수 있었다.
+-- 클라이언트(requestNeighbor)가 역방향을 먼저 조회해 수락으로 수렴시키지만, 두 사람이
+-- '동시에' 신청하면 둘 다 역방향 조회가 비어 pending 2행 → 각자 수락 → accepted 2행이 된다.
+-- accepted 2행이면 notify_on_friend_post의 bulk upsert가 같은 수신자를 2번 만들어
+-- 21000(cannot affect row a second time)으로 실패하고, 트리거 예외가 posts insert를
+-- 롤백시켜 '두 사용자 모두 새 글 발행 불가'가 된다. 쌍 자체를 DB에서 유일하게 강제한다.
+--
+-- ① 기존 중복 쌍 정리(1회성·재실행 시 0행 no-op) — accepted를 pending보다 우선 보존,
+--    같은 상태면 먼저 생긴 행 보존(동률이면 uuid 순). 아래 유일 인덱스 생성의 전제 조건.
+delete from public.neighbors n
+ where exists (
+   select 1 from public.neighbors m
+   where m.requester_id = n.addressee_id and m.addressee_id = n.requester_id
+     and (
+       (m.status = 'accepted' and n.status <> 'accepted')
+       or (m.status = n.status
+           and (m.created_at < n.created_at
+                or (m.created_at = n.created_at and m.requester_id::text < n.requester_id::text)))
+     )
+ );
+-- ② 방향 무관 쌍 유일 — 이후로는 맞신청 레이스의 두 번째 insert가 23505로 거절된다.
+--    (클라이언트 requestNeighbor가 23505에서 역방향 pending을 재조회해 수락으로 수렴)
+create unique index if not exists uq_neighbors_pair
+  on public.neighbors ((least(requester_id, addressee_id)), (greatest(requester_id, addressee_id)));
+
 -- 서로이웃(neighbor) 판정 — accepted 관계면 true. SECURITY DEFINER로 정책 안에서 일관 조회.
 create or replace function public.are_neighbors(a uuid, b uuid)
 returns boolean language sql stable security definer set search_path = public as $$
@@ -1580,6 +1606,27 @@ drop trigger if exists trg_notify_neighbor_request on public.neighbors;
 create trigger trg_notify_neighbor_request after insert on public.neighbors
   for each row execute function public.notify_on_neighbor_request();
 
+-- 유령 알림 정리 (감사 2026-08-09) — pending 행이 지워지면(신청 취소·거절·차단 정리)
+-- 그 신청이 만든 neighbor_request 알림도 함께 지운다. 안 지우면 취소된 신청의 알림이
+-- 남아, 수신자가 탭해도 수락 목록이 비어 있는 '유령 알림'이 된다. (푸시는 이미 나간 뒤라
+-- 회수 불가 — 앱 내 목록·배지만 정리된다. accepted 행 삭제(메이트 끊기)는 대상 아님.)
+create or replace function public.cleanup_neighbor_request_notification()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  if old.status = 'pending' then
+    delete from public.notifications
+      where user_id = old.addressee_id and actor_id = old.requester_id
+        and type = 'neighbor_request';
+  end if;
+  return null;
+exception when others then
+  return null; -- 알림 정리 실패가 신청 취소를 막으면 안 된다
+end; $$;
+
+drop trigger if exists trg_cleanup_neighbor_request_notif on public.neighbors;
+create trigger trg_cleanup_neighbor_request_notif after delete on public.neighbors
+  for each row execute function public.cleanup_neighbor_request_notification();
+
 -- 이전 follows 알림 함수 정리 (follows에 붙어 있던 트리거는 위 4-b 카탈로그 일괄 정리에서 제거됨)
 drop function if exists public.notify_on_follow();
 
@@ -1674,6 +1721,11 @@ begin
     set status = 'accepted'
     where requester_id = requester and addressee_id = me and status = 'pending';
   if found then
+    -- 역방향 행 정리(방어) — uq_neighbors_pair 이전에 생긴 맞신청 잔재가 있으면
+    -- 여기서 지워 accepted 2행(발행 실패 원인)이 되는 것을 막는다. 관계는 방금
+    -- 수락한 행 하나로 성립하므로 삭제해도 잃는 것이 없다.
+    delete from public.neighbors
+      where requester_id = me and addressee_id = requester;
     insert into public.notifications (user_id, actor_id, type)
       values (requester, me, 'neighbor_accept')
       on conflict (user_id, actor_id, type) do update set created_at = now(), read = false;
@@ -1778,8 +1830,21 @@ create policy "media_delete_own" on storage.objects
 -- update storage.buckets set public = false where id = 'media';
 -- ============================================================
 
--- 실시간 DM을 쓰려면 (대시보드 > Database > Replication 에서 dm_messages 추가하거나):
--- alter publication supabase_realtime add table public.dm_messages;
+-- 실시간 구독 활성화 (2026-08-09 — 주석에서 실제 실행으로 승격)
+-- 이 두 테이블이 publication에 없으면 subscribeInbox(DM 실시간 수신)와
+-- subscribeNotifications(벨 배지 실시간 갱신)가 '에러 없이' 이벤트만 영영 못 받는다.
+-- RLS가 구독자 본인 행만 전달하므로 추가해도 안전. 이미 추가돼 있으면 no-op(멱등).
+-- 확인: select * from pg_publication_tables where pubname = 'supabase_realtime';
+do $$ begin
+  alter publication supabase_realtime add table public.dm_messages;
+exception when duplicate_object then null;
+        when undefined_object then null; -- publication 자체가 없는 환경(셀프호스팅 등)
+end $$;
+do $$ begin
+  alter publication supabase_realtime add table public.notifications;
+exception when duplicate_object then null;
+        when undefined_object then null;
+end $$;
 
 -- ============================================================
 -- 8) 피드백 — 설정 > 피드백 보내기 (인앱 폼)
@@ -2041,8 +2106,11 @@ begin
   end if;
 
   -- accepted 이웃 전원에게 알림 삽입 (on conflict: 같은 작성자의 이전 friend_post 알림 갱신)
+  -- distinct 필수 — 대칭 중복 행((A,B)+(B,A) accepted)이 있으면 같은 수신자가 2번 나와
+  -- 한 문장 안에서 동일 키 upsert가 2회 충돌 → 21000(cannot affect row a second time)으로
+  -- 문장 전체가 실패한다. uq_neighbors_pair로 중복 자체를 막았지만 이중 방어로 둔다.
   insert into public.notifications (user_id, actor_id, type, post_id)
-  select
+  select distinct
     case
       when n.requester_id = new.author_id then n.addressee_id
       else n.requester_id
@@ -2059,6 +2127,10 @@ begin
   on conflict (user_id, actor_id, type) do update
     set created_at = now(), read = false, post_id = excluded.post_id;
 
+  return null;
+exception when others then
+  -- 알림 실패가 게시물 발행을 막으면 안 된다 (notify_send_push와 같은 원칙).
+  -- 이 예외 흡수가 없으면 트리거 오류가 posts insert를 통째로 롤백시킨다.
   return null;
 end; $$;
 

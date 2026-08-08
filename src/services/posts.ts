@@ -398,8 +398,10 @@ export async function fetchMyPosts(): Promise<TravelRecord[]> {
     }
     const mine = rows.map((row) => ({ ...mapRowToRecord(row), isMyPost: true }));
     // 내 좋아요 상태 복원 (mapRowToRecord가 liked:false 기본이라 재다운로드 시 유실 방지)
-    const { fetchMyLikedPostIds } = await import('./social');
-    const likedSet = new Set(await fetchMyLikedPostIds());
+    // 전량 조회(fetchMyLikedPostIds)는 PostgREST 1000행 상한에서 오래된 좋아요가 조용히
+    // 빠진다 — 이 목록의 id들만 조회하는 페이지 방식(fetchMyLikesFor)으로 상한과 무관하게.
+    const { fetchMyLikesFor } = await import('./social');
+    const likedSet = await fetchMyLikesFor(mine.map((r) => r.remoteId).filter(Boolean) as string[]);
     return mine.map((r) => (r.remoteId && likedSet.has(r.remoteId) ? { ...r, liked: true } : r));
   } catch {
     return [];
@@ -418,9 +420,10 @@ export async function fetchPostById(postId: string): Promise<TravelRecord | null
       .maybeSingle();
     if (error || !data) return null;
     const rec = mapRowToRecord(data);
-    // 뷰어(나)의 좋아요 상태 덧씌움 — fetchUserPosts와 동일한 이유(하트 드리프트 방지)
-    const { fetchMyLikedPostIds } = await import('./social');
-    const likedSet = new Set(await fetchMyLikedPostIds());
+    // 뷰어(나)의 좋아요 상태 덧씌움 — fetchUserPosts와 동일한 이유(하트 드리프트 방지).
+    // 단건이므로 전량 조회 대신 이 id만 조회(1000행 상한 무관).
+    const { fetchMyLikesFor } = await import('./social');
+    const likedSet = rec.remoteId ? await fetchMyLikesFor([rec.remoteId]) : new Set<string>();
     return rec.remoteId && likedSet.has(rec.remoteId) ? { ...rec, liked: true } : rec;
   } catch {
     return null;
@@ -441,9 +444,10 @@ export async function fetchUserPosts(userId: string): Promise<TravelRecord[]> {
       .limit(100);
     if (error || !data) return [];
     const list = (data as any[]).map(mapRowToRecord);
-    // 뷰어(나)의 좋아요 상태 덧씌움 — 없으면 이미 좋아요한 글이 빈 하트로 보여 카운트 드리프트 유발
-    const { fetchMyLikedPostIds } = await import('./social');
-    const likedSet = new Set(await fetchMyLikedPostIds());
+    // 뷰어(나)의 좋아요 상태 덧씌움 — 없으면 이미 좋아요한 글이 빈 하트로 보여 카운트 드리프트 유발.
+    // 이 목록의 id들만 조회(fetchMyLikesFor) — 전량 조회의 1000행 상한 하트 유실 방지.
+    const { fetchMyLikesFor } = await import('./social');
+    const likedSet = await fetchMyLikesFor(list.map((r) => r.remoteId).filter(Boolean) as string[]);
     return list.map((r) => (r.remoteId && likedSet.has(r.remoteId) ? { ...r, liked: true } : r));
   } catch {
     return [];

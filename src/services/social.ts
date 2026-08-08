@@ -32,6 +32,18 @@ export async function requestNeighbor(targetId: string): Promise<void> {
   const { error } = await supabase.from('neighbors')
     .insert({ requester_id: uid, addressee_id: targetId, status: 'pending' });
   if (error && error.code !== '23505') throw error;
+  // 23505 = 이미 내 신청이 있거나, '동시에 맞신청'해서 상대 행이 방금 먼저 들어간 경우
+  // (uq_neighbors_pair 대칭 유일 인덱스가 두 번째 insert를 거절한다).
+  // 후자면 위의 역방향 조회 시점엔 없었으므로 다시 조회해 수락으로 수렴시킨다 —
+  // 안 하면 양쪽 다 '신청됨' 상태로 멈춰 서로 수락을 기다리게 된다.
+  if (error?.code === '23505') {
+    const { data: rev2 } = await supabase
+      .from('neighbors')
+      .select('status')
+      .eq('requester_id', targetId).eq('addressee_id', uid)
+      .maybeSingle();
+    if (rev2?.status === 'pending') await acceptNeighbor(targetId);
+  }
 }
 
 export async function cancelNeighborRequest(targetId: string): Promise<void> {
@@ -463,39 +475,33 @@ export async function unlikePost(postId: string): Promise<void> {
   if (error) throw error;
 }
 
-// 내가 좋아요한 게시물 id 목록
 /**
- * 주어진 게시물들에 대한 '내 좋아요' 여부만 조회 (피드 페이지용).
+ * 주어진 게시물들에 대한 '내 좋아요' 여부만 조회.
  *
- * fetchMyLikedPostIds 는 내 좋아요를 전부 받아온다 — 좋아요가 쌓인 사용자일수록 피드를
- * 열 때마다 수천 개의 uuid를 내려받고, PostgREST 기본 행 상한(1000)에 걸리면 오래된
- * 좋아요가 조용히 빠져 하트가 빈 채로 보인다. 페이지 단위 조회는 항상 20~70건이라 둘 다 없다.
+ * 전량 조회(구 fetchMyLikedPostIds — 2026-08-09 제거)는 좋아요가 쌓인 사용자일수록
+ * 수천 개의 uuid를 내려받고, PostgREST 기본 행 상한(1000)에 걸리면 오래된 좋아요가
+ * 조용히 빠져 하트가 빈 채로 보였다. 항상 이 함수로 필요한 id만 조회할 것.
  */
 export async function fetchMyLikesFor(postIds: string[]): Promise<Set<string>> {
   if (!supabase || postIds.length === 0) return new Set();
   const uid = await getMyUserId();
   if (!uid) return new Set();
   try {
-    const { data } = await supabase
-      .from('post_likes')
-      .select('post_id')
-      .eq('user_id', uid)
-      .in('post_id', postIds);
-    return new Set((data ?? []).map((r: any) => r.post_id as string));
+    // 200개 단위 청크 — 대량 id를 .in() 하나로 보내면 URL 길이 한도에 걸린다.
+    // (fetchMyPosts처럼 수백~수천 건을 넘기는 호출부도 안전하게 쓰도록 여기서 나눈다)
+    const CHUNK = 200;
+    const out = new Set<string>();
+    for (let i = 0; i < postIds.length; i += CHUNK) {
+      const { data } = await supabase
+        .from('post_likes')
+        .select('post_id')
+        .eq('user_id', uid)
+        .in('post_id', postIds.slice(i, i + CHUNK));
+      for (const r of (data ?? []) as any[]) out.add(r.post_id as string);
+    }
+    return out;
   } catch {
     return new Set();
-  }
-}
-
-export async function fetchMyLikedPostIds(): Promise<string[]> {
-  if (!supabase) return [];
-  const uid = await getMyUserId();
-  if (!uid) return [];
-  try {
-    const { data } = await supabase.from('post_likes').select('post_id').eq('user_id', uid);
-    return (data ?? []).map((r: any) => r.post_id as string);
-  } catch {
-    return [];
   }
 }
 
