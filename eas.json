@@ -12,17 +12,17 @@
     },
     "preview": {
       "distribution": "internal",
-      "channel": "preview",
+      "channel": "beta",
       "environment": "preview",
       "env": { "APP_VARIANT": "beta" },
       "android": { "buildType": "apk" }
     },
     "beta": {
-      "channel": "preview",
+      "channel": "beta",
       "environment": "preview",
       "distribution": "store",
       "autoIncrement": true,
-      "env": { "APP_VARIANT": "beta", "EXPO_NO_CAPABILITY_SYNC": "1" }
+      "env": { "APP_VARIANT": "beta" }
     },
     "production": {
       "channel": "production",

@@ -12,7 +12,8 @@
    `supabase functions deploy send-push report-alert login-with-identifier delete-account --project-ref <테스트ref>`
 5. Storage → `media` 버킷 생성(public) — 운영과 동일 구성
 6. Authentication → URL Configuration → Redirect URLs에 `eorthbeta://auth-callback`,
-   `eorthbeta://reset-password`, `eorthbeta://email-confirm`, `eorthdev://auth-callback` 추가
+   `eorthbeta://reset-password`, `eorthbeta://email-confirm`, `eorthdev://auth-callback`,
+   `eorthdev://reset-password`, `eorthdev://email-confirm` 추가
 7. (푸시 멱등·정리 cron은 베타에선 선택 — 필요 시 SERVER-STATE.md 절차 재사용)
 
 ## 2. EAS 환경변수 (preview·development 환경을 테스트 프로젝트로)
@@ -23,6 +24,16 @@
     eas env:update --environment preview --variable-name EXPO_PUBLIC_SUPABASE_ANON_KEY --value <테스트anon키>
 
 development 환경도 동일 2건 교체. 로컬 `expo start` 개발도 테스트를 보게 하려면 `.env`도 같은 값으로.
+
+`APP_VARIANT`는 `eas.json`의 `build.*.env`로 **빌드**에는 이미 주입되지만, **`eas update`(OTA)는 이 값을 읽지 않는다** —
+OTA 번들도 변형(베타/dev) 산출을 받으려면 EAS 환경변수로도 등록해야 한다:
+
+    eas env:create --environment preview --name APP_VARIANT --value beta --visibility plaintext
+    eas env:create --environment development --name APP_VARIANT --value development --visibility plaintext
+
+⚠️ **production 환경에는 `APP_VARIANT`를 절대 넣지 않는다.** production에 값이 들어가면 app.config.js가
+정식 산출 대신 변형 산출(번들 ID·스킴·데모 AdMob 등)로 갈라져 정식 OTA가 깨진다 — G1(미설정=정식)이 성립하는 것은
+production 환경에 이 변수가 없을 때뿐이다.
 
 ## 3. App Store Connect — 베타 앱 등록
 1. ASC → 앱 추가: 이름 `eOrth β`, 번들 `com.yunjunsang.eorth.beta`
@@ -62,3 +73,15 @@ development 환경도 동일 2건 교체. 로컬 `expo start` 개발도 테스�
 - 구글 로그인(4번 완료 전엔 웹 OAuth 창으로 뜨는 게 정상)
 - 게시·DM·알림이 **테스트 프로젝트에만** 생기는가(운영 대시보드에 안 보여야 함)
 - 정식앱 로그인·피드가 이전과 동일하게 동작하는가(G2 최종 확인 — 이 확인 전 정식 채널 OTA 금지)
+
+## 7. OTA(eas update) 규칙
+
+빌드 프로필의 채널은 베타/dev와 정식/preview 구독자를 분리하도록 `beta`·`development`·`production` 3개다
+(구 베타 TestFlight 빌드가 `preview` 채널을 구독 중이므로 새 베타와 채널을 공유하면 안 된다 — 어느 쪽으로
+발행해도 다른 한쪽이 깨진다).
+
+- **베타 OTA**: `eas update --channel beta --environment preview`
+- **정식 OTA**: `eas update --channel production --environment production`
+  — **`--environment`를 생략하지 말 것.** 생략하면 로컬 `.env`가 번들에 그대로 인라인되는데, §2에서
+  `.env`를 테스트 프로젝트 값으로 바꿔둔 상태라면 정식 사용자 전원이 빈 테스트 DB를 보게 되는 사고가 된다.
+- **dev OTA**(있다면): `eas update --channel development --environment development`
