@@ -124,12 +124,21 @@ export function matchAll(people) {
       trios.push({ a: best.pair.a, b: best.pair.b, c: p });
       taken.add(p.id);
     } else {
-      unmatched.push({
-        person: p,
-        reason: pairs.length === 0
-          ? '함께 묶을 참가자가 없습니다(성별 조건 또는 참가자 수)'
-          : '성별 조건에 맞는 짝이 없습니다',
-      });
+      // 사유를 세 경우로 구분한다 — 뭉뚱그리면 운영자가 "성비가 안 맞았다"로 잘못 결론 낼 수 있다.
+      // 실제로는 적격한 상대가 있었는데 그들이 이미 다 다른 사람과 묶여서 자리가 없는 경우일 수 있다.
+      const hasEligiblePartner = people.some((q) => q.id !== p.id && isEligible(p, q));
+      let reason;
+      if (!hasEligiblePartner) {
+        // 애초에 이 사람과 성별 조건이 맞는 상대가 한 명도 없었다
+        reason = '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/상관없음)을 확인하세요.';
+      } else if (pairs.length === 0) {
+        // 적격 상대는 있었지만 풀 전체에서 짝이 한 쌍도 만들어지지 않았다 — 참가자 수 자체가 부족했다
+        reason = '조건에 맞는 상대는 있었지만 참가자 수가 적어 짝이 하나도 만들어지지 않았습니다.';
+      } else {
+        // 적격 상대도 있었고 짝도 만들어졌지만, 이 사람을 붙일 수 있는 짝은 이미 다른 사람에게 소진됐다
+        reason = '조건에 맞는 상대는 있었지만 이미 다른 사람과 짝이 되어 붙을 자리가 남지 않았습니다(성비 문제가 아니라 인원 배치가 소진된 것입니다).';
+      }
+      unmatched.push({ person: p, reason });
     }
   }
   // 3인조로 승격된 짝은 pairs에서 뺀다 — 안 빼면 같은 사람에게 문구가 두 번 나간다

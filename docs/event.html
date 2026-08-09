@@ -119,6 +119,7 @@
   </section>
 
   <section id="done" class="hide">
+    <p class="sub hide" id="notice" style="color:var(--neon)"></p>
     <p class="sub">당신의 여행 유형은</p>
     <div class="type" id="typeKo"></div>
     <div id="axes"></div>
@@ -180,6 +181,10 @@ $('optB').onclick = () => answer('B');
 $('start').onclick = () => { show('survey'); renderQuestion(); };
 
 // ── 나라 선택 ──
+// 검색창이 비어 있을 때 보여줄 기본 목록 — 부스 회전율을 생각하면 뭔가 쳐야만 선택지가
+// 보이는 건 느리다. COUNTRIES에 실제로 있는 이름만 남도록 필터링한다(오타로 조용히 빠지게).
+const POPULAR_COUNTRY_NAMES = ['일본', '베트남', '태국', '대만', '미국', '프랑스', '이탈리아', '스페인'];
+const POPULAR_COUNTRIES = COUNTRIES.filter((c) => POPULAR_COUNTRY_NAMES.includes(c.name));
 function chip(text, dataKey, dataValue, on) {
   const el = document.createElement('div');
   el.className = on ? 'chip on' : 'chip';
@@ -189,7 +194,9 @@ function chip(text, dataKey, dataValue, on) {
 }
 function renderCountries(query) {
   const q = (query || '').trim().toLowerCase();
-  const list = q ? COUNTRIES.filter((c) => c.term.includes(q)).slice(0, 12) : [];
+  const list = q
+    ? COUNTRIES.filter((c) => c.term.includes(q)).slice(0, 12)
+    : POPULAR_COUNTRIES.filter((c) => !state.countries.includes(c.name)); // 이미 고른 나라는 picked 칩에 있으니 기본 목록에선 뺀다
   clear($('clist'));
   for (const c of list) $('clist').appendChild(chip(`${c.flag} ${c.name}`, 'c', c.name, false));
   clear($('picked'));
@@ -297,7 +304,11 @@ $('confirmYes').onclick = async (e) => {
 function finish(notice) {
   const scores = scoreAxes(state.answers);
   const label = makeTypeLabel(scores);
-  $('typeKo').textContent = notice || label.ko;
+  // 안내 문구(예: 이미 참여함)는 유형 라벨을 덮지 않고 별도 줄로 띄운다 — 유형은 부스에서
+  // 참가자가 받아가는 유일한 즉시 보상이라, 재시도한 사람도 반드시 봐야 한다.
+  $('notice').textContent = notice || '';
+  $('notice').classList.toggle('hide', !notice);
+  $('typeKo').textContent = label.ko;
 
   clear($('axes'));
   for (const a of DNA_AXES) {

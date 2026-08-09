@@ -71,6 +71,34 @@ async function fetchRows(eventCode) {
   return res.json();
 }
 
+/**
+ * fixture 파일을 읽고 파싱한다. 행사 후 리포트를 뽑다가 오타를 내는 건 흔한 실수라,
+ * Node 원시 스택 대신 무엇이 잘못됐고 무엇을 하면 되는지 한글로 안내하고 조용히 종료한다.
+ */
+function loadFixture(path) {
+  let text;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.error(`❌ fixture 파일을 찾을 수 없습니다: ${path}`);
+      console.error('   경로를 다시 확인하거나, --fixture 없이 --event로 Supabase에서 직접 조회하세요.');
+    } else {
+      console.error(`❌ fixture 파일을 읽을 수 없습니다: ${path}`);
+      console.error(`   ${err.message}`);
+    }
+    process.exit(1);
+  }
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    console.error(`❌ fixture 파일이 올바른 JSON이 아닙니다: ${path}`);
+    console.error(`   ${err.message}`);
+    console.error('   따옴표·쉼표·괄호가 맞는지 확인하세요.');
+    process.exit(1);
+  }
+}
+
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
 function renderReport({ pairs, trios, unmatched }, total, reportKey) {
@@ -173,7 +201,7 @@ if (!fixture && !eventCode) {
   process.exit(1);
 }
 
-let rows = fixture ? JSON.parse(readFileSync(fixture, 'utf8')) : await fetchRows(eventCode);
+let rows = fixture ? loadFixture(fixture) : await fetchRows(eventCode);
 
 const exclude = new Set((arg('exclude') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
 if (exclude.size) {

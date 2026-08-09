@@ -121,7 +121,32 @@ console.log('매칭 엔진');
   eq(pairs.length, 1, '여성 2명이 한 쌍');
   eq(trios.length, 0, '조건에 안 맞는 사람을 3인조로 밀어넣지 않는다');
   eq(unmatched.map((u) => u.person.id), ['m1'], '남은 사람은 미매칭으로 보고된다');
-  eq(typeof unmatched[0].reason, 'string', '사유 문구 존재');
+  eq(
+    unmatched[0].reason,
+    '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/상관없음)을 확인하세요.',
+    '사유: 애초에 성별 조건이 맞는 상대가 한 명도 없었던 경우로 정확히 분류된다',
+  );
+}
+{
+  // 적격 상대는 있었지만(성별 조건 문제가 아니라) 이미 다른 사람과 짝이 되어 붙을 자리가
+  // 없어서 남는 경우 — "성별 조건에 맞는 짝이 없습니다"로 보고하면 운영자가 성비 문제로
+  // 오인한다. r1·r2가 먼저 짝이 되고, r3는 그 짝에 3인조로 흡수되지만, r4는 같은 짝에
+  // 붙으려 해도(usedPair) 자리가 없어 남는다 — r4는 r1·r2 모두와 적격했다.
+  const r1 = person({ id: 'r1', gender: 'f', gender_pref: 'any' });
+  const r2 = person({ id: 'r2', gender: 'f', gender_pref: 'any' });
+  const r3 = person({ id: 'r3', gender: 'f', gender_pref: 'same' }); // r1·r2와는 동성이라 적격, r4와는 이성이라 부적격
+  const r4 = person({ id: 'r4', gender: 'm', gender_pref: 'any' }); // r1·r2와는 적격(양쪽 any), r3와는 부적격
+  const people = preparePeople([r1, r2, r3, r4]);
+  const { pairs, trios, unmatched } = matchAll(people);
+  eq(pairs.length, 0, '남은 쌍 없음(1쌍은 3인조로 승격됨)');
+  eq(trios.length, 1, '3인조 1개(r3가 r1·r2 짝에 흡수됨)');
+  eq([trios[0].a.id, trios[0].b.id, trios[0].c.id].sort(), ['r1', 'r2', 'r3'], '3인조는 r1·r2·r3');
+  eq(unmatched.map((u) => u.person.id), ['r4'], '남은 사람은 r4');
+  eq(
+    unmatched[0].reason,
+    '조건에 맞는 상대는 있었지만 이미 다른 사람과 짝이 되어 붙을 자리가 남지 않았습니다(성비 문제가 아니라 인원 배치가 소진된 것입니다).',
+    '사유: 적격 상대는 있었으나 짝이 소진되어 못 붙은 잔여 소진 경우로 정확히 분류된다',
+  );
 }
 {
   // 결정론 — 두 번 돌려도 같은 결과여야 한다(이미 보낸 DM과 어긋나면 안 된다)
