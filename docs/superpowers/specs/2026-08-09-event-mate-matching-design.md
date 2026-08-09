@@ -85,6 +85,13 @@ RLS는 **anon에게 INSERT만** 열고 SELECT·UPDATE·DELETE는 전부 막는�
 ```sql
 alter table event_participants enable row level security;
 
+-- ⚠️ RLS 정책만으로는 부족하다. Supabase는 public 스키마 신규 테이블에 anon·authenticated
+--    기본 권한을 주므로, 테이블 권한부터 걷어내고 필요한 것만 다시 준다.
+--    (schema.sql의 public_profiles·dm_messages가 쓰는 방식과 동일)
+revoke all on public.event_participants from anon, authenticated;
+grant insert on public.event_participants to anon;
+-- 읽기·수정·삭제 권한은 아무에게도 주지 않는다 → service_role(로컬 스크립트)만 가능.
+
 create policy event_participants_insert on event_participants
   for insert to anon
   with check (
