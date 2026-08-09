@@ -13,6 +13,11 @@
    `docs/event.html`의 `EVENT_CODE` 상수와 같은지 먼저 확인할 것(둘 다 이미 `popup01`로
    맞춰져 있다 — `node node_modules/tsx/dist/cli.mjs scripts/event-config.verify.mjs`로
    재확인 가능).
+   > **다음 행사 때 행사명을 바꾼다면**: `docs/event.html`의 `<title>`과 인트로 화면 문구,
+   > `scripts/event-match.mjs`의 `EVENT_NAME` **세 곳을 함께** 고칠 것. `event-config.verify.mjs`는
+   > `<title>`과 `EVENT_NAME`만 자동으로 비교한다(인트로 문구는 검사 대상이 아니다) — 세 곳을
+   > 고친 뒤 반드시 `node node_modules/tsx/dist/cli.mjs scripts/event-config.verify.mjs`를 돌려
+   > `<title>`≠`EVENT_NAME`으로 어긋나지 않았는지 확인한다.
 2. **service_role 키 준비** — Supabase 대시보드 > Project Settings > API에서 복사해
    `.env`에 `SUPABASE_SERVICE_ROLE_KEY=...` 한 줄 추가. **이 키는 절대 커밋하지 않는다**
    (`.env`는 이미 무시된다). 이 키가 없으면 `event-match.mjs`·`event-purge.mjs` 둘 다
