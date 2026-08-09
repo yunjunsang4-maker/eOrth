@@ -17,7 +17,7 @@ const arg = (name, fallback = null) => {
   return i >= 0 && next && !next.startsWith('--') ? next : fallback;
 };
 
-const EVENT_NAME = 'eOrth 팝업 이벤트';   // ⚠️ Task 6에서 확정
+const EVENT_NAME = 'eOrth 단대축제 부스';
 const OUT = 'event-report.local.html';
 
 /** .env 파서 — 이 저장소에 dotenv가 없어서 직접 읽는다(따옴표·주석만 처리하면 충분하다) */

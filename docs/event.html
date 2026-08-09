@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>eOrth 팝업 이벤트 — 여행 메이트 찾기</title>
+<title>eOrth 단대축제 부스 — 여행 메이트 찾기</title>
 <style>
   :root{--bg:#0A0A0F;--card:#2E2E3B;--neon:#BF85FC;--dim:#A1A1B0;--line:#1A1A26;--red:#FF3B30}
   *{box-sizing:border-box}
@@ -45,6 +45,7 @@
 
   <section id="intro">
     <h1>여행 메이트 찾기</h1>
+    <p class="sub" style="font-size:13px;color:var(--neon)">eOrth 단대축제 부스</p>
     <p class="sub">14문항, 약 1분 30초.<br>행사가 끝나면 성향이 가장 잘 맞는 분을 인스타 DM으로 알려드려요.</p>
     <p class="sub" style="font-size:13px">※ 결과는 인스타그램 DM으로만 보내드립니다. 인스타 계정이 필요해요.</p>
     <button class="cta" id="start">시작하기</button>
@@ -126,7 +127,7 @@
 import { EVENT_QUESTIONS, COUNTRIES, scoreAxes, makeTypeLabel, DNA_AXES, DNA_LABELS, normalizeInstagram }
   from './event-dna.js';
 
-// ⚠️ 이 세 값은 Task 6에서 확정한다. EVENT_CODE는 RLS with check와 반드시 같아야 한다.
+// eOrth 단대축제 부스(2026-09-10 종료) — EVENT_CODE는 RLS with check와 반드시 같아야 한다.
 const EVENT_CODE = 'popup01';
 const SUPABASE_URL = 'https://blweolnunmsxgztmvzfd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8';

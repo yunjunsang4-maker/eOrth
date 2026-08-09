@@ -2569,7 +2569,7 @@ drop policy if exists event_participants_insert on public.event_participants;
 create policy event_participants_insert on public.event_participants
   for insert to anon
   with check (
-    event_code = 'popup01'                   -- ⚠️ Task 6에서 실제 행사 코드로 교체
+    event_code = 'popup01'                   -- eOrth 단대축제 부스(2026-09-10 종료) — event.html EVENT_CODE와 반드시 같아야 한다
     and consent_pii and consent_share
     and char_length(name) between 1 and 40
     and instagram ~ '^[a-z0-9._]{1,30}$'
