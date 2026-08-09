@@ -64,21 +64,38 @@ assertSupabaseUrlMatchesPage(url);
 const headers = { apikey: key, Authorization: `Bearer ${key}` };
 const filter = `event_code=eq.${encodeURIComponent(eventCode)}`;
 
-const countRes = await fetch(`${url}/rest/v1/event_participants?${filter}&select=id`, { headers });
-if (!countRes.ok) { console.error(`❌ 조회 실패 ${countRes.status}: ${await countRes.text()}`); process.exit(1); }
-const rows = await countRes.json();
-console.log(`행사 ${eventCode}: ${rows.length}건`);
+// ⚠️ fetch 이후에는 process.exit()을 쓰지 않는다.
+// Node 24/Windows에서 undici 소켓이 정리되기 전에 강제 종료하면 libuv 어서션
+// (`!(handle->flags & UV_HANDLE_CLOSING)`)이 뜨면서 종료 코드가 127로 바뀐다.
+// 파기 도구에서 이게 나면 "삭제했습니다" 출력 직후 크래시로 보여 실제 삭제 여부를
+// 판단할 수 없다. exitCode만 정하고 자연 종료시킨다(소켓 정리 후 즉시 끝난다).
+async function run() {
+  const countRes = await fetch(`${url}/rest/v1/event_participants?${filter}&select=id`, { headers });
+  if (!countRes.ok) {
+    console.error(`❌ 조회 실패 ${countRes.status}: ${await countRes.text()}`);
+    process.exitCode = 1;
+    return;
+  }
+  const rows = await countRes.json();
+  console.log(`행사 ${eventCode}: ${rows.length}건`);
 
-if (!confirmed) {
-  console.log('실제로 지우려면 --confirm 을 붙이세요. (되돌릴 수 없습니다)');
-  process.exit(0);
+  if (!confirmed) {
+    console.log('실제로 지우려면 --confirm 을 붙이세요. (되돌릴 수 없습니다)');
+    return;
+  }
+
+  const del = await fetch(`${url}/rest/v1/event_participants?${filter}`, {
+    method: 'DELETE', headers: { ...headers, Prefer: 'return=representation' },
+  });
+  if (!del.ok) {
+    console.error(`❌ 삭제 실패 ${del.status}: ${await del.text()}`);
+    process.exitCode = 1;
+    return;
+  }
+  const deleted = await del.json();
+  console.log(`✅ ${deleted.length}건 삭제했습니다.`);
+  console.log('마지막으로 SQL Editor에서 INSERT 정책도 내리세요:');
+  console.log('  drop policy if exists event_participants_insert on public.event_participants;');
 }
 
-const del = await fetch(`${url}/rest/v1/event_participants?${filter}`, {
-  method: 'DELETE', headers: { ...headers, Prefer: 'return=representation' },
-});
-if (!del.ok) { console.error(`❌ 삭제 실패 ${del.status}: ${await del.text()}`); process.exit(1); }
-const deleted = await del.json();
-console.log(`✅ ${deleted.length}건 삭제했습니다.`);
-console.log('마지막으로 SQL Editor에서 INSERT 정책도 내리세요:');
-console.log('  drop policy if exists event_participants_insert on public.event_participants;');
+await run();

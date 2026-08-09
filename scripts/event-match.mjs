@@ -66,7 +66,10 @@ async function fetchRows(eventCode) {
   const res = await fetch(q, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
   if (!res.ok) {
     console.error(`❌ 조회 실패 ${res.status}: ${await res.text()}`);
-    process.exit(1);
+    // fetch 이후에는 process.exit()을 쓰지 않는다 — Node 24/Windows에서 undici 소켓이
+    // 정리되기 전에 강제 종료하면 libuv 어서션이 뜨면서 종료 코드가 127로 바뀐다.
+    process.exitCode = 1;
+    return null;
   }
   return res.json();
 }
@@ -194,28 +197,34 @@ for(const b of document.querySelectorAll('.copy')){
 </script></body></html>`;
 }
 
-const fixture = arg('fixture');
-const eventCode = arg('event');
-if (!fixture && !eventCode) {
-  console.error('사용법: node scripts/event-match.mjs --event <행사코드> [--exclude id1,id2] [--fixture <파일>]');
-  process.exit(1);
+async function main() {
+  const fixture = arg('fixture');
+  const eventCode = arg('event');
+  if (!fixture && !eventCode) {
+    console.error('사용법: node scripts/event-match.mjs --event <행사코드> [--exclude id1,id2] [--fixture <파일>]');
+    process.exitCode = 1;
+    return;
+  }
+
+  let rows = fixture ? loadFixture(fixture) : await fetchRows(eventCode);
+  if (!rows) return; // 조회 실패 — fetchRows가 이미 사유를 안내하고 exitCode를 세웠다
+
+  const exclude = new Set((arg('exclude') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
+  if (exclude.size) {
+    const before = rows.length;
+    rows = rows.filter((r) => !exclude.has(r.instagram) && !exclude.has(r.id));
+    console.log(`제외 ${before - rows.length}명`);
+  }
+
+  const people = preparePeople(rows);
+  const result = matchAll(people);
+  // 발송 체크 키를 행사별로 나누는 데 쓴다. --event가 없는 fixture 모드는 EVENT_NAME으로 대신한다.
+  const reportKey = eventCode || EVENT_NAME;
+  writeFileSync(OUT, renderReport(result, people.length, reportKey), 'utf8');
+
+  console.log(`참가 ${people.length}명 → 짝 ${result.pairs.length}쌍, 3인조 ${result.trios.length}개, 미매칭 ${result.unmatched.length}명`);
+  for (const u of result.unmatched) console.log(`  ⚠ @${u.person.instagram} — ${u.reason}`);
+  console.log(`리포트: ${OUT} (브라우저로 여세요)`);
 }
 
-let rows = fixture ? loadFixture(fixture) : await fetchRows(eventCode);
-
-const exclude = new Set((arg('exclude') ?? '').split(',').map((s) => s.trim()).filter(Boolean));
-if (exclude.size) {
-  const before = rows.length;
-  rows = rows.filter((r) => !exclude.has(r.instagram) && !exclude.has(r.id));
-  console.log(`제외 ${before - rows.length}명`);
-}
-
-const people = preparePeople(rows);
-const result = matchAll(people);
-// 발송 체크 키를 행사별로 나누는 데 쓴다. --event가 없는 fixture 모드는 EVENT_NAME으로 대신한다.
-const reportKey = eventCode || EVENT_NAME;
-writeFileSync(OUT, renderReport(result, people.length, reportKey), 'utf8');
-
-console.log(`참가 ${people.length}명 → 짝 ${result.pairs.length}쌍, 3인조 ${result.trios.length}개, 미매칭 ${result.unmatched.length}명`);
-for (const u of result.unmatched) console.log(`  ⚠ @${u.person.instagram} — ${u.reason}`);
-console.log(`리포트: ${OUT} (브라우저로 여세요)`);
+await main();
