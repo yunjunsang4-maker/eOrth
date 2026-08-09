@@ -12,6 +12,7 @@ export const PUBLISHED_FILES = [
   'support-en.html',         // App Store 영문 지원 URL
   'notices.json',
   'event-dna.js',            // 행사 이벤트 페이지가 쓰는 생성물 (scripts/build-event-dna.mjs)
+  'event.html',              // 오프라인 행사 설문 페이지
 ];
 
 /**
