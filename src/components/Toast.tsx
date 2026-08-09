@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, Image, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthorAvatar from './AuthorAvatar';
-import { CommentIcon, HeartIcon, FriendIcon, PinIcon } from './icons';
+import { CommentIcon, HeartIcon, FriendIcon, PinIcon, StarIcon } from './icons';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { ToastVisual } from '../store/toastStore';
 
@@ -15,7 +15,7 @@ interface ToastProps {
   onDismiss?: () => void;      // 밀어서 즉시 닫기
 }
 
-const VISUAL_ICON = { like: HeartIcon, comment: CommentIcon, follow: FriendIcon, record: PinIcon };
+const VISUAL_ICON = { like: HeartIcon, comment: CommentIcon, follow: FriendIcon, record: PinIcon, badge: StarIcon };
 const AVA = 32;
 
 export default function Toast({ visible, message, position = 'bottom', onPress, visual, onDismiss }: ToastProps) {
@@ -62,15 +62,19 @@ export default function Toast({ visible, message, position = 'bottom', onPress, 
 
   const Icon = visual?.icon ? VISUAL_ICON[visual.icon] : null;
   const rich = !!visual; // 알림 배너(아바타 포함) / 일반 토스트(텍스트만) 두 모드
+  // 배지 획득처럼 행위자가 없는 알림 — 실루엣 아바타 대신 카테고리 아이콘을 링 안에 크게
+  const iconOnly = !visual?.photo && visual?.icon === 'badge';
 
   const body = (
     <>
       {rich && (
         <View style={{ width: AVA, height: AVA }}>
-          <View style={[s.avatarRing, { borderColor: skinAccent.tint(0.35) }]}>
-            <AuthorAvatar photo={visual?.photo} size={AVA - 2} />
+          <View style={[s.avatarRing, { borderColor: skinAccent.tint(0.35) }, iconOnly && { backgroundColor: skinAccent.tint(0.16) }]}>
+            {iconOnly && Icon
+              ? <Icon size={15} color={skinAccent.accent} />
+              : <AuthorAvatar photo={visual?.photo} size={AVA - 2} />}
           </View>
-          {Icon && (
+          {Icon && !iconOnly && (
             <View style={[s.catBadge, { backgroundColor: skinAccent.accent }]}>
               <Icon size={8} color="#FFFFFF" />
             </View>

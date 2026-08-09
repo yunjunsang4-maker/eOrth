@@ -1624,6 +1624,8 @@ const en = {
     commentText: '{{name}} commented on your record',
     replyText: '{{name}} replied to your comment',
     friendPostText: '{{name}} shared a new travel record',
+    badgeEarnedText: 'Badge earned — {{name}}',
+    badgeEarnedDefault: 'You earned a new badge!',
     catMemory: 'Memory reminder',
     catRecord: 'Trip started',
     noPostTitle: 'No post',

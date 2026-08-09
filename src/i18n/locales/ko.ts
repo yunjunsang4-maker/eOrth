@@ -1631,6 +1631,8 @@ const ko = {
     commentText: '{{name}}님이 회원님의 기록에 댓글을 남겼어요',
     replyText: '{{name}}님이 회원님의 댓글에 답글을 남겼어요',
     friendPostText: '{{name}}님이 새 여행 기록을 올렸어요',
+    badgeEarnedText: '배지 획득 — {{name}}',
+    badgeEarnedDefault: '새 배지를 획득했어요!',
     catMemory: '추억 리마인드',
     catRecord: '기록 시작',
     noPostTitle: '게시물 없음',

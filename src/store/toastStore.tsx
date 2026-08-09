@@ -3,7 +3,9 @@ import React, { createContext, useContext, useState, useCallback, useRef, useEff
 // 배너에 함께 그릴 시각 정보 (없으면 기존처럼 텍스트만)
 export interface ToastVisual {
   photo?: string;                                    // 행위자 프로필 사진 — 없으면 제작 실루엣
-  icon?: 'like' | 'comment' | 'follow' | 'record';   // 아바타 우하단 카테고리 배지
+  // 아바타 우하단 카테고리 배지. 'badge'(배지 획득)는 행위자가 없는 알림이라
+  // 아바타 자리에 제작 별 아이콘을 크게 그린다(Toast.tsx)
+  icon?: 'like' | 'comment' | 'follow' | 'record' | 'badge';
   thumb?: string;                                    // 대상 게시물 대표 사진(우측)
 }
 
