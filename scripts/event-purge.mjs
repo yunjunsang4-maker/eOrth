@@ -12,7 +12,8 @@ import { readFileSync } from 'node:fs';
 
 const arg = (name) => {
   const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : null;
+  const next = process.argv[i + 1];
+  return i >= 0 && next && !next.startsWith('--') ? next : null;
 };
 
 function readEnv() {
