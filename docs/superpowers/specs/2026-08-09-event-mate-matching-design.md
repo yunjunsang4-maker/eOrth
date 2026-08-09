@@ -74,7 +74,7 @@ create table event_participants (
   gender_pref    text not null check (gender_pref in ('same','any')),
   instagram      text not null,           -- @ 없이, 소문자로 정규화해 저장
   wish_countries text[] not null,
-  answers        jsonb not null,          -- {"1":"a","5":"b", ...} 문항 id → 선택
+  answers        jsonb not null,          -- {"1":"A","5":"B", ...} 문항 id → 선택(대문자, 앱 DnaAnswers와 동일)
   consent_pii    boolean not null,
   consent_share  boolean not null,
   created_at     timestamptz default now()
@@ -143,13 +143,16 @@ create policy event_participants_insert on event_participants
 | ⑦ company (혼자↔함께) | 31, 32 |
 
 ```
-src/constants/travelDna.ts + src/constants/countries.ts   (단일 출처)
-        ↓  node node_modules/tsx/dist/cli.mjs scripts/build-event-dna.ts
-docs/event-dna.js   (생성물 — 브라우저 <script>와 Node 양쪽이 읽는다)
+src/constants/travelDna.ts + src/utils/travelDnaScore.ts + src/constants/countries.ts   (단일 출처)
+        ↓  scripts/event-dna-entry.ts (재수출만)
+        ↓  node scripts/build-event-dna.mjs   ← esbuild 번들
+docs/event-dna.js   (생성물 — 브라우저 <script type="module">와 Node가 함께 import)
 ```
 
-`tsx`가 이미 devDependency이고 `scripts/build-region-aliases.ts`라는 선례가 있어 TS 상수를
-그대로 import할 수 있다.
+**채점 로직도 옮겨 적지 않는다.** `src/utils/travelDnaScore.ts`에 `scoreAxes`·`makeTypeLabel`이
+이미 구현돼 있고 자체 검증 파일까지 있으므로, 진입점은 그것을 **재수출만** 하고 esbuild가
+번들한다(esbuild는 tsx의 의존성으로 이미 설치돼 있다). 손으로 옮긴 채점 공식이 앱과 갈라질
+여지가 아예 없어진다.
 
 **손으로 옮겨 적지 않는 이유**: 앱 문항을 고쳤을 때 이벤트 문항만 옛 문구로 남고, 그 상태로
 계산한 유형 라벨은 참가자가 나중에 앱에서 받는 라벨과 어긋난다. 채점 공식이 두 벌이 되면
@@ -325,7 +328,9 @@ node scripts/event-purge.mjs --event popup01 --confirm      # 파기
 |---|---|
 | `docs/event.html` | 신규 — 게시 대상 |
 | `docs/event-dna.js` | 신규 — **생성물**, 게시 대상 |
-| `scripts/build-event-dna.ts` | 신규 — 생성기 |
+| `scripts/event-dna-entry.ts` | 신규 — 번들 진입점(재수출만) |
+| `scripts/build-event-dna.mjs` | 신규 — 생성기(esbuild) |
+| `scripts/event-match-core.mjs` | 신규 — 매칭 순수 로직(검증 대상) |
 | `scripts/event-match.mjs` | 신규 — 로컬 관리자 |
 | `scripts/event-purge.mjs` | 신규 — 로컬 파기 |
 | `scripts/lib/pagesFiles.mjs` | 수정 — `PUBLISHED_FILES`에 2건 추가 |
