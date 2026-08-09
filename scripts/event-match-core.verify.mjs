@@ -142,5 +142,54 @@ console.log('매칭 엔진');
   eq(msg.includes('아이슬란드'), true, '겹친 나라 포함');
 }
 
+// ── 발송 문구: 3인조(partners 2명) ──
+// 상대가 둘일 때 두 아이디가 모두 들어가고, 자기 아이디는 안 들어가는지가 핵심이다.
+// 여기서 틀리면 3인조 중 한 명이 자기 자신의 아이디를 상대로 받는 사고가 난다.
+{
+  const [me, p1, p2] = preparePeople([
+    person({ name: '가영', instagram: 'gayoung' }),
+    person({ name: '나윤', instagram: 'nayoon' }),
+    person({ name: '다은', instagram: 'daeun' }),
+  ]);
+  const msg = renderMessage({ me, partners: [p1, p2], score: 70, shared: ['일본'], eventName: 'eOrth 팝업 이벤트' });
+  eq(msg.includes('@nayoon'), true, '3인조 문구: 상대1 아이디 포함');
+  eq(msg.includes('@daeun'), true, '3인조 문구: 상대2 아이디 포함');
+  eq(msg.includes('@gayoung'), false, '3인조 문구: 자기 아이디는 안 들어간다');
+}
+
+// ── 분할 불변식: 20~30명 규모, 성별·선호·희망국가를 섞어도 짝이 어긋나지 않아야 한다 ──
+// 이 프로젝트에서 가장 비싼 실패는 "한 사람이 두 짝에 들어가는 것"이다 — 그 사람의 인스타 아이디가
+// 서로 다른 두 상대에게 전달된다. 개수만 세는 테스트는 이 실패를 못 잡는다.
+{
+  const genders = ['m', 'f'];
+  const countryPool = ['일본', '아이슬란드', '페루', '태국', '이탈리아', '프랑스'];
+  const bigPeople = preparePeople(Array.from({ length: 27 }, (_, i) => person({
+    id: `g${i}`,
+    gender: genders[i % 2],
+    gender_pref: i % 3 === 0 ? 'same' : 'any',
+    wish_countries: [countryPool[i % countryPool.length], countryPool[(i + 2) % countryPool.length]],
+    answers: answersAll(i % 2 === 0 ? 'A' : 'B'),
+  })));
+  const { pairs, trios, unmatched } = matchAll(bigPeople);
+
+  // ① 모든 id가 pairs∪trios∪unmatched에 정확히 한 번 등장
+  const seen = [];
+  for (const p of pairs) seen.push(p.a.id, p.b.id);
+  for (const t of trios) seen.push(t.a.id, t.b.id, t.c.id);
+  for (const u of unmatched) seen.push(u.person.id);
+  eq(seen.length, bigPeople.length, '분할 불변식(27명): 등장 횟수 합 = 전체 인원');
+  eq(new Set(seen).size, bigPeople.length, '분할 불변식(27명): 모든 id가 중복 없이 정확히 한 번');
+
+  // ② 어떤 짝·3인조도 isEligible을 위반하지 않는다
+  let violations = 0;
+  for (const p of pairs) if (!isEligible(p.a, p.b)) violations++;
+  for (const t of trios) {
+    if (!isEligible(t.a, t.b)) violations++;
+    if (!isEligible(t.a, t.c)) violations++;
+    if (!isEligible(t.b, t.c)) violations++;
+  }
+  eq(violations, 0, '분할 불변식(27명): 어떤 짝·3인조도 성별 조건을 위반하지 않는다');
+}
+
 console.log(fail ? `\n❌ ${fail}건 실패` : '\n✅ 통과');
 process.exit(fail ? 1 : 0);

@@ -22,6 +22,19 @@ const check = (ok, msg) => {
   if (!ok) fail++;
 };
 
+// CLI(event-match.mjs·event-purge.mjs)가 .env로 읽는 프로젝트와 페이지가 하드코딩한
+// 프로젝트가 어긋나면, 파기 스크립트가 빈 테스트 프로젝트에서 0건 삭제하고 성공한 척 출력한다.
+// .env는 추적되지 않는 파일이라 없을 수도 있으므로(CI 등) 있을 때만 검사한다.
+function readEnvUrl() {
+  try {
+    const text = readFileSync('.env', 'utf8');
+    const m = text.match(/^\s*EXPO_PUBLIC_SUPABASE_URL\s*=\s*(.*)$/m);
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : null;
+  } catch { return null; }
+}
+const pageUrl = html.match(/const SUPABASE_URL = '([^']+)'/)?.[1];
+const envUrl = readEnvUrl();
+
 console.log('행사 설정');
 check(Boolean(page) && page === sql, `행사 코드 일치 — event.html=${page}, schema.sql=${sql}`);
 check(!html.includes('PASTE_EXPO_PUBLIC'), 'Supabase 접속 값이 채워져 있다');
@@ -29,6 +42,14 @@ check(
   Boolean(pageName) && Boolean(cliName) && pageName === cliName,
   `행사명 일치 — event.html<title>=${pageName}, event-match.mjs EVENT_NAME=${cliName}`,
 );
+if (envUrl) {
+  check(
+    Boolean(pageUrl) && pageUrl === envUrl,
+    `Supabase 프로젝트 일치 — event.html=${pageUrl}, .env EXPO_PUBLIC_SUPABASE_URL=${envUrl}`,
+  );
+} else {
+  console.log('  · .env 없음 — Supabase 프로젝트 일치 검사 건너뜀');
+}
 
 console.log(fail ? `\n❌ ${fail}건 실패` : '\n✅ 통과');
 process.exit(fail ? 1 : 0);

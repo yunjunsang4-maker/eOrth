@@ -32,6 +32,26 @@ function readEnv() {
   return out;
 }
 
+/**
+ * CLI가 읽는 Supabase 프로젝트와 docs/event.html이 실제로 쓰는 프로젝트가 다르면 즉시 종료한다.
+ * 페이지가 정본이다 — 참가자 데이터는 항상 페이지가 박고 있는 프로젝트에 쌓인다.
+ * 어긋난 채로 돌리면(베타 빌드용으로 .env를 테스트 프로젝트로 바꾼 뒤 되돌리지 않은 경우 등)
+ * 조용히 빈 프로젝트를 조회해 "미매칭 전원"류의 그럴싸한 오답을 낸다.
+ * --fixture 모드는 네트워크를 안 쓰므로 이 함수를 호출하지 않는다(fetchRows 안에서만 호출됨).
+ */
+function assertSupabaseUrlMatchesPage(envUrl) {
+  let html = '';
+  try { html = readFileSync('docs/event.html', 'utf8'); } catch { return; }
+  const pageUrl = html.match(/const SUPABASE_URL = '([^']+)'/)?.[1];
+  if (pageUrl && pageUrl !== envUrl) {
+    console.error('❌ Supabase 프로젝트 불일치 — docs/event.html이 정본입니다.');
+    console.error(`   docs/event.html:              ${pageUrl}`);
+    console.error(`   .env EXPO_PUBLIC_SUPABASE_URL: ${envUrl}`);
+    console.error('   .env를 페이지 값에 맞추거나, 지금 조회하려는 프로젝트가 맞는지 다시 확인하세요.');
+    process.exit(1);
+  }
+}
+
 async function fetchRows(eventCode) {
   const env = readEnv();
   const url = env.EXPO_PUBLIC_SUPABASE_URL;
@@ -41,6 +61,7 @@ async function fetchRows(eventCode) {
     console.error('   service_role 키는 Supabase 대시보드 > Project Settings > API에서 확인합니다.');
     process.exit(1);
   }
+  assertSupabaseUrlMatchesPage(url);
   const q = `${url}/rest/v1/event_participants?event_code=eq.${encodeURIComponent(eventCode)}&select=*&order=created_at.asc`;
   const res = await fetch(q, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
   if (!res.ok) {
@@ -52,7 +73,7 @@ async function fetchRows(eventCode) {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-function renderReport({ pairs, trios, unmatched }, total) {
+function renderReport({ pairs, trios, unmatched }, total, reportKey) {
   // 사람별 카드 — 발송은 전부 수동이라 '누구까지 보냈는지'를 리포트가 기억해야 한다.
   // 참가자가 적은 값(이름)이 HTML에 들어가므로 전부 esc()를 거친다.
   const cards = [];
@@ -80,9 +101,10 @@ function renderReport({ pairs, trios, unmatched }, total) {
     const rarity = rarityOf([t.a, t.b, t.c]);
     const max = rarity.size ? Math.max(...rarity.values()) : 0;
     const avg = (x, y, z) => Math.round((pairScore(x, y, rarity, max).total + pairScore(x, z, rarity, max).total) / 2);
-    const sharedOf = (x, y, z) => [...new Set([
-      ...pairScore(x, y, rarity, max).shared, ...pairScore(x, z, rarity, max).shared,
-    ])];
+    // 교집합이어야 한다 — "세 분 다 {나라}"라고 보내는 이상, 그 나라는 세 사람 모두 골랐어야 한다.
+    // 합집합을 쓰면 한 사람만 고른 나라까지 "다 같이"로 둔갑해 사실이 아닌 문장이 나간다.
+    const sharedOf = (x, y, z) => pairScore(x, y, rarity, max).shared
+      .filter((c) => pairScore(x, z, rarity, max).shared.includes(c));
     push(t.a, [t.b, t.c], avg(t.a, t.b, t.c), sharedOf(t.a, t.b, t.c));
     push(t.b, [t.a, t.c], avg(t.b, t.a, t.c), sharedOf(t.b, t.a, t.c));
     push(t.c, [t.a, t.b], avg(t.c, t.a, t.b), sharedOf(t.c, t.a, t.b));
@@ -114,8 +136,10 @@ button,.dm{background:#BF85FC;color:#0A0A0F;border:0;border-radius:8px;padding:8
 ${warn}
 ${cards.join('\n')}
 <script>
-// 발송 체크는 localStorage에 남긴다 — 수십 명을 손으로 보내다 보면 어디까지 했는지 반드시 헷갈린다
-const KEY='event-sent';
+// 발송 체크는 localStorage에 남긴다 — 수십 명을 손으로 보내다 보면 어디까지 했는지 반드시 헷갈린다.
+// 키를 행사별로 나눈다 — 안 나누면 다음 행사에서 같은 아이디가 다시 나왔을 때 체크가 미리 켜져
+// 있어 발송이 누락된다.
+const KEY=${JSON.stringify(`event-sent-${reportKey}`)};
 const sent=new Set(JSON.parse(localStorage.getItem(KEY)||'[]'));
 for(const box of document.querySelectorAll('[data-check]')){
   const k=box.dataset.check;
@@ -129,8 +153,14 @@ for(const box of document.querySelectorAll('[data-check]')){
 }
 for(const b of document.querySelectorAll('.copy')){
   b.addEventListener('click',()=>{
-    navigator.clipboard.writeText(b.closest('.card').querySelector('textarea').value);
-    b.textContent='복사됨';setTimeout(()=>b.textContent='문구 복사',1200);
+    const text=b.closest('.card').querySelector('textarea').value;
+    navigator.clipboard.writeText(text).then(()=>{
+      b.textContent='복사됨';setTimeout(()=>b.textContent='문구 복사',1200);
+    }).catch(()=>{
+      // 실패를 무시하면 클립보드에 직전 카드(다른 참가자)의 문구가 남아
+      // 운영자가 그걸 그대로 다른 사람에게 붙여넣게 된다.
+      b.textContent='복사 실패';setTimeout(()=>b.textContent='문구 복사',1200);
+    });
   });
 }
 </script></body></html>`;
@@ -154,7 +184,9 @@ if (exclude.size) {
 
 const people = preparePeople(rows);
 const result = matchAll(people);
-writeFileSync(OUT, renderReport(result, people.length), 'utf8');
+// 발송 체크 키를 행사별로 나누는 데 쓴다. --event가 없는 fixture 모드는 EVENT_NAME으로 대신한다.
+const reportKey = eventCode || EVENT_NAME;
+writeFileSync(OUT, renderReport(result, people.length, reportKey), 'utf8');
 
 console.log(`참가 ${people.length}명 → 짝 ${result.pairs.length}쌍, 3인조 ${result.trios.length}개, 미매칭 ${result.unmatched.length}명`);
 for (const u of result.unmatched) console.log(`  ⚠ @${u.person.instagram} — ${u.reason}`);

@@ -48,7 +48,12 @@
     <p class="sub" style="font-size:13px;color:var(--neon)">eOrth 단대축제 부스</p>
     <p class="sub">14문항, 약 1분 30초.<br>행사가 끝나면 성향이 가장 잘 맞는 분을 인스타 DM으로 알려드려요.</p>
     <p class="sub" style="font-size:13px">※ 결과는 인스타그램 DM으로만 보내드립니다. 인스타 계정이 필요해요.</p>
-    <button class="cta" id="start">시작하기</button>
+    <button class="cta hide" id="start">시작하기</button>
+    <div id="resumeBox" class="hide">
+      <p class="sub" style="font-size:13px">이전에 답하던 내용이 남아 있어요. 다른 분이 쓰셨다면 "새로 시작"을 눌러주세요.</p>
+      <button class="cta" id="resume">이어서 하기</button>
+      <button class="cta" id="restart" style="background:var(--card);color:#fff;margin-top:10px">새로 시작</button>
+    </div>
   </section>
 
   <section id="survey" class="hide">
@@ -88,10 +93,12 @@
       <table>
         <tr><td>수집 항목</td><td>이름, 성별, 인스타그램 아이디, 가고 싶은 나라, 설문 응답</td></tr>
         <tr><td>이용 목적</td><td>행사 참가자 간 여행 성향 매칭 및 결과 발송</td></tr>
-        <tr><td>제공 대상</td><td>매칭된 참가자 본인 (제공 항목: 이름·인스타그램 아이디·유형)</td></tr>
+        <tr><td>제공 대상</td><td>매칭된 참가자 본인 (제공 항목: 이름·인스타그램 아이디·유형·겹친 희망 국가)</td></tr>
         <tr><td>보관 기간</td><td>행사 종료 후 30일, 이후 파기</td></tr>
         <tr><td>거부 권리</td><td>동의하지 않으실 수 있으나, 매칭이 불가능해 참여할 수 없습니다</td></tr>
         <tr><td>국외 이전</td><td>미국 리전 서버에 저장됩니다</td></tr>
+        <tr><td>처리자</td><td>eOrth (사업자등록번호 171-06-03581)</td></tr>
+        <tr><td>삭제 요청</td><td>eorth26@gmail.com — 행사 후에도 언제든 삭제를 요청하실 수 있습니다</td></tr>
       </table>
       <label class="check"><input type="checkbox" id="c1"><span>(필수) 개인정보 수집·이용에 동의합니다</span></label>
       <label class="check"><input type="checkbox" id="c2"><span>(필수) 매칭된 상대에게 내 이름과 인스타그램 아이디가 제공되는 것에 동의합니다</span></label>
@@ -116,7 +123,7 @@
     <div class="type" id="typeKo"></div>
     <div id="axes"></div>
     <p class="sub" style="margin-top:20px">매칭 결과는 행사가 끝난 뒤 인스타 DM으로 보내드려요.<br>기다리는 동안 eOrth를 먼저 둘러보세요 🌍</p>
-    <a class="cta" style="display:block;text-align:center;text-decoration:none"
+    <a class="cta" id="storeLink" style="display:block;text-align:center;text-decoration:none"
        href="https://apps.apple.com/app/id6778678243">eOrth 앱 보러가기</a>
     <button class="cta" id="again" style="background:var(--card);color:#fff">처음으로</button>
   </section>
@@ -132,7 +139,14 @@ const EVENT_CODE = 'popup01';
 const SUPABASE_URL = 'https://blweolnunmsxgztmvzfd.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJsd2VvbG51bm1zeGd6dG12emZkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODExMDg4MDgsImV4cCI6MjA5NjY4NDgwOH0.PQeY2ShGmCAxiwDEOQSOcgIVsSkJ_PyeG1VE8uI5fc8';
 
+// 스토어 링크 — 안드로이드 참가자에게 App Store 링크만 주면 완료 화면의 회수 지점이 죽는다.
+// 값은 src/constants/legalLinks.ts와 동일(읽기 전용 참고, 그 파일은 수정하지 않는다).
+const APP_STORE_URL = 'https://apps.apple.com/app/id6778678243';
+const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.yunjunsang.eorth';
+const isAndroid = /android/i.test(navigator.userAgent);
+
 const $ = (id) => document.getElementById(id);
+$('storeLink').href = isAndroid ? PLAY_STORE_URL : APP_STORE_URL;
 const show = (id) => {
   for (const s of ['intro', 'survey', 'form', 'confirm', 'done']) $(s).classList.toggle('hide', s !== id);
   window.scrollTo(0, 0);
@@ -259,7 +273,17 @@ $('confirmYes').onclick = async (e) => {
       finish('이미 참여하셨어요!');
       return;
     }
-    if (!res.ok) throw new Error(await res.text());
+    if (!res.ok) {
+      // 4xx(RLS 거부 등 정책 문제)는 다시 눌러도 똑같이 막힌다 — "잠시 후 다시"로 안내하면
+      // 정책이 어긋나 전원이 거부되는 상황을 스태프가 못 알아챈다. 5xx·네트워크 오류와 문구를 나눈다.
+      if (res.status >= 400 && res.status < 500) {
+        console.error(await res.text());
+        $('err2').textContent = '제출이 거부됐어요. 부스 담당자에게 알려주세요.';
+        btn.disabled = false;
+        return;
+      }
+      throw new Error(await res.text());
+    }
     localStorage.removeItem(SAVE_KEY);
     finish(null);
   } catch (err) {
@@ -304,8 +328,22 @@ $('again').onclick = () => {
   location.reload();
 };
 
-// 새로고침 복귀 — 답하던 문항부터 이어서
-if (Object.keys(state.answers).length) { show('survey'); renderQuestion(); }
+// 새로고침 복귀 — 부스 공용 단말 대응. 곧바로 이어가지 않고 사람이 직접 고르게 한다.
+// A가 이름·인스타까지 적고 자리를 뜨면, 이어받은 B가 새로고침했을 때 A의 정보가 그대로
+// 채워진 화면을 보게 된다. 자동 점프 대신 "이어서/새로 시작" 버튼으로 그 사고를 사람 손으로 끊는다.
+const hasProgress = Object.keys(state.answers).length > 0
+  || Boolean(state.gender) || Boolean(state.pref) || Boolean(state.name) || Boolean(state.insta)
+  || (state.countries && state.countries.length > 0);
+$('start').classList.toggle('hide', hasProgress);
+$('resumeBox').classList.toggle('hide', !hasProgress);
+$('resume').onclick = () => {
+  if (Object.keys(state.answers).length < EVENT_QUESTIONS.length) { show('survey'); renderQuestion(); }
+  else { show('form'); renderCountries(''); }
+};
+$('restart').onclick = () => {
+  localStorage.removeItem(SAVE_KEY);
+  location.reload();
+};
 </script>
 </body>
 </html>
