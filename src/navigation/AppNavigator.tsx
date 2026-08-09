@@ -55,9 +55,15 @@ import { exchangeAuthCode, hasActiveSession, wasIntentionalSignOut } from '../se
 import { emitToast } from '../store/toastStore';
 import { parseAppLink, openAppLink } from '../utils/appLinks';
 import { savePendingInvite } from '../utils/pendingInvite';
+import { APP_SCHEME } from '../utils/appVariant';
 import type { RootStackParamList } from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
+
+// 인증 딥링크 판별 — 변형 스킴(eorthbeta:// 등)에서도 동작해야 한다(리터럴이면 베타에서 인증 링크 무반응)
+const AUTH_LINK_RE = new RegExp(`${APP_SCHEME}:\\/\\/(reset-password|email-confirm)`, 'i');
+const RESET_LINK_RE = new RegExp(`${APP_SCHEME}:\\/\\/reset-password`, 'i');
+const CONFIRM_LINK_RE = new RegExp(`${APP_SCHEME}:\\/\\/email-confirm`, 'i');
 
 const darkTheme = {
   dark: true,
@@ -102,7 +108,7 @@ export default function AppNavigator() {
     const handleUrl = async (url: string | null) => {
       if (!url) return;
       const trimmed = url.trim();
-      if (/eorth:\/\/(reset-password|email-confirm)/i.test(trimmed)) {
+      if (AUTH_LINK_RE.test(trimmed)) {
         if (processedAuthUrls.has(trimmed)) return;
         processedAuthUrls.add(trimmed);
       }
@@ -116,7 +122,7 @@ export default function AppNavigator() {
       };
 
       // 비밀번호 재설정 딥링크: code 를 세션으로 교환한 뒤 새 비밀번호 설정 화면으로 이동
-      if (/eorth:\/\/reset-password/i.test(trimmed)) {
+      if (RESET_LINK_RE.test(trimmed)) {
         const cm = /[?&]code=([^&]+)/.exec(trimmed);
         const code = cm ? decodeCode(cm[1]) : null;
         if (!code) {
@@ -140,7 +146,7 @@ export default function AppNavigator() {
       }
 
       // 이메일 가입 인증 딥링크: code 를 세션으로 교환 후 Splash로 → 온보딩/메인 자동 분기
-      if (/eorth:\/\/email-confirm/i.test(trimmed)) {
+      if (CONFIRM_LINK_RE.test(trimmed)) {
         const cm = trimmed.match(/[?&]code=([^&]+)/);
         const code = cm ? decodeCode(cm[1]) : null;
         // Splash가 세션·온보딩 완료 여부를 확인해 BasicInfo(신규) 또는 Main으로 보낸다.

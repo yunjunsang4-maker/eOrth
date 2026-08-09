@@ -15,6 +15,7 @@ import * as Crypto from 'expo-crypto';
 import { withTimeout } from '../utils/withTimeout';
 import i18n from '../i18n';
 import { unregisterPhotoAITask } from '../services/photoAI/backgroundScheduler';
+import { APP_SCHEME, APP_VARIANT } from '../utils/appVariant';
 
 // 인증 네트워크 호출 타임아웃(ms) — 응답이 없을 때 무한 대기를 막는다.
 const AUTH_TIMEOUT_MS = 15000;
@@ -144,10 +145,10 @@ export async function resendEmailConfirmation(email: string): Promise<AuthResult
 }
 
 // 비밀번호 재설정 메일 링크가 돌아올 딥링크 (app.json scheme: "eorth" → eorth://reset-password)
-const resetPasswordRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'reset-password' });
+const resetPasswordRedirect = AuthSession.makeRedirectUri({ scheme: APP_SCHEME, path: 'reset-password' });
 
 // 이메일 가입 인증 메일 링크가 돌아올 딥링크 (eorth://email-confirm)
-const emailConfirmRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'email-confirm' });
+const emailConfirmRedirect = AuthSession.makeRedirectUri({ scheme: APP_SCHEME, path: 'email-confirm' });
 
 export async function sendPasswordReset(email: string): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: msgNotConfigured() };
@@ -222,7 +223,7 @@ export async function updatePassword(newPassword: string): Promise<AuthResult> {
 }
 
 // OAuth 콜백이 돌아올 딥링크 (app.json scheme: "eorth" → eorth://auth-callback)
-const oauthRedirect = AuthSession.makeRedirectUri({ scheme: 'eorth', path: 'auth-callback' });
+const oauthRedirect = AuthSession.makeRedirectUri({ scheme: APP_SCHEME, path: 'auth-callback' });
 
 /**
  * 네이티브 Apple 로그인 (iOS 전용) — OS 시트(Face ID)로 인증 후 identityToken을 Supabase에 전달.
@@ -263,8 +264,14 @@ async function signInWithAppleNative(): Promise<AuthResult> {
 //              비어 있으면 iOS는 자동으로 기존 웹 OAuth로 폴백한다.
 // Android는 별도 값이 코드에 들어가지 않는 대신, 같은 Google Cloud 프로젝트에
 // Android 클라이언트(패키지명 + EAS 키스토어 SHA-1)가 등록돼 있어야 한다(없으면 웹 폴백).
-const GOOGLE_WEB_CLIENT_ID = '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com';
-const GOOGLE_IOS_CLIENT_ID = '589120466593-ak8p39reoek66ksrrqrg2790kohju0a4.apps.googleusercontent.com';
+// 정식은 기존 값 고정(G2). 변형은 EAS env로 주입 — 발급 전(빈 값)엔 네이티브를 건너뛰고
+// 웹 OAuth 폴백을 타므로 콘솔 작업이 끝나지 않아도 로그인이 막히지 않는다.
+const GOOGLE_WEB_CLIENT_ID = APP_VARIANT === 'production'
+  ? '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com'
+  : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
+const GOOGLE_IOS_CLIENT_ID = APP_VARIANT === 'production'
+  ? '589120466593-ak8p39reoek66ksrrqrg2790kohju0a4.apps.googleusercontent.com'
+  : process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ?? '';
 
 // iOS Google SDK는 id_token에 nonce를 자동 포함시키는데 라이브러리(무료판)가 그 값을 지정할 수 없다.
 // Supabase는 토큰에 nonce가 있으면 호출 시 같은 값을 요구하므로, 토큰에서 꺼내 그대로 되돌려준다.
@@ -300,6 +307,10 @@ function ensureGoogleConfigured() {
  */
 async function signInWithGoogleNative(): Promise<AuthResult> {
   if (!supabase) return { ok: false, error: msgNotConfigured() };
+  // 변형에서 웹 클라이언트 미발급(빈 값) — 네이티브 SDK 구성 자체가 불가능하므로 웹 OAuth로.
+  if (!GOOGLE_WEB_CLIENT_ID) {
+    return signInWithProviderWeb('google', i18n.t('authErr.googleFallbackFailed'));
+  }
   if (Platform.OS === 'ios' && !GOOGLE_IOS_CLIENT_ID) {
     return signInWithProviderWeb('google', i18n.t('authErr.googleFallbackFailed'));
   }

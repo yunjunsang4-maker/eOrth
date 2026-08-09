@@ -4,19 +4,19 @@
 // 반드시 이 모듈을 통해서만 만들고 파싱할 것.
 import { getProfileByHandle } from '../services/profile';
 import { fetchPostById } from '../services/posts';
+import { APP_SCHEME } from './appVariant';
 
-// 생성 스킴은 반드시 소문자 eorth:// — 안드로이드 인텐트 필터는 스킴 대소문자를
-// 구분하므로 eOrth:// 로 만든 링크는 외부 앱에서 탭해도 앱이 열리지 않는다.
-export const profileLink = (handle: string) => `eorth://profile/${encodeURIComponent(handle)}`;
-export const postLink = (id: string) => `eorth://post/${encodeURIComponent(id)}`;
+// 생성 스킴은 반드시 소문자 — 안드로이드 인텐트 필터는 스킴 대소문자를 구분한다.
+// 변형(베타 eorthbeta://)은 자기 스킴으로 만들고 판다 — DB가 분리돼 정식과 상호작용이 없다.
+export const profileLink = (handle: string) => `${APP_SCHEME}://profile/${encodeURIComponent(handle)}`;
+export const postLink = (id: string) => `${APP_SCHEME}://post/${encodeURIComponent(id)}`;
 
-// 파싱은 대소문자 무관 + 구형식 호환: eorth://user/<handle>(QR·구버전 공유),
-// eOrth://profile/<handle>(구버전 복사 링크) 모두 받아준다.
-const PROFILE_RE = /eorth:\/\/(?:profile|user)\/([^\s/?#]+)/i;
-const POST_RE = /eorth:\/\/post\/([^\s/?#]+)/i;
+// 파싱은 대소문자 무관 + 구형식 호환: <scheme>://user/<handle>(QR·구버전 공유) 포함.
+const PROFILE_RE = new RegExp(`${APP_SCHEME}:\\/\\/(?:profile|user)\\/([^\\s/?#]+)`, 'i');
+const POST_RE = new RegExp(`${APP_SCHEME}:\\/\\/post\\/([^\\s/?#]+)`, 'i');
 
 // 메시지 본문에서 앱 링크 구간을 분리하기 위한 split용(캡처 그룹 필수)
-export const APP_LINK_SPLIT_RE = /(eorth:\/\/(?:profile|user|post)\/\S+)/gi;
+export const APP_LINK_SPLIT_RE = new RegExp(`(${APP_SCHEME}:\\/\\/(?:profile|user|post)\\/\\S+)`, 'gi');
 
 export type AppLink =
   | { type: 'profile'; handle: string }
