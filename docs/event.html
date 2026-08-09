@@ -141,7 +141,7 @@ const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
 
 // 답변은 문항마다 저장한다 — 부스 네트워크가 끊겨도, 실수로 새로고침해도 처음부터 다시 하지 않는다
 const SAVE_KEY = 'eorth-event-' + EVENT_CODE;
-let state = { answers: {}, i: 0, countries: [], gender: null, pref: null };
+let state = { answers: {}, i: 0, countries: [], gender: null, pref: null, name: '', insta: '' };
 try { Object.assign(state, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); } catch {}
 const save = () => localStorage.setItem(SAVE_KEY, JSON.stringify(state));
 
@@ -205,6 +205,14 @@ for (const [box, key] of [['gender', 'gender'], ['pref', 'pref']]) {
   if (state[key]) for (const c of $(box).children) c.classList.toggle('on', c.dataset.v === state[key]);
 }
 
+// ── 이름·아이디 입력 저장 ──
+// 정규화는 제출 시점에만 한다(normalizeInstagram) — 여기는 사용자가 입력한 원문 그대로 저장한다
+$('name').oninput = (e) => { state.name = e.target.value; save(); };
+$('insta').oninput = (e) => { state.insta = e.target.value; save(); };
+// 새로고침 복귀 시 입력값을 다시 채운다
+if (state.name) $('name').value = state.name;
+if (state.insta) $('insta').value = state.insta;
+
 // ── 검증 → 확인 화면 ──
 let pendingHandle = null;
 $('submit').onclick = () => {
@@ -246,6 +254,7 @@ $('confirmYes').onclick = async (e) => {
     });
     if (res.status === 409) {                // 유니크 인덱스 위반 = 같은 아이디로 이미 참여
       $('err2').textContent = '';
+      localStorage.removeItem(SAVE_KEY);     // 이름·아이디가 남아 다음 참가자 화면에 노출되면 안 된다(부스 공용 태블릿)
       finish('이미 참여하셨어요!');
       return;
     }
