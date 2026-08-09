@@ -14,6 +14,7 @@
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { PUBLISHED_FILES, sha, STAMP_PATH } from './lib/pagesFiles.mjs';
+import { bundleEventDna, norm } from './build-event-dna.mjs';
 
 const DOCS = 'docs';
 const read = (p) => readFileSync(`${DOCS}/${p}`, 'utf8');
@@ -98,6 +99,20 @@ if (notices) {
     if (d !== termsDate) bad(`notices.json[${n.id}]: 시행일이 약관과 다름 — 공지=${d}, 약관=${termsDate}`);
     else ok(`약관 공지 시행일 일치: ${d}`);
   }
+}
+
+// ── 2-b. 생성물(event-dna.js)이 앱 소스와 어긋나 있지 않은가 ──
+//   앱 문항을 고치고 다시 만들지 않으면, 부스에 옛 문구가 나가고 이벤트에서 계산한
+//   유형 라벨이 참가자가 나중에 앱에서 받는 라벨과 달라진다. 실패로 다룬다.
+try {
+  const fresh = await bundleEventDna();
+  if (norm(read('event-dna.js')) !== norm(fresh)) {
+    bad('event-dna.js가 앱 소스와 다릅니다 — node scripts/build-event-dna.mjs 로 다시 만드세요');
+  } else {
+    ok('event-dna.js 최신 (앱 문항·채점과 동일)');
+  }
+} catch (e) {
+  bad(`event-dna.js 검사 실패: ${e.message}`);
 }
 
 // ── 3. 게시본과 어긋나 있지 않은가 (지문 비교) ──

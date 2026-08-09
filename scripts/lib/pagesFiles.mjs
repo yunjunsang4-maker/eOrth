@@ -11,6 +11,7 @@ export const PUBLISHED_FILES = [
   'privacy-policy-en.html',  // 영문 스토어 로케일용 번역(한국어 원문이 정본)
   'support-en.html',         // App Store 영문 지원 URL
   'notices.json',
+  'event-dna.js',            // 행사 이벤트 페이지가 쓰는 생성물 (scripts/build-event-dna.mjs)
 ];
 
 /**
