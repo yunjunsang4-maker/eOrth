@@ -80,3 +80,6 @@ scripts/orb-export.png
 
 # 테스트 Supabase용 스키마 치환 생성물 (make-test-schema.mjs 산출물, 비추적)
 supabase/test-schema.local.sql
+
+# 행사 매칭 리포트 — 참가자 인스타 아이디가 들어 있는 로컬 산출물(커밋 금지)
+event-report.local.html
