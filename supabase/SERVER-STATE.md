@@ -25,7 +25,7 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 2건 (2026-08-09 기준)
+## 1. 지금 해야 하는 것 — 3건 (2026-08-09 기준)
 
 ### ⏳ `schema.sql` 재실행 — 유저 상호작용 감사(2026-08-09) 수정분 5건
 
@@ -89,6 +89,15 @@ select status_code, content from net._http_response order by created desc limit 
 
 401 이면 `content` 의 `hint` 로 갈린다 — `purge_secret_not_set`(①이 안 됨) /
 `purge_secret_mismatch`(①②가 다름) / `INVALID_JWT_FORMAT`(게이트웨이 = Authorization 쪽 문제).
+
+### ⏳ `event_participants` 테이블·유니크 인덱스·RLS·grant (2026-08-09 추가)
+
+오프라인 행사 부스 참가자 설문(메이트 매칭) 테이블. **서버 미반영** — Supabase SQL Editor에서
+`schema.sql` 끝의 "오프라인 행사 메이트 매칭 이벤트" 섹션을 실행해야 한다.
+
+⚠️ **행사 코드를 확정(Task 6)한 뒤 실행할 것.** INSERT 정책의 `with check`가 지금은
+`event_code = 'popup01'` 자리표시자로 박혀 있어, 실제 행사 코드가 다르면 이 코드로 실행 후
+정책을 다시 만들어야 한다.
 
 ### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 

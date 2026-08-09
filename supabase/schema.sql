@@ -2528,3 +2528,50 @@ revoke truncate, references, trigger on
 -- select lower(handle), count(*) from public.profiles
 --  where handle is not null group by 1 having count(*) > 1;
 -- ============================================================
+
+-- ============================================================
+-- 오프라인 행사 메이트 매칭 이벤트 (2026-08-09)
+-- 설계: docs/superpowers/specs/2026-08-09-event-mate-matching-design.md
+--
+-- 앱과 무관한 일회성 테이블이다. 행사 종료 30일 뒤 scripts/event-purge.mjs로 파기하고
+-- INSERT 정책도 함께 drop 한다(정책이 살아 있으면 누구든 계속 행을 넣을 수 있다).
+-- ============================================================
+create table if not exists public.event_participants (
+  id             uuid primary key default gen_random_uuid(),
+  event_code     text not null,
+  name           text not null,
+  gender         text not null check (gender in ('m','f')),
+  gender_pref    text not null check (gender_pref in ('same','any')),
+  instagram      text not null,           -- @ 없이 소문자로 정규화해 저장
+  wish_countries text[] not null,
+  answers        jsonb not null,          -- {"1":"A","5":"B", ...} 문항 id → 선택
+  consent_pii    boolean not null,
+  consent_share  boolean not null,
+  created_at     timestamptz default now()
+);
+
+-- 중복 제출 차단. 두 행이 들어가면 그 사람이 두 명으로 매칭되고,
+-- 짝 중 한쪽은 이미 임자가 있는 사람을 받는다.
+create unique index if not exists event_participants_uniq
+  on public.event_participants (event_code, instagram);
+
+alter table public.event_participants enable row level security;
+
+-- ⚠️ RLS 정책만으로는 부족하다. Supabase는 public 스키마 신규 테이블에 anon·authenticated
+--    기본 권한을 주므로, 테이블 권한부터 걷어내고 필요한 것만 다시 준다.
+revoke all on public.event_participants from anon, authenticated;
+grant insert on public.event_participants to anon;
+-- 읽기·수정·삭제는 아무에게도 주지 않는다 → service_role(로컬 스크립트)만 가능.
+-- 정적 페이지에 박히는 anon 키는 누구나 소스에서 꺼내볼 수 있어서, SELECT가 열리는 순간
+-- 참가자 전원의 이름과 인스타 아이디가 그대로 유출된다.
+
+drop policy if exists event_participants_insert on public.event_participants;
+create policy event_participants_insert on public.event_participants
+  for insert to anon
+  with check (
+    event_code = 'popup01'                   -- ⚠️ Task 6에서 실제 행사 코드로 교체
+    and consent_pii and consent_share
+    and char_length(name) between 1 and 40
+    and instagram ~ '^[a-z0-9._]{1,30}$'
+    and array_length(wish_countries, 1) between 1 and 3
+  );
