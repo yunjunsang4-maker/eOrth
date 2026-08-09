@@ -50,7 +50,8 @@ export function axisScore(a, b) {
 
 export function countryScore(a, b, rarity, maxRarity) {
   const mine = new Set(a.wish_countries ?? []);
-  const shared = (b.wish_countries ?? []).filter((c) => mine.has(c));
+  // b쪽도 중복 제거 — 안 하면 같은 나라를 여러 번 넣은 사람과 겹칠 때 overlap이 부풀려진다
+  const shared = [...new Set(b.wish_countries ?? [])].filter((c) => mine.has(c));
   if (shared.length === 0 || !maxRarity) return { score: 0, shared: [] };
   const overlap = shared.reduce((s, c) => s + (rarity.get(c) ?? 0), 0);
   // 가장 희귀한 나라 하나가 겹치면 만점. 흔한 나라는 여러 개 겹쳐야 만점에 닿는다.

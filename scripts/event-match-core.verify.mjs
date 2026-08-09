@@ -55,6 +55,24 @@ console.log('매칭 엔진');
   eq(countryScore(people[0], person({ wish_countries: ['페루'] }), rarity, max).score, 0, '겹침 없으면 0');
 }
 
+// ── 나라 겹침: 상대방 wish_countries 중복은 점수를 부풀리면 안 된다 ──
+// 일본 rarity=1/4(min(1,...) 상한에 안 걸리도록 페루로 max rarity=1을 따로 만든다)
+{
+  const people = preparePeople([
+    person({ wish_countries: ['일본'] }),
+    person({ wish_countries: ['일본'] }),
+    person({ wish_countries: ['일본'] }),
+    person({ wish_countries: ['페루'] }), // max rarity(1)를 페루가 갖도록
+    person({ wish_countries: ['일본', '일본', '일본'] }), // 일본 4번째 픽커, 자기 리스트 안에서 중복
+  ]);
+  const rarity = rarityOf(people);
+  const max = Math.max(...rarity.values());
+  const clean = countryScore(people[0], people[1], rarity, max);
+  const dup = countryScore(people[0], people[4], rarity, max);
+  eq(dup.score, clean.score, '상대방 wish_countries 중복이 있어도 점수는 동일해야 한다(상한에 안 걸리는 케이스)');
+  eq(dup.shared, ['일본'], '중복이어도 shared엔 나라가 한 번만 들어간다');
+}
+
 // ── 성별 조건: 양쪽이 모두 만족해야 한다 ──
 {
   const f_same = person({ gender: 'f', gender_pref: 'same' });
