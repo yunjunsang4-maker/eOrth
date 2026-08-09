@@ -32,6 +32,7 @@ import GlobeLockIcon from '../components/GlobeLockIcon';
 import { applyViewer, isPostHiddenForViewer } from '../utils/mediaPrivacy';
 import { computeEarnedBadgeIds } from '../utils/badgeRules';
 import { BADGES } from '../constants/badges';
+import { badgeName } from '../utils/badgeText';
 import { ProfileAvatar, StatCard, BadgeHighlightItem, TripCard, pv } from '../components/profile/ProfileVisuals';
 import StarFieldBackground from '../components/StarFieldBackground';
 import ProfileScreen from './ProfileScreen';
@@ -518,7 +519,7 @@ export default function FriendProfileScreen({
                   contentContainerStyle={pv.badgeScrollContent}
                 >
                   {friendBadges.map((badge) => (
-                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badge.name} glow={badge.glow} earned />
+                    <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badgeName(badge, t)} glow={badge.glow} earned />
                   ))}
                 </ScrollView>
               </>

@@ -143,19 +143,20 @@ export const BADGES: Badge[] = ALL_BADGES.filter((b) => !HIDDEN_BADGE_IDS.has(b.
 
 // 배지 목록 모달의 챕터(카테고리) 구성.
 // range: 연속 id 구간. ids: 비연속 id를 순서대로 명시(range 대신). extra: range 뒤에 덧붙일 id.
-export interface BadgeCategory { name: string; range: [number, number]; ids?: number[]; extra?: number[]; }
+// key: 영어 챕터명 i18n 키(badge.<key>, en.ts) — 화면 표시는 utils/badgeText.badgeCategoryName 경유.
+export interface BadgeCategory { key: string; name: string; range: [number, number]; ids?: number[]; extra?: number[]; }
 export const BADGE_CATEGORIES: BadgeCategory[] = [
-  { name: '대륙 & 첫 방문 배지', range: [1, 7] },
-  { name: '여행 동행 & 스타일 배지', range: [9, 15], ids: [9, 10, 11, 12, 123, 124, 13, 14, 15] },
-  { name: '국가 & 지역 탐방 배지', range: [16, 34], extra: [125, 126, 127, 128, 129] },
-  { name: '여행 마일스톤 배지', range: [35, 61] },
-  { name: '시즌 & 기념일 배지', range: [63, 65] },
-  { name: '기록 형식 배지', range: [66, 71] },
-  { name: '소셜 배지', range: [73, 85] },
-  { name: '스냅 특별 배지', range: [88, 90] },
-  { name: '기록 습관 배지', range: [97, 104] },
-  { name: '앱 활용 배지', range: [112, 114] },
-  { name: '특별 & 시즌 배지', range: [115, 121] },
+  { key: 'catFirst',     name: '대륙 & 첫 방문 배지', range: [1, 7] },
+  { key: 'catCompanion', name: '여행 동행 & 스타일 배지', range: [9, 15], ids: [9, 10, 11, 12, 123, 124, 13, 14, 15] },
+  { key: 'catRegion',    name: '국가 & 지역 탐방 배지', range: [16, 34], extra: [125, 126, 127, 128, 129] },
+  { key: 'catMilestone', name: '여행 마일스톤 배지', range: [35, 61] },
+  { key: 'catSeason',    name: '시즌 & 기념일 배지', range: [63, 65] },
+  { key: 'catFormat',    name: '기록 형식 배지', range: [66, 71] },
+  { key: 'catSocial',    name: '소셜 배지', range: [73, 85] },
+  { key: 'catSnap',      name: '스냅 특별 배지', range: [88, 90] },
+  { key: 'catHabit',     name: '기록 습관 배지', range: [97, 104] },
+  { key: 'catApp',       name: '앱 활용 배지', range: [112, 114] },
+  { key: 'catSpecial',   name: '특별 & 시즌 배지', range: [115, 121] },
 ];
 
 // ─── 챕터별 자동 번호 ('챕터-순번', 예: '1-1') — 내부 편집 참고용 ───

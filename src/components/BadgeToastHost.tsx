@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { useToast } from '../store/toastStore';
 import { BADGES } from '../constants/badges';
+import { badgeName } from '../utils/badgeText';
 import { navigationRef } from '../navigation/navigationRef';
 
 // 신규 배지 획득 → 공용 알림 큐(toastStore)로 발생 순서대로 넘기는 브리지.
@@ -22,7 +23,7 @@ export default function BadgeToastHost() {
     const id = pendingBadgeToasts[0];
     const badge = BADGES.find((b) => b.id === id);
     const message = badge
-      ? t('misc.badgeEarnedText', { name: badge.name })
+      ? t('misc.badgeEarnedText', { name: badgeName(badge, t) })
       : t('misc.badgeEarnedDefault');
     // 누르면 프로필 탭의 배지 리스트로 이동
     pushToast(message, () => {

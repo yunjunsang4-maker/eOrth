@@ -45,6 +45,7 @@ import { useRecords } from '../store/recordStore';
 import { useTravelDna } from '../store/travelDnaStore';
 import { emitToast } from '../store/toastStore';
 import { BADGES, BADGE_CATEGORIES } from '../constants/badges';
+import { badgeName, badgeDesc, badgeCategoryName } from '../utils/badgeText';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { handleFontStyle } from '../constants/handleFonts';
@@ -405,8 +406,8 @@ function BadgeListModal({
               }
 
               return (
-                <View key={cat.name} style={blStyles.categorySection}>
-                  <Text style={[blStyles.categoryTitle, { color: skinAccent.accent }]}>{cat.name}</Text>
+                <View key={cat.key} style={blStyles.categorySection}>
+                  <Text style={[blStyles.categoryTitle, { color: skinAccent.accent }]}>{badgeCategoryName(cat, t)}</Text>
                   {rows.map((row, rowIndex) => (
                     <View key={rowIndex} style={blStyles.row}>
                       {row.map((badge, index) => {
@@ -476,10 +477,10 @@ function BadgeListModal({
                             )}
                             
                             <Text style={[blStyles.cellName, !isEarned && blStyles.lockedText]} numberOfLines={1}>
-                              {badge.name}
+                              {badgeName(badge, t)}
                             </Text>
                             <Text style={[blStyles.cellDesc, !isEarned && blStyles.lockedText]} numberOfLines={2}>
-                              {isEarned ? badge.desc : t('profile.unearnedBadge')}
+                              {isEarned ? badgeDesc(badge, t) : t('profile.unearnedBadge')}
                             </Text>
                           </TouchableOpacity>
                         );
@@ -559,8 +560,8 @@ function BadgeListModal({
                       </LinearGradient>
                     </View>
                   )}
-                  <Text style={blStyles.zoomName}>{isEarned ? enlargedBadge.name : t('profile.unearnedBadge')}</Text>
-                  <Text style={blStyles.zoomDesc}>{isEarned ? enlargedBadge.desc : t('profile.unearnedBadgeDesc')}</Text>
+                  <Text style={blStyles.zoomName}>{isEarned ? badgeName(enlargedBadge, t) : t('profile.unearnedBadge')}</Text>
+                  <Text style={blStyles.zoomDesc}>{isEarned ? badgeDesc(enlargedBadge, t) : t('profile.unearnedBadgeDesc')}</Text>
                   {selectedBadgeIds.includes(enlargedBadge.id) && (
                     <View style={[blStyles.zoomSelectedTag, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.5) }]}>
                       <Text style={[blStyles.zoomSelectedTagText, { color: skinAccent.accent }]}>{t('profile.shownOnProfile')}</Text>
@@ -2073,7 +2074,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
               const badge = BADGES.find(b => b.id === id);
               if (!badge) return null;
               return (
-                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badge.name} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
+                <BadgeHighlightItem key={badge.id} emoji={badge.emoji} image={badge.image} name={badgeName(badge, t)} glow={badge.glow} earned={earnedBadgeIds.has(badge.id)} />
               );
             })}
           </ScrollView>
