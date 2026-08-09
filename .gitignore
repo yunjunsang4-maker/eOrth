@@ -77,3 +77,6 @@ scripts/verify-orb-layers.js
 scripts/build-import-orb-layers.js
 scripts/orb-src.svg
 scripts/orb-export.png
+
+# 테스트 Supabase용 스키마 치환 생성물 (make-test-schema.mjs 산출물, 비추적)
+supabase/test-schema.local.sql
