@@ -214,19 +214,43 @@ if (hasWrapper) {
 //
 // 객체 리터럴(`: FONT_SCALE_CAP`)과 JSX(`={FONT_SCALE_CAP}`) 두 형태를 함께 본다.
 // \b가 앞에 있어 `_maxFontSizeMultiplier`(RN 네이티브 소스를 인용한 주석) 는 안 걸린다.
-const CAP_EXEMPT = new Set([
-  // andFitText 객체 자체가 Platform.OS === 'android' 삼항 분기 안에서만 만들어져
-  // 이미 android 전용이다. iOS에선 빈 객체({})라 이 값이 존재하지 않는다.
-  'src/utils/fitText.ts',
+// 래퍼는 props를 뒤로 펼쳐 "화면이 필요하면 상한을 덮어쓸 수 있게" 설계돼 있다.
+// 이 규칙이 그 탈출구까지 막아 버리면 런타임 설계와 게이트가 어긋난다. 그래서 막는 게
+// 아니라 **사유를 적게** 한다 — 아래 CAP_OVERRIDE에 파일별로 허용 식별자와 사유를
+// 등록하면 통과한다. why가 비면 아래 check가 실패하므로 사유 없이 예외를 늘릴 수 없다.
+const DEFAULT_ALLOW = 'FONT_SCALE_CAP';
+const CAP_OVERRIDE = new Map([
+  ['src/utils/fitText.ts', {
+    allow: 'MAX_FONT_SCALE',
+    why: 'andFitText 객체 자체가 Platform.OS === \'android\' 삼항 안에서만 만들어져 이미 android 전용이다. '
+       + 'iOS에선 빈 객체({})라 이 값이 존재하지 않는다. (그 전제는 바로 아래에서 실제로 검사한다)',
+  }],
+  ['src/components/social/FeatureShowcaseCard.tsx', {
+    allow: 'MAX_FONT_SCALE',
+    why: '고정 높이 밴드(card: aspectRatio 0.713 + overflow:hidden, band: flex:1)라 플랫폼 무관 상한이 필요하다. '
+       + 'adjustsFontSizeToFit은 폭만 맞추고 minimumFontScale 0.82가 하한이라, 상한을 풀면 iOS 최대 배율에서 '
+       + '세로로 잘린다. 이 상한은 글꼴 배율 작업 이전부터 있던 컴포넌트 로컬 상한이라(8269b13) '
+       + '"iOS 렌더링은 절대 변경하지 않는다" 원칙상 걷어낼 대상이 아니다.',
+  }],
 ]);
+for (const [p, o] of CAP_OVERRIDE) {
+  check(Boolean(o.why && o.why.trim()), `${p} 배율 상한 예외에 사유가 적혀 있다`);
+}
 for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
   const p = rel(f);
-  if (CAP_EXEMPT.has(p)) continue;
+  const allow = CAP_OVERRIDE.get(p)?.allow ?? DEFAULT_ALLOW;
   const uses = [...readFileSync(f, 'utf8')
     .matchAll(/\bmaxFontSizeMultiplier\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*|[\d.]+)/g)];
-  const bad = uses.filter((m) => m[1] !== 'FONT_SCALE_CAP');
-  check(bad.length === 0, `${p} maxFontSizeMultiplier는 FONT_SCALE_CAP만 쓴다 (숫자·MAX_FONT_SCALE 직접 지정 시 iOS까지 잘림)`);
+  const bad = uses.filter((m) => m[1] !== allow);
+  check(bad.length === 0, `${p} maxFontSizeMultiplier는 ${allow}만 쓴다 (다른 값이 필요하면 CAP_OVERRIDE에 사유와 함께 등록할 것)`);
 }
+// CAP_OVERRIDE에서 fitText.ts를 면제한 근거("android 전용")를 실제로 강제한다.
+// 이 삼항이 사라지면 15개 호출부의 iOS가 조용히 1.2로 잘리는데, 면제 때문에 값 검사는
+// 통과해 버린다 — 전제 자체를 검사해야 면제가 안전하다.
+check(
+  /Platform\.OS === 'android'/.test(readFileSync('src/utils/fitText.ts', 'utf8')),
+  'fitText.ts가 android 전용 분기를 유지한다 (CAP_OVERRIDE 면제의 전제)',
+);
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

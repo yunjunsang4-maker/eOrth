@@ -10,7 +10,7 @@
 // 밴드는 시안대로 rgba(217,217,217,0.2) — 카드 배경 #0A0A0F 위에 얹혀 #333337로 합성된다.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Image, StyleSheet, PanResponder, TouchableOpacity } from 'react-native';
-import { Text, FONT_SCALE_CAP } from '../../ui/Text';
+import { Text, MAX_FONT_SCALE } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { FEATURE_SLIDES } from '../../constants/exampleContent';
 import { nextIndex } from '../../utils/carousel';
@@ -43,9 +43,17 @@ export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress
   const isPremium = !!slide.isPremium;
   // 시안은 한 줄 고정(whitespace-nowrap). 밴드 높이가 고정이라 줄바꿈되면 넘치므로,
   // 긴 번역문(영문)·큰 시스템 글꼴에서는 한 줄을 유지한 채 살짝 줄여 맞춘다.
-  // fitOneLine은 래퍼 <Text>에 뒤로 펼쳐지므로 래퍼가 깐 상한을 덮어쓴다.
-  // 여기서 숫자를 주면 iOS까지 잘리므로 반드시 android 전용 FONT_SCALE_CAP을 쓴다.
-  const fitOneLine = { numberOfLines: 1 as const, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: FONT_SCALE_CAP };
+  //
+  // ⚠️ 여기만 FONT_SCALE_CAP이 아니라 MAX_FONT_SCALE(플랫폼 무관 상한)을 쓴다.
+  // 위 두 줄이 적어 둔 대로 밴드 높이가 고정이다(card: aspectRatio 0.713 + overflow:'hidden',
+  // band: flex:1). adjustsFontSizeToFit은 폭만 맞추고 minimumFontScale 0.82가 하한이라,
+  // 상한을 풀면 iOS 손쉬운 사용 최대 배율(약 3.1×)에서 2.5×까지밖에 안 줄어 줄 높이가
+  // 밴드를 넘겨 세로로 잘린다.
+  // 이 상한은 글꼴 배율 작업(2026-08-10) 이전부터 있던 컴포넌트 로컬 상한이다(8269b13).
+  // "iOS 렌더링은 절대 변경하지 않는다"는 원칙에 따라 원래 동작을 그대로 유지한다 —
+  // 이 작업이 새로 씌운 상한이 아니므로 걷어낼 대상이 아니다.
+  // (가드 예외는 scripts/layout-parity.verify.mjs의 CAP_OVERRIDE에 사유와 함께 등록됨)
+  const fitOneLine = { numberOfLines: 1 as const, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: MAX_FONT_SCALE };
   return (
     <View style={s.card} {...pan.panHandlers}>
       <Image source={slide.image} style={s.img} resizeMode="cover" />

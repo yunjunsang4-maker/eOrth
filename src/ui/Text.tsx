@@ -25,12 +25,16 @@ export const MAX_FONT_SCALE = 1.2;
  *    고정폭 칸이 실제로 깨지므로 자를 이유가 있지만, iOS는 그 이유가 없다.
  * 3. 이미 Android 전용인 andFitText와 기준이 일치한다.
  *
- * iOS에서 `undefined`가 "상한 없음"인 근거(RN 0.81.5 소스 확인):
+ * iOS에서 `undefined`가 "상한 없음"인 근거(RN 0.81.5 소스 확인).
+ * 이 앱은 새 아키텍처(Fabric)이므로 Fabric 경로 기준으로 적는다:
  * - Libraries/Text/TextProps.js:173-180 — "`null/undefined` (default): inherit from the
  *   parent node or the global default (0)". 즉 prop을 안 준 것과 같은 기본값이다.
- * - Libraries/Text/RCTTextAttributes.mm:27 — `_maxFontSizeMultiplier = NAN`(미설정)
- * - 같은 파일 248~249행 — NaN이면 0.0으로 보고, `0.0 >= 1.0`이 거짓이라 클램프 없이
+ * - ReactCommon/.../attributedstring/TextAttributes.h:54 —
+ *   `Float maxFontSizeMultiplier{quiet_NaN()}` 로 기본값이 NaN(미설정)이다.
+ * - ReactCommon/.../textlayoutmanager/platform/ios/.../RCTAttributedTextUtils.mm:110-112 —
+ *   NaN이면 0.0으로 보고, `0.0 >= 1.0`이 거짓이라 fminf 클램프를 건너뛰고
  *   fontSizeMultiplier를 그대로 반환한다 = 상한 없음.
+ * (레거시 Paper 경로인 Libraries/Text/RCTTextAttributes.mm:27·248-249도 로직이 동일하다.)
  * 따라서 prop을 조건부로 빼지 않고 undefined를 넘겨도 동작이 동일하다.
  */
 export const FONT_SCALE_CAP = Platform.OS === 'android' ? MAX_FONT_SCALE : undefined;
