@@ -746,6 +746,8 @@ export default function LoginScreen({ navigation }: Props) {
         animationType="fade"
         onRequestClose={() => setForgotPasswordVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             {/* Header */}
@@ -824,6 +826,7 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 소셜 로그인 로딩 오버레이 — Modal 금지, 절대위치 View로 그린다.
