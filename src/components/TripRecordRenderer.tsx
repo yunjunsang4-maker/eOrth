@@ -18,8 +18,10 @@ import { sectionSlices } from '../utils/albumSections';
 import { TravelRecord, RecordViewType } from '../store/recordStore';
 import { CameraIcon } from '../components/icons';
 import CutPhotoCanvas from './CutPhotoCanvas';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
+const SCREEN_H = Dimensions.get('window').height;
 
 interface Props {
   record: TravelRecord;

@@ -8,7 +8,6 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
@@ -17,8 +16,9 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
+import { stageWidthNow } from '../utils/stage';
 
-const { width } = Dimensions.get('window');
+const width = stageWidthNow();
 
 // ─────────────────────────────────────────────
 // 디자인 토큰

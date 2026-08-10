@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
 import { FriendIcon } from './icons';
+import { useStageWidth } from '../utils/stage';
 
 const CIRCLE = 56;
 const GAP = 14;
@@ -97,6 +98,13 @@ export default function QuickShareOverlay({
   // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 타깃 원 위치가 어긋난다.
   // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  // 이 오버레이는 RN Modal이 아니라 App.tsx의 클램프된 Stage 컬럼 안에서 렌더된다
+  // (SocialScreen이 일반 탭 화면 트리 안에서 그린다). cardRect는 measureInWindow로
+  // 이미 그 클램프된 컬럼 안의 절대 좌표만 갖는데, 아래 가로 clamp를 실제 창 폭(SCREEN_W)
+  // 기준으로 하면 폴드·태블릿에서 컬럼 밖(레터박스 여백)까지 타깃 원이 밀릴 수 있다.
+  // stageOffsetX는 창 좌표계에서 클램프된 컬럼의 좌측 시작점(중앙 정렬 오프셋)이다.
+  const stageW = useStageWidth();
+  const stageOffsetX = (SCREEN_W - stageW) / 2;
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;
@@ -126,8 +134,8 @@ export default function QuickShareOverlay({
 
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
-    ? Math.min(cardRect.x + cardRect.w + GAP, SCREEN_W - CIRCLE - 8)
-    : Math.max(cardRect.x - CIRCLE - GAP, 8);
+    ? Math.min(cardRect.x + cardRect.w + GAP, stageOffsetX + stageW - CIRCLE - 8)
+    : Math.max(cardRect.x - CIRCLE - GAP, stageOffsetX + 8);
 
   const TOP_SAFE = 64;
   const BOTTOM_SAFE = 130;
@@ -178,8 +186,8 @@ export default function QuickShareOverlay({
     }));
   }
 
-  // 화면 가로 경계를 벗어나지 않도록 clamp
-  const clampX = (x: number) => Math.max(8, Math.min(x, SCREEN_W - CIRCLE - 8));
+  // 화면 가로 경계가 아니라 클램프된 Stage 컬럼 경계를 벗어나지 않도록 clamp
+  const clampX = (x: number) => Math.max(stageOffsetX + 8, Math.min(x, stageOffsetX + stageW - CIRCLE - 8));
   coords = coords.map((c) => ({ x: clampX(c.x), y: c.y }));
 
   return (

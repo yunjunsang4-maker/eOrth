@@ -24,8 +24,10 @@ import {
 } from '../components/icons';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import type { RootStackScreenProps } from '../navigation/types';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
+const SCREEN_H = Dimensions.get('window').height;
 
 // 디자인 토큰
 const C = {

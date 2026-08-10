@@ -4,7 +4,7 @@
  * (ProfileScreen의 인라인 정의를 그대로 옮긴 것)
  */
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 // 재진입마다 다시 디코딩되지 않도록 캐시가 있는 expo-image 사용 (ProfileScreen과 동일)
 import { Image } from 'expo-image';
 import TripCoverImage from '../TripCoverImage';
@@ -16,8 +16,9 @@ import { LiquidPressable, LiquidCardGlow } from '../LiquidEffects';
 import { PersonIcon, LockClosedIcon } from '../icons';
 import { andFitText } from '../../utils/fitText';
 import { useSkinAccent } from '../../constants/skinTheme';
+import { stageWidthNow } from '../../utils/stage';
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_WIDTH = stageWidthNow();
 export const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2;
 
 const GLASS = {

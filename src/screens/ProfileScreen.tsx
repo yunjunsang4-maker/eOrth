@@ -57,6 +57,7 @@ import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive } from '../components/coachOverlayState';
+import { stageWidthNow } from '../utils/stage';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
@@ -131,7 +132,7 @@ const StatCard = ({
 );
 
 // ─── 여행 기록 썸네일 데이터 ───
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_WIDTH = stageWidthNow();
 const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2; // 2열 그리드
 
 // ─── 기록 형식 아이콘 (FAB과 동일한 View 기반) ───

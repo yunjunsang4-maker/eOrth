@@ -592,7 +592,8 @@ const st = StyleSheet.create({
     marginTop: 6,
   },
   hiddenWebview: {
-    width: 390,
+    width: '100%',
+    maxWidth: 390,
     height: 844,
     opacity: 0,
     position: 'absolute',

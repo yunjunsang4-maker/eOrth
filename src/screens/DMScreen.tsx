@@ -35,8 +35,10 @@ import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
 import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SW, height: SH } = Dimensions.get('window');
+const SW = stageWidthNow();
+const SH = Dimensions.get('window').height;
 
 const C = {
   bg: '#0A0A0F',

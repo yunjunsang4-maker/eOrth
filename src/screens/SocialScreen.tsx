@@ -60,6 +60,7 @@ import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
+import { stageWidthNow } from '../utils/stage';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -70,8 +71,8 @@ import Toast from '../components/Toast';
 import FeatureShowcaseCard from '../components/social/FeatureShowcaseCard';
 import { EXAMPLE_FEED_RECORD, EXAMPLE_SNAP } from '../constants/exampleContent';
 
-const { width: SCREEN_W } = Dimensions.get('window');
-const SCREEN_W_SOCIAL = Dimensions.get('window').width;
+const SCREEN_W = stageWidthNow();
+const SCREEN_W_SOCIAL = stageWidthNow();
 
 // ─────────────────────────────────────────────
 // 디자인 토큰

@@ -2,7 +2,7 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
-  Dimensions, ActivityIndicator, Alert, ScrollView, Modal, TextInput,
+  ActivityIndicator, Alert, ScrollView, Modal, TextInput,
   KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +27,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
+import { stageWidthNow } from '../utils/stage';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -58,7 +59,7 @@ const parseAlbumDate = (s?: string): Date | null => {
 // (TripDetailScreen COLORS.albumAccent). 두 화면에서 같은 것을 가리키므로 색도 같게 둔다.
 const ALBUM_ACCENT = '#FFA657';
 
-const { width } = Dimensions.get('window');
+const width = stageWidthNow();
 const COL = 3;
 const CELL = Math.floor((width - 16 * 2 - 8 * (COL - 1)) / COL);
 

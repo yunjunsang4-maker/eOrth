@@ -7,18 +7,18 @@ import {
   StyleSheet,
   Modal,
   Animated,
-  Dimensions,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
+import { stageWidthNow } from '../../utils/stage';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
  * (NewRecordScreen 에서 분리)
  */
-const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
 
 // ─── 날짜 유틸 ───
 const toDateKey = (d: Date) =>

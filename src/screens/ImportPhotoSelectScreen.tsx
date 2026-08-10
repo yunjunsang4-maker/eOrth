@@ -3,7 +3,7 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View, Text, StyleSheet, TouchableOpacity, FlatList,
-  Dimensions, ActivityIndicator, Alert, ScrollView, Modal, Animated, Platform,
+  ActivityIndicator, Alert, ScrollView, Modal, Animated, Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -23,6 +23,7 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
 import AssetImage from '../components/AssetImage';
+import { stageWidthNow } from '../utils/stage';
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
@@ -51,7 +52,7 @@ const EMPTY_TRIP: ImportTrip = {
   title: '', date: '', startDate: '', endDate: '', photos: [],
 };
 
-const { width } = Dimensions.get('window');
+const width = stageWidthNow();
 const COL = 3;
 const GRID_PAD = 16; // FlatList contentContainer 안쪽 여백
 const GRID_GAP = 8;  // 셀 사이 간격 (columnWrapperStyle.gap · ItemSeparator 높이와 같아야 한다)

@@ -4,7 +4,7 @@
 // QR은 utils/appLinks의 profileLink로 만든 eorth://profile/<handle> — 파서(parseAppLink)가
 // 구형식 eorth://user/<handle>까지 받아주므로 이미 배포된 QR도 그대로 열린다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Dimensions, Animated, LayoutChangeEvent, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Animated, LayoutChangeEvent, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';
@@ -20,6 +20,7 @@ import RatingStars from '../components/RatingStars';
 import { profileLink } from '../utils/appLinks';
 import { andFitText } from '../utils/fitText';
 import type { RootStackScreenProps } from '../navigation/types';
+import { stageWidthNow } from '../utils/stage';
 
 // ── 셰브런 화살표 (시안 134:1155~1170) ──
 // 시안은 낱개 8.98×16.27 셰브런 3개를 7.5 간격으로 붙여 한 세트로 쓴다.
@@ -74,7 +75,7 @@ const fmtRange = (start: Date, end: Date | null): string => {
 // 한글 국가명 → 영문 (KO_TO_EN 세계 맵, 대한민국은 별도 — AlbumCreateScreen과 동일 규칙)
 const enName = (ko: string) => (SHORT_COUNTRY_EN[ko] ?? (ko === '대한민국' ? 'South Korea' : KO_TO_EN[ko] ?? ko));
 
-const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_W = stageWidthNow();
 const TICKET_MARGIN = 14;
 const BACKDROP = '#0A0B0F'; // 탭(공유 버튼 노출) 시 채우는 검은 배경 — 공유하기 가시성 확보
 const PURPLE = '#7C3AED';

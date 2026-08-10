@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
 import * as NativeSplash from 'expo-splash-screen';
 import { APP_START_MS } from '../utils/appStart';
 import { useRecords } from '../store/recordStore';
@@ -15,11 +15,12 @@ import { getMyProfileStatus } from '../services/profile';
 import { useAccountBoundary } from '../hooks/useAccountBoundary';
 import { withTimeout } from '../utils/withTimeout';
 import type { RootStackScreenProps } from '../navigation/types';
+import { stageWidthNow } from '../utils/stage';
 
 // 스플래시 영상은 2026-08-07 제거했다(에셋 assets/splash.mp4 도 함께 삭제).
 // 이제 스플래시는 네이티브 LaunchScreen(로고) 하나뿐이고, 이 화면은 그 뒤에서
 // 진입 목적지만 판정한다 — 화면 자체는 검은 배경만 그린다.
-const { width: SW } = Dimensions.get('window');
+const SW = stageWidthNow();
 
 // ─────────────────────────────────────────────
 // 네이티브 스플래시 로고 크기 미리보기 (개발 전용)

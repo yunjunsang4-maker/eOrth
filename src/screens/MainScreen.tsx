@@ -25,6 +25,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
+import { stageWidthNow } from '../utils/stage';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -82,7 +83,8 @@ import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
 
-const { height, width } = Dimensions.get('window');
+const width = stageWidthNow();
+const height = Dimensions.get('window').height;
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
 const DS_CARD_W = Math.min(325, width - 24);
 const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));

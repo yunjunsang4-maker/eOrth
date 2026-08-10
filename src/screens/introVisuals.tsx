@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Dimensions, AppState, Animated, Easing, Image } from 'react-native';
+import { View, StyleSheet, AppState, Animated, Easing, Image } from 'react-native';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, {
@@ -8,8 +8,9 @@ import Svg, {
   RadialGradient as SvgRadialGradient,
   Stop as SvgStop,
 } from 'react-native-svg';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SW } = Dimensions.get('window');
+const SW = stageWidthNow();
 export const DS = SW / 402; // 시안(402×874) 배율
 
 // 온보딩 시안 공통 앰비언트 — 파란 대기광 + 하단 좌우 보라 글로우(시안 블러 타원 근사)

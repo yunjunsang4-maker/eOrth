@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Image,
   TextInput,
-  Dimensions,
   Platform,
   Alert,
   Animated,
@@ -29,8 +28,9 @@ import {
 import { COUNTRIES } from '../constants/countries';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import type { RootStackScreenProps } from '../navigation/types';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SW } = Dimensions.get('window');
+const SW = stageWidthNow();
 // PIP(작은 전면 사진) 크기 — pipWrapContainer 스타일과 동일
 const PIP_W = SW * 0.28;
 const PIP_H = SW * 0.37;

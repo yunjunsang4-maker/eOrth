@@ -8,7 +8,6 @@ import {
   ScrollView,  TextInput,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   PanResponder,
   ActivityIndicator,
   Modal,
@@ -48,6 +47,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
+import { stageWidthNow } from '../utils/stage';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -83,7 +83,7 @@ if (Platform.OS === 'android') {
 // AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
 export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
 
 const COLORS = {
   bg: '#0A0A0F',
