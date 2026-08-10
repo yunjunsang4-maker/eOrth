@@ -1,7 +1,7 @@
 // 배치 파리티 정적 가드 — 코드모드로 대량 치환한 규칙이 조용히 원상복귀되는 것을 막는다.
 // 이 저장소는 76곳 코드모드 주입 이력이 있고(8/3 파리티 감사), 그때 오주입 여부를
 // 사람 눈으로만 확인했다. 같은 일을 반복하지 않기 위한 자동 검사다.
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
 const SKIP = new Set(['node_modules', 'geo-tmp', 'tmp-frames', 'intro1']);
@@ -172,6 +172,37 @@ for (const f of collect('src', '.tsx')) {
   const bad = objs.filter((o) => /flex:\s*1/.test(o) && /maxWidth:\s*STAGE_MAX_W/.test(o));
   check(bad.length === 0, `${rel(f)} 딤 배경 클램프 없음`);
 }
+
+// ── 규칙 7: react-native에서 Text/TextInput을 직접 import하지 않는다 ──
+// React 19에서 함수형 컴포넌트의 defaultProps가 제거돼 전역 주입 트릭(Text.defaultProps =
+// { maxFontSizeMultiplier })을 쓸 수 없다. 그래서 src/ui/Text.tsx 래퍼로 출처를 강제한다.
+// 래퍼를 우회해 직접 import하면 그 화면만 글꼴 배율 상한이 빠져, 사용자가 시스템 글꼴을
+// 키웠을 때 Task 1~5에서 맞춰 놓은 배치가 그 화면에서만 무너진다.
+// (eslint no-restricted-imports가 1차 방어선이지만, expo lint는 src/app/components만
+//  훑고 lint를 건너뛴 커밋도 있을 수 있어 npm test에서도 같은 규칙을 본다.)
+// [^}]*는 개행도 매치하므로 여러 줄로 쓴 import도 함께 잡힌다 — 코드모드가 놓친 파일을
+// 이 규칙이 이름으로 짚어 주는 것이 설계 의도다.
+for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
+  const p = rel(f);
+  if (p === 'src/ui/Text.tsx') continue; // 래퍼 자신은 예외
+  const src = readFileSync(f, 'utf8');
+  const rnImports = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'react-native'/g)];
+  const direct = rnImports.filter((m) => /\b(Text|TextInput)\b/.test(m[1]));
+  check(direct.length === 0, `${p} react-native에서 Text 직접 import 없음`);
+}
+
+// ── 규칙 8: 글꼴 배율 상한이 한 곳에서만 정의된다 ──
+// 1.2가 두 군데(래퍼와 fitText)에 각각 박혀 있으면 한쪽만 바뀌어 조용히 갈라진다.
+const UI_TEXT = 'src/ui/Text.tsx';
+const hasWrapper = existsSync(UI_TEXT);
+check(hasWrapper, `${UI_TEXT} 래퍼가 존재한다`);
+if (hasWrapper) {
+  check(/MAX_FONT_SCALE = 1\.2/.test(readFileSync(UI_TEXT, 'utf8')), 'MAX_FONT_SCALE === 1.2');
+}
+check(
+  !/maxFontSizeMultiplier:\s*1\.2/.test(readFileSync('src/utils/fitText.ts', 'utf8')),
+  'fitText.ts가 1.2를 하드코딩하지 않는다',
+);
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);
