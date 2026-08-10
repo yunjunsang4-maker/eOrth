@@ -22,11 +22,27 @@
 - 커밋 메시지는 한글, `type(scope): 요약` 형식.
 - 검증 명령: `npx tsc --noEmit` / `npm run lint` / `npm test`.
 
-### 결정: 글꼴 배율 상한은 양 플랫폼에 적용한다
+### 결정: 글꼴 배율 상한은 **Android 전용**이다 (2026-08-11 사용자 확정)
 
-`utils/fitText.ts:3`에 "iOS 렌더링은 절대 변경하지 않는다"가 명시돼 있으나, 글꼴 배율만은 **양 플랫폼에 동일하게** 적용한다. 목표가 "두 플랫폼이 다르지 않게"인데 Android만 1.2로 자르면 사용자가 배율을 올렸을 때 오히려 두 플랫폼이 갈라지기 때문이다.
+`utils/fitText.ts:3`의 "iOS 렌더링은 절대 변경하지 않는다" 원칙을 그대로 지킨다.
+**iOS Dynamic Type은 지금처럼 무제한**, 상한 1.2는 Android에만 적용한다.
 
-**대가:** iOS Dynamic Type을 크게 쓰는 사용자에게 글자가 120%까지만 커진다(현재는 무제한). 되돌릴 수 있게 `src/ui/Text.tsx` 한 파일의 상수 하나로 분기 가능하게 둔다 — Task 6 Step 3의 주석 참조.
+초안에서는 양 플랫폼 적용을 제안했으나(근거: "두 플랫폼이 다르지 않게"), 사용자가 iOS 무변경을
+택했다. 이 선택이 더 방어 가능하다 — iOS는 이 프로젝트의 **기준(정답)**이므로 기준을 바꾸면
+파리티의 잣대 자체가 흔들리고, 접근성 후퇴도 iOS 사용자에게만 발생한다.
+
+**적용 형태** (`src/ui/Text.tsx`):
+```ts
+export const MAX_FONT_SCALE = 1.2;
+const CAP = Platform.OS === 'android' ? MAX_FONT_SCALE : undefined;
+// 두 래퍼 모두 maxFontSizeMultiplier={CAP}
+```
+`undefined`를 넘기면 RN이 상한 없음으로 처리하므로 iOS는 현재 동작과 완전히 동일하다.
+기존 `andFitText`(Android 전용)와도 기준이 일치한다.
+
+**파급:** `Animated.Text` 2곳(`MainCoachmark`, `SegmentedToggle`)에 넣은 상한도 Android 전용이어야
+한다. 특히 `SegmentedToggle`은 "iOS가 무제한이라 구멍"이라는 이유로 막았는데, 이제 그것이
+의도된 동작이다.
 
 ---
 

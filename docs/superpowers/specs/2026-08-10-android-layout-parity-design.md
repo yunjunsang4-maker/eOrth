@@ -172,16 +172,24 @@ iOS 폰에서 화면 가득이던 것은 폴드에서도 화면 가득인 것이
 React 19에서 함수형 컴포넌트의 `defaultProps`가 제거됐다. `<Text>`는 93개 파일 1728곳,
 `<TextInput>`은 78곳이다.
 
+**상한은 Android 전용이다** (2026-08-11 사용자 확정). `utils/fitText.ts:3`의 "iOS 렌더링은 절대
+변경하지 않는다" 원칙을 지킨다 — iOS는 이 프로젝트의 기준(정답)이므로 기준을 바꾸면 파리티의
+잣대 자체가 흔들리고, 접근성 후퇴도 iOS 사용자에게만 생긴다.
+
 신규 `src/ui/Text.tsx`:
 
 ```tsx
-import { Text as RNText, TextInput as RNTextInput } from 'react-native';
+import { Platform, Text as RNText, TextInput as RNTextInput } from 'react-native';
 export const MAX_FONT_SCALE = 1.2;
-export const Text = (p) => <RNText maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} />;
-export const TextInput = (p) => <RNTextInput maxFontSizeMultiplier={MAX_FONT_SCALE} {...p} />;
+const CAP = Platform.OS === 'android' ? MAX_FONT_SCALE : undefined;   // iOS는 무제한 유지
+export const Text = (p) => <RNText maxFontSizeMultiplier={CAP} {...p} />;
+export const TextInput = (p) => <RNTextInput maxFontSizeMultiplier={CAP} {...p} />;
 ```
 
 - `{...p}`를 뒤에 두어 개별 화면이 필요하면 덮어쓸 수 있게 한다.
+- `undefined`는 RN에서 "상한 없음"이므로 iOS 동작은 현재와 완전히 동일하다.
+- 구현 시 `Text`/`TextInput`은 **동명 타입 별칭도 함께 export**해야 한다 — RN 원본이 클래스라
+  값·타입을 겸하고, `useRef<TextInput>(null)` 같은 기존 코드가 타입 자리에서 이 이름을 쓴다.
 - `utils/fitText.ts:11`의 하드코딩 `1.2`도 `MAX_FONT_SCALE`을 참조하게 바꿔 상수를 한 곳으로 모은다.
 - **적용**: 93개 파일의 `import { Text } from 'react-native'`를 코드모드로 분리 교체.
   `View`·`StyleSheet` 등은 `react-native`에 그대로 두고 `Text`/`TextInput`만 `src/ui/Text`에서
