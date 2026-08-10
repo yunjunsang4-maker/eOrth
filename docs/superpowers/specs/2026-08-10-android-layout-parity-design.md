@@ -40,7 +40,7 @@ RNSVG 터치 삼킴 — 즉 **플랫폼 렌더링 차이는 대부분 해소된 
 | 일반 플래그십 | 411~412dp |
 | iPhone 16 Pro Max | 440dp |
 | **Pixel 8 Pro / 9 Pro XL** | **448dp** |
-| 폴드 펼침 | ~841dp |
+| 폴드 펼침 | ~763dp (Z Fold 5: 1812x2176 @380dpi) |
 | 태블릿 | 800dp+ |
 
 430으로 자르면 **Pixel Pro 계열 일반 폰이 레터박스**가 된다. 지금 멀쩡한 기기를 일부러 깎는
@@ -57,9 +57,13 @@ export const useStageWidth = () => Math.min(useWindowDimensions().width, STAGE_M
 export const stageWidthNow = () => Math.min(Dimensions.get('window').width, STAGE_MAX_W);
 ```
 
+구현에서는 두 파일로 나눈다 — `stageMath.ts`(순수 계산, RN import 없음)와 `stage.ts`(훅).
+이 저장소의 `npm test`는 tsx로 파일을 직접 실행하므로 `react-native`를 import하는 모듈은
+검증할 수 없다. 계산부를 분리해야 `clampStageWidth`에 검증을 붙일 수 있다.
+
 - `useStageWidth()` — 실시간 반응이 필요한 곳(§4)
 - `stageWidthNow()` — 기존 모듈 상수가 `Dimensions.get('window').width` 대신 호출.
-  여전히 박제되지만 clamp된 값이라 폴드 펼침 시 폭 변화가 360→841(2.3배)에서
+  여전히 박제되지만 clamp된 값이라 폴드 펼침 시 폭 변화가 360→763(2.1배)에서
   360→480(1.3배)로 줄어 어긋남이 눈에 띄지 않는 수준이 된다.
 
 ### 2.1 루트 컨테이너
@@ -143,7 +147,7 @@ MediaPickerModal.tsx:100  getItemLayout length/offset          ← 폭 틀리면
 
 ### 4.1 폭의 기준을 둘로 나눈다
 
-사진 뷰어를 480dp로 클램프하면 폴드에서 손해다 — 841dp 화면에 480dp 사진만 띄우고 양옆을
+사진 뷰어를 480dp로 클램프하면 폴드에서 손해다 — 763dp 화면에 480dp 사진만 띄우고 양옆을
 버리게 된다. **의도가 보존되는 쪽이 진짜 파리티**이므로 기준을 나눈다.
 
 | 의도 | 기준 | 대상 |
@@ -220,7 +224,7 @@ KeyboardAvoidingView가 없는 입력 모달에서 키보드가 입력창을 가
 |---|---|---|
 | 저가 폰 | 360dp | 오버플로우 2건 해소, 한글 라벨 줄바꿈 |
 | 플래그십 | 411dp | **변화가 없어야 함** (회귀 검사) |
-| 폴드 접음↔펼침 | 374 ↔ 841dp | 접힌 상태로 실행 후 펼치기 — §4 실시간 10곳 |
+| 폴드 접음↔펼침 | ~411 ↔ ~763dp | 접힌 상태로 실행 후 펼치기 — §4 실시간 12개 파일 |
 | 태블릿 | 800dp | Stage 중앙 정렬, 탭 바 폭 일치 |
 
 이 PC에서는 **ANGLE 렌더러 + wipe-data**가 필요하다.
