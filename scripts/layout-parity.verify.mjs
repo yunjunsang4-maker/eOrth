@@ -1,9 +1,13 @@
 // 배치 파리티 정적 가드 — 코드모드로 대량 치환한 규칙이 조용히 원상복귀되는 것을 막는다.
 // 이 저장소는 76곳 코드모드 주입 이력이 있고(8/3 파리티 감사), 그때 오주입 여부를
 // 사람 눈으로만 확인했다. 같은 일을 반복하지 않기 위한 자동 검사다.
+//
+// 출력 정책: 기본은 조용하다 — 규칙당 한 줄 요약 + 실패 항목만. 예전엔 성공 ✓만
+// 1337줄을 찍어서 진짜 실패가 그 안에 묻혔다. 전체 항목을 보려면 `--verbose`.
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, sep } from 'node:path';
 
+const VERBOSE = process.argv.includes('--verbose');
 const SKIP = new Set(['node_modules', 'geo-tmp', 'tmp-frames', 'intro1']);
 
 function collect(dir, ext, out = []) {
@@ -17,32 +21,76 @@ function collect(dir, ext, out = []) {
 }
 
 const rel = (p) => p.split(sep).join('/');
+const allSrc = () => collect('src', '.tsx').concat(collect('src', '.ts'));
+
+/**
+ * 파일을 읽되, 없으면 null. 규칙 2와 아래 몇 곳이 예전엔 존재 확인 없이 readFileSync를
+ * 호출해서, 파일 이름만 바뀌어도 ENOENT로 스크립트가 통째로 죽었다(가드가 '실패'가
+ * 아니라 '크래시'로 끝나면 CI 로그를 안 보는 순간 통과처럼 읽힌다).
+ */
+function readSafe(p) {
+  return existsSync(p) ? readFileSync(p, 'utf8') : null;
+}
+
+// ── 실행/집계 ──
 let fail = 0;
+let cur = null; // { title, pass, fails: [] }
+
+function flush() {
+  if (!cur) return;
+  const n = cur.pass + cur.fails.length;
+  const mark = cur.fails.length ? '✗' : '✓';
+  const tail = cur.fails.length ? `, ${cur.fails.length}건 실패` : '';
+  console.log(`  ${mark} ${cur.title} — ${n}건 검사${tail}`);
+  for (const m of cur.fails) console.log(`      ✗ ${m}`);
+  cur = null;
+}
+
+/** 새 규칙 구간 시작. 이전 구간 요약을 먼저 내보낸다. */
+function rule(title) {
+  flush();
+  cur = { title, pass: 0, fails: [] };
+}
+
 const check = (ok, msg) => {
-  console.log(`  ${ok ? '✓' : '✗'} ${msg}`);
-  if (!ok) fail++;
+  if (ok) {
+    cur.pass++;
+    if (VERBOSE) console.log(`      ✓ ${msg}`);
+  } else {
+    cur.fails.push(msg);
+    fail++;
+  }
 };
 
 console.log('배치 파리티');
 
 // ── 규칙 1: 루트 클램프가 살아 있다 ──
 // 이게 빠지면 폴드·태블릿에서 전 화면이 늘어난다. 값은 stageMath와 같아야 한다.
-const stageMath = readFileSync('src/utils/stageMath.ts', 'utf8');
-const maxW = Number(stageMath.match(/STAGE_MAX_W = (\d+)/)?.[1]);
-const app = readFileSync('App.tsx', 'utf8');
+rule('규칙 1 루트 클램프');
+const stageMath = readSafe('src/utils/stageMath.ts');
+check(stageMath !== null, 'src/utils/stageMath.ts가 존재한다');
+const maxW = Number(stageMath?.match(/STAGE_MAX_W = (\d+)/)?.[1]);
+const app = readSafe('App.tsx');
+check(app !== null, 'App.tsx가 존재한다');
 check(maxW === 480, `STAGE_MAX_W === 480 (실제 ${maxW})`);
 check(
-  app.includes('STAGE_MAX_W') && /maxWidth:\s*STAGE_MAX_W/.test(app),
+  Boolean(app) && app.includes('STAGE_MAX_W') && /maxWidth:\s*STAGE_MAX_W/.test(app),
   'App.tsx가 maxWidth: STAGE_MAX_W로 루트를 클램프한다',
 );
 check(
-  /alignSelf:\s*'center'/.test(app),
+  Boolean(app) && /alignSelf:\s*'center'/.test(app),
   'App.tsx 루트 컨테이너가 중앙 정렬된다',
 );
 
 // ── 규칙 2: 실시간 대상 파일에 모듈 최상위 Dimensions 상수가 남아 있지 않다 ──
 // 이 파일들은 폭이 스크롤 오프셋 계산에 들어간다. 박제된 값이면 폴드를 펼쳤을 때
 // 페이저가 엉뚱한 사진을 가리키고 getItemLayout 스크롤 위치가 어긋난다.
+//
+// 줄 맨 앞 앵커(^)는 '모듈 최상위'라는 이 규칙의 정의 그대로다 — 들여쓴 선언은
+// 애초에 박제가 아니라 호출마다 다시 읽는 값이라 이 규칙의 대상이 아니다.
+// 들여쓴 곳에서 창 폭을 읽는 진짜 위험(컬럼 안에서 창 좌표계를 쓰는 것)은
+// 규칙 9가 들여쓰기와 무관하게 전수로 잡는다.
+rule('규칙 2 실시간 파일의 모듈 최상위 Dimensions');
 const REALTIME = [
   'src/components/PhotoViewerModal.tsx',
   'src/components/CutPhotoAdjustModal.tsx',
@@ -57,7 +105,11 @@ const REALTIME = [
   'src/components/PuzzleShareCard.tsx',
 ];
 for (const f of REALTIME) {
-  const src = readFileSync(f, 'utf8');
+  const src = readSafe(f);
+  if (src === null) {
+    check(false, `${f} 파일이 없다 (이름이 바뀌었으면 REALTIME 목록도 함께 고칠 것)`);
+    continue;
+  }
   // 모듈 최상위 = 줄 맨 앞에서 시작하는 const/let 선언
   const frozen = src.split('\n').filter((l) => /^(const|let)\s.*Dimensions\.get\(/.test(l));
   check(frozen.length === 0, `${f} 모듈 최상위 Dimensions 상수 없음 (${frozen.length}건)`);
@@ -66,10 +118,12 @@ for (const f of REALTIME) {
 // ── 규칙 3: src 전역에 모듈 최상위 Dimensions 폭 상수가 없다 ──
 // 새 화면을 만들 때 Dimensions.get('window').width를 다시 쓰면 폴드에서 어긋난다.
 // 세로(.height)는 clamp 대상이 아니므로 허용한다.
+// (규칙 2와 같은 이유로 ^ 앵커는 의도된 정의다 — 규칙 9 주석 참고.)
+rule('규칙 3 모듈 최상위 폭 상수');
 const ALLOW_FROZEN = new Set([
   'src/components/MainCoachmark.tsx', // 초기값일 뿐, onLayout으로 갱신됨(136행)
 ]);
-for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
+for (const f of allSrc()) {
   const p = rel(f);
   if (ALLOW_FROZEN.has(p)) continue;
   const bad = readFileSync(f, 'utf8').split('\n').filter(
@@ -82,6 +136,7 @@ for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
 // 360dp 기기에서 가로로 넘친다. maxWidth: 는 이미 캡이라 제외한다((?<!max) lookbehind).
 // 이 휴리스틱은 값이 '고정 레이아웃 폭'인지 모른다 — DS 같은 반응형 배율과 곱해지는
 // 디자인 캔버스 상수도 문자 그대로는 잡힌다. 그런 경우만 근거 주석과 함께 허용한다.
+rule('규칙 4 320dp 초과 고정 폭');
 const ALLOW_WIDE = new Set([
   // introVisuals.tsx:301 IntroVisual4 오브 스프라이트 — width: 367 * DS.
   // DS = stageWidthNow()/402(디자인 캔버스 402pt 대비 배율)라 실제 렌더 폭은 항상
@@ -99,22 +154,25 @@ for (const f of collect('src', '.tsx')) {
   check(over.length === 0, `${p} 320dp 초과 고정 폭 없음`);
 }
 
-// ── 규칙 5: Stage 폭을 쓰는 파일이 <Modal>도 갖고 있으면 STAGE_MAX_W도 있어야 한다 ──
+// ── 규칙 5: Stage 값을 쓰는 파일이 <Modal>도 갖고 있으면 STAGE_MAX_W도 있어야 한다 ──
 // RN Modal은 App.tsx의 루트 클램프 바깥(네이티브 풀스크린)에 그려진다. Stage 폭을 그대로
 // Modal 안 콘텐츠 크기에 쓰면 폴드·태블릿에서 클램프가 빠진 채 렌더되어 중앙 정렬이 깨진다.
 // Task 3에서 같은 모양의 회귀가 2건 있었고 사람 눈으로만 잡혔다 — 이 규칙은 그 재발 방지용
 // 휴리스틱이다(증명이 아니다: STAGE_MAX_W가 있다고 반드시 옳다는 보장도, 없다고 반드시
-// 틀렸다는 보장도 아니다). 걸리면 사람이 Modal 콘텐츠가 실제로 Stage 폭을 쓰는지 확인할 것.
-// useStageWidth()(훅)뿐 아니라 stageWidthNow()(모듈 최상위 상수)도 같은 값을 주므로 함께 본다
-// — Task 4 산출물은 전부 stageWidthNow()라, useStageWidth()만 보면 이 규칙이 한 번도 안 걸린다.
+// 틀렸다는 보장도 아니다). 걸리면 사람이 Modal 콘텐츠가 실제로 Stage 값을 쓰는지 확인할 것.
+// 세 형태를 모두 본다 — useStageWidth()(훅) · stageWidthNow()(모듈 최상위 상수) ·
+// useStageGutter()(창↔컬럼 오프셋). gutter가 빠져 있었는데, gutter를 쓴다는 건 이미
+// "Modal 안에서 컬럼 기준으로 되돌리는 중"이라는 뜻이라 오히려 이 규칙의 핵심 신호다.
+rule('규칙 5 Stage 값 + Modal이면 재클램프');
 const ALLOW_MODAL_STAGE = new Set([
-  // PostDetailScreen.tsx: useStageWidth()는 본문(cutImage·albumGridImg·SnapStoryViewer
-  // 페이징)에만 쓰이고, 이 파일의 <Modal> 4곳(메뉴·공유시트·좋아요목록·SnapViewerModal 내부)은
-  // 전부 SCREEN_W를 받지 않는 별도 스타일셋(menuCard 고정폭 180 등)이라 Stage 폭이
-  // Modal로 새지 않는다 — 확인 완료된 오탐. (Modal 시트 자체의 폭 클램프는 별도 과제였던
-  // "바텀시트 클램프"에서 처리됨 — likersSheet·shareS.sheet에 STAGE_MAX_W 적용 완료.
-  // 그래서 이 파일은 지금 allowlist 없이도 규칙 5를 통과하지만, 위 오탐 분석을 남겨 둔다.)
-  'src/screens/PostDetailScreen.tsx',
+  // PostDetailScreen.tsx는 예외 목록에서 뺐다 — 아래 오탐 분석은 남기되, 이 파일은
+  // 지금 STAGE_MAX_W를 실제로 쓰고 있어 예외 없이 통과한다. 예외로 남겨 두면 나중에
+  // 누가 STAGE_MAX_W를 걷어내도 조용히 가려진다.
+  //   (분석: useStageWidth()는 본문(cutImage·albumGridImg·SnapStoryViewer 페이징)에만
+  //    쓰이고, 이 파일의 <Modal> 5곳은 별도 스타일셋(menuCard 고정폭 180 등)이라
+  //    Stage 폭이 Modal로 새지 않았다. 시트 자체의 폭 클램프는 "바텀시트 클램프"
+  //    과제에서 likersSheet·shareS.sheet·viewerS에 적용 완료.)
+  //
   // 아래 7개는 <Modal>·Stage 상수(stageWidthNow())가 규칙 5로 확대된 뒤 실제로 걸려서
   // 파일 안 모든 <Modal>...</Modal> 블록과 그 안 파생 상수(예: CARD_W, GRID_W)까지
   // 직접 대조해 확인한 결과다(스크립트: 각 Modal 구간 텍스트에서 해당 상수 참조 여부 검색).
@@ -143,9 +201,11 @@ const ALLOW_MODAL_STAGE = new Set([
   'src/screens/NewRecordScreen.tsx',
   // ProfileScreen.tsx: SCREEN_WIDTH/THUMB_WIDTH는 프로필 그리드·스탯 카드에만 쓰이고
   // <Modal> 6곳(358·502·636·771·832·1278행) 안에는 참조가 전혀 없다.
+  // (배지 앨범·프로필 편집 Modal은 별도로 STAGE_MAX_W 클램프를 적용해 뒀다.)
   'src/screens/ProfileScreen.tsx',
   // SocialScreen.tsx: SCREEN_W/SCREEN_W_SOCIAL/파생값 GRID_W는 피드 카드 그리드에만
-  // 쓰이고 <Modal> 9곳 안에는 참조가 전혀 없다.
+  // 쓰이고 <Modal> 9곳 안에는 참조가 전혀 없다. useStageGutter()는 Modal 안 팝오버를
+  // 컬럼 기준으로 되돌리는 용도라 이미 의도된 사용이다.
   'src/screens/SocialScreen.tsx',
   // TravelImportScreen.tsx: SCREEN_W/ORB_W/ORB_H/ORB_PT는 화면 본문 오브 비주얼에만
   // 쓰이고 <Modal>(1188행) 안에는 참조가 전혀 없다.
@@ -155,21 +215,88 @@ for (const f of collect('src', '.tsx')) {
   const p = rel(f);
   if (ALLOW_MODAL_STAGE.has(p)) continue;
   const src = readFileSync(f, 'utf8');
-  if (/useStageWidth\(|stageWidthNow\(/.test(src) && /<Modal/.test(src)) {
-    check(src.includes('STAGE_MAX_W'), `${p} useStageWidth()/stageWidthNow()+<Modal>이면 STAGE_MAX_W로 재클램프해야 함(휴리스틱 — 오탐이면 ALLOW_MODAL_STAGE에 근거와 함께 등록)`);
+  if (/useStageWidth\(|stageWidthNow\(|useStageGutter\(/.test(src) && /<Modal/.test(src)) {
+    check(src.includes('STAGE_MAX_W'), `${p} useStageWidth()/stageWidthNow()/useStageGutter()+<Modal>이면 STAGE_MAX_W로 재클램프해야 함(휴리스틱 — 오탐이면 ALLOW_MODAL_STAGE에 근거와 함께 등록)`);
   }
 }
 
 // ── 규칙 6: 딤 배경(backdrop)에 Stage 클램프가 섞이지 않았다 ──
-// 바텀시트 클램프는 '시트 본체'에만 넣는다. 딤 배경(flex:1 + rgba 배경)까지 클램프하면
+// 바텀시트 클램프는 '시트 본체'에만 넣는다. 딤 배경(flex:1 + 반투명 배경)까지 클램프하면
 // 폴드·태블릿에서 시트 양옆 레터박스가 어두워지지 않아 시트가 공중에 뜬 것처럼 보인다.
-// 판별은 휴리스틱이다 — flex:1과 maxWidth: STAGE_MAX_W가 한 스타일 객체에 같이 있으면
-// 그 객체는 '화면을 채우는 컨테이너'인데 폭만 잘린 것이므로 배경을 클램프한 것으로 본다.
-// (중첩 없는 { … } 단위로만 훑으므로 스타일 객체 하나가 검사 단위가 된다.)
+//
+// 예전 구현은 /\{[^{}]*\}/ 였다 — 중첩이 없는 객체만 봐서, shadowOffset:{...} 하나만
+// 들어 있어도 그 스타일 객체 전체가 검사 대상 밖이었다(DMScreen.ctxMenu,
+// PostDetailScreen.menuCard 등). 지금은 중괄호 균형을 맞춰 모든 블록을 본다.
+//
+// 판별 기준을 '반투명 배경'까지 좁힌 이유: 균형 매칭으로 시야가 넓어지자, 딤이 아니라
+// 불투명 콘텐츠 패널(예: ProfileScreen 배지 앨범 보드)이 flex:1 + 클램프를 정당하게
+// 함께 쓰는 경우가 걸리기 시작했다. 이 저장소의 딤은 예외 없이 flex:1 + rgba(...)
+// 배경이라(감사 시 20곳 전수 확인), 반투명 배경을 조건에 넣으면 딤만 정확히 남는다.
+rule('규칙 6 딤 배경 클램프 금지');
+const DIM_BG = /backgroundColor:\s*['"](?:rgba\(|#[0-9a-fA-F]{8}['"]|#[0-9a-fA-F]{4}['"])/;
+
+/** 문자열·주석 안의 중괄호를 무시하고, 균형 잡힌 모든 { … } 블록을 돌려준다. */
+function balancedBlocks(src) {
+  const out = [];
+  const stack = [];
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    // 문자열/템플릿 리터럴 건너뛰기
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      i++;
+      while (i < src.length && src[i] !== q) {
+        if (src[i] === '\\') i++;
+        i++;
+      }
+      continue;
+    }
+    // 주석 건너뛰기
+    if (c === '/' && src[i + 1] === '/') {
+      while (i < src.length && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && src[i + 1] === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i++;
+      continue;
+    }
+    if (c === '{') stack.push(i);
+    else if (c === '}' && stack.length) {
+      const s = stack.pop();
+      out.push({ s, e: i + 1, text: src.slice(s, i + 1) });
+    }
+  }
+  return out;
+}
+
+/**
+ * 블록에서 '자기 층'의 텍스트만 남긴다 — 한 단계 안쪽 { … }는 전부 지운다.
+ * 이게 있어야 "같은 스타일 객체 안에 있는가"를 볼 수 있다. StyleSheet.create({…})
+ * 처럼 여러 스타일을 품은 껍데기 블록은, 안쪽을 지우고 나면 flex:1도 maxWidth도
+ * 남지 않아 자연히 걸러진다(예전 구현이 넓혀졌을 때 23건 오탐을 낸 지점).
+ */
+function ownLevel(block, all) {
+  const children = all.filter((o) => o.s > block.s && o.e < block.e
+    && !all.some((m) => m !== o && m !== block && m.s > block.s && m.e < block.e && o.s > m.s && o.e < m.e));
+  let out = '';
+  let cursor = block.s;
+  for (const c of children.sort((a, b) => a.s - b.s)) {
+    out += block.text.slice(cursor - block.s, c.s - block.s);
+    cursor = c.e;
+  }
+  out += block.text.slice(cursor - block.s);
+  return out;
+}
+
 for (const f of collect('src', '.tsx')) {
   const src = readFileSync(f, 'utf8');
-  const objs = src.match(/\{[^{}]*\}/g) || [];
-  const bad = objs.filter((o) => /flex:\s*1/.test(o) && /maxWidth:\s*STAGE_MAX_W/.test(o));
+  const blocks = balancedBlocks(src);
+  const bad = blocks.filter((b) => {
+    const own = ownLevel(b, blocks);
+    return /flex:\s*1\b/.test(own) && /maxWidth:\s*STAGE_MAX_W/.test(own) && DIM_BG.test(own);
+  });
   check(bad.length === 0, `${rel(f)} 딤 배경 클램프 없음`);
 }
 
@@ -182,7 +309,8 @@ for (const f of collect('src', '.tsx')) {
 //  훑고 lint를 건너뛴 커밋도 있을 수 있어 npm test에서도 같은 규칙을 본다.)
 // [^}]*는 개행도 매치하므로 여러 줄로 쓴 import도 함께 잡힌다 — 코드모드가 놓친 파일을
 // 이 규칙이 이름으로 짚어 주는 것이 설계 의도다.
-for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
+rule('규칙 7 Text/TextInput 직접 import 금지');
+for (const f of allSrc()) {
   const p = rel(f);
   if (p === 'src/ui/Text.tsx') continue; // 래퍼 자신은 예외
   const src = readFileSync(f, 'utf8');
@@ -195,11 +323,12 @@ for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
 
 // ── 규칙 8: 글꼴 배율 상한이 한 곳에서만 정의된다 ──
 // 1.2가 두 군데(래퍼와 fitText)에 각각 박혀 있으면 한쪽만 바뀌어 조용히 갈라진다.
+rule('규칙 8 글꼴 배율 상한 단일 출처');
 const UI_TEXT = 'src/ui/Text.tsx';
-const hasWrapper = existsSync(UI_TEXT);
-check(hasWrapper, `${UI_TEXT} 래퍼가 존재한다`);
-if (hasWrapper) {
-  check(/MAX_FONT_SCALE = 1\.2/.test(readFileSync(UI_TEXT, 'utf8')), 'MAX_FONT_SCALE === 1.2');
+const uiText = readSafe(UI_TEXT);
+check(uiText !== null, `${UI_TEXT} 래퍼가 존재한다`);
+if (uiText) {
+  check(/MAX_FONT_SCALE = 1\.2/.test(uiText), 'MAX_FONT_SCALE === 1.2');
 }
 // maxFontSizeMultiplier에 넘기는 값은 src 어디서나 FONT_SCALE_CAP이어야 한다.
 //
@@ -236,7 +365,7 @@ const CAP_OVERRIDE = new Map([
 for (const [p, o] of CAP_OVERRIDE) {
   check(Boolean(o.why && o.why.trim()), `${p} 배율 상한 예외에 사유가 적혀 있다`);
 }
-for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
+for (const f of allSrc()) {
   const p = rel(f);
   const allow = CAP_OVERRIDE.get(p)?.allow ?? DEFAULT_ALLOW;
   const uses = [...readFileSync(f, 'utf8')
@@ -247,10 +376,104 @@ for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
 // CAP_OVERRIDE에서 fitText.ts를 면제한 근거("android 전용")를 실제로 강제한다.
 // 이 삼항이 사라지면 15개 호출부의 iOS가 조용히 1.2로 잘리는데, 면제 때문에 값 검사는
 // 통과해 버린다 — 전제 자체를 검사해야 면제가 안전하다.
+const fitText = readSafe('src/utils/fitText.ts');
+check(fitText !== null, 'src/utils/fitText.ts가 존재한다');
 check(
-  /Platform\.OS === 'android'/.test(readFileSync('src/utils/fitText.ts', 'utf8')),
+  Boolean(fitText) && /Platform\.OS === 'android'/.test(fitText),
   'fitText.ts가 android 전용 분기를 유지한다 (CAP_OVERRIDE 면제의 전제)',
 );
 
+// ── 규칙 9: 클램프된 컬럼 안에서 '창 폭'으로 자기 위치를 잡지 않는다 ──
+//
+// 루트를 클램프한 순간 좌표계가 둘로 갈라졌다.
+//   · 창 절대 좌표 — measureInWindow, 제스처 absoluteX, Dimensions.get('window'),
+//                    useWindowDimensions(), 그리고 RN Modal 안(모달은 창 루트에 그려진다)
+//   · 컬럼 로컬 좌표 — App.tsx의 클램프된 컬럼 안에서 렌더되는 모든 것
+// 컬럼 안에 살면서 창 폭으로 자기 위치·크기를 정하는 코드는 정확히 gutter
+// ((창폭 - Stage폭)/2)만큼 틀린다. 763dp 창에서 141.5dp다.
+//
+// 규칙 1~8은 이 부류를 하나도 잡지 못했다. 규칙 2·3은 '모듈 최상위'(줄 맨 앞 const)만
+// 보고, 규칙 3은 Dimensions.get만 봐서 useWindowDimensions()는 아예 시야 밖이었다 —
+// 그런데 이 브랜치가 실제로 만들어 낸 형태가 바로 그 useWindowDimensions()였다.
+// (CustomTabBar가 탭 바 전체를 gutter만큼 밀어낸 채 병합 직전까지 갔다.)
+//
+// 그래서 이 규칙은 들여쓰기·선언형태와 무관하게 '창 폭을 읽는 줄'을 전수로 세고,
+// 파일별 허용 건수를 사유와 함께 못 박는다. 건수까지 보는 이유: 예전에 파일 단위로만
+// 거른 스윕이 이미 한 건 있는 파일의 두 번째 사례를 통째로 놓친 적이 있다.
+rule('규칙 9 컬럼 안에서 창 폭 사용 금지');
+const WINDOW_W_READ = /(?:Dimensions\.get\(\s*['"]window['"]\s*\)|useWindowDimensions\(\))/;
+const ALLOW_WINDOW_W = new Map([
+  ['src/utils/stage.ts', {
+    count: 3,
+    why: 'Stage API 자신. 창 폭을 읽어 clamp/gutter로 바꿔 주는 단일 출처라 여기서만 창 폭을 읽는 게 맞다.',
+  }],
+  ['src/components/CutPhotoAdjustModal.tsx', {
+    count: 1,
+    why: 'RN <Modal transparent>(186행) 안에서만 쓰인다 — 모달은 루트 클램프 밖 창 루트에 그려지므로 '
+       + 'SW*0.82 프레임의 기준은 창 폭이 맞다.',
+  }],
+  ['src/components/PhotoViewerModal.tsx', {
+    count: 1,
+    why: 'RN <Modal transparent>(72행) 안 전체화면 사진 뷰어. pagingEnabled ScrollView의 페이지 폭이라 '
+       + '창 폭이 아니면 페이징 오프셋 자체가 어긋난다.',
+  }],
+  ['src/components/PuzzlePhotoAdjustOverlay.tsx', {
+    count: 1,
+    why: 'MainScreen "영토 표시 설정" <Modal> 안의 absoluteFill 오버레이로만 렌더된다(중첩 Modal 금지 전례 때문에 '
+       + 'Modal 안 절대위치로 구현). 즉 창 루트 좌표계라 SW*0.86 프레임 기준은 창 폭이 맞다.',
+  }],
+  ['src/screens/BlogRecordScreen.tsx', {
+    count: 1,
+    why: 'RN <Modal transparent>(218행) 안 전체화면 사진 뷰어. 딤 위에 사진만 띄우는 화면이라 화면 가득이 의도이고, '
+       + 'Stage 폭으로 두면 pagingEnabled ScrollView(창 폭)와 페이지 폭이 어긋나 페이징이 깨진다.',
+  }],
+  ['src/screens/ProfileScreen.tsx', {
+    count: 1,
+    why: 'RN <Modal transparent>(774행) 안 전체화면 프로필 사진 뷰어(핀치 줌). 이미지 크기가 창 전체여야 한다.',
+  }],
+  ['src/screens/MainScreen.tsx', {
+    count: 1,
+    why: '코치마크 폴백 rect 계산(511행). CoachRect는 measureInWindow 결과와 같은 창 절대 좌표라는 계약이라 '
+       + '창 폭이 필요하다 — 컬럼 기준인 스냅 버튼은 그 자리에서 gutter를 더해 창 좌표로 환산한다.',
+  }],
+  ['src/screens/SocialScreen.tsx', {
+    count: 2,
+    why: '둘 다 창 절대 좌표끼리의 비교다. ① 2070행: measureInWindow가 준 x의 유효 범위 검사(창 폭과 비교해야 '
+       + '정상 좌표를 무효로 오판하지 않는다). ② 2718행: cardRect.x(창 좌표)가 화면 좌/우 어느 쪽인지 판정 — '
+       + '창 폭의 절반과 비교해야 맞다. 실제 배치 계산(gutter)은 useStageGutter()로만 한다.',
+  }],
+  ['src/components/MainCoachmark.tsx', {
+    count: 1,
+    why: 'rootSize의 초기값(21·136행)일 뿐이고, 루트 View의 onLayout이 즉시 실제 크기(컬럼 로컬)로 덮어쓴다. '
+       + '규칙 3에서도 같은 근거로 예외다.',
+  }],
+]);
+{
+  const seen = new Set();
+  for (const f of allSrc()) {
+    const p = rel(f);
+    const hits = readFileSync(f, 'utf8').split('\n')
+      .filter((l) => WINDOW_W_READ.test(l) && /\bwidth\b/.test(l));
+    if (hits.length === 0) continue;
+    seen.add(p);
+    const allow = ALLOW_WINDOW_W.get(p);
+    if (!allow) {
+      check(false, `${p} 컬럼 안에서 창 폭을 ${hits.length}건 읽는다 — useStageWidth()/useStageGutter()를 쓰거나, `
+        + '창 좌표계가 맞다면 ALLOW_WINDOW_W에 건수와 사유를 함께 등록할 것');
+      continue;
+    }
+    check(Boolean(allow.why && allow.why.trim()), `${p} 창 폭 예외에 사유가 적혀 있다`);
+    check(
+      allow.count === hits.length,
+      `${p} 창 폭 사용 ${allow.count}건 등록 ↔ 실제 ${hits.length}건 — 새로 늘어난 줄이 정말 창 좌표계인지 확인하고 건수를 갱신할 것`,
+    );
+  }
+  // 등록만 남고 실제로는 사라진 예외는 지운다 — 썩은 예외는 다음 사람에게 거짓 근거가 된다.
+  for (const p of ALLOW_WINDOW_W.keys()) {
+    check(seen.has(p), `${p} 창 폭 예외가 아직 유효하다 (해당 줄이 사라졌으면 ALLOW_WINDOW_W에서 제거할 것)`);
+  }
+}
+
+flush();
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

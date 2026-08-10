@@ -27,7 +27,7 @@ module.exports = defineConfig([
         paths: [{
           name: 'react-native',
           importNames: ['Text', 'TextInput'],
-          message: "Text/TextInput은 'src/ui/Text'에서 import하세요 (글꼴 배율 상한 1.2 적용).",
+          message: "Text/TextInput은 'src/ui/Text'에서 import하세요 (Android만 글꼴 배율 상한 1.2, iOS는 상한 없음 — FONT_SCALE_CAP).",
         }],
       }],
     },

@@ -30,7 +30,9 @@ check(clampStageWidth(481) === 480, '481dp는 480으로');
 
 // 방어: 측정 실패로 0이나 NaN이 들어와도 레이아웃이 사라지면 안 된다.
 check(clampStageWidth(0) === 0, '0은 0으로 (조기 렌더 시 onLayout 전)');
-check(!Number.isNaN(clampStageWidth(NaN)), 'NaN이 전파되지 않는다');
+// !isNaN만 보면 Infinity·undefined 같은 다른 오작동도 통과한다 — 계약값(0)까지 못 박는다.
+check(clampStageWidth(NaN) === 0, 'NaN → 0 (전파되지 않는다)');
+check(clampStageWidth(Infinity) === 0, 'Infinity → 0');
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);
