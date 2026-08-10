@@ -2043,6 +2043,13 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
     : null;
 
   const cardRef = useRef<View>(null);
+  // 창↔컬럼 좌표 변환 오프셋. 이 파일이 이미 세 곳(491·1025·1325행)에서 쓰는 것과
+  // 같은 단일 출처(stage.ts)를 쓴다 — 아래 폴백에서 (창폭 - SCREEN_W_SOCIAL)/2로
+  // 직접 계산하던 판이 있었는데, SCREEN_W_SOCIAL은 stageWidthNow()라 앱 시작 시점에
+  // 박제된 값이다. 접힌 채(360dp) 시작해 펼치면(763dp) 창 폭만 갱신돼 gutter가
+  // (763-360)/2=201.5로 나와, 정답 (763-480)/2=141.5보다 60dp 어긋난 좌표가
+  // QuickShareOverlay까지 전파됐다.
+  const cardStageGutter = useStageGutter();
 
   const panGesture = Gesture.Pan()
     .runOnJS(true)
@@ -2064,9 +2071,8 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         if (correctedX <= 0 || correctedX > windowW) {
           // 폴백값(24, 24+correctedW+10)은 컬럼 로컬 좌표(friendsScroll 좌패딩 기준)다 —
           // correctedX는 창 절대 좌표라는 계약(QuickShareOverlay의 cardLocalX 변환·위 유효성
-          // 검사와 동일)을 지키려면 stageOffsetX를 더해 창 좌표로 옮겨야 한다.
-          const stageOffsetX = (windowW - SCREEN_W_SOCIAL) / 2;
-          correctedX = stageOffsetX + (columnIndex === 0 ? 24 : 24 + correctedW + 10);
+          // 검사와 동일)을 지키려면 gutter를 더해 창 좌표로 옮겨야 한다.
+          correctedX = cardStageGutter + (columnIndex === 0 ? 24 : 24 + correctedW + 10);
         }
 
         if (correctedY <= 0 || correctedY > e.absoluteY || (correctedY + correctedH) < e.absoluteY) {

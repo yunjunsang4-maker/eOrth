@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
 import { FriendIcon } from './icons';
-import { useStageWidth } from '../utils/stage';
+import { useStageWidth, useStageGutter } from '../utils/stage';
 
 const CIRCLE = 56;
 const GAP = 14;
@@ -96,9 +96,11 @@ export default function QuickShareOverlay({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
-  // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 타깃 원 위치가 어긋난다.
+  // 창 높이는 실시간으로 받는다 — 박제하면 폴드 펼침 시 타깃 원 위치가 어긋난다.
+  // 세로는 Stage 클램프 대상이 아니라(폭만 가둔다) 창 높이가 정답이고, cardRect.y도
+  // 창 절대 좌표라 아래 비교(SCREEN_H * 0.6 등)와 좌표계가 맞는다.
   // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
-  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
+  const { height: SCREEN_H } = useWindowDimensions();
   // 이 오버레이는 RN Modal이 아니라 App.tsx의 클램프된 Stage 컬럼 안에서 렌더된다
   // (SocialScreen이 일반 탭 화면 트리 안에서 그린다). 이 컴포넌트의 루트(absoluteFill,
   // 194행)는 그 컬럼의 자식이라, 안에서 쓰는 left/translateX는 전부 "컬럼 로컬 좌표"
@@ -108,8 +110,10 @@ export default function QuickShareOverlay({
   // 실제 카드 위치보다 stageOffsetX만큼 오른쪽으로 밀려 그려진다.
   // stageOffsetX는 창 좌표계에서 클램프된 컬럼의 좌측 시작점(중앙 정렬 오프셋) —
   // 창 좌표를 로컬 좌표로 바꾸려면 이 값을 "빼야" 한다(windowX - stageOffsetX).
+  // gutter 공식은 stage.ts 한 곳에만 둔다 — 예전엔 여기와 SocialScreen에 각각 사본이
+  // 있었고, 그중 하나가 박제된 폭을 써서 60dp 어긋났다.
   const stageW = useStageWidth();
-  const stageOffsetX = (SCREEN_W - stageW) / 2;
+  const stageOffsetX = useStageGutter();
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;
