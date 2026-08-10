@@ -2,7 +2,6 @@ import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -10,6 +9,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';

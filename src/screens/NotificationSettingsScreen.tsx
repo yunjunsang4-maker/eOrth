@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Switch,  Linking,
+  Switch,
+  Linking,
   AppState,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';

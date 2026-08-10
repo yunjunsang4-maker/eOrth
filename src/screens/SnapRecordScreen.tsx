@@ -2,17 +2,16 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   Image,
-  TextInput,
   Platform,
   Alert,
   Animated,
   Linking,
   KeyboardAvoidingView,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
 import { LinearGradient } from 'expo-linear-gradient';

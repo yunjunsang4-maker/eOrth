@@ -2,13 +2,13 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   FlatList,
   Pressable,
   Animated,
   Easing,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GestureDetector, Gesture, Directions } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';

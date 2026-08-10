@@ -2,9 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet, Alert,
-  KeyboardAvoidingView, Platform, ActivityIndicator,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { submitFeedback } from '../services/feedback';
 import type { RootStackScreenProps } from '../navigation/types';

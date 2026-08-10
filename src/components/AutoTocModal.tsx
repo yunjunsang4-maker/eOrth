@@ -3,11 +3,11 @@ import { useTranslation } from 'react-i18next';
 import {
   Modal,
   View,
-  Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import type { TocSuggestion } from '../utils/autoToc';
 import { STAGE_MAX_W } from '../utils/stage';
 

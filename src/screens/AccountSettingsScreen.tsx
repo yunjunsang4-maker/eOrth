@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,  Alert,
+  Alert,
   Switch,
   Modal,
   ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';

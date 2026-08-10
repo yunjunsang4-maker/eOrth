@@ -2,16 +2,15 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Animated,
   ActivityIndicator,
   Share,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';

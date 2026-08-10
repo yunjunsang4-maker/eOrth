@@ -7,7 +7,8 @@
  * 액션 바(선택) — showActions일 때 하단에 기기 저장, 호출부가 넘기면 지구본 사진 지정·커버 지정·삭제.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Image, useWindowDimensions, Alert, Platform } from 'react-native';
+import { Modal, View, TouchableOpacity, ScrollView, Image, useWindowDimensions, Alert, Platform } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';

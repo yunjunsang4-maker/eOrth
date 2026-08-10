@@ -1,11 +1,11 @@
 import React from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { REPORT_REASON_KEYS } from '../utils/reportAndBlock';
 import { STAGE_MAX_W } from '../utils/stage';

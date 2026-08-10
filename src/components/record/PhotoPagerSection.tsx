@@ -2,7 +2,8 @@
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
+import { View, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
+import { Text, TextInput } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { LockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';

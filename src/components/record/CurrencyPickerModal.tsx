@@ -1,15 +1,14 @@
 import React from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
   Modal,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { SearchIcon as SvgSearchIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';

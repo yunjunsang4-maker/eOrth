@@ -2,12 +2,12 @@ import React from 'react';
 import {
   Pressable,
   View,
-  Text,
   StyleSheet,
   Platform,
   type StyleProp,
   type ViewStyle,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import Svg, { Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';
 

@@ -2,17 +2,16 @@ import React, { useRef, useEffect, useState, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
   Animated,
   Image,
-  TextInput,
   Modal,
   Alert,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';

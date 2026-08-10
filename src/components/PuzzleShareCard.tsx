@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Platform, Share,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Platform,
+  Share,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Defs, ClipPath, Image as SvgImage } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 
 // 헤더 벨의 미읽음 배지 — 점 하나 대신 개수를 보여주는 알약.
 // 아이콘 우상단에 겹쳐 놓는 오버레이라 부모는 position:relative 컨테이너면 된다.

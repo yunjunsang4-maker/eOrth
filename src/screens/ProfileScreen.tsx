@@ -8,12 +8,10 @@ import { Image } from 'expo-image';
 import TripCoverImage from '../components/TripCoverImage';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -24,6 +22,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import type { ImageSourcePropType } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';

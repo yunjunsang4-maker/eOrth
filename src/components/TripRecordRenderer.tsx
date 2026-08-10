@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
-  Text,
   Image,
   StyleSheet,
   TouchableOpacity,
@@ -11,6 +10,7 @@ import {
   PanResponder,
   LayoutAnimation,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
 import PhotoViewerModal from './PhotoViewerModal';

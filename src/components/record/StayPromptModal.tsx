@@ -1,7 +1,8 @@
 // 해외 도착 감지 시 "여행 / 장기체류" 선택 프롬프트.
 // 장기체류 선택 시 유형(교환/어학/인턴/워홀/기타)까지 고르면 onStay(type) 호출.
 import React, { useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Modal, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { GlassButton } from '../ui';
 import type { StayType } from '../../utils/stayMachine';

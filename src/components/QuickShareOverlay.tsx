@@ -1,5 +1,6 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image } from 'react-native';
+import { View, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';

@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -15,6 +13,7 @@ import {
   Image,
   BackHandler,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { STAGE_MAX_W } from '../utils/stage';
 
 // 생성 이모티콘(AI 커스텀, 다크 보라 3D 글로시) — 시스템 이모지 대체

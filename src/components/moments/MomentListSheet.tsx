@@ -1,7 +1,8 @@
 // 여행 기억 목록 시트 — 여행 카드 ✨ 아이콘 탭으로 열림. 시간순 목록.
 // 삭제: 왼쪽 스와이프로 드러난 삭제 버튼 탭 또는 길게 누르기 — 둘 다 확인 Alert를 거친다.
 import React from 'react';
-import { View, Text, Modal, FlatList, Alert, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { View, Modal, FlatList, Alert, StyleSheet, TouchableOpacity, Platform } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // RN Modal은 별도 네이티브 뷰 계층이라 앱 루트의 GestureHandlerRootView가 닿지 않는다 — 시트 내부에 자체 루트 필요
 import { GestureHandlerRootView } from 'react-native-gesture-handler';

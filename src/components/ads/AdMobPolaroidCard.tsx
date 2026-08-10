@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { NativeAd } from 'react-native-google-mobile-ads';
 import { getGoogleMobileAds } from '../../lib/googleMobileAds';

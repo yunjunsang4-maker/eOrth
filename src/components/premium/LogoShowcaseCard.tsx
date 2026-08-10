@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import ShowcaseCard from './ShowcaseCard';
 import MiniStrip from './MiniStrip';

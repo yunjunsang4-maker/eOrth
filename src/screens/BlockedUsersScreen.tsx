@@ -3,11 +3,12 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,  Alert,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useRecords } from '../store/recordStore';
 import { BlockIcon, PersonIcon } from '../components/icons';

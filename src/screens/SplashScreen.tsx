@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 import * as NativeSplash from 'expo-splash-screen';
 import { APP_START_MS } from '../utils/appStart';
 import { useRecords } from '../store/recordStore';

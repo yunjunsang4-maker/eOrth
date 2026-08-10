@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import {
-  TouchableOpacity, Text, StyleSheet, ActivityIndicator,
-  type StyleProp, type ViewStyle,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  type StyleProp,
+  type ViewStyle,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,

@@ -1,10 +1,19 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
-  ActivityIndicator, Alert, ScrollView, Modal, TextInput,
-  KeyboardAvoidingView, Platform,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Image,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';

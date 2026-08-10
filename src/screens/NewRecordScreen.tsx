@@ -2,10 +2,9 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  TextInput,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
   PanResponder,
@@ -18,6 +17,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import Svg, { Path as SvgPath, Circle as SvgCircle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';

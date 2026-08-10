@@ -2,13 +2,11 @@ import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Pressable,
   useWindowDimensions,
-  TextInput,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -23,6 +21,7 @@ import {
   ActivityIndicator,
   LayoutAnimation,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import * as Clipboard from 'expo-clipboard';
 import { useTranslation } from 'react-i18next';
 import { countryLabel, countryTagLabel } from '../utils/countryLabel';

@@ -3,9 +3,8 @@ import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
-  TouchableOpacity,  TextInput,
+  TouchableOpacity,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -16,6 +15,7 @@ import {
   Animated,
   Alert,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';

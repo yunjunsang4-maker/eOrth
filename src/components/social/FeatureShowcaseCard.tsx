@@ -9,7 +9,8 @@
 // (예: 제목 20 → 12.9, 설명 16 → 10.3, 배지 높이 25 → 16.1, 좌패딩 20 → 12.9)
 // 밴드는 시안대로 rgba(217,217,217,0.2) — 카드 배경 #0A0A0F 위에 얹혀 #333337로 합성된다.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { View, Text, Image, StyleSheet, PanResponder, TouchableOpacity } from 'react-native';
+import { View, Image, StyleSheet, PanResponder, TouchableOpacity } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { FEATURE_SLIDES } from '../../constants/exampleContent';
 import { nextIndex } from '../../utils/carousel';

@@ -3,13 +3,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Modal,
   Alert,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -17,6 +15,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
 import { getMaxAlbumPhotos } from '../constants/limits';

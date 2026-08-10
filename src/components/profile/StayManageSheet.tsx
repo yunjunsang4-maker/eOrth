@@ -1,6 +1,7 @@
 // 프로필 위치 표시("○○ 체류 중")를 탭하면 뜨는 체류 관리 시트 — 카드 보기 / 체류 종료
 import React from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Modal, View, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { STAGE_MAX_W } from '../../utils/stage';

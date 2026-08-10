@@ -3,13 +3,11 @@ import AppRefreshControl from '../components/AppRefreshControl';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Alert,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Keyboard,
   Platform,
@@ -21,6 +19,7 @@ import {
   Share,
   ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path, Rect, Defs as SvgDefs, LinearGradient as SvgLinearGradient, Stop as SvgStop } from 'react-native-svg';

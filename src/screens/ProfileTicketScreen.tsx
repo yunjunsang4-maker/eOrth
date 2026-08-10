@@ -4,7 +4,8 @@
 // QR은 utils/appLinks의 profileLink로 만든 eorth://profile/<handle> — 파서(parseAppLink)가
 // 구형식 eorth://user/<handle>까지 받아주므로 이미 배포된 QR도 그대로 열린다.
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Alert, Share, Animated, LayoutChangeEvent, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Alert, Share, Animated, LayoutChangeEvent, Platform } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { captureRef } from 'react-native-view-shot';
 import QRCode from 'react-native-qrcode-svg';

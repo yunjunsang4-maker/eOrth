@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -16,6 +14,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,

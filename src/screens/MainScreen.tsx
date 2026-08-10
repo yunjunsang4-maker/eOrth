@@ -3,11 +3,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Dimensions,
   Animated,
   Modal,
@@ -17,6 +15,7 @@ import {
   KeyboardAvoidingView,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { andFitText } from '../utils/fitText';

@@ -1,7 +1,8 @@
 // 초대 귀속 넛지 모달 — 초대 딥링크로 가입한 사용자에게 첫 메인 진입 시
 // "초대자와 메이트 연결"을 제안한다. (Alert 대체 — 앱 다크 보라 톤, StayPromptModal 관례)
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { Modal, View, TouchableOpacity, Image, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from './icons';
 import { STAGE_MAX_W } from '../utils/stage';

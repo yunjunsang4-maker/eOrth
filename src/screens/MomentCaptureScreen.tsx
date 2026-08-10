@@ -2,9 +2,14 @@
 // 텍스트·무드 중 하나(필수) + 사진 1장(선택) + 자동 시간·위치. 2초 안에 입력 시작이 목표.
 import React, { useEffect, useState, useMemo, useRef } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, Image,
+  View,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  Image,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';

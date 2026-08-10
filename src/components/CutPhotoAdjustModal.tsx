@@ -1,7 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, useWindowDimensions, Platform,
+  View,
+  Image,
+  Modal,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  useWindowDimensions,
+  Platform,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';

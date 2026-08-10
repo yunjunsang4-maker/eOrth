@@ -2,7 +2,6 @@ import React, { useRef, useState, useCallback, useEffect, useId, useMemo } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
@@ -11,6 +10,7 @@ import {
   PanResponder,
   Platform,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';

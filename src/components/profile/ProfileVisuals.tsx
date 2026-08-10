@@ -4,7 +4,8 @@
  * (ProfileScreen의 인라인 정의를 그대로 옮긴 것)
  */
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 // 재진입마다 다시 디코딩되지 않도록 캐시가 있는 expo-image 사용 (ProfileScreen과 동일)
 import { Image } from 'expo-image';
 import TripCoverImage from '../TripCoverImage';

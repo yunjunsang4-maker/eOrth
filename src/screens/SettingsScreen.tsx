@@ -2,16 +2,16 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,  Alert,
+  TouchableOpacity,
+  Alert,
   Switch,
   Modal,
-  TextInput,
   Pressable,
   FlatList,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';

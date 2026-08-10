@@ -2,10 +2,9 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  TextInput,
+  ScrollView,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -17,6 +16,7 @@ import {
   Linking,
   Animated,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
