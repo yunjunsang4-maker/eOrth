@@ -186,7 +186,9 @@ for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
   const p = rel(f);
   if (p === 'src/ui/Text.tsx') continue; // 래퍼 자신은 예외
   const src = readFileSync(f, 'utf8');
-  const rnImports = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'react-native'/g)];
+  // 따옴표는 둘 다 받는다 — 이 저장소에 실제로 큰따옴표 import가 있다
+  // (StarFieldBackground.tsx). 작은따옴표만 보면 lint를 건너뛴 커밋에서 조용히 뚫린다.
+  const rnImports = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]react-native['"]/g)];
   const direct = rnImports.filter((m) => /\b(Text|TextInput)\b/.test(m[1]));
   check(direct.length === 0, `${p} react-native에서 Text 직접 import 없음`);
 }
@@ -199,10 +201,16 @@ check(hasWrapper, `${UI_TEXT} 래퍼가 존재한다`);
 if (hasWrapper) {
   check(/MAX_FONT_SCALE = 1\.2/.test(readFileSync(UI_TEXT, 'utf8')), 'MAX_FONT_SCALE === 1.2');
 }
-check(
-  !/maxFontSizeMultiplier:\s*1\.2/.test(readFileSync('src/utils/fitText.ts', 'utf8')),
-  'fitText.ts가 1.2를 하드코딩하지 않는다',
-);
+// 상한 숫자를 직접 적은 곳이 src 어디에도 없어야 한다. fitText.ts만 보던 초기 버전은
+// FeatureShowcaseCard.tsx의 세 번째 하드코딩(fitOneLine)을 놓쳤다 — 값이 우연히 같아
+// 런타임 영향은 없었지만, 상한을 올리는 순간 그 카드만 1.2로 남아 조용히 갈라진다.
+// 숫자 리터럴 전체를 막으므로(1.2뿐 아니라) 나중에 1.3으로 올려도 재발하지 않는다.
+// 객체 리터럴(`maxFontSizeMultiplier: 1.2`)과 JSX(`maxFontSizeMultiplier={1.2}`) 둘 다 본다.
+// 래퍼는 `={MAX_FONT_SCALE}` 형태라 걸리지 않으므로 예외 목록이 필요 없다.
+for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
+  const hard = readFileSync(f, 'utf8').match(/maxFontSizeMultiplier\s*[:=]\s*\{?\s*\d/g) || [];
+  check(hard.length === 0, `${rel(f)} 배율 상한 숫자 하드코딩 없음 (MAX_FONT_SCALE을 쓸 것)`);
+}
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

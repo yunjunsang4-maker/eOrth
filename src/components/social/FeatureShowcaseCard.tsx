@@ -10,7 +10,7 @@
 // 밴드는 시안대로 rgba(217,217,217,0.2) — 카드 배경 #0A0A0F 위에 얹혀 #333337로 합성된다.
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { View, Image, StyleSheet, PanResponder, TouchableOpacity } from 'react-native';
-import { Text } from '../../ui/Text';
+import { Text, MAX_FONT_SCALE } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { FEATURE_SLIDES } from '../../constants/exampleContent';
 import { nextIndex } from '../../utils/carousel';
@@ -43,7 +43,7 @@ export default function FeatureShowcaseCard({ onPremiumPress }: { onPremiumPress
   const isPremium = !!slide.isPremium;
   // 시안은 한 줄 고정(whitespace-nowrap). 밴드 높이가 고정이라 줄바꿈되면 넘치므로,
   // 긴 번역문(영문)·큰 시스템 글꼴에서는 한 줄을 유지한 채 살짝 줄여 맞춘다.
-  const fitOneLine = { numberOfLines: 1 as const, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: 1.2 };
+  const fitOneLine = { numberOfLines: 1 as const, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: MAX_FONT_SCALE };
   return (
     <View style={s.card} {...pan.panHandlers}>
       <Image source={slide.image} style={s.img} resizeMode="cover" />
