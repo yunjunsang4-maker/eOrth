@@ -29,7 +29,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
-import { useStageWidth } from '../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
 const viewTypeName = (type: string, tr: TFunction): string => {
@@ -1230,10 +1230,15 @@ const s = StyleSheet.create({
   fmName: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
 
   /* ── 썸네일 사진 선택 시트 ── */
+  // thumbOverlay는 딤 배경(flex:1 + rgba) — 좁히면 폴드에서 양옆이 안 어두워지므로 전면 유지한다.
   thumbOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // thumbSheet는 콘텐츠 래퍼. RN Modal이라 루트 클램프 밖이고 thumbCellSize가 Stage 폭(≤480)
+  // 기준이라, 시트를 같은 폭으로 가두고 중앙에 둬야 썸네일 3열이 시트 폭과 맞는다.
+  // (padding 20*2 + gap 8*2 = 40+16이 thumbCellSize 계산의 전제다)
   thumbSheet: {
     backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 20, paddingBottom: 40,
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
   },
   thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   thumbSub: { color: COLORS.textDim, fontSize: 13, marginBottom: 16 },
