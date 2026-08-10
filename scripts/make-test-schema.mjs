@@ -26,5 +26,18 @@ sql = sql.replace(jwtRe, 'Bearer ' + anonKey);
 // ③ 잔존 검사
 if (sql.includes(PROD_REF)) { console.error('FAIL: 운영 ref 잔존'); process.exit(1); }
 
-writeFileSync('supabase/test-schema.local.sql', sql);
-console.log(`완료: supabase/test-schema.local.sql (URL ${urlCount}곳, anon 키 ${jwtCount}곳 치환)`);
+// ④ 오실행 가드 (2026-08-10 실제 사고 재발 방지) — 이 파일이 '운영' SQL Editor에 붙여지면
+// 운영은 profiles에 사용자가 있으므로 첫 블록에서 예외로 전체가 중단된다.
+// 빈 새 DB(테이블 없음/0행)는 통과. 베타 가입자가 생긴 뒤의 재실행은 막히는데,
+// 그때는 안내대로 이 블록만 지우고 실행하면 된다(의도된 마찰).
+const GUARD = `-- ⚠️ 테스트 전용 스키마 — 사용자 데이터가 있는 DB(=운영일 가능성)에서는 실행을 거부한다
+do $guard$ begin
+  if exists (select 1 from public.profiles limit 1) then
+    raise exception '이 DB에는 이미 사용자 데이터가 있습니다. 운영 프로젝트가 아닌지 확인하세요. (테스트 프로젝트 재실행이 맞다면 이 do 블록을 지우고 다시 실행)';
+  end if;
+exception when undefined_table then null; -- 빈 새 DB — 정상 진행
+end $guard$;
+
+`;
+writeFileSync('supabase/test-schema.local.sql', GUARD + sql);
+console.log(`완료: supabase/test-schema.local.sql (URL ${urlCount}곳, anon 키 ${jwtCount}곳 치환, 오실행 가드 포함)`);
