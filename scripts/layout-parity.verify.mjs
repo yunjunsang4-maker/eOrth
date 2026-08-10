@@ -99,12 +99,14 @@ for (const f of collect('src', '.tsx')) {
   check(over.length === 0, `${p} 320dp 초과 고정 폭 없음`);
 }
 
-// ── 규칙 5: useStageWidth()를 쓰는 파일이 <Modal>도 갖고 있으면 STAGE_MAX_W도 있어야 한다 ──
+// ── 규칙 5: Stage 폭을 쓰는 파일이 <Modal>도 갖고 있으면 STAGE_MAX_W도 있어야 한다 ──
 // RN Modal은 App.tsx의 루트 클램프 바깥(네이티브 풀스크린)에 그려진다. Stage 폭을 그대로
 // Modal 안 콘텐츠 크기에 쓰면 폴드·태블릿에서 클램프가 빠진 채 렌더되어 중앙 정렬이 깨진다.
 // Task 3에서 같은 모양의 회귀가 2건 있었고 사람 눈으로만 잡혔다 — 이 규칙은 그 재발 방지용
 // 휴리스틱이다(증명이 아니다: STAGE_MAX_W가 있다고 반드시 옳다는 보장도, 없다고 반드시
 // 틀렸다는 보장도 아니다). 걸리면 사람이 Modal 콘텐츠가 실제로 Stage 폭을 쓰는지 확인할 것.
+// useStageWidth()(훅)뿐 아니라 stageWidthNow()(모듈 최상위 상수)도 같은 값을 주므로 함께 본다
+// — Task 4 산출물은 전부 stageWidthNow()라, useStageWidth()만 보면 이 규칙이 한 번도 안 걸린다.
 const ALLOW_MODAL_STAGE = new Set([
   // PostDetailScreen.tsx: useStageWidth()는 본문(cutImage·albumGridImg·SnapStoryViewer
   // 페이징)에만 쓰이고, 이 파일의 <Modal> 4곳(메뉴·공유시트·좋아요목록·SnapViewerModal 내부)은
@@ -112,13 +114,43 @@ const ALLOW_MODAL_STAGE = new Set([
   // Modal로 새지 않는다 — 확인 완료된 오탐. (Modal 시트 자체의 폭 클램프는 별도 과제인
   // "바텀시트 클램프"에서 다룬다.)
   'src/screens/PostDetailScreen.tsx',
+  // 아래 7개는 <Modal>·Stage 상수(stageWidthNow())가 규칙 5로 확대된 뒤 실제로 걸려서
+  // 파일 안 모든 <Modal>...</Modal> 블록과 그 안 파생 상수(예: CARD_W, GRID_W)까지
+  // 직접 대조해 확인한 결과다(스크립트: 각 Modal 구간 텍스트에서 해당 상수 참조 여부 검색).
+  //
+  // CutRecordScreen.tsx: SCREEN_W/maxW는 화면 본문에만 쓰이고 <Modal> 2곳(474·514행)
+  // 안에는 참조가 전혀 없다.
+  'src/screens/CutRecordScreen.tsx',
+  // DMScreen.tsx: SW·SW 파생값(msgImage, CARD_W)은 채팅 리스트 아이템 스타일에만 쓰이고
+  // <Modal> 4곳(890·935·948·994행) 안에는 참조가 전혀 없다.
+  'src/screens/DMScreen.tsx',
+  // MainScreen.tsx: width는 <Modal> 여러 곳(영토 표시 설정 모달 등)에서 파생값 DS_CARD_W =
+  // Math.min(325, width - 24)로 흘러들지만, 실제 기기 폭(≥349dp에서 이미 325로 고정)
+  // 범위에서는 항상 325로 캡돼 Stage/창 폭 차이가 결과값에 아무 영향을 주지 못한다.
+  // 이 모달의 오버레이(fmOverlay)도 alignItems:'center'로 '창' 중앙 정렬인데, 클램프된
+  // 컬럼 자체가 창 중앙에 있어 두 중앙이 같은 좌표라 폴드·태블릿에서도 카드가 쏠리지 않는다
+  // — 재클램프가 필요 없는 걸로 확인됨.
+  'src/screens/MainScreen.tsx',
+  // NewRecordScreen.tsx: 실제 <Modal> JSX가 없다. 1934행의 "<Modal>"은 '여기서 RN
+  // <Modal>을 쓰면 안 된다'는 설명 주석 안 문자열이라 정규식이 오검출한 것뿐이다
+  // (Modal은 import만 되고 미사용 — lint no-unused-vars 경고로도 확인됨).
+  'src/screens/NewRecordScreen.tsx',
+  // ProfileScreen.tsx: SCREEN_WIDTH/THUMB_WIDTH는 프로필 그리드·스탯 카드에만 쓰이고
+  // <Modal> 6곳(358·502·636·771·832·1278행) 안에는 참조가 전혀 없다.
+  'src/screens/ProfileScreen.tsx',
+  // SocialScreen.tsx: SCREEN_W/SCREEN_W_SOCIAL/파생값 GRID_W는 피드 카드 그리드에만
+  // 쓰이고 <Modal> 9곳 안에는 참조가 전혀 없다.
+  'src/screens/SocialScreen.tsx',
+  // TravelImportScreen.tsx: SCREEN_W/ORB_W/ORB_H/ORB_PT는 화면 본문 오브 비주얼에만
+  // 쓰이고 <Modal>(1188행) 안에는 참조가 전혀 없다.
+  'src/screens/TravelImportScreen.tsx',
 ]);
 for (const f of collect('src', '.tsx')) {
   const p = rel(f);
   if (ALLOW_MODAL_STAGE.has(p)) continue;
   const src = readFileSync(f, 'utf8');
-  if (src.includes('useStageWidth(') && /<Modal/.test(src)) {
-    check(src.includes('STAGE_MAX_W'), `${p} useStageWidth()+<Modal>이면 STAGE_MAX_W로 재클램프해야 함(휴리스틱 — 오탐이면 ALLOW_MODAL_STAGE에 근거와 함께 등록)`);
+  if (/useStageWidth\(|stageWidthNow\(/.test(src) && /<Modal/.test(src)) {
+    check(src.includes('STAGE_MAX_W'), `${p} useStageWidth()/stageWidthNow()+<Modal>이면 STAGE_MAX_W로 재클램프해야 함(휴리스틱 — 오탐이면 ALLOW_MODAL_STAGE에 근거와 함께 등록)`);
   }
 }
 

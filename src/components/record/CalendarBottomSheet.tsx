@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
-import { stageWidthNow } from '../../utils/stage';
+import { stageWidthNow, STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
@@ -285,12 +285,19 @@ const calS = StyleSheet.create({
     backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'flex-end',
   },
+  // 이 컴포넌트는 RN Modal이라 App.tsx 루트 클램프 바깥에서 렌더된다. CELL_SIZE는
+  // Stage 폭(≤480) 기준으로 계산되므로, 시트 자체도 같은 폭으로 가두고 중앙에 둬야
+  // 폴드·태블릿에서 그리드가 왼쪽으로 쏠리지 않는다. overlay(딤 배경)는 전면 유지 —
+  // 시트만 좁힌다.
   sheet: {
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
     paddingBottom: 36,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   handle: {
     width: 40,

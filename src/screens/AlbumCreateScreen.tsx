@@ -27,7 +27,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
-import { stageWidthNow } from '../utils/stage';
+import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -1014,9 +1014,16 @@ const st = StyleSheet.create({
 
   /* 미리보기 모달 */
   pvOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // 이 모달은 RN Modal이라 App.tsx 루트 클램프 바깥에서 렌더된다. CARD_W(→ AdjustedCoverImage
+  // frameW)는 Stage 폭(≤480) 기준으로 계산되므로, 시트 자체도 같은 폭으로 가두고 중앙에
+  // 둬야 폴드·태블릿에서 미리보기 카드가 왼쪽으로 쏠리지 않는다. pvOverlay(딤 배경)는
+  // 전면 유지 — 시트만 좁힌다.
   pvSheet: {
     backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 20, paddingBottom: 40,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   pvTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
   pvSub: { color: '#A1A1B0', fontSize: 13, marginBottom: 16 },

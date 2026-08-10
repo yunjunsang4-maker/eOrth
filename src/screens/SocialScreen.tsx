@@ -2049,7 +2049,10 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         if (correctedW <= 0) correctedW = (SCREEN_W_SOCIAL - 48 - 10) / 2;
         if (correctedH <= 0) correctedH = 220;
 
-        if (correctedX <= 0 || correctedX > SCREEN_W_SOCIAL) {
+        // x는 measureInWindow의 창 절대 좌표라, 유효성 검사도 같은 좌표계(실제 창 폭)로 해야
+        // 한다 — SCREEN_W_SOCIAL(Stage 폭, ≤480)로 비교하면 폴드·태블릿에서 정상 x(컬럼이
+        // 창 중앙에 있어 stageOffsetX만큼 떨어진 값)까지 '무효'로 오판해 폴백 좌표로 덮어쓴다.
+        if (correctedX <= 0 || correctedX > Dimensions.get('window').width) {
           correctedX = columnIndex === 0 ? 24 : 24 + correctedW + 10;
         }
 
@@ -2687,7 +2690,11 @@ function FriendsTab({ navigation }: { navigation: any }) {
   const quickActiveRef = useRef(false);
 
   const handleQuickStart = (item: any, cardRect: CardRect) => {
-    const side: 'left' | 'right' = cardRect.x < SCREEN_W_SOCIAL / 2 ? 'right' : 'left';
+    // cardRect.x는 창 절대 좌표다 — 어느 쪽이 더 넓은지는 '창 폭의 절반'과 비교해야 맞다.
+    // (클램프된 컬럼은 창 중앙에 있으므로 windowWidth/2가 곧 컬럼 중앙의 창 좌표이기도
+    // 하다 — Stage 폭(SCREEN_W_SOCIAL)으로 비교하면 폴드·태블릿에서 기준점이 왼쪽으로
+    // 쏠려 카드가 화면 오른쪽에 있어도 'left'로 뒤집힌다.)
+    const side: 'left' | 'right' = cardRect.x < Dimensions.get('window').width / 2 ? 'right' : 'left';
     quickTargets.current = [];
     quickHoverRef.current = null;
     quickActiveRef.current = true;

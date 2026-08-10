@@ -99,10 +99,14 @@ export default function QuickShareOverlay({
   // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
   const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   // 이 오버레이는 RN Modal이 아니라 App.tsx의 클램프된 Stage 컬럼 안에서 렌더된다
-  // (SocialScreen이 일반 탭 화면 트리 안에서 그린다). cardRect는 measureInWindow로
-  // 이미 그 클램프된 컬럼 안의 절대 좌표만 갖는데, 아래 가로 clamp를 실제 창 폭(SCREEN_W)
-  // 기준으로 하면 폴드·태블릿에서 컬럼 밖(레터박스 여백)까지 타깃 원이 밀릴 수 있다.
-  // stageOffsetX는 창 좌표계에서 클램프된 컬럼의 좌측 시작점(중앙 정렬 오프셋)이다.
+  // (SocialScreen이 일반 탭 화면 트리 안에서 그린다). 이 컴포넌트의 루트(absoluteFill,
+  // 194행)는 그 컬럼의 자식이라, 안에서 쓰는 left/translateX는 전부 "컬럼 로컬 좌표"
+  // (0~stageW)다. 반면 cardRect(measureInWindow)와 pos(gesture absoluteX/Y)는 "창
+  // 절대 좌표"라 두 좌표계가 다르다 — 폰(창폭 ≤ 480)에서는 stageOffsetX=0이라 두
+  // 좌표계가 우연히 같지만, 폴드·태블릿에서 창 좌표를 로컬 좌표인 것처럼 그대로 쓰면
+  // 실제 카드 위치보다 stageOffsetX만큼 오른쪽으로 밀려 그려진다.
+  // stageOffsetX는 창 좌표계에서 클램프된 컬럼의 좌측 시작점(중앙 정렬 오프셋) —
+  // 창 좌표를 로컬 좌표로 바꾸려면 이 값을 "빼야" 한다(windowX - stageOffsetX).
   const stageW = useStageWidth();
   const stageOffsetX = (SCREEN_W - stageW) / 2;
 
@@ -132,10 +136,14 @@ export default function QuickShareOverlay({
   const targets = [...friends.map((f) => ({ key: f.handle, emoji: f.emoji, label: f.name, photo: f.photo })),
                    { key: 'other', emoji: '', label: t('comp.other'), icon: true }];
 
+  // cardRect는 창 절대 좌표라, 이 컴포넌트가 그리는 로컬 좌표계로 옮긴다(창 좌표 - stageOffsetX).
+  // 이후 colX/clampX는 전부 로컬 좌표([0, stageW] 범위)로만 계산한다.
+  const cardLocalX = cardRect.x - stageOffsetX;
+
   // 카드 옆 세로 배치 시작 좌표
   const colX = side === 'right'
-    ? Math.min(cardRect.x + cardRect.w + GAP, stageOffsetX + stageW - CIRCLE - 8)
-    : Math.max(cardRect.x - CIRCLE - GAP, stageOffsetX + 8);
+    ? Math.min(cardLocalX + cardRect.w + GAP, stageW - CIRCLE - 8)
+    : Math.max(cardLocalX - CIRCLE - GAP, 8);
 
   const TOP_SAFE = 64;
   const BOTTOM_SAFE = 130;
@@ -186,8 +194,8 @@ export default function QuickShareOverlay({
     }));
   }
 
-  // 화면 가로 경계가 아니라 클램프된 Stage 컬럼 경계를 벗어나지 않도록 clamp
-  const clampX = (x: number) => Math.max(stageOffsetX + 8, Math.min(x, stageOffsetX + stageW - CIRCLE - 8));
+  // 로컬 좌표([0, stageW]) 기준 clamp — 이 컴포넌트가 그리는 좌표계와 일치시킨다.
+  const clampX = (x: number) => Math.max(8, Math.min(x, stageW - CIRCLE - 8));
   coords = coords.map((c) => ({ x: clampX(c.x), y: c.y }));
 
   return (
@@ -219,8 +227,10 @@ export default function QuickShareOverlay({
           { borderColor: skinAccent.tint(0.5) },
           {
             opacity: ghostAnim,
+            // pos는 gesture absoluteX/Y(창 절대 좌표) — 로컬 좌표로 옮기려면 stageOffsetX도
+            // 함께 빼야 한다(세로는 오프셋이 없어 CIRCLE만 뺀다).
             transform: [
-              { translateX: Animated.subtract(pos.x, CIRCLE) },
+              { translateX: Animated.subtract(pos.x, stageOffsetX + CIRCLE) },
               { translateY: Animated.subtract(pos.y, CIRCLE) },
               { scale: ghostAnim.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }) },
               { rotate: '-3deg' },
