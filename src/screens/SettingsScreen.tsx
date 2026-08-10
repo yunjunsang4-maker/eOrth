@@ -10,6 +10,8 @@ import {
   Modal,
   Pressable,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
@@ -538,6 +540,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={() => setCountryModalVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={st.modalOverlay} accessibilityViewIsModal>
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
@@ -562,6 +566,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
@@ -615,6 +620,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={closeStayModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
           <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
@@ -647,6 +654,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             </TouchableOpacity>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}

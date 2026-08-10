@@ -9,6 +9,8 @@ import {
   Switch,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
@@ -513,6 +515,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setIsBirthdayModalVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.birthdayModalTitle')}</Text>
@@ -559,6 +563,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 성별 편집 모달 ── */}
@@ -620,6 +625,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeEmailModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.emailChangeTitle')}</Text>
@@ -688,6 +695,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 비밀번호 변경 모달 ── */}
@@ -697,6 +705,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closePasswordModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.passwordModalTitle')}</Text>
@@ -776,6 +786,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 계정 삭제 모달 (디테일 3단계) ── */}
@@ -785,6 +796,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeDeleteAccountModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (2단계 사유 입력·3단계 비밀번호 입력) */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={[styles.modalContent, { borderColor: COLORS.redBorder }]}>
             <Text style={[styles.modalTitle, { color: COLORS.red }]}>{t('accountSettings.deleteModalTitle')}</Text>
@@ -935,6 +948,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
