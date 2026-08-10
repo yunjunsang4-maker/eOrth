@@ -4,7 +4,6 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   FlatList,
   Pressable,
   Animated,
@@ -31,9 +30,7 @@ import {
   IntroVisual5,
 } from './introVisuals';
 import type { RootStackScreenProps } from '../navigation/types';
-
-const { width: SW } = Dimensions.get('window');
-const BTN_W = SW - 68; // 다음 버튼 폭 = 화면 - 좌우 패딩(40) - 버튼 마진(28)
+import { useStageWidth } from '../utils/stage';
 
 // 온보딩 5단계 — 시안(iPhone 17 - 64~68.svg) 순서 그대로. 비주얼은 introVisuals에 페이지별 분리.
 // Visual에 active를 내려 영상 비주얼(5페이지)이 활성 시점에 처음부터 재생되게 함
@@ -123,6 +120,10 @@ function SlideTextBlock({ active, stepNo, titleKey, subtitleKey }: { active: boo
 }
 
 export default function AppIntroScreen({ navigation }: Props) {
+  // 슬라이드 폭이 getItemLayout의 length/offset에 그대로 들어간다 — 박제하면
+  // 폴드 펼침 시 페이지가 어긋난다.
+  const SW = useStageWidth();
+  const BTN_W = SW - 68; // 다음 버튼 폭 = Stage 폭 - 좌우 패딩(40) - 버튼 마진(28)
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
   const [activeIdx, setActiveIdx] = useState(0);
@@ -185,7 +186,7 @@ export default function AppIntroScreen({ navigation }: Props) {
   const renderSlide = ({ item, index }: { item: (typeof SLIDES)[number]; index: number }) => {
     const V = item.Visual;
     return (
-      <View style={styles.slide}>
+      <View style={[styles.slide, { width: SW }]}>
         <V active={index === activeIdx} />
         {/* 텍스트 블록 — 하단 정렬, 활성화 시 스태거 등장 */}
         <SlideTextBlock active={index === activeIdx} stepNo={index + 1} titleKey={item.titleKey} subtitleKey={item.subtitleKey} />
@@ -263,8 +264,8 @@ export default function AppIntroScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0A0B0F' },
   flatList: { flex: 1 },
+  // width는 Stage 폭에서 파생되므로 renderSlide에서 인라인으로 주입한다.
   slide: {
-    width: SW,
     flex: 1,
     justifyContent: 'flex-end',
   },

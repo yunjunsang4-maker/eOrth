@@ -42,5 +42,28 @@ check(
   'App.tsx 루트 컨테이너가 중앙 정렬된다',
 );
 
+// ── 규칙 2: 실시간 대상 파일에 모듈 최상위 Dimensions 상수가 남아 있지 않다 ──
+// 이 파일들은 폭이 스크롤 오프셋 계산에 들어간다. 박제된 값이면 폴드를 펼쳤을 때
+// 페이저가 엉뚱한 사진을 가리키고 getItemLayout 스크롤 위치가 어긋난다.
+const REALTIME = [
+  'src/components/PhotoViewerModal.tsx',
+  'src/components/CutPhotoAdjustModal.tsx',
+  'src/components/PuzzlePhotoAdjustOverlay.tsx',
+  'src/components/QuickShareOverlay.tsx',
+  'src/components/record/PhotoPagerSection.tsx',
+  'src/components/record/MediaPickerModal.tsx',
+  'src/screens/PostDetailScreen.tsx',
+  'src/screens/BlogRecordScreen.tsx',
+  'src/screens/AppIntroScreen.tsx',
+  'src/screens/TripDetailScreen.tsx',
+  'src/components/PuzzleShareCard.tsx',
+];
+for (const f of REALTIME) {
+  const src = readFileSync(f, 'utf8');
+  // 모듈 최상위 = 줄 맨 앞에서 시작하는 const/let 선언
+  const frozen = src.split('\n').filter((l) => /^(const|let)\s.*Dimensions\.get\(/.test(l));
+  check(frozen.length === 0, `${f} 모듈 최상위 Dimensions 상수 없음 (${frozen.length}건)`);
+}
+
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

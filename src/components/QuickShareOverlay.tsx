@@ -1,11 +1,10 @@
 import React, { useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, Animated, useWindowDimensions, TouchableOpacity, Image } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import type { Friend, SharedRecord } from '../store/dmTypes';
 import { useSkinAccent } from '../constants/skinTheme';
 import { FriendIcon } from './icons';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
 const CIRCLE = 56;
 const GAP = 14;
 const MAX_TARGETS = 4; // 메이트 3 + 기타
@@ -95,6 +94,9 @@ export default function QuickShareOverlay({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 타깃 원 위치가 어긋난다.
+  // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
 
   // 등장 애니메이션 — 딤 페이드 + 타깃 스태거 스프링 + 고스트 팝
   const dimAnim = useRef(new Animated.Value(0)).current;

@@ -7,7 +7,7 @@
  * 액션 바(선택) — showActions일 때 하단에 기기 저장, 호출부가 넘기면 지구본 사진 지정·커버 지정·삭제.
  */
 import React, { useRef, useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, ScrollView, Image, Dimensions, Alert, Platform } from 'react-native';
+import { Modal, View, Text, TouchableOpacity, ScrollView, Image, useWindowDimensions, Alert, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
@@ -18,8 +18,6 @@ import { GlobeIcon, DownloadIcon, GalleryIcon, TrashIcon } from './icons';
 const ACTION_ICON = 22;
 const ACTION_TINT = '#FFFFFF';
 const ACTION_DANGER = '#FF6B6B';
-
-const { width: W, height: H } = Dimensions.get('window');
 
 export default function PhotoViewerModal({
   visible,
@@ -45,6 +43,8 @@ export default function PhotoViewerModal({
   onDelete?: (index: number) => void;
 }) {
   const { t } = useTranslation();
+  // 폭·높이는 창에서 실시간으로 받는다 — 박제하면 폴드 펼침 시 페이지 오프셋이 어긋난다.
+  const { width: W, height: H } = useWindowDimensions();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const [index, setIndex] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);

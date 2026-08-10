@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
   Animated,
   Image,
   TextInput,
@@ -30,8 +29,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import { useStageWidth } from '../utils/stage';
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
 const viewTypeName = (type: string, tr: TFunction): string => {
@@ -45,14 +43,13 @@ const viewTypeName = (type: string, tr: TFunction): string => {
   }
 };
 
-// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율
-const CARD_W = SCREEN_WIDTH - 40;
+// 카드 썸네일 조정 프레임 — 미리보기 카드(사진첩/과거여행)와 동일 비율.
+// 폭(=Stage 폭 - 40)은 컴포넌트 본문에서 실시간으로 받으므로 여기엔 높이만 둔다.
 const CARD_H = 180;
-const CARD_ASPECT = CARD_W / CARD_H;
 
 // 형식 펼침 시 같은 형식 기록을 가로 스와이프로 넘길 때의 한 장 폭 (expandWrap 콘텐츠 폭에 맞춤)
+// 폭(SWIPE_CARD_W = Stage 폭 - 52)은 snapToInterval에 들어가므로 본문에서 계산한다.
 const SWIPE_GAP = 12;
-const SWIPE_CARD_W = SCREEN_WIDTH - 52;
 // 스냅은 세로 사진. 카드 폭을 사진 폭에 맞춰 좁게 (사진폭 + 카드 좌우 패딩 16*2)
 const SNAP_PHOTO_W = 108;
 const SNAP_CARD_W = SNAP_PHOTO_W + 32;
@@ -225,6 +222,12 @@ type RouteParams = {
 
 export default function TripDetailScreen() {
   const { t, i18n } = useTranslation();
+  // 스와이프 카드 폭은 snapToInterval(cardW + SWIPE_GAP)에 그대로 들어간다 —
+  // 박제하면 폴드 펼침 시 스냅 위치가 카드 경계에서 어긋난다.
+  const SCREEN_WIDTH = useStageWidth();
+  const CARD_ASPECT = (SCREEN_WIDTH - 40) / CARD_H;
+  const SWIPE_CARD_W = SCREEN_WIDTH - 52;
+  const thumbCellSize = (SCREEN_WIDTH - 40 - 16) / 3;
   const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -628,7 +631,7 @@ export default function TripDetailScreen() {
               <View style={s.thumbGrid}>
                 {thumbCandidates.map((uri, i) => (
                   <TouchableOpacity key={uri + i} onPress={() => handlePickThumb(uri)} activeOpacity={0.85} accessibilityRole="button" accessibilityLabel={t('trip.pickThumbA11y')}>
-                    <Image source={{ uri }} style={s.thumbCell} />
+                    <Image source={{ uri }} style={[s.thumbCell, { width: thumbCellSize, height: thumbCellSize }]} />
                   </TouchableOpacity>
                 ))}
               </View>
@@ -891,6 +894,8 @@ function FeedCard({ record, accent }: { record: TravelRecord; accent: string }) 
 
 // ─── 앨범 카드 ───
 function AlbumCard({ record, accent }: { record: TravelRecord; accent: string }) {
+  // 셀 폭만 Stage 폭에서 파생 — card는 모듈 최상위 스타일시트라 폭만 인라인으로 내렸다.
+  const albumCellW = (useStageWidth() - 40 - 32 - 30) / 3;
   const medias = record.medias ?? [];
   const cells = medias.slice(0, 6);
   const extra = medias.length - cells.length; // 7장 이상이면 마지막 칸에 +N 표시
@@ -906,7 +911,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
       <View style={card.albumGrid}>
         {cells.length > 0 ? (
           cells.map((uri, i) => (
-            <View key={i} style={[card.albumCell, card.albumCellPhoto]}>
+            <View key={i} style={[card.albumCell, { width: albumCellW }, card.albumCellPhoto]}>
               <Image source={{ uri }} style={card.albumPhoto} resizeMode="cover" />
               {i === cells.length - 1 && extra > 0 && (
                 <View style={card.albumMoreOverlay}>
@@ -917,7 +922,7 @@ function AlbumCard({ record, accent }: { record: TravelRecord; accent: string })
           ))
         ) : (
           [0, 1, 2, 3, 4, 5].map((i) => (
-            <View key={i} style={[card.albumCell, { backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
+            <View key={i} style={[card.albumCell, { width: albumCellW, backgroundColor: accent + (i < 2 ? '20' : '10') }]}>
               {i === 0 && <Text style={card.albumCellIcon}>🏔️</Text>}
               {i === 1 && <Text style={card.albumCellIcon}>🌅</Text>}
               {i === 2 && <Text style={card.albumCellIcon}>☁️</Text>}
@@ -1233,8 +1238,8 @@ const s = StyleSheet.create({
   thumbTitle: { color: COLORS.white, fontSize: 18, fontWeight: '800', marginBottom: 4 },
   thumbSub: { color: COLORS.textDim, fontSize: 13, marginBottom: 16 },
   thumbGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  // width·height는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
   thumbCell: {
-    width: (SCREEN_WIDTH - 40 - 16) / 3, height: (SCREEN_WIDTH - 40 - 16) / 3,
     borderRadius: 10, backgroundColor: '#1A0A2E',
   },
   thumbCancel: {
@@ -1334,8 +1339,9 @@ const card = StyleSheet.create({
   albumGrid: {
     flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 12,
   },
+  // width는 Stage 폭에서 파생되므로 AlbumCard에서 인라인으로 주입한다.
   albumCell: {
-    width: (SCREEN_WIDTH - 40 - 32 - 30) / 3, height: 56,
+    height: 56,
     borderRadius: 10, alignItems: 'center', justifyContent: 'center',
   },
   albumCellIcon: { fontSize: 20 },

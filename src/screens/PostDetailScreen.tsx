@@ -7,7 +7,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Pressable,
-  Dimensions,
+  useWindowDimensions,
   TextInput,
   KeyboardAvoidingView,
   Keyboard,
@@ -48,6 +48,7 @@ import RatingStars from '../components/RatingStars';
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
+import { useStageWidth } from '../utils/stage';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useSettings } from '../store/settingsStore';
@@ -64,10 +65,15 @@ import { CUT_LAYOUTS } from '../constants/cutFrames';
 import { handleBlock as confirmBlock } from '../utils/reportAndBlock';
 import { regionDisplayName } from '../utils/regionLabel';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+/**
+ * 폭·높이는 더 이상 모듈 최상위에 박제하지 않는다 — 폴드를 펼치면 스토리 페이저의
+ * 스크롤 오프셋(`x = index * SCREEN_W`)이 실제 페이지 폭과 어긋나 엉뚱한 스냅을 가리켰다.
+ * 폭은 useStageWidth()(클램프된 Stage 폭), 높이는 실제 창 높이를 컴포넌트 본문에서 받고,
+ * 모듈 최상위 헬퍼·스타일시트 팩토리에는 인자로 넘긴다.
+ */
 
 // 네컷(스트립) 미리보기를 프레임 규격(가로/세로 비율)에 딱 맞게 — 레터박스(여백) 제거
-const cutFitStyle = (layout?: import('../constants/cutFrames').CutLayout) => {
+const cutFitStyle = (layout: import('../constants/cutFrames').CutLayout | undefined, SCREEN_W: number, SCREEN_H: number) => {
   const aspect = (layout && CUT_LAYOUTS[layout]?.aspect) || 3 / 4; // width / height
   const maxW = SCREEN_W - 40;
   const maxH = SCREEN_H * 0.7;
@@ -221,6 +227,7 @@ const HeartSvg = ({ filled, size = 22, color }: { filled: boolean; size?: number
 // ─── 슬라이드 이미지 뷰어 (상세보기용) ───
 const SlideImageViewerDetail = ({ items, onImagePress, captions, fullBleed }: { items: { uri: string; caption?: string }[]; onImagePress?: (uris: string[], index: number) => void; captions?: string[]; fullBleed?: boolean }) => {
   const skinAccent = useSkinAccent();
+  const SCREEN_W = useStageWidth(); // 슬라이드 폭 = 페이징 오프셋. 실시간이어야 한다.
   const [activeIdx, setActiveIdx] = useState(0);
   const [ratios, setRatios] = useState<Record<number, number>>({}); // index → 세로/가로 비율
   // fullBleed: 화면 폭 가득(엣지-투-엣지, 모서리 각지게) / 기본: 본문 좌우 패딩(20+20)과 일치
@@ -688,6 +695,9 @@ function SnapStoryViewer({
 }) {
   const { t, i18n } = useTranslation();
   const { s, shareS, storyS } = useSheets();
+  // 스토리 페이지 폭·높이 — 폭은 Stage(클램프), 높이는 실제 창. 스크롤 오프셋 계산에 들어간다.
+  const SCREEN_W = useStageWidth();
+  const { height: SCREEN_H } = useWindowDimensions();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
   // 내 프로필(사진·아이디)은 실시간 설정에서 읽어, 프로필 변경이 내 스냅 헤더에 즉시 반영되게 한다
@@ -1374,6 +1384,9 @@ type RouteParams = {
 export default function PostDetailScreen() {
   const { blogS, s } = useSheets();
   const { t, i18n } = useTranslation();
+  // 네컷 미리보기 크기 계산용 — 폭은 Stage(클램프), 높이는 실제 창.
+  const SCREEN_W = useStageWidth();
+  const { height: SCREEN_H } = useWindowDimensions();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   // 키보드가 떠 있는 동안엔 내비바 인셋 하단 패딩이 무의미(키보드가 내비바를 덮음) — 잔여 여백 방지
@@ -2046,7 +2059,7 @@ export default function PostDetailScreen() {
                       {/* 뒤 은은한 글로우 — 프레임색을 따라감(프레임 사진이면 스킨색) */}
                       <LiquidCardGlow
                         width={SCREEN_W - 40}
-                        height={cutFitStyle(record.cutPhoto!.layout).height}
+                        height={cutFitStyle(record.cutPhoto!.layout, SCREEN_W, SCREEN_H).height}
                         color={record.cutPhoto!.frameColor || skinAccent.accent}
                         opacity={0.12}
                       />
@@ -2054,7 +2067,7 @@ export default function PostDetailScreen() {
                       <View style={s.cutTiltWrap}>
                         <View collapsable={false} style={{ margin: -1, padding: 1 }} shouldRasterizeIOS renderToHardwareTextureAndroid>
                           <TouchableOpacity activeOpacity={0.9} onPress={() => handleMediaTap(() => openFullImage(cutViewerUris, 0))}>
-                            <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout)]} resizeMode="cover" />
+                            <Image source={{ uri: record.cutPhoto!.previewUri }} style={[s.cutImage, cutFitStyle(record.cutPhoto!.layout, SCREEN_W, SCREEN_H)]} resizeMode="cover" />
                           </TouchableOpacity>
                         </View>
                       </View>
@@ -2562,7 +2575,8 @@ export default function PostDetailScreen() {
   );
 }
 
-const makeS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
+// SCREEN_W/SCREEN_H는 useSheets()가 매 렌더의 실측값으로 넘긴다(모듈 최상위 박제 금지).
+const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCREEN_H: number) => StyleSheet.create({
   container: { flex: 1, backgroundColor: C.bg },
   // 예시 콘텐츠 공식 배지 — 기능 소개 카드(FeatureShowcaseCard.badge)와 동일 룩
   officialBadge: { alignSelf: 'center', fontSize: 9, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2, overflow: 'hidden' },
@@ -2939,7 +2953,7 @@ const makeBlogS = (a: string, tint: (alpha: number) => string) => StyleSheet.cre
 
 // ── 모먼트 스토리 스타일 ──
 // ── 스냅 스토리 전체화면 스타일 ──
-const makeStoryS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
+const makeStoryS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCREEN_H: number) => StyleSheet.create({
   // 예시 콘텐츠 공식 배지 — 기능 소개 카드와 동일 룩, 스토리 헤더에선 살짝 크게
   officialBadge: { alignSelf: 'center', fontSize: 12, fontWeight: '800', color: '#0A0A0F', backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 7, paddingHorizontal: 8, paddingVertical: 3, overflow: 'hidden' },
   container: {
@@ -3545,12 +3559,15 @@ const makeShareS = (a: string, tint: (alpha: number) => string) => StyleSheet.cr
  */
 function useSheets() {
   const { accent, tint } = useSkinAccent();
+  // 폭·높이 의존 스타일이 있어 창 크기도 의존성에 넣는다 — 폴드를 펼치면 시트를 다시 만든다.
+  const SCREEN_W = useStageWidth();
+  const { height: SCREEN_H } = useWindowDimensions();
   return useMemo(() => ({
-    s: makeS(accent, tint),
+    s: makeS(accent, tint, SCREEN_W, SCREEN_H),
     blogS: makeBlogS(accent, tint),
-    storyS: makeStoryS(accent, tint),
+    storyS: makeStoryS(accent, tint, SCREEN_W, SCREEN_H),
     viewerS: makeViewerS(accent, tint),
     shareS: makeShareS(accent, tint),
-  }), [accent, tint]);
+  }), [accent, tint, SCREEN_W, SCREEN_H]);
 }
 

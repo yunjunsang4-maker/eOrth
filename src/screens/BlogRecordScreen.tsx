@@ -9,7 +9,7 @@ import {
   Image,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   Alert,
   DeviceEventEmitter,
@@ -86,8 +86,7 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
-
-const { width: SCREEN_W } = Dimensions.get('window');
+import { useStageWidth } from '../utils/stage';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function SheetCheck() {
@@ -184,13 +183,16 @@ const SEP_STYLES: { label: string; value: SeparatorStyle }[] = [
 ];
 
 // ─── 풀스크린 이미지 뷰어 ───
-const SCREEN_H = Dimensions.get('window').height;
 function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
   images: string[];
   initialIndex: number;
   visible: boolean;
   onClose: () => void;
 }) {
+  // 페이지 폭이 스크롤 오프셋 계산에 들어간다 — 박제하면 폴드 펼침 시 엉뚱한 사진을 가리킨다.
+  // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
+  const SCREEN_W = useStageWidth();
+  const { height: SCREEN_H } = useWindowDimensions();
   const [idx, setIdx] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
   const insets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
@@ -202,6 +204,9 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
         scrollRef.current?.scrollTo({ x: initialIndex * SCREEN_W, animated: false });
       }, 50);
     }
+    // SCREEN_W는 의도적으로 제외 — 뷰어를 열 때의 폭으로 한 번만 위치를 맞춘다.
+    // 넣으면 폴드를 펼칠 때마다 initialIndex로 되돌아가 사용자가 보던 사진을 잃는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialIndex]);
 
   if (!visible) return null;
@@ -335,6 +340,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const st = useSt();
+  const SCREEN_W = useStageWidth(); // 이미지 블록 폭 — 슬라이드 페이징 폭으로도 쓰인다
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
@@ -2516,6 +2522,8 @@ function RepPhotoModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 카드 폭만 Stage 폭에서 파생된다 — rpm은 모듈 최상위 스타일시트라 폭만 인라인으로 내렸다.
+  const photoCardW = (useStageWidth() - 56) / 3;
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
@@ -2609,7 +2617,7 @@ function RepPhotoModal({
                   return (
                     <TouchableOpacity
                       key={`${uri}-${idx}`}
-                      style={[rpm.photoCard, isSelected && { borderColor: skinAccent.accent }]}
+                      style={[rpm.photoCard, { width: photoCardW }, isSelected && { borderColor: skinAccent.accent }]}
                       onPress={() => onSelect(uri)}
                       activeOpacity={0.8}
                     >
@@ -2977,8 +2985,9 @@ const rpm = StyleSheet.create({
   gridScroll: { maxHeight: 330 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 10 },
   // 좌우 패딩 18*2 + gap 10*2 = 56
+  // width는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
   photoCard: {
-    width: (SCREEN_W - 56) / 3, aspectRatio: 1, borderRadius: 14, overflow: 'hidden',
+    aspectRatio: 1, borderRadius: 14, overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent',
   },
   photoImg: { width: '100%', height: '100%' },

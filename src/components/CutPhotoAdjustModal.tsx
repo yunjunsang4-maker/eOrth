@@ -1,13 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform,
+  View, Text, Image, Modal, StyleSheet, TouchableOpacity, Animated, useWindowDimensions, Platform,
 } from 'react-native';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
-
-const { width: SW, height: SH } = Dimensions.get('window');
 
 // 슬롯에 들어간 사진의 조정값 — tx/ty는 프레임 크기 대비 비율, scale은 배율(≥1)
 export type CutTransform = { scale: number; tx: number; ty: number };
@@ -102,6 +100,8 @@ function clampT(tx: number, ty: number, s: number, cfg: Cfg) {
 export default function CutPhotoAdjustModal({ visible, uri, aspect, initial, onConfirm, onCancel, onChangePhoto, onRemove }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 프레임이 어긋난다.
+  const { width: SW, height: SH } = useWindowDimensions();
   // 프레임 크기 — aspect에 맞춰 화면에 fit
   const maxW = SW * 0.82;
   const maxH = SH * 0.52;
