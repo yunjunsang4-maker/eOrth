@@ -13,7 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../../constants/skinTheme';
-import { useStageWidth } from '../../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 30장 초과 시 뜨는 사진 선택 모달 — NewRecordScreen 에서 분리.
@@ -180,8 +180,14 @@ const mpStyles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.purpleNeon,
   },
+  // 이 모달은 RN Modal이라 App.tsx 루트 클램프 바깥에서 렌더된다. 셀 폭은 Stage 폭(≤480)
+  // 기준으로 계산되므로, 그리드 콘텐츠도 같은 폭으로 가두고 중앙에 둬야 넓은 화면에서
+  // 왼쪽으로 쏠리지 않는다. root(페이지 배경)는 전면 유지 — 여기만 좁힌다.
   gridContent: {
     paddingTop: 2,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   // width·height는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
   cell: {

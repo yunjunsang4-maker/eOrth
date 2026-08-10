@@ -86,7 +86,7 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
-import { useStageWidth } from '../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function SheetCheck() {
@@ -191,8 +191,12 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
 }) {
   // 페이지 폭이 스크롤 오프셋 계산에 들어간다 — 박제하면 폴드 펼침 시 엉뚱한 사진을 가리킨다.
   // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
-  const SCREEN_W = useStageWidth();
-  const { height: SCREEN_H } = useWindowDimensions();
+  //
+  // 기준은 Stage가 아니라 '창 전체'다. 이건 딤 배경(rgba(0,0,0,0.95)) 위에 사진만 띄우는
+  // 전체화면 뷰어라 화면 가득이 의도이고, RN Modal이라 루트 클램프 밖이라서 Stage 폭으로
+  // 두면 pagingEnabled ScrollView(창 폭)와 페이지 폭(480)이 어긋나 페이징 자체가 깨진다.
+  // 같은 성격의 PhotoViewerModal도 창 전체 기준이다.
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const [idx, setIdx] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
   const insets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
@@ -2955,11 +2959,15 @@ function useSt() {
 
 const rpm = StyleSheet.create({
   // 다른 시트(임시저장·비공개 대상 선택)와 같은 디자인 언어
+  // overlay는 딤 배경(flex:1 + rgba) — 좁히면 폴드에서 양옆이 안 어두워지므로 전면 유지한다.
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // sheet는 콘텐츠 래퍼. RN Modal이라 루트 클램프 밖이고 photoCardW가 Stage 폭(≤480)
+  // 기준이라, 시트를 같은 폭으로 가두고 중앙에 둬야 썸네일 3열이 시트 폭과 맞는다.
   sheet: {
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 18, paddingBottom: 30, maxHeight: '82%',
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 10, marginBottom: 18 },
 
