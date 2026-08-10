@@ -24,7 +24,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
-import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
+import { stageWidthNow, useStageWidth, clampStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -362,7 +362,13 @@ type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord
 // 전체화면 우주배경 — 메인탭 모든 콘텐츠 뒤에 깔리는 별·무드글로우(비상호작용).
 // 별은 글로브 WebView(75% 영역) 밖(헤더·탭 영역)까지 화면 전체로 확장된다(첨부 SVG처럼).
 function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string; glow2?: string }) {
-  const { width: W, height: H } = Dimensions.get('window');
+  // 이 배경은 MainScreen 본문(styles.container) 안 StyleSheet.absoluteFill로 깔린다 —
+  // 즉 App.tsx의 클램프된 Stage 컬럼 "안"이라 그릴 수 있는 폭은 창 폭이 아니라 Stage 폭이다.
+  // 창 폭(763dp)으로 별 320개와 무드 글로우 6개를 배치하면 480dp에서 잘려 오른쪽 약 37%가
+  // 사라지고, W*0.82·W*0.94에 놓인 글로우는 아예 화면 밖으로 나간다.
+  // 높이는 클램프 대상이 아니므로(Stage는 폭만 가둔다) 실제 창 높이를 그대로 쓴다.
+  const W = useStageWidth();
+  const { height: H } = Dimensions.get('window');
   const stars = useMemo(() => {
     let s = 20260629;
     const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -503,11 +509,17 @@ export default function MainScreen({ navigation, route }: Props) {
       if (cancelled) return;
       traceStep('coach:main', 'measured');
       const WIN_W = Dimensions.get('window').width;
+      // 코치마크 rect는 창 절대 좌표(measureInWindow 계약)다. 폴백도 같은 좌표계여야 한다.
+      const STAGE_W = clampStageWidth(WIN_W);
+      const GUTTER = Math.max(0, (WIN_W - STAGE_W) / 2);
       const FAB_BTN = 56;
       const SNAP_BTN = 60;
       // 측정 성공 시 실제 위치, 실패 시 상수 폴백
       const snap: CoachRect = snapMeasured ?? {
-        x: WIN_W - 46 - SNAP_BTN, // 우측 (오른쪽 모서리 46px 안쪽)
+        // 스냅 버튼(RecordFab styles.snap)은 right:46 — 창이 아니라 "컬럼" 오른쪽
+        // 가장자리 기준이다. 창 좌표로 옮기려면 컬럼 시작점(GUTTER)을 더해야 한다.
+        // 창 폭 그대로 쓰면 폴드·태블릿에서 강조 구멍이 gutter만큼 오른쪽으로 빗나간다.
+        x: GUTTER + STAGE_W - 46 - SNAP_BTN, // 컬럼 우측 (오른쪽 모서리 46px 안쪽)
         y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,
@@ -517,6 +529,10 @@ export default function MainScreen({ navigation, route }: Props) {
       // fabY = snapY + (129-73) + (60-56) = snapY + 60. 이렇게 하면 window 높이 오차
       // (안드로이드 내비바 등)가 스냅과 똑같이 상쇄된다. 실측 실패 시에만 상수 폴백.
       const fab: CoachRect = {
+        // 여기만 창 폭(WIN_W)을 그대로 쓰는 게 맞다 — 바로 위 snap.x와 의도적으로 다르다.
+        // FAB는 컬럼 중앙 정렬(RecordFab fabWrap: left0/right0 + alignItems:'center')이고
+        // 컬럼 자체가 창 중앙에 있어 GUTTER + STAGE_W/2 === WIN_W/2 (항등식)다.
+        // 즉 gutter 보정을 더해도 값이 같다. 오른쪽 정렬인 snap.x만 보정이 필요하다.
         x: WIN_W / 2 - FAB_BTN / 2,
         y: snapMeasured
           ? snapMeasured.y + 60
