@@ -2052,8 +2052,13 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
         // x는 measureInWindow의 창 절대 좌표라, 유효성 검사도 같은 좌표계(실제 창 폭)로 해야
         // 한다 — SCREEN_W_SOCIAL(Stage 폭, ≤480)로 비교하면 폴드·태블릿에서 정상 x(컬럼이
         // 창 중앙에 있어 stageOffsetX만큼 떨어진 값)까지 '무효'로 오판해 폴백 좌표로 덮어쓴다.
-        if (correctedX <= 0 || correctedX > Dimensions.get('window').width) {
-          correctedX = columnIndex === 0 ? 24 : 24 + correctedW + 10;
+        const windowW = Dimensions.get('window').width;
+        if (correctedX <= 0 || correctedX > windowW) {
+          // 폴백값(24, 24+correctedW+10)은 컬럼 로컬 좌표(friendsScroll 좌패딩 기준)다 —
+          // correctedX는 창 절대 좌표라는 계약(QuickShareOverlay의 cardLocalX 변환·위 유효성
+          // 검사와 동일)을 지키려면 stageOffsetX를 더해 창 좌표로 옮겨야 한다.
+          const stageOffsetX = (windowW - SCREEN_W_SOCIAL) / 2;
+          correctedX = stageOffsetX + (columnIndex === 0 ? 24 : 24 + correctedW + 10);
         }
 
         if (correctedY <= 0 || correctedY > e.absoluteY || (correctedY + correctedH) < e.absoluteY) {

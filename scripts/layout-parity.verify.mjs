@@ -124,12 +124,17 @@ const ALLOW_MODAL_STAGE = new Set([
   // DMScreen.tsx: SW·SW 파생값(msgImage, CARD_W)은 채팅 리스트 아이템 스타일에만 쓰이고
   // <Modal> 4곳(890·935·948·994행) 안에는 참조가 전혀 없다.
   'src/screens/DMScreen.tsx',
-  // MainScreen.tsx: width는 <Modal> 여러 곳(영토 표시 설정 모달 등)에서 파생값 DS_CARD_W =
-  // Math.min(325, width - 24)로 흘러들지만, 실제 기기 폭(≥349dp에서 이미 325로 고정)
-  // 범위에서는 항상 325로 캡돼 Stage/창 폭 차이가 결과값에 아무 영향을 주지 못한다.
-  // 이 모달의 오버레이(fmOverlay)도 alignItems:'center'로 '창' 중앙 정렬인데, 클램프된
-  // 컬럼 자체가 창 중앙에 있어 두 중앙이 같은 좌표라 폴드·태블릿에서도 카드가 쏠리지 않는다
-  // — 재클램프가 필요 없는 걸로 확인됨.
+  // MainScreen.tsx: width가 "영토 표시 설정" Modal(2340~2675행) 안으로 흘러드는 파생값이
+  // 최소 2개 있다 — ① DS_CARD_W = Math.min(325, width - 24): 실제 기기 폭(≥349dp에서
+  // 이미 325로 고정) 범위에서는 항상 325로 캡돼 Stage/창 폭 차이가 결과값에 영향을 못
+  // 준다. ② maxW = width - 88(972행, puzzlePreview.w로 2521·2529행 Svg에 쓰임): 이건
+  // 캡이 작은 값이 아니라 width에 거의 선형으로 비례하지만, 그래서 오히려 Stage(≤480)
+  // 기준이 창 폭 기준보다 정답에 더 가깝다 — 창 폭(폴드·태블릿에서 900dp+)을 그대로 썼다면
+  // 실루엣 미리보기가 시트보다 훨씬 넓게 그려져 더 크게 잘렸을 것이다. 두 파생값 모두
+  // 재클램프가 필요한 방향(Stage보다 커짐)이 아니라 이미 Stage 쪽이 안전한 값이라
+  // 회귀가 아니다. 이 모달의 오버레이(fmOverlay)도 alignItems:'center'로 '창' 중앙
+  // 정렬인데, 클램프된 컬럼 자체가 창 중앙에 있어 두 중앙이 같은 좌표라 폴드·태블릿에서도
+  // 카드가 쏠리지 않는다 — 재클램프가 필요 없는 걸로 확인됨.
   'src/screens/MainScreen.tsx',
   // NewRecordScreen.tsx: 실제 <Modal> JSX가 없다. 1934행의 "<Modal>"은 '여기서 RN
   // <Modal>을 쓰면 안 된다'는 설명 주석 안 문자열이라 정규식이 오검출한 것뿐이다
