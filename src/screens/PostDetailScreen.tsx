@@ -673,9 +673,13 @@ function SnapViewerModal({
           ))}
         </ScrollView>
         
-        <TouchableOpacity style={viewerS.closeBtn} onPress={onClose} activeOpacity={0.8}>
-          <Text style={viewerS.closeBtnText}>{t('common.close')}</Text>
-        </TouchableOpacity>
+        {/* 닫기 버튼은 margin:20을 유지해야 해서 폭 클램프를 래퍼가 맡는다
+            (버튼에 직접 width:'100%'+margin을 주면 40dp 넘친다). */}
+        <View style={viewerS.footer}>
+          <TouchableOpacity style={viewerS.closeBtn} onPress={onClose} activeOpacity={0.8}>
+            <Text style={viewerS.closeBtnText}>{t('common.close')}</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   );
@@ -3470,9 +3474,20 @@ const makeViewerS = (a: string, tint: (alpha: number) => string) => StyleSheet.c
     marginBottom: 20,
     fontWeight: '600',
   },
+  // pageSheet Modal은 루트 클램프 밖(안드로이드에선 아예 전체화면)이라, 콘텐츠를
+  // 여기서 다시 Stage 폭으로 가둔다. root(불투명 페이지 배경)는 전면 유지 —
+  // root까지 좁히면 양옆에 모달 기본 배경이 드러난다.
   list: {
     paddingHorizontal: 20,
     gap: 16,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
+  },
+  footer: {
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   row: {
     flexDirection: 'row',
