@@ -201,15 +201,31 @@ check(hasWrapper, `${UI_TEXT} 래퍼가 존재한다`);
 if (hasWrapper) {
   check(/MAX_FONT_SCALE = 1\.2/.test(readFileSync(UI_TEXT, 'utf8')), 'MAX_FONT_SCALE === 1.2');
 }
-// 상한 숫자를 직접 적은 곳이 src 어디에도 없어야 한다. fitText.ts만 보던 초기 버전은
-// FeatureShowcaseCard.tsx의 세 번째 하드코딩(fitOneLine)을 놓쳤다 — 값이 우연히 같아
-// 런타임 영향은 없었지만, 상한을 올리는 순간 그 카드만 1.2로 남아 조용히 갈라진다.
-// 숫자 리터럴 전체를 막으므로(1.2뿐 아니라) 나중에 1.3으로 올려도 재발하지 않는다.
-// 객체 리터럴(`maxFontSizeMultiplier: 1.2`)과 JSX(`maxFontSizeMultiplier={1.2}`) 둘 다 본다.
-// 래퍼는 `={MAX_FONT_SCALE}` 형태라 걸리지 않으므로 예외 목록이 필요 없다.
+// maxFontSizeMultiplier에 넘기는 값은 src 어디서나 FONT_SCALE_CAP이어야 한다.
+//
+// ① 숫자 하드코딩 방지: fitText.ts만 보던 초기 버전은 FeatureShowcaseCard.tsx의 세 번째
+//    하드코딩(fitOneLine)을 놓쳤다 — 값이 우연히 같아 런타임 영향은 없었지만, 상한을
+//    올리는 순간 그 카드만 옛 값으로 남아 조용히 갈라진다. 특정 값(1.2)이 아니라 숫자
+//    리터럴 전체를 막아 1.3으로 올려도 재발하지 않게 한다.
+// ② iOS 무제한 보장: 상한은 android 전용이고 iOS는 undefined(상한 없음)여야 한다.
+//    래퍼가 props를 뒤로 펼치므로 화면이 maxFontSizeMultiplier를 다시 주면 덮어쓰는데,
+//    이때 MAX_FONT_SCALE(플랫폼 분기가 없는 raw 값)을 주면 iOS까지 잘린다. 숫자가 아니라
+//    잡히지 않으므로, 값이 FONT_SCALE_CAP인지까지 본다.
+//
+// 객체 리터럴(`: FONT_SCALE_CAP`)과 JSX(`={FONT_SCALE_CAP}`) 두 형태를 함께 본다.
+// \b가 앞에 있어 `_maxFontSizeMultiplier`(RN 네이티브 소스를 인용한 주석) 는 안 걸린다.
+const CAP_EXEMPT = new Set([
+  // andFitText 객체 자체가 Platform.OS === 'android' 삼항 분기 안에서만 만들어져
+  // 이미 android 전용이다. iOS에선 빈 객체({})라 이 값이 존재하지 않는다.
+  'src/utils/fitText.ts',
+]);
 for (const f of collect('src', '.tsx').concat(collect('src', '.ts'))) {
-  const hard = readFileSync(f, 'utf8').match(/maxFontSizeMultiplier\s*[:=]\s*\{?\s*\d/g) || [];
-  check(hard.length === 0, `${rel(f)} 배율 상한 숫자 하드코딩 없음 (MAX_FONT_SCALE을 쓸 것)`);
+  const p = rel(f);
+  if (CAP_EXEMPT.has(p)) continue;
+  const uses = [...readFileSync(f, 'utf8')
+    .matchAll(/\bmaxFontSizeMultiplier\s*[:=]\s*\{?\s*([A-Za-z_$][\w$]*|[\d.]+)/g)];
+  const bad = uses.filter((m) => m[1] !== 'FONT_SCALE_CAP');
+  check(bad.length === 0, `${p} maxFontSizeMultiplier는 FONT_SCALE_CAP만 쓴다 (숫자·MAX_FONT_SCALE 직접 지정 시 iOS까지 잘림)`);
 }
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
