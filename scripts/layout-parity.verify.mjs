@@ -88,8 +88,9 @@ check(
 //
 // 줄 맨 앞 앵커(^)는 '모듈 최상위'라는 이 규칙의 정의 그대로다 — 들여쓴 선언은
 // 애초에 박제가 아니라 호출마다 다시 읽는 값이라 이 규칙의 대상이 아니다.
-// 들여쓴 곳에서 창 폭을 읽는 진짜 위험(컬럼 안에서 창 좌표계를 쓰는 것)은
-// 규칙 9가 들여쓰기와 무관하게 전수로 잡는다.
+// 들여쓴 곳에서 창 폭을 읽는 위험은 규칙 9가 들여쓰기와 무관하게 전수로 잡는다.
+// 단, 규칙 9는 **한 줄 안에** 창 읽기와 width가 같이 있는 형태만 본다 — 정확한
+// 잔여 갭 목록은 규칙 9 주석에 적어 뒀다(현재 위반 0건).
 rule('규칙 2 실시간 파일의 모듈 최상위 Dimensions');
 const REALTIME = [
   'src/components/PhotoViewerModal.tsx',
@@ -228,12 +229,47 @@ for (const f of collect('src', '.tsx')) {
 // 들어 있어도 그 스타일 객체 전체가 검사 대상 밖이었다(DMScreen.ctxMenu,
 // PostDetailScreen.menuCard 등). 지금은 중괄호 균형을 맞춰 모든 블록을 본다.
 //
-// 판별 기준을 '반투명 배경'까지 좁힌 이유: 균형 매칭으로 시야가 넓어지자, 딤이 아니라
-// 불투명 콘텐츠 패널(예: ProfileScreen 배지 앨범 보드)이 flex:1 + 클램프를 정당하게
-// 함께 쓰는 경우가 걸리기 시작했다. 이 저장소의 딤은 예외 없이 flex:1 + rgba(...)
-// 배경이라(감사 시 20곳 전수 확인), 반투명 배경을 조건에 넣으면 딤만 정확히 남는다.
+// ── '배경색으로 딤을 판별'하는 조건은 폐기했다 (한 번 넣었다가 되돌린 자리다) ──
+// 균형 매칭으로 시야가 넓어졌을 때 오탐 35건(25파일)이 났고, 그걸 배경색 조건
+// (backgroundColor가 rgba/알파hex 리터럴인지)으로 막으려 했다. 두 가지가 틀렸다.
+//   ① 오탐을 없앤 건 배경색 조건이 아니라 아래 ownLevel이었다. 실측:
+//      균형매칭만 35블록 → +ownLevel 2블록 → +배경색조건 0블록.
+//      즉 배경색 조건이 실제로 걸러 낸 건 정당한 폭-제한 래퍼 2개뿐이었다.
+//   ② 배경색이 상수로 빠진 딤을 통째로 못 봤다 — 이 저장소에 실제로 3곳 있다:
+//      MainCoachmark.DIM('rgba(0,0,0,0.78)', 385~388·422행에서 사용),
+//      RecordFab.COACH_DIM, ProfileTicketScreen.BACKDROP('#0A0B0F' + opacity 애니메이션).
+//      MainCoachmark 422행 전체화면 딤에 클램프를 주입하면 예전 규칙은 잡았는데
+//      배경색 조건을 넣은 뒤로는 통과했다 — 즉 탐지력이 후퇴했다.
+// 그래서 '딤인지'를 색으로 추측하지 않는다. **화면을 채우면서 Stage 폭으로 잘린 블록**은
+// 전부 잡고, 딤이 아닌 정당한 케이스만 아래 ALLOW_FULL_CLAMP에 사유와 함께 등록한다.
+// (규칙 4·5·8·9와 같은 '예외 + 사유' 방식. 색 추측과 달리 사각지대가 생기지 않는다.)
+//
+// '화면을 채운다'의 판별은 세 형태를 본다 — flex:1 · 자기 층의 absoluteFill(스프레드) ·
+// 바로 앞 80자 안의 absoluteFill(`style={[StyleSheet.absoluteFill, { … }]}` 형태).
+// absoluteFill을 넣은 이유: 화면을 채우는 반투명 블록 62개 중 18개(29%)가 flex:1 없이
+// absoluteFillObject 스프레드만 쓰고 있어 예전 구현부터 계속 시야 밖이었다.
+// 앞 80자 창은 실측으로 오탐 0건이다(160자로 늘리면 BlogRecordScreen.travelPanel이
+// 오탐으로 걸린다 — 그래서 80자로 못 박는다).
 rule('규칙 6 딤 배경 클램프 금지');
-const DIM_BG = /backgroundColor:\s*['"](?:rgba\(|#[0-9a-fA-F]{8}['"]|#[0-9a-fA-F]{4}['"])/;
+const FILLS_SCREEN = /flex:\s*1\b|absoluteFill/;
+const SIBLING_FILL_WINDOW = 80;
+// 딤이 아니라고 확인된 '폭 제한 전용' 컨테이너. 파일별 건수까지 못 박는다 —
+// 같은 파일에 두 번째 블록이 몰래 늘어나는 것도 잡아야 한다(규칙 9와 같은 이유).
+const ALLOW_FULL_CLAMP = new Map([
+  ['src/screens/BasicInfoScreen.tsx', {
+    count: 1,
+    why: 'modalClamp — 국가 선택 Modal 콘텐츠의 폭 제한 전용 래퍼다. backgroundColor가 없어 '
+       + '아무것도 가리지 않으므로 딤이 아니다(딤은 같은 파일의 불투명 modalRoot 뒤에 없다). '
+       + 'binder/closeBtn처럼 margin과 width:100%가 충돌하는 걸 피하려고 래퍼로 분리한 것이라 '
+       + 'flex:1 + 클램프가 한 객체에 함께 있는 게 정상이다.',
+  }],
+  ['src/screens/ProfileScreen.tsx', {
+    count: 1,
+    why: 'binderClamp — 배지 앨범 보드(binderWrapper, marginHorizontal:16)의 폭 제한 전용 래퍼. '
+       + 'backgroundColor가 없어 딤이 아니다. 보드 자체는 불투명 콘텐츠 패널이고, 클램프를 '
+       + 'binderWrapper에 직접 주면 폰에서 32dp 넘치기 때문에 래퍼로 분리했다.',
+  }],
+]);
 
 /** 문자열·주석 안의 중괄호를 무시하고, 균형 잡힌 모든 { … } 블록을 돌려준다. */
 function balancedBlocks(src) {
@@ -275,7 +311,7 @@ function balancedBlocks(src) {
  * 블록에서 '자기 층'의 텍스트만 남긴다 — 한 단계 안쪽 { … }는 전부 지운다.
  * 이게 있어야 "같은 스타일 객체 안에 있는가"를 볼 수 있다. StyleSheet.create({…})
  * 처럼 여러 스타일을 품은 껍데기 블록은, 안쪽을 지우고 나면 flex:1도 maxWidth도
- * 남지 않아 자연히 걸러진다(예전 구현이 넓혀졌을 때 23건 오탐을 낸 지점).
+ * 남지 않아 자연히 걸러진다 — 균형 매칭을 켰을 때 난 오탐 35건을 실제로 없앤 게 이거다.
  */
 function ownLevel(block, all) {
   const children = all.filter((o) => o.s > block.s && o.e < block.e
@@ -290,14 +326,37 @@ function ownLevel(block, all) {
   return out;
 }
 
-for (const f of collect('src', '.tsx')) {
-  const src = readFileSync(f, 'utf8');
-  const blocks = balancedBlocks(src);
-  const bad = blocks.filter((b) => {
-    const own = ownLevel(b, blocks);
-    return /flex:\s*1\b/.test(own) && /maxWidth:\s*STAGE_MAX_W/.test(own) && DIM_BG.test(own);
-  });
-  check(bad.length === 0, `${rel(f)} 딤 배경 클램프 없음`);
+{
+  const seen = new Set();
+  for (const f of collect('src', '.tsx')) {
+    const p = rel(f);
+    const src = readFileSync(f, 'utf8');
+    const blocks = balancedBlocks(src);
+    const hits = blocks.filter((b) => {
+      const own = ownLevel(b, blocks);
+      if (!/maxWidth:\s*STAGE_MAX_W/.test(own)) return false;
+      if (FILLS_SCREEN.test(own)) return true;
+      // style={[StyleSheet.absoluteFill, { … }]} — 채움이 배열 형제라 객체 안에는 없다.
+      const before = src.slice(Math.max(0, b.s - SIBLING_FILL_WINDOW), b.s);
+      return /absoluteFill/.test(before);
+    });
+    if (hits.length === 0) continue;
+    seen.add(p);
+    const allow = ALLOW_FULL_CLAMP.get(p);
+    if (!allow) {
+      check(false, `${p} 화면을 채우는 블록에 Stage 클램프가 ${hits.length}건 섞였다 — 딤 배경이면 클램프를 시트 본체로 옮기고, `
+        + '배경 없는 폭 제한 래퍼처럼 딤이 아니라면 ALLOW_FULL_CLAMP에 건수와 사유를 함께 등록할 것');
+      continue;
+    }
+    check(Boolean(allow.why && allow.why.trim()), `${p} 전체폭 클램프 예외에 사유가 적혀 있다`);
+    check(
+      allow.count === hits.length,
+      `${p} 전체폭 클램프 ${allow.count}건 등록 ↔ 실제 ${hits.length}건 — 새로 늘어난 블록이 정말 딤이 아닌지 확인하고 건수를 갱신할 것`,
+    );
+  }
+  for (const p of ALLOW_FULL_CLAMP.keys()) {
+    check(seen.has(p), `${p} 전체폭 클램프 예외가 아직 유효하다 (해당 블록이 사라졌으면 ALLOW_FULL_CLAMP에서 제거할 것)`);
+  }
 }
 
 // ── 규칙 7: react-native에서 Text/TextInput을 직접 import하지 않는다 ──
@@ -400,6 +459,16 @@ check(
 // 그래서 이 규칙은 들여쓰기·선언형태와 무관하게 '창 폭을 읽는 줄'을 전수로 세고,
 // 파일별 허용 건수를 사유와 함께 못 박는다. 건수까지 보는 이유: 예전에 파일 단위로만
 // 거른 스윕이 이미 한 건 있는 파일의 두 번째 사례를 통째로 놓친 적이 있다.
+//
+// ── 잔여 갭 (정직하게 적어 둔다) ──
+// 이 규칙은 창 읽기와 width가 **같은 줄**에 있는 형태만 본다. 아래 세 형태는 규칙 3과
+// 규칙 9를 동시에 통과한다 — 규칙 2·3의 ^ 앵커를 넓히지 않기로 한 결정이 이 갭 위에
+// 서 있으므로, "규칙 9가 앵커 확장을 완전히 대체한다"고 말하면 사실이 아니다.
+// (2026-08-11 실측: 세 형태 모두 저장소에 0건이라 살아 있는 결함은 없다.)
+//   ① 두 줄 분리 — `const d = Dimensions.get('window');` 다음 줄에 `const w = d.width;`
+//   ② 여러 줄 구조분해 — `const {` / `  width: W,` / `} = useWindowDimensions();`
+//   ③ 'screen' 좌표계 — Dimensions.get('screen').width (들여쓰면 규칙 3도 놓친다)
+// 셋 중 하나라도 실제로 등장하면 그때는 여러 줄을 보는 판정으로 넓혀야 한다.
 rule('규칙 9 컬럼 안에서 창 폭 사용 금지');
 const WINDOW_W_READ = /(?:Dimensions\.get\(\s*['"]window['"]\s*\)|useWindowDimensions\(\))/;
 const ALLOW_WINDOW_W = new Map([
