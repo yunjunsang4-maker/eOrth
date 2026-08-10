@@ -20,6 +20,7 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
+import { STAGE_MAX_W } from '../utils/stage';
 import {
   CalendarIcon, CoinIcon, TagIcon, TakeoffIcon, TransferIcon,
   PartlyCloudyIcon, PlaneIcon, SearchIcon,
@@ -1102,7 +1103,8 @@ const st = StyleSheet.create({
 
 const fp = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16 },
+  // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, maxHeight: '60%', paddingHorizontal: 20, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 28 : 16, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   headerTitle: { color: C.white, fontSize: 16, fontWeight: '700' },
@@ -1123,7 +1125,8 @@ const fp = StyleSheet.create({
 
 const cur = StyleSheet.create({
   // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1 },
+  // width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { color: C.white, fontSize: 16, fontWeight: '700' },
@@ -1139,7 +1142,8 @@ const cur = StyleSheet.create({
 
 const ct = StyleSheet.create({
   // maxHeight + flexShrink — 키보드가 올라와도 시트가 화면(가용 영역)을 넘지 않게 목록만 줄어든다
-  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1 },
+  // width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+  sheet: { backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingTop: 10, maxHeight: '80%', flexShrink: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: C.textMuted, alignSelf: 'center', marginBottom: 14 },
   titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   title: { color: C.white, fontSize: 16, fontWeight: '700' },

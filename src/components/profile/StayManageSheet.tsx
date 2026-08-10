@@ -3,6 +3,7 @@ import React from 'react';
 import { Modal, View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { STAGE_MAX_W } from '../../utils/stage';
 
 export function StayManageSheet({ visible, onEnd, onOpenCard, onClose }: {
   visible: boolean; onEnd: () => void; onOpenCard: () => void; onClose: () => void;
@@ -26,7 +27,8 @@ export function StayManageSheet({ visible, onEnd, onOpenCard, onClose }: {
 }
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  sheet: { backgroundColor: '#161421', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 34, paddingTop: 8 },
+  // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(배경 backdrop은 전체 폭 유지)
+  sheet: { backgroundColor: '#161421', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingBottom: 34, paddingTop: 8, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   row: { paddingVertical: 17, alignItems: 'center' },
   txt: { color: '#FFFFFF', fontSize: 16, fontWeight: '600' },
 });

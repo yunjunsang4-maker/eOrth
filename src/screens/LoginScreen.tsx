@@ -15,6 +15,7 @@ import {
   Image,
   BackHandler,
 } from 'react-native';
+import { STAGE_MAX_W } from '../utils/stage';
 
 // 생성 이모티콘(AI 커스텀, 다크 보라 3D 글로시) — 시스템 이모지 대체
 const EMOJI_MAIL = require('../../assets/emoji/mail.png');
@@ -1070,7 +1071,9 @@ const styles = StyleSheet.create({
     padding: Spacing[6],
   },
   modalContent: {
+    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
     width: '100%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: '#131018',
     borderRadius: BorderRadius['2xl'],
     borderWidth: 1,

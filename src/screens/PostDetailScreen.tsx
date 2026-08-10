@@ -48,7 +48,7 @@ import RatingStars from '../components/RatingStars';
 import { LiquidCardGlow, useEntranceAnimation } from '../components/LiquidEffects';
 import { sectionSlices } from '../utils/albumSections';
 import AuthorAvatar from '../components/AuthorAvatar';
-import { useStageWidth } from '../utils/stage';
+import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 예시 기록 '이어스' 프로필 사진(지구본) — 소셜과 통일
 import { useSettings } from '../store/settingsStore';
@@ -697,6 +697,8 @@ function SnapStoryViewer({
   const { s, shareS, storyS } = useSheets();
   // 스토리 페이지 폭·높이 — 폭은 Stage(클램프), 높이는 실제 창. 스크롤 오프셋 계산에 들어간다.
   const SCREEN_W = useStageWidth();
+  // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 오른쪽 끝에 붙는다 — 레터박스만큼 안쪽으로
+  const stageGutter = useStageGutter();
   const { height: SCREEN_H } = useWindowDimensions();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const skinAccent = useSkinAccent(); // 댓글 배지·전송 버튼 등 강조를 스킨색으로
@@ -1309,7 +1311,7 @@ function SnapStoryViewer({
 
       {/* 메뉴 모달 */}
       <Modal visible={menuVisible} transparent animationType="fade" statusBarTranslucent navigationBarTranslucent onRequestClose={() => setMenuVisible(false)}>
-        <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
+        <TouchableOpacity style={[s.menuOverlay, { paddingRight: 20 + stageGutter }]} activeOpacity={1} onPress={() => setMenuVisible(false)} accessibilityViewIsModal>
           <View style={s.menuCard}>
             <TouchableOpacity style={s.menuItem} onPress={handleCopyLink} activeOpacity={0.7}>
               <LinkIcon size={16} color="#fff" /><Text style={s.menuItemText}>{t('social.copyLink')}</Text>
@@ -1386,6 +1388,8 @@ export default function PostDetailScreen() {
   const { t, i18n } = useTranslation();
   // 네컷 미리보기 크기 계산용 — 폭은 Stage(클램프), 높이는 실제 창.
   const SCREEN_W = useStageWidth();
+  // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 오른쪽 끝에 붙는다 — 레터박스만큼 안쪽으로
+  const stageGutter = useStageGutter();
   const { height: SCREEN_H } = useWindowDimensions();
   const skinAccent = useSkinAccent(); // 카테고리 배지·메모 박스 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
@@ -2398,7 +2402,7 @@ export default function PostDetailScreen() {
         onRequestClose={() => setMenuVisible(false)}
       >
         <TouchableOpacity
-          style={s.menuOverlay}
+          style={[s.menuOverlay, { paddingRight: 20 + stageGutter }]}
           accessibilityViewIsModal
           activeOpacity={1}
           onPress={() => setMenuVisible(false)}
@@ -2805,6 +2809,8 @@ const makeS = (a: string, tint: (alpha: number) => string, SCREEN_W: number, SCR
   // ── 좋아요한 사람 목록 ──
   likersOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   likersSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 likersOverlay는 전체 폭 유지)
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
     backgroundColor: C.card, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, maxHeight: '70%',
   },
@@ -3523,6 +3529,10 @@ const makeViewerS = (a: string, tint: (alpha: number) => string) => StyleSheet.c
 // ─── 스냅 공유 시트 (메이트 DM 전송 + 외부 공유) 스타일 ───
 const makeShareS = (a: string, tint: (alpha: number) => string) => StyleSheet.create({
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경은 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1A1A28',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

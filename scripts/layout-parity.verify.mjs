@@ -111,8 +111,9 @@ const ALLOW_MODAL_STAGE = new Set([
   // PostDetailScreen.tsx: useStageWidth()는 본문(cutImage·albumGridImg·SnapStoryViewer
   // 페이징)에만 쓰이고, 이 파일의 <Modal> 4곳(메뉴·공유시트·좋아요목록·SnapViewerModal 내부)은
   // 전부 SCREEN_W를 받지 않는 별도 스타일셋(menuCard 고정폭 180 등)이라 Stage 폭이
-  // Modal로 새지 않는다 — 확인 완료된 오탐. (Modal 시트 자체의 폭 클램프는 별도 과제인
-  // "바텀시트 클램프"에서 다룬다.)
+  // Modal로 새지 않는다 — 확인 완료된 오탐. (Modal 시트 자체의 폭 클램프는 별도 과제였던
+  // "바텀시트 클램프"에서 처리됨 — likersSheet·shareS.sheet에 STAGE_MAX_W 적용 완료.
+  // 그래서 이 파일은 지금 allowlist 없이도 규칙 5를 통과하지만, 위 오탐 분석을 남겨 둔다.)
   'src/screens/PostDetailScreen.tsx',
   // 아래 7개는 <Modal>·Stage 상수(stageWidthNow())가 규칙 5로 확대된 뒤 실제로 걸려서
   // 파일 안 모든 <Modal>...</Modal> 블록과 그 안 파생 상수(예: CARD_W, GRID_W)까지
@@ -157,6 +158,19 @@ for (const f of collect('src', '.tsx')) {
   if (/useStageWidth\(|stageWidthNow\(/.test(src) && /<Modal/.test(src)) {
     check(src.includes('STAGE_MAX_W'), `${p} useStageWidth()/stageWidthNow()+<Modal>이면 STAGE_MAX_W로 재클램프해야 함(휴리스틱 — 오탐이면 ALLOW_MODAL_STAGE에 근거와 함께 등록)`);
   }
+}
+
+// ── 규칙 6: 딤 배경(backdrop)에 Stage 클램프가 섞이지 않았다 ──
+// 바텀시트 클램프는 '시트 본체'에만 넣는다. 딤 배경(flex:1 + rgba 배경)까지 클램프하면
+// 폴드·태블릿에서 시트 양옆 레터박스가 어두워지지 않아 시트가 공중에 뜬 것처럼 보인다.
+// 판별은 휴리스틱이다 — flex:1과 maxWidth: STAGE_MAX_W가 한 스타일 객체에 같이 있으면
+// 그 객체는 '화면을 채우는 컨테이너'인데 폭만 잘린 것이므로 배경을 클램프한 것으로 본다.
+// (중첩 없는 { … } 단위로만 훑으므로 스타일 객체 하나가 검사 단위가 된다.)
+for (const f of collect('src', '.tsx')) {
+  const src = readFileSync(f, 'utf8');
+  const objs = src.match(/\{[^{}]*\}/g) || [];
+  const bad = objs.filter((o) => /flex:\s*1/.test(o) && /maxWidth:\s*STAGE_MAX_W/.test(o));
+  check(bad.length === 0, `${rel(f)} 딤 배경 클램프 없음`);
 }
 
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);

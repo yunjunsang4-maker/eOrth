@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { REPORT_REASON_KEYS } from '../utils/reportAndBlock';
+import { STAGE_MAX_W } from '../utils/stage';
 
 interface ReportModalProps {
   visible: boolean;
@@ -64,7 +65,10 @@ const s = StyleSheet.create({
   card: {
     backgroundColor: '#1E1E2E',
     borderRadius: 20,
+    // 고정 폭 카드가 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트
+    // 클램프 밖이므로 폴드·태블릿에서 카드가 800dp까지 늘어난다
     width: '100%',
+    maxWidth: STAGE_MAX_W,
     overflow: 'hidden',
   },
   header: {

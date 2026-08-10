@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { FriendIcon as SvgFriendIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
+import { STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 함께한 앱 메이트 선택 모달 — NewRecordScreen 에서 분리.
@@ -105,6 +106,10 @@ const fp = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1A1A28',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

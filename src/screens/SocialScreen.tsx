@@ -60,7 +60,7 @@ import FeedTape from '../components/FeedTape';
 import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
-import { stageWidthNow } from '../utils/stage';
+import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -487,6 +487,9 @@ function FeedCard({
   const nameFontStyle = usePostNameFont(item);
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
+  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
+  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
+  const stageGutter = useStageGutter();
 
   const [commentActive, setCommentActive] = useState(false);
   const [shareActive, setShareActive] = useState(false);
@@ -604,7 +607,7 @@ function FeedCard({
                 activeOpacity={1}
                 onPress={() => onOpenMenu(null)}
               />
-              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                 <TouchableOpacity
                   style={s.myMenuItem}
                   onPress={() => {
@@ -663,7 +666,7 @@ function FeedCard({
                 activeOpacity={1}
                 onPress={() => onOpenMenu(null)}
               />
-              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                 <TouchableOpacity
                   style={s.menuItem}
                   onPress={() => {
@@ -1018,6 +1021,9 @@ function BlogCard({
   const menuToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
+  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
+  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
+  const stageGutter = useStageGutter();
 
   const isMyPost = item.isMyPost ?? false;
   const menuOpen = activeMenuId === item.id;
@@ -1093,7 +1099,7 @@ function BlogCard({
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-                <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+                <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                   <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                     <ArchiveIcon size={16} color="#FFFFFF" />
                     <Text style={s.menuItemText}>{t('social.archive')}</Text>
@@ -1135,7 +1141,7 @@ function BlogCard({
                 onRequestClose={() => onOpenMenu(null)}
               >
                 <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-                <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+                <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                   <TouchableOpacity
                     style={s.menuItem}
                     onPress={() => {
@@ -1315,6 +1321,9 @@ function AlbumCard({
   const menuToastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const menuBtnRef = useRef<View>(null);
   const [dropdownTop, setDropdownTop] = useState(0);
+  // 드롭다운은 Modal(루트 클램프 밖) 안이라 right:16이 '창' 오른쪽 끝 기준이 된다 —
+  // 폴드·태블릿에서 ⋯ 버튼(클램프된 컬럼 안)과 어긋나므로 레터박스만큼 안쪽으로 민다
+  const stageGutter = useStageGutter();
   const medias: string[] = item.medias || [];
   const extraCount = medias.length - 4;
 
@@ -1404,7 +1413,7 @@ function AlbumCard({
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+              <View style={[s.myDropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                 <TouchableOpacity style={s.myMenuItem} onPress={handleArchive} activeOpacity={0.7}>
                   <ArchiveIcon size={16} color="#FFFFFF" />
                   <Text style={s.menuItemText}>{t('social.archive')}</Text>
@@ -1446,7 +1455,7 @@ function AlbumCard({
               onRequestClose={() => onOpenMenu(null)}
             >
               <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => onOpenMenu(null)} />
-              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 }]}>
+              <View style={[s.dropdownMenu, { position: 'absolute', top: dropdownTop, right: 16 + stageGutter }]}>
                 <TouchableOpacity
                   style={s.menuItem}
                   onPress={() => {
@@ -2251,7 +2260,9 @@ function DiaryCard({ item, mode, navigation, toggleLike, showCounts, onArchive, 
           <Animated.View
             // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
             // 슬라이드 시작 오프셋 — 안드로이드는 시트가 인셋만큼 더 커서 시작 순간 상단이 비치지 않게 인셋을 가산
-            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', left: 0, right: 0, bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
+            // left/right:0 대신 ss.sheet의 width/maxWidth/alignSelf에 맡긴다 —
+            // 절대배치에 left/right를 주면 폭이 창 폭으로 고정돼 클램프가 무시된다
+            style={[ss.sheet, { paddingBottom: Platform.OS === 'ios' ? 32 : insets.bottom + 14 }, { position: 'absolute', bottom: 0, transform: [{ translateY: menuAnim.interpolate({ inputRange: [0, 1], outputRange: [140 + menuOptions.length * 54 + (Platform.OS === 'android' ? insets.bottom : 0), 0] }) }] }]}
           >
             <View style={ss.handle} />
             <View style={{ paddingTop: 4, paddingBottom: 8 }}>
@@ -3691,6 +3702,10 @@ const s = StyleSheet.create({
 // ─────────────────────────────────────────────
 const cs = StyleSheet.create({
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경은 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -3827,6 +3842,10 @@ const ss = StyleSheet.create({
   sheet: {
     // 불투명해야 한다. 반투명(0.75)이면 블러가 없어서 뒤 피드·탭바가 그대로 비쳐
     // 유리가 아니라 얼룩처럼 보였다 — 대면적은 매트로 덮는 게 이 앱의 규칙이다.
+    // width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -3901,7 +3920,9 @@ const ss = StyleSheet.create({
     borderRadius: 20,
     padding: 28,
     alignItems: 'center',
+    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
     width: '100%',
+    maxWidth: STAGE_MAX_W,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
@@ -3944,7 +3965,9 @@ const ss = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     paddingHorizontal: 16,
+    // 85%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
     width: '85%',
+    maxWidth: STAGE_MAX_W,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },

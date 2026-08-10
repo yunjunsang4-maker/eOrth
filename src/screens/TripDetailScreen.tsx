@@ -29,7 +29,7 @@ import { countryTagLabel } from '../utils/countryLabel';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, tripPeriodOf, countryNameToCode, parseDotDate } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
-import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { useStageWidth, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 // 뷰타입(feed/blog/album/snap/cut) 표시 라벨 — 값은 데이터 키라 유지하고 표시만 번역
 const viewTypeName = (type: string, tr: TFunction): string => {
@@ -229,6 +229,9 @@ export default function TripDetailScreen() {
   const SWIPE_CARD_W = SCREEN_WIDTH - 52;
   const thumbCellSize = (SCREEN_WIDTH - 40 - 16) / 3;
   const skinAccent = useSkinAccent(); // 'N개의 기록' 필 등 강조를 스킨색으로
+  // ⋯ 메뉴는 Modal(루트 클램프 밖) 안에서 right:20으로 붙는다 — 폴드·태블릿에서
+  // 창 오른쪽 끝에 붙어 버튼과 어긋나므로 레터박스 폭만큼 안쪽으로 민다
+  const stageGutter = useStageGutter();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<RouteProp<RouteParams, 'TripDetail'>>();
@@ -542,7 +545,7 @@ export default function TripDetailScreen() {
       <Modal visible={menuVisible} transparent statusBarTranslucent navigationBarTranslucent animationType="fade" onRequestClose={() => setMenuVisible(false)}>
         <TouchableOpacity style={s.menuOverlay} activeOpacity={1} onPress={() => setMenuVisible(false)}>
           {/* 안드로이드는 상태바 높이가 달라 헤더(인셋 기반) 아래로 정렬 보정 — iOS 100 = 인셋(~48)+52 */}
-          <View style={[s.menuSheet, Platform.OS === 'android' && { top: insets.top + 52 }]}>
+          <View style={[s.menuSheet, { right: 20 + stageGutter }, Platform.OS === 'android' && { top: insets.top + 52 }]}>
             <TouchableOpacity
               style={s.menuItem}
               accessibilityRole="button"

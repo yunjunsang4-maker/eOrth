@@ -2778,7 +2778,8 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
 
   // 피커 공통
   overlayBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28 },
-  pickerCard: { width: '100%', backgroundColor: C.card, borderRadius: 16, padding: 18 },
+  // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
+  pickerCard: { width: '100%', maxWidth: STAGE_MAX_W, backgroundColor: C.card, borderRadius: 16, padding: 18 },
   pickerTitle: { color: C.white, fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
   pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
   pickerOptionActive: { backgroundColor: tint(0.25), borderRadius: 8, borderBottomColor: 'transparent' },
@@ -2799,7 +2800,9 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   panelHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 4, marginBottom: 16 },
 
   // 여행정보 패널
-  travelPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
+  // left/right로 붙이면 폴드·태블릿에서 창 폭 전체로 늘어난다
+  travelPanel: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
   panelTitle: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 16 },
   panelRow: { marginBottom: 18, gap: 8 },
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
@@ -2878,6 +2881,8 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   // 임시저장 목록 — 비공개 대상 선택 시트(components/record/PrivacyModal)와 같은 디자인 언어
   dlOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' as const },
   dlSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 dlOverlay는 전체 폭 유지)
+    width: '100%' as const, maxWidth: STAGE_MAX_W, alignSelf: 'center' as const,
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 18, paddingBottom: Platform.OS === 'ios' ? 30 : 18, maxHeight: '78%',
@@ -2920,7 +2925,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   calOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 10 },
 
   // 통화 모달
-  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
   currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   currModalCode: { color: a, fontSize: 14, fontWeight: '700' as const, width: 44 },
@@ -2935,7 +2940,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   addFriendTxt: { color: a, fontSize: 13, fontWeight: '600' as const },
   addFriendBadge: { backgroundColor: ad, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center' as const, justifyContent: 'center' as const },
   friendPickerAvatarTxt: { color: C.white, fontSize: 15, fontWeight: '700' as const },

@@ -9,6 +9,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import type { TocSuggestion } from '../utils/autoToc';
+import { STAGE_MAX_W } from '../utils/stage';
 
 interface AutoTocModalProps {
   visible: boolean;
@@ -104,6 +105,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
   },
   card: {
+    // backdrop이 stretch라 카드가 창 폭 전체를 먹는다 — Modal은 루트 클램프 밖
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#2E2E3B',
     borderRadius: 16,
     padding: 20,

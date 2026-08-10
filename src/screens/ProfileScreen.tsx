@@ -57,7 +57,7 @@ import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive } from '../components/coachOverlayState';
-import { stageWidthNow } from '../utils/stage';
+import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
@@ -3297,6 +3297,10 @@ const thumbSt = StyleSheet.create({
 // ─── 묶음 설정 모달 스타일 ───
 const gmSt = StyleSheet.create({
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -3457,6 +3461,10 @@ const asStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     paddingHorizontal: 12,
     paddingBottom: 36,
   },

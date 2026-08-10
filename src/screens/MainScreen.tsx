@@ -25,7 +25,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
-import { stageWidthNow } from '../utils/stage';
+import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -1840,7 +1840,8 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={1}
                   onPress={() => setRegionTagSheetVisible(false)}
                 />
-                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%' }}>
+                {/* width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다 */}
+                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
                   <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
                   <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
                   <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
@@ -3011,8 +3012,11 @@ const styles = StyleSheet.create({
   countrySheet: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    // left/right:0 대신 width+maxWidth+alignSelf — 이 시트는 Modal 안(루트 클램프 밖)이라
+    // left/right로 붙이면 폴드·태블릿에서 창 폭 전체로 늘어난다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     // 고정 높이가 아니라 상한 — 기록이 적으면 시트도 작게 올라온다
     maxHeight: COUNTRY_SHEET_MAX_H,
     backgroundColor: 'rgba(20,20,35,0.55)',
@@ -3138,7 +3142,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fmCard: {
+    // 82%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
     width: '82%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: 'rgba(20,20,32,0.5)',
     borderRadius: 20,
     padding: 24,
@@ -3156,7 +3162,9 @@ const styles = StyleSheet.create({
 
   // ── 지역(주) 기존 기록 모달
   rrCard: {
+    // 86%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
     width: '86%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: 'rgba(20,20,32,0.5)',
     borderRadius: 20,
     padding: 20,
@@ -3301,6 +3309,8 @@ const styles = StyleSheet.create({
   // 전체 국가 목록 시트
   countryPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   countryPickerSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 countryPickerOverlay는 전체 폭 유지)
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
     backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: '#2E2E3B', paddingHorizontal: 16, paddingTop: 10,
   },

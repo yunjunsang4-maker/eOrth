@@ -35,7 +35,7 @@ import { fetchPostById } from '../services/posts';
 import type { RootStackScreenProps } from '../navigation/types';
 import { countryTagLabel } from '../utils/countryLabel';
 import i18n from '../i18n';
-import { stageWidthNow } from '../utils/stage';
+import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
 
 const SW = stageWidthNow();
 const SH = Dimensions.get('window').height;
@@ -308,6 +308,9 @@ export default function DMScreen({ navigation, route }: Props) {
 
   const { t } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  // Modal은 루트 클램프 밖(창 루트)이라 창 가장자리 기준으로 붙인 컨텍스트 메뉴가
+  // 폴드·태블릿에서 말풍선과 어긋난다 — 레터박스 폭만큼 안쪽으로 민다
+  const stageGutter = useStageGutter();
   const skinAccent = useSkinAccent(); // 내 말풍선을 스킨 강조색으로
   const { records, feedPosts, blockUser, reportPost } = useRecords();
   // DM 신고 모달 — 앱스토어 1.2(UGC)는 1:1 메시지에서도 신고·차단 경로를 요구한다.
@@ -958,7 +961,7 @@ export default function DMScreen({ navigation, route }: Props) {
             const below = menuRect.y + menuRect.h + gap + menuH < SH - 40;
             const pos = {
               top: below ? menuRect.y + menuRect.h + gap : Math.max(60, menuRect.y - gap - menuH),
-              ...(menuMsg.isMine ? { right: 14 } : { left: 14 }),
+              ...(menuMsg.isMine ? { right: 14 + stageGutter } : { left: 14 + stageGutter }),
             };
             return (
               <View style={[st.ctxMenu, pos]}>
@@ -1148,7 +1151,10 @@ const st = StyleSheet.create({
     backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     paddingBottom: 34, paddingTop: 8, paddingHorizontal: 12,
   },
-  sheetAnchor: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
+  // left/right로 붙이면 폴드에서 창 폭 전체로 늘어난다. 절대배치라도 left/right가
+  // 없으면 부모의 alignItems/alignSelf가 가로 위치를 정한다.
+  sheetAnchor: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   sheetHandle: {
     width: 40, height: 4, borderRadius: 2, backgroundColor: C.muted,
     alignSelf: 'center', marginBottom: 8,
@@ -1253,6 +1259,8 @@ const st = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   pickerSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 pickerOverlay는 전체 폭 유지)
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
     backgroundColor: C.bg, borderTopLeftRadius: 20, borderTopRightRadius: 20,
     maxHeight: '70%', paddingBottom: 30,
   },

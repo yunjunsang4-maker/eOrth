@@ -18,6 +18,7 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
+import { STAGE_MAX_W } from '../utils/stage';
 
 type RouteParams = {
   TripGroup: { groupId: string };
@@ -456,6 +457,10 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 menuOverlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1B33',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -484,6 +489,10 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
 
   // ── 편집 모달 ──
   editSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
