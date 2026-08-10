@@ -11,6 +11,13 @@
 -- 단계별로 테이블이 추가됩니다: 1) profiles  2) posts  3) neighbors/likes/comments  4) dm
 -- ============================================================
 
+-- 빈 DB 첫 실행 지원 (2026-08-10, 테스트 프로젝트 구축 중 발견) —
+-- language sql 함수는 생성 시점에 본문을 검증하는데, profile_country_counts(3-b)가
+-- 아래(4-a)에서야 만들어지는 blocks 를 본문에서 참조해 새 DB에선 42P01로 전체가 롤백됐다
+-- (운영은 blocks 가 이미 있어 한 번도 안 걸림). pg_dump 도 쓰는 표준 해법으로 본문 검증을
+-- 끈다 — 참조 무결성은 스크립트가 끝까지 돌면 어차피 성립하고, 기존 DB 재실행엔 영향 없다.
+set check_function_bodies = off;
+
 -- 공통: updated_at 자동 갱신 트리거 함수
 create or replace function public.set_updated_at()
 returns trigger language plpgsql as $$
