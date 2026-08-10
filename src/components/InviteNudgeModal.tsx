@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { Modal, View, Text, TouchableOpacity, Image, StyleSheet } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { PersonIcon } from './icons';
+import { STAGE_MAX_W } from '../utils/stage';
 
 export interface InviteNudgeTarget {
   userId: string;
@@ -62,7 +63,8 @@ export function InviteNudgeModal({ target, onSend, onClose }: {
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 28 },
-  card: { backgroundColor: '#161421', borderRadius: 24, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center' },
+  // backdrop이 stretch라 카드가 창 폭 전체를 먹는다 — Modal은 루트 클램프 밖(AutoTocModal.card와 같은 모양)
+  card: { width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#161421', borderRadius: 24, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', alignItems: 'center' },
   avatar: { width: 64, height: 64, borderRadius: 32, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', marginBottom: 14, borderWidth: 1, borderColor: 'rgba(191,133,252,0.35)' },
   avatarImg: { width: 64, height: 64 },
   title: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', textAlign: 'center' },
