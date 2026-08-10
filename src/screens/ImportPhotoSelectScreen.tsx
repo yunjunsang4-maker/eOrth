@@ -32,7 +32,7 @@ import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
 import AssetImage from '../components/AssetImage';
-import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 export type TripPhoto = PhotoRef & { creationTime?: number };
 
@@ -61,11 +61,14 @@ const EMPTY_TRIP: ImportTrip = {
   title: '', date: '', startDate: '', endDate: '', photos: [],
 };
 
-const width = stageWidthNow();
 const COL = 3;
 const GRID_PAD = 16; // FlatList contentContainer 안쪽 여백
 const GRID_GAP = 8;  // 셀 사이 간격 (columnWrapperStyle.gap · ItemSeparator 높이와 같아야 한다)
-const CELL = Math.floor((width - GRID_PAD * 2 - GRID_GAP * (COL - 1)) / COL);
+// CELL은 폭에서 파생되므로 훅으로 계산한다(useCellSize). 모듈 최상위 stageWidthNow()로
+// 박제하면 접힌 채(360dp) 시작해 펼쳤을 때(화면은 480dp로 클램프) 3열 그리드가 360dp 폭에
+// 머물러 약 100dp가 비고, 무엇보다 이 값이 드래그 다중선택의 셀 히트테스트(indexAtPoint)에
+// 그대로 들어가서 손가락 아래가 아닌 셀이 선택된다.
+const useCellSize = () => Math.floor((useStageWidth() - GRID_PAD * 2 - GRID_GAP * (COL - 1)) / COL);
 
 // ─── 드래그 다중선택 튜닝 값 ───
 // 실기기에서 손맛을 보고 조정할 값들이라 한곳에 모아 둔다.
@@ -79,9 +82,7 @@ const AUTOSCROLL_MAX = 24;  // 한 틱에 움직일 최대 거리(px) — 가장
 const AUTOSCROLL_MIN_RATIO = 0.3;
 
 // 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
-const CARD_W = width - 40; // 시트 좌우 패딩 20×2
 const CARD_H = 180;
-const CARD_ASPECT = CARD_W / CARD_H;
 
 // 사진 셀 — 선택 시 살짝 줌아웃되며 마젠타 프레임이 드러나고, 순번 배지가 스프링으로 팝인.
 //
@@ -93,6 +94,7 @@ const PhotoCell = React.memo(function PhotoCell({ uri, assetId, order, onToggle 
   uri: string; assetId?: string; order: number; onToggle: (uri: string) => void;
 }) {
   const on = order > 0;
+  const CELL = useCellSize(); // 창 크기가 바뀌면 셀도 따라간다(메모돼 있어도 훅이라 갱신된다)
   const scale = useRef(new Animated.Value(on ? 1 : 0)).current; // 0=미선택(꽉참), 1=선택(줌아웃)
   useEffect(() => {
     Animated.spring(scale, { toValue: on ? 1 : 0, friction: 7, tension: 140, useNativeDriver: true }).start();
@@ -101,7 +103,7 @@ const PhotoCell = React.memo(function PhotoCell({ uri, assetId, order, onToggle 
   const badgeScale = scale.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1] });
 
   return (
-    <TouchableOpacity activeOpacity={0.85} onPress={() => onToggle(uri)} style={st.cellWrap}>
+    <TouchableOpacity activeOpacity={0.85} onPress={() => onToggle(uri)} style={[st.cellWrap, { width: CELL, height: CELL }]}>
       {/* ph:// 자가 복구를 위해 AssetImage 사용 — 스케일은 바깥 Animated.View가 담당.
           ⚠️ 이 래퍼에 크기를 반드시 줘야 한다. 크기가 없으면 Yoga 가 자식 크기에 맞추려 하는데
           자식(st.cell)은 width/height 가 '100%' 라 부모를 참조 → 순환이 되어 둘 다 0으로 접힌다.
@@ -126,6 +128,10 @@ const PhotoCell = React.memo(function PhotoCell({ uri, assetId, order, onToggle 
 });
 
 export default function ImportPhotoSelectScreen({ navigation, route }: RootStackScreenProps<'ImportPhotoSelect'>) {
+  const CELL = useCellSize();
+  const stageW = useStageWidth();
+  const CARD_W = stageW - 40; // 시트 좌우 패딩 20×2
+  const CARD_ASPECT = CARD_W / CARD_H;
   // 스와이프와 함께 하드웨어 뒤로가기도 막는다 — 그냥 두면 고른 사진이 확인창 없이 통째로 날아간다.
   // 나가는 길은 화면 안 '이전' 버튼이며, 첫 단계에서는 확인 후 결과 목록으로 돌아간다(goPrev).
   useBlockHardwareBack();
@@ -740,7 +746,8 @@ const st = StyleSheet.create({
   /* 사진 셀 */
   // 선택 시 이미지가 줌아웃되며 이 얇은 흰색 프레임이 드러난다(선택 신호는 순번 배지가 담당)
   cellWrap: {
-    width: CELL, height: CELL, borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.92)',
+    // width/height는 CELL(폭 파생)이라 호출부에서 인라인으로 준다.
+    borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.92)',
     alignItems: 'center', justifyContent: 'center',
   },
   cell: { width: '100%', height: '100%', borderRadius: 10, backgroundColor: '#2A2735' },

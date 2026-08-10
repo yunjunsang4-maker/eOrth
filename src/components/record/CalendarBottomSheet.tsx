@@ -12,13 +12,12 @@ import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
-import { stageWidthNow, STAGE_MAX_W } from '../../utils/stage';
+import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
  * (NewRecordScreen 에서 분리)
  */
-const SCREEN_W = stageWidthNow();
 
 // ─── 날짜 유틸 ───
 const toDateKey = (d: Date) =>
@@ -27,7 +26,6 @@ const isSameDay = (a: Date, b: Date) => toDateKey(a) === toDateKey(b);
 const isBefore  = (a: Date, b: Date) => toDateKey(a) < toDateKey(b);
 
 const WEEK_DAY_KEYS = ['blog.week0', 'blog.week1', 'blog.week2', 'blog.week3', 'blog.week4', 'blog.week5', 'blog.week6'] as const;
-const CELL_SIZE = Math.floor((SCREEN_W - 32 - 12) / 7);
 
 export function CalendarBottomSheet({
   visible,
@@ -68,6 +66,10 @@ export function CalendarBottomSheet({
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  // 셀 폭은 훅으로 실시간 — 모듈 최상위 stageWidthNow()로 박제하면 접힌 채(360dp) 시작해
+  // 펼쳤을 때(시트는 480dp로 클램프) 7열 그리드가 그대로 360dp 폭에 머물러 시트 안에서
+  // 왼쪽으로 쏠린 채 약 100dp가 빈다.
+  const CELL_SIZE = Math.floor((useStageWidth() - 32 - 12) / 7);
   const startLbl = startLabel ?? t('newRecord.departDate');
   const endLbl = endLabel ?? t('newRecord.arriveDate');
   const today = new Date();
@@ -239,7 +241,7 @@ export function CalendarBottomSheet({
                     />
                   )}
                   {band && showChip && (
-                    <View style={[calS.countryChip, { backgroundColor: skinAccent.accent }]} pointerEvents="none">
+                    <View style={[calS.countryChip, { backgroundColor: skinAccent.accent, maxWidth: CELL_SIZE + 20 }]} pointerEvents="none">
                       <Text style={calS.countryChipText} numberOfLines={1}>{band.countryLabel}</Text>
                     </View>
                   )}
@@ -397,7 +399,8 @@ const calS = StyleSheet.create({
   // 국가명 칩 — 밴드 시작일 셀 상단에 얹음
   countryChip: {
     position: 'absolute', top: -7, left: 2, zIndex: 5,
-    maxWidth: CELL_SIZE + 20, paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
+    // maxWidth는 CELL_SIZE에서 파생되므로 호출부에서 인라인으로 준다(스타일시트는 모듈 최상위).
+    paddingHorizontal: 6, paddingVertical: 1, borderRadius: 8,
   },
   countryChipText: { fontSize: 9, fontWeight: '700', color: '#0A0A0F' },
   legendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 10, paddingHorizontal: 4 },
