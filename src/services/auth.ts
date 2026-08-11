@@ -264,8 +264,10 @@ async function signInWithAppleNative(): Promise<AuthResult> {
 //              비어 있으면 iOS는 자동으로 기존 웹 OAuth로 폴백한다.
 // Android는 별도 값이 코드에 들어가지 않는 대신, 같은 Google Cloud 프로젝트에
 // Android 클라이언트(패키지명 + EAS 키스토어 SHA-1)가 등록돼 있어야 한다(없으면 웹 폴백).
-// 정식은 기존 값 고정(G2). 변형은 EAS env로 주입 — 발급 전(빈 값)엔 네이티브를 건너뛰고
-// 웹 OAuth 폴백을 타므로 콘솔 작업이 끝나지 않아도 로그인이 막히지 않는다.
+// 정식은 기존 값 고정(G2). 변형은 EAS env로 주입 — 발급 전(빈 값)엔 네이티브를 건너뛰고 웹 OAuth로 간다.
+// ⚠️ 단, 그 폴백은 "공짜"가 아니다: 해당 Supabase 프로젝트에서 Google provider를 켜두지 않으면
+//    폴백도 `provider is not enabled`로 실패해 구글 로그인이 전면 불가가 된다(2026-08-11 베타에서 발생).
+//    즉 클라이언트 ID 발급은 미뤄도 되지만 provider 활성화는 미룰 수 없다 — docs/beta-environment-setup.md §4.
 const GOOGLE_WEB_CLIENT_ID = APP_VARIANT === 'production'
   ? '589120466593-6uh5al0l88vkg72i78bdjhdcdurbseln.apps.googleusercontent.com'
   : process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
@@ -299,7 +301,9 @@ function ensureGoogleConfigured() {
  * 네이티브 Google 로그인 — OS 계정 선택 시트로 인증 후 idToken을 Supabase에 전달.
  * 인앱 브라우저("supabase.co를 사용하려고 합니다" 시스템 창)가 뜨지 않는다.
  * 콘솔 구성이 아직 없거나(iOS 클라이언트 미발급, Android SHA-1 미등록=DEVELOPER_ERROR)
- * Play 서비스가 없는 기기면 기존 웹 OAuth로 자동 폴백해 로그인이 막히지 않게 한다.
+ * Play 서비스가 없는 기기면 기존 웹 OAuth로 자동 폴백한다.
+ * ⚠️ 폴백이 성립하려면 Supabase 쪽 Google provider가 켜져 있어야 한다(아래 signInWithProviderWeb 주석 참고).
+ *    꺼져 있으면 네이티브·웹 두 경로가 모두 막혀 구글 로그인 자체가 불가능해진다.
  *
  * ⚠️ 폴백은 "구성/환경 문제"일 때만 쓴다. 네트워크 오류·타임아웃까지 폴백으로 넘기면
  *    브라우저가 뜨지 않거나 조용히 닫히면서 아무 안내 없이 로그인 화면으로 돌아가

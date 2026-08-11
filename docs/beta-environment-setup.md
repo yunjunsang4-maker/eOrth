@@ -40,15 +40,44 @@ production 환경에 이 변수가 없을 때뿐이다.
    (App ID·capability는 EAS가 첫 빌드에서 자동 생성·동기화가 기본 — 실패할 때만 개발자 콘솔 수동)
 2. 새 앱의 **Apple ID(숫자)**를 `eas.json` submit.beta의 `REPLACE_WITH_BETA_ASC_APP_ID` 자리에 기입
 
-## 4. Google Cloud (구글 로그인) — 나중에 해도 됨(그 전엔 웹 OAuth 폴백으로 동작)
-운영과 같은 프로젝트(589120466593)에 클라이언트 추가:
+## 4. Google Cloud (구글 로그인)
+
+⚠️ **1·4번은 필수다. 미루면 베타에서 구글 로그인이 아예 안 된다.**
+이전 판에는 "나중에 해도 됨 — 그 전엔 웹 OAuth 폴백으로 동작"이라고 적혀 있었는데 **틀렸다.**
+클라이언트 ID가 없으면 앱이 웹 OAuth로 폴백하는 것은 맞지만, **그 폴백도 테스트 Supabase의
+Google provider가 켜져 있어야** 동작한다. 꺼진 상태에서는 `provider is not enabled`로 즉시 실패한다
+(2026-08-11에 실제로 이 순서로 막혔다). 2·3·5번(네이티브 로그인)만 나중으로 미룰 수 있다.
+
+클라이언트를 만들 프로젝트:
+- 정식 클라이언트는 **589120466593**에 있으나 **현재 계정에서 보이지 않는다.** 찾을 필요 없다 —
+  정식 자격증명을 편집하는 위험도 피할 겸, 베타용은 Firebase 프로젝트
+  **572294422089(`eorth-6ea51`)** 에 새로 만든다. OAuth 클라이언트는 프로젝트 간 독립이라 정상 동작한다.
+- 자격증명 목록의 `Web client (auto created by Google Service)`는 Firebase가 자동 생성한 것이고
+  이 앱은 Firebase Auth를 쓰지 않아 미사용이다. **재사용하지 말고 새로 만들 것.**
+- 2·3번(네이티브용)도 **1번 웹 클라이언트와 같은 프로젝트**에 만들어야 audience 검증을 통과한다.
+
 1. **웹 클라이언트**(테스트 Supabase 콜백용) — 승인된 리디렉션 URI:
    `https://<테스트ref>.supabase.co/auth/v1/callback`
+   (Supabase의 Google provider 화면이 표시하는 Callback URL을 그대로 복사하는 게 안전하다)
+   → 동의 화면이 "테스트" 상태면 **테스트 사용자에 본인 계정을 추가**해야 로그인된다.
 2. **iOS 클라이언트** — 번들 정확히 `com.yunjunsang.eorth.beta`
+   (`iosUrlScheme`은 네이티브 설정이라 **재빌드해야** 반영된다. OTA로는 안 된다)
 3. **Android 클라이언트** — 패키지 `com.yunjunsang.eorth.beta` + SHA-1
    (`eas credentials -p android` 로 베타 키스토어 지문 확인)
-4. 테스트 Supabase → Auth Providers → Google: 웹 client ID/secret 입력, **Client IDs에 웹+iOS 둘 다** 등록
+4. 테스트 Supabase → Auth Providers → Google: **활성화 후** 웹 client ID/secret 입력.
+   2번까지 마쳤다면 **Client IDs에 웹+iOS 둘 다** 등록
    (iOS 네이티브 idToken의 aud=iOS ID — 웹만 넣으면 안드로이드만 통과하는 함정)
+   → 네이티브 iOS를 쓸 때는 `external_google_skip_nonce_check: true`도 필요하다(운영에서 겪은 2차 함정).
+
+**콘솔 없이 검증하는 법** (`<ref>`·`<anon키>`는 테스트 프로젝트 값):
+
+    # 공급자 on/off 확인 — google:true 여야 한다
+    curl -s "https://<ref>.supabase.co/auth/v1/settings" -H "apikey: <anon키>"
+
+    # 실제로 물린 client_id 확인 — 302 Location에 나온다
+    curl -s -o /dev/null -D - "https://<ref>.supabase.co/auth/v1/authorize?provider=google&redirect_to=eorthbeta%3A%2F%2Fauth-callback" | grep -i ^location
+
+  그 Location URL을 다시 curl 해서 **302면 리디렉션 URI 등록까지 정상**, 400이면 `redirect_uri_mismatch`다.
 5. EAS env 추가(preview·development 동일):
 
     eas env:create --environment preview --name EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID --value <웹클라이언트ID> --visibility plaintext
