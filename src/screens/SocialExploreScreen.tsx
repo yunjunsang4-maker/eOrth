@@ -17,6 +17,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { stageWidthNow } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 const width = stageWidthNow();
 
@@ -141,7 +142,7 @@ function AdBanner() {
 
         {/* 오른쪽 버튼 */}
         <View style={s.adBtn}>
-          <Text style={s.adBtnText}>{t('misc.adView')}</Text>
+          <Text style={s.adBtnText} {...andFitText}>{t('misc.adView')}</Text>
         </View>
       </LinearGradient>
     </TouchableOpacity>

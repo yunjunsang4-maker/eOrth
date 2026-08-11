@@ -18,6 +18,7 @@ import { useRecords, TravelRecord } from '../store/recordStore';
 import { TrashIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
 import { STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 type RouteParams = {
   TripGroup: { groupId: string };
@@ -275,7 +276,7 @@ export default function TripGroupScreen() {
               onPress={handleSaveEdit}
               activeOpacity={0.85}
             >
-              <Text style={st.editSaveBtnText}>{t('trip.saveLarge')}</Text>
+              <Text style={st.editSaveBtnText} {...andFitText}>{t('trip.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </View>

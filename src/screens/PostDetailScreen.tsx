@@ -405,7 +405,7 @@ const BlogVideoBlock = ({ uri, caption }: { uri: string; caption?: string }) => 
       ) : (
         <TouchableOpacity style={[blogS.video, { justifyContent: 'center', alignItems: 'center' }]} activeOpacity={0.7} onPress={() => Linking.openURL(uri).catch(() => {})}>
           <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
-          <Text style={{ color: '#A1A1B0', fontSize: 12, marginTop: 8 }}>{t('blog.externalVideo')}</Text>
+          <Text style={{ color: '#A1A1B0', fontSize: 12, marginTop: 8 }} {...andFitText}>{t('blog.externalVideo')}</Text>
         </TouchableOpacity>
       )}
       {caption ? <Text style={blogS.caption}>{caption}</Text> : null}
@@ -677,7 +677,7 @@ function SnapViewerModal({
             (버튼에 직접 width:'100%'+margin을 주면 40dp 넘친다). */}
         <View style={viewerS.footer}>
           <TouchableOpacity style={viewerS.closeBtn} onPress={onClose} activeOpacity={0.8}>
-            <Text style={viewerS.closeBtnText}>{t('common.close')}</Text>
+            <Text style={viewerS.closeBtnText} {...andFitText}>{t('common.close')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1902,7 +1902,7 @@ export default function PostDetailScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={t('postDetail.fontSizeA11y')}
               >
-                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }}>{t('blog.fontSizeBtn')}</Text>
+                <Text style={{ fontSize: 14, fontWeight: '700', color: fontScale !== 1 ? skinAccent.accent : C.dim }} {...andFitText}>{t('blog.fontSizeBtn')}</Text>
               </TouchableOpacity>
             )}
             {!record.isExample && (
@@ -2188,7 +2188,7 @@ export default function PostDetailScreen() {
               onPress={() => setTravelInfoPref(!travelInfoOpen)}
             >
               <CalendarIcon size={14} color={skinAccent.accent} />
-              <Text style={[s.travelInfoBtnText, { color: skinAccent.accent }]}>{t('postDetail.travelInfo')}</Text>
+              <Text style={[s.travelInfoBtnText, { color: skinAccent.accent }]} {...andFitText}>{t('postDetail.travelInfo')}</Text>
               <ChevronIcon size={16} color={skinAccent.accent} up={travelInfoOpen} />
             </TouchableOpacity>
           )}
@@ -2285,15 +2285,15 @@ export default function PostDetailScreen() {
                       {!!c.likes && <Text style={s.commentLikeCount}>{c.likes}</Text>}
                     </TouchableOpacity>
                     <TouchableOpacity onPress={() => handleReply(c.id, c.name)}>
-                      <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
+                      <Text style={s.commentActionText} {...andFitText}>{t('postDetail.reply')}</Text>
                     </TouchableOpacity>
                     {c.isMine ? (
                       <TouchableOpacity onPress={() => confirmDeleteComment(c.id)}>
-                        <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
+                        <Text style={[s.commentActionText, { color: C.red }]} {...andFitText}>{t('postDetail.delete')}</Text>
                       </TouchableOpacity>
                     ) : (
                       <TouchableOpacity onPress={() => setCommentReportId(c.id)}>
-                        <Text style={s.commentActionText}>{t('social.report')}</Text>
+                        <Text style={s.commentActionText} {...andFitText}>{t('social.report')}</Text>
                       </TouchableOpacity>
                     )}
                   </View>
@@ -2326,15 +2326,15 @@ export default function PostDetailScreen() {
                         {!!r.likes && <Text style={s.commentLikeCount}>{r.likes}</Text>}
                       </TouchableOpacity>
                       <TouchableOpacity onPress={() => handleReply(r.id, r.name)}>
-                        <Text style={s.commentActionText}>{t('postDetail.reply')}</Text>
+                        <Text style={s.commentActionText} {...andFitText}>{t('postDetail.reply')}</Text>
                       </TouchableOpacity>
                       {r.isMine ? (
                         <TouchableOpacity onPress={() => confirmDeleteComment(r.id)}>
-                          <Text style={[s.commentActionText, { color: C.red }]}>{t('postDetail.delete')}</Text>
+                          <Text style={[s.commentActionText, { color: C.red }]} {...andFitText}>{t('postDetail.delete')}</Text>
                         </TouchableOpacity>
                       ) : (
                         <TouchableOpacity onPress={() => setCommentReportId(r.id)}>
-                          <Text style={s.commentActionText}>{t('social.report')}</Text>
+                          <Text style={s.commentActionText} {...andFitText}>{t('social.report')}</Text>
                         </TouchableOpacity>
                       )}
                     </View>

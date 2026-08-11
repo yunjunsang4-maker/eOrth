@@ -28,6 +28,7 @@ import { COUNTRIES } from '../constants/countries';
 import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import type { RootStackScreenProps } from '../navigation/types';
 import { stageWidthNow } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 const SW = stageWidthNow();
 // PIP(작은 전면 사진) 크기 — pipWrapContainer 스타일과 동일
@@ -302,7 +303,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             end={{ x: 1, y: 1 }}
             style={st.permBtnGrad}
           >
-            <Text style={st.permBtnText}>{permission.canAskAgain ? t('snap.permAllow') : t('snap.permSettings')}</Text>
+            <Text style={st.permBtnText} {...andFitText}>{permission.canAskAgain ? t('snap.permAllow') : t('snap.permSettings')}</Text>
           </LinearGradient>
         </TouchableOpacity>
         <TouchableOpacity style={st.permSkip} onPress={() => navigation.goBack()}>
@@ -680,7 +681,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             </Svg>
             </View>
           )}
-          <Text style={st.retakeBtnText}>{t('snap.retake')}</Text>
+          <Text style={st.retakeBtnText} {...andFitText}>{t('snap.retake')}</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={st.sendBtnWrap}
@@ -738,7 +739,7 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
             </Svg>
             </View>
           )}
-          <Text style={st.sendBtnText}>{t('comp2.snapShare')}</Text>
+          <Text style={st.sendBtnText} {...andFitText}>{t('comp2.snapShare')}</Text>
         </TouchableOpacity>
       </View>
 

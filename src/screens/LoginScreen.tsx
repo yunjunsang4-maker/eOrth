@@ -56,6 +56,7 @@ import { withTimeout } from '../utils/withTimeout';
 import * as Network from 'expo-network';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
+import { andFitText } from '../utils/fitText';
 
 // 이메일 형식 검증 (메인 폼·재설정 모달 공통)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -519,7 +520,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
               onPress={() => switchMode('signup')}
             >
-              <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]} {...andFitText}>
                 {t('login.modeSignup')}
               </Text>
             </TouchableOpacity>
@@ -527,7 +528,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
               onPress={() => switchMode('login')}
             >
-              <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]} {...andFitText}>
                 {t('login.modeLogin')}
               </Text>
             </TouchableOpacity>
@@ -681,7 +682,7 @@ export default function LoginScreen({ navigation }: Props) {
               accessibilityLabel={t('login.googleContinue')}
             >
               <GoogleIcon size={20} />
-              <Text style={styles.socialBtnText}>{t('login.googleContinue')}</Text>
+              <Text style={styles.socialBtnText} {...andFitText}>{t('login.googleContinue')}</Text>
             </TouchableOpacity>
 
             {/* Apple — iOS 전용 노출 (App Store 정책상 iOS에서만 제공) */}
@@ -695,7 +696,7 @@ export default function LoginScreen({ navigation }: Props) {
                 accessibilityLabel={t('login.appleContinue')}
               >
                 <AppleIcon size={20} color="#FFFFFF" />
-                <Text style={[styles.socialBtnText, { color: Colors.white }]}>
+                <Text style={[styles.socialBtnText, { color: Colors.white }]} {...andFitText}>
                   {t('login.appleContinue')}
                 </Text>
               </TouchableOpacity>

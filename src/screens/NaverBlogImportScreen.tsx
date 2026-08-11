@@ -17,6 +17,7 @@ import { useTranslation } from 'react-i18next';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LockClosedIcon } from '../components/icons';
 import { useSettings } from '../store/settingsStore';
+import { andFitText } from '../utils/fitText';
 import {
   isNaverBlogUrl,
   toMobileNaverUrl,
@@ -240,7 +241,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
       {/* 헤더 */}
       <View style={st.header}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn}>
-          <Text style={st.headerBtnText}>{t('common.close')}</Text>
+          <Text style={st.headerBtnText} {...andFitText}>{t('common.close')}</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>{t('imports.nvHeaderTitle')}</Text>
         <View style={{ width: 50 }} />
@@ -273,7 +274,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
           </View>
 
           <TouchableOpacity style={st.loadBtn} onPress={handleLoadUrl} activeOpacity={0.8}>
-            <Text style={st.loadBtnText}>{t('imports.nvLoadBlog')}</Text>
+            <Text style={st.loadBtnText} {...andFitText}>{t('imports.nvLoadBlog')}</Text>
           </TouchableOpacity>
 
           <View style={st.tipBox}>
@@ -299,7 +300,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <Text style={st.codeLabel}>{t('imports.nvAuthCode')}</Text>
             <Text selectable style={st.codeValue}>{verifyCode}</Text>
             <TouchableOpacity style={st.codeCopyBtn} onPress={handleCopyCode} activeOpacity={0.8}>
-              <Text style={st.codeCopyBtnText}>{t('imports.nvCopyCode')}</Text>
+              <Text style={st.codeCopyBtnText} {...andFitText}>{t('imports.nvCopyCode')}</Text>
             </TouchableOpacity>
           </View>
 
@@ -312,10 +313,10 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
           </View>
 
           <TouchableOpacity style={st.loadBtn} onPress={handleVerifyCheck} activeOpacity={0.8}>
-            <Text style={st.loadBtnText}>{t('imports.nvVerify')}</Text>
+            <Text style={st.loadBtnText} {...andFitText}>{t('imports.nvVerify')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={{ marginTop: 14 }} onPress={() => setStep('input')}>
-            <Text style={st.retryBtnText}>{t('imports.nvOtherUrl')}</Text>
+            <Text style={st.retryBtnText} {...andFitText}>{t('imports.nvOtherUrl')}</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -368,7 +369,7 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
             <TouchableOpacity style={st.retryBtn} onPress={() => {
               webviewRef.current?.injectJavaScript(NAVER_BLOG_EXTRACT_JS);
             }}>
-              <Text style={st.retryBtnText}>{t('imports.nvRetryExtract')}</Text>
+              <Text style={st.retryBtnText} {...andFitText}>{t('imports.nvRetryExtract')}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -430,10 +431,10 @@ export default function NaverBlogImportScreen({ navigation }: Props) {
 
           <View style={st.previewActions}>
             <TouchableOpacity style={st.retryOutlineBtn} onPress={handleRetry}>
-              <Text style={st.retryOutlineBtnText}>{t('imports.nvRetry')}</Text>
+              <Text style={st.retryOutlineBtnText} {...andFitText}>{t('imports.nvRetry')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={st.confirmBtn} onPress={handleConfirmImport} activeOpacity={0.8}>
-              <Text style={st.confirmBtnText}>{t('imports.nvWriteWithThis')}</Text>
+              <Text style={st.confirmBtnText} {...andFitText}>{t('imports.nvWriteWithThis')}</Text>
             </TouchableOpacity>
           </View>
         </View>

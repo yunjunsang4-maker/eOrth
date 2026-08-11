@@ -33,6 +33,7 @@ import { TrashIcon, CommentIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
 import { STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t, i18n } = useTranslation();
@@ -565,7 +566,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             disabled={!commentText.trim()}
             activeOpacity={0.8}
           >
-            <Text style={styles.sendBtnText}>{t('trip.post')}</Text>
+            <Text style={styles.sendBtnText} {...andFitText}>{t('trip.post')}</Text>
           </TouchableOpacity>
         </View>
         )}

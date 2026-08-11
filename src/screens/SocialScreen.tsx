@@ -261,7 +261,7 @@ function ShareBottomSheet({
                 <Text style={ss.prepareTitle}>{t('social.prepareTitle')}</Text>
                 <Text style={ss.prepareDesc}>{t('social.prepareDesc')}</Text>
                 <TouchableOpacity style={ss.prepareBtn} onPress={() => setPrepareVisible(false)} activeOpacity={0.85}>
-                  <Text style={ss.prepareBtnText}>{t('common.confirm')}</Text>
+                  <Text style={ss.prepareBtnText} {...andFitText}>{t('common.confirm')}</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -3159,7 +3159,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
                     />
                   </Svg>
                 )}
-                <Text style={s.emptyCtaText}>{t('socialEmpty.cta')}</Text>
+                <Text style={s.emptyCtaText} {...andFitText}>{t('socialEmpty.cta')}</Text>
               </TouchableOpacity>
               {/* 추천 메이트 (보조) */}
               {suggested.length > 0 && (
@@ -3239,7 +3239,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
             {/* 외부 공유 — OS 네이티브 공유 시트 (AirDrop·메시지·카톡 등) */}
             <TouchableOpacity style={ss.otherShareBtn} onPress={openShareSheetForOther} activeOpacity={0.75}>
               <ShareSvgIcon size={18} color="#FFFFFF" />
-              <Text style={ss.otherShareBtnText}>{t('social.share')}</Text>
+              <Text style={ss.otherShareBtnText} {...andFitText}>{t('social.share')}</Text>
             </TouchableOpacity>
 
             <Text style={ss.otherSectionLabel}>{t('social.friendPickerTitle')}</Text>

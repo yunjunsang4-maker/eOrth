@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../../constants/skinTheme';
 import type { RecordedRange } from '../../utils/recordedDates';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 /**
  * 기간 선택 캘린더 바텀시트 — NewRecordScreen / AlbumCreateScreen 공용.
@@ -265,7 +266,7 @@ export function CalendarBottomSheet({
             </View>
           )}
           <TouchableOpacity style={[calS.confirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleConfirm} activeOpacity={0.85}>
-            <Text style={calS.confirmText}>{t('common.confirm')}</Text>
+            <Text style={calS.confirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </Animated.View>
       </View>

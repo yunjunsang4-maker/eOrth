@@ -28,6 +28,7 @@ import { useSkinAccent } from '../constants/skinTheme';
 import { usePhotoAI } from '../hooks/usePhotoAI';
 import { PHOTO_AI_TASK } from '../services/photoAI/backgroundScheduler';
 import type { PhotoMeta, SpotGroup } from '../services/photoAI/types';
+import { andFitText } from '../utils/fitText';
 
 function formatSpan(start: number, end: number, tr: TFunction): string {
   const d = new Date(start);
@@ -123,7 +124,7 @@ export default function BestCutScreen() {
           {analyzing ? (
             <ActivityIndicator color={Colors.white} />
           ) : (
-            <Text style={styles.analyzeBtnText}>{t('bestCut.analyzeNow')}</Text>
+            <Text style={styles.analyzeBtnText} {...andFitText}>{t('bestCut.analyzeNow')}</Text>
           )}
         </Pressable>
 

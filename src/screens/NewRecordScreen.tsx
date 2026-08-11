@@ -48,6 +48,7 @@ import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
 import { stageWidthNow } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -1580,12 +1581,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     activeOpacity={0.85}
                   >
                     <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
+                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.departDate')}</Text>
                       <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
                     </View>
                     <Text style={s.dateBtnArrow}>→</Text>
                     <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
+                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.arriveDate')}</Text>
                       <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
                     </View>
                     <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>

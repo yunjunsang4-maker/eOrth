@@ -296,7 +296,7 @@ function InviteCard({
           end={{ x: 1, y: 1 }}
           style={StyleSheet.absoluteFill}
         />
-        <Text style={s.inviteCardBtnText}>{t('friends.inviteCta')}</Text>
+        <Text style={s.inviteCardBtnText} {...andFitText}>{t('friends.inviteCta')}</Text>
       </TouchableOpacity>
     </View>
   );

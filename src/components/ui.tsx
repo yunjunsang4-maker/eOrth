@@ -45,7 +45,7 @@ export const PrimaryButton: React.FC<PrimaryButtonProps> = ({
       {loading ? (
         <ActivityIndicator color={Colors.white} size="small" />
       ) : (
-        <Text style={styles.primaryBtnText}>{label}</Text>
+        <Text style={styles.primaryBtnText} {...andFitText}>{label}</Text>
       )}
     </LinearGradient>
   </TouchableOpacity>
@@ -98,7 +98,7 @@ export const GlassButton: React.FC<GlassButtonProps> = ({
       {loading ? (
         <ActivityIndicator color={Colors.white} size="small" />
       ) : (
-        <Text style={styles.glassBtnText}>{label}</Text>
+        <Text style={styles.glassBtnText} {...andFitText}>{label}</Text>
       )}
     </TouchableOpacity>
   );
@@ -132,7 +132,8 @@ export const SocialButton: React.FC<SocialButtonProps> = ({
       style={[styles.socialBtn, { backgroundColor: bgColor }]}
     >
       {icon && <View style={styles.socialBtnIcon}>{icon}</View>}
-      <Text style={[styles.socialBtnText, { color: textColor }]}>{label}</Text>
+      {/* 아이콘과 가로 배치라 flexShrink가 있어야 안드로이드에서 자동 축소의 폭 기준이 생긴다 */}
+      <Text style={[styles.socialBtnText, { color: textColor, flexShrink: 1 }]} {...andFitText}>{label}</Text>
     </TouchableOpacity>
   );
 };
@@ -150,7 +151,7 @@ export const PillTag: React.FC<PillTagProps> = ({ label, active = false, onPress
     activeOpacity={0.8}
     style={[styles.pill, active && styles.pillActive]}
   >
-    <Text style={[styles.pillText, active && styles.pillTextActive]}>{label}</Text>
+    <Text style={[styles.pillText, active && styles.pillTextActive]} {...andFitText}>{label}</Text>
   </TouchableOpacity>
 );
 

@@ -13,6 +13,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { GlobeIcon, DownloadIcon, GalleryIcon, TrashIcon } from './icons';
+import { andFitText } from '../utils/fitText';
 
 // 액션 바 아이콘은 라벨과 같은 색을 명시한다.
 // (색을 넘기지 않으면 아이콘들이 같은 그라데이션 id를 공유해 한 화면에 여러 개가 뜰 때 서로 간섭한다)
@@ -117,25 +118,25 @@ export default function PhotoViewerModal({
             {onSetGlobeCover && (
               <TouchableOpacity onPress={() => onSetGlobeCover(index)} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
                 <GlobeIcon size={ACTION_ICON} color={ACTION_TINT} />
-                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSetGlobeCover')}</Text>
+                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }} {...andFitText}>{t('comp.viewerSetGlobeCover')}</Text>
               </TouchableOpacity>
             )}
             {showActions && (
               <TouchableOpacity onPress={handleSaveToDevice} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
                 <DownloadIcon size={ACTION_ICON} color={ACTION_TINT} />
-                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSave')}</Text>
+                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }} {...andFitText}>{t('comp.viewerSave')}</Text>
               </TouchableOpacity>
             )}
             {onSetCover && (
               <TouchableOpacity onPress={() => onSetCover(index)} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
                 <GalleryIcon size={ACTION_ICON} color={ACTION_TINT} />
-                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }}>{t('comp.viewerSetCover')}</Text>
+                <Text style={{ color: '#fff', fontSize: 11, marginTop: 3 }} {...andFitText}>{t('comp.viewerSetCover')}</Text>
               </TouchableOpacity>
             )}
             {onDelete && (
               <TouchableOpacity onPress={() => { const i = index; onClose(); onDelete(i); }} style={{ alignItems: 'center', minWidth: 64 }} accessibilityRole="button">
                 <TrashIcon size={ACTION_ICON} color={ACTION_DANGER} />
-                <Text style={{ color: '#FF6B6B', fontSize: 11, marginTop: 3 }}>{t('comp.viewerDelete')}</Text>
+                <Text style={{ color: '#FF6B6B', fontSize: 11, marginTop: 3 }} {...andFitText}>{t('comp.viewerDelete')}</Text>
               </TouchableOpacity>
             )}
           </View>

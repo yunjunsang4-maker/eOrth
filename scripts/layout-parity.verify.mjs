@@ -543,6 +543,119 @@ const ALLOW_WINDOW_W = new Map([
   }
 }
 
+// ── 규칙 10: 버튼 라벨 Text는 안드로이드 자동 축소(andFitText)를 갖는다 ──
+//
+// 앱 글꼴에 한글이 없어 시스템 폰트로 폴백되는데, 안드로이드(Noto Sans KR)는 iOS보다
+// 글리프가 넓다. 그래서 iOS 폭 기준으로 만든 버튼의 한글 라벨이 안드로이드에서만
+// 겹치거나 밖으로 밀린다 (2026-08-11 '과거 여행 불러오기' 버튼에서 실기기 확인).
+// andFitText는 18개 파일에 손으로 붙어 있었을 뿐 강제 장치가 없어, 전수 스윕(87곳)
+// 이후에도 새 버튼이 다시 구멍이 되는 것을 이 규칙이 막는다.
+//
+// 판정(스윕 때 쓴 것과 동일한 두 계층 — 831건 원시 후보에서 아이콘·본문을 거른 형태):
+//   대상 = 터치러블(TouchableOpacity/TouchableHighlight/Pressable) 안의 <Text> 중
+//     ① 내용이 순수 라벨({t('…')} 단독 또는 삼항 t())이고
+//     ② 버튼류 스타일 이름(…btnText/…buttonText/…ctaText/…actionText/…)을 쓰거나
+//        스타일 이름 없이 인라인 style={{ fontSize/fontWeight … }} 만 있는 것
+//   요구 = 열림 태그에 andFitText / adjustsFontSizeToFit / numberOfLines 중 하나
+//
+// ── 잔여 갭 (정직하게 적어 둔다) ──
+//   · 라벨이 {label} 같은 prop이면 ①에 안 걸린다 — 공용 컴포넌트는 아래에서 이름을
+//     짚어 별도로 검사한다(ui.tsx 4종). 새 공용 버튼을 만들면 그 목록에 추가할 것.
+//   · numberOfLines={2} 같은 다줄 명시도 '판단이 있었다'로 보고 통과시킨다.
+//     자동 축소를 일부러 빼려면 그 판단을 태그에 남기라는 뜻이다.
+rule('규칙 10 버튼 라벨 자동 축소');
+const FIT_BTN_STYLE = /\b\w*\.(?:\w*[bB]tnText\w*|\w*[bB]uttonText\w*|\w*[cC]taText\w*|\w*[aA]ctionText\w*|\w*[sS]ubmitText\w*|\w*[cC]onfirmText\w*|\w*[bB]tnLabel\w*|\w*[bB]uttonLabel\w*)\b/;
+// 여러 줄이 의도인 라벨 등 예외는 여기 등록 (2026-08-11 스윕 시점 기준 0건 — 87개 라벨
+// 전부 번역문에 \n 없는 한 줄 문구임을 ko/en 로케일 대조로 확인했다)
+const ALLOW_NO_FIT = new Map([]);
+
+/** 태그 시작 위치부터 중괄호 깊이 0의 '>' 위치 — 화살표함수의 >는 깊이>0에서 나와 안 걸린다 */
+function fitTagEnd(src, start) {
+  let depth = 0;
+  for (let i = start; i < src.length; i++) {
+    const c = src[i];
+    if (c === '{') depth++;
+    else if (c === '}') depth--;
+    else if (c === '>' && depth === 0) return i;
+  }
+  return -1;
+}
+
+{
+  const seen = new Set();
+  for (const f of collect('src', '.tsx')) {
+    const p = rel(f);
+    const src = readFileSync(f, 'utf8');
+
+    // 터치러블 열림/닫힘으로 범위 구성 (자기닫힘은 라벨이 없으니 무시)
+    const ranges = [];
+    const stack = [];
+    for (const m of src.matchAll(/<\/?(TouchableOpacity|TouchableHighlight|Pressable)\b/g)) {
+      if (m[0][1] === '/') {
+        const s = stack.pop();
+        if (s !== undefined) ranges.push([s, m.index]);
+      } else {
+        const e = fitTagEnd(src, m.index);
+        if (e !== -1 && src[e - 1] === '/') continue;
+        stack.push(m.index);
+      }
+    }
+
+    let bad = 0;
+    const badLines = [];
+    for (const t of src.matchAll(/<Text\b/g)) {
+      if (!ranges.some(([s, e]) => t.index > s && t.index < e)) continue;
+      const end = fitTagEnd(src, t.index);
+      if (end === -1) continue;
+      const tag = src.slice(t.index, end + 1);
+      if (tag.endsWith('/>')) continue;
+      if (/andFitText|adjustsFontSizeToFit|numberOfLines/.test(tag)) continue;
+      const close = src.indexOf('</Text>', end);
+      if (close === -1) continue;
+      const content = src.slice(end + 1, close).trim();
+      const pureLabel = /^\{t\('[^']+'\)\}$/.test(content)
+        || /^\{[^{}]*\?\s*t\('[^']+'\)\s*:\s*t\('[^']+'\)\}$/.test(content);
+      if (!pureLabel) continue;
+      const named = FIT_BTN_STYLE.test(tag);
+      const inline = /style=\{\{[^<]*?(fontSize|fontWeight)/s.test(tag)
+        && !/style=\{\[?\s*\w+\.\w+/.test(tag);
+      if (!named && !inline) continue;
+      bad++;
+      badLines.push(src.slice(0, t.index).split('\n').length);
+    }
+    if (bad === 0) continue;
+    seen.add(p);
+    const allow = ALLOW_NO_FIT.get(p);
+    if (!allow) {
+      check(false, `${p} 버튼 라벨 ${bad}건(줄 ${badLines.join(', ')})에 자동 축소가 없다 — `
+        + '<Text …>에 {...andFitText}를 넣거나(utils/fitText), 여러 줄이 의도면 numberOfLines를 명시하거나, '
+        + 'ALLOW_NO_FIT에 건수와 사유를 등록할 것');
+      continue;
+    }
+    check(Boolean(allow.why && allow.why.trim()), `${p} 자동 축소 예외에 사유가 적혀 있다`);
+    check(
+      allow.count === bad,
+      `${p} 자동 축소 예외 ${allow.count}건 등록 ↔ 실제 ${bad}건 — 새로 늘어난 라벨을 확인하고 건수를 갱신할 것`,
+    );
+  }
+  for (const p of ALLOW_NO_FIT.keys()) {
+    check(seen.has(p), `${p} 자동 축소 예외가 아직 유효하다 (해당 라벨이 사라졌으면 ALLOW_NO_FIT에서 제거할 것)`);
+  }
+
+  // 공용 버튼 컴포넌트 — 라벨이 {label} prop이라 위 판정에 안 걸리므로 이름을 짚어 검사한다.
+  // 새 공용 버튼(라벨 prop을 받는)을 만들면 이 목록에 추가할 것.
+  const uiSrc = readSafe('src/components/ui.tsx');
+  check(uiSrc !== null, 'src/components/ui.tsx 공용 버튼 파일이 존재한다');
+  if (uiSrc) {
+    for (const styleName of ['primaryBtnText', 'glassBtnText', 'socialBtnText', 'pillText']) {
+      const tagStart = uiSrc.search(new RegExp(`<Text[^>]*${styleName}`));
+      const ok = tagStart !== -1
+        && /andFitText/.test(uiSrc.slice(tagStart, fitTagEnd(uiSrc, tagStart) + 1));
+      check(ok, `ui.tsx ${styleName} 라벨에 andFitText가 있다`);
+    }
+  }
+}
+
 flush();
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

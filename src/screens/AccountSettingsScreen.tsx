@@ -23,6 +23,7 @@ import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon,
 import { useSkinAccent } from '../constants/skinTheme';
 import type { Gender } from '../store/settingsStore';
 import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
+import { andFitText } from '../utils/fitText';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -550,7 +551,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={() => setIsBirthdayModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSubmit, !isOldEnough(birthdayDraft) && styles.modalBtnDisabled]}
@@ -558,7 +559,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={!isOldEnough(birthdayDraft)}
                 onPress={submitBirthday}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -603,7 +604,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={() => setIsGenderModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSubmit, genderDraft === '' && styles.modalBtnDisabled]}
@@ -611,7 +612,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={genderDraft === ''}
                 onPress={submitGender}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -674,7 +675,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={closeEmailModal}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -689,7 +690,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 {emailSubmitting ? (
                   <ActivityIndicator size="small" color={COLORS.bg} />
                 ) : (
-                  <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                  <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -769,7 +770,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={closePasswordModal}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -781,7 +782,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
                 onPress={submitPasswordChange}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -829,14 +830,14 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={closeDeleteAccountModal}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteConsent && styles.modalBtnDisabled]}
                     disabled={!deleteConsent}
                     onPress={() => setDeleteStep(2)}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.next')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -878,14 +879,14 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={() => setDeleteStep(1)}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('accountSettings.prev')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteReason && styles.modalBtnDisabled]}
                     disabled={!deleteReason}
                     onPress={() => setDeleteStep(3)}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.next')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -928,7 +929,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={() => setDeleteStep(2)}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('accountSettings.prev')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -940,7 +941,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
                     onPress={submitDeleteAccount}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.permanentDelete')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.permanentDelete')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>

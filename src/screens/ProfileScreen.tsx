@@ -379,7 +379,7 @@ function BadgeListModal({
             onPress={() => setSelectMode((v) => !v)}
             activeOpacity={0.8}
           >
-            <Text style={[blStyles.selectBtnText, { color: skinAccent.accent }, selectMode && blStyles.selectBtnTextOn]}>
+            <Text style={[blStyles.selectBtnText, { color: skinAccent.accent }, selectMode && blStyles.selectBtnTextOn]} {...andFitText}>
               {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
@@ -498,7 +498,7 @@ function BadgeListModal({
         {/* 닫기 버튼은 margin:16을 유지해야 해서 폭 클램프를 래퍼가 맡는다 */}
         <View style={blStyles.footerClamp}>
           <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
-            <Text style={blStyles.closeBtnText}>{t('common.close')}</Text>
+            <Text style={blStyles.closeBtnText} {...andFitText}>{t('common.close')}</Text>
           </TouchableOpacity>
         </View>
 
@@ -1356,7 +1356,7 @@ function GroupMergeModal({
 
             {/* 저장 */}
             <TouchableOpacity style={gmSt.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-              <Text style={gmSt.saveBtnText}>{t('profile.saveLarge')}</Text>
+              <Text style={gmSt.saveBtnText} {...andFitText}>{t('profile.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </ScrollView>
@@ -2128,14 +2128,16 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             <TouchableOpacity
               onPress={() => navigation.navigate('TravelImport', { from: 'profile' })}
               activeOpacity={0.85}
-              style={{ marginTop: 10, borderRadius: 999, overflow: 'hidden' }}
+              // maxWidth: 자기 폭 버튼이라 상한이 없으면 andFitText가 축소할 기준이 없어
+              // 안드로이드(Noto Sans KR이 더 넓음)에서 라벨이 화면 밖으로 밀린다
+              style={{ marginTop: 10, borderRadius: 999, overflow: 'hidden', maxWidth: '90%' }}
             >
               <LinearGradient
                 colors={skinAccent.btnGradient}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                 style={{ paddingHorizontal: 22, paddingVertical: 11 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{t('profile.importPastTripsCta')}</Text>
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }} {...andFitText}>{t('profile.importPastTripsCta')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>

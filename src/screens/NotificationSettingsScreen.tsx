@@ -17,6 +17,7 @@ import * as Location from 'expo-location';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
+import { andFitText } from '../utils/fitText';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -191,7 +192,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
               onPress={requestPermission}
               activeOpacity={0.8}
             >
-              <Text style={styles.permissionBtnText}>{t('notifSettings.openSettings')}</Text>
+              <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.openSettings')}</Text>
             </TouchableOpacity>
           </View>
         )}

@@ -8,6 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { LockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { useStageWidth } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
@@ -98,7 +99,7 @@ export default function PhotoPagerSection({
           accessibilityLabel={t('newRecord.repBadge')}
         >
           <Text style={[st.actionBtnIcon, isRep && { color: skinAccent.accent }]}>★</Text>
-          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]}>{t('newRecord.repBadge')}</Text>
+          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.repBadge')}</Text>
         </TouchableOpacity>
 
         {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
@@ -110,7 +111,7 @@ export default function PhotoPagerSection({
           accessibilityLabel={t('newRecord.actionPrivacy')}
         >
           <LockClosedIcon size={13} color={hasPrivacy ? skinAccent.accent : '#A1A1B0'} />
-          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]}>{t('newRecord.actionPrivacy')}</Text>
+          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
         {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}

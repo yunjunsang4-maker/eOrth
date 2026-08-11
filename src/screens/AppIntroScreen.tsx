@@ -31,6 +31,7 @@ import {
 } from './introVisuals';
 import type { RootStackScreenProps } from '../navigation/types';
 import { useStageWidth } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 // 온보딩 5단계 — 시안(iPhone 17 - 64~68.svg) 순서 그대로. 비주얼은 introVisuals에 페이지별 분리.
 // Visual에 active를 내려 영상 비주얼(5페이지)이 활성 시점에 처음부터 재생되게 함
@@ -238,7 +239,7 @@ export default function AppIntroScreen({ navigation }: Props) {
         <Animated.View style={{ transform: [{ scale: ctaScale }] }}>
         <Pressable style={styles.nextBtn} onPress={goNext} disabled={!nextReady}>
           <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: 29, backgroundColor: ctaBg }]} />
-          <Text style={styles.nextBtnLabel}>
+          <Text style={styles.nextBtnLabel} {...andFitText}>
             {activeIdx === SLIDES.length - 1 ? t('appIntro.getStarted') : t('common.next')}
           </Text>
           {/* 테두리 — 탭바와 동일한 #CECFCD 대각선 그라데이션 스트로크 */}

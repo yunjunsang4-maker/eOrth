@@ -1809,7 +1809,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 16, paddingVertical: 10 }}
                   >
                     <PuzzlePieceIcon size={15} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{t('main.puzzlePickChip')}</Text>
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }} {...andFitText}>{t('main.puzzlePickChip')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -2529,7 +2529,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     <Text style={styles.dsColorLabel}>{t('main.puzzleImageLabel')}</Text>
                     {/* 그림을 아직 안 골랐으면 지도에 퍼즐이 그려지지 않는다 — 그 이유를 밝힌다 */}
                     {!puzzleImage && (
-                      <Text style={{ color: '#A1A1B0', fontSize: 12, marginBottom: 6 }}>{t('main.puzzleNeedPhoto')}</Text>
+                      <Text style={{ color: '#A1A1B0', fontSize: 12, marginBottom: 6 }} {...andFitText}>{t('main.puzzleNeedPhoto')}</Text>
                     )}
                     {/* 실루엣 미리보기 — 현재 그림이 나라 모양으로 잘린 모습 */}
                     {puzzleImage && puzzlePreview ? (
@@ -2598,7 +2598,7 @@ export default function MainScreen({ navigation, route }: Props) {
                         style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#3E3155', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Text style={{ color: '#A1A1B0', fontSize: 20 }}>＋</Text>
-                        <Text style={{ color: '#A1A1B0', fontSize: 9 }}>{t('main.puzzleFromAlbum')}</Text>
+                        <Text style={{ color: '#A1A1B0', fontSize: 9 }} {...andFitText}>{t('main.puzzleFromAlbum')}</Text>
                       </TouchableOpacity>
                     </ScrollView>
                   </View>
@@ -2621,7 +2621,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                   </View>
                   {recordedRegions.length === 0 ? (
-                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
+                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }} {...andFitText}>
                       {t('main.noRecordedRegions')}
                     </Text>
                   ) : (
@@ -2648,7 +2648,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                 onPress={() => setRegionPhotos(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }}>{t('main.reset')}</Text>
+                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }} {...andFitText}>{t('main.reset')}</Text>
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity
@@ -2675,7 +2675,7 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >
-              <Text style={dsm.confirmText}>{t('common.confirm')}</Text>
+              <Text style={dsm.confirmText} {...andFitText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>

@@ -14,6 +14,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../../constants/skinTheme';
 import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 /**
  * 30장 초과 시 뜨는 사진 선택 모달 — NewRecordScreen 에서 분리.
@@ -80,7 +81,7 @@ export function MediaPickerModal({
             style={{ padding: 4 }}
             disabled={selected.size === 0}
           >
-            <Text style={[mpStyles.confirmText, { color: skinAccent.accent }, selected.size === 0 && { opacity: 0.4 }]}>
+            <Text style={[mpStyles.confirmText, { color: skinAccent.accent }, selected.size === 0 && { opacity: 0.4 }]} {...andFitText}>
               {t('common.done')}
             </Text>
           </TouchableOpacity>

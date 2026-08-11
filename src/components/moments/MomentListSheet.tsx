@@ -13,6 +13,7 @@ import { useMoments } from '../../store/momentStore';
 import type { TravelMoment } from '../../store/momentStore';
 import MomentCard from './MomentCard';
 import { STAGE_MAX_W } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 export default function MomentListSheet({
   visible, onClose, moments, tripTitle,
@@ -67,7 +68,7 @@ export default function MomentListSheet({
                   accessibilityLabel={t('moments.deleteConfirm')}
                 >
                   <Text style={st.deleteActionText}>🗑️</Text>
-                  <Text style={st.deleteActionText}>{t('moments.deleteConfirm')}</Text>
+                  <Text style={st.deleteActionText} {...andFitText}>{t('moments.deleteConfirm')}</Text>
                 </TouchableOpacity>
               )}
               rightThreshold={64}

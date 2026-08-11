@@ -11,6 +11,7 @@ import { Text } from '../ui/Text';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useTranslation } from 'react-i18next';
+import { andFitText } from '../utils/fitText';
 
 /**
  * 인앱 카메라 촬영 모달 — expo-camera CameraView 기반.
@@ -78,7 +79,7 @@ export default function CameraCaptureModal({
                 if (!res.granted && !res.canAskAgain) Linking.openSettings().catch(() => {});
               }}
             >
-              <Text style={s.permBtnText}>{t('dm.cameraAllow')}</Text>
+              <Text style={s.permBtnText} {...andFitText}>{t('dm.cameraAllow')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={s.permClose} activeOpacity={0.7} onPress={onClose}>
               <Text style={s.permCloseText}>{t('common.close')}</Text>

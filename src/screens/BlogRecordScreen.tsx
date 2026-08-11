@@ -87,6 +87,7 @@ import {
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
 import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function SheetCheck() {
@@ -1355,7 +1356,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <View style={st.header}>
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.headerBtnText}>{t('common.cancel')}</Text>
+          <Text style={st.headerBtnText} {...andFitText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
@@ -1391,7 +1392,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
-            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
+            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1574,7 +1575,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
               atb?.bgColor === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockBgColor(c)}>
-              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>{t('blog.none')}</Text>}
+              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }} {...andFitText}>{t('blog.none')}</Text>}
             </TouchableOpacity>
           ))}
         </View>
@@ -1616,7 +1617,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
         <TouchableOpacity style={[st.schedConfirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleAddLink}>
-          <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
+          <Text style={st.schedConfirmText} {...andFitText}>{t('blog.insert')}</Text>
         </TouchableOpacity>
       </PickerModal>
 
@@ -1627,11 +1628,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {!!subtitle.trim() && (
             <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: '#2E2E3B' }]} onPress={() => { setSubtitle(''); setSubtitleModalVisible(false); }}>
-              <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]}>{t('blog.subtitleRemove')}</Text>
+              <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]} {...andFitText}>{t('blog.subtitleRemove')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: skinAccent.accentDeep }]} onPress={() => { setSubtitle(subtitleDraft.trim()); setSubtitleModalVisible(false); }}>
-            <Text style={st.schedConfirmText}>{t('common.confirm')}</Text>
+            <Text style={st.schedConfirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </View>
       </PickerModal>
@@ -1657,12 +1658,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   activeOpacity={0.85}
                 >
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>{t('blog.departDate')}</Text>
+                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.departDate')}</Text>
                     <Text style={st.dateBtnVal}>{startDate || '—'}</Text>
                   </View>
                   <Text style={st.dateBtnArrow}>→</Text>
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>{t('blog.arriveDate')}</Text>
+                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.arriveDate')}</Text>
                     <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
                   </View>
                   <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={skinAccent.accent} /></View>
@@ -2281,7 +2282,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               {(['grid2', 'grid3', 'slide'] as ImageLayout[]).map(l => (
                 <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && [st.layoutBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
                   onPress={() => updateBlock(block.id, { layout: l } as any)}>
-                  <Text style={[st.layoutBtnText, imb.layout === l && [st.layoutBtnTextActive, { color: skinAccent.accent }]]}>
+                  <Text style={[st.layoutBtnText, imb.layout === l && [st.layoutBtnTextActive, { color: skinAccent.accent }]]} {...andFitText}>
                     {l === 'grid2' ? t('blog.grid2') : l === 'grid3' ? t('blog.grid3') : t('blog.slide')}
                   </Text>
                 </TouchableOpacity>
@@ -2303,7 +2304,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <Text style={{ fontSize: 34 }}>📹</Text>
                 <Text style={st.videoPlaceholderTitle}>{t('blog.videoPlaceholderTitle')}</Text>
                 <TouchableOpacity style={[st.videoPlaceholderBtn, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.4) }]} activeOpacity={0.8} onPress={() => handleFillVideoPlaceholder(block.id)}>
-                  <Text style={[st.videoPlaceholderBtnText, { color: skinAccent.accent }]}>{t('blog.videoPlaceholderHint')}</Text>
+                  <Text style={[st.videoPlaceholderBtnText, { color: skinAccent.accent }]} {...andFitText}>{t('blog.videoPlaceholderHint')}</Text>
                 </TouchableOpacity>
                 {!!vb.sourceUrl && (
                   <TouchableOpacity onPress={() => Linking.openURL(vb.sourceUrl!)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2358,7 +2359,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 onPress={() => { if (vb.uri) Linking.openURL(vb.uri); }}
               >
                 <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
-                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }}>{t('blog.externalVideo')}</Text>
+                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }} {...andFitText}>{t('blog.externalVideo')}</Text>
               </TouchableOpacity>
             )}
             <View style={st.videoLabel}>
