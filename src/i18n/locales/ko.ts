@@ -57,6 +57,8 @@ const ko = {
     gender: '성별',
     genderMale: '남',
     genderFemale: '여',
+    ageConfirm: '만 14세 이상입니다',
+    ageConfirmHint: '만 14세 미만은 가입할 수 없습니다.',
     language: '언어',
     residence: '거주국가',
     residenceSelect: '거주국가 선택',

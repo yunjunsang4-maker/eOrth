@@ -56,6 +56,8 @@ const en = {
     gender: 'Gender',
     genderMale: 'Male',
     genderFemale: 'Female',
+    ageConfirm: 'I am 14 years of age or older',
+    ageConfirmHint: 'Users under 14 cannot sign up.',
     language: 'Language',
     residence: 'Country of residence',
     residenceSelect: 'Select country',
