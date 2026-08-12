@@ -674,6 +674,10 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
                 );
               })}
             </View>
+            {/* 칩 라벨('메이트만')과 실제 처리 범위가 어긋나지 않게 붙이는 안내 — i18n 주석 참조 */}
+            <Text style={st.visNotice}>
+              {visibility === 'private' ? t('newRecord.visNoticePrivate') : t('newRecord.visNoticeNeighbors')}
+            </Text>
           </View>
 
           {/* 선택 항목 구분선 */}
@@ -1067,6 +1071,7 @@ const st = StyleSheet.create({
 
   divider: { height: 1, backgroundColor: C.divider, marginTop: 4, marginBottom: 16 },
   optNotice: { color: C.textDim, fontSize: 12, marginBottom: 16 },
+  visNotice: { color: C.textDim, fontSize: 11, lineHeight: 16, marginTop: 8 },
 
   optRow: { marginBottom: 20 },
   optHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },

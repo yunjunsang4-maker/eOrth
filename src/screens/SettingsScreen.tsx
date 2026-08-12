@@ -25,6 +25,7 @@ import { fetchNotices } from '../services/notices';
 import { hasUnreadNotice } from '../utils/noticeFeed';
 import { signOut } from '../services/auth';
 import { deleteAllMyPosts } from '../services/posts';
+import { fetchMateRecoOptin, saveMateRecoOptin } from '../services/profile';
 import { clearTripState } from '../services/tripState';
 import type { RootStackScreenProps } from '../navigation/types';
 import {
@@ -167,6 +168,29 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
     })();
     return () => { alive = false; };
   }, [i18n.language, lastSeenNoticeAt]);
+
+  // 메이트 추천에 내 여행 기록을 쓰는 것에 대한 선택 동의(서버 값 profiles.mate_reco_optin).
+  // null(아직 안 물어본 기존 이용자)은 '추천에 포함된 상태'라 토글을 켜서 보여준다 —
+  // 사실과 다른 화면을 만들지 않기 위해서다(fetchMateRecoOptin 주석 참조).
+  const [mateRecoOn, setMateRecoOn] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const v = await fetchMateRecoOptin();
+      if (alive) setMateRecoOn(v !== false);
+    })();
+    return () => { alive = false; };
+  }, []);
+  // 낙관적으로 먼저 반영하고, 저장이 실패하면 되돌린다 — 껐다고 믿었는데 서버는 켜져 있는
+  // 상태가 남지 않게 한다(동의 값이라 화면과 실제가 어긋나면 안 된다).
+  const toggleMateReco = async (v: boolean) => {
+    setMateRecoOn(v);
+    const ok = await saveMateRecoOptin(v);
+    if (!ok) {
+      setMateRecoOn(!v);
+      emitToast(t('settings.mateRecoSaveFail'));
+    }
+  };
 
   const { resetRecords, activeStayGroup, startStay, endStay } = useRecords();
   const { resetConversations } = useDM();
@@ -360,8 +384,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             { icon: <BellIcon size={22} />,    label: t('settings.notifications'),      onPress: () => navigation.navigate('NotificationSettings') },
             { icon: <BlockIcon size={22} />,   label: t('settings.blockedUsers'),  onPress: () => navigation.navigate('BlockedUsers') },
             { icon: <ArchiveIcon size={22} />, label: t('settings.archivedPosts'),  onPress: () => navigation.navigate('ArchivedPosts') },
+            { icon: <CompassIcon size={22} />, label: t('settings.mateReco'), toggle: mateRecoOn, onToggle: toggleMateReco },
           ]}
         />
+        {/* 토글 라벨만으로는 무엇이 오가는지 알 수 없다 — 끄면 무엇이 사라지고 무엇을
+            잃는지까지 적는다(개인정보처리방침·기록 작성 화면 안내와 같은 내용). */}
+        <Text style={st.groupNote}>{t('settings.mateRecoNote')}</Text>
 
         {/* 앱 설정 */}
         <Text style={st.groupLabel}>{t('settings.groupApp')}</Text>
@@ -781,6 +809,16 @@ const st = StyleSheet.create({
     marginBottom: 8,
     marginLeft: 4,
     letterSpacing: 0.8,
+  },
+
+  // 그룹 아래 보충 설명 — 토글 하나로는 뜻이 안 통하는 항목에 붙인다
+  groupNote: {
+    fontSize: 11,
+    lineHeight: 16,
+    color: COLORS.textMuted,
+    marginTop: 8,
+    marginLeft: 4,
+    marginRight: 4,
   },
 
   // 설정 그룹

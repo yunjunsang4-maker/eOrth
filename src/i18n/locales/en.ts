@@ -87,6 +87,10 @@ const en = {
     notifications: 'Notifications',
     blockedUsers: 'Blocked users',
     archivedPosts: 'Archived posts',
+    // See ko.ts — state both what turning this off hides and what it costs.
+    mateReco: 'Use my travel records for mate recommendations',
+    mateRecoNote: 'The names of countries and cities you visited are used to find what you have in common with other travellers. Photos, text and dates are never used. Turning this off removes your countries from other people\'s recommendation lists, and also makes the recommendations you see less accurate. Every other feature keeps working either way.',
+    mateRecoSaveFail: 'Could not save the setting. Please try again in a moment.',
     showCounts: 'Show like & comment counts',
     diaryInteraction: 'Show social card interactions',
     globeSkin: 'Globe skin',
@@ -961,6 +965,9 @@ const en = {
     visFriends: 'Mates only',
     visNeighbors: 'Mates only',
     visPrivate: 'Only me',
+    // See ko.ts — the chip label alone does not match how the record is actually used.
+    visNoticeNeighbors: 'Only your mates can see this record. The countries you visited are used for mate recommendations.',
+    visNoticePrivate: 'Only you can see this. It is not used for mate recommendations.',
     photoTextLabel: 'Text for this photo ({{n}}/{{total}})',
     photoTextPlaceholder: 'Write about this moment',
     photoEmpty: 'Add photos to get started',

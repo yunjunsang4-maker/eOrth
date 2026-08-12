@@ -1725,6 +1725,10 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   })}
                 </View>
               </PanelRow>
+              {/* 칩 라벨('메이트만')과 실제 처리 범위가 어긋나지 않게 붙이는 안내 — i18n 주석 참조 */}
+              <Text style={st.visNotice}>
+                {visibility === 'private' ? t('newRecord.visNoticePrivate') : t('newRecord.visNoticeNeighbors')}
+              </Text>
 
               {/* 구분선 */}
               <View style={st.optDivider} />
@@ -2813,6 +2817,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   ratingScoreEmpty: { color: C.muted, fontSize: 12 },
   optDivider: { height: 1, backgroundColor: C.divider, marginVertical: 8 },
   optNotice: { color: C.muted, fontSize: 11, textAlign: 'center' as const, marginBottom: 14 },
+  visNotice: { color: C.muted, fontSize: 11, lineHeight: 16, marginTop: 6, marginBottom: 2 },
   budgetRow: { flexDirection: 'row' as const, flexWrap: 'wrap' as const, alignItems: 'center' as const, gap: 8 },
   currencyChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, backgroundColor: C.cardLight, borderWidth: 1, borderColor: 'transparent' },
   currencyChipActive: { backgroundColor: tint(0.25), borderColor: tint(0.3) },

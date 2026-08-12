@@ -39,6 +39,17 @@ select cron.schedule(
 );
 
 -- ------------------------------------------------------------
+-- 2-a) 프로빙 가드 카운터 정리 — 매일 04:40 UTC
+--    rpc_probe_guard 는 (사용자 × 함수 × 시간창 × 파라미터집합)마다 한 행이 쌓인다.
+--    판정은 '현재 시간창'만 보므로 지난 창은 지워도 되고, 안 지우면 계속 누적된다.
+-- ------------------------------------------------------------
+select cron.schedule(
+  'purge-probe-guard',
+  '40 4 * * *',
+  $$select public.purge_probe_guard()$$
+);
+
+-- ------------------------------------------------------------
 -- 3) 탈퇴 유예 만료 계정 파기 — 매일 18:00 UTC (KST 새벽 3시)
 --
 --    SQL 로 직접 지우지 않고 Edge Function(delete-account, scope='sweep')을 부르는 이유는
@@ -107,4 +118,5 @@ select cron.schedule(
 -- 되돌리기(등록 취소):
 -- select cron.unschedule('purge-notifications');
 -- select cron.unschedule('purge-mate-cache');
+-- select cron.unschedule('purge-probe-guard');
 -- select cron.unschedule('purge-deleted-accounts');

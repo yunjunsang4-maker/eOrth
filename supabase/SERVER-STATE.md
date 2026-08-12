@@ -25,7 +25,61 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 3건 (2026-08-09 기준)
+## 1. 지금 해야 하는 것 — 4건 (2026-08-12 기준)
+
+### ⏳ `schema.sql` 재실행 — 매칭 프라이버시 하드닝 (2026-08-11~12)
+
+발단: 기록의 공개 범위 칩은 **'메이트만'** 인데(`i18n visNeighbors`), 매칭·겹침·나라별
+방문자 함수는 `visibility <> 'private'` 로 거른다. 실제로 쓰이는 값이 `neighbors`/`private`
+둘뿐이라 **이 조건은 아무것도 거르지 않는다** — 메이트가 아닌 사용자에게도 방문 국가가
+쓰이고 있었다. 표시와 동작을 맞추고, 집계로 개인을 되짚는 경로를 막는다.
+
+| # | 내용 | 왜 |
+|---|------|-----|
+| 1 | `mate_suggestions_compute` 의 `extra_countries[1:30]` 상한 | `overlap_with` 에만 있던 이분 탐색 방어가 여기만 빠져 있었다 — 전 세계 국가를 넣고 배열을 반씩 쪼개면 추천에 뜬 사람의 방문국을 특정할 수 있다 |
+| 2 | `rpc_probe_guard` 표 + `probe_guard_ok()` + `purge_probe_guard()` | 상한 30은 '한 번에 통째로' 만 막는다. 나라를 하나씩 바꿔 200번 부르면 그대로 뚫린다 → **서로 다른 파라미터 집합의 종류 수**를 시간당 20종으로 제한(정상 클라이언트는 1~3종). 초과해도 예외 없이 extra 만 버린다 |
+| 3 | `k_anon_min()` + `cshared`·`ccity`·`overlap_with`·`country_visitors` 의 이름 노출 필터 | 근거 문구는 희소한 나라를 **일부러 앞세운다**(식별력 최대). 방문자 3명 미만인 나라·도시는 이름을 빼고, `country_visitors` 는 목록 자체를 내주지 않는다. 개수·점수는 그대로라 **추천 순위 정확도는 변하지 않는다** |
+| 4 | `profiles.mate_reco_optin` 컬럼 + `set_mate_reco_optin()` + 세 함수의 거부자 필터 | 선택 동의(거부권). **nullable 3-상태** — `null`=미결정(기존 이용자, 종전대로 포함), `true`=동의, `false`=거부 |
+| 5 | `idx_posts_country_shared` (부분 인덱스) | `country_name` 단독 인덱스가 없어 `country_visitors` 와 k-익명성 판정이 매번 전체 스캔이었다 |
+
+⚠️ **4번의 판정은 반드시 `is false` / `is distinct from false` 로 쓸 것.** `= false` 나
+`not mate_reco_optin` 은 `null` 에서 참이 되지 않아, 유예 중인 **기존 이용자가 통째로
+추천에서 사라진다.** 세 함수 모두 이 규칙으로 적혔다.
+
+⚠️ 거부자는 **'후보로 등장하는 쪽'에서만** 빠지고, 본인이 받는 추천은 막지 않는다.
+매칭은 이 앱의 본질 기능(여행 기록)이 아니라 부가 기능이라, 선택 동의 거부를 이유로
+기능 제공을 거절하면 개인정보보호법 제22조에 걸린다.
+
+재실행 후 실측:
+
+```sql
+-- ① 새 객체 4종이 있어야 한다
+select to_regclass('public.rpc_probe_guard') is not null as 가드표,
+       to_regprocedure('public.k_anon_min()') is not null as k익명,
+       to_regprocedure('public.set_mate_reco_optin(boolean)') is not null as 동의rpc,
+       exists (select 1 from information_schema.columns
+                where table_name='profiles' and column_name='mate_reco_optin') as 동의컬럼;
+-- ② 인덱스
+select indexname from pg_indexes where indexname = 'idx_posts_country_shared';
+-- ③ 기존 이용자가 유예 상태인지 (전부 null 이어야 정상 — 여기서 false 가 나오면 안 된다)
+select mate_reco_optin, count(*) from public.profiles group by 1;
+```
+
+이어서 `cron-setup.sql` 의 **2-a) `purge-probe-guard`** 블록도 등록할 것(가드 카운터가
+계속 누적된다). 나머지 잡은 이미 등록돼 있으므로 그 블록만 실행하면 된다.
+
+클라이언트 짝(같은 커밋): 기록 작성 화면의 공개범위 안내 문구(`visNoticeNeighbors`),
+설정 > 계정의 **'메이트 추천에 내 여행 기록 사용'** 토글. 토글은 서버 값을 읽으므로
+`schema.sql` 재실행 전에는 저장이 실패한다(화면은 되돌아가고 토스트로 알린다).
+
+**남은 것 — 아직 안 한 작업:** 온보딩 신규 가입자용 동의 화면과 기존 이용자용 재동의
+배너는 만들지 않았다. 지금은 설정에서 끌 수 있을 뿐이라 `mate_reco_optin` 은 계속
+`null`(유예)로 남는다. 개인정보처리방침에도 "메이트가 아닌 이용자에게도 방문 국가가
+추천 목적으로 집계 이용됨"을 아직 명시하지 않았다.
+
+---
+
+## 1-1. 이전부터 남아 있던 것 — 3건 (2026-08-09 기준)
 
 ### ⏳ `schema.sql` 재실행 — 유저 상호작용 감사(2026-08-09) 수정분 5건
 
