@@ -27,7 +27,7 @@ const LAST_UID_KEY = '@eorth/lastUserId';
 export function useAccountBoundary(): () => Promise<void> {
   const {
     birthday,
-    setHandle, setBio, setBirthday, setGender, setProfilePhoto, setHomeCountryCode,
+    setHandle, setBio, setProfilePhoto, setHomeCountryCode,
     setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
   const { records, resetRecords, hydrateMyRecords, rearmTripRestore, applyLocalStateBackup } = useRecords();
@@ -38,8 +38,9 @@ export function useAccountBoundary(): () => Promise<void> {
   const applyServerProfile = (p: ProfileRow) => {
     if (p.handle) setHandle(p.handle);
     if (p.bio) setBio(p.bio);
-    if (p.birthday) setBirthday(p.birthday);
-    if (p.gender === 'male' || p.gender === 'female') setGender(p.gender);
+    // birthday/gender는 Task 1에서 profiles 테이블·ProfileRow 타입에서 제거되어 더는
+    // 서버에서 읽어올 수 없다(App Store 5.1.1(v) 대응, 생년월일/성별 수집 폐지).
+    // settingsStore의 birthday/gender 필드 자체는 Task 4에서 정리한다.
     if (p.country) setHomeCountryCode(p.country);
     setProfilePhoto(p.profile_photo ?? null);
     // 아이디 표시 폰트 복원(해지 정책 '잠금+값 보존'의 값 보존) — 재구독 시 그대로 살아난다

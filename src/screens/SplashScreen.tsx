@@ -52,11 +52,11 @@ export default function SplashScreen({ navigation }: Props) {
   const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
   const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
   const { resetRecords } = useRecords();
-  const { resetSettings, birthday } = useSettings();
+  const { resetSettings, onboardedAt } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
-  // (effect는 마운트 1회만 도는데, 그 사이 계정 경계 처리가 birthday를 바꿀 수 있다)
-  const birthdayRef = useRef(birthday);
-  birthdayRef.current = birthday;
+  // (effect는 마운트 1회만 도는데, 그 사이 계정 경계 처리가 onboardedAt을 바꿀 수 있다)
+  const onboardedAtRef = useRef(onboardedAt);
+  onboardedAtRef.current = onboardedAt;
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
 
@@ -82,10 +82,9 @@ export default function SplashScreen({ navigation }: Props) {
         // 오지/기내에서 타임아웃을 기다리며 스플래시에 갇히지 않게 한다.
         if (session && (await isOnline()) === false) {
           await runAccountBoundary(); // 내부 서버 호출은 로컬 폴백으로 즉시 종료됨
-          // 온라인 분기와 같은 기준(로컬 birthday = 온보딩 완료 신호)으로 판정한다.
+          // 온라인 분기와 같은 기준(로컬 onboardedAt = 온보딩 완료 신호)으로 판정한다.
           // 생략하면 온보딩 중 이탈한 사용자가 비행기모드로 앱을 켜는 것만으로 Main에 들어간다.
-          const localBirthday = birthdayRef.current;
-          return localBirthday && localBirthday.trim() ? 'Main' : 'BasicInfo';
+          return onboardedAtRef.current > 0 ? 'Main' : 'BasicInfo';
         }
         const pending = session ? await getPendingDeletion() : null;
         // 탈퇴 유예(30일) 만료 → 서버까지 영구 파기 후 초기 화면으로.
@@ -105,14 +104,14 @@ export default function SplashScreen({ navigation }: Props) {
         if (session && !pending) {
           // 계정 경계 처리: 세션이 이전과 다른 계정이면 이전 로컬을 비우고 새 계정 데이터를 복원.
           await runAccountBoundary();
-          // 온보딩 완료(생일 채움) 여부 확인 — 미완이면 온보딩으로 재진입.
+          // 온보딩 완료(onboarded_at 기록) 여부 확인 — 미완이면 온보딩으로 재진입.
           let onboarded = false;
           const { reached, profile } = await getMyProfileStatus();
           if (!reached) {
             // 서버 도달 실패(오프라인/타임아웃): 세션이 있으니 기존 사용자로 간주(Main).
             onboarded = true;
           } else {
-            onboarded = !!(profile && profile.birthday && profile.birthday.trim());
+            onboarded = !!(profile && profile.onboarded_at);
           }
           return onboarded ? 'Main' : 'BasicInfo';
         }
@@ -129,11 +128,10 @@ export default function SplashScreen({ navigation }: Props) {
       navigated = true;
       // ⚠️ 판정에 상한이 없으면, 체인 안의 서버 호출 하나가 무응답일 때 스플래시에서
       // 영구 정지해 앱 진입 자체가 불가능해진다. 판정이 늦거나 실패하면 오프라인
-      // 분기와 같은 기준(세션 유무 + 로컬 birthday)으로 폴백한다.
+      // 분기와 같은 기준(세션 유무 + 로컬 onboardedAt)으로 폴백한다.
       const fallback = (): 'Main' | 'BasicInfo' | 'AppIntro' => {
         if (!sessionSeen) return 'AppIntro';
-        const b = birthdayRef.current;
-        return b && b.trim() ? 'Main' : 'BasicInfo';
+        return onboardedAtRef.current > 0 ? 'Main' : 'BasicInfo';
       };
       const dest = await withTimeout(destination, DEST_TIMEOUT_MS).catch(fallback);
       if (cancelled) return;

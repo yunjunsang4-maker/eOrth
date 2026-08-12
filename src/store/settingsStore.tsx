@@ -184,6 +184,9 @@ interface SettingsContextType {
   // 있으면 설정에 점 배지를 띄운다. 기기 시계가 아니라 게시 시각끼리 비교한다.
   lastSeenNoticeAt: number;
   setLastSeenNoticeAt: (v: number) => void;
+  // 온보딩 완료 시각(ms, 오프라인 폴백용 로컬 사본). 0=미완료 — 예전 birthday 역할을 대신한다.
+  onboardedAt: number;
+  setOnboardedAt: (v: number) => void;
   mateRecoAskedAt: number;
   setMateRecoAskedAt: (v: number) => void;
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
@@ -257,6 +260,7 @@ interface SettingsPersistPayload {
   tutorialsSeen?: TutorialsSeen; // 탭별 튜토리얼 표시 여부
   lastImportAt?: number | null;  // 과거여행 불러오기 마지막 완료 시각
   lastSeenNoticeAt?: number;     // 마지막으로 확인한 공지의 게시 시각(ms)
+  onboardedAt?: number;   // 온보딩 완료 시각(ms). 0=미완료. 오프라인 판정용 로컬 사본
   mateRecoAskedAt?: number;      // 메이트 추천 동의 배너를 닫은 시각(ms). 7일 뒤 재노출
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
@@ -338,6 +342,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [tutorialsSeen, setTutorialsSeen] = useState<TutorialsSeen>({}); // 탭별 튜토리얼 표시 여부(계정당)
   const [lastImportAt, setLastImportAt] = useState<number | null>(null); // 과거여행 불러오기 마지막 완료 시각
   const [lastSeenNoticeAt, setLastSeenNoticeAt] = useState(0); // 마지막으로 확인한 공지의 게시 시각
+  const [onboardedAt, setOnboardedAt] = useState(0); // 온보딩 완료 시각(ms). 0=미완료
   const [mateRecoAskedAt, setMateRecoAskedAt] = useState(0); // 동의 배너를 닫은 시각
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
@@ -483,6 +488,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setLastImportAt(typeof p.lastImportAt === 'number' ? p.lastImportAt : null);
       setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
+      setOnboardedAt(typeof p.onboardedAt === 'number' ? p.onboardedAt : 0);
       setMateRecoAskedAt(typeof p.mateRecoAskedAt === 'number' ? p.mateRecoAskedAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
@@ -536,6 +542,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialSeen: !!tutorialsSeen.main, // 구버전 앱 호환용으로 함께 저장
       lastImportAt,
       lastSeenNoticeAt,
+      onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
     }),
@@ -588,6 +595,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialsSeen,
       lastImportAt,
       lastSeenNoticeAt,
+      onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
     ],
@@ -666,6 +674,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 공지 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '읽음' 시각을 물려받아
     // 그 사이에 올라온 공지를 영영 못 본다.
     setLastSeenNoticeAt(0);
+    // 온보딩 완료 신호도 keepIdentity와 무관하게 지운다 — 다른 계정의 완료 상태를 물려받으면
+    // 온보딩을 안 마친 신규 사용자가 곧장 Main으로 들어가 버린다.
+    setOnboardedAt(0);
     // 배너 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '닫음' 시각을 물려받아
     // 유예 상태인데도 배너를 못 본다.
     setMateRecoAskedAt(0);
@@ -845,6 +856,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLastImportAt,
         lastSeenNoticeAt,
         setLastSeenNoticeAt,
+        onboardedAt,
+        setOnboardedAt,
         mateRecoAskedAt,
         setMateRecoAskedAt,
         stayNudgeDismissedFor,

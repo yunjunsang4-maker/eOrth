@@ -233,7 +233,7 @@ export default function LoginScreen({ navigation }: Props) {
         12000,
       );
       reached = status.reached;
-      if (status.profile && status.profile.birthday && status.profile.birthday.trim()) dest = 'Main';
+      if (status.profile && status.profile.onboarded_at) dest = 'Main';
       if (original) accountProvider = original;
       accountEmail = email;
     } catch {
@@ -485,7 +485,7 @@ export default function LoginScreen({ navigation }: Props) {
           navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
           return;
         }
-        destination = status.profile?.birthday && status.profile.birthday.trim() ? 'Main' : 'BasicInfo';
+        destination = status.profile?.onboarded_at ? 'Main' : 'BasicInfo';
       }
       await proceedAfterAuth(applySignup, destination);
     } finally {

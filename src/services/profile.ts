@@ -16,8 +16,7 @@ export interface ProfileRow {
   handle: string | null;
   emoji: string | null;
   bio: string | null;
-  birthday: string | null; // YYYY-MM-DD
-  gender: string | null;
+  onboarded_at: string | null; // 온보딩 완료 시각(ISO). null=미완료 — 예전 birthday 역할을 대신한다
   country?: string | null; // 거주 국가 코드(예: KR). 소유자 전용(public_profiles 뷰엔 없음)
   profile_photo: string | null;
   handle_font?: string | null; // 아이디 표시 폰트 id (프리미엄) — HANDLE_FONTS 참조
@@ -145,6 +144,22 @@ export async function saveMateRecoOptin(optin: boolean): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * 온보딩 완료를 서버에 기록한다. 이 값이 있으면 다음 실행부터 Main으로 바로 간다.
+ *
+ * 예전에는 birthday 유무로 판정했으나 App Store 5.1.1(v) 지적으로 생년월일 수집을
+ * 폐지하면서 전용 컬럼으로 옮겼다.
+ *
+ * ⚠️ update 가 아니라 upsertMyProfile 을 쓴다. handle_new_user 트리거가 지연되면
+ *    profiles 행이 아직 없을 수 있는데(schema.sql:879 주석이 그 사례를 적고 있다),
+ *    update 는 그때 0행을 갱신하고도 error 없이 성공을 반환한다. 그러면 서버에 값이
+ *    남지 않아 다음 실행에 사용자가 온보딩으로 되돌아간다. upsert 는 행을 만들어 준다.
+ */
+export async function markOnboarded(): Promise<boolean> {
+  const { ok } = await upsertMyProfile({ onboarded_at: new Date().toISOString() });
+  return ok;
 }
 
 /**
