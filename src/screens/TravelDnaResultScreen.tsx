@@ -477,7 +477,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
           <TouchableOpacity
             style={st.primaryWrap}
             activeOpacity={0.85}
-            onPress={() => navigation.replace('TravelDnaSurvey', { mode: 'full' })}
+            onPress={() => navigation.replace('TravelDnaSurvey', fromOnboarding ? { mode: 'full', from: 'onboarding' } : { mode: 'full' })}
           >
             <LinearGradient
               colors={skin.btnGradient}
@@ -494,7 +494,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
           <TouchableOpacity
             style={[st.outline, { borderColor: skin.tint(0.5) }]}
             activeOpacity={0.85}
-            onPress={() => navigation.replace('TravelDnaSurvey', { mode: 'full' })}
+            onPress={() => navigation.replace('TravelDnaSurvey', fromOnboarding ? { mode: 'full', from: 'onboarding' } : { mode: 'full' })}
           >
             <Text style={[st.outlineText, { color: skin.accent }]}>{t('dna.retake')}</Text>
           </TouchableOpacity>

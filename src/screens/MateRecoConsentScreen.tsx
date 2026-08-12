@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, BackHandler } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
@@ -95,11 +95,7 @@ export default function MateRecoConsentScreen({ navigation }: Props) {
         <Text style={st.checkLabel}>{t('mateConsent.checkbox')}</Text>
       </TouchableOpacity>
 
-      {saving ? (
-        <View style={st.savingRow}><ActivityIndicator color={C.neon} /></View>
-      ) : (
-        <GlassButton label={t('mateConsent.continue')} onPress={finish} />
-      )}
+      <GlassButton label={t('mateConsent.continue')} onPress={finish} loading={saving} />
     </View>
   );
 }
@@ -121,5 +117,4 @@ const st = StyleSheet.create({
   },
   boxOn: { backgroundColor: C.neon, borderColor: C.neon },
   checkLabel: { flex: 1, fontSize: 13, color: C.white, lineHeight: 19 },
-  savingRow: { height: 54, alignItems: 'center', justifyContent: 'center' },
 });

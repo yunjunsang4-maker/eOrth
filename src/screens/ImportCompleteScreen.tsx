@@ -1,7 +1,8 @@
 import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, Animated, Easing, Platform } from 'react-native';
+import { View, StyleSheet, Animated, Easing, Platform, BackHandler } from 'react-native';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -10,7 +11,6 @@ import { requestNotificationPermission } from '../services/snapService';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
-import { useBlockHardwareBack } from '../hooks/useBlockHardwareBack';
 import type { RootStackScreenProps } from '../navigation/types';
 
 // 완료 화면에서 가져온 나라 국기 칩 — 순차로 톡 튀어오르며 나타난다(스프링).
@@ -33,12 +33,21 @@ function FlagChip({ flag, name, delay }: { flag: string; name: string; delay: nu
 }
 
 export default function ImportCompleteScreen({ navigation, route }: RootStackScreenProps<'ImportComplete'>) {
-  // 완료 화면은 뒤로가기로 빠져나가면 안 된다 — 온보딩 경로에서는 이 화면의 CTA가
-  // 알림 권한 요청과 튜토리얼 시작을 겸하고, 되돌아갈 이전 단계도 이미 스택에서 정리됐다.
-  useBlockHardwareBack();
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const { tripCount, photoCount, countries, from } = route.params;
+
+  // 완료 화면은 뒤로가기로 빠져나가면 안 된다 — 온보딩 경로에서는 이 화면의 CTA가
+  // 알림 권한 요청·설문·동의 화면으로 이어지고, 되돌아갈 이전 단계도 이미 스택에서 정리됐다
+  // (Main 리셋 이후라 뒤로가기 한 번이면 파라미터 없는 빈 Main에 도달해 설문·동의를 통째로 우회한다).
+  // 프로필에서 들어온 경우(from === 'profile')는 온보딩이 아니라 기존대로 뒤로가기가 동작해야 한다.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (from === 'profile') return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, [from])
+  );
 
   // 진입 시 체크 아이콘 스케일/페이드 인 + 링 버스트(리플)
   const checkScale = useRef(new Animated.Value(0.6)).current;

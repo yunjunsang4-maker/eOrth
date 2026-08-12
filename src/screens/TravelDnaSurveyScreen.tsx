@@ -60,7 +60,9 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   const insets = useSafeAreaInsets();
   const skin = useSkinAccent(); // 지구본 스킨 → 앱 강조색
   const { answers: saved, submit } = useTravelDna();
-  const onboarding = route.params?.mode === 'onboarding';
+  // 온보딩 출신 여부는 mode(문항 세트)와 별개 신호(from)로도 판정한다 — 결과 화면의
+  // '설문 이어하기'가 mode를 'full'로 바꿔도(문항 세트만 전환) 온보딩 출신 정보는 유지된다.
+  const onboarding = route.params?.mode === 'onboarding' || route.params?.from === 'onboarding';
 
   const questions = useMemo(
     () => (onboarding
