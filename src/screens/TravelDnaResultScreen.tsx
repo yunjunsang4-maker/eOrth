@@ -14,6 +14,7 @@ import {
   Animated,
   Easing,
   InteractionManager,
+  BackHandler,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -104,6 +105,17 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
     React.useCallback(() => {
       refresh();
     }, [refresh])
+  );
+
+  // 온보딩 경로에서는 뒤로가기로 동의 화면을 건너뛸 수 있다(스택 바닥에 빈 Main이 남아 있다).
+  // gestureEnabled: false 는 iOS 스와이프만 막으므로 안드로이드 하드웨어 백은 여기서 막는다.
+  // 온보딩이 아니면 기존대로 뒤로가기가 동작해야 한다(이 화면은 앱 안에서도 열린다).
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!fromOnboarding) return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, [fromOnboarding])
   );
 
   // 성향이 맞는 메이트 — 설문의 보상이 도착하는 자리다. 36문항을 답한 이유가 매칭인데
