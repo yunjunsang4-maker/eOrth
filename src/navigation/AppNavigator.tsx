@@ -10,6 +10,7 @@ import LoginScreen from '../screens/LoginScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
 import TravelImportScreen from '../screens/TravelImportScreen';
+import MateRecoConsentScreen from '../screens/MateRecoConsentScreen';
 import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
 import ImportCompleteScreen from '../screens/ImportCompleteScreen';
 import CountryScreen from '../screens/CountryScreen';
@@ -332,6 +333,11 @@ export default function AppNavigator() {
           options={{ gestureEnabled: false }}
         />
         <Stack.Screen
+          name="MateRecoConsent"
+          component={MateRecoConsentScreen}
+          options={{ gestureEnabled: false }}
+        />
+        <Stack.Screen
           name="ImportPhotoSelect"
           component={ImportPhotoSelectScreen}
           options={{ gestureEnabled: false }}
@@ -349,7 +355,11 @@ export default function AppNavigator() {
           component={TravelDnaSurveyScreen}
           options={{ gestureEnabled: false }}
         />
-        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
+        <Stack.Screen
+          name="TravelDnaResult"
+          component={TravelDnaResultScreen}
+          options={{ gestureEnabled: false }}
+        />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />

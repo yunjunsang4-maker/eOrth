@@ -100,6 +100,7 @@ export type RootStackParamList = {
   BasicInfo: undefined;
   // from: 'profile' = 앱 내(프로필) 진입 — 완료 후 온보딩처럼 메인+튜토리얼로 리셋하지 않고 되돌아간다
   TravelImport: { from?: 'profile' } | undefined;
+  MateRecoConsent: undefined;
   ImportPhotoSelect: { trips: ImportTrip[]; from?: 'profile' };
   ImportComplete: { tripCount: number; photoCount: number; countries: { flag: string; name: string }[]; from?: 'profile' };
   Main: NavigatorScreenParams<TabParamList> | undefined;
@@ -157,7 +158,10 @@ export type RootStackParamList = {
   } | undefined;
   AlbumCreate: { selectedCountry?: SelectedCountryParam; tripGroupId?: string } | undefined; // tripGroupId: 여행 상세에서 진입 시 그 카드에 연결(카드당 앨범 1개)
   MomentCapture: undefined;
-  TravelDnaSurvey: { mode: 'full' | 'onboarding' };
+  // from: 'onboarding' = 온보딩 출신 표시. mode(문항 세트)와 독립적으로 넘긴다 — 결과 화면에서
+  // '설문 이어하기'로 mode:'full'을 골라도(전체 문항으로 전환) 온보딩 출신 정보는 유지돼야
+  // 뒤로가기/완료 후 이탈이 동의 화면을 우회하지 않는다.
+  TravelDnaSurvey: { mode: 'full' | 'onboarding'; from?: 'onboarding' };
   TravelDnaResult: { from?: 'onboarding' } | undefined;
 };
 

@@ -14,6 +14,7 @@ import {
   Animated,
   Easing,
   InteractionManager,
+  BackHandler,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -104,6 +105,17 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
     React.useCallback(() => {
       refresh();
     }, [refresh])
+  );
+
+  // 온보딩 경로에서는 뒤로가기로 동의 화면을 건너뛸 수 있다(스택 바닥에 빈 Main이 남아 있다).
+  // gestureEnabled: false 는 iOS 스와이프만 막으므로 안드로이드 하드웨어 백은 여기서 막는다.
+  // 온보딩이 아니면 기존대로 뒤로가기가 동작해야 한다(이 화면은 앱 안에서도 열린다).
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!fromOnboarding) return undefined;
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, [fromOnboarding])
   );
 
   // 성향이 맞는 메이트 — 설문의 보상이 도착하는 자리다. 36문항을 답한 이유가 매칭인데
@@ -465,7 +477,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
           <TouchableOpacity
             style={st.primaryWrap}
             activeOpacity={0.85}
-            onPress={() => navigation.replace('TravelDnaSurvey', { mode: 'full' })}
+            onPress={() => navigation.replace('TravelDnaSurvey', fromOnboarding ? { mode: 'full', from: 'onboarding' } : { mode: 'full' })}
           >
             <LinearGradient
               colors={skin.btnGradient}
@@ -482,7 +494,7 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
           <TouchableOpacity
             style={[st.outline, { borderColor: skin.tint(0.5) }]}
             activeOpacity={0.85}
-            onPress={() => navigation.replace('TravelDnaSurvey', { mode: 'full' })}
+            onPress={() => navigation.replace('TravelDnaSurvey', fromOnboarding ? { mode: 'full', from: 'onboarding' } : { mode: 'full' })}
           >
             <Text style={[st.outlineText, { color: skin.accent }]}>{t('dna.retake')}</Text>
           </TouchableOpacity>
@@ -490,15 +502,9 @@ export default function TravelDnaResultScreen({ navigation, route }: RootStackSc
         <TouchableOpacity
           onPress={() => {
             if (!fromOnboarding) { navigation.goBack(); return; }
-            // 온보딩 종점 — replace가 아니라 reset을 쓴다: replace는 이 화면만 바꿔서
-            // 아래 온보딩 스택(Splash·AppIntro·Login·BasicInfo·TravelImport·ImportComplete)이
-            // 그대로 남고, 안드로이드 뒤로가기로 온보딩에 다시 들어갈 수 있게 된다.
-            // startTutorial: true는 MainScreen이 읽어 첫 진입 코치마크 튜토리얼을 띄우는
-            // 살아있는 플래그다 — ImportCompleteScreen의 기존 온보딩 종료 처리와 동일하게 맞춘다.
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
-            });
+            // 온보딩 종점은 동의 화면이다 — 스택 정리(reset)와 startTutorial 전달은
+            // MateRecoConsentScreen 이 대신 수행한다.
+            navigation.replace('MateRecoConsent');
           }}
         >
           <Text style={st.secondaryText}>{fromOnboarding ? t('common.done') : t('common.close')}</Text>

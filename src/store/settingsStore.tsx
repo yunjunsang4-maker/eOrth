@@ -184,6 +184,8 @@ interface SettingsContextType {
   // 있으면 설정에 점 배지를 띄운다. 기기 시계가 아니라 게시 시각끼리 비교한다.
   lastSeenNoticeAt: number;
   setLastSeenNoticeAt: (v: number) => void;
+  mateRecoAskedAt: number;
+  setMateRecoAskedAt: (v: number) => void;
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
@@ -255,6 +257,7 @@ interface SettingsPersistPayload {
   tutorialsSeen?: TutorialsSeen; // 탭별 튜토리얼 표시 여부
   lastImportAt?: number | null;  // 과거여행 불러오기 마지막 완료 시각
   lastSeenNoticeAt?: number;     // 마지막으로 확인한 공지의 게시 시각(ms)
+  mateRecoAskedAt?: number;      // 메이트 추천 동의 배너를 닫은 시각(ms). 7일 뒤 재노출
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
 
@@ -335,6 +338,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [tutorialsSeen, setTutorialsSeen] = useState<TutorialsSeen>({}); // 탭별 튜토리얼 표시 여부(계정당)
   const [lastImportAt, setLastImportAt] = useState<number | null>(null); // 과거여행 불러오기 마지막 완료 시각
   const [lastSeenNoticeAt, setLastSeenNoticeAt] = useState(0); // 마지막으로 확인한 공지의 게시 시각
+  const [mateRecoAskedAt, setMateRecoAskedAt] = useState(0); // 동의 배너를 닫은 시각
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
   const incrementShareSent = useCallback(() => setShareSentCount((c) => c + 1), []);
@@ -479,6 +483,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setLastImportAt(typeof p.lastImportAt === 'number' ? p.lastImportAt : null);
       setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
+      setMateRecoAskedAt(typeof p.mateRecoAskedAt === 'number' ? p.mateRecoAskedAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
     () => ({
@@ -531,6 +536,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialSeen: !!tutorialsSeen.main, // 구버전 앱 호환용으로 함께 저장
       lastImportAt,
       lastSeenNoticeAt,
+      mateRecoAskedAt,
       stayNudgeDismissedFor,
     }),
     [
@@ -582,6 +588,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialsSeen,
       lastImportAt,
       lastSeenNoticeAt,
+      mateRecoAskedAt,
       stayNudgeDismissedFor,
     ],
   );
@@ -659,6 +666,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 공지 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '읽음' 시각을 물려받아
     // 그 사이에 올라온 공지를 영영 못 본다.
     setLastSeenNoticeAt(0);
+    // 배너 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '닫음' 시각을 물려받아
+    // 유예 상태인데도 배너를 못 본다.
+    setMateRecoAskedAt(0);
     setStayNudgeDismissedFor(null);
     visitRecordedRef.current = false;
   };
@@ -835,6 +845,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLastImportAt,
         lastSeenNoticeAt,
         setLastSeenNoticeAt,
+        mateRecoAskedAt,
+        setMateRecoAskedAt,
         stayNudgeDismissedFor,
         setStayNudgeDismissedFor,
         resetSettings,

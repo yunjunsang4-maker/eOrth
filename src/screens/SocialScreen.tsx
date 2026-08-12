@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import AppRefreshControl from '../components/AppRefreshControl';
+import MateRecoConsentBanner from '../components/MateRecoConsentBanner';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
@@ -2992,6 +2993,8 @@ function FriendsTab({ navigation }: { navigation: any }) {
         scrollEventThrottle={16}
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        {/* 유예 상태인 기존 이용자에게만 뜬다 — 컴포넌트가 스스로 판정하고, 아니면 null 이다 */}
+        <MateRecoConsentBanner />
         {/* 스냅 스토리 라인 (인스타 스토리 스타일) */}
         {snapDisplay.length > 0 && (
           <View style={s.storySection}>
