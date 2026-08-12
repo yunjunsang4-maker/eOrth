@@ -26,7 +26,7 @@ const LAST_UID_KEY = '@eorth/lastUserId';
  */
 export function useAccountBoundary(): () => Promise<void> {
   const {
-    birthday,
+    onboardedAt,
     setHandle, setBio, setProfilePhoto, setHomeCountryCode,
     setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
@@ -38,9 +38,8 @@ export function useAccountBoundary(): () => Promise<void> {
   const applyServerProfile = (p: ProfileRow) => {
     if (p.handle) setHandle(p.handle);
     if (p.bio) setBio(p.bio);
-    // birthday/gender는 Task 1에서 profiles 테이블·ProfileRow 타입에서 제거되어 더는
-    // 서버에서 읽어올 수 없다(App Store 5.1.1(v) 대응, 생년월일/성별 수집 폐지).
-    // settingsStore의 birthday/gender 필드 자체는 Task 4에서 정리한다.
+    // birthday/gender는 profiles 테이블·ProfileRow 타입에서 제거되어 더는 서버에서
+    // 읽어올 수 없다(App Store 5.1.1(v) 대응, 생년월일/성별 수집 폐지).
     if (p.country) setHomeCountryCode(p.country);
     setProfilePhoto(p.profile_photo ?? null);
     // 아이디 표시 폰트 복원(해지 정책 '잠금+값 보존'의 값 보존) — 재구독 시 그대로 살아난다
@@ -101,8 +100,10 @@ export function useAccountBoundary(): () => Promise<void> {
       } else if (last !== uid) {
         // 새 기기/이 설치 최초 진입(last=null): 로컬을 지우지 않는다(이 사용자의 로컬 초안 보존).
         // 기존 사용자가 새 기기에서 로그인할 때 빈 로컬이 서버 프로필을 덮어쓰는 것을 막기 위해,
-        // 로컬 프로필이 비어 있으면 서버에서 복원한다(handle·기본정보 유실 방지).
-        if (!birthday || !birthday.trim()) {
+        // 이 기기에서 온보딩을 마치지 않았으면(=로컬 프로필이 비어 있으면) 서버에서 복원한다
+        // (handle·기본정보 유실 방지). onboardedAt은 온보딩 완료 시각(0=미완료)이라 birthday와
+        // 같은 "로컬 프로필이 채워졌는가" 판정을 대신할 수 있다.
+        if (!onboardedAt) {
           try {
             const p = await getMyProfile();
             if (p) applyServerProfile(p);

@@ -19,10 +19,8 @@ import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDel
 import { signOut, signInWithEmail, updatePassword, requestEmailChange, getAuthEmail } from '../services/auth';
 import { isSupabaseConfigured } from '../services/supabase';
 import type { RootStackScreenProps } from '../navigation/types';
-import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon, CalendarIcon, PersonIcon } from '../components/icons';
+import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon } from '../components/icons';
 import { useSkinAccent } from '../constants/skinTheme';
-import type { Gender } from '../store/settingsStore';
-import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
 import { andFitText } from '../utils/fitText';
 
 const COLORS = {
@@ -43,8 +41,6 @@ const COLORS = {
 };
 
 type Props = RootStackScreenProps<'AccountSettings'>;
-
-// 생일 입력 유틸(형식 정렬·유효성·만 14세 확인)은 utils/birthday 에서 가져온다.
 
 // 이메일 형식 간이 검증 (변경 요청 전 오입력 차단)
 const EMAIL_INPUT_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -98,9 +94,7 @@ const CardRow = ({
 export default function AccountSettingsScreen({ navigation }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent(); // 토글 트랙 색 — 설정 전역 토글 디자인 통일(스킨색 트랙 + 흰 썸)
-  const { signUpMethod, signUpEmail, setSignUpEmail, birthday, setBirthday, gender, setGender } = useSettings();
-  const genderLabel = (g: Gender) =>
-    g === 'male' ? t('basicInfo.genderMale') : g === 'female' ? t('basicInfo.genderFemale') : t('accountSettings.genderUnset');
+  const { signUpMethod, signUpEmail, setSignUpEmail } = useSettings();
   // 실제 identity 연동 API 미연동 — 연동 상태는 가입 수단에서 파생(가짜 토글 상태 금지, H2)
   const googleLinked = signUpMethod === 'google';
 
@@ -116,43 +110,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // 생일 편집 모달 상태
-  const [isBirthdayModalVisible, setIsBirthdayModalVisible] = useState(false);
-  const [birthdayDraft, setBirthdayDraft] = useState(birthday);
-  // 성별 편집 모달 상태
-  const [isGenderModalVisible, setIsGenderModalVisible] = useState(false);
-  const [genderDraft, setGenderDraft] = useState<Gender>(gender);
-
-  const openBirthdayModal = () => {
-    setBirthdayDraft(birthday);
-    setIsBirthdayModalVisible(true);
-  };
-  const submitBirthday = () => {
-    if (!isValidBirthday(birthdayDraft)) {
-      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.birthdayInvalid'));
-      return;
-    }
-    // 만 14세 미만으로는 수정할 수 없다(이용약관 제4조 2항 — 온보딩과 같은 규칙).
-    if (!isOldEnough(birthdayDraft)) {
-      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.birthdayUnderage'));
-      return;
-    }
-    setBirthday(birthdayDraft);
-    setIsBirthdayModalVisible(false);
-  };
-
-  const openGenderModal = () => {
-    setGenderDraft(gender);
-    setIsGenderModalVisible(true);
-  };
-  const submitGender = () => {
-    if (genderDraft === '') {
-      Alert.alert(t('accountSettings.errorTitle'), t('accountSettings.genderSelectError'));
-      return;
-    }
-    setGender(genderDraft);
-    setIsGenderModalVisible(false);
-  };
   const appleLinked = signUpMethod === 'apple';
 
   // 이메일 변경 모달 상태 (iOS·Android 공용) + 본인 확인용 현재 비밀번호(재인증)
@@ -435,24 +392,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
           />
         </View>
 
-        {/* ── 기본 정보 ── */}
-        <SectionTitle label={t('accountSettings.sectionBasic')} />
-        <View style={styles.card}>
-          <CardRow
-            icon={<CalendarIcon size={20} />}
-            label={t('accountSettings.birthday')}
-            value={birthday ? birthday : t('accountSettings.birthdayUnset')}
-            onPress={openBirthdayModal}
-          />
-          <View style={styles.rowDivider} />
-          <CardRow
-            icon={<PersonIcon size={20} />}
-            label={t('accountSettings.gender')}
-            value={genderLabel(gender)}
-            onPress={openGenderModal}
-          />
-        </View>
-
         {/* ── 비밀번호 ── */}
         <SectionTitle label={t('accountSettings.sectionPassword')} />
         <View style={styles.card}>
@@ -508,116 +447,6 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
         <View style={{ height: 40 }} />
       </ScrollView>
-
-      {/* ── 생일 편집 모달 ── */}
-      <Modal
-        visible={isBirthdayModalVisible}
-        animationType="fade"
-        transparent={true} statusBarTranslucent navigationBarTranslucent
-        onRequestClose={() => setIsBirthdayModalVisible(false)}
-      >
-        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <View style={styles.modalOverlay} accessibilityViewIsModal>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('accountSettings.birthdayModalTitle')}</Text>
-            <Text style={styles.modalDesc}>{t('accountSettings.birthdayModalDesc')}</Text>
-
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>{t('accountSettings.birthday')}</Text>
-              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={[
-                  styles.modalInput,
-                  birthdayDraft.length > 0 && !isOldEnough(birthdayDraft) && styles.modalInputError,
-                ]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={COLORS.textMuted}
-                keyboardType="number-pad"
-                maxLength={10}
-                value={birthdayDraft}
-                onChangeText={(t) => setBirthdayDraft(formatBirthday(t))}
-              />
-              {birthdayDraft.length > 0 && !isValidBirthday(birthdayDraft) && (
-                <Text style={styles.inputErrorText}>{t('accountSettings.formatHint')}</Text>
-              )}
-              {isValidBirthday(birthdayDraft) && !isOldEnough(birthdayDraft) && (
-                <Text style={styles.inputErrorText}>{t('accountSettings.birthdayUnderage')}</Text>
-              )}
-            </View>
-
-            <View style={styles.modalBtnGroup}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                activeOpacity={0.7}
-                onPress={() => setIsBirthdayModalVisible(false)}
-              >
-                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnSubmit, !isOldEnough(birthdayDraft) && styles.modalBtnDisabled]}
-                activeOpacity={0.7}
-                disabled={!isOldEnough(birthdayDraft)}
-                onPress={submitBirthday}
-              >
-                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* ── 성별 편집 모달 ── */}
-      <Modal
-        visible={isGenderModalVisible}
-        animationType="fade"
-        transparent={true} statusBarTranslucent navigationBarTranslucent
-        onRequestClose={() => setIsGenderModalVisible(false)}
-      >
-        <View style={styles.modalOverlay} accessibilityViewIsModal>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{t('accountSettings.genderModalTitle')}</Text>
-            <Text style={styles.modalDesc}>{t('accountSettings.genderModalDesc')}</Text>
-
-            <View style={styles.genderRow}>
-              {([
-                { value: 'male', label: t('basicInfo.genderMale') },
-                { value: 'female', label: t('basicInfo.genderFemale') },
-              ] as { value: Gender; label: string }[]).map((opt) => {
-                const active = genderDraft === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[styles.genderBtn, active && styles.genderBtnActive]}
-                    activeOpacity={0.8}
-                    onPress={() => setGenderDraft(opt.value)}
-                  >
-                    <Text style={[styles.genderText, active && styles.genderTextActive]}>{opt.label}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <View style={styles.modalBtnGroup}>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnCancel]}
-                activeOpacity={0.7}
-                onPress={() => setIsGenderModalVisible(false)}
-              >
-                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalBtn, styles.modalBtnSubmit, genderDraft === '' && styles.modalBtnDisabled]}
-                activeOpacity={0.7}
-                disabled={genderDraft === ''}
-                onPress={submitGender}
-              >
-                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* ── 이메일 변경 모달 (iOS·Android 공용) ── */}
       <Modal
@@ -1230,35 +1059,5 @@ const styles = StyleSheet.create({
   radioLabel: {
     fontSize: 13,
     color: COLORS.white,
-  },
-
-  // 성별 선택 버튼
-  genderRow: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 20,
-  },
-  genderBtn: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 14,
-    backgroundColor: COLORS.bg,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: COLORS.divider,
-  },
-  genderBtnActive: {
-    borderColor: COLORS.purpleNeon,
-    backgroundColor: COLORS.purpleBg,
-  },
-  genderText: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: COLORS.textDim,
-  },
-  genderTextActive: {
-    color: COLORS.purpleNeon,
-    fontWeight: '700',
   },
 });

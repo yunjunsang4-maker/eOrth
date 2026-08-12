@@ -94,8 +94,6 @@ const glassBtn = StyleSheet.create({
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
-// 생일 입력 유틸(형식 정렬·유효성·만 14세 확인)은 utils/birthday 에서 가져온다.
-
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 

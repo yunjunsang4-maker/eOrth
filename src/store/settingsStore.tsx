@@ -18,8 +18,6 @@ export type SignUpMethod = 'email' | 'google' | 'apple';
 export type MapDisplayMode = 'flag' | 'color' | 'photo';
 // 지구본 형태: aurora = 보라 발광 행성(디폴트, 색상 표시), classic = 현재 지구본(사진 표시)
 export type GlobeVariant = 'aurora' | 'classic';
-// 성별: '' = 미설정
-export type Gender = 'male' | 'female' | '';
 // 앱 언어: 한국어 / 영어
 export type AppLanguage = 'ko' | 'en';
 
@@ -70,10 +68,6 @@ interface SettingsContextType {
   setSnapEnabled: (v: boolean) => void;
   diaryCardMode: DiaryCardMode;
   setDiaryCardMode: (v: DiaryCardMode) => void;
-  birthday: string; // YYYY-MM-DD
-  setBirthday: (v: string) => void;
-  gender: Gender;
-  setGender: (v: Gender) => void;
   language: AppLanguage;
   setLanguage: (v: AppLanguage) => void;
   handle: string;
@@ -193,12 +187,12 @@ interface SettingsContextType {
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
   // 모든 설정을 기본값으로 되돌림.
-  // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·birthday·
+  // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·
   // signUpMethod·signUpEmail·language)은 그대로 둔다 — 설정 > '데이터 초기화'용.
   // 계정 전환·탈퇴 파기처럼 '다른 사람이 되는' 경로는 옵션 없이 호출해 전부 초기화한다.
   resetSettings: (opts?: { keepIdentity?: boolean }) => void;
   // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
-  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
+  // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
   exportSettingsBackup: () => Record<string, unknown>;
   applySettingsBackup: (b: Record<string, unknown>) => void;
 }
@@ -209,8 +203,6 @@ interface SettingsPersistPayload {
   homeCountryCode: string;
   snapEnabled: boolean;
   diaryCardMode: DiaryCardMode;
-  birthday?: string; // 과거 저장본엔 없을 수 있어 optional
-  gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
   language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
   handle: string;
   bio: string;
@@ -272,8 +264,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
-  const [birthday, setBirthday] = useState('');
-  const [gender, setGender] = useState<Gender>('');
   // 기본 언어: 한국어 기기만 ko, 그 외 기기는 en — 저장된 언어가 있으면 hydrate가 덮는다
   const [language, setLanguage] = useState<AppLanguage>(DEVICE_DEFAULT_LANGUAGE);
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
@@ -395,8 +385,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setHomeCountryCode(p.homeCountryCode);
       setSnapEnabled(p.snapEnabled);
       setDiaryCardMode(p.diaryCardMode);
-      setBirthday(p.birthday ?? '');
-      setGender(p.gender ?? '');
       // 과거 저장본에 language가 없으면 기기 언어 기본값(한국어 기기만 ko)으로
       setLanguage(p.language ?? DEVICE_DEFAULT_LANGUAGE);
       setHandle(p.handle);
@@ -497,8 +485,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      birthday,
-      gender,
       language,
       handle,
       bio,
@@ -551,8 +537,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      birthday,
-      gender,
       language,
       handle,
       bio,
@@ -618,20 +602,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // opts.keepIdentity: 로컬 정체성 보존 여부.
   //   false(기본, 계정 전환·탈퇴 파기) — 예전 동작 그대로 전부 초기화.
-  //   true('데이터 초기화') — handle·birthday·가입수단·언어를 유지한다. 표시 이름이 곧 handle이고
-  //   온보딩 완료 신호가 birthday라, 이걸 지우면 ProfileSync가 사용자가 고른 아이디를 랜덤 값으로
-  //   서버에 덮어쓰고(=아이디 유실) 소셜 가입자는 'email' 가입자로 오인돼 탈퇴가 막힌다.
+  //   true('데이터 초기화') — handle·가입수단·언어를 유지한다. 표시 이름이 곧 handle이라,
+  //   이걸 지우면 ProfileSync가 사용자가 고른 아이디를 랜덤 값으로 서버에 덮어쓰고(=아이디 유실)
+  //   소셜 가입자는 'email' 가입자로 오인돼 탈퇴가 막힌다. (예전엔 온보딩 완료 신호였던 birthday도
+  //   함께 보존했지만, 지금의 신호인 onboardedAt은 keepIdentity와 무관하게 항상 초기화된다 — 아래 참고)
   const resetSettings = (opts?: { keepIdentity?: boolean }) => {
     const keepIdentity = opts?.keepIdentity === true;
     setShowCounts(true);
     setHomeCountryCode('KR');
     setSnapEnabled(true);
     setDiaryCardMode('full');
-    setGender('');
     setBio('');
     setProfilePhoto(null);
     if (!keepIdentity) {
-      setBirthday('');
       setLanguage('ko');
       setHandle(genHandle());
       setHandleLastChanged(null); // 정체성 보존 시엔 아이디 변경 쿨다운도 함께 유지(초기화로 우회 방지)
@@ -685,7 +668,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   };
 
   // ── 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 ──
-  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
+  // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
   // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
@@ -771,10 +754,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSnapEnabled,
         diaryCardMode,
         setDiaryCardMode,
-        birthday,
-        setBirthday,
-        gender,
-        setGender,
         language,
         setLanguage,
         handle,

@@ -14,7 +14,7 @@ import i18n from '../i18n';
 // Supabase 미설정 시 아무 것도 하지 않음(로컬 유지).
 export default function ProfileSync() {
   const entered = useIsAppEntered();
-  const { handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
+  const { handle, handleChosen, bio, onboardedAt, profilePhoto, homeCountryCode, handleFont, isPremium, setProfilePhoto, setHandle } = useSettings();
   const { activeStayGroup } = useRecords();
 
   // 진행 중(active) 체류만 push — paused(잠깐 귀국)·종료는 null
@@ -24,9 +24,9 @@ export default function ProfileSync() {
 
   useEffect(() => {
     if (!entered || !isSupabaseConfigured) return;
-    // 생일이 비어 있으면(온보딩 전 또는 새 기기에서 아직 서버 복원 전) 서버 프로필을 덮어쓰지 않는다.
+    // 온보딩 미완료면(온보딩 전 또는 새 기기에서 아직 서버 복원 전) 서버 프로필을 덮어쓰지 않는다.
     // → 기존 사용자의 서버 프로필(handle·기본정보)이 빈 값으로 초기화되는 것을 방지.
-    if (!birthday || !birthday.trim()) return;
+    if (!onboardedAt) return;
     (async () => {
       // 로컬 file:// 사진은 업로드해 공개 URL로 바꾼다(한 번 올리면 http라 재업로드 안 함)
       let photoUrl: string | null = profilePhoto && /^https?:\/\//.test(profilePhoto) ? profilePhoto : null;
@@ -39,8 +39,6 @@ export default function ProfileSync() {
       }
       const baseFields = {
         bio: bio || null,
-        birthday: birthday || null,
-        gender: gender || null,
         country: homeCountryCode || null,
         profile_photo: photoUrl,
         // 아이디 표시 폰트(프리미엄) — 해지 시 서버는 null(타인에겐 기본 폰트), 로컬 선택값은 보존 → 재구독 시 자동 복원
@@ -68,7 +66,7 @@ export default function ProfileSync() {
         }
       }
     })();
-  }, [entered, handle, handleChosen, bio, birthday, gender, profilePhoto, homeCountryCode, handleFont, isPremium, stayCode]);
+  }, [entered, handle, handleChosen, bio, onboardedAt, profilePhoto, homeCountryCode, handleFont, isPremium, stayCode]);
 
   return null;
 }
