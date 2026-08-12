@@ -54,6 +54,24 @@ alter table public.profiles add column if not exists handle_font text;
 alter table public.profiles add column if not exists stay_country text;
 alter table public.profiles add column if not exists stay_status text; -- 'active' | null
 
+-- (2026-08-11) 메이트 추천에 내 여행 기록을 쓰는 것에 대한 선택 동의.
+--
+-- 3-상태다(nullable이 핵심):
+--   null  = 아직 물어보지 않음. 기존 이용자가 여기 해당하며 종전대로 추천에 포함된다.
+--           앱이 배너로 동의를 받기 전까지의 유예 상태이고, 답하면 true/false로 확정된다.
+--   true  = 동의
+--   false = 거부 → 내 방문 국가가 '다른 사람의' 추천·겹침·나라별 방문자 목록에 쓰이지 않는다.
+--
+-- ⚠️ 거부해도 '내가 받는' 추천은 막지 않는다. 매칭은 이 앱의 본질 기능(여행 기록)이 아니라
+--    부가 기능이라, 선택 동의를 거부했다고 기능 제공을 거절하면 개인정보보호법 제22조에
+--    걸린다. 그래서 아래 필터는 전부 '후보로 등장하는 쪽'에만 걸고, 호출자 본인의 기록을
+--    입력으로 쓰는 경로(my_countries·my_cities)에는 걸지 않는다.
+--
+-- ⚠️ 판정은 반드시 'is false' 또는 'is distinct from false'로 쓸 것.
+--    `= false`나 `not mate_reco_optin`은 null(미결정)에서 null이 되어 조건이 참이 되지 않고,
+--    유예 중인 기존 이용자가 통째로 추천에서 사라진다.
+alter table public.profiles add column if not exists mate_reco_optin boolean;
+
 -- 닉네임 폐지: 표시 이름은 handle(아이디)로 통일한다.
 -- 뷰/RPC가 nickname 컬럼에 의존하므로 컬럼 삭제 전에 먼저 제거한다(아래에서 nickname 없이 재생성).
 drop view if exists public.public_profiles;
@@ -270,6 +288,11 @@ create index if not exists idx_posts_author   on public.posts (author_id);
 create index if not exists idx_posts_created   on public.posts (created_at desc);
 create index if not exists idx_posts_visibility on public.posts (visibility);
 create index if not exists idx_posts_author_country on public.posts (author_id, country_name);
+-- 나라 단위 조회 — country_visitors('이 나라 다녀온 사람')와 k-익명성 판정(나라별 방문자 수)이
+-- country_name 하나로 필터한다. 위 (author_id, country_name)은 선두 컬럼이 달라 쓰이지 않아
+-- 두 경로 모두 전체 스캔이었다. 비공개 기록은 어차피 제외되므로 부분 인덱스로 좁힌다.
+create index if not exists idx_posts_country_shared
+  on public.posts (country_name) where visibility <> 'private';
 
 alter table public.posts enable row level security;
 
@@ -806,6 +829,101 @@ begin
 end; $$;
 grant execute on function public.save_travel_dna(jsonb, smallint[], text, smallint) to authenticated;
 
+-- ============================================================
+-- 3-b) 프로빙 가드 — extra_countries 파라미터 남용 탐지
+--
+-- 왜 필요한가: mate_suggestions·overlap_with의 extra_countries는 '호출자 로컬(미발행·
+-- 나만보기) 나라 보강'이 목적이라 호출자가 임의 배열을 넣을 수 있다. 그런데 이 배열은
+-- 그대로 '비교 집합'이 되므로, 나라를 하나씩 넣어 재호출하면 결과 유무만으로 상대가
+-- 그 나라에 다녀왔는지 확정할 수 있다(overlap_with은 target까지 지정 가능해 더 정밀하다).
+-- 배열 길이 상한(각 함수의 [1:30])은 '한 번에 통째로 넣고 반씩 쪼개는' 이분 탐색만 막고,
+-- '1개씩 200번 부르는' 방식은 못 막는다 — 그 횟수를 여기서 센다.
+--
+-- 세는 대상이 '호출 횟수'가 아니라 '서로 다른 파라미터 집합의 수'인 이유:
+--   정상 클라이언트가 보내는 extra_countries는 내 로컬 기록에서 만들어져 거의 고정이다
+--   (기록을 추가할 때만 바뀐다). 프로필을 아무리 많이 열어도 집합은 1~3종이다.
+--   반면 프로빙은 매번 다른 집합을 넣어야 정보를 얻는다 — 종류 수가 곧 공격 신호다.
+--   횟수로 세면 정상 사용(프로필 다수 열람)이 먼저 걸린다.
+--
+-- 상한을 넘겨도 예외를 던지지 않고 extra_countries만 무시한다(서버 기록만으로 계산).
+-- 기능이 조금 좁아질 뿐 화면이 깨지지 않고, 공격자에게 '차단됐다'는 신호도 주지 않는다.
+-- ============================================================
+create table if not exists public.rpc_probe_guard (
+  user_id      uuid not null references public.profiles(id) on delete cascade,
+  fn           text not null,
+  window_start timestamptz not null,
+  params_hash  text not null,
+  primary key (user_id, fn, window_start, params_hash)
+);
+alter table public.rpc_probe_guard enable row level security;
+-- 정책을 하나도 두지 않는다 — RLS가 켜져 있고 정책이 없으면 일반 사용자는 아무 행도
+-- 읽거나 쓸 수 없다. 접근 경로는 아래 security definer 함수 하나뿐이다.
+revoke all on public.rpc_probe_guard from anon, authenticated;
+
+-- 시간창(1시간) 안에서 이 사용자가 이 함수에 넣은 '서로 다른 파라미터 집합'의 수를 세고,
+-- 상한 이하이면 true. 호출 자체가 기록을 남기므로(부작용) volatile이어야 한다.
+create or replace function public.probe_guard_ok(p_fn text, p_params text, p_limit int)
+returns boolean
+language plpgsql security definer set search_path = public as $$
+declare
+  me uuid := auth.uid();
+  w  timestamptz := date_trunc('hour', now());
+  n  int;
+begin
+  if me is null then return false; end if;
+  begin
+    insert into public.rpc_probe_guard (user_id, fn, window_start, params_hash)
+    values (me, p_fn, w, md5(coalesce(p_params, '')))
+    on conflict do nothing;
+  exception when foreign_key_violation then
+    -- profiles 행이 아직 없는 계정(가입 직후·온보딩 중 handle_new_user 지연). 카운터를
+    -- 못 남길 뿐이므로 통과시킨다 — 여기서 예외가 밖으로 나가면 추천·겹침 조회가 통째로
+    -- 죽는다. 가드는 부가 장치이고, 기능을 멈추는 쪽이 훨씬 나쁜 실패다.
+    return true;
+  end;
+  select count(*) into n from public.rpc_probe_guard g
+   where g.user_id = me and g.fn = p_fn and g.window_start = w;
+  return n <= p_limit;
+end; $$;
+-- 클라이언트가 직접 부를 이유가 없다(부르면 자기 카운터만 올린다).
+revoke all on function public.probe_guard_ok(text, text, int) from public, anon, authenticated;
+
+-- ─────────────────────────────────────────────
+-- k-익명성 임계 — '방문자가 이 수보다 적은 지역은 이름을 화면에 내주지 않는다'.
+--
+-- 왜 필요한가: 추천 근거 문구는 희소한 나라를 일부러 앞세운다(cshared의 order by w desc).
+-- 매칭 품질에는 최적이지만, 방문자가 두어 명뿐인 나라는 이름 하나로 상대가 특정된다
+-- ("공통 국가: 몰도바"). 개별 기록을 감춰도 이런 집계 한 줄로 되살아난다.
+--
+-- 임계를 넘지 못한 지역은 '이름'만 빠지고 '개수'(shared_count)와 점수 계산에는 그대로
+-- 들어간다 — 추천 순위의 정확도는 유지하면서 노출만 무디게 하는 것이 목적이다.
+--
+-- 값이 3인 이유: 나와 상대 둘만 다녀온 나라(2명)를 가리는 것이 최소 요건이고, 서비스
+-- 초기 규모에서 5 이상을 걸면 인기 국가 몇 곳을 빼고 근거 문구가 전부 사라진다.
+-- 사용자가 늘면 5로 올릴 것 — 이 함수 하나만 고치면 세 함수에 함께 적용된다.
+create or replace function public.k_anon_min()
+returns int language sql immutable parallel safe as $$ select 3 $$;
+grant execute on function public.k_anon_min() to authenticated;
+
+-- 메이트 추천 선택 동의 저장 — 앱의 설정 토글과 재동의 배너가 부른다.
+-- profiles 직접 update 대신 RPC로 두는 이유: 이 값은 '동의 기록'이라 어느 경로로
+-- 바뀌었는지가 분명해야 하고, 나중에 동의 시각·버전을 함께 남기게 될 때 호출부를
+-- 고치지 않아도 되기 때문이다.
+create or replace function public.set_mate_reco_optin(p_optin boolean)
+returns void language sql security definer set search_path = public as $$
+  update public.profiles
+     set mate_reco_optin = p_optin, updated_at = now()
+   where id = auth.uid();
+$$;
+grant execute on function public.set_mate_reco_optin(boolean) to authenticated;
+
+-- 지난 시간창 정리 — 행이 사용자·시간당 몇 개라 급하지 않다. cron-setup.sql 참조.
+create or replace function public.purge_probe_guard(older_than interval default interval '24 hours')
+returns void language sql security definer set search_path = public as $$
+  delete from public.rpc_probe_guard where window_start < now() - older_than;
+$$;
+revoke all on function public.purge_probe_guard(interval) from public, anon, authenticated;
+
 drop function if exists public.travel_overlap_suggestions(int);
 -- 래퍼(12번 절)와 본체를 둘 다 먼저 떨어뜨린 뒤 재정의한다.
 -- 래퍼는 본체에 의존하므로 순서가 중요하다(본체를 drop하려면 래퍼가 먼저 없어야 안전).
@@ -837,6 +955,10 @@ language sql security definer set search_path = public as $$
   -- public.posts를 직접 읽는다.
   pub as (
     select p.id as post_id, p.author_id, p.country_name,
+           -- 도시는 k-익명성 판정(city_user_counts)에만 쓴다. 짧은 문자열 하나라
+           -- 위 주석의 '데이터를 들고 다니지 않는다' 원칙을 깨지 않으면서,
+           -- 도시별 방문자 수를 위해 전역 스캔을 한 번 더 도는 것을 막는다.
+           p.data->>'regionName' as region_name,
            coalesce(
              public.safe_to_date(p.data->>'startDate'),
              public.safe_to_date(p.data->>'date'),
@@ -866,6 +988,16 @@ language sql security definer set search_path = public as $$
     from pub_country pc
     group by pc.name
   ),
+  -- 도시별 방문자 수 — 도시 근거 문구(shared_cities)의 k-익명성 판정용.
+  -- (나라, 도시) 쌍으로 센다 — ccity가 같은 쌍으로 겹침을 판정하므로 기준이 일치해야 한다.
+  -- 도시는 나라보다 훨씬 좁아 재식별이 쉽다(같은 나라 안에서도 소도시는 방문자가 한둘이다).
+  city_user_counts as (
+    select pb.country_name as country, pb.region_name as city,
+           count(distinct pb.author_id)::int as visitors
+    from pub pb
+    where coalesce(pb.region_name, '') <> '' and coalesce(pb.country_name, '') <> ''
+    group by pb.country_name, pb.region_name
+  ),
   country_weight as (
     select cuc.name,
            case when (select n from user_total) < 20 then 1.0
@@ -887,10 +1019,16 @@ language sql security definer set search_path = public as $$
 
   -- 내 입력. extra_countries는 호출자 로컬(미발행·나만보기) 나라 보강 — 내 매칭 입력에만 쓰고
   -- 타인에게 노출하지 않는다.
+  --
+  -- ⚠️ 상한 30 — overlap_with과 같은 규칙(그쪽 주석 참조). 호출자가 넣은 배열이 그대로
+  --    후보 선별·겹침 판정의 비교 집합이 되므로, 전 세계 국가를 통째로 넣고 배열을 반씩
+  --    쪼개 재호출하면(이분 탐색) 추천에 뜬 사람의 방문국을 특정할 수 있다.
+  --    overlap_with에는 이 방어가 있었는데 여기만 빠져 있었다(2026-08-11).
+  --    '1개씩 여러 번' 부르는 경로는 길이로 못 막으므로 래퍼(12번 절)의 probe_guard_ok가 센다.
   my_countries as (
     select pc.name from pub_country pc, me where pc.author_id = me.uid
     union
-    select c from unnest(extra_countries) as c where c is not null and c <> ''
+    select c from unnest(extra_countries[1:30]) as c where c is not null and c <> ''
   ),
   -- 도시는 (나라, 도시) 쌍으로 들고 다닌다 — 동명 지역의 오매칭을 막는다.
   -- 나라는 기록의 대표 국가(country_name)를 쓴다. pub_country로 펼치면 다국가 기록에서
@@ -1021,11 +1159,19 @@ language sql security definer set search_path = public as $$
   cshared as (
     select sp.cid,
            count(*)::int as shared_count,
-           -- 희소한 나라를 앞에 둔다 — 근거 문구가 "아이슬란드"를 먼저 말하게
-           (array_agg(sp.name order by cw.w desc))[1:3] as sample_countries,
+           -- 희소한 나라를 앞에 둔다 — 근거 문구가 "아이슬란드"를 먼저 말하게.
+           -- ⚠️ 단 방문자가 k명 미만인 나라는 이름에서 뺀다(k-익명성 — k_anon_min 주석 참조).
+           --    이 정렬은 '가장 식별력 높은 나라를 맨 앞에 놓는' 것이라, 거르지 않으면
+           --    근거 문구가 재식별에 최적화된 형태가 된다.
+           --    shared_count와 shared_weight(점수)는 거르지 않는다 — 순위 정확도는 그대로 두고
+           --    화면에 나가는 이름만 무디게 한다. 전부 걸러지면 null → scored에서 '{}'가 된다.
+           (array_agg(sp.name order by cw.w desc)
+              filter (where cuc.visitors >= public.k_anon_min()))[1:3] as sample_countries,
            sum(cw.w) as shared_weight
     from cshared_pairs sp
     join country_weight cw on cw.name = sp.name
+    -- 나라당 1행이라 조인이 행을 불리지 않는다(country_weight와 같은 이유)
+    join country_user_counts cuc on cuc.name = sp.name
     group by sp.cid
   ),
   -- 도시 — (나라, 도시)가 모두 같을 때만 겹침으로 센다. 편재 국가는 제외한다.
@@ -1041,9 +1187,15 @@ language sql security definer set search_path = public as $$
   ccity as (
     select cp.cid,
            count(*)::int as n,
-           -- 이름이 같고 나라만 다른 도시가 표본에 둘 다 들어가지 않게 distinct로 모은다
-           (array_agg(distinct cp.city))[1:3] as cities
+           -- 이름이 같고 나라만 다른 도시가 표본에 둘 다 들어가지 않게 distinct로 모은다.
+           -- k-익명성: 방문자가 k명 미만인 도시는 이름에서 뺀다(겹침 개수 n과 점수는 그대로).
+           -- 도시는 나라보다 좁아 재식별이 쉬우므로 나라와 같은 임계를 그대로 적용한다.
+           (array_agg(distinct cp.city)
+              filter (where cuc.visitors >= public.k_anon_min()))[1:3] as cities
     from ccity_pairs cp
+    -- (나라, 도시)당 1행이라 조인이 행을 불리지 않는다. ccity_pairs와 city_user_counts는
+    -- 같은 visibility 조건에서 나오므로 짝이 없어 행이 사라지는 경우도 없다.
+    join city_user_counts cuc on cuc.country = cp.country and cuc.city = cp.city
     group by cp.cid
   ),
   crecent as (
@@ -1123,6 +1275,14 @@ language sql security definer set search_path = public as $$
     from scored sc, me
     where not public.is_blocked_between(me.uid, sc.cid)
       and not public.are_neighbors(me.uid, sc.cid)
+      -- 추천 노출을 거부한 사람은 후보에서 뺀다(mate_reco_optin 주석 참조).
+      -- 'is false'라 null(미결정=유예)은 그대로 통과한다 — `= false`로 쓰면 기존
+      -- 이용자가 전부 사라진다. 호출자 본인 쪽에는 이 조건을 걸지 않는다(거부해도
+      -- 내가 받는 추천은 막지 않는다).
+      and not exists (
+        select 1 from public.profiles pr
+        where pr.id = sc.cid and pr.mate_reco_optin is false
+      )
       and not exists (
         select 1 from public.neighbors n
         where ((n.requester_id = me.uid and n.addressee_id = sc.cid)
@@ -1181,7 +1341,26 @@ revoke all on function public.mate_suggestions_compute(int, text[]) from public,
 -- ─────────────────────────────────────────────
 create or replace function public.overlap_with(target uuid, extra_countries text[] default '{}')
 returns table (shared_count int, sample_countries text[])
-language sql security definer set search_path = public as $$
+language plpgsql security definer set search_path = public as $$
+-- returns table의 출력 컬럼명이 plpgsql 안에서 변수로도 잡힌다 — 조회 안의 같은 이름과
+-- 모호해지지 않게 '컬럼 우선'으로 못박는다(mate_suggestions 래퍼와 같은 처리).
+#variable_conflict use_column
+declare
+  norm text;
+begin
+  if auth.uid() is null then return; end if;
+
+  -- 프로빙 가드(3-b) — 아래 상한 30은 '한 번에 통째로 넣고 반씩 쪼개는' 이분 탐색만 막는다.
+  -- 나라를 하나씩 바꿔 재호출하면 배열은 늘 짧으므로 상한에 걸리지 않고, shared_count가
+  -- 0인지 1인지만 봐도 target의 방문 여부가 확정된다. 서로 다른 집합의 '종류 수'를 세서
+  -- 시간당 20종을 넘기면 그때부터 extra를 버린다(예외는 던지지 않는다).
+  norm := coalesce((select string_agg(c, ',' order by c)
+                      from unnest(coalesce(extra_countries, '{}')) as c), '');
+  if norm <> '' and not public.probe_guard_ok('overlap_with', norm, 20) then
+    extra_countries := '{}';
+  end if;
+
+  return query
   with me as (select auth.uid() as uid),
   my_countries as (
     select p.country_name from public.posts p, me
@@ -1199,12 +1378,30 @@ language sql security definer set search_path = public as $$
       -- 차단 관계면 빈 결과 — mate_suggestions·country_visitors 와 같은 게이트를
       -- 이 함수만 빠뜨려, 나를 차단한 사람의 '이웃 전용' 기록 국가까지 캐낼 수 있었다.
       and not public.is_blocked_between(me.uid, target)
+      -- 추천 노출 거부자면 빈 결과 — 프로필의 "겹치는 나라 N곳"도 내 기록으로 상대의
+      -- 방문국을 확인하는 경로다(mate_reco_optin 주석 — null은 통과).
+      and not exists (
+        select 1 from public.profiles pr
+        where pr.id = target and pr.mate_reco_optin is false
+      )
       and p.country_name in (select country_name from my_countries)
+  ),
+  -- k-익명성 — 겹친 나라 중 방문자가 k명 미만인 곳은 '이름'을 내주지 않는다.
+  -- shared_count(개수)는 그대로라 화면의 "겹치는 나라 N곳"은 변하지 않는다.
+  -- 겹친 나라는 보통 한 자릿수라 나라마다 세도 부담이 없다(idx_posts_country_shared).
+  shared_k as (
+    select s.country_name,
+           (select count(distinct p2.author_id)
+              from public.posts p2
+             where p2.visibility <> 'private'
+               and p2.country_name = s.country_name) as visitors
+    from shared s
   )
-  select count(*)::int as shared_count,
-         coalesce((array_agg(s.country_name))[1:3], '{}'::text[]) as sample_countries
-  from shared s;
-$$;
+  select count(*)::int,
+         coalesce((array_agg(sk.country_name)
+                     filter (where sk.visitors >= public.k_anon_min()))[1:3], '{}'::text[])
+  from shared_k sk;
+end; $$;
 grant execute on function public.overlap_with(uuid, text[]) to authenticated;
 
 -- ─────────────────────────────────────────────
@@ -1222,13 +1419,25 @@ language sql security definer set search_path = public as $$
     where p.visibility <> 'private'
       and p.country_name = target_country
       and p.author_id <> me.uid
+      -- 추천 노출 거부자는 목록에서 뺀다(mate_reco_optin 주석 — null은 통과)
+      and not exists (
+        select 1 from public.profiles pr
+        where pr.id = p.author_id and pr.mate_reco_optin is false
+      )
     group by p.author_id
-  )
+  ),
+  -- k-익명성 — 다녀온 사람이 k명 미만인 나라는 목록 자체를 내주지 않는다(k_anon_min 주석 참조).
+  -- 한두 명뿐인 나라에서는 이 목록이 곧 '저 사람이 그 나라에 다녀왔다'는 지목이 되고,
+  -- 나라 이름을 바꿔가며 훑으면 소수만 다녀온 나라들이 그대로 드러난다.
+  -- 게시물 수가 아니라 '사람 수'로 센다 — 한 사람이 여러 번 기록해도 1명이다.
+  vk as (select count(*)::int as n from v)
   select v.author_id, pp.handle, pp.emoji, pp.profile_photo, v.visit_posts
   from v
   join public.public_profiles pp on pp.id = v.author_id
   cross join me
+  cross join vk
   where not public.is_blocked_between(me.uid, v.author_id)
+    and vk.n >= public.k_anon_min()
   order by v.visit_posts desc, pp.handle
   limit greatest(1, least(match_limit, 50));
 $$;
@@ -2431,14 +2640,25 @@ language plpgsql security definer set search_path = public as $$
 declare
   me     uuid := auth.uid();
   key    text;
+  norm   text;
   cached jsonb;
   fresh  jsonb;
 begin
   if me is null then return; end if;
 
   -- 파라미터 정규화 — 순서만 다른 같은 나라 목록이 서로 다른 캐시 항목이 되지 않게 정렬해서 해싱한다.
-  key := match_limit::text || ':' || md5(coalesce(
-           (select string_agg(c, ',' order by c) from unnest(coalesce(extra_countries, '{}')) as c), ''));
+  norm := coalesce((select string_agg(c, ',' order by c)
+                      from unnest(coalesce(extra_countries, '{}')) as c), '');
+
+  -- 프로빙 가드(3-b) — 서로 다른 나라 집합을 시간당 20종 넘게 넣으면 그때부터 extra를 버린다.
+  -- 정상 클라이언트의 집합은 내 로컬 기록에서 나오므로 거의 고정이다(1~3종).
+  -- 빈 배열은 세지 않는다 — 대다수 호출이 여기 해당하고, 프로빙에는 쓸모가 없는 값이다.
+  if norm <> '' and not public.probe_guard_ok('mate_suggestions', norm, 20) then
+    extra_countries := '{}';
+    norm := '';
+  end if;
+
+  key := match_limit::text || ':' || md5(norm);
 
   select c.rows into cached
     from public.mate_suggestions_cache c
@@ -2518,6 +2738,7 @@ revoke truncate, references, trigger on
   public.profiles,
   public.push_tokens,
   public.reports,
+  public.rpc_probe_guard,
   public.user_app_state,
   public.user_trip_state
   from anon, authenticated;

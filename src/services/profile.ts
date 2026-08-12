@@ -24,6 +24,7 @@ export interface ProfileRow {
   stay_country?: string | null; // 장기체류 국가 ISO 코드 — 메이트에게만 공개(public_profiles 조건부 노출)
   stay_status?: string | null;  // 'active' | null
   dna_type_key?: string | null; // 여행 DNA 유형 키 — public_profiles가 공개하는 유일한 설문 필드(축 점수는 비공개)
+  mate_reco_optin?: boolean | null; // 메이트 추천 활용 동의 — null=미결정(유예). fetchMateRecoOptin 주석 참조
 }
 
 /**
@@ -101,6 +102,48 @@ export async function getMyJoinedAt(): Promise<string | null> {
     return (data as { created_at?: string } | null)?.created_at ?? null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * 메이트 추천에 내 여행 기록을 쓰는 것에 대한 선택 동의 값.
+ *
+ * 3-상태다(schema.sql의 mate_reco_optin 주석과 같은 규칙):
+ *   null  — 아직 물어보지 않음(기존 이용자). 종전대로 추천에 포함되는 상태다.
+ *   true  — 동의
+ *   false — 거부. 내 방문 국가가 '다른 사람의' 추천·겹침·나라별 방문자 목록에 쓰이지 않는다.
+ *
+ * 서버에 못 닿았을 때도 null이라 '미결정'과 구분되지 않는다 — 화면은 이 값을
+ * `!== false`(=포함됨)로만 읽으므로, 통신 실패 시 토글이 켜진 상태로 보이고
+ * 실제 서버 상태도 그대로다(임의로 꺼진 것처럼 보이지 않는다).
+ */
+export async function fetchMateRecoOptin(): Promise<boolean | null> {
+  if (!supabase) return null;
+  const uid = await getMyUserId();
+  if (!uid) return null;
+  try {
+    const { data, error } = await withTimeout(
+      supabase.from('profiles').select('mate_reco_optin').eq('id', uid).maybeSingle(),
+      READ_TIMEOUT_MS,
+    );
+    if (error) return null;
+    return (data as { mate_reco_optin?: boolean | null } | null)?.mate_reco_optin ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** 위 동의 값 저장. 성공 여부를 돌려주고, 실패하면 화면이 토글을 되돌린다. */
+export async function saveMateRecoOptin(optin: boolean): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { error } = await withTimeout(
+      supabase.rpc('set_mate_reco_optin', { p_optin: optin }),
+      READ_TIMEOUT_MS,
+    );
+    return !error;
+  } catch {
+    return false;
   }
 }
 
