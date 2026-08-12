@@ -44,23 +44,35 @@
 
 동의 화면이 **온보딩의 유일한 Main 진입점**이 된다.
 
+실제 온보딩은 분기가 있고 종점이 셋이다(2026-08-12 실측):
+
 ```
-BasicInfo (STEP 1/3)
-   ↓
-TravelImport (STEP 2/3)
-   ├── 건너뛰기 ─────────────┐
-   └── ImportPhotoSelect ────┤
-                             ↓
-              MateRecoConsent (Final step)   ← 신설
-                             ↓
-                           Main
+BasicInfo → TravelImport
+              ├─ 건너뛰기 ──────────────────────→ [출구1] TravelImportScreen:425
+              └─ ImportPhotoSelect → ImportComplete
+                     └─ TravelDnaSurvey
+                            ├─ 건너뛰기 ────────→ [출구2] TravelDnaSurveyScreen:152
+                            └─ TravelDnaResult ─→ [출구3] TravelDnaResultScreen:500
 ```
 
-현재 Main으로 나가는 `navigation.reset` 은 두 곳이다 — `TravelImportScreen`(건너뛰기
-경로)과 `ImportPhotoSelectScreen`(가져오기 완료 경로). 둘 다 동의 화면으로 보낸다.
+세 곳 모두 `navigation.reset({ index: 0, routes: [{ name: 'Main', params: { screen:
+'MainTab', params: { startTutorial: true } } }] })` 로 끝난다. **이 셋을 전부
+`navigation.replace('MateRecoConsent')` 로 바꾸고, 동의 화면이 그 reset을 대신 수행한다.**
 
-**단, `fromProfile` 로 진입한 경우는 온보딩이 아니므로 종전대로 `goBack()`** 이다.
+> 초안에서는 `TravelImport` 바로 뒤에 두려 했으나, 여행을 가져온 사용자는 그 뒤로
+> ImportComplete → 여행 DNA 설문이 이어져 **동의 화면이 온보딩 중간에 끼어든다.**
+> 종점 셋을 모두 잡는 방식이라야 "온보딩 마지막에 한 번"이 성립한다.
+
+`startTutorial: true` 는 MainScreen이 읽어 첫 진입 코치마크를 띄우는 살아 있는 플래그다.
+동의 화면이 reset을 넘겨받을 때 이 파라미터를 그대로 유지해야 코치마크가 사라지지 않는다.
+
+**`fromProfile`(또는 `from === 'profile'`) 경로는 온보딩이 아니므로 손대지 않는다.**
 프로필에서 '과거 여행 불러오기'를 눌러 들어온 기존 이용자에게 동의 화면을 띄우면 안 된다.
+세 화면 모두 이미 이 분기를 갖고 있으므로, 온보딩 분기(else)에서만 교체한다.
+
+STEP 표기는 건드리지 않는다. `TravelImport` 의 "Final step" 은 여행 불러오기 흐름의
+마지막이라는 뜻으로 이미 쓰이고 있고, 그 뒤 DNA 설문에도 단계 표기가 없다. 동의 화면에도
+단계 표기를 넣지 않는다.
 
 ### 화면 내용
 
