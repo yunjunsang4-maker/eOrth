@@ -10,6 +10,7 @@ import LoginScreen from '../screens/LoginScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import BasicInfoScreen from '../screens/BasicInfoScreen';
 import TravelImportScreen from '../screens/TravelImportScreen';
+import MateRecoConsentScreen from '../screens/MateRecoConsentScreen';
 import ImportPhotoSelectScreen from '../screens/ImportPhotoSelectScreen';
 import ImportCompleteScreen from '../screens/ImportCompleteScreen';
 import CountryScreen from '../screens/CountryScreen';
@@ -331,6 +332,7 @@ export default function AppNavigator() {
           component={TravelImportScreen}
           options={{ gestureEnabled: false }}
         />
+        <Stack.Screen name="MateRecoConsent" component={MateRecoConsentScreen} />
         <Stack.Screen
           name="ImportPhotoSelect"
           component={ImportPhotoSelectScreen}

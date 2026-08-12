@@ -100,6 +100,7 @@ export type RootStackParamList = {
   BasicInfo: undefined;
   // from: 'profile' = 앱 내(프로필) 진입 — 완료 후 온보딩처럼 메인+튜토리얼로 리셋하지 않고 되돌아간다
   TravelImport: { from?: 'profile' } | undefined;
+  MateRecoConsent: undefined;
   ImportPhotoSelect: { trips: ImportTrip[]; from?: 'profile' };
   ImportComplete: { tripCount: number; photoCount: number; countries: { flag: string; name: string }[]; from?: 'profile' };
   Main: NavigatorScreenParams<TabParamList> | undefined;
