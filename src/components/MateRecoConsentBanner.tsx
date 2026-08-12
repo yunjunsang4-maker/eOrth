@@ -68,7 +68,7 @@ export default function MateRecoConsentBanner() {
     <View style={st.wrap}>
       <View style={st.headRow}>
         <Text style={st.title}>{t('mateConsent.bannerTitle')}</Text>
-        <TouchableOpacity onPress={dismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="닫기">
+        <TouchableOpacity onPress={dismiss} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel={t('common.close')}>
           <Svg width={16} height={16} viewBox="0 0 24 24" fill="none">
             <SvgPath d="M18 6L6 18M6 6l12 12" stroke={C.dim} strokeWidth={2} strokeLinecap="round" />
           </Svg>
