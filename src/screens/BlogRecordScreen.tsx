@@ -2,14 +2,13 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  TextInput,
+  ScrollView,
   Image,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
+  useWindowDimensions,
   Modal,
   Alert,
   DeviceEventEmitter,
@@ -17,6 +16,7 @@ import {
   Linking,
   Animated,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { WebView } from 'react-native-webview';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -86,8 +86,8 @@ import {
   createLinkBlock, createFileBlock,
   blocksToPlainText, blocksToPhotos, blocksToVideoThumbnails,
 } from '../types/blogBlocks';
-
-const { width: SCREEN_W } = Dimensions.get('window');
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 /** 시트 공용 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function SheetCheck() {
@@ -184,13 +184,20 @@ const SEP_STYLES: { label: string; value: SeparatorStyle }[] = [
 ];
 
 // ─── 풀스크린 이미지 뷰어 ───
-const SCREEN_H = Dimensions.get('window').height;
 function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
   images: string[];
   initialIndex: number;
   visible: boolean;
   onClose: () => void;
 }) {
+  // 페이지 폭이 스크롤 오프셋 계산에 들어간다 — 박제하면 폴드 펼침 시 엉뚱한 사진을 가리킨다.
+  // 훅이므로 아래 조기 return(!visible)보다 반드시 위에 있어야 한다.
+  //
+  // 기준은 Stage가 아니라 '창 전체'다. 이건 딤 배경(rgba(0,0,0,0.95)) 위에 사진만 띄우는
+  // 전체화면 뷰어라 화면 가득이 의도이고, RN Modal이라 루트 클램프 밖이라서 Stage 폭으로
+  // 두면 pagingEnabled ScrollView(창 폭)와 페이지 폭(480)이 어긋나 페이징 자체가 깨진다.
+  // 같은 성격의 PhotoViewerModal도 창 전체 기준이다.
+  const { width: SCREEN_W, height: SCREEN_H } = useWindowDimensions();
   const [idx, setIdx] = useState(initialIndex);
   const scrollRef = useRef<ScrollView>(null);
   const insets = useSafeAreaInsets(); // 안드로이드 상태바 높이 기기별 편차 보정용
@@ -202,6 +209,9 @@ function FullScreenImageViewer({ images, initialIndex, visible, onClose }: {
         scrollRef.current?.scrollTo({ x: initialIndex * SCREEN_W, animated: false });
       }, 50);
     }
+    // SCREEN_W는 의도적으로 제외 — 뷰어를 열 때의 폭으로 한 번만 위치를 맞춘다.
+    // 넣으면 폴드를 펼칠 때마다 initialIndex로 되돌아가 사용자가 보던 사진을 잃는다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialIndex]);
 
   if (!visible) return null;
@@ -335,6 +345,7 @@ type Props = RootStackScreenProps<'BlogRecord'>;
 
 export default function BlogRecordScreen({ navigation, route }: Props) {
   const st = useSt();
+  const SCREEN_W = useStageWidth(); // 이미지 블록 폭 — 슬라이드 페이징 폭으로도 쓰인다
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 기록 화면 강조를 지구본 스킨색으로
@@ -1345,7 +1356,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
       <View style={st.header}>
         {/* 이탈 확인은 beforeRemove 리스너가 일괄 처리 — 여기서 goBack만 하면 같은 다이얼로그를 탄다 */}
         <TouchableOpacity onPress={() => navigation.goBack()} style={st.headerBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-          <Text style={st.headerBtnText}>{t('common.cancel')}</Text>
+          <Text style={st.headerBtnText} {...andFitText}>{t('common.cancel')}</Text>
         </TouchableOpacity>
         <Text style={st.headerTitle}>{isEdit ? t('blog.editTitle') : t('blog.title')}</Text>
         <View style={st.headerRight}>
@@ -1381,7 +1392,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <Text style={st.naverBtnText}>N</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={canSave && !publishing ? handleSave : undefined} style={[st.saveBtn, { backgroundColor: skinAccent.accentDeep }, (!canSave || publishing) && st.saveBtnDisabled]} disabled={!canSave || publishing}>
-            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
+            <Text style={[st.saveBtnText, (!canSave || publishing) && st.saveBtnTextDisabled]} {...andFitText}>{publishing ? t('blog.saving') : t('blog.save')}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -1564,7 +1575,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             <TouchableOpacity key={i} style={[st.colorDot, { backgroundColor: c === 'transparent' ? '#333' : c, borderStyle: c === 'transparent' ? 'dashed' : 'solid' },
               atb?.bgColor === c && [st.colorDotActive, { borderColor: skinAccent.accent }]]}
               onPress={() => setBlockBgColor(c)}>
-              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }}>{t('blog.none')}</Text>}
+              {c === 'transparent' && <Text style={{ color: C.dim, fontSize: 10 }} {...andFitText}>{t('blog.none')}</Text>}
             </TouchableOpacity>
           ))}
         </View>
@@ -1606,7 +1617,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC" style={st.schedInput} placeholder="https://..." placeholderTextColor={C.muted}
           value={linkUrl} onChangeText={setLinkUrl} autoCapitalize="none" keyboardType="url" />
         <TouchableOpacity style={[st.schedConfirmBtn, { backgroundColor: skinAccent.accentDeep }]} onPress={handleAddLink}>
-          <Text style={st.schedConfirmText}>{t('blog.insert')}</Text>
+          <Text style={st.schedConfirmText} {...andFitText}>{t('blog.insert')}</Text>
         </TouchableOpacity>
       </PickerModal>
 
@@ -1617,11 +1628,11 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {!!subtitle.trim() && (
             <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: '#2E2E3B' }]} onPress={() => { setSubtitle(''); setSubtitleModalVisible(false); }}>
-              <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]}>{t('blog.subtitleRemove')}</Text>
+              <Text style={[st.schedConfirmText, { color: '#A1A1B0' }]} {...andFitText}>{t('blog.subtitleRemove')}</Text>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={[st.schedConfirmBtn, { flex: 1, backgroundColor: skinAccent.accentDeep }]} onPress={() => { setSubtitle(subtitleDraft.trim()); setSubtitleModalVisible(false); }}>
-            <Text style={st.schedConfirmText}>{t('common.confirm')}</Text>
+            <Text style={st.schedConfirmText} {...andFitText}>{t('common.confirm')}</Text>
           </TouchableOpacity>
         </View>
       </PickerModal>
@@ -1647,12 +1658,12 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                   activeOpacity={0.85}
                 >
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>{t('blog.departDate')}</Text>
+                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.departDate')}</Text>
                     <Text style={st.dateBtnVal}>{startDate || '—'}</Text>
                   </View>
                   <Text style={st.dateBtnArrow}>→</Text>
                   <View style={st.dateBtnCol}>
-                    <Text style={st.dateBtnLabel}>{t('blog.arriveDate')}</Text>
+                    <Text style={st.dateBtnLabel} {...andFitText}>{t('blog.arriveDate')}</Text>
                     <Text style={st.dateBtnVal}>{endDate || '—'}</Text>
                   </View>
                   <View style={{ marginLeft: 10 }}><SvgCalendarIcon size={18} color={skinAccent.accent} /></View>
@@ -2275,7 +2286,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
               {(['grid2', 'grid3', 'slide'] as ImageLayout[]).map(l => (
                 <TouchableOpacity key={l} style={[st.layoutBtn, imb.layout === l && [st.layoutBtnActive, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.accent }]]}
                   onPress={() => updateBlock(block.id, { layout: l } as any)}>
-                  <Text style={[st.layoutBtnText, imb.layout === l && [st.layoutBtnTextActive, { color: skinAccent.accent }]]}>
+                  <Text style={[st.layoutBtnText, imb.layout === l && [st.layoutBtnTextActive, { color: skinAccent.accent }]]} {...andFitText}>
                     {l === 'grid2' ? t('blog.grid2') : l === 'grid3' ? t('blog.grid3') : t('blog.slide')}
                   </Text>
                 </TouchableOpacity>
@@ -2297,7 +2308,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 <Text style={{ fontSize: 34 }}>📹</Text>
                 <Text style={st.videoPlaceholderTitle}>{t('blog.videoPlaceholderTitle')}</Text>
                 <TouchableOpacity style={[st.videoPlaceholderBtn, { backgroundColor: skinAccent.tint(0.15), borderColor: skinAccent.tint(0.4) }]} activeOpacity={0.8} onPress={() => handleFillVideoPlaceholder(block.id)}>
-                  <Text style={[st.videoPlaceholderBtnText, { color: skinAccent.accent }]}>{t('blog.videoPlaceholderHint')}</Text>
+                  <Text style={[st.videoPlaceholderBtnText, { color: skinAccent.accent }]} {...andFitText}>{t('blog.videoPlaceholderHint')}</Text>
                 </TouchableOpacity>
                 {!!vb.sourceUrl && (
                   <TouchableOpacity onPress={() => Linking.openURL(vb.sourceUrl!)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
@@ -2352,7 +2363,7 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
                 onPress={() => { if (vb.uri) Linking.openURL(vb.uri); }}
               >
                 <Text style={{ color: '#fff', fontSize: 40 }}>▶</Text>
-                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }}>{t('blog.externalVideo')}</Text>
+                <Text style={{ color: C.dim, fontSize: 12, marginTop: 8 }} {...andFitText}>{t('blog.externalVideo')}</Text>
               </TouchableOpacity>
             )}
             <View style={st.videoLabel}>
@@ -2520,6 +2531,8 @@ function RepPhotoModal({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 카드 폭만 Stage 폭에서 파생된다 — rpm은 모듈 최상위 스타일시트라 폭만 인라인으로 내렸다.
+  const photoCardW = (useStageWidth() - 56) / 3;
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
   const translateY = useRef(new Animated.Value(500)).current;
 
@@ -2613,7 +2626,7 @@ function RepPhotoModal({
                   return (
                     <TouchableOpacity
                       key={`${uri}-${idx}`}
-                      style={[rpm.photoCard, isSelected && { borderColor: skinAccent.accent }]}
+                      style={[rpm.photoCard, { width: photoCardW }, isSelected && { borderColor: skinAccent.accent }]}
                       onPress={() => onSelect(uri)}
                       activeOpacity={0.8}
                     >
@@ -2770,7 +2783,8 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
 
   // 피커 공통
   overlayBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 28 },
-  pickerCard: { width: '100%', backgroundColor: C.card, borderRadius: 16, padding: 18 },
+  // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
+  pickerCard: { width: '100%', maxWidth: STAGE_MAX_W, backgroundColor: C.card, borderRadius: 16, padding: 18 },
   pickerTitle: { color: C.white, fontSize: 15, fontWeight: '700', textAlign: 'center', marginBottom: 14 },
   pickerOption: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: C.divider },
   pickerOptionActive: { backgroundColor: tint(0.25), borderRadius: 8, borderBottomColor: 'transparent' },
@@ -2791,7 +2805,9 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   panelHandle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 4, marginBottom: 16 },
 
   // 여행정보 패널
-  travelPanel: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  // left/right:0 대신 width+maxWidth+alignSelf — Modal은 루트 클램프 밖이라
+  // left/right로 붙이면 폴드·태블릿에서 창 폭 전체로 늘어난다
+  travelPanel: { position: 'absolute', bottom: 0, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '78%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
   panelTitle: { color: C.white, fontSize: 16, fontWeight: '700', marginBottom: 16 },
   panelRow: { marginBottom: 18, gap: 8 },
   panelLabelRow: { flexDirection: 'row' as const, alignItems: 'center' as const },
@@ -2871,6 +2887,8 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   // 임시저장 목록 — 비공개 대상 선택 시트(components/record/PrivacyModal)와 같은 디자인 언어
   dlOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' as const },
   dlSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 dlOverlay는 전체 폭 유지)
+    width: '100%' as const, maxWidth: STAGE_MAX_W, alignSelf: 'center' as const,
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 18, paddingBottom: Platform.OS === 'ios' ? 30 : 18, maxHeight: '78%',
@@ -2913,7 +2931,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   calOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' as const, zIndex: 10 },
 
   // 통화 모달
-  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  currModalSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   currModalSearch: { height: 42, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, paddingHorizontal: 14, color: C.white, fontSize: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)', marginBottom: 12 },
   currModalItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 10, paddingHorizontal: 12, paddingVertical: 12, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   currModalCode: { color: a, fontSize: 14, fontWeight: '700' as const, width: 44 },
@@ -2928,7 +2946,7 @@ const makeStyles = (a: string, ad: string, tint: (alpha: number) => string) => S
   addFriendTxt: { color: a, fontSize: 13, fontWeight: '600' as const },
   addFriendBadge: { backgroundColor: ad, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 },
   addFriendBadgeTxt: { color: C.white, fontSize: 10, fontWeight: '700' as const },
-  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18 },
+  friendPickerSheet: { backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26, borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)', maxHeight: '62%', paddingHorizontal: 18, paddingTop: 10, paddingBottom: Platform.OS === 'ios' ? 30 : 18, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   friendPickerItem: { flexDirection: 'row' as const, alignItems: 'center' as const, gap: 12, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.04)', borderWidth: 1, borderColor: 'transparent', marginBottom: 8 },
   friendPickerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.08)', alignItems: 'center' as const, justifyContent: 'center' as const },
   friendPickerAvatarTxt: { color: C.white, fontSize: 15, fontWeight: '700' as const },
@@ -2952,11 +2970,15 @@ function useSt() {
 
 const rpm = StyleSheet.create({
   // 다른 시트(임시저장·비공개 대상 선택)와 같은 디자인 언어
+  // overlay는 딤 배경(flex:1 + rgba) — 좁히면 폴드에서 양옆이 안 어두워지므로 전면 유지한다.
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // sheet는 콘텐츠 래퍼. RN Modal이라 루트 클램프 밖이고 photoCardW가 Stage 폭(≤480)
+  // 기준이라, 시트를 같은 폭으로 가두고 중앙에 둬야 썸네일 3열이 시트 폭과 맞는다.
   sheet: {
     backgroundColor: '#16161F', borderTopLeftRadius: 26, borderTopRightRadius: 26,
     borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
     paddingHorizontal: 18, paddingBottom: 30, maxHeight: '82%',
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
   },
   handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.22)', alignSelf: 'center', marginTop: 10, marginBottom: 18 },
 
@@ -2982,8 +3004,9 @@ const rpm = StyleSheet.create({
   gridScroll: { maxHeight: 330 },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 10 },
   // 좌우 패딩 18*2 + gap 10*2 = 56
+  // width는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
   photoCard: {
-    width: (SCREEN_W - 56) / 3, aspectRatio: 1, borderRadius: 14, overflow: 'hidden',
+    aspectRatio: 1, borderRadius: 14, overflow: 'hidden',
     backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent',
   },
   photoImg: { width: '100%', height: '100%' },

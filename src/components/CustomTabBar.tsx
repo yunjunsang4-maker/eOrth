@@ -1,12 +1,12 @@
 import React, { useEffect, useRef } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  useWindowDimensions,
   PanResponder,
 } from 'react-native';
+import { Text } from '../ui/Text';
+import { useStageWidth } from '../utils/stage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
@@ -258,7 +258,13 @@ const TabItem: React.FC<{
 
 export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   const insets = useSafeAreaInsets();
-  const { width: SCREEN_W } = useWindowDimensions();
+  // 탭 바는 TabNavigator의 tabBar로 그려져 App.tsx의 클램프된 Stage 컬럼 "안"에 있다.
+  // styles.container가 position:'absolute'라 아래 left는 창이 아니라 그 컬럼 기준(로컬 좌표)이다.
+  // 여기에 창 폭(useWindowDimensions)을 쓰면 폴드·태블릿에서 바가 gutter만큼 통째로
+  // 오른쪽으로 밀려 컬럼 밖으로 삐져나가고, 같은 레이어의 RecordFab(fabWrap: left0/right0
+  // + alignItems:'center' → 컬럼 중앙)과 눈에 띄게 어긋난다. 반드시 Stage 폭을 쓴다.
+  // 훅이라 useAnimatedStyle 내부에서 읽어도 창 크기 변화에 그대로 반응한다.
+  const STAGE_W = useStageWidth();
   // 튜토리얼(코치마크) 중에는 탭 바도 다른 구역처럼 어둡게.
   const coachActive = useCoachActive();
   // 지구본 스킨 강조색 — 활성 알약 채움색에 적용 (스킨 바뀌면 자동 갱신)
@@ -294,10 +300,10 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   // 컨테이너 폭/좌표 (폭 변화에 따라 가운데 정렬 유지) + 숨김 페이드·슬라이드
   const containerStyle = useAnimatedStyle(() => {
     // 화면에 안 들어가면 폭을 줄여 맞춘다(BAR_SIDE_MIN 주석 참고). 안 줄이면 잘린다.
-    const w = Math.min(barW.value, SCREEN_W - BAR_SIDE_MIN * 2);
+    const w = Math.min(barW.value, STAGE_W - BAR_SIDE_MIN * 2);
     return {
       width: w,
-      left: (SCREEN_W - w) / 2,
+      left: (STAGE_W - w) / 2,
       opacity: 1 - hideProgress.value,
       transform: [{ translateY: hideProgress.value * 24 }],
     };
@@ -305,7 +311,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋).
   // 컨테이너와 같은 클램프를 써야 좁은 화면에서 테두리만 삐져나오지 않는다.
   const borderRectProps = useAnimatedProps(() => ({
-    width: Math.max(0, Math.min(barW.value, SCREEN_W - BAR_SIDE_MIN * 2) - 1.5),
+    width: Math.max(0, Math.min(barW.value, STAGE_W - BAR_SIDE_MIN * 2) - 1.5),
   }));
 
   // 탭바 위에서 가로 슬라이드 → 바로 옆 탭으로 이동 (PanResponder는 첫 렌더 박제 → ref로 최신 상태 참조)

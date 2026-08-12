@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { View, Text, Image, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { View, Image, ScrollView, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
@@ -13,6 +14,7 @@ import LogoShowcaseCard from '../components/premium/LogoShowcaseCard';
 import FrameShowcaseCard from '../components/premium/FrameShowcaseCard';
 import type { RootStackScreenProps } from '../navigation/types';
 import { LAUNCH_FREE_PREMIUM } from '../constants/featureFlags';
+import { andFitText } from '../utils/fitText';
 
 // 제작 이모티콘 (assets/emoji) — 기본 시스템 이모지 대신 앱 전용 3D 이모티콘을 쓴다.
 // 열쇠 = 잠금 해제(전체 무료), 체크 = 이용 중. LoginScreen과 같은 자산 세트.
@@ -138,7 +140,7 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
               end={{ x: 1, y: 1 }}
               style={st.ctaBtn}
             >
-              <Text style={st.ctaText}>{t('premium.applyCta')}</Text>
+              <Text style={st.ctaText} {...andFitText}>{t('premium.applyCta')}</Text>
             </LinearGradient>
           </TouchableOpacity>
         ) : isPremium ? (
@@ -154,7 +156,7 @@ export default function PremiumScreen({ navigation }: RootStackScreenProps<'Prem
               end={{ x: 1, y: 1 }}
               style={st.ctaBtn}
             >
-              <Text style={st.ctaText}>{t('premium.paywallCta')}</Text>
+              <Text style={st.ctaText} {...andFitText}>{t('premium.paywallCta')}</Text>
             </LinearGradient>
           </TouchableOpacity>
         )}

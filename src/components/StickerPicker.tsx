@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Dimensions,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import {
@@ -15,6 +14,7 @@ import {
   StickerCategory,
   Sticker,
 } from './stickers';
+import { stageWidthNow } from '../utils/stage';
 
 // 카테고리/스티커 id → i18n 키 (라벨은 데이터가 아니라 UI 문구라 번역 대상)
 const CATEGORY_KEY: Record<StickerCategory, string> = {
@@ -25,7 +25,7 @@ const CATEGORY_KEY: Record<StickerCategory, string> = {
   activity: 'sticker.catActivity',
 };
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
 const ITEM_SIZE = Math.floor((SCREEN_W - 64) / 4);
 
 interface StickerPickerProps {

@@ -10,6 +10,7 @@ import Animated, {
 import Svg, { Defs, LinearGradient as SvgLinearGradient, Stop, Rect } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';
 import { andFitText } from '../utils/fitText';
+import { FONT_SCALE_CAP } from '../ui/Text';
 
 const AnimatedRect = Animated.createAnimatedComponent(Rect);
 
@@ -44,7 +45,9 @@ function SegLabel({ text, active }: { text: string; active: boolean }) {
   }, [active]); // eslint-disable-line react-hooks/exhaustive-deps
   const style = useAnimatedStyle(() => ({ opacity: op.value }));
   // 안드로이드 한글 폰트(Noto)가 넓어 고정 트랙 안에서 라벨이 줄바꿈/썸 폭 어긋남 — 한 줄 고정+자동 축소
-  return <Animated.Text style={[styles.label, style]} {...andFitText}>{text}</Animated.Text>;
+  // Animated.Text는 래퍼(ui/Text)를 거치지 않으므로 상한을 직접 넘긴다.
+  // FONT_SCALE_CAP도 andFitText도 android 전용이라 iOS는 상한 없이 그대로 간다(의도된 동작).
+  return <Animated.Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.label, style]} {...andFitText}>{text}</Animated.Text>;
 }
 
 export function SegmentedToggle<T extends string>({

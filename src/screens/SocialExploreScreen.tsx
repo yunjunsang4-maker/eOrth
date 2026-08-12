@@ -4,12 +4,11 @@
 import React, { useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Dimensions,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { Typography, Spacing, BorderRadius } from '../constants';
@@ -17,8 +16,10 @@ import { useSkinAccent, type SkinAccent } from '../constants/skinTheme';
 import { useRecords, TravelRecord } from '../store/recordStore';
 import { TargetIcon, SparkleIcon, GlobeIcon } from '../components/icons';
 import { countryLabel } from '../utils/countryLabel';
+import { stageWidthNow } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
-const { width } = Dimensions.get('window');
+const width = stageWidthNow();
 
 // ─────────────────────────────────────────────
 // 디자인 토큰
@@ -141,7 +142,7 @@ function AdBanner() {
 
         {/* 오른쪽 버튼 */}
         <View style={s.adBtn}>
-          <Text style={s.adBtnText}>{t('misc.adView')}</Text>
+          <Text style={s.adBtnText} {...andFitText}>{t('misc.adView')}</Text>
         </View>
       </LinearGradient>
     </TouchableOpacity>

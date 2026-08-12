@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Pressable,
   TouchableOpacity,
@@ -9,6 +8,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { Text, FONT_SCALE_CAP } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -469,7 +469,9 @@ export default function MainCoachmark({ visible, steps, onClose, onStepChange }:
                 {step.icon ? <View style={styles.titleIcon}>{step.icon}</View> : null}
                 <Text style={styles.title}>{step.title}</Text>
               </Animated.View>
-              <Animated.Text style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
+              {/* Animated.Text는 래퍼(ui/Text)를 거치지 않으므로 상한을 직접 넘긴다.
+                  FONT_SCALE_CAP은 android에서만 값이 있고 iOS에선 undefined(상한 없음)다. */}
+              <Animated.Text maxFontSizeMultiplier={FONT_SCALE_CAP} style={[styles.desc, { transform: [{ translateY: tip.descY }] }]}>{step.desc}</Animated.Text>
 
               <Animated.View style={[styles.footer, { transform: [{ translateY: tip.footerY }] }]}>
                 <View style={styles.dots}>

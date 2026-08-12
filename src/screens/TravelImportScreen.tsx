@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -10,10 +9,10 @@ import {
   Image,
   Platform,
   Modal,
-  Dimensions,
   Easing,
   Alert,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import Svg, {
@@ -37,6 +36,7 @@ import { useRecords } from '../store/recordStore';
 import { countryInfoFromCode, clusterForeignTrips, mergeScannedTrips, newScanSessionId, type ScannedPhoto, type ScannedTrip, type TripTextMaker } from '../utils/pastTripScan';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
 import { countryTagLabel, countryLabel } from '../utils/countryLabel';
+import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 import AssetImage from '../components/AssetImage';
 import { locateCountry } from '../utils/countryLocate';
 // 좌표 배치 조회 — 네이티브가 있으면 getAssetInfoAsync(원본 파일 접근)를 건너뛴다
@@ -154,7 +154,7 @@ const ORB_CROSS = require('../../assets/import-orb/cross.png');
 const ORB_VR_FRONT = require('../../assets/import-orb/vrings-front.png');
 const ORB_HRINGS = require('../../assets/import-orb/hrings.png');
 const ORB_DOT = require('../../assets/import-orb/dot.png');
-const SCREEN_W = Dimensions.get('window').width;
+const SCREEN_W = stageWidthNow();
 const ORB_W = SCREEN_W;
 const ORB_H = SCREEN_W * (1212 / 1206);
 const ORB_PT = ORB_W / 402; // 시안 pt → 화면 px 배율
@@ -1638,6 +1638,10 @@ const styles = StyleSheet.create({
   },
   mgOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   mgSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 mgOverlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#16121F',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

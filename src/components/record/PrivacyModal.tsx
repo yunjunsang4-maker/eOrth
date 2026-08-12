@@ -1,7 +1,6 @@
 import React, { useRef, useEffect } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   StyleSheet,
   Modal,
@@ -9,12 +8,14 @@ import {
   ScrollView,
   Platform,
 } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import { LockClosedIcon as SvgLockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
+import { STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 사진·게시물별 비공개 대상(메이트) 선택 바텀시트 — 피드/블로그/컷 공용.
@@ -184,6 +185,10 @@ const pm = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#16161F',
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,

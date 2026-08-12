@@ -1,6 +1,7 @@
 // 순간 카드 — 여행 기억 목록·작성 화면 서랍 공용. 탭하면 onPress(확대 보기 등).
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 import type { TravelMoment } from '../../store/momentStore';
 
 export function formatMomentTime(createdAt: number): string {

@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   KeyboardAvoidingView,
@@ -15,6 +13,8 @@ import {
   Image,
   BackHandler,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
+import { STAGE_MAX_W } from '../utils/stage';
 
 // 생성 이모티콘(AI 커스텀, 다크 보라 3D 글로시) — 시스템 이모지 대체
 const EMOJI_MAIL = require('../../assets/emoji/mail.png');
@@ -56,6 +56,7 @@ import { withTimeout } from '../utils/withTimeout';
 import * as Network from 'expo-network';
 import { GoogleIcon, AppleIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
+import { andFitText } from '../utils/fitText';
 
 // 이메일 형식 검증 (메인 폼·재설정 모달 공통)
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -519,7 +520,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={[styles.modeBtn, mode === 'signup' && styles.modeBtnActive]}
               onPress={() => switchMode('signup')}
             >
-              <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, mode === 'signup' && styles.modeBtnTextActive]} {...andFitText}>
                 {t('login.modeSignup')}
               </Text>
             </TouchableOpacity>
@@ -527,7 +528,7 @@ export default function LoginScreen({ navigation }: Props) {
               style={[styles.modeBtn, mode === 'login' && styles.modeBtnActive]}
               onPress={() => switchMode('login')}
             >
-              <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]}>
+              <Text style={[styles.modeBtnText, mode === 'login' && styles.modeBtnTextActive]} {...andFitText}>
                 {t('login.modeLogin')}
               </Text>
             </TouchableOpacity>
@@ -681,7 +682,7 @@ export default function LoginScreen({ navigation }: Props) {
               accessibilityLabel={t('login.googleContinue')}
             >
               <GoogleIcon size={20} />
-              <Text style={styles.socialBtnText}>{t('login.googleContinue')}</Text>
+              <Text style={styles.socialBtnText} {...andFitText}>{t('login.googleContinue')}</Text>
             </TouchableOpacity>
 
             {/* Apple — iOS 전용 노출 (App Store 정책상 iOS에서만 제공) */}
@@ -695,7 +696,7 @@ export default function LoginScreen({ navigation }: Props) {
                 accessibilityLabel={t('login.appleContinue')}
               >
                 <AppleIcon size={20} color="#FFFFFF" />
-                <Text style={[styles.socialBtnText, { color: Colors.white }]}>
+                <Text style={[styles.socialBtnText, { color: Colors.white }]} {...andFitText}>
                   {t('login.appleContinue')}
                 </Text>
               </TouchableOpacity>
@@ -746,6 +747,8 @@ export default function LoginScreen({ navigation }: Props) {
         animationType="fade"
         onRequestClose={() => setForgotPasswordVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             {/* Header */}
@@ -824,6 +827,7 @@ export default function LoginScreen({ navigation }: Props) {
             )}
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 소셜 로그인 로딩 오버레이 — Modal 금지, 절대위치 View로 그린다.
@@ -1070,7 +1074,9 @@ const styles = StyleSheet.create({
     padding: Spacing[6],
   },
   modalContent: {
+    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
     width: '100%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: '#131018',
     borderRadius: BorderRadius['2xl'],
     borderWidth: 1,

@@ -2,15 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,  Alert,
+  Alert,
   Switch,
   Modal,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
 import { requestAccountDeletion, DELETION_GRACE_DAYS } from '../store/pendingDeletion';
@@ -21,6 +23,7 @@ import { EmailIcon, LockClosedIcon, GlobeIcon, TrashIcon, GoogleIcon, AppleIcon,
 import { useSkinAccent } from '../constants/skinTheme';
 import type { Gender } from '../store/settingsStore';
 import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
+import { andFitText } from '../utils/fitText';
 
 const COLORS = {
   bg:           '#0A0A0F',
@@ -513,6 +516,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={() => setIsBirthdayModalVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.birthdayModalTitle')}</Text>
@@ -546,7 +551,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={() => setIsBirthdayModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSubmit, !isOldEnough(birthdayDraft) && styles.modalBtnDisabled]}
@@ -554,11 +559,12 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={!isOldEnough(birthdayDraft)}
                 onPress={submitBirthday}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 성별 편집 모달 ── */}
@@ -598,7 +604,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={() => setIsGenderModalVisible(false)}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, styles.modalBtnSubmit, genderDraft === '' && styles.modalBtnDisabled]}
@@ -606,7 +612,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={genderDraft === ''}
                 onPress={submitGender}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -620,6 +626,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeEmailModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.emailChangeTitle')}</Text>
@@ -667,7 +675,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={closeEmailModal}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -682,12 +690,13 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 {emailSubmitting ? (
                   <ActivityIndicator size="small" color={COLORS.bg} />
                 ) : (
-                  <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                  <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
                 )}
               </TouchableOpacity>
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 비밀번호 변경 모달 ── */}
@@ -697,6 +706,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closePasswordModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{t('accountSettings.passwordModalTitle')}</Text>
@@ -759,7 +770,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 activeOpacity={0.7}
                 onPress={closePasswordModal}
               >
-                <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
@@ -771,11 +782,12 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                 disabled={passwordSubmitting || !currentPassword || newPassword.length < 6 || newPassword !== confirmPassword}
                 onPress={submitPasswordChange}
               >
-                <Text style={styles.modalBtnTextSubmit}>{t('accountSettings.changeBtn')}</Text>
+                <Text style={styles.modalBtnTextSubmit} {...andFitText}>{t('accountSettings.changeBtn')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── 계정 삭제 모달 (디테일 3단계) ── */}
@@ -785,6 +797,8 @@ export default function AccountSettingsScreen({ navigation }: Props) {
         transparent={true} statusBarTranslucent navigationBarTranslucent
         onRequestClose={closeDeleteAccountModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (2단계 사유 입력·3단계 비밀번호 입력) */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={styles.modalOverlay} accessibilityViewIsModal>
           <View style={[styles.modalContent, { borderColor: COLORS.redBorder }]}>
             <Text style={[styles.modalTitle, { color: COLORS.red }]}>{t('accountSettings.deleteModalTitle')}</Text>
@@ -816,14 +830,14 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={closeDeleteAccountModal}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('common.cancel')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('common.cancel')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteConsent && styles.modalBtnDisabled]}
                     disabled={!deleteConsent}
                     onPress={() => setDeleteStep(2)}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.next')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -865,14 +879,14 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={() => setDeleteStep(1)}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('accountSettings.prev')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.modalBtn, styles.modalBtnSubmit, { backgroundColor: COLORS.red }, !deleteReason && styles.modalBtnDisabled]}
                     disabled={!deleteReason}
                     onPress={() => setDeleteStep(3)}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.next')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.next')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -915,7 +929,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     style={[styles.modalBtn, styles.modalBtnCancel]}
                     onPress={() => setDeleteStep(2)}
                   >
-                    <Text style={styles.modalBtnTextCancel}>{t('accountSettings.prev')}</Text>
+                    <Text style={styles.modalBtnTextCancel} {...andFitText}>{t('accountSettings.prev')}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[
@@ -927,7 +941,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
                     disabled={deleteSubmitting || (signUpMethod === 'email' && !deletePassword) || (signUpMethod !== 'email' && deleteSocialConfirm !== t('accountSettings.deleteConfirmPhrase'))}
                     onPress={submitDeleteAccount}
                   >
-                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]}>{t('accountSettings.permanentDelete')}</Text>
+                    <Text style={[styles.modalBtnTextSubmit, { color: COLORS.white }]} {...andFitText}>{t('accountSettings.permanentDelete')}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -935,6 +949,7 @@ export default function AccountSettingsScreen({ navigation }: Props) {
 
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

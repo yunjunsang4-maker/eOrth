@@ -3,12 +3,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { useRecords } from '../store/recordStore';

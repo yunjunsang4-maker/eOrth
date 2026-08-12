@@ -3,13 +3,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Modal,
   Alert,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Image,
@@ -17,6 +15,7 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import TripRecordRenderer from '../components/TripRecordRenderer';
 import * as ImagePicker from 'expo-image-picker';
 import { getMaxAlbumPhotos } from '../constants/limits';
@@ -33,6 +32,8 @@ import { useRecords } from '../store/recordStore';
 import { TrashIcon, CommentIcon } from '../components/icons';
 import { timeAgo } from '../utils/timeAgo';
 import type { RootStackScreenProps } from '../navigation/types';
+import { STAGE_MAX_W } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 
 export default function TripRecordScreen({ navigation, route }: RootStackScreenProps<'TripRecord'>) {
   const { t, i18n } = useTranslation();
@@ -565,7 +566,7 @@ export default function TripRecordScreen({ navigation, route }: RootStackScreenP
             disabled={!commentText.trim()}
             activeOpacity={0.8}
           >
-            <Text style={styles.sendBtnText}>{t('trip.post')}</Text>
+            <Text style={styles.sendBtnText} {...andFitText}>{t('trip.post')}</Text>
           </TouchableOpacity>
         </View>
         )}
@@ -830,6 +831,10 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheetCard: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 sheetOverlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
@@ -869,7 +874,9 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     padding: 32,
   },
   sectionModalCard: {
+    // 고정 폭이 아니라 width:'100%'라 창 폭을 그대로 먹는다 — Modal은 루트 클램프 밖
     width: '100%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: '#2E2E3B',
     borderRadius: 16,
     padding: 18,
@@ -1055,6 +1062,10 @@ const makeStyles = (a: SkinAccent) => StyleSheet.create({
     justifyContent: 'flex-end',
   },
   menuSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 menuOverlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1B33',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,

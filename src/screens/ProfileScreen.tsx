@@ -8,12 +8,10 @@ import { Image } from 'expo-image';
 import TripCoverImage from '../components/TripCoverImage';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Modal,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
   Alert,
@@ -24,6 +22,7 @@ import {
   LayoutAnimation,
   UIManager,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import type { ImageSourcePropType } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -57,6 +56,7 @@ import MainCoachmark, { CoachStep, CoachRect } from '../components/MainCoachmark
 import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive } from '../components/coachOverlayState';
+import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
@@ -131,7 +131,7 @@ const StatCard = ({
 );
 
 // ─── 여행 기록 썸네일 데이터 ───
-const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_WIDTH = stageWidthNow();
 const THUMB_WIDTH = (SCREEN_WIDTH - 32 - 12) / 2; // 2열 그리드
 
 // ─── 기록 형식 아이콘 (FAB과 동일한 View 기반) ───
@@ -379,13 +379,14 @@ function BadgeListModal({
             onPress={() => setSelectMode((v) => !v)}
             activeOpacity={0.8}
           >
-            <Text style={[blStyles.selectBtnText, { color: skinAccent.accent }, selectMode && blStyles.selectBtnTextOn]}>
+            <Text style={[blStyles.selectBtnText, { color: skinAccent.accent }, selectMode && blStyles.selectBtnTextOn]} {...andFitText}>
               {selectMode ? t('profile.selectDone') : t('profile.select')}
             </Text>
           </TouchableOpacity>
         </View>
         </View>
 
+        <View style={blStyles.binderClamp}>
         <View style={blStyles.binderWrapper}>
           <ScrollView
             showsVerticalScrollIndicator={false}
@@ -492,10 +493,14 @@ function BadgeListModal({
             })}
           </ScrollView>
         </View>
+        </View>
 
-        <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
-          <Text style={blStyles.closeBtnText}>{t('common.close')}</Text>
-        </TouchableOpacity>
+        {/* 닫기 버튼은 margin:16을 유지해야 해서 폭 클램프를 래퍼가 맡는다 */}
+        <View style={blStyles.footerClamp}>
+          <TouchableOpacity style={blStyles.closeBtn} onPress={handleClose} activeOpacity={0.8}>
+            <Text style={blStyles.closeBtnText} {...andFitText}>{t('common.close')}</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* 배지 확대 보기 오버레이 */}
         <Modal
@@ -1351,7 +1356,7 @@ function GroupMergeModal({
 
             {/* 저장 */}
             <TouchableOpacity style={gmSt.saveBtn} onPress={handleSave} activeOpacity={0.85}>
-              <Text style={gmSt.saveBtnText}>{t('profile.saveLarge')}</Text>
+              <Text style={gmSt.saveBtnText} {...andFitText}>{t('profile.saveLarge')}</Text>
             </TouchableOpacity>
             <View style={{ height: 32 }} />
           </ScrollView>
@@ -2123,14 +2128,16 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
             <TouchableOpacity
               onPress={() => navigation.navigate('TravelImport', { from: 'profile' })}
               activeOpacity={0.85}
-              style={{ marginTop: 10, borderRadius: 999, overflow: 'hidden' }}
+              // maxWidth: 자기 폭 버튼이라 상한이 없으면 andFitText가 축소할 기준이 없어
+              // 안드로이드(Noto Sans KR이 더 넓음)에서 라벨이 화면 밖으로 밀린다
+              style={{ marginTop: 10, borderRadius: 999, overflow: 'hidden', maxWidth: '90%' }}
             >
               <LinearGradient
                 colors={skinAccent.btnGradient}
                 start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
                 style={{ paddingHorizontal: 22, paddingVertical: 11 }}
               >
-                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }}>{t('profile.importPastTripsCta')}</Text>
+                <Text style={{ color: '#FFFFFF', fontSize: 14, fontWeight: '800' }} {...andFitText}>{t('profile.importPastTripsCta')}</Text>
               </LinearGradient>
             </TouchableOpacity>
           </View>
@@ -2633,6 +2640,10 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.bg,
   },
+  // 프로필 편집은 pageSheet Modal이라 루트 클램프 밖(안드로이드에선 전체화면)에서
+  // 렌더된다. 헤더 좌우 버튼(취소/저장)과 본문을 Stage 폭으로 다시 가둔다 —
+  // modalRoot(불투명 페이지 배경)는 전면 유지해야 양옆에 모달 기본 배경이 안 드러난다.
+  // borderBottom은 원래 화면 전체를 가로지르던 구분선이라, 클램프하면 선도 컬럼 폭이 된다.
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2642,6 +2653,9 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.divider,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   modalTitle: {
     fontSize: 16,
@@ -2669,6 +2683,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 48,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
 
   // 모달 아바타
@@ -2864,9 +2881,19 @@ const blStyles = StyleSheet.create({
     alignSelf: 'center',
     marginBottom: 16,
   },
+  // 헤더도 클램프한다 — selectBtn이 position:'absolute' right:16이라, 클램프 없이는
+  // 보드는 컬럼 중앙인데 "선택" 버튼만 창 오른쪽 끝에 붙어 폴드에서 크게 벌어진다.
   header: {
     alignItems: 'center',
     marginBottom: 20,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
+  },
+  footerClamp: {
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   title: {
     fontSize: 18,
@@ -2878,6 +2905,18 @@ const blStyles = StyleSheet.create({
     fontSize: 12,
     color: '#BF85FC',
     fontWeight: '600',
+  },
+  // pageSheet Modal은 루트 클램프 밖(안드로이드에선 아예 전체화면)이라 앨범 보드를
+  // 여기서 다시 Stage 폭으로 가둔다 — 아래 cell 폭이 SCREEN_WIDTH(= Stage 폭)에서 3열로
+  // 파생되므로, 보드만 창 폭으로 늘어나면 배지가 왼쪽에 몰리고 오른쪽이 텅 빈다.
+  // 클램프를 binderWrapper에 직접 주지 않는 이유: marginHorizontal:16과 width:'100%'가
+  // 겹치면 폰에서 32dp 넘친다. 폭 제한만 담당하는 래퍼를 한 겹 둔다(배경 없음 =
+  // 딤이 아니므로 규칙 6 대상 아님). root(불투명 페이지 배경)는 전면 유지.
+  binderClamp: {
+    flex: 1,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   binderWrapper: {
     flex: 1,
@@ -3296,6 +3335,10 @@ const thumbSt = StyleSheet.create({
 // ─── 묶음 설정 모달 스타일 ───
 const gmSt = StyleSheet.create({
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
@@ -3456,6 +3499,10 @@ const asStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     paddingHorizontal: 12,
     paddingBottom: 36,
   },

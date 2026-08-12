@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet } from 'react-native';
+import { View, Image, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 
 // 프리미엄 소개 화면 전용 미니 네컷 스트립 미리보기.
 // 실제 편집기(CutPhotoCanvas)를 띄우기엔 무거워서, 2컷 세로 스트립의

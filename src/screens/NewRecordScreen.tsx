@@ -2,13 +2,11 @@ import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,  TextInput,
+  ScrollView,
   KeyboardAvoidingView,
   Platform,
-  Dimensions,
   PanResponder,
   ActivityIndicator,
   Modal,
@@ -19,6 +17,7 @@ import {
   Animated,
   Easing,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import Svg, { Path as SvgPath, Circle as SvgCircle } from 'react-native-svg';
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
@@ -48,6 +47,8 @@ import type { RootStackScreenProps } from '../navigation/types';
 import { useMoments } from '../store/momentStore';
 import { matchMoments, countryNameToCode } from '../utils/momentMatch';
 import MomentListSheet from '../components/moments/MomentListSheet';
+import { stageWidthNow } from '../utils/stage';
+import { andFitText } from '../utils/fitText';
 import {
   PlaneIcon as DesignerPlaneIcon,
   CameraIcon as DesignerCameraIcon,
@@ -83,7 +84,7 @@ if (Platform.OS === 'android') {
 // AlbumCreateScreen 등이 './NewRecordScreen' 경로로 import 하므로 재export 유지
 export { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 
-const { width: SCREEN_W } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
 
 const COLORS = {
   bg: '#0A0A0F',
@@ -1580,12 +1581,12 @@ export default function NewRecordScreen({ navigation, route }: RootStackScreenPr
                     activeOpacity={0.85}
                   >
                     <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel}>{t('newRecord.departDate')}</Text>
+                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.departDate')}</Text>
                       <Text style={s.dateBtnVal}>{formatDate(startDate)}</Text>
                     </View>
                     <Text style={s.dateBtnArrow}>→</Text>
                     <View style={s.dateBtnCol}>
-                      <Text style={s.dateBtnLabel}>{t('newRecord.arriveDate')}</Text>
+                      <Text style={s.dateBtnLabel} {...andFitText}>{t('newRecord.arriveDate')}</Text>
                       <Text style={s.dateBtnVal}>{formatDate(endDate)}</Text>
                     </View>
                     <View style={{ marginLeft: 10 }}><CalendarIcon size={18} color={skinAccent.accent} /></View>

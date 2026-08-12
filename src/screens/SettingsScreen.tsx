@@ -2,16 +2,18 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
-  TouchableOpacity,  Alert,
+  TouchableOpacity,
+  Alert,
   Switch,
   Modal,
-  TextInput,
   Pressable,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import * as WebBrowser from 'expo-web-browser';
 import { useTranslation } from 'react-i18next';
 import { useSettings } from '../store/settingsStore';
@@ -59,6 +61,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 
 // 개인정보처리방침·이용약관 게시 URL — 가입 화면과 공유하므로 constants/legalLinks 가 단일 출처
 import { PRIVACY_POLICY_URL, TERMS_URL } from '../constants/legalLinks';
+import { andFitText } from '../utils/fitText';
 // 피드백은 구글 폼으로 접수한다(앱 내 FeedbackScreen 대신) — 베타 기간 응답 수집·정리가 쉬움
 const FEEDBACK_FORM_URL = 'https://forms.gle/fUwfkXqsKLtuFQxo8';
 
@@ -566,6 +569,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={() => setCountryModalVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <View style={st.modalOverlay} accessibilityViewIsModal>
           <View style={st.modalCard}>
             <Text style={st.modalTitle}>{t('settings.countryModalTitle')}</Text>
@@ -585,11 +590,12 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
                 <Text style={st.modalBtnCancelText}>{t('common.cancel')}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={[st.modalBtn, st.modalBtnSubmit]} activeOpacity={0.7} onPress={submitCountry}>
-                <Text style={st.modalBtnSubmitText}>{t('common.confirm')}</Text>
+                <Text style={st.modalBtnSubmitText} {...andFitText}>{t('common.confirm')}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 아이디 폰트 선택 모달 — 각 폰트로 실제 아이디를 미리보기 */}
@@ -643,6 +649,8 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
         animationType="fade"
         onRequestClose={closeStayModal}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <Pressable style={st.modalOverlay} accessibilityViewIsModal onPress={closeStayModal}>
           <Pressable style={st.modalCard} onPress={() => {}}>
             <Text style={st.modalTitle}>{t('stay.countryTitle')}</Text>
@@ -675,6 +683,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
             </TouchableOpacity>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 장기체류 수동 시작 모달 — 유형 선택 단계 */}

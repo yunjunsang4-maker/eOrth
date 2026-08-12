@@ -1,10 +1,19 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, FlatList, Image,
-  Dimensions, ActivityIndicator, Alert, ScrollView, Modal, TextInput,
-  KeyboardAvoidingView, Platform,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  FlatList,
+  Image,
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
@@ -27,6 +36,7 @@ import PhotoViewerModal from '../components/PhotoViewerModal';
 import { getCountryFeature, pointInCountry } from '../utils/photoCountryFilter';
 import { KO_TO_EN } from './MainScreen';
 import { countryLabel, continentLabel } from '../utils/countryLabel';
+import { useStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 // 사진첩 한 권당 최대 장수는 constants/limits.ts(getMaxAlbumPhotos) — 무료 100 / 프리미엄 200
 const PAGE_SIZE = 200; // 갤러리 페이지네이션 단위
@@ -58,14 +68,11 @@ const parseAlbumDate = (s?: string): Date | null => {
 // (TripDetailScreen COLORS.albumAccent). 두 화면에서 같은 것을 가리키므로 색도 같게 둔다.
 const ALBUM_ACCENT = '#FFA657';
 
-const { width } = Dimensions.get('window');
 const COL = 3;
-const CELL = Math.floor((width - 16 * 2 - 8 * (COL - 1)) / COL);
-
-// 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
-const CARD_W = width - 40; // 시트 좌우 패딩 20×2
 const CARD_H = 180;
-const CARD_ASPECT = CARD_W / CARD_H;
+// CELL/CARD_W는 폭에서 파생되므로 컴포넌트 본문에서 useStageWidth()로 계산한다(아래).
+// 모듈 최상위 stageWidthNow()로 박제하면 접힌 채(360dp) 시작해 펼쳤을 때
+// (시트·화면은 480dp로 클램프) 3열 그리드가 360dp 폭에 머물러 약 100dp가 빈다.
 
 /** 체크 표시 — '✓' 문자는 폰트마다 두께·크기가 달라 SVG로 그린다 */
 function CheckMark({ size = 13, color = '#FFFFFF' }: { size?: number; color?: string }) {
@@ -78,6 +85,11 @@ function CheckMark({ size = 13, color = '#FFFFFF' }: { size?: number; color?: st
 
 export default function AlbumCreateScreen({ navigation, route }: RootStackScreenProps<'AlbumCreate'>) {
   const { t, i18n } = useTranslation();
+  const stageW = useStageWidth();
+  const CELL = Math.floor((stageW - 16 * 2 - 8 * (COL - 1)) / COL);
+  // 미리보기 카드 크기 — 위치 조정과 실제 크롭이 같은 비율을 쓰도록 공유
+  const CARD_W = stageW - 40; // 시트 좌우 패딩 20×2
+  const CARD_ASPECT = CARD_W / CARD_H;
   const skinAccent = useSkinAccent(); // 선택 상태·카운터 등 강조를 스킨색으로
   const insets = useSafeAreaInsets();
   const { addImportedAlbum, addTripGroup, tripGroups, updateTripGroup, updateRecord, records } = useRecords();
@@ -1013,9 +1025,16 @@ const st = StyleSheet.create({
 
   /* 미리보기 모달 */
   pvOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  // 이 모달은 RN Modal이라 App.tsx 루트 클램프 바깥에서 렌더된다. CARD_W(→ AdjustedCoverImage
+  // frameW)는 Stage 폭(≤480) 기준으로 계산되므로, 시트 자체도 같은 폭으로 가두고 중앙에
+  // 둬야 폴드·태블릿에서 미리보기 카드가 왼쪽으로 쏠리지 않는다. pvOverlay(딤 배경)는
+  // 전면 유지 — 시트만 좁힌다.
   pvSheet: {
     backgroundColor: '#16121F', borderTopLeftRadius: 24, borderTopRightRadius: 24,
     padding: 20, paddingBottom: 40,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
   pvTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
   pvSub: { color: '#A1A1B0', fontSize: 13, marginBottom: 16 },

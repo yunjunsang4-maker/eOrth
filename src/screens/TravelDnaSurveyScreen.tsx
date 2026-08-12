@@ -5,7 +5,8 @@
  * 36문항에서 탭이 두 배가 되면 완주율이 떨어진다.
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, BackHandler, Animated, Easing } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Alert, BackHandler, Animated, Easing } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';

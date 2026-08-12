@@ -2,16 +2,15 @@ import React, { useRef, useState, useCallback, useEffect, useId, useMemo } from 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   Pressable,
   Animated,
   Image,
-  Dimensions,
   PanResponder,
   Platform,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
@@ -27,6 +26,7 @@ import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import StarFieldBackground from '../components/StarFieldBackground';
 import RatingStars from '../components/RatingStars';
+import { stageWidthNow } from '../utils/stage';
 import Svg, {
   Image as SvgImage,
   Path as SvgPath,
@@ -196,7 +196,7 @@ type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 // ── TOP 국가 궤도 + Travel Rating 통합 섹션 — 시안(Group 2085664582, 335×312) ──
 // 궤도와 지구본이 동심원: 중심 (167.5, 196.2), 궤도 R=160.2, 지구본 R≈108.
 // 모든 좌표는 시안(335px 폭) 기준 → 실제 폭으로 배율 환산.
-const WIN_W = Dimensions.get('window').width;
+const WIN_W = stageWidthNow();
 const ARC_W = WIN_W - Spacing[6] * 2; // scroll 좌우 패딩과 동일
 const OS = ARC_W / 335;               // 시안 배율(orbit scale)
 const ORBIT_H = Math.ceil(312 * OS);

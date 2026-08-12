@@ -2,13 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  Switch,  Linking,
+  Switch,
+  Linking,
   AppState,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import * as Notifications from 'expo-notifications';
 import { MapIcon, HeartIcon, ChatIcon, PersonIcon, PlaneIcon, HomeIcon, CalendarIcon, MegaphoneIcon, BellIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
@@ -16,6 +17,7 @@ import * as Location from 'expo-location';
 import { useSkinAccent } from '../constants/skinTheme';
 import { useSettings } from '../store/settingsStore';
 import type { RootStackScreenProps } from '../navigation/types';
+import { andFitText } from '../utils/fitText';
 
 const COLORS = {
   bg:          '#0A0A0F',
@@ -190,7 +192,7 @@ export default function NotificationSettingsScreen({ navigation }: Props) {
               onPress={requestPermission}
               activeOpacity={0.8}
             >
-              <Text style={styles.permissionBtnText}>{t('notifSettings.openSettings')}</Text>
+              <Text style={styles.permissionBtnText} {...andFitText}>{t('notifSettings.openSettings')}</Text>
             </TouchableOpacity>
           </View>
         )}

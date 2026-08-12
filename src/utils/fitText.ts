@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import { MAX_FONT_SCALE } from '../ui/Text';
 
 // ─── 안드로이드 전용 텍스트 보정 (iOS 렌더링은 절대 변경하지 않는다) ───
 // 앱 글꼴(Inter)에 한글이 없어 한글은 시스템 폰트로 폴백되는데, 안드로이드(Noto Sans KR)는
@@ -8,5 +9,5 @@ import { Platform } from 'react-native';
 // minimumFontScale: 자동 축소의 하한 — 없으면(기본 0.01) 긴 번역문에서 글자가 무한정
 // 작아져 읽을 수 없게 된다 (FeatureShowcaseCard의 로컬 구현 0.82와 통일)
 export const andFitText = Platform.OS === 'android'
-  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: 1.2 } as const)
+  ? ({ numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.82, maxFontSizeMultiplier: MAX_FONT_SCALE } as const)
   : ({} as const);

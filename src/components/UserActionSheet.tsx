@@ -1,15 +1,16 @@
 import React, { useRef, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   TouchableOpacity,
   Animated,
   Platform,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { STAGE_MAX_W } from '../utils/stage';
 
 // 팔로워/팔로잉 목록 ⋯ 메뉴 — 기본 플랫폼 Alert 대신 앱 공통 톤의 박스 시트.
 // (ProfileScreen AvatarActionSheet와 동일한 카드 스타일: #1E1E2E, radius 20, 하단 스프링 등장)
@@ -92,6 +93,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   sheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 overlay는 전체 폭 유지)
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     paddingHorizontal: 12,
     paddingBottom: 36,
   },

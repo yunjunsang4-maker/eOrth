@@ -3,13 +3,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { fetchNeighborsOf, type NeighborProfile } from '../services/social';

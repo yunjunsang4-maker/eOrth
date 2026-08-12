@@ -1,19 +1,20 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   Image,
   Modal,
   FlatList,
   StyleSheet,
-  Dimensions,
   Platform,
 } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../../constants/skinTheme';
+import { useStageWidth, STAGE_MAX_W } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 /**
  * 30장 초과 시 뜨는 사진 선택 모달 — NewRecordScreen 에서 분리.
@@ -26,8 +27,6 @@ const COLORS = {
   white: '#FFFFFF',
   purpleNeon: '#BF85FC',
 };
-
-const PICKER_CELL = Math.floor((Dimensions.get('window').width - 6) / 3);
 
 export function MediaPickerModal({
   visible,
@@ -49,6 +48,19 @@ export function MediaPickerModal({
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
   const insets = useSafeAreaInsets();
+  // 셀 크기는 getItemLayout의 length/offset에 그대로 들어간다 — 박제하면 폴드 펼침 시
+  // 스크롤 위치가 어긋난다. 스타일시트는 모듈 최상위에서 한 번만 만들어지므로
+  // 폭·높이만 인라인으로 내렸다(나머지 셀 스타일은 mpStyles.cell 유지).
+  const stageW = useStageWidth();
+  const PICKER_CELL = Math.floor((stageW - 6) / 3);
+  const getItemLayout = useCallback(
+    (_: unknown, index: number) => ({
+      length: PICKER_CELL + 2,
+      offset: (PICKER_CELL + 2) * Math.floor(index / 3),
+      index,
+    }),
+    [PICKER_CELL],
+  );
   return (
     <Modal
       visible={visible}
@@ -69,7 +81,7 @@ export function MediaPickerModal({
             style={{ padding: 4 }}
             disabled={selected.size === 0}
           >
-            <Text style={[mpStyles.confirmText, { color: skinAccent.accent }, selected.size === 0 && { opacity: 0.4 }]}>
+            <Text style={[mpStyles.confirmText, { color: skinAccent.accent }, selected.size === 0 && { opacity: 0.4 }]} {...andFitText}>
               {t('common.done')}
             </Text>
           </TouchableOpacity>
@@ -96,16 +108,12 @@ export function MediaPickerModal({
           maxToRenderPerBatch={15}
           windowSize={5}
           removeClippedSubviews
-          getItemLayout={(_, index) => ({
-            length: PICKER_CELL + 2,
-            offset: (PICKER_CELL + 2) * Math.floor(index / 3),
-            index,
-          })}
+          getItemLayout={getItemLayout}
           renderItem={({ item }) => {
             const isSelected = selected.has(item.id);
             return (
               <TouchableOpacity
-                style={mpStyles.cell}
+                style={[mpStyles.cell, { width: PICKER_CELL, height: PICKER_CELL }]}
                 activeOpacity={0.8}
                 onPress={() => onToggle(item.id)}
               >
@@ -173,12 +181,17 @@ const mpStyles = StyleSheet.create({
     fontWeight: '700',
     color: COLORS.purpleNeon,
   },
+  // 이 모달은 RN Modal이라 App.tsx 루트 클램프 바깥에서 렌더된다. 셀 폭은 Stage 폭(≤480)
+  // 기준으로 계산되므로, 그리드 콘텐츠도 같은 폭으로 가두고 중앙에 둬야 넓은 화면에서
+  // 왼쪽으로 쏠리지 않는다. root(페이지 배경)는 전면 유지 — 여기만 좁힌다.
   gridContent: {
     paddingTop: 2,
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
   },
+  // width·height는 Stage 폭에서 파생되므로 호출부에서 인라인으로 주입한다.
   cell: {
-    width: PICKER_CELL,
-    height: PICKER_CELL,
     margin: 1,
     position: 'relative',
   },

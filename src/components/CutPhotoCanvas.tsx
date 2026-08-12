@@ -1,5 +1,6 @@
 import React, { forwardRef } from 'react';
-import { View, Image, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 import { CUT_LAYOUTS, getCutFrame, CutFrame, CutLayout } from '../constants/cutFrames';
 import { AdjustedCoverImage, type CutTransform } from './CutPhotoAdjustModal';
 import { handleFontStyle } from '../constants/handleFonts';

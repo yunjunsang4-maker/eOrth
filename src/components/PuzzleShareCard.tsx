@@ -1,7 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform, Share,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  Platform,
+  Share,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path, Defs, ClipPath, Image as SvgImage } from 'react-native-svg';
 import { captureRef } from 'react-native-view-shot';
@@ -9,8 +15,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import { buildCountryShape, buildSilhouettePaths } from '../utils/countryShape';
-
-const { width: SW } = Dimensions.get('window');
+import { useStageWidth } from '../utils/stage';
 
 /**
  * 퍼즐 완성 공유 카드 — 완성 연출이 끝난 뒤 뜨는 오버레이.
@@ -33,6 +38,8 @@ interface Props {
 export default function PuzzleShareCard({ countryCode, countryName, image, total, onClose }: Props) {
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 카드 폭은 Stage 폭에서 파생 — 박제하면 폴드 펼침 시 카드가 좁게 남는다.
+  const SW = useStageWidth();
 
   const shape = useMemo(() => buildCountryShape(countryCode), [countryCode]);
   const cardW = Math.min(SW * 0.84, 340);

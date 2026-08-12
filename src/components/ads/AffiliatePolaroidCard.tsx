@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { View, Image, TouchableOpacity, StyleSheet, Linking } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { AdCampaign } from '../../utils/adCampaignSelect';
 import { logAdClick } from '../../services/adCampaigns';

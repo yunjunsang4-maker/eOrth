@@ -1,7 +1,14 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, Image, StyleSheet, TouchableOpacity, Animated, Dimensions, Platform,
+  View,
+  Image,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  useWindowDimensions,
+  Platform,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { GestureHandlerRootView, GestureDetector, Gesture } from 'react-native-gesture-handler';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Path } from 'react-native-svg';
@@ -11,7 +18,6 @@ import * as Haptics from 'expo-haptics';
 import { useSkinAccent } from '../constants/skinTheme';
 import { buildCountryShape, buildSilhouettePaths } from '../utils/countryShape';
 
-const { width: SW, height: SH } = Dimensions.get('window');
 // 자유 조정 — 확대(5배)뿐 아니라 축소(0.25배)도 허용한다. 사진이 프레임을 다 못 덮으면
 // 빈 영역은 검게 남고, 그 상태 그대로(캡처) 퍼즐 그림이 된다.
 const MIN_SCALE = 0.25;
@@ -65,6 +71,8 @@ interface Props {
 export default function PuzzlePhotoAdjustOverlay({ countryCode, uri, onConfirm, onCancel }: Props) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 창 크기는 실시간으로 받는다 — 박제하면 폴드 펼침 시 프레임이 어긋난다.
+  const { width: SW, height: SH } = useWindowDimensions();
 
   const shape = useMemo(() => buildCountryShape(countryCode), [countryCode]);
   // 프레임 = 나라 투영 bbox 비율로 화면에 fit

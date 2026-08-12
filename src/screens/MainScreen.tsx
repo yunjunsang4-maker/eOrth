@@ -3,11 +3,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  TextInput,
   Dimensions,
   Animated,
   Modal,
@@ -17,6 +15,7 @@ import {
   KeyboardAvoidingView,
   type LayoutChangeEvent,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import { BlurView } from 'expo-blur';
 import { andFitText } from '../utils/fitText';
@@ -25,6 +24,7 @@ import RatingStars from '../components/RatingStars';
 import NotificationBadge from '../components/NotificationBadge';
 import { fetchUnreadNotificationCount, subscribeNotifications } from '../services/social';
 import { getMyUserId } from '../services/profile';
+import { stageWidthNow, useStageWidth, clampStageWidth, STAGE_MAX_W } from '../utils/stage';
 
 // 시트/모달 배경 재질 — iOS는 블러, Android는 매트(고불투명).
 // Android BlurView는 experimentalBlurMethod 없이는 no-op이라 지구본이 선명하게 뚫고 비쳤고,
@@ -82,7 +82,8 @@ import { matchesCountry } from '../utils/countryMatch';
 import { regionDisplayName } from '../utils/regionLabel';
 import { resolveRegionCode } from '../utils/regionKeyMigration';
 
-const { height, width } = Dimensions.get('window');
+const width = stageWidthNow();
+const height = Dimensions.get('window').height;
 // 영토 표시 설정 모달 카드 — Figma 325x569 비율 유지(화면에 맞춰 축소)
 const DS_CARD_W = Math.min(325, width - 24);
 const DS_CARD_H = Math.min(569, height * 0.86, DS_CARD_W * (569 / 325));
@@ -361,7 +362,13 @@ type RecordFormatScreen = 'NewRecord' | 'BlogRecord' | 'CutRecord' | 'SnapRecord
 // 전체화면 우주배경 — 메인탭 모든 콘텐츠 뒤에 깔리는 별·무드글로우(비상호작용).
 // 별은 글로브 WebView(75% 영역) 밖(헤더·탭 영역)까지 화면 전체로 확장된다(첨부 SVG처럼).
 function SpaceBackdrop({ glow = '#CA82FF', glow2 = '#1E3AFF' }: { glow?: string; glow2?: string }) {
-  const { width: W, height: H } = Dimensions.get('window');
+  // 이 배경은 MainScreen 본문(styles.container) 안 StyleSheet.absoluteFill로 깔린다 —
+  // 즉 App.tsx의 클램프된 Stage 컬럼 "안"이라 그릴 수 있는 폭은 창 폭이 아니라 Stage 폭이다.
+  // 창 폭(763dp)으로 별 320개와 무드 글로우 6개를 배치하면 480dp에서 잘려 오른쪽 약 37%가
+  // 사라지고, W*0.82·W*0.94에 놓인 글로우는 아예 화면 밖으로 나간다.
+  // 높이는 클램프 대상이 아니므로(Stage는 폭만 가둔다) 실제 창 높이를 그대로 쓴다.
+  const W = useStageWidth();
+  const { height: H } = Dimensions.get('window');
   const stars = useMemo(() => {
     let s = 20260629;
     const rnd = () => { s = (s * 1664525 + 1013904223) >>> 0; return s / 4294967296; };
@@ -502,11 +509,17 @@ export default function MainScreen({ navigation, route }: Props) {
       if (cancelled) return;
       traceStep('coach:main', 'measured');
       const WIN_W = Dimensions.get('window').width;
+      // 코치마크 rect는 창 절대 좌표(measureInWindow 계약)다. 폴백도 같은 좌표계여야 한다.
+      const STAGE_W = clampStageWidth(WIN_W);
+      const GUTTER = Math.max(0, (WIN_W - STAGE_W) / 2);
       const FAB_BTN = 56;
       const SNAP_BTN = 60;
       // 측정 성공 시 실제 위치, 실패 시 상수 폴백
       const snap: CoachRect = snapMeasured ?? {
-        x: WIN_W - 46 - SNAP_BTN, // 우측 (오른쪽 모서리 46px 안쪽)
+        // 스냅 버튼(RecordFab styles.snap)은 right:46 — 창이 아니라 "컬럼" 오른쪽
+        // 가장자리 기준이다. 창 좌표로 옮기려면 컬럼 시작점(GUTTER)을 더해야 한다.
+        // 창 폭 그대로 쓰면 폴드·태블릿에서 강조 구멍이 gutter만큼 오른쪽으로 빗나간다.
+        x: GUTTER + STAGE_W - 46 - SNAP_BTN, // 컬럼 우측 (오른쪽 모서리 46px 안쪽)
         y: height - ((insets.bottom || 0) + 129) - SNAP_BTN, // 탭 바 위 우측
         width: SNAP_BTN,
         height: SNAP_BTN,
@@ -516,6 +529,10 @@ export default function MainScreen({ navigation, route }: Props) {
       // fabY = snapY + (129-73) + (60-56) = snapY + 60. 이렇게 하면 window 높이 오차
       // (안드로이드 내비바 등)가 스냅과 똑같이 상쇄된다. 실측 실패 시에만 상수 폴백.
       const fab: CoachRect = {
+        // 여기만 창 폭(WIN_W)을 그대로 쓰는 게 맞다 — 바로 위 snap.x와 의도적으로 다르다.
+        // FAB는 컬럼 중앙 정렬(RecordFab fabWrap: left0/right0 + alignItems:'center')이고
+        // 컬럼 자체가 창 중앙에 있어 GUTTER + STAGE_W/2 === WIN_W/2 (항등식)다.
+        // 즉 gutter 보정을 더해도 값이 같다. 오른쪽 정렬인 snap.x만 보정이 필요하다.
         x: WIN_W / 2 - FAB_BTN / 2,
         y: snapMeasured
           ? snapMeasured.y + 60
@@ -1792,7 +1809,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     style={{ flexDirection: 'row', alignItems: 'center', gap: 7, backgroundColor: skinChipBg, borderRadius: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.18)', paddingHorizontal: 16, paddingVertical: 10 }}
                   >
                     <PuzzlePieceIcon size={15} color="#FFFFFF" />
-                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>{t('main.puzzlePickChip')}</Text>
+                    <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }} {...andFitText}>{t('main.puzzlePickChip')}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -1838,7 +1855,8 @@ export default function MainScreen({ navigation, route }: Props) {
                   activeOpacity={1}
                   onPress={() => setRegionTagSheetVisible(false)}
                 />
-                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%' }}>
+                {/* width/maxWidth/alignSelf — Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다 */}
+                <View style={{ backgroundColor: '#15151F', borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingTop: 14, paddingHorizontal: 20, paddingBottom: insets.bottom + 16, maxHeight: '78%', width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
                   <View style={{ width: 44, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 14 }} />
                   <Text style={{ color: '#FFFFFF', fontSize: 17, fontWeight: '700', textAlign: 'center' }}>{t('main.regionTagTitle')}</Text>
                   <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 4, marginBottom: 12 }}>
@@ -2511,7 +2529,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     <Text style={styles.dsColorLabel}>{t('main.puzzleImageLabel')}</Text>
                     {/* 그림을 아직 안 골랐으면 지도에 퍼즐이 그려지지 않는다 — 그 이유를 밝힌다 */}
                     {!puzzleImage && (
-                      <Text style={{ color: '#A1A1B0', fontSize: 12, marginBottom: 6 }}>{t('main.puzzleNeedPhoto')}</Text>
+                      <Text style={{ color: '#A1A1B0', fontSize: 12, marginBottom: 6 }} {...andFitText}>{t('main.puzzleNeedPhoto')}</Text>
                     )}
                     {/* 실루엣 미리보기 — 현재 그림이 나라 모양으로 잘린 모습 */}
                     {puzzleImage && puzzlePreview ? (
@@ -2580,7 +2598,7 @@ export default function MainScreen({ navigation, route }: Props) {
                         style={{ width: 56, height: 56, borderRadius: 8, borderWidth: 1, borderColor: '#3E3155', alignItems: 'center', justifyContent: 'center' }}
                       >
                         <Text style={{ color: '#A1A1B0', fontSize: 20 }}>＋</Text>
-                        <Text style={{ color: '#A1A1B0', fontSize: 9 }}>{t('main.puzzleFromAlbum')}</Text>
+                        <Text style={{ color: '#A1A1B0', fontSize: 9 }} {...andFitText}>{t('main.puzzleFromAlbum')}</Text>
                       </TouchableOpacity>
                     </ScrollView>
                   </View>
@@ -2603,7 +2621,7 @@ export default function MainScreen({ navigation, route }: Props) {
                     </TouchableOpacity>
                   </View>
                   {recordedRegions.length === 0 ? (
-                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }}>
+                    <Text style={{ color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginVertical: 20 }} {...andFitText}>
                       {t('main.noRecordedRegions')}
                     </Text>
                   ) : (
@@ -2630,7 +2648,7 @@ export default function MainScreen({ navigation, route }: Props) {
                                 onPress={() => setRegionPhotos(prev => { const next = { ...prev }; delete next[r.key]; return next; })}
                                 hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                               >
-                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }}>{t('main.reset')}</Text>
+                                <Text style={{ color: '#A1A1B0', fontSize: 12, marginRight: 10 }} {...andFitText}>{t('main.reset')}</Text>
                               </TouchableOpacity>
                             )}
                             <TouchableOpacity
@@ -2657,7 +2675,7 @@ export default function MainScreen({ navigation, route }: Props) {
               activeOpacity={0.85}
               onPress={confirmDisplaySettings}
             >
-              <Text style={dsm.confirmText}>{t('common.confirm')}</Text>
+              <Text style={dsm.confirmText} {...andFitText}>{t('common.confirm')}</Text>
             </TouchableOpacity>
           </View>
         </TouchableOpacity>
@@ -3009,8 +3027,11 @@ const styles = StyleSheet.create({
   countrySheet: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    // left/right:0 대신 width+maxWidth+alignSelf — 이 시트는 Modal 안(루트 클램프 밖)이라
+    // left/right로 붙이면 폴드·태블릿에서 창 폭 전체로 늘어난다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     // 고정 높이가 아니라 상한 — 기록이 적으면 시트도 작게 올라온다
     maxHeight: COUNTRY_SHEET_MAX_H,
     backgroundColor: 'rgba(20,20,35,0.55)',
@@ -3136,7 +3157,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fmCard: {
+    // 82%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
     width: '82%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: 'rgba(20,20,32,0.5)',
     borderRadius: 20,
     padding: 24,
@@ -3154,7 +3177,9 @@ const styles = StyleSheet.create({
 
   // ── 지역(주) 기존 기록 모달
   rrCard: {
+    // 86%는 창 폭 기준이라 Modal(루트 클램프 밖)에서는 폴드에 700dp까지 커진다
     width: '86%',
+    maxWidth: STAGE_MAX_W,
     backgroundColor: 'rgba(20,20,32,0.5)',
     borderRadius: 20,
     padding: 20,
@@ -3299,6 +3324,8 @@ const styles = StyleSheet.create({
   // 전체 국가 목록 시트
   countryPickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   countryPickerSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다(딤 배경 countryPickerOverlay는 전체 폭 유지)
+    width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center',
     backgroundColor: '#17131f', borderTopLeftRadius: 20, borderTopRightRadius: 20,
     borderTopWidth: 1, borderColor: '#2E2E3B', paddingHorizontal: 16, paddingTop: 10,
   },

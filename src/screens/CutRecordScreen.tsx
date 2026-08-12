@@ -1,9 +1,20 @@
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Alert, Dimensions, Image, ActivityIndicator,
-  Modal, Pressable, TextInput,
+  View,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  Dimensions,
+  Image,
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
@@ -24,8 +35,10 @@ import {
 } from '../components/icons';
 import { CalendarBottomSheet } from '../components/record/CalendarBottomSheet';
 import type { RootStackScreenProps } from '../navigation/types';
+import { stageWidthNow } from '../utils/stage';
 
-const { width: SCREEN_W, height: SCREEN_H } = Dimensions.get('window');
+const SCREEN_W = stageWidthNow();
+const SCREEN_H = Dimensions.get('window').height;
 
 // 디자인 토큰
 const C = {
@@ -515,6 +528,8 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
         animationType="fade"
         onRequestClose={() => setCaptionModalVisible(false)}
       >
+        {/* statusBarTranslucent 모달은 안드로이드 adjustResize가 꺼져 KAV로 키보드를 직접 회피 (autoFocus 입력) */}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <Pressable style={st.ccOverlay} onPress={() => setCaptionModalVisible(false)}>
           <Pressable style={[st.ccCard, { borderColor: skinAccent.tint(0.3) }]} onPress={() => {}}>
             <Text style={st.ccTitle}>{t('cut.captionModalTitle')}</Text>
@@ -556,6 +571,7 @@ export default function CutRecordScreen({ navigation, route }: RootStackScreenPr
             </View>
           </Pressable>
         </Pressable>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* 사진 불러오는 중 (특히 iCloud 다운로드) */}

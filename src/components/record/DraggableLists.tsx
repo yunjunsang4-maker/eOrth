@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   Image,
   Animated,
@@ -10,6 +9,7 @@ import {
   StyleSheet,
   Platform,
 } from 'react-native';
+import { Text } from '../../ui/Text';
 import Svg, { Path } from 'react-native-svg';
 import { useTranslation } from 'react-i18next';
 import {

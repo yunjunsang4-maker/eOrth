@@ -2,16 +2,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
-  TextInput,
   Image,
-  Alert,  KeyboardAvoidingView,
+  Alert,
+  KeyboardAvoidingView,
   Platform,
   Linking,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { CameraIcon, PersonIcon, LockClosedIcon } from '../components/icons';
 import Svg, { Circle, Defs, LinearGradient as SvgLinearGradient, Stop } from 'react-native-svg';
 import { useSkinAccent } from '../constants/skinTheme';

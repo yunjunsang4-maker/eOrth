@@ -7,6 +7,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useFonts } from 'expo-font';
 import { View, ActivityIndicator } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { STAGE_MAX_W } from './src/utils/stage';
 import { ensureAdsInitialized } from './src/lib/googleMobileAds';
 import { configureAdContent } from './src/lib/tracking';
 import { ADMOB_ENABLED } from './src/constants/featureFlags';
@@ -116,37 +117,44 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ErrorBoundary>
-          <SettingsProvider>
-            <LanguageBridge />
-            <TravelDnaProvider>
-              <RecordProvider>
-                <MomentProvider>
-                  <DMProvider>
-                    <ToastProvider>
-                      {/* edge-to-edge에서 backgroundColor/translucent는 안드로이드 no-op(경고만 발생) — style만 유효 */}
-                      <StatusBar style="light" />
-                      <SnapDetector />
-                      <MomentNotifier />
-                      <ArrivalNotifier />
-                      <ReturnDetector />
-                      <ReturnDetectNudge />
-                      <ProfileSync />
-                      <AppStateSync />
-                      <PushTokenSync />
-                      <BadgeEvaluator />
-                      <AppNavigator />
-                      <BadgeToastHost />
-                      <DMToastHost />
-                      <NotiToastHost />
-                      <ToastHost />
-                    </ToastProvider>
-                  </DMProvider>
-                </MomentProvider>
-              </RecordProvider>
-            </TravelDnaProvider>
-          </SettingsProvider>
-        </ErrorBoundary>
+        {/* 폴드 펼침·태블릿에서 콘텐츠가 무한정 늘어나지 않게 Stage 폭으로 가둔다.
+            바깥 View는 클램프 양옆에 남는 여백의 배경색. SafeAreaProvider를 바깥에 두는
+            이유: 인셋은 클램프된 컬럼이 아니라 실제 화면 기준으로 계산돼야 한다. */}
+        <View style={{ flex: 1, backgroundColor: '#0A0A0F' }}>
+          <View style={{ flex: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' }}>
+            <ErrorBoundary>
+              <SettingsProvider>
+                <LanguageBridge />
+                <TravelDnaProvider>
+                  <RecordProvider>
+                    <MomentProvider>
+                      <DMProvider>
+                        <ToastProvider>
+                          {/* edge-to-edge에서 backgroundColor/translucent는 안드로이드 no-op(경고만 발생) — style만 유효 */}
+                          <StatusBar style="light" />
+                          <SnapDetector />
+                          <MomentNotifier />
+                          <ArrivalNotifier />
+                          <ReturnDetector />
+                          <ReturnDetectNudge />
+                          <ProfileSync />
+                          <AppStateSync />
+                          <PushTokenSync />
+                          <BadgeEvaluator />
+                          <AppNavigator />
+                          <BadgeToastHost />
+                          <DMToastHost />
+                          <NotiToastHost />
+                          <ToastHost />
+                        </ToastProvider>
+                      </DMProvider>
+                    </MomentProvider>
+                  </RecordProvider>
+                </TravelDnaProvider>
+              </SettingsProvider>
+            </ErrorBoundary>
+          </View>
+        </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

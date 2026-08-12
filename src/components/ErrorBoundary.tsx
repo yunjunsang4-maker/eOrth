@@ -7,7 +7,8 @@
  */
 
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 import i18n from '../i18n';
 
 const COLORS = {

@@ -6,9 +6,16 @@
  */
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  Animated, Easing, InteractionManager,
+  View,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  Animated,
+  Easing,
+  InteractionManager,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { GestureDetector, Gesture } from 'react-native-gesture-handler';

@@ -2,9 +2,17 @@ import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react'
 import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
-  View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Alert, ActivityIndicator,
-  Image, Animated,
+  View,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  Platform,
+  Alert,
+  ActivityIndicator,
+  Image,
+  Animated,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { useRecords } from '../store/recordStore';

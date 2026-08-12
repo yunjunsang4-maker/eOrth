@@ -3,16 +3,15 @@ import AppRefreshControl from '../components/AppRefreshControl';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
-  TextInput,
   Pressable,
   Animated,
   Image,
   useWindowDimensions,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import { SearchIcon, PersonIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';

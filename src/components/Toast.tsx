@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
-import { Animated, Image, PanResponder, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Image, PanResponder, Platform, Pressable, StyleSheet, View } from 'react-native';
+import { Text } from '../ui/Text';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AuthorAvatar from './AuthorAvatar';
 import { CommentIcon, HeartIcon, FriendIcon, PinIcon, StarIcon } from './icons';

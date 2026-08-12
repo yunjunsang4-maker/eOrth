@@ -3,7 +3,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSkinAccent } from '../constants/skinTheme';
 import {
   View,
-  Text,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
@@ -11,6 +10,7 @@ import {
   Image,
   Alert,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
@@ -24,6 +24,7 @@ import { useRecords } from '../store/recordStore';
 import { buzz } from '../utils/haptics';
 import { PersonIcon } from '../components/icons';
 import type { RootStackScreenProps } from '../navigation/types';
+import { andFitText } from '../utils/fitText';
 
 // DM 말풍선 아이콘 — CLAUDE.md 아이콘 규칙(SVG 말풍선, scaleX -1)
 function DmBubbleIcon({ size = 17, color = '#A1A1B0' }: { size?: number; color?: string }) {
@@ -199,7 +200,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                       accessibilityRole="button"
                       accessibilityLabel={t('friends.acceptRequestA11y', { name: reqName })}
                     >
-                      <Text style={styles.acceptBtnText}>{t('friends.accept')}</Text>
+                      <Text style={styles.acceptBtnText} {...andFitText}>{t('friends.accept')}</Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[styles.declineBtn, processingId === req.requesterId && styles.btnBusy]}
@@ -208,7 +209,7 @@ export default function FollowerListScreen({ navigation }: RootStackScreenProps<
                       accessibilityRole="button"
                       accessibilityLabel={t('friends.declineRequestA11y', { name: reqName })}
                     >
-                      <Text style={styles.declineBtnText}>{t('friends.decline')}</Text>
+                      <Text style={styles.declineBtnText} {...andFitText}>{t('friends.decline')}</Text>
                     </TouchableOpacity>
                   </View>
                 );

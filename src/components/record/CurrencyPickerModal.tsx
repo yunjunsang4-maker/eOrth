@@ -1,18 +1,18 @@
 import React from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
-  TextInput,
   StyleSheet,
   Modal,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { Text, TextInput } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { SearchIcon as SvgSearchIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
+import { STAGE_MAX_W } from '../../utils/stage';
 
 /**
  * 기타 통화 선택 모달 — NewRecordScreen 에서 분리.
@@ -131,6 +131,10 @@ export function CurrencyPickerModal({
 
 const cs = StyleSheet.create({
   currModalSheet: {
+    // Modal은 루트 클램프 밖이라 폭을 여기서 다시 잡는다
+    width: '100%',
+    maxWidth: STAGE_MAX_W,
+    alignSelf: 'center',
     backgroundColor: '#1E1E2E',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,

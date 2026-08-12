@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
+import { Text } from '../ui/Text';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,

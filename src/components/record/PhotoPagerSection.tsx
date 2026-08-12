@@ -2,14 +2,13 @@
 // 사진을 넘기면 아래 입력칸이 그 사진의 글로 전환된다.
 // 대표 지정·비공개·삭제는 사진 하단 액션 바에서 직접 처리한다.
 import React, { useRef, useState, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, ScrollView, Image, StyleSheet, Dimensions, Alert } from 'react-native';
+import { View, TouchableOpacity, ScrollView, Image, StyleSheet, Alert } from 'react-native';
+import { Text, TextInput } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { LockClosedIcon } from '../icons';
 import { useSkinAccent } from '../../constants/skinTheme';
-
-const SCREEN_W = Dimensions.get('window').width;
-const PAGE_W = SCREEN_W; // 화면 폭 전체(최대한 크게)
-const PAGE_H = Math.round(SCREEN_W * 1.05);
+import { useStageWidth } from '../../utils/stage';
+import { andFitText } from '../../utils/fitText';
 
 export default function PhotoPagerSection({
   medias, photoTexts, representativePhoto, onChangeText, onAddPress,
@@ -27,6 +26,11 @@ export default function PhotoPagerSection({
 }) {
   const { t } = useTranslation();
   const skinAccent = useSkinAccent();
+  // 페이지 폭은 스크롤 오프셋 계산에 그대로 들어간다 — 박제하면 폴드 펼침 시
+  // 페이저가 엉뚱한 사진을 가리킨다. 훅이므로 조기 return보다 위에 둔다.
+  const SCREEN_W = useStageWidth();
+  const PAGE_W = SCREEN_W; // Stage 폭 전체(최대한 크게)
+  const PAGE_H = Math.round(SCREEN_W * 1.05);
   const [activeIdx, setActiveIdx] = useState(0);
   const scrollRef = useRef<ScrollView>(null);
 
@@ -95,7 +99,7 @@ export default function PhotoPagerSection({
           accessibilityLabel={t('newRecord.repBadge')}
         >
           <Text style={[st.actionBtnIcon, isRep && { color: skinAccent.accent }]}>★</Text>
-          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]}>{t('newRecord.repBadge')}</Text>
+          <Text style={[st.actionBtnText, isRep && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.repBadge')}</Text>
         </TouchableOpacity>
 
         {/* 비공개 버튼 — 비공개 설정 존재 시 활성 스타일 */}
@@ -107,7 +111,7 @@ export default function PhotoPagerSection({
           accessibilityLabel={t('newRecord.actionPrivacy')}
         >
           <LockClosedIcon size={13} color={hasPrivacy ? skinAccent.accent : '#A1A1B0'} />
-          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]}>{t('newRecord.actionPrivacy')}</Text>
+          <Text style={[st.actionBtnText, hasPrivacy && { color: skinAccent.accent }]} {...andFitText}>{t('newRecord.actionPrivacy')}</Text>
         </TouchableOpacity>
 
         {/* 삭제 버튼 — 사진과 그 사진의 글이 함께 지워지므로 확인 후 삭제 */}

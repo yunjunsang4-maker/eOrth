@@ -2,8 +2,6 @@ import React, { useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
-  TextInput,
   StyleSheet,
   TouchableOpacity,
   ScrollView,
@@ -16,6 +14,7 @@ import {
   Switch,
   ActivityIndicator,
 } from 'react-native';
+import { Text, TextInput } from '../ui/Text';
 import Svg, {
   Defs as SvgDefs,
   LinearGradient as SvgLinearGradient,
@@ -24,6 +23,7 @@ import Svg, {
   Circle as SvgCircle,
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
+import { STAGE_MAX_W } from '../utils/stage';
 import { IntroAmbient } from './introVisuals';
 import { useRecords } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
@@ -435,8 +435,17 @@ export default function BasicInfoScreen({ navigation }: Props) {
       </KeyboardAvoidingView>
 
       <Modal visible={countryModalVisible} animationType="slide" onRequestClose={() => setCountryModalVisible(false)}>
+        {/* 검색 TextInput이 autoFocus라 열리자마자 키보드가 올라온다 — KAV 없이는
+            안드로이드에서 목록 하단이 키보드에 그대로 먹힌다(이 화면 본문과 같은 패턴). */}
         {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
-        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]}
+          accessibilityViewIsModal
+        >
+        {/* RN Modal은 App.tsx 루트 클램프 밖이라 콘텐츠 폭을 여기서 다시 가둔다.
+            modalRoot(불투명 페이지 배경)는 전면 유지 — 좁히면 양옆이 모달 기본 배경이 된다. */}
+        <View style={styles.modalClamp}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.residenceSelect')}</Text>
             <TouchableOpacity onPress={() => setCountryModalVisible(false)}>
@@ -468,11 +477,19 @@ export default function BasicInfoScreen({ navigation }: Props) {
             )}
           />
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={stayCountryModalVisible} animationType="slide" onRequestClose={() => setStayCountryModalVisible(false)}>
+        {/* 위 거주국 모달과 동일 — autoFocus 검색창 때문에 KAV가 필요하고, Modal은 루트
+            클램프 밖이라 콘텐츠를 Stage 폭으로 다시 가둔다. */}
         {/* 안드로이드는 상태바 높이가 기기별로 달라 인셋 기반으로 상단 여백 보정 (iOS 60은 노치 기준) */}
-        <View style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]} accessibilityViewIsModal>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={[styles.modalRoot, Platform.OS === 'android' && { paddingTop: insets.top + 12 }]}
+          accessibilityViewIsModal
+        >
+        <View style={styles.modalClamp}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>{t('basicInfo.stayCountryLabel')}</Text>
             <TouchableOpacity onPress={() => setStayCountryModalVisible(false)}>
@@ -504,6 +521,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
             )}
           />
         </View>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -700,6 +718,8 @@ const styles = StyleSheet.create({
 
   // Modal — 유리 검색창 + 온보딩 배경
   modalRoot: { flex: 1, backgroundColor: '#0A0B0F', paddingTop: 60 },
+  // 국가 선택 모달 콘텐츠 폭 클램프. 배경이 없는 순수 폭 제한 래퍼라 딤 배경이 아니다.
+  modalClamp: { flex: 1, width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center' },
   modalHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing[6], paddingBottom: Spacing[4] },
   modalTitle: { fontSize: Typography.fontSize.lg, fontFamily: Typography.fontFamily.bold, color: Colors.textPrimary },
   modalClose: { fontSize: Typography.fontSize.base, color: '#EC34F7', fontFamily: Typography.fontFamily.medium },

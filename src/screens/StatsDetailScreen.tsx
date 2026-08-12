@@ -2,15 +2,14 @@ import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react'
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
-  Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
   Pressable,
-  Dimensions,
   Animated,
   Easing,
 } from 'react-native';
+import { Text } from '../ui/Text';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import { countryLabel } from '../utils/countryLabel';
@@ -31,6 +30,7 @@ import { useRecords } from '../store/recordStore';
 import { useSettings } from '../store/settingsStore';
 import { COUNTRIES } from '../constants/countries';
 import { DETAIL_PARTICLES } from '../data/statsDetailGlobe';
+import { stageWidthNow } from '../utils/stage';
 
 // 지구본 하단 링 — Figma 시안(Ellipse 3073) 소프트 아치 PNG. 링 경로 바운딩 박스에 맞춰 배치.
 const DETAIL_RING_IMG = require('../../assets/statsDetailRing.png');
@@ -95,7 +95,7 @@ function FadeSlideView({
   );
 }
 
-const SW = Dimensions.get('window').width;
+const SW = stageWidthNow();
 
 type StatType = 'world' | 'yearly' | 'region' | 'countries' | 'rating';
 type RouteParams = { StatsDetail: { statType: StatType } };

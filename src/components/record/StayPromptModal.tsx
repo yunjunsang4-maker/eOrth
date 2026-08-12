@@ -1,11 +1,13 @@
 // 해외 도착 감지 시 "여행 / 장기체류" 선택 프롬프트.
 // 장기체류 선택 시 유형(교환/어학/인턴/워홀/기타)까지 고르면 onStay(type) 호출.
 import React, { useState, useEffect } from 'react';
-import { Modal, View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { Modal, View, TouchableOpacity, StyleSheet } from 'react-native';
+import { Text } from '../../ui/Text';
 import { useTranslation } from 'react-i18next';
 import { GlassButton } from '../ui';
 import type { StayType } from '../../utils/stayMachine';
 import { countryLabel } from '../../utils/countryLabel';
+import { STAGE_MAX_W } from '../../utils/stage';
 
 const TYPES: { value: StayType; key: string }[] = [
   { value: 'exchange', key: 'stay.typeExchange' },
@@ -55,7 +57,8 @@ export function StayPromptModal({ countryName, onTravel, onStay, onClose }: {
 
 const s = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', paddingHorizontal: 28 },
-  card: { backgroundColor: '#161421', borderRadius: 24, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
+  // backdrop이 stretch라 카드가 창 폭 전체를 먹는다 — Modal은 루트 클램프 밖(AutoTocModal.card와 같은 모양)
+  card: { width: '100%', maxWidth: STAGE_MAX_W, alignSelf: 'center', backgroundColor: '#161421', borderRadius: 24, padding: 22, borderWidth: 1, borderColor: 'rgba(255,255,255,0.08)' },
   title: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', textAlign: 'center' },
   desc: { color: '#A1A1B0', fontSize: 13, textAlign: 'center', marginTop: 8, lineHeight: 19 },
   typeRow: { paddingVertical: 15, alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.06)', marginTop: 0 },
