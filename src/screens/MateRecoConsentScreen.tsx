@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, BackHandler } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTranslation } from 'react-i18next';
 import Svg, { Path as SvgPath } from 'react-native-svg';
 import { Text } from '../ui/Text';
@@ -49,6 +50,15 @@ export default function MateRecoConsentScreen({ navigation }: Props) {
       routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
     });
   };
+
+  // 온보딩 종점 — 뒤로가기로 우회하면 동의 화면을 안 거치고 Main에 도달한다(startTutorial도 유실).
+  // 이탈은 화면 안 [계속] 버튼으로만 하도록 막는다(TravelDnaSurveyScreen과 같은 패턴).
+  useFocusEffect(
+    useCallback(() => {
+      const sub = BackHandler.addEventListener('hardwareBackPress', () => true);
+      return () => sub.remove();
+    }, [])
+  );
 
   return (
     <View style={[st.container, { paddingTop: insets.top + 24, paddingBottom: insets.bottom + 24 }]}>

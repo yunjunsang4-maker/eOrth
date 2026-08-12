@@ -332,7 +332,11 @@ export default function AppNavigator() {
           component={TravelImportScreen}
           options={{ gestureEnabled: false }}
         />
-        <Stack.Screen name="MateRecoConsent" component={MateRecoConsentScreen} />
+        <Stack.Screen
+          name="MateRecoConsent"
+          component={MateRecoConsentScreen}
+          options={{ gestureEnabled: false }}
+        />
         <Stack.Screen
           name="ImportPhotoSelect"
           component={ImportPhotoSelectScreen}
@@ -351,7 +355,11 @@ export default function AppNavigator() {
           component={TravelDnaSurveyScreen}
           options={{ gestureEnabled: false }}
         />
-        <Stack.Screen name="TravelDnaResult" component={TravelDnaResultScreen} />
+        <Stack.Screen
+          name="TravelDnaResult"
+          component={TravelDnaResultScreen}
+          options={{ gestureEnabled: false }}
+        />
         <Stack.Screen name="Country" component={CountryScreen} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} />
