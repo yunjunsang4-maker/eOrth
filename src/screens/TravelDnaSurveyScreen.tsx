@@ -147,10 +147,8 @@ export default function TravelDnaSurveyScreen({ navigation, route }: RootStackSc
   // (알림 권한 요청은 ImportCompleteScreen이 이 화면으로 넘겨주기 전에 이미 부른다)
   const leave = () => {
     if (!onboarding) { navigation.goBack(); return; }
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
-    });
+    // 온보딩 종점은 동의 화면이다 — Main reset은 그 화면이 대신 수행한다.
+    navigation.replace('MateRecoConsent');
   };
 
   const quit = () => {

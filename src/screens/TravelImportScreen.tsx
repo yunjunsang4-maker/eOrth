@@ -420,10 +420,8 @@ export default function TravelImportScreen({ navigation, route }: Props) {
       return;
     }
     await requestNotificationPermission().catch(() => {});
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'Main', params: { screen: 'MainTab', params: { startTutorial: true } } }],
-    });
+    // 온보딩 종점은 동의 화면이다 — Main reset은 그 화면이 대신 수행한다.
+    navigation.replace('MateRecoConsent');
   };
   const [, setPermissionStatus] = useState<'undetermined' | 'granted' | 'denied'>('undetermined');
   const [scanning, setScanning] = useState(false);
