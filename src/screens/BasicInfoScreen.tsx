@@ -298,7 +298,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               />
               <Text style={styles.charCount}>{handle.length}/30</Text>
             </View>
-            <Text style={[styles.birthdayHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
+            <Text style={[styles.fieldHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
           </View>
 
           {/* 만 14세 확인 — 생년월일을 받지 않는 대신 자기 확인으로 연령 방어선을 유지한다
@@ -320,13 +320,13 @@ export default function BasicInfoScreen({ navigation }: Props) {
               </View>
               <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm')}</Text>
             </TouchableOpacity>
-            <Text style={styles.birthdayHint}>{t('basicInfo.ageConfirmHint')}</Text>
+            <Text style={styles.fieldHint}>{t('basicInfo.ageConfirmHint')}</Text>
           </View>
 
           {/* 언어 */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.language')}</Text>
-            <View style={styles.genderRow}>
+            <View style={styles.languageRow}>
               {([
                 { value: 'ko', label: '한국어' },
                 { value: 'en', label: 'English' },
@@ -335,11 +335,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 return (
                   <TouchableOpacity
                     key={opt.value}
-                    style={[styles.genderBtn, active && styles.genderBtnActive]}
+                    style={[styles.languageBtn, active && styles.languageBtnActive]}
                     activeOpacity={0.8}
                     onPress={() => setLanguage(opt.value)}
                   >
-                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                    <Text style={[styles.languageText, active && styles.languageTextActive]}>
                       {opt.label}
                     </Text>
                   </TouchableOpacity>
@@ -623,7 +623,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
   },
-  birthdayHint: {
+  fieldHint: {
     color: '#FF3B30',
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
@@ -644,12 +644,12 @@ const styles = StyleSheet.create({
   ageBoxOn: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
   ageLabel: { flex: 1, fontSize: 14, color: '#FFFFFF' },
 
-  // Gender
-  genderRow: {
+  // 언어 선택
+  languageRow: {
     flexDirection: 'row',
     gap: Spacing[3],
   },
-  genderBtn: {
+  languageBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -659,16 +659,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  genderBtnActive: {
+  languageBtnActive: {
     borderColor: 'rgba(236,52,247,0.6)',
     backgroundColor: 'rgba(236,52,247,0.08)',
   },
-  genderText: {
+  languageText: {
     fontSize: Typography.fontSize.base,
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
-  genderTextActive: {
+  languageTextActive: {
     color: '#EC34F7',
     fontFamily: Typography.fontFamily.semiBold,
   },
