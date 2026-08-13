@@ -92,6 +92,8 @@ const makeSincePeriod = (lastImportAt: number): ScanPeriodOption => ({
   sinceTs: Math.max(0, lastImportAt - RESCAN_OVERLAP_MS),
 });
 const MIN_TRIP_PHOTOS = 10; // 이 장수 이하인 여행은 결과에서 제외 (10장 초과만 표시)
+// 분석 기간 칩 슬라이드의 양끝 흐림 폭. 이 거리만큼 스크롤되면 흐림이 완전히 켜진다.
+const PERIOD_FADE_W = 28;
 
 // 사진 목록 한 페이지 크기. 100이면 20만 장에서 getAssetsAsync 왕복이 2,000회라
 // 장수에 정직하게 비례하는 고정비가 된다. 1000으로 올리면 200회로 줄어든다.
@@ -987,6 +989,29 @@ export default function TravelImportScreen({ navigation, route }: Props) {
   const [contentH, setContentH] = useState(0);
   const canScroll = contentH > viewportH + 1;
 
+  // 분석 기간 칩 가로 슬라이드.
+  // 재스캔이면 '지난 불러오기 이후'가 앞에 붙어 칩이 4개가 되는데, 이 라벨만 90pt를 넘어
+  // 한 줄(화면폭 - 좌우 여백 48)에 들어가지 않는다. 줄 정렬이 가운데라 넘친 만큼이
+  // 양쪽으로 똑같이 삐져나가 좌우가 다 잘려 보였다 → 가로 스크롤로 바꾸고,
+  // 잘린 단면 대신 배경색으로 흐려지게 한다. 3개(첫 스캔)일 땐 종전처럼 가운데 정렬된다.
+  const periodScrollX = useRef(new Animated.Value(0)).current;
+  const [periodViewW, setPeriodViewW] = useState(0);
+  const [periodContentW, setPeriodContentW] = useState(0);
+  const periodMaxX = Math.max(0, periodContentW - periodViewW);
+  const periodSlidable = periodMaxX > 1;
+  // 왼쪽 흐림은 스크롤을 시작하면 켜지고, 오른쪽 흐림은 끝에 닿으면 꺼진다.
+  const periodFadeL = periodScrollX.interpolate({
+    inputRange: [0, PERIOD_FADE_W],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
+  const periodFadeR = periodScrollX.interpolate({
+    // periodMaxX가 0이면 inputRange가 같은 값 두 개가 되어 무효하다 — 최소 1을 보장한다
+    inputRange: [Math.max(0, periodMaxX - PERIOD_FADE_W), Math.max(1, periodMaxX)],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   return (
     <View style={styles.container}>
       <StarFieldBackground opacity={0.5} />
@@ -1025,16 +1050,59 @@ export default function TravelImportScreen({ navigation, route }: Props) {
             {/* 분석 기간 선택 */}
             <View style={styles.periodSection}>
               <Text style={styles.periodTitle}>{t('imports.analyzePeriod')}</Text>
-              <View style={styles.periodRow}>
-                {scanPeriods.map((p) => (
-                  <PeriodChip
-                    key={p.key}
-                    label={periodLabel(p, t)}
-                    on={period.key === p.key}
-                    idSuffix={p.key}
-                    onPress={() => setPeriod(p)}
-                  />
-                ))}
+              <View style={styles.periodSlider}>
+                <Animated.ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  scrollEnabled={periodSlidable}
+                  bounces={periodSlidable}
+                  contentContainerStyle={styles.periodSliderContent}
+                  onLayout={(e) => setPeriodViewW(e.nativeEvent.layout.width)}
+                  onContentSizeChange={(w) => setPeriodContentW(w)}
+                  onScroll={Animated.event(
+                    [{ nativeEvent: { contentOffset: { x: periodScrollX } } }],
+                    { useNativeDriver: true }
+                  )}
+                  scrollEventThrottle={16}
+                >
+                  {scanPeriods.map((p) => (
+                    <PeriodChip
+                      key={p.key}
+                      label={periodLabel(p, t)}
+                      on={period.key === p.key}
+                      idSuffix={p.key}
+                      onPress={() => setPeriod(p)}
+                    />
+                  ))}
+                </Animated.ScrollView>
+
+                {/* 양끝 흐림 — 넘칠 때만. RNSVG와 달리 Animated.View는 pointerEvents를 지킨다 */}
+                {periodSlidable && (
+                  <>
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[styles.periodFade, styles.periodFadeLeft, { opacity: periodFadeL }]}
+                    >
+                      <LinearGradient
+                        colors={['#0A0B0F', 'rgba(10,11,15,0)']}
+                        start={{ x: 0, y: 0.5 }}
+                        end={{ x: 1, y: 0.5 }}
+                        style={StyleSheet.absoluteFill}
+                      />
+                    </Animated.View>
+                    <Animated.View
+                      pointerEvents="none"
+                      style={[styles.periodFade, styles.periodFadeRight, { opacity: periodFadeR }]}
+                    >
+                      <LinearGradient
+                        colors={['rgba(10,11,15,0)', '#0A0B0F']}
+                        start={{ x: 0, y: 0.5 }}
+                        end={{ x: 1, y: 0.5 }}
+                        style={StyleSheet.absoluteFill}
+                      />
+                    </Animated.View>
+                  </>
+                )}
               </View>
               <Text style={styles.periodHint}>{t('comp2.importPeriodHint')}</Text>
             </View>
@@ -1445,10 +1513,29 @@ const styles = StyleSheet.create({
     fontFamily: Typography.fontFamily.semiBold,
     marginBottom: Spacing[4],
   },
-  periodRow: {
-    flexDirection: 'row',
-    gap: 14,
+  /* 칩 줄 — 가로 슬라이드. 부모(scroll)의 좌우 패딩 24 밖까지 넓혀 화면 끝까지 흐르게 하고,
+     대신 같은 값을 contentContainer 패딩으로 되돌려 정지 상태의 좌우 여백은 그대로 둔다. */
+  periodSlider: {
+    alignSelf: 'stretch',
+    marginHorizontal: -Spacing[6],
   },
+  periodSliderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    paddingHorizontal: Spacing[6],
+    // 칩이 화면에 다 들어오면(첫 스캔 3개) 종전처럼 가운데 정렬, 넘치면 왼쪽부터 스크롤
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  periodFade: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    width: PERIOD_FADE_W,
+  },
+  periodFadeLeft: { left: 0 },
+  periodFadeRight: { right: 0 },
   periodChip: {
     minWidth: 93,
     height: 25,
