@@ -123,11 +123,14 @@ export function revisitedCountryCountFromEvents(events: VisitEventLike[]): numbe
   return Object.values(counts).filter((c) => c >= 2).length;
 }
 
-/** 가장 최근 방문 국가. exclude(거주국 등)에 든 국가는 건너뛴다 */
+/**
+ * 가장 최근 방문 국가. exclude(거주국 등)에 든 국가는 건너뛴다 —
+ * 단 도시(regionName)를 붙인 기록은 거주국이어도 방문이다(화면 카운트와 동일 규칙, 2026-08-13)
+ */
 export function mostRecentCountry(records: TripRecord[], exclude?: Set<string>): string | undefined {
   const sorted = [...records].sort((a, b) => travelTime(b) - travelTime(a));
   for (const r of sorted) {
-    const name = recordCountryNames(r).find((n) => !exclude?.has(n));
+    const name = recordCountryNames(r).find((n) => !exclude?.has(n) || !!r.regionName);
     if (name) return name;
   }
   return undefined;
@@ -146,13 +149,16 @@ export function continentOf(name: string): Continent | undefined {
   return (CONTINENTS as readonly string[]).includes(cont) ? (cont as Continent) : undefined;
 }
 
-/** exclude(거주국 등)에 든 국가는 대륙 집계에서 뺀다 — "거주국은 방문국이 아니다" 규칙 */
+/**
+ * exclude(거주국 등)에 든 국가는 대륙 집계에서 뺀다 — "거주국은 방문국이 아니다" 규칙.
+ * 단 도시(regionName)를 붙인 기록은 거주국이어도 방문이다(화면 카운트와 동일 규칙, 2026-08-13)
+ */
 export function continentCountryCounts(records: TripRecord[], exclude?: Set<string>): Record<Continent, number> {
   const sets: Record<Continent, Set<string>> = {
     '아시아': new Set(), '유럽': new Set(), '아메리카': new Set(), '오세아니아': new Set(), '아프리카': new Set(),
   };
   records.forEach((r) => recordCountryNames(r).forEach((n) => {
-    if (exclude?.has(n)) return;
+    if (exclude?.has(n) && !r.regionName) return;
     const cont = continentOf(n);
     if (cont) sets[cont].add(canonicalCountryName(n));
   }));

@@ -552,10 +552,12 @@ export default function StatsScreen() {
   // 히어로 카운트에만 적용되던 거주국 제외를 방문 이벤트에도 그대로 적용한다 —
   // 그러지 않으면 "방문 국가 수"에는 거주국이 빠지는데 TOP 국가·대륙·연도별에는 남아 서로 모순됐다.
   // (카드에서 거주국만 빠지면 그 카드는 방문 이벤트가 아니게 되므로 통째로 제외)
+  // 단 도시(지역)를 붙인 기록은 거주국이어도 방문이다(2026-08-13) — "부산 여행"이 도시에는
+  // 잡히면서 국가에는 안 잡히는 모순 해소. 도시 없는 거주국 기록(홈 스냅 등)은 종전대로 제외.
   const visitEvents = useMemo(
     () =>
       allVisitEvents
-        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name)) }))
+        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name) || ev.hasRegion) }))
         .filter((ev) => ev.countries.length > 0),
     [allVisitEvents, homeNames],
   );
@@ -566,16 +568,18 @@ export default function StatsScreen() {
   const visitedCitiesSet = new Set<string>();
 
   myRecords.forEach((r) => {
+    // 거주국 제외 — 단 도시(지역)를 붙인 기록은 거주국이어도 방문이다(방문 이벤트와 동일 규칙)
+    const homeCounts = !!r.regionName;
     if (r.countries && r.countries.length > 0) {
       r.countries.forEach((c) => {
-        if (homeNames.has(c.name)) return; // 거주국 제외
+        if (homeNames.has(c.name) && !homeCounts) return; // 거주국 제외
         if (!visitedCountriesSet.has(c.name)) {
           visitedCountriesSet.add(c.name);
           visitedCountriesList.push({ name: c.name, flag: c.flag });
         }
       });
     } else if (r.countryName) {
-      if (homeNames.has(r.countryName)) return; // 거주국 제외
+      if (homeNames.has(r.countryName) && !homeCounts) return; // 거주국 제외
       if (!visitedCountriesSet.has(r.countryName)) {
         visitedCountriesSet.add(r.countryName);
         visitedCountriesList.push({ name: r.countryName, flag: r.countryFlag || '' });

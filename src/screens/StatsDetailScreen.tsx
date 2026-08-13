@@ -164,10 +164,11 @@ export default function StatsDetailScreen() {
   const allVisitEvents = useMemo(() => buildVisitEvents(tripGroups, records), [tripGroups, records]);
   // 거주국은 방문국이 아니다 — 히어로 카운트에만 걸려 있던 규칙을 방문 이벤트에도 동일 적용
   // (StatsScreen과 같은 규칙: 카드에서 거주국만 빠지면 그 카드는 방문 이벤트가 아니다)
+  // 단 도시(지역)를 붙인 기록은 거주국이어도 방문이다(2026-08-13, StatsScreen과 동일 규칙)
   const visitEvents = useMemo(
     () =>
       allVisitEvents
-        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name)) }))
+        .map((ev) => ({ ...ev, countries: ev.countries.filter((c) => !homeNames.has(c.name) || ev.hasRegion) }))
         .filter((ev) => ev.countries.length > 0),
     [allVisitEvents, homeNames],
   );
@@ -182,15 +183,17 @@ export default function StatsDetailScreen() {
     const visitedCitiesSet = new Set<string>();
 
     myRecords.forEach((r) => {
+      // 거주국 제외 — 단 도시(지역)를 붙인 기록은 거주국이어도 방문이다(StatsScreen과 동일 규칙)
+      const homeCounts = !!r.regionName;
       if (r.countries && r.countries.length > 0) {
         r.countries.forEach((c) => {
-          if (homeNames.has(c.name)) return; // 거주국 제외
+          if (homeNames.has(c.name) && !homeCounts) return; // 거주국 제외
           if (!visitedCountriesSet.has(c.name)) {
             visitedCountriesSet.add(c.name);
           }
         });
       } else if (r.countryName) {
-        if (homeNames.has(r.countryName)) return; // 거주국 제외
+        if (homeNames.has(r.countryName) && !homeCounts) return; // 거주국 제외
         if (!visitedCountriesSet.has(r.countryName)) {
           visitedCountriesSet.add(r.countryName);
         }

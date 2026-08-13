@@ -17,6 +17,7 @@ export interface VisitGroupLike {
   countryName?: string;
   countryFlag?: string;
   date?: string; // YYYY.MM.DD
+  regionName?: string; // 국내(거주국) 카드의 지역 구분 — "부산 여행"
 }
 
 export interface VisitRecordLike {
@@ -27,12 +28,18 @@ export interface VisitRecordLike {
   countries?: { name: string; flag: string }[];
   date?: string;
   startDate?: string;
+  regionName?: string; // 지역(도시) 지정 기록 — 거주국 방문 판정에 사용
 }
 
 /** 방문 1회(여행 카드 1장 또는 미소속 기록 1건) */
 export interface VisitEvent {
   countries: { name: string; flag: string }[]; // 카드 유래면 항상 1개, 미소속 다국가 기록이면 N개
   year: string; // 'YYYY' — 날짜를 못 읽으면 ''
+  // 지역(도시)이 붙은 방문 — 카드 또는 멤버 기록에 regionName이 있으면 true.
+  // "도시로 기록하면 국가도 방문으로 센다" 규칙(2026-08-13): 화면의 거주국 제외 필터가
+  // 이 값이 true인 이벤트는 거주국이어도 통과시킨다. 도시 없는 거주국 기록(홈 스냅 등)은
+  // 종전대로 제외 — 그렇지 않으면 집에서 찍은 스냅 한 장에 방문 국가가 +1 된다.
+  hasRegion: boolean;
 }
 
 const yearOf = (s: string | undefined): string => {
@@ -62,6 +69,7 @@ export function buildVisitEvents(groups: VisitGroupLike[], records: VisitRecordL
     events.push({
       countries: [{ name: countryName, flag: countryFlag }],
       year: yearOf(g.date ?? first.date ?? first.startDate),
+      hasRegion: !!(g.regionName || members.some((m) => m.regionName)),
     });
   }
 
@@ -75,7 +83,7 @@ export function buildVisitEvents(groups: VisitGroupLike[], records: VisitRecordL
           ? [{ name: r.countryName, flag: r.countryFlag || '' }]
           : [];
     if (countries.length === 0) continue;
-    events.push({ countries, year: yearOf(r.date ?? r.startDate) });
+    events.push({ countries, year: yearOf(r.date ?? r.startDate), hasRegion: !!r.regionName });
   }
 
   return events;
