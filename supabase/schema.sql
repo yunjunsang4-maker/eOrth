@@ -34,8 +34,6 @@ create table if not exists public.profiles (
   handle        text unique,
   emoji         text default '🧳',
   bio           text default '',
-  birthday      date,
-  gender        text,
   profile_photo text,
   created_at    timestamptz not null default now(),
   updated_at    timestamptz not null default now(),
@@ -43,6 +41,25 @@ create table if not exists public.profiles (
   stay_country  text,                              -- ISO 국가 코드 (예: 'KR')
   stay_status   text                               -- 'active' | null
 );
+
+-- (2026-08-13) 온보딩 완료 신호. 그전에는 birthday 유무로 판정했는데,
+-- App Store 5.1.1(v) 지적으로 생년월일 수집을 폐지하면서 전용 컬럼으로 옮겼다.
+alter table public.profiles add column if not exists onboarded_at timestamptz;
+
+-- 백필: birthday 가 있으면 이미 온보딩을 마친 사람이다.
+-- ⚠️ 아래 drop 보다 반드시 먼저 실행돼야 한다. 순서가 뒤집히면 기존 이용자 전원이
+--    온보딩을 다시 밟는다. (birthday 컬럼이 이미 없는 재실행에서는 do 블록이 조용히 넘어간다)
+do $backfill$ begin
+  update public.profiles
+     set onboarded_at = coalesce(onboarded_at, created_at)
+   where birthday is not null and onboarded_at is null;
+exception when undefined_column then null; -- 이미 drop된 재실행
+end $backfill$;
+
+-- App Store 5.1.1(v): 앱 기능에 쓰지 않는 개인정보는 수집하지 않는다.
+-- 성별은 행사(event_participants)에서만 쓰고 그건 별도 테이블이다.
+alter table public.profiles drop column if exists birthday;
+alter table public.profiles drop column if exists gender;
 
 -- (기존 테이블 대비) 거주 국가 코드 컬럼. 소유자 전용 — public_profiles 뷰에는 포함하지 않는다.
 alter table public.profiles add column if not exists country text;
@@ -158,12 +175,12 @@ create policy "profiles_update_own" on public.profiles
 --     강제하므로, id 를 열어도 남의 uuid 로 바꾸는 것은 불가능하다(자기 id 재기입만 가능).
 -- insert/select/delete 권한은 건드리지 않는다(update 만 회수 후 컬럼 단위 재부여).
 revoke update on public.profiles from authenticated;
-grant update (id, handle, emoji, bio, birthday, gender, profile_photo,
-              country, handle_font, stay_country, stay_status)
+grant update (id, handle, emoji, bio, profile_photo,
+              country, handle_font, stay_country, stay_status, onboarded_at)
   on public.profiles to authenticated;
 
 -- 타인에게 노출할 '공개 컬럼만' 담은 뷰. RLS는 컬럼 단위 제한이 안 되므로
--- birthday·gender 같은 PII를 빼고 이 뷰로 타인 프로필을 조회한다.
+-- PII를 빼고 이 뷰로 타인 프로필을 조회한다.
 -- profiles 테이블 자체는 본인 행만 select 가능해졌으므로, 이 뷰는 definer
 -- (security_invoker=false, 소유자 권한으로 RLS 우회)여야 타인 행이 보인다 —
 -- 노출 컬럼이 여기 나열된 공개 컬럼으로 한정되므로 안전하다.

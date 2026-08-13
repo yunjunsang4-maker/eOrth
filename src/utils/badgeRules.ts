@@ -33,7 +33,6 @@ export interface BadgeCatalogEntry {
 
 // 기록 외부의 사용자 데이터(설정 등)를 판정에 함께 넘길 때 사용.
 export interface BadgeComputeOptions {
-  birthday?: string; // 'YYYY-MM-DD' (생일 여행 배지 판정용)
   homeCountryName?: string; // 현재 거주국 이름 — 방문국 집계에서 동적 제외(거주국은 '방문'이 아님)
   // 이미 영구 획득한 배지 id (행동 배지 55, 과거 획득분 등). 메타 배지(개수 달성) 카운트에 합산된다.
   alreadyEarnedIds?: number[];
@@ -89,7 +88,7 @@ const TROPICAL_COUNTRIES = ['인도네시아', '태국', '베트남', '말레이
 export const DATA_DRIVEN_BADGE_IDS = new Set<number>([
   1,                              // 첫 기록
   2, 3, 4, 5, 6, 7,               // 대륙 첫 방문 (중동 배지는 아시아와 중복이라 제거됨)
-  9, 10, 11, 12, 13, 14, 15,      // 동행/스타일 (13=생일 여행: 생일 옵션 필요)
+  9, 10, 11, 12, 14, 15,          // 동행/스타일
   123, 124,                       // 동행: 가족·형제
   16,                             // 일본 재방문
   18,                             // 중국+일본 둘 다 방문
@@ -176,20 +175,6 @@ function nightsOf(r: BadgeStatRecord): number | null {
   return Math.max(0, Math.round((end - start) / DAY_MS));
 }
 
-// 여행 날짜 범위[start, end]에 생일(월·일)이 포함되는지. 연도는 무시(매년 반복).
-// 범위가 해를 넘기는 경우까지 고려해 시작~끝 연도별로 생일 날짜를 만들어 검사한다.
-function tripIncludesBirthday(start: number, end: number, bMonth: number, bDay: number): boolean {
-  const startY = new Date(start).getUTCFullYear();
-  const endY = new Date(end).getUTCFullYear();
-  const mm = String(bMonth).padStart(2, '0');
-  const dd = String(bDay).padStart(2, '0');
-  for (let y = startY; y <= endY; y++) {
-    const bd = Date.parse(`${y}-${mm}-${dd}`); // parseDate와 동일하게 UTC 자정
-    if (!Number.isNaN(bd) && bd >= start && bd <= end) return true;
-  }
-  return false;
-}
-
 // 여행 날짜 범위[start, end]가 12/31과 1/1을 모두 포함하는가(해를 넘기는 여행).
 function tripCrossesNewYear(start: number, end: number): boolean {
   const startY = new Date(start).getUTCFullYear();
@@ -247,7 +232,6 @@ export interface TravelStats {
   companions: Set<string>;
   hasDayTrip: boolean;
   hasLongTrip: boolean;   // 30일 이상
-  hasBirthdayTrip: boolean;   // 여행 날짜에 생일이 포함된 기록(피드·블로그·스트립)이 있는가
   hasNewYearTrip: boolean;    // 여행 날짜가 12/31~1/1을 포함(해 넘김)하는 기록이 있는가
   hasMultiCountryRecord: boolean; // 한 기록에 2개국 이상 담긴 기록(피드·블로그·스트립)이 있는가
   hasAnnualRevisit: boolean;  // 같은 여행지·같은 월일에 정확히 1년 차이로 방문한 기록이 있는가
@@ -266,11 +250,6 @@ export interface TravelStats {
 // 값이 없는(undefined) 기록(시드 등)은 내 여행으로 본다. (두 화면 숫자 불일치 방지)
 export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeComputeOptions): TravelStats {
   const mine = records.filter((r) => r.isMyPost !== false);
-
-  // 생일(월·일) 파싱 — 'YYYY-MM-DD'. 없거나 형식이 다르면 생일 판정은 건너뛴다.
-  let bMonth = 0, bDay = 0;
-  const bm = options?.birthday ? /^\d{4}-(\d{2})-(\d{2})$/.exec(options.birthday) : null;
-  if (bm) { bMonth = Number(bm[1]); bDay = Number(bm[2]); }
 
   const countries = new Set<string>();
   const diaryCountries = new Set<string>();
@@ -300,7 +279,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
   let journalRecordCount = 0;
   let hasDayTrip = false;
   let hasLongTrip = false;
-  let hasBirthdayTrip = false;
   let hasNewYearTrip = false;
   let hasMultiCountryRecord = false;
   // 국가별 기록 대표 날짜 모음 → 마지막에 '여행 단위'로 묶어 국가별 방문 횟수를 센다.
@@ -405,10 +383,9 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
         if (names.has('브라질') && (month === 2 || month === 3)) hasCarnivalRecord = true;
         if ((names.has('노르웨이') || names.has('아이슬란드') || names.has('핀란드')) && (month === 12 || month === 1 || month === 2)) hasAuroraRecord = true;
       }
-      // 생일 여행 / 새해 여행: 여행 날짜 범위로 판정
+      // 새해 여행: 여행 날짜 범위로 판정
       if (rep != null) {
         const end = parseDate(r.endDate) ?? rep;
-        if (bMonth && tripIncludesBirthday(rep, end, bMonth, bDay)) hasBirthdayTrip = true;
         if (tripCrossesNewYear(rep, end)) hasNewYearTrip = true;
       }
       // 30일 이상
@@ -491,7 +468,6 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     companions,
     hasDayTrip,
     hasLongTrip,
-    hasBirthdayTrip,
     hasNewYearTrip,
     hasMultiCountryRecord,
     hasAnnualRevisit,
@@ -539,7 +515,6 @@ export function computeEarnedBadgeIds(
   on(12, s.companions.has('친구'));
   on(123, s.companions.has('가족'));
   on(124, s.companions.has('형제'));
-  on(13, s.hasBirthdayTrip);           // 생일 여행
   on(14, s.hasDayTrip);
   on(15, s.hasLongTrip);
 

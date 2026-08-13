@@ -18,8 +18,6 @@ export type SignUpMethod = 'email' | 'google' | 'apple';
 export type MapDisplayMode = 'flag' | 'color' | 'photo';
 // 지구본 형태: aurora = 보라 발광 행성(디폴트, 색상 표시), classic = 현재 지구본(사진 표시)
 export type GlobeVariant = 'aurora' | 'classic';
-// 성별: '' = 미설정
-export type Gender = 'male' | 'female' | '';
 // 앱 언어: 한국어 / 영어
 export type AppLanguage = 'ko' | 'en';
 
@@ -70,10 +68,6 @@ interface SettingsContextType {
   setSnapEnabled: (v: boolean) => void;
   diaryCardMode: DiaryCardMode;
   setDiaryCardMode: (v: DiaryCardMode) => void;
-  birthday: string; // YYYY-MM-DD
-  setBirthday: (v: string) => void;
-  gender: Gender;
-  setGender: (v: Gender) => void;
   language: AppLanguage;
   setLanguage: (v: AppLanguage) => void;
   handle: string;
@@ -184,18 +178,21 @@ interface SettingsContextType {
   // 있으면 설정에 점 배지를 띄운다. 기기 시계가 아니라 게시 시각끼리 비교한다.
   lastSeenNoticeAt: number;
   setLastSeenNoticeAt: (v: number) => void;
+  // 온보딩 완료 시각(ms, 오프라인 폴백용 로컬 사본). 0=미완료 — 예전 birthday 역할을 대신한다.
+  onboardedAt: number;
+  setOnboardedAt: (v: number) => void;
   mateRecoAskedAt: number;
   setMateRecoAskedAt: (v: number) => void;
   // 체류 종료 넛지를 닫은 체류 카드 id (카드당 1회 노출)
   stayNudgeDismissedFor: string | null;
   setStayNudgeDismissedFor: (v: string | null) => void;
   // 모든 설정을 기본값으로 되돌림.
-  // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·birthday·
+  // keepIdentity=true면 로컬 정체성(handle·handleChosen·handleLastChanged·
   // signUpMethod·signUpEmail·language)은 그대로 둔다 — 설정 > '데이터 초기화'용.
   // 계정 전환·탈퇴 파기처럼 '다른 사람이 되는' 경로는 옵션 없이 호출해 전부 초기화한다.
   resetSettings: (opts?: { keepIdentity?: boolean }) => void;
   // 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 내보내기/적용.
-  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
+  // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트)는 profiles가 원본이라 제외.
   exportSettingsBackup: () => Record<string, unknown>;
   applySettingsBackup: (b: Record<string, unknown>) => void;
 }
@@ -206,8 +203,6 @@ interface SettingsPersistPayload {
   homeCountryCode: string;
   snapEnabled: boolean;
   diaryCardMode: DiaryCardMode;
-  birthday?: string; // 과거 저장본엔 없을 수 있어 optional
-  gender?: Gender;   // 과거 저장본엔 없을 수 있어 optional
   language?: AppLanguage; // 과거 저장본엔 없을 수 있어 optional
   handle: string;
   bio: string;
@@ -257,6 +252,7 @@ interface SettingsPersistPayload {
   tutorialsSeen?: TutorialsSeen; // 탭별 튜토리얼 표시 여부
   lastImportAt?: number | null;  // 과거여행 불러오기 마지막 완료 시각
   lastSeenNoticeAt?: number;     // 마지막으로 확인한 공지의 게시 시각(ms)
+  onboardedAt?: number;   // 온보딩 완료 시각(ms). 0=미완료. 오프라인 판정용 로컬 사본
   mateRecoAskedAt?: number;      // 메이트 추천 동의 배너를 닫은 시각(ms). 7일 뒤 재노출
   stayNudgeDismissedFor?: string | null; // 체류 종료 넛지를 닫은 체류 카드 id
 }
@@ -268,8 +264,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [homeCountryCode, setHomeCountryCode] = useState('KR'); // 기본 거주국: 한국
   const [snapEnabled, setSnapEnabled] = useState(true);          // 스냅 알림 활성화
   const [diaryCardMode, setDiaryCardMode] = useState<DiaryCardMode>('full'); // 기본 B
-  const [birthday, setBirthday] = useState('');
-  const [gender, setGender] = useState<Gender>('');
   // 기본 언어: 한국어 기기만 ko, 그 외 기기는 en — 저장된 언어가 있으면 hydrate가 덮는다
   const [language, setLanguage] = useState<AppLanguage>(DEVICE_DEFAULT_LANGUAGE);
   // 기본 핸들은 설치마다 고유 생성(개발자 핸들 하드코딩 제거) — 사용자가 EditProfile에서 변경 가능
@@ -338,6 +332,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [tutorialsSeen, setTutorialsSeen] = useState<TutorialsSeen>({}); // 탭별 튜토리얼 표시 여부(계정당)
   const [lastImportAt, setLastImportAt] = useState<number | null>(null); // 과거여행 불러오기 마지막 완료 시각
   const [lastSeenNoticeAt, setLastSeenNoticeAt] = useState(0); // 마지막으로 확인한 공지의 게시 시각
+  const [onboardedAt, setOnboardedAt] = useState(0); // 온보딩 완료 시각(ms). 0=미완료
   const [mateRecoAskedAt, setMateRecoAskedAt] = useState(0); // 동의 배너를 닫은 시각
   const [stayNudgeDismissedFor, setStayNudgeDismissedFor] = useState<string | null>(null); // 체류 종료 넛지를 닫은 체류 카드 id
 
@@ -390,8 +385,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setHomeCountryCode(p.homeCountryCode);
       setSnapEnabled(p.snapEnabled);
       setDiaryCardMode(p.diaryCardMode);
-      setBirthday(p.birthday ?? '');
-      setGender(p.gender ?? '');
       // 과거 저장본에 language가 없으면 기기 언어 기본값(한국어 기기만 ko)으로
       setLanguage(p.language ?? DEVICE_DEFAULT_LANGUAGE);
       setHandle(p.handle);
@@ -483,6 +476,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setLastImportAt(typeof p.lastImportAt === 'number' ? p.lastImportAt : null);
       setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
+      // 구버전 저장본 마이그레이션 — 예전에는 birthday 유무가 온보딩 완료 신호였다.
+      // 이게 없으면 기존 이용자가 오프라인으로 첫 실행할 때 온보딩으로 되돌아간다.
+      // typeof 가드: 손상된 저장본에 문자열이 아닌 값이 들어 있으면 .trim()이 던지고,
+      // persist의 바깥 try/catch가 hydrate 전체를 손상으로 판정해 설정을 통째로 초기화한다.
+      const legacyBirthdayRaw = (p as { birthday?: unknown }).birthday;
+      const legacyBirthday = typeof legacyBirthdayRaw === 'string' ? legacyBirthdayRaw : '';
+      setOnboardedAt(
+        typeof p.onboardedAt === 'number' && p.onboardedAt > 0
+          ? p.onboardedAt
+          : (legacyBirthday && legacyBirthday.trim() ? 1 : 0),
+      );
       setMateRecoAskedAt(typeof p.mateRecoAskedAt === 'number' ? p.mateRecoAskedAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
@@ -491,8 +495,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      birthday,
-      gender,
       language,
       handle,
       bio,
@@ -536,6 +538,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialSeen: !!tutorialsSeen.main, // 구버전 앱 호환용으로 함께 저장
       lastImportAt,
       lastSeenNoticeAt,
+      onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
     }),
@@ -544,8 +547,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       homeCountryCode,
       snapEnabled,
       diaryCardMode,
-      birthday,
-      gender,
       language,
       handle,
       bio,
@@ -588,6 +589,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       tutorialsSeen,
       lastImportAt,
       lastSeenNoticeAt,
+      onboardedAt,
       mateRecoAskedAt,
       stayNudgeDismissedFor,
     ],
@@ -610,20 +612,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   // opts.keepIdentity: 로컬 정체성 보존 여부.
   //   false(기본, 계정 전환·탈퇴 파기) — 예전 동작 그대로 전부 초기화.
-  //   true('데이터 초기화') — handle·birthday·가입수단·언어를 유지한다. 표시 이름이 곧 handle이고
-  //   온보딩 완료 신호가 birthday라, 이걸 지우면 ProfileSync가 사용자가 고른 아이디를 랜덤 값으로
-  //   서버에 덮어쓰고(=아이디 유실) 소셜 가입자는 'email' 가입자로 오인돼 탈퇴가 막힌다.
+  //   true('데이터 초기화') — handle·가입수단·언어를 유지한다. 표시 이름이 곧 handle이라,
+  //   이걸 지우면 ProfileSync가 사용자가 고른 아이디를 랜덤 값으로 서버에 덮어쓰고(=아이디 유실)
+  //   소셜 가입자는 'email' 가입자로 오인돼 탈퇴가 막힌다. (예전엔 온보딩 완료 신호였던 birthday도
+  //   함께 보존했지만, 지금의 신호인 onboardedAt은 keepIdentity와 무관하게 항상 초기화된다 — 아래 참고)
   const resetSettings = (opts?: { keepIdentity?: boolean }) => {
     const keepIdentity = opts?.keepIdentity === true;
     setShowCounts(true);
     setHomeCountryCode('KR');
     setSnapEnabled(true);
     setDiaryCardMode('full');
-    setGender('');
     setBio('');
     setProfilePhoto(null);
     if (!keepIdentity) {
-      setBirthday('');
       setLanguage('ko');
       setHandle(genHandle());
       setHandleLastChanged(null); // 정체성 보존 시엔 아이디 변경 쿨다운도 함께 유지(초기화로 우회 방지)
@@ -666,6 +667,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 공지 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '읽음' 시각을 물려받아
     // 그 사이에 올라온 공지를 영영 못 본다.
     setLastSeenNoticeAt(0);
+    // 온보딩 완료 신호도 keepIdentity와 무관하게 지운다 — 다른 계정의 완료 상태를 물려받으면
+    // 온보딩을 안 마친 신규 사용자가 곧장 Main으로 들어가 버린다.
+    setOnboardedAt(0);
     // 배너 워터마크도 데이터 축이다 — 안 지우면 새 계정이 이전 계정의 '닫음' 시각을 물려받아
     // 유예 상태인데도 배너를 못 본다.
     setMateRecoAskedAt(0);
@@ -674,7 +678,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   };
 
   // ── 앱 상태 통합 백업(user_app_state) — 비-PII 설정 스냅샷 ──
-  // PII·프로필 필드(handle/bio/사진/생일/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
+  // PII·프로필 필드(handle/bio/사진/거주국/공개여부/폰트/가입방식)는 profiles가 원본이라 제외.
   // puzzleImages·regionPhotos는 백업에 넣지 않는다 — 로컬 파일 경로라 다른 기기에서 무의미하다
   const exportSettingsBackup = (): Record<string, unknown> => ({
     showCounts, snapEnabled, diaryCardMode, language, arrivalDetect,
@@ -760,10 +764,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setSnapEnabled,
         diaryCardMode,
         setDiaryCardMode,
-        birthday,
-        setBirthday,
-        gender,
-        setGender,
         language,
         setLanguage,
         handle,
@@ -845,6 +845,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setLastImportAt,
         lastSeenNoticeAt,
         setLastSeenNoticeAt,
+        onboardedAt,
+        setOnboardedAt,
         mateRecoAskedAt,
         setMateRecoAskedAt,
         stayNudgeDismissedFor,

@@ -125,7 +125,7 @@ type Props = RootStackScreenProps<'Login'>;
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { setSignUpMethod, setSignUpEmail, resetSettings } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
@@ -218,7 +218,7 @@ export default function LoginScreen({ navigation }: Props) {
     setAuthSuccess(true);
     // 온보딩을 마친 사용자면 로그인(Main), 아니면 온보딩(BasicInfo).
     // ⚠️ DB 트리거가 가입 즉시 빈 프로필 행을 생성하므로 "행 존재"로 판정하면 신규도 기존으로 오판된다.
-    //    → 생일이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
+    //    → onboarded_at이 채워졌는지(온보딩 완료 신호)로 신규/기존을 구분한다.
     // 프로필 조회 실패 시에도 멈추지 않도록 기본값(BasicInfo)으로 안전하게 진행
     let dest: 'BasicInfo' | 'Main' = 'BasicInfo';
     let reached = false; // 프로필 조회가 서버에 도달했는가(신규/기존 판정 신뢰 가능 여부)
@@ -233,7 +233,11 @@ export default function LoginScreen({ navigation }: Props) {
         12000,
       );
       reached = status.reached;
-      if (status.profile && status.profile.birthday && status.profile.birthday.trim()) dest = 'Main';
+      if (status.profile && status.profile.onboarded_at) {
+        dest = 'Main';
+        // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 오프라인 판정이 이 값만 본다.
+        setOnboardedAt(Date.parse(status.profile.onboarded_at) || Date.now());
+      }
       if (original) accountProvider = original;
       accountEmail = email;
     } catch {
@@ -474,8 +478,8 @@ export default function LoginScreen({ navigation }: Props) {
         else if (isSignup) setSignUpEmail(normEmail || 'user@eorth.app');
       };
 
-      // 로그인도 소셜·Splash와 동일하게 온보딩 완료(생일 채움) 여부로 목적지를 판정한다.
-      // 무조건 Main으로 보내면 온보딩 중 이탈한 사용자가 프로필(아이디·생일) 없이 메인에 진입한다.
+      // 로그인도 소셜·Splash와 동일하게 온보딩 완료(onboarded_at 채움) 여부로 목적지를 판정한다.
+      // 무조건 Main으로 보내면 온보딩 중 이탈한 사용자가 프로필(아이디 등) 없이 메인에 진입한다.
       let destination: 'BasicInfo' | 'Main' = 'BasicInfo';
       if (!isSignup) {
         const status = await getMyProfileStatus();
@@ -485,7 +489,11 @@ export default function LoginScreen({ navigation }: Props) {
           navigation.reset({ index: 0, routes: [{ name: 'Splash' }] });
           return;
         }
-        destination = status.profile?.birthday && status.profile.birthday.trim() ? 'Main' : 'BasicInfo';
+        destination = status.profile?.onboarded_at ? 'Main' : 'BasicInfo';
+        // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 오프라인 판정이 이 값만 본다.
+        if (status.profile?.onboarded_at) {
+          setOnboardedAt(Date.parse(status.profile.onboarded_at) || Date.now());
+        }
       }
       await proceedAfterAuth(applySignup, destination);
     } finally {

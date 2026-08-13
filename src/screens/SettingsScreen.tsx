@@ -316,7 +316,7 @@ export default function SettingsScreen({ navigation }: RootStackScreenProps<'Set
               // 저장(400ms)이 경합해, 삭제가 늦게 끝나면 보존한 아이디까지 디스크에서 사라진다.
               await clearPersistedStores().catch(() => {});
               resetRecords();
-              // 계정은 그대로 쓰는 '데이터' 초기화 — 아이디·생일·가입수단·언어는 유지한다.
+              // 계정은 그대로 쓰는 '데이터' 초기화 — 아이디·가입수단·언어는 유지한다.
               // (지우면 ProfileSync가 랜덤 아이디로 서버를 덮고 소셜 가입자가 탈퇴 불가가 된다)
               resetSettings({ keepIdentity: true });
               resetConversations();

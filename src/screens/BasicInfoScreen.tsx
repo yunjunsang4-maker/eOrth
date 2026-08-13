@@ -21,6 +21,7 @@ import Svg, {
   Stop as SvgStop,
   Rect as SvgRect,
   Circle as SvgCircle,
+  Path as SvgPath,
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
 import { STAGE_MAX_W } from '../utils/stage';
@@ -29,11 +30,10 @@ import { useRecords } from '../store/recordStore';
 import type { StayType } from '../utils/stayMachine';
 import * as ImagePicker from 'expo-image-picker';
 import { useTranslation } from 'react-i18next';
-import { useSettings, type Gender, type AppLanguage } from '../store/settingsStore';
-import { isHandleAvailable } from '../services/profile';
+import { useSettings, type AppLanguage } from '../store/settingsStore';
+import { isHandleAvailable, markOnboarded } from '../services/profile';
 import { signOut } from '../services/auth';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
-import { formatBirthday, isValidBirthday, isOldEnough } from '../utils/birthday';
 import type { RootStackScreenProps } from '../navigation/types';
 import { Colors, Typography, Spacing, BorderRadius } from '../constants';
 import { PersonIcon, CameraIcon } from '../components/icons';
@@ -94,8 +94,6 @@ const glassBtn = StyleSheet.create({
 // 아이디(handle) 형식: 영문/숫자/_ 4~30자
 const HANDLE_RE = /^[a-zA-Z0-9_]{4,30}$/;
 
-// 생일 입력 유틸(형식 정렬·유효성·만 14세 확인)은 utils/birthday 에서 가져온다.
-
 const DEFAULT_COUNTRY: Country =
   COUNTRIES.find((c) => codeOf(c) === 'KR') ?? COUNTRIES[0];
 
@@ -117,23 +115,19 @@ export default function BasicInfoScreen({ navigation }: Props) {
     profilePhoto,
     homeCountryCode,
     setHomeCountryCode,
-    birthday: storeBirthday,
-    setBirthday: setStoreBirthday,
-    gender: storeGender,
-    setGender: setStoreGender,
     language: storeLanguage,
     setLanguage: setStoreLanguage,
     handle: storeHandle,
     setHandle: setStoreHandle,
     setHandleChosen,
+    setOnboardedAt,
   } = useSettings();
   const { startStay } = useRecords();
   const [photo, setPhoto] = useState<string | null>(profilePhoto || null);
   // 아이디(handle): 기본값은 자동 생성된 아이디로 채워두고 사용자가 수정 가능
   const [handle, setHandle] = useState(storeHandle || '');
   const [checkingHandle, setCheckingHandle] = useState(false);
-  const [birthday, setBirthday] = useState(storeBirthday || '');
-  const [gender, setGender] = useState<Gender>(storeGender || '');
+  const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [language, setLanguage] = useState<AppLanguage>(storeLanguage || 'ko');
   const [selectedCountry, setSelectedCountry] = useState<Country>(
     COUNTRIES.find((c) => codeOf(c) === homeCountryCode) ?? DEFAULT_COUNTRY
@@ -188,9 +182,9 @@ export default function BasicInfoScreen({ navigation }: Props) {
       Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.handleInvalid'));
       return;
     }
-    // 만 14세 미만 가입 차단(이용약관 제4조 2항) — 서버 조회 전에 먼저 막는다.
-    if (!isOldEnough(birthday)) {
-      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.birthdayUnderage'));
+    // 만 14세 미만 가입 차단(이용약관 제4조 2항·방침 제11조). 서버 조회 전에 먼저 막는다.
+    if (!ageConfirmed) {
+      Alert.alert(t('basicInfo.noticeTitle'), t('basicInfo.ageConfirmHint'));
       return;
     }
     // 중복 검사(서버). null=검사 불가(미설정/오류)면 UNIQUE 제약을 최종 방어로 두고 통과.
@@ -205,14 +199,16 @@ export default function BasicInfoScreen({ navigation }: Props) {
     setHandleChosen(true); // 사용자가 온보딩에서 아이디를 확정 → 충돌 시 임의 재생성 금지
     setProfilePhoto(photo);
     setHomeCountryCode(codeOf(selectedCountry));
-    setStoreBirthday(birthday);
-    setStoreGender(gender);
     setStoreLanguage(language);
     if (stayOn && stayCountry) startStay(stayCountry.name, stayType);
+    // 온보딩 완료 기록 — 다음 실행부터 Main으로 바로 간다. 서버 실패해도 진행을 막지 않는다
+    // (로컬 사본이 오프라인 판정을 맡고, 다음 성공한 동기화가 서버를 따라잡는다).
+    setOnboardedAt(Date.now());
+    markOnboarded().catch(() => {});
     navigation.navigate('TravelImport');
   };
 
-  const canContinue = HANDLE_RE.test(handle.trim()) && isOldEnough(birthday) && gender !== '' && (!stayOn || !!stayCountry);
+  const canContinue = HANDLE_RE.test(handle.trim()) && ageConfirmed && (!stayOn || !!stayCountry);
 
   return (
     <View style={styles.container}>
@@ -302,60 +298,36 @@ export default function BasicInfoScreen({ navigation }: Props) {
               />
               <Text style={styles.charCount}>{handle.length}/30</Text>
             </View>
-            <Text style={[styles.birthdayHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
+            <Text style={[styles.fieldHint, { marginTop: Spacing[2] }]}>{t('basicInfo.handleHint')}</Text>
           </View>
 
-          {/* 생일 */}
+          {/* 만 14세 확인 — 생년월일을 받지 않는 대신 자기 확인으로 연령 방어선을 유지한다
+              (개인정보처리방침 제11조). App Store 5.1.1(v)로 DOB 수집을 폐지했다. */}
           <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>{t('basicInfo.birthday')}</Text>
-            <View style={styles.inputWrapper}>
-              <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textMuted}
-                value={birthday}
-                onChangeText={(t) => setBirthday(formatBirthday(t))}
-                keyboardType="number-pad"
-                maxLength={10}
-              />
-              {birthday.length > 0 && !isValidBirthday(birthday) && (
-                <Text style={styles.birthdayHint}>{t('basicInfo.birthdayHint')}</Text>
-              )}
-              {isValidBirthday(birthday) && !isOldEnough(birthday) && (
-                <Text style={styles.birthdayHint}>{t('basicInfo.birthdayUnderage')}</Text>
-              )}
-            </View>
-          </View>
-
-          {/* 성별 */}
-          <View style={styles.inputSection}>
-            <Text style={styles.inputLabel}>{t('basicInfo.gender')}</Text>
-            <View style={styles.genderRow}>
-              {([
-                { value: 'male', label: t('basicInfo.genderMale') },
-                { value: 'female', label: t('basicInfo.genderFemale') },
-              ] as { value: Gender; label: string }[]).map((opt) => {
-                const active = gender === opt.value;
-                return (
-                  <TouchableOpacity
-                    key={opt.value}
-                    style={[styles.genderBtn, active && styles.genderBtnActive]}
-                    activeOpacity={0.8}
-                    onPress={() => setGender(opt.value)}
-                  >
-                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
-                      {opt.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
+            <TouchableOpacity
+              style={styles.ageRow}
+              onPress={() => setAgeConfirmed((v) => !v)}
+              activeOpacity={0.8}
+              accessibilityRole="checkbox"
+              accessibilityState={{ checked: ageConfirmed }}
+              hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
+            >
+              <View style={[styles.ageBox, ageConfirmed && styles.ageBoxOn]}>
+                {ageConfirmed && (
+                  <Svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <SvgPath d="M20 6L9 17l-5-5" stroke="#FFFFFF" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                  </Svg>
+                )}
+              </View>
+              <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm')}</Text>
+            </TouchableOpacity>
+            <Text style={styles.privacyHint}>{t('basicInfo.ageConfirmHint')}</Text>
           </View>
 
           {/* 언어 */}
           <View style={styles.inputSection}>
             <Text style={styles.inputLabel}>{t('basicInfo.language')}</Text>
-            <View style={styles.genderRow}>
+            <View style={styles.languageRow}>
               {([
                 { value: 'ko', label: '한국어' },
                 { value: 'en', label: 'English' },
@@ -364,11 +336,11 @@ export default function BasicInfoScreen({ navigation }: Props) {
                 return (
                   <TouchableOpacity
                     key={opt.value}
-                    style={[styles.genderBtn, active && styles.genderBtnActive]}
+                    style={[styles.languageBtn, active && styles.languageBtnActive]}
                     activeOpacity={0.8}
                     onPress={() => setLanguage(opt.value)}
                   >
-                    <Text style={[styles.genderText, active && styles.genderTextActive]}>
+                    <Text style={[styles.languageText, active && styles.languageTextActive]}>
                       {opt.label}
                     </Text>
                   </TouchableOpacity>
@@ -652,7 +624,7 @@ const styles = StyleSheet.create({
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
   },
-  birthdayHint: {
+  fieldHint: {
     color: '#FF3B30',
     fontSize: Typography.fontSize.xs,
     fontFamily: Typography.fontFamily.regular,
@@ -664,12 +636,21 @@ const styles = StyleSheet.create({
     marginTop: Spacing[2],
   },
 
-  // Gender
-  genderRow: {
+  // 만 14세 확인 체크박스
+  ageRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  ageBox: {
+    width: 22, height: 22, borderRadius: 6, borderWidth: 1.5, borderColor: '#A1A1B0',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  ageBoxOn: { backgroundColor: '#BF85FC', borderColor: '#BF85FC' },
+  ageLabel: { flex: 1, fontSize: 14, color: '#FFFFFF' },
+
+  // 언어 선택
+  languageRow: {
     flexDirection: 'row',
     gap: Spacing[3],
   },
-  genderBtn: {
+  languageBtn: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -679,16 +660,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.1)',
   },
-  genderBtnActive: {
+  languageBtnActive: {
     borderColor: 'rgba(236,52,247,0.6)',
     backgroundColor: 'rgba(236,52,247,0.08)',
   },
-  genderText: {
+  languageText: {
     fontSize: Typography.fontSize.base,
     fontFamily: Typography.fontFamily.medium,
     color: Colors.textSecondary,
   },
-  genderTextActive: {
+  languageTextActive: {
     color: '#EC34F7',
     fontFamily: Typography.fontFamily.semiBold,
   },

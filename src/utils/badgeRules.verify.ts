@@ -37,36 +37,6 @@ const catalog: BadgeCatalogEntry[] = [
   assert(both.has(123) && both.has(124) && both.has(9), '가족+형제+혼자 동시 점등');
 }
 
-// ── 생일 여행(13): 여행 날짜에 생일(월·일)이 포함 + 피드/블로그/스트립 ──
-{
-  const opt = { birthday: '1998-03-15' };
-  // 여행 기간이 생일을 포함 → 획득
-  const inRange: BadgeStatRecord[] = [
-    { isMyPost: true, countryName: '일본', viewType: 'feed', startDate: '2025.03.10', endDate: '2025.03.20' },
-  ];
-  assert(computeTravelStats(inRange, opt).hasBirthdayTrip, '여행기간(03.10~03.20)이 생일(03.15) 포함');
-  assert(computeEarnedBadgeIds(inRange, catalog, opt).has(13), '생일 포함 → 생일 여행(13) 획득');
-
-  // 생일 당일 단일 기록(시작=종료) → 획득
-  const sameDay: BadgeStatRecord[] = [{ isMyPost: true, countryName: '일본', viewType: 'blog', startDate: '2024.03.15', endDate: '2024.03.15' }];
-  assert(computeEarnedBadgeIds(sameDay, catalog, opt).has(13), '생일 당일 기록 → 13 획득');
-
-  // 생일 미포함 → 미획득
-  const outRange: BadgeStatRecord[] = [{ isMyPost: true, countryName: '일본', viewType: 'feed', startDate: '2025.07.01', endDate: '2025.07.10' }];
-  assert(!computeEarnedBadgeIds(outRange, catalog, opt).has(13), '생일 미포함 → 13 미획득');
-
-  // 스냅·앨범은 인정 안 함(생일이 들어가도)
-  const snap: BadgeStatRecord[] = [{ isMyPost: true, countryName: '일본', viewType: 'snap', startDate: '2025.03.15', endDate: '2025.03.15' }];
-  assert(!computeEarnedBadgeIds(snap, catalog, opt).has(13), '스냅은 생일 여행(13) 제외');
-
-  // 생일 미설정 → 미획득
-  assert(!computeEarnedBadgeIds(inRange, catalog).has(13), '생일 설정 없으면 13 미획득');
-
-  // 해를 넘기는 여행(12.28~01.05)에 생일(01.01) 포함
-  const newYear: BadgeStatRecord[] = [{ isMyPost: true, countryName: '일본', viewType: 'cut', startDate: '2024.12.28', endDate: '2025.01.05' }];
-  assert(computeEarnedBadgeIds(newYear, catalog, { birthday: '2000-01-01' }).has(13), '해넘이 여행이 1/1 생일 포함 → 13');
-}
-
 // ── 당일치기(14)·30일 이상(15) ──
 {
   // 시작=종료(0박)면 당일치기

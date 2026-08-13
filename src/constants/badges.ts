@@ -30,7 +30,9 @@ const ALL_BADGES: Badge[] = [
   { id: 10, emoji: '💑', name: '여행에서 안 싸웠길 바래요^^', desc: '커플 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/couple-travel.png') },
   { id: 11, emoji: '👵', name: '당신의 첫 효도인가요?', desc: '부모님 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/parents-travel.png') },
   { id: 12, emoji: '🤝', name: '여행을 계획한 메이트에게 불평하지 마세요.', desc: '메이트 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/friend-travel.png') },
-  { id: 13, emoji: '🎂', name: '생일 축하드립니다', desc: '생일 여행', earned: false, glow: 'rgba(255,100,100,0.5)', image: require('../../assets/badges/birthday-travel.png') },
+  // id 13(생일 여행)은 생년월일 수집 폐지(App Store 5.1.1(v))로 영구 획득 불가가 되어
+  // 2026-08-13 카탈로그에서 제거했다. assets/badges/birthday-travel.png는 지우지 않는다
+  // (참조가 없으면 번들에 포함되지 않고, 다른 기준으로 되살릴 여지를 남긴다).
   { id: 14, emoji: '⚡', name: '스피드 트래블러', desc: '당일치기 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
   { id: 15, emoji: '🚗', name: '가스는 잠궜죠?', desc: '30일 이상 여행', earned: false, glow: 'rgba(255,100,100,0.5)' },
 
@@ -138,7 +140,7 @@ const ALL_BADGES: Badge[] = [
 // 이 파일의 이미지 require에 묶이지 않게 분리했다. 기존 import 경로 유지를 위해 여기서 다시 내보낸다.
 export { HIDDEN_BADGE_IDS };
 
-// 출시 노출 배지(46개) — 화면 표시·개수 집계는 전부 이 목록을 쓴다.
+// 출시 노출 배지(45개) — 화면 표시·개수 집계는 전부 이 목록을 쓴다.
 export const BADGES: Badge[] = ALL_BADGES.filter((b) => !HIDDEN_BADGE_IDS.has(b.id));
 
 // 배지 목록 모달의 챕터(카테고리) 구성.
@@ -147,7 +149,7 @@ export const BADGES: Badge[] = ALL_BADGES.filter((b) => !HIDDEN_BADGE_IDS.has(b.
 export interface BadgeCategory { key: string; name: string; range: [number, number]; ids?: number[]; extra?: number[]; }
 export const BADGE_CATEGORIES: BadgeCategory[] = [
   { key: 'catFirst',     name: '대륙 & 첫 방문 배지', range: [1, 7] },
-  { key: 'catCompanion', name: '여행 동행 & 스타일 배지', range: [9, 15], ids: [9, 10, 11, 12, 123, 124, 13, 14, 15] },
+  { key: 'catCompanion', name: '여행 동행 & 스타일 배지', range: [9, 15], ids: [9, 10, 11, 12, 123, 124, 14, 15] },
   { key: 'catRegion',    name: '국가 & 지역 탐방 배지', range: [16, 34], extra: [125, 126, 127, 128, 129] },
   { key: 'catMilestone', name: '여행 마일스톤 배지', range: [35, 61] },
   { key: 'catSeason',    name: '시즌 & 기념일 배지', range: [63, 65] },
