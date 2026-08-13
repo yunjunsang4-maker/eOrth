@@ -310,6 +310,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               activeOpacity={0.8}
               accessibilityRole="checkbox"
               accessibilityState={{ checked: ageConfirmed }}
+              hitSlop={{ top: 10, bottom: 10, left: 0, right: 0 }}
             >
               <View style={[styles.ageBox, ageConfirmed && styles.ageBoxOn]}>
                 {ageConfirmed && (
@@ -320,7 +321,7 @@ export default function BasicInfoScreen({ navigation }: Props) {
               </View>
               <Text style={styles.ageLabel}>{t('basicInfo.ageConfirm')}</Text>
             </TouchableOpacity>
-            <Text style={styles.fieldHint}>{t('basicInfo.ageConfirmHint')}</Text>
+            <Text style={styles.privacyHint}>{t('basicInfo.ageConfirmHint')}</Text>
           </View>
 
           {/* 언어 */}

@@ -79,6 +79,46 @@ select mate_reco_optin, count(*) from public.profiles group by 1;
 남은 위험은 배너를 계속 닫기만 하는 이용자다 — 7일마다 재노출되긴 하지만 그 사이엔
 `mate_reco_optin`이 `null`(유예)로 남는다.
 
+### ⏳ `schema.sql` 재실행 — 생일·성별 제거, `onboarded_at` 신설 (2026-08-13, `feat/remove-birthday-gender`)
+
+발단: App Store 5.1.1(v) 지적으로 생년월일·성별 수집을 폐지한다. `profiles.birthday`는
+그동안 "온보딩을 마쳤는가"의 로컬·서버 판정 신호를 겸했는데, 컬럼이 없어지므로 전용
+컬럼 `profiles.onboarded_at`(timestamptz)으로 옮긴다. 관련 SQL은 `schema.sql` 45~62행:
+`onboarded_at` 컬럼 추가 → `birthday`가 있던 기존 이용자를 `onboarded_at = created_at`으로
+백필 → `birthday`/`gender` 컬럼 drop. `grant update` 목록(177~180행)도 이미 `birthday`·
+`gender`를 빼고 `onboarded_at`을 넣은 10개 컬럼으로 갱신돼 있다(위 "2번" 표에 반영 완료).
+
+⚠️ **반드시 2단계로 나눠 실행할 것 — 한 번에 원본 그대로 실행하지 말 것.**
+
+> 1차: `drop column` 두 줄을 주석 처리하고 실행 — `onboarded_at` 신설 + 백필까지만.
+> 이 상태는 신·구 클라이언트 모두 정상 동작한다.
+> 2차: 신버전(생일·성별 제거분)이 배포·심사 통과된 뒤 원본 그대로 재실행 — 그때 두
+> 컬럼이 삭제된다.
+> 이유: 컬럼을 먼저 지우면 아직 업데이트받지 못한 구버전 앱이 (a) `profile.birthday`가
+> 없어 전원 온보딩으로 튕기고, (b) upsert payload에 `birthday`/`gender`가 들어가
+> PostgREST가 거부해 프로필 동기화 전체가 실패한다.
+> 운영·테스트 두 프로젝트 모두 같은 순서로 적용한다.
+
+재실행(1차) 후 실측:
+
+```sql
+-- ① 컬럼 존재 확인
+select column_name from information_schema.columns
+ where table_name = 'profiles' and column_name = 'onboarded_at';
+-- ② 백필 확인 — birthday가 있던(과거) 이용자는 모두 onboarded_at이 채워져 있어야 한다
+select count(*) filter (where onboarded_at is null) as 미채움
+  from public.profiles;
+-- ③ (1차 상태 동안은 여전히 존재해야 한다 — 2차 실행 전까지)
+select column_name from information_schema.columns
+ where table_name = 'profiles' and column_name in ('birthday', 'gender');
+```
+
+2차(컬럼 drop) 실행 후에는 ③의 결과가 빈 집합이어야 한다.
+
+클라이언트 짝(같은 브랜치): `src/store/settingsStore.tsx`의 `onboardedAt` 로컬 사본 +
+구버전 저장본(`birthday` 존재)에서 마이그레이션, `BasicInfoScreen`의 만 14세 자기확인
+체크박스(생년월일 입력 대체).
+
 ---
 
 ## 1-1. 이전부터 남아 있던 것 — 3건 (2026-08-09 기준)
@@ -357,7 +397,7 @@ select status_code, content, created
 
 | 수정 | 서버 확인 결과 |
 |---|---|
-| **`profiles` 컬럼 권한** — 사용자가 `deletion_requested_at` 을 위조해 30일 유예를 건너뛰고 계정을 즉시 파기시킬 수 있었다 | UPDATE 가능 컬럼 11개(`id`·`handle`·`emoji`·`bio`·`birthday`·`gender`·`profile_photo`·`country`·`handle_font`·`stay_country`·`stay_status`)만 남고 **`deletion_requested_at` 없음** ✅ |
+| **`profiles` 컬럼 권한** — 사용자가 `deletion_requested_at` 을 위조해 30일 유예를 건너뛰고 계정을 즉시 파기시킬 수 있었다 | UPDATE 가능 컬럼 10개(`id`·`handle`·`emoji`·`bio`·`profile_photo`·`country`·`handle_font`·`stay_country`·`stay_status`·`onboarded_at`)만 남고 **`deletion_requested_at` 없음** ✅ (2026-08-13 `birthday`·`gender` drop 반영 — 아래 1번 절 참조) |
 | **`media_read_own`** — 목록 조회가 열려 있어 남의 폴더 파일명을 받아낸 뒤 public URL 로 원본(비공개 사진·DM 이미지)을 가져갈 수 있었다 | `media_read_all` 제거, `media_read_own` 하나만 존재하며 `qual` 에 `(storage.foldername(name))[1] = auth.uid()` 폴더 제한 확인 ✅ |
 | `dm_push_sent` 테이블 — send-push 멱등성 근거 | 존재 확인(PostgREST 조회) ✅ — 배포된 v4 가 이 표를 쓰기 시작하며 멱등성 자동 활성 |
 | `overlap_with`·`neighbor_list_of`·`profile_country_counts` 차단 검사, `extra_countries` 상한 30 | 같은 재실행에 포함 |

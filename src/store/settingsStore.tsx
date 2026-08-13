@@ -476,7 +476,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setTutorialsSeen(p.tutorialsSeen ?? (p.tutorialSeen ? { main: true } : {}));
       setLastImportAt(typeof p.lastImportAt === 'number' ? p.lastImportAt : null);
       setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
-      setOnboardedAt(typeof p.onboardedAt === 'number' ? p.onboardedAt : 0);
+      // 구버전 저장본 마이그레이션 — 예전에는 birthday 유무가 온보딩 완료 신호였다.
+      // 이게 없으면 기존 이용자가 오프라인으로 첫 실행할 때 온보딩으로 되돌아간다.
+      const legacyBirthday = (p as { birthday?: string }).birthday;
+      setOnboardedAt(
+        typeof p.onboardedAt === 'number' && p.onboardedAt > 0
+          ? p.onboardedAt
+          : (legacyBirthday && legacyBirthday.trim() ? 1 : 0),
+      );
       setMateRecoAskedAt(typeof p.mateRecoAskedAt === 'number' ? p.mateRecoAskedAt : 0);
       setStayNudgeDismissedFor(p.stayNudgeDismissedFor ?? null);
     },
