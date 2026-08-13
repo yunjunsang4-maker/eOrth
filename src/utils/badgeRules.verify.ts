@@ -1019,6 +1019,29 @@ const catalog: BadgeCatalogEntry[] = [
   const statsNoOpt = computeTravelStats(twoCountries);
   assert(statsNoOpt.countries.has('대한민국'), '옵션 없으면 대한민국 그대로 포함(하위 호환)');
   assert(statsNoOpt.countries.has('일본'), '옵션 없으면 일본도 그대로 포함(하위 호환)');
+
+  // 도시(regionName) 붙은 거주국 기록은 방문이다 — 통계 화면과 동일 규칙(2026-08-13)
+  const homeWithRegion: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', regionName: '부산', viewType: 'feed' },
+  ];
+  const statsRegion = computeTravelStats(homeWithRegion, { homeCountryName: '대한민국' });
+  assert(statsRegion.countries.has('대한민국'), '도시 붙은 거주국 기록은 countries에 포함');
+  assert(statsRegion.diaryCountries.has('대한민국'), '도시 붙은 거주국 기록은 diaryCountries에 포함');
+  assert(statsRegion.continents.has('아시아'), '도시 붙은 거주국 기록은 대륙(아시아)에도 포함');
+
+  // 별칭 국가명('한국')이라도 도시가 붙으면 방문
+  const aliasWithRegion: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '한국', regionName: '제주', viewType: 'feed' },
+  ];
+  const statsAliasRegion = computeTravelStats(aliasWithRegion, { homeCountryName: '대한민국' });
+  assert(statsAliasRegion.countries.has('한국'), '별칭 한국도 도시가 붙으면 포함');
+
+  // 도시 없는 거주국 기록(홈 스냅 등)은 종전대로 제외 — GPS 감지 국가만 실린 스냅 보호
+  const homeSnap: BadgeStatRecord[] = [
+    { isMyPost: true, countryName: '대한민국', viewType: 'snap' },
+  ];
+  const statsSnap = computeTravelStats(homeSnap, { homeCountryName: '대한민국' });
+  assert(!statsSnap.countries.has('대한민국'), '도시 없는 거주국 스냅은 여전히 제외');
 }
 
 console.log(failures === 0 ? '\n✅ 모든 검증 통과' : `\n❌ ${failures}건 실패`);

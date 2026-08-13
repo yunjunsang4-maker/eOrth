@@ -323,7 +323,10 @@ export function computeTravelStats(records: BadgeStatRecord[], options?: BadgeCo
     if (r.countryName) names.add(r.countryName);
     if (r.countries) for (const c of r.countries) if (c?.name) names.add(c.name);
     for (const n of names) {
-      if (homeNames.has(n)) continue; // 거주국 제외
+      // 거주국 제외 — 단 도시(지역)를 붙인 기록은 거주국이어도 방문이다(통계 화면과 동일 규칙, 2026-08-13).
+      // 도시 없는 거주국 기록(홈 스냅 등)은 종전대로 제외 — 스냅은 GPS 감지 국가가 실려
+      // 이 보호가 없으면 집에서 찍은 스냅만으로 방문국 배지가 진행된다.
+      if (homeNames.has(n) && !r.regionName) continue;
       countries.add(n);
       if (isDiary) diaryCountries.add(n); // 형식 기록으로 방문한 국가
       const cont = NAME_TO_CONTINENT[n];
