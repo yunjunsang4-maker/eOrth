@@ -17,6 +17,29 @@
 >
 > 새로 실행·배포했으면 날짜와 함께 이 문서를 갱신한다.
 >
+> ✅ **2026-08-13 실측 갱신.** anon 키 PostgREST 프로브(아래 "A" 방법)로 **운영·테스트 두 프로젝트를
+> 직접 조회**해 아래 상태를 확인했다. 두 프로젝트 상태는 **동일**하다.
+> 그 전까지 이 문서가 ⏳(미반영)로 적어 두었던 **매칭 프라이버시 하드닝·`event_participants`는
+> 실제로는 이미 반영돼 있었다** — 문서가 뒤처져 있던 것이다. 아래 표로 정정한다.
+>
+> | 확인 대상 | 실측 |
+> |---|---|
+> | `profiles.onboarded_at` | ✅ 있음 |
+> | `profiles.birthday` · `profiles.gender` | ⚠️ **아직 있음**(= 1차만 실행된 정상 상태) |
+> | `profiles.mate_reco_optin` | ✅ 있음 |
+> | `rpc_probe_guard` 표 | ✅ 있음 |
+> | `k_anon_min()` / `set_mate_reco_optin(boolean)` | ✅ 있음 (200 / 204) |
+> | `event_participants` 표 | ✅ 있음 |
+> | 기반영분 `mate_suggestions_cache`·`dm_push_sent`·`safe_to_date` | ✅ 있음 |
+> | 대조군(없는 표·함수) | ✅ 404 — 조회 자체는 정상 |
+>
+> **`birthday`·`gender`가 남아 있는데 `onboarded_at`이 있다**는 건, 재실행이 문서 지시대로
+> `drop column` 두 줄(schema.sql 61~62행)을 주석 처리한 **1차 절차로 수행됐다**는 증거다.
+>
+> ⚠️ 이 프로브는 **표·컬럼·함수의 존재만** 본다. **인덱스·컬럼 단위 grant·트리거·pg_cron·
+> Edge Function 배포는 볼 수 없다** — 그것들은 아래 "B"와 `functions list`로 따로 확인해야 하며,
+> 이번 갱신에서 실측되지 않았다.
+>
 > ⚠️ **2026-08-07 정정.** 위 "모두 끝났다"에는 예외가 있었다 — pg_cron 3종은 등록만 됐고
 > 실행은 이틀간 전부 401 로 실패해 왔다(같은 날 해소, 1번 절).
 > **"객체가 존재한다"와 "실제로 동작한다"는 다르다.**
@@ -25,9 +48,19 @@
 
 ---
 
-## 1. 지금 해야 하는 것 — 4건 (2026-08-12 기준)
+## 1. 지금 해야 하는 것 — 3건 (2026-08-13 실측 기준)
 
-### ⏳ `schema.sql` 재실행 — 매칭 프라이버시 하드닝 (2026-08-11~12)
+**남은 것은 아래 셋뿐이다.** ①`birthday`·`gender` **2차 drop**(심사 통과 후 — 아래),
+②`cron-setup.sql`의 **`purge-probe-guard`** 잡 등록(미실측), ③`delete-account` 재배포 +
+`PURGE_SECRET`(1-1절 — 폴백으로 동작 중이라 급하지 않음).
+그 외 이 절에 ⏳로 적혀 있던 SQL은 **2026-08-13 실측으로 반영 확인**돼 ✅로 바꿨다.
+
+### ✅ `schema.sql` 재실행 — 매칭 프라이버시 하드닝 (2026-08-11~12) — **반영 확인 2026-08-13**
+
+> **실측:** `profiles.mate_reco_optin`·`rpc_probe_guard`·`k_anon_min()`·
+> `set_mate_reco_optin(boolean)` 4종 모두 운영·테스트 양쪽에 존재.
+> **단 `idx_posts_country_shared`(5번)는 anon 프로브로 볼 수 없어 미실측** — 아래 ② 쿼리로 확인할 것.
+> 아래 배경 설명은 왜 이렇게 만들었는지의 기록으로 남긴다.
 
 발단: 기록의 공개 범위 칩은 **'메이트만'** 인데(`i18n visNeighbors`), 매칭·겹침·나라별
 방문자 함수는 `visibility <> 'private'` 로 거른다. 실제로 쓰이는 값이 `neighbors`/`private`
@@ -50,10 +83,11 @@
 매칭은 이 앱의 본질 기능(여행 기록)이 아니라 부가 기능이라, 선택 동의 거부를 이유로
 기능 제공을 거절하면 개인정보보호법 제22조에 걸린다.
 
-재실행 후 실측:
+재실행 후 실측(①은 2026-08-13 확인 완료 / **②·③은 미실측** — anon 프로브로 인덱스와
+행 분포는 볼 수 없다. SQL Editor에서 마저 확인할 것):
 
 ```sql
--- ① 새 객체 4종이 있어야 한다
+-- ① 새 객체 4종이 있어야 한다 — 2026-08-13 확인 완료(전부 있음)
 select to_regclass('public.rpc_probe_guard') is not null as 가드표,
        to_regprocedure('public.k_anon_min()') is not null as k익명,
        to_regprocedure('public.set_mate_reco_optin(boolean)') is not null as 동의rpc,
@@ -79,7 +113,12 @@ select mate_reco_optin, count(*) from public.profiles group by 1;
 남은 위험은 배너를 계속 닫기만 하는 이용자다 — 7일마다 재노출되긴 하지만 그 사이엔
 `mate_reco_optin`이 `null`(유예)로 남는다.
 
-### ⏳ `schema.sql` 재실행 — 생일·성별 제거, `onboarded_at` 신설 (2026-08-13, `feat/remove-birthday-gender`)
+### 🟡 `schema.sql` 재실행 — 생일·성별 제거, `onboarded_at` 신설 (2026-08-13, master 병합됨)
+
+> **실측 2026-08-13 — 1차 완료, 2차 대기.** 운영·테스트 양쪽에서 `profiles.onboarded_at`은
+> 있고 `birthday`·`gender`는 **아직 있다.** 지금 있어야 할 정확한 상태다.
+> **2차(컬럼 drop)는 신버전이 App Store 심사를 통과한 뒤에 실행한다** — 지금 실행하면
+> 아직 업데이트받지 못한 구버전 앱이 전원 파손된다(사유는 아래 경고 상자).
 
 발단: App Store 5.1.1(v) 지적으로 생년월일·성별 수집을 폐지한다. `profiles.birthday`는
 그동안 "온보딩을 마쳤는가"의 로컬·서버 판정 신호를 겸했는데, 컬럼이 없어지므로 전용
@@ -99,16 +138,17 @@ select mate_reco_optin, count(*) from public.profiles group by 1;
 > PostgREST가 거부해 프로필 동기화 전체가 실패한다.
 > 운영·테스트 두 프로젝트 모두 같은 순서로 적용한다.
 
-재실행(1차) 후 실측:
+재실행(1차) 후 실측 — **①·③은 2026-08-13 확인 완료**(`onboarded_at` 있음 / `birthday`·`gender`도
+아직 있음 = 1차 상태 정상). **②(백필된 행 수)는 RLS 때문에 anon 으로 못 본다** — SQL Editor에서 확인할 것:
 
 ```sql
--- ① 컬럼 존재 확인
+-- ① 컬럼 존재 확인 — 2026-08-13 확인 완료(있음)
 select column_name from information_schema.columns
  where table_name = 'profiles' and column_name = 'onboarded_at';
 -- ② 백필 확인 — birthday가 있던(과거) 이용자는 모두 onboarded_at이 채워져 있어야 한다
 select count(*) filter (where onboarded_at is null) as 미채움
   from public.profiles;
--- ③ (1차 상태 동안은 여전히 존재해야 한다 — 2차 실행 전까지)
+-- ③ (1차 상태 동안은 여전히 존재해야 한다 — 2차 실행 전까지) — 2026-08-13 확인 완료(둘 다 있음)
 select column_name from information_schema.columns
  where table_name = 'profiles' and column_name in ('birthday', 'gender');
 ```
@@ -121,11 +161,18 @@ select column_name from information_schema.columns
 
 ---
 
-## 1-1. 이전부터 남아 있던 것 — 3건 (2026-08-09 기준)
+## 1-1. 이전부터 남아 있던 것 (2026-08-09 기준 → 2026-08-13 정정)
 
-### ⏳ `schema.sql` 재실행 — 유저 상호작용 감사(2026-08-09) 수정분 5건
+### 🟡 `schema.sql` 재실행 — 유저 상호작용 감사(2026-08-09) 수정분 5건 — **반영된 것으로 추정**
 
-멱등이므로 SQL Editor에서 전체 재실행하면 된다. 이번 재실행으로 반영되는 것:
+> **2026-08-13 판단 근거(직접 실측 아님·추론).** 이 5건은 모두 `schema.sql` 안에 있고
+> (`uq_neighbors_pair` 685행, `trg_cleanup_neighbor_request_notif` 1859행, publication 2070행),
+> 프라이버시 하드닝(2026-08-11~12분, 파일 뒤쪽)이 **실측으로 반영돼 있다**는 것은
+> 그 이후 `schema.sql` **전체 재실행이 있었다**는 뜻이므로 이 5건도 함께 반영됐다고 본다.
+> **다만 인덱스·트리거·publication은 anon 프로브로 볼 수 없어 확정이 아니다** —
+> 아래 확인 쿼리 2줄을 SQL Editor에서 한 번 돌려 ✅로 확정할 것.
+
+멱등이므로 SQL Editor에서 전체 재실행하면 된다. 이 재실행으로 반영되는 것:
 
 | # | 내용 | 왜 |
 |---|------|-----|
@@ -186,14 +233,23 @@ select status_code, content from net._http_response order by created desc limit 
 401 이면 `content` 의 `hint` 로 갈린다 — `purge_secret_not_set`(①이 안 됨) /
 `purge_secret_mismatch`(①②가 다름) / `INVALID_JWT_FORMAT`(게이트웨이 = Authorization 쪽 문제).
 
-### ⏳ `event_participants` 테이블·유니크 인덱스·RLS·grant (2026-08-09 추가)
+### 🟡 `event_participants` 테이블·유니크 인덱스·RLS·grant (2026-08-09 추가) — **표는 반영 확인됨**
 
-오프라인 행사 부스 참가자 설문(메이트 매칭) 테이블. **서버 미반영** — Supabase SQL Editor에서
-`schema.sql` 끝의 "오프라인 행사 메이트 매칭 이벤트" 섹션을 실행해야 한다.
+오프라인 행사 부스 참가자 설문(메이트 매칭) 테이블.
 
-⚠️ **행사 코드를 확정(Task 6)한 뒤 실행할 것.** INSERT 정책의 `with check`가 지금은
-`event_code = 'popup01'` 자리표시자로 박혀 있어, 실제 행사 코드가 다르면 이 코드로 실행 후
-정책을 다시 만들어야 한다.
+> **실측 2026-08-13 — 표는 운영·테스트 양쪽에 존재한다.** 이 문서가 "서버 미반영"으로 적어
+> 두었던 건 낡은 기록이었다. `schema.sql` 전체 재실행에 이 섹션이 함께 딸려 들어간 것으로 보인다.
+>
+> ⚠️ **그러나 "표가 있다"와 "행사에 쓸 수 있다"는 다르다.** INSERT 정책의 `with check`는
+> `event_code = 'popup01'` **자리표시자 그대로 박혀 있을 가능성이 높다** — 정책 본문은
+> anon 프로브로 볼 수 없어 실측하지 못했다. 행사 코드를 확정한 뒤 **정책을 실제 코드로
+> 다시 만들어야 한다.** 확인:
+>
+> ```sql
+> select policyname, with_check from pg_policies where tablename = 'event_participants';
+> ```
+>
+> 📅 이 데이터는 **2026-10-10 파기 기한**이 걸려 있다.
 
 ### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 
@@ -392,6 +448,9 @@ select status_code, content, created
 | 추천 메이트 결과 캐시 (`mate_suggestions_cache` + 래퍼) | 2026-08-05 | 실행 보고 | 커밋 `c8498ca`. 확인 쿼리는 1번 절 |
 | pg_cron 3종 등록 (`cron-setup.sql`) | 2026-08-05 | ✅ 확인 | `cron.job` 3건 `active=true`. **단 실행은 전부 401 실패** — 아래 행 참조 |
 | Vault `service_role_key` | 2026-08-05 → **2026-08-07 교체** | ✅ 확인 (200 실측) | 등록 당시 값이 함수 env 와 불일치해 잡 3종이 이틀간 전부 401. **넣을 값은 레거시 JWT 가 아니라 신형 `sb_secret_...`** — 1번 절 참조 |
+| `event_participants` 표 | 2026-08-09~ (일자 미상) | **✅ 실측 2026-08-13** | 표는 있으나 **INSERT 정책의 행사 코드가 자리표시자일 수 있음** — 1-1번 절 |
+| 매칭 프라이버시 하드닝 (`mate_reco_optin`·`rpc_probe_guard`·`k_anon_min`·`set_mate_reco_optin`) | 2026-08-12~13 | **✅ 실측 2026-08-13** | 인덱스 `idx_posts_country_shared`만 미실측 — 1번 절 |
+| 생일·성별 폐지 **1차**(`onboarded_at` 신설·백필) | 2026-08-13 | **✅ 실측 2026-08-13** | **2차(컬럼 drop)는 심사 통과 후** — 1번 절 |
 
 ### 출시 전 감사(2026-08-02) 반영 상세 — SQL Editor 조회로 실측
 
@@ -499,6 +558,15 @@ const r = await fetch(`${URL}/rest/v1/rpc/safe_to_date`, {
 2. **인덱스·컬럼 권한·트리거는 이 방법으로 볼 수 없다.** 그건 아래 B로 확인한다.
 
 존재하지 않는 이름(예: `this_fn_never_existed`)을 대조군으로 같이 던져, 조회 자체가 멀쩡한지 먼저 확인하면 좋다.
+
+**컬럼 존재도 같은 방법으로 본다.** `GET /rest/v1/profiles?select=<컬럼>&limit=1` → `200`이면 있음,
+`400`(`42703`)이면 없음. `onboarded_at`·`birthday`·`gender` 확인은 이걸로 충분하다.
+
+> 💡 **두 프로젝트를 한 번에 볼 것.** `.env`에는 운영(`blweolnunmsxgztmvzfd`)과
+> 테스트(`bqwmxxhtsvfuyywfuswo`) 중 **한쪽만 활성이고 다른 쪽은 주석 처리**돼 있다.
+> 활성 값만 보고 "반영됐다"고 판단하면 **반대쪽 프로젝트를 통째로 놓친다.**
+> 주석 줄(`^#\s*EXPO_PUBLIC_SUPABASE_...`)까지 같이 읽어 양쪽을 대조하는 게 안전하다.
+> 2026-08-13 확인에서는 두 프로젝트 상태가 동일했다.
 
 **테이블도 같은 방법으로 본다.** `GET /rest/v1/<테이블>?select=*&limit=1` → 없으면 `404` + `PGRST205`,
 있으면 `200`(RLS 로 막혀도 빈 배열). 재실행이 반영됐는지는 **그 라운드에서 처음 생긴 것**으로 확인하는 게 확실하다
