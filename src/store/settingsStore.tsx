@@ -478,7 +478,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setLastSeenNoticeAt(typeof p.lastSeenNoticeAt === 'number' ? p.lastSeenNoticeAt : 0);
       // 구버전 저장본 마이그레이션 — 예전에는 birthday 유무가 온보딩 완료 신호였다.
       // 이게 없으면 기존 이용자가 오프라인으로 첫 실행할 때 온보딩으로 되돌아간다.
-      const legacyBirthday = (p as { birthday?: string }).birthday;
+      // typeof 가드: 손상된 저장본에 문자열이 아닌 값이 들어 있으면 .trim()이 던지고,
+      // persist의 바깥 try/catch가 hydrate 전체를 손상으로 판정해 설정을 통째로 초기화한다.
+      const legacyBirthdayRaw = (p as { birthday?: unknown }).birthday;
+      const legacyBirthday = typeof legacyBirthdayRaw === 'string' ? legacyBirthdayRaw : '';
       setOnboardedAt(
         typeof p.onboardedAt === 'number' && p.onboardedAt > 0
           ? p.onboardedAt
