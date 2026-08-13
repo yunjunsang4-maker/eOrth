@@ -52,7 +52,7 @@ export default function SplashScreen({ navigation }: Props) {
   const previewMode = __DEV__ && SPLASH_LOGO_PREVIEW;
   const [previewW, setPreviewW] = useState(SPLASH_LOGO_WIDTH);
   const { resetRecords } = useRecords();
-  const { resetSettings, onboardedAt } = useSettings();
+  const { resetSettings, onboardedAt, setOnboardedAt } = useSettings();
   // 오프라인 분기에서 온보딩 완료 여부를 볼 때 최신 값을 쓰기 위한 ref
   // (effect는 마운트 1회만 도는데, 그 사이 계정 경계 처리가 onboardedAt을 바꿀 수 있다)
   const onboardedAtRef = useRef(onboardedAt);
@@ -112,6 +112,9 @@ export default function SplashScreen({ navigation }: Props) {
             onboarded = true;
           } else {
             onboarded = !!(profile && profile.onboarded_at);
+            // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 이 값이 없으면
+            // 오프라인 판정(위 분기·아래 fallback)이 기존 이용자도 BasicInfo로 되돌려보낸다.
+            if (profile?.onboarded_at) setOnboardedAt(Date.parse(profile.onboarded_at) || Date.now());
           }
           return onboarded ? 'Main' : 'BasicInfo';
         }

@@ -26,7 +26,7 @@ const LAST_UID_KEY = '@eorth/lastUserId';
  */
 export function useAccountBoundary(): () => Promise<void> {
   const {
-    onboardedAt,
+    onboardedAt, setOnboardedAt,
     setHandle, setBio, setProfilePhoto, setHomeCountryCode,
     setHandleFont, resetSettings, applySettingsBackup,
   } = useSettings();
@@ -40,6 +40,8 @@ export function useAccountBoundary(): () => Promise<void> {
     if (p.bio) setBio(p.bio);
     // birthday/gender는 profiles 테이블·ProfileRow 타입에서 제거되어 더는 서버에서
     // 읽어올 수 없다(App Store 5.1.1(v) 대응, 생년월일/성별 수집 폐지).
+    // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 오프라인 판정이 이 값만 본다.
+    if (p.onboarded_at) setOnboardedAt(Date.parse(p.onboarded_at) || Date.now());
     if (p.country) setHomeCountryCode(p.country);
     setProfilePhoto(p.profile_photo ?? null);
     // 아이디 표시 폰트 복원(해지 정책 '잠금+값 보존'의 값 보존) — 재구독 시 그대로 살아난다

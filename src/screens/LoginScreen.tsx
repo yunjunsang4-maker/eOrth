@@ -125,7 +125,7 @@ type Props = RootStackScreenProps<'Login'>;
 export default function LoginScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const { setSignUpMethod, setSignUpEmail, resetSettings } = useSettings();
+  const { setSignUpMethod, setSignUpEmail, resetSettings, setOnboardedAt } = useSettings();
   const { resetRecords } = useRecords();
   const { resetConversations } = useDM();
   const runAccountBoundary = useAccountBoundary();
@@ -233,7 +233,11 @@ export default function LoginScreen({ navigation }: Props) {
         12000,
       );
       reached = status.reached;
-      if (status.profile && status.profile.onboarded_at) dest = 'Main';
+      if (status.profile && status.profile.onboarded_at) {
+        dest = 'Main';
+        // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 오프라인 판정이 이 값만 본다.
+        setOnboardedAt(Date.parse(status.profile.onboarded_at) || Date.now());
+      }
       if (original) accountProvider = original;
       accountEmail = email;
     } catch {
@@ -486,6 +490,10 @@ export default function LoginScreen({ navigation }: Props) {
           return;
         }
         destination = status.profile?.onboarded_at ? 'Main' : 'BasicInfo';
+        // 서버가 온보딩 완료를 알고 있으면 로컬 사본을 채운다 — 오프라인 판정이 이 값만 본다.
+        if (status.profile?.onboarded_at) {
+          setOnboardedAt(Date.parse(status.profile.onboarded_at) || Date.now());
+        }
       }
       await proceedAfterAuth(applySignup, destination);
     } finally {
