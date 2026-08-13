@@ -150,6 +150,8 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
   // 여행별 선택된 사진 uri 집합
   const [selected, setSelected] = useState<Record<string, string[]>>({});
   const [saving, setSaving] = useState(false);
+  // 사진 복사 진행(n/총, 전체 여행 누적) — 스피너만 돌면 100장 넘는 저장에서 멈춘 걸로 오해한다
+  const [saveProgress, setSaveProgress] = useState<{ done: number; total: number } | null>(null);
   const [dayFilter, setDayFilter] = useState<string | null>(null); // null = 전체
   // 여행별 썸네일(대표 사진) uri. 미지정/선택 해제 시 첫 번째 선택 사진으로 대체
   const [covers, setCovers] = useState<Record<string, string>>({});
@@ -420,6 +422,10 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
 
   const save = async () => {
     setSaving(true);
+    // 전체 여행 누적 진행률 — 여행별로 리셋되면 바가 뒤로 가는 것처럼 보인다
+    const grandTotal = trips.reduce((n, tr) => n + (selected[tr.id]?.length ?? 0), 0);
+    let doneBefore = 0; // 앞서 끝난 여행들의 장수 합
+    setSaveProgress({ done: 0, total: grandTotal });
     try {
       // 완료 화면 요약용 — 실제로 만들어진 여행 수/사진 수/국가 누적
       let tripCount = 0;
@@ -443,7 +449,12 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
           ...picked.filter((p) => p.uri === coverUri),
           ...picked.filter((p) => p.uri !== coverUri),
         ];
-        const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(t.id, items);
+        const { uris: copied, firstItemCopied, srcIndexes } = await copyTripOriginals(
+          t.id,
+          items,
+          (done) => setSaveProgress({ done: doneBefore + done, total: grandTotal }),
+        );
+        doneBefore += items.length;
         if (copied.length === 0) continue;
         // 위치 조정값이 있으면 보이는 영역만 실제 크롭해 카드 썸네일 전용본으로 저장.
         // 커버(0번) 복사가 실패했으면 copied[0]은 '다른 사진'이므로 크롭을 굽지 않는다.
@@ -513,6 +524,7 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
       });
     } catch {
       setSaving(false);
+      setSaveProgress(null); // 다음 저장 시도가 이전 진행률을 잠깐 보여주지 않게
       Alert.alert(t('imports.saveFailTitle'), t('imports.saveFailMsg'));
     }
   };
@@ -526,7 +538,13 @@ export default function ImportPhotoSelectScreen({ navigation, route }: RootStack
         <StarFieldBackground opacity={0.5} />
         <IntroAmbient />
         <ActivityIndicator color="#EC34F7" size="large" />
-        <Text style={st.savingText}>{t('imports.savingAlbum')}</Text>
+        <Text style={st.savingText}>
+          {/* 복사 단계는 n/총으로 실제 진행을 보여준다(AlbumCreateScreen과 같은 키).
+              done ≥ total이면 복사는 끝났고 커버 크롭·카드 생성 중 — 기존 문구로 돌아간다 */}
+          {saveProgress && saveProgress.total > 0 && saveProgress.done < saveProgress.total
+            ? t('album.savingN', { done: saveProgress.done, total: saveProgress.total })
+            : t('imports.savingAlbum')}
+        </Text>
       </View>
     );
   }

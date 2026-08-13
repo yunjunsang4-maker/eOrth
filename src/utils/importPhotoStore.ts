@@ -109,9 +109,15 @@ export async function bakeCoverCrop(
      
     const FileSystem = require('expo-file-system/legacy') as typeof import('expo-file-system/legacy');
 
-    // 변형 없이 한 번 호출해 실제 픽셀 크기 측정
-    const meta = await ImageManipulator.manipulateAsync(uri, [], {});
-    const rect = coverCropRect(meta.width, meta.height, aspect, t);
+    // 픽셀 크기 측정은 Image.getSize로 — 예전의 무변형 manipulateAsync([], {})는 크기만
+    // 필요한데 원본 전체를 디코드+재인코딩해서 고화소 사진 기준 0.5~2초를 그냥 버렸다.
+    // getSize는 헤더만 읽고, 조정값 t를 만든 CutPhotoAdjustModal도 getSize 기준이라
+    // 좌표계도 이쪽이 원래 정합이다(둘 다 EXIF 회전 적용된 표시 크기).
+    const { Image } = require('react-native') as typeof import('react-native');
+    const { width: imgW, height: imgH } = await new Promise<{ width: number; height: number }>(
+      (resolve, reject) => Image.getSize(uri, (w, h) => resolve({ width: w, height: h }), reject),
+    );
+    const rect = coverCropRect(imgW, imgH, aspect, t);
     const out = await ImageManipulator.manipulateAsync(
       uri,
       [{ crop: rect }],
@@ -192,9 +198,11 @@ export async function copyTripOriginals(
   };
 
   // 제한 병렬 — 순차 복사는 장당 (메타데이터 조회 + 원본 복사)를 직렬로 기다려 200장이면
-  // 수십 초가 걸렸다. 동시 4장이면 대기 시간이 겹쳐 2~4배 빨라지고, 메모리 피크는
-  // (동시 4 × 원본 1장)이라 iOS jetsam 위험도 낮다.
-  await runWithConcurrency(items.length, 4, async (i) => {
+  // 수십 초가 걸렸다. 지배 비용은 iCloud 오프로드 원본 다운로드(네트워크 대기)라 겹칠수록
+  // 이득이 커서 동시 8장으로 올렸다(4 → 8, '저장 공간 최적화' 기기에서 체감 절반).
+  // 메모리는 안전하다 — getAssetInfoAsync는 파일 URL만 주고 copyAsync는 스트리밍 복사라
+  // 원본을 메모리에 통째로 올리는 단계가 없다(디코드 없음). jetsam 위험은 동시 수와 무관.
+  await runWithConcurrency(items.length, 8, async (i) => {
     await copyOne(i);
     done++;
     onProgress?.(done, items.length);
