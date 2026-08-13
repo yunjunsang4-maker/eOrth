@@ -2,14 +2,14 @@
   "_readme": "앱 내 공지. GitHub Pages로 게시되며(https://yunjunsang4-maker.github.io/eOrth/notices.json) 앱이 설정 > 공지사항에서 읽는다. 공지 추가 = 이 파일에 항목을 넣고 커밋. publishedAt이 미래면 그날까지 앱에 안 보인다(예약 게시). id는 한 번 쓰면 바꾸지 말 것 — 바꾸면 이미 읽은 사용자에게 다시 미읽음으로 뜬다.",
   "notices": [
     {
-      "id": "2026-08-19-privacy",
+      "id": "2026-08-20-privacy",
       "kind": "privacy",
       "title": "개인정보처리방침 개정 안내",
       "titleEn": "Privacy Policy update",
-      "publishedAt": "2026-08-12",
-      "effectiveDate": "2026-08-19",
-      "body": "개인정보처리방침이 2026년 8월 19일부터 개정됩니다.\n\n개정 사유\n· 메이트 추천에 이용자가 방문한 나라·도시 이름이 사용된다는 점을 명시했습니다. 사진·본문·날짜는 사용하지 않습니다.\n· 기록의 공개 범위를 '메이트만'으로 설정한 경우에도, 방문한 나라·도시 이름은 메이트가 아닌 이용자의 추천 계산에 이용되고 있었습니다. 이 처리를 방침에 정확히 반영했습니다.\n· 같은 곳을 방문한 이용자가 적으면 이름을 표시하지 않는 등, 추천 결과로 특정 개인을 되짚을 수 없도록 하는 보호 조치를 함께 기재했습니다.\n\n새로 생긴 권리\n· 설정 > 계정에서 '메이트 추천에 내 여행 기록 사용'을 끌 수 있습니다. 끄면 내 방문 국가가 다른 이용자의 추천 목록에 나타나지 않습니다.\n· 끄더라도 다른 기능은 그대로 이용할 수 있습니다.\n\n전문은 설정 > 개인정보처리방침에서 확인하실 수 있습니다.",
-      "bodyEn": "Our Privacy Policy will be updated on August 19, 2026.\n\nWhat changed\n· Clarified that the names of countries and cities you have visited are used to compute mate suggestions. Photos, post text, and dates are not used.\n· Even when a record's visibility was set to \"mates only,\" the names of places you visited were already being used to compute suggestions for users who are not your mates. The policy now states this accurately.\n· Documented the safeguard that withholds place names where few users have visited the same place, so individuals cannot be re-identified from suggestion results.\n\nNew control\n· In Settings > Account you can turn off \"Use my travel records for mate suggestions.\" Your visited countries will then not appear in other users' suggestion lists.\n· Turning it off does not restrict your use of any other feature.\n\nYou can read the full text in Settings > Privacy Policy."
+      "publishedAt": "2026-08-13",
+      "effectiveDate": "2026-08-20",
+      "body": "개인정보처리방침이 2026년 8월 20일부터 개정됩니다.\n\n수집 항목이 줄어듭니다\n· 생년월일과 성별을 더 이상 수집하지 않습니다. 이미 저장돼 있던 값도 모두 삭제했습니다.\n· 가입 시에는 만 14세 이상인지만 확인합니다.\n\n메이트 추천 관련 안내\n· 메이트 추천에 이용자가 방문한 나라·도시 이름이 사용된다는 점을 명시했습니다. 사진·글·날짜는 사용하지 않습니다.\n· 기록의 공개 범위를 '메이트만'으로 설정한 경우에도 방문한 나라·도시 이름은 메이트가 아닌 이용자의 추천 계산에 이용되고 있었습니다. 이 처리를 방침에 정확히 반영했습니다.\n· 같은 곳을 방문한 이용자가 적으면 이름을 표시하지 않아, 추천 결과로 개인을 특정할 수 없게 처리합니다.\n\n새로 생긴 권리\n· 설정 > 계정에서 '메이트 추천에 내 여행 기록 사용'을 끌 수 있습니다. 끄더라도 다른 기능은 그대로 이용할 수 있습니다.\n\n전문은 설정 > 개인정보처리방침에서 확인하실 수 있습니다.",
+      "bodyEn": "Our Privacy Policy will be updated on August 20, 2026.\n\nWe collect less than before\n· We no longer collect your date of birth or gender. Values already stored have been deleted.\n· At sign-up we only ask you to confirm that you are 14 or older.\n\nAbout mate suggestions\n· Clarified that the names of countries and cities you have visited are used to compute mate suggestions. Photos, post text, and dates are not used.\n· Even when a record's visibility was set to \"mates only,\" those place names were already being used to compute suggestions for users who are not your mates. The policy now states this accurately.\n· Where few users have visited the same place, names are withheld so individuals cannot be identified from suggestion results.\n\nNew control\n· In Settings > Account you can turn off \"Use my travel records for mate suggestions.\" Turning it off does not restrict your use of any other feature.\n\nYou can read the full text in Settings > Privacy Policy."
     },
     {
       "id": "2026-08-04-privacy",
