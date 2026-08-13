@@ -2065,7 +2065,6 @@ const en = {
     n10: "Hope you didn't fight on the trip ^^", d10: 'Couple trip',
     n11: 'Treating your parents at last?', d11: 'Trip with parents',
     n12: "Don't complain to the mate who planned it.", d12: 'Trip with mates',
-    n13: 'Happy birthday to you', d13: 'Birthday trip',
     n14: 'Speed traveler', d14: 'Day trip',
     n15: 'You did turn off the stove, right?', d15: 'Trip over 30 days',
     n16: 'Hisashiburi!', d16: 'Revisited Japan',

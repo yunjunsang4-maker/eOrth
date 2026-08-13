@@ -19,9 +19,10 @@ export function useBadgeEarning(badges: BadgeCatalogEntry[], enabled: boolean = 
 
   // 데이터 자동 판정 (외부 옵션: 메이트·접속·설치 등)
   // 보관(archived) 기록도 포함 — 보관해도 배지 진행 유지.
-  // 생일(birthday)은 App Store 5.1.1(v) 대응으로 더는 수집하지 않아 넘기지 않는다 —
-  // 배지 13(생일 여행)은 이제 데이터로 새로 판정되지 않는다. 이미 획득한 사용자는
-  // badgeEarnedAt에 남아 있어(markBadgesEarned가 기존 항목을 지우지 않음) 계속 보유한다.
+  // 생일(birthday)은 App Store 5.1.1(v) 대응으로 더는 수집하지 않는다. 그 결과 영구
+  // 획득 불가가 된 배지 13(생일 여행)은 카탈로그·판정 로직에서 완전히 제거했다(2026-08-13,
+  // 운영 기보유자 0명 확인). 이미 badgeEarnedAt을 가진 사용자가 있었더라도 카탈로그에
+  // 정의가 없으면 화면에서 자연히 안 그려질 뿐 크래시하지 않는다(BADGES.find로 조회).
   const dataEarnedBadgeIds = useMemo(
     () => computeEarnedBadgeIds(records, badges, {
       homeCountryName,
