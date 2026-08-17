@@ -372,15 +372,21 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
       style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents={tabBarHidden ? 'none' : 'box-none'}
     >
-      {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 실제 블러.
-          androidBlur: 블러 없는 반투명 틴트는 뒤 콘텐츠가 선명하게 뚫고 비쳐(통계 화면 등)
-          iOS와 완전히 다르게 보였다 — 탭 바는 소면적이라 실제 블러 비용이 감당된다. */}
+      {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 매트 폴백.
+          ⚠️ androidBlur(dimezisBlurView)를 켰다가 되돌렸다(2026-08-18).
+          dimezis 블러는 뒤 화면을 비트맵으로 떠서 흐린 뒤 다시 그리는 방식이라, 그 스냅샷에
+          바 자신의 콘텐츠(활성 알약·아이콘)가 섞여 들어가 알약 바깥으로 빛이 번져 나갔다.
+          (실측: 알약 왼쪽 바깥 50px 구간에서 파랑 채널이 18→25로 완만히 상승)
+          원래 androidBlur를 켠 이유는 "블러 없는 반투명 틴트는 뒤 콘텐츠가 뚫고 비친다"였는데,
+          그건 옛 기본 폴백이 불투명도 0.3이었을 때 얘기다. 바 고유 톤(#0A0A0F)의 고불투명
+          매트를 직접 주면 비침도 없고 번짐도 없다 — StatsScreen 과 같은 처리.
+          탭 바는 스크롤 위에 항상 떠 있어 dimezis 리페인트 부담도 가장 큰 자리다. */}
       <GlassSurface
         style={StyleSheet.absoluteFill}
         borderRadius={BAR_R}
         tintColor="#0A0A0F80"
         fallbackTint="rgba(10,10,15,0.38)"
-        androidBlur
+        androidTint="rgba(10,10,15,0.92)"
         edgeHighlight
       />
 
