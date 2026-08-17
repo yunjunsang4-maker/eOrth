@@ -406,6 +406,17 @@ export function IntroVisual5({ active = true }: { active?: boolean }) {
           style={{ width: vw, height: vh }}
           contentFit="cover"
           nativeControls={false}
+          // 안드로이드 전용(iOS는 무시). 기본값 'surfaceView'가 5단계에서 두 증상을 만든다:
+          //  ① 끊김 — SurfaceView는 RN 뷰 트리가 아니라 윈도우 컴포지터가 위치를 잡아서,
+          //     가로 pagingEnabled FlatList가 스크롤하는 동안 서피스가 뷰를 못 따라간다.
+          //  ② 안 보임 — SurfaceView는 alpha 0으로 시작해 '첫 프레임 렌더' 이벤트가 와야 1이 된다.
+          //     그런데 FlatList가 이 슬라이드를 미리 마운트할 때 active=false라 pause만 걸려
+          //     첫 프레임이 한 번도 렌더된 적이 없고, 5단계 진입 시 replay()가 레이아웃과 경합한다.
+          //     (expo-video 자체도 FirstFrameEventGenerator.kt에 이 레이스 우회 코드를 두고 있다)
+          // TextureView는 일반 뷰 트리 안에서 그려져 스크롤·클리핑·알파와 같이 움직이고
+          // alpha-0 홀펀치 경합이 없다. GPU 복사가 한 번 더 들지만 6초 인트로엔 무의미한 비용.
+          // ⚠️ 런타임 변경 불가 prop이라 반드시 상수로 둘 것. 네이티브 뷰 종류라 EAS 재빌드 필요(OTA 불가).
+          surfaceType="textureView"
         />
         {/* 영상 가장자리를 백드롭과 같은 검정으로 페이드 — 축소된 사각형 경계 제거 */}
         <LinearGradient
