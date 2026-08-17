@@ -356,6 +356,26 @@ export const ChevronIcon: React.FC<IconProps & { up?: boolean }> = ({ size = 24,
   </Svg>
 );
 
+/**
+ * 뒤로가기 화살표 — 헤더의 원형 뒤로 버튼용.
+ * 원래 텍스트 글리프 '←'(U+2190)를 썼는데, 앱 폰트(Inter)에 이 글리프가 없어
+ * 안드로이드가 시스템 폰트로 폴백한다. 그 폴백 글리프는 획이 머리카락처럼 가늘고
+ * 기준선이 달라 40dp 원 안에서 좌·하로 치우쳐 iOS와 전혀 다르게 보였다.
+ * (2026-08-18 에뮬레이터 6배 확대로 확인 — '‹'(U+2039)는 폰트에 있어 멀쩡하다)
+ * ChevronIcon과 같은 이유·같은 규격(stroke 2, 라운드 캡)으로 SVG로 그린다.
+ */
+export const BackArrowIcon: React.FC<IconProps> = ({ size = 20, color = '#FFFFFF' }) => (
+  <Svg width={size} height={size} viewBox="0 0 20 20" fill="none">
+    <Path
+      d="M17 10H3M9 16L3 10L9 4"
+      stroke={color}
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    />
+  </Svg>
+);
+
 // 알림(헤더) — 라인형 종 (Group.svg, 23×28 viewBox, stroke 2)
 export const NotificationBellIcon: React.FC<IconProps> = ({ size = 24, color = '#FFFFFF', dot = false, dotColor = COLORS.dot }) => (
   <Svg width={(size * 23) / 28} height={size} viewBox="0 0 23 28" fill="none">

@@ -12,7 +12,7 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { Text, TextInput } from '../ui/Text';
-import { SearchIcon, PersonIcon } from '../components/icons';
+import { SearchIcon, PersonIcon, BackArrowIcon } from '../components/icons';
 import { useTranslation } from 'react-i18next';
 import { useSkinAccent } from '../constants/skinTheme';
 import type { TFunction } from 'i18next';
@@ -245,7 +245,9 @@ export default function FriendsScreen({ navigation }: Props) {
             space-between만으로는 제목이 남는 공간의 중간에 놓여 중앙에서 밀린다. */}
         <View style={st.headerSideLeft}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={st.backBtn} accessibilityRole="button" accessibilityLabel={t('friends.back')}>
-            <Text style={st.backIcon}>←</Text>
+            {/* 텍스트 글리프 '←' 는 Inter에 없어 안드로이드가 시스템 폰트로 폴백하는데,
+                획이 가늘고 기준선이 달라 원 안에서 좌·하로 치우쳤다 → SVG 아이콘으로 교체 */}
+            <BackArrowIcon size={20} color={C.white} />
           </TouchableOpacity>
         </View>
         <Text style={st.headerTitle}>{t('friends.title')}</Text>
@@ -513,7 +515,7 @@ const st = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
   },
-  backIcon: { fontSize: 20, color: C.white },
+  // (backIcon 텍스트 스타일 제거 — 뒤로 화살표는 BackArrowIcon SVG로 그린다)
   // 양쪽 사이드는 같은 비율로 — 제목이 좌우 요소 폭과 무관하게 화면 중앙에 놓인다
   headerSideLeft: { flex: 1, alignItems: 'flex-start' },
   headerSideRight: { flex: 1, alignItems: 'flex-end' },
