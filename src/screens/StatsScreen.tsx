@@ -779,18 +779,26 @@ export default function StatsScreen() {
         >
         <PressCard style={styles.heroCard} onPress={() => goToDetail('world')} glowColor="rgba(123,97,255,0.18)">
           <View style={styles.heroCardGrad}>
-              {/* 우측 중앙 은은한 흰색 글로우 (시안의 블러 타원) */}
-              <View style={styles.heroGlow} pointerEvents="none">
-              <Svg width={86} height={86}>
-                <SvgDefs>
-                  <SvgRadialGradient id="statsHeroGlow" cx="50%" cy="50%" r="50%">
-                    <SvgStop offset="0%" stopColor="#FFFFFF" stopOpacity={0.12} />
-                    <SvgStop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
-                  </SvgRadialGradient>
-                </SvgDefs>
-                <SvgCircle cx={43} cy={43} r={43} fill="url(#statsHeroGlow)" />
-              </Svg>
-              </View>
+              {/* 우측 중앙 은은한 흰색 글로우 (시안의 블러 타원) — iOS 전용.
+                  안드로이드는 카드 뒤가 실제 블러가 아니라 매트(CardGlass)라, 평평한 어두운 면
+                  위에 이 흰 원만 도드라져 진행률 막대 오른쪽 끝이 빛나는 것처럼 보였다.
+                  (실측: 막대 트랙 65 → 83 휘도 상승, 폭 86dp로 이 원과 정확히 일치)
+                  iOS는 블러된 배경에 묻혀 '은은한' 시안 의도대로 보이므로 그대로 둔다.
+                  장식용 광원을 iOS 전용으로 두는 건 이 프로젝트의 기존 규칙이다
+                  (globeMini 보라 글로우·theme.ts Shadow.glow 와 동일). */}
+              {Platform.OS === 'ios' && (
+                <View style={styles.heroGlow} pointerEvents="none">
+                  <Svg width={86} height={86}>
+                    <SvgDefs>
+                      <SvgRadialGradient id="statsHeroGlow" cx="50%" cy="50%" r="50%">
+                        <SvgStop offset="0%" stopColor="#FFFFFF" stopOpacity={0.12} />
+                        <SvgStop offset="100%" stopColor="#FFFFFF" stopOpacity={0} />
+                      </SvgRadialGradient>
+                    </SvgDefs>
+                    <SvgCircle cx={43} cy={43} r={43} fill="url(#statsHeroGlow)" />
+                  </Svg>
+                </View>
+              )}
               <View style={styles.heroTop}>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.heroPercentage}>{worldCoveragePct}</Text>
