@@ -1,9 +1,10 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState, useMemo } from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   PanResponder,
+  Platform,
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useStageWidth } from '../utils/stage';
@@ -297,22 +298,47 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.index]);
 
+  // ⚠️ 안드로이드: 폭을 reanimated로 애니메이션하면 컨테이너 프레임만 바뀌고 그 안의
+  // absoluteFill 자식들(유리 매트·테두리 SVG·탭 행)은 이전 폭 그대로 레이아웃된다.
+  // 실측(2026-08-18): 비-Globe 탭에서 onLayout은 348dp를 보고하는데 실제로 그려진 바는
+  // 323dp(=Globe 폭)에서 끝나, 컨테이너는 가운데인데 내용물만 왼쪽으로 쏠려 좌우가 어긋났다.
+  // → 안드로이드는 폭·좌표를 React 상태로 커밋해 섀도 트리가 실제로 다시 레이아웃되게 한다.
+  //   (iOS는 기존 reanimated 경로 그대로 — 부드러운 폭 모프가 유지된다)
+  const [barWCommitted, setBarWCommitted] = useState(isGlobeActive ? BAR_W_GLOBE : BAR_W_OTHER);
+  useEffect(() => {
+    setBarWCommitted(isGlobeActive ? BAR_W_GLOBE : BAR_W_OTHER);
+  }, [isGlobeActive]);
+  const androidSize = useMemo(() => {
+    if (Platform.OS === 'ios') return null;
+    const w = Math.min(barWCommitted, STAGE_W - BAR_SIDE_MIN * 2);
+    return { width: w, left: (STAGE_W - w) / 2 };
+  }, [barWCommitted, STAGE_W]);
+
   // 컨테이너 폭/좌표 (폭 변화에 따라 가운데 정렬 유지) + 숨김 페이드·슬라이드
   const containerStyle = useAnimatedStyle(() => {
     // 화면에 안 들어가면 폭을 줄여 맞춘다(BAR_SIDE_MIN 주석 참고). 안 줄이면 잘린다.
     const w = Math.min(barW.value, STAGE_W - BAR_SIDE_MIN * 2);
-    return {
-      width: w,
-      left: (STAGE_W - w) / 2,
+    const fade = {
       opacity: 1 - hideProgress.value,
       transform: [{ translateY: hideProgress.value * 24 }],
     };
+    // 안드로이드는 위 androidSize가 폭·좌표를 맡는다(여기서 주면 자식 레이아웃이 어긋난다)
+    if (Platform.OS !== 'ios') return fade;
+    return { width: w, left: (STAGE_W - w) / 2, ...fade };
   });
   // 테두리 stroke Rect 의 폭만 컨테이너 폭에 맞춰 갱신 (1.5px stroke 안 잘리게 0.75 인셋).
   // 컨테이너와 같은 클램프를 써야 좁은 화면에서 테두리만 삐져나오지 않는다.
   const borderRectProps = useAnimatedProps(() => ({
     width: Math.max(0, Math.min(barW.value, STAGE_W - BAR_SIDE_MIN * 2) - 1.5),
   }));
+  // ⚠️ 안드로이드에서는 위 animatedProps 가 Rect 에 전혀 반영되지 않는다(실험으로 확인:
+  // 상수 폭을 넣어도 그림이 안 바뀐다). 그래서 Rect 폭이 첫 렌더 값(Globe 323dp)에 박혀
+  // 컨테이너·유리 매트만 348dp로 늘어나고 테두리는 323dp에서 끊겨 오른쪽에 테두리 곡선이
+  // 두 겹으로 보였다. 상태로 커밋된 폭(barWCommitted)을 정적 prop 으로 직접 준다.
+  // iOS 는 animatedProps 가 정상 동작하므로 undefined 를 넘겨 기존 경로를 그대로 쓴다.
+  const borderStaticW = Platform.OS === 'ios'
+    ? undefined
+    : Math.max(0, Math.min(barWCommitted, STAGE_W - BAR_SIDE_MIN * 2) - 1.5);
 
   // 탭바 위에서 가로 슬라이드 → 바로 옆 탭으로 이동 (PanResponder는 첫 렌더 박제 → ref로 최신 상태 참조)
   const navRef = useRef({ index: state.index, routes: state.routes, navigation });
@@ -369,7 +395,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   return (
     <>
     <Animated.View
-      style={[styles.container, containerStyle, { bottom: insets.bottom + 24 }]}
+      style={[styles.container, androidSize, containerStyle, { bottom: insets.bottom + 24 }]}
       pointerEvents={tabBarHidden ? 'none' : 'box-none'}
     >
       {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 매트 폴백.
@@ -387,7 +413,12 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
         tintColor="#0A0A0F80"
         fallbackTint="rgba(10,10,15,0.38)"
         androidTint="rgba(10,10,15,0.92)"
-        edgeHighlight
+        // ⚠️ edgeHighlight 는 iOS 전용. GlassSurface 의 EdgeHighlight 는 Rect 를 width="100%"
+        // 로 그리는데, 안드로이드에서는 이 % 가 폭 변경 후에도 갱신되지 않아 옛 폭(Globe 323dp)
+        // 그대로 남는다. 그래서 바가 348dp 로 늘어나도 323dp 짜리 윤곽이 하나 더 겹쳐 보였고,
+        // 그게 "바가 짧고 좌우가 안 맞는다"의 정체였다(실측: 오른쪽에 스트로크 2개 — x≈900/960).
+        // 탭 바는 자체 테두리 SVG 가 이미 같은 자리를 그리므로 안드로이드에서 빠져도 형태는 같다.
+        edgeHighlight={Platform.OS === 'ios'}
       />
 
       {/* 탭 콘텐츠 — 유리 위에 형제로 올림. 가로 슬라이드로 옆 탭 이동 */}
@@ -402,13 +433,29 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
             {/* Figma 원본 그라데이션 (expo-linear-gradient 값 → SVG objectBoundingBox 매핑)
                 colors ['#CECFCD','rgba(206,207,205,0)'] / locations [0,0.607]
                 start (0.216,-0.08) → end (0.283,1.10) */}
-            <SvgLinearGradient id="tabBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
+            {/* ⚠️ 안드로이드는 x 성분을 뺀 순수 세로 그라데이션을 쓴다.
+                objectBoundingBox 좌표는 바운딩 박스(348×63)로 비균일 스케일되므로 시안의
+                미세한 x 기울기(0.216→0.283)가 가로로 ~5.5배 늘어나 좌→우 스윕이 돼 버린다.
+                그 결과 바 오른쪽 끝 테두리가 완전히 사라져(실측 밝기: 좌 206 / 우 11)
+                바가 짧고 좌우 비대칭으로 보였다. 폭 자체는 348dp로 정상이었다.
+                세로 방향만 남기면 좌우 양 끝이 같은 밝기로 그려진다. */}
+            <SvgLinearGradient
+              id="tabBorderGrad"
+              x1={Platform.OS === 'ios' ? '0.216' : '0.25'}
+              y1="-0.08"
+              x2={Platform.OS === 'ios' ? '0.283' : '0.25'}
+              y2="1.10"
+            >
               <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
               <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
             </SvgLinearGradient>
           </SvgDefs>
           <AnimatedRect
-            animatedProps={borderRectProps}
+            // 안드로이드엔 animatedProps 를 아예 넘기지 않는다 — 넘기면 정적 width 까지 덮어써
+            // 첫 렌더 폭에 그대로 박힌다(실험으로 확인).
+            {...(Platform.OS === 'ios'
+              ? { animatedProps: borderRectProps }
+              : { width: borderStaticW })}
             x={0.75}
             y={0.75}
             height={BAR_H - 1.5}
