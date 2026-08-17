@@ -455,7 +455,9 @@ function zoomToProvince(prov){
   var dx=b[1][0]-b[0][0], dy=b[1][1]-b[0][1];
   var cx=(b[0][0]+b[1][0])/2, cy=(b[0][1]+b[1][1])/2;
   var W=window.innerWidth, H=window.innerHeight;
-  if(dx<=0||dy<=0){return;}
+  // isFinite 필수 — 투영이 깨지면 bounds가 NaN이 되는데 NaN<=0 은 false라 dx<=0 만으로는
+  // 그대로 통과한다. 그러면 translate(NaN,NaN) scale(NaN)이 zoom 그룹에 박혀 지도가 사라진다.
+  if(!isFinite(dx)||!isFinite(dy)||!W||!H||dx<=0||dy<=0){return;}
   var scale=Math.max(1.2, Math.min(maxZoom, 0.55/Math.max(dx/W, dy/H)));
   var tx=W/2-scale*cx, ty=H/2-scale*cy;
   svgElement.transition().duration(650).call(zoomBehavior.transform, d3.zoomIdentity.translate(tx,ty).scale(scale));
@@ -530,8 +532,30 @@ function loadD3(cb){
 }
 function boot(){
   var geo=${geoJSON};
-  document.getElementById('loading').style.display='none';
-  render(geo);
+  // ⚠️ 레이아웃 전에 그리지 말 것 — 안드로이드 WebView는 스크립트를 레이아웃보다 먼저 실행해서
+  // 이 시점의 innerWidth/innerHeight가 0이다(2026-08-17 실측: W=0 H=0). 그대로 render하면
+  // fitExtent가 뒤집힌 범위([[24,24],[-24,-24]])를 받아 투영 스케일이 음수(-436)가 되고,
+  // 모든 path의 d가 빈 값이 돼 지도가 통째로 안 보인다. d3.geoPath는 이때 오류를 내지 않고
+  // 조용히 빈 경로를 만들기 때문에 콘솔만 봐서는 원인이 안 드러난다.
+  // iOS WKWebView는 레이아웃 후 실행이라 이 증상이 없었다 — 안드로이드 전용 증상의 원인.
+  var started=false;
+  function start(){
+    if(started) return;
+    started=true;
+    window.removeEventListener('resize',onResize);
+    document.getElementById('loading').style.display='none';
+    render(geo);
+  }
+  function onResize(){ if(window.innerWidth>0&&window.innerHeight>0) start(); }
+  window.addEventListener('resize',onResize);
+  var tries=0;
+  (function waitForSize(){
+    if(started) return;
+    if(window.innerWidth>0&&window.innerHeight>0){ start(); return; }
+    // 약 3초(60fps 기준)까지 기다린 뒤에는 그냥 그린다 — 영원히 빈 화면으로 두는 것보다 낫다
+    if(++tries>180){ start(); return; }
+    requestAnimationFrame(waitForSize);
+  })();
 }
 // 오프라인 번들 d3가 이미 로드돼 있으면 바로 시작, 아니면 CDN 폴백
 if(typeof d3!=='undefined'){ boot(); } else { loadD3(boot); }
