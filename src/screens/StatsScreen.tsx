@@ -57,6 +57,25 @@ const AnalysisWordmark = ({ height = 36, color = Colors.textPrimary }: { height?
   </Svg>
 );
 
+// ─── 유리 표면 (플랫폼 폴백) ───
+// ⚠️ 안드로이드에서 dimezisBlurView 를 쓰면 이 화면 전체에 '빛 번짐'이 생긴다(실기기·에뮬 확인).
+// dimezis 블러는 뒤 화면을 비트맵으로 떠서 흐린 뒤 다시 그리는 방식인데, 대면적으로 깔고 그 위에
+// 흰 글자를 얹으면 글자의 흐린 사본이 글자 아래에 한 겹 더 깔려 헤일로처럼 번진다.
+// 프로젝트 규칙(GlassSurface 주석 참고): dimezis 블러는 소면적(탭 바·버튼) 전용이고
+// 대면적은 매트 폴백을 쓴다. StatsScreen 만 그 규칙에서 빠져 있었다.
+// iOS 는 네이티브 backdrop 블러라 이 문제가 없으므로 기존 표현을 그대로 둔다.
+// 카드용 매트 — 뒤 별이 비치지 않는 중성 어두운 톤. 0.86에선 별이 카드 안으로 비쳐
+// iOS 블러 결과와 달랐다(블러는 별을 뭉개 안 보이게 만든다).
+const GLASS_MATTE = 'rgba(18,17,24,0.94)';
+// 원판용 — 자체 틴트(ratingDisk*Tint)가 따로 얹히므로 더 옅게
+const GLASS_MATTE_SOFT = 'rgba(18,17,24,0.55)';
+function CardGlass({ intensity, matte = GLASS_MATTE }: { intensity: number; matte?: string }) {
+  if (Platform.OS !== 'ios') {
+    return <View style={[StyleSheet.absoluteFill, { backgroundColor: matte }]} pointerEvents="none" />;
+  }
+  return <BlurView intensity={intensity} tint="dark" style={StyleSheet.absoluteFill} pointerEvents="none" />;
+}
+
 // ─── 눌림 애니메이션 카드 ───
 // Pressable 에도 레이아웃 스타일(flex, margin 등)을 동시 적용해 flex 배치가 깨지지 않게 함
 const LAYOUT_KEYS = new Set([
@@ -107,14 +126,8 @@ function PressCard({
   return (
     <Pressable style={layoutStyle} onPress={onPress} onPressIn={handlePressIn} onPressOut={handlePressOut}>
       <Animated.View style={[style, { transform: [{ scale }], overflow: 'hidden' }]}>
-        {/* 리퀴드 글래스 블러 효과 */}
-        <BlurView
-          intensity={30}
-          tint="dark"
-          experimentalBlurMethod="dimezisBlurView"
-          style={StyleSheet.absoluteFill}
-          pointerEvents="none"
-        />
+        {/* 리퀴드 글래스 블러 효과 (안드로이드는 매트 폴백 — CardGlass 주석 참고) */}
+        <CardGlass intensity={30} />
         {/* 미세 그라데이션 반사 하이라이트 (Specular) */}
         <LinearGradient
           colors={['rgba(255,255,255,0.14)', 'rgba(255,255,255,0)']}
@@ -910,7 +923,7 @@ export default function StatsScreen() {
           <View style={StyleSheet.absoluteFill} pointerEvents="none">
             {/* 맨뒤 유리 원판(배경 구) — Figma 시안(Group 2085664602) 지구본 emblem PNG. 블러 컨테이너 위 옅게(0.2) 깔려 배경 구 역할 */}
             <View style={styles.ratingDiskBack}>
-              <BlurView intensity={16} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <CardGlass intensity={16} matte={GLASS_MATTE_SOFT} />
               <View style={styles.ratingDiskBackTint} />
               <Svg width={217 * OS} height={217 * OS} style={StyleSheet.absoluteFill}>
                 <SvgImage href={RATING_GLOBE_IMG} x={0} y={0} width={217 * OS} height={217 * OS} preserveAspectRatio="xMidYMid meet" />
@@ -926,12 +939,12 @@ export default function StatsScreen() {
             </Svg>
             {/* 1겹 — 지구본 뒤 유리 원판 (스펙: #FFFFFF08(3%) + backdrop blur 4.17px) */}
             <View style={styles.ratingDisk}>
-              <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <CardGlass intensity={15} matte={GLASS_MATTE_SOFT} />
               <View style={styles.ratingDiskTint} />
             </View>
             {/* 3겹 — 유리 원판 (스펙: #D9D9D908(3%) + blur). 지구본 '뒤'에 둬서 문양이 판 위로 또렷이 보이게 함 */}
             <View style={styles.ratingDisk3}>
-              <BlurView intensity={15} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              <CardGlass intensity={15} matte={GLASS_MATTE_SOFT} />
               <View style={styles.ratingDisk3Tint} />
             </View>
             {/* 지구본 문양 — Figma 시안(Group 2085664602) PNG. 유리판 위, 맨뒤 원판과 동심·동일 크기(217*OS)로 또렷한 emblem */}
@@ -1007,8 +1020,10 @@ export default function StatsScreen() {
                 onPress={() => goToDetail('countries')}
               >
                 <View style={[styles.arcNode, { width: size, height: size, borderRadius: size / 2 }]}>
-                  {/* 프로스트 유리 — 뒤로 지나는 궤도선이 원 안에서 번져 보이게(글라스 굴절). 어두움 낮춰 선이 비치게 */}
-                  <BlurView intensity={14} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+                  {/* 프로스트 유리 — 뒤로 지나는 궤도선이 원 안에서 번져 보이게(글라스 굴절). 어두움 낮춰 선이 비치게.
+                      안드로이드는 매트 폴백이라 궤도선이 원 안에서 비치지 않는다 — 노드 안 흰 글자의
+                      헤일로를 없애는 쪽을 택했다(순위·나라명 가독성이 굴절 표현보다 우선) */}
+                  <CardGlass intensity={14} matte={GLASS_MATTE_SOFT} />
                   <Text style={[styles.arcRank, small && styles.arcRankSmall]}>{String(c.rank).padStart(2, '0')}</Text>
                   <Text
                     style={[styles.arcName, big && styles.arcNameTop, small && styles.arcNameSmall]}
