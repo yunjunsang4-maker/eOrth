@@ -99,6 +99,7 @@
         }
       ],
       "./modules/withGoogleSigninModularHeaders",
+      "./modules/withAndroidLintExtraTranslation",
       [
         "react-native-google-mobile-ads",
         {
