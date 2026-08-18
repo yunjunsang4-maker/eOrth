@@ -433,19 +433,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
             {/* Figma 원본 그라데이션 (expo-linear-gradient 값 → SVG objectBoundingBox 매핑)
                 colors ['#CECFCD','rgba(206,207,205,0)'] / locations [0,0.607]
                 start (0.216,-0.08) → end (0.283,1.10) */}
-            {/* ⚠️ 안드로이드는 x 성분을 뺀 순수 세로 그라데이션을 쓴다.
-                objectBoundingBox 좌표는 바운딩 박스(348×63)로 비균일 스케일되므로 시안의
-                미세한 x 기울기(0.216→0.283)가 가로로 ~5.5배 늘어나 좌→우 스윕이 돼 버린다.
-                그 결과 바 오른쪽 끝 테두리가 완전히 사라져(실측 밝기: 좌 206 / 우 11)
-                바가 짧고 좌우 비대칭으로 보였다. 폭 자체는 348dp로 정상이었다.
-                세로 방향만 남기면 좌우 양 끝이 같은 밝기로 그려진다. */}
-            <SvgLinearGradient
-              id="tabBorderGrad"
-              x1={Platform.OS === 'ios' ? '0.216' : '0.25'}
-              y1="-0.08"
-              x2={Platform.OS === 'ios' ? '0.283' : '0.25'}
-              y2="1.10"
-            >
+            <SvgLinearGradient id="tabBorderGrad" x1="0.216" y1="-0.08" x2="0.283" y2="1.10">
               <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
               <SvgStop offset="0.607" stopColor="#CECFCD" stopOpacity="0" />
             </SvgLinearGradient>
