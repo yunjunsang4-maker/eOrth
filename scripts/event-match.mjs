@@ -5,11 +5,20 @@
  *   node scripts/event-match.mjs --event popup01 --exclude test_gayoung,test_nayoon
  *   node scripts/event-match.mjs --fixture scripts/fixtures/event-sample.json   # 네트워크 없이
  *
+ * 두 타임으로 끊을 때(경계 시각은 KST, 그 시각 자체는 타임②에 포함):
+ *   node scripts/event-match.mjs --event popup01 --slot 1 --boundary "2026-09-10 14:00"
+ *   node scripts/event-match.mjs --event popup01 --slot 2 --boundary "2026-09-10 14:00"
+ * 타임②는 타임① 미매칭자를 자동으로 합류시킨다. 타임①에서 이미 짝이 된 사람은 다시 나오지 않는다.
+ * 산출 파일도 타임별로 갈린다(event-report-slot1/2.local.html) — 타임① 리포트가 덮이지 않는다.
+ *
  * service_role 키는 .env에서만 읽는다(웹에 절대 나가지 않는다).
  * 산출: event-report.local.html — 참가자 아이디가 들어 있으므로 커밋하지 않는다.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
-import { preparePeople, matchAll, renderMessage, pairScore, rarityOf } from './event-match-core.mjs';
+import {
+  preparePeople, matchAll, renderMessage, pairScore, rarityOf,
+  kstToMs, splitByBoundary, slot2Pool,
+} from './event-match-core.mjs';
 
 const arg = (name, fallback = null) => {
   const i = process.argv.indexOf(`--${name}`);
@@ -104,16 +113,19 @@ function loadFixture(path) {
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
-function renderReport({ pairs, trios, unmatched }, total, reportKey) {
+function renderReport({ pairs, trios, unmatched }, total, reportKey, opts = {}) {
+  const { slotLine = '', carried = new Set(), meetNow = false } = opts;
   // 사람별 카드 — 발송은 전부 수동이라 '누구까지 보냈는지'를 리포트가 기억해야 한다.
   // 참가자가 적은 값(이름)이 HTML에 들어가므로 전부 esc()를 거친다.
   const cards = [];
   const push = (me, partners, score, shared) => {
-    const msg = renderMessage({ me, partners, score, shared, eventName: EVENT_NAME });
+    const msg = renderMessage({ me, partners, score, shared, eventName: EVENT_NAME, meetNow });
+    // 이월된 사람은 타임①에서 이미 한 번 기다린 분들이다 — 발송 우선순위를 눈으로 알아보게 표시한다
+    const badge = carried.has(me.instagram) ? ' <span class="carry">타임① 이월</span>' : '';
     cards.push(`
       <div class="card" data-key="${esc(me.instagram)}">
         <label class="done"><input type="checkbox" data-check="${esc(me.instagram)}"> 발송함</label>
-        <div class="who">@${esc(me.instagram)} · ${esc(me.name)} <span class="label">${esc(me.label.ko)}</span></div>
+        <div class="who">@${esc(me.instagram)} · ${esc(me.name)} <span class="label">${esc(me.label.ko)}</span>${badge}</div>
         <div class="meta">매칭률 ${score}% · 상대 ${partners.map((p) => '@' + esc(p.instagram)).join(', ')}</div>
         <textarea readonly rows="9">${esc(msg)}</textarea>
         <div class="row">
@@ -141,10 +153,15 @@ function renderReport({ pairs, trios, unmatched }, total, reportKey) {
     push(t.c, [t.a, t.b], avg(t.c, t.a, t.b), sharedOf(t.c, t.a, t.b));
   }
 
+  // 타임①의 미매칭자는 타임②에서 자동으로 다시 시도된다 — 여기서 "따로 보내세요"라고 안내하면
+  // 곧 짝이 생길 사람에게 미매칭 문구를 먼저 보내게 된다.
+  const warnTail = opts.willCarry
+    ? '<p><b>지금은 아무것도 보내지 마세요.</b> 이분들은 타임② 매칭에 자동으로 합류합니다. 거기서도 남으면 그때 따로 보냅니다.</p>'
+    : '<p>이분들께는 유형 결과만 따로 보내거나, 다음 행사 안내를 보내세요.</p>';
   const warn = unmatched.length
     ? `<div class="warn"><b>미매칭 ${unmatched.length}명</b><ul>${unmatched
         .map((u) => `<li>@${esc(u.person.instagram)} (${esc(u.person.name)}) — ${esc(u.reason)}</li>`).join('')}</ul>
-        <p>이분들께는 유형 결과만 따로 보내거나, 다음 행사 안내를 보내세요.</p></div>`
+        ${warnTail}</div>`
     : '';
 
   return `<!doctype html><html lang="ko"><head><meta charset="utf-8">
@@ -161,8 +178,11 @@ textarea{width:100%;background:#0A0A0F;color:#fff;border:1px solid #1A1A26;borde
 button,.dm{background:#BF85FC;color:#0A0A0F;border:0;border-radius:8px;padding:8px 14px;font-weight:700;cursor:pointer;text-decoration:none;font-size:13px}
 .done{float:right;color:#A1A1B0;font-size:13px}
 .warn{background:#2E2E3B;border-left:4px solid #FF3B30;border-radius:8px;padding:12px;margin:20px 0}
+.carry{background:#6B21A8;color:#fff;font-size:11px;font-weight:700;border-radius:6px;padding:2px 6px;margin-left:6px}
+.slot{color:#BF85FC;font-size:14px;margin:-12px 0 12px}
 </style></head><body>
 <h1>${esc(EVENT_NAME)} 매칭 리포트</h1>
+${slotLine ? `<div class="slot">${esc(slotLine)}</div>` : ''}
 <div class="sum">참가 ${total}명 · 짝 ${pairs.length}쌍 · 3인조 ${trios.length}개 · 미매칭 ${unmatched.length}명</div>
 ${warn}
 ${cards.join('\n')}
@@ -197,14 +217,43 @@ for(const b of document.querySelectorAll('.copy')){
 </script></body></html>`;
 }
 
+/**
+ * --slot / --boundary 를 해석한다. 둘은 항상 함께 온다 —
+ * 하나만 주면 "탔다고 생각했는데 안 탄" 상태로 전원을 한 타임에 몰아넣게 된다.
+ * 반환 null = 타임을 쓰지 않는 기존 동작(행사 전체를 한 번에).
+ */
+function readSlot() {
+  const slotRaw = arg('slot');
+  const boundaryRaw = arg('boundary');
+  if (!slotRaw && !boundaryRaw) return null;
+  if (!slotRaw || !boundaryRaw) {
+    console.error('❌ --slot 과 --boundary 는 함께 써야 합니다.');
+    console.error('   예: --slot 1 --boundary "2026-09-10 14:00"   (KST 기준)');
+    process.exit(1);
+  }
+  if (slotRaw !== '1' && slotRaw !== '2') {
+    console.error(`❌ --slot 은 1 또는 2 여야 합니다 (받은 값: ${slotRaw})`);
+    process.exit(1);
+  }
+  const boundaryMs = kstToMs(boundaryRaw);
+  if (boundaryMs === null) {
+    console.error(`❌ --boundary 형식이 올바르지 않습니다: ${boundaryRaw}`);
+    console.error('   "YYYY-MM-DD HH:MM" 형식으로 KST 기준 경계를 적어주세요. 예: "2026-09-10 14:00"');
+    process.exit(1);
+  }
+  return { slot: Number(slotRaw), boundaryMs, boundaryText: boundaryRaw };
+}
+
 async function main() {
   const fixture = arg('fixture');
   const eventCode = arg('event');
   if (!fixture && !eventCode) {
     console.error('사용법: node scripts/event-match.mjs --event <행사코드> [--exclude id1,id2] [--fixture <파일>]');
+    console.error('  두 타임으로 끊으려면: --slot 1|2 --boundary "2026-09-10 14:00"   (KST, 경계 시각은 타임②에 포함)');
     process.exitCode = 1;
     return;
   }
+  const slotOpt = readSlot();
 
   let rows = fixture ? loadFixture(fixture) : await fetchRows(eventCode);
   if (!rows) return; // 조회 실패 — fetchRows가 이미 사유를 안내하고 exitCode를 세웠다
@@ -216,15 +265,55 @@ async function main() {
     console.log(`제외 ${before - rows.length}명`);
   }
 
+  let out = OUT;
+  let slotLine = '';
+  let carried = new Set();
+  let willCarry = false;
+  let meetNow = false;
+
+  if (slotOpt) {
+    const { before, after, undated } = splitByBoundary(rows, slotOpt.boundaryMs);
+    if (undated.length) {
+      // 판정 불가한 행을 조용히 버리면 그 사람만 어느 리포트에도 안 나온다
+      console.error(`❌ created_at 이 없거나 깨진 행 ${undated.length}건이 있어 타임을 가를 수 없습니다.`);
+      for (const r of undated) console.error(`   @${r.instagram} (${r.name})`);
+      console.error('   Supabase에서 해당 행의 created_at 을 확인하거나, --slot 없이 전체를 한 번에 매칭하세요.');
+      process.exitCode = 1;
+      return;
+    }
+    // 두 타임 모두 행사 당일에 발송한다(타임①은 행사 중, 타임②는 18시 종료 직후) →
+    // 양쪽 다 "지금 만나보세요"가 유효하다. 타임을 쓰지 않는 일괄 매칭만 이 문장이 빠진다.
+    meetNow = true;
+    if (slotOpt.slot === 1) {
+      rows = before;
+      willCarry = true;   // 타임①의 미매칭자는 타임②로 넘어간다 — 지금 따로 보내면 안 된다
+      slotLine = `타임① — ${slotOpt.boundaryText}(KST) 이전 참가자 ${before.length}명`;
+      out = 'event-report-slot1.local.html';
+    } else {
+      const { pool, carried: carriedRows } = slot2Pool(before, after);
+      rows = pool;
+      carried = new Set(carriedRows.map((r) => r.instagram));
+      slotLine = `타임② — ${slotOpt.boundaryText}(KST) 이후 참가자 ${after.length}명`
+        + ` + 타임① 미매칭 ${carriedRows.length}명 이월`;
+      out = 'event-report-slot2.local.html';
+    }
+    console.log(slotLine);
+  }
+
   const people = preparePeople(rows);
   const result = matchAll(people);
   // 발송 체크 키를 행사별로 나누는 데 쓴다. --event가 없는 fixture 모드는 EVENT_NAME으로 대신한다.
+  // 타임별로 키를 나누지 않는 이유: 한 사람의 카드는 두 타임 중 한쪽에만 나오므로 섞일 일이 없고,
+  // 키를 나누면 리포트를 다시 뽑았을 때 발송 체크가 통째로 사라진다.
   const reportKey = eventCode || EVENT_NAME;
-  writeFileSync(OUT, renderReport(result, people.length, reportKey), 'utf8');
+  writeFileSync(out, renderReport(result, people.length, reportKey, { slotLine, carried, meetNow, willCarry }), 'utf8');
 
   console.log(`참가 ${people.length}명 → 짝 ${result.pairs.length}쌍, 3인조 ${result.trios.length}개, 미매칭 ${result.unmatched.length}명`);
   for (const u of result.unmatched) console.log(`  ⚠ @${u.person.instagram} — ${u.reason}`);
-  console.log(`리포트: ${OUT} (브라우저로 여세요)`);
+  if (willCarry && result.unmatched.length) {
+    console.log('  → 이분들은 타임② 매칭에 자동 합류합니다. 지금은 보내지 마세요.');
+  }
+  console.log(`리포트: ${out} (브라우저로 여세요)`);
 }
 
 await main();

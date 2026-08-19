@@ -2786,7 +2786,7 @@ create table if not exists public.event_participants (
   event_code     text not null,
   name           text not null,
   gender         text not null check (gender in ('m','f')),
-  gender_pref    text not null check (gender_pref in ('same','any')),
+  gender_pref    text not null check (gender_pref in ('same','any','opposite')),
   instagram      text not null,           -- @ 없이 소문자로 정규화해 저장
   wish_countries text[] not null,
   answers        jsonb not null,          -- {"1":"A","5":"B", ...} 문항 id → 선택
@@ -2794,6 +2794,17 @@ create table if not exists public.event_participants (
   consent_share  boolean not null,
   created_at     timestamptz default now()
 );
+
+-- ⚠️ gender_pref 선택지 확장 (2026-08-19: '이성만'/opposite 추가).
+--    위의 create table 은 `if not exists` 라서 **이미 만들어진 표의 check 제약을 바꾸지 않는다.**
+--    이 표는 이미 서버에 존재하므로(SERVER-STATE.md 1-1번 절), 아래 alter 없이 배포하면
+--    부스에서 '이성만'을 고른 사람의 제출만 400으로 조용히 거부된다 — 스태프는 원인을 못 찾는다.
+--    drop 후 add 라서 몇 번을 다시 실행해도 안전하다.
+alter table public.event_participants
+  drop constraint if exists event_participants_gender_pref_check;
+alter table public.event_participants
+  add constraint event_participants_gender_pref_check
+  check (gender_pref in ('same','any','opposite'));
 
 -- 중복 제출 차단. 두 행이 들어가면 그 사람이 두 명으로 매칭되고,
 -- 짝 중 한쪽은 이미 임자가 있는 사람을 받는다.

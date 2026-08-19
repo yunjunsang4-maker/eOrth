@@ -17,7 +17,17 @@ const assert = (ok, msg) => {
 console.log('event_participants 스키마');
 has(/create table if not exists public\.event_participants/i, '테이블 생성');
 has(/gender\s+text\s+not null\s+check \(gender in \('m','f'\)\)/i, 'gender 제약');
-has(/gender_pref\s+text\s+not null\s+check \(gender_pref in \('same','any'\)\)/i, 'gender_pref 제약');
+has(/gender_pref\s+text\s+not null\s+check \(gender_pref in \('same','any','opposite'\)\)/i, 'gender_pref 제약');
+// 표가 이미 서버에 있으면 create table if not exists 는 제약을 갱신하지 않는다 →
+// 선택지를 늘릴 때 alter 를 같이 넣지 않으면 '이성만' 제출만 전부 거부된다.
+has(
+  /alter table public\.event_participants\s+drop constraint if exists event_participants_gender_pref_check;/i,
+  'gender_pref 제약 재적용: 기존 제약 drop',
+);
+has(
+  /add constraint event_participants_gender_pref_check\s+check \(gender_pref in \('same','any','opposite'\)\)/i,
+  'gender_pref 제약 재적용: 새 제약 add (기존 표에도 적용된다)',
+);
 has(/instagram\s+text\s+not null/i, 'instagram 컬럼');
 has(/create unique index if not exists event_participants_uniq/i, '중복 제출 방지 유니크 인덱스');
 has(/alter table public\.event_participants enable row level security/i, 'RLS 활성화');

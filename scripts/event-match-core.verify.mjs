@@ -1,6 +1,7 @@
 // 매칭 엔진 검증. 여기서 틀리면 엉뚱한 사람에게 남의 인스타 아이디가 발송된다.
 import {
   preparePeople, rarityOf, axisScore, countryScore, isEligible, pairScore, matchAll, renderMessage,
+  kstToMs, splitByBoundary, slot2Pool,
 } from './event-match-core.mjs';
 import { EVENT_QUESTIONS } from '../docs/event-dna.js';
 
@@ -79,10 +80,20 @@ console.log('매칭 엔진');
   const f_any = person({ gender: 'f', gender_pref: 'any' });
   const m_any = person({ gender: 'm', gender_pref: 'any' });
   const m_same = person({ gender: 'm', gender_pref: 'same' });
+  const f_opp = person({ gender: 'f', gender_pref: 'opposite' });
+  const m_opp = person({ gender: 'm', gender_pref: 'opposite' });
+  const f_opp2 = person({ gender: 'f', gender_pref: 'opposite' }); // 동성끼리 비교용 (같은 객체는 id가 같아 항상 false다)
   eq(isEligible(f_same, f_any), true, '여-same ↔ 여-any: 동성이라 성립');
   eq(isEligible(f_same, m_any), false, '여-same ↔ 남-any: 한쪽이 same이면 이성 불가');
   eq(isEligible(f_any, m_any), true, '둘 다 any면 이성도 성립');
   eq(isEligible(m_same, f_same), false, 'same끼리라도 이성이면 불가');
+  // 'opposite'(이성만)은 same의 정확한 반대다 — 동성이면 걸러져야 한다
+  eq(isEligible(f_opp, m_any), true, '여-이성만 ↔ 남-무관: 이성이라 성립');
+  eq(isEligible(f_opp, f_any), false, '여-이성만 ↔ 여-무관: 동성이면 불가');
+  eq(isEligible(f_opp, m_opp), true, '이성만끼리 이성이면 성립');
+  eq(isEligible(f_opp, f_opp2), false, '이성만끼리라도 동성이면 불가');
+  eq(isEligible(f_opp, m_same), false, '이성만 ↔ 같은 성별만(이성): 같은 성별만 쪽이 막는다');
+  eq(isEligible(f_opp, f_same), false, '이성만 ↔ 같은 성별만(동성): 이성만 쪽이 막는다');
 }
 
 // ── 짝짓기 ──
@@ -123,9 +134,22 @@ console.log('매칭 엔진');
   eq(unmatched.map((u) => u.person.id), ['m1'], '남은 사람은 미매칭으로 보고된다');
   eq(
     unmatched[0].reason,
-    '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/상관없음)을 확인하세요.',
+    '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/무관/이성만)을 확인하세요.',
     '사유: 애초에 성별 조건이 맞는 상대가 한 명도 없었던 경우로 정확히 분류된다',
   );
+}
+{
+  // '이성만'은 점수를 이겨야 한다 — 성향이 완벽히 같은 동성 상대가 있어도 그쪽으로 붙으면 안 된다.
+  // (isEligible만 통과시키고 matchAll에서 조건을 안 보면 여기서 잡힌다)
+  const people = preparePeople([
+    person({ id: 'o1', gender: 'f', gender_pref: 'opposite', answers: answersAll('A') }),
+    person({ id: 'o2', gender: 'f', gender_pref: 'any', answers: answersAll('A') }), // o1과 성향 만점이지만 동성
+    person({ id: 'o3', gender: 'm', gender_pref: 'any', answers: answersAll('B') }), // 성향은 정반대지만 이성
+  ]);
+  const { pairs, trios, unmatched } = matchAll(people);
+  eq(trios.length, 0, '이성만인 사람이 낀 3인조는 만들어지지 않는다');
+  eq(pairs.map((p) => [p.a.id, p.b.id].sort().join('+')), ['o1+o3'], '이성만은 만점 동성이 아니라 이성과 묶인다');
+  eq(unmatched.map((u) => u.person.id), ['o2'], '남는 사람은 o2');
 }
 {
   // 적격 상대는 있었지만(성별 조건 문제가 아니라) 이미 다른 사람과 짝이 되어 붙을 자리가
@@ -191,7 +215,7 @@ console.log('매칭 엔진');
   const bigPeople = preparePeople(Array.from({ length: 27 }, (_, i) => person({
     id: `g${i}`,
     gender: genders[i % 2],
-    gender_pref: i % 3 === 0 ? 'same' : 'any',
+    gender_pref: ['same', 'any', 'opposite'][i % 3],
     wish_countries: [countryPool[i % countryPool.length], countryPool[(i + 2) % countryPool.length]],
     answers: answersAll(i % 2 === 0 ? 'A' : 'B'),
   })));
@@ -214,6 +238,76 @@ console.log('매칭 엔진');
     if (!isEligible(t.b, t.c)) violations++;
   }
   eq(violations, 0, '분할 불변식(27명): 어떤 짝·3인조도 성별 조건을 위반하지 않는다');
+}
+
+// ── 타임(슬롯) 분리 ──
+{
+  // KST → UTC. 실행 머신 시간대에 좌우되면 안 된다(그래서 new Date(문자열)을 안 쓴다).
+  eq(kstToMs('2026-09-10 14:00'), Date.UTC(2026, 8, 10, 5, 0), 'KST 14:00 = UTC 05:00');
+  eq(kstToMs('2026-09-10T14:00'), Date.UTC(2026, 8, 10, 5, 0), 'T 구분자도 허용');
+  eq(kstToMs('2026-09-10 09:00'), Date.UTC(2026, 8, 10, 0, 0), 'KST 09:00 = 같은 날 UTC 00:00');
+  eq(kstToMs('2026-09-10 08:00'), Date.UTC(2026, 8, 9, 23, 0), 'KST 08:00 = 전날 UTC 23:00 (날짜가 넘어간다)');
+  eq(kstToMs('2026-09-10'), null, '시각이 없으면 null');
+  eq(kstToMs('2026-13-10 14:00'), null, '13월은 null (Date.UTC는 조용히 다음 해로 넘긴다)');
+  eq(kstToMs('2026-09-10 25:00'), null, '25시는 null');
+  eq(kstToMs(''), null, '빈 문자열은 null');
+  eq(kstToMs(undefined), null, 'undefined는 null');
+}
+{
+  // 경계 시각 자체는 타임②(after)에 들어간다
+  const b = kstToMs('2026-09-10 14:00');
+  const row = (id, kst) => ({ id, instagram: id, created_at: new Date(kstToMs(kst)).toISOString() });
+  const { before, after, undated } = splitByBoundary([
+    row('a', '2026-09-10 10:00'),
+    row('b', '2026-09-10 13:59'),
+    row('c', '2026-09-10 14:00'),   // 경계 정각
+    row('d', '2026-09-10 17:59'),
+    { id: 'e', instagram: 'e', created_at: null },
+    { id: 'f', instagram: 'f', created_at: '깨진값' },
+  ], b);
+  eq(before.map((r) => r.id), ['a', 'b'], '경계 이전은 타임①');
+  eq(after.map((r) => r.id), ['c', 'd'], '경계 정각은 타임②에 포함');
+  eq(undated.map((r) => r.id), ['e', 'f'], 'created_at이 없거나 깨진 행은 따로 분리된다(조용히 버리지 않는다)');
+}
+{
+  // 타임② 풀 = 타임② 참가자 + 타임① 미매칭자. 타임①에서 짝이 된 사람은 절대 안 들어온다.
+  // f1·f2는 서로 짝이 되고(동성·same), m1은 성별 조건상 타임①에서 아무와도 못 묶여 이월된다.
+  const beforeRows = [
+    person({ id: 'f1', gender: 'f', gender_pref: 'same' }),
+    person({ id: 'f2', gender: 'f', gender_pref: 'same' }),
+    person({ id: 'm1', gender: 'm', gender_pref: 'same' }),
+  ];
+  const afterRows = [
+    person({ id: 'm2', gender: 'm', gender_pref: 'same' }),
+    person({ id: 'm3', gender: 'm', gender_pref: 'any' }),
+  ];
+  const { pool, carried } = slot2Pool(beforeRows, afterRows);
+  eq(carried.map((r) => r.id), ['m1'], '타임① 미매칭자만 이월된다');
+  eq(pool.map((r) => r.id).sort(), ['m1', 'm2', 'm3'], '타임② 풀 = 타임② 참가자 + 이월자');
+
+  // 핵심 불변식: 타임①에서 짝이 된 사람은 타임② 결과 어디에도 없어야 한다.
+  // 여기서 새면 같은 사람에게 문구가 두 번 나가고, 두 상대에게 같은 아이디가 각각 전달된다.
+  const first = matchAll(preparePeople(beforeRows));
+  const firstMatched = new Set();
+  for (const p of first.pairs) { firstMatched.add(p.a.id); firstMatched.add(p.b.id); }
+  for (const t of first.trios) { firstMatched.add(t.a.id); firstMatched.add(t.b.id); firstMatched.add(t.c.id); }
+  eq([...firstMatched].sort(), ['f1', 'f2'], '타임①에서 짝이 된 사람은 f1·f2');
+  const second = matchAll(preparePeople(pool));
+  const secondIds = [];
+  for (const p of second.pairs) secondIds.push(p.a.id, p.b.id);
+  for (const t of second.trios) secondIds.push(t.a.id, t.b.id, t.c.id);
+  for (const u of second.unmatched) secondIds.push(u.person.id);
+  eq(secondIds.filter((id) => firstMatched.has(id)), [], '타임①에서 짝이 된 사람은 타임② 결과에 없다');
+  eq(secondIds.includes('m1'), true, '이월된 m1은 타임②에서 다시 시도된다');
+}
+{
+  // meetNow — 행사 당일 발송(타임①·②)일 때만 "지금 만나세요"가 나간다.
+  // 며칠 지난 뒤 이 문장이 나가면 없는 자리로 오라고 부르게 된다.
+  const [me, partner] = preparePeople([person({ name: '준상' }), person({ name: '지민' })]);
+  const base = { me, partners: [partner], score: 80, shared: [], eventName: 'eOrth 팝업 이벤트' };
+  eq(renderMessage({ ...base, meetNow: true }).includes('아직 행사장에 계시다면'), true, '타임①·②(당일 발송): 현장에서 만나라고 안내');
+  eq(renderMessage({ ...base, meetNow: false }).includes('아직 행사장에 계시다면'), false, 'meetNow=false면 그 문장이 없다');
+  eq(renderMessage(base).includes('아직 행사장에 계시다면'), false, '기본값은 현장 안내 없음(타임 없이 일괄 매칭할 때의 기존 동작)');
 }
 
 console.log(fail ? `\n❌ ${fail}건 실패` : '\n✅ 통과');

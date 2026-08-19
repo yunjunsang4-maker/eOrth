@@ -58,12 +58,18 @@ export function countryScore(a, b, rarity, maxRarity) {
   return { score: COUNTRY_POINTS * Math.min(1, overlap / maxRarity), shared };
 }
 
-/** 성별 조건 — 한쪽이라도 'same'이면 동성이어야 한다. 양쪽이 모두 만족할 때만 후보다. */
+/**
+ * 성별 조건 — 'same'은 동성만, 'opposite'는 이성만, 'any'는 무관.
+ * 한쪽의 조건만 맞아서는 안 되고, 양쪽이 모두 만족할 때만 후보다.
+ * (모르는 값이 들어오면 'any'처럼 통과한다 — 제약은 DB의 check가 맡는다.)
+ */
 export function isEligible(a, b) {
   if (a.id === b.id) return false;
   const sameGender = a.gender === b.gender;
   if (a.gender_pref === 'same' && !sameGender) return false;
   if (b.gender_pref === 'same' && !sameGender) return false;
+  if (a.gender_pref === 'opposite' && sameGender) return false;
+  if (b.gender_pref === 'opposite' && sameGender) return false;
   return true;
 }
 
@@ -130,7 +136,7 @@ export function matchAll(people) {
       let reason;
       if (!hasEligiblePartner) {
         // 애초에 이 사람과 성별 조건이 맞는 상대가 한 명도 없었다
-        reason = '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/상관없음)을 확인하세요.';
+        reason = '성별 조건에 맞는 상대가 아무도 없습니다 — 매칭 상대 조건(같은 성별만/무관/이성만)을 확인하세요.';
       } else if (pairs.length === 0) {
         // 적격 상대는 있었지만 풀 전체에서 짝이 한 쌍도 만들어지지 않았다 — 참가자 수 자체가 부족했다
         reason = '조건에 맞는 상대는 있었지만 참가자 수가 적어 짝이 하나도 만들어지지 않았습니다.';
@@ -145,8 +151,65 @@ export function matchAll(people) {
   return { pairs: pairs.filter((p) => !usedPair.has(p)), trios, unmatched };
 }
 
-/** 한 사람에게 보낼 DM 문구. partners는 1명(짝) 또는 2명(3인조). */
-export function renderMessage({ me, partners, score, shared, eventName }) {
+// ============================================================
+// 타임(슬롯) 분리 — 행사를 두 타임으로 끊어 각각 매칭할 때 쓴다.
+// 서버에는 아무것도 추가하지 않는다. created_at 하나로 갈린다.
+// ============================================================
+
+/**
+ * KST(UTC+9, 서머타임 없음) 벽시계 문자열 → UTC 밀리초.
+ *
+ * `new Date('2026-09-10 14:00')`은 **실행 머신의 시간대로** 해석된다. created_at은 UTC로
+ * 저장되므로, 그대로 비교하면 9시간이 어긋나 '오전 참가자가 오후 타임에 통째로 섞이는'
+ * 형태로 조용히 틀린다. 그래서 Date.UTC로 직접 만들고 9시간을 뺀다 — 머신 시간대와 무관하다.
+ * 형식이 틀리면 null을 돌려준다(호출부가 안내하고 멈춘다).
+ */
+export function kstToMs(text) {
+  const m = String(text ?? '').trim().match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const [, y, mo, d, h, mi] = m.map(Number);
+  // Date.UTC는 범위를 넘겨도 조용히 다음 달·다음 날로 넘어간다 — 오타를 통과시키지 않도록 먼저 막는다
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23 || mi > 59) return null;
+  return Date.UTC(y, mo - 1, d, h, mi) - 9 * 60 * 60 * 1000;
+}
+
+/**
+ * created_at 기준으로 경계 앞(before)과 뒤(after)를 가른다. **경계 시각 자체는 after에 들어간다.**
+ * created_at이 없거나 깨진 행은 어느 타임인지 판정할 수 없으므로 따로 돌려준다 —
+ * 조용히 버리면 그 사람만 어느 리포트에도 안 나오고 아무도 눈치채지 못한다.
+ */
+export function splitByBoundary(rows, boundaryMs) {
+  const before = [], after = [], undated = [];
+  for (const r of rows ?? []) {
+    const t = r.created_at ? Date.parse(r.created_at) : NaN;
+    if (Number.isNaN(t)) undated.push(r);
+    else if (t < boundaryMs) before.push(r);
+    else after.push(r);
+  }
+  return { before, after, undated };
+}
+
+/**
+ * 타임② 풀 = 타임② 참가자 + **타임① 미매칭자**.
+ *
+ * 타임①에서 이미 짝이 된 사람은 절대 다시 넣지 않는다 — 넣으면 그 사람에게 문구가 두 번 나가고,
+ * 서로 다른 두 상대에게 같은 사람의 아이디가 각각 전달된다(이 프로젝트에서 가장 비싼 실패).
+ * 타임① 매칭은 결정론이라 여기서 다시 계산해도 실제로 발송했던 결과와 같다 —
+ * 그래서 "누구를 이미 보냈는지" 상태 파일을 들고 다닐 필요가 없다.
+ */
+export function slot2Pool(beforeRows, afterRows) {
+  const first = matchAll(preparePeople(beforeRows ?? []));
+  const carriedIds = new Set(first.unmatched.map((u) => u.person.id));
+  const carried = (beforeRows ?? []).filter((r) => carriedIds.has(r.id));
+  return { pool: [...(afterRows ?? []), ...carried], carried };
+}
+
+/**
+ * 한 사람에게 보낼 DM 문구. partners는 1명(짝) 또는 2명(3인조).
+ * meetNow=true는 **행사 당일에 보내는 경우**다(타임①=행사 중, 타임②=18시 종료 직후) —
+ * 그때만 지금 만나라고 한다. 며칠 지난 뒤 이 문장이 나가면 없는 자리로 오라고 부르는 셈이 된다.
+ */
+export function renderMessage({ me, partners, score, shared, eventName, meetNow = false }) {
   const who = partners.map((p) => `@${p.instagram} (${p.name} · ${p.label.ko})`).join('\n');
   const many = partners.length > 1;
   const lines = [
@@ -157,6 +220,9 @@ export function renderMessage({ me, partners, score, shared, eventName }) {
     who,
   ];
   if (shared.length) lines.push(`${many ? '세' : '두'} 분 다 ${shared.join('·')}에 가고 싶다고 하셨어요.`);
-  lines.push(``, `서로의 아이디를 양쪽에 모두 보내드렸어요. 편하게 인사 나눠보세요!`);
+  lines.push(``, `서로의 아이디를 양쪽에 모두 보내드렸어요.`);
+  lines.push(meetNow
+    ? `아직 행사장에 계시다면 지금 바로 인사 나눠보세요! 🙌`
+    : `편하게 인사 나눠보세요!`);
   return lines.join('\n');
 }

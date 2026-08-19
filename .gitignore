@@ -82,4 +82,6 @@ scripts/orb-export.png
 supabase/test-schema.local.sql
 
 # 행사 매칭 리포트 — 참가자 인스타 아이디가 들어 있는 로컬 산출물(커밋 금지)
-event-report.local.html
+# 타임별 리포트(event-report-slot1.local.html 등)까지 덮도록 와일드카드로 둔다 —
+# 파일명 하나만 적어 두면 새 산출물이 조용히 추적 대상이 된다.
+event-report*.local.html
