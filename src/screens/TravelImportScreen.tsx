@@ -1052,9 +1052,7 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           <Text style={styles.stepText}>Final step</Text>
           <Text style={[styles.title, showResults && styles.titleResults]}>{t('imports.tiTitle')}</Text>
           {!showResults && (
-            <Text style={styles.subtitle}>
-              내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해{'\n'}다녀온 해외여행을 자동으로 찾아드려요.
-            </Text>
+            <Text style={styles.subtitle}>{t('imports.tiSubtitle')}</Text>
           )}
         </View>
 
@@ -1275,27 +1273,27 @@ export default function TravelImportScreen({ navigation, route }: Props) {
           {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
           <View style={[styles.mgSheet, { paddingBottom: Platform.OS === 'ios' ? 40 : insets.bottom + 16 }]}>
             <Text style={styles.mgTitle}>{t('imports.mergeTitle')}</Text>
-            <Text style={styles.mgSub}>
-              합칠 여행을 2개 이상 선택하세요.{'\n'}같은 나라의 여행끼리만 합칠 수 있어요.
-            </Text>
+            <Text style={styles.mgSub}>{t('imports.mergeModalSub')}</Text>
 
             <ScrollView style={{ maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-              {scannedTrips.map((t) => {
-                const on = mergeIds.includes(t.id);
-                const disabled = !on && mergeCountry !== null && t.countryName !== mergeCountry;
+              {/* 항목 변수를 trip으로 — 예전 이름 t가 번역 함수 t를 가려서
+                  이 블록 안에서는 i18n을 쓸 수 없었다('사진 N장' 하드코딩의 원인) */}
+              {scannedTrips.map((trip) => {
+                const on = mergeIds.includes(trip.id);
+                const disabled = !on && mergeCountry !== null && trip.countryName !== mergeCountry;
                 return (
                   <TouchableOpacity
-                    key={t.id}
+                    key={trip.id}
                     style={[styles.mgItem, on && styles.mgItemOn, disabled && styles.mgItemDisabled]}
-                    onPress={() => toggleMergeId(t.id)}
+                    onPress={() => toggleMergeId(trip.id)}
                     disabled={disabled}
                     activeOpacity={0.85}
                   >
-                    <AssetImage uri={t.medias[0]} assetId={t.photos[0]?.id} style={styles.mgThumb} />
+                    <AssetImage uri={trip.medias[0]} assetId={trip.photos[0]?.id} style={styles.mgThumb} />
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.mgItemTitle}>{t.countryFlag} {t.title}</Text>
+                      <Text style={styles.mgItemTitle}>{trip.countryFlag} {trip.title}</Text>
                       <Text style={styles.mgItemDate}>
-                        {t.startDate} ~ {t.endDate.substring(5)} · 사진 {t.photoCount}장
+                        {trip.startDate} ~ {trip.endDate.substring(5)} · {t('imports.mergePhotosN', { count: trip.photoCount })}
                       </Text>
                     </View>
                     <View style={[styles.checkbox, on && styles.checkboxSelected]}>

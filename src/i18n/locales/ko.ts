@@ -1477,6 +1477,7 @@ const ko = {
     analyzingPeriodIos: '{{range}} 사진을 분석 중이에요',
     analyzingPeriod: '기기에 저장된 {{range}} 사진을 분석 중이에요',
     tiTitle: '과거 여행 불러오기',
+    tiSubtitle: '내 갤러리에서 거주국가 밖에서 찍은 사진을 분석해\n다녀온 해외여행을 자동으로 찾아드려요.',
     analyzePeriod: '분석 기간을 설정해볼까요?',
     // "허용하고 불러오기"처럼 허용을 전제하는 문구는 심사 거절 사유(5.1.1(iv), 2026-08-18) —
     // 권한 사전 안내의 버튼은 중립 문구(계속/다음)여야 한다
@@ -1512,6 +1513,9 @@ const ko = {
     limitedHint: '💡 선택한 사진만 분석됨 — "모든 사진 허용" 시 더 많은 여행을 찾을 수 있어요.',
     mergeSub: '같은 나라 여행이 여러 개로 나뉘었다면 하나로 합쳐보세요',
     mergeTitle: '여행 합치기',
+    // mergeSub는 결과 화면의 합치기 진입 버튼용, 이건 모달 안 부제용 — 문구가 다르다
+    mergeModalSub: '합칠 여행을 2개 이상 선택하세요.\n같은 나라의 여행끼리만 합칠 수 있어요.',
+    mergePhotosN: '사진 {{count}}장',
     mergeSelect2: '여행을 2개 이상 선택하세요',
     mergeN: '{{count}}개 여행 합치기',
     importSelectedN: '선택한 여행 {{count}}개 가져오기',

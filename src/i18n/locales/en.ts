@@ -1467,6 +1467,7 @@ const en = {
     analyzingPeriodIos: 'Analyzing {{range}} photos',
     analyzingPeriod: 'Analyzing {{range}} photos on your device',
     tiTitle: 'Import past trips',
+    tiSubtitle: 'We analyze photos taken outside your home country\nto automatically find your past overseas trips.',
     analyzePeriod: 'Shall we set the analysis period?',
     // "Allow ... and import" presumes consent — rejected in review (5.1.1(iv), 2026-08-18).
     // Pre-permission CTA must use neutral wording (Continue/Next).
@@ -1501,6 +1502,9 @@ const en = {
     limitedHint: '💡 Only selected photos were analyzed — allow "All Photos" to find more trips.',
     mergeSub: 'If one country was split into multiple trips, merge them into one',
     mergeTitle: 'Merge trips',
+    // mergeSub is for the merge entry button on the results screen; this is the modal's own subtitle
+    mergeModalSub: 'Select at least 2 trips to merge.\nOnly trips from the same country can be merged.',
+    mergePhotosN: '{{count}} photos',
     mergeSelect2: 'Select at least 2 trips',
     mergeN: 'Merge {{count}} trips',
     importSelectedN: 'Import {{count}} selected trips',
