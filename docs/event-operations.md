@@ -28,6 +28,20 @@
    `.env`에 `SUPABASE_SERVICE_ROLE_KEY=...` 한 줄 추가. **이 키는 절대 커밋하지 않는다**
    (`.env`는 이미 무시된다). 이 키가 없으면 `event-match.mjs`·`event-purge.mjs` 둘 다
    `.env에 EXPO_PUBLIC_SUPABASE_URL과 SUPABASE_SERVICE_ROLE_KEY가 필요합니다` 오류로 즉시 종료한다.
+
+   > ⚠️ **`EXPO_PUBLIC_SUPABASE_URL`도 함께 확인한다 — 행사 당일에 발이 걸리는 지점이다.**
+   > 앱 베타 빌드 때문에 `.env`가 **테스트 프로젝트**(`bqwmxxhtsvfuyywfuswo`)를 가리키고 있는
+   > 경우가 있다. 참가자 데이터는 `docs/event.html`이 하드코딩한 **운영**(`blweolnunmsxgztmvzfd`)에만
+   > 쌓이므로, 그 상태로는 매칭 CLI가 아래처럼 **즉시 멈춘다**(조용히 빈 결과를 내진 않는다):
+   >
+   > ```
+   > ❌ Supabase 프로젝트 불일치 — docs/event.html이 정본입니다.
+   > ```
+   >
+   > 행사 전에 `.env`의 `EXPO_PUBLIC_SUPABASE_URL`·`EXPO_PUBLIC_SUPABASE_ANON_KEY`를 운영 값으로
+   > 되돌려 둔다. **되돌린 뒤 앱을 빌드하면 베타/dev 앱이 운영 DB를 물게 되므로**
+   > (`app.config.js`가 막아 준다) 행사가 끝나면 다시 테스트 값으로 돌려놓을 것.
+   > 베타 환경 값은 `docs/beta-environment-setup.md` §1-2에 있다.
 3. **게시**
 
        npm run pages:publish
