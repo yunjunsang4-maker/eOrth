@@ -251,17 +251,19 @@ select status_code, content from net._http_response order by created desc limit 
 >
 > 📅 이 데이터는 **2026-10-10 파기 기한**이 걸려 있다.
 
-> ⏳ **미반영 — `gender_pref` 선택지 확장 (2026-08-19).** 매칭 상대 조건에 `'opposite'`(이성만)을
-> 추가했다. **표가 이미 있으므로 `create table if not exists` 로는 제약이 바뀌지 않는다.**
-> `schema.sql` 의 이 섹션(alter 두 줄 포함)을 SQL Editor에서 다시 실행해야 한다.
-> 안 하면 부스에서 **'이성만'을 고른 사람의 제출만** 400으로 거부되고, 화면에는
-> "제출이 거부됐어요"만 떠서 스태프가 원인을 못 찾는다. 반영 확인:
+> ✅ **반영 완료 — `gender_pref` 선택지 확장 (2026-08-19, 실측 확인).** 매칭 상대 조건에
+> `'opposite'`(이성만)을 추가했다. **표가 이미 있어 `create table if not exists` 로는 제약이
+> 바뀌지 않으므로** `schema.sql` 에 alter 두 줄을 넣어 두었고, 그것을 운영 프로젝트에서 실행해
+> 아래 결과를 확인했다:
 >
 > ```sql
 > select pg_get_constraintdef(oid) from pg_constraint
 >  where conname = 'event_participants_gender_pref_check';
-> -- CHECK ((gender_pref = ANY (ARRAY['same'::text, 'any'::text, 'opposite'::text]))) 이면 반영됨
+> -- CHECK ((gender_pref = ANY (ARRAY['same'::text, 'any'::text, 'opposite'::text])))  ← 실측값
 > ```
+>
+> 테스트 프로젝트(`bqwmxxhtsvfuyywfuswo`)에는 아직 넣지 않았다. 행사 페이지는 운영 ref를
+> 하드코딩하고 있어 부스 동작에는 영향이 없다. 다음번 `schema.sql` 전체 재실행 때 따라 들어간다.
 
 ### ✅ 해소됨 — Vault `service_role_key` 불일치로 pg_cron 3종이 계속 실패하던 문제
 
@@ -461,7 +463,7 @@ select status_code, content, created
 | pg_cron 3종 등록 (`cron-setup.sql`) | 2026-08-05 | ✅ 확인 | `cron.job` 3건 `active=true`. **단 실행은 전부 401 실패** — 아래 행 참조 |
 | Vault `service_role_key` | 2026-08-05 → **2026-08-07 교체** | ✅ 확인 (200 실측) | 등록 당시 값이 함수 env 와 불일치해 잡 3종이 이틀간 전부 401. **넣을 값은 레거시 JWT 가 아니라 신형 `sb_secret_...`** — 1번 절 참조 |
 | `event_participants` 표 | 2026-08-09~ (일자 미상) | **✅ 실측 2026-08-13** | 표는 있으나 **INSERT 정책의 행사 코드가 자리표시자일 수 있음** — 1-1번 절 |
-| `event_participants.gender_pref` 에 `'opposite'`(이성만) 추가 | 2026-08-19 | **⏳ 미반영** | 표가 이미 있어 `if not exists` 로는 안 바뀐다. **alter 를 실행해야 '이성만' 제출이 통과** — 1-1번 절 |
+| `event_participants.gender_pref` 에 `'opposite'`(이성만) 추가 | 2026-08-19 | **✅ 실측 2026-08-19** | 운영에 alter 실행·`pg_get_constraintdef` 로 확인. 테스트 프로젝트는 미반영(부스 영향 없음) — 1-1번 절 |
 | 매칭 프라이버시 하드닝 (`mate_reco_optin`·`rpc_probe_guard`·`k_anon_min`·`set_mate_reco_optin`) | 2026-08-12~13 | **✅ 실측 2026-08-13** | 인덱스 `idx_posts_country_shared`만 미실측 — 1번 절 |
 | 생일·성별 폐지 **1차**(`onboarded_at` 신설·백필) | 2026-08-13 | **✅ 실측 2026-08-13** | **2차(컬럼 drop)는 심사 통과 후** — 1번 절 |
 

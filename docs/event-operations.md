@@ -10,11 +10,11 @@
 
 1. **서버 반영** — Supabase SQL Editor에서 `supabase/schema.sql`의
    "오프라인 행사 메이트 매칭 이벤트" 섹션을 실행한다.
-   > ⚠️ **표가 이미 있어도 건너뛰지 말 것.** `create table if not exists`는 이미 만들어진 표의
-   > check 제약을 바꾸지 않는다. 2026-08-19에 매칭 상대 조건에 `'opposite'`(이성만)을 추가하면서
-   > 같은 섹션에 `alter table ... event_participants_gender_pref_check` 두 줄을 넣어 뒀다.
-   > 이걸 실행하지 않으면 **'이성만'을 고른 사람의 제출만** 400으로 거부되고, 화면에는
-   > "제출이 거부됐어요"만 떠서 원인을 찾기 어렵다. 실행 후 확인:
+   > ✅ **`gender_pref` 의 `'opposite'`(이성만)은 2026-08-19 운영에 반영 완료**(실측 확인).
+   > 표가 이미 있으면 `create table if not exists`는 check 제약을 바꾸지 않으므로, 같은 섹션에
+   > `alter table ... event_participants_gender_pref_check` 두 줄을 넣어 두었다. **다음에 선택지를
+   > 또 늘릴 때도 이 alter를 함께 고쳐야 한다** — 안 그러면 새 값을 고른 사람의 제출만 400으로
+   > 거부되고 화면엔 "제출이 거부됐어요"만 떠서 원인을 찾기 어렵다. 확인:
    > `select pg_get_constraintdef(oid) from pg_constraint where conname = 'event_participants_gender_pref_check';` `event_code = 'popup01'`이
    `docs/event.html`의 `EVENT_CODE` 상수와 같은지 먼저 확인할 것(둘 다 이미 `popup01`로
    맞춰져 있다 — `node node_modules/tsx/dist/cli.mjs scripts/event-config.verify.mjs`로
