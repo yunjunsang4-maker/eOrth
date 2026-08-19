@@ -1478,7 +1478,9 @@ const ko = {
     analyzingPeriod: '기기에 저장된 {{range}} 사진을 분석 중이에요',
     tiTitle: '과거 여행 불러오기',
     analyzePeriod: '분석 기간을 설정해볼까요?',
-    grantGalleryFind: '갤러리 접근 허용하고 불러오기',
+    // "허용하고 불러오기"처럼 허용을 전제하는 문구는 심사 거절 사유(5.1.1(iv), 2026-08-18) —
+    // 권한 사전 안내의 버튼은 중립 문구(계속/다음)여야 한다
+    grantGalleryFind: '계속하기',
     galleryPermTarget: '갤러리',
     skipManual: '건너뛰기 (수동으로 기록하기)',
     backToProfile: '프로필로 돌아가기', // 앱 내(프로필)에서 들어온 재방문용 — 온보딩 '건너뛰기' 대체

@@ -56,11 +56,13 @@ export default function App() {
     const init = ensureAdsInitialized();
     if (!init) { if (__DEV__) console.log('[AdMob] 네이티브 모듈 없음 — 재빌드 필요'); return; }
     // ⚠️ 여기서 ATT(prepareAdsTracking)를 부르지 않는다.
-    // 앱 시작 직후 추적 권한을 물으면 사용자는 아직 광고를 본 적도 없어 맥락이 없고,
-    // 위치 권한 팝업과 겹쳐 첫 화면에 시스템 창이 연달아 뜬다(App Store 5.1.1 지적 대상).
-    // ATT 요청은 첫 광고를 실제로 불러오는 시점(useFeedAdSource)이 담당한다 —
-    // 그쪽이 이미 requestTrackingPermission()을 await 한 뒤 광고를 요청하므로
-    // '결정 전에 광고가 나가는' 문제도 없다. SDK 초기화만 여기서 미리 끝내둔다.
+    // 앱 루트는 로그인 전 스플래시 위라, 여기서 물으면 위치 권한 팝업과 겹쳐
+    // 첫 화면에 시스템 창이 연달아 뜬다(2026-08-02 App Store 5.1.1 지적 대상).
+    // ATT 요청은 로그인·온보딩이 끝난 첫 화면(MainScreen)이 담당한다 — 첫 광고
+    // 시점(useFeedAdSource)에만 걸어뒀더니 빈 피드에선 광고 슬롯이 안 생겨 ATT가
+    // 영영 안 떴고 2.1로 거절됐다(2026-08-18). useFeedAdSource는 여전히 같은
+    // promise를 await 한 뒤 광고를 요청하므로 '결정 전에 광고가 나가는' 문제도 없다.
+    // SDK 초기화만 여기서 미리 끝내둔다.
     init
       .then(() => {
         if (__DEV__) console.log('[AdMob] SDK 초기화 완료');

@@ -1468,7 +1468,9 @@ const en = {
     analyzingPeriod: 'Analyzing {{range}} photos on your device',
     tiTitle: 'Import past trips',
     analyzePeriod: 'Shall we set the analysis period?',
-    grantGalleryFind: 'Allow gallery access and import',
+    // "Allow ... and import" presumes consent — rejected in review (5.1.1(iv), 2026-08-18).
+    // Pre-permission CTA must use neutral wording (Continue/Next).
+    grantGalleryFind: 'Continue',
     galleryPermTarget: 'Gallery',
     skipManual: 'Skip (record manually)',
     backToProfile: 'Back to profile',

@@ -52,6 +52,7 @@ import { getSkinAccent } from '../constants/skinTheme';
 import { imageToDataUri } from '../utils/imageCompress';
 import { buildCountryShape, buildSilhouettePaths } from '../utils/countryShape';
 import { showPermissionDeniedAlert } from '../utils/permissionAlert';
+import { requestTrackingPermission } from '../lib/tracking';
 import CountryMapView from '../components/CountryMapView';
 import PuzzlePhotoAdjustOverlay from '../components/PuzzlePhotoAdjustOverlay';
 import PuzzleShareCard from '../components/PuzzleShareCard';
@@ -683,6 +684,22 @@ export default function MainScreen({ navigation, route }: Props) {
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [tutorialsSeen.main, route.params?.startTutorial])
   );
+
+  // ATT(앱 추적 투명성) — 메인 진입에서 확실히 1회 요청한다.
+  // 원래는 첫 광고 요청(useFeedAdSource)에만 걸려 있었는데, 소셜 피드는 게시물이
+  // 2개 미만이면 광고 슬롯 자체를 만들지 않아(SocialScreen) 새 계정에선 ATT가 영영
+  // 뜨지 않았고, 심사에서 "ATT 요청을 찾을 수 없다"(2.1)로 거절됐다(2026-08-18).
+  // - 온보딩 직후엔 코치마크와 겹치지 않게 닫힌 뒤에 요청한다. 신규 계정은
+  //   tutorialsSeen.main이 false로 시작하고 코치마크 등장 900ms 뒤 true가 되므로,
+  //   "seen && !visible"은 정확히 코치마크 종료(또는 기존 계정의 즉시) 시점이다.
+  // - requestTrackingPermission은 promise 캐시 + 결정된 상태 즉시 반환이라
+  //   재실행돼도 시스템 팝업은 1회뿐이고, useFeedAdSource도 같은 promise를 기다린다.
+  // - 8/2 심사 대응(로그인 전 스플래시 위 선요구 금지)과 어긋나지 않는다 —
+  //   여기는 로그인·온보딩이 끝난 첫 화면이다.
+  useEffect(() => {
+    if (!tutorialsSeen.main || coachVisible) return;
+    requestTrackingPermission();
+  }, [tutorialsSeen.main, coachVisible]);
 
   // 초대 귀속 소비 — 미인증 상태에서 받은 초대 딥링크(pendingInvite)를 온보딩 완료 후
   // 첫 메인 진입에서 메이트 연결 넛지(커스텀 모달)로 소비한다(원샷 — consume이 삭제하므로 재등장 없음)

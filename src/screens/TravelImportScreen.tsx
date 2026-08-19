@@ -24,6 +24,7 @@ import Svg, {
   Circle as SvgCircle,
 } from 'react-native-svg';
 import StarFieldBackground from '../components/StarFieldBackground';
+import { BackArrowIcon } from '../components/icons';
 import { IntroAmbient } from './introVisuals';
 import ImportCtaButton from '../components/ImportCtaButton';
 import * as MediaLibrary from 'expo-media-library';
@@ -1016,6 +1017,23 @@ export default function TravelImportScreen({ navigation, route }: Props) {
     <View style={styles.container}>
       <StarFieldBackground opacity={0.5} />
       <IntroAmbient />
+
+      {/* 프로필 재진입의 초기 화면 복귀 — 표준 뒤로가기.
+          예전엔 하단 '프로필로 돌아가기' 텍스트 버튼이었는데, 권한 사전 안내를 닫는
+          스킵 경로로 읽혀 심사 거절 사유였다(5.1.1(iv)). gestureEnabled:false 화면이라
+          이 화살표가 없으면 출구가 사라진다. 스캔 중(취소 버튼)·결과(하단 바)에는
+          각자의 이탈 수단이 있어 초기 화면에서만 보인다. */}
+      {fromProfile && !scanning && !scanFinished && (
+        <TouchableOpacity
+          style={[styles.backBtn, { top: insets.top + 8 }]}
+          onPress={leaveImport}
+          accessibilityRole="button"
+          accessibilityLabel={t('imports.backToProfile')}
+        >
+          <BackArrowIcon size={20} color="#FFFFFF" />
+        </TouchableOpacity>
+      )}
+
       <ScrollView
         contentContainerStyle={[
           styles.scroll,
@@ -1107,11 +1125,12 @@ export default function TravelImportScreen({ navigation, route }: Props) {
               <Text style={styles.periodHint}>{t('comp2.importPeriodHint')}</Text>
             </View>
 
+            {/* 권한 사전 안내의 행동은 이 버튼 하나여야 한다 — 예전의 '건너뛰기' 버튼은
+                시스템 권한 요청을 회피하는 경로라 심사 거절 사유였다(5.1.1(iv), 2026-08-18).
+                건너뛰려는 사용자는 시스템 팝업에서 거부하면 되고, 그러면 아래 빈 화면
+                ('직접 기록할게요' 출구 있음)으로 떨어져 갇히지 않는다.
+                프로필 재진입의 복귀는 상단 뒤로가기 화살표가 대신한다. */}
             <ImportCtaButton label={t('imports.grantGalleryFind')} onPress={requestPermission} style={styles.ctaMargin} />
-
-            <TouchableOpacity style={styles.skipBtn} onPress={leaveImport}>
-              <Text style={styles.skipText}>{t(fromProfile ? 'imports.backToProfile' : 'imports.skipManual')}</Text>
-            </TouchableOpacity>
           </View>
         ) : scanning ? (
           /* Scanning View — 초기 화면과 동일한 전체 크기 오브 + 아래로 내린 안내/진행 */
@@ -1488,6 +1507,20 @@ const styles = StyleSheet.create({
   },
   skipBtn: {
     paddingVertical: 12,
+  },
+  // 프로필 재진입 전용 뒤로가기 — FriendsScreen 헤더의 40px 원형 버튼과 같은 규격
+  backBtn: {
+    position: 'absolute',
+    left: 16,
+    zIndex: 10,
+    width: 40,
+    height: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(46,46,59,0.45)',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
   },
   // 결과 화면 하단 바 안의 스킵 링크 — 바는 자식을 가로로 늘리므로 여기서 가운데로 모은다
   // (초기·빈 결과 화면의 스킵은 이미 가운데 정렬된 컨테이너 안에 있어 이 보정이 필요 없다)
