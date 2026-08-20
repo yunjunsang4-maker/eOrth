@@ -656,6 +656,159 @@ function fitTagEnd(src, start) {
   }
 }
 
+// ── 규칙 11: <Svg>에 pointerEvents를 직접 주지 않는다 (안드로이드에서 무시됨) ──
+//
+// 새 아키텍처의 react-native-svg는 <Svg pointerEvents="none">을 지키지 못한다. 근거는
+// 설치된 패키지 소스에 있다:
+//   · android/.../SvgView.java — `interceptsTouchEvent(...) { return true; }`
+//     ReactCompoundViewGroup이 **무조건** 터치 타깃을 주장한다.
+//   · android/src/SvgViewManager75/.../SvgViewManager.java — pointerEvents는 RN 정규
+//     view prop이 아니라 **리플렉션**(getDeclaredMethod("setPointerEvents", …))으로
+//     상위 클래스 setter를 찾아 호출하고, 실패하면 printStackTrace만 남기고 조용히 무시한다.
+// 반면 래퍼 <View>는 RN 1급 경로(ReactViewGroup.pointerEvents → canBeTouchTarget)를 타서
+// 히트테스트 진입 전에 서브트리가 통째로 제외된다. 즉 View 래핑은 우회가 아니라
+// **리플렉션 의존을 걷어낸 구조적으로 견고한 경로**다.
+//
+// 증상이 고약하다 — 컴파일되고, 타입도 맞고, iOS에서는 정상 동작한다. tsc도 lint도 못 잡는다.
+// 화면은 멀쩡히 그려지는데 그 아래 버튼만 안 눌린다.
+//
+// 2026-08-20 파리티 전수 점검에서 4건이 발견됐다(SocialScreen 빈 상태 CTA,
+// ProfileTicketScreen 티켓 실루엣, ImportCtaButton — 가져오기 CTA 7곳 공용,
+// MainScreen "영토 표시 설정" 카드 테두리). 네 건 모두 **같은 파일 또는 같은 저장소에
+// 정답 선례가 있는데 한쪽만 빠진** 누수였다 — 앞의 셋은 앞선 함정 스캔이 잡았지만
+// MainScreen 건은 놓쳤고 이 규칙을 만드는 도중에야 드러났다. 사람 눈으로 세는 방식의
+// 한계가 그대로 나온 셈이라, 규칙으로 못 박는다.
+//
+// 판정: <Svg …> 열림 태그가 pointerEvents를 받으면 위반. 값이 무엇이든(none/box-none/auto)
+// 안드로이드에서 신뢰할 수 없으므로 값을 가리지 않는다.
+//
+// ── 잔여 갭 (정직하게 적어 둔다) ──
+//  ① pointerEvents를 **아예 안 받은** 인라인 Svg(현재 191개 중 대다수)는 대상이 아니다.
+//     터치 영역 안의 장식 Svg가 responder를 세우지 않고 버블링되는 건 RN 표준 동작이라
+//     정상이며, 이걸 위반으로 세면 오탐 183건이 난다. 뒤집어 말하면 **래퍼 View를 지우면서
+//     pointerEvents도 같이 지운 되돌림은 이 규칙이 못 잡는다** — 그래서 아래 SVG_WRAP에서
+//     알려진 오버레이 지점의 래퍼 건수를 따로 못 박는다.
+//  ② 사용자 정의 래퍼(<GlassSurface> 같은 컴포넌트가 내부에서 Svg를 그리는 형태)는
+//     그 컴포넌트 파일 안에서 검사되므로 호출부에서 다시 세지 않는다.
+//  ③ WebView 안(GlobeView/CountryMapView)의 SVG는 RN 트리가 아니라 이 규칙 밖이다.
+//     그쪽은 check-webview-syntax.mjs가 따로 본다.
+rule('규칙 11 Svg에 pointerEvents 직접 지정 금지');
+
+/** 태그 시작(<Svg)부터 중괄호 깊이 0의 '>'까지 — 열림 태그 전체를 돌려준다. */
+function svgTagEnd(src, start) {
+  return fitTagEnd(src, start);
+}
+
+// 값이 무엇이든 Svg에 직접 준 pointerEvents는 안드로이드에서 신뢰할 수 없다.
+// 정말 필요한 사정이 있으면 여기에 건수와 사유를 함께 등록한다(현재 0건이 정상).
+const ALLOW_SVG_PE = new Map([]);
+{
+  const seen = new Set();
+  for (const f of collect('src', '.tsx')) {
+    const p = rel(f);
+    const src = readFileSync(f, 'utf8');
+    const hits = [];
+    // <Svg\b — <SvgRect/<SvgDefs 등 하위 엘리먼트는 'Svg' 뒤가 단어문자라 매치되지 않는다.
+    for (const m of src.matchAll(/<Svg\b/g)) {
+      const e = svgTagEnd(src, m.index);
+      if (e === -1) continue;
+      if (/\bpointerEvents\s*=/.test(src.slice(m.index, e + 1))) {
+        hits.push(src.slice(0, m.index).split('\n').length);
+      }
+    }
+    if (hits.length === 0) continue;
+    seen.add(p);
+    const allow = ALLOW_SVG_PE.get(p);
+    if (!allow) {
+      check(false, `${p} <Svg>가 pointerEvents를 직접 받는다 ${hits.length}건(줄 ${hits.join(', ')}) — `
+        + '안드로이드 새 아키텍처에서 무시되어 터치를 삼킨다. <View pointerEvents="none">로 감싸고 '
+        + 'Svg에서는 prop을 뺄 것(선례: StatsScreen.tsx:963, SocialScreen.tsx:2512)');
+      continue;
+    }
+    check(Boolean(allow.why && allow.why.trim()), `${p} Svg pointerEvents 예외에 사유가 적혀 있다`);
+    check(
+      allow.count === hits.length,
+      `${p} Svg pointerEvents ${allow.count}건 등록 ↔ 실제 ${hits.length}건 — 건수를 갱신할 것`,
+    );
+  }
+  for (const p of ALLOW_SVG_PE.keys()) {
+    check(seen.has(p), `${p} Svg pointerEvents 예외가 아직 유효하다 (사라졌으면 ALLOW_SVG_PE에서 제거할 것)`);
+  }
+}
+
+// ── 규칙 12: 터치를 통과시켜야 하는 Svg 오버레이의 View 래퍼가 사라지지 않았다 ──
+//
+// 규칙 11은 "Svg에 prop을 도로 붙이는" 되돌림만 잡는다. 래퍼 View를 지우면서
+// pointerEvents도 같이 지우면 규칙 11을 그대로 통과하는데, 터치는 여전히 삼켜진다
+// (Svg는 prop이 없어도 interceptsTouchEvent가 true라 타깃을 주장한다).
+// 그 사각을 막기 위해 **파일별 래퍼 건수**를 못 박는다 — 규칙 6·9·10과 같은 방식이다.
+//
+// 판정 = `<View|Animated.View … pointerEvents="none" …>` 열림 태그 **바로 다음**(주석만
+// 사이에 허용) 자식이 `<Svg`인 형태. 2026-08-20 실측 42건이고, 이 목록은 그 전수다.
+// 건수까지 보는 이유: 파일 단위로만 걸면 한 파일에 둘 있는 곳(ProfileVisuals 3건,
+// SnapRecordScreen 4건, StatsScreen 5건 등)에서 하나가 조용히 빠져도 통과한다.
+//
+// ── 잔여 갭 ──
+//  · 래퍼와 Svg 사이에 다른 엘리먼트가 끼면(예: <View><View><Svg>) 이 판정은 놓친다.
+//    현재 저장소에 그 형태는 0건이라 좁게 못 박아 오탐을 없앴다. 새로 생기면 넓힐 것.
+//  · 400자 창 안에서만 다음 자식을 본다 — 주석이 길면 놓칠 수 있으나 실측 0건이다.
+rule('규칙 12 Svg 오버레이 View 래퍼 유지');
+const SVG_WRAP = new Map([
+  ['src/components/CustomTabBar.tsx', 1],
+  ['src/components/DetailBox.tsx', 1],
+  ['src/components/GlassSurface.tsx', 1],
+  ['src/components/GrainOverlay.tsx', 1],
+  ['src/components/ImportCtaButton.tsx', 1],
+  ['src/components/profile/ProfileVisuals.tsx', 3],
+  ['src/components/PuzzlePhotoAdjustOverlay.tsx', 1],
+  ['src/components/SegmentedToggle.tsx', 2],
+  ['src/components/StarFieldBackground.tsx', 1],
+  ['src/components/ui.tsx', 1],
+  ['src/screens/AppIntroScreen.tsx', 1],
+  ['src/screens/BasicInfoScreen.tsx', 3],
+  ['src/screens/EditProfileScreen.tsx', 2],
+  ['src/screens/introVisuals.tsx', 3],
+  ['src/screens/LoginScreen.tsx', 1],
+  ['src/screens/MainScreen.tsx', 2],
+  ['src/screens/ProfileScreen.tsx', 4],
+  ['src/screens/ProfileTicketScreen.tsx', 1],
+  ['src/screens/SnapRecordScreen.tsx', 4],
+  ['src/screens/SocialScreen.tsx', 2],
+  ['src/screens/StatsDetailScreen.tsx', 1],
+  ['src/screens/StatsScreen.tsx', 5],
+  ['src/screens/TravelImportScreen.tsx', 1],
+]);
+{
+  const actual = new Map();
+  for (const f of collect('src', '.tsx')) {
+    const p = rel(f);
+    const src = readFileSync(f, 'utf8');
+    let n = 0;
+    for (const m of src.matchAll(/<(?:Animated\.)?View\b/g)) {
+      const e = fitTagEnd(src, m.index);
+      if (e === -1) continue;
+      const tag = src.slice(m.index, e + 1);
+      if (!/pointerEvents\s*=\s*["']none["']/.test(tag)) continue;
+      if (tag.endsWith('/>')) continue;
+      // 열림 태그 다음의 JSX 주석({/* … */})만 건너뛰고 첫 자식을 본다.
+      const rest = src.slice(e + 1, e + 401).replace(/^\s*(?:\{\/\*[\s\S]*?\*\/\}\s*)*/, '');
+      if (/^<Svg\b/.test(rest.trim())) n++;
+    }
+    if (n > 0) actual.set(p, n);
+  }
+  for (const [p, want] of SVG_WRAP) {
+    const got = actual.get(p) ?? 0;
+    check(got === want, `${p} Svg 래퍼 ${want}건 유지 (실제 ${got}건) — `
+      + '줄었다면 터치를 삼키는 되돌림인지 확인하고, 오버레이가 정말 사라졌다면 SVG_WRAP 건수를 갱신할 것');
+  }
+  // 새로 생긴 래퍼는 실패가 아니다(좋은 방향). 다만 목록이 낡지 않게 알린다.
+  for (const [p, got] of actual) {
+    if (!SVG_WRAP.has(p)) {
+      check(false, `${p} Svg 래퍼 ${got}건이 새로 생겼다 — 좋은 방향이지만 SVG_WRAP에 등록해 다음 되돌림을 막을 것`);
+    }
+  }
+}
+
 flush();
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

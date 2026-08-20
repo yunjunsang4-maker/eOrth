@@ -2384,14 +2384,18 @@ export default function MainScreen({ navigation, route }: Props) {
         >
           <View style={styles.dsCard} onStartShouldSetResponder={() => true}>
             <SheetBackdrop pointerEvents="none" />
-            {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬 */}
+            {/* 그라데이션 유리 테두리 (Figma) — 카드와 정확히 같은 px 크기로 그려 정렬
+                (새 아키텍처에서 RNSVG가 pointerEvents="none"을 무시하고 터치를 삼키므로 View로 감싼다.
+                 이 Svg는 카드 전면(DS_CARD_W×DS_CARD_H)을 덮으므로 안 감싸면 카드 안 터치가 전부 먹힌다) */}
+            <View
+              style={{ position: 'absolute', top: 0, left: 0, width: DS_CARD_W, height: DS_CARD_H }}
+              pointerEvents="none"
+            >
             <Svg
               width={DS_CARD_W}
               height={DS_CARD_H}
               viewBox="0 0 325 569"
               preserveAspectRatio="none"
-              style={{ position: 'absolute', top: 0, left: 0 }}
-              pointerEvents="none"
             >
               <SvgDefs>
                 <SvgLinearGradient id="dsBorder0" x1="32" y1="18.9326" x2="284.107" y2="511.12" gradientUnits="userSpaceOnUse">
@@ -2406,6 +2410,7 @@ export default function MainScreen({ navigation, route }: Props) {
               <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder0)" strokeWidth={1.7} />
               <SvgRect x={0.85} y={0.85} width={323.3} height={567.3} rx={29.15} fill="none" stroke="url(#dsBorder1)" strokeOpacity={0.5} strokeWidth={1.7} />
             </Svg>
+            </View>
 
             {viewMode === 'globe' ? (
               <>

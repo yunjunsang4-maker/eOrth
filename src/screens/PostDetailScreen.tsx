@@ -1007,7 +1007,10 @@ function SnapStoryViewer({
         )}
         {/* 꾹 누르는 동안(paused) 오버레이 UI 전체가 페이드 아웃되고 사진만 남는다 (인스타 스토리 패턴) */}
         <Animated.View style={[StyleSheet.absoluteFill, { opacity: uiOpacity }]} pointerEvents={paused ? 'none' : 'box-none'}>
-        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={storyS.topGradient} pointerEvents="box-none">
+        {/* 안드로이드 상태바 인셋 보정 — 스토리 뷰어 루트에 SafeAreaView가 없어 전체가 edge-to-edge다.
+            스타일의 리터럴 50은 iPhone 노치 기준값이라 안드로이드에선 기기별 상태바 높이와 어긋난다.
+            직계 형제 bottomGradient(insets.bottom + 16)와 같은 방식으로 맞춘다 */}
+        <LinearGradient colors={['rgba(0,0,0,0.6)', 'transparent']} style={[storyS.topGradient, { paddingTop: Platform.OS === 'ios' ? 50 : insets.top + 16 }]} pointerEvents="box-none">
           <View style={storyS.progressRow}>
             {story.snaps.map((_: any, k: number) => {
               const isCurrentPage = si === storyIdx;

@@ -3134,33 +3134,31 @@ function FriendsTab({ navigation }: { navigation: any }) {
                 }}
               >
                 {/* 통계탭 연도별 방문 통계 박스(GradientHalfCard)와 동일한 #CECFCD 대각선 그라데이션 테두리(stroke만) */}
+                {/* 새 아키텍처 RNSVG 터치 삼킴 방지: Svg에 직접 준 pointerEvents는 무시되므로 View(pointerEvents=none)로 감싼다 */}
                 {ctaSize.w > 0 && (
-                  <Svg
-                    style={StyleSheet.absoluteFill}
-                    width={ctaSize.w}
-                    height={ctaSize.h}
-                    pointerEvents="none"
-                  >
-                    <SvgDefs>
-                      <SvgLinearGradient id="ctaBorderGrad" x1="0" y1="0" x2="1" y2="1">
-                        <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
-                        <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity="0" />
-                        <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity="0" />
-                        <SvgStop offset="1" stopColor="#CECFCD" stopOpacity="0.45" />
-                      </SvgLinearGradient>
-                    </SvgDefs>
-                    <Rect
-                      x={0.5}
-                      y={0.5}
-                      width={ctaSize.w - 1}
-                      height={ctaSize.h - 1}
-                      rx={ctaSize.h / 2 - 0.5}
-                      ry={ctaSize.h / 2 - 0.5}
-                      fill="none"
-                      stroke="url(#ctaBorderGrad)"
-                      strokeWidth={1}
-                    />
-                  </Svg>
+                  <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                    <Svg width={ctaSize.w} height={ctaSize.h}>
+                      <SvgDefs>
+                        <SvgLinearGradient id="ctaBorderGrad" x1="0" y1="0" x2="1" y2="1">
+                          <SvgStop offset="0" stopColor="#CECFCD" stopOpacity="1" />
+                          <SvgStop offset="0.4" stopColor="#CECFCD" stopOpacity="0" />
+                          <SvgStop offset="0.6" stopColor="#CECFCD" stopOpacity="0" />
+                          <SvgStop offset="1" stopColor="#CECFCD" stopOpacity="0.45" />
+                        </SvgLinearGradient>
+                      </SvgDefs>
+                      <Rect
+                        x={0.5}
+                        y={0.5}
+                        width={ctaSize.w - 1}
+                        height={ctaSize.h - 1}
+                        rx={ctaSize.h / 2 - 0.5}
+                        ry={ctaSize.h / 2 - 0.5}
+                        fill="none"
+                        stroke="url(#ctaBorderGrad)"
+                        strokeWidth={1}
+                      />
+                    </Svg>
+                  </View>
                 )}
                 <Text style={s.emptyCtaText} {...andFitText}>{t('socialEmpty.cta')}</Text>
               </TouchableOpacity>

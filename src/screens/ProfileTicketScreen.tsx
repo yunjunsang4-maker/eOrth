@@ -276,15 +276,14 @@ export default function ProfileTicketScreen({ navigation, route }: RootStackScre
         onLayout={(e: LayoutChangeEvent) => setTicketH(e.nativeEvent.layout.height)}
       >
         {/* 흰 카드 실루엣 — 노치가 파인 SVG. 콘텐츠 View들은 이 위에 투명 배경으로 올라간다 */}
+        {/* 새 아키텍처 RNSVG 터치 삼킴 방지: Svg에 직접 준 pointerEvents는 무시된다.
+            감싸지 않으면 이 실루엣이 티켓 전면을 덮어 toggleReveal 탭이 안 걸린다(하단 공유 버튼이 안 뜸) */}
         {cardPath && (
-          <Svg
-            pointerEvents="none"
-            style={StyleSheet.absoluteFill}
-            width={TICKET_W}
-            height={ticketH}
-          >
-            <Path d={cardPath} fill="#FFFFFF" />
-          </Svg>
+          <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+            <Svg width={TICKET_W} height={ticketH}>
+              <Path d={cardPath} fill="#FFFFFF" />
+            </Svg>
+          </View>
         )}
 
         {/* 상단 보라 — 최근 여행지. 상태바 뒤까지 채우도록 paddingTop에 safe-area 반영 */}

@@ -495,7 +495,10 @@ export default function SnapRecordScreen({ navigation, route }: Props) {
         </View>
 
         {/* 하단 컨트롤 */}
-        <View style={st.bottomBar}>
+        {/* 안드로이드 내비바 인셋 보정 — position:'absolute'라 부모(SafeAreaView 밖) 인셋을 상속받지 못한다.
+            리터럴 30은 3버튼(48)·제스처(24) 어느 인셋과도 대응하지 않아 셔터 하단이 내비바에 물렸다.
+            상단(insets.top + 90)과 같은 기준으로 맞춘다. iOS 50은 기존 그대로 */}
+        <View style={[st.bottomBar, { bottom: Platform.OS === 'ios' ? 50 : insets.bottom + 12 }]}>
           {/* 카메라 전환 (촬영 전 방향 선택) */}
           <TouchableOpacity
             style={st.flipBtn}

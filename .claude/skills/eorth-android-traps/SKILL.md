@@ -73,7 +73,16 @@ DM·BlogRecord·순간 전부 교체 완료 상태다. 새 코드가 `launchCame
 
 **원인:** iCloud 원본이거나 트랜스코딩 실패.
 
-**회피:** `preferredAssetRepresentationMode: 'current'`.
+**회피(현행):** `launchImageLibraryAsync`에 **비-Passthrough 프리셋**을 준다 —
+`videoExportPreset: ImagePicker.VideoExportPreset.MediumQuality`.
+이러면 iOS가 export 도중 iCloud 원본을 자동으로 내려받는다.
+현재 위치는 `BlogRecordScreen.tsx`의 `handleAddVideo`(945~946행, 근거 주석 포함).
+
+> **옛 토큰 주의 — `preferredAssetRepresentationMode`로 grep하지 마라.**
+> 이 스킬은 한동안 회피책을 그 이름으로 적어 두었으나, 해당 토큰은 **코드베이스 전체에
+> 0건**이다. SDK54 대응 과정에서 `videoExportPreset` 방식으로 **의도적으로 대체**됐다.
+> 옛 이름으로 검색하면 0건이 나오고, 그걸 "회피 코드 소실"로 오판하기 쉽다
+> (2026-08-20 파리티 점검에서 실제로 이 혼선이 났다). 소실이 아니라 대체다.
 
 ## 9. Modal 껍데기가 남아 터치 먹통
 
@@ -115,7 +124,13 @@ DM·BlogRecord·순간 전부 교체 완료 상태다. 새 코드가 `launchCame
 확인하라:
 
 `experimentalBlurMethod` · `collapsable={false}` · `View pointerEvents="none"` 래핑 ·
-`preferredAssetRepresentationMode` · `andFitText`
+`videoExportPreset`(옛 `preferredAssetRepresentationMode` 아님 — 함정 8 참고) · `andFitText`
+
+단, **회피 소실을 사람 눈으로만 세지 마라.** 2026-08-20 점검에서 `pointerEvents` 재발
+3건을 찾고도 4번째(`MainScreen`의 "영토 표시 설정" 카드 테두리)를 놓쳤고, 정적 규칙을
+만드는 도중에야 드러났다. `Svg`의 `pointerEvents`와 `View` 래퍼 건수는 이제
+`scripts/layout-parity.verify.mjs` **규칙 11·12**가 기계적으로 본다 — `npm test`를 먼저
+돌리고, 이 스킬로는 그 규칙이 못 보는 것(잔여 갭은 각 규칙 주석에 적혀 있다)을 확인하라.
 
 ## 테스트 시나리오
 

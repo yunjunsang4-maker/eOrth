@@ -1528,6 +1528,14 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
         )}
 
         {/* 하단 메인 툴바 */}
+        {/* 여기에 insets.bottom 을 더하지 마라 — 이중 가산이 된다.
+            루트가 <SafeAreaView style={st.safe}>(위쪽)인데 edges prop 이 없어
+            safe-area-context 기본값(top/left/bottom/right 전부 'additive')이 적용되고,
+            st.safe 에는 이를 상쇄할 paddingBottom 이 없다. 즉 이 툴바 아래에는
+            insets.bottom 이 이미 한 번 깔려 있다. 툴바는 KAV 의 최하단이고
+            그 뒤는 전부 Modal(레이아웃 미점유)이라 SafeAreaView 콘텐츠의 시각적 바닥이다.
+            같은 구조인 DMScreen 의 st.inputBar 도 인셋을 더하지 않는다.
+            저장소의 insets.bottom + 12 선례들은 전부 Modal 안이거나 SafeAreaView 가 없는 화면이다. */}
         <View style={st.toolbar}>
           <View style={st.mainToolRow}>
             <ToolBtn icon={<CameraIcon size={22} color="#A1A1B0" />} label={t('blog.photo')} onPress={() => { setPhotoMenuVisible(!photoMenuVisible); setFontBarVisible(false); setHeadingBarVisible(false); setMoreMenuVisible(false); }} />
@@ -1867,7 +1875,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {friendPickerVisible && (
               <View style={st.calOverlay}>
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFriendPickerVisible(false)} />
-                <View style={st.friendPickerSheet}>
+                {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+                <View style={[st.friendPickerSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>{t('blog.appFriendSelect')}</Text>
                   <ScrollView style={{ maxHeight: 300 }}>
@@ -1908,7 +1917,8 @@ export default function BlogRecordScreen({ navigation, route }: Props) {
             {currencyModalVisible && (
               <View style={st.calOverlay}>
                 <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setCurrencyModalVisible(false)} />
-                <View style={st.currModalSheet}>
+                {/* 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨) */}
+                <View style={[st.currModalSheet, { paddingBottom: Platform.OS === 'ios' ? 30 : insets.bottom + 18 }]}>
                   <View style={st.panelHandle} />
                   <Text style={st.panelTitle}>{t('blog.currencySelect')}</Text>
                   <TextInput cursorColor="#BF85FC" selectionHandleColor="#BF85FC"
