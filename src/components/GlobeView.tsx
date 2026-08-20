@@ -2656,6 +2656,21 @@ function getNeonGlobeHTML(): string {
     ? `@keyframes ng-glowdrift { 0%,100%{transform:translate(0,0);} 50%{transform:translate(2%,-2%);} }`
     : `@keyframes ng-glowdrift { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(2%,-2%) scale(1.06);} }`;
   const nebWillChange = Platform.OS === 'android' ? `\n  .neb { will-change:transform; }` : '';
+  // ── 2단계: 안드로이드는 배경 블러 애니메이션을 아예 끈다 ──
+  // 위 1단계(scale 제거)만으로는 갤럭시 S21+ 저프레임이 남는다는 판단. animation 자체가 없으면
+  // 8겹 블러는 진입 시 1회 래스터화로 끝나고 이후 프레임당 비용이 0이 된다(표류만 멈추고 블러 자체는 그대로 보인다).
+  // 1단계 코드는 지우지 않고 남겨 둔다 — 만에 하나 아래 규칙이 안 먹어도 scale 제거 이득은 남는 이중 방어.
+  //  · !important 필수: 각 원반의 animation 은 아래 <div id="bg"> 안 style 속성(인라인)에 박혀 있어
+  //    일반 스타일시트 규칙으로는 못 이긴다.
+  //  · 선택자 `#bg > div` 는 .neb 7개 + class 없는 흰 하이라이트 1개(8번째)까지 한 번에 덮는다.
+  //    8번째에 .neb 를 붙이는 방법은 쓰지 않는다 — applyNebula 의 재채색 대상에 새로 들어가 겉모습이 바뀐다.
+  //  · #stars / #shooting 도 #bg 의 직계 div 지만 **자기 자신에는 animation 이 없다**. 별 반짝임은
+  //    `#stars i`, 별똥별은 `#shooting .sh`(JS가 만들어 #shooting 안에 넣는다) — 둘 다 손자라 이 선택자에
+  //    안 걸린다. 별·별똥별 연출은 안드로이드에서도 그대로 유지된다.
+  //  · applyNebula(스킨 재채색)는 el.style.background 만 다시 쓴다 — animation 과 무관하므로 영향 없음.
+  //  · 키프레임 0%/100% 가 translate(0,0) 이라 애니메이션을 없애면 정확히 그 정지 상태로 남는다(위치 튐 없음).
+  // iOS 는 여기서도 빈 문자열이라 생성 HTML 이 1바이트도 바뀌지 않는다(파리티 기준).
+  const nebNoAnim = Platform.OS === 'android' ? `\n  #bg > div { animation:none !important; }` : '';
   _neonGlobeHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -2669,7 +2684,7 @@ function getNeonGlobeHTML(): string {
   #canvas-container { position:fixed; inset:0; z-index:2; }
   canvas { display:block; }
   @keyframes ng-twinkle { 0%,100%{opacity:var(--o);} 50%{opacity:calc(var(--o)*0.35);} }
-  ${nebDriftKeyframes}${nebWillChange}
+  ${nebDriftKeyframes}${nebWillChange}${nebNoAnim}
   #stars { position:absolute; inset:0; pointer-events:none; }
   #stars i { position:absolute; border-radius:50%; background:#ffffff; display:block; }
   /* 별똥별(shooting star) — 지구본 뒤 #bg 레이어. 좌상단→우상단으로 살짝 떨어지며 지나감 */
