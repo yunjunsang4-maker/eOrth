@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Text } from '../ui/Text';
 import { useStageWidth } from '../utils/stage';
+import { TAB_BAR_H, TAB_BAR_GAP } from '../utils/tabBar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { RecordFab } from './RecordFab';
 import { GlassSurface } from './GlassSurface';
@@ -43,7 +44,10 @@ const INACTIVE_COLOR = '#9DB2CE';   // 비활성 아이콘 (탁한 청회색)
 const PILL_FILL = 'rgba(117, 26, 173, 0.3)'; // 활성 알약 본체 채움 (30% 불투명)
 
 // ─── 치수 (SVG 시안 그대로) ───
-const BAR_H = 63;          // 컨테이너 높이
+// ⚠️ 높이와 띄움(TAB_BAR_GAP)은 utils/tabBar.ts가 단일 출처다. 탭 화면들의 하단 여백
+// (useTabBarClearance)이 같은 값에서 나오므로, 여기에 리터럴을 되돌리면 화면 여백만
+// 옛 값에 남아 다시 갈라진다 — 실제로 그렇게 갈라져 하단 콘텐츠가 바에 먹혔다.
+const BAR_H = TAB_BAR_H;   // 컨테이너 높이
 const BAR_R = 31.5;        // 높이의 절반 = 완전 둥근형
 const BAR_W_GLOBE = 323;   // Globe 활성 시 컨테이너 폭
 const BAR_W_OTHER = 348;   // 나머지 활성 시 컨테이너 폭
@@ -395,7 +399,7 @@ export const CustomTabBar: React.FC<TabBarProps> = ({ state, navigation }) => {
   return (
     <>
     <Animated.View
-      style={[styles.container, androidSize, containerStyle, { bottom: insets.bottom + 24 }]}
+      style={[styles.container, androidSize, containerStyle, { bottom: insets.bottom + TAB_BAR_GAP }]}
       pointerEvents={tabBarHidden ? 'none' : 'box-none'}
     >
       {/* 배경 유리 재질 — iOS26 네이티브 리퀴드 글래스 / 구형 iOS 블러 / Android 매트 폴백.

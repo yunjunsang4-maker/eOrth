@@ -27,6 +27,7 @@ import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import StarFieldBackground from '../components/StarFieldBackground';
 import RatingStars from '../components/RatingStars';
 import { stageWidthNow } from '../utils/stage';
+import { useTabBarClearance } from '../utils/tabBar';
 import Svg, {
   Image as SvgImage,
   Path as SvgPath,
@@ -304,6 +305,9 @@ const RATING_GLOBE_Y = (193 - RATING_GLOBE_R) * OS;           // 상단
 export default function StatsScreen() {
   const skinAccent = useSkinAccent(); // 진행/스탯 바 그라데이션을 스킨색으로
   const insets = useSafeAreaInsets();
+  // 플로팅 탭 바에 스크롤 끝이 먹히지 않도록 비우는 높이(insets.bottom + 87).
+  // 예전 리터럴 70은 3버튼 내비에서 65dp, iOS 홈 인디케이터에서도 51dp 모자랐다.
+  const tabBarClearance = useTabBarClearance();
   const { t, i18n } = useTranslation();
   const navigation = useNavigation();
   const { records, tripGroups } = useRecords();
@@ -767,7 +771,7 @@ export default function StatsScreen() {
         bounces={false}
         overScrollMode="never"
         scrollEnabled={!orbitDragging}
-        contentContainerStyle={[styles.scroll, { paddingBottom: 70 }]}
+        contentContainerStyle={[styles.scroll, { paddingBottom: tabBarClearance }]}
       >
         {/* World coverage hero — 흰색 % + 프로필 사진 (시안) */}
         {/* 테두리: 시안 SVG의 스트로크 그라데이션만 오버레이 — 내부(흰 3% 패널)는 물들지 않는다 */}

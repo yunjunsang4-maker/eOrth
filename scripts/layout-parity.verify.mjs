@@ -874,6 +874,93 @@ const ALLOW_STYLE_PE = new Map([]);
   }
 }
 
+// ── 규칙 14: 탭 바 클리어런스가 단일 출처에서 나온다 ──
+//
+// 플로팅 탭 바(CustomTabBar)는 화면 하단에서 `insets.bottom + GAP + BAR_H`를 잡아먹는다.
+// 탭 화면의 스크롤이 그만큼 하단을 비우지 않으면 마지막 콘텐츠가 바에 가린다.
+//
+// 2026-08-21 실기기(갤럭시 S21+ · 3버튼) 신고로 드러난 실제 사고 — 세 화면이 인셋을
+// 안 읽고 리터럴을 들고 있었다: Stats 70 / Social 110 / Profile 110.
+// 요구치는 3버튼 135 · 제스처 111 · iOS 홈인디케이터 121이라 셋 다 미달이었고,
+// **안드로이드 전용이 아니라 iOS에서도 미달**이었다(Stats는 iOS에서 51dp 부족).
+// 값이 똑같이 110인 두 곳은 한 번에 주입된 흔적이라, 화면 값만 고치면 네 번째가 또 생긴다.
+//
+// 그래서 치수를 `src/utils/tabBar.ts`로 올리고 **바와 화면이 같은 출처를 읽게** 했다.
+// 이 규칙은 그 구조가 조용히 원상복귀되는 것을 막는다. 세 갈래를 본다:
+//   ① 상수가 제자리에 있고 값이 기대와 같은가 (드리프트 감지)
+//   ② CustomTabBar가 자기 리터럴로 되돌아가지 않았는가
+//   ③ 스크롤을 가진 탭 화면이 useTabBarClearance를 실제로 참조하는가
+//
+// ── 잔여 갭 (정직하게 적어 둔다) ──
+//  · 이 규칙은 "참조가 있는가"만 본다. 화면에 **새 스크롤을 추가하면서** 거기에만
+//    리터럴을 쓰면 기존 참조 때문에 통과한다. contentContainerStyle 단위로 세려 했으나
+//    같은 파일의 모달·시트 스크롤(ProfileScreen에만 3곳)이 정당하게 리터럴을 쓰고 있어
+//    오탐이 커진다 — 그쪽은 탭 바에 가리는 위치가 아니다.
+//  · MainScreen은 본문이 지구본 WebView라 주 스크롤이 없다. 그래서 ③의 대상이 아니고
+//    ①②만 적용된다. 나중에 MainScreen에 스크롤이 생기면 TAB_SCROLL_SCREENS에 추가할 것.
+rule('규칙 14 탭 바 클리어런스 단일 출처');
+const TAB_BAR_UTIL = 'src/utils/tabBar.ts';
+const tabBarUtil = readSafe(TAB_BAR_UTIL);
+check(tabBarUtil !== null, `${TAB_BAR_UTIL}가 존재한다`);
+if (tabBarUtil) {
+  // 값을 못 박는다 — 디자인이 바뀌어 값을 고칠 때 이 줄도 같이 고치게 해서,
+  // 바 높이만 바뀌고 화면 여백이 안 따라가는 사고를 사람 눈에 띄게 만든다.
+  const h = Number(tabBarUtil.match(/TAB_BAR_H\s*=\s*(\d+)/)?.[1]);
+  const gap = Number(tabBarUtil.match(/TAB_BAR_GAP\s*=\s*(\d+)/)?.[1]);
+  check(h === 63, `TAB_BAR_H === 63 (실제 ${h})`);
+  check(gap === 24, `TAB_BAR_GAP === 24 (실제 ${gap})`);
+  check(
+    /export function useTabBarClearance/.test(tabBarUtil),
+    'useTabBarClearance 훅을 내보낸다',
+  );
+  check(
+    /insets\.bottom\s*\+\s*TAB_BAR_GAP\s*\+\s*TAB_BAR_H/.test(tabBarUtil),
+    'useTabBarClearance가 insets.bottom + GAP + BAR_H로 계산한다',
+  );
+}
+
+const TAB_BAR_COMP = 'src/components/CustomTabBar.tsx';
+const tabBarComp = readSafe(TAB_BAR_COMP);
+check(tabBarComp !== null, `${TAB_BAR_COMP}가 존재한다`);
+if (tabBarComp) {
+  check(
+    /from\s+['"]\.\.\/utils\/tabBar['"]/.test(tabBarComp),
+    `${TAB_BAR_COMP}가 utils/tabBar에서 치수를 가져온다 (자기 리터럴로 되돌아가면 화면 여백과 갈라진다)`,
+  );
+  check(
+    !/BAR_H\s*=\s*\d/.test(tabBarComp),
+    `${TAB_BAR_COMP}에 BAR_H 숫자 리터럴이 없다 (TAB_BAR_H를 쓸 것)`,
+  );
+  check(
+    !/insets\.bottom\s*\+\s*24\b/.test(tabBarComp),
+    `${TAB_BAR_COMP}에 insets.bottom + 24 리터럴이 없다 (TAB_BAR_GAP을 쓸 것)`,
+  );
+}
+
+// 주 스크롤을 가진 탭 화면. MainScreen은 지구본 WebView라 주 스크롤이 없어 제외(위 주석 참조).
+const TAB_SCROLL_SCREENS = [
+  'src/screens/StatsScreen.tsx',
+  'src/screens/SocialScreen.tsx',
+  'src/screens/ProfileScreen.tsx',
+];
+for (const p of TAB_SCROLL_SCREENS) {
+  const src = readSafe(p);
+  if (src === null) {
+    check(false, `${p} 파일이 없다 (이름이 바뀌었으면 TAB_SCROLL_SCREENS도 함께 고칠 것)`);
+    continue;
+  }
+  // 두 조건을 모두 본다 — import 경로와 **호출** 형태.
+  // \b가 없으면 useTabBarClearanceXX 같은 이름에도 매치돼 되돌림을 놓친다(음성 테스트로 확인).
+  check(
+    /from\s+['"][^'"]*utils\/tabBar['"]/.test(src),
+    `${p}가 utils/tabBar에서 클리어런스를 가져온다`,
+  );
+  check(
+    /\buseTabBarClearance\s*\(/.test(src),
+    `${p}가 useTabBarClearance()를 호출한다 (하단 여백을 리터럴로 되돌리면 탭 바가 콘텐츠를 가린다)`,
+  );
+}
+
 flush();
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);

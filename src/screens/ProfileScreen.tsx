@@ -57,6 +57,7 @@ import { whenReadyToMeasure, measureWithRetry } from '../utils/coachStart';
 import { traceStart, traceStep, traceEnd } from '../utils/perfTrace';
 import { setCoachActive } from '../components/coachOverlayState';
 import { stageWidthNow, STAGE_MAX_W } from '../utils/stage';
+import { useTabBarClearance } from '../utils/tabBar';
 import { fetchNeighborCount } from '../services/social';
 import type { TabScreenProps } from '../navigation/types';
 import { StayManageSheet } from '../components/profile/StayManageSheet';
@@ -1380,6 +1381,9 @@ const COUNTRY_DATA: Record<string, { name: string; flag: string }> = COUNTRIES.r
 type ProfileScreenProps = TabScreenProps<'ProfileTab'> & { pushed?: boolean; onBack?: () => void };
 export default function ProfileScreen({ navigation, route, pushed, onBack }: ProfileScreenProps) {
   const insets = useSafeAreaInsets();
+  // 플로팅 탭 바에 스크롤 끝(빈 상태의 '과거 여행 불러오기' CTA)이 먹히지 않도록 비우는
+  // 높이(insets.bottom + 87). 예전 리터럴 110은 3버튼 내비에서 25dp 모자랐다.
+  const tabBarClearance = useTabBarClearance();
   const { t, i18n } = useTranslation();
   const skinAccent = useSkinAccent(); // 섹션 링크·부제 등 강조를 스킨색으로
   const [actionSheetVisible, setActionSheetVisible] = useState(false);
@@ -1900,7 +1904,7 @@ export default function ProfileScreen({ navigation, route, pushed, onBack }: Pro
 
       <ScrollView
         style={[styles.container, { backgroundColor: 'transparent' }]}
-        contentContainerStyle={[styles.content, { paddingBottom: 110 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBarClearance }]}
         showsVerticalScrollIndicator={false}
         scrollEnabled={!isDragging}
         refreshControl={<AppRefreshControl refreshing={refreshing} onRefresh={onRefresh} progressViewOffset={insets.top} />}

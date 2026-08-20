@@ -61,6 +61,7 @@ import AuthorAvatar from '../components/AuthorAvatar';
 import FeedPhoto from '../components/FeedPhoto';
 import { thumbOf } from '../utils/thumbUrl';
 import { stageWidthNow, useStageGutter, STAGE_MAX_W } from '../utils/stage';
+import { useTabBarClearance } from '../utils/tabBar';
 
 const APP_LOGO = require('../../assets/example-avatar.png'); // 소셜 예시 기록 '이어스' 프로필 사진(지구본)
 import { blocksToPlainText } from '../types/blogBlocks';
@@ -2586,6 +2587,9 @@ function MateSuggestCard({ suggestions, onPressUser, onPressCta }: {
 function FriendsTab({ navigation }: { navigation: any }) {
   const { t, i18n } = useTranslation();
   const insets = useSafeAreaInsets(); // 안드로이드 내비바 인셋 보정 (모달이 내비바 아래까지 확장됨)
+  // 플로팅 탭 바에 피드 마지막 카드가 먹히지 않도록 비우는 높이(insets.bottom + 87).
+  // 예전 리터럴 110은 3버튼 내비에서 25dp 모자랐다.
+  const tabBarClearance = useTabBarClearance();
   const skinAccent = useSkinAccent(); // 스냅 스토리 링 그라데이션을 스킨색으로
   // 첫 기록 CTA 크기 — 탭 알약과 동일한 그라데이션 테두리(SVG stroke)를 그리기 위한 실측
   const [ctaSize, setCtaSize] = useState({ w: 0, h: 0 });
@@ -2982,7 +2986,7 @@ function FriendsTab({ navigation }: { navigation: any }) {
     <View style={{ flex: 1 }}>
       <Animated.ScrollView
         showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 110 }}
+        contentContainerStyle={{ paddingBottom: tabBarClearance }}
         onScroll={Animated.event(
           [{ nativeEvent: { contentOffset: { y: scrollY } } }],
           {
