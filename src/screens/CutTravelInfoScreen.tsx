@@ -520,7 +520,23 @@ export default function CutTravelInfoScreen({ navigation, route }: RootStackScre
         <TouchableOpacity onPress={() => navigation.goBack()} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
           <Text style={st.cancel}>{t('common.cancel')}</Text>
         </TouchableOpacity>
-        <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
+        {/*
+          제목은 헤더 가로 전체를 덮는 절대배치라, 방어가 없으면 좌우 버튼의 세로 중앙 띠를 삼킨다.
+          그 방어를 <Text>가 아니라 래퍼 <View>의 pointerEvents **prop**으로 건다 —
+          RN 0.81.5의 Text는 pointerEvents가 타입 선언(Libraries/Text/Text.d.ts:211-213)만 있고
+          안드로이드 네이티브 구현이 0건(ReactAndroid/.../views/text/)이라, style이든 prop이든
+          안드로이드에선 아무 일도 일어나지 않는다. tsc도 lint도 못 잡고 iOS는 지키기 때문에
+          "안드로이드에서만 취소 버튼이 안 눌린다"로 나타났다. 반면 View는 ReactViewGroup에
+          구현이 있어 히트테스트 진입 전에 서브트리가 통째로 빠진다(레포 선례 42곳과 같은 형태).
+
+          래퍼에 top/bottom을 주지 않는 이유: 세로 중앙을 지금과 똑같이 재현하려는 것.
+          헤더의 alignItems:'center'가 절대배치 자식을 세로 중앙에 놓는데, 래퍼 높이가
+          제목 한 줄(= 예전 Text 높이)과 같으므로 픽셀 위치가 그대로 유지된다.
+          top:0/bottom:0으로 늘리면 borderBottomWidth:1 때문에 중심이 0.5px 어긋난다.
+        */}
+        <View style={st.headerTitleWrap} pointerEvents="none">
+          <Text style={st.headerTitle}>{t('cutInfo.travelInfo')}</Text>
+        </View>
         <View style={st.headerRight}>
           {/* ✨ 여행 기억 버튼은 국가 필드로 이동(중앙정렬 제목과 겹침 방지) */}
           <TouchableOpacity
@@ -1015,7 +1031,10 @@ const st = StyleSheet.create({
     paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.divider,
   },
   cancel: { fontSize: 16, color: C.textDim },
-  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white, position: 'absolute', left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' },
+  // 절대배치는 래퍼 View가 갖는다(Text의 pointerEvents는 안드로이드 구현이 없어 무효 — 호출부 주석 참조).
+  // top/bottom을 비워 둬야 header의 alignItems:'center'가 예전 Text와 같은 자리에 놓는다.
+  headerTitleWrap: { position: 'absolute', left: 0, right: 0 },
+  headerTitle: { fontSize: 17, fontWeight: 'bold', color: C.white, textAlign: 'center' },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
   lockBtn: { width: 26, height: 26, borderRadius: 6, backgroundColor: '#2E2E3B', alignItems: 'center', justifyContent: 'center' },
   lockBtnActive: { backgroundColor: 'rgba(107,33,168,0.4)', borderWidth: 1, borderColor: C.purpleNeon },

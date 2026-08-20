@@ -809,6 +809,71 @@ const SVG_WRAP = new Map([
   }
 }
 
+// ── 규칙 13: 스타일 객체 안에 pointerEvents를 넣지 않는다 ──
+//
+// `pointerEvents`는 **prop**으로만 쓴다. 스타일 키로 넣으면 안드로이드에서 조용히 무시되는
+// 경우가 있고, 특히 <Text>에서는 확실히 무시된다.
+//
+// 근거(RN 0.81.5 소스 실측):
+//   · Libraries/Text/Text.d.ts:211-213 — Text의 pointerEvents는 **TypeScript 타입 선언만**
+//     존재한다. 그래서 tsc가 아무 불평 없이 통과한다.
+//   · ReactAndroid/.../views/text/ — 파일 25개 중 pointerEvents 구현 **0건**.
+//     (양성 대조군: ReactAndroid/.../views/view/ 에는 ReactViewGroup.kt·ReactViewManager.kt
+//      두 파일에 구현이 있다. 즉 위 0건은 경로 오타로 인한 거짓 음성이 아니다.)
+// 즉 Text에 pointerEvents를 주면 style이든 prop이든 안드로이드에선 아무 일도 일어나지 않는다.
+// iOS는 지키므로 "안드로이드에서만 버튼이 안 눌린다"로 나타난다.
+//
+// 2026-08-20 실제 사고: BlogRecordScreen·CutTravelInfoScreen의 헤더 제목이
+// `position:'absolute', left:0, right:0`으로 헤더 가로 전체를 덮는 <Text>인데 방어가
+// 스타일의 pointerEvents 하나뿐이었다 → 안드로이드에서 헤더 버튼(취소 등)의 세로 중앙
+// 띠가 먹혔다. 레포의 나머지 42곳은 전부 <View pointerEvents="none"> **prop** 형태였고,
+// 이 2곳만 규약을 벗어나 있었다.
+//
+// 판정: 소스에서 주석을 걷어낸 뒤 `pointerEvents:` (콜론) 형태를 찾는다.
+// prop 형태는 `pointerEvents=` (등호)라 자연히 구분된다.
+//
+// ── 잔여 갭 ──
+//  · View에 한해서는 RN 0.71+가 style의 pointerEvents를 지원하므로 이 규칙은 실제 결함이
+//    아닌 것까지 막는다. 의도적으로 그렇게 뒀다 — 레포 관례가 prop 단일이고(42:0),
+//    Text/View를 정적으로 구분하려면 타입 추적이 필요해 오탐이 늘기 때문이다.
+//    정말 필요하면 ALLOW_STYLE_PE에 사유와 함께 등록한다.
+//  · 스타일을 변수로 조립해 넘기는 형태(`const s = {...base, pointerEvents}`)는 못 잡는다.
+//    현재 0건이다.
+rule('규칙 13 스타일 객체 안 pointerEvents 금지');
+const ALLOW_STYLE_PE = new Map([]);
+{
+  /**
+   * 줄/블록 주석을 지운다 — 주석 속 예시 문구가 위반으로 잡히지 않게.
+   * 블록 주석은 **줄 수를 보존**해서 치환한다. 공백 하나로 뭉개면 이후 줄 번호가
+   * 전부 앞으로 밀려 보고서가 엉뚱한 줄을 가리킨다(실제로 2684를 2664로 안내했다).
+   */
+  const stripComments = (s) => s
+    .replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ');
+  const seen = new Set();
+  for (const f of allSrc()) {
+    const p = rel(f);
+    const src = stripComments(readFileSync(f, 'utf8'));
+    const hits = src.split('\n')
+      .map((l, i) => (/\bpointerEvents\s*:/.test(l) ? i + 1 : 0))
+      .filter(Boolean);
+    if (hits.length === 0) continue;
+    seen.add(p);
+    const allow = ALLOW_STYLE_PE.get(p);
+    if (!allow) {
+      check(false, `${p} 스타일 객체에 pointerEvents가 ${hits.length}건(줄 ${hits.join(', ')}) — `
+        + '안드로이드에서 무시된다(Text는 네이티브 구현 자체가 없다). '
+        + '<View pointerEvents="none">로 감싸고 절대위치를 그 View로 옮길 것');
+      continue;
+    }
+    check(Boolean(allow.why && allow.why.trim()), `${p} 스타일 pointerEvents 예외에 사유가 적혀 있다`);
+    check(allow.count === hits.length, `${p} 스타일 pointerEvents ${allow.count}건 등록 ↔ 실제 ${hits.length}건`);
+  }
+  for (const p of ALLOW_STYLE_PE.keys()) {
+    check(seen.has(p), `${p} 스타일 pointerEvents 예외가 아직 유효하다 (사라졌으면 ALLOW_STYLE_PE에서 제거할 것)`);
+  }
+}
+
 flush();
 console.log(fail === 0 ? '\n✅ 통과' : `\n❌ ${fail}건 실패`);
 process.exit(fail === 0 ? 0 : 1);
