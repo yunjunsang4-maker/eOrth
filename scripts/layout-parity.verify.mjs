@@ -772,7 +772,8 @@ const ALLOW_SVG_PE = new Map([]);
 // 그 사각을 막기 위해 **파일별 래퍼 건수**를 못 박는다 — 규칙 6·9·10과 같은 방식이다.
 //
 // 판정 = `<View|Animated.View … pointerEvents="none" …>` 열림 태그 **바로 다음**(주석만
-// 사이에 허용) 자식이 `<Svg`인 형태. 2026-08-20 실측 42건이고, 이 목록은 그 전수다.
+// 사이에 허용) 자식이 `<Svg`인 형태. 2026-08-21 실측 43건 + 같은 날 FAB·SNAP
+// 안드로이드 글로우 래퍼 2건 = 45건이고, 이 목록은 그 전수다.
 // 건수까지 보는 이유: 파일 단위로만 걸면 한 파일에 둘 있는 곳(ProfileVisuals 3건,
 // SnapRecordScreen 4건, StatsScreen 5건 등)에서 하나가 조용히 빠져도 통과한다.
 //
@@ -787,9 +788,11 @@ const SVG_WRAP = new Map([
   ['src/components/GlassSurface.tsx', 1],
   ['src/components/GrainOverlay.tsx', 1],
   ['src/components/ImportCtaButton.tsx', 1],
+  ['src/components/NeonFab.tsx', 1],
   ['src/components/profile/ProfileVisuals.tsx', 3],
   ['src/components/PuzzlePhotoAdjustOverlay.tsx', 1],
   ['src/components/SegmentedToggle.tsx', 2],
+  ['src/components/SnapButton.tsx', 1],
   ['src/components/StarFieldBackground.tsx', 1],
   ['src/components/ui.tsx', 1],
   ['src/screens/AppIntroScreen.tsx', 1],
