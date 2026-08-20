@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect, useCallback } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useAnimationsActive } from '../hooks/useAnimationsActive';
 import { subscribeCoachFreezeGlobe } from './coachOverlayState';
@@ -2639,6 +2639,23 @@ init();
 let _neonGlobeHTML: string | null = null;
 function getNeonGlobeHTML(): string {
   if (_neonGlobeHTML !== null) return _neonGlobeHTML;
+  // ── 안드로이드 전용 우주가스(.neb) 블러 재래스터화 회피 ──
+  // 배경 #bg 에는 filter:blur(34~100px) 짜리 큰 원반이 8겹 있고 그중 7개(.neb)가
+  // ng-glowdrift 로 상시 애니메이션한다. 키프레임이 transform 의 scale 을 건드리면
+  // "블러가 걸린 콘텐츠"를 매 프레임 다시 굽는다(스케일이 바뀌면 합성기가 이전 블러
+  // 결과 텍스처를 재사용할 수 없다). translate 만이면 레이어를 옮기는 순수 합성 연산으로
+  // 끝난다. 안드로이드 WebView(Chromium)는 이 비용을 그대로 얻어맞아 갤럭시 S21+ 에서
+  // 오로라 폼 진입 직후부터 지속 저프레임이 났다. iOS(WebKit)는 같은 경로를 훨씬 잘
+  // 처리해 문제가 없었으므로 **iOS 는 기존 CSS 를 한 글자도 바꾸지 않는다**(파리티 기준).
+  // will-change:transform 은 .neb 를 자기 레이어로 승격시켜 블러 결과가 텍스처로 캐시되게
+  // 한다(바로 아래 .sh 별똥별에는 이미 붙어 있는데 .neb 에만 빠져 있었다).
+  // 주의: 블러 반경·색·위치·투명도·개수는 손대지 않는다 — "무엇을 그리는가"가 아니라
+  // "매 프레임 다시 굽는가"만 바꾸는 수정이다. 겉모습은 6% 호흡(scale)이 빠지는 것 외에
+  // 동일하고, 표류하는 움직임(translate)은 그대로 남는다.
+  const nebDriftKeyframes = Platform.OS === 'android'
+    ? `@keyframes ng-glowdrift { 0%,100%{transform:translate(0,0);} 50%{transform:translate(2%,-2%);} }`
+    : `@keyframes ng-glowdrift { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(2%,-2%) scale(1.06);} }`;
+  const nebWillChange = Platform.OS === 'android' ? `\n  .neb { will-change:transform; }` : '';
   _neonGlobeHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -2652,7 +2669,7 @@ function getNeonGlobeHTML(): string {
   #canvas-container { position:fixed; inset:0; z-index:2; }
   canvas { display:block; }
   @keyframes ng-twinkle { 0%,100%{opacity:var(--o);} 50%{opacity:calc(var(--o)*0.35);} }
-  @keyframes ng-glowdrift { 0%,100%{transform:translate(0,0) scale(1);} 50%{transform:translate(2%,-2%) scale(1.06);} }
+  ${nebDriftKeyframes}${nebWillChange}
   #stars { position:absolute; inset:0; pointer-events:none; }
   #stars i { position:absolute; border-radius:50%; background:#ffffff; display:block; }
   /* 별똥별(shooting star) — 지구본 뒤 #bg 레이어. 좌상단→우상단으로 살짝 떨어지며 지나감 */
