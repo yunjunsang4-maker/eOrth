@@ -135,8 +135,23 @@ const PuzzlePieceIcon = ({ size = 24, color = '#A1A1B0' }: { size?: number; colo
 const GlobeDisplayIcon = ({ tint = 'rgba(117,26,173,0.3)' }: { tint?: string }) => (
   <Svg width={36} height={36} viewBox="-2 -2 33 33" fill="none">
     <SvgDefs>
-      {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (검은색 투명 → 흰색) */}
-      <SvgLinearGradient id="globeBtnRim" x1="0" y1="0" x2="0.15" y2="1">
+      {/* 메뉴바 배경 테두리의 중립 베벨 그라데이션 (위 투명 → 아래 흰색).
+          gradientUnits="userSpaceOnUse" 필수 — 기본값(objectBoundingBox)이면 함정 2개를 동시에 밟는다.
+          ① 원점이 "원의 꼭대기"가 아니라 "bbox 좌상단 모서리"다. 축이 오른쪽으로 기울어 있어서
+             (예전 x2=0.15) 링의 12시 지점이 t=0에 닿지 못하고 t≈0.07에서 시작했다. 위가 투명해지지
+             않으니 베벨이 아니라 사방이 밝은 링으로 보였다(S21+ 실기기 스크린샷 실측: 12시 링 휘도 42,
+             바탕 틴트 32 — 즉 꼭대기에서도 안 사라진다).
+          ② RNSVG의 bbox 정의가 플랫폼마다 다르다. iOS는 fill∪stroke 바운즈
+             (apple/RNSVGRenderable.mm: pathBounds = CGRectUnion(fillBounds, strokeBounds)),
+             안드로이드는 fill 경로 바운즈만(android/.../RenderableView.java: mPath.computeBounds).
+             이 원에선 28.9 vs 27.6(4.7% 차)이라 같은 JSX가 두 플랫폼에서 다른 t를 낸다.
+          절대좌표로 못 박으면 bbox가 계산에서 아예 빠져 두 함정이 같이 사라지고,
+          NeonFab·SnapButton의 중립 베벨(fabRimNeutral·snapRimNeutral)과 프로파일이 정확히 같아진다.
+          좌표 유도(링: cx=cy=14.5, r=13.8): 시작 = 링 꼭대기 살짝 위 (cx, cy-r-r/60) = (14.5, 0.47),
+          끝 = 링 바닥 살짝 아래에서 오른쪽으로 0.6r = (cx+8.28, cy+r+r/60) = (22.78, 28.53).
+          r/60·0.6r 비율은 NeonFab(r=26.8698, 10.3896→65.0249/+16.1219)에서 그대로 가져왔다.
+          결과 t: 12시 0.0075(사실상 투명) / 9시 0.327 / 3시 0.593 / 6시 0.912. */}
+      <SvgLinearGradient id="globeBtnRim" x1="14.5" y1="0.47" x2="22.78" y2="28.53" gradientUnits="userSpaceOnUse">
         <SvgStop offset="0" stopColor="#666666" stopOpacity="0" />
         <SvgStop offset="1" stopColor="#FFFFFF" stopOpacity="1" />
       </SvgLinearGradient>
