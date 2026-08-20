@@ -206,8 +206,24 @@ export const RecordFab: React.FC<RecordFabProps> = ({ navigation }) => {
                 navigation.navigate(fmt.screen);
               }}
             >
-              {/* Android는 experimentalBlurMethod 없이는 BlurView가 no-op — 버튼이 투명하게 뚫려 보였다 */}
-              <BlurView intensity={40} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              {/* iOS만 실블러. Android는 매트로 대체한다.
+                  · 원래 주석("experimentalBlurMethod 없이는 no-op — 투명하게 뚫려 보였다")은 맞지만,
+                    dimezisBlurView를 켜면 이번엔 반대로 흰 블룸이 생겼다. expo-blur 15.0.8의
+                    ExpoBlurView.configureBlurView()는 blurView.setupWith(findOptimalBlurRoot(), …)로
+                    '조상 뷰'(rnscreens Screen 또는 android.R.id.content)를 통째로 스냅샷해 흐린다.
+                    그래서 버튼 '뒤'가 아니라 이 버튼 '위'에 형제로 그려지는 흰 아이콘(FAB_C)까지
+                    스냅샷에 들어가고, 흐려진 그 흰빛이 버튼 자기 배경으로 칠해진다.
+                    (S21+ 실측: 아이콘 가장자리 바깥 휘도 +83, 약 10px에 걸쳐 감쇠, 초과분이 완전 무채색
+                     = 아이콘의 흰색. 감쇠폭 10px은 intensity 40 / blurReductionFactor 4 = 10 과 일치)
+                  · MainScreen의 GlobeBtnGlass(:428)가 같은 dimezis 문제로 이미 매트로 대체돼 있다.
+                  · 매트 색은 그 전례와 같은 rgba(22,18,32,0.6). 위의 backgroundColor rgba(46,46,59,0.35)와
+                    합쳐 투과율 26%라 밝은 지구본 위에서도 "뚫려" 보이지 않고, 어두운 배경 위 합성값은
+                    블룸을 뺀 기존 안드로이드 렌더와 휘도 오차 2 이내다. */}
+              {Platform.OS === 'ios' ? (
+                <BlurView intensity={40} tint="dark" experimentalBlurMethod="dimezisBlurView" style={StyleSheet.absoluteFill} />
+              ) : (
+                <View style={[StyleSheet.absoluteFill, styles.fabFormatMatte]} />
+              )}
               {fmt.icon}
             </TouchableOpacity>
           </Animated.View>
@@ -304,5 +320,12 @@ const styles = StyleSheet.create({
       default: {},
     }),
     overflow: 'hidden',
+  },
+  // 안드로이드 전용 유리 채움 — GlobeBtnGlass(MainScreen.tsx:428)와 같은 값.
+  // borderRadius 는 부모 overflow:'hidden' 클리핑과 이중 방어 — 절대위치 자식에
+  // 라운드 클리핑이 안 걸리는 기기에서 불투명 매트의 사각 모서리가 새는 것을 막는다.
+  fabFormatMatte: {
+    backgroundColor: 'rgba(22,18,32,0.6)',
+    borderRadius: 26,
   },
 });
