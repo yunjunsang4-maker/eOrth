@@ -561,13 +561,40 @@ const ALLOW_WINDOW_W = new Map([
 // ── 잔여 갭 (정직하게 적어 둔다) ──
 //   · 라벨이 {label} 같은 prop이면 ①에 안 걸린다 — 공용 컴포넌트는 아래에서 이름을
 //     짚어 별도로 검사한다(ui.tsx 4종). 새 공용 버튼을 만들면 그 목록에 추가할 것.
-//   · numberOfLines={2} 같은 다줄 명시도 '판단이 있었다'로 보고 통과시킨다.
+//   · numberOfLines={2} 같은 **다줄** 명시는 '판단이 있었다'로 보고 통과시킨다.
 //     자동 축소를 일부러 빼려면 그 판단을 태그에 남기라는 뜻이다.
+//
+// ── 2026-08-21: numberOfLines 예외가 값을 안 보던 구멍을 막았다 ──
+// 예전 구현은 `numberOfLines`가 **있기만 하면** 통과시켰다. 그런데 `numberOfLines={1}`은
+// 다줄 의도가 아니라 **한 줄로 강제해 넘치면 말줄임(…)** 하라는 뜻이다 — 자동 축소를
+// 빼도 되는 근거가 아니라, 오히려 잘림을 만드는 바로 그 조합이다. 위 예외 문구가
+// 노린 것은 `={2}` 이상의 다줄 선언이었는데 구현이 값을 안 봐서 정반대까지 통과시켰다.
+// 실제로 갤럭시 S21+ 실기기에서 프로필 국적·성향 칩이 `numberOfLines={1}` + andFitText
+// 없음 조합으로 잘렸고, 그때 규칙 10은 통과 상태였다.
+// 이제 리터럴 값을 읽어 2 이상만 예외로 본다.
+//
+//   · 잔여 갭: `numberOfLines={n}`처럼 값이 리터럴이 아니면 판정할 수 없어 예외로 둔다
+//     (보수적 선택 — 오탐을 내느니 놓친다). 현재 저장소에 그 형태는 아래 로직이
+//     통과시키는 경로로만 존재하며, 새로 생기면 이 주석과 함께 다시 볼 것.
 rule('규칙 10 버튼 라벨 자동 축소');
 const FIT_BTN_STYLE = /\b\w*\.(?:\w*[bB]tnText\w*|\w*[bB]uttonText\w*|\w*[cC]taText\w*|\w*[aA]ctionText\w*|\w*[sS]ubmitText\w*|\w*[cC]onfirmText\w*|\w*[bB]tnLabel\w*|\w*[bB]uttonLabel\w*)\b/;
 // 여러 줄이 의도인 라벨 등 예외는 여기 등록 (2026-08-11 스윕 시점 기준 0건 — 87개 라벨
 // 전부 번역문에 \n 없는 한 줄 문구임을 ko/en 로케일 대조로 확인했다)
 const ALLOW_NO_FIT = new Map([]);
+
+/**
+ * 태그에 '여러 줄로 두겠다'는 판단이 남아 있는가.
+ *
+ * `numberOfLines={2}` 이상 → 다줄 의도이므로 자동 축소 면제.
+ * `numberOfLines={1}`     → 한 줄 강제 + 말줄임. 면제 대상이 **아니다**(잘림을 만드는 조합).
+ * 값이 리터럴이 아니면    → 판정 불가라 보수적으로 면제(오탐을 내지 않는 쪽).
+ */
+function multiLineIntent(tag) {
+  if (!/numberOfLines/.test(tag)) return false;
+  const lit = tag.match(/numberOfLines\s*=\s*\{\s*(\d+)\s*\}/);
+  if (!lit) return true; // 동적 값 — 판정 불가
+  return Number(lit[1]) >= 2;
+}
 
 /** 태그 시작 위치부터 중괄호 깊이 0의 '>' 위치 — 화살표함수의 >는 깊이>0에서 나와 안 걸린다 */
 function fitTagEnd(src, start) {
@@ -609,7 +636,8 @@ function fitTagEnd(src, start) {
       if (end === -1) continue;
       const tag = src.slice(t.index, end + 1);
       if (tag.endsWith('/>')) continue;
-      if (/andFitText|adjustsFontSizeToFit|numberOfLines/.test(tag)) continue;
+      if (/andFitText|adjustsFontSizeToFit/.test(tag)) continue;
+      if (multiLineIntent(tag)) continue;
       const close = src.indexOf('</Text>', end);
       if (close === -1) continue;
       const content = src.slice(end + 1, close).trim();
