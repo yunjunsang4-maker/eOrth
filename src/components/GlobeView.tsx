@@ -2671,6 +2671,37 @@ function getNeonGlobeHTML(): string {
   //  · 키프레임 0%/100% 가 translate(0,0) 이라 애니메이션을 없애면 정확히 그 정지 상태로 남는다(위치 튐 없음).
   // iOS 는 여기서도 빈 문자열이라 생성 HTML 이 1바이트도 바뀌지 않는다(파리티 기준).
   const nebNoAnim = Platform.OS === 'android' ? `\n  #bg > div { animation:none !important; }` : '';
+  // ── 3단계: 안드로이드는 오로라 렌더러의 premultipliedAlpha:false 를 뺀다(=기본값 true) ──
+  // 1·2단계(CSS 블러 재래스터화 제거·애니메이션 정지)를 베타 OTA로 실기기에 넣고도 갤럭시 S21+
+  // 저프레임이 그대로 남았다. 즉 CSS 블러는 주원인이 아니었다. 다음 후보가 이 옵션이다.
+  //  · 오로라만 { antialias:true, alpha:true, premultipliedAlpha:false } 이고, 정상인 클래식은
+  //    위 186행에서 { antialias:true, alpha:true } — 즉 **기본값(true)** 을 쓴다. 오로라에만 false 인데
+  //    도입 커밋(55f0967, Neon Globe 디자인 이식)에 이유 주석이 없다. 디자인 원본을 통째로 옮기면서
+  //    딸려 온 값이고 "왜 필요한가"가 기록된 적이 없다.
+  //  · 프레임당 비용 근거: 브라우저 합성기(compositor)가 다루는 텍스처 포맷은 premultiplied 다.
+  //    non-premultiplied 투명 캔버스는 페이지에 합성되기 전에 전체 화면을 한 번 변환해야 하고,
+  //    이 캔버스는 setClearColor(0x000000, 0) 로 화면 전체가 투명이라 그 변환을 매 프레임 전면적으로
+  //    얻어맞는다. 안드로이드 Chromium 경로에서 특히 비싸다(iOS WebKit 은 이 경로를 잘 처리한다).
+  //  · 씬 내부 블렌딩은 **바뀌지 않는다**(번들 three.js 원문으로 확인함). 블렌드 함수를 고르는 것은
+  //    renderer 가 아니라 **material.premultipliedAlpha** 다 — WebGLState.setMaterial 이
+  //    setBlending(..., material.premultipliedAlpha) 로 넘긴다. Material 생성자 기본값이 false 이고
+  //    이 씬의 어떤 재질도 이 값을 켜지 않으므로, NormalBlending 은 전후 모두
+  //    (SRC_ALPHA, 1-SRC_ALPHA / ONE, 1-SRC_ALPHA) 그대로다. 즉 유리 대륙(alpha 0.2)·해안선·본체 내부는
+  //    픽셀 단위로 동일하게 그려진다.
+  //  · 실제로 달라지는 것은 **캔버스를 페이지에 합성하는 마지막 한 단계**뿐이다. 렌더러의
+  //    premultipliedAlpha 는 getContext 컨텍스트 속성으로만 나간다(+ clear color 프리멀티플라이인데
+  //    clear 가 (0,0,0,0) 이라 무연산). 따라서 차이는 **프레임버퍼 알파가 1 미만인 픽셀에서만** 난다:
+  //    실루엣 페더 링(alpha = smoothstep(0,0.02,facing) → 반경의 0.02%, 사실상 1px)과
+  //    본체 밖으로 살짝 넘치는 선(R=1.002 테두리)이 전부다. 그 픽셀에서 현재 non-premultiplied 경로는
+  //    알파를 두 번 곱해(col*a*a) 실제보다 어둡게 합성되고 있으며, true 로 가면 col*a 로 **더 정확해진다**.
+  //    → 예상 변화: 지구본 가장자리 1px 링이 아주 약간 밝아진다. 그 외 영역은 변화 없음.
+  //  · 그러므로 셰이더 보정(col *= alpha)은 **넣지 않는다.** 넣으면 오히려 씬 내부가 어두워져 망가진다.
+  // 적용 지점은 아래 템플릿 안 `new THREE.WebGLRenderer({ antialias:true, alpha:true${'$'}{neonPremultAlpha} })` 한 곳뿐이다.
+  // 근거 주석을 그 자리에 못 두는 이유: 템플릿 리터럴 안에 쓰면 주석까지 WebView 로 실려 나가
+  // **iOS 생성 HTML 이 바뀐다**(실제로 한 번 그렇게 만들었다가 덤프 diff 에서 +215바이트로 잡혔다).
+  // 그래서 근거는 전부 여기 TS 쪽에 둔다.
+  // iOS 는 기존 문자열 그대로라 생성 HTML 이 1바이트도 바뀌지 않는다(파리티 기준).
+  const neonPremultAlpha = Platform.OS === 'android' ? '' : `, premultipliedAlpha:false`;
   _neonGlobeHTML = `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -2803,7 +2834,7 @@ var KO_NAMES = {
 
 // --- Three.js (정사영 카메라) ---
 var container = document.getElementById('canvas-container');
-var renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true, premultipliedAlpha:false });
+var renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true${neonPremultAlpha} });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setClearColor(0x000000, 0);     // 투명 → 뒤 CSS 별/글로우가 비침
