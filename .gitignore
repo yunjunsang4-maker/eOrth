@@ -18,6 +18,13 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# 구글 서비스 계정 키(FCM V1 푸시·Play 제출용) — google-services.json 은 공개값이라
+# 커밋하지만, 이 파일들은 비밀키다. 확장자가 .json 이라 위 패턴에 안 걸려 따로 막는다.
+*-firebase-adminsdk-*.json
+service-account*.json
+google-service-account*.json
+play-service-account*.json
+
 # Metro
 .metro-health-check*
 
